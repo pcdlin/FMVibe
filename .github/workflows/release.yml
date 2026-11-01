@@ -1,0 +1,134 @@
+# Builds a release whenever a version tag (v0.1, v1.2.3, ...) is pushed: the plugin, built and tested on Windows and
+# run through clap-validator, goes into a GitHub release as a zip, and the browser demo (web/, see AGENTS.md) goes on
+# GitHub Pages. Nothing is published unless both build. Needs Pages set to deploy from GitHub Actions, and the
+# github-pages environment to allow v* tags (see "Releasing" in AGENTS.md).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# One release at a time; a newer tag waits for the one under way instead of cutting it off.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plugin:
+    # The image with Visual Studio 2026, which the README asks for.
+    runs-on: windows-2025-vs2026
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version is set once, in project() in CMakeLists.txt; the tag has to name the same one.
+      - name: Check the tag against the version
+        run: |
+          $match = Select-String -Path CMakeLists.txt -Pattern '^project\(FMVibe VERSION ([0-9.]+)'
+          if (-not $match) { throw 'No version found in project() in CMakeLists.txt.' }
+          $version = $match.Matches[0].Groups[1].Value
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            throw "The tag $env:GITHUB_REF_NAME doesn't match the version $version in CMakeLists.txt (expected v$version)."
+          }
+
+      - name: Build, test and validate
+        run: .\build.ps1 -Validate
+
+      # The MIT licenses of FMVibe and of the CLAP SDK (whose headers are compiled in) go with every copy.
+      - name: Package
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item build\release\FMVibe.clap, LICENSE dist
+          Copy-Item build\release\_deps\clap-src\LICENSE dist\LICENSE-CLAP
+          Compress-Archive dist\* "FMVibe-$env:GITHUB_REF_NAME-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: FMVibe-*.zip
+          if-no-files-found: error
+
+      # The editor's snapshots, to see what a failing UI check rendered.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ui-shots
+          path: build/release/ui-shots
+          if-no-files-found: ignore
+
+  web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      # build-web.ps1 pins the Emscripten version; the demo is built with the same one here.
+      - name: Emscripten version
+        id: emsdk
+        run: |
+          version=$(sed -n "s/^\$EmsdkVersion = '\([^']*\)'.*/\1/p" build-web.ps1)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Emscripten
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: build/emsdk
+          key: emsdk-${{ runner.os }}-${{ steps.emsdk.outputs.version }}
+
+      - name: Install Emscripten
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          VERSION: ${{ steps.emsdk.outputs.version }}
+        run: |
+          git clone --quiet https://github.com/emscripten-core/emsdk build/emsdk
+          git -C build/emsdk -c advice.detachedHead=false checkout --quiet "$VERSION"
+          build/emsdk/emsdk install "$VERSION"
+          build/emsdk/emsdk activate "$VERSION"
+
+      - name: Install Ninja
+        run: command -v ninja || (sudo apt-get update -q && sudo apt-get install -y -q ninja-build)
+
+      - name: Build
+        run: |
+          source build/emsdk/emsdk_env.sh
+          cmake --preset web
+          cmake --build --preset web
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/web/site
+
+  release:
+    needs: [plugin, web]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin
+
+      # The notes list the pull requests and commits since the previous tag; they can be edited on GitHub afterwards.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" FMVibe-*.zip --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+
+  pages:
+    needs: [plugin, web]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

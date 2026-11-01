@@ -10,6 +10,12 @@ Implemented using Claude Code.
 The full feature reference is in [docs/features.md](docs/features.md); working on the code, its tests and the
 plugin's internals are in [AGENTS.md](AGENTS.md).
 
+## Download
+
+Each [release](https://github.com/pcdlin/FMVibe/releases) has a zip with `FMVibe.clap` for 64-bit Windows. Put
+`FMVibe.clap` into the per-user CLAP folder, `%LOCALAPPDATA%\Programs\Common\CLAP`, where hosts such as Bitwig
+Studio find it.
+
 ## Build
 
 You need:

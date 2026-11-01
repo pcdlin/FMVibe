@@ -188,15 +188,32 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   voice filters' input and the decimators get a signal far below hearing, behind `__EMSCRIPTEN__`. Without it,
   tails ringing out cost many times the CPU. The plugin's build is unchanged.
 
-### Publishing
+## Releasing
 
-`.github/workflows/pages.yml` builds the demo on Linux and publishes it on GitHub Pages
-(`https://pcdlin.github.io/FMVibe/`) whenever the `release` branch is pushed. It uses the Emscripten version
-`build-web.ps1` pins. Before the first deploy, the repository needs two settings:
+A version tag publishes a release. `.github/workflows/release.yml` builds the plugin on Windows (Visual Studio
+2026) with `build.ps1 -Validate`, so every test and clap-validator have to pass. It puts `FMVibe.clap`, `LICENSE`
+and the CLAP SDK's license (`LICENSE-CLAP`) into `FMVibe-<tag>-windows-x64.zip`, and creates a GitHub release
+for the tag with that zip and notes generated from the commits since the previous tag. Meanwhile it builds the
+browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
+(`https://pcdlin.github.io/FMVibe/`). Neither goes out unless both build.
+
+1. Set the new version in `project()` at the top of `CMakeLists.txt` (and where `docs/features.md` names it), and
+   commit.
+2. Tag that commit with the same version and a `v` before it, and push the tag:
+
+   ```powershell
+   git tag v0.2
+   git push origin v0.2
+   ```
+
+The workflow refuses a tag that doesn't match the version in `CMakeLists.txt`. If a UI check fails on GitHub's
+runner, the run keeps the editor's snapshots as its `ui-shots` artifact.
+
+Before the first release, the repository needs two settings:
 
 - *Settings > Pages > Build and deployment*: Source **GitHub Actions**.
-- *Settings > Environments > github-pages > Deployment branches and tags*: add `release`. GitHub creates this
-  environment allowing only the default branch, and a deploy from `release` is refused until it is added.
+- *Settings > Environments > github-pages > Deployment branches and tags*: add a tag rule for `v*`. GitHub creates
+  this environment allowing only the default branch, and a deploy from a tag is refused until it is added.
 
 On GitHub's free plan, Pages needs the repository to be public.
 
@@ -234,7 +251,7 @@ hit.
 | `web/dsp.cpp`, `web/ui.cpp` | The browser demo's audio and editor modules |
 | `web/site/` | The demo page: the canvas and input (`main.js`), drawing (`canvas2d.js`), the AudioWorklet (`worklet.js`) |
 | `build-web.ps1` | Builds the browser demo with Emscripten, and serves it |
-| `.github/workflows/pages.yml` | Publishes the browser demo on GitHub Pages from the `release` branch |
+| `.github/workflows/release.yml` | On a version tag: a GitHub release with the plugin, and the browser demo on GitHub Pages |
 
 Everything except `entry.cpp`, `plugin.cpp` and `editor.cpp` builds into the `fmvibe-core` static library, which
 the plugin and the tools share. The browser demo builds the engine (`FMVIBE_ENGINE_SOURCES`) into its modules
@@ -277,8 +294,7 @@ itself.
   in UTF-8); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
   floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; states
-  with a newer version are refused. Nothing has been released yet, so there is no compatibility with earlier
-  development builds.
+  with a newer version are refused.
 - Times and LFO rates are stored as 0–1 on a log curve (1 ms–20 s, 0.02–100 Hz), so host knobs and modulation
   have resolution where it matters. The value text shows ms/s/Hz.
 - The plugin takes CLAP note events (preferred) and raw MIDI note on/off, and reports `NOTE_END` so hosts with
