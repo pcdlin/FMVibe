@@ -36,7 +36,7 @@ public:
     float height() const { return heightFor(controller_.layout()); }
 
     explicit View(Controller &controller);
-    ~View(); // lets go of a key still held, so no note hangs
+    ~View(); // ends a drag still going on, so no note hangs and no gesture stays open
 
     // The color themes, by the names Controller::theme() takes; the first is the default.
     static int themeCount();
@@ -271,6 +271,9 @@ private:
     void reroute(int from, int to, int into);
     // The route whose arrowhead is being dragged elsewhere, which the graph then draws following the mouse; else -1.
     int rerouting() const;
+    // Whether a source's handle let go of on `w` modulates what it shows: a knob, a route's label or matrix cell, or
+    // a depth bar, as the drag's overlay rings them; never the source's own output (the mod wheel's knob).
+    bool droppable(const Widget &w, int source) const;
     // The color of the effect in `slot`: each type of effect has its own.
     Color fxColor(int slot) const;
     // A list's color (its effect's, the voice shapers' or the filters'), and whether it can pick `item`: a band-pass's
@@ -445,6 +448,12 @@ private:
     // was when the drag began, as long as the envelope still fits.
     float envScale(int env) const;
     void applyDrag(Point p);
+    // Ends the drag going on: its gestures and undo step, a key it plays, the bend wheel it holds. When the button
+    // goes up, after what letting go does; or when its button-up never came, at the next press.
+    void finishDrag();
+    // Whole notches of the wheel on `target` (a param, or another of the wheel's targets), with `steps` added: a
+    // trackpad's smaller steps add up toward them while the wheel stays on that target.
+    int wheelNotches(int target, float steps);
 
     // Painting.
     void paintPanels(Canvas &c);
@@ -548,8 +557,8 @@ private:
     bool wired(int param) const;
     // Whether the graph shows `node`'s line to OUT: it is wired, and a filter has something to put out.
     bool goesOut(int node) const;
-    // Whether `node`'s own sound reaches the output, as the dot on its tab shows: its Out is up, and a filter or
-    // shaper has something going into it.
+    // Whether `node`'s own sound reaches the output, as the dot on its tab shows: its Out is up, an operator is on, and
+    // a filter or shaper has something going into it.
     bool soundsOut(int node) const;
     void keepRoutes();
     void disconnect(int param); // to 0 %, and its wire goes
@@ -568,6 +577,14 @@ private:
     std::optional<Widget> hover_;
     Point hoverPoint_; // where the mouse is
     Drag drag_;
+    // What the last press hit, as it went down, and where: a double-click after it goes with it.
+    std::optional<Widget> pressed_;
+    Point pressPoint_{-1000.0f, -1000.0f};
+    int wheelTarget_ = -1; // what the wheel turned last (see wheelNotches()), and its steps short of a notch
+    float wheelRest_ = 0.0f;
+    // The open context menu's targets (below) still are what it opened on: no undo, redo or wheel since. The web
+    // demo's menu stays open while those reach the editor.
+    bool menuLive_ = false;
     int menuParam_ = -1;
     int menuFx_ = -1;                        // the effect slot of the open context menu
     int menuSource_ = -1;                    // the source of the open context menu

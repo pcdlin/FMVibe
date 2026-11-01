@@ -1344,12 +1344,7 @@ const char *View::themeName(int index) {
 }
 
 View::~View() {
-    if (drag_.kind == DragKind::Key)
-        controller_.playNote(keyboardBase() + drag_.widget.a, false);
-    if (drag_.kind == DragKind::BendWheel)
-        controller_.pitchWheel(0.0);
-    if (drag_.step)
-        controller_.endStep();
+    finishDrag();
 }
 
 // --- Model access.
@@ -1370,6 +1365,8 @@ double View::norm(int index) const {
 }
 
 void View::edit(int index, double v) {
+    if (!std::isfinite(v)) // std::clamp would pass a NaN on
+        return;
     const ParamDef &def = table_[index];
     controller_.beginEdit(index);
     controller_.setValue(index, std::clamp(v, def.min, def.max));
@@ -1514,6 +1511,16 @@ void View::connect(int from, int to) {
         const double level = value(out);
         edit(param, level > 0.0 ? level : 1.0);
         if (level > 0.0) {
+            // The output's modulation goes along with it, as with a route moved by its arrowhead (see reroute()),
+            // unless its source modulates the send already.
+            const std::vector<Assignment> mods = assignments();
+            std::vector<std::pair<int, double>> moved;
+            for (const Assignment &m : mods)
+                if (m.target == out && std::none_of(mods.begin(), mods.end(), [&](const Assignment &o) {
+                        return o.source == m.source && o.target == param;
+                    }))
+                    moved.push_back({slotTargetIndex(m.source, m.slot), slotTargetValue(param)});
+            editMany(moved);
             disconnect(out);
             if (!boxGoesOut(to))
                 edit(outParam(to), 1.0);
@@ -1579,8 +1586,15 @@ int View::rerouting() const {
     return drag_.kind == DragKind::Reroute && drag_.moved ? drag_.widget.param : -1;
 }
 
+bool View::droppable(const Widget &w, int source) const {
+    const bool own = isStripSource(source) && !isNote(source) && w.param == stripKnobIndex(source);
+    return w.param >= 0 && isModTarget(w.param) && !own &&
+           (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
+            w.kind == Kind::SlotBar);
+}
+
 bool View::soundsOut(int node) const {
-    return value(outParam(node)) > 0.0 && (!isBoxNode(node) || boxHasInput(node));
+    return value(outParam(node)) > 0.0 && (isBoxNode(node) ? boxHasInput(node) : nodeOn(node));
 }
 
 // Operators, filters and shapers alike, whether anything goes into them or not.
@@ -1779,7 +1793,7 @@ std::vector<int> View::fxChain() const {
 
 std::vector<int> View::fxChainShown() const {
     std::vector<int> chain = fxChain();
-    if (drag_.kind != DragKind::FxMove)
+    if (drag_.kind != DragKind::FxMove || !drag_.moved) // a click on a card's title moves nothing
         return chain;
     // The dragged card lands after the other cards whose middles are left of its own, among those on screen. It
     // stays under the mouse while the row scrolls under it.
@@ -1941,6 +1955,8 @@ void View::addEffect(FxType type, int copyOf, int at) {
     chain.insert(chain.begin() + position, slot);
     changes.push_back({paramIndex(GlobalParam::FxOrder), fxOrderWith(chain)});
     setFolded(true, slot, false);
+    if (shapeEditor_ == kMaxSources + slot) // left open for an effect the slot held before
+        shapeEditor_ = -1;
     editMany(changes);
     fxBand_[slot] = copyOf >= 0 ? fxBand_[copyOf] : 0;
     revealFx(position);
@@ -1953,6 +1969,8 @@ void View::removeEffect(int slot) {
     for (const Assignment &m : assignments())
         if (fxSlotOf(m.target) == slot)
             removeSlot(m.source, m.slot);
+    if (shapeEditor_ == kMaxSources + slot)
+        shapeEditor_ = -1;
     edit(paramIndex(slot, FxParam::Type), static_cast<double>(FxType::None));
 }
 
@@ -2131,6 +2149,7 @@ void View::addShapeStep(int shape, Point p, bool snap) {
                   value(shapeIndex(shape, point, PointField::Curve))};
     };
     std::vector<Pt> before, left, right, after; // left and right: on the step's lines; the ones between go
+    double middle = -1.0; // but a symmetric curve's middle point stays (see removeShapePoint()), at the step's level
     for (int point = 0; point < count; ++point) {
         const Pt pt = at(point);
         if (pt.x < x0 - kOnLine)
@@ -2141,6 +2160,8 @@ void View::addShapeStep(int shape, Point p, bool snap) {
             after.push_back(pt);
         else if (pt.x > x1 - kOnLine)
             right.push_back(pt);
+        else if (middlePoint(shape, point))
+            middle = pt.x;
     }
     // Of the points on a line, the one facing the step goes and the others stay: on the left line the last, on the
     // right line the first. A point alone there stays only for a step beside this one: a level line a column long.
@@ -2161,6 +2182,8 @@ void View::addShapeStep(int shape, Point p, bool snap) {
     std::vector<Pt> points = before;
     points.insert(points.end(), left.begin(), left.end());
     points.push_back({x0, y, 0.0});
+    if (middle >= 0.0)
+        points.push_back({middle, y, 0.0});
     points.push_back({x1, y, 0.0});
     points.insert(points.end(), right.begin(), right.end());
     points.insert(points.end(), after.begin(), after.end());
@@ -2290,7 +2313,7 @@ std::vector<int> View::sources() const {
 
 std::vector<int> View::sourcesShown() const {
     std::vector<int> shown = sources();
-    if (drag_.kind != DragKind::SourceMove)
+    if (drag_.kind != DragKind::SourceMove || !drag_.moved) // a click on a card's title moves nothing
         return shown;
     // The dragged card lands after the other cards whose middles are left of its own, among those on screen. It
     // stays under the mouse while the row scrolls under it.
@@ -2420,6 +2443,8 @@ void View::addSource(SourceType type, int copyOf) {
     shown.insert(at, source);
     setSourceOrder(shown);
     setFolded(false, source, false);
+    if (shapeEditor_ == source) // left open for a source the place held before
+        shapeEditor_ = -1;
     editMany(changes);
     slotScroll_[source] = slotGlide_[source] = copyOf >= 0 ? slotScroll_[copyOf] : 0.0f;
     if (controller_.layout().sourcesCollapsed) {
@@ -6937,10 +6962,7 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
     const Color color = kSourceColors[source];
     const auto target = hitTest(drag_.now);
     for (const Widget &w : list) {
-        const bool droppable = w.param >= 0 && isModTarget(w.param) &&
-                               (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel ||
-                                w.kind == Kind::GridCell || w.kind == Kind::SlotBar);
-        if (!droppable)
+        if (!droppable(w, source))
             continue;
         const bool over = target && target->same(w);
         const Color ring = color.alpha(over ? 1.0f : 0.35f);
@@ -7277,13 +7299,13 @@ void View::mouseMove(Point p, Modifiers mods) {
 }
 
 void View::mouseDown(Point p, Modifiers mods) {
+    pressed_ = hitTest(p); // before the press acts, for a double-click that may follow
+    pressPoint_ = p;
     // A click in the field being typed in leaves it be; anywhere else, it takes the value typed.
     if (typing_ && typingField().contains(p))
         return;
     endTyping(true);
-    if (drag_.step) // a drag that never saw its button go up
-        controller_.endStep();
-    drag_ = Drag{};
+    finishDrag(); // a drag that never saw its button go up
     // Before a drag can take a route down to 0 %: the poll timer waits while the mouse moves, and a
     // state load may have replaced the layout since it last ran.
     keepRoutes();
@@ -7737,9 +7759,6 @@ void View::mouseDown(Point p, Modifiers mods) {
 void View::mouseUp(Point p, Modifiers) {
     const Widget &w = drag_.widget;
     switch (drag_.kind) {
-    case DragKind::Value:
-        controller_.endEdit(w.param);
-        break;
     case DragKind::Node:
         if (drag_.moved)
             controller_.layoutChanged();
@@ -7769,53 +7788,18 @@ void View::mouseUp(Point p, Modifiers) {
     }
     case DragKind::ModSource: {
         const auto target = hitTest(p);
-        if (target && target->param >= 0 && isModTarget(target->param) && target->kind != Kind::ModDot &&
-            target->kind != Kind::PeqPoint && target->kind != Kind::WireEnd)
+        if (target && droppable(*target, w.a)) // only where the overlay rings a target
             assign(w.a, target->param);
         break;
     }
-    case DragKind::PeqPoint:
-        for (int index : peqPointParams(w.a, w.b))
-            controller_.endEdit(index);
-        break;
-    case DragKind::EnvPoint:
-        for (int index : envPointParams(w.a, w.b))
-            controller_.endEdit(index);
-        break;
-    case DragKind::EnvCurve:
-        controller_.endEdit(w.param);
-        break;
-    case DragKind::FilterPoint:
-        for (int index : filterPointParams(w.a))
-            controller_.endEdit(index);
-        break;
-    case DragKind::ShapePoint:
-        for (PointField field : {PointField::Y, PointField::X})
-            controller_.endEdit(shapeIndex(w.a, w.b, field));
-        break;
-    case DragKind::ShapeCurve:
-        controller_.endEdit(w.param);
-        break;
-    case DragKind::Partials:
-        break; // its undo step closes below
-    case DragKind::Key:
-        controller_.playNote(keyboardBase() + w.a, false);
-        break;
-    case DragKind::ModWheel:
-        controller_.endEdit(w.param);
-        break;
     case DragKind::Glow:
         controller_.setGlow(glowDragged_);
-        glowDragged_ = -1.0f;
-        break;
-    case DragKind::BendWheel:
-        bend_ = 0.0;
-        controller_.pitchWheel(0.0);
         break;
     case DragKind::FxMove: {
         drag_.now = p;
-        if (!drag_.moved && w.kind == Kind::FxPower) {
-            edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
+        if (!drag_.moved) { // a click: the icon switches the effect, and the card stays where it is
+            if (w.kind == Kind::FxPower)
+                edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
             break;
         }
         const double order = fxOrderWith(fxChainShown());
@@ -7825,19 +7809,81 @@ void View::mouseUp(Point p, Modifiers) {
     }
     case DragKind::SourceMove:
         drag_.now = p;
-        setSourceOrder(sourcesShown());
+        if (drag_.moved) // a click leaves the card where it is
+            setSourceOrder(sourcesShown());
         break;
+    case DragKind::Value:
+    case DragKind::EnvPoint:
+    case DragKind::EnvCurve:
+    case DragKind::FilterPoint:
+    case DragKind::PeqPoint:
+    case DragKind::ShapePoint:
+    case DragKind::ShapeCurve:
+    case DragKind::Partials:
+    case DragKind::Key:
+    case DragKind::ModWheel:
+    case DragKind::BendWheel:
     case DragKind::Scroll:
     case DragKind::SlotScroll:
     case DragKind::TextSelect:
+    case DragKind::None:
+        break; // finishDrag() ends what they hold
+    }
+    finishDrag();
+    hover_ = hitTest(p);
+}
+
+void View::finishDrag() {
+    const Widget &w = drag_.widget;
+    switch (drag_.kind) {
+    case DragKind::Value:
+    case DragKind::EnvCurve:
+    case DragKind::ShapeCurve:
+    case DragKind::ModWheel:
+        controller_.endEdit(w.param);
         break;
+    case DragKind::PeqPoint:
+        for (int index : peqPointParams(w.a, w.b))
+            controller_.endEdit(index);
+        break;
+    case DragKind::EnvPoint:
+        for (int index : envPointParams(w.a, w.b))
+            controller_.endEdit(index);
+        break;
+    case DragKind::FilterPoint:
+        for (int index : filterPointParams(w.a))
+            controller_.endEdit(index);
+        break;
+    case DragKind::ShapePoint:
+        for (PointField field : {PointField::Y, PointField::X})
+            controller_.endEdit(shapeIndex(w.a, w.b, field));
+        break;
+    case DragKind::Key:
+        controller_.playNote(keyboardBase() + w.a, false);
+        break;
+    case DragKind::BendWheel: // springs back to center
+        bend_ = 0.0;
+        controller_.pitchWheel(0.0);
+        break;
+    case DragKind::Glow: // the amount it was dragged to is kept only once it is let go (see mouseUp())
+        glowDragged_ = -1.0f;
+        break;
+    case DragKind::Partials: // its undo step closes below
+    case DragKind::Node:
+    case DragKind::Connect:
+    case DragKind::Reroute:
+    case DragKind::ModSource:
+    case DragKind::FxMove:
+    case DragKind::SourceMove:
+    case DragKind::Scroll:
+    case DragKind::SlotScroll:
+    case DragKind::TextSelect:
     case DragKind::None:
         break;
     }
     if (drag_.step)
         controller_.endStep();
     drag_ = Drag{};
-    hover_ = hitTest(p);
 }
 
 void View::mouseLeave() {
@@ -7847,6 +7893,15 @@ void View::mouseLeave() {
 
 void View::doubleClick(Point p, Modifiers mods) {
     const auto hit = hitTest(p);
+    // It comes in place of a second press, so it goes with what the first one hit. Landing on something else, which
+    // that press put there (closing the browser, a dialog or a list it was on, say) or which the mouse slipped onto,
+    // it is dropped rather than edit what was never clicked; on another key, or drawing a step, it is still a press.
+    // A press further away than a double-click allows wasn't its first one.
+    constexpr float kDoubleClickSlop = 8.0f;
+    const bool paired = std::hypot(p.x - pressPoint_.x, p.y - pressPoint_.y) <= kDoubleClickSlop;
+    if (paired && !(hit && pressed_ && hit->same(*pressed_)) &&
+        !(hit && (hit->kind == Kind::Key || drawsStep(*hit, mods))))
+        return;
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
@@ -7934,19 +7989,42 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
 }
 
+// The wheel's targets besides the params (see wheelNotches()): the preset browser's list, and the shape grid's axes.
+constexpr int kWheelBrowser = kParamCount;
+constexpr int kWheelGrid = kParamCount + 1;
+
+int View::wheelNotches(int target, float steps) {
+    if (target != wheelTarget_) {
+        wheelTarget_ = target;
+        wheelRest_ = 0.0f;
+    }
+    wheelRest_ += steps;
+    const float notches = std::trunc(wheelRest_);
+    wheelRest_ -= notches;
+    return static_cast<int>(notches);
+}
+
 void View::wheel(Point p, float steps, Modifiers mods) {
+    // Not while a drag goes on, which holds its gesture open and what it found under the mouse; a key held down still
+    // lets the wheel turn things.
+    if (drag_.kind != DragKind::None && drag_.kind != DragKind::Key)
+        return;
+    menuLive_ = false;
     endTyping(true);
     if (browserOpen_ && !settingsOpen_ && confirm_ < 0) { // three rows a notch
         const int rows = static_cast<int>(browserRows().size());
         const int most = std::max(rows - browserVisibleRows(browserPanel(height())), 0);
-        browserScroll_ = std::clamp(std::clamp(browserScroll_, 0, most) - static_cast<int>(std::lround(steps * 3.0f)), 0, most);
+        browserScroll_ = std::clamp(std::clamp(browserScroll_, 0, most) - wheelNotches(kWheelBrowser, steps * 3.0f), 0, most);
         return;
     }
     keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
     const auto hit = hitTest(p);
+    // What moves in whole steps (the grid, a stepped param, an operator's pitch, a note) moves by whole notches.
+    const int target = hit && hit->kind == Kind::ShapeGrid ? kWheelGrid + hit->a : (hit ? hit->param : -1);
+    const int whole = wheelNotches(target, steps);
     if (hit && hit->kind == Kind::ShapeGrid) {
-        if (steps != 0.0f)
-            stepShapeGrid(hit->a, steps > 0.0f ? 1 : -1);
+        if (whole != 0)
+            stepShapeGrid(hit->a, whole);
         return;
     }
     // Over a source's slot list (but not on a depth bar), a notch scrolls it a row, gliding there; a
@@ -7972,20 +8050,24 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     if (!hit || hit->param < 0)
         return;
-    const UndoScope notches(controller_, true); // a run of notches on one knob undoes at once
     const ParamDef &def = table_[hit->param];
+    if (snapsToSteps(def.kind) && whole == 0) // short of a notch so far
+        return;
+    const UndoScope notches(controller_, true); // a run of notches on one knob undoes at once
     const double v = value(hit->param);
     if (def.kind == ParamKind::VoiceCount) { // about 20 % per notch, at least one voice
-        const double scaled = std::round(v * std::exp2(steps * 0.25));
-        edit(hit->param, steps > 0 ? std::max(v + 1.0, scaled) : std::min(v - 1.0, scaled));
+        const double scaled = std::round(v * std::exp2(whole * 0.25));
+        edit(hit->param, whole > 0 ? std::max(v + 1.0, scaled) : std::min(v - 1.0, scaled));
         return;
     }
-    if (def.kind == ParamKind::Transpose || def.kind == ParamKind::NotePitch) { // to the next whole semitone
-        edit(hit->param, steps > 0 ? std::floor(v + 1.0) : std::ceil(v - 1.0));
+    if (def.kind == ParamKind::Transpose || def.kind == ParamKind::NotePitch) { // to the next whole semitone, and on
+        edit(hit->param, whole > 0 ? std::floor(v + whole) : std::ceil(v + whole));
         return;
     }
-    const double step = isStepped(def.kind) ? 1.0 : (def.max - def.min) * (mods.shift ? 0.002 : 0.01);
-    edit(hit->param, v + steps * step);
+    if (isStepped(def.kind))
+        edit(hit->param, v + whole);
+    else
+        edit(hit->param, v + steps * (def.max - def.min) * (mods.shift ? 0.002 : 0.01));
 }
 
 // Menu commands from here on clear all of a source's slots; those from 100 up to here remove one slot.
@@ -7999,6 +8081,7 @@ constexpr int kBipolarCommand = 13;
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
     std::vector<MenuItem> items;
+    menuLive_ = true;
     menuParam_ = -1;
     menuFx_ = -1;
     menuSource_ = -1;
@@ -8063,7 +8146,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
             }
             items.push_back({11, tr(Str::MenuEditDepth)});
         }
-        items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
+        if (!isStripSource(hit->a)) // a macro's, the note source's or the mod wheel's can't be bypassed
+            items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
         items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {sourceName(hit->a)})});
         return items;
     }
@@ -8131,6 +8215,8 @@ std::string View::bypassLabel(int source, int slot) const {
 }
 
 void View::menuCommand(int command) {
+    if (!menuLive_) // what the menu was opened on may have changed or gone since
+        return;
     if (command == 1 && menuParam_ >= 0) {
         edit(menuParam_, table_[menuParam_].def);
     } else if (command == 2 && menuParam_ >= 0) {
@@ -8179,13 +8265,17 @@ void View::menuCommand(int command) {
 }
 
 void View::undo() {
-    if (drag_.kind == DragKind::None && !typing_)
+    if (drag_.kind == DragKind::None && !typing_) {
         controller_.undo();
+        menuLive_ = false;
+    }
 }
 
 void View::redo() {
-    if (drag_.kind == DragKind::None && !typing_)
+    if (drag_.kind == DragKind::None && !typing_) {
         controller_.redo();
+        menuLive_ = false;
+    }
 }
 
 void View::startTyping(const Widget &w) {
