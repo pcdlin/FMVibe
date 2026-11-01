@@ -238,7 +238,7 @@ std::vector<int> fxPageParams(int slot, FxType type, const ParamValues &values) 
     switch (type) {
     case FxType::Shaper:
         return at({FxParam::Enabled, FxParam::ShaperMode, FxParam::ShaperDrive, FxParam::ShaperOutput, FxParam::ShaperMix,
-                   FxParam::ShaperLink});
+                   FxParam::ShaperLink, FxParam::ShaperSymmetric});
     case FxType::Delay:
         return at({FxParam::Enabled, FxParam::DelayTimeL, FxParam::DelayTimeR, FxParam::DelayFeedback,
                    FxParam::DelayTone, FxParam::DelayWidth, FxParam::DelayPingPong, FxParam::DelayMix});

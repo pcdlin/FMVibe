@@ -579,8 +579,8 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
     const ShaperSettings settings = shaperSettings(get, fields);
     if (settings.mode == ClipMode::Custom)
         place.curve.update(get, fields.curve);
-    const ClipCurve curve{settings.mode, place.curve.values.data()};
-    const bool block = clipNeedsBlocker(settings.mode);
+    const ClipCurve curve{settings.mode, place.curve.values.data(), settings.symmetric};
+    const bool block = clipNeedsBlocker(settings.mode, settings.symmetric);
     const double pole = clipBlockerPole(sampleRate_);
     const double inv = 1.0 / n;
     const double driveStep = (settings.drive - sh.drive) * inv;

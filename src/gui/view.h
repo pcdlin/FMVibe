@@ -62,10 +62,11 @@ public:
     void undo();
     void redo();
 
-    // Typing a value, after a double-click on the number a knob or slot shows. Meanwhile the
-    // window should send the keyboard here: typeChar() takes printable ASCII.
-    enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll };
-    bool typing() const { return typing_.has_value(); }
+    // Typing a value, after a double-click on the number a knob or slot shows, or a search while the preset browser
+    // is open. Meanwhile the window should send the keyboard here: typeChar() takes printable ASCII. Up and Down only
+    // move through the browser's list.
+    enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down };
+    bool typing() const { return typing_.has_value() || browserOpen_; }
     void typeChar(char32_t c);
     void typeKey(Key key);
     // Commits the value typed, if it reads as one, or drops it.
@@ -150,6 +151,7 @@ private:
         BrowserRow,   // a = preset index: loads it
         BrowserClose,
         BrowserFolder, // opens the preset folder
+        BrowserClear, // the x in the search field: empties it
         SettingsButton, // the cog next to the preset buttons: opens the settings dialog
         ConfirmBackdrop, // a = 1 on the dialog asking before Init or Load, 0 around it (a click there cancels)
         ConfirmButton,  // a = 1 goes ahead, 0 cancels
@@ -363,6 +365,16 @@ private:
     Point shapePointPos(int shape, int point) const;
     Point shapeCurvePos(int shape, int point) const;
     void addShapePoint(int shape, Point p);
+    // The changes that put a new point at (x, y) among the others, the later ones moving up a place.
+    std::vector<std::pair<int, double>> insertShapePoint(int shape, double x, double y) const;
+    // A symmetric shaper's curve (see ClipCurve): only its right half is edited, the left drawn as its mirror. Its
+    // points left of the middle are hidden, and so are the bends that start there; a click on that half counts as one
+    // on its mirror image. Switched on in the editor, the curve gets a point in the middle, which then stays there.
+    bool curveSymmetric(int shape) const;
+    bool pointShown(int shape, int point) const;
+    bool middlePoint(int shape, int point) const;
+    Point unmirrored(int shape, Point p) const;
+    void switchSymmetric(int param);
     void addShapeStep(int shape, Point p, bool snap);
     bool drawsStep(const Widget &w, Modifiers mods) const;
     void removeShapePoint(int shape, int point);
@@ -452,6 +464,7 @@ private:
     // The note source above the wheels, left of the macros: the note the newest voice plays, and its name.
     void paintNoteSource(Canvas &c, float top);
     void paintClipCurveCard(Canvas &c, Rect r, int unit);
+    void paintMirroredPoints(Canvas &c, int shape, float radius);
     void paintDelay(Canvas &c, Rect r, int slot);
     void paintEq(Canvas &c, Rect r, int slot);
     void paintParamEq(Canvas &c, Rect r, int slot);
@@ -503,8 +516,16 @@ private:
     // The preset browser: while it is open it takes every click, and the confirm dialog goes over it.
     std::vector<Widget> browserWidgets() const;
     void paintBrowser(Canvas &c);
-    // Its rows: each preset's index and name, with a header (-1 and the subfolder) before each subfolder's.
+    // Its rows: each preset's index and name, with a header (-1 and the subfolder) before each subfolder's. While
+    // something is typed in its search, only the presets whose subfolder and name hold every word of it.
     std::vector<std::pair<int, std::string>> browserRows() const;
+    // The browser takes the keyboard while it is open: what is typed goes into its search, Up and Down pick a
+    // preset from the list, Enter loads it, and Escape empties the search, or then closes the browser.
+    void browserChar(char32_t c);
+    void browserKey(Key key);
+    void searchChanged();
+    // Scrolls the list so the preset's row shows: about in the middle, or just inside the list.
+    void revealBrowserRow(int preset, bool middle);
     // Loads a preset of the library, asking first if the patch changed since the last.
     void openPreset(int index);
     void stepPreset(int direction);
@@ -587,6 +608,8 @@ private:
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
     bool browserOpen_ = false;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping
+    std::string browserSearch_;              // what is typed in its search
+    int browserPick_ = -1;                   // the preset Up and Down picked, which Enter loads, or -1
     double bend_ = 0.0;                      // the bend wheel's position, -1..1
     std::string flash_;
     int flashTicks_ = 0;

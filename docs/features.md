@@ -65,8 +65,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   shapers). A voice only ends once its filters have rung out.
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
   voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
-  effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix and Link (on to begin with), and run by
-  the same code: anti-aliased the same way, with the same DC blocker after the uneven curves. Any operator or filter
+  effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with) and Symmetric
+  (off), and run by the same code: anti-aliased the same way, with the same DC blocker after the uneven curves. Any operator or filter
   can be sent into a shaper (`A → S1`, `F1 → S1`), and a shaper's output feeds the filters (`S1 → F1`), for
   distortion into a filter or a filter's sound distorted, and modulates operators the way an operator does
   (`S1 → A`, scaled by FM Amount), so a modulator can be folded or squared off before it reaches its carrier. Its
@@ -143,8 +143,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     turning the drive changes the tone more than the level: by as much as keeps a sine at −6 dBFS as loud (RMS) as it went in, dB
     for dB while the driven sine stays under the ceiling, then less and less as the clipping squares it off
     (about 8 dB at 12 dB of drive, 9 dB at the full 36). Louder sounds come out a little quieter, quieter ones a
-    little louder. The curves are anti-aliased (first-order antiderivative), so high
-    drive stays clean without oversampling, though folding at the highest drives gets duller for it.
+    little louder. **Symmetric** (off to begin with), for a Custom curve, turns the curve's upper half over onto
+    its lower one, so the input below 0 is shaped as the input above it, upside down: only the right half drawn
+    counts (a curve that doesn't pass through the middle jumps there). The switch shows only while the curve is
+    Custom, and the other curves ignore it. The curves are anti-aliased (first-order antiderivative), so
+    high drive stays clean without oversampling, though folding at the highest drives gets duller for it.
   - **Delay**: separate times for the left and right side (1 ms–2 s each) or, synced, a note value of the host
     tempo for each (up to 4 s); Feedback (up to 95 %); Tone, a low-pass below the middle (20 kHz down to 200 Hz)
     and a high-pass above it (20 Hz up to 4 kHz), applied to every repeat; Width, from the echoes' full stereo
@@ -335,8 +338,9 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
 
     The delay's switches above its display are icons across the card, named on hover: a metronome for Sync, two
     chain links for Link (the right side follows the left) and a ball between two paddles for Ping-Pong. The
-    shaper's Link, over its Output knob (which it ties to the drive), is the same chain, and so is the 3-band
-    card's; the shaper's curve's list takes the whole row above the display. Every effect with a Sync
+    shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band card's,
+    centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
+    rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (their STEREO beside it),
     over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
     do. The filter's slope is a list under its display, like a voice filter's (see the inspector). The filter's
@@ -391,7 +395,11 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     the project, and presets leave it alone. The first point always sits at the start of the cycle. A shaper
     effect's Custom curve opens the same editor from the EDIT button on its card's display, in a panel in the middle of the
     effects' (the inspector stays hidden), its plot closer to square, with input across and output up; its first
-    and last points stay at the ends. The note source's curve opens over the routing panel from its display in the
+    and last points stay at the ends. While the shaper is symmetric, only the curve's right half is edited, in
+    the editor and in the card alike: the left half is drawn as its mirror (behind a veil in the editor) with faint
+    rings for the points it mirrors, the points left of the middle are hidden, and a click there counts as one on
+    its mirror image. Switching Symmetric on in the editor gives the curve a point in the middle if it has none,
+    which then stays there: it only moves up and down, and can't be deleted. The note source's curve opens over the routing panel from its display in the
     keyboard strip (a second click closes it): the notes from Low to High across, the Cs among them named under
     the plot, and what the source puts out up, from nothing at the bottom to all of it at the top, with a dot
     where the newest voice is while notes play. A dashed line shows, for the range set, what would take a cutoff
@@ -434,7 +442,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     the envelope would run past the display's end: then it zooms out to keep all of it in, the handle at the end,
     and dragging on lengthens the segment further. The same goes for the mod envelopes' displays. In the graph, an operator with unison is drawn as a stack of rings.
   - Shapers: the summary (its curve, what feeds it, the filters it feeds, whether it goes out and the operators it
-    modulates, as a filter's has), its curve's list with the link switch, a chain, beside it, the Drive, Output, Mix and To Out knobs,
+    modulates, as a filter's has), its curve's list with the link switch beside it, and for a Custom curve the
+    symmetric one between them (as on the shaper effect's card), the Drive, Output, Mix and To Out knobs,
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
     EDIT button opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
     are the send knobs of the operators and filters that feed it.
@@ -564,6 +573,12 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     at the top of the folder, then each subfolder's under its name, the current one marked; a click loads one
     and closes the browser (if the patch has changed, it asks first, over the browser, which stays open when the
     load is called off); **OPEN FOLDER** shows the folder in Explorer, and the × or a click around it closes it.
+    While it is open, the browser takes the keyboard for its **search**, in its title row: what is typed narrows
+    the list to the presets whose subfolder and name hold every word of it, whatever the case, and the count
+    beside the title says how many match. The first one found is picked (outlined); Up and Down pick another
+    from the list (from the preset loaded, before anything is picked), and Enter loads the one picked. Escape, or
+    the × in the search, empties it; Escape with nothing typed closes the browser. The search starts empty each
+    time the browser opens.
   - **Init** sets every param and the routing layout back to their defaults (the zoom stays). **Load** and
     **Save** read and write a `.fmv` file through the standard file dialog, which starts in the preset folder;
     Save suggests the current preset's name. The file holds the same data as the host's saved state, apart from

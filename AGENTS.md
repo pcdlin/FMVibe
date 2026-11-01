@@ -60,7 +60,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
     at 100 % mix (half wet), the flanger's taking half of the tone in it away at 50 %, a stereo flanger's sides
-    sweeping apart and a mono one's together, a linked shaper keeping its level, and
+    sweeping apart and a mono one's together, a linked shaper keeping its level, a symmetric one shaping its
+    lower half as its upper one (a drawn curve losing its 2nd harmonic, Asymmetric left as it is), and
     the filter effect's key tracking putting a cutoff at C4 onto an A4, and the frequency shifter moving by its
     Shift's share of its Range;
   - unison copies spread across the stereo field (and match when centered);
@@ -105,8 +106,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the dot on a filter's and a shaper's tab while it sounds out, and the output meter and its clip light (read off
     the rendered pixels);
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
-    and running it onto an operator and into a filter, its page's curve list, link switch and knobs, its Custom
-    curve drawn on the page and in the big editor;
+    and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
+    a Custom curve) and knobs, its Custom curve drawn on the page and in the big editor;
+  - the shaper effect's SYM switch, hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
+    mirrored left half adding a point on the right, the middle point refusing to be deleted, and the switch
+    undoing with its point;
   - dragging the filter response handle, switching between the graph and matrix views, and toggling a matrix cell;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
   - making sources unipolar and bipolar from their menus: an envelope's and an LFO's card, a macro's knob and
@@ -136,7 +140,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
-    loads) and the preset browser, which loading a preset closes;
+    loads) and the preset browser, which loading a preset closes; its search narrowing the list as words are
+    typed, Enter loading the preset found, Up and Down picking one, and Escape and the search's × emptying it;
   - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, and
     the LFO shape editor hiding the inspector;
   - the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered pixels), the list of

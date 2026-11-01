@@ -916,8 +916,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         target.shaperDrive[sh] = settings.drive;
         target.shaperOutput[sh] = settings.output;
         target.shaperMix[sh] = settings.mix;
-        curve[sh] = {settings.mode, shaperTables_[sh].values.data()};
-        block[sh] = clipNeedsBlocker(settings.mode);
+        curve[sh] = {settings.mode, shaperTables_[sh].values.data(), settings.symmetric};
+        block[sh] = clipNeedsBlocker(settings.mode, settings.symmetric);
     }
 
     // A new voice starts at its levels; after that they ramp.

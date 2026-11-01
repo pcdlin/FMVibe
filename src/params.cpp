@@ -298,6 +298,8 @@ void buildTable(ParamTable &t) {
                 1.0, 0.0);
         add(paramIndex(shaper, ShaperParam::Out), name + " " + tr(Str::ParamToOut), module, ParamKind::Percent, 0.0,
             1.0, 0.0);
+        add(paramIndex(shaper, ShaperParam::Symmetric), name + " " + tr(Str::ParamSymmetric), module,
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
         const int base = shaperCurveCountIndex(shaper);
         add(base, name + " " + tr(Str::ParamCurve) + " " + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 2.0,
             kMaxShapePoints, 3.0);
@@ -471,6 +473,7 @@ void buildTable(ParamTable &t) {
         fx(FxParam::McLink, tr(Str::ParamMcLink), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::ShaperLink, tr(Str::ParamShaperLink), ParamKind::Toggle, 0.0, 1.0,
             1.0); // turning the drive keeps the level
+        fx(FxParam::ShaperSymmetric, tr(Str::ParamShaperSymmetric), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::ReverbType, tr(Str::ParamReverbType), ParamKind::ReverbType, 0.0,
            static_cast<double>(ReverbType::Count) - 1.0, static_cast<double>(ReverbType::Hall));
 

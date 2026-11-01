@@ -97,7 +97,8 @@ enum class FilterParam {
 // The operators and the filters (see filterShaperIndex()) send into it; it feeds the filters (Filters, one per
 // filter), modulates operators like an
 // operator does (Mods, one per operator) and goes straight to the output by Out, like an operator (Output is
-// its level after the curve). Stored in projects by number: only append.
+// its level after the curve). Symmetric mirrors a Custom curve's upper half onto its lower one (see ClipCurve).
+// Stored in projects by number: only append.
 enum class ShaperParam {
     Enabled,
     Mode,
@@ -108,6 +109,7 @@ enum class ShaperParam {
     Filters,
     Mods = Filters + kFilters,
     Out = Mods + kOps,
+    Symmetric,
     Count
 };
 // Modulation sources: LFOs and mod envelopes. Like the effect slots, each of
@@ -398,6 +400,8 @@ enum class FxParam {
     ReverbShimmerPitch,
     ReverbShimmer,
     FlangerStereo, // the flanger's right side a quarter cycle ahead of its left; off, both sweep together
+    // The shaper's Custom curve odd: what it does to the input above 0, mirrored for the input below (see ClipCurve).
+    ShaperSymmetric,
     Count
 };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as
@@ -543,7 +547,7 @@ constexpr FxType fxTypeOfField(FxParam f) {
            : f >= FxParam::DisperserFreq && f <= FxParam::DisperserMix ? FxType::Disperser
            : f == FxParam::PhaserStereo                                 ? FxType::Phaser
            : f == FxParam::ReverbType                                   ? FxType::Reverb
-           : f == FxParam::ShaperLink                                   ? FxType::Shaper
+           : f == FxParam::ShaperLink || f == FxParam::ShaperSymmetric  ? FxType::Shaper
            : f == FxParam::McLink                                       ? FxType::MultiComp
            : f == FxParam::PeqType1 || f == FxParam::PeqType2           ? FxType::ParamEq
            : f == FxParam::DelayLink                                    ? FxType::Delay
@@ -591,17 +595,19 @@ constexpr int clipCurveCountIndex(int slot) { return kClipCurveBase + slot * kSh
 // (0..kFxSlots - 1), or kFxSlots + a voice shaper; its fields, `curve` being its drawn curve's point count.
 constexpr int kShaperUnits = kFxSlots + kShapers;
 struct ShaperParams {
-    int mode, drive, output, mix, link, curve;
+    int mode, drive, output, mix, link, curve, symmetric;
 };
 constexpr ShaperParams shaperParams(int unit) {
     if (unit < kFxSlots)
         return {paramIndex(unit, FxParam::ShaperMode),  paramIndex(unit, FxParam::ShaperDrive),
                 paramIndex(unit, FxParam::ShaperOutput), paramIndex(unit, FxParam::ShaperMix),
-                paramIndex(unit, FxParam::ShaperLink),   clipCurveCountIndex(unit)};
+                paramIndex(unit, FxParam::ShaperLink),   clipCurveCountIndex(unit),
+                paramIndex(unit, FxParam::ShaperSymmetric)};
     const int shaper = unit - kFxSlots;
     return {paramIndex(shaper, ShaperParam::Mode),   paramIndex(shaper, ShaperParam::Drive),
             paramIndex(shaper, ShaperParam::Output), paramIndex(shaper, ShaperParam::Mix),
-            paramIndex(shaper, ShaperParam::Link),   shaperCurveCountIndex(shaper)};
+            paramIndex(shaper, ShaperParam::Link),   shaperCurveCountIndex(shaper),
+            paramIndex(shaper, ShaperParam::Symmetric)};
 }
 // The macros' and the note source's slots have no bypass: -1.
 constexpr int slotBypassIndex(int source, int slot) {

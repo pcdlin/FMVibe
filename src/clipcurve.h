@@ -90,18 +90,33 @@ inline double clipShape(ClipMode mode, double x) {
     return std::clamp(x, -1.0, 1.0);
 }
 
-// Curves that aren't symmetric shift the signal's average, which a DC blocker after them takes out.
-constexpr bool clipNeedsBlocker(ClipMode mode) { return mode == ClipMode::Asymmetric || mode == ClipMode::Custom; }
+// Curves that aren't symmetric shift the signal's average, which a DC blocker after them takes out. A symmetric
+// shaper's curve always is.
+constexpr bool clipNeedsBlocker(ClipMode mode, bool symmetric = false) {
+    return !symmetric && (mode == ClipMode::Asymmetric || mode == ClipMode::Custom);
+}
 
-// A shaper curve: one of the formulas, or (Custom) the drawn one through its table.
+// A shaper curve: one of the formulas, or (Custom) the drawn one through its table. Symmetric, the input below 0
+// takes the curve's upper half turned over, -f(-x), so the curve is odd: a drawn curve its right half (one that
+// doesn't pass through 0 jumps there). Only a drawn curve is ever run symmetric (see shaperSettings()).
 struct ClipCurve {
     ClipMode mode;
     const float *table;
+    bool symmetric = false;
 
-    double shape(double x) const { return mode == ClipMode::Custom ? clipTableValue(table, x) : clipShape(mode, x); }
+    double shape(double x) const { return symmetric && x < 0.0 ? -plainShape(-x) : plainShape(x); }
 
-    // The antiderivative, for first-order antiderivative anti-aliasing.
+    // The antiderivative, for first-order antiderivative anti-aliasing. Symmetric, it is even: F(|x|) - F(0).
     double integral(double x) const {
+        return symmetric ? plainIntegral(std::abs(x)) - plainIntegral(0.0) : plainIntegral(x);
+    }
+
+private:
+    double plainShape(double x) const {
+        return mode == ClipMode::Custom ? clipTableValue(table, x) : clipShape(mode, x);
+    }
+
+    double plainIntegral(double x) const {
         switch (mode) {
         case ClipMode::Hard:
             return std::abs(x) <= 1.0 ? 0.5 * x * x : std::abs(x) - 0.5;
@@ -151,12 +166,25 @@ struct ShaperSettings {
     double drive;
     double output;
     double mix;
+    bool symmetric;
 };
 template <class Get>
 ShaperSettings shaperSettings(const Get &get, const ShaperParams &p) {
     const double driveDb = get(p.drive);
-    return {clipMode(get(p.mode)), std::pow(10.0, driveDb / 20.0),
-            std::pow(10.0, clipOutputDb(get(p.output), driveDb, get(p.link) >= 0.5) / 20.0), get(p.mix)};
+    const ClipMode mode = clipMode(get(p.mode));
+    return {mode, std::pow(10.0, driveDb / 20.0),
+            std::pow(10.0, clipOutputDb(get(p.output), driveDb, get(p.link) >= 0.5) / 20.0), get(p.mix),
+            mode == ClipMode::Custom && get(p.symmetric) >= 0.5}; // the switch shows for a drawn curve only
+}
+
+// A shaper's curve for drawing (no drive, no anti-aliasing), a drawn one read straight from its points (`curveBase`,
+// its point count) rather than through a table; symmetric as ClipCurve.
+template <class Get>
+double shaperCurveValue(const Get &get, ClipMode mode, int curveBase, bool symmetric, double x) {
+    auto plain = [&](double in) {
+        return mode == ClipMode::Custom ? clipCurveValue(get, curveBase, in) : clipShape(mode, in);
+    };
+    return symmetric && x < 0.0 ? -plain(-x) : plain(x);
 }
 
 // A drawn curve's table (see buildClipTable()), built again whenever the points it was built from change. Its

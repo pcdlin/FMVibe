@@ -29,7 +29,8 @@ int liveEditors = 0;
 std::vector<Editor *> hookedEditors;
 HHOOK keyboardHook = nullptr;
 // Some hosts' message loops (Bitwig's) send the keys on to the host rather than to the window that has the
-// keyboard, so while a value is typed a second hook takes them off the queue first; see Editor::typedKey().
+// keyboard, so while a value is typed (or the preset browser, with its search, is open) a second hook takes them
+// off the queue first; see Editor::typedKey().
 HHOOK messageHook = nullptr;
 
 LRESULT CALLBACK watchKeys(int code, WPARAM key, LPARAM flags) {
@@ -380,7 +381,8 @@ void Editor::updateCursor() {
     SetCursor(LoadCursorW(nullptr, id));
 }
 
-// Keys come here while a value is typed (from the message hook) or when a host passes them on.
+// Keys come here while a value is typed or the preset browser is open (from the message hook), or when a host
+// passes them on.
 bool Editor::key(WPARAM key, LPARAM flags) {
     const bool ctrl = GetKeyState(VK_CONTROL) < 0;
     if (view_.typing()) {
@@ -412,6 +414,12 @@ bool Editor::key(WPARAM key, LPARAM flags) {
             return true;
         case VK_END:
             view_.typeKey(View::Key::End);
+            return true;
+        case VK_UP:
+            view_.typeKey(View::Key::Up);
+            return true;
+        case VK_DOWN:
+            view_.typeKey(View::Key::Down);
             return true;
         default: {
             // The character the key makes with the current layout and modifiers, if any. Flag 4

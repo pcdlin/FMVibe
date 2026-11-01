@@ -1393,6 +1393,25 @@ int main(int argc, char **argv) {
         std::printf("      hard shaper at 36 dB of drive, linked: peak %.4f (%.1f dB)\n", linkedPeak, linkedDb);
         check(std::abs(linkedPeak - std::pow(10.0, linkedDb / 20.0)) < 0.01 && linkedDb < -8.0 && linkedDb > -10.0,
               "linked, the shaper's output comes down as its drive goes up, keeping the level about even");
+        // Symmetric, a Custom curve's upper half is turned over onto its lower one: one whose lower half only reaches
+        // -0.3 loses its even harmonics. The formula curves are left alone: Asymmetric keeps its 2nd harmonic.
+        const int lowestY = shapeFieldIndex(clipCurveCountIndex(0), 0, PointField::Y);
+        setParams({{fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Custom)},
+                   {fx(0, FxParam::ShaperDrive), 6.0},
+                   {lowestY, -0.3}});
+        const double uneven = secondHarmonicRatio({});
+        setParams({{fx(0, FxParam::ShaperSymmetric), 1.0}});
+        const double mirrored = secondHarmonicRatio({});
+        setParams({{fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Asymmetric)}});
+        const double asymmetricOn = secondHarmonicRatio({});
+        setParams({{fx(0, FxParam::ShaperSymmetric), 0.0}});
+        const double asymmetricOff = secondHarmonicRatio({});
+        setParams({{lowestY, -1.0}});
+        std::printf("      uneven drawn shaper 880/440 Hz: %.4f, symmetric %.4f; Asymmetric %.4f, symmetric %.4f\n",
+                    uneven, mirrored, asymmetricOff, asymmetricOn);
+        check(uneven > 0.05 && mirrored < 0.005 && asymmetricOff > 0.02 &&
+                  std::abs(asymmetricOn - asymmetricOff) < 1e-4,
+              "a symmetric shaper turns its drawn curve's upper half over onto the lower one, and only a drawn one");
 
         // EQ mid +6 dB around a shaper with 18 dB of drive: boosting after the
         // shaper gets louder than clipping the boost.

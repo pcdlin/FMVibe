@@ -405,9 +405,10 @@ Point nodeTab(int node) {
     return {912.0f + node * 25.0f + (node >= kOps ? 6.0f : 0.0f) + (node >= kOps + kFilters ? 6.0f : 0.0f), 124.0f};
 }
 
-// A shaper's page: its curve's list, the link switch, the Drive, Output, Mix and To Out knobs, the list's entries, and its
-// drawn curve in the display (x 0..1 across, y -1..1 up), with EDIT in the display's corner.
+// A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output, Mix and To Out knobs, the
+// list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with EDIT in the display's corner.
 constexpr Point kShaperList{1009.0f, 177.0f};
+constexpr Point kShaperSym{1096.0f, 177.0f};
 constexpr Point kShaperLink{1146.0f, 177.0f};
 Point shaperKnob(int knob) {
     return {900.0f + 268.0f / 4.0f * (knob + 0.5f), 214.0f}; // Drive, Output, Mix, To Out
@@ -935,6 +936,37 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     renderer.save(view, dir / "22d-preset-loaded.png");
     check(asked && model.presetIndex() == 1 && renderer.pixel(headerGap) == clear,
           "a preset picked in the browser while the patch has changed asks first, then loads and closes it");
+    // The browser takes the keyboard for its search: the words typed narrow the list to the presets whose subfolder
+    // and name hold them all, the first one picked, and Enter loads it. With nothing found Enter does nothing; the
+    // search's x empties it, Up and Down pick from the list, from the preset loaded, and Escape empties the search,
+    // then closes the browser.
+    click(view, presetBox);
+    const bool takesKeys = view.typing();
+    for (char ch : std::string("fac p")) // Factory, Pad
+        view.typeChar(static_cast<char32_t>(ch));
+    check(renderer.save(view, dir / "22e-preset-search.png"), "render the preset browser's search");
+    view.typeKey(View::Key::Enter);
+    check(takesKeys && model.presetIndex() == 2 && !view.typing(),
+          "typing in the preset browser searches it, and Enter loads the preset found");
+    click(view, presetBox);
+    view.typeChar(U'z');
+    view.typeKey(View::Key::Enter);
+    const bool nothingFound = view.typing() && model.presetIndex() == 2;
+    click(view, {380.0f + 440.0f - 46.0f - 22.0f + 9.0f, browserTop + 26.0f}); // the search's x
+    view.typeKey(View::Key::Up); // from Pad: Bell, then Init Bass
+    view.typeKey(View::Key::Up);
+    view.typeKey(View::Key::Down);
+    view.mouseMove(presetBox, {});
+    check(renderer.save(view, dir / "22f-preset-picked.png"), "render a preset picked from the keyboard");
+    view.typeKey(View::Key::Enter);
+    check(nothingFound && model.presetIndex() == 1, "Up and Down pick a preset from the browser's list");
+    click(view, presetBox);
+    view.typeChar(U'b');
+    view.typeKey(View::Key::Escape);
+    const bool stillOpen = view.typing();
+    view.typeKey(View::Key::Escape);
+    check(stillOpen && !view.typing() && model.presetIndex() == 1,
+          "Escape empties the browser's search, then closes the browser");
 
     // Dragging a source's handle to the panel's right end scrolls the cards along.
     for (int n = 0; n < 4; ++n)
@@ -1145,6 +1177,10 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     check(pageShot && customShot && at(ShaperParam::Mode) == static_cast<double>(ClipMode::Custom) &&
               std::abs(middle - 0.5) < 0.03,
           "picked from the list, a shaper's Custom curve is drawn right on its page");
+    click(view, kShaperSym);
+    const bool symmetric = at(ShaperParam::Symmetric) == 1.0;
+    click(view, kShaperSym);
+    check(symmetric && at(ShaperParam::Symmetric) == 0.0, "a Custom curve's SYM switches on and off");
     click(view, kShaperEdit);
     view.doubleClick(noteCurveAt(0.25, 0.5), {});
     const bool added = model.value(shaperCurveCountIndex(shaper)) == 4.0;
@@ -2170,7 +2206,8 @@ void run(const std::filesystem::path &dir, float scale) {
     // The first delay's LINK switch, the middle of three across the card.
     click(view, {fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 152.0f + 44.0f + 11.0f});
     check(model.value(paramIndex(1, FxParam::DelayLink)) == 1.0, "the delay's LINK switch links its sides");
-    // The shaper's LINK, its chain over the Output knob, starts on; a click unlinks it, another links it again.
+    // The shaper's LINK, its chain under the display in the card's middle (with no SYM beside it, but for a Custom
+    // curve), starts on; a click unlinks it, another links it again.
     const Point clipLink{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 152.0f + 194.0f + 10.0f};
     const bool linkedFirst = model.value(paramIndex(0, FxParam::ShaperLink)) == 1.0;
     click(view, clipLink);
@@ -2178,6 +2215,36 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, clipLink);
     check(linkedFirst && unlinked && model.value(paramIndex(0, FxParam::ShaperLink)) == 1.0,
           "the shaper's LINK starts on and switches");
+    click(view, {clipLink.x - 40.0f, clipLink.y}); // where SYM shows for a Custom curve
+    check(model.value(paramIndex(0, FxParam::ShaperSymmetric)) == 0.0, "the shaper's SYM is hidden but for Custom");
+    {
+        // For a Custom curve, SYM shows left of LINK, the two centered together: switched on, it puts a point in the middle of a drawn curve that has none there, and
+        // the curve's left half follows the right one: a double-click there adds the mirror image of a point on the
+        // right, and the middle point can't be deleted. Undone, the middle point goes with the switch.
+        const int mode = paramIndex(0, FxParam::ShaperMode), symmetric = paramIndex(0, FxParam::ShaperSymmetric);
+        const int count = clipCurveCountIndex(0);
+        auto point = [&](int p, PointField field) { return model.value(shapeFieldIndex(count, p, field)); };
+        model.set(mode, static_cast<double>(ClipMode::Custom));
+        const int thirdX = shapeFieldIndex(count, 2, PointField::X); // 0, 0.3, then the middle one
+        const double thirdWas = model.value(thirdX);
+        model.set(thirdX, 0.6);
+        click(view, {clipLink.x - 25.0f, clipLink.y});
+        const bool middled = model.value(symmetric) == 1.0 && model.value(count) == 6.0 &&
+                             std::abs(point(2, PointField::X) - 0.5) < 1e-9;
+        view.doubleClick(cardAt(0.15, -0.3), {});
+        const bool mirroredPoint = model.value(count) == 7.0 && std::abs(point(5, PointField::X) - 0.85) < 0.01 &&
+                                   std::abs(point(5, PointField::Y) - 0.3) < 0.03;
+        view.doubleClick(cardAt(0.5, point(2, PointField::Y)), {});
+        view.mouseMove(cardAt(0.85, 0.3), {});
+        check(middled && mirroredPoint && model.value(count) == 7.0 &&
+                  renderer.save(view, dir / "8g-clip-symmetric.png"),
+              "the shaper's SYM puts a point in the middle, and the curve's left half mirrors its right");
+        view.undo();
+        view.undo();
+        model.set(thirdX, thirdWas);
+        model.set(mode, static_cast<double>(ClipMode::Asymmetric));
+        check(model.value(count) == 5.0 && model.value(symmetric) == 0.0, "SYM undoes with its middle point");
+    }
     click(view, fxPower(model, 4));
     // Still under the mouse, the icon of the delay just switched off is grey, as its card is: neither lit up nor in
     // the delay's blue.

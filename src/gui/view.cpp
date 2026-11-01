@@ -207,10 +207,13 @@ constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 148.0f, kInspecto
 constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
 // A filter's slope list, at the right end of its row of type buttons.
 constexpr Rect kFilterSlopeButton{kInspector.x + kInspector.w - 16.0f - 62.0f, kInspector.y + 62.0f, 62.0f, 22.0f};
-// A shaper's page: its curve's list and the link switch in the row under the summary, then its transfer curve where
-// a filter's response shows.
-constexpr Rect kShaperModeButton{kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f - 50.0f, 22.0f};
+// A shaper's page: its curve's list and the link switch in the row under the summary, with the symmetric switch
+// between them for a Custom curve, then its transfer curve where a filter's response shows.
 constexpr Rect kShaperLinkButton{kInspector.x + kInspector.w - 16.0f - 44.0f, kInspector.y + 62.0f, 44.0f, 22.0f};
+constexpr Rect kShaperSymButton{kShaperLinkButton.x - 50.0f, kShaperLinkButton.y, 44.0f, 22.0f};
+Rect shaperModeButton(bool custom) {
+    return {kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f - (custom ? 100.0f : 50.0f), 22.0f};
+}
 constexpr Rect kShaperDisplay = kFilterDisplay;
 // An operator's wave buttons: the common waves, then "..." with a list of the others.
 constexpr OpWave kCommonWaves[] = {OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWave::Square, OpWave::Noise};
@@ -394,12 +397,16 @@ Rect fxMenuItem(Point at, FxType type) {
 }
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
-// its LINK sits over the Output knob, which it ties to the drive. The reverb's row: its algorithm's button.
+// under its display LINK, which ties the Output knob to the drive, centered on the card; for a Custom curve SYM
+// left of it, the two centered together. The reverb's row: its algorithm's button.
 Rect clipModeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
-Rect clipLinkButton(Rect card) {
-    return {card.center().x - 22.0f, card.y + 194.0f, 44.0f, 20.0f};
+Rect clipSymButton(Rect card) {
+    return {card.center().x - 47.0f, card.y + 194.0f, 44.0f, 20.0f};
+}
+Rect clipLinkButton(Rect card, bool custom) {
+    return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 194.0f, 44.0f, 20.0f};
 }
 Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
@@ -544,11 +551,11 @@ bool isFxSync(FxParam field) {
 }
 
 // Effect switches drawn as icons, named in their tooltips: a metronome for any effect's SYNC, two chain links for
-// the delay's, the shaper's and the three-band compressor's LINK, and a ball bouncing between two paddles for the
-// delay's PING-PONG.
+// the delay's, the shaper's and the three-band compressor's LINK, a ball bouncing between two paddles for the
+// delay's PING-PONG, and for the shaper's SYM an odd curve, its halves turned about the middle.
 bool isFxIconSwitch(FxParam field) {
     return isFxSync(field) || field == FxParam::DelayLink || field == FxParam::ShaperLink ||
-           field == FxParam::McLink || field == FxParam::DelayPingPong;
+           field == FxParam::McLink || field == FxParam::DelayPingPong || field == FxParam::ShaperSymmetric;
 }
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
     if (isFxSync(field)) {
@@ -560,6 +567,15 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
     } else if (field == FxParam::DelayLink || field == FxParam::ShaperLink || field == FxParam::McLink) {
         c.strokeRect({m.x - 9.0f, m.y - 3.5f, 11.0f, 7.0f}, color, 1.4f, 3.5f);
         c.strokeRect({m.x - 2.0f, m.y - 3.5f, 11.0f, 7.0f}, color, 1.4f, 3.5f);
+    } else if (field == FxParam::ShaperSymmetric) {
+        c.line({m.x, m.y - 6.0f}, {m.x, m.y + 6.0f}, color.alpha(0.45f), 1.0f);
+        std::vector<Point> points;
+        for (int i = 0; i <= 24; ++i) { // a curve rising to level off, its left half the right one turned over
+            const float t = i / 12.0f - 1.0f;
+            points.push_back({m.x + 9.0f * t, m.y - 5.0f * std::tanh(2.5f * t)});
+        }
+        c.polyline(points.data(), points.size(), color, 1.4f);
+        c.fillCircle(m, 1.6f, color);
     } else {
         c.line({m.x - 8.5f, m.y - 5.5f}, {m.x - 8.5f, m.y + 5.5f}, color, 1.6f);
         c.line({m.x + 8.5f, m.y - 5.5f}, {m.x + 8.5f, m.y + 5.5f}, color, 1.6f);
@@ -2021,12 +2037,15 @@ Point View::shapeCurvePos(int shape, int point) const {
 }
 
 void View::addShapePoint(int shape, Point p) {
-    const int count = shapePointCount(shape);
-    if (count >= shapeMaxPoints(shape)) {
+    if (shapePointCount(shape) >= shapeMaxPoints(shape)) {
         flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(shape))}));
         return;
     }
-    const double x = std::clamp(shapeXAt(shape, p), 0.001, 0.999);
+    editMany(insertShapePoint(shape, std::clamp(shapeXAt(shape, p), 0.001, 0.999), shapeYAt(shape, p)));
+}
+
+std::vector<std::pair<int, double>> View::insertShapePoint(int shape, double x, double y) const {
+    const int count = shapePointCount(shape);
     int at = 1;
     while (at < count && shapePointX(shape, at) < x)
         ++at;
@@ -2038,9 +2057,54 @@ void View::addShapePoint(int shape, Point p) {
             changes.push_back({shapeIndex(shape, point + 1, field), value(shapeIndex(shape, point, field))});
     }
     changes.push_back({shapeIndex(shape, at, PointField::X), x});
-    changes.push_back({shapeIndex(shape, at, PointField::Y), shapeYAt(shape, p)});
+    changes.push_back({shapeIndex(shape, at, PointField::Y), y});
     changes.push_back({shapeIndex(shape, at, PointField::Curve), 0.0});
     changes.push_back({shapeBase(shape), count + 1.0});
+    return changes;
+}
+
+bool View::curveSymmetric(int shape) const {
+    if (!isClipCurve(shape) && !isShaperCurve(shape))
+        return false;
+    const ShaperParams clip = shaperParams(shape - kMaxSources);
+    return clipMode(value(clip.mode)) == ClipMode::Custom && value(clip.symmetric) >= 0.5;
+}
+
+constexpr double kOnMiddle = 1e-4; // how near the middle a point counts as on it
+
+bool View::pointShown(int shape, int point) const {
+    return !curveSymmetric(shape) || shapePointX(shape, point) > 0.5 - kOnMiddle;
+}
+
+bool View::middlePoint(int shape, int point) const {
+    return curveSymmetric(shape) && std::abs(shapePointX(shape, point) - 0.5) < kOnMiddle;
+}
+
+Point View::unmirrored(int shape, Point p) const {
+    if (!curveSymmetric(shape) || shapeXAt(shape, p) >= 0.5)
+        return p;
+    const Point middle = shapeAt(shape, 0.5, 0.0);
+    return {2.0f * middle.x - p.x, 2.0f * middle.y - p.y};
+}
+
+// Flips a shaper's Symmetric; switched on, its curve gets a point in the middle, where the curve is, if it has none
+// there and has room for one. One undo step either way.
+void View::switchSymmetric(int param) {
+    const bool on = value(param) < 0.5;
+    int unit = 0;
+    while (unit + 1 < kShaperUnits && shaperParams(unit).symmetric != param)
+        ++unit;
+    const int shape = kMaxSources + unit;
+    std::vector<std::pair<int, double>> changes;
+    if (on && shapePointCount(shape) < shapeMaxPoints(shape)) {
+        bool has = false;
+        for (int point = 0; point < shapePointCount(shape) && !has; ++point)
+            has = std::abs(shapePointX(shape, point) - 0.5) < kOnMiddle;
+        auto get = [this](int index) { return value(index); };
+        if (!has)
+            changes = insertShapePoint(shape, 0.5, clipCurveValue(get, shapeBase(shape), 0.0));
+    }
+    changes.push_back({param, on ? 1.0 : 0.0});
     editMany(changes);
 }
 
@@ -2126,6 +2190,10 @@ bool View::drawsStep(const Widget &w, Modifiers mods) const {
 }
 
 void View::removeShapePoint(int shape, int point) {
+    if (middlePoint(shape, point)) {
+        flash(tr(Str::MsgCurveMiddle));
+        return;
+    }
     const int count = shapePointCount(shape);
     const bool end = isCurve(shape) && point + 1 == count;
     if (point == 0 || end || count <= 2) {
@@ -2477,7 +2545,7 @@ bool View::poll() {
         changed = true;
     if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_) // picked in another editor
         changed = true;
-    if (typing_ && ++caretTicks_ % 32 == 0)
+    if ((typing_ || browserOpen_) && ++caretTicks_ % 32 == 0)
         changed = true; // the caret blinks
     return changed;
 }
@@ -2559,7 +2627,7 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ShapeArea, display, -1, shape);
         const int count = shapePointCount(shape);
         for (int point = 0; point + 1 < count; ++point) {
-            if (shapePointX(shape, point + 1) - shapePointX(shape, point) < 1e-6)
+            if (shapePointX(shape, point + 1) - shapePointX(shape, point) < 1e-6 || !pointShown(shape, point))
                 continue; // a jump straight up or down has nothing to bend
             const Point c = shapeCurvePos(shape, point);
             add(Kind::ShapeCurve, {c.x - 5.0f, c.y - 5.0f, 10.0f, 10.0f}, shapeIndex(shape, point, PointField::Curve),
@@ -2567,6 +2635,8 @@ std::vector<View::Widget> View::widgets() const {
             list.back().compact = true;
         }
         for (int point = 0; point < count; ++point) {
+            if (!pointShown(shape, point))
+                continue;
             const Point c = shapePointPos(shape, point);
             add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, shape, point);
             list.back().compact = true;
@@ -2624,13 +2694,15 @@ std::vector<View::Widget> View::widgets() const {
         const int count = shapePointCount(editing);
         for (int point = 0; point < count - (isCurve(editing) ? 1 : 0); ++point) { // a curve doesn't wrap
             const double next = point + 1 < count ? shapePointX(editing, point + 1) : 1.0;
-            if (next - shapePointX(editing, point) < 1e-6)
+            if (next - shapePointX(editing, point) < 1e-6 || !pointShown(editing, point))
                 continue; // a jump straight up or down has nothing to bend
             const Point c = shapeCurvePos(editing, point);
             add(Kind::ShapeCurve, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, shapeIndex(editing, point, PointField::Curve),
                 editing, point);
         }
         for (int point = 0; point < count; ++point) {
+            if (!pointShown(editing, point))
+                continue;
             const Point c = shapePointPos(editing, point);
             add(Kind::ShapePoint, {c.x - 7.0f, c.y - 7.0f, 14.0f, 14.0f}, -1, editing, point);
         }
@@ -2681,8 +2753,11 @@ std::vector<View::Widget> View::widgets() const {
             switch (type) {
             case FxType::Shaper: {
                 add(Kind::ListButton, clipModeButton(card), at(FxParam::ShaperMode));
-                add(Kind::Toggle, clipLinkButton(card), at(FxParam::ShaperLink));
-                if (std::lround(value(at(FxParam::ShaperMode))) == static_cast<long>(ClipMode::Custom))
+                const bool custom = clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Custom;
+                if (custom)
+                    add(Kind::Toggle, clipSymButton(card), at(FxParam::ShaperSymmetric));
+                add(Kind::Toggle, clipLinkButton(card, custom), at(FxParam::ShaperLink));
+                if (custom)
                     drawnCurve(slot, fxDisplay(screen, type));
                 knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
                       {tr(Str::LabelDrive), tr(Str::LabelOutput), tr(Str::LabelMix)});
@@ -2943,10 +3018,13 @@ std::vector<View::Widget> View::widgets() const {
                  28.0f, kNodeNames[sources[i]]);
     };
     if (isShaperNode(node)) {
-        // The curve's list and the link switch, then drive, output, mix and what goes straight out; a drawn curve
-        // is edited in the display unless its big editor has it.
+        // The curve's list and the symmetric and link switches, then drive, output, mix and what goes straight out;
+        // a drawn curve is edited in the display unless its big editor has it.
         const int shaper = shaperOfNode(node);
-        add(Kind::ListButton, kShaperModeButton, paramIndex(shaper, ShaperParam::Mode));
+        const bool custom = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom;
+        add(Kind::ListButton, shaperModeButton(custom), paramIndex(shaper, ShaperParam::Mode));
+        if (custom)
+            add(Kind::Toggle, kShaperSymButton, paramIndex(shaper, ShaperParam::Symmetric));
         add(Kind::Toggle, kShaperLinkButton, paramIndex(shaper, ShaperParam::Link));
         const int params[] = {paramIndex(shaper, ShaperParam::Drive), paramIndex(shaper, ShaperParam::Output),
                               paramIndex(shaper, ShaperParam::Mix), paramIndex(shaper, ShaperParam::Out)};
@@ -3231,7 +3309,8 @@ std::vector<View::Widget> View::widgets() const {
     const bool slopeList =
         listMenu_ >= 0 && isFilterNode(pageNode) && listMenu_ == paramIndex(pageNode - kOps, FilterParam::Slope);
     if ((shaperList || slopeList) && !inspectorCovered()) {
-        const Rect button = slopeList ? kFilterSlopeButton : kShaperModeButton;
+        const Rect button =
+            slopeList ? kFilterSlopeButton : shaperModeButton(clipMode(value(listMenu_)) == ClipMode::Custom);
         const int items = listCount(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);
@@ -3429,17 +3508,136 @@ Rect browserClose(Rect panel) {
 Rect browserFolder(Rect panel) {
     return {panel.right() - 24.0f - 110.0f, panel.bottom() - 40.0f, 110.0f, 26.0f};
 }
+// The search field, in the title row left of the close button, and the x at its right end that empties it.
+Rect browserSearch(Rect panel) {
+    return {panel.right() - 46.0f - 180.0f, panel.y + 14.0f, 180.0f, 24.0f};
+}
+Rect browserClear(Rect panel) {
+    const Rect field = browserSearch(panel);
+    return {field.right() - 22.0f, field.y + 3.0f, 18.0f, 18.0f};
+}
+// ASCII letters in lower case, for a search that doesn't mind case.
+std::string lowered(std::string_view text) {
+    std::string out(text);
+    for (char &ch : out)
+        if (ch >= 'A' && ch <= 'Z')
+            ch = static_cast<char>(ch - 'A' + 'a');
+    return out;
+}
 } // namespace
 
 std::vector<std::pair<int, std::string>> View::browserRows() const {
+    std::vector<std::string> words;
+    const std::string search = lowered(browserSearch_);
+    for (size_t at = 0; at < search.size();) {
+        const size_t end = std::min(search.find(' ', at), search.size());
+        if (end > at)
+            words.push_back(search.substr(at, end - at));
+        at = end + 1;
+    }
     std::vector<std::pair<int, std::string>> rows;
     const std::vector<PresetEntry> &presets = controller_.presets();
+    const PresetEntry *last = nullptr; // the last one listed
     for (size_t i = 0; i < presets.size(); ++i) {
-        if (!presets[i].category.empty() && (i == 0 || presets[i].category != presets[i - 1].category))
+        const std::string text = lowered(presets[i].category + " " + presets[i].name);
+        if (!std::all_of(words.begin(), words.end(),
+                         [&](const std::string &word) { return text.find(word) != std::string::npos; }))
+            continue;
+        if (!presets[i].category.empty() && (!last || presets[i].category != last->category))
             rows.push_back({-1, presets[i].category});
         rows.push_back({static_cast<int>(i), presets[i].name});
+        last = &presets[i];
     }
     return rows;
+}
+
+void View::revealBrowserRow(int preset, bool middle) {
+    const std::vector<std::pair<int, std::string>> rows = browserRows();
+    const auto at = std::find_if(rows.begin(), rows.end(), [&](const auto &row) { return row.first == preset; });
+    if (preset < 0 || at == rows.end()) {
+        browserScroll_ = 0;
+        return;
+    }
+    const int row = static_cast<int>(at - rows.begin());
+    const int shown = browserVisibleRows(browserPanel(height()));
+    const int most = std::max(static_cast<int>(rows.size()) - shown, 0);
+    const int first = std::clamp(browserScroll_, 0, most);
+    if (middle)
+        browserScroll_ = std::max(row - shown / 2, 0);
+    else if (row < first)
+        browserScroll_ = row > 0 && rows[row - 1].first < 0 ? row - 1 : row; // with its subfolder's header
+    else if (row >= first + shown)
+        browserScroll_ = row - shown + 1;
+    browserScroll_ = std::clamp(browserScroll_, 0, most);
+}
+
+// After the search changes: the list from its top, the first preset found picked.
+void View::searchChanged() {
+    browserPick_ = -1;
+    if (!browserSearch_.empty())
+        for (const auto &row : browserRows())
+            if (row.first >= 0) {
+                browserPick_ = row.first;
+                break;
+            }
+    browserScroll_ = 0;
+}
+
+void View::browserChar(char32_t c) {
+    if (confirm_ >= 0 || c < 0x20 || c > 0x7E || browserSearch_.size() >= 40 ||
+        (c == ' ' && browserSearch_.empty()))
+        return;
+    browserSearch_ += static_cast<char>(c);
+    caretTicks_ = 0;
+    searchChanged();
+}
+
+void View::browserKey(Key key) {
+    if (confirm_ >= 0)
+        return;
+    caretTicks_ = 0;
+    switch (key) {
+    case Key::Enter:
+        if (browserPick_ >= 0)
+            openPreset(browserPick_);
+        break;
+    case Key::Escape:
+        if (browserSearch_.empty()) {
+            browserOpen_ = false;
+            hover_.reset();
+        } else {
+            browserSearch_.clear();
+            searchChanged();
+            revealBrowserRow(controller_.presetIndex(), true);
+        }
+        break;
+    case Key::Backspace:
+        if (!browserSearch_.empty()) {
+            browserSearch_.pop_back();
+            searchChanged();
+        }
+        break;
+    case Key::Up:
+    case Key::Down: { // from the one picked, or the preset loaded, to the next one listed that way
+        std::vector<int> listed;
+        for (const auto &row : browserRows())
+            if (row.first >= 0)
+                listed.push_back(row.first);
+        if (listed.empty())
+            break;
+        const int from = browserPick_ >= 0 ? browserPick_ : controller_.presetIndex();
+        const auto at = std::find(listed.begin(), listed.end(), from);
+        const int step = key == Key::Down ? 1 : -1;
+        const int place = at == listed.end() ? (step > 0 ? 0 : static_cast<int>(listed.size()) - 1)
+                                             : std::clamp(static_cast<int>(at - listed.begin()) + step, 0,
+                                                          static_cast<int>(listed.size()) - 1);
+        browserPick_ = listed[place];
+        revealBrowserRow(browserPick_, false);
+        break;
+    }
+    default:
+        break;
+    }
 }
 
 std::vector<View::Widget> View::browserWidgets() const {
@@ -3464,6 +3662,8 @@ std::vector<View::Widget> View::browserWidgets() const {
                 rows[row].first);
     add(Kind::BrowserClose, browserClose(panel));
     add(Kind::BrowserFolder, browserFolder(panel));
+    if (!browserSearch_.empty())
+        add(Kind::BrowserClear, browserClear(panel));
     return list;
 }
 
@@ -3475,13 +3675,37 @@ void View::paintBrowser(Canvas &c) {
     c.text({panel.x + 24.0f, panel.y + 14.0f, 120.0f, 24.0f}, tr(Str::PresetsTitle), 14.0f, kText, Align::Left, true);
     const std::vector<std::pair<int, std::string>> rows = browserRows();
     const size_t count = controller_.presets().size();
-    c.text({panel.x + 104.0f, panel.y + 16.0f, 200.0f, 20.0f},
-           count == 1 ? std::string(tr(Str::PresetsCountOne)) : trf(Str::PresetsCount, {std::to_string(count)}), 10.5f,
-           kFaint, Align::Left);
+    const Rect search = browserSearch(panel);
+    std::string counted =
+        count == 1 ? std::string(tr(Str::PresetsCountOne)) : trf(Str::PresetsCount, {std::to_string(count)});
+    if (!browserSearch_.empty()) {
+        const auto found = std::count_if(rows.begin(), rows.end(), [](const auto &row) { return row.first >= 0; });
+        counted = trf(Str::PresetsMatching, {std::to_string(found), std::to_string(count)});
+    }
+    c.text({panel.x + 104.0f, panel.y + 16.0f, search.x - 8.0f - panel.x - 104.0f, 20.0f}, counted, 10.5f, kFaint,
+           Align::Left);
+    // The search field: a magnifier, then what is typed with the caret after it, or how to search.
+    c.fillRect(search, kBackground, 5.0f);
+    c.strokeRect(search, browserSearch_.empty() ? kBorder : kAccent, 1.0f, 5.0f);
+    const Point lens{search.x + 13.0f, search.center().y - 1.0f};
+    c.strokeCircle(lens, 4.0f, kDim, 1.3f);
+    c.line({lens.x + 3.0f, lens.y + 3.0f}, {lens.x + 6.5f, lens.y + 6.5f}, kDim, 1.5f);
+    const Rect typed{search.x + 26.0f, search.y, search.w - 26.0f - 24.0f, search.h};
+    if (browserSearch_.empty())
+        c.text(typed, tr(Str::PresetsSearchHint), 10.5f, kFaint, Align::Left);
+    else
+        c.text(typed, browserSearch_, 11.0f, kText, Align::Left);
+    if (confirm_ < 0 && caretTicks_ / 32 % 2 == 0) {
+        const float caret = std::min(typed.x + c.textWidth(browserSearch_, 11.0f) + 1.0f, typed.right());
+        c.line({caret, search.y + 5.0f}, {caret, search.bottom() - 5.0f}, kText, 1.0f);
+    }
     c.line({panel.x + 1.0f, panel.y + 50.5f}, {panel.right() - 1.0f, panel.y + 50.5f}, kBorder, 1.0f);
 
     const Rect area = browserList(panel);
-    if (rows.empty()) {
+    if (rows.empty() && !browserSearch_.empty()) {
+        c.text({area.x, area.center().y - 10.0f, area.w, 18.0f}, trf(Str::PresetsNoMatch, {browserSearch_}), 12.0f,
+               kDim);
+    } else if (rows.empty()) {
         c.text({area.x, area.center().y - 20.0f, area.w, 18.0f}, tr(Str::PresetsNone), 12.0f, kDim);
         c.text({area.x, area.center().y, area.w, 18.0f}, tr(Str::PresetsNoneHint), 10.5f, kFaint);
     }
@@ -4229,16 +4453,20 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
 
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
+    const bool symmetric = curveSymmetric(shape);
     std::vector<Point> points;
     for (int i = 0; i <= 400; ++i) {
         const double x = i / 400.0;
-        points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
+        points.push_back(shapeAt(x, shaperCurveValue(get, ClipMode::Custom, base, symmetric, 2.0 * x - 1.0)));
     }
     std::vector<Point> area = points;
     area.push_back(shapeAt(1.0, 0.0));
     area.push_back(shapeAt(0.0, 0.0));
     c.fillPolygon(area.data(), area.size(), fx.alpha(0.12f));
+    if (symmetric) // the mirrored half, which follows the other, behind a veil
+        c.fillRect({r.x, r.y, r.w * 0.5f, r.h}, kDisplayColor.alpha(0.35f));
     plotLine(c, points.data(), points.size(), fx, 2.0f);
+    paintMirroredPoints(c, shape, 4.0f);
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
@@ -4458,15 +4686,24 @@ void View::paintShaperCurve(Canvas &c, Rect r, int unit) {
         std::pow(10.0, clipOutputDb(value(clip.output), value(clip.drive), value(clip.link) >= 0.5) / 20.0);
     const double mix = value(clip.mix);
     auto get = [this](int index) { return value(index); };
-    auto shape = [&](double x) {
-        return mode == ClipMode::Custom ? clipCurveValue(get, shapeBase(curve), x) : clipShape(mode, x);
-    };
+    auto shape = [&](double x) { return shaperCurveValue(get, mode, shapeBase(curve), curveSymmetric(curve), x); };
     std::vector<Point> points;
     for (int i = 0; i <= 240; ++i) {
         const double x = kRange * (2.0 * i / 240.0 - 1.0);
         points.push_back(at(x, x + (shape(x * drive) * output - x) * mix));
     }
     plotLine(c, points.data(), points.size(), fx, 2.0f);
+}
+
+// A symmetric curve's points, mirrored onto its left half as faint rings: they move with the ones they mirror.
+void View::paintMirroredPoints(Canvas &c, int shape, float radius) {
+    if (!curveSymmetric(shape))
+        return;
+    const Color color = shapeColor(shape).alpha(0.45f);
+    for (int point = 0; point < shapePointCount(shape); ++point)
+        if (pointShown(shape, point) && !middlePoint(shape, point))
+            c.strokeCircle(shapeAt(shape, 1.0 - shapePointX(shape, point), -value(shapeIndex(shape, point, PointField::Y))),
+                           radius, color, 1.0f);
 }
 
 // A drawn curve in its card, as in its editor (input across, output up, to full scale), with its points and
@@ -4484,12 +4721,14 @@ void View::paintClipCurveCard(Canvas &c, Rect r, int unit) {
     const double output =
         std::pow(10.0, clipOutputDb(value(clip.output), value(clip.drive), value(clip.link) >= 0.5) / 20.0);
     const double mix = value(clip.mix);
+    const bool symmetric = curveSymmetric(shape);
+    auto curve = [&](double in) { return shaperCurveValue(get, ClipMode::Custom, base, symmetric, in); };
     std::vector<Point> driven, points;
     for (int i = 0; i <= 160; ++i) {
         const double x = i / 160.0, in = 2.0 * x - 1.0;
-        const double out = in + (clipCurveValue(get, base, in * drive) * output - in) * mix;
+        const double out = in + (curve(in * drive) * output - in) * mix;
         driven.push_back(shapeAt(shape, x, std::clamp(out, -1.1, 1.1)));
-        points.push_back(shapeAt(shape, x, clipCurveValue(get, base, in)));
+        points.push_back(shapeAt(shape, x, curve(in)));
     }
     c.polyline(driven.data(), driven.size(), fx.alpha(0.35f), 1.0f);
     std::vector<Point> area = points;
@@ -4497,6 +4736,7 @@ void View::paintClipCurveCard(Canvas &c, Rect r, int unit) {
     area.push_back(shapeAt(shape, 0.0, 0.0));
     c.fillPolygon(area.data(), area.size(), fx.alpha(0.12f));
     plotLine(c, points.data(), points.size(), fx, 2.0f);
+    paintMirroredPoints(c, shape, 3.0f);
 
     // The point under the mouse, in numbers (input to output), in the top left corner, which a curve
     // leaves empty.
@@ -5607,6 +5847,8 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
             powerIcon(c, w.rect.center(), on ? color : (hovered ? kText : kDim));
         else if (shaperFieldOf(w.param) == ShaperParam::Link) // a voice shaper's link, as the shaper effect's
             fxSwitchIcon(c, w.rect.center(), FxParam::ShaperLink, on ? color : (hovered ? kText : kDim));
+        else if (shaperFieldOf(w.param) == ShaperParam::Symmetric)
+            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperSymmetric, on ? color : (hovered ? kText : kDim));
         else if (isFxIconSwitch(field))
             fxSwitchIcon(c, w.rect.center(), field, on ? color : (hovered ? kText : kDim));
         else if (isLfoSync(w.param)) // an LFO's SYNC, the effects' metronome
@@ -6264,17 +6506,26 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         break;
     }
     case Kind::BrowserRow: {
+        // The preset loaded in the accent; the one picked from the keyboard, like a hovered one, outlined.
         const bool current = controller_.presetIndex() == w.a;
+        const bool picked = browserPick_ == w.a;
         if (current)
             c.fillRect(w.rect, kAccent.alpha(0.18f), 5.0f);
-        else if (hovered)
+        else if (hovered || picked)
             c.fillRect(w.rect, kTrack, 5.0f);
-        if (current)
-            c.strokeRect(w.rect, kAccent.alpha(0.6f), 1.0f, 5.0f);
+        if (current || picked)
+            c.strokeRect(w.rect, picked ? kText.alpha(0.6f) : kAccent.alpha(0.6f), 1.0f, 5.0f);
         const std::vector<PresetEntry> &presets = controller_.presets();
         if (w.a < static_cast<int>(presets.size()))
             c.text({w.rect.x + 14.0f, w.rect.y, w.rect.w - 28.0f, w.rect.h}, presets[w.a].name, 11.5f,
-                   current || hovered ? kText : kDim, Align::Left, current);
+                   current || hovered || picked ? kText : kDim, Align::Left, current);
+        break;
+    }
+    case Kind::BrowserClear: {
+        const Point m = w.rect.center();
+        const Color color = hovered ? kText : kDim;
+        c.line({m.x - 3.5f, m.y - 3.5f}, {m.x + 3.5f, m.y + 3.5f}, color, 1.3f);
+        c.line({m.x - 3.5f, m.y + 3.5f}, {m.x + 3.5f, m.y - 3.5f}, color, 1.3f);
         break;
     }
     case Kind::BrowserClose: {
@@ -6563,6 +6814,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipStereo);
     else if (field == FxParam::ShaperLink || shaperFieldOf(param) == ShaperParam::Link)
         text = tr(Str::TipShaperLink);
+    else if (field == FxParam::ShaperSymmetric || shaperFieldOf(param) == ShaperParam::Symmetric)
+        text = tr(Str::TipShaperSymmetric);
     else if (field == FxParam::FilterType)
         text = filterTypeName(static_cast<FilterType>(hover_->b));
     else if (field == FxParam::ShaperMode)
@@ -6830,8 +7083,9 @@ void View::applyDrag(Point p) {
             y = std::round((y + 1.0) * half) / half - 1.0;
         }
         const int count = shapePointCount(shape);
-        if (point > 0 && !(isCurve(shape) && point + 1 == count)) {
-            const double low = shapePointX(shape, point - 1);
+        // Symmetric, the middle point stays in the middle, and the others right of it.
+        if (point > 0 && !(isCurve(shape) && point + 1 == count) && !middlePoint(shape, point)) {
+            const double low = std::max(shapePointX(shape, point - 1), curveSymmetric(shape) ? 0.5 : 0.0);
             const double high = point + 1 < count ? shapePointX(shape, point + 1) : 1.0;
             set(shapeIndex(shape, point, PointField::X), std::max(low + 0.002, std::min(x, high - 0.002)));
         }
@@ -6939,7 +7193,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         return;
     }
     if (drawsStep(w, mods)) {
-        addShapeStep(w.a, p, mods.ctrl);
+        addShapeStep(w.a, unmirrored(w.a, p), mods.ctrl);
         return;
     }
     drag_.widget = w;
@@ -7115,7 +7369,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         edit(w.param, w.b);
         break;
     case Kind::Toggle:
-        edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
+        if (fxFieldOf(w.param) == FxParam::ShaperSymmetric || shaperFieldOf(w.param) == ShaperParam::Symmetric)
+            switchSymmetric(w.param);
+        else
+            edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         break;
 
     case Kind::ShapeButton:
@@ -7189,13 +7446,10 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::PresetNameBox: {
         controller_.rescanPresets();
         browserOpen_ = true;
-        // Scrolled so the current preset shows, about in the middle.
-        const std::vector<std::pair<int, std::string>> rows = browserRows();
-        const int current = controller_.presetIndex();
-        const auto at = std::find_if(rows.begin(), rows.end(), [&](const auto &row) { return row.first == current; });
-        browserScroll_ = current >= 0 && at != rows.end()
-                             ? std::max(static_cast<int>(at - rows.begin()) - browserVisibleRows(browserPanel(height())) / 2, 0)
-                             : 0;
+        browserSearch_.clear();
+        browserPick_ = -1;
+        caretTicks_ = 0;
+        revealBrowserRow(controller_.presetIndex(), true); // the current preset about in the middle
         hover_.reset();
         break;
     }
@@ -7212,6 +7466,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::BrowserFolder:
         controller_.openPresetFolder();
+        break;
+    case Kind::BrowserClear:
+        browserSearch_.clear();
+        searchChanged();
+        revealBrowserRow(controller_.presetIndex(), true);
+        hover_.reset();
         break;
     case Kind::ConfirmBackdrop:
         if (w.a == 0) { // a click around the dialog cancels it
@@ -7499,7 +7759,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         return;
     }
     if (hit && hit->kind == Kind::ShapeArea) {
-        addShapePoint(hit->a, p);
+        addShapePoint(hit->a, unmirrored(hit->a, p));
         return;
     }
     if (hit && hit->kind == Kind::ShapePoint) {
@@ -7819,6 +8079,8 @@ void View::startTyping(const Widget &w) {
 }
 
 void View::typeChar(char32_t c) {
+    if (!typing_ && browserOpen_)
+        browserChar(c);
     if (!typing_ || c < 0x20 || c > 0x7E)
         return;
     Typing &t = *typing_;
@@ -7833,6 +8095,8 @@ void View::typeChar(char32_t c) {
 }
 
 void View::typeKey(Key key) {
+    if (!typing_ && browserOpen_)
+        browserKey(key);
     if (!typing_)
         return;
     Typing &t = *typing_;
@@ -7871,6 +8135,9 @@ void View::typeKey(Key key) {
     case Key::End:
         t.caret = t.text.size();
         break;
+    case Key::Up:
+    case Key::Down:
+        return;
     }
     t.selected = false;
 }

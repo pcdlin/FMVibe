@@ -18,6 +18,7 @@ const draw = createCanvas2d(ctx);
 const CURSORS = ['default', 'pointer', 'ns-resize', 'ew-resize', 'move']; // gui::CursorKind
 const TYPING_KEYS = { // View::Key
   Enter: 0, NumpadEnter: 0, Escape: 1, Backspace: 2, Delete: 3, ArrowLeft: 4, ArrowRight: 5, Home: 6, End: 7,
+  ArrowUp: 9, ArrowDown: 10,
 };
 const SELECT_ALL = 8;
 
