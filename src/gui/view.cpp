@@ -1209,9 +1209,10 @@ std::vector<Point> wavePoints(OpWave wave, Rect r) {
 }
 
 // The partial editor, over the routing panel: the wave the partials make, their levels, and their phases.
-constexpr Rect kPartialWave{kRouting.x + 40.0f, kRouting.y + 44.0f, kRouting.w - 80.0f, 116.0f};
-constexpr Rect kPartialLevels{kRouting.x + 40.0f, kRouting.y + 180.0f, kRouting.w - 80.0f, 84.0f};
-constexpr Rect kPartialPhases{kRouting.x + 40.0f, kRouting.y + 286.0f, kRouting.w - 80.0f, 50.0f};
+// Each row's label sits between its box and the one above, 32 apart.
+constexpr Rect kPartialWave{kRouting.x + 40.0f, kRouting.y + 44.0f, kRouting.w - 80.0f, 106.0f};
+constexpr Rect kPartialLevels{kRouting.x + 40.0f, kRouting.y + 182.0f, kRouting.w - 80.0f, 84.0f};
+constexpr Rect kPartialPhases{kRouting.x + 40.0f, kRouting.y + 298.0f, kRouting.w - 80.0f, 48.0f};
 Rect partialBar(Rect area, int partial) {
     const float step = area.w / kPartials;
     return {area.x + partial * step + 3.0f, area.y, step - 6.0f, area.h};
@@ -4101,7 +4102,7 @@ void View::paintPartialEditor(Canvas &c, int op) {
     for (int row = 0; row < 2; ++row) {
         const Rect area = row == 0 ? kPartialLevels : kPartialPhases;
         c.fillRect(area.inset(-6.0f), kDisplayColor, 6.0f);
-        c.text({area.x - 2.0f, area.y - 19.0f, 80.0f, 12.0f}, row == 0 ? "LEVEL" : "PHASE", 10.5f, kFaint, Align::Left,
+        c.text({area.x - 2.0f, area.y - 22.0f, 80.0f, 12.0f}, row == 0 ? "LEVEL" : "PHASE", 10.5f, kFaint, Align::Left,
                true);
         for (int k = 0; k < kPartials; ++k) {
             const Rect bar = partialBar(area, k);

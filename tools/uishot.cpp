@@ -676,13 +676,13 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
                            model.value(partialLevelIndex(0, 3)) == 0.0;
     check(fromPulse, "picking Custom starts its partials from the wave it was");
     auto barX = [](int partial) { return 56.0f + (partial + 0.5f) * 772.0f / kPartials; };
-    const float halfway = 284.0f + 84.0f * 0.5f;
+    const float halfway = 286.0f + 84.0f * 0.5f;
     drag(view, {barX(1), halfway}, {barX(3), halfway});
     doubleClick(view, {barX(0), halfway});
     bool drawn = model.value(partialLevelIndex(0, 0)) == 0.0;
     for (int partial = 1; partial <= 3; ++partial)
         drawn = drawn && std::abs(model.value(partialLevelIndex(0, partial)) - 0.5) < 0.02;
-    drag(view, {barX(2), 390.0f + 50.0f * 0.75f}, {barX(2), 390.0f + 50.0f * 0.75f});
+    drag(view, {barX(2), 402.0f + 48.0f * 0.75f}, {barX(2), 402.0f + 48.0f * 0.75f});
     view.mouseMove({barX(2), halfway}, {});
     check(customPicked && drawn && std::abs(model.value(partialPhaseIndex(0, 2)) - 0.25) < 0.03 &&
               renderer.save(view, dir / "23-partials.png"),
