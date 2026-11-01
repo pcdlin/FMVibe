@@ -354,12 +354,17 @@ private:
     Color clipColor(int unit) const;
     Color shapeColor(int shape) const;
     static int shapeBase(int shape);
+    // How many points it can have, and how many params it takes from shapeBase() on.
+    static int shapeMaxPoints(int shape) { return isNoteCurve(shape) ? kMaxNotePoints : kMaxShapePoints; }
+    static int shapeParamCount(int shape) { return isNoteCurve(shape) ? kNoteCurveParamCount : kShapeParamCount; }
     int shapeIndex(int shape, int point, PointField field) const;
     int shapePointCount(int shape) const;
     double shapePointX(int shape, int point) const;
     Point shapePointPos(int shape, int point) const;
     Point shapeCurvePos(int shape, int point) const;
     void addShapePoint(int shape, Point p);
+    void addShapeStep(int shape, Point p, bool snap);
+    bool drawsStep(const Widget &w, Modifiers mods) const;
     void removeShapePoint(int shape, int point);
     void resetShape(int shape);
     // The next grid the shape editor offers along `axis`, `steps` away.

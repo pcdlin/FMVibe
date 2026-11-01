@@ -22,7 +22,8 @@ constexpr int kFilters = 2;
 constexpr int kFilterLinks = kFilters * (kFilters - 1) / 2;
 constexpr int kShapers = 2; // per-voice waveshapers, which feed and are fed by the filters and modulate operators
 constexpr int kFxSlots = 16; // places in the effects chain; their order is a param
-constexpr int kMaxShapePoints = 16; // per freeform LFO
+constexpr int kMaxShapePoints = 64; // per freeform LFO or shaper curve, enough for a step a column on a grid of 32
+constexpr int kMaxNotePoints = 16;  // on the note source's curve
 
 constexpr int kMaxVoices = 512; // highest voice limit
 constexpr int kMaxUnison = 16;  // copies per operator
@@ -158,7 +159,8 @@ enum class SourceParam {
 // first sits at 0; y is -1..1. A point's curve (-1..1) bends the segment that
 // leaves it, and the last segment wraps around to the first point. Hidden from
 // hosts: the editor draws them. A shaper's drawn curve (ClipMode::Custom) has
-// the same layout, one per effect slot, but doesn't wrap: see clipCurveValue().
+// the same layout, one per effect slot and voice shaper, but doesn't wrap: see
+// clipCurveValue().
 // A macro's knob (Value, 0..1) and, like a source's, kSlots (target, amount) pairs: what the knob sets, times
 // each amount, is added to its target for every voice and for the effects alike. Hosts see the knobs; the
 // editor sets the slots. In the editor and its modulation lists a macro counts as source kMaxSources + macro.
@@ -176,6 +178,8 @@ constexpr bool isWheel(int source) { return source == kWheelSource; }
 constexpr bool isStripSource(int source) { return source >= kMaxSources; }
 enum class ShapeParam { PointCount, Points, Count = Points + 3 * kMaxShapePoints };
 enum class PointField { X, Y, Curve };
+// The note source's curve: laid out the same, with kMaxNotePoints points.
+constexpr int kNoteCurveParamCount = static_cast<int>(ShapeParam::Points) + 3 * kMaxNotePoints;
 // The note source: kSlots (target, amount) pairs, like a macro's without a knob, then the range of notes it
 // spans (Low to High, semitones in MIDI numbering) and a curve drawn across it, laid out like a shaper's
 // (see noteSourceValue()). Per voice, it puts out where the voice's pitch (bend and glide included) falls in
@@ -188,7 +192,7 @@ enum class NoteParam {
     Low = Slots + 2 * kSlots,
     High,
     Curve,
-    Bipolar = Curve + static_cast<int>(ShapeParam::Count),
+    Bipolar = Curve + kNoteCurveParamCount,
     Count
 };
 constexpr int kNoteParamCount = static_cast<int>(NoteParam::Count);
@@ -696,13 +700,10 @@ constexpr Section kSections[] = {
     {kFilterLinkBase, 1, kFilterLinks, 900, 100},
     {kShaperBase, kShapers, kShaperParamCount, 600, 50},
 
-    {kShapeBase, kMaxSources, kShapeParamCount, 4000, 100},
-    {kClipCurveBase, kFxSlots, kShapeParamCount, 7000, 50},
     {kSlotBypassBase, kMaxSources, kSlots, 9000, 20},
     {kPartialBase, kOps, 2 * kFirstPartials, 10000, 100},
     {kMacroBase, kMacros, kMacroParamCount, 11000, 40},
     {kNoteBase, 1, kNoteParamCount, 11400, 100},
-    {kShaperCurveBase, kShapers, kShapeParamCount, 13000, 50},
     {kWheelBase, 1, kWheelParamCount, 11500, 100},
     {kPartialCountBase, 1, kOps, 14000, 100},
     {kLaterPartialBase, kOps, 2 * (kPartials - kFirstPartials), 14100, 100},
@@ -718,22 +719,37 @@ constexpr clap_id kLaterSlotIdBase = 6000, kLaterSlotIdStride = 30;
 static_assert(kSourceFields <= static_cast<int>(kSourceIdStride) &&
               kLaterSlotFields <= static_cast<int>(kLaterSlotIdStride));
 
-// Effect slots: their first kFirstFxFields fields have ids from 1400 on, 80 a slot, and the fields added once
-// those had run out have ids of their own, from 12000 on, 20 a slot.
-constexpr int kFirstFxFields = 80;
-constexpr clap_id kFxIdBase = 1400, kFxIdStride = 80;
-constexpr clap_id kLaterFxIdBase = 12000, kLaterFxIdStride = 20;
-static_assert(kFxParamCount - kFirstFxFields <= static_cast<int>(kLaterFxIdStride));
+// Sections whose fields ran out of room: the first `firstFields` of a block have ids from `base` on, `stride` a
+// block, and the ones past them from `laterBase` on, `laterStride` a block.
+struct SplitSection {
+    int firstIndex;
+    int blocks;
+    int fields;
+    int firstFields;
+    clap_id base, stride;
+    clap_id laterBase, laterStride;
+};
+
+constexpr SplitSection kSplitSections[] = {
+    // Effect slots: the fields added once the 80 had run out.
+    {kFxBase, kFxSlots, kFxParamCount, 80, 1400, 80, 12000, 20},
+    // Freeform LFO shapes and shaper curves: the points past the 16 they had at first (33 for an LFO's).
+    {kShapeBase, kMaxSources, kShapeParamCount, 100, 4000, 100, 15000, 100},
+    {kClipCurveBase, kFxSlots, kShapeParamCount, 49, 7000, 50, 17000, 200},
+    {kShaperCurveBase, kShapers, kShapeParamCount, 49, 13000, 50, 21000, 200},
+};
 
 } // namespace ids
 
 constexpr clap_id idOfIndex(int index) {
-    if (index >= kFxBase && index < kShapeBase) {
-        const int slot = (index - kFxBase) / kFxParamCount, field = (index - kFxBase) % kFxParamCount;
-        return field < ids::kFirstFxFields
-                   ? ids::kFxIdBase + static_cast<clap_id>(slot) * ids::kFxIdStride + field
-                   : ids::kLaterFxIdBase + static_cast<clap_id>(slot) * ids::kLaterFxIdStride +
-                         (field - ids::kFirstFxFields);
+    for (const ids::SplitSection &s : ids::kSplitSections) {
+        const int local = index - s.firstIndex;
+        if (local < 0 || local >= s.blocks * s.fields)
+            continue;
+        const clap_id block = static_cast<clap_id>(local / s.fields);
+        const int field = local % s.fields;
+        return field < s.firstFields ? s.base + block * s.stride + field
+                                     : s.laterBase + block * s.laterStride + (field - s.firstFields);
     }
     if (const int source = sourceOf(index); source >= 0) {
         const int field = (index - kSourceBase) % kSourceParamCount;
@@ -753,15 +769,17 @@ constexpr clap_id idOfIndex(int index) {
 
 // -1 for ids this version doesn't know.
 constexpr int indexOfId(clap_id id) {
-    if (id >= ids::kFxIdBase && id < ids::kFxIdBase + kFxSlots * ids::kFxIdStride) {
-        const int slot = static_cast<int>((id - ids::kFxIdBase) / ids::kFxIdStride);
-        const int field = static_cast<int>((id - ids::kFxIdBase) % ids::kFxIdStride);
-        return field < std::min(ids::kFirstFxFields, kFxParamCount) ? kFxBase + slot * kFxParamCount + field : -1;
-    }
-    if (id >= ids::kLaterFxIdBase && id < ids::kLaterFxIdBase + kFxSlots * ids::kLaterFxIdStride) {
-        const int slot = static_cast<int>((id - ids::kLaterFxIdBase) / ids::kLaterFxIdStride);
-        const int field = ids::kFirstFxFields + static_cast<int>((id - ids::kLaterFxIdBase) % ids::kLaterFxIdStride);
-        return field < kFxParamCount ? kFxBase + slot * kFxParamCount + field : -1;
+    for (const ids::SplitSection &s : ids::kSplitSections) {
+        if (id >= s.base && id < s.base + static_cast<clap_id>(s.blocks) * s.stride) {
+            const int block = static_cast<int>((id - s.base) / s.stride);
+            const int field = static_cast<int>((id - s.base) % s.stride);
+            return field < std::min(s.firstFields, s.fields) ? s.firstIndex + block * s.fields + field : -1;
+        }
+        if (id >= s.laterBase && id < s.laterBase + static_cast<clap_id>(s.blocks) * s.laterStride) {
+            const int block = static_cast<int>((id - s.laterBase) / s.laterStride);
+            const int field = s.firstFields + static_cast<int>((id - s.laterBase) % s.laterStride);
+            return field < s.fields ? s.firstIndex + block * s.fields + field : -1;
+        }
     }
     if (id >= ids::kSourceIdBase && id < ids::kSourceIdBase + kMaxSources * ids::kSourceIdStride) {
         const int source = static_cast<int>((id - ids::kSourceIdBase) / ids::kSourceIdStride);
@@ -791,6 +809,9 @@ constexpr bool idsRoundTrip() {
     for (const ids::Section &s : ids::kSections)
         if (s.fields > static_cast<int>(s.stride))
             return false;
+    for (const ids::SplitSection &s : ids::kSplitSections)
+        if (s.firstFields > static_cast<int>(s.stride) || s.fields - s.firstFields > static_cast<int>(s.laterStride))
+            return false;
     for (int i = 0; i < kParamCount; ++i)
         if (indexOfId(idOfIndex(i)) != i)
             return false;
@@ -807,6 +828,14 @@ static_assert(idOfIndex(slotAmountIndex(1, kFirstSlots - 1)) == 2849 && idOfInde
 // And the partials Custom waves had at first keep theirs.
 static_assert(idOfIndex(partialPhaseIndex(1, kFirstPartials - 1)) == 10163 &&
               idOfIndex(partialLevelIndex(1, kFirstPartials)) == 14200);
+// And the points LFO shapes had at first (the 33rd's fields the last of the first section), and shaper curves.
+static_assert(idOfIndex(shapePointIndex(1, 15, PointField::Curve)) == 4148 &&
+              idOfIndex(shapePointIndex(1, 32, PointField::Curve)) == 4199 &&
+              idOfIndex(shapePointIndex(1, 33, PointField::X)) == 15100);
+static_assert(idOfIndex(shapeFieldIndex(clipCurveCountIndex(1), 15, PointField::Curve)) == 7098 &&
+              idOfIndex(shapeFieldIndex(clipCurveCountIndex(1), 16, PointField::X)) == 17200 &&
+              idOfIndex(shapeFieldIndex(shaperCurveCountIndex(1), 15, PointField::Curve)) == 13098 &&
+              idOfIndex(shapeFieldIndex(shaperCurveCountIndex(1), 16, PointField::X)) == 21200);
 
 // The highest id in use; sections aren't in id order.
 constexpr clap_id maxParamId() {
@@ -814,11 +843,14 @@ constexpr clap_id maxParamId() {
     for (const ids::Section &s : ids::kSections)
         highest = std::max(highest, s.base + static_cast<clap_id>(s.blocks - 1) * s.stride +
                                         static_cast<clap_id>(s.fields - 1));
+    for (const ids::SplitSection &s : ids::kSplitSections) {
+        const clap_id block = static_cast<clap_id>(s.blocks - 1);
+        highest = std::max(highest, s.base + block * s.stride + static_cast<clap_id>(std::min(s.firstFields, s.fields) - 1));
+        if (s.fields > s.firstFields)
+            highest = std::max(highest, s.laterBase + block * s.laterStride +
+                                            static_cast<clap_id>(s.fields - s.firstFields - 1));
+    }
     highest = std::max(highest, ids::kSourceIdBase + (kMaxSources - 1) * ids::kSourceIdStride + ids::kSourceFields - 1);
-    highest = std::max(highest, ids::kFxIdBase + (kFxSlots - 1) * ids::kFxIdStride + ids::kFirstFxFields - 1);
-    if (kFxParamCount > ids::kFirstFxFields)
-        highest = std::max(highest, ids::kLaterFxIdBase + (kFxSlots - 1) * ids::kLaterFxIdStride +
-                                        static_cast<clap_id>(kFxParamCount - ids::kFirstFxFields - 1));
     return std::max(highest,
                     ids::kLaterSlotIdBase + (kMaxSources - 1) * ids::kLaterSlotIdStride + ids::kLaterSlotFields - 1);
 }
@@ -964,9 +996,9 @@ inline double shapeBend(double t, double curve) {
     const double a = 8.0 * curve;
     return std::expm1(a * t) / std::expm1(a);
 }
-inline int shapePointCount(double value) {
+inline int shapePointCount(double value, int most = kMaxShapePoints) { // the note curve's: kMaxNotePoints
     const long n = std::lround(value);
-    return static_cast<int>(n < 2 ? 2 : (n > kMaxShapePoints ? kMaxShapePoints : n));
+    return static_cast<int>(n < 2 ? 2 : (n > most ? most : n));
 }
 // The shape's value (-1..1) at `phase` (0..1). `get(index)` returns a param
 // value, so the DSP and the editor read points the same way.

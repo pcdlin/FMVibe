@@ -126,7 +126,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     of the range either way at 0 %, so it wanders, rising to anywhere at all at 100 % (the default), like sample
     and hold. **Smooth** glides to each new value instead of jumping: over that share of the cycle, easing in and
     out, then it holds (0 %, the default, steps).
-  - **Custom** shapes are drawn from 2 to 16 points, starting as a triangle: up from the bottom to the top at the
+  - **Custom** shapes are drawn from 2 to 64 points, starting as a triangle: up from the bottom to the top at the
     middle of the cycle and down again. Each segment between two points can be bent, from easing in
     to easing out, and the last segment wraps around to the first point, so the cycle loops without a jump. The
     points are saved with the patch (as hidden params, so hosts record edits for undo but don't list them).
@@ -136,8 +136,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Shaper**: picked from a list: Hard (a flat ceiling), Soft (tanh), Asymmetric (the lower half clips twice as
     hard, which adds even harmonics), Cubic (x − x³/3, scaled to reach full level), Gentle (x / (1 + |x|), which
     never quite gets there), Sine Fold and Fold (what goes past full level folds back, smoothly or in straight
-    lines), or Custom, a curve you draw: points from the quietest input to the loudest, each segment bendable,
-    level past the ends. A DC blocker takes out the offset that the asymmetric and drawn curves can leave. Drive
+    lines), or Custom, a curve you draw: up to 64 points from the quietest input to the loudest, each segment
+    bendable, level past the ends. A DC blocker takes out the offset that the asymmetric and drawn curves can
+    leave. Drive
     (0–36 dB), Output and Mix; **Link** (on to begin with) brings the output down as the drive goes up, so
     turning the drive changes the tone more than the level: by as much as keeps a sine at −6 dBFS as loud (RMS) as it went in, dB
     for dB while the driven sine stays under the ceiling, then less and less as the clipping squares it off
@@ -375,8 +376,15 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     (or a tab) closes it, and Custom from the list opens it again. A stroke is one undo step.
   - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows EDIT) opens the
     shape over the routing panel and the inspector, which it hides while it is open; DONE closes it, and RESET puts back the shape it started with. Drag points to
-    move them; double-click empty space to add a point and a point to delete it (or right-click it). The small
-    dots halfway along each segment bend it: drag them up or down, double-click to straighten. **GRID**, under the
+    move them; double-click empty space to add a point and a point to delete it (or right-click it).
+    Shift+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
+    click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
+    height to the grid too). The points between those lines go; a step beside another starts where that one ends,
+    at the same place, so the shape jumps straight up or down there, and a step in the first column takes the
+    first point. Shift+click a step again to redraw it at another height. An LFO's shape and a shaper's curve
+    hold 64 points, so every column can hold a step even on the finest grid, 32 across; the note source's curve
+    holds 16. The small dots halfway along each segment bend it (a jump has none): drag them up or down,
+    double-click to straighten. **GRID**, under the
     editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), with its − and +
     buttons or the mouse wheel; hold Ctrl to snap points to them. The grid belongs to the editor: it is saved with
     the project, and presets leave it alone. The first point always sits at the start of the cycle. A shaper

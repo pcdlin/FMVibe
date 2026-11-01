@@ -1994,7 +1994,7 @@ int View::shapeIndex(int shape, int point, PointField field) const {
 }
 
 int View::shapePointCount(int shape) const {
-    return fmvibe::shapePointCount(value(shapeBase(shape)));
+    return fmvibe::shapePointCount(value(shapeBase(shape)), shapeMaxPoints(shape));
 }
 
 // The first point sits at the start; a curve's last one at the end.
@@ -2022,8 +2022,8 @@ Point View::shapeCurvePos(int shape, int point) const {
 
 void View::addShapePoint(int shape, Point p) {
     const int count = shapePointCount(shape);
-    if (count >= kMaxShapePoints) {
-        flash(trf(Str::MsgShapeFull, {std::to_string(kMaxShapePoints)}));
+    if (count >= shapeMaxPoints(shape)) {
+        flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(shape))}));
         return;
     }
     const double x = std::clamp(shapeXAt(shape, p), 0.001, 0.999);
@@ -2042,6 +2042,87 @@ void View::addShapePoint(int shape, Point p) {
     changes.push_back({shapeIndex(shape, at, PointField::Curve), 0.0});
     changes.push_back({shapeBase(shape), count + 1.0});
     editMany(changes);
+}
+
+// A step, as in a step sequencer: a level line from the grid line left of p to the one right of it, at p's height,
+// with a point at each end. The points between the two lines go; a point already on a line stays, for the step
+// next to this one, the new one beside it at the same place so the shape jumps straight up or down there.
+void View::addShapeStep(int shape, Point p, bool snap) {
+    const UiLayout &layout = controller_.layout();
+    const int lines = layout.shapeGridX;
+    const int column = std::clamp(static_cast<int>(std::floor(shapeXAt(shape, p) * lines)), 0, lines - 1);
+    const double x0 = static_cast<double>(column) / lines, x1 = static_cast<double>(column + 1) / lines;
+    double y = shapeYAt(shape, p);
+    if (snap) {
+        const double half = 0.5 * layout.shapeGridY; // lines per unit of height
+        y = std::round((y + 1.0) * half) / half - 1.0;
+    }
+    constexpr double kOnLine = 1e-4;
+    struct Pt {
+        double x, y, curve;
+    };
+    const int count = shapePointCount(shape);
+    auto at = [&](int point) {
+        return Pt{shapePointX(shape, point), value(shapeIndex(shape, point, PointField::Y)),
+                  value(shapeIndex(shape, point, PointField::Curve))};
+    };
+    std::vector<Pt> before, left, right, after; // left and right: on the step's lines; the ones between go
+    for (int point = 0; point < count; ++point) {
+        const Pt pt = at(point);
+        if (pt.x < x0 - kOnLine)
+            before.push_back(pt);
+        else if (pt.x < x0 + kOnLine)
+            left.push_back(pt);
+        else if (pt.x > x1 + kOnLine)
+            after.push_back(pt);
+        else if (pt.x > x1 - kOnLine)
+            right.push_back(pt);
+    }
+    // Of the points on a line, the one facing the step goes and the others stay: on the left line the last, on the
+    // right line the first. A point alone there stays only for a step beside this one: a level line a column long.
+    // The first point is always at the start, and a curve's last one at the end: a step there takes its place.
+    auto stepBetween = [&](const Pt &a, const Pt &b) {
+        return std::abs(b.x - a.x - (x1 - x0)) < kOnLine && std::abs(b.y - a.y) < 1e-6;
+    };
+    const bool leftStep = left.size() == 1 && !before.empty() && stepBetween(before.back(), left[0]);
+    if (x0 <= 0.0 || (left.size() == 1 && !leftStep))
+        left.clear();
+    else if (left.size() > 1)
+        left.pop_back();
+    const bool rightStep = right.size() == 1 && !after.empty() && stepBetween(right[0], after.front());
+    if (x1 >= 1.0 || (right.size() == 1 && !rightStep))
+        right.clear();
+    else if (right.size() > 1)
+        right.erase(right.begin());
+    std::vector<Pt> points = before;
+    points.insert(points.end(), left.begin(), left.end());
+    points.push_back({x0, y, 0.0});
+    points.push_back({x1, y, 0.0});
+    points.insert(points.end(), right.begin(), right.end());
+    points.insert(points.end(), after.begin(), after.end());
+    if (static_cast<int>(points.size()) > shapeMaxPoints(shape)) {
+        flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(shape))}));
+        return;
+    }
+    std::vector<std::pair<int, double>> changes;
+    auto change = [&](int index, double v) {
+        if (v != value(index))
+            changes.push_back({index, v});
+    };
+    for (size_t point = 0; point < points.size(); ++point) {
+        if (point > 0) // the first point's place is the start, whatever its X says
+            change(shapeIndex(shape, static_cast<int>(point), PointField::X), points[point].x);
+        change(shapeIndex(shape, static_cast<int>(point), PointField::Y), points[point].y);
+        change(shapeIndex(shape, static_cast<int>(point), PointField::Curve), points[point].curve);
+    }
+    change(shapeBase(shape), static_cast<double>(points.size()));
+    editMany(changes);
+}
+
+// Shift+click anywhere in the big editor, over its points and bends too, draws a step.
+bool View::drawsStep(const Widget &w, Modifiers mods) const {
+    return mods.shift && (w.kind == Kind::ShapeArea || w.kind == Kind::ShapePoint || w.kind == Kind::ShapeCurve) &&
+           w.a == shapeEditing();
 }
 
 void View::removeShapePoint(int shape, int point) {
@@ -2066,7 +2147,7 @@ void View::removeShapePoint(int shape, int point) {
 
 void View::resetShape(int shape) {
     std::vector<std::pair<int, double>> changes;
-    for (int f = 0; f < kShapeParamCount; ++f)
+    for (int f = 0; f < shapeParamCount(shape); ++f)
         changes.push_back({shapeBase(shape) + f, table_[shapeBase(shape) + f].def});
     if (isNoteCurve(shape)) // and its range, every MIDI note
         for (int index : {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)})
@@ -2478,6 +2559,8 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ShapeArea, display, -1, shape);
         const int count = shapePointCount(shape);
         for (int point = 0; point + 1 < count; ++point) {
+            if (shapePointX(shape, point + 1) - shapePointX(shape, point) < 1e-6)
+                continue; // a jump straight up or down has nothing to bend
             const Point c = shapeCurvePos(shape, point);
             add(Kind::ShapeCurve, {c.x - 5.0f, c.y - 5.0f, 10.0f, 10.0f}, shapeIndex(shape, point, PointField::Curve),
                 shape, point);
@@ -2540,6 +2623,9 @@ std::vector<View::Widget> View::widgets() const {
         }
         const int count = shapePointCount(editing);
         for (int point = 0; point < count - (isCurve(editing) ? 1 : 0); ++point) { // a curve doesn't wrap
+            const double next = point + 1 < count ? shapePointX(editing, point + 1) : 1.0;
+            if (next - shapePointX(editing, point) < 1e-6)
+                continue; // a jump straight up or down has nothing to bend
             const Point c = shapeCurvePos(editing, point);
             add(Kind::ShapeCurve, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, shapeIndex(editing, point, PointField::Curve),
                 editing, point);
@@ -6855,6 +6941,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         startTyping(w);
         return;
     }
+    if (drawsStep(w, mods)) {
+        addShapeStep(w.a, p, mods.ctrl);
+        return;
+    }
     drag_.widget = w;
     drag_.start = drag_.now = p;
     drag_.fine = mods.shift;
@@ -7391,9 +7481,10 @@ void View::doubleClick(Point p, Modifiers mods) {
     const auto hit = hitTest(p);
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower ||
-                hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0))) {
+                hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
+                drawsStep(*hit, mods))) {
         // Windows turns a quick second click into a double-click instead of a press:
-        // play it as a press so fast repeated notes, octave steps and undos aren't dropped.
+        // play it as a press so fast repeated notes, octave steps, undos and steps aren't dropped.
         mouseDown(p, mods);
         return;
     }

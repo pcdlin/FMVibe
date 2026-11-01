@@ -242,10 +242,12 @@ itself.
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past
   the 80th 12000 + 20·slot), source places
-  2800 + 40·place, freeform shapes 4000 + 100·place, the sources' later slots 6000 + 30·place, shaper effects' curves
-  7000 + 50·slot, slot bypasses 9000 + 20·place, Custom waves' first 32 partials 10000 + 100·op, macros
+  2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
+  later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
+  17000 + 200·slot), slot bypasses 9000 + 20·place, Custom waves' first 32 partials 10000 + 100·op, macros
   11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod wheel's slots 11500+, the
-  Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op.
+  Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, and the voice shapers'
+  curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type and source type lists,
   which are stored by number.

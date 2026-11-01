@@ -445,9 +445,9 @@ uint32_t tabDot(const Renderer &renderer, int node) {
     return renderer.pixel({nodeTab(node).x + 7.0f, 118.0f});
 }
 
-void click(View &view, Point p) {
-    view.mouseDown(p, {});
-    view.mouseUp(p, {});
+void click(View &view, Point p, Modifiers mods = {}) {
+    view.mouseDown(p, mods);
+    view.mouseUp(p, mods);
 }
 
 // Picks `type` from the ADD EFFECT list.
@@ -2145,6 +2145,20 @@ void run(const std::filesystem::path &dir, float scale) {
           "EDIT opens the big curve editor, which adds points too");
     view.mouseMove(clipAt(0.3, -0.5), {});
     check(renderer.save(view, dir / "8c-clip-curve.png"), "render the shaper's big curve editor");
+    {
+        // Shift+click draws steps here too, as many as on an LFO's shape: one in every column of a grid of 32.
+        const int grid = model.layout().shapeGridX;
+        model.layout().shapeGridX = 32;
+        for (int step = 0; step < 32; ++step)
+            click(view, clipAt((step + 0.5) / 32.0, step % 2 ? -0.5 : 0.5), {true, false});
+        const int last = shapeFieldIndex(clipCurveCountIndex(0), 63, PointField::Y);
+        check(model.value(clipCurveCountIndex(0)) == 64.0 && std::abs(model.value(last) + 0.5) < 0.01,
+              "a shaper's curve takes a step in every column of a grid of 32");
+        for (int step = 0; step < 32; ++step)
+            view.undo();
+        model.layout().shapeGridX = grid;
+        check(model.value(clipCurveCountIndex(0)) == 5.0, "and its steps undo");
+    }
     click(view, kClipDone);
     view.mouseMove({600.0f, 400.0f}, {});
     check(layout.view == RoutingView::Fx, "DONE goes back to the chain");
@@ -2340,6 +2354,48 @@ void run(const std::filesystem::path &dir, float scale) {
     view.doubleClick(shapeAt(0.75, -0.4), {});
     check(model.value(count) == 2.0 && std::abs(pointValue(1, PointField::X) - 0.4) < 0.01,
           "double-clicking a point deletes it");
+    // Shift+click draws a step between the grid lines either side, a point at each end. The next column's step
+    // starts beside the first one's end, the shape jumping there. Redrawing the first keeps the next one's start,
+    // and a quick second Shift+click there (a double-click) leaves it as it is, adding no point.
+    {
+        const double column = 1.0 / model.layout().shapeGridX;
+        auto roughly = [](double a, double b) { return std::abs(a - b) < 0.01; };
+        auto pointIs = [&](int point, double x, double y) {
+            return std::abs(pointValue(point, PointField::X) - x) < 1e-9 && roughly(pointValue(point, PointField::Y), y);
+        };
+        click(view, shapeAt(2.5 * column, 0.25), {true, false});
+        const bool first = model.value(count) == 4.0 && pointIs(1, 2.0 * column, 0.25) &&
+                           pointIs(2, 3.0 * column, 0.25) && pointValue(1, PointField::Curve) == 0.0 &&
+                           roughly(pointValue(3, PointField::X), 0.4);
+        click(view, shapeAt(3.5 * column, -0.5), {true, false});
+        const bool next = model.value(count) == 6.0 && pointIs(2, 3.0 * column, 0.25) &&
+                          pointIs(3, 3.0 * column, -0.5) && pointIs(4, 4.0 * column, -0.5);
+        click(view, shapeAt(2.5 * column, 0.75), {true, false});
+        view.doubleClick(shapeAt(2.5 * column, 0.75), {true, false});
+        view.mouseUp(shapeAt(2.5 * column, 0.75), {true, false});
+        const bool redrawn = model.value(count) == 6.0 && pointIs(1, 2.0 * column, 0.75) &&
+                             pointIs(2, 3.0 * column, 0.75) && pointIs(3, 3.0 * column, -0.5) &&
+                             roughly(pointValue(5, PointField::X), 0.4) && model.openEdits == 0;
+        view.mouseMove(shapeAt(0.7, 0.0), {});
+        check(first && next && redrawn && renderer.save(view, dir / "10b-lfo-steps.png"),
+              "Shift+click draws steps between the grid's lines");
+        click(view, shapeAt(0.5 * column, 1.0), {true, false}); // the first column moves the first point
+        check(model.value(count) == 7.0 && pointIs(0, 0.0, 1.0) && pointIs(1, column, 1.0) &&
+                  pointIs(2, 2.0 * column, 0.75),
+              "a step in the first column takes the first point");
+        for (int step = 0; step < 4; ++step)
+            view.undo();
+        check(model.value(count) == 2.0 && roughly(pointValue(1, PointField::X), 0.4), "steps undo one at a time");
+        // An LFO's shape holds 64 points: a step in every column of the finest grid, 32 across.
+        const int grid = model.layout().shapeGridX;
+        model.layout().shapeGridX = 32;
+        for (int step = 0; step < 32; ++step)
+            click(view, shapeAt((step + 0.5) / 32.0, step % 2 ? -0.5 : 0.5), {true, false});
+        check(model.value(count) == 64.0 && pointIs(63, 1.0, -0.5), "a step fits in every column of a grid of 32");
+        for (int step = 0; step < 32; ++step)
+            view.undo();
+        model.layout().shapeGridX = grid;
+    }
     click(view, kShapeDone);
     click(view, fxPower(model, 0));
     check(model.value(paramIndex(1, FxParam::Enabled)) == 0.0, "DONE closes the editor and the FX view is back");

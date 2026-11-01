@@ -451,9 +451,10 @@ STR(ButtonLoad, "Load")
 STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag a cell to adjust  ·  double-click toggles")
 STR(HintFx, "click an icon to toggle  ·  drag title to reorder")
-STR(HintCurve, "double-click: add or delete  ·  small dots: bend  ·  Ctrl: snap") // an LFO's shape, a shaper's curve
+// An LFO's shape, a shaper's curve:
+STR(HintCurve, "double-click: add or delete  ·  Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
 STR(HintNoteCurve, "across: notes from Low to High  ·  up: output  ·  double-click: add or delete  ·  "
-                   "small dots: bend  ·  Ctrl: snap")
+                   "Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
 STR(HintPartials, "drag across the bars to draw  ·  double-click a bar for none")
 STR(HintNoSources, "No modulators yet.")
 STR(HintNoTargets, "Drag the handle onto any knob,") // on a source's card, over two lines

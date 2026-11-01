@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
+#include <memory>
 #include <utility>
 
 namespace fmvibe {
@@ -100,8 +101,8 @@ std::string letter(int op) {
     return std::string(1, static_cast<char>('A' + op));
 }
 
-ParamTable buildTable() {
-    ParamTable t{};
+// Filled in place: the table is too large for a host thread's stack.
+void buildTable(ParamTable &t) {
     auto add = [&t](int index, std::string name, std::string module, ParamKind kind, double min, double max,
                     double def) {
         // Continuous params accept host modulation, globally or per voice (Bitwig's
@@ -356,8 +357,8 @@ ParamTable buildTable() {
     {
         const int base = paramIndex(NoteParam::Curve);
         const std::string curve = note + " " + tr(Str::ParamCurve);
-        add(base, curve + " " + tr(Str::ParamPoints), note, ParamKind::ShapeCount, 2.0, kMaxShapePoints, 2.0);
-        for (int point = 0; point < kMaxShapePoints; ++point) {
+        add(base, curve + " " + tr(Str::ParamPoints), note, ParamKind::ShapeCount, 2.0, kMaxNotePoints, 2.0);
+        for (int point = 0; point < kMaxNotePoints; ++point) {
             const std::string n = curve + " " + std::to_string(point + 1);
             add(shapeFieldIndex(base, point, PointField::X), n + " X", note, ParamKind::ShapePoint, 0.0, 1.0,
                 point == 0 ? 0.0 : 1.0);
@@ -595,7 +596,6 @@ ParamTable buildTable() {
             add(slotBypassIndex(source, slot), name + " " + trf(Str::ParamBypass, {std::to_string(slot + 1)}), module,
                 ParamKind::SlotBypass, 0.0, 1.0, 0.0);
     }
-    return t;
 }
 
 // snprintf cuts text that doesn't fit at the buffer's end, which can split a
@@ -690,8 +690,12 @@ const char *fxName(FxType fx) {
 }
 
 const ParamTable &paramTable() {
-    static const ParamTable table = buildTable();
-    return table;
+    static const std::unique_ptr<const ParamTable> table = [] {
+        auto t = std::make_unique<ParamTable>();
+        buildTable(*t);
+        return t;
+    }();
+    return *table;
 }
 
 bool isStepped(ParamKind kind) {
