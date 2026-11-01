@@ -126,7 +126,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
     flanger's STEREO, the filter's Key Track and the shaper's and delay's LINK too) and the list of effects with
     their icons;
-  - a filter's response moving with the note its key tracking follows (read off the rendered pixels);
+  - a filter's and the filter effect's responses moving with the note their key tracking follows (read off the
+    rendered pixels);
   - switching effects with their cards' icons (a switched-off one's staying grey under the mouse, read off the
     rendered pixels), dragging cards by them, and folding cards, the icon staying put;
   - the right-click menu on knobs;

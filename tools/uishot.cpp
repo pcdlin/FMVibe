@@ -1177,6 +1177,18 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 300.0f}, {});
     check(turned && renderer.save(view, dir / "27-new-effects.png") && fxChain(model).size() == 5,
           "render a synced stereo phaser and a flanger mid-sweep, a phase disperser, a filter's spectrum and an widener");
+    // Its response follows the note its key tracking does, like a voice filter's: at 100 %, a C7 takes the 2 kHz
+    // low-pass three octaves up, so 7 kHz, 22 dB down at C4, is filled down from -12 dB.
+    model.set(keyTrack, 1.0);
+    auto fillAt = [&](float pitch) {
+        model.live.fxPitch = pitch;
+        view.poll();
+        renderer.save(view, dir / "27a-fx-filter-key-track.png");
+        const uint32_t px = renderer.pixel({fxCardX(model, 3) + 24.0f + 0.85f * (fxCardW(model, 3) - 48.0f), 272.0f});
+        return static_cast<int>((px >> 16 & 255) + (px >> 8 & 255) + (px & 255));
+    };
+    const int fillC4 = fillAt(60.0f), fillC7 = fillAt(96.0f);
+    check(fillC7 > fillC4 + 10, "the filter effect's response moves with the note its key tracking follows");
 }
 
 // A shaper's page: the curve list picks Hard, the link switch unlinks, Drive turns; picked from the list, Custom shows
