@@ -200,13 +200,24 @@ function paint() {
   ui._ui_paint();
 }
 
-// About sixty polls a second, as the plugin window's timer; frames come when something moved.
-function frame() {
+// About sixty polls a second, as the plugin window's timer, whatever the display's rate: a frame of the display
+// polls once about a sixtieth of a second has gone by since the last poll, the time short of it or past it carried
+// over, so a 120 Hz display polls every other frame and a 144 Hz one 60 times a second all the same. Frames come
+// when something moved.
+const POLL_MS = 1000 / 60;
+let lastFrame = 0; // when the display's last frame came
+let owed = 0;      // ms since the last poll, with what was carried over
+function frame(now) {
+  requestAnimationFrame(frame);
+  owed += now - lastFrame;
+  lastFrame = now;
+  if (owed < POLL_MS - 4) // a 60 Hz display's frames come a little early at times
+    return;
+  owed = Math.min(owed - POLL_MS, POLL_MS / 2); // after a long wait (a hidden page), no burst of polls
   if (ui._ui_poll())
     dirty = true;
   if (dirty)
     paint();
-  requestAnimationFrame(frame);
 }
 
 function viewPoint(e) {
@@ -219,9 +230,16 @@ function ctrlOf(e) {
   return e.ctrlKey || e.metaKey;
 }
 
-function afterInput() {
-  canvas.style.cursor = CURSORS[ui._ui_cursor()] ?? 'default';
-  dirty = true;
+let cursor = null; // as last set on the canvas
+// `changed`: whether what the editor shows changed, so it wants a paint (a mouse move may change nothing).
+function afterInput(changed = true) {
+  const now = CURSORS[ui._ui_cursor()] ?? 'default';
+  if (now !== cursor) {
+    canvas.style.cursor = now;
+    cursor = now;
+  }
+  if (changed)
+    dirty = true;
 }
 
 // --- Mouse --------------------------------------------------------------------------------------------------
@@ -250,8 +268,7 @@ window.addEventListener('mousemove', (e) => {
   if (!dragging && e.target !== canvas)
     return;
   const [x, y] = lastPoint = viewPoint(e);
-  ui._ui_mouse_move(x, y, e.shiftKey, ctrlOf(e));
-  afterInput();
+  afterInput(ui._ui_mouse_move(x, y, e.shiftKey, ctrlOf(e)) !== 0);
 });
 
 window.addEventListener('mouseup', (e) => {

@@ -255,15 +255,17 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case kPresetMessage:
         browsePreset(wParam != 0);
         return 0;
-    case WM_MOUSEMOVE:
+    case WM_MOUSEMOVE: {
         if (!trackingLeave_) {
             TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hwnd_, 0};
             trackingLeave_ = TrackMouseEvent(&track) != FALSE;
         }
-        view_.mouseMove(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers());
+        const bool changed = view_.mouseMove(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers());
         updateCursor();
-        invalidate();
+        if (changed) // else nothing to paint again: the poll timer paints what animates meanwhile
+            invalidate();
         return 0;
+    }
     case WM_MOUSELEAVE:
         trackingLeave_ = false;
         view_.mouseLeave();

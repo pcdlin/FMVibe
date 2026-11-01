@@ -10,8 +10,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 
 namespace fmvibe::gui {
 
@@ -65,6 +67,8 @@ public:
     ID2D1StrokeStyle *dashedStroke() const { return dashed_.Get(); }
     IDWriteFactory *writeFactory() const { return write_.Get(); }
     IDWriteTextFormat *textFormat(float size, bool bold, Align align);
+    // The widths Canvas::textWidth() measured, by text format and text (see there): measuring one lays the text out.
+    std::unordered_map<std::string, float> &textWidths() { return widths_; }
 
 private:
     ComPtr<ID2D1Factory> factory_;
@@ -72,6 +76,7 @@ private:
     ComPtr<ID2D1StrokeStyle> round_;
     ComPtr<ID2D1StrokeStyle> dashed_;
     std::map<std::tuple<int, bool, Align>, ComPtr<IDWriteTextFormat>> formats_;
+    std::unordered_map<std::string, float> widths_;
 #endif
 };
 
@@ -95,6 +100,10 @@ public:
     void arc(Point center, float radius, float from, float to, Color c, float width);
     void curve(Point a, Point control, Point b, Color c, float width, bool dashed = false); // quadratic
     void polyline(const Point *points, size_t count, Color c, float width, bool dashed = false);
+    // The same polyline stroked `strokes` times over, in colors[i] at widths[i] in turn, as that many polyline()
+    // calls would draw it; its path is built once.
+    void polylineStrokes(const Point *points, size_t count, const Color *colors, const float *widths, size_t strokes,
+                         bool dashed = false);
     void fillPolygon(const Point *points, size_t count, Color c);
     void text(Rect r, std::string_view utf8, float size, Color c, Align align = Align::Center, bool bold = false);
     // How wide text() draws `utf8` at this size, untrimmed.

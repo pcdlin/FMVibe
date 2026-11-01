@@ -12,6 +12,9 @@ export function createCanvas2d(ctx) {
   let fill = null; // what the context is set to, so repeated styles cost nothing
   let stroke = null;
   let font = null;
+  let lineWidth = null;
+  let lineCap = null; // 'round' (with round joins) or 'butt' (with mitered ones)
+  let dash = null; // the dash's length, or 'solid'
 
   function css(rgba) {
     rgba >>>= 0;
@@ -29,16 +32,28 @@ export function createCanvas2d(ctx) {
     }
   }
   // Round caps and joins, as canvas.cpp's roundStroke() and dashedStroke(); `square` is Direct2D's default style
-  // (flat caps, mitered corners), which rectangles drawn without dashes get.
+  // (flat caps, mitered corners), which rectangles drawn without dashes get. Like the color, the width, the caps and
+  // the dash are set only when they change (setLineDash() takes a new array each time).
   function setStroke(rgba, width, dashed, square = false) {
     if (stroke !== rgba) {
       ctx.strokeStyle = css(rgba);
       stroke = rgba;
     }
-    ctx.lineWidth = width;
-    ctx.lineCap = square ? 'butt' : 'round';
-    ctx.lineJoin = square ? 'miter' : 'round';
-    ctx.setLineDash(dashed ? [2 * width, 2 * width] : []);
+    if (lineWidth !== width) {
+      ctx.lineWidth = width;
+      lineWidth = width;
+    }
+    const cap = square ? 'butt' : 'round';
+    if (lineCap !== cap) {
+      ctx.lineCap = cap;
+      ctx.lineJoin = square ? 'miter' : 'round';
+      lineCap = cap;
+    }
+    const pattern = dashed ? 2 * width : 'solid';
+    if (dash !== pattern) {
+      ctx.setLineDash(dashed ? [pattern, pattern] : []);
+      dash = pattern;
+    }
   }
   function setFont(size, bold) {
     const f = `${bold ? 600 : 400} ${size}px ${FONT_FAMILY}`;
@@ -86,7 +101,7 @@ export function createCanvas2d(ctx) {
   return {
     // After the context was reset from outside (a resize).
     invalidate() {
-      fill = stroke = font = null;
+      fill = stroke = font = lineWidth = lineCap = dash = null;
     },
     clear(rgba) {
       ctx.save();
@@ -157,6 +172,25 @@ export function createCanvas2d(ctx) {
       pointsPath(points);
       ctx.stroke();
     },
+    // The same path stroked `strokes` (up to four) times over, rgba0 at width0 first, as as many polyline() calls
+    // would: the path is built once, and stroking leaves it in place for the next stroke.
+    polylineStrokes(points, strokes, rgba0, width0, rgba1, width1, rgba2, width2, rgba3, width3, dashed) {
+      pointsPath(points);
+      setStroke(rgba0, width0, dashed);
+      ctx.stroke();
+      if (strokes > 1) {
+        setStroke(rgba1, width1, dashed);
+        ctx.stroke();
+      }
+      if (strokes > 2) {
+        setStroke(rgba2, width2, dashed);
+        ctx.stroke();
+      }
+      if (strokes > 3) {
+        setStroke(rgba3, width3, dashed);
+        ctx.stroke();
+      }
+    },
     fillPolygon(points, rgba) {
       setFill(rgba);
       pointsPath(points);
@@ -199,7 +233,7 @@ export function createCanvas2d(ctx) {
     },
     popClip() {
       ctx.restore();
-      fill = stroke = font = null; // back to whatever was set before the clip
+      fill = stroke = font = lineWidth = lineCap = dash = null; // back to whatever was set before the clip
     },
   };
 }
