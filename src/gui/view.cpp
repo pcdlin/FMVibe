@@ -254,7 +254,8 @@ bool meterClipped(const Telemetry &t) {
 // param to modulate it, click it to bring its card into view) and the buttons
 // that add sources, then the sources' cards, kVisibleCards at a time, in the
 // order they show (UiLayout::sourceOrder).
-constexpr Rect kModPanel{16.0f, kPanelsTop + 372.0f + 16.0f, 1168.0f, 316.0f}; // open
+// Open, tall enough for a card's four slot rows to end 8 px above its bottom.
+constexpr Rect kModPanel{16.0f, kPanelsTop + 372.0f + 16.0f, 1168.0f, 322.0f};
 constexpr float kModBarH = 42.0f; // the title row: all that shows while collapsed
 constexpr int kVisibleCards = 4;
 constexpr float kCardGap = 12.0f;
