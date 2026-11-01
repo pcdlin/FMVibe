@@ -132,6 +132,12 @@ constexpr double kReverbOutSigns[2][16] = {{1, -1, 1, 1, -1, 1, -1, -1, 1, 1, 1,
                                            {1, 1, -1, 1, 1, 1, -1, -1, -1, 1, -1, 1, -1, 1, 1, 1}};
 // The lines a shimmer reads through its pitch shifters as well: short and long ones.
 constexpr int kShimmerLineIndices[] = {2, 6, 9, 13};
+// Their crossfades sit an eighth of a cycle apart, pi / 8 apart in angle: the cosine and sine of 0, 1, 2 and 3 of those.
+constexpr double kCosEighth = 0.92387953251128676, kSinEighth = 0.38268343236508977; // of pi / 8
+constexpr double kEighthTurns[][2] = {{1.0, 0.0},
+                                      {kCosEighth, kSinEighth},
+                                      {std::numbers::sqrt2 / 2.0, std::numbers::sqrt2 / 2.0},
+                                      {kSinEighth, kCosEighth}};
 constexpr double kMaxPreDelay = 0.25;
 constexpr double kMaxFlangerDelay = 0.032; // the longest center delay at full depth, with room
 constexpr double kWidenerSweep = 0.12;    // how far the widener's taps are swept either way, of their delay
@@ -152,15 +158,24 @@ double reverbScale(double size) {
     return 0.25 + 0.75 * std::clamp(size, 0.0, 1.0);
 }
 
+// One stage of the fast Walsh-Hadamard transform below: pairs `half` apart. Its size known when compiled, the
+// compiler lays each stage out without loops.
+template <size_t half>
+void hadamardStage(std::array<double, 16> &x) {
+    for (size_t i = 0; i < x.size(); i += 2 * half)
+        for (size_t j = i; j < i + half; ++j) {
+            const double a = x[j], b = x[j + half];
+            x[j] = a + b;
+            x[j + half] = a - b;
+        }
+}
+
 // The fast Walsh-Hadamard transform of the lines' outputs, scaled to keep their energy.
 void hadamard(std::array<double, 16> &x) {
-    for (size_t half = 1; half < x.size(); half *= 2)
-        for (size_t i = 0; i < x.size(); i += 2 * half)
-            for (size_t j = i; j < i + half; ++j) {
-                const double a = x[j], b = x[j + half];
-                x[j] = a + b;
-                x[j + half] = a - b;
-            }
+    hadamardStage<1>(x);
+    hadamardStage<2>(x);
+    hadamardStage<4>(x);
+    hadamardStage<8>(x);
     for (double &v : x)
         v *= 0.25;
 }
@@ -430,6 +445,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         r.shimmerPhase = 0.0;
         r.shimmerLow = r.shimmerBass = {};
         r.damp = {};
+        r.gainsFor = {std::numeric_limits<double>::quiet_NaN()}; // the sample rate may have changed
         for (int i = 0; i < kReverbLines; ++i) { // each line's wavering starts somewhere else
             const double angle = 2.0 * std::numbers::pi * i * 0.618034;
             r.wanderCos[i] = std::cos(angle);
@@ -591,7 +607,7 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
     const ShaperSettings settings = shaperSettings(get, fields);
     if (settings.mode == ClipMode::Custom)
         place.curve.update(get, fields.curve);
-    const ClipCurve curve{settings.mode, place.curve.values.data(), settings.symmetric};
+    const ClipCurve curve{settings.mode, place.curve.values.data(), settings.symmetric, place.curve.version};
     const bool block = clipNeedsBlocker(settings.mode, settings.symmetric);
     const double pole = clipBlockerPole(sampleRate_);
     const double driveStep = rampStep(sh.drive, settings.drive, n);
@@ -864,14 +880,17 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const double corner =
         onePole(20000.0 * std::pow(0.05, at(FxParam::ReverbDamping)) * style.brightness, sampleRate_);
     const double decay = reverbDecay(at(FxParam::ReverbDecay));
-    std::array<double, kReverbLines> gains{}, highs{};
-    for (int i = 0; i < kReverbLines; ++i) {
-        const bool shifted = std::find(std::begin(kShimmerLineIndices), std::end(kShimmerLineIndices), i) !=
-                             std::end(kShimmerLineIndices);
-        const double length = reverbLengths_[i] * r.size + (shifted ? 0.5 * window * shimmerTarget : 0.0);
-        gains[i] = std::pow(10.0, -3.0 * length / (decay * sampleRate_));
-        highs[i] = std::pow(10.0, -3.0 * length / (decay * kReverbHighDecay * sampleRate_)) / gains[i];
+    if (r.gainsFor != std::array<double, 3>{r.size, shimmerTarget, decay}) { // worked out again once they move
+        r.gainsFor = {r.size, shimmerTarget, decay};
+        for (int i = 0; i < kReverbLines; ++i) {
+            const bool shifted = std::find(std::begin(kShimmerLineIndices), std::end(kShimmerLineIndices), i) !=
+                                 std::end(kShimmerLineIndices);
+            const double length = reverbLengths_[i] * r.size + (shifted ? 0.5 * window * shimmerTarget : 0.0);
+            r.gains[i] = std::pow(10.0, -3.0 * length / (decay * sampleRate_));
+            r.highs[i] = std::pow(10.0, -3.0 * length / (decay * kReverbHighDecay * sampleRate_)) / r.gains[i];
+        }
     }
+    const std::array<double, kReverbLines> &gains = r.gains, &highs = r.highs;
     const double wander = kReverbWander * style.wander * sampleRate_;
     constexpr double kInGain = 0.35355339059327373; // 1 / sqrt(8): each side goes into half the lines
     constexpr double kOutGain = 0.22; // about 1 / sqrt(16), a little under, for the level a mono sound had before
@@ -879,6 +898,9 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const int diffuserSize = static_cast<int>(r.diffusers[0][0].size());
     const int preSize = static_cast<int>(r.preDelay[0].size());
 
+    // How much of a shifted line keeps its own head and how much its shifters give, for the Shimmer they were worked
+    // out at.
+    double keepGiveFor = std::numeric_limits<double>::quiet_NaN(), keep = 1.0, give = 0.0;
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
         r.dry += dryStep;
@@ -900,10 +922,16 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
             }
         }
         r.preWrite = r.preWrite + 1 == preSize ? 0 : r.preWrite + 1;
+        std::array<std::array<int, kDiffusers>, 2> diffuserTap;
+        for (int c = 0; c < 2; ++c)
+            for (int d = 0; d < style.diffusers; ++d)
+                diffuserTap[c][d] = r.diffuserWrite >= diffuserLengths_[c][d]
+                                        ? r.diffuserWrite - diffuserLengths_[c][d]
+                                        : r.diffuserWrite - diffuserLengths_[c][d] + diffuserSize;
         for (int c = 0; c < 2; ++c) {
             for (int d = 0; d < style.diffusers; ++d) {
                 const double g = kDiffuserGains[d];
-                const double v = readBehind(r.diffusers[c][d], r.diffuserWrite, diffuserLengths_[c][d]);
+                const double v = r.diffusers[c][d][diffuserTap[c][d]]; // a whole number of samples behind
                 const double w = in[c] + g * v;
                 r.diffusers[c][d][r.diffuserWrite] = static_cast<float>(w);
                 in[c] = v - g * w;
@@ -911,7 +939,7 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
         }
         r.diffuserWrite = r.diffuserWrite + 1 == diffuserSize ? 0 : r.diffuserWrite + 1;
 
-        std::array<double, kReverbLines> out{};
+        std::array<double, kReverbLines> out; // each set below
         for (int i = 0; i < kReverbLines; ++i) {
             const double c = r.wanderCos[i], sn = r.wanderSin[i];
             r.wanderCos[i] = c * wanderTurn_[i][0] - sn * wanderTurn_[i][1];
@@ -919,17 +947,27 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
             out[i] = readBehind(r.lines[i], r.lineWrite, reverbLengths_[i] * r.size + wander * (1.0 + r.wanderSin[i]));
         }
         if (style.shimmer || r.shimmer > 0.0) {
-            const double angle = 0.5 * std::numbers::pi * r.shimmer;
-            const double keep = 1.0 - r.shimmer + (std::cos(angle) - 1.0 + r.shimmer) * power;
-            const double give = r.shimmer + (std::sin(angle) - r.shimmer) * power;
+            if (r.shimmer != keepGiveFor) { // worked out again only while Shimmer moves
+                keepGiveFor = r.shimmer;
+                const double angle = 0.5 * std::numbers::pi * r.shimmer;
+                keep = 1.0 - r.shimmer + (std::cos(angle) - 1.0 + r.shimmer) * power;
+                give = r.shimmer + (std::sin(angle) - r.shimmer) * power;
+            }
+            // The heads' crossfades, sin(pi a) and |cos(pi a)| at each line's a below: its sine and cosine turned on
+            // by an eighth of a cycle a line, from the first line's.
+            const double sinA = std::sin(std::numbers::pi * r.shimmerPhase);
+            const double cosA = std::cos(std::numbers::pi * r.shimmerPhase);
             for (int k = 0; k < kShimmerLines; ++k) {
                 // Each line's heads an eighth of a cycle after the last's, so their crossfades don't all dip together.
+                // The phase is in 0..1, so this is its fmod(1), exactly.
                 const int i = kShimmerLineIndices[k];
-                const double a = std::fmod(r.shimmerPhase + 0.125 * k, 1.0), b = a + 0.5 >= 1.0 ? a - 0.5 : a + 0.5;
+                const double ahead = r.shimmerPhase + 0.125 * k;
+                const double a = ahead >= 1.0 ? ahead - 1.0 : ahead, b = a + 0.5 >= 1.0 ? a - 0.5 : a + 0.5;
                 const double length = reverbLengths_[i] * r.size;
                 const double headA = readBehind(r.lines[i], r.lineWrite, length + a * window);
                 const double headB = readBehind(r.lines[i], r.lineWrite, length + b * window);
-                const double fadeA = std::sin(std::numbers::pi * a), fadeB = std::abs(std::cos(std::numbers::pi * a));
+                const double fadeA = std::abs(sinA * kEighthTurns[k][0] + cosA * kEighthTurns[k][1]);
+                const double fadeB = std::abs(cosA * kEighthTurns[k][0] - sinA * kEighthTurns[k][1]);
                 const double shifted = headA * (fadeA * fadeA + (fadeA - fadeA * fadeA) * power) +
                                        headB * (fadeB * fadeB + (fadeB - fadeB * fadeB) * power);
                 r.shimmerLow[k] += shimmerLow * (shifted - r.shimmerLow[k]);
@@ -940,7 +978,7 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
             r.shimmerPhase -= std::floor(r.shimmerPhase);
         }
         double wet[2] = {0.0, 0.0};
-        std::array<double, kReverbLines> back{};
+        std::array<double, kReverbLines> back; // each set below
         for (int i = 0; i < kReverbLines; ++i) {
             wet[0] += out[i] * kReverbOutSigns[0][i];
             wet[1] += out[i] * kReverbOutSigns[1][i];

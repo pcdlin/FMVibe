@@ -9,6 +9,7 @@
 #include <array>
 #include <complex>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace fmvibe {
@@ -228,6 +229,10 @@ private:
         double wet = 0.0;
         double width = 1.0;
         double shimmer = 0.0;   // how much of the shifted lines is shifted, ramped
+        // Each line's gain and its shelf's (see runReverb()), and the size, Shimmer and decay they were worked out
+        // for: NaN until the first chunk.
+        std::array<double, kReverbLines> gains{}, highs{};
+        std::array<double, 3> gainsFor{std::numeric_limits<double>::quiet_NaN()};
     };
 
     // First-order all-passes in a row, per side, their corners swept by the LFO; the right side's
