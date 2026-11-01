@@ -1,9 +1,11 @@
 # FMVibe
 
-[https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMVibe/)
-
 A six-operator FM synthesizer as a [CLAP](https://github.com/free-audio/clap) instrument plugin for Windows. It
 works in the spirit of other popular FM synths.
+
+In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMVibe/)
+
+![FMVibe UI](docs/editor.png)
 
 Implemented using Claude Code.
 
@@ -13,8 +15,8 @@ plugin's internals are in [AGENTS.md](AGENTS.md).
 ## Download
 
 Each [release](https://github.com/pcdlin/FMVibe/releases) has a zip with `FMVibe.clap` for 64-bit Windows. Put
-`FMVibe.clap` into the per-user CLAP folder, `%LOCALAPPDATA%\Programs\Common\CLAP`, where hosts such as Bitwig
-Studio find it.
+`FMVibe.clap` into either the per-user CLAP folder, `%LOCALAPPDATA%\Programs\Common\CLAP`, or the system-wide one,
+`%COMMONPROGRAMFILES%\CLAP` (copying there needs administrator rights); DAWs find it in both.
 
 ## Build
 
@@ -47,10 +49,8 @@ cmake --install build\release
 You can also open the folder directly in Visual Studio, or in VS Code with the CMake Tools extension: both pick up
 the `debug` and `release` presets from `CMakePresets.json`.
 
-## Install in a host
-
 `.\build.ps1 -Install` copies the plugin into the per-user CLAP folder (`%LOCALAPPDATA%\Programs\Common\CLAP`),
-where hosts such as Bitwig Studio find it.
+where hosts such as DAWs find it.
 
 ## License
 

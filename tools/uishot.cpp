@@ -64,6 +64,7 @@ public:
     std::string presetName() const override {
         return presetIndex() < 0 ? tr(Str::PresetInit) : library[presetIndex()].name;
     }
+    using Controller::setPreset;
     bool loadPresetAt(int index) override {
         const UndoScope step(*this);
         recordAll();
@@ -1101,7 +1102,8 @@ void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // The examples that use the most of the synth, as the preset library writes them: Init, then their changes,
-// with their own node places. `prefix` names the images: its routing, matrix and effects.
+// with their own node places and their name in the preset bar. `prefix` names the images: its routing, matrix
+// and effects.
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
                    const std::string &prefix, size_t effects) {
     FakeController model;
@@ -1116,6 +1118,8 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     for (const auto &[index, value] : example->changes)
         model.values[index] = value;
     model.ui = exampleLayout(*example);
+    model.library = {{name, "Factory"}}; // the preset bar shows its name
+    model.setPreset(std::wstring(name.begin(), name.end()));
     view.poll();
     view.mouseMove({600.0f, 300.0f}, {});
     bool shots = renderer.save(view, dir / (prefix + "-routing.png"));
