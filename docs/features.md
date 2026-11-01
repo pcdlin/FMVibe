@@ -73,7 +73,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   **To Out** sends it straight to the output, like an operator's Out (0 to begin with, so a new shaper is heard only
   once it is routed out, or through what it feeds or modulates). Operators hear its previous output sample, and it
   hears a filter's previous one, so a filter and a shaper can feed each other round in a loop; once a released
-  note's operators have faded, what the shapers get from the filters fades away, so such a loop can't ring on. It
+  note's operators have faded, what the shapers get from the filters fades away, so such a loop can't ring on. What
+  a shaper hears from a filter is held within +18 dB, so a loop that lifts itself past unity (a resonant filter and
+  a shaper's Mix below 100 %) grows loud but never without end. It
   runs only while something goes in and its output goes somewhere.
 - **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square, random or a freeform shape;
   0.02–100 Hz) and mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release). A new

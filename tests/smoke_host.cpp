@@ -879,7 +879,32 @@ int main(int argc, char **argv) {
             check(out.noteEnds.size() == 1 && runBlock() == 0.0f,
                   "a filter and a shaper feeding each other in a loop end with their note");
         }
+        // The same loop with the shaper's input going through it unshaped (Mix 0) and F1 a comb tuned as high as it
+        // goes, whose peaks lift it past unity: it grows, but stays finite, so S1 modulating A can't take A's phase
+        // anywhere it has no table; and the note still ends.
+        double type = 0.0, cutoff = 0.0;
+        params->get_value(plugin, idOfIndex(paramIndex(0, FilterParam::Type)), &type);
+        params->get_value(plugin, idOfIndex(paramIndex(0, FilterParam::Cutoff)), &cutoff);
+        {
+            playShaped({{paramIndex(0, ShaperParam::Mix), 0.0},
+                        {paramIndex(0, FilterParam::Type), static_cast<double>(FilterType::Comb)},
+                        {paramIndex(0, FilterParam::Cutoff), 1.0},
+                        {shaperModIndex(0, 0), 1.0}});
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 32, 57);
+            const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 32, 57);
+            out.noteEnds.clear();
+            bool finite = std::isfinite(runBlock({&on.header}));
+            for (uint32_t b = 0; b < blocksPerSecond; ++b)
+                finite = std::isfinite(runBlock()) && finite;
+            finite = std::isfinite(runBlock({&off.header})) && finite;
+            for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+                finite = std::isfinite(runBlock()) && finite;
+            check(finite && out.noteEnds.size() == 1,
+                  "a filter and a shaper feeding each other past unity stay finite and end with their note");
+        }
         const clap_event_param_value_t restore[] = {
+            paramEvent(paramIndex(0, ShaperParam::Mix), 1.0),    paramEvent(shaperModIndex(0, 0), 0.0),
+            paramEvent(paramIndex(0, FilterParam::Type), type),  paramEvent(paramIndex(0, FilterParam::Cutoff), cutoff),
             paramEvent(paramIndex(0, OpParam::Out), 1.0),        paramEvent(shaperSendIndex(0, 0), 0.0),
             paramEvent(shaperOn, 0.0),                           paramEvent(paramIndex(0, FilterParam::Enabled), 0.0),
             paramEvent(paramIndex(0, ShaperParam::Link), 1.0),   paramEvent(paramIndex(0, ShaperParam::Drive), 6.0),

@@ -50,7 +50,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     by its Out; filter 1 feeds filter 2;
   - a shaper's output modulates an operator (and one that is off doesn't), a hard shaper into a filter squares a
     sine off, and a shaper routed nowhere isn't heard but goes straight out by its To Out; a filter into a hard
-    shaper squares it off too, and a filter and a shaper feeding each other in a loop still end with their note;
+    shaper squares it off too, and a filter and a shaper feeding each other in a loop still end with their note,
+    and stay finite when the loop lifts itself past unity;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
     the note source about the middle of what they put out;

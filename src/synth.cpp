@@ -21,6 +21,10 @@ constexpr double kVolumeGlide = 0.005; // seconds Volume takes to glide most of 
 // How loud each voice goes into the effects, -12 dB: Volume comes after them, so drive and thresholds don't
 // depend on it.
 constexpr double kVoiceLevel = 0.25118864315095801;
+// How far the shapers hear a filter's output go, +18 dB. A filter and a shaper feeding each other grow without end
+// when part of the shaper's input goes through unshaped (Mix below 100 %) and a resonant filter lifts it past
+// unity; held here, the loop stays finite.
+constexpr double kLoopLimit = 8.0;
 
 class SineTable {
 public:
@@ -1115,7 +1119,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             if (!stereo)
                 y[1] = y[0];
             v.filterOut[f] = 0.5 * (y[0] + y[1]);
-            v.filterLast[f] = y;
+            v.filterLast[f] = {std::clamp(y[0], -kLoopLimit, kLoopLimit), std::clamp(y[1], -kLoopLimit, kLoopLimit)};
             if (taps[f])
                 taps[f][s] += v.filterOut[f] * v.fade;
             for (int c = 0; c < 2; ++c) {
