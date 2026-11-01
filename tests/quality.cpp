@@ -120,7 +120,7 @@ public:
         synth_.prepare(kSampleRate, voices, oversampling);
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
-        p[paramIndex(GlobalParam::Volume)] = 0.0;
+        p[paramIndex(GlobalParam::Volume)] = 12.0; // the voices go into the effects 12 dB down: back to full level
         for (int op = 0; op < kOps; ++op)
             p[paramIndex(op, OpParam::Velocity)] = 0.0;
     }
@@ -606,6 +606,58 @@ int main() {
             most = std::max(most, std::abs(static_cast<double>(resting[i]) - up[i]));
         std::printf("mod wheel up, unassigned: largest change %.2g\n", most);
         check(most == 0.0, "the mod wheel no longer turns up the FM by itself");
+    }
+
+    // --- Volume comes after the effects: turned down 12 dB, what a hard-clipping shaper puts out comes down 12 dB
+    // with it, rather than the shaper clipping just as hard on a quieter input.
+    std::printf("volume after the effects:\n");
+    {
+        auto clipped = [](double volume) {
+            Engine e(2);
+            e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            e.p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Hard);
+            e.p[paramIndex(0, FxParam::ShaperDrive)] = 24.0;
+            e.p[paramIndex(0, FxParam::ShaperLink)] = 0.0;
+            e.p[paramIndex(GlobalParam::Volume)] = volume;
+            e.noteOn(57);
+            const std::vector<float> out = e.render(9600);
+            float peak = 0.0f;
+            for (size_t i = 4800; i < out.size(); ++i)
+                peak = std::max(peak, std::abs(out[i]));
+            return peak;
+        };
+        const float full = clipped(0.0), down = clipped(-12.0);
+        std::printf("      clipped sine: peak %.3f at 0 dB, %.3f at -12 dB (x%.3f)\n", full, down, down / full);
+        check(std::abs(down / full - 0.2512f) < 0.005f, "Volume sets the level after the effects");
+    }
+
+    // --- A mod envelope releases after its key is let go, its voice running on (silently, once its operators have
+    // faded) for as long as that takes: half way through a straight 0.5 s release it is at half its level, and what
+    // it modulates with it; once the release is over, the voice ends.
+    std::printf("mod envelope release:\n");
+    {
+        Engine e(2);
+        const int fm = paramIndex(GlobalParam::FmAmount);
+        e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Env);
+        e.p[slotTargetIndex(0, 0)] = slotTargetValue(fm);
+        e.p[slotAmountIndex(0, 0)] = 0.3;
+        e.p[paramIndex(0, SourceParam::Release)] = normFromTime(0.5);
+        e.p[paramIndex(0, SourceParam::ReleaseCurve)] = 0.0;
+        e.noteOn(60);
+        e.render(9600);
+        e.noteOff(60);
+        e.render(12000); // a quarter of a second
+        Telemetry t;
+        e.synth().telemetry(t);
+        const float level = t.sources[0], offset = t.modOffset[fm];
+        const int releasing = t.voices;
+        e.render(19200);
+        e.synth().telemetry(t);
+        std::printf("      a quarter second into a 0.5 s release: level %.3f, FM Amount %+.3f, %d voice(s); %d after it\n",
+                    level, offset, releasing, t.voices);
+        check(releasing == 1 && std::abs(level - 0.5f) < 0.05f && std::abs(offset - level * 0.3f * 2.0f) < 1e-3f &&
+                  t.voices == 0,
+              "a mod envelope releases after the note, its voice running on until it is done");
     }
 
     // --- The output meter: each side's peak, falling 24 dB a second once the sound stops; past full scale (six

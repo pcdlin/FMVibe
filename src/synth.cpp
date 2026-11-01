@@ -17,6 +17,10 @@ constexpr double kMaxIndex = 8.0;             // radians of phase modulation at 
 constexpr double kMaxFeedback = std::numbers::pi;
 constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in
 constexpr double kStealFade = 0.003; // seconds a stolen voice takes to fade out
+constexpr double kVolumeGlide = 0.005; // seconds Volume takes to glide most of the way to a new level
+// How loud each voice goes into the effects, -12 dB: Volume comes after them, so drive and thresholds don't
+// depend on it.
+constexpr double kVoiceLevel = 0.25118864315095801;
 
 class SineTable {
 public:
@@ -142,6 +146,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     analyzer_.prepare(sampleRate);
     effects_.prepare(sampleRate);
     noiseColor_.prepare(rate_, sampleRate);
+    volumeGlide_ = 1.0 - std::exp(-1.0 / (kVolumeGlide * sampleRate));
     ended_.clear();
     ended_.reserve(voices_.size() * 2 + 16);
     held_.clear();
@@ -165,6 +170,7 @@ void Synth::reset() {
     }
     effects_.reset();
     fxPitch_ = 60.0;
+    volumeGain_ = -1.0; // set at once, the first time round
     outPeak_ = {};
     clipHold_ = 0.0;
 }
@@ -267,6 +273,7 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
     v.note = to.note;
     v.velocity = to.velocity;
     v.released = false;
+    v.silent = false;
     v.order = noteCounter_++;
     if (!glide)
         v.glide = to.note.key;
@@ -438,6 +445,24 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         for (int i = kFxBase; i < kShapeBase; ++i)
             fxParams_[i] = std::clamp(fxParams_[i], table_[i].min, table_[i].max);
         effects_.process(left + done, right + done, n, fxParams_, tempo_, fxPitch_);
+
+        // Volume, after the effects: what is set, host and macro modulation, and the newest voice's LFOs and
+        // envelopes, as the effects take theirs. It glides to a new level sample by sample, however the block is
+        // split.
+        const int volume = paramIndex(GlobalParam::Volume);
+        double db = params[volume] + globalMod_[volume] + macroMod_[volume];
+        if (newest)
+            for (int m = 0; m < newest->slotModCount; ++m)
+                if (newest->slotMods[m].index == volume)
+                    db += newest->slotMods[m].offset;
+        const double gain = std::pow(10.0, std::clamp(db, table_[volume].min, table_[volume].max) / 20.0);
+        if (volumeGain_ < 0.0)
+            volumeGain_ = gain;
+        for (uint32_t s = done; s < done + n; ++s) {
+            volumeGain_ += (gain - volumeGain_) * volumeGlide_;
+            left[s] = static_cast<float>(left[s] * volumeGain_);
+            right[s] = static_cast<float>(right[s] * volumeGain_);
+        }
     }
     meterOutput(left, right, frames);
 }
@@ -724,9 +749,21 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     }
     if (v.slotModCount > noteModsStart)
         pitch = pitchNow();
+
+    // A released voice whose sound is over runs on only while a mod envelope that modulates something releases,
+    // so what it modulates (an effect's knob, which follows the newest voice, and what the editor shows) follows
+    // the release down rather than jumping back; it renders nothing meanwhile, and ends once they have.
+    if (v.silent) {
+        v.peak = 0.0;
+        if (v.fading || !modEnvReleasing(v, params))
+            endVoice(v);
+        return;
+    }
+
     const double noteHz = 440.0 * std::exp2((pitch - 69.0) / 12.0);
     const double fmTarget = p[paramIndex(GlobalParam::FmAmount)];
-    const double gain = std::pow(10.0, p[paramIndex(GlobalParam::Volume)] / 20.0) * v.exprGain;
+    // The voices go into the effects at a level of their own; Volume sets the level after them (see render()).
+    const double gain = kVoiceLevel * v.exprGain;
     // Equal-power pan, unity at the center.
     const double pan = std::clamp(p[paramIndex(GlobalParam::Pan)] + v.exprPan, -1.0, 1.0);
     const double angle = (pan + 1.0) * std::numbers::pi / 4.0;
@@ -1071,8 +1108,27 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         peak = std::max(peak, v.ops[i].env.level() * heard);
     }
     v.peak = peak;
-    if ((v.released && !sounding && blockPeak < 1e-4) || (v.fading && v.fade <= 0.0))
+    if (v.fading && v.fade <= 0.0)
         endVoice(v);
+    else if (v.released && !sounding && blockPeak < 1e-4) {
+        if (modEnvReleasing(v, params))
+            v.silent = true; // its sound is over, but not its modulation
+        else
+            endVoice(v);
+    }
+}
+
+bool Synth::modEnvReleasing(const Voice &v, const ParamValues &params) const {
+    for (int s = 0; s < kMaxSources; ++s) {
+        if (v.modEnvs[s].idle() || sourceType(params[paramIndex(s, SourceParam::Type)]) != SourceType::Env ||
+            params[sourceEnabledIndex(s)] < 0.5)
+            continue;
+        for (int slot = 0; slot < kSlots; ++slot)
+            if (slotTarget(params[slotTargetIndex(s, slot)]) >= 0 && params[slotAmountIndex(s, slot)] != 0.0 &&
+                params[slotBypassIndex(s, slot)] < 0.5)
+                return true;
+    }
+    return false;
 }
 
 } // namespace fmvibe

@@ -129,7 +129,10 @@ ParamTable buildTable() {
                 i == 0 ? 0.0 : kExponentialCurve);
     };
 
-    add(paramIndex(GlobalParam::Volume), "Volume", "Global", ParamKind::Decibel, -60.0, 6.0, -12.0);
+    // The level after the effects, for the whole output: hosts modulate it globally, not per note.
+    add(paramIndex(GlobalParam::Volume), "Volume", "Global", ParamKind::Decibel, -60.0, 12.0, 0.0);
+    t[paramIndex(GlobalParam::Volume)].flags &=
+        ~static_cast<clap_param_info_flags>(CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY);
     add(paramIndex(GlobalParam::FmAmount), "FM Amount", "Global", ParamKind::Percent, 0.0, 2.0, 1.0);
     add(paramIndex(GlobalParam::BendRange), "Bend Range", "Global", ParamKind::Semitones, 0.0, 24.0, 2.0);
     add(paramIndex(GlobalParam::Pitch), "Pitch", "Global", ParamKind::SemitoneOffset, -48.0, 48.0, 0.0);
@@ -498,7 +501,8 @@ ParamTable buildTable() {
         field(SourceParam::Attack, "Attack", ParamKind::Time, 0.0, 1.0, 0.0);
         field(SourceParam::Decay, "Decay", ParamKind::Time, 0.0, 1.0, normFromTime(0.5));
         field(SourceParam::Sustain, "Sustain", ParamKind::Percent, 0.0, 1.0, 1.0);
-        field(SourceParam::Release, "Release", ParamKind::Time, 0.0, 1.0, normFromTime(0.3));
+        // The release an operator's envelope starts with.
+        field(SourceParam::Release, "Release", ParamKind::Time, 0.0, 1.0, normFromTime(0.015));
         field(SourceParam::Hold, "Hold", ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
         addCurves(paramIndex(source, SourceParam::AttackCurve), name, module);
         field(SourceParam::EnvBipolar, "Bipolar", ParamKind::Toggle, 0.0, 1.0, 0.0); // takes its targets one way

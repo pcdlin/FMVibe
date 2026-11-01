@@ -434,13 +434,13 @@ int main(int argc, char **argv) {
     check(runBlock({&chokeAll.header}) == 0.0f && out.noteEnds.size() == 16,
           "choke with wildcards silences every voice");
 
-    // Per-voice host modulation (what Bitwig's modulators send): pull one note's volume down.
-    const int volume = paramIndex(GlobalParam::Volume);
+    // Per-voice host modulation (what Bitwig's modulators send): pull one note's carrier all the way down.
+    const int carrierOut = paramIndex(0, OpParam::Out);
     const clap_event_note_t on7 = noteEvent(CLAP_EVENT_NOTE_ON, 7, 64);
     const clap_event_note_t on8 = noteEvent(CLAP_EVENT_NOTE_ON, 8, 67);
     float note7Peak = runBlock({&on7.header});
     note7Peak = std::max(note7Peak, runBlocks(8));
-    const clap_event_param_mod_t duck7 = paramModEvent(volume, 7, -60.0);
+    const clap_event_param_mod_t duck7 = paramModEvent(carrierOut, 7, -1.0);
     runBlock({&duck7.header});
     check(runBlocks(4) < note7Peak / 100.0f, "per-voice param modulation reaches its voice");
     runBlock({&on8.header});
@@ -486,6 +486,37 @@ int main(int argc, char **argv) {
           "a bipolar envelope swings its target about its middle");
     const clap_event_param_value_t envEmpty = paramEvent(paramIndex(env1, SourceParam::Type), 0.0);
     runBlock({&envEmpty.header, &chokeAll.header});
+
+    // Let go of, a voice runs on while a mod envelope that modulates something releases, after its operators have
+    // faded (in 15 ms), so what the envelope moves follows it down: it reports NOTE_END half a second on, once the
+    // envelope's release is over, and at once while the envelope modulates nothing.
+    {
+        auto endsAfter = [&](double amount) { // seconds from the note-off to NOTE_END
+            const clap_event_param_value_t settings[] = {
+                paramEvent(paramIndex(env1, SourceParam::Type), static_cast<double>(SourceType::Env)),
+                paramEvent(slotTargetIndex(env1, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount))),
+                paramEvent(slotAmountIndex(env1, 0), amount),
+                paramEvent(paramIndex(env1, SourceParam::Release), normFromTime(0.5))};
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 11, 62);
+            const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 11, 62);
+            runBlock({&settings[0].header, &settings[1].header, &settings[2].header, &settings[3].header, &on.header});
+            runBlocks(4);
+            out.noteEnds.clear();
+            runBlock({&off.header});
+            uint32_t blocks = 1;
+            for (; out.noteEnds.empty() && blocks < 2 * blocksPerSecond; ++blocks)
+                runBlock();
+            return blocks * static_cast<double>(kBlock) / kSampleRate;
+        };
+        const double held = endsAfter(0.3), unheld = endsAfter(0.0);
+        const clap_event_param_value_t clear = paramEvent(slotTargetIndex(env1, 0), 0.0);
+        runBlock({&clear.header, &envEmpty.header});
+        std::printf("      NOTE_END %.3f s after the note-off with a mod envelope releasing over 0.5 s, %.3f s without "
+                    "a target\n",
+                    held, unheld);
+        check(held > 0.4 && held < 0.7 && unheld < 0.1,
+              "a released voice runs on while a mod envelope that modulates something releases");
+    }
 
     // An empty place modulates nothing, even with its slots set; once it holds an
     // envelope it does, and switched off it stops again.
@@ -1883,6 +1914,7 @@ int main(int argc, char **argv) {
     plugin->deactivate(plugin);
 
     // --- Editor: embed it in a (hidden) host window, paint, drag the Volume knob, close.
+    const int volume = paramIndex(GlobalParam::Volume);
     const auto *gui = static_cast<const clap_plugin_gui_t *>(plugin->get_extension(plugin, CLAP_EXT_GUI));
     check(gui && gui->is_api_supported(plugin, CLAP_WINDOW_API_WIN32, false) &&
               !gui->is_api_supported(plugin, CLAP_WINDOW_API_WIN32, true),

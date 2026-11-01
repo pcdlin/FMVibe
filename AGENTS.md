@@ -31,7 +31,8 @@ into a host are in the [README](README.md#build).
   notes, checking:
   - sound comes out and `NOTE_END` arrives after the release;
   - voice stealing and choke;
-  - per-voice host modulation, and a mod-envelope slot driving its target;
+  - per-voice host modulation, and a mod-envelope slot driving its target, and running its release out after
+    the operators have faded (the voice reporting `NOTE_END` only then);
   - spectrum checks on an A4: the matrix produces FM sidebands; every wave sounds; a saw's 2nd harmonic sits at
     half the fundamental; a low-pass at 300 Hz and a high-pass at 2 kHz move that ratio the right way, each slope
     from 6 to 24 dB harder than the one before (the 6 dB low-pass a one-pole), and a band-pass set to 6 or 18 dB
@@ -78,6 +79,7 @@ into a host are in the [README](README.md#build).
     EQ's and the voice filters' analyzers, and that each example preset holds valid values and sounds at a sane
     level;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
+  - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:

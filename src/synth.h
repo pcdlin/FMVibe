@@ -172,6 +172,8 @@ private:
         bool active = false;
         bool released = false;
         bool fading = false;    // stolen: fades out over a few milliseconds, then ends; its note has ended
+        // Released, and its sound is over, but a mod envelope still releases: it runs its modulation only.
+        bool silent = false;
         double fade = 1.0;
         bool fresh = false;     // just started: operator phases are set in its first block
         NoteRef note{};
@@ -257,6 +259,8 @@ private:
     std::array<int, (kMacros + 1) * kSlots> macroTargets_{}; // the macros' and the mod wheel's
     int macroTargetCount_ = 0;
     void applyMacros(const ParamValues &params);
+    // Whether one of a voice's mod envelopes that modulates something (switched on, with a target) is still going.
+    bool modEnvReleasing(const Voice &v, const ParamValues &params) const;
     // The clocks free LFOs follow instead of their own: they run at the newest
     // voice's rate, like the effects, and keep going between notes.
     std::array<Lfo, kMaxSources> freeLfos_{};
@@ -278,6 +282,8 @@ private:
     Effects effects_;
     ParamValues fxParams_{}; // effect params with the newest voice's modulation, per control block
     double fxPitch_ = 60.0;  // the newest voice's pitch, for the effects' key tracking; kept once it has ended
+    double volumeGain_ = -1.0; // Volume's gain after the effects, gliding toward the knob (-1: not yet set)
+    double volumeGlide_ = 0.0;
     // The output meter's peaks and clip light (see Telemetry), taken off what render() puts out.
     std::array<double, 2> outPeak_{};
     double clipHold_ = 0.0;

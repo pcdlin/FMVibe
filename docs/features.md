@@ -67,7 +67,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   Out (0 to begin with, so a new shaper is heard only through a filter or what it modulates). Operators hear its
   previous output sample; like the filters, it runs only while something goes in and its output goes somewhere.
 - **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square, random or a freeform shape;
-  0.02–100 Hz) and mod envelopes (AHDSR, starting at full sustain). A new instance has none; each one added starts
+  0.02–100 Hz) and mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release). A new
+  instance has none; each one added starts
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
   has 16 slots, and a slot can
   target any continuous parameter: a knob, a matrix amount, an operator output, even another LFO's rate or a slot
@@ -78,7 +79,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   (nothing at half of it, half the depth down at rest and up at its peak), and a bipolar macro, mod wheel or note
   source about the middle of what it puts out (a macro moves nothing with its knob at 50 %). LFOs and envelopes run
   per voice and restart
-  with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later.
+  with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later. Once a key is
+  let go, a mod envelope that modulates something runs its release out even after the operators have faded: the
+  voice keeps running its modulation alone (rendering no sound) until the release is over, so what it moves, an
+  effect's knob for one, follows it down instead of jumping back, and only then reports its note's end to the host.
   - **Macros**: eight knobs (0–100 %) that hosts can automate, each with 16 slots like a source's. A macro's
     value times each slot's depth is added to its target for every voice and the effects alike, so a macro can
     also move effect params, which per-voice sources can't. Their names are part of the patch.
@@ -206,7 +210,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of
   every effect type, and hosts only list the ones of the effect it holds. Each effect gets a remote control page in
   chain order.
-- **Global**: Volume, FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, Bend Range for
+- **Global**: **Volume**, the level of the whole output after the effects (−60 to +12 dB, 0 to begin with; the
+  voices go into the effects at a level of their own, 12 dB down, so the effects' drive and thresholds don't
+  depend on it; hosts modulate it globally, and LFOs and envelopes through the newest voice, as they do effect
+  knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, Bend Range for
   MIDI pitch bend, **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
 - **Play modes**:
@@ -218,8 +225,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Glide** (0 = off, 1 ms–20 s) slides the pitch from the previous note, in mono and poly alike. By default it
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
-- **Host modulation**: all continuous parameters accept CLAP modulation, either globally or per voice, so Bitwig's
-  modulators (including per-note ones) can drive any of them directly.
+- **Host modulation**: all continuous parameters accept CLAP modulation, either globally or per voice (Volume
+  globally only), so Bitwig's modulators (including per-note ones) can drive any of them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
   clicking), and CLAP note expressions (tuning, volume, pan). Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
