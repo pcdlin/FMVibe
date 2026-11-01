@@ -98,7 +98,7 @@ into a host are in the [README](README.md#build).
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
     off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
-    and off from a node's right-click menu;
+    and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the

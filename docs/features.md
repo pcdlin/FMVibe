@@ -172,7 +172,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     sound, they keep its level instead, so it can't build up. In the second after an A4 ends, its tail holds the
     octave about as loud as the note, and two octaves up at about a third of it. Size (the
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),
-    Decay (0.2–20 s to fall 60 dB), Damping (the corner, from 20 kHz down to 1 kHz, above which the tail falls five
+    Decay (0.2–20 s to fall 60 dB), Damp (Damping in the host; the corner, from 20 kHz down to 1 kHz, above which the tail falls five
     times as fast, by as much in every line), Pre-Delay (off to 250 ms), Width and Mix (like the delay's: the dry
     sound stays at full level up to 50 %).
   - **Phaser**: 2–12 first-order all-passes (Stages) whose corner an LFO (Rate, 0–20 Hz; at 0 the sweep stands
@@ -377,7 +377,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   dimmed, and clicking one switches its operator, filter or shaper on. A dot in a tab's top right corner says the
   node's own sound goes out: an operator's or filter's Out is up (a filter's only while something goes into it), or
   a shaper, which can't go out itself, feeds a filter that does. Clicking the selected tab switches it off, or on again (its
-  tooltip says which). The power switch next to the summary line does the same.
+  tooltip says which). The power switch next to the summary line does the same. While the node is off, its page
+  is dimmed below the summary line; its knobs still work.
   - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine and Custom (picked,
     one of these shows on that button); ratio, pitch, fine, detune, velocity and output, the unison knobs and Rnd Phase. A small fan display
     shows where the copies sit (left/right by spread, up/down by detune). A noise operator shows Slope and Spread

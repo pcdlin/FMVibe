@@ -1349,10 +1349,21 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, nodeTab(4));
     check(model.value(paramIndex(4, OpParam::Enabled)) == 1.0 && layout.selectedNode == 4,
           "a switched-off operator's tab switches it on and selects it");
+    // While it is off, its page is dimmed (read off the rendered pixels: the envelope's line darkens).
+    const Point envColumn{1034.0f, 318.0f};
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool pageOnShot = renderer.save(view, dir / "1d-op-on.png");
+    const int pageOn = ringLevel(renderer, envColumn, 78.0f);
     click(view, nodeTab(4));
     const bool tabOff = model.value(paramIndex(4, OpParam::Enabled)) == 0.0 && layout.selectedNode == 4;
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool pageOffShot = renderer.save(view, dir / "1e-op-off.png");
+    const int pageOff = ringLevel(renderer, envColumn, 78.0f);
     click(view, nodeTab(4));
     check(tabOff && model.value(paramIndex(4, OpParam::Enabled)) == 1.0, "the selected tab switches its operator off and on");
+    std::printf("      E's page: brightness %d on, %d off\n", pageOn, pageOff);
+    check(pageOnShot && pageOffShot && pageOn > 200 && pageOff * 10 < pageOn * 7,
+          "a switched-off operator's page is dimmed");
     click(view, nodeTab(1));
     check(model.value(paramIndex(1, OpParam::Enabled)) == 1.0 && layout.selectedNode == 1,
           "another tab only selects an operator that is on");

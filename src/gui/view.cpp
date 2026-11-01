@@ -2559,13 +2559,13 @@ std::vector<View::Widget> View::widgets() const {
                           {"Size", "Decay", "Pre-Delay", "Pitch"}, 206.0f);
                     knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbShimmer),
                            at(FxParam::ReverbMix)},
-                          {"Damping", "Width", "Shimmer", "Mix"}, 266.0f);
+                          {"Damp", "Width", "Shimmer", "Mix"}, 266.0f);
                     break;
                 }
                 knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay)},
                       {"Size", "Decay", "Pre-Delay"}, 206.0f);
                 knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbMix)},
-                      {"Damping", "Width", "Mix"}, 266.0f);
+                      {"Damp", "Width", "Mix"}, 266.0f);
                 break;
             case FxType::Phaser:
             case FxType::Flanger: {
@@ -3409,6 +3409,10 @@ void View::paint(Canvas &c) {
         }
         c.popClip();
     }
+    // And the inspector's page while its operator, filter or shaper is off, below the tabs, summary and switch.
+    if (!inspectorCovered() && !nodeOn(controller_.layout().selectedNode))
+        c.fillRect({kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f},
+                   kPanel.alpha(0.6f), 9.0f);
     paintWidgets(true);
     // The card under the mouse while dragging, before it snaps into place.
     if (drag_.kind == DragKind::SourceMove && drag_.moved) {
