@@ -446,6 +446,14 @@ struct EditEvent {
     double value;
 };
 
+// How long after the plugin tells the host a param's value it takes none for that param from the host.
+constexpr int64_t kHostEchoMs = 500;
+
+int64_t steadyMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
 // A key of the editor's virtual keyboard, on its way to the audio thread.
 struct KeyEvent {
     int note;
@@ -687,6 +695,9 @@ private:
     ParamValues snapshot_{};
     // Presets set every param at once, about three events each.
     SpscQueue<EditEvent, 3 * kParamCount + 1024> edits_;
+    // When each param's value last went out to the host (steady clock, ms); see setParam(). Audio thread, or
+    // flush() which never runs alongside it.
+    std::array<int64_t, kParamCount> toldAt_{};
     SpscQueue<KeyEvent, 256> keys_;
     std::atomic<double> wheelBend_{0.0};
     SharedTelemetry telemetry_;
@@ -919,6 +930,10 @@ void Plugin::setParam(const clap_event_param_value_t &ev) {
     const int i = indexOfId(ev.param_id);
     if (i < 0 || !std::isfinite(ev.value))
         return;
+    // For a moment after the plugin tells the host a value, what the host sends may still be an older one it is
+    // handing back (Bitwig does): taken, it would flip a preset just loaded back to the one before.
+    if (steadyMs() - toldAt_[i] < kHostEchoMs)
+        return;
     values_[i].store(std::clamp(ev.value, paramTable()[i].min, paramTable()[i].max));
     // Voice settings apply before any note-ons that follow in the same block.
     if (i == paramIndex(GlobalParam::Voices)) {
@@ -941,8 +956,12 @@ void Plugin::queueEdit(const EditEvent &ev) {
 
 void Plugin::sendEdits(const clap_output_events_t *out) {
     EditEvent ev;
+    int64_t now = -1;
     while (edits_.pop(ev)) {
         if (ev.type == EditEvent::Type::Value) {
+            if (now < 0)
+                now = steadyMs();
+            toldAt_[indexOfId(ev.id)] = now;
             clap_event_param_value_t value{};
             value.header = {sizeof(value), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
             value.param_id = ev.id;

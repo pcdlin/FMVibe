@@ -2054,6 +2054,16 @@ int main(int argc, char **argv) {
         check(editor && volumeAfter > volumeBefore + 5.0 && out.paramEventTypes == expected,
               "dragging a knob changes the param and tells the host (begin, value, end)");
 
+        // A host handing back an older value just after (Bitwig, behind a preset loaded meanwhile) is not taken.
+        const clap_event_param_value_t stale = paramEvent(volume, volumeBefore);
+        in.events = {&stale.header};
+        params->flush(plugin, &in.list, &out.list);
+        double volumeKept = 0.0;
+        params->get_value(plugin, idOfIndex(volume), &volumeKept);
+        check(volumeKept == volumeAfter, "a value from the host just after the plugin told it one is not taken");
+        in.events.clear();
+        Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
+
         gui->hide(plugin);
         gui->destroy(plugin);
         DestroyWindow(parent);

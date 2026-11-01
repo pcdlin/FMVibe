@@ -72,7 +72,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     voice-info after reactivation.
 
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
-  the param changes and that the host receives gesture-begin, value and gesture-end events. It saves/loads state
+  the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
+  value the host hands back right after isn't taken. It saves/loads state
   through a stream that only moves 5 bytes per call, a layout as large as one gets among them, and checks that
   every remote control page has an id of its own. It also reports CPU cost: on the development machine, 16
   voices × 6 operators take about 22 % of one core at the default 2x oversampling, and about 38 % with every
@@ -257,7 +258,9 @@ itself.
 - A slot's *target* param stores the target's id + 1 (0 = unused). Targets aren't offered for automation, since
   they are wiring, but they are saved like any other param. Their depths are normal automatable params.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events. Hosts
-  record automation and undo from these, and mark the project as changed.
+  record automation and undo from these, and mark the project as changed. For half a second after the plugin
+  tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
+  little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment.
 - The state blob holds `(id, value)` pairs with a version number (currently 1), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names and which
