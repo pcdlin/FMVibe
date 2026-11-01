@@ -2493,6 +2493,7 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
     renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
+    renderExample(dir, renderer, "SQ Step Filter", "33-step-filter", 3);
     renderLfoOnLfo(dir, renderer);
     testMacros(dir, renderer);
     testMeter(dir, renderer);
