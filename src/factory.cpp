@@ -213,7 +213,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                   {FxParam::PeqQ2, normFromQ(0.7)}});
         p.fx(3, FxType::Flanger, {{FxParam::FlangerRate, normFromRate(0.2)}, {FxParam::FlangerDepth, 0.5},
                                   {FxParam::FlangerDelay, normFromTime(0.006)}, {FxParam::FlangerFeedback, 0.15},
-                                  {FxParam::FlangerMix, 0.35}});
+                                  {FxParam::FlangerMix, 0.7}});
         p.fx(4, FxType::Delay, {{FxParam::DelayDivisionL, 15.0}, {FxParam::DelayLink, 1.0}, // 1/8D
                                 {FxParam::DelayPingPong, 1.0}, {FxParam::DelayFeedback, 0.35},
                                 {FxParam::DelayTone, -0.2}, {FxParam::DelayMix, 0.2}});

@@ -436,7 +436,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     }
     case FxType::Phaser:
         s.phaser = Phaser{};
-        s.phaser.mix = phaserWet(at(FxParam::PhaserMix));
+        s.phaser.mix = sweepWet(at(FxParam::PhaserMix));
         break;
     case FxType::Flanger:
         for (std::vector<float> &line : s.flanger.lines)
@@ -444,7 +444,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         s.flanger.write = 0;
         s.flanger.last = {};
         s.flanger.phase = 0.0;
-        s.flanger.mix = at(FxParam::FlangerMix);
+        s.flanger.mix = sweepWet(at(FxParam::FlangerMix));
         break;
     case FxType::FreqShifter:
         s.shifter = Shifter{};
@@ -968,7 +968,7 @@ double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamVal
     const double feedback = sweepFeedback(at(FxParam::PhaserFeedback));
     const double gain = sweepGain(at(FxParam::PhaserFeedback));
     const int stages = std::clamp(static_cast<int>(std::lround(at(FxParam::PhaserStages))), 1, kMaxPhaserStages);
-    const double mixStep = (phaserWet(at(FxParam::PhaserMix)) - ph.mix) / n;
+    const double mixStep = (sweepWet(at(FxParam::PhaserMix)) - ph.mix) / n;
     const double spread = at(FxParam::PhaserStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
@@ -1107,7 +1107,7 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
     const double depth = at(FxParam::FlangerDepth);
     const double feedback = sweepFeedback(at(FxParam::FlangerFeedback));
     const double gain = sweepGain(at(FxParam::FlangerFeedback));
-    const double mixStep = (at(FxParam::FlangerMix) - f.mix) / n;
+    const double mixStep = (sweepWet(at(FxParam::FlangerMix)) - f.mix) / n;
     const double spread = at(FxParam::FlangerStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     const int size = static_cast<int>(f.lines[0].size());
     double peak = 0.0;

@@ -52,8 +52,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     bend; its range and curve shape what it puts out, a straight line over every MIDI note as it starts;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
-    widening the sides above its high-pass while the mono sum stays dry, a stereo flanger's sides sweeping apart and
-    a mono one's together, a linked shaper keeping its level, and
+    widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
+    at 100 % mix (half wet), the flanger's taking half of the tone in it away at 50 %, a stereo flanger's sides
+    sweeping apart and a mono one's together, a linked shaper keeping its level, and
     the filter effect's key tracking putting a cutoff at C4 onto an A4, and the frequency shifter moving by its
     Shift's share of its Range;
   - unison copies spread across the stereo field (and match when centered);

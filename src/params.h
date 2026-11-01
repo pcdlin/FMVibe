@@ -323,14 +323,14 @@ enum class FxParam {
     ReverbMix,
     // Phaser: Stages all-passes whose corner an LFO sweeps up to Depth x 2.5 octaves either way of
     // Center, with feedback from the last stage into the first. Mix at 100 % is half wet, where the notches
-    // are deepest (see phaserWet()).
+    // are deepest (see sweepWet()).
     PhaserRate,
     PhaserDepth,
     PhaserCenter,
     PhaserFeedback,
     PhaserStages,
     PhaserMix,
-    // Flanger: a short delay an LFO sweeps by Depth around Delay, fed back on itself.
+    // Flanger: a short delay an LFO sweeps by Depth around Delay, fed back on itself. Mix like the phaser's.
     FlangerRate,
     FlangerDepth,
     FlangerDelay,

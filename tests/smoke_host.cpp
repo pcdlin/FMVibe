@@ -1549,8 +1549,9 @@ int main(int argc, char **argv) {
         setParams({{type(3), static_cast<double>(FxType::None)}});
         runBlocks(blocksPerSecond); // let any comb ring out
 
-        // The phaser at 100 % (half wet) and the flanger at 50 %, with their sweeps held still, cancel 440 Hz
-        // where their notch sits: two all-passes cornered there, or a delay of half its period. At 0 % mix
+        // The phaser and flanger at 100 % (half wet), with their sweeps held still, cancel 440 Hz where their
+        // notch sits: two all-passes cornered there, or a delay of half its period. At 50 % (a quarter wet) the
+        // flanger takes half of it away, like the phaser would. At 0 % mix
         // they leave it alone.
         setParams({{type(7), static_cast<double>(FxType::Phaser)},
                    {fx(7, FxParam::PhaserDepth), 0.0},
@@ -1565,12 +1566,15 @@ int main(int argc, char **argv) {
                    {fx(7, FxParam::FlangerDepth), 0.0},
                    {fx(7, FxParam::FlangerDelay), normFromTime(1.0 / 880.0)},
                    {fx(7, FxParam::FlangerFeedback), 0.0},
-                   {fx(7, FxParam::FlangerMix), 0.5}});
+                   {fx(7, FxParam::FlangerMix), 1.0}});
         const double flanged = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-        std::printf("      440 Hz through a notch on it: x%.3f phaser (x%.3f at 0 %% mix), x%.3f flanger\n", phased,
-                    unphased, flanged);
-        check(phased < 0.1 && std::abs(unphased - 1.0) < 0.02 && flanged < 0.1,
-              "the phaser and flanger notch where their settings put it");
+        setParams({{fx(7, FxParam::FlangerMix), 0.5}});
+        const double halfFlanged = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        std::printf("      440 Hz through a notch on it: x%.3f phaser (x%.3f at 0 %% mix), x%.3f flanger (x%.3f at "
+                    "50 %% mix)\n",
+                    phased, unphased, flanged, halfFlanged);
+        check(phased < 0.1 && std::abs(unphased - 1.0) < 0.02 && flanged < 0.1 && std::abs(halfFlanged - 0.5) < 0.05,
+              "the phaser and flanger notch where their settings put it, deepest at 100 % mix");
 
         // The frequency shifter moves the sine by its Shift's share of its Range: +50 % of 200 Hz takes it to 540 Hz,
         // -50 % to 340 Hz.

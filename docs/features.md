@@ -191,8 +191,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     ahead. Mix runs to 100 %, which is half wet: there the notches are deepest, and past it they would only get
     shallower again.
   - **Flanger**: a 1–15 ms Delay that an LFO (Rate, 0–20 Hz) sweeps by Depth, with Feedback of either sign (a
-    negative one gives the hollower sound) and Mix. **Sync** works like the phaser's, two bars a sweep to begin
-    with, and so does **Stereo**, under its display, but on to begin with: the right side a quarter cycle ahead.
+    negative one gives the hollower sound) and Mix, which runs to 100 %, half wet, like the phaser's (and starts
+    there). **Sync** works like the phaser's, two bars a sweep to begin with, and so does **Stereo**, under its
+    display, but on to begin with: the right side a quarter cycle ahead.
   - **Phase Disp** (phase disperser): 1–32 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound.

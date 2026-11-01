@@ -458,7 +458,7 @@ ParamTable buildTable() {
         fx(FxParam::FlangerDepth, "Flanger Depth", ParamKind::Percent, 0.0, 1.0, 0.7);
         fx(FxParam::FlangerDelay, "Flanger Delay", ParamKind::Time, 0.0, normFromTime(0.015), normFromTime(0.003));
         fx(FxParam::FlangerFeedback, "Flanger Feedback", ParamKind::BipolarPercent, -1.0, 1.0, 0.5);
-        fx(FxParam::FlangerMix, "Flanger Mix", ParamKind::Percent, 0.0, 1.0, 0.5);
+        fx(FxParam::FlangerMix, "Flanger Mix", ParamKind::Percent, 0.0, 1.0, 1.0); // half wet, like the phaser
         // Stereo to begin with, unlike the phaser: the classic flanger's sides sweep apart.
         fx(FxParam::FlangerStereo, "Flanger Stereo", ParamKind::Toggle, 0.0, 1.0, 1.0);
         // Synced, two bars a sweep.

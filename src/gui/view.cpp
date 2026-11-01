@@ -4664,7 +4664,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     const Rect inner{r.x + 8.0f, r.y + 20.0f, r.w - 16.0f, r.h - 28.0f};
     auto at = [&](FxParam f) { return value(paramIndex(slot, f)); };
     const double feedback = at(phaser ? FxParam::PhaserFeedback : FxParam::FlangerFeedback);
-    const double mix = phaser ? phaserWet(at(FxParam::PhaserMix)) : at(FxParam::FlangerMix);
+    const double mix = sweepWet(at(phaser ? FxParam::PhaserMix : FxParam::FlangerMix));
     const double depth = at(phaser ? FxParam::PhaserDepth : FxParam::FlangerDepth);
     const int stages = static_cast<int>(std::lround(at(FxParam::PhaserStages)));
     constexpr float kMinDb = -30.0f, kMaxDb = 9.0f;

@@ -45,9 +45,9 @@ double flangerResponse(double hz, double delaySeconds, double feedback, double m
 // from 0.3 to 6, and how long the sound at `hz` comes out after the rest through `stages` of them (seconds).
 std::array<double, 5> disperserCoefs(double freqNorm, double pinch, double sampleRate);
 double disperserDelay(double hz, double freqNorm, double pinch, int stages, double sampleRate);
-// The phaser's Mix knob runs to 100 %, which is half wet, where its notches go deepest: past that they
-// would only get shallower again.
-inline double phaserWet(double mix) {
+// The phaser's and flanger's Mix knobs run to 100 %, which is half wet, where their notches go deepest: past that
+// they would only get shallower again.
+inline double sweepWet(double mix) {
     return 0.5 * mix;
 }
 // The reverb's decay (seconds to fall 60 dB) and pre-delay (seconds) from their params.
