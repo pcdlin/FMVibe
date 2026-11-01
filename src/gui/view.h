@@ -271,11 +271,12 @@ private:
     bool nodeOn(int node) const;
     void switchOnRoute(int from, int to);
     std::vector<int> enabledNodes() const;
-    bool filterHasInput(int filter) const;
-    bool shaperHasInput(int shaper) const;
+    // Whether sound gets into a filter or shaper: from an operator that is on, or a filter or shaper that has some.
+    bool boxHasInput(int node) const;
     // Whether `node` is heard in the end: it goes out, or feeds or modulates a node that is.
     bool reachesOut(int node) const;
-    // Whether a filter's or shaper's own sound gets to the output: it goes out, or into a filter whose sound does.
+    // Whether a filter's or shaper's own sound gets to the output: it goes out, or into a filter or shaper whose sound
+    // does.
     bool boxGoesOut(int node) const;
     // Effects. The FX view takes the place of the routing panel and the inspector.
     bool fxWide() const;
@@ -459,6 +460,7 @@ private:
     void paintInspector(Canvas &c);
     // A shaper's page in the inspector: its summary in `summary`, its transfer curve, and the label over its inputs.
     void paintShaperPage(Canvas &c, int shaper, Rect summary);
+    std::string boxRoutes(int node) const;
     void paintSources(Canvas &c);
     void paintSource(Canvas &c, float card, int source);
     void paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live);

@@ -163,6 +163,7 @@ private:
         std::array<std::array<double, kShapers>, kOps> shaperSend{};      // [op][shaper]
         std::array<std::array<double, kOps>, kShapers> shaperIndex{};     // [shaper][to], like index
         std::array<std::array<double, kFilters>, kShapers> shaperLink{};  // [shaper][filter]
+        std::array<std::array<double, kShapers>, kFilters> filterShaper{}; // [filter][shaper]
         std::array<double, kShapers> shaperDirect{}; // straight to the output
         std::array<double, kShapers> shaperDrive{};  // gains
         std::array<double, kShapers> shaperOutput{};
@@ -175,6 +176,9 @@ private:
         bool fading = false;    // stolen: fades out over a few milliseconds, then ends; its note has ended
         // Released, and its sound is over, but a mod envelope still releases: it runs its modulation only.
         bool silent = false;
+        // Released, and its operators have faded: what the shapers get from the filters ramps away, so a loop of
+        // filters and shapers feeding each other can't ring on for ever.
+        bool tail = false;
         double fade = 1.0;
         bool fresh = false;     // just started: operator phases are set in its first block
         NoteRef note{};
@@ -197,6 +201,7 @@ private:
         std::array<Envelope, kMaxSources> modEnvs{};
         std::array<std::array<Filter, 2>, kFilters> filters{}; // [filter][channel]
         std::array<double, kFilters> filterOut{};               // latest mono filter output (what operators hear)
+        std::array<std::array<double, 2>, kFilters> filterLast{}; // latest filter output per channel (what shapers hear)
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]
         std::array<double, kShapers> shaperOut{};               // latest mono shaper output (what operators hear)
         std::array<double, kMaxSources> sourceValues{};

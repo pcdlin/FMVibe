@@ -45,7 +45,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator is silent, and a switched-off filter passes nothing; a filter routed nowhere isn't heard, and goes out
     by its Out; filter 1 feeds filter 2;
   - a shaper's output modulates an operator (and one that is off doesn't), a hard shaper into a filter squares a
-    sine off, and a shaper routed nowhere isn't heard but goes straight out by its To Out;
+    sine off, and a shaper routed nowhere isn't heard but goes straight out by its To Out; a filter into a hard
+    shaper squares it off too, and a filter and a shaper feeding each other in a loop still end with their note;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
     the note source about the middle of what they put out;
@@ -98,8 +99,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, and the output meter and its clip light (read off
     the rendered pixels);
-  - a shaper: switching it on with its tab, sending an operator into it and running it onto an operator and into a
-    filter, its page's curve list, link switch and knobs, its Custom curve drawn on the page and in the big editor;
+  - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
+    and running it onto an operator and into a filter, its page's curve list, link switch and knobs, its Custom
+    curve drawn on the page and in the big editor;
   - dragging the filter response handle, switching between the graph and matrix views, and toggling a matrix cell;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
   - making sources unipolar and bipolar from their menus: an envelope's and an LFO's card, a macro's knob and

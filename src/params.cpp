@@ -237,6 +237,10 @@ ParamTable buildTable() {
         for (int to = from + 1; to < kFilters; ++to)
             add(filterLinkIndex(from, to), "F" + std::to_string(from + 1) + " → F" + std::to_string(to + 1), "Filters",
                 ParamKind::Percent, 0.0, 1.0, 0.0);
+    for (int filter = 0; filter < kFilters; ++filter)
+        for (int shaper = 0; shaper < kShapers; ++shaper)
+            add(filterShaperIndex(filter, shaper), "F" + std::to_string(filter + 1) + " → S" + std::to_string(shaper + 1),
+                "Matrix", ParamKind::Percent, 0.0, 1.0, 0.0);
 
     // Shapers start switched off, with the Soft curve, linked to their drive, routed nowhere; a drawn curve starts as
     // an S, like the shaper effect's.

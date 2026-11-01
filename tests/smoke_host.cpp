@@ -847,11 +847,44 @@ int main(int argc, char **argv) {
         check(clippedThird > 0.15 && cleanThird < 0.05, "a shaper clips what goes through it into a filter");
         check(alone == 0.0f && direct > 0.05f,
               "a shaper routed nowhere isn't heard, and goes straight out by its To Out");
+        // A filter feeds a shaper too: A only into F1, wide open, and F1 into the hard, driven S1, which goes out,
+        // squares the sine off; with F1 sending it nothing, nothing is heard.
+        const std::vector<float> filterClipped = playShaped({{shaperSendIndex(0, 0), 0.0},
+                                                             {sendIndex(0, 0), 1.0},
+                                                             {paramIndex(0, FilterParam::Out), 0.0},
+                                                             {filterShaperIndex(0, 0), 1.0},
+                                                             {paramIndex(0, ShaperParam::Mode), mode},
+                                                             {paramIndex(0, ShaperParam::Drive), 24.0},
+                                                             {paramIndex(0, ShaperParam::Output), -6.0}});
+        const float filterAlone = peakOf(playShaped({{filterShaperIndex(0, 0), 0.0}}));
+        const double filterThird = magnitude(filterClipped, 1320.0) / magnitude(filterClipped, 440.0);
+        std::printf("      A through F1 into a hard shaper, 1320/440 Hz: %.3f; F1 sending it nothing: peak %.4f\n",
+                    filterThird, filterAlone);
+        check(filterThird > 0.15 && filterAlone == 0.0f, "a filter's output goes through a shaper it feeds");
+        // Round in a loop, F1 into S1 and S1 back into F1, the shaper driven hard and the filter resonant: what the
+        // shaper gets from the filter fades away once the note's operators have, so the note still ends.
+        {
+            playShaped({{filterShaperIndex(0, 0), 1.0},
+                        {shaperFilterIndex(0, 0), 1.0},
+                        {paramIndex(0, FilterParam::Resonance), 0.9}});
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 31, 57);
+            const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 31, 57);
+            out.noteEnds.clear();
+            runBlock({&on.header});
+            runBlocks(8);
+            runBlock({&off.header});
+            for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+                runBlock();
+            check(out.noteEnds.size() == 1 && runBlock() == 0.0f,
+                  "a filter and a shaper feeding each other in a loop end with their note");
+        }
         const clap_event_param_value_t restore[] = {
             paramEvent(paramIndex(0, OpParam::Out), 1.0),        paramEvent(shaperSendIndex(0, 0), 0.0),
             paramEvent(shaperOn, 0.0),                           paramEvent(paramIndex(0, FilterParam::Enabled), 0.0),
             paramEvent(paramIndex(0, ShaperParam::Link), 1.0),   paramEvent(paramIndex(0, ShaperParam::Drive), 6.0),
-            paramEvent(paramIndex(0, ShaperParam::Out), 0.0),   paramEvent(paramIndex(0, FilterParam::Out), 0.0)};
+            paramEvent(paramIndex(0, ShaperParam::Out), 0.0),   paramEvent(paramIndex(0, FilterParam::Out), 0.0),
+            paramEvent(sendIndex(0, 0), 0.0),                    paramEvent(filterShaperIndex(0, 0), 0.0),
+            paramEvent(shaperFilterIndex(0, 0), 0.0),            paramEvent(paramIndex(0, FilterParam::Resonance), 0.3)};
         std::vector<const clap_event_header_t *> events;
         for (const clap_event_param_value_t &ev : restore)
             events.push_back(&ev.header);

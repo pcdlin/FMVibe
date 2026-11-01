@@ -1869,7 +1869,7 @@ void run(const std::filesystem::path &dir, float scale) {
     model.ui.selectedNode = selectedBefore;
 
     // Shaper 1: switch it on with its tab, send A into it by dragging A's port, then run it onto B, into F1 and onto
-    // the OUT bus, as any node goes out. A filter can't feed a shaper, nor F2 the lower F1.
+    // the OUT bus, as any node goes out. F1 feeds it back, round in a loop, but F2 can't feed the lower F1.
     check(kNodes == kOps + 4, "the graph has six operators, two filters and two shapers");
     const int s1 = kOps + kFilters;
     click(view, nodeTab(s1));
@@ -1889,8 +1889,8 @@ void run(const std::filesystem::path &dir, float scale) {
     drag(view, portOf(layout, s1), {nodeCenter(layout, s1).x + 120.0f, kBusY}); // onto the OUT bus
     check(model.value(filterLinkIndex(0, 1)) == 0.5 && model.value(shaperModIndex(0, 1)) == 0.3 &&
               model.value(shaperFilterIndex(0, 0)) == 1.0 && model.value(shaperSendIndex(0, 0)) == 1.0 &&
-              model.value(paramIndex(0, ShaperParam::Out)) == 1.0,
-          "a filter can't feed a shaper or a lower filter, and a shaper goes out onto the bus");
+              model.value(filterShaperIndex(0, 0)) > 0.0 && model.value(paramIndex(0, ShaperParam::Out)) == 1.0,
+          "a filter feeds a shaper, though not a lower filter, and a shaper goes out onto the bus");
     view.mouseMove({400.0f, 300.0f}, {});
     check(renderer.save(view, dir / "7b-shapers.png"), "render a shaper in the graph, and its page");
     // Fed by A and going out, S1's tab (still selected) has the dot, dark on its red.
@@ -1920,6 +1920,12 @@ void run(const std::filesystem::path &dir, float scale) {
           "dragging a matrix route of a node that is off switches it on");
     model.set(matrixIndex(5, 1), 0.0);
     std::erase(model.ui.keptRoutes, matrixIndex(5, 1));
+    // A filter's row has its shapers' cells: double-clicking F2 -> S2 switches the route on, and S2 with it.
+    const int s2 = kOps + kFilters + 1;
+    doubleClick(view, gridCellCenter(kOps + 1, s2));
+    check(model.value(filterShaperIndex(1, 1)) == 1.0 && model.value(paramIndex(1, ShaperParam::Enabled)) == 1.0,
+          "the matrix routes a filter into a shaper");
+    view.undo();
     model.set(paramIndex(5, OpParam::Enabled), 0.0);
     model.ui.selectedNode = selectedThen;
     click(view, kRoutingTab);

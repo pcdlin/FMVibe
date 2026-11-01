@@ -898,8 +898,8 @@ Point loopCenter(Point node) {
     return {node.x, node.y - kNodeRadius - 9.0f};
 }
 
-// The param that sets how much `from` feeds `to`, or -1 if they can't connect. Operators feed everything; filters
-// modulate operators and feed later filters; shapers modulate operators and feed filters.
+// The param that sets how much `from` feeds `to`, or -1 if they can't connect. Every node modulates operators and
+// feeds filters and shapers, but a filter only feeds later filters, and a shaper no shaper.
 int routeParam(int from, int to) {
     if (from < kOps)
         return to < kOps            ? matrixIndex(from, to)
@@ -911,7 +911,7 @@ int routeParam(int from, int to) {
                                   : -1;
     return to < kOps            ? filterModIndex(from - kOps, to)
            : isFilterNode(to) ? filterLinkIndex(from - kOps, to - kOps) // only into later filters
-                              : -1;
+                              : filterShaperIndex(from - kOps, shaperOfNode(to));
 }
 
 // What a node puts straight out to the output.
@@ -926,10 +926,9 @@ int routeTo(int from, int to) {
     return to == kNodes ? outParam(from) : routeParam(from, to);
 }
 
-// Why `from` can't go into `to`: every node can go out.
+// Why `from` can't go into a node: only a filter into itself or an earlier filter, or a shaper into a shaper, can't.
 const char *routeRefusal(int from) {
-    return isShaperNode(from) ? "A shaper can modulate operators, feed a filter or go out"
-                              : "A filter can modulate operators, go out, or feed a later filter";
+    return isShaperNode(from) ? "A shaper can't feed itself or another shaper" : "A filter only feeds a later filter";
 }
 
 // Whether a port or arrowhead let go at `p` lands on the OUT bus.
@@ -1469,7 +1468,7 @@ void View::toggleBypass(int source, int slot) {
 }
 
 void View::connect(int from, int to) {
-    const UndoScope step(controller_); // the output a filter takes over goes in the same step
+    const UndoScope step(controller_); // the output a filter or shaper takes over goes in the same step
     const int param = routeParam(from, to);
     if (param < 0) {
         flash(routeRefusal(from));
@@ -1477,9 +1476,9 @@ void View::connect(int from, int to) {
     }
     if (value(param) > 0.0)
         return;
-    if (!isFilterNode(from) && isFilterNode(to)) {
-        // An operator or shaper that already goes to the output is moved through the filter, which goes out in its
-        // place unless its sound gets there already.
+    if (isBoxNode(to)) {
+        // A node that already goes to the output is moved through the filter or shaper, which goes out in its place
+        // unless its sound gets there already.
         const int out = outParam(from);
         const double level = value(out);
         edit(param, level > 0.0 ? level : 1.0);
@@ -1488,10 +1487,9 @@ void View::connect(int from, int to) {
             if (!boxGoesOut(to))
                 edit(outParam(to), 1.0);
         }
-        keepRoutes();
-        return;
+    } else {
+        edit(param, from == to ? 0.25 : 0.3); // modulation starts lower
     }
-    edit(param, isBoxNode(to) ? 1.0 : (from == to ? 0.25 : 0.3));
     keepRoutes();
 }
 
@@ -1528,15 +1526,23 @@ void View::reroute(int from, int to, int into) {
     controller_.layoutChanged();
 }
 
+// Filters and shapers can feed each other round in a loop, so each is looked at once.
 bool View::boxGoesOut(int node) const {
-    if (value(outParam(node)) > 0.0)
-        return true;
-    for (int filter = 0; filter < kFilters; ++filter) {
-        const int link = routeParam(node, kOps + filter); // into a later filter, or a shaper into a filter
-        if (link >= 0 && value(link) > 0.0 && nodeOn(kOps + filter) && boxGoesOut(kOps + filter))
+    std::array<bool, kNodes> seen{};
+    auto out = [&](auto &self, int box) -> bool {
+        if (seen[box])
+            return false;
+        seen[box] = true;
+        if (value(outParam(box)) > 0.0)
             return true;
-    }
-    return false;
+        for (int to = kOps; to < kNodes; ++to) {
+            const int param = to == box ? -1 : routeParam(box, to);
+            if (param >= 0 && value(param) > 0.0 && nodeOn(to) && self(self, to))
+                return true;
+        }
+        return false;
+    };
+    return out(out, node);
 }
 
 int View::rerouting() const {
@@ -1544,11 +1550,7 @@ int View::rerouting() const {
 }
 
 bool View::soundsOut(int node) const {
-    if (value(outParam(node)) <= 0.0)
-        return false;
-    return isShaperNode(node)   ? shaperHasInput(shaperOfNode(node))
-           : isFilterNode(node) ? filterHasInput(node - kOps)
-                                : true;
+    return value(outParam(node)) > 0.0 && (!isBoxNode(node) || boxHasInput(node));
 }
 
 // Operators, filters and shapers alike, whether anything goes into them or not.
@@ -1626,28 +1628,21 @@ std::vector<int> View::enabledNodes() const {
     return nodes;
 }
 
-bool View::filterHasInput(int filter) const {
-    if (!nodeOn(kOps + filter))
+// Filters and shapers can feed each other round in a loop, so each is looked at once.
+bool View::boxHasInput(int node) const {
+    std::array<bool, kNodes> seen{};
+    auto fed = [&](auto &self, int box) -> bool {
+        if (seen[box] || !nodeOn(box))
+            return false;
+        seen[box] = true;
+        for (int from = 0; from < kNodes; ++from) {
+            const int param = from == box ? -1 : routeParam(from, box);
+            if (param >= 0 && value(param) > 0.0 && nodeOn(from) && (from < kOps || self(self, from)))
+                return true;
+        }
         return false;
-    for (int op = 0; op < kOps; ++op)
-        if (nodeOn(op) && value(sendIndex(op, filter)) > 0.0)
-            return true;
-    for (int from = 0; from < filter; ++from)
-        if (value(filterLinkIndex(from, filter)) > 0.0 && filterHasInput(from))
-            return true;
-    for (int shaper = 0; shaper < kShapers; ++shaper)
-        if (value(shaperFilterIndex(shaper, filter)) > 0.0 && shaperHasInput(shaper))
-            return true;
-    return false;
-}
-
-bool View::shaperHasInput(int shaper) const {
-    if (!nodeOn(kOps + kFilters + shaper))
-        return false;
-    for (int op = 0; op < kOps; ++op)
-        if (nodeOn(op) && value(shaperSendIndex(op, shaper)) > 0.0)
-            return true;
-    return false;
+    };
+    return fed(fed, node);
 }
 
 bool View::reachesOut(int node) const {
@@ -3837,8 +3832,8 @@ void View::paintMatrixLabels(Canvas &c) {
     auto nameColor = [&](int node) {
         if (hover_ && hover_->kind == Kind::MatrixLabel && hover_->a == node)
             return kText;
-        const Color color = isFilterNode(node) ? kFilterColor : (node == selected ? kText : kDim);
-        return nodeOn(node) ? color : (isFilterNode(node) ? color.alpha(0.35f) : kFaint);
+        const Color color = isBoxNode(node) ? nodeColor(node) : (node == selected ? kText : kDim);
+        return nodeOn(node) ? color : (isBoxNode(node) ? color.alpha(0.35f) : kFaint);
     };
     const Color plate = nodeColor(selected).alpha(nodeOn(selected) ? 0.22f : 0.1f);
     const Rect first = gridCell(selected, 0), top = gridCell(0, selected); // the first cells of its row and column
@@ -5001,20 +4996,7 @@ void View::paintInspector(Canvas &c) {
     if (hasSlope(type))
         summary += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
                    " dB";
-    std::string inputs;
-    for (int from = 0; from < kNodes; ++from) {
-        const int param = routeParam(from, node);
-        if (from != node && nodeOn(from) && param >= 0 && value(param) > 0.0)
-            inputs += (inputs.empty() ? "" : ", ") + std::string(kNodeNames[from]);
-    }
-    summary += dot + (inputs.empty() ? std::string("no input yet") : "from " + inputs);
-    std::string modulates;
-    for (int to = 0; to < kOps; ++to)
-        if (nodeOn(to) && value(filterModIndex(filter, to)) > 0.0)
-            modulates += (modulates.empty() ? "" : ", ") + std::string(kNodeNames[to]);
-    if (!modulates.empty())
-        summary += dot + std::string("mods ") + modulates;
-    c.text(summaryRect, summary, 11.0f, kDim, Align::Left);
+    c.text(summaryRect, summary + boxRoutes(node), 11.0f, kDim, Align::Left);
     // A voice filter tracks the newest voice's note; with none, the curve is back at the knob's C4.
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
                         paramIndex(filter, FilterParam::Slope), paramIndex(filter, FilterParam::Cutoff),
@@ -5024,31 +5006,34 @@ void View::paintInspector(Canvas &c) {
     c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, "INPUTS", 10.5f, kFaint, Align::Left, true);
 }
 
-void View::paintShaperPage(Canvas &c, int shaper, Rect summaryRect) {
-    const char *dot = "  \xC2\xB7  ";
-    auto names = [&](auto &&routed, int first, int count) {
-        std::string list;
-        for (int node = first; node < first + count; ++node)
-            if (nodeOn(node) && routed(node))
-                list += (list.empty() ? "" : ", ") + std::string(kNodeNames[node]);
-        return list;
-    };
-    const std::string inputs =
-        names([&](int op) { return value(shaperSendIndex(op, shaper)) > 0.0; }, 0, kOps);
-    const std::string feeds =
-        names([&](int filter) { return value(shaperFilterIndex(shaper, filter - kOps)) > 0.0; }, kOps, kFilters);
-    const std::string modulates = names([&](int op) { return value(shaperModIndex(shaper, op)) > 0.0; }, 0, kOps);
-    std::string summary = "Shaper " + std::to_string(shaper + 1) + dot +
-                          clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode))));
-    summary += dot + (inputs.empty() ? std::string("no input yet") : "from " + inputs);
-    std::string to = feeds; // the filters, then the output
-    if (value(paramIndex(shaper, ShaperParam::Out)) > 0.0)
-        to += (to.empty() ? "" : ", ") + std::string("out");
+// A filter's or shaper's routes, for its page's summary: what goes into it, the filters and shapers it feeds and the
+// output, and the operators it modulates.
+std::string View::boxRoutes(int node) const {
+    const std::string dot = "  \xC2\xB7  ";
+    std::string from, to, mods;
+    auto name = [](std::string &list, const char *node) { list += (list.empty() ? "" : ", ") + std::string(node); };
+    for (int other = 0; other < kNodes; ++other) {
+        if (other == node || !nodeOn(other))
+            continue;
+        if (const int in = routeParam(other, node); in >= 0 && value(in) > 0.0)
+            name(from, kNodeNames[other]);
+        if (const int out = routeParam(node, other); out >= 0 && value(out) > 0.0)
+            name(other < kOps ? mods : to, kNodeNames[other]);
+    }
+    if (value(outParam(node)) > 0.0)
+        name(to, "out");
+    std::string text = dot + (from.empty() ? std::string("no input yet") : "from " + from);
     if (!to.empty())
-        summary += dot + std::string("to ") + to;
-    if (!modulates.empty())
-        summary += dot + std::string("mods ") + modulates;
-    c.text(summaryRect, summary, 11.0f, kDim, Align::Left);
+        text += dot + "to " + to;
+    if (!mods.empty())
+        text += dot + "mods " + mods;
+    return text;
+}
+
+void View::paintShaperPage(Canvas &c, int shaper, Rect summaryRect) {
+    const std::string summary = "Shaper " + std::to_string(shaper + 1) + "  \xC2\xB7  " +
+                                clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode))));
+    c.text(summaryRect, summary + boxRoutes(kOps + kFilters + shaper), 11.0f, kDim, Align::Left);
     c.fillRect(kShaperDisplay, kDisplayColor, 6.0f);
     paintShaperCurve(c, kShaperDisplay, kFxSlots + shaper);
     c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, "INPUTS", 10.5f, kFaint, Align::Left, true);
@@ -5334,34 +5319,24 @@ void View::paintNode(Canvas &c, const Widget &w) {
     const bool selected = controller_.layout().selectedNode == w.a;
     const Point center = w.rect.center();
 
-    if (isFilterNode(w.a)) {
-        const int filter = w.a - kOps;
-        const bool live = filterHasInput(filter);
+    if (isBoxNode(w.a)) { // a filter's box with its type, or a shaper's, squarer, with its curve's name
+        const bool shaper = isShaperNode(w.a);
+        const float corner = shaper ? 3.0f : 8.0f;
+        const Color color = nodeColor(w.a);
+        const bool live = boxHasInput(w.a);
         if (live && telemetry_.voices > 0 && reachesOut(w.a))
-            c.fillRect(w.rect.inset(-6.0f), kFilterColor.alpha(0.12f), 12.0f);
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 8.0f);
-        c.strokeRect(w.rect, live ? kFilterColor : kFaint, selected ? 2.5f : 1.5f, 8.0f);
+            c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f), corner + 4.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
+        c.strokeRect(w.rect, live ? color : kFaint, selected ? 2.5f : 1.5f, corner);
         if (selected)
-            c.strokeRect(w.rect.inset(-4.5f), kText.alpha(0.5f), 1.0f, 11.0f);
+            c.strokeRect(w.rect.inset(-4.5f), kText.alpha(0.5f), 1.0f, corner + 3.0f);
         c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], 12.0f, kText, Align::Center, true);
-        const auto type = static_cast<FilterType>(std::lround(value(paramIndex(filter, FilterParam::Type))));
-        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f},
-               filterLabel(type, value(paramIndex(filter, FilterParam::Slope))), 10.5f, kDim);
-        return;
-    }
-
-    if (isShaperNode(w.a)) { // like a filter's box, squarer, with its curve's name
-        const int shaper = shaperOfNode(w.a);
-        const bool live = shaperHasInput(shaper);
-        if (live && telemetry_.voices > 0 && reachesOut(w.a))
-            c.fillRect(w.rect.inset(-6.0f), kShaperColor.alpha(0.12f), 7.0f);
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 3.0f);
-        c.strokeRect(w.rect, live ? kShaperColor : kFaint, selected ? 2.5f : 1.5f, 3.0f);
-        if (selected)
-            c.strokeRect(w.rect.inset(-4.5f), kText.alpha(0.5f), 1.0f, 6.0f);
-        c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], 12.0f, kText, Align::Center, true);
-        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f},
-               clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode)))), 10.5f, kDim);
+        const int box = w.a - kOps; // the filter, or past them the shaper
+        const std::string kind =
+            shaper ? clipModeName(clipMode(value(paramIndex(shaperOfNode(w.a), ShaperParam::Mode))))
+                   : filterLabel(static_cast<FilterType>(std::lround(value(paramIndex(box, FilterParam::Type)))),
+                                 value(paramIndex(box, FilterParam::Slope)));
+        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, 10.5f, kDim);
         return;
     }
 

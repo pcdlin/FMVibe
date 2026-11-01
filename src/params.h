@@ -20,7 +20,7 @@ constexpr int kFirstSlots = 4; // the slots sources had at first; see idOfIndex(
 constexpr int kFilters = 2;
 // Each filter can feed every later one (see filterLinkIndex()).
 constexpr int kFilterLinks = kFilters * (kFilters - 1) / 2;
-constexpr int kShapers = 2; // per-voice waveshapers, which feed the filters and modulate operators
+constexpr int kShapers = 2; // per-voice waveshapers, which feed and are fed by the filters and modulate operators
 constexpr int kFxSlots = 16; // places in the effects chain; their order is a param
 constexpr int kMaxShapePoints = 16; // per freeform LFO
 
@@ -77,10 +77,24 @@ enum class OpParam {
     Count = ShaperSends + kShapers
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
-enum class FilterParam { Type, Cutoff, Resonance, KeyTrack, Drive, Out, Enabled, Slope, Count };
+// Shapers: how much of the filter goes into each shaper (see filterShaperIndex()). Stored in projects by number: only
+// append.
+enum class FilterParam {
+    Type,
+    Cutoff,
+    Resonance,
+    KeyTrack,
+    Drive,
+    Out,
+    Enabled,
+    Slope,
+    Shapers,
+    Count = Shapers + kShapers
+};
 // A shaper in each voice: the shaper effect's curves (see ClipMode), drive, output, mix and link,
 // and a drawn curve of its own for Custom (see shaperCurveCountIndex()); shaperParams() finds the fields of either.
-// The operators send into it; it feeds the filters (Filters, one per filter), modulates operators like an
+// The operators and the filters (see filterShaperIndex()) send into it; it feeds the filters (Filters, one per
+// filter), modulates operators like an
 // operator does (Mods, one per operator) and goes straight to the output by Out, like an operator (Output is
 // its level after the curve). Stored in projects by number: only append.
 enum class ShaperParam {
@@ -474,10 +488,11 @@ constexpr int paramIndex(int slot, FxParam p) { return kFxBase + slot * kFxParam
 constexpr int paramIndex(int shaper, ShaperParam p) {
     return kShaperBase + shaper * kShaperParamCount + static_cast<int>(p);
 }
-// How much of operator `op` goes into `shaper`, of `shaper` into `filter`, and how strongly `shaper` modulates
-// operator `to`.
+// How much of operator `op` goes into `shaper`, of `shaper` into `filter` and of `filter` into `shaper`, and how
+// strongly `shaper` modulates operator `to`.
 constexpr int shaperSendIndex(int op, int shaper) { return paramIndex(op, OpParam::ShaperSends) + shaper; }
 constexpr int shaperFilterIndex(int shaper, int filter) { return paramIndex(shaper, ShaperParam::Filters) + filter; }
+constexpr int filterShaperIndex(int filter, int shaper) { return paramIndex(filter, FilterParam::Shapers) + shaper; }
 constexpr int shaperModIndex(int shaper, int to) { return paramIndex(shaper, ShaperParam::Mods) + to; }
 constexpr int shaperCurveCountIndex(int shaper) { return kShaperCurveBase + shaper * kShapeParamCount; }
 // The source a param belongs to, and which of its fields it is; -1 / Count for other params.

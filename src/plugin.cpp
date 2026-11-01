@@ -337,9 +337,9 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
              paramIndex(op, OpParam::Sustain), paramIndex(op, OpParam::Release)});
     }
 
-    for (int filter = 0; filter < kFilters; ++filter) {
+    for (int filter = 0; filter < kFilters; ++filter) { // its own fields; what it feeds goes on the Matrix pages
         std::vector<int> fields;
-        for (int f = 0; f < kFilterParamCount; ++f)
+        for (int f = 0; f < static_cast<int>(FilterParam::Shapers); ++f)
             fields.push_back(paramIndex(filter, FilterParam::Type) + f);
         add("Filters", "Filter " + std::to_string(filter + 1), fields);
     }
@@ -382,6 +382,8 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
             into.push_back(shaperSendIndex(op, shaper));
             mods.push_back(shaperModIndex(shaper, op));
         }
+        for (int filter = 0; filter < kFilters; ++filter) // and from the filters
+            into.push_back(filterShaperIndex(filter, shaper));
         add("Matrix", "Into S" + std::to_string(shaper + 1), into);
         add("Matrix", "S" + std::to_string(shaper + 1) + " modulates", mods);
     }
