@@ -161,7 +161,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 More checks:
 
 - **clap-validator**: the free-audio conformance test suite, run with `.\build.ps1 -Validate`.
-- **In Bitwig Studio**: install the plugin as the [README](README.md#install-in-a-host) describes; Bitwig finds it
+- **In Bitwig Studio**: install the plugin as the [README](README.md#build) describes; Bitwig finds it
   in the per-user CLAP folder.
 
 ## Browser demo
