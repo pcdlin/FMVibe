@@ -15,7 +15,7 @@ const octaveLabel = document.getElementById('octave');
 const ctx = canvas.getContext('2d');
 const draw = createCanvas2d(ctx);
 
-const CURSORS = ['default', 'pointer', 'ns-resize', 'ew-resize', 'move']; // gui::CursorKind
+const CURSORS = ['default', 'pointer', 'ns-resize', 'ew-resize', 'move', 'text']; // gui::CursorKind
 const TYPING_KEYS = { // View::Key
   Enter: 0, NumpadEnter: 0, Escape: 1, Backspace: 2, Delete: 3, ArrowLeft: 4, ArrowRight: 5, Home: 6, End: 7,
   ArrowUp: 9, ArrowDown: 10,
@@ -360,13 +360,15 @@ window.addEventListener('keydown', (e) => {
     closeMenu();
     return;
   }
-  // While a value is typed, every key goes to it.
+  // While a value is typed, every key goes to it; copying, cutting and pasting come as their own events.
   if (ui._ui_typing()) {
+    if (ctrlOf(e) && !e.altKey && (e.code === 'KeyC' || e.code === 'KeyX' || e.code === 'KeyV'))
+      return;
     e.preventDefault();
     if (ctrlOf(e) && e.code === 'KeyA')
-      ui._ui_type_key(SELECT_ALL);
+      ui._ui_type_key(SELECT_ALL, 0);
     else if (e.code in TYPING_KEYS || e.key in TYPING_KEYS)
-      ui._ui_type_key(TYPING_KEYS[e.code] ?? TYPING_KEYS[e.key]);
+      ui._ui_type_key(TYPING_KEYS[e.code] ?? TYPING_KEYS[e.key], e.shiftKey ? 1 : 0);
     else if (!ctrlOf(e) && !e.altKey && [...e.key].length === 1)
       ui._ui_type_char(e.key.codePointAt(0));
     afterInput();
@@ -399,6 +401,27 @@ window.addEventListener('keydown', (e) => {
       showOctave();
     }
   }
+});
+
+// The clipboard, while a value or a search is typed.
+for (const kind of ['copy', 'cut']) {
+  document.addEventListener(kind, (e) => {
+    if (!ui._ui_typing())
+      return;
+    e.preventDefault();
+    const text = ui.UTF8ToString(ui._ui_copy(kind === 'cut' ? 1 : 0));
+    if (text)
+      e.clipboardData.setData('text/plain', text);
+    afterInput();
+  });
+}
+document.addEventListener('paste', (e) => {
+  if (!ui._ui_typing())
+    return;
+  e.preventDefault();
+  for (const ch of e.clipboardData.getData('text/plain').replace(/\s/g, ' '))
+    ui._ui_type_char(ch.codePointAt(0));
+  afterInput();
 });
 
 window.addEventListener('keyup', (e) => {

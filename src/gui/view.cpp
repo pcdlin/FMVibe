@@ -3516,6 +3516,12 @@ Rect browserClear(Rect panel) {
     const Rect field = browserSearch(panel);
     return {field.right() - 22.0f, field.y + 3.0f, 18.0f, 18.0f};
 }
+// Where its text goes: after the magnifier, short of the x.
+Rect browserTyped(Rect panel) {
+    const Rect field = browserSearch(panel);
+    return {field.x + 26.0f, field.y, field.w - 26.0f - 24.0f, field.h};
+}
+constexpr size_t kSearchLength = 40; // the most a search holds
 // ASCII letters in lower case, for a search that doesn't mind case.
 std::string lowered(std::string_view text) {
     std::string out(text);
@@ -3583,19 +3589,68 @@ void View::searchChanged() {
     browserScroll_ = 0;
 }
 
-void View::browserChar(char32_t c) {
-    if (confirm_ >= 0 || c < 0x20 || c > 0x7E || browserSearch_.size() >= 40 ||
-        (c == ' ' && browserSearch_.empty()))
+std::pair<size_t, size_t> View::searchSelection() const {
+    return std::minmax(searchCaret_, searchAnchor_);
+}
+
+void View::eraseSearch(size_t from, size_t to) {
+    browserSearch_.erase(from, to - from);
+    searchCaret_ = searchAnchor_ = from;
+}
+
+// Over the selection; line breaks and tabs as spaces, the rest past printable ASCII left out, as much as fits.
+void View::insertSearch(std::string_view text) {
+    std::string clean;
+    for (char ch : text)
+        if (ch == '\n' || ch == '\r' || ch == '\t')
+            clean += ' ';
+        else if (ch >= 0x20 && ch <= 0x7E)
+            clean += ch;
+    const auto [from, to] = searchSelection();
+    if (clean.empty() && from == to)
         return;
-    browserSearch_ += static_cast<char>(c);
+    eraseSearch(from, to);
+    clean.resize(std::min(clean.size(), kSearchLength - std::min(browserSearch_.size(), kSearchLength)));
+    browserSearch_.insert(from, clean);
+    searchCaret_ = searchAnchor_ = from + clean.size();
     caretTicks_ = 0;
     searchChanged();
 }
 
-void View::browserKey(Key key) {
+void View::clearSearch() {
+    browserSearch_.clear();
+    searchCaret_ = searchAnchor_ = 0;
+    searchShift_ = 0.0f;
+    searchChanged();
+}
+
+// The place between characters nearest `x`; before the search was painted with its text, its end.
+size_t View::searchStopAt(float x) const {
+    if (searchStops_.size() != browserSearch_.size() + 1)
+        return browserSearch_.size();
+    size_t best = 0;
+    for (size_t i = 1; i < searchStops_.size(); ++i)
+        if (std::abs(searchStops_[i] - x) < std::abs(searchStops_[best] - x))
+            best = i;
+    return best;
+}
+
+void View::browserChar(char32_t c) {
+    if (confirm_ < 0 && c >= 0x20 && c <= 0x7E)
+        insertSearch(std::string(1, static_cast<char>(c)));
+}
+
+void View::browserKey(Key key, bool shift) {
     if (confirm_ >= 0)
         return;
     caretTicks_ = 0;
+    const auto [from, to] = searchSelection();
+    // The caret to `at`; with Shift the selection grows or shrinks with it, without it there is none.
+    auto moveTo = [&](size_t at) {
+        searchCaret_ = at;
+        if (!shift)
+            searchAnchor_ = at;
+    };
     switch (key) {
     case Key::Enter:
         if (browserPick_ >= 0)
@@ -3606,16 +3661,38 @@ void View::browserKey(Key key) {
             browserOpen_ = false;
             hover_.reset();
         } else {
-            browserSearch_.clear();
-            searchChanged();
+            clearSearch();
             revealBrowserRow(controller_.presetIndex(), true);
         }
         break;
-    case Key::Backspace:
-        if (!browserSearch_.empty()) {
-            browserSearch_.pop_back();
+    case Key::Backspace: // the selection, or the character before the caret
+    case Key::Delete:    // or after it
+        if (from != to) {
+            eraseSearch(from, to);
+            searchChanged();
+        } else if (key == Key::Backspace && searchCaret_ > 0) {
+            eraseSearch(searchCaret_ - 1, searchCaret_);
+            searchChanged();
+        } else if (key == Key::Delete && searchCaret_ < browserSearch_.size()) {
+            eraseSearch(searchCaret_, searchCaret_ + 1);
             searchChanged();
         }
+        break;
+    case Key::Left: // without Shift, from a selection to its start
+        moveTo(from != to && !shift ? from : (searchCaret_ > 0 ? searchCaret_ - 1 : 0));
+        break;
+    case Key::Right:
+        moveTo(from != to && !shift ? to : std::min(searchCaret_ + 1, browserSearch_.size()));
+        break;
+    case Key::Home:
+        moveTo(0);
+        break;
+    case Key::End:
+        moveTo(browserSearch_.size());
+        break;
+    case Key::SelectAll:
+        searchAnchor_ = 0;
+        searchCaret_ = browserSearch_.size();
         break;
     case Key::Up:
     case Key::Down: { // from the one picked, or the preset loaded, to the next one listed that way
@@ -3625,8 +3702,8 @@ void View::browserKey(Key key) {
                 listed.push_back(row.first);
         if (listed.empty())
             break;
-        const int from = browserPick_ >= 0 ? browserPick_ : controller_.presetIndex();
-        const auto at = std::find(listed.begin(), listed.end(), from);
+        const int start = browserPick_ >= 0 ? browserPick_ : controller_.presetIndex();
+        const auto at = std::find(listed.begin(), listed.end(), start);
         const int step = key == Key::Down ? 1 : -1;
         const int place = at == listed.end() ? (step > 0 ? 0 : static_cast<int>(listed.size()) - 1)
                                              : std::clamp(static_cast<int>(at - listed.begin()) + step, 0,
@@ -3635,8 +3712,6 @@ void View::browserKey(Key key) {
         revealBrowserRow(browserPick_, false);
         break;
     }
-    default:
-        break;
     }
 }
 
@@ -3662,6 +3737,7 @@ std::vector<View::Widget> View::browserWidgets() const {
                 rows[row].first);
     add(Kind::BrowserClose, browserClose(panel));
     add(Kind::BrowserFolder, browserFolder(panel));
+    add(Kind::BrowserSearch, browserSearch(panel));
     if (!browserSearch_.empty())
         add(Kind::BrowserClear, browserClear(panel));
     return list;
@@ -3684,19 +3760,42 @@ void View::paintBrowser(Canvas &c) {
     }
     c.text({panel.x + 104.0f, panel.y + 16.0f, search.x - 8.0f - panel.x - 104.0f, 20.0f}, counted, 10.5f, kFaint,
            Align::Left);
-    // The search field: a magnifier, then what is typed with the caret after it, or how to search.
+    // The search field: a magnifier, then what is typed, its selection behind it and the caret in it, or how to
+    // search. Text too long for it scrolls, so the caret stays in sight; where each place between its characters
+    // lands is kept for the mouse.
     c.fillRect(search, kBackground, 5.0f);
     c.strokeRect(search, browserSearch_.empty() ? kBorder : kAccent, 1.0f, 5.0f);
     const Point lens{search.x + 13.0f, search.center().y - 1.0f};
     c.strokeCircle(lens, 4.0f, kDim, 1.3f);
     c.line({lens.x + 3.0f, lens.y + 3.0f}, {lens.x + 6.5f, lens.y + 6.5f}, kDim, 1.5f);
-    const Rect typed{search.x + 26.0f, search.y, search.w - 26.0f - 24.0f, search.h};
-    if (browserSearch_.empty())
+    const Rect typed = browserTyped(panel);
+    constexpr float kSearchSize = 11.0f;
+    std::vector<float> stops;
+    for (size_t i = 0; i <= browserSearch_.size(); ++i)
+        stops.push_back(c.textWidth(std::string_view(browserSearch_).substr(0, i), kSearchSize));
+    searchCaret_ = std::min(searchCaret_, browserSearch_.size());
+    searchAnchor_ = std::min(searchAnchor_, browserSearch_.size());
+    const float fits = typed.w - 2.0f, caretAt = stops[searchCaret_];
+    if (caretAt - searchShift_ > fits)
+        searchShift_ = caretAt - fits;
+    searchShift_ = std::clamp(std::min(searchShift_, caretAt), 0.0f, std::max(stops.back() - fits, 0.0f));
+    for (float &stop : stops)
+        stop += typed.x - searchShift_;
+    searchStops_ = stops;
+    const auto [from, to] = searchSelection();
+    if (browserSearch_.empty()) {
         c.text(typed, tr(Str::PresetsSearchHint), 10.5f, kFaint, Align::Left);
-    else
-        c.text(typed, browserSearch_, 11.0f, kText, Align::Left);
-    if (confirm_ < 0 && caretTicks_ / 32 % 2 == 0) {
-        const float caret = std::min(typed.x + c.textWidth(browserSearch_, 11.0f) + 1.0f, typed.right());
+    } else {
+        c.pushClip(typed);
+        if (from != to)
+            c.fillRect({stops[from], search.y + 5.0f, stops[to] - stops[from], search.h - 10.0f}, kAccent.alpha(0.35f),
+                       2.0f);
+        c.text({stops[0], typed.y, stops.back() - stops[0] + 20.0f, typed.h}, browserSearch_, kSearchSize, kText,
+               Align::Left);
+        c.popClip();
+    }
+    if (confirm_ < 0 && from == to && caretTicks_ / 32 % 2 == 0) {
+        const float caret = std::min(stops[searchCaret_] + 0.5f, typed.right());
         c.line({caret, search.y + 5.0f}, {caret, search.bottom() - 5.0f}, kText, 1.0f);
     }
     c.line({panel.x + 1.0f, panel.y + 50.5f}, {panel.right() - 1.0f, panel.y + 50.5f}, kBorder, 1.0f);
@@ -6481,6 +6580,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
     }
     case Kind::ConfirmBackdrop:
     case Kind::BrowserBackdrop:
+    case Kind::BrowserSearch: // drawn with the browser
         break;
     case Kind::PresetNameBox: {
         // The preset's name, a dot while it has changed since it was loaded, and a chevron for the browser.
@@ -6990,6 +7090,10 @@ void View::applyDrag(Point p) {
         set(w.param, drag_.fine ? drag_.startValue + (drag_.start.y - p.y) / w.rect.h * 0.1
                                 : (w.rect.bottom() - p.y) / w.rect.h);
         break;
+    case DragKind::TextSelect:
+        searchCaret_ = searchStopAt(p.x);
+        caretTicks_ = 0;
+        break;
     case DragKind::Glow:
         glowDragged_ = std::clamp(drag_.fine ? static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / w.rect.w * 0.1f
                                              : (p.x - w.rect.x) / w.rect.w,
@@ -7446,8 +7550,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::PresetNameBox: {
         controller_.rescanPresets();
         browserOpen_ = true;
-        browserSearch_.clear();
-        browserPick_ = -1;
+        clearSearch();
         caretTicks_ = 0;
         revealBrowserRow(controller_.presetIndex(), true); // the current preset about in the middle
         hover_.reset();
@@ -7468,10 +7571,16 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.openPresetFolder();
         break;
     case Kind::BrowserClear:
-        browserSearch_.clear();
-        searchChanged();
+        clearSearch();
         revealBrowserRow(controller_.presetIndex(), true);
         hover_.reset();
+        break;
+    case Kind::BrowserSearch: // the caret where it is clicked, and a drag selects; with Shift, from where it was
+        searchCaret_ = searchStopAt(p.x);
+        if (!mods.shift)
+            searchAnchor_ = searchCaret_;
+        caretTicks_ = 0;
+        drag_.kind = DragKind::TextSelect;
         break;
     case Kind::ConfirmBackdrop:
         if (w.a == 0) { // a click around the dialog cancels it
@@ -7719,6 +7828,7 @@ void View::mouseUp(Point p, Modifiers) {
         break;
     case DragKind::Scroll:
     case DragKind::SlotScroll:
+    case DragKind::TextSelect:
         break;
     case DragKind::None:
         break;
@@ -7751,6 +7861,18 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && hit->kind == Kind::MacroName) {
         startTyping(*hit);
+        return;
+    }
+    if (hit && hit->kind == Kind::BrowserSearch) { // the word there, up to the spaces either side
+        const size_t at = searchStopAt(p.x);
+        size_t from = at, to = at;
+        while (from > 0 && browserSearch_[from - 1] != ' ')
+            --from;
+        while (to < browserSearch_.size() && browserSearch_[to] != ' ')
+            ++to;
+        searchAnchor_ = from;
+        searchCaret_ = to;
+        caretTicks_ = 0;
         return;
     }
     if (hit && hit->kind == Kind::PartialArea) { // that bar to nothing
@@ -8094,9 +8216,9 @@ void View::typeChar(char32_t c) {
     caretTicks_ = 0;
 }
 
-void View::typeKey(Key key) {
+void View::typeKey(Key key, bool shift) {
     if (!typing_ && browserOpen_)
-        browserKey(key);
+        browserKey(key, shift);
     if (!typing_)
         return;
     Typing &t = *typing_;
@@ -8140,6 +8262,39 @@ void View::typeKey(Key key) {
         return;
     }
     t.selected = false;
+}
+
+std::string View::copyText(bool cut) {
+    if (typing_) { // all of a typed value, while all of it is selected
+        Typing &t = *typing_;
+        if (!t.selected)
+            return {};
+        std::string text = t.text;
+        if (cut) {
+            t.text.clear();
+            t.caret = 0;
+            t.selected = false;
+        }
+        return text;
+    }
+    if (!browserOpen_ || confirm_ >= 0)
+        return {};
+    const auto [from, to] = searchSelection();
+    std::string text = browserSearch_.substr(from, to - from);
+    if (cut && from != to) {
+        eraseSearch(from, to);
+        searchChanged();
+    }
+    return text;
+}
+
+void View::pasteText(std::string_view text) {
+    if (typing_) {
+        for (char ch : text)
+            typeChar(ch == '\n' || ch == '\r' || ch == '\t' ? U' ' : static_cast<char32_t>(static_cast<unsigned char>(ch)));
+    } else if (browserOpen_ && confirm_ < 0) {
+        insertSearch(text);
+    }
 }
 
 void View::endTyping(bool commit) {
@@ -8199,6 +8354,8 @@ CursorKind View::cursor() const {
     case Kind::ConfirmBackdrop:
     case Kind::BrowserBackdrop:
         return CursorKind::Arrow;
+    case Kind::BrowserSearch:
+        return CursorKind::Text;
     case Kind::SlotBar:
         return CursorKind::Horizontal;
     case Kind::Node:

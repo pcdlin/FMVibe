@@ -578,7 +578,12 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     beside the title says how many match. The first one found is picked (outlined); Up and Down pick another
     from the list (from the preset loaded, before anything is picked), and Enter loads the one picked. Escape, or
     the × in the search, empties it; Escape with nothing typed closes the browser. The search starts empty each
-    time the browser opens.
+    time the browser opens. It edits like a text field: Left and Right move the caret, Home and End jump to the
+    ends, and with Shift they select; a click puts the caret there, a drag or a Shift+click selects, a
+    double-click picks a word, and Ctrl+A selects it all. Typing replaces the selection, Backspace and Delete
+    take it out, and Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (line breaks pasted as spaces, up to 40
+    characters in all). A search longer than the field scrolls to keep the caret in sight. A value typed into a
+    knob copies and pastes too, while all of it is selected.
   - **Init** sets every param and the routing layout back to their defaults (the zoom stays). **Load** and
     **Save** read and write a `.fmv` file through the standard file dialog, which starts in the preset folder;
     Save suggests the current preset's name. The file holds the same data as the host's saved state, apart from

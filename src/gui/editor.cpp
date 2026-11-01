@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -89,6 +90,44 @@ std::wstring widen(const std::string &utf8) {
                                            static_cast<int>(wide.size()));
     wide.resize(std::max(length, 0));
     return wide;
+}
+
+// Text onto the clipboard, and what it holds, as UTF-8.
+void putOnClipboard(HWND owner, const std::string &utf8) {
+    if (utf8.empty() || !OpenClipboard(owner))
+        return;
+    EmptyClipboard();
+    const std::wstring wide = widen(utf8);
+    if (HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, (wide.size() + 1) * sizeof(wchar_t))) {
+        if (void *to = GlobalLock(memory)) {
+            std::memcpy(to, wide.c_str(), (wide.size() + 1) * sizeof(wchar_t));
+            GlobalUnlock(memory);
+            if (!SetClipboardData(CF_UNICODETEXT, memory))
+                GlobalFree(memory);
+        } else {
+            GlobalFree(memory);
+        }
+    }
+    CloseClipboard();
+}
+
+std::string clipboardText(HWND owner) {
+    std::string utf8;
+    if (!OpenClipboard(owner))
+        return utf8;
+    if (HANDLE memory = GetClipboardData(CF_UNICODETEXT)) {
+        if (const auto *wide = static_cast<const wchar_t *>(GlobalLock(memory))) {
+            const int length = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+            if (length > 1) {
+                utf8.resize(length);
+                WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8.data(), length, nullptr, nullptr);
+                utf8.resize(length - 1); // without the NUL
+            }
+            GlobalUnlock(memory);
+        }
+    }
+    CloseClipboard();
+    return utf8;
 }
 
 Modifiers modifiers() {
@@ -377,6 +416,9 @@ void Editor::updateCursor() {
     case CursorKind::Move:
         id = IDC_SIZEALL;
         break;
+    case CursorKind::Text:
+        id = IDC_IBEAM;
+        break;
     }
     SetCursor(LoadCursorW(nullptr, id));
 }
@@ -385,9 +427,18 @@ void Editor::updateCursor() {
 // passes them on.
 bool Editor::key(WPARAM key, LPARAM flags) {
     const bool ctrl = GetKeyState(VK_CONTROL) < 0;
+    const bool shift = GetKeyState(VK_SHIFT) < 0;
     if (view_.typing()) {
         if (ctrl && key == 'A') {
             view_.typeKey(View::Key::SelectAll);
+            return true;
+        }
+        if (ctrl && (key == 'C' || key == 'X')) {
+            putOnClipboard(hwnd_, view_.copyText(key == 'X'));
+            return true;
+        }
+        if (ctrl && key == 'V') {
+            view_.pasteText(clipboardText(hwnd_));
             return true;
         }
         switch (key) {
@@ -404,16 +455,16 @@ bool Editor::key(WPARAM key, LPARAM flags) {
             view_.typeKey(View::Key::Delete);
             return true;
         case VK_LEFT:
-            view_.typeKey(View::Key::Left);
+            view_.typeKey(View::Key::Left, shift);
             return true;
         case VK_RIGHT:
-            view_.typeKey(View::Key::Right);
+            view_.typeKey(View::Key::Right, shift);
             return true;
         case VK_HOME:
-            view_.typeKey(View::Key::Home);
+            view_.typeKey(View::Key::Home, shift);
             return true;
         case VK_END:
-            view_.typeKey(View::Key::End);
+            view_.typeKey(View::Key::End, shift);
             return true;
         case VK_UP:
             view_.typeKey(View::Key::Up);

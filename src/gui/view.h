@@ -17,7 +17,7 @@ struct Modifiers {
     bool alt = false;
 };
 
-enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move };
+enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move, Text };
 
 struct MenuItem {
     int command = 0; // 0 is a separator
@@ -68,7 +68,13 @@ public:
     enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down };
     bool typing() const { return typing_.has_value() || browserOpen_; }
     void typeChar(char32_t c);
-    void typeKey(Key key);
+    // Shift with Left, Right, Home and End extends the browser search's selection.
+    void typeKey(Key key, bool shift = false);
+    // The clipboard, which the window keeps: what Ctrl+C (or with `cut`, Ctrl+X) takes from what is typed, the
+    // search's selection or a typed value's while all of it is selected, and what Ctrl+V puts in its place (line
+    // breaks and tabs as spaces, other characters past printable ASCII left out).
+    std::string copyText(bool cut);
+    void pasteText(std::string_view text);
     // Commits the value typed, if it reads as one, or drops it.
     void endTyping(bool commit);
 
@@ -151,6 +157,7 @@ private:
         BrowserRow,   // a = preset index: loads it
         BrowserClose,
         BrowserFolder, // opens the preset folder
+        BrowserSearch, // the search field: click to put the caret there, drag to select, double-click for a word
         BrowserClear, // the x in the search field: empties it
         SettingsButton, // the cog next to the preset buttons: opens the settings dialog
         ConfirmBackdrop, // a = 1 on the dialog asking before Init or Load, 0 around it (a click there cancels)
@@ -201,6 +208,7 @@ private:
         BendWheel,
         SlotScroll,
         Glow,
+        TextSelect, // across the browser's search
     };
 
     struct Drag {
@@ -522,8 +530,15 @@ private:
     // The browser takes the keyboard while it is open: what is typed goes into its search, Up and Down pick a
     // preset from the list, Enter loads it, and Escape empties the search, or then closes the browser.
     void browserChar(char32_t c);
-    void browserKey(Key key);
+    void browserKey(Key key, bool shift);
     void searchChanged();
+    // Editing the search: its selection (from the anchor to the caret, either way round), typing or pasting over it,
+    // and where a click at `x` puts the caret, by where each character starts as last painted.
+    std::pair<size_t, size_t> searchSelection() const;
+    void insertSearch(std::string_view text);
+    void eraseSearch(size_t from, size_t to);
+    void clearSearch();
+    size_t searchStopAt(float x) const;
     // Scrolls the list so the preset's row shows: about in the middle, or just inside the list.
     void revealBrowserRow(int preset, bool middle);
     // Loads a preset of the library, asking first if the patch changed since the last.
@@ -609,6 +624,10 @@ private:
     bool browserOpen_ = false;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping
     std::string browserSearch_;              // what is typed in its search
+    size_t searchCaret_ = 0;                 // where the caret is in it
+    size_t searchAnchor_ = 0;                // where its selection starts: at the caret, nothing is selected
+    std::vector<float> searchStops_;         // where each place between its characters was painted, across
+    float searchShift_ = 0.0f;               // how far its text is scrolled left, so the caret shows
     int browserPick_ = -1;                   // the preset Up and Down picked, which Enter loads, or -1
     double bend_ = 0.0;                      // the bend wheel's position, -1..1
     std::string flash_;

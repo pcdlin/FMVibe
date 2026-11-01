@@ -141,7 +141,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
     loads) and the preset browser, which loading a preset closes; its search narrowing the list as words are
-    typed, Enter loading the preset found, Up and Down picking one, and Escape and the search's × emptying it;
+    typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
+    its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
+    double-click for a word), cutting and pasting;
   - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, and
     the LFO shape editor hiding the inspector;
   - the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered pixels), the list of

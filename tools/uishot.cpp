@@ -967,6 +967,42 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.typeKey(View::Key::Escape);
     check(stillOpen && !view.typing() && model.presetIndex() == 1,
           "Escape empties the browser's search, then closes the browser");
+    {
+        // Editing the search: Shift+Left selects back from the caret, typing replaces the selection, Home and End
+        // jump to the ends (with Shift, selecting on the way), Ctrl+X cuts the selection and Ctrl+V pastes over
+        // it, a line break as a space.
+        click(view, presetBox);
+        type(view, "bell");
+        view.typeKey(View::Key::Left, true);
+        view.typeKey(View::Key::Left, true);
+        const std::string selected = view.copyText(false);
+        type(view, "x"); // bex
+        view.typeKey(View::Key::Home);
+        type(view, "a"); // abex
+        view.typeKey(View::Key::End, true);
+        const std::string cut = view.copyText(true); // leaves a
+        view.typeKey(View::Key::Home, true);
+        view.pasteText("Fac\npad");
+        check(selected == "ll" && cut == "bex" && view.copyText(false).empty() &&
+                  renderer.save(view, dir / "22g-preset-search-edited.png"),
+              "the browser's search selects with Shift and the arrows, Home and End, and cuts and pastes");
+        // The mouse, by where the characters were painted: a drag from the field's start to its end selects all of
+        // it, a click puts the caret there, a Shift+click selects from the caret, and a double-click picks a word.
+        const float fieldY = browserTop + 26.0f, start = 380.0f + 440.0f - 46.0f - 180.0f + 4.0f,
+                    end = 740.0f; // past the text, short of the x
+        drag(view, {start, fieldY}, {end, fieldY});
+        const std::string dragged = view.copyText(false);
+        const bool selectedShot = renderer.save(view, dir / "22h-preset-search-selected.png");
+        click(view, {start, fieldY});
+        const bool placed = view.copyText(false).empty();
+        click(view, {end, fieldY}, {true, false, false});
+        const std::string extended = view.copyText(false);
+        doubleClick(view, {end, fieldY});
+        const std::string word = view.copyText(false);
+        view.typeKey(View::Key::Enter);
+        check(dragged == "Fac pad" && selectedShot && placed && extended == "Fac pad" && word == "pad" && model.presetIndex() == 2,
+              "the mouse puts the caret in the browser's search and selects in it");
+    }
 
     // Dragging a source's handle to the panel's right end scrolls the cards along.
     for (int n = 0; n < 4; ++n)

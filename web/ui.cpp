@@ -316,9 +316,16 @@ EMSCRIPTEN_KEEPALIVE void ui_type_char(int codepoint) {
     view->typeChar(static_cast<char32_t>(codepoint));
 }
 
-// A View::Key, by number.
-EMSCRIPTEN_KEEPALIVE void ui_type_key(int key) {
-    view->typeKey(static_cast<View::Key>(key));
+// A View::Key, by number; Shift extends the search's selection.
+EMSCRIPTEN_KEEPALIVE void ui_type_key(int key, int shift) {
+    view->typeKey(static_cast<View::Key>(key), shift != 0);
+}
+
+// What Ctrl+C (or Ctrl+X, with `cut`) takes for the clipboard, as UTF-8; what Ctrl+V brings is typed in.
+EMSCRIPTEN_KEEPALIVE const char *ui_copy(int cut) {
+    static std::string copied;
+    copied = view->copyText(cut != 0);
+    return copied.c_str();
 }
 
 EMSCRIPTEN_KEEPALIVE void ui_end_typing(int commit) {
