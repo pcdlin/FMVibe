@@ -1287,9 +1287,9 @@ void Plugin::rescanPresets() {
                                                       : kFirstExamples;
     const size_t examples = factoryPresets().size();
     if (!error && given < examples) {
-        fs::create_directories(folder / L"Examples", error);
+        fs::create_directories(folder / L"Factory", error);
         if (!error) {
-            writeExamples(folder / L"Examples", given);
+            writeExamples(folder / L"Factory", given);
             userSettings.examples = static_cast<int>(examples);
             writeUserSettings();
         }

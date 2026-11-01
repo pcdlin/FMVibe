@@ -99,6 +99,7 @@ struct Patch {
 std::vector<FactoryPreset> factoryPresets() {
     std::vector<FactoryPreset> presets;
 
+    // KY Electric Piano
     // Two carrier pairs: a soft body whose brightness dies away, and a bell-like tine (ratio 14) on top,
     // both brighter the harder the key is struck.
     {
@@ -113,6 +114,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                  {FxParam::ReverbMix, 0.2}});
         presets.push_back({"KY Electric Piano", p.changes});
     }
+    // BA FM Bass
     // Mono and gliding: a carrier with a sub an octave down, and a modulator with feedback for grit whose
     // brightness falls quickly to a growl.
     {
@@ -124,6 +126,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.op(2, 0, 0.5, 0.0, 2.0, 1.0, 0.08);
         presets.push_back({"BA FM Bass", p.changes});
     }
+    // KY Glass Bell
     // Ratios of 3.5 and 7.5 make inharmonic partials that ring out long, in a large room.
     {
         Patch p;
@@ -137,6 +140,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                  {FxParam::ReverbDamping, 0.3}, {FxParam::ReverbMix, 0.35}});
         presets.push_back({"KY Glass Bell", p.changes});
     }
+    // PD Warm Pad
     // Four detuned copies fading in slowly, a gentle second harmonic that an LFO lets breathe.
     {
         Patch p;
@@ -149,6 +153,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                  {FxParam::ReverbMix, 0.35}});
         presets.push_back({"PD Warm Pad", p.changes});
     }
+    // KY Drawbar Organ
     // Drawbars: sine partials at 0.5, 1, 2, 3 and 4 times the note, keyed on and off at once, a touch of
     // feedback, and a slow phaser for some movement.
     {
@@ -163,6 +168,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.fx(1, FxType::Reverb, {{FxParam::ReverbMix, 0.15}});
         presets.push_back({"KY Drawbar Organ", p.changes});
     }
+    // PL Pluck Delay
     // A short, bright pluck into dotted-eighth echoes.
     {
         Patch p;
@@ -176,6 +182,7 @@ std::vector<FactoryPreset> factoryPresets() {
     }
     // Later examples, after the first kFirstExamples.
 
+    // PD Crystal Motion
     // Everything at once: three layers that move on their own. FM keys (B into A) with a bright bite from a
     // mod envelope; a slow pad (D into C, three detuned triangles) through a 24 dB low-pass that a slow LFO
     // sweeps; and a shimmer of inharmonic partials (F at 7.5 with feedback, into E at 4) through a band-pass
@@ -244,6 +251,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.18f, 0.55f}, {0.18f, 0.1f}, {0.5f, 0.55f}, {0.5f, 0.1f}, {0.82f, 0.55f},
                             {0.82f, 0.1f}, {0.42f, 1.0f}, {0.68f, 1.0f}}});
     }
+    // BA Reese Bass
     // A heavy drum and bass reese, mono and gliding: two stacks of detuned saws (A in four, B in two, a few cents
     // apart) beating against each other through a driven 24 dB low-pass, which a slow LFO and a short envelope
     // move; a clean sine an octave down for the sub; and D growling into the saws, more of it every half note.
@@ -297,6 +305,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.2f, 0.55f}, {0.45f, 0.55f}, {0.8f, 0.55f}, {0.32f, 0.1f}, {0.6f, 0.1f},
                             {0.85f, 0.1f}, {0.32f, 1.0f}, {0.65f, 1.0f}}});
     }
+    // BA Wobble Bass
     // A dubstep wobble: two detuned saws growling with FM through a driven, resonant 24 dB low-pass that an
     // eighth-note LFO throws open, opening the FM with it; a clean sine an octave down underneath. Then linked
     // clipping, three-band compression, a low cut and a small room.
@@ -338,6 +347,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.25f, 0.55f}, {0.25f, 0.1f}, {0.75f, 0.55f}, {0.5f, 0.1f}, {0.6f, 0.55f},
                             {0.85f, 0.1f}, {0.25f, 1.0f}, {0.65f, 1.0f}}});
     }
+    // PD Shimmer Pad
     // A slow, wide pad made for the shimmer reverb: five detuned triangles through a 12 dB low-pass, an octave
     // below in sine, and an airy saw stack through a band-pass. Three LFOs keep it moving: a slow sweep of both
     // filters, breathing unison detune and a wandering FM. Then a phaser, a low cut, ping-pong echoes and the
@@ -376,6 +386,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.2f, 0.55f}, {0.2f, 0.1f}, {0.5f, 0.55f}, {0.5f, 0.1f}, {0.8f, 0.55f},
                             {0.8f, 0.1f}, {0.2f, 1.0f}, {0.8f, 1.0f}}});
     }
+    // SQ Trance Gate
     // A trance supersaw, gated in sixteenths: seven detuned saws and three an octave up, a touch of FM, through
     // a 24 dB low-pass whose output a square LFO chops while a saw LFO sweeps its cutoff over two bars. Then
     // compression, more air, dotted-eighth ping-pong echoes and a plate.
@@ -417,6 +428,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.25f, 0.55f}, {0.6f, 0.55f}, {0.6f, 0.1f}, {0.5f, 0.1f}, {0.2f, 0.55f},
                             {0.8f, 0.55f}, {0.42f, 1.0f}, {0.65f, 1.0f}}});
     }
+    // LD FM Brass
     // FM brass: two stacks a few cents apart, each modulator coming in a little after its carrier so the note
     // blats in, harder the harder it is played; a third operator brightens the first stack's modulator. An
     // envelope pushes the FM at the start and an LFO adds vibrato. Then compression, a presence peak and a hall.
@@ -444,6 +456,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.3f, 0.55f}, {0.3f, 0.1f}, {0.7f, 0.55f}, {0.7f, 0.1f}, {0.5f, 0.1f},
                             {0.85f, 0.55f}, {0.35f, 1.0f}, {0.65f, 1.0f}}});
     }
+    // FX Industrial Hit
     // A percussive industrial hit: a sine body whose pitch drops two octaves in a tenth of a second, clicked
     // by a square; noise through a band-pass; and metallic partials (7.5 into 3.5). Then a sine-fold shaper,
     // fast compression, a low cut and a small room.
@@ -477,6 +490,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.2f, 0.55f}, {0.45f, 0.55f}, {0.75f, 0.55f}, {0.75f, 0.1f}, {0.2f, 0.1f},
                             {0.9f, 0.1f}, {0.3f, 1.0f}, {0.55f, 1.0f}}});
     }
+    // LD Folded Lead
     // A mono lead whose modulator goes through a shaper before it reaches the carrier: B's sine, folded back on
     // itself by shaper 1, moves A with a brighter, vocal edge that a sine alone can't. An envelope drives the fold
     // hard at each note and lets it settle, a slow LFO keeps it turning, and an octave below in sine gives it body.
@@ -505,6 +519,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.55f, 0.55f}, {0.25f, 0.1f}, {0.85f, 0.55f}, {0.55f, 0.1f}, {0.85f, 0.1f},
                             {0.08f, 0.55f}, {0.35f, 1.0f}, {0.65f, 1.0f}, {0.25f, 0.55f}}});
     }
+    // BA Fuzz Bass
     // A fuzz bass: an FM pair distorted by a shaper on its way into a filter. B growls into A, A goes through shaper
     // 1 (the asymmetric curve, hard), and the shaper feeds a 24 dB low-pass that plucks open on each note; the
     // shaper's output also comes round onto B, so the harder it is played the dirtier the growl gets. Under it a
@@ -531,6 +546,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.45f, 0.55f}, {0.62f, 0.1f}, {0.85f, 0.55f}, {0.85f, 0.1f}, {0.2f, 0.1f},
                             {0.35f, 0.1f}, {0.5f, 1.0f}, {0.75f, 1.0f}, {0.15f, 1.0f}}});
     }
+    // PL Comb String
     // A plucked string from a comb filter, like a koto: a short burst of noise (A), its sides apart, strikes filter 1,
     // a comb that rings at the note (its cutoff on C4, its Key Track at 100 %, its resonance all the way up), and the
     // ringing goes on through filter 2, a gentle 6 dB low-pass that follows the keys halfway, for a rounder string. A
@@ -559,6 +575,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.3f, 0.45f}, {0.8f, 0.55f}, {0.5f, 0.1f}, {0.8f, 0.1f}, {0.2f, 0.55f}, {0.8f, 0.55f},
                             {0.3f, 1.0f}, {0.6f, 1.0f}}});
     }
+    // PL Chip Pluck
     // A chip-tune pluck in the classic FM sound chips' waves: an alternating sine (A), its decay falling fast and then
     // lingering, moved by a half sine (B) with feedback whose bite is gone in a quarter second, and an abs sine (C),
     // which sounds an octave up, for the chiff. The note source eases the FM off from C3 up, most in the top octaves
@@ -588,6 +605,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                   {FxParam::PeqFreq1, normFromCutoff(9000.0)}});
         presets.push_back({"PL Chip Pluck", p.changes, {}, {"Bite"}});
     }
+    // SQ Step Filter
     // A step sequence drawn as an LFO shape: an organ wave (A) and a 25 % pulse an octave down (B) through a resonant
     // 18 dB low-pass, which a freeform LFO opens on every eighth note of the bar, each accent its own height and falling
     // away after it. The LFO runs on one clock, so chords and later notes stay in step. The Cutoff macro opens the
@@ -635,6 +653,7 @@ std::vector<FactoryPreset> factoryPresets() {
                             {0.45f, 1.0f}, {0.65f, 1.0f}, {0.8f, 1.0f}},
                            {"Cutoff", "Accent"}});
     }
+    // SQ Glass Steps
     // Glass in sixteenths: a custom wave (A) drawn from 64 partials, the Fibonacci ones (1, 2, 3, 5 and on to 55) each
     // 3 dB below the one before, a glassy spectrum reaching high up, through a wide notch that follows the keys
     // (filter 1) and jumps to a new place every sixteenth note at random, taking out a different part of it each step.
@@ -668,6 +687,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.35f, 0.45f}, {0.75f, 0.55f}, {0.5f, 0.1f}, {0.8f, 0.1f}, {0.2f, 0.55f}, {0.8f, 0.55f},
                             {0.35f, 1.0f}, {0.65f, 1.0f}}});
     }
+    // LD Vowel Lead
     // A singing lead: a vowel wave (A), brightened by a sine (B) whose push holds for a moment at each note before it
     // settles, and a breath of noise (C) through a band-pass that follows the keys (filter 1), which roughens A by
     // modulating it rather than going out. Mono and legato, gliding into every note (Glide Always), with the bend a
@@ -709,6 +729,7 @@ std::vector<FactoryPreset> factoryPresets() {
                            {{0.55f, 0.55f}, {0.55f, 0.1f}, {0.2f, 0.45f}, {0.8f, 0.1f}, {0.2f, 0.55f}, {0.8f, 0.55f},
                             {0.2f, 1.0f}, {0.65f, 1.0f}}});
     }
+    // FX Laser Zap
     // A laser zap: a sine (A) with feedback, the whole voice's pitch thrown down from two octaves above the note to two
     // below by a one-shot saw LFO, once per note, in a quarter of a second; a modulator at 3.5 (B) gives the start a
     // metallic edge that dies first. The Speed macro makes the zap faster (it speeds up the LFO), and the Grit macro
@@ -743,6 +764,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                 {FxParam::DelayPingPong, 1.0}, {FxParam::DelayFeedback, 0.4}, {FxParam::DelayMix, 0.2}});
         presets.push_back({"FX Laser Zap", p.changes, {}, {"Speed", "Grit"}});
     }
+    // FX Noise Riser
     // A riser for builds: wide white noise (A, its sides wholly apart) fading in over six seconds, slowly and then in a
     // rush (its attack curve), through an 18 dB high-pass (filter 1), and a sine (B) that climbs two octaves, both swept
     // by one envelope over eight seconds that also starts slowly and rushes at the end: the high-pass climbs from the
@@ -758,7 +780,7 @@ std::vector<FactoryPreset> factoryPresets() {
         // The rise: the cutoff up by more than half its travel, B two octaves (24 of the Pitch knob's 96 semitones),
         // the shifter's Shift from nothing to 70 % of its 400 Hz.
         p.env(0, 8.0, 1.0, 1.0, 1.5, paramIndex(0, FilterParam::Cutoff), 0.55);
-        p.sourceSet(0, SourceParam::AttackCurve, -0.7);
+        p.sourceSet(0, SourceParam::AttackCurve, 0);
         p.aim(0, 1, paramIndex(1, OpParam::Transpose), 0.25).aim(0, 2, paramIndex(0, FxParam::ShiftAmount), 0.35);
 
         p.fx(0, FxType::FreqShifter, {{FxParam::ShiftRange, normFromShiftRange(400.0)}, {FxParam::ShiftSpread, 0.3},

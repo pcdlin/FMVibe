@@ -73,7 +73,7 @@ public:
     }
     std::wstring presetFolder() const override { return L"C:\\Users\\Someone\\Documents\\FMVibe\\presets"; }
     void openPresetFolder() override { ++folderOpens; }
-    std::vector<PresetEntry> library{{"Init Bass", ""}, {"Bell", "Examples"}, {"Pad", "Examples"}};
+    std::vector<PresetEntry> library{{"Init Bass", ""}, {"Bell", "Factory"}, {"Pad", "Factory"}};
     int folderOpens = 0;
     int oversampling() const override { return oversamplingFactor; }
     void setOversampling(int factor) override { oversamplingFactor = factor; }
@@ -905,7 +905,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(renderer.save(view, dir / "22b-preset-browser.png"), "render the preset browser");
     const uint32_t dimmed = renderer.pixel(headerGap);
     click(view, {380.0f + 440.0f - 24.0f - 55.0f, browserTop + 560.0f - 27.0f}); // OPEN FOLDER
-    click(view, browserRow(2)); // Bell, under the Examples header
+    click(view, browserRow(2)); // Bell, under the Factory header
     view.mouseMove(presetBox, {});
     check(renderer.save(view, dir / "22c-preset-bar.png"), "render the preset bar");
     const bool closed = renderer.pixel(headerGap) == clear && clear != dimmed;

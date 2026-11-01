@@ -530,8 +530,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   click on it opens the curve's editor (see the shape editor). Its right-click menu, and its handle's, make it
   unipolar or bipolar (± in the display's corner).
 - **Presets**: presets are `.fmv` files in `Documents\FMVibe\presets` and its subfolders. The first time the
-  library is used (the browser, the arrows or a file dialog), FMVibe makes that folder with its examples in the
-  `Examples` subfolder. Each name starts with two letters for its category, so the library lists them in groups:
+  library is used (the browser, the arrows or a file dialog), FMVibe makes that folder with its factory presets in the
+  `Factory` subfolder. Each name starts with two letters for its category, so the library lists them in groups:
   BA bass, FX effect, KY keys (bells and organs too), LD lead (brass too), PD pad (moving textures too), PL pluck
   and SQ sequence (rhythmic, gated). They are KY Electric Piano, BA FM Bass, KY Glass Bell, PD Warm Pad, KY Drawbar
   Organ, PL Pluck Delay; PD Crystal Motion, which uses everything at once (all six operators in three layers, two

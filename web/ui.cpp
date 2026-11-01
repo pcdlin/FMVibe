@@ -1,6 +1,6 @@
 // The browser demo's editor side: the plugin's View on the page's canvas, with a Controller that keeps the patch
 // here on the main thread and sends every change to the audio side (web/dsp.cpp, through web/site/main.js and
-// the worklet). It stands in for Plugin's Controller half, minus the host: presets are the built-in examples,
+// the worklet). It stands in for Plugin's Controller half, minus the host: presets are the built-in factory ones,
 // held in memory, and nothing is read from or written to files.
 
 #include "factory.h"
@@ -73,7 +73,7 @@ public:
         std::sort(examples_.begin(), examples_.end(),
                   [](const FactoryPreset &a, const FactoryPreset &b) { return lessNoCase(a.name, b.name); });
         for (const FactoryPreset &preset : examples_)
-            library_.push_back({preset.name, "Examples"});
+            library_.push_back({preset.name, "Factory"});
         theme_ = setting("theme");
         const std::string glow = setting("glow");
         glow_ = glow.empty() ? 0.5 : std::clamp(std::atof(glow.c_str()), 0.0, 1.0);
@@ -187,7 +187,7 @@ private:
     // Where an example lives, as far as presetFile() goes: a made-up path in a made-up folder.
     std::wstring fileOf(size_t index) const {
         const std::string &name = examples_[index].name;
-        return L"Examples/" + std::wstring(name.begin(), name.end()); // the examples' names are ASCII
+        return L"Factory/" + std::wstring(name.begin(), name.end()); // the examples' names are ASCII
     }
     // A patch's layout, with what belongs to the editor kept (as Plugin::keepEditorLayout()).
     void replaceLayout(const UiLayout &patch) {

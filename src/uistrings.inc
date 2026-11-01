@@ -655,5 +655,5 @@ STR(DialogNotPreset, "That file is not an FMVibe preset.")
 
 // --- The browser demo, which has no files
 
-STR(DemoNoFiles, "Loading and saving files not supported. Click the preset name to browse examples.")
-STR(DemoPresetFolder, "Built-in examples")
+STR(DemoNoFiles, "Loading and saving files not supported. Click the preset name to browse the factory presets.")
+STR(DemoPresetFolder, "Built-in factory presets")

@@ -172,7 +172,7 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   on the page's main thread.
 - The two modules only send each other messages: the param edits, the notes and the telemetry, whose struct
   bytes cross unchanged.
-- Presets are the examples, held in memory. Load, Save and the preset folder show a message instead, since the
+- Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme and glow are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave.
 - WebAssembly can't flush denormals to zero, which `Plugin::process()` does. Instead, the effects' input, the
