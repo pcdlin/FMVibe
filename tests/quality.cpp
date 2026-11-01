@@ -390,6 +390,104 @@ int main() {
         check(synced, "synced, the phaser's and flanger's sweeps follow the host tempo");
     }
 
+    // --- The reverb's tails, from an impulse into both sides (2.5 s decay, at full wet). Late on, a tail's
+    // spectrum, averaged over a second, keeps close to its own third-octave smoothing: no resonance rings on above
+    // the rest, as a plain network's would, its lines' modes standing still. Its two sides come out unalike. Without
+    // damping, every frequency falls 60 dB in about the set time.
+    std::printf("reverb tails (an impulse, 2.5 s decay):\n");
+    {
+        auto impulse = [](ReverbType type, double damping) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(type);
+            p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(2.5);
+            p[paramIndex(0, FxParam::ReverbDamping)] = damping;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+            const size_t total = static_cast<size_t>(4.0 * kSampleRate);
+            std::vector<float> left(total), right(total);
+            left[0] = right[0] = 1.0f;
+            for (size_t done = 0; done < total; done += kBlock)
+                fx.process(left.data() + done, right.data() + done,
+                           static_cast<uint32_t>(std::min<size_t>(kBlock, total - done)), p, 120.0, 60.0);
+            return std::pair{left, right};
+        };
+        // The mean of how far (dB) the averaged spectrum of 0.3 to 1.5 s strays from its smoothing, 200 Hz to 5 kHz.
+        auto lumpiness = [](const std::vector<float> &tail) {
+            constexpr size_t kN = 4096;
+            std::vector<double> power(kN / 2, 0.0);
+            for (size_t start = static_cast<size_t>(0.3 * kSampleRate); start + kN < static_cast<size_t>(1.5 * kSampleRate);
+                 start += kN / 2) {
+                std::vector<std::complex<double>> x(kN);
+                for (size_t i = 0; i < kN; ++i)
+                    x[i] = tail[start + i] * (0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * i / kN));
+                fft(x);
+                for (size_t k = 0; k < kN / 2; ++k)
+                    power[k] += std::norm(x[k]);
+            }
+            const double binHz = kSampleRate / kN;
+            double stray = 0.0;
+            int bins = 0;
+            for (size_t k = static_cast<size_t>(200.0 / binHz); k < static_cast<size_t>(5000.0 / binHz); ++k) {
+                double around = 0.0;
+                int count = 0;
+                for (size_t j = static_cast<size_t>(k / 1.122); j <= static_cast<size_t>(k * 1.122); ++j, ++count)
+                    around += power[j];
+                stray += std::abs(10.0 * std::log10(power[k] * count / around));
+                ++bins;
+            }
+            return stray / bins;
+        };
+        const char *const names[] = {"hall", "room", "plate", "shimmer"};
+        bool smooth = true;
+        for (int t = 0; t < static_cast<int>(ReverbType::Count); ++t) {
+            const auto [left, right] = impulse(static_cast<ReverbType>(t), 0.4);
+            double ll = 0.0, rr = 0.0, lr = 0.0;
+            for (size_t i = static_cast<size_t>(0.1 * kSampleRate); i < static_cast<size_t>(1.5 * kSampleRate); ++i) {
+                ll += left[i] * left[i];
+                rr += right[i] * right[i];
+                lr += left[i] * right[i];
+            }
+            const double lumps = lumpiness(left), correlation = lr / std::sqrt(ll * rr);
+            std::printf("      %-8s tail strays %.2f dB from its smoothing, sides correlate %+.2f\n", names[t], lumps,
+                        correlation);
+            smooth = smooth && lumps < 2.5 && std::abs(correlation) < 0.15;
+        }
+        check(smooth, "every reverb algorithm's tail is smooth, without lasting resonances, and its sides unalike");
+        // The decay, in the octave around 1 kHz: the energy left there (Schroeder's backward integral) falls from -5
+        // to -35 dB in half the decay time.
+        const auto [left, right] = impulse(ReverbType::Hall, 0.0);
+        size_t n = 1;
+        while (n < left.size())
+            n *= 2;
+        std::vector<std::complex<double>> octave(n);
+        for (size_t i = 0; i < left.size(); ++i)
+            octave[i] = {left[i], right[i]}; // both sides at once: they come back as the real and imaginary parts
+        fft(octave);
+        for (size_t k = 0; k < n; ++k) {
+            const double hz = std::min(k, n - k) * kSampleRate / n;
+            octave[k] = hz > 707.0 && hz < 1414.0 ? std::conj(octave[k]) : 0.0; // conjugated, for the inverse
+        }
+        fft(octave);
+        std::vector<double> remaining(left.size());
+        double energy = 0.0;
+        for (size_t i = left.size(); i-- > 0;)
+            remaining[i] = energy += std::norm(octave[i]);
+        double at5 = 0.0, at35 = 0.0;
+        for (size_t i = 0; i < remaining.size(); ++i) {
+            const double db = 10.0 * std::log10(remaining[i] / remaining[0]);
+            at5 = at5 == 0.0 && db < -5.0 ? i / kSampleRate : at5;
+            at35 = at35 == 0.0 && db < -35.0 ? i / kSampleRate : at35;
+        }
+        const double t60 = 2.0 * (at35 - at5);
+        std::printf("      undamped hall falls 60 dB around 1 kHz in %.2f s (set to 2.5 s)\n", t60);
+        check(std::abs(t60 / 2.5 - 1.0) < 0.15, "an undamped reverb's tail falls 60 dB in its decay time");
+    }
+
     // --- The voice filters' analyzers: an A4 sine through filter 1 shows in its band, turned down by a low-pass
     // an octave under it; filter 2, switched off, shows nothing.
     std::printf("voice filter analyzers:\n");

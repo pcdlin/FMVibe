@@ -54,14 +54,16 @@ inline double phaserWet(double mix) {
 double reverbDecay(double norm);
 double reverbPreDelay(double norm);
 // How each reverb algorithm sets up the network: its lines' length against the hall's, how much its damping
-// lets through against the knob's, how many all-passes diffuse the input, how loud its early reflections
-// are, and how loud each octave of its shimmer is against the one below (none for the plain algorithms).
+// lets through against the knob's, how many all-passes diffuse the input on each side, how loud its early
+// reflections are, how far its lines' lengths waver against the hall's, and whether it feeds its tail back
+// pitch-shifted (a shimmer).
 struct ReverbStyle {
     double length;
     double brightness;
     int diffusers;
     double early;
-    double shimmer;
+    double wander;
+    bool shimmer;
 };
 ReverbStyle reverbStyle(ReverbType type);
 ReverbType reverbType(double value);
@@ -70,10 +72,14 @@ double reverbSpace(double sizeNorm, ReverbType type);
 // A room's early reflections (seconds at full size, after the pre-delay) and their levels.
 inline constexpr double kRoomEchoSeconds[] = {0.0071, 0.0113, 0.0167, 0.0229, 0.0311, 0.0409};
 inline constexpr double kRoomEchoLevels[] = {0.55, 0.45, 0.38, 0.3, 0.24, 0.18};
-// How long a shimmer's next octave takes to come in after the one below, at full size: its loop's delay plus
-// half the pitch shifter's window.
-inline constexpr double kShimmerLoop = 0.2;
+// A shimmer's pitch shifters: two read heads each, sweeping a window this long (seconds) and crossfading as they
+// jump back, in the lines they shift.
 inline constexpr double kShimmerWindow = 0.08;
+// How much faster the tail decays above the damping's corner than the Decay knob says, the same for every line.
+inline constexpr double kReverbHighDecay = 0.2;
+// The lines' longest length at full size (seconds): how long a shimmer's tail takes, at most, to go round once and
+// climb its interval, shifted on the way.
+inline constexpr double kReverbLongest = 0.0889;
 
 // The widener's taps: how long each waits at full size (seconds) and how fast it is swept (Hz).
 // The first and third go to the left side, the others to the right.
@@ -190,33 +196,37 @@ private:
         double output = 1.0; // gain after the mix, ramped
     };
 
-    // A feedback delay network: kReverbLines lines of different lengths, mixed through a Householder
-    // matrix (which keeps their energy), each with a damping low-pass and the gain that makes it fall
-    // 60 dB in the decay time. The input, summed to mono, goes through the pre-delay and a few
-    // all-passes that diffuse it first; the lines' outputs, signed differently, make the two sides.
-    static constexpr int kReverbLines = 8;
-    static constexpr int kDiffusers = 8; // a plate runs the input through all of them, the others through half
+    // A feedback delay network: kReverbLines lines of different lengths, mixed through a Hadamard matrix
+    // (which keeps their energy and spreads each line's evenly over all of them), each with the gain that makes
+    // it fall 60 dB in the decay time and a high shelf that takes it down faster above the damping's corner, by as
+    // much for every line. The lines' lengths waver slowly, each at its own pace, so the tail's resonances
+    // smear rather than ring. Each side of the input goes through the pre-delay and a few all-passes that diffuse
+    // it, then into half the lines; the lines' outputs, signed differently, make the two sides. A shimmer reads
+    // a few of its lines through pitch shifters as well, so what goes round climbs (or falls) each time.
+    static constexpr int kReverbLines = 16;
+    static constexpr int kDiffusers = 6; // per side: a plate runs the input through all of them, the others through four
+    static constexpr int kShimmerLines = 4;
     struct Reverb {
-        std::array<std::vector<float>, kReverbLines> lines; // all as long as the longest
-        std::array<std::vector<float>, kDiffusers> diffusers;
-        std::vector<float> preDelay;
+        std::array<std::vector<float>, kReverbLines> lines; // all as long as the longest, with room for the wavering
+        std::array<std::array<std::vector<float>, kDiffusers>, 2> diffusers; // per side
+        std::array<std::vector<float>, 2> preDelay;
         int lineWrite = 0;
         int diffuserWrite = 0;
         int preWrite = 0;
-        std::array<double, kReverbLines> damp{}; // low-pass states
-        // Shimmer: what goes into the lines, pitched up an octave by two read heads that close in on the writing
-        // one twice as fast as it moves (crossfaded, so each fades out as it jumps back), band-passed and fed
-        // into the lines again, and into the heads: each octave brings the next one in after it.
-        std::vector<float> shimmer;
-        int shimmerWrite = 0;
+        std::array<double, kReverbLines> damp{}; // the shelves' low-pass states
+        // The lines' wavering: a sine each, as a turning phasor.
+        std::array<double, kReverbLines> wanderCos{}, wanderSin{};
+        // Shimmer: each shifted line's read heads sweep a window behind its length (see kShimmerWindow), a
+        // phase all of them share, each a little apart; what they read is band-passed: a low-pass, and what it
+        // lets through below the high-pass corner, taken away.
         double shimmerPhase = 0.0;
-        double shimmerLow = 0.0;  // the band-pass: a low-pass,
-        double shimmerBass = 0.0; // and what it lets through below its high-pass corner, taken away
+        std::array<double, kShimmerLines> shimmerLow{}, shimmerBass{};
         double size = 1.0;      // the lines' length scale, gliding toward the knob
         double preLength = 0.0; // samples, gliding
         double dry = 1.0;       // ramped
         double wet = 0.0;
         double width = 1.0;
+        double shimmer = 0.0;   // how much of the shifted lines is shifted, ramped
     };
 
     // First-order all-passes in a row, per side, their corners swept by the LFO; the right side's
@@ -311,8 +321,9 @@ private:
     double runShifter(int slot, float *const *io, uint32_t n, const ParamValues &p);
 
     double sampleRate_ = 48000.0;
-    std::array<int, kReverbLines> reverbLengths_{}; // at full size, in samples
-    std::array<int, kDiffusers> diffuserLengths_{};
+    std::array<double, kReverbLines> reverbLengths_{}; // at full size, in samples
+    std::array<std::array<int, kDiffusers>, 2> diffuserLengths_{};
+    std::array<std::array<double, 2>, kReverbLines> wanderTurn_{}; // each line's wavering: cos and sin of its step
     std::array<Slot, kFxSlots> slots_;
     BiquadCoefs lowPass1_, highPass1_, lowPass2_, highPass2_, allPass2_;
     int64_t tail_ = 0; // samples left to keep processing after the input went silent

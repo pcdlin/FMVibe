@@ -73,40 +73,40 @@ constexpr Palette kThemes[] = {
      {Color::hex(0xFACC15), Color::hex(0xFCA5A5), Color::hex(0x93C5FD), Color::hex(0xFCD34D), Color::hex(0xFDBA74),
       Color::hex(0xD8B4FE), Color::hex(0x6EE7B7), Color::hex(0x5EEAD4), Color::hex(0xA5B4FC), Color::hex(0xF9A8D4),
       Color::hex(0xBEF264), Color::hex(0x67E8F9), Color::hex(0xE2E8F0), Color::hex(0xF0ABFC)}},
-    {"Ocean", // deep blue-green
-     Color::hex(0x06131A), Color::hex(0x0C1C25), Color::hex(0x132833), Color::hex(0x1B3340), Color::hex(0x213B49),
-     Color::hex(0x18303C),
-     Color::hex(0xE2F1F7), Color::hex(0x86A6B6), Color::hex(0x3F6070),
-     Color::hex(0x67E8F9), Color::hex(0xA78BFA), Color::hex(0xFB7185), Color::hex(0x38BDF8),
-     {Color::hex(0x38BDF8), Color::hex(0xF472B6), Color::hex(0xA3E635), Color::hex(0x818CF8),
-      Color::hex(0xFBBF24), Color::hex(0x34D399), Color::hex(0xF87171), Color::hex(0xE879F9),
-      Color::hex(0x2DD4BF), Color::hex(0xFDE047), Color::hex(0xA78BFA), Color::hex(0xFDA4AF),
-      Color::hex(0x67E8F9), Color::hex(0x86EFAC), Color::hex(0x60A5FA), Color::hex(0xFDBA74),
-      Color::hex(0xFDA4AF), Color::hex(0xFDBA74), Color::hex(0xFDE68A), Color::hex(0xBEF264),
-      Color::hex(0x6EE7B7), Color::hex(0x67E8F9), Color::hex(0xA5B4FC), Color::hex(0xF0ABFC),
-      Color::hex(0xE2E8F0), Color::hex(0xA5F3FC)},
-     Color::hex(0x0F222C), Color::hex(0x09171E), Color::hex(0x10242F), Color::hex(0x0A1922),
-     Color::hex(0xDCEAF0), Color::hex(0xC2D6DF), Color::hex(0x030C11), Color::hex(0x1A3240), Color::hex(0x3F6070),
-     {Color::hex(0xFB7185), Color::hex(0xF87171), Color::hex(0x60A5FA), Color::hex(0xFBBF24), Color::hex(0xFB923C),
-      Color::hex(0xC084FC), Color::hex(0x34D399), Color::hex(0x2DD4BF), Color::hex(0x818CF8), Color::hex(0xF472B6),
-      Color::hex(0xA3E635), Color::hex(0x22D3EE), Color::hex(0xCBD5E1), Color::hex(0xE879F9)}},
-    {"Light",
-     Color::hex(0xE6E9EF), Color::hex(0xF5F6F9), Color::hex(0xE4E8EE), Color::hex(0xCCD2DC), Color::hex(0xD5DAE3),
-     Color::hex(0xDEE2E9),
-     Color::hex(0x1A1E27), Color::hex(0x586072), Color::hex(0x9AA1AF),
-     Color::hex(0x4F5FE0), Color::hex(0x9333EA), Color::hex(0xEA580C), Color::hex(0x2563EB),
-     {Color::hex(0x0284C7), Color::hex(0xDB2777), Color::hex(0x65A30D), Color::hex(0x4F46E5),
-      Color::hex(0xD97706), Color::hex(0x059669), Color::hex(0xDC2626), Color::hex(0xC026D3),
-      Color::hex(0x0D9488), Color::hex(0xCA8A04), Color::hex(0x7C3AED), Color::hex(0xE11D48),
-      Color::hex(0x0891B2), Color::hex(0x16A34A), Color::hex(0x2563EB), Color::hex(0xEA580C),
-      Color::hex(0xE11D48), Color::hex(0xEA580C), Color::hex(0xCA8A04), Color::hex(0x65A30D),
-      Color::hex(0x059669), Color::hex(0x0891B2), Color::hex(0x4F46E5), Color::hex(0xC026D3),
-      Color::hex(0x475569), Color::hex(0x6366F1)},
-     Color::hex(0xFFFFFF), Color::hex(0xEEF1F5), Color::hex(0xFAFBFD), Color::hex(0xEDF0F4),
-     Color::hex(0xFFFFFF), Color::hex(0xE6E9EF), Color::hex(0x2A2F3A), Color::hex(0x474E5E), Color::hex(0x9AA1AF),
-     {Color::hex(0xEA580C), Color::hex(0xDC2626), Color::hex(0x2563EB), Color::hex(0xD97706), Color::hex(0xEA580C),
-      Color::hex(0x9333EA), Color::hex(0x059669), Color::hex(0x0D9488), Color::hex(0x4F46E5), Color::hex(0xDB2777),
-      Color::hex(0x65A30D), Color::hex(0x0891B2), Color::hex(0x475569), Color::hex(0xC026D3)}},
+    {"Light", // crisp: white cards and knob caps on a cool gray, with deep, saturated colors
+     Color::hex(0xD5DAE3), Color::hex(0xF3F5F8), Color::hex(0xE4E8EF), Color::hex(0xC3CAD6), Color::hex(0xCDD3DD),
+     Color::hex(0xFFFFFF),
+     Color::hex(0x0F131B), Color::hex(0x444C5D), Color::hex(0x878FA0),
+     Color::hex(0x3346D3), Color::hex(0x8A2BE2), Color::hex(0xDD4F07), Color::hex(0x1F5BE0),
+     {Color::hex(0x0274B8), Color::hex(0xD0216D), Color::hex(0x4F8A0B), Color::hex(0x4338CA),
+      Color::hex(0xC26505), Color::hex(0x04805C), Color::hex(0xD11F1F), Color::hex(0xB01ECA),
+      Color::hex(0x0B857A), Color::hex(0xA87103), Color::hex(0x6D28D9), Color::hex(0xD0163F),
+      Color::hex(0x0780A0), Color::hex(0x138A3F), Color::hex(0x1F5BE0), Color::hex(0xDD4F07),
+      Color::hex(0xD0163F), Color::hex(0xDD4F07), Color::hex(0xA87103), Color::hex(0x4F8A0B),
+      Color::hex(0x04805C), Color::hex(0x0780A0), Color::hex(0x4338CA), Color::hex(0xB01ECA),
+      Color::hex(0x3F4A5C), Color::hex(0x4F52E8)},
+     Color::hex(0xFFFFFF), Color::hex(0xE8ECF2), Color::hex(0xFFFFFF), Color::hex(0xEDF0F5),
+     Color::hex(0xFFFFFF), Color::hex(0xDDE3EC), Color::hex(0x1A1F29), Color::hex(0x3A4252), Color::hex(0x878FA0),
+     {Color::hex(0xDD4F07), Color::hex(0xD11F1F), Color::hex(0x1F5BE0), Color::hex(0xC26505), Color::hex(0xDD4F07),
+      Color::hex(0x8A2BE2), Color::hex(0x04805C), Color::hex(0x0B857A), Color::hex(0x4338CA), Color::hex(0xD0216D),
+      Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x475569), Color::hex(0xB01ECA)}},
+    {"Paper", // warm: cream cards on sand, ink-brown text and earthy colors
+     Color::hex(0xE2DACB), Color::hex(0xF7F2E8), Color::hex(0xEDE6D8), Color::hex(0xD2C7B3), Color::hex(0xDDD3C0),
+     Color::hex(0xFFFCF5),
+     Color::hex(0x2A231C), Color::hex(0x695D4E), Color::hex(0xA19582),
+     Color::hex(0x0E6E68), Color::hex(0x8E2A9E), Color::hex(0xC0410F), Color::hex(0x0E6E68),
+     {Color::hex(0x0E6E68), Color::hex(0xB3284F), Color::hex(0x5A7A12), Color::hex(0x4A3FB8),
+      Color::hex(0xB15A0A), Color::hex(0x177A52), Color::hex(0xB8361B), Color::hex(0x9B2AA0),
+      Color::hex(0x1A7287), Color::hex(0x9A7410), Color::hex(0x6A3DB8), Color::hex(0xB82848),
+      Color::hex(0x235F7A), Color::hex(0x3E7D2C), Color::hex(0x2D55B0), Color::hex(0x9C4A1A),
+      Color::hex(0xB82848), Color::hex(0xC0410F), Color::hex(0x9A7410), Color::hex(0x5A7A12),
+      Color::hex(0x177A52), Color::hex(0x1A7287), Color::hex(0x4A3FB8), Color::hex(0x9B2AA0),
+      Color::hex(0x5E554A), Color::hex(0x6A3DB8)},
+     Color::hex(0xFFFCF6), Color::hex(0xEFE8DA), Color::hex(0xFCF8F0), Color::hex(0xF1EBDF),
+     Color::hex(0xFFFDF8), Color::hex(0xEDE4D3), Color::hex(0x2E2722), Color::hex(0x4C433B), Color::hex(0xA19582),
+     {Color::hex(0xC0410F), Color::hex(0xB8361B), Color::hex(0x2D55B0), Color::hex(0xB15A0A), Color::hex(0xC0410F),
+      Color::hex(0x8E2A9E), Color::hex(0x177A52), Color::hex(0x0E6E68), Color::hex(0x4A3FB8), Color::hex(0xB3284F),
+      Color::hex(0x5A7A12), Color::hex(0x1A7287), Color::hex(0x5E554A), Color::hex(0x9B2AA0)}},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));
 
@@ -191,6 +191,8 @@ constexpr Rect kUnisonRect{kInspector.x + 226.0f, kInspector.y + 150.0f, 58.0f, 
 // Where a noise operator's unison row would be: its spectrum.
 constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 148.0f, kInspector.w - 32.0f, 48.0f};
 constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
+// A filter's slope list, at the right end of its row of type buttons.
+constexpr Rect kFilterSlopeButton{kInspector.x + kInspector.w - 16.0f - 62.0f, kInspector.y + 62.0f, 62.0f, 22.0f};
 // A shaper's page: its curve's list and the link switch in the row under the summary, then its transfer curve where
 // a filter's response shows.
 constexpr Rect kShaperModeButton{kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f - 50.0f, 22.0f};
@@ -386,13 +388,37 @@ Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
 
-// An effect's choice that opens a list under its button: which values it has, and their names.
-int listCount(FxParam field) {
-    return field == FxParam::ReverbType ? static_cast<int>(ReverbType::Count) : static_cast<int>(ClipMode::Count);
+// The filter effect's slope list, under its display in the middle.
+Rect fxSlopeButton(Rect card, Rect display) {
+    return {card.center().x - 36.0f, display.bottom() + 4.0f, 72.0f, 18.0f};
 }
-const char *listItemName(FxParam field, int value) {
-    return field == FxParam::ReverbType ? reverbTypeName(static_cast<ReverbType>(value))
-                                        : clipModeName(static_cast<ClipMode>(value));
+
+// The type param that goes with a filter slope param, or -1 for other params.
+int slopeTypeParam(int param) {
+    if (fxFieldOf(param) == FxParam::FilterSlope)
+        return paramIndex(fxSlotOf(param), FxParam::FilterType);
+    for (int filter = 0; filter < kFilters; ++filter)
+        if (paramIndex(filter, FilterParam::Slope) == param)
+            return paramIndex(filter, FilterParam::Type);
+    return -1;
+}
+
+bool isFilterSlope(int param) {
+    return slopeTypeParam(param) >= 0;
+}
+
+// A choice that opens a list under its button (a shaper's curve, the reverb's algorithm, a filter's slope): which
+// values it has, and their names.
+int listCount(int param) {
+    return isFilterSlope(param)                       ? kFilterSlopes
+           : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
+                                                      : static_cast<int>(ClipMode::Count);
+}
+std::string listItemName(int param, int value) {
+    if (isFilterSlope(param))
+        return std::to_string(slopeDb(value)) + " dB";
+    return fxFieldOf(param) == FxParam::ReverbType ? reverbTypeName(static_cast<ReverbType>(value))
+                                                    : clipModeName(static_cast<ClipMode>(value));
 }
 
 Rect listMenu(Rect button, int count) {
@@ -904,23 +930,11 @@ bool isLfoSync(int param) {
     return sourceFieldOf(param) == SourceParam::Sync;
 }
 
-// The type param that goes with a filter slope param, or -1 for other params.
-int slopeTypeParam(int param) {
-    if (fxFieldOf(param) == FxParam::FilterSlope)
-        return paramIndex(fxSlotOf(param), FxParam::FilterType);
-    for (int filter = 0; filter < kFilters; ++filter)
-        if (paramIndex(filter, FilterParam::Slope) == param)
-            return paramIndex(filter, FilterParam::Type);
-    return -1;
-}
-
-bool isFilterSlope(int param) {
-    return slopeTypeParam(param) >= 0;
-}
-
-// "LP", or "LP 24" at 24 dB per octave.
+// "LP", or "LP 24" at a slope other than 12 dB per octave, as it plays.
 std::string filterLabel(FilterType type, double slope) {
-    return std::string(filterTypeShortName(type)) + (hasSlope(type) && slope >= 0.5 ? " 24" : "");
+    const int played = playedSlope(type, filterSlope(slope));
+    return std::string(filterTypeShortName(type)) +
+           (hasSlope(type) && played != kDefaultSlope ? " " + std::to_string(slopeDb(played)) : "");
 }
 
 bool isLfoFree(int param) {
@@ -1475,6 +1489,20 @@ void View::disconnect(int param) {
 
 Color View::fxColor(int slot) const {
     return fxTypeColor(fxSlotType(slot));
+}
+
+Color View::listColor(int param) const {
+    return shaperOf(param) >= 0 ? kShaperColor : fxSlotOf(param) >= 0 ? fxColor(fxSlotOf(param)) : kFilterColor;
+}
+
+int View::listShown(int param) const {
+    if (isFilterSlope(param))
+        return playedSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), filterSlope(value(param)));
+    return static_cast<int>(std::lround(value(param)));
+}
+
+bool View::listItemFits(int param, int item) const {
+    return !isFilterSlope(param) || slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), item);
 }
 
 Color View::clipColor(int unit) const {
@@ -2488,13 +2516,12 @@ std::vector<View::Widget> View::widgets() const {
                 break;
             }
             case FxType::Filter: {
-                // The filter types in a row of icons, and the slope switch under the response.
+                // The filter types in a row of icons, and the slope's list under the response.
                 constexpr int kTypes = static_cast<int>(FilterType::Count);
                 const float w = (card.w - 28.0f + 4.0f) / kTypes;
                 for (int t = 0; t < kTypes; ++t)
                     add(Kind::Choice, {card.x + 14.0f + t * w, row, w - 4.0f, 20.0f}, at(FxParam::FilterType), -1, t);
-                add(Kind::Toggle, {card.center().x - 36.0f, fxDisplay(screen, type).bottom() + 4.0f, 72.0f, 18.0f},
-                    at(FxParam::FilterSlope));
+                add(Kind::ListButton, fxSlopeButton(card, fxDisplay(screen, type)), at(FxParam::FilterSlope));
                 knobs({at(FxParam::FilterCutoff), at(FxParam::FilterResonance), at(FxParam::FilterKeyTrack)},
                       {"Cutoff", "Reso", "Key Track"}, 206.0f);
                 knobs({at(FxParam::FilterDrive), -1, at(FxParam::FilterMix)}, {"Drive", nullptr, "Mix"}, 266.0f);
@@ -2525,6 +2552,16 @@ std::vector<View::Widget> View::widgets() const {
             }
             case FxType::Reverb:
                 add(Kind::ListButton, reverbTypeButton(card), at(FxParam::ReverbType));
+                if (reverbType(value(at(FxParam::ReverbType))) == ReverbType::Shimmer) {
+                    // Its interval and how much of what goes round it shifts, among the others.
+                    knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay),
+                           at(FxParam::ReverbShimmerPitch)},
+                          {"Size", "Decay", "Pre-Delay", "Pitch"}, 206.0f);
+                    knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbShimmer),
+                           at(FxParam::ReverbMix)},
+                          {"Damping", "Width", "Shimmer", "Mix"}, 266.0f);
+                    break;
+                }
                 knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay)},
                       {"Size", "Decay", "Pre-Delay"}, 206.0f);
                 knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbMix)},
@@ -2733,8 +2770,7 @@ std::vector<View::Widget> View::widgets() const {
         for (int t = 0; t < static_cast<int>(FilterType::Count); ++t)
             add(Kind::TypeButton, {kInspector.x + 16.0f + t * 36.0f, kInspector.y + 62.0f, 32.0f, 22.0f}, -1, filter,
                 t);
-        add(Kind::Toggle, {kInspector.right() - 16.0f - 48.0f, kInspector.y + 62.0f, 48.0f, 22.0f},
-            paramIndex(filter, FilterParam::Slope));
+        add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
         const int params[] = {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance),
                               paramIndex(filter, FilterParam::KeyTrack), paramIndex(filter, FilterParam::Drive),
                               paramIndex(filter, FilterParam::Out)};
@@ -2955,22 +2991,28 @@ std::vector<View::Widget> View::widgets() const {
         const float screen = fxScreen(chain, static_cast<size_t>(at - chain.begin()));
         if (at != chain.end() && onScreen(screen, kVisibleFx)) {
             const Rect card = fxCard(screen, fxCardSpan(listSlot));
-            const Rect button = listField == FxParam::ReverbType ? reverbTypeButton(card) : clipModeButton(card);
-            const int items = listCount(listField);
+            const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
+                                : listField == FxParam::FilterSlope ? fxSlopeButton(card, fxDisplay(screen, FxType::Filter))
+                                                                    : clipModeButton(card);
+            const int items = listCount(listMenu_);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
             for (int item = 0; item < items; ++item)
                 add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
         }
     }
-    // A shaper's list of curves, under its button on its page.
-    if (const int shaper = shaperOf(listMenu_);
-        shaper >= 0 && !inspectorCovered() && controller_.layout().selectedNode == kOps + kFilters + shaper) {
-        const int items = static_cast<int>(ClipMode::Count);
+    // A shaper's list of curves or a filter's slopes, under its button on its page.
+    const int pageNode = controller_.layout().selectedNode;
+    const bool shaperList = shaperOf(listMenu_) >= 0 && pageNode == kOps + kFilters + shaperOf(listMenu_);
+    const bool slopeList =
+        listMenu_ >= 0 && isFilterNode(pageNode) && listMenu_ == paramIndex(pageNode - kOps, FilterParam::Slope);
+    if ((shaperList || slopeList) && !inspectorCovered()) {
+        const Rect button = slopeList ? kFilterSlopeButton : kShaperModeButton;
+        const int items = listCount(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
-        add(Kind::ListMenu, listMenu(kShaperModeButton, items), -1, 1);
+        add(Kind::ListMenu, listMenu(button, items), -1, 1);
         for (int item = 0; item < items; ++item)
-            add(Kind::ListItem, listMenuItem(kShaperModeButton, items, item), listMenu_, -1, item);
+            add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
     }
     // The open list of a parametric EQ band's shapes, above its button, while that card is on screen.
     if (peqMenu_ >= 0 && fxWide() && fxSlotType(fxSlotOf(peqMenu_)) == FxType::ParamEq) {
@@ -3520,9 +3562,14 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
     c.fillRect(r, kRaised, 8.0f);
     c.strokeRect(r, hovered || active ? kDim : kBorder, 1.0f, 8.0f);
     if (w.kind == Kind::ModWheel) {
-        // Fills up from the bottom with the wheel's value, in the color of its handle.
+        // Fills up from the bottom with the wheel's value, in the color of its handle; bipolar, from the middle, where
+        // it moves nothing.
         const float y = bottom - (bottom - top) * static_cast<float>(value(w.param));
-        c.fillRect({r.x + inset, y, r.w - 2.0f * inset, bottom - y}, kSourceColors[kWheelSource].alpha(0.6f), 3.0f);
+        const float from = sourceBipolar(kWheelSource) ? 0.5f * (top + bottom) : bottom;
+        c.fillRect({r.x + inset, std::min(y, from), r.w - 2.0f * inset, std::abs(from - y)},
+                   kSourceColors[kWheelSource].alpha(0.6f), 3.0f);
+        if (from < bottom)
+            c.line({r.x + 3.0f, from}, {r.right() - 3.0f, from}, kFaint, 1.0f);
         c.line({r.x + 3.0f, y}, {r.right() - 3.0f, y}, kText, 2.0f);
     } else {
         // Springs back to the middle: fills up or down from the center.
@@ -3608,12 +3655,16 @@ std::optional<Color> View::modColor(int param, const std::vector<Assignment> &mo
     return std::nullopt;
 }
 
-// How far a modulation of `amount` takes its target from the set value, down and up: a bipolar LFO half of it
-// either way, the other sources all of it one way.
+// How far a modulation of `amount` takes its target from the set value, down and up: a bipolar source half of it
+// either way, a unipolar one all of it one way.
 std::pair<double, double> View::modReach(int source, double amount) const {
-    if (sourceTypeOf(source) == SourceType::Lfo && value(paramIndex(source, SourceParam::Unipolar)) < 0.5)
+    if (sourceBipolar(source))
         return {-0.5 * std::abs(amount), 0.5 * std::abs(amount)};
     return {std::min(amount, 0.0), std::max(amount, 0.0)};
+}
+
+bool View::sourceBipolar(int source) const {
+    return fmvibe::sourceBipolar([this](int index) { return value(index); }, source);
 }
 
 void View::paintModRange(Canvas &c, Rect bar, int param, const std::vector<Assignment> &mods) {
@@ -4483,15 +4534,21 @@ void View::paintReverb(Canvas &c, Rect r, int slot) {
             c.line({x(t), mid - h}, {x(t), mid + h}, fx.alpha(0.9f), 1.5f);
         }
     }
-    if (type == ReverbType::Shimmer) { // its octaves in sparks above the tail, each later, higher and fainter
-        const double loop = kShimmerLoop * space + 0.5 * kShimmerWindow;
-        for (int octave = 1; octave <= 3; ++octave) {
-            const double from = pre + octave * loop;
-            const float strength = std::pow(static_cast<float>(reverbStyle(type).shimmer), static_cast<float>(octave));
+    // A shimmer's shifted tail in sparks off the outline, above it for a shift up and below it for one down: each
+    // step of the interval later, further out and fainter, the more so the less it shifts. A quarter of the lines
+    // shift, so a step takes about four rounds of them to come in.
+    const double interval = at(FxParam::ReverbShimmerPitch);
+    const float amount = static_cast<float>(at(FxParam::ReverbShimmer));
+    if (type == ReverbType::Shimmer && std::abs(interval) >= 0.5 && amount > 0.0f) {
+        const double round = 4.0 * (kReverbLongest * space + 0.5 * kShimmerWindow);
+        const float side = interval > 0.0 ? -1.0f : 1.0f;
+        for (int step = 1; step <= 3; ++step) {
+            const double from = pre + step * round;
+            const float strength = std::pow(amount, 0.5f * static_cast<float>(step));
             for (int k = 0; k < 14; ++k) {
                 const double t = from + (pre + decay - from) * random();
-                const float y = mid - level(t) * full * (0.6f + 0.4f * strength) - 4.0f * octave - 3.0f * random();
-                c.fillCircle({x(t), std::max(y, inner.y)}, 1.2f, fx.alpha(0.3f + 0.6f * strength));
+                const float y = mid + side * (level(t) * full * (0.6f + 0.4f * strength) + 4.0f * step + 3.0f * random());
+                c.fillCircle({x(t), std::clamp(y, inner.y, inner.bottom())}, 1.2f, fx.alpha(0.3f + 0.6f * strength));
             }
         }
     }
@@ -4505,6 +4562,11 @@ void View::paintReverb(Canvas &c, Rect r, int slot) {
     formatParam(paramIndex(slot, FxParam::ReverbDecay), at(FxParam::ReverbDecay), decayText, sizeof(decayText));
     formatParam(paramIndex(slot, FxParam::ReverbPreDelay), at(FxParam::ReverbPreDelay), preText, sizeof(preText));
     std::snprintf(text, sizeof(text), pre > 0.0 ? "%s  \xC2\xB7  pre %s" : "%s", decayText, preText);
+    if (type == ReverbType::Shimmer) { // the interval it climbs by (or falls) in place of the pre-delay
+        char pitchText[32];
+        formatParam(paramIndex(slot, FxParam::ReverbShimmerPitch), interval, pitchText, sizeof(pitchText));
+        std::snprintf(text, sizeof(text), "%s  \xC2\xB7  shift %s", decayText, pitchText);
+    }
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
 }
 
@@ -4681,6 +4743,8 @@ void View::paintNoteSource(Canvas &c, float top) {
     }
     c.text(box, text, 11.0f, telemetry_.voices > 0 ? kText : kFaint, Align::Center, telemetry_.voices > 0);
     c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, "Note", 10.5f, kDim);
+    if (sourceBipolar(kNoteSource)) // swings both ways: a sign in its corner
+        c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", 10.0f, color, Align::Center, true);
 }
 
 void View::paintShifter(Canvas &c, Rect r, int slot) {
@@ -4773,7 +4837,8 @@ void View::paintInspector(Canvas &c) {
     const auto type = static_cast<FilterType>(std::lround(value(paramIndex(filter, FilterParam::Type))));
     std::string summary = std::string("Filter ") + std::to_string(filter + 1) + dot + filterTypeName(type);
     if (hasSlope(type))
-        summary += value(paramIndex(filter, FilterParam::Slope)) >= 0.5 ? " 24 dB" : " 12 dB";
+        summary += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
+                   " dB";
     std::string inputs;
     for (int from = 0; from < kNodes; ++from) {
         const int param = routeParam(from, node);
@@ -4886,7 +4951,7 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
         for (int i = 0; i <= steps; ++i) {
             const double x = static_cast<double>(i) / steps;
             const double magnitude =
-                filterResponse(type, value(slopeParam) >= 0.5, cutoffFromNorm(cutoffNorm), res, cutoffFromNorm(x));
+                filterResponse(type, filterSlope(value(slopeParam)), cutoffFromNorm(cutoffNorm), res, cutoffFromNorm(x));
             const float db = static_cast<float>(20.0 * std::log10(std::max(magnitude, 1e-6)));
             points.push_back({inner.x + static_cast<float>(x) * inner.w, yOfDb(db)});
         }
@@ -4955,6 +5020,12 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
         const float level = telemetry_.sources[env - kOps];
         const float y = s.bottom - level * height;
         c.line({r.x + 8.0f, y}, {r.right() - 8.0f, y}, color.alpha(0.35f), 1.0f, true);
+    }
+    // A bipolar envelope swings its targets about its middle level: a line there, and a sign in the corner.
+    if (env >= kOps && sourceBipolar(env - kOps)) {
+        const float middle = s.bottom - 0.5f * height;
+        c.line({r.x + 8.0f, middle}, {r.right() - 8.0f, middle}, color.alpha(0.45f), 1.0f, true);
+        c.text({r.right() - 20.0f, r.y + 3.0f, 14.0f, 14.0f}, "\xC2\xB1", 11.0f, color, Align::Center, true);
     }
 }
 
@@ -5190,11 +5261,8 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
     case Kind::Choice:
     case Kind::Toggle: {
         const bool on = w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b : value(w.param) >= 0.5;
-        // Legato only matters in mono, and the slope only to the types that have one: show them as
-        // inactive otherwise.
+        // Legato only matters in mono: show it as inactive otherwise.
         bool relevant = w.param != paramIndex(GlobalParam::Legato) || value(paramIndex(GlobalParam::Mono)) >= 0.5;
-        if (isFilterSlope(w.param))
-            relevant = hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
         if (isLfoFree(w.param)) // a one-shot restarts with every note
             relevant = value(paramIndex(sourceOf(w.param), SourceParam::OneShot)) < 0.5;
         const char *const clipModes[] = {"HARD", "SOFT", "ASYM"};
@@ -5208,14 +5276,11 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
                            : field == FxParam::McLink                          ? "LINK"
                            : field == FxParam::PhaserStereo                    ? "STEREO"
-                           : isFilterSlope(w.param)                            ? (on ? "24 dB" : "12 dB")
                                                                                : "ALWAYS";
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;
         if (sourceOf(w.param) >= 0)
             color = kSourceColors[sourceOf(w.param)];
-        if (isFilterSlope(w.param))
-            color = kFilterColor;
         if (fxSlotOf(w.param) >= 0)
             color = fxColor(fxSlotOf(w.param));
         if (shaperOf(w.param) >= 0)
@@ -5675,16 +5740,20 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         c.text(w.rect, "EDIT", 10.5f, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ListButton: {
-        const bool lit = hovered || listMenu_ == w.param;
-        const Color color = shaperOf(w.param) >= 0 ? kShaperColor : fxColor(fxSlotOf(w.param));
+        // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.
+        const int shown = listShown(w.param);
+        const bool relevant =
+            !isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
+        const bool lit = relevant && (hovered || listMenu_ == w.param);
+        const Color color = listColor(w.param);
         c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, 5.0f);
-        c.strokeRect(w.rect, color.alpha(lit ? 0.9f : 0.45f), 1.0f, 5.0f);
-        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h},
-               listItemName(fxFieldOf(w.param), static_cast<int>(std::lround(value(w.param)))), 11.0f,
-               lit ? kText : kDim, Align::Left, true);
+        c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, 5.0f);
+        const Color text = !relevant ? kFaint : lit ? kText : kDim;
+        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, listItemName(w.param, shown), 11.0f, text,
+               Align::Left, true);
         const Point m{w.rect.right() - 13.0f, w.rect.center().y};
         const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-        c.polyline(chevron, 3, lit ? kText : kDim, 1.5f);
+        c.polyline(chevron, 3, text, 1.5f);
         break;
     }
     case Kind::ListMenu:
@@ -5722,12 +5791,13 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         break;
     }
     case Kind::ListItem: {
-        const bool selected = std::lround(value(w.param)) == w.b;
-        if (hovered || selected)
-            c.fillRect(w.rect, (shaperOf(w.param) >= 0 ? kShaperColor : fxColor(fxSlotOf(w.param))).alpha(hovered ? 0.18f : 0.1f),
-                       5.0f);
-        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, listItemName(fxFieldOf(w.param), w.b), 11.0f,
-               hovered || selected ? kText : kDim, Align::Left, selected);
+        // A band-pass's or notch's list shows the 6 and 18 dB slopes it doesn't come in faintly, and can't pick them.
+        const bool fits = listItemFits(w.param, w.b);
+        const bool selected = listShown(w.param) == w.b;
+        if ((hovered && fits) || selected)
+            c.fillRect(w.rect, listColor(w.param).alpha(hovered && fits ? 0.18f : 0.1f), 5.0f);
+        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, listItemName(w.param, w.b), 11.0f,
+               !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
     case Kind::ShapePoint: { // compact: smaller, in a shaper's card
@@ -6000,7 +6070,7 @@ void View::paintHoverTags(Canvas &c, const std::vector<Widget> &list) {
 }
 
 // A modulation in words: its source, and what it takes its target through in the target's own units, from
-// half the depth below the set value to half above for a bipolar LFO, or from it one way for the others.
+// half the depth below the set value to half above for a bipolar source, or from it one way for a unipolar one.
 std::string View::modRangeText(int source, int slot) const {
     std::string text = sourceName(source);
     const int target = slotTarget(value(slotTargetIndex(source, slot)));
@@ -6008,8 +6078,7 @@ std::string View::modRangeText(int source, int slot) const {
         const ParamDef &def = table_[target];
         const double set = value(target);
         const double reach = value(slotAmountIndex(source, slot)) * (def.max - def.min);
-        const bool both = sourceTypeOf(source) == SourceType::Lfo &&
-                          value(paramIndex(source, SourceParam::Unipolar)) < 0.5;
+        const bool both = sourceBipolar(source);
         const double start = both ? set - 0.5 * reach : set; // a negative depth runs the other way
         const double end = both ? set + 0.5 * reach : set + reach;
         char from[32], to[32];
@@ -6036,19 +6105,20 @@ void View::paintKnob(Canvas &c, const Widget &w, const std::vector<Assignment> &
     const int macro = macroOf(w.param);
     const bool idle = macro >= 0 && !sourceLive(kMaxSources + macro);
     const Color arc = macro >= 0 ? kSourceColors[kMaxSources + macro].alpha(idle ? 0.3f : 1.0f) : kAccent;
-    c.arc(center, radius - 2.0f, isBipolar(def.kind) ? 0.0f : kKnobStart, angle, arc, 3.5f);
+    // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
+    const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
+    c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
 
-    // Modulation ranges just outside the track, one ring per source. Bipolar LFOs swing both ways.
+    // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
     // A switched-off source's ring is faint: it is kept, but does nothing.
     for (const Assignment &m : mods) {
         if (m.target != w.param)
             continue;
-        const bool lfo = sourceTypeOf(m.source) == SourceType::Lfo &&
-                         value(paramIndex(m.source, SourceParam::Unipolar)) < 0.5; // swings both ways
+        const bool both = sourceBipolar(m.source);
         const auto [down, up] = modReach(m.source, m.amount);
         const double from = n + down;
         const double to = n + up;
-        const float alpha = (lfo ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
+        const float alpha = (both ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
         c.arc(center, radius + 2.5f, knobAngle(from), knobAngle(to), kSourceColors[m.source].alpha(alpha), 2.5f);
     }
 
@@ -6091,6 +6161,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd &&
+         !(hover_->kind == Kind::ListButton && isFilterSlope(hover_->param)) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
     const int param = hover_->param;
@@ -6166,8 +6237,10 @@ void View::paintTooltip(Canvas &c) {
                                    : "Off: click to switch the effect on again, or drag to move it";
     else if (isLfoSync(param))
         text = "Sync: the rate follows the host tempo as a note value";
-    else if (isFilterSlope(param))
-        text = "Low-, high-, band-pass and notch: 12 dB per octave, or 24 with a second stage";
+    else if (hover_->kind == Kind::ListButton && isFilterSlope(param))
+        text = slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0)
+                   ? "How steeply it cuts past the cutoff: 6 to 24 dB per octave"
+                   : "A band-pass or notch comes in 12 and 24 dB per octave";
     else if (isLfoFree(param))
         text = "Free: runs on without restarting at each note, the same for every voice";
     else if (sourceFieldOf(param) == SourceParam::OneShot)
@@ -6745,6 +6818,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         hover_.reset();
         break;
     case Kind::ListButton:
+        if (isFilterSlope(w.param) && !hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))))) {
+            flash("A comb filter has no slope");
+            break;
+        }
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
     case Kind::ListMenu:
@@ -6752,6 +6829,8 @@ void View::mouseDown(Point p, Modifiers mods) {
             listMenu_ = -1;
         break;
     case Kind::ListItem:
+        if (!listItemFits(w.param, w.b))
+            break; // the list stays open for another pick
         listMenu_ = -1;
         edit(w.param, w.b); // a drawn curve is edited in the card, or the big editor
         break;
@@ -7204,7 +7283,10 @@ void View::wheel(Point p, float steps, Modifiers mods) {
 // Menu commands from here on clear all of a source's slots; those from 100 up to here remove one slot.
 constexpr int kClearCommand = 100 + kAllSources * kSlots; // the removals first, the macros' and the note's too
 // And from here on, each bypasses a slot or lets it go again.
-constexpr int kBypassCommand = kClearCommand + kMaxSources;
+constexpr int kBypassCommand = kClearCommand + kAllSources;
+// A source's polarity, in the menus of its card, its handle, and a macro's knob and name.
+constexpr int kUnipolarCommand = 12;
+constexpr int kBipolarCommand = 13;
 
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
@@ -7226,14 +7308,40 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({7, "Remove"});
         return items;
     }
+    // Every source can swing its targets one way or both, from the menu of its card or handle (and a macro's knob,
+    // the mod wheel and the note source's display).
+    const int polaritySource = hit->kind == Kind::SourceGrip || hit->kind == Kind::SourceHandle ||
+                                       hit->kind == Kind::MacroHandle
+                                   ? hit->a
+                               : hit->kind == Kind::MacroName              ? kMaxSources + hit->a
+                               : hit->kind == Kind::NoteDisplay            ? kNoteSource
+                               : hit->kind == Kind::ModWheel               ? kWheelSource
+                               : hit->kind == Kind::Knob && macroOf(hit->param) >= 0 ? kMaxSources + macroOf(hit->param)
+                                                                                     : -1;
+    auto addPolarity = [&] {
+        menuSource_ = polaritySource;
+        const bool bipolar = sourceBipolar(polaritySource);
+        items.push_back({kUnipolarCommand, "Unipolar", !bipolar});
+        items.push_back({kBipolarCommand, "Bipolar", bipolar});
+    };
     if (hit->kind == Kind::SourceGrip || hit->kind == Kind::SourceHandle) {
-        menuSource_ = hit->a;
         if (!usedSlots(hit->a).empty())
             items.push_back({kClearCommand + hit->a, "Clear all " + sourceName(hit->a) + " targets"});
         if (sources().size() < static_cast<size_t>(kMaxSources))
             items.push_back({9, "Duplicate"});
+        if (!items.empty())
+            items.push_back({0, ""});
+        addPolarity();
         items.push_back({0, ""});
         items.push_back({10, "Remove"});
+        return items;
+    }
+    if (hit->kind == Kind::MacroHandle || hit->kind == Kind::MacroName || hit->kind == Kind::NoteDisplay) {
+        if (!usedSlots(polaritySource).empty()) {
+            items.push_back({kClearCommand + polaritySource, "Clear all " + sourceName(polaritySource) + " targets"});
+            items.push_back({0, ""});
+        }
+        addPolarity();
         return items;
     }
     if (hit->kind == Kind::SlotBar || hit->kind == Kind::SlotRemove || hit->kind == Kind::ModDot ||
@@ -7303,6 +7411,10 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         if (removals.size() > 1)
             items.push_back({2, "Remove all modulation"});
     }
+    if (polaritySource >= 0) { // a macro's knob, or the mod wheel
+        items.push_back({0, ""});
+        addPolarity();
+    }
     return items;
 }
 
@@ -7344,9 +7456,12 @@ void View::menuCommand(int command) {
         removeSource(menuSource_);
     } else if (command == 11 && menuValue_) {
         startTyping(*menuValue_);
+    } else if ((command == kUnipolarCommand || command == kBipolarCommand) && menuSource_ >= 0) {
+        const Polarity polarity = polarityOf(menuSource_, sourceTypeOf(menuSource_));
+        edit(polarity.index, command == kBipolarCommand ? polarity.bipolar : 1.0 - polarity.bipolar);
     } else if (command >= 100 && command < kClearCommand) {
         removeSlot((command - 100) / kSlots, (command - 100) % kSlots);
-    } else if (command >= kClearCommand && command < kClearCommand + kMaxSources) {
+    } else if (command >= kClearCommand && command < kClearCommand + kAllSources) {
         const UndoScope step(controller_);
         for (int slot : usedSlots(command - kClearCommand))
             removeSlot(command - kClearCommand, slot);

@@ -19,7 +19,8 @@ const char *const kWaveNames[] = {"Sine",      "Triangle", "Saw",   "Square", "P
 static_assert(std::size(kWaveNames) == static_cast<size_t>(OpWave::Count));
 const char *const kFilterTypeNames[] = {"Low-pass", "High-pass", "Band-pass", "Notch", "Comb"};
 const char *const kFilterTypeShortNames[] = {"LP", "HP", "BP", "Notch", "Comb"};
-const char *const kFilterSlopeNames[] = {"12 dB/oct", "24 dB/oct"};
+const char *const kFilterSlopeNames[] = {"6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct"};
+static_assert(std::size(kFilterSlopeNames) == static_cast<size_t>(kFilterSlopes));
 static_assert(std::size(kFilterTypeNames) == static_cast<size_t>(FilterType::Count));
 static_assert(std::size(kFilterTypeShortNames) == static_cast<size_t>(FilterType::Count));
 const char *const kDivisionNames[] = {"4/1D",  "4/1",  "4/1T",  "2/1D",  "2/1",  "2/1T",  "1/1D",
@@ -206,8 +207,8 @@ ParamTable buildTable() {
         double cutoffHz;
         double resonance;
     };
-    const FilterDefaults filterDefaults[] = {{FilterType::LowPass, 0.0, 1200.0, 0.3},
-                                             {FilterType::BandPass, 0.0, 800.0, 0.5}};
+    const FilterDefaults filterDefaults[] = {{FilterType::LowPass, kDefaultSlope, 1200.0, 0.3},
+                                             {FilterType::BandPass, kDefaultSlope, 800.0, 0.5}};
     static_assert(std::size(filterDefaults) == static_cast<size_t>(kFilters));
     for (int filter = 0; filter < kFilters; ++filter) {
         const std::string name = "Filter " + std::to_string(filter + 1);
@@ -222,7 +223,8 @@ ParamTable buildTable() {
         add(paramIndex(filter, FilterParam::KeyTrack), name + " Key Track", module, ParamKind::Percent, 0.0, 1.0, 0.0);
         add(paramIndex(filter, FilterParam::Drive), name + " Drive", module, ParamKind::Percent, 0.0, 1.0, 0.0);
         add(paramIndex(filter, FilterParam::Out), name + " Out", module, ParamKind::Percent, 0.0, 1.0, 1.0);
-        add(paramIndex(filter, FilterParam::Slope), name + " Slope", module, ParamKind::FilterSlope, 0.0, 1.0, d.slope);
+        add(paramIndex(filter, FilterParam::Slope), name + " Slope", module, ParamKind::FilterSlope, 0.0,
+            kFilterSlopes - 1.0, d.slope);
         add(paramIndex(filter, FilterParam::Enabled), name + " On", module, ParamKind::Toggle, 0.0, 1.0, 0.0);
     }
     for (int from = 0; from < kFilters; ++from)
@@ -275,6 +277,7 @@ ParamTable buildTable() {
             add(slotAmountIndex(kMaxSources + macro, slot), name + " Amount " + n, module, ParamKind::BipolarPercent,
                 -1.0, 1.0, 0.0);
         }
+        add(paramIndex(macro, MacroParam::Bipolar), name + " Bipolar", module, ParamKind::Toggle, 0.0, 1.0, 0.0);
     }
 
     // The note source starts mapped to nothing, over every MIDI note, in a straight line from nothing at C-1 to all
@@ -293,6 +296,9 @@ ParamTable buildTable() {
         add(slotAmountIndex(kWheelSource, slot), "Mod Wheel Amount " + n, "Mod Wheel", ParamKind::BipolarPercent, -1.0,
             1.0, 0.0);
     }
+    // Both start unipolar, like the macros: they take their targets one way.
+    add(paramIndex(WheelParam::Bipolar), "Mod Wheel Bipolar", "Mod Wheel", ParamKind::Toggle, 0.0, 1.0, 0.0);
+    add(paramIndex(NoteParam::Bipolar), "Note Bipolar", "Note", ParamKind::Toggle, 0.0, 1.0, 0.0);
     add(paramIndex(NoteParam::Low), "Note Low", "Note", ParamKind::NotePitch, 0.0, kMaxNotePitch, 0.0);
     add(paramIndex(NoteParam::High), "Note High", "Note", ParamKind::NotePitch, 0.0, kMaxNotePitch, kMaxNotePitch);
     {
@@ -374,7 +380,7 @@ ParamTable buildTable() {
 
         fx(FxParam::FilterType, "Filter Type", ParamKind::FilterType, 0.0, static_cast<double>(FilterType::Count) - 1.0,
            static_cast<double>(FilterType::LowPass));
-        fx(FxParam::FilterSlope, "Filter Slope", ParamKind::FilterSlope, 0.0, 1.0, 0.0);
+        fx(FxParam::FilterSlope, "Filter Slope", ParamKind::FilterSlope, 0.0, kFilterSlopes - 1.0, kDefaultSlope);
         fx(FxParam::FilterCutoff, "Filter Cutoff", ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(2000.0));
         fx(FxParam::FilterResonance, "Filter Resonance", ParamKind::Percent, 0.0, 1.0, 0.2);
         fx(FxParam::FilterDrive, "Filter Drive", ParamKind::Percent, 0.0, 1.0, 0.0);
@@ -416,6 +422,9 @@ ParamTable buildTable() {
            normFromTime(0.02));
         fx(FxParam::ReverbWidth, "Reverb Width", ParamKind::Percent, 0.0, 1.0, 1.0);
         fx(FxParam::ReverbMix, "Reverb Mix", ParamKind::Percent, 0.0, 1.0, 0.3);
+        // A shimmer climbs an octave each time round, half of what goes round shifted.
+        fx(FxParam::ReverbShimmerPitch, "Reverb Shimmer Pitch", ParamKind::Transpose, -24.0, 24.0, 12.0);
+        fx(FxParam::ReverbShimmer, "Reverb Shimmer", ParamKind::Percent, 0.0, 1.0, 0.5);
 
         fx(FxParam::PhaserRate, "Phaser Rate", ParamKind::SweepRate, 0.0, normFromRate(20.0), normFromRate(0.4));
         fx(FxParam::PhaserDepth, "Phaser Depth", ParamKind::Percent, 0.0, 1.0, 0.6);
@@ -492,6 +501,7 @@ ParamTable buildTable() {
         field(SourceParam::Release, "Release", ParamKind::Time, 0.0, 1.0, normFromTime(0.3));
         field(SourceParam::Hold, "Hold", ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
         addCurves(paramIndex(source, SourceParam::AttackCurve), name, module);
+        field(SourceParam::EnvBipolar, "Bipolar", ParamKind::Toggle, 0.0, 1.0, 0.0); // takes its targets one way
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.
@@ -990,8 +1000,8 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::NoiseSlope: // dB per octave, with or without the minus
         value = std::abs(value) / 6.0;
         break;
-    case ParamKind::FilterSlope: // dB per octave
-        value = std::abs(value) >= 18.0 ? 1.0 : 0.0;
+    case ParamKind::FilterSlope: // dB per octave, to the nearest slope
+        value = std::round(std::abs(value) / 6.0) - 1.0;
         break;
     case ParamKind::ShiftRange: // Hz, or kHz with a k
         value = normFromShiftRange(*end == 'k' || *end == 'K' ? value * 1000.0 : value);

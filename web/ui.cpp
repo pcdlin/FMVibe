@@ -284,6 +284,11 @@ EMSCRIPTEN_KEEPALIVE const char *ui_menu_label(int item) {
     return item >= 0 && item < static_cast<int>(menu.size()) ? menu[item].label.c_str() : "";
 }
 
+// 1 for an item with a check mark: the choice in force.
+EMSCRIPTEN_KEEPALIVE int ui_menu_checked(int item) {
+    return item >= 0 && item < static_cast<int>(menu.size()) && menu[item].checked ? 1 : 0;
+}
+
 EMSCRIPTEN_KEEPALIVE void ui_menu_pick(int command) {
     view->menuCommand(command);
 }

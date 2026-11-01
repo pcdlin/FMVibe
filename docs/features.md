@@ -45,8 +45,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   noise through a band-pass, for example, gives a carrier a narrow band of grit. Operators hear the filter's
   previous output sample. A filter that only modulates can have its output level at 0. Types:
   - Low-pass, High-pass, Band-pass and Notch: a state-variable filter that stays smooth under fast modulation.
-    **Slope** picks 12 dB per octave (the default) or 24, which adds a second, plain Butterworth stage, so the
-    resonance stays a single peak;
+    **Slope** picks 6, 12 (the default), 18 or 24 dB per octave. At 6 dB the filter is a one-pole, taken from the
+    state-variable filter so resonance still adds a peak at the cutoff (as high as at 12 dB) while the slope past it
+    stays 6 dB per octave; 18 and 24 add a second, plain stage after the resonant one (a one-pole, or a
+    Butterworth), so the resonance stays a single peak. A band-pass or notch comes in 12 and 24 dB only: set to 6 or
+    18, it plays the slope above;
   - Comb: a tuned feedback delay, so the cutoff sets the pitch and resonance the feedback. With its cutoff at 0
     and the note source on it at 100 %, its curve drawn along the cutoff knobs' (and Key Track left at 0), it
     rings at the pitch of the note.
@@ -68,9 +71,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
   has 16 slots, and a slot can
   target any continuous parameter: a knob, a matrix amount, an operator output, even another LFO's rate or a slot
-  depth. Depth is ±100 % of the target's range: how far an envelope, a unipolar LFO or a macro takes the target
-  one way, and the whole swing of a bipolar LFO, half of it below the set value and half above (at 100 %, −50 %
-  to +50 %). LFOs and envelopes run per voice and restart
+  depth. Depth is ±100 % of the target's range: how far a **unipolar** source takes the target one way, and the
+  whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
+  Every source can be either, picked from its right-click menu (see the editor): LFOs start bipolar, and
+  envelopes, macros, the note source and the mod wheel unipolar. A bipolar envelope swings about its middle level
+  (nothing at half of it, half the depth down at rest and up at its peak), and a bipolar macro, mod wheel or note
+  source about the middle of what it puts out (a macro moves nothing with its knob at 50 %). LFOs and envelopes run
+  per voice and restart
   with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later.
   - **Macros**: eight knobs (0–100 %) that hosts can automate, each with 16 slots like a source's. A macro's
     value times each slot's depth is added to its target for every voice and the effects alike, so a macro can
@@ -101,7 +108,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends, which is
     where it started (a one-shot is never free).
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
-    envelope.
+    envelope. It is the same choice the LFO's right-click menu offers.
   - **Random** takes a new value every cycle. **Chaos** sets how far it may move from the last one: up to a tenth
     of the range either way at 0 %, so it wanders, rising to anywhere at all at 100 % (the default), like sample
     and hold. **Smooth** glides to each new value instead of jumping: over that share of the cycle, easing in and
@@ -136,7 +143,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     Peak (a bell), Low Shelf, High Shelf, Low Cut or High Cut (12 dB per octave, Q setting its resonance; the
     gain does nothing there).
   - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb; a row of icons on its
-    card, with the 12/24 dB switch under the response) and 12/24 dB slope on
+    card, with the list of slopes under the response) and their slopes, 6 to 24 dB, on
     the whole mix, with Cutoff, Resonance, **Key Track**, Drive and Mix. Key Track (0 to begin with) moves the
     cutoff with the newest voice's pitch, from C4 on, as a voice filter's does; once the notes end, it stays where
     the last one left it. Like the Param EQ, its display shows what it puts out behind its response.
@@ -146,18 +153,28 @@ What the plugin does and how its editor works, in full. Building and installing 
     its own with its Threshold, Ratio and Gain after it (a 6 dB knee); Attack, Release and Mix are shared, and
     Output sets the level after the mix. At 0 % mix the bands just sum back up, so nothing combs. **Link** makes
     all three bands use the low band's Threshold, Ratio and Gain; each band keeps its own for when it is unlinked.
-  - **Reverb**: a feedback delay network of eight lines, mixed through a Householder matrix, with the input
-    diffused by all-passes first. Four algorithms: **Hall** (that network, four all-passes); **Room** (lines under
-    half as long and a darker tail, with six distinct early reflections that spread with the size); **Plate**
-    (lines 60 % as long, eight all-passes for a denser start, a brighter tail); and **Shimmer**, a brighter hall
-    fed with octaves of its input: what goes into the lines is pitched up an octave (two crossfading read heads,
-    80 ms apart), band-passed (250 Hz up to 8 kHz, which the damping lowers to 2 kHz) and fed in again, 4.4 dB
-    down and signed for a wider image, and from there into the pitch shifter again. Each octave comes in after
-    the one below it, up to 240 ms later with the size, so the tail climbs as it fades (an A4's tail holds its
-    octave at about three quarters of the note's level, two octaves up at a fifth). Size (the
+  - **Reverb**: a feedback delay network of sixteen lines (29 to 89 ms at full size, spread evenly on a log
+    scale), mixed through a Hadamard matrix, which spreads each line's sound evenly over all of them every time
+    round, so the echoes thicken fast. Each line's length wavers slowly (a fraction of a millisecond, each at its
+    own pace between 0.3 and 1 Hz), so the tail's resonances smear instead of ringing on as a metallic tone.
+    Each side of the input goes through the pre-delay and its own all-passes, then into half the lines, and the
+    two sides of the output take the lines with signs that don't match, so the tail comes out wide even from a
+    mono sound. Four algorithms: **Hall** (that network, four all-passes a side); **Room** (lines under half as
+    long, a darker tail and tighter wavering, with six distinct early reflections that spread with the size);
+    **Plate** (lines 60 % as long, six all-passes a side for a denser start, a brighter tail, little wavering); and
+    **Shimmer**, a brighter hall that feeds its own tail back into itself pitch-shifted: four of its lines are
+    read through pitch shifters as well (two read heads each, crossfading as they jump back across an 80 ms
+    window), band-passed (200 Hz up to 8 kHz, which the damping lowers to 2 kHz), so each time round part of the
+    tail climbs (or falls) by the interval, and the shifted part shifts again the next time. **Pitch** sets the
+    interval, −24 to +24 semitones (an octave up to begin with), and **Shimmer** how much of those lines is
+    shifted (50 % to begin with; at 0 it is a plain bright hall). Shifted a semitone or more, the crossfades keep
+    the power of what they blend, so the tail lasts; within half a semitone, where the heads read much the same
+    sound, they keep its level instead, so it can't build up. In the second after an A4 ends, its tail holds the
+    octave about as loud as the note, and two octaves up at about a third of it. Size (the
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),
-    Decay (0.2–20 s to fall 60 dB), Damping (the tail's low-pass, from 20 kHz down to 1 kHz), Pre-Delay (off to
-    250 ms), Width and Mix (like the delay's: the dry sound stays at full level up to 50 %).
+    Decay (0.2–20 s to fall 60 dB), Damping (the corner, from 20 kHz down to 1 kHz, above which the tail falls five
+    times as fast, by as much in every line), Pre-Delay (off to 250 ms), Width and Mix (like the delay's: the dry
+    sound stays at full level up to 50 %).
   - **Phaser**: 2–12 first-order all-passes (Stages) whose corner an LFO (Rate, 0–20 Hz; at 0 the sweep stands
     still) sweeps up to 2.5 octaves either way of Center (Depth), with Feedback (either sign) from the last stage
     into the first. **Sync** (off to begin with) makes the LFO go round once per note value of the host tempo
@@ -277,9 +294,10 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
       (a thin line divides those from the shared knobs), and LINK beside them gives the bands one curve;
     - the reverb's tail: after the pre-delay it builds up (slower in a bigger space, with its early reflections
       spread wider) and falls to nothing at the decay time, its texture sparser the bigger the space; a room's
-      early reflections stand out, a plate is dense from the start, and a shimmer's octaves sparkle above its
-      tail, each starting later, higher and fainter. Its algorithm comes from a list under the card's title, like
-      the shaper's curves;
+      early reflections stand out, a plate is dense from the start, and a shimmer's shifted tail sparkles above it
+      (below it for a shift down), each step of the interval later, further out and fainter, the less it shifts
+      the fainter, with the interval over the display. Its algorithm comes from a list under the card's title,
+      like the shaper's curves; a shimmer's card has two rows of four knobs, its Pitch and Shimmer among them;
     - the phaser's and flanger's responses faintly at both ends of their sweep, and bright where their LFO is,
       moving while the audio runs (a stereo phaser's right side as a second, thinner curve);
     - the phase disperser's delay across frequency, peaking at Freq;
@@ -296,7 +314,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (the phaser's STEREO beside it),
     over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
-    do. The filter's knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
+    do. The filter's slope is a list under its display, like a voice filter's (see the inspector). The filter's
+    knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.
 
     Each effect has an icon, at the left of its card's title and in the list of effects. On the card, the icon
@@ -375,7 +394,9 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
     EDIT button opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
     are the send knobs of the operators that feed it.
-  - Filters: type buttons, each a small picture of its response (named on hover), and the 12/24 dB slope switch (dimmed for comb), cutoff, resonance, key tracking, drive and output, and a live response curve whose
+  - Filters: type buttons, each a small picture of its response (named on hover), and the slope's list at the end
+    of their row, 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
+    what plays; for a comb it is faint and doesn't open), cutoff, resonance, key tracking, drive and output, and a live response curve whose
     handle drags cutoff (sideways) and resonance (up/down). With its cutoff or resonance modulated, faint curves
     show how far the modulation takes it either way, and while notes play the curve follows where the newest
     voice is (the handle stays at the set values, the cutoff a C4 has). Key tracking moves all of it with that
@@ -390,9 +411,11 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   after the last one, while there is room for more, two square dashed cards with a plus, ADD LFO above ADD ENV,
   add one too. With more than fit, the scrollbar under them or the mouse wheel over the panel scrolls them
   smoothly. LFOs and envelopes are numbered by type in the order they show.
-  - Drag a card by its title to move it along; the order is saved with the patch. Right-click the title to
-    duplicate the source (with its settings and targets) or remove it; the × removes it too, together with its modulation and
-    whatever modulates its knobs.
+  - Drag a card by its title to move it along; the order is saved with the patch. Right-click the title (or the
+    handle) to duplicate the source (with its settings and targets), clear its targets, make it **Unipolar** or
+    **Bipolar** (the one in force checked) or remove it; the × removes it too, together with its modulation and
+    whatever modulates its knobs. A bipolar envelope's display has a dashed line at its middle level and ± in its
+    corner.
   - The power switch turns a source on and off; one that is off has its card dimmed and its handle and its rings
     on knobs faint (the handle can still be dragged onto targets).
   - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip
@@ -443,17 +466,21 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   octave). Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
   played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs
   back to center on release; the **Mod** wheel is the Mod Wheel param, and the handle right of it drags onto what
-  it should move, like a macro's (faint, like theirs, until it moves something).
+  it should move, like a macro's (faint, like theirs, until it moves something). The wheel's and its handle's
+  right-click menus make it unipolar or bipolar; bipolar, it fills from its middle, where it moves nothing.
 - **Macros** (in the keyboard strip, above the keys): eight knobs, each in a color of its own, with a handle
   beside it to drag onto anything a source can modulate, just like an LFO's, and its name under it: double-click
   the name to change it (Enter
   keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
   Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. Until a
-  macro modulates something, its handle, its knob's arc and its name are faint.
+  macro modulates something, its handle, its knob's arc and its name are faint. The right-click menu of its knob,
+  handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
+  macro's arc starts from the knob's middle, where it moves nothing.
 - **Note** (in the keyboard strip, left of the macros, above the wheels): the note source's handle, to drag onto a
   target like a macro's (and like a macro's, faint until it modulates something), and beside it the note the newest voice plays, as the source follows it: its name, and
   the cents it is off while bent or gliding (a dash while nothing plays), over a faint picture of its curve. A
-  click on it opens the curve's editor (see the shape editor).
+  click on it opens the curve's editor (see the shape editor). Its right-click menu, and its handle's, make it
+  unipolar or bipolar (± in the display's corner).
 - **Presets**: presets are `.fmv` files in `Documents\FMVibe\presets` and its subfolders. The first time the
   library is used (the browser, the arrows or a file dialog), FMVibe makes that folder with its examples in the
   `Examples` subfolder: Electric Piano, FM Bass, Glass Bell, Warm Pad, Drawbar Organ, Pluck Delay; Crystal
@@ -485,7 +512,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     the same forward. The project remembers which preset it was and whether it changed.
 - **Settings** (the cog after Save): **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
-  **Theme**: Midnight (the default), Graphite (neutral grays), Ocean (deep blue-green) or Light, each button
+  **Theme**: Midnight (the default), Graphite (neutral grays), Light (crisp: white cards and knob caps on a cool
+  gray, with deep colors) or Paper (warm: cream on sand, with ink-brown text and earthy colors), each button
   shown in its own colors. **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the
   graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
   stronger and wider the halo.
@@ -501,6 +529,6 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
 | Operators | Op A … Op F: Wave, Coarse, Fine, Detune, Attack, Decay, Sustain, Release |
 | Filters | Filter 1 and 2: Type, Cutoff, Resonance, Key Track, Drive, Out, On, Slope; Filter links: F1 → F2 |
 | Shapers | Shaper 1 and 2: On, Curve, Drive, Output, Mix, Link, then what it feeds into F1 and F2 |
-| FX | One page per effect in the chain, named after its place and type, with that effect's knobs |
+| FX | One page per effect in the chain, named after its place and type, with that effect's knobs (a shimmer reverb's Pitch and Shimmer in place of its Pre-Delay and Width) |
 | Matrix | "A modulates" … "F modulates": what that operator modulates; "Into F1", "Into F2": each operator's send into that filter; "F1 modulates", "F2 modulates": the operators each filter modulates; "Into S1", "S1 modulates" and the same for S2: each operator's send into that shaper, and the operators it modulates |
 | Modulation | One page per source, in the editor's order: an LFO's shape, rate, sync and division, or an envelope's attack, decay, sustain and release, then its 4 slot depths |

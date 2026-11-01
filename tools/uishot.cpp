@@ -357,7 +357,11 @@ Point typeButton(int type) {
     return {900.0f + type * 36.0f + 16.0f, 177.0f};
 }
 
-constexpr Point kSlopeToggle{1144.0f, 177.0f};
+// The slope's list button at the end of the type buttons' row, and its entries, 6 to 24 dB, which open under it.
+constexpr Point kSlopeButton{1137.0f, 177.0f};
+Point slopeItem(int slope) {
+    return {1137.0f, 207.0f + slope * 22.0f};
+}
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
 Point gridCellCenter(int row, int col) {
@@ -1121,6 +1125,38 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
               "the mod wheel's handle maps it like a macro's, upward, and is faint until it does");
     }
 
+    // The macros', the mod wheel's and the note source's menus pick their polarity too, the one in force checked:
+    // from a macro's knob or handle, the wheel or its handle, and the note source's display. A bipolar macro's
+    // arc starts from its knob's middle.
+    {
+        auto polarity = [&](Point at, const std::string &label) {
+            bool checked = false;
+            for (const MenuItem &item : view.contextMenu(at))
+                if (item.label == label) {
+                    checked = item.checked;
+                    view.menuCommand(item.command);
+                }
+            return checked;
+        };
+        const bool macroWasUnipolar = polarity(macroKnob(0), "Unipolar");
+        polarity(macroKnob(0), "Bipolar");
+        const bool macroBipolar = model.value(paramIndex(0, MacroParam::Bipolar)) == 1.0;
+        const bool handleShowsIt = polarity({macroKnob(0).x - 42.0f, y}, "Bipolar");
+        polarity({74.0f + 13.0f, view.height() - 87.0f}, "Bipolar"); // the wheel itself
+        const bool wheelBipolar = model.value(paramIndex(WheelParam::Bipolar)) == 1.0;
+        polarity({86.0f, y}, "Bipolar"); // the note source's display
+        const bool noteBipolar = model.value(paramIndex(NoteParam::Bipolar)) == 1.0;
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool stripShot = renderer.save(view, dir / "26h-bipolar-strip.png");
+        polarity({114.0f, view.height() - 87.0f}, "Unipolar"); // the wheel's handle
+        polarity(macroKnob(0), "Unipolar");
+        polarity({86.0f, y}, "Unipolar");
+        check(macroWasUnipolar && macroBipolar && handleShowsIt && wheelBipolar && noteBipolar && stripShot &&
+                  model.value(paramIndex(0, MacroParam::Bipolar)) == 0.0 &&
+                  model.value(paramIndex(WheelParam::Bipolar)) == 0.0 && model.value(paramIndex(NoteParam::Bipolar)) == 0.0,
+              "the macros', the mod wheel's and the note source's menus make them unipolar or bipolar");
+    }
+
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the
     // title row (whole notes as they are dragged); a double-click adds a point, and RESET goes back to every MIDI
     // note in a straight line.
@@ -1515,11 +1551,29 @@ void run(const std::filesystem::path &dir, float scale) {
     check(std::lround(model.value(paramIndex(0, FilterParam::Type))) == static_cast<long>(FilterType::Comb),
           "type buttons set the filter type");
     click(view, typeButton(static_cast<int>(FilterType::LowPass)));
-    click(view, kSlopeToggle);
-    const bool steep = model.value(paramIndex(0, FilterParam::Slope)) == 1.0; // from the 12 dB it starts at
-    click(view, kSlopeToggle);
-    check(steep && model.value(paramIndex(0, FilterParam::Slope)) == 0.0,
-          "the slope switch flips the filter between 12 and 24 dB");
+    // The slope's list: a low-pass comes in 6 to 24 dB per octave; a band-pass only in 12 and 24, the others faint
+    // in its list, where a click on one leaves the list open.
+    const int slope = paramIndex(0, FilterParam::Slope);
+    click(view, kSlopeButton);
+    view.mouseMove(slopeItem(3), {});
+    const bool listShot = renderer.save(view, dir / "4a-slope-list.png");
+    click(view, slopeItem(3));
+    const bool steep = model.value(slope) == 3.0;
+    click(view, kSlopeButton);
+    click(view, slopeItem(0));
+    const bool gentle = model.value(slope) == 0.0;
+    click(view, typeButton(static_cast<int>(FilterType::BandPass)));
+    click(view, kSlopeButton);
+    view.mouseMove(slopeItem(2), {});
+    const bool bandListShot = renderer.save(view, dir / "4b-slope-list-band.png");
+    click(view, slopeItem(2));
+    const bool refused = model.value(slope) == 0.0;
+    click(view, slopeItem(3)); // the list is still open
+    const bool bandSteep = model.value(slope) == 3.0;
+    click(view, typeButton(static_cast<int>(FilterType::LowPass)));
+    model.set(slope, kDefaultSlope);
+    check(listShot && steep && gentle && bandListShot && refused && bandSteep,
+          "the slope's list picks 6 to 24 dB, a band-pass's only 12 and 24");
     const int cutoff = paramIndex(0, FilterParam::Cutoff);
     const double cutoffBefore = model.value(cutoff);
     const Point handle{910.0f + static_cast<float>(cutoffBefore) * 248.0f,
@@ -2035,6 +2089,28 @@ void run(const std::filesystem::path &dir, float scale) {
               model.value(paramIndex(5, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom) &&
               nameOf(model, 5) == "LFO 3",
           "Duplicate copies a source in right after it");
+
+    // A card's title menu picks the source's polarity, the one in force checked: an envelope (Env 1, the fourth
+    // card) turns bipolar, and an LFO (the first, made unipolar by its switch earlier) bipolar and back.
+    auto polarity = [&](Point at, const std::string &label) {
+        bool checked = false;
+        for (const MenuItem &item : view.contextMenu(at))
+            if (item.label == label) {
+                checked = item.checked;
+                view.menuCommand(item.command);
+            }
+        return checked;
+    };
+    const bool envWasUnipolar = !polarity(sourceGrip(3), "Bipolar");
+    const bool envBipolar = model.value(paramIndex(1, SourceParam::EnvBipolar)) == 1.0;
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool envShot = renderer.save(view, dir / "11f-bipolar-env.png");
+    const bool lfoWasUnipolar = !polarity(sourceGrip(0), "Bipolar");
+    const bool lfoBipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0;
+    polarity(sourceGrip(0), "Unipolar");
+    check(envWasUnipolar && envBipolar && envShot && lfoWasUnipolar && lfoBipolar &&
+              model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0,
+          "a source's title menu makes it unipolar or bipolar");
 
     // Remove Env 1 (now the fourth card): its slots go with it. A new envelope takes its place.
     click(view, sourceRemove(3));

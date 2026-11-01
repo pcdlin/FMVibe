@@ -179,7 +179,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.mod(5, 4, 0.3).mod(5, 5, 0.12);
 
         p.filter(0, FilterType::LowPass, 1400.0, 0.35).filterSet(0, FilterParam::Drive, 0.15);
-        p.filterSet(0, FilterParam::Slope, 1.0); // 24 dB
+        p.filterSet(0, FilterParam::Slope, 3.0); // 24 dB
         p.filterSet(0, FilterParam::KeyTrack, 0.5);
         p.set(sendIndex(2, 0), 0.75);
         p.filter(1, FilterType::BandPass, 2600.0, 0.45).filterSet(1, FilterParam::KeyTrack, 0.3);
@@ -245,7 +245,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.mod(3, 0, 0.12).mod(3, 1, 0.08);
 
         p.filter(0, FilterType::LowPass, 520.0, 0.25).filterSet(0, FilterParam::Drive, 0.45);
-        p.filterSet(0, FilterParam::Slope, 1.0); // 24 dB
+        p.filterSet(0, FilterParam::Slope, 3.0); // 24 dB
         p.filterSet(0, FilterParam::KeyTrack, 0.35);
         p.set(sendIndex(0, 0), 0.8).set(sendIndex(1, 0), 0.6);
 
@@ -293,7 +293,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.op(2, 0, 0.4, 0.003, 1.0, 1.0, 0.1).opSet(2, OpParam::Velocity, 0.1);
         p.op(3, 2, 0.0, 0.003, 0.6, 0.5, 0.1).opSet(3, OpParam::Velocity, 0.3);
         p.mod(1, 0, 0.35).mod(3, 1, 0.25);
-        p.filter(0, FilterType::LowPass, 300.0, 0.55).filterSet(0, FilterParam::Slope, 1.0);
+        p.filter(0, FilterType::LowPass, 300.0, 0.55).filterSet(0, FilterParam::Slope, 3.0);
         p.filterSet(0, FilterParam::Drive, 0.5).filterSet(0, FilterParam::KeyTrack, 0.3);
         p.set(sendIndex(0, 0), 1.0);
         // The wobble: eighth notes (division 16), the filter and the growl together.
@@ -371,7 +371,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.opSet(1, OpParam::Detune, 5.0).opSet(1, OpParam::Unison, 3.0).opSet(1, OpParam::UnisonDetune, 15.0);
         p.op(2, 1, 0.0, 0.005, 0.8, 0.6, 0.3);
         p.mod(2, 1, 0.1);
-        p.filter(0, FilterType::LowPass, 3000.0, 0.3).filterSet(0, FilterParam::Slope, 1.0);
+        p.filter(0, FilterType::LowPass, 3000.0, 0.3).filterSet(0, FilterParam::Slope, 3.0);
         p.filterSet(0, FilterParam::KeyTrack, 0.5);
         p.set(sendIndex(0, 0), 1.0).set(sendIndex(1, 0), 0.5);
         // The gate: a square in sixteenths (division 19) turning the filter's output down while it is high.
@@ -500,7 +500,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.mod(1, 0, 0.3);
         p.shaper(0, ClipMode::Asymmetric, 20.0).set(shaperSendIndex(0, 0), 1.0).set(shaperModIndex(0, 1), 0.12);
         p.set(shaperFilterIndex(0, 0), 0.8);
-        p.filter(0, FilterType::LowPass, 420.0, 0.35).filterSet(0, FilterParam::Slope, 1.0);
+        p.filter(0, FilterType::LowPass, 420.0, 0.35).filterSet(0, FilterParam::Slope, 3.0);
         p.filterSet(0, FilterParam::KeyTrack, 0.4).filterSet(0, FilterParam::Drive, 0.2);
         p.env(0, 0.0, 0.25, 0.0, 0.1, paramIndex(0, FilterParam::Cutoff), 0.3);
 

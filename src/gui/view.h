@@ -22,6 +22,7 @@ enum class CursorKind { Arrow, Hand, Vertical, Horizontal, Move };
 struct MenuItem {
     int command = 0; // 0 is a separator
     std::string label;
+    bool checked = false; // shown with a check mark: the choice in force
 };
 
 // The whole editor: layout, drawing and mouse handling in logical coordinates
@@ -260,6 +261,12 @@ private:
     int rerouting() const;
     // The color of the effect in `slot`: each type of effect has its own.
     Color fxColor(int slot) const;
+    // A list's color (its effect's, the voice shapers' or the filters'), and whether it can pick `item`: a band-pass's
+    // or notch's slope list can't take 6 or 18 dB.
+    Color listColor(int param) const;
+    bool listItemFits(int param, int item) const;
+    // The entry a list shows as picked: its value, or for a slope the one that plays.
+    int listShown(int param) const;
     bool nodeOn(int node) const;
     void switchOnRoute(int from, int to);
     std::vector<int> enabledNodes() const;
@@ -362,6 +369,8 @@ private:
     std::vector<int> sourcesShown() const;
     SourceType sourceTypeOf(int source) const;
     std::pair<double, double> modReach(int source, double amount) const;
+    // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).
+    bool sourceBipolar(int source) const;
     std::string sourceName(int source) const;
     // A param's name as the editor shows it: a source's fields go by the source's name, not their place's.
     std::string paramName(int index) const;

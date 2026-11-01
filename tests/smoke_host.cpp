@@ -468,9 +468,22 @@ int main(int argc, char **argv) {
     runBlock({&envActive.header});
     runBlocks(2);
     check(bypassed && runBlocks(4) < 1e-4f, "a bypassed slot stops modulating, and modulates again once let go");
+    // Bipolar, the envelope swings its target about its middle level: at full sustain, -100 % takes A's output
+    // down by half rather than all the way.
+    const clap_event_param_value_t envBipolar = paramEvent(paramIndex(env1, SourceParam::EnvBipolar), 1.0);
+    runBlock({&envBipolar.header});
+    runBlocks(2);
+    const float bipolarLevel = runBlocks(4);
+    const clap_event_param_value_t envUnipolar = paramEvent(paramIndex(env1, SourceParam::EnvBipolar), 0.0);
     const clap_event_param_value_t envAmountOff = paramEvent(slotAmountIndex(env1, 0), 0.0);
-    runBlock({&envAmountOff.header});
-    check(runBlocks(4) > 0.05f, "clearing the slot amount brings the note back");
+    runBlock({&envUnipolar.header, &envAmountOff.header});
+    runBlocks(2);
+    const float full = runBlocks(4);
+    std::printf("      envelope on A's output at -100 %%, full sustain: peak %.3f bipolar, %.3f without it\n",
+                bipolarLevel, full);
+    check(full > 0.05f, "clearing the slot amount brings the note back");
+    check(bipolarLevel > 0.4f * full && bipolarLevel < 0.6f * full,
+          "a bipolar envelope swings its target about its middle");
     const clap_event_param_value_t envEmpty = paramEvent(paramIndex(env1, SourceParam::Type), 0.0);
     runBlock({&envEmpty.header, &chokeAll.header});
 
@@ -509,7 +522,7 @@ int main(int argc, char **argv) {
         OpWave wave = OpWave::Sine;
         bool throughFilter = false;
         FilterType type = FilterType::LowPass;
-        bool steep = false; // 24 dB per octave
+        int slope = kDefaultSlope; // 6, 12, 18 or 24 dB per octave
         double cutoffHz = 1000.0;
         double resonance = 0.0;
         double f1ToA = 0.0; // B goes into filter 1 (which isn't heard), and filter 1 modulates A
@@ -528,7 +541,7 @@ int main(int argc, char **argv) {
             paramEvent(paramIndex(0, OpParam::Wave), static_cast<double>(patch.wave)),
             paramEvent(paramIndex(0, OpParam::Out), patch.throughFilter ? 0.0 : 1.0),
             paramEvent(paramIndex(patch.filter, FilterParam::Type), static_cast<double>(patch.type)),
-            paramEvent(paramIndex(patch.filter, FilterParam::Slope), patch.steep ? 1.0 : 0.0),
+            paramEvent(paramIndex(patch.filter, FilterParam::Slope), patch.slope),
             paramEvent(paramIndex(patch.filter, FilterParam::Cutoff), normFromCutoff(patch.cutoffHz)),
             paramEvent(paramIndex(patch.filter, FilterParam::Resonance), patch.resonance),
             paramEvent(paramIndex(patch.filter, FilterParam::KeyTrack), 0.0),
@@ -537,7 +550,7 @@ int main(int argc, char **argv) {
         if (patch.intoLast)
             settings.insert(settings.end(),
                             {paramEvent(paramIndex(last, FilterParam::Type), static_cast<double>(FilterType::LowPass)),
-                             paramEvent(paramIndex(last, FilterParam::Slope), 1.0),
+                             paramEvent(paramIndex(last, FilterParam::Slope), kDefaultSlope),
                              paramEvent(paramIndex(last, FilterParam::Cutoff), normFromCutoff(300.0)),
                              paramEvent(paramIndex(last, FilterParam::Resonance), 0.0),
                              paramEvent(paramIndex(last, FilterParam::KeyTrack), 0.0)});
@@ -631,33 +644,54 @@ int main(int argc, char **argv) {
     std::printf("      saw 880/440 Hz: %.2f dry, %.2f low-passed at 300 Hz, %.2f high-passed at 2 kHz\n", saw,
                 lowPassed, highPassed);
     check(lowPassed < saw / 2.0 && highPassed > saw * 2.0, "low-pass and high-pass reshape the spectrum");
-    // At 24 dB per octave, the same filters cut harder.
-    const double lowPassedSteep = secondHarmonicRatio(
-        {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::LowPass, .steep = true, .cutoffHz = 300.0});
-    const double highPassedSteep = secondHarmonicRatio({.wave = OpWave::Saw,
-                                                        .throughFilter = true,
-                                                        .type = FilterType::HighPass,
-                                                        .steep = true,
-                                                        .cutoffHz = 2000.0});
-    std::printf("      at 24 dB: %.2f low-passed, %.2f high-passed\n", lowPassedSteep, highPassedSteep);
-    check(lowPassedSteep < lowPassed / 1.5 && highPassedSteep > highPassed * 1.5,
-          "the 24 dB slope cuts harder than 12 dB");
+    // Each slope from 6 to 24 dB per octave cuts the same filters harder than the one before: both harmonics lie past
+    // the low-pass's cutoff and before the high-pass's, so the 2nd falls (or rises) against the 1st by another
+    // pole's worth each time.
+    std::array<double, kFilterSlopes> lowBySlope{}, highBySlope{};
+    for (int slope = 0; slope < kFilterSlopes; ++slope) {
+        lowBySlope[slope] = secondHarmonicRatio(
+            {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::LowPass, .slope = slope, .cutoffHz = 300.0});
+        highBySlope[slope] = secondHarmonicRatio(
+            {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::HighPass, .slope = slope, .cutoffHz = 2000.0});
+    }
+    std::printf("      6 to 24 dB: low-passed %.3f %.3f %.3f %.3f, high-passed %.2f %.2f %.2f %.2f\n", lowBySlope[0],
+                lowBySlope[1], lowBySlope[2], lowBySlope[3], highBySlope[0], highBySlope[1], highBySlope[2], highBySlope[3]);
+    bool steeper = true;
+    for (int slope = 1; slope < kFilterSlopes; ++slope)
+        steeper = steeper && lowBySlope[slope] < lowBySlope[slope - 1] / 1.4 && highBySlope[slope] > highBySlope[slope - 1] * 1.4;
+    check(steeper, "each slope from 6 to 24 dB per octave cuts harder than the one before");
+    // A 6 dB low-pass is a plain one-pole without resonance: an octave and a half past its cutoff, its 2nd harmonic
+    // comes out at the one-pole's level against the 1st.
+    const double onePole = 0.5 * std::sqrt((1.0 + std::pow(440.0 / 300.0, 2.0)) / (1.0 + std::pow(880.0 / 300.0, 2.0)));
+    check(std::abs(lowBySlope[0] / onePole - 1.0) < 0.1, "the 6 dB low-pass is a one-pole");
+    // A band-pass or notch comes in 12 and 24 dB only: set to 6 or 18, it plays the slope above.
+    const double band6 = secondHarmonicRatio(
+        {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::BandPass, .slope = 0, .cutoffHz = 600.0});
+    const double band12 = secondHarmonicRatio(
+        {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::BandPass, .slope = 1, .cutoffHz = 600.0});
+    const double band18 = secondHarmonicRatio(
+        {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::BandPass, .slope = 2, .cutoffHz = 600.0});
+    const double band24 = secondHarmonicRatio(
+        {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::BandPass, .slope = 3, .cutoffHz = 600.0});
+    check(std::abs(band6 - band12) < 1e-6 * band12 && std::abs(band18 - band24) < 1e-6 * band24 &&
+              std::abs(band12 - band24) > 0.01 * band12,
+          "a band-pass set to 6 or 18 dB plays 12 or 24");
     bool filtersSound = true;
     for (int t = 0; t < static_cast<int>(FilterType::Count); ++t) {
-        for (bool steep : {false, true}) {
+        for (int slope = 0; slope < kFilterSlopes; ++slope) {
             const float peak = peakOf(play({.wave = OpWave::Saw,
                                             .throughFilter = true,
                                             .type = static_cast<FilterType>(t),
-                                            .steep = steep,
+                                            .slope = slope,
                                             .cutoffHz = 1200.0,
                                             .resonance = 0.9}));
             if (!(peak > 0.005f && peak < 4.0f)) {
-                std::printf("      filter type %d%s: peak %g\n", t, steep ? " at 24 dB" : "", peak);
+                std::printf("      filter type %d at %d dB: peak %g\n", t, slopeDb(slope), peak);
                 filtersSound = false;
             }
         }
     }
-    check(filtersSound, "every filter type passes sound and stays finite at high resonance");
+    check(filtersSound, "every filter type passes sound and stays finite at high resonance, at every slope");
 
     // Switched off, an operator is silent, and a filter passes nothing sent into it.
     {
@@ -1074,6 +1108,26 @@ int main(int argc, char **argv) {
         setParams({{slotTargetIndex(kMaxSources, 0), 0.0}, {slotAmountIndex(kMaxSources, 0), 0.0}});
         std::printf("      macro on A's output: peak %.3f turned up, %.3f turned down\n", muted, sounding);
         check(muted < 0.01f && sounding > 0.1f, "a macro moves its target for every voice, as far as it is turned");
+        // Bipolar, it moves nothing at the knob's middle and half its depth at the ends: A's output stays full at the
+        // middle, comes down by half turned up, and turned down would go past full, where it stays.
+        setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kMaxSources, 0), -1.0},
+                   {paramIndex(0, MacroParam::Bipolar), 1.0},
+                   {paramIndex(0, MacroParam::Value), 0.5}});
+        const float middle = peakOf(play({}));
+        setParams({{paramIndex(0, MacroParam::Value), 1.0}});
+        const float up = peakOf(play({}));
+        setParams({{paramIndex(0, MacroParam::Value), 0.0}});
+        const float down = peakOf(play({}));
+        setParams({{slotTargetIndex(kMaxSources, 0), 0.0},
+                   {slotAmountIndex(kMaxSources, 0), 0.0},
+                   {paramIndex(0, MacroParam::Bipolar), 0.0}});
+        std::printf("      bipolar macro on A's output at -100 %%: peak %.3f at the middle, %.3f up, %.3f down (%.3f "
+                    "without it)\n",
+                    middle, up, down, sounding);
+        check(std::abs(middle - sounding) < 1e-3f && up > 0.4f * sounding && up < 0.6f * sounding &&
+                  std::abs(down - sounding) < 1e-3f,
+              "a bipolar macro moves nothing at its middle and half its depth either way");
     }
 
     // The mod wheel moves nothing until it is assigned; then it is a macro of its own: mapped to A's output at
@@ -1091,6 +1145,21 @@ int main(int argc, char **argv) {
                     resting, muted);
         check(std::abs(unassigned - resting) < 1e-4f && muted < 0.01f,
               "the mod wheel moves only what it is assigned to, like a macro");
+        // Bipolar, like a macro: down, it takes A's output up from where it is (already full), and all the way up
+        // half of the depth down.
+        setParams({{slotTargetIndex(kWheelSource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kWheelSource, 0), -1.0},
+                   {paramIndex(WheelParam::Bipolar), 1.0}});
+        const float bipolarDown = peakOf(play({}));
+        setParams({{wheel, 1.0}});
+        const float bipolarUp = peakOf(play({}));
+        setParams({{wheel, 0.0},
+                   {slotTargetIndex(kWheelSource, 0), 0.0},
+                   {slotAmountIndex(kWheelSource, 0), 0.0},
+                   {paramIndex(WheelParam::Bipolar), 0.0}});
+        std::printf("      bipolar mod wheel on A's output at -100 %%: peak %.3f down, %.3f up\n", bipolarDown, bipolarUp);
+        check(std::abs(bipolarDown - resting) < 1e-3f && bipolarUp > 0.4f * resting && bipolarUp < 0.6f * resting,
+              "a bipolar mod wheel swings its target both ways");
     }
 
     // With its curve drawn along the cutoff knobs' (nothing up to the pitch at 20 Hz, then straight up to where G9
@@ -1149,6 +1218,13 @@ int main(int argc, char **argv) {
             return peak;
         };
         const float a3 = peakAt(57), a4 = peakAt(69), a5 = peakAt(81);
+        // Bipolar, it swings about the middle of what it puts out: nothing at A4, half at A5.
+        setParams({{paramIndex(NoteParam::Bipolar), 1.0}});
+        const float bipolarA4 = peakAt(69), bipolarA5 = peakAt(81);
+        setParams({{paramIndex(NoteParam::Bipolar), 0.0}});
+        std::printf("      bipolar: peak %.3f at A4, %.3f at A5\n", bipolarA4, bipolarA5);
+        check(bipolarA4 < 0.005f && std::abs(bipolarA5 / a5 - 0.5f) < 0.05f,
+              "a bipolar note source swings about the middle of what it puts out");
         setParams({{shapeFieldIndex(curve, 0, PointField::Y), 1.0}, {shapeFieldIndex(curve, 1, PointField::Y), -1.0}});
         const float flippedA3 = peakAt(57), flippedA5 = peakAt(81);
         // Back to the range and curve it starts with, as the plugin lists them.
@@ -1384,7 +1460,7 @@ int main(int argc, char **argv) {
         // The filter effect low-passes the mix like a voice filter does; at 0 % mix it does nothing.
         setParams({{type(3), static_cast<double>(FxType::Filter)},
                    {fx(3, FxParam::FilterType), static_cast<double>(FilterType::LowPass)},
-                   {fx(3, FxParam::FilterSlope), 1.0},
+                   {fx(3, FxParam::FilterSlope), 3.0},
                    {fx(3, FxParam::FilterCutoff), normFromCutoff(300.0)},
                    {fx(3, FxParam::FilterResonance), 0.0}});
         const double fxLowPassed = secondHarmonicRatio({.wave = OpWave::Saw});
@@ -1520,6 +1596,7 @@ int main(int argc, char **argv) {
                 energy += std::pow(magnitude(signal, f), 2.0);
             return std::sqrt(energy);
         };
+        std::vector<float> lastTail;
         auto tailOctaves = [&](ReverbType t) {
             setParams({{fx(7, FxParam::ReverbType), static_cast<double>(t)}});
             const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 71, 69);
@@ -1535,14 +1612,36 @@ int main(int argc, char **argv) {
             }
             runBlocks(blocksPerSecond * 3); // the rest of it dies away
             const double fundamental = band(tail, 440.0);
+            lastTail = tail;
             return std::pair{band(tail, 880.0) / fundamental, band(tail, 1760.0) / fundamental};
         };
+        // Any other band of the last tail, against its 440 Hz.
+        auto shimmerBand = [&](double hz) { return band(lastTail, hz) / band(lastTail, 440.0); };
         const auto [hallOctave, hallTwo] = tailOctaves(ReverbType::Hall);
         const auto [shimmerOctave, shimmerTwo] = tailOctaves(ReverbType::Shimmer);
         std::printf("      reverb tail after an A4 sine, 880 and 1760 Hz against 440: hall x%.4f x%.4f, shimmer x%.3f x%.3f\n",
                     hallOctave, hallTwo, shimmerOctave, shimmerTwo);
         check(hallOctave < 0.02 && shimmerOctave > 0.2 && shimmerTwo > 0.05,
               "the shimmer's tail rises in octaves, where a hall's keeps to the note");
+        // Its Pitch sets the interval: a fifth up brings in 659 Hz and then 988, not the octave; an octave down,
+        // 220 Hz. With the Shimmer knob at 0 it shifts nothing, like a hall.
+        const int shimmerPitch = fx(7, FxParam::ReverbShimmerPitch);
+        setParams({{shimmerPitch, 7.0}});
+        const auto [fifthOctave, fifthTwo] = tailOctaves(ReverbType::Shimmer);
+        const double fifth = shimmerBand(659.26), fifthNinth = shimmerBand(987.77);
+        setParams({{shimmerPitch, -12.0}});
+        tailOctaves(ReverbType::Shimmer);
+        const double below = shimmerBand(220.0);
+        setParams({{shimmerPitch, 12.0}, {fx(7, FxParam::ReverbShimmer), 0.0}});
+        const auto [unshiftedOctave, unshiftedTwo] = tailOctaves(ReverbType::Shimmer);
+        setParams({{fx(7, FxParam::ReverbShimmer), 0.5}});
+        std::printf("      shimmer a fifth up: 659 Hz x%.3f, 988 Hz x%.3f, 880 Hz x%.3f; an octave down: 220 Hz x%.3f; "
+                    "unshifted: 880 Hz x%.4f\n",
+                    fifth, fifthNinth, fifthOctave, below, unshiftedOctave);
+        check(fifth > 0.2 && fifthNinth > 0.05 && fifthOctave < 0.5 * fifth && below > 0.2 && unshiftedOctave < 0.02,
+              "the shimmer's Pitch sets the interval its tail climbs or falls by, and its Shimmer how much shifts");
+        (void)fifthTwo;
+        (void)unshiftedTwo;
         setParams({{fx(7, FxParam::ReverbType), static_cast<double>(ReverbType::Hall)}});
 
         // The disperser's all-passes leave a steady tone's level alone at full mix: only its phase turns.

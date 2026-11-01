@@ -354,7 +354,9 @@ void Synth::applyMacros(const ParamValues &params) {
     for (int source = kMaxSources; source < kAllSources; ++source) { // the macros, and the mod wheel like them
         if (isNote(source))
             continue;
-        const double knob = params[stripKnobIndex(source)];
+        // Bipolar, the knob's middle moves nothing, and its ends half the depth either way.
+        const bool bipolar = sourceBipolar([&params](int i) { return params[i]; }, source);
+        const double knob = params[stripKnobIndex(source)] - (bipolar ? 0.5 : 0.0);
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(params[slotTargetIndex(source, slot)]);
             const double amount = params[slotAmountIndex(source, slot)];
@@ -603,16 +605,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     Values p;
     withSlotMods(p);
     v.slotModCount = 0;
-    // `swing` scales what the source puts out into its slots: a bipolar LFO's -1..1 takes a depth of 100 % from
-    // half its range below the set value to half above, as far as a unipolar one or an envelope takes it.
-    auto collectSlots = [&](int source, double value, double swing = 1.0) {
+    // `swing` scales what the source puts out into its slots, from `center`: a bipolar LFO's -1..1 takes a depth of
+    // 100 % from half its range below the set value to half above, as far as a unipolar one or an envelope takes it;
+    // a bipolar envelope's 0..1 swings the same way about its middle.
+    auto collectSlots = [&](int source, double value, double swing = 1.0, double center = 0.0) {
         v.sourceValues[source] = value;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(p[slotTargetIndex(source, s)]);
             const double amount = p[slotAmountIndex(source, s)];
             if (target >= 0 && amount != 0.0 && params[slotBypassIndex(source, s)] < 0.5)
-                v.slotMods[v.slotModCount++] = {target,
-                                                swing * value * amount * (table_[target].max - table_[target].min)};
+                v.slotMods[v.slotModCount++] = {
+                    target, swing * (value - center) * amount * (table_[target].max - table_[target].min)};
         }
     };
     // Empty places and switched-off sources stand still and modulate nothing.
@@ -650,7 +653,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             continue;
         }
         Envelope &env = v.modEnvs[s];
-        collectSlots(s, env.level());
+        collectSlots(s, env.level(), 1.0, p[paramIndex(s, SourceParam::EnvBipolar)] >= 0.5 ? 0.5 : 0.0);
         const EnvRates rates =
             envRates(p[paramIndex(s, SourceParam::Attack)], p[paramIndex(s, SourceParam::Hold)],
                      p[paramIndex(s, SourceParam::Decay)],
@@ -700,7 +703,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // which they already hold; a target that moves the pitch itself moves it from here. Its slots aren't
     // modulated, so they are read as set.
     v.pitch = pitch;
-    const double note = noteSourceValue([&params](int i) { return params[i]; }, pitch);
+    // Bipolar, it swings about the middle of its output, like a macro.
+    const double note = noteSourceValue([&params](int i) { return params[i]; }, pitch) -
+                        (params[paramIndex(NoteParam::Bipolar)] >= 0.5 ? 0.5 : 0.0);
     const int noteModsStart = v.slotModCount;
     for (int s = 0; s < kSlots; ++s) {
         const int target = slotTarget(params[slotTargetIndex(kNoteSource, s)]);
@@ -927,7 +932,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             cutoffFromNorm(cutoff) * std::exp2((pitch - 60.0) / 12.0 * p[paramIndex(f, FilterParam::KeyTrack)]);
         const auto type = static_cast<FilterType>(
             stepped(p[paramIndex(f, FilterParam::Type)], static_cast<int>(FilterType::Count) - 1));
-        filter[f] = filterSettings(type, p[paramIndex(f, FilterParam::Slope)] >= 0.5, cutoffHz,
+        filter[f] = filterSettings(type, filterSlope(p[paramIndex(f, FilterParam::Slope)]), cutoffHz,
                                    p[paramIndex(f, FilterParam::Resonance)], p[paramIndex(f, FilterParam::Drive)], rate_);
     }
     // What the filters put out, before their output levels, for the editor's analyzers.

@@ -55,6 +55,11 @@ inline int combLength(double sampleRate) {
 inline double filterDamping(double resonance) {
     return std::numbers::sqrt2 * (1.0 - 0.96 * std::clamp(resonance, 0.0, 1.0));
 }
+// The same for a 6 dB stage, taken from the SVF as low + band (or high + band): at 0 that is a plain one-pole, and
+// resonance adds a peak at the cutoff as high as a 12 dB stage's, the slope past it staying 6 dB per octave.
+inline double onePoleDamping(double resonance) {
+    return std::numbers::sqrt2 * filterDamping(resonance);
+}
 
 inline double combFeedback(double resonance) {
     return 0.97 * std::clamp(resonance, 0.0, 1.0);
@@ -63,7 +68,10 @@ inline double combFeedback(double resonance) {
 // One filter's settings for a block, derived from its params.
 struct FilterSettings {
     FilterType type = FilterType::LowPass;
-    bool steep = false; // 24 dB per octave: a second stage, a plain Butterworth one so the resonance stays single
+    // The slope as it plays (see playedSlope()): 6 dB is the resonant stage alone in its one-pole form, 12 the
+    // resonant stage, and 18 and 24 add a plain second stage after it, one-pole or Butterworth, so the resonance stays
+    // a single peak.
+    int slope = kDefaultSlope;
     double drive = 1.0; // input gain into the saturator; 1 = clean
     Svf::Coefs main;
     Svf::Coefs second;
@@ -72,21 +80,21 @@ struct FilterSettings {
     double combGain = 1.0;
 };
 
-// cutoffHz already includes key tracking. `steep` only matters to the types with a slope.
-inline FilterSettings filterSettings(FilterType type, bool steep, double cutoffHz, double resonance, double drive,
+// cutoffHz already includes key tracking. `slope` (0..3, as stored) only matters to the types with a slope.
+inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz, double resonance, double drive,
                                      double sampleRate) {
     FilterSettings s;
     s.type = type;
-    s.steep = steep && hasSlope(type);
+    s.slope = playedSlope(type, slope);
     s.drive = 1.0 + 8.0 * std::clamp(drive, 0.0, 1.0);
     switch (type) {
     case FilterType::LowPass:
     case FilterType::HighPass:
     case FilterType::BandPass:
     case FilterType::Notch:
-        s.main = Svf::coefs(cutoffHz, filterDamping(resonance), sampleRate);
-        if (s.steep)
-            s.second = Svf::coefs(cutoffHz, std::numbers::sqrt2, sampleRate);
+        s.main = Svf::coefs(cutoffHz, s.slope == 0 ? onePoleDamping(resonance) : filterDamping(resonance), sampleRate);
+        if (s.slope >= 2) // a one-pole for 18 dB, a Butterworth for 24
+            s.second = Svf::coefs(cutoffHz, s.slope == 2 ? 2.0 : std::numbers::sqrt2, sampleRate);
         break;
     case FilterType::Comb:
         s.combDelay = std::max(sampleRate / cutoffHz, 2.0);
@@ -127,8 +135,8 @@ public:
         case FilterType::HighPass:
         case FilterType::BandPass:
         case FilterType::Notch: {
-            const double y = stage(a_, in, s.type, s.main);
-            return s.steep ? stage(b_, y, s.type, s.second) : y;
+            const double y = stage(a_, in, s.type, s.main, s.slope == 0);
+            return s.slope >= 2 ? stage(b_, y, s.type, s.second, s.slope == 2) : y;
         }
         case FilterType::Comb: {
             double read = combPos_ - std::min(s.combDelay, combSize - 2.0);
@@ -154,12 +162,14 @@ private:
         return a + std::log1p(std::exp(-2.0 * a)) - std::numbers::ln2;
     }
 
-    // One 12 dB stage of the types with a slope.
-    static double stage(Svf &svf, double in, FilterType type, const Svf::Coefs &c) {
+    // One 12 dB stage of the types with a slope, or for a low- or high-pass a 6 dB one (`onePole`).
+    static double stage(Svf &svf, double in, FilterType type, const Svf::Coefs &c, bool onePole) {
         const Svf::Outputs o = svf.process(in, c);
         switch (type) {
+        case FilterType::LowPass:
+            return onePole ? o.low + o.band : o.low;
         case FilterType::HighPass:
-            return o.high;
+            return onePole ? o.high + o.band : o.high;
         case FilterType::BandPass:
             return c.k * o.band; // unity gain at the center
         case FilterType::Notch:
@@ -178,14 +188,17 @@ private:
 #endif
 };
 
-// Magnitude response at `hz`, from the analog prototypes, for drawing.
-inline double filterResponse(FilterType type, bool steep, double cutoffHz, double resonance, double hz) {
+// Magnitude response at `hz`, from the analog prototypes, for drawing. `slope` is as stored (0..3).
+inline double filterResponse(FilterType type, int slope, double cutoffHz, double resonance, double hz) {
     auto secondOrder = [](double w, double k) { return std::sqrt((1.0 - w * w) * (1.0 - w * w) + (k * w) * (k * w)); };
     const double w = hz / cutoffHz;
-    auto stage = [&](double k) {
+    slope = playedSlope(type, slope);
+    auto stage = [&](double k, bool onePole) {
         switch (type) {
-        case FilterType::HighPass:
-            return w * w / secondOrder(w, k);
+        case FilterType::LowPass: // (1 + s) over the second order for the one-pole form
+            return (onePole ? std::sqrt(1.0 + w * w) : 1.0) / secondOrder(w, k);
+        case FilterType::HighPass: // (s^2 + s)
+            return (onePole ? w * std::sqrt(1.0 + w * w) : w * w) / secondOrder(w, k);
         case FilterType::BandPass:
             return k * w / secondOrder(w, k);
         case FilterType::Notch:
@@ -198,8 +211,10 @@ inline double filterResponse(FilterType type, bool steep, double cutoffHz, doubl
     case FilterType::LowPass:
     case FilterType::HighPass:
     case FilterType::BandPass:
-    case FilterType::Notch:
-        return stage(filterDamping(resonance)) * (steep ? stage(std::numbers::sqrt2) : 1.0);
+    case FilterType::Notch: {
+        const double first = slope == 0 ? stage(onePoleDamping(resonance), true) : stage(filterDamping(resonance), false);
+        return first * (slope == 2 ? stage(2.0, true) : slope == 3 ? stage(std::numbers::sqrt2, false) : 1.0);
+    }
     case FilterType::Comb: {
         const double fb = combFeedback(resonance);
         return std::sqrt(1.0 - fb * fb) /

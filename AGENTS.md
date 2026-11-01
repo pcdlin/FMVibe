@@ -33,17 +33,23 @@ into a host are in the [README](README.md#build).
   - voice stealing and choke;
   - per-voice host modulation, and a mod-envelope slot driving its target;
   - spectrum checks on an A4: the matrix produces FM sidebands; every wave sounds; a saw's 2nd harmonic sits at
-    half the fundamental; a low-pass at 300 Hz and a high-pass at 2 kHz move that ratio the right way;
-  - every filter type stays finite at high resonance, and a voice ringing through a resonant comb still ends;
+    half the fundamental; a low-pass at 300 Hz and a high-pass at 2 kHz move that ratio the right way, each slope
+    from 6 to 24 dB harder than the one before (the 6 dB low-pass a one-pole), and a band-pass set to 6 or 18 dB
+    plays 12 or 24;
+  - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
+    still ends;
   - a new instance has only operator A on, no filter key tracking, its shaper effects linked and its frequency
     shifters' range at 100 Hz; a switched-off operator is silent, and a switched-off filter passes nothing;
     filter 1 feeds filter 2;
   - a shaper's output modulates an operator (and one that is off doesn't), a hard shaper into a filter squares a
     sine off, and a shaper routed nowhere isn't heard but goes straight out by its To Out;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
+  - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
+    the note source about the middle of what they put out;
   - the note source, its curve drawn along the cutoff knobs', tunes a notch at 0 to an A4, and follows a pitch
     bend; its range and curve shape what it puts out, a straight line over every MIDI note as it starts;
-  - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none, the widener
+  - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
+    an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, a linked shaper keeping its level, and
     the filter effect's key tracking putting a cutoff at C4 onto an A4, and the frequency shifter moving by its
     Shift's share of its Range;
@@ -66,6 +72,8 @@ into a host are in the [README](README.md#build).
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM, feedback and a driven filter;
   - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
   - clicks when a voice is stolen, and when a param jumps while events split the block into single frames;
+  - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, and
+    an undamped tail falling 60 dB around 1 kHz in its decay time;
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's and the voice filters' analyzers, and that each example preset holds valid values and sounds at a sane
     level;
@@ -83,6 +91,9 @@ into a host are in the [README](README.md#build).
   - a shaper: switching it on with its tab, sending an operator into it and running it onto an operator and into a
     filter, its page's curve list, link switch and knobs, its Custom curve drawn on the page and in the big editor;
   - dragging the filter response handle, switching between the graph and matrix views, and toggling a matrix cell;
+  - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
+  - making sources unipolar and bipolar from their menus: an envelope's and an LFO's card, a macro's knob and
+    handle, the mod wheel and the note source's display;
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q;
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
     off the rendered pixels);

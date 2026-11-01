@@ -226,8 +226,8 @@ NoteRef noteRef(const Event &ev) {
     return {ev.note_id, ev.port_index, ev.channel, ev.key};
 }
 
-// The knobs of an effect slot's page, for the effect it holds.
-std::vector<int> fxPageParams(int slot, FxType type) {
+// The knobs of an effect slot's page, for the effect it holds (and for a reverb, its algorithm).
+std::vector<int> fxPageParams(int slot, FxType type, const ParamValues &values) {
     auto at = [slot](std::initializer_list<FxParam> fields) {
         std::vector<int> indices;
         for (FxParam f : fields)
@@ -257,7 +257,10 @@ std::vector<int> fxPageParams(int slot, FxType type) {
                 mcThresholdIndex(slot, 0),             mcThresholdIndex(slot, 1),
                 mcThresholdIndex(slot, 2),             paramIndex(slot, FxParam::McAttack),
                 paramIndex(slot, FxParam::McRelease),  paramIndex(slot, FxParam::McMix)};
-    case FxType::Reverb:
+    case FxType::Reverb: // a shimmer's interval and amount in place of the pre-delay and width
+        if (reverbType(values[paramIndex(slot, FxParam::ReverbType)]) == ReverbType::Shimmer)
+            return at({FxParam::Enabled, FxParam::ReverbType, FxParam::ReverbSize, FxParam::ReverbDecay,
+                       FxParam::ReverbDamping, FxParam::ReverbShimmerPitch, FxParam::ReverbShimmer, FxParam::ReverbMix});
         return at({FxParam::Enabled, FxParam::ReverbType, FxParam::ReverbSize, FxParam::ReverbDecay,
                    FxParam::ReverbDamping, FxParam::ReverbPreDelay, FxParam::ReverbWidth, FxParam::ReverbMix});
     case FxType::Phaser:
@@ -323,7 +326,7 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
     for (int slot : fxOrder(values[paramIndex(GlobalParam::FxOrder)])) {
         const FxType type = fxType(values[paramIndex(slot, FxParam::Type)]);
         if (type != FxType::None)
-            add("FX", std::to_string(slot + 1) + " " + fxName(type), fxPageParams(slot, type),
+            add("FX", std::to_string(slot + 1) + " " + fxName(type), fxPageParams(slot, type, values),
                 static_cast<clap_id>(1000 + slot));
     }
 
@@ -627,7 +630,7 @@ private:
     // holds: what hosts see of the effects and sources.
     static bool shapesSections(int index) {
         return fxFieldOf(index) == FxParam::Type || sourceFieldOf(index) == SourceParam::Type ||
-               index == paramIndex(GlobalParam::FxOrder);
+               index == paramIndex(GlobalParam::FxOrder) || fxFieldOf(index) == FxParam::ReverbType;
     }
     void sectionsChanged();
     // The editor's height follows the modulation panel; asks the host to resize the window.
@@ -664,9 +667,9 @@ private:
     const clap_host_remote_controls_t *hostRemoteControls_ = nullptr;
     const clap_host_gui_t *hostGui_ = nullptr;
     // Main thread: the remote pages, and what they were built for: the effect
-    // types, then the chain order, the source types and the sources' order.
+    // types, then the chain order, the source types, the sources' order and each reverb's algorithm.
     std::vector<clap_remote_controls_page_t> remotePages_;
-    std::array<int64_t, kFxSlots + 1 + 2 * kMaxSources> shownSections_{};
+    std::array<int64_t, kFxSlots + 1 + 2 * kMaxSources + kFxSlots> shownSections_{};
     Synth synth_;
     // Raising the voice limit past the allocated voices, or a new oversampling
     // factor, needs a deactivate/activate.
@@ -993,9 +996,13 @@ ParamValues Plugin::valuesNow() const {
 // Main thread. A slot's or place's fields only show in hosts while it holds
 // their type, and each effect and source gets a remote page.
 void Plugin::sectionsChanged() {
-    std::array<int64_t, kFxSlots + 1 + 2 * kMaxSources> now{};
-    for (int slot = 0; slot < kFxSlots; ++slot)
+    std::array<int64_t, kFxSlots + 1 + 2 * kMaxSources + kFxSlots> now{};
+    for (int slot = 0; slot < kFxSlots; ++slot) {
         now[slot] = std::lround(values_[paramIndex(slot, FxParam::Type)].load());
+        if (fxType(static_cast<double>(now[slot])) == FxType::Reverb) // a shimmer's page differs
+            now[kFxSlots + 1 + 2 * kMaxSources + slot] =
+                static_cast<int64_t>(reverbType(values_[paramIndex(slot, FxParam::ReverbType)].load()));
+    }
     now[kFxSlots] = std::llround(values_[paramIndex(GlobalParam::FxOrder)].load()); // up to 16!, past a long
     for (int source = 0; source < kMaxSources; ++source) {
         now[kFxSlots + 1 + source] = std::lround(values_[paramIndex(source, SourceParam::Type)].load());

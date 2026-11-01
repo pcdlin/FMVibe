@@ -557,7 +557,8 @@ void Editor::contextMenu(int x, int y) {
         if (item.command == 0)
             AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         else
-            AppendMenuW(menu, MF_STRING, static_cast<UINT_PTR>(item.command), widen(item.label).c_str());
+            AppendMenuW(menu, MF_STRING | (item.checked ? MF_CHECKED : MF_UNCHECKED),
+                        static_cast<UINT_PTR>(item.command), widen(item.label).c_str());
     }
     POINT screen{x, y};
     ClientToScreen(hwnd_, &screen);

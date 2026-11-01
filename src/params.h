@@ -76,7 +76,7 @@ enum class OpParam {
     ShaperSends = Sends + kFilters, // one per shaper
     Count = ShaperSends + kShapers
 };
-// Slope: 0 is 12 dB per octave, 1 is 24 (a second stage), for the types that have one (see hasSlope()).
+// Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
 enum class FilterParam { Type, Cutoff, Resonance, KeyTrack, Drive, Out, Enabled, Slope, Count };
 // A shaper in each voice: the shaper effect's curves (see ClipMode), drive, output, mix and link,
 // and a drawn curve of its own for Custom (see shaperCurveCountIndex()); shaperParams() finds the fields of either.
@@ -110,7 +110,8 @@ enum class SourceType { None, Lfo, Env, Count };
 // across the set value, half below and half above (100 % is -50 % to +50 %). A one-shot LFO runs one cycle
 // from each note and then stays where the cycle ends; it is never free. The
 // Random shape takes a new value each cycle: Chaos sets how far it may jump from
-// the last one (at 100 % anywhere), Smooth how much of the cycle it glides there.
+// the last one (at 100 % anywhere), Smooth how much of the cycle it glides there. An envelope is unipolar
+// unless EnvBipolar, which swings its depth across the set value like a bipolar LFO's (see sourceBipolar()).
 enum class SourceParam {
     Type,
     Enabled,
@@ -135,6 +136,7 @@ enum class SourceParam {
     // Added later, so they sit after the fields above: ids go by position. LFO fields.
     RandomSmooth,
     RandomChaos,
+    EnvBipolar, // a mod envelope's field
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -146,8 +148,9 @@ enum class SourceParam {
 // A macro's knob (Value, 0..1) and, like a source's, kSlots (target, amount) pairs: what the knob sets, times
 // each amount, is added to its target for every voice and for the effects alike. Hosts see the knobs; the
 // editor sets the slots. In the editor and its modulation lists a macro counts as source kMaxSources + macro.
+// Bipolar swings each depth across the set value, nothing at the knob's middle (see sourceBipolar()).
 // Stored in projects by number: only append.
-enum class MacroParam { Value, Slots, Count = Slots + 2 * kSlots };
+enum class MacroParam { Value, Slots, Bipolar = Slots + 2 * kSlots, Count };
 constexpr int kMacroParamCount = static_cast<int>(MacroParam::Count);
 constexpr int kNoteSource = kMaxSources + kMacros; // the note source (see NoteParam)
 constexpr int kWheelSource = kNoteSource + 1;      // the mod wheel (see WheelParam)
@@ -165,13 +168,20 @@ enum class PointField { X, Y, Curve };
 // the range, through the curve, 0..1. As it starts, the range spans every MIDI note, C-1 to G9, and the curve
 // is a straight line from nothing to all of it. Drawn along each note's place on the cutoff knobs' curve (see
 // cutoffNormOfPitch()), it would put a cutoff at 0 modulated by 100 % right on the note. It counts as source
-// kNoteSource, after the macros. Stored in projects by number: only append.
-enum class NoteParam { Slots, Low = Slots + 2 * kSlots, High, Curve, Count = Curve + static_cast<int>(ShapeParam::Count) };
+// kNoteSource, after the macros. Bipolar, like a macro's. Stored in projects by number: only append.
+enum class NoteParam {
+    Slots,
+    Low = Slots + 2 * kSlots,
+    High,
+    Curve,
+    Bipolar = Curve + static_cast<int>(ShapeParam::Count),
+    Count
+};
 constexpr int kNoteParamCount = static_cast<int>(NoteParam::Count);
 // The mod wheel: kSlots (target, amount) pairs, a macro's with GlobalParam::ModWheel for its knob (see
-// stripKnobIndex()). It counts as source kWheelSource, after the note source. Stored in projects by number: only
-// append.
-enum class WheelParam { Slots, Count = Slots + 2 * kSlots };
+// stripKnobIndex()), and Bipolar like a macro's. It counts as source kWheelSource, after the note source. Stored in
+// projects by number: only append.
+enum class WheelParam { Slots, Bipolar = Slots + 2 * kSlots, Count };
 constexpr int kWheelParamCount = static_cast<int>(WheelParam::Count);
 
 // Stored in projects by number: only append.
@@ -181,8 +191,19 @@ enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 enum class OpWave { Sine, Triangle, Saw, Square, Pulse, HalfSine, AbsSine, Noise, Custom, Count };
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
-// The types that come in 12 and 24 dB per octave.
+// The types that come in more than one slope.
 constexpr bool hasSlope(FilterType type) { return type <= FilterType::Notch; }
+// A filter's slope (FilterParam::Slope, and the filter effect's): 6, 12, 18 or 24 dB per octave, stored by number,
+// 12 to begin with. Low- and high-passes come in all four; a band-pass or notch only in 12 and 24, so 6 and 18 play
+// as the slope above them. Stored in projects by number: only append.
+constexpr int kFilterSlopes = 4;
+constexpr int kDefaultSlope = 1;
+inline int filterSlope(double value) { return static_cast<int>(std::clamp(std::lround(value), 0L, kFilterSlopes - 1L)); }
+constexpr int slopeDb(int slope) { return 6 * (slope + 1); }
+constexpr bool slopeFits(FilterType type, int slope) {
+    return type <= FilterType::HighPass || (hasSlope(type) && slope % 2 == 1);
+}
+constexpr int playedSlope(FilterType type, int slope) { return type <= FilterType::HighPass ? slope : slope | 1; }
 
 // Effects, run on the sum of all voices. Each slot of the chain holds one
 // effect of any type, or none, so a type can be used several times. A slot has
@@ -213,8 +234,8 @@ enum class ClipMode { Hard, Soft, Asymmetric, Cubic, Gentle, SineFold, Fold, Cus
 // and the gain does nothing). Stored in projects by number: only append.
 enum class PeqType { Peak, LowShelf, HighShelf, LowCut, HighCut, Count };
 // The reverb's algorithm: Hall, the plain network; Room, shorter and darker, with distinct early
-// reflections; Plate, denser and brighter; Shimmer, a brighter hall fed with octaves of its input that come in
-// one after another, each from the last. Stored in projects by number: only append.
+// reflections; Plate, denser and brighter; Shimmer, a brighter hall that feeds its own tail back into itself
+// pitch-shifted, so each pass climbs (or falls) another interval. Stored in projects by number: only append.
 enum class ReverbType { Hall, Room, Plate, Shimmer, Count };
 constexpr bool isCut(PeqType type) { return type == PeqType::LowCut || type == PeqType::HighCut; }
 inline PeqType peqType(double value) {
@@ -352,6 +373,10 @@ enum class FxParam {
     // The filter's cutoff follows the newest voice's pitch, like a voice filter's Key Track.
     FilterKeyTrack,
     ShiftRange, // the frequency shifter's range, which its Shift takes a share of
+    // The shimmer reverb: the interval (semitones) its tail is shifted by each time round, and how much of what
+    // goes round is shifted.
+    ReverbShimmerPitch,
+    ReverbShimmer,
     Count
 };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as
@@ -453,7 +478,8 @@ constexpr SourceParam sourceFieldOf(int index) {
 }
 // The source type a field belongs to; None for the fields every source uses (Type, Enabled, slots).
 constexpr SourceType sourceTypeOfField(SourceParam f) {
-    return f >= SourceParam::RandomSmooth && f < SourceParam::Count ? SourceType::Lfo
+    return f == SourceParam::EnvBipolar ? SourceType::Env
+           : f >= SourceParam::RandomSmooth && f <= SourceParam::RandomChaos ? SourceType::Lfo
            : f < SourceParam::Shape ? SourceType::None
            : f < SourceParam::Attack ? SourceType::Lfo
            : f < SourceParam::Count  ? SourceType::Env
@@ -481,6 +507,7 @@ constexpr FxType fxTypeOfField(FxParam f) {
            : f == FxParam::FlangerSync || f == FxParam::FlangerDivision ? FxType::Flanger
            : f == FxParam::FilterKeyTrack                               ? FxType::Filter
            : f == FxParam::ShiftRange                                   ? FxType::FreqShifter
+           : f == FxParam::ReverbShimmerPitch || f == FxParam::ReverbShimmer ? FxType::Reverb
            : f >= FxParam::WidenerSize && f <= FxParam::WidenerMix     ? FxType::Widener
            : f >= FxParam::DisperserFreq && f <= FxParam::DisperserMix ? FxType::Disperser
            : f == FxParam::PhaserStereo                                 ? FxType::Phaser
@@ -594,6 +621,27 @@ constexpr int slotTargetIndex(int source, int slot) {
 constexpr int slotAmountIndex(int source, int slot) { return slotTargetIndex(source, slot) + 1; }
 // The on/off switch of a source.
 constexpr int sourceEnabledIndex(int source) { return paramIndex(source, SourceParam::Enabled); }
+// The switch that makes a source bipolar, and its value when it does: an LFO's Unipolar off, the Bipolar of an
+// envelope (as of `type`), a macro, the note source or the mod wheel on.
+struct Polarity {
+    int index;
+    double bipolar;
+};
+constexpr Polarity polarityOf(int source, SourceType type) {
+    return isWheel(source)            ? Polarity{paramIndex(WheelParam::Bipolar), 1.0}
+           : isNote(source)           ? Polarity{paramIndex(NoteParam::Bipolar), 1.0}
+           : isMacro(source)          ? Polarity{paramIndex(source - kMaxSources, MacroParam::Bipolar), 1.0}
+           : type == SourceType::Lfo  ? Polarity{paramIndex(source, SourceParam::Unipolar), 0.0}
+                                      : Polarity{paramIndex(source, SourceParam::EnvBipolar), 1.0};
+}
+// Whether a source swings its slots' depths across the set value, half below and half above, rather than from it one
+// way: LFOs to begin with, the other sources once they are switched to it. `get(index)` returns a param value.
+template <class Get>
+bool sourceBipolar(const Get &get, int source) {
+    const SourceType type = isStripSource(source) ? SourceType::None : sourceType(get(paramIndex(source, SourceParam::Type)));
+    const Polarity polarity = polarityOf(source, type);
+    return (get(polarity.index) >= 0.5) == (polarity.bipolar >= 0.5);
+}
 
 namespace ids {
 

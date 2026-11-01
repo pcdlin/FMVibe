@@ -299,8 +299,11 @@ canvas.addEventListener('contextmenu', (e) => {
       continue;
     }
     const item = document.createElement('div');
-    item.setAttribute('role', 'menuitem');
-    item.textContent = ui.UTF8ToString(ui._ui_menu_label(i));
+    const checked = ui._ui_menu_checked(i) !== 0;
+    item.setAttribute('role', checked ? 'menuitemcheckbox' : 'menuitem');
+    if (checked)
+      item.setAttribute('aria-checked', 'true');
+    item.textContent = (checked ? '✓ ' : '') + ui.UTF8ToString(ui._ui_menu_label(i));
     item.addEventListener('click', () => {
       closeMenu();
       ui._ui_menu_pick(command);
