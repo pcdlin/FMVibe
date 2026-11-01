@@ -211,6 +211,7 @@ private:
         bool snap = false; // shape points snap to a grid
         float envScale = 0.0f; // an envelope's zoom, held while one of its handles is dragged
         bool step = false; // an undo step is open until the drag ends (moving nodes or cards)
+        float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
     };
 
@@ -360,7 +361,8 @@ private:
     void resetShape(int shape);
     // The next grid the shape editor offers along `axis`, `steps` away.
     void stepShapeGrid(int axis, int steps);
-    // While an LFO or envelope is dragged near either end of a row of cards, the row scrolls that way.
+    // While an LFO's or envelope's handle, or a card of the row, is dragged near either end of a row of cards, the
+    // row scrolls that way.
     bool edgeScroll();
     void flash(std::string message);
     // The MIDI note under the keyboard's first key.
@@ -377,6 +379,8 @@ private:
     // A param's name as the editor shows it: a source's fields go by the source's name, not their place's.
     std::string paramName(int index) const;
     bool sourceOn(int source) const;
+    // Whether `m`'s depth handle is under the mouse or being dragged: its range is drawn wider, over the others.
+    bool modFocused(const Assignment &m) const;
     // Whether it does anything, as its handle shows: an LFO or envelope while it is on, a macro or the note source
     // once it modulates something.
     bool sourceLive(int source) const;

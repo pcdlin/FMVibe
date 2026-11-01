@@ -54,7 +54,8 @@ struct Telemetry {
     float age = 0.0f;                           // seconds since the audio thread took this snapshot
     std::array<float, kOps> opLevels{};         // operator envelope x amplitude
     std::array<std::array<float, kMcBands>, kFxSlots> fxReduction{}; // compressor gain reduction, dB
-    std::array<Spectrum, kFxSlots> fxSpectrum{}; // parametric EQs' and filters' output, see Effects::spectrum()
+    // Parametric EQs', filters' and phase dispersers' output, see Effects::spectrum().
+    std::array<Spectrum, kFxSlots> fxSpectrum{};
     std::array<Spectrum, kFilters> filterSpectrum{}; // each voice filter's output, all voices together
     std::array<float, kFxSlots> fxPhases{}; // phasers' and flangers' sweeps, see Effects::sweepPhase()
     std::array<float, 2> outPeak{}; // the output's peak level per side (1 is full scale), falling kMeterFallDb a second

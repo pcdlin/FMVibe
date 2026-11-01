@@ -1756,9 +1756,10 @@ std::vector<int> View::fxChainShown() const {
     std::vector<int> chain = fxChain();
     if (drag_.kind != DragKind::FxMove)
         return chain;
-    // The dragged card lands after the other cards whose middles are left of its own, among those on screen.
+    // The dragged card lands after the other cards whose middles are left of its own, among those on screen. It
+    // stays under the mouse while the row scrolls under it.
     const int slot = drag_.widget.a;
-    const float moved = (drag_.now.x - drag_.start.x) / (kFxCardW + kFxGap);
+    const float moved = (drag_.now.x - drag_.start.x) / (kFxCardW + kFxGap) + fxScroll() - drag_.scrollStart;
     const float middle = fxOffset(chain, drag_.widget.b) + 0.5f * fxCardSpan(slot) + moved;
     int first = 0, last = 0; // the cards that start on screen
     for (size_t i = 0; i < chain.size(); ++i) {
@@ -2083,21 +2084,29 @@ void View::stepShapeGrid(int axis, int steps) {
 }
 
 bool View::edgeScroll() {
-    if (drag_.kind != DragKind::ModSource)
+    // A handle being dragged onto a target scrolls whichever row it is over; a card being moved, its own row.
+    const bool handle = drag_.kind == DragKind::ModSource;
+    const bool card = (drag_.kind == DragKind::FxMove || drag_.kind == DragKind::SourceMove) && drag_.moved;
+    if (!handle && !card)
         return false;
-    // Within kZone of a panel's left or right edge, or past it, the row moves up to kStep cards a poll.
+    // Within kZone of a panel's left or right edge, or past it, the row moves up to kStep cards a poll. A card
+    // grabbed that close to an edge only scrolls once it is taken further toward it than where it was grabbed.
     constexpr float kZone = 28.0f, kStep = 0.06f;
     const Point p = drag_.now;
     auto pull = [&](Rect panel) {
-        if (p.y < panel.y || p.y >= panel.bottom())
+        if (handle && (p.y < panel.y || p.y >= panel.bottom()))
             return 0.0f;
-        const float left = (panel.x + kZone - p.x) / kZone;
-        const float right = (p.x - (panel.right() - kZone)) / kZone;
+        const float leftEdge = card ? std::min(panel.x + kZone, drag_.start.x - 4.0f) : panel.x + kZone;
+        const float rightEdge = card ? std::max(panel.right() - kZone, drag_.start.x + 4.0f) : panel.right() - kZone;
+        const float left = (leftEdge - p.x) / kZone;
+        const float right = (p.x - rightEdge) / kZone;
         return left > 0.0f ? -std::min(left, 1.0f) : (right > 0.0f ? std::min(right, 1.0f) : 0.0f);
     };
     for (ScrollArea area : {ScrollArea::Sources, ScrollArea::Fx}) {
         const bool sources = area == ScrollArea::Sources;
         if (sources ? controller_.layout().sourcesCollapsed : !fxWide())
+            continue;
+        if (card && sources != (drag_.kind == DragKind::SourceMove))
             continue;
         const float speed = pull(sources ? modPanel(false) : kFxPanel);
         if (speed == 0.0f)
@@ -2126,9 +2135,10 @@ std::vector<int> View::sourcesShown() const {
     std::vector<int> shown = sources();
     if (drag_.kind != DragKind::SourceMove)
         return shown;
-    // The dragged card lands after the other cards whose middles are left of its own, among those on screen.
+    // The dragged card lands after the other cards whose middles are left of its own, among those on screen. It
+    // stays under the mouse while the row scrolls under it.
     const int source = drag_.widget.a;
-    const float moved = (drag_.now.x - drag_.start.x) / (kCardW + kCardGap);
+    const float moved = (drag_.now.x - drag_.start.x) / (kCardW + kCardGap) + sourceScroll() - drag_.scrollStart;
     const float middle = sourceOffset(shown, drag_.widget.b) + 0.5f * sourceSpan(source) + moved;
     int first = 0, last = 0; // the cards that start on screen
     for (size_t i = 0; i < shown.size(); ++i) {
@@ -2175,6 +2185,11 @@ std::string View::paramName(int index) const {
 
 bool View::sourceOn(int source) const {
     return isStripSource(source) || value(sourceEnabledIndex(source)) >= 0.5;
+}
+
+bool View::modFocused(const Assignment &m) const {
+    const Widget *w = drag_.kind != DragKind::None ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
+    return w && w->kind == Kind::ModDot && w->a == m.source && w->b == m.slot;
 }
 
 bool View::sourceLive(int source) const {
@@ -3521,7 +3536,7 @@ void View::paint(Canvas &c) {
     paintWidgets(true);
     // The card under the mouse while dragging, before it snaps into place.
     if (drag_.kind == DragKind::SourceMove && drag_.moved) {
-        Rect ghost = sourceCard(sourceOffset(sources(), drag_.widget.b) - sourceScroll(), sourceSpan(drag_.widget.a));
+        Rect ghost = sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(drag_.widget.a));
         ghost.x = std::clamp(ghost.x + drag_.now.x - drag_.start.x, kModPanel.x + 4.0f,
                              kModPanel.right() - 4.0f - ghost.w);
         c.strokeRect(ghost, kSourceColors[drag_.widget.a].alpha(0.6f), 1.0f, 8.0f);
@@ -3782,21 +3797,32 @@ bool View::sourceBipolar(int source) const {
 
 void View::paintModRange(Canvas &c, Rect bar, int param, const std::vector<Assignment> &mods) {
     const double n = norm(param);
+    // The modulation whose depth handle is under the mouse goes last, twice as thick, over the others.
+    auto range = [&](const Assignment &m, bool focused) {
+        const auto [down, up] = modReach(m.source, m.amount);
+        const double from = std::clamp(n + down, 0.0, 1.0);
+        const double to = std::clamp(n + up, 0.0, 1.0);
+        const float alpha = sourceOn(m.source) && !m.bypassed ? 1.0f : (focused ? 0.4f : 0.3f);
+        const float h = focused ? 2.0f * bar.h : bar.h;
+        c.fillRect({bar.x + static_cast<float>(from) * bar.w, bar.center().y - 0.5f * h,
+                    std::max(static_cast<float>(to - from) * bar.w, 1.5f), h},
+                   kSourceColors[m.source].alpha(alpha), 1.0f);
+    };
     bool any = false;
+    const Assignment *focus = nullptr;
     for (const Assignment &m : mods) {
         if (m.target != param)
             continue;
         any = true;
-        const auto [down, up] = modReach(m.source, m.amount);
-        const double from = std::clamp(n + down, 0.0, 1.0);
-        const double to = std::clamp(n + up, 0.0, 1.0);
-        const float alpha = sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f;
-        c.fillRect({bar.x + static_cast<float>(from) * bar.w, bar.y, std::max(static_cast<float>(to - from) * bar.w, 1.5f),
-                    bar.h},
-                   kSourceColors[m.source].alpha(alpha), 1.0f);
+        if (modFocused(m))
+            focus = &m;
+        else
+            range(m, false);
     }
     if (!any)
         return;
+    if (focus)
+        range(*focus, true);
     // Where the set amount is, and where the newest voice is now.
     c.fillRect({bar.x + static_cast<float>(n) * bar.w - 0.75f, bar.y - 1.0f, 1.5f, bar.h + 2.0f}, kDim, 0.5f);
     if (telemetry_.voices > 0 && liveOffset(param) != 0.0f)
@@ -3979,7 +4005,7 @@ void View::paintFx(Canvas &c) {
 
     // The card under the mouse while dragging, before it snaps into place.
     if (drag_.kind == DragKind::FxMove && drag_.moved) {
-        Rect ghost = fxCard(fxOffset(fxChain(), drag_.widget.b) - fxScroll(), fxCardSpan(drag_.widget.a));
+        Rect ghost = fxCard(fxOffset(fxChain(), drag_.widget.b) - drag_.scrollStart, fxCardSpan(drag_.widget.a));
         ghost.x = std::clamp(ghost.x + drag_.now.x - drag_.start.x, kFxPanel.x + 4.0f,
                              kFxPanel.right() - 4.0f - ghost.w);
         c.strokeRect(ghost, fxColor(drag_.widget.a).alpha(0.6f), 1.0f, 8.0f);
@@ -4766,7 +4792,8 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
 // The partials of a 220 Hz tone, faint, and where the shifter moves them: the left side above the
 // line, the right below, on a log axis from 50 Hz to 10 kHz.
 // The disperser's delay across frequency: how much later than the rest each part of the sound comes out,
-// rising to its peak at Freq, taller and narrower with more stages and more pinch.
+// rising to its peak at Freq, taller and narrower with more stages and more pinch. Behind it, on the same axis, what
+// it puts out, measured.
 void View::paintDisperser(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect inner{r.x + 8.0f, r.y + 20.0f, r.w - 16.0f, r.h - 28.0f};
@@ -4784,6 +4811,7 @@ void View::paintDisperser(Canvas &c, Rect r, int slot) {
     for (int i = 0; i <= 160; ++i)
         points.push_back({inner.x + inner.w * i / 160.0f,
                           inner.bottom() - static_cast<float>(delays[i] / (most * 1.1)) * inner.h});
+    paintSpectrum(c, inner, telemetry_.fxSpectrum[slot]);
     c.line({inner.x, inner.bottom()}, {inner.right(), inner.bottom()}, kBorder, 1.0f);
     std::vector<Point> area = points;
     area.push_back({inner.right(), inner.bottom()});
@@ -6250,16 +6278,26 @@ void View::paintKnob(Canvas &c, const Widget &w, const std::vector<Assignment> &
     c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
 
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
-    // A switched-off source's ring is faint: it is kept, but does nothing.
+    // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
+    // mouse is wider, over the others.
+    const Assignment *focus = nullptr;
     for (const Assignment &m : mods) {
         if (m.target != w.param)
             continue;
+        if (modFocused(m)) {
+            focus = &m;
+            continue;
+        }
         const bool both = sourceBipolar(m.source);
         const auto [down, up] = modReach(m.source, m.amount);
-        const double from = n + down;
-        const double to = n + up;
         const float alpha = (both ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
-        c.arc(center, radius + 2.5f, knobAngle(from), knobAngle(to), kSourceColors[m.source].alpha(alpha), 2.5f);
+        c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha), 2.5f);
+    }
+    if (focus) {
+        const auto [down, up] = modReach(focus->source, focus->amount);
+        const float alpha = sourceOn(focus->source) && !focus->bypassed ? 1.0f : 0.4f;
+        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[focus->source].alpha(alpha),
+              4.0f);
     }
 
     c.fillCircle(center, radius - 7.0f, kKnobBody);
@@ -6924,6 +6962,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::SourceGrip:
         drag_.kind = DragKind::SourceMove;
+        drag_.scrollStart = sourceScroll();
         drag_.step = true;
         controller_.beginStep();
         break;
@@ -6936,6 +6975,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::FxGrip:
     case Kind::FxPower: // the icon: let go without moving, it switches the effect
         drag_.kind = DragKind::FxMove;
+        drag_.scrollStart = fxScroll();
         break;
     case Kind::FxFold:
         setFolded(true, w.a, !fxFolded(w.a));
@@ -7339,8 +7379,8 @@ void View::doubleClick(Point p, Modifiers mods) {
         removeShapePoint(hit->a, hit->b);
         return;
     }
-    if (hit && hit->kind == Kind::ShapeCurve) {
-        edit(hit->param, 0.0); // straight again
+    if (hit && (hit->kind == Kind::ShapeCurve || hit->kind == Kind::EnvCurve)) {
+        edit(hit->param, 0.0); // straight again: 0 %, whatever the segment started as
         return;
     }
     if (hit && hit->kind == Kind::PeqPoint) {
@@ -7358,7 +7398,6 @@ void View::doubleClick(Point p, Modifiers mods) {
         break;
     case Kind::Knob:
     case Kind::SlotBar:
-    case Kind::EnvCurve:
         edit(hit->param, table_[hit->param].def);
         break;
     case Kind::OutLabel: // like a wire label: shown, so wired, so off

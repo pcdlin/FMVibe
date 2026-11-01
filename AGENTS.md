@@ -80,8 +80,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, and
     an undamped tail falling 60 dB around 1 kHz in its decay time;
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
-    EQ's and the voice filters' analyzers, and that each example preset holds valid values and sounds at a sane
-    level;
+    EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
+    and sounds at a sane level;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - the CPU cost of each factor.
@@ -106,7 +106,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle, the mod wheel and the note source's display;
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q;
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
-    off the rendered pixels);
+    off the rendered pixels), and straightening a segment's bend to 0 % with a double-click;
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the play switches and the glide knob;
@@ -132,7 +132,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the LFO shape editor hiding the inspector;
   - the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered pixels), the list of
     more waves (Organ among them), the slot list's scrollbar, the shape editor's grid, snapping and RESET, and
-    scrolling the source cards by holding a dragged handle at the panel's edge.
+    scrolling the source cards by holding a dragged handle at the panel's edge;
+  - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
+  - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels).
 
   Pass a scale to render larger: `build\release\fmvibe-uishot.exe out 2`.
 
@@ -198,7 +200,7 @@ hit.
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
-| `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's and voice filters' displays |
+| `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
 | `src/gui/view.cpp` | The editor: layout, drawing, mouse handling. Window-free, so it also renders offscreen |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |

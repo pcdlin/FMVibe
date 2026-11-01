@@ -333,16 +333,19 @@ int main() {
               "a smoothed random LFO on an operator's level stays finite");
     }
 
-    // --- The parametric EQ's analyzer: a sine shows in its band, at its level (a flat EQ passes it as it is).
-    std::printf("parametric EQ analyzer:\n");
-    {
+    // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ
+    // passes it as it is, and so does a disperser all wet, an all-pass).
+    std::printf("parametric EQ and phase disperser analyzers:\n");
+    for (FxType type : {FxType::ParamEq, FxType::Disperser}) {
+        const bool eq = type == FxType::ParamEq;
         Effects fx;
         fx.prepare(kSampleRate);
         fx.setAnalyzing(true);
         ParamValues p;
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
-        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(type);
+        p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
         std::vector<float> left(kBlock), right(kBlock);
         size_t t = 0;
         for (int block = 0; block < 40; ++block) {
@@ -356,8 +359,11 @@ int main() {
                 loudest = band;
         const int expected = static_cast<int>(normFromCutoff(1000.0) * kSpectrumBands);
         const double db = 20.0 * std::log10(fx.spectrum(0, loudest));
-        std::printf("      a 1 kHz sine at -6 dB: band %d (expected %d) at %.1f dB\n", loudest, expected, db);
-        check(std::abs(loudest - expected) <= 1 && std::abs(db + 6.02) < 1.5, "the EQ's analyzer shows a sine in its band, at its level");
+        std::printf("      a 1 kHz sine at -6 dB through the %s: band %d (expected %d) at %.1f dB\n",
+                    eq ? "EQ" : "disperser", loudest, expected, db);
+        check(std::abs(loudest - expected) <= 1 && std::abs(db + 6.02) < 1.5,
+              eq ? "the EQ's analyzer shows a sine in its band, at its level"
+                 : "the phase disperser's analyzer shows a sine in its band, at its level");
     }
 
     // --- Synced sweeps: the phaser and flanger go round once per note value of the host tempo, whatever their

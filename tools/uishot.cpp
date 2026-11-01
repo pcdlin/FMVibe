@@ -924,6 +924,84 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(fifth, "holding a dragged handle at the panel's edge scrolls the cards to the fifth");
 }
 
+// Moving a card past either end of its row scrolls the row along under it: the first effect taken to the right end
+// lands last, and so does the first LFO, which taken back to the left end lands first again.
+void testCardEdgeScroll(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    for (FxType type : {FxType::Delay, FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::Compressor,
+                        FxType::Eq, FxType::Widener, FxType::Disperser})
+        addFx(view, type);
+    view.wheel({600.0f, 125.0f}, 10.0f, {}); // back to the start
+    fxScrolled = 0.0f;
+    const int firstFx = fxChain(model).front();
+    view.mouseDown(fxGrip(model, 0), {});
+    view.mouseMove({fxGrip(model, 0).x + 300.0f, 169.0f}, {});
+    view.mouseMove({1180.0f, 169.0f}, {}); // at the panel's right end
+    for (int n = 0; n < 80; ++n)
+        view.poll();
+    const bool fxShot = renderer.save(view, dir / "8c-fx-edge-scroll.png");
+    view.mouseUp({1180.0f, 169.0f}, {});
+    check(fxShot && fxChain(model).size() == 8 && fxChain(model).back() == firstFx,
+          "an effect card held at the row's right end scrolls the row along, and lands at the end");
+
+    for (int n = 0; n < 5; ++n)
+        click(view, sourceAdd(SourceType::Lfo));
+    view.wheel({60.0f, 513.0f}, 10.0f, {}); // back to the first card
+    view.mouseDown(sourceGrip(0), {});
+    view.mouseMove({sourceGrip(0).x + 200.0f, 544.0f}, {});
+    view.mouseMove({1180.0f, 544.0f}, {});
+    for (int n = 0; n < 80; ++n)
+        view.poll();
+    view.mouseUp({1180.0f, 544.0f}, {});
+    const bool last = shown(model) == std::vector<int>{1, 2, 3, 4, 0};
+    // Scrolled to the end, it shows in the fifth place, before the dashed cards.
+    const Point grip = sourceGrip(3.0f - kSourceShadowSpan);
+    view.mouseDown(grip, {});
+    view.mouseMove({grip.x - 200.0f, 544.0f}, {});
+    view.mouseMove({20.0f, 544.0f}, {}); // at the panel's left end
+    for (int n = 0; n < 80; ++n)
+        view.poll();
+    const bool sourceShot = renderer.save(view, dir / "11f-source-edge-scroll.png");
+    view.mouseUp({20.0f, 544.0f}, {});
+    check(last && sourceShot && shown(model) == std::vector<int>{0, 1, 2, 3, 4},
+          "an LFO card held at either end of the row scrolls the row along, and lands at that end");
+}
+
+// A modulation's depth handle under the mouse draws its range over the others, and wider: LFO 1's and Env 1's
+// ranges on Op A's Fine (set to the middle) overlap above the knob, Env 1's on top, and hovering either handle
+// changes what shows there (read off the rendered pixels).
+void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, sourceAdd(SourceType::Lfo));
+    click(view, sourceAdd(SourceType::Env));
+    model.set(paramIndex(0, OpParam::Fine), 0.5);
+    drag(view, sourceHandle(0), kFineKnob);
+    drag(view, sourceHandle(1), kFineKnob);
+    auto ring = [&] { // above the knob, where both ranges run
+        std::vector<uint32_t> pixels;
+        for (float y = 192.0f; y < 207.0f; y += 1.0f)
+            for (float x = 992.0f; x < 1033.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool plainShot = renderer.save(view, dir / "17c-mod-ranges.png");
+    const std::vector<uint32_t> plain = ring();
+    view.mouseMove({kFineKnob.x - 5.0f, 229.0f}, {}); // LFO 1's handle, the first under the knob
+    const bool lfoShot = renderer.save(view, dir / "17d-mod-range-hovered.png");
+    const std::vector<uint32_t> lfo = ring();
+    view.mouseMove({kFineKnob.x + 5.0f, 229.0f}, {}); // Env 1's, the second
+    renderer.save(view, dir / "17e-mod-range-hovered.png");
+    const std::vector<uint32_t> env = ring();
+    check(model.value(slotTargetIndex(0, 0)) == slotTargetValue(paramIndex(0, OpParam::Fine)) &&
+              model.value(slotTargetIndex(1, 0)) == slotTargetValue(paramIndex(0, OpParam::Fine)) && plainShot &&
+              lfoShot && lfo != plain && env != plain && lfo != env,
+          "a hovered depth handle draws its range wider, over the others");
+}
+
 // The examples that use the most of the synth, as the preset library writes them: Init, then their changes,
 // with their own node places. `prefix` names the images: its routing, matrix and effects.
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
@@ -953,8 +1031,8 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
           ("render " + name + "'s routing, matrix and " + std::to_string(effects) + " effects").c_str());
 }
 
-// A stereo phaser and a flanger mid-sweep (their LFOs where the audio left them), a phase disperser, a filter
-// with its output's spectrum behind its response, and a widener, half of it in the middle.
+// A stereo phaser and a flanger mid-sweep (their LFOs where the audio left them), a phase disperser and a filter,
+// each with its output's spectrum behind its curve, and a widener, half of it in the middle.
 void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -967,8 +1045,10 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     model.values[paramIndex(4, FxParam::WidenerWidth)] = 0.5;
     model.live.age = 0.01f;
     model.live.fxPhases = {0.1f, 0.4f, 0.0f, 0.0f, 0.3f};
-    for (int band = 0; band < kSpectrumBands; ++band)
+    for (int band = 0; band < kSpectrumBands; ++band) {
+        model.live.fxSpectrum[2][band] = 0.2f * std::exp(-std::abs(band - 50) / 16.0f); // behind the disperser's delay
         model.live.fxSpectrum[3][band] = 0.3f * std::exp(-std::abs(band - 40) / 12.0f);
+    }
     view.poll();
     click(view, kFxTab);
     // The widener's knobs: Size, Width, High Pass and Mix.
@@ -1364,6 +1444,26 @@ void run(const std::filesystem::path &dir, float scale) {
         view.undo();
         check(shot && inside && longer && model.value(release) == before,
               "an envelope handle dragged past its display lengthens its segment, the envelope staying inside");
+    }
+    // A double-click on a segment's bend handle straightens it to 0 %, whatever it started as: the decay's, halfway
+    // along the flat top of A's envelope (full sustain) and found there by its cursor, starts at +50 %.
+    {
+        const int decayCurve = paramIndex(0, OpParam::DecayCurve);
+        Point bend{0.0f, 0.0f};
+        for (float y = 324.0f; y <= 336.0f && bend.x == 0.0f; y += 2.0f)
+            for (float x = 950.0f; x < 1150.0f && bend.x == 0.0f; x += 2.0f) {
+                view.mouseMove({x, y}, {});
+                if (view.cursor() == CursorKind::Vertical)
+                    bend = {x, y};
+            }
+        const double before = model.value(decayCurve);
+        doubleClick(view, bend);
+        const bool straight = model.value(decayCurve) == 0.0 &&
+                              model.value(paramIndex(0, OpParam::AttackCurve)) == 0.0 &&
+                              model.value(paramIndex(0, OpParam::ReleaseCurve)) == before;
+        view.undo();
+        check(bend.x > 0.0f && before == 0.5 && straight && model.value(decayCurve) == before,
+              "a double-click on an envelope segment's bend handle straightens it to 0 %");
     }
     drag(view, kPitchKnob, {kPitchKnob.x, kPitchKnob.y - 30.0f});
     view.wheel(kPitchKnob, 1.0f, {});
@@ -2374,6 +2474,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testShapers(dir, renderer);
     testFolding(dir, renderer);
     testSourceShadow(dir, renderer);
+    testCardEdgeScroll(dir, renderer);
+    testModFocus(dir, renderer);
 }
 
 int main(int argc, char **argv) {

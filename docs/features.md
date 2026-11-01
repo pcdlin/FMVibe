@@ -319,7 +319,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
       like the shaper's curves; a shimmer's card has two rows of four knobs, its Pitch and Shimmer among them;
     - the phaser's and flanger's responses faintly at both ends of their sweep, and bright where their LFO is,
       moving while the audio runs (a stereo one's right side as a second, thinner curve);
-    - the phase disperser's delay across frequency, peaking at Freq;
+    - the phase disperser's delay across frequency, peaking at Freq, with what it puts out, measured, behind it
+      like the Param EQ's;
     - the frequency shifter's move: a 220 Hz tone's partials, and where it takes them on each side, under the
       shift in Hz and the range it is a share of;
     - the widener's stereo field: left to right across, frequency up (20 Hz to 20 kHz), the dry sound a line
@@ -347,7 +348,7 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     taking one and a half places for a wider spectrum; with more,
     a scrollbar under them (drag its thumb or click its track) or the mouse wheel over the panel scrolls the chain
     smoothly, cutting off the cards at the ends. Drag a card by its
-    title to move it along the chain,
+    title to move it along the chain (held at either end of the row, it scrolls the chain along that way),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings or
     remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
     title's left, so the icon stays where it was: the icon, which still switches the effect and drags the card,
@@ -409,16 +410,18 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end
     (release). The small dot halfway along the attack, decay and release bends that segment (drag up or down,
-    double-click to reset). The display always zooms to fit the whole envelope across its width, so the handles of
+    double-click to straighten it, to 0 %). The display always zooms to fit the whole envelope across its width, so the handles of
     short segments stay apart; the zoom holds still while a handle is dragged, so it stays under the mouse, until
     the envelope would run past the display's end: then it zooms out to keep all of it in, the handle at the end,
     and dragging on lengthens the segment further. The same goes for the mod envelopes' displays. In the graph, an operator with unison is drawn as a stack of rings.
   - Shapers: the summary (its curve, what feeds it, the filters it feeds, whether it goes out and the operators it
-    modulates), its curve's list with the link switch, a chain, beside it, the Drive, Output, Mix and To Out knobs,
+    modulates, as a filter's has), its curve's list with the link switch, a chain, beside it, the Drive, Output, Mix and To Out knobs,
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
     EDIT button opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
-    are the send knobs of the operators that feed it.
-  - Filters: type buttons, each a small picture of its response (named on hover), and the slope's list at the end
+    are the send knobs of the operators and filters that feed it.
+  - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
+    operators it modulates, as a shaper's has), type buttons, each a small picture of its response (named on
+    hover), and the slope's list at the end
     of their row, 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
     what plays; for a comb it is faint and doesn't open), cutoff, resonance, key tracking, drive and output, and a live response curve whose
     handle drags cutoff (sideways) and resonance (up/down). With its cutoff or resonance modulated, faint curves
@@ -435,8 +438,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   after the last one, while there is room for more, two square dashed cards with a plus, ADD LFO above ADD ENV,
   add one too. With more than fit, the scrollbar under them or the mouse wheel over the panel scrolls them
   smoothly. LFOs and envelopes are numbered by type in the order they show.
-  - Drag a card by its title to move it along; the order is saved with the patch. Right-click the title (or the
-    handle) to duplicate the source (with its settings and targets), clear its targets, make it **Unipolar** or
+  - Drag a card by its title to move it along; held at either end of the row, it scrolls the row along that way.
+    The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its settings and targets), clear its targets, make it **Unipolar** or
     **Bipolar** (the one in force checked) or remove it; the × removes it too, together with its modulation and
     whatever modulates its knobs. A bipolar envelope's display has a dashed line at its middle level and ± in its
     corner.
@@ -461,7 +464,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click or
-    right-click it to remove the modulation. A source can modulate another source's depth too (drop its handle on
+    right-click it to remove the modulation. While the dot is under the mouse or dragged, its range (the ring, or
+    the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap. A source can modulate another source's depth too (drop its handle on
     a depth bar in that source's list): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **Bypass**: the dot at the start of each target's row in the source's list switches that modulation off and

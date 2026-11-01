@@ -299,7 +299,7 @@ private:
         Shifter shifter;
         Disperser disperser;
         Widener widener;
-        // The parametric EQ's or filter's output, for its analyzer.
+        // The parametric EQ's, filter's or phase disperser's output, for its analyzer.
         Analyzed analyzed;
         // The shaper's drawn curve as a table (see runShaper()).
         ClipTable curve;

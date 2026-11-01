@@ -550,6 +550,8 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
                                                                       : runShifter(slot, io, n, p);
                 if (peak > 1e-5)
                     keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
+                if (fx.running == FxType::Disperser)
+                    feedAnalyzer(slot, io, n);
                 break;
             }
             case FxType::None:
@@ -694,7 +696,7 @@ void Effects::runParamEq(int slot, float *const *io, uint32_t n, const ParamValu
     feedAnalyzer(slot, io, n);
 }
 
-// What a parametric EQ or a filter puts out goes to its analyzer, while the editor is open.
+// What a parametric EQ, a filter or a phase disperser puts out goes to its analyzer, while the editor is open.
 void Effects::feedAnalyzer(int slot, float *const *io, uint32_t n) {
     if (!analyzing_)
         return;
