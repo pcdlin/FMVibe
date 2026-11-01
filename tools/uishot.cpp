@@ -5,6 +5,7 @@
 #include "factory.h"
 #include "gui/canvas.h"
 #include "gui/view.h"
+#include "uistrings.h"
 
 #include <windows.h>
 #include <wincodec.h>
@@ -60,7 +61,9 @@ public:
                 return static_cast<int>(i);
         return -1;
     }
-    std::string presetName() const override { return presetIndex() < 0 ? "- Init -" : library[presetIndex()].name; }
+    std::string presetName() const override {
+        return presetIndex() < 0 ? tr(Str::PresetInit) : library[presetIndex()].name;
+    }
     bool loadPresetAt(int index) override {
         const UndoScope step(*this);
         recordAll();
@@ -557,7 +560,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
                 return item.command;
         return -1;
     };
-    view.menuCommand(menuEntry(kFineKnob, "Edit value\xE2\x80\xA6"));
+    view.menuCommand(menuEntry(kFineKnob, tr(Str::MenuEditValue)));
     const bool menuTyping = view.typing();
     type(view, "35");
     view.typeKey(View::Key::Enter);
@@ -634,7 +637,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     type(view, "-25");
     view.typeKey(View::Key::Enter);
     check(std::abs(model.value(slotAmountIndex(0, 0)) + 0.25) < 1e-9, "a slot's number takes a typed depth");
-    view.menuCommand(menuEntry({cardX(0) + 160.0f, 706.0f}, "Edit depth\xE2\x80\xA6")); // on the depth bar
+    view.menuCommand(menuEntry({cardX(0) + 160.0f, 706.0f}, tr(Str::MenuEditDepth))); // on the depth bar
     type(view, "45");
     view.typeKey(View::Key::Enter);
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.45) < 1e-9, "a depth bar's menu has Edit depth");
@@ -643,7 +646,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     const bool slotBypassed = model.value(slotBypassIndex(0, 0)) == 1.0;
     view.mouseMove({400.0f, 300.0f}, {});
     check(slotBypassed && renderer.save(view, dir / "17b-bypassed-slot.png"), "render a bypassed modulation");
-    view.menuCommand(menuEntry(kFineKnob, "Resume LFO 1 modulation"));
+    view.menuCommand(menuEntry(kFineKnob, trf(Str::MenuResume, {trf(Str::SourceNameLfo, {"1"})})));
     check(model.value(slotBypassIndex(0, 0)) == 0.0, "a row's dot bypasses its modulation, and the knob's menu resumes it");
     click(view, {cardX(0) + kCardW - 6.0f, 780.0f}); // the scrollbar's track, below its thumb
     click(view, {cardX(0) + kCardW - 22.0f, 706.0f}); // the top row's x
@@ -849,7 +852,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Presets: the bar shows Init; the arrows step through the library, asking first while the patch has
     // changed since it was loaded; the browser lists them by subfolder.
-    check(model.presetName() == "- Init -" && model.patchEdited(), "a changed patch shows Init, changed");
+    check(model.presetName() == tr(Str::PresetInit) && model.patchEdited(), "a changed patch shows Init, changed");
     const Point nextPreset{787.0f, 84.0f}, previousPreset{413.0f, 84.0f}, presetBox{600.0f, 84.0f};
     click(view, nextPreset);
     const Rect confirmPanel{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
@@ -1229,9 +1232,9 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
           "a macro's and the note source's handles are faint until they modulate something");
     std::string removal;
     for (const MenuItem &item : view.contextMenu({918.0f, 214.0f}))
-        if (item.label.find("Note") != std::string::npos)
+        if (item.label.find(tr(Str::SourceNameNote)) != std::string::npos)
             removal = item.label;
-    check(noteMapped && shot && removal == "Remove Note modulation",
+    check(noteMapped && shot && removal == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameNote)}),
           "the note source's handle maps it like a macro's, and its display names the note");
 
     // The mod wheel's handle, right of the wheel, maps it the same way (faint until it does), onto FM Amount here,
@@ -1250,9 +1253,10 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const int live = ringLevel(renderer, wheelRing, 20.0f);
         std::string wheelRemoval;
         for (const MenuItem &item : view.contextMenu(kFmAmountKnob))
-            if (item.label.find("Mod Wheel") != std::string::npos)
+            if (item.label.find(tr(Str::SourceNameWheel)) != std::string::npos)
                 wheelRemoval = item.label;
-        check(wheelMapped && wheelShot && idle * 18 < live * 10 && wheelRemoval == "Remove Mod Wheel modulation",
+        check(wheelMapped && wheelShot && idle * 18 < live * 10 &&
+                  wheelRemoval == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameWheel)}),
               "the mod wheel's handle maps it like a macro's, upward, and is faint until it does");
     }
 
@@ -1269,19 +1273,19 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
                 }
             return checked;
         };
-        const bool macroWasUnipolar = polarity(macroKnob(0), "Unipolar");
-        polarity(macroKnob(0), "Bipolar");
+        const bool macroWasUnipolar = polarity(macroKnob(0), tr(Str::MenuUnipolar));
+        polarity(macroKnob(0), tr(Str::MenuBipolar));
         const bool macroBipolar = model.value(paramIndex(0, MacroParam::Bipolar)) == 1.0;
-        const bool handleShowsIt = polarity({macroKnob(0).x - 42.0f, y}, "Bipolar");
-        polarity({74.0f + 13.0f, view.height() - 87.0f}, "Bipolar"); // the wheel itself
+        const bool handleShowsIt = polarity({macroKnob(0).x - 42.0f, y}, tr(Str::MenuBipolar));
+        polarity({74.0f + 13.0f, view.height() - 87.0f}, tr(Str::MenuBipolar)); // the wheel itself
         const bool wheelBipolar = model.value(paramIndex(WheelParam::Bipolar)) == 1.0;
-        polarity({86.0f, y}, "Bipolar"); // the note source's display
+        polarity({86.0f, y}, tr(Str::MenuBipolar)); // the note source's display
         const bool noteBipolar = model.value(paramIndex(NoteParam::Bipolar)) == 1.0;
         view.mouseMove({600.0f, 300.0f}, {});
         const bool stripShot = renderer.save(view, dir / "26h-bipolar-strip.png");
-        polarity({114.0f, view.height() - 87.0f}, "Unipolar"); // the wheel's handle
-        polarity(macroKnob(0), "Unipolar");
-        polarity({86.0f, y}, "Unipolar");
+        polarity({114.0f, view.height() - 87.0f}, tr(Str::MenuUnipolar)); // the wheel's handle
+        polarity(macroKnob(0), tr(Str::MenuUnipolar));
+        polarity({86.0f, y}, tr(Str::MenuUnipolar));
         check(macroWasUnipolar && macroBipolar && handleShowsIt && wheelBipolar && noteBipolar && stripShot &&
                   model.value(paramIndex(0, MacroParam::Bipolar)) == 0.0 &&
                   model.value(paramIndex(WheelParam::Bipolar)) == 0.0 && model.value(paramIndex(NoteParam::Bipolar)) == 0.0,
@@ -1538,7 +1542,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // only Disconnect removes it.
     auto canDisconnect = [&] {
         for (const MenuItem &item : view.contextMenu(label))
-            if (item.label == "Disconnect")
+            if (item.label == tr(Str::MenuDisconnect))
                 return item.command;
         return -1;
     };
@@ -1559,7 +1563,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // An operator's output turned down to 0 % keeps its wire to OUT, like a wire between nodes.
     auto outDisconnect = [&](Point at) {
         for (const MenuItem &item : view.contextMenu(at))
-            if (item.label == "Disconnect")
+            if (item.label == tr(Str::MenuDisconnect))
                 return item.command;
         return -1;
     };
@@ -1934,7 +1938,7 @@ void run(const std::filesystem::path &dir, float scale) {
     const auto menu = view.contextMenu(kFmAmountKnob);
     bool listsEnv1 = false;
     for (const MenuItem &item : menu)
-        listsEnv1 = listsEnv1 || item.label == "Remove Env 1 modulation";
+        listsEnv1 = listsEnv1 || item.label == trf(Str::MenuRemoveModulation, {trf(Str::SourceNameEnv, {"1"})});
     check(listsEnv1, "context menu offers removing Env 1 modulation");
 
     // LFO 1 starts synced to the tempo, in quarter notes: its knob picks a note value. Its sync switch, the effects'
@@ -2147,7 +2151,7 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(peqGainIndex(2, 1), -7.5);
     model.sets.clear();
     for (const MenuItem &item : view.contextMenu(fxGrip(model, 1)))
-        if (item.label == "Duplicate")
+        if (item.label == tr(Str::MenuDuplicate))
             view.menuCommand(item.command);
     check(fxChain(model) == std::vector<int>{1, 2, 0, 3, 4, 5} &&
               sameFields(model, paramIndex(5, FxParam::Type), paramIndex(2, FxParam::Type), kFxParamCount) &&
@@ -2296,13 +2300,13 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({sourceGrip(1).x + 280.0f, 560.0f}, {});
     check(renderer.save(view, dir / "11a-source-reorder.png"), "render a source card being dragged");
     view.mouseUp({sourceGrip(1).x + 280.0f, 560.0f}, {});
-    check(shown(model) == std::vector<int>{0, 2, 1, 3, 4} && nameOf(model, 2) == "LFO 2",
+    check(shown(model) == std::vector<int>{0, 2, 1, 3, 4} && nameOf(model, 2) == trf(Str::SourceNameLfo, {"2"}),
           "dragging a card's title moves that source along");
 
     // Duplicate LFO 2 from its title's menu: the copy, with its targets and shape, follows it.
     model.sets.clear();
     for (const MenuItem &item : view.contextMenu(sourceGrip(1)))
-        if (item.label == "Duplicate")
+        if (item.label == tr(Str::MenuDuplicate))
             view.menuCommand(item.command);
     check(shown(model) == std::vector<int>{0, 2, 5, 1, 3, 4} &&
               sameFields(model, paramIndex(5, SourceParam::Type), paramIndex(2, SourceParam::Type), kSourceParamCount) &&
@@ -2310,7 +2314,7 @@ void run(const std::filesystem::path &dir, float scale) {
               setLast(model, paramIndex(5, SourceParam::Type), kSourceParamCount, paramIndex(5, SourceParam::Type)) &&
               slotTarget(model.value(slotTargetIndex(5, 0))) == paramIndex(GlobalParam::Pan) &&
               model.value(paramIndex(5, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom) &&
-              nameOf(model, 5) == "LFO 3",
+              nameOf(model, 5) == trf(Str::SourceNameLfo, {"3"}),
           "Duplicate copies a source in right after it");
 
     // A card's title menu picks the source's polarity, the one in force checked: an envelope (Env 1, the fourth
@@ -2324,13 +2328,13 @@ void run(const std::filesystem::path &dir, float scale) {
             }
         return checked;
     };
-    const bool envWasUnipolar = !polarity(sourceGrip(3), "Bipolar");
+    const bool envWasUnipolar = !polarity(sourceGrip(3), tr(Str::MenuBipolar));
     const bool envBipolar = model.value(paramIndex(1, SourceParam::EnvBipolar)) == 1.0;
     view.mouseMove({600.0f, 300.0f}, {});
     const bool envShot = renderer.save(view, dir / "11f-bipolar-env.png");
-    const bool lfoWasUnipolar = !polarity(sourceGrip(0), "Bipolar");
+    const bool lfoWasUnipolar = !polarity(sourceGrip(0), tr(Str::MenuBipolar));
     const bool lfoBipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0;
-    polarity(sourceGrip(0), "Unipolar");
+    polarity(sourceGrip(0), tr(Str::MenuUnipolar));
     check(envWasUnipolar && envBipolar && envShot && lfoWasUnipolar && lfoBipolar &&
               model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0,
           "a source's title menu makes it unipolar or bipolar");
@@ -2344,7 +2348,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, sourceAdd(SourceType::Env));
     check(shown(model) == std::vector<int>{0, 2, 5, 3, 4, 1} && slotTarget(model.value(slotTargetIndex(1, 0))) < 0 &&
               model.value(paramIndex(1, SourceParam::Sustain)) == paramTable()[paramIndex(1, SourceParam::Sustain)].def &&
-              nameOf(model, 3) == "Env 1" && nameOf(model, 1) == "Env 2",
+              nameOf(model, 3) == trf(Str::SourceNameEnv, {"1"}) && nameOf(model, 1) == trf(Str::SourceNameEnv, {"2"}),
           "a new source fills the first free place, fresh, at the end");
     model.set(paramIndex(4, SourceParam::Shape), static_cast<double>(LfoShape::Saw));
     model.live.sources = {0.4f, 0.3f, -0.6f, 0.5f, 0.8f, -0.2f};

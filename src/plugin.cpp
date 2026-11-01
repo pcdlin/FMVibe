@@ -5,6 +5,7 @@
 #include "gui/editor.h"
 #include "params.h"
 #include "synth.h"
+#include "uistrings.h"
 
 #include <algorithm>
 #include <atomic>
@@ -309,11 +310,12 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
     std::vector<int> macros;
     for (int macro = 0; macro < kMacros; ++macro)
         macros.push_back(paramIndex(macro, MacroParam::Value));
-    add("Mix", "Macros", macros, 3000);
-    add("Mix", "Global",
+    const char *const mix = tr(Str::PageMix);
+    add(mix, tr(Str::PageMacros), macros, 3000);
+    add(mix, tr(Str::PageGlobal),
         {paramIndex(GlobalParam::Volume), paramIndex(GlobalParam::FmAmount), paramIndex(GlobalParam::Pitch),
          paramIndex(GlobalParam::Pan)});
-    add("Mix", "Play",
+    add(mix, tr(Str::PagePlay),
         {paramIndex(GlobalParam::Mono), paramIndex(GlobalParam::Legato), paramIndex(GlobalParam::Glide),
          paramIndex(GlobalParam::GlideAlways), paramIndex(GlobalParam::BendRange), paramIndex(GlobalParam::Voices)});
     std::vector<int> outputs;
@@ -321,17 +323,17 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
         outputs.push_back(paramIndex(op, OpParam::Out));
     for (int shaper = 0; shaper < kShapers; ++shaper)
         outputs.push_back(paramIndex(shaper, ShaperParam::Out));
-    add("Mix", "Outputs", outputs);
+    add(mix, tr(Str::PageOutputs), outputs);
     // Effect pages keep their slot's id whatever else changes.
     for (int slot : fxOrder(values[paramIndex(GlobalParam::FxOrder)])) {
         const FxType type = fxType(values[paramIndex(slot, FxParam::Type)]);
         if (type != FxType::None)
-            add("FX", std::to_string(slot + 1) + " " + fxName(type), fxPageParams(slot, type, values),
+            add(tr(Str::ModuleFx), std::to_string(slot + 1) + " " + fxName(type), fxPageParams(slot, type, values),
                 static_cast<clap_id>(1000 + slot));
     }
 
     for (int op = 0; op < kOps; ++op) {
-        add("Operators", "Op " + letter(op),
+        add(tr(Str::ModuleOperators), trf(Str::ParamOp, {letter(op)}),
             {paramIndex(op, OpParam::Wave), paramIndex(op, OpParam::Coarse), paramIndex(op, OpParam::Fine),
              paramIndex(op, OpParam::Detune), paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Decay),
              paramIndex(op, OpParam::Sustain), paramIndex(op, OpParam::Release)});
@@ -341,19 +343,19 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
         std::vector<int> fields;
         for (int f = 0; f < static_cast<int>(FilterParam::Shapers); ++f)
             fields.push_back(paramIndex(filter, FilterParam::Type) + f);
-        add("Filters", "Filter " + std::to_string(filter + 1), fields);
+        add(tr(Str::ModuleFilters), trf(Str::ParamFilter, {std::to_string(filter + 1)}), fields);
     }
     std::vector<int> links;
     for (int from = 0; from < kFilters; ++from)
         for (int to = from + 1; to < kFilters; ++to)
             links.push_back(filterLinkIndex(from, to));
-    add("Filters", "Filter links", links);
+    add(tr(Str::ModuleFilters), tr(Str::PageFilterLinks), links);
     // A shaper's page: its switch, curve and knobs, then what it feeds into the filters.
     for (int shaper = 0; shaper < kShapers; ++shaper) {
         std::vector<int> fields;
         for (int f = 0; f < static_cast<int>(ShaperParam::Mods); ++f)
             fields.push_back(paramIndex(shaper, ShaperParam::Enabled) + f);
-        add("Shapers", "Shaper " + std::to_string(shaper + 1), fields);
+        add(tr(Str::ModuleShapers), trf(Str::ParamShaper, {std::to_string(shaper + 1)}), fields);
     }
 
     // What each operator modulates, what goes into each filter and shaper, and what each filter and shaper
@@ -362,19 +364,19 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
         std::vector<int> row;
         for (int to = 0; to < kOps; ++to)
             row.push_back(matrixIndex(from, to));
-        add("Matrix", letter(from) + " modulates", row);
+        add(tr(Str::ModuleMatrix), trf(Str::PageModulates, {letter(from)}), row);
     }
     for (int filter = 0; filter < kFilters; ++filter) {
         std::vector<int> row;
         for (int op = 0; op < kOps; ++op)
             row.push_back(sendIndex(op, filter));
-        add("Matrix", "Into F" + std::to_string(filter + 1), row);
+        add(tr(Str::ModuleMatrix), trf(Str::PageInto, {"F" + std::to_string(filter + 1)}), row);
     }
     for (int filter = 0; filter < kFilters; ++filter) {
         std::vector<int> row;
         for (int to = 0; to < kOps; ++to)
             row.push_back(filterModIndex(filter, to));
-        add("Matrix", "F" + std::to_string(filter + 1) + " modulates", row);
+        add(tr(Str::ModuleMatrix), trf(Str::PageModulates, {"F" + std::to_string(filter + 1)}), row);
     }
     for (int shaper = 0; shaper < kShapers; ++shaper) {
         std::vector<int> into, mods;
@@ -384,8 +386,8 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
         }
         for (int filter = 0; filter < kFilters; ++filter) // and from the filters
             into.push_back(filterShaperIndex(filter, shaper));
-        add("Matrix", "Into S" + std::to_string(shaper + 1), into);
-        add("Matrix", "S" + std::to_string(shaper + 1) + " modulates", mods);
+        add(tr(Str::ModuleMatrix), trf(Str::PageInto, {"S" + std::to_string(shaper + 1)}), into);
+        add(tr(Str::ModuleMatrix), trf(Str::PageModulates, {"S" + std::to_string(shaper + 1)}), mods);
     }
 
     // Sources with their slot depths; the targets themselves are set in the editor.
@@ -401,7 +403,8 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
                                    at(SourceParam::Release)};
         for (int slot = 0; slot < kSlots && fields.size() < CLAP_REMOTE_CONTROLS_COUNT; ++slot)
             fields.push_back(slotAmountIndex(source, slot));
-        add("Modulation", gui::sourceName(layout, get, source), fields, static_cast<clap_id>(2000 + source));
+        add(tr(Str::ModuleModulation), gui::sourceName(layout, get, source), fields,
+            static_cast<clap_id>(2000 + source));
     }
     return pages;
 }
@@ -1329,7 +1332,7 @@ int Plugin::presetIndex() const {
 }
 
 std::string Plugin::presetName() const {
-    return presetFile().empty() ? "- Init -" : utf8(std::filesystem::path(presetFile()).stem().u8string());
+    return presetFile().empty() ? tr(Str::PresetInit) : utf8(std::filesystem::path(presetFile()).stem().u8string());
 }
 
 bool Plugin::loadPresetAt(int index) {
@@ -1372,7 +1375,7 @@ const clap_plugin_audio_ports_t Plugin::kAudioPorts = {
             return false;
         *info = {};
         info->id = 0;
-        std::snprintf(info->name, sizeof(info->name), "Output");
+        std::snprintf(info->name, sizeof(info->name), "%s", tr(Str::PortOutput));
         info->flags = CLAP_AUDIO_PORT_IS_MAIN;
         info->channel_count = 2;
         info->port_type = CLAP_PORT_STEREO;
@@ -1390,7 +1393,7 @@ const clap_plugin_note_ports_t Plugin::kNotePorts = {
         info->id = 0;
         info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
         info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
-        std::snprintf(info->name, sizeof(info->name), "Notes");
+        std::snprintf(info->name, sizeof(info->name), "%s", tr(Str::PortNotes));
         return true;
     },
 };

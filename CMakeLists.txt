@@ -24,6 +24,9 @@ set(FMVIBE_ENGINE_SOURCES
     src/noise.h
     src/params.cpp
     src/params.h
+    src/uistrings.cpp
+    src/uistrings.h
+    src/uistrings.inc
     src/synth.cpp
     src/synth.h
     src/wavetable.cpp
@@ -85,9 +88,10 @@ install(TARGETS FMVibe LIBRARY DESTINATION CLAP)
 enable_testing()
 
 # Headless host that loads the built plugin, plays notes and opens the editor.
-add_executable(fmvibe-smoke tests/smoke_host.cpp)
+add_executable(fmvibe-smoke tests/smoke_host.cpp src/uistrings.cpp)
 target_link_libraries(fmvibe-smoke PRIVATE clap)
-# For the param id helpers in params.h; the test still talks to the plugin only through CLAP.
+# For the param id helpers in params.h and the wordings in uistrings.h; the test still talks to the plugin only
+# through CLAP.
 target_include_directories(fmvibe-smoke PRIVATE src)
 fmvibe_options(fmvibe-smoke)
 add_dependencies(fmvibe-smoke FMVibe)

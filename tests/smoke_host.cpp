@@ -4,7 +4,8 @@
 
 #include <clap/clap.h>
 
-#include "params.h" // param ids only; everything else goes through CLAP
+#include "params.h"    // param ids only; everything else goes through CLAP
+#include "uistrings.h" // the wordings the plugin names its pages with
 
 #include <windows.h>
 
@@ -2140,7 +2141,7 @@ int main(int argc, char **argv) {
         for (uint32_t i = 0; i < remote->count(plugin); ++i) {
             clap_remote_controls_page_t page;
             remote->get(plugin, i, &page);
-            fxPages += std::strcmp(page.section_name, "FX") == 0;
+            fxPages += std::strcmp(page.section_name, tr(Str::ModuleFx)) == 0;
         }
         check(fxPages == 2, "each effect in the chain gets a remote control page");
 
@@ -2155,10 +2156,11 @@ int main(int argc, char **argv) {
         for (uint32_t i = 0; i < remote->count(plugin); ++i) {
             clap_remote_controls_page_t page;
             remote->get(plugin, i, &page);
-            if (std::strcmp(page.section_name, "Modulation") == 0)
+            if (std::strcmp(page.section_name, tr(Str::ModuleModulation)) == 0)
                 sourcePages.push_back(page.page_name);
         }
-        check(sourcePages == std::vector<std::string>{"LFO 1", "Env 1"}, "each source gets a remote control page");
+        check(sourcePages == std::vector<std::string>{trf(Str::SourceNameLfo, {"1"}), trf(Str::SourceNameEnv, {"1"})},
+              "each source gets a remote control page");
     }
 
     // Every remote control page has an id of its own, the macros' too, also with a source in place 0, whose page
@@ -2182,7 +2184,7 @@ int main(int argc, char **argv) {
             clap_remote_controls_page_t page;
             remote->get(plugin, i, &page);
             unique = unique && pageIds.insert(page.page_id).second;
-            sourcePage = sourcePage || std::strcmp(page.section_name, "Modulation") == 0;
+            sourcePage = sourcePage || std::strcmp(page.section_name, tr(Str::ModuleModulation)) == 0;
         }
         check(loaded && sourcePage && unique, "every remote control page has an id of its own");
     }

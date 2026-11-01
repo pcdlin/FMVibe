@@ -1,4 +1,5 @@
 #include "params.h"
+#include "uistrings.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,13 +13,17 @@ namespace fmvibe {
 
 namespace {
 
-const char *const kLfoShapeNames[] = {"Sine", "Triangle", "Saw", "Square", "Random", "Custom"};
+constexpr Str kLfoShapeNames[] = {Str::LfoSine,   Str::LfoTriangle, Str::LfoSaw,
+                                  Str::LfoSquare, Str::LfoRandom,   Str::LfoCustom};
 static_assert(std::size(kLfoShapeNames) == static_cast<size_t>(LfoShape::Count));
-const char *const kWaveNames[] = {"Sine",     "Triangle", "Saw",     "Square",   "Pulse", "Half Sine",
-                                  "Abs Sine", "Noise",    "Custom",  "Alt Sine", "Organ", "Vowel"};
+constexpr Str kWaveNames[] = {Str::WaveSine,     Str::WaveTriangle, Str::WaveSaw,     Str::WaveSquare,
+                              Str::WavePulse,    Str::WaveHalfSine, Str::WaveAbsSine, Str::WaveNoise,
+                              Str::WaveCustom,   Str::WaveAltSine,  Str::WaveOrgan,   Str::WaveVowel};
 static_assert(std::size(kWaveNames) == static_cast<size_t>(OpWave::Count));
-const char *const kFilterTypeNames[] = {"Low-pass", "High-pass", "Band-pass", "Notch", "Comb"};
-const char *const kFilterTypeShortNames[] = {"LP", "HP", "BP", "Notch", "Comb"};
+constexpr Str kFilterTypeNames[] = {Str::FilterLowPass, Str::FilterHighPass, Str::FilterBandPass, Str::FilterNotch,
+                                    Str::FilterComb};
+constexpr Str kFilterTypeShortNames[] = {Str::FilterShortLowPass, Str::FilterShortHighPass, Str::FilterShortBandPass,
+                                         Str::FilterShortNotch, Str::FilterShortComb};
 const char *const kFilterSlopeNames[] = {"6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct"};
 static_assert(std::size(kFilterSlopeNames) == static_cast<size_t>(kFilterSlopes));
 static_assert(std::size(kFilterTypeNames) == static_cast<size_t>(FilterType::Count));
@@ -28,17 +33,19 @@ const char *const kDivisionNames[] = {"4/1D",  "4/1",  "4/1T",  "2/1D",  "2/1", 
                                       "1/4T",  "1/8D", "1/8",   "1/8T",  "1/16D", "1/16", "1/16T",
                                       "1/32D", "1/32", "1/32T", "1/64D", "1/64",  "1/64T"};
 static_assert(std::size(kDivisionNames) == static_cast<size_t>(kDivisions));
-const char *const kClipModeNames[] = {"Hard", "Soft", "Asymmetric", "Cubic", "Gentle", "Sine Fold", "Fold", "Custom"};
+constexpr Str kClipModeNames[] = {Str::ClipHard,   Str::ClipSoft,     Str::ClipAsymmetric, Str::ClipCubic,
+                                  Str::ClipGentle, Str::ClipSineFold, Str::ClipFold,       Str::ClipCustom};
 static_assert(std::size(kClipModeNames) == static_cast<size_t>(ClipMode::Count));
-const char *const kPeqTypeNames[] = {"Peak", "Low Shelf", "High Shelf", "Low Cut", "High Cut"};
+constexpr Str kPeqTypeNames[] = {Str::PeqPeak, Str::PeqLowShelf, Str::PeqHighShelf, Str::PeqLowCut, Str::PeqHighCut};
 static_assert(std::size(kPeqTypeNames) == static_cast<size_t>(PeqType::Count));
-const char *const kReverbTypeNames[] = {"Hall", "Room", "Plate", "Shimmer"};
+constexpr Str kReverbTypeNames[] = {Str::ReverbHall, Str::ReverbRoom, Str::ReverbPlate, Str::ReverbShimmer};
 static_assert(std::size(kReverbTypeNames) == static_cast<size_t>(ReverbType::Count));
-const char *const kFxNames[] = {"Empty",      "Shaper",      "Delay",  "DJ EQ",  "Param EQ", "Filter",
-                                "Compressor", "3-Band Comp", "Reverb", "Phaser", "Flanger",  "Freq Shifter",
-                                "Phase Disp", "Widener"};
+constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay,      Str::FxDjEq,
+                            Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
+                            Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
+                            Str::FxDisperser, Str::FxWidener};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
-const char *const kSourceTypeNames[] = {"Empty", "LFO", "Envelope"};
+constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope};
 static_assert(std::size(kSourceTypeNames) == static_cast<size_t>(SourceType::Count));
 // A drawn shaper curve's points as it starts, (x, y, curve) each: an S, flat at the ends, steep through the middle.
 constexpr double kClipCurveDefaults[3][3] = {{0.0, -1.0, 0.35}, {0.5, 0.0, -0.35}, {1.0, 1.0, 0.0}};
@@ -84,6 +91,10 @@ template <size_t N>
 const char *nameAt(const char *const (&names)[N], double value) {
     return names[std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(N) - 1)];
 }
+template <size_t N>
+const char *nameAt(const Str (&names)[N], double value) {
+    return tr(names[std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(N) - 1)]);
+}
 
 std::string letter(int op) {
     return std::string(1, static_cast<char>('A' + op));
@@ -123,86 +134,100 @@ ParamTable buildTable() {
     // Slopes of an envelope's attack, decay and release, in that order. By default
     // the attack is a straight line and the decay and release are exponential.
     auto addCurves = [&](int attackCurve, const std::string &name, const std::string &module) {
-        const char *const stages[] = {" Attack Curve", " Decay Curve", " Release Curve"};
+        const Str stages[] = {Str::ParamAttackCurve, Str::ParamDecayCurve, Str::ParamReleaseCurve};
         for (int i = 0; i < 3; ++i)
-            add(attackCurve + i, name + stages[i], module, ParamKind::BipolarPercent, -1.0, 1.0,
+            add(attackCurve + i, name + " " + tr(stages[i]), module, ParamKind::BipolarPercent, -1.0, 1.0,
                 i == 0 ? 0.0 : kExponentialCurve);
     };
 
+    const char *const global = tr(Str::ModuleGlobal);
     // The level after the effects, for the whole output: hosts modulate it globally, not per note.
-    add(paramIndex(GlobalParam::Volume), "Volume", "Global", ParamKind::Decibel, -60.0, 12.0, 0.0);
+    add(paramIndex(GlobalParam::Volume), tr(Str::ParamVolume), global, ParamKind::Decibel, -60.0, 12.0, 0.0);
     t[paramIndex(GlobalParam::Volume)].flags &=
         ~static_cast<clap_param_info_flags>(CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY);
-    add(paramIndex(GlobalParam::FmAmount), "FM Amount", "Global", ParamKind::Percent, 0.0, 2.0, 1.0);
-    add(paramIndex(GlobalParam::BendRange), "Bend Range", "Global", ParamKind::Semitones, 0.0, 24.0, 2.0);
-    add(paramIndex(GlobalParam::Pitch), "Pitch", "Global", ParamKind::SemitoneOffset, -48.0, 48.0, 0.0);
-    add(paramIndex(GlobalParam::Pan), "Pan", "Global", ParamKind::Pan, -1.0, 1.0, 0.0);
-    add(paramIndex(GlobalParam::Voices), "Voices", "Global", ParamKind::VoiceCount, 1.0, kMaxVoices, 16.0);
-    add(paramIndex(GlobalParam::Mono), "Mono", "Global", ParamKind::Toggle, 0.0, 1.0, 0.0);
-    add(paramIndex(GlobalParam::Legato), "Legato", "Global", ParamKind::Toggle, 0.0, 1.0, 1.0);
-    add(paramIndex(GlobalParam::Glide), "Glide", "Global", ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
-    add(paramIndex(GlobalParam::GlideAlways), "Glide Always", "Global", ParamKind::Toggle, 0.0, 1.0, 0.0);
-    add(paramIndex(GlobalParam::FxOrder), "FX Order", "FX", ParamKind::FxOrder, 0.0,
+    add(paramIndex(GlobalParam::FmAmount), tr(Str::ParamFmAmount), global, ParamKind::Percent, 0.0, 2.0, 1.0);
+    add(paramIndex(GlobalParam::BendRange), tr(Str::ParamBendRange), global, ParamKind::Semitones, 0.0, 24.0, 2.0);
+    add(paramIndex(GlobalParam::Pitch), tr(Str::ParamPitch), global, ParamKind::SemitoneOffset, -48.0, 48.0, 0.0);
+    add(paramIndex(GlobalParam::Pan), tr(Str::ParamPan), global, ParamKind::Pan, -1.0, 1.0, 0.0);
+    add(paramIndex(GlobalParam::Voices), tr(Str::ParamVoices), global, ParamKind::VoiceCount, 1.0, kMaxVoices, 16.0);
+    add(paramIndex(GlobalParam::Mono), tr(Str::ParamMono), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
+    add(paramIndex(GlobalParam::Legato), tr(Str::ParamLegato), global, ParamKind::Toggle, 0.0, 1.0, 1.0);
+    add(paramIndex(GlobalParam::Glide), tr(Str::ParamGlide), global, ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
+    add(paramIndex(GlobalParam::GlideAlways), tr(Str::ParamGlideAlways), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
+    add(paramIndex(GlobalParam::FxOrder), tr(Str::ParamFxOrder), tr(Str::ModuleFx), ParamKind::FxOrder, 0.0,
         static_cast<double>(kFxOrders - 1), 0.0);
-    add(paramIndex(GlobalParam::ModWheel), "Mod Wheel", "Global", ParamKind::Percent, 0.0, 1.0, 0.0);
+    add(paramIndex(GlobalParam::ModWheel), tr(Str::ParamModWheel), global, ParamKind::Percent, 0.0, 1.0, 0.0);
 
     // Default patch: operator A, a plain sine carrier; the others start switched
     // off, to be added from the routing panel. Every operator has the same settings otherwise.
     for (int op = 0; op < kOps; ++op) {
-        const std::string name = "Op " + letter(op);
-        const std::string module = "Operators/" + name;
+        const std::string name = trf(Str::ParamOp, {letter(op)});
+        const std::string module = tr(Str::ModuleOperators) + ("/" + name);
         const bool first = op == 0;
-        add(paramIndex(op, OpParam::Coarse), name + " Coarse", module, ParamKind::Ratio, 0.0, 32.0, 1.0);
-        add(paramIndex(op, OpParam::Fine), name + " Fine", module, ParamKind::Percent, 0.0, 1.0, 0.0);
-        add(paramIndex(op, OpParam::Detune), name + " Detune", module, ParamKind::Cents, -50.0, 50.0, 0.0);
-        add(paramIndex(op, OpParam::Out), name + " Out", module, ParamKind::Percent, 0.0, 1.0, first ? 1.0 : 0.0);
-        add(paramIndex(op, OpParam::Attack), name + " Attack", module, ParamKind::Time, 0.0, 1.0, 0.0);
-        add(paramIndex(op, OpParam::Decay), name + " Decay", module, ParamKind::Time, 0.0, 1.0, normFromTime(1.5));
-        add(paramIndex(op, OpParam::Sustain), name + " Sustain", module, ParamKind::Percent, 0.0, 1.0, 1.0);
-        add(paramIndex(op, OpParam::Release), name + " Release", module, ParamKind::Time, 0.0, 1.0,
+        add(paramIndex(op, OpParam::Coarse), name + " " + tr(Str::ParamCoarse), module, ParamKind::Ratio, 0.0, 32.0,
+            1.0);
+        add(paramIndex(op, OpParam::Fine), name + " " + tr(Str::ParamFine), module, ParamKind::Percent, 0.0, 1.0, 0.0);
+        add(paramIndex(op, OpParam::Detune), name + " " + tr(Str::ParamDetune), module, ParamKind::Cents, -50.0, 50.0,
+            0.0);
+        add(paramIndex(op, OpParam::Out), name + " " + tr(Str::ParamOut), module, ParamKind::Percent, 0.0, 1.0,
+            first ? 1.0 : 0.0);
+        add(paramIndex(op, OpParam::Attack), name + " " + tr(Str::ParamAttack), module, ParamKind::Time, 0.0, 1.0, 0.0);
+        add(paramIndex(op, OpParam::Decay), name + " " + tr(Str::ParamDecay), module, ParamKind::Time, 0.0, 1.0,
+            normFromTime(1.5));
+        add(paramIndex(op, OpParam::Sustain), name + " " + tr(Str::ParamSustain), module, ParamKind::Percent, 0.0,
+            1.0, 1.0);
+        add(paramIndex(op, OpParam::Release), name + " " + tr(Str::ParamRelease), module, ParamKind::Time, 0.0, 1.0,
             normFromTime(0.015));
-        add(paramIndex(op, OpParam::Hold), name + " Hold", module, ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
-        add(paramIndex(op, OpParam::Transpose), name + " Pitch", module, ParamKind::Transpose, -48.0, 48.0, 0.0);
-        add(paramIndex(op, OpParam::Velocity), name + " Velocity", module, ParamKind::Percent, 0.0, 1.0, 0.5);
-        add(paramIndex(op, OpParam::Enabled), name + " On", module, ParamKind::Toggle, 0.0, 1.0, first ? 1.0 : 0.0);
-        add(paramIndex(op, OpParam::Wave), name + " Wave", module, ParamKind::OpWave, 0.0,
+        add(paramIndex(op, OpParam::Hold), name + " " + tr(Str::ParamHold), module, ParamKind::TimeOrOff, 0.0, 1.0,
+            0.0);
+        add(paramIndex(op, OpParam::Transpose), name + " " + tr(Str::ParamPitch), module, ParamKind::Transpose, -48.0,
+            48.0, 0.0);
+        add(paramIndex(op, OpParam::Velocity), name + " " + tr(Str::ParamVelocity), module, ParamKind::Percent, 0.0,
+            1.0, 0.5);
+        add(paramIndex(op, OpParam::Enabled), name + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0, 1.0,
+            first ? 1.0 : 0.0);
+        add(paramIndex(op, OpParam::Wave), name + " " + tr(Str::ParamWave), module, ParamKind::OpWave, 0.0,
             static_cast<double>(OpWave::Count) - 1.0, 0.0);
         for (int filter = 0; filter < kFilters; ++filter)
-            add(sendIndex(op, filter), letter(op) + " → F" + std::to_string(filter + 1), "Matrix", ParamKind::Percent,
-                0.0, 1.0, 0.0);
-        for (int shaper = 0; shaper < kShapers; ++shaper)
-            add(shaperSendIndex(op, shaper), letter(op) + " → S" + std::to_string(shaper + 1), "Matrix",
+            add(sendIndex(op, filter), letter(op) + " → F" + std::to_string(filter + 1), tr(Str::ModuleMatrix),
                 ParamKind::Percent, 0.0, 1.0, 0.0);
-        add(paramIndex(op, OpParam::Unison), name + " Unison", module, ParamKind::Count, 1.0, kMaxUnison, 1.0);
-        add(paramIndex(op, OpParam::UnisonDetune), name + " Unison Detune", module, ParamKind::CentsAmount, 0.0, 100.0,
-            20.0);
-        add(paramIndex(op, OpParam::UnisonSpread), name + " Unison Spread", module, ParamKind::Percent, 0.0, 1.0, 0.5);
-        add(paramIndex(op, OpParam::PhaseRandom), name + " Phase Random", module, ParamKind::Percent, 0.0, 1.0,
-            0.0);
+        for (int shaper = 0; shaper < kShapers; ++shaper)
+            add(shaperSendIndex(op, shaper), letter(op) + " → S" + std::to_string(shaper + 1), tr(Str::ModuleMatrix),
+                ParamKind::Percent, 0.0, 1.0, 0.0);
+        add(paramIndex(op, OpParam::Unison), name + " " + tr(Str::ParamUnison), module, ParamKind::Count, 1.0,
+            kMaxUnison, 1.0);
+        add(paramIndex(op, OpParam::UnisonDetune), name + " " + tr(Str::ParamUnisonDetune), module,
+            ParamKind::CentsAmount, 0.0, 100.0, 20.0);
+        add(paramIndex(op, OpParam::UnisonSpread), name + " " + tr(Str::ParamUnisonSpread), module,
+            ParamKind::Percent, 0.0, 1.0, 0.5);
+        add(paramIndex(op, OpParam::PhaseRandom), name + " " + tr(Str::ParamPhaseRandom), module, ParamKind::Percent,
+            0.0, 1.0, 0.0);
         addCurves(paramIndex(op, OpParam::AttackCurve), name, module);
-        add(paramIndex(op, OpParam::NoiseSlope), name + " Noise Slope", module, ParamKind::NoiseSlope, 0.0, 1.0,
-            0.0);
+        add(paramIndex(op, OpParam::NoiseSlope), name + " " + tr(Str::ParamNoiseSlope), module, ParamKind::NoiseSlope,
+            0.0, 1.0, 0.0);
         // The Custom wave starts as a sine: the first partial alone, of 32.
-        add(partialCountIndex(op), name + " Partials", module, ParamKind::ShapeCount, kPartialCounts[0],
-            kPartials, kDefaultPartials);
+        add(partialCountIndex(op), name + " " + tr(Str::ParamPartials), module, ParamKind::ShapeCount,
+            kPartialCounts[0], kPartials, kDefaultPartials);
         for (int partial = 0; partial < kPartials; ++partial) {
-            const std::string n = name + " Partial " + std::to_string(partial + 1);
-            add(partialLevelIndex(op, partial), n + " Level", module, ParamKind::ShapePoint, 0.0, 1.0,
+            const std::string n = name + " " + trf(Str::ParamPartial, {std::to_string(partial + 1)});
+            add(partialLevelIndex(op, partial), n + " " + tr(Str::ParamLevel), module, ParamKind::ShapePoint, 0.0, 1.0,
                 partial == 0 ? 1.0 : 0.0);
-            add(partialPhaseIndex(op, partial), n + " Phase", module, ParamKind::ShapePoint, 0.0, 1.0, 0.0);
+            add(partialPhaseIndex(op, partial), n + " " + tr(Str::ParamPhase), module, ParamKind::ShapePoint, 0.0,
+                1.0, 0.0);
         }
     }
 
     for (int from = 0; from < kOps; ++from) {
         for (int to = 0; to < kOps; ++to) {
-            const std::string name = from == to ? letter(from) + " Feedback" : letter(from) + " → " + letter(to);
-            add(matrixIndex(from, to), name, "Matrix", ParamKind::Percent, 0.0, 1.0, 0.0);
+            const std::string name =
+                from == to ? trf(Str::ParamOpFeedback, {letter(from)}) : letter(from) + " → " + letter(to);
+            add(matrixIndex(from, to), name, tr(Str::ModuleMatrix), ParamKind::Percent, 0.0, 1.0, 0.0);
         }
     }
     for (int filter = 0; filter < kFilters; ++filter)
         for (int to = 0; to < kOps; ++to)
-            add(filterModIndex(filter, to), "F" + std::to_string(filter + 1) + " → " + letter(to), "Matrix",
-                ParamKind::Percent, 0.0, 1.0, 0.0);
+            add(filterModIndex(filter, to), "F" + std::to_string(filter + 1) + " → " + letter(to),
+                tr(Str::ModuleMatrix), ParamKind::Percent, 0.0, 1.0, 0.0);
 
     // Filter 1 defaults to a warm low-pass and filter 2 to a band-pass for something different. Neither follows
     // the note until its Key Track is turned up, and like the shapers and operators B-F, neither goes out until it is
@@ -217,132 +242,151 @@ ParamTable buildTable() {
                                              {FilterType::BandPass, kDefaultSlope, 800.0, 0.5}};
     static_assert(std::size(filterDefaults) == static_cast<size_t>(kFilters));
     for (int filter = 0; filter < kFilters; ++filter) {
-        const std::string name = "Filter " + std::to_string(filter + 1);
-        const std::string module = "Filters/" + name;
+        const std::string name = trf(Str::ParamFilter, {std::to_string(filter + 1)});
+        const std::string module = tr(Str::ModuleFilters) + ("/" + name);
         const FilterDefaults &d = filterDefaults[filter];
-        add(paramIndex(filter, FilterParam::Type), name + " Type", module, ParamKind::FilterType, 0.0,
+        add(paramIndex(filter, FilterParam::Type), name + " " + tr(Str::ParamType), module, ParamKind::FilterType, 0.0,
             static_cast<double>(FilterType::Count) - 1.0, static_cast<double>(d.type));
-        add(paramIndex(filter, FilterParam::Cutoff), name + " Cutoff", module, ParamKind::Cutoff, 0.0, 1.0,
-            normFromCutoff(d.cutoffHz));
-        add(paramIndex(filter, FilterParam::Resonance), name + " Resonance", module, ParamKind::Percent, 0.0, 1.0,
-            d.resonance);
-        add(paramIndex(filter, FilterParam::KeyTrack), name + " Key Track", module, ParamKind::Percent, 0.0, 1.0, 0.0);
-        add(paramIndex(filter, FilterParam::Drive), name + " Drive", module, ParamKind::Percent, 0.0, 1.0, 0.0);
-        add(paramIndex(filter, FilterParam::Out), name + " Out", module, ParamKind::Percent, 0.0, 1.0, 0.0);
-        add(paramIndex(filter, FilterParam::Slope), name + " Slope", module, ParamKind::FilterSlope, 0.0,
-            kFilterSlopes - 1.0, d.slope);
-        add(paramIndex(filter, FilterParam::Enabled), name + " On", module, ParamKind::Toggle, 0.0, 1.0, 0.0);
+        add(paramIndex(filter, FilterParam::Cutoff), name + " " + tr(Str::ParamCutoff), module, ParamKind::Cutoff,
+            0.0, 1.0, normFromCutoff(d.cutoffHz));
+        add(paramIndex(filter, FilterParam::Resonance), name + " " + tr(Str::ParamResonance), module,
+            ParamKind::Percent, 0.0, 1.0, d.resonance);
+        add(paramIndex(filter, FilterParam::KeyTrack), name + " " + tr(Str::ParamKeyTrack), module,
+            ParamKind::Percent, 0.0, 1.0, 0.0);
+        add(paramIndex(filter, FilterParam::Drive), name + " " + tr(Str::ParamDrive), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
+        add(paramIndex(filter, FilterParam::Out), name + " " + tr(Str::ParamOut), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
+        add(paramIndex(filter, FilterParam::Slope), name + " " + tr(Str::ParamSlope), module, ParamKind::FilterSlope,
+            0.0, kFilterSlopes - 1.0, d.slope);
+        add(paramIndex(filter, FilterParam::Enabled), name + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0,
+            1.0, 0.0);
     }
     for (int from = 0; from < kFilters; ++from)
         for (int to = from + 1; to < kFilters; ++to)
-            add(filterLinkIndex(from, to), "F" + std::to_string(from + 1) + " → F" + std::to_string(to + 1), "Filters",
-                ParamKind::Percent, 0.0, 1.0, 0.0);
+            add(filterLinkIndex(from, to), "F" + std::to_string(from + 1) + " → F" + std::to_string(to + 1),
+                tr(Str::ModuleFilters), ParamKind::Percent, 0.0, 1.0, 0.0);
     for (int filter = 0; filter < kFilters; ++filter)
         for (int shaper = 0; shaper < kShapers; ++shaper)
             add(filterShaperIndex(filter, shaper), "F" + std::to_string(filter + 1) + " → S" + std::to_string(shaper + 1),
-                "Matrix", ParamKind::Percent, 0.0, 1.0, 0.0);
+                tr(Str::ModuleMatrix), ParamKind::Percent, 0.0, 1.0, 0.0);
 
     // Shapers start switched off, with the Soft curve, linked to their drive, routed nowhere; a drawn curve starts as
     // an S, like the shaper effect's.
     for (int shaper = 0; shaper < kShapers; ++shaper) {
         const std::string tag = "S" + std::to_string(shaper + 1);
-        const std::string name = "Shaper " + std::to_string(shaper + 1);
-        const std::string module = "Shapers/" + name;
-        add(paramIndex(shaper, ShaperParam::Enabled), name + " On", module, ParamKind::Toggle, 0.0, 1.0, 0.0);
-        add(paramIndex(shaper, ShaperParam::Mode), name + " Curve", module, ParamKind::ClipMode, 0.0,
+        const std::string name = trf(Str::ParamShaper, {std::to_string(shaper + 1)});
+        const std::string module = tr(Str::ModuleShapers) + ("/" + name);
+        add(paramIndex(shaper, ShaperParam::Enabled), name + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0,
+            1.0, 0.0);
+        add(paramIndex(shaper, ShaperParam::Mode), name + " " + tr(Str::ParamCurve), module, ParamKind::ClipMode, 0.0,
             static_cast<double>(ClipMode::Count) - 1.0, static_cast<double>(ClipMode::Soft));
-        add(paramIndex(shaper, ShaperParam::Drive), name + " Drive", module, ParamKind::Decibel, 0.0, 36.0, 6.0);
-        add(paramIndex(shaper, ShaperParam::Output), name + " Output", module, ParamKind::Decibel, -24.0, 6.0, 0.0);
-        add(paramIndex(shaper, ShaperParam::Mix), name + " Mix", module, ParamKind::Percent, 0.0, 1.0, 1.0);
-        add(paramIndex(shaper, ShaperParam::Link), name + " Link", module, ParamKind::Toggle, 0.0, 1.0, 1.0);
+        add(paramIndex(shaper, ShaperParam::Drive), name + " " + tr(Str::ParamDrive), module, ParamKind::Decibel, 0.0,
+            36.0, 6.0);
+        add(paramIndex(shaper, ShaperParam::Output), name + " " + tr(Str::ParamOutput), module, ParamKind::Decibel,
+            -24.0, 6.0, 0.0);
+        add(paramIndex(shaper, ShaperParam::Mix), name + " " + tr(Str::ParamMix), module, ParamKind::Percent, 0.0,
+            1.0, 1.0);
+        add(paramIndex(shaper, ShaperParam::Link), name + " " + tr(Str::ParamLink), module, ParamKind::Toggle, 0.0,
+            1.0, 1.0);
         for (int filter = 0; filter < kFilters; ++filter)
-            add(shaperFilterIndex(shaper, filter), tag + " → F" + std::to_string(filter + 1), "Matrix",
+            add(shaperFilterIndex(shaper, filter), tag + " → F" + std::to_string(filter + 1), tr(Str::ModuleMatrix),
                 ParamKind::Percent, 0.0, 1.0, 0.0);
         for (int to = 0; to < kOps; ++to)
-            add(shaperModIndex(shaper, to), tag + " → " + letter(to), "Matrix", ParamKind::Percent, 0.0, 1.0, 0.0);
-        add(paramIndex(shaper, ShaperParam::Out), name + " To Out", module, ParamKind::Percent, 0.0, 1.0, 0.0);
+            add(shaperModIndex(shaper, to), tag + " → " + letter(to), tr(Str::ModuleMatrix), ParamKind::Percent, 0.0,
+                1.0, 0.0);
+        add(paramIndex(shaper, ShaperParam::Out), name + " " + tr(Str::ParamToOut), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
         const int base = shaperCurveCountIndex(shaper);
-        add(base, name + " Curve Points", module, ParamKind::ShapeCount, 2.0, kMaxShapePoints, 3.0);
+        add(base, name + " " + tr(Str::ParamCurve) + " " + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 2.0,
+            kMaxShapePoints, 3.0);
         for (int point = 0; point < kMaxShapePoints; ++point) {
-            const std::string n = name + " Curve " + std::to_string(point + 1);
+            const std::string n = name + " " + tr(Str::ParamCurve) + " " + std::to_string(point + 1);
             const bool used = point < 3;
             add(shapeFieldIndex(base, point, PointField::X), n + " X", module, ParamKind::ShapePoint, 0.0, 1.0,
                 used ? kClipCurveDefaults[point][0] : 1.0);
             add(shapeFieldIndex(base, point, PointField::Y), n + " Y", module, ParamKind::ShapePoint, -1.0, 1.0,
                 used ? kClipCurveDefaults[point][1] : 1.0);
-            add(shapeFieldIndex(base, point, PointField::Curve), n + " Curve", module, ParamKind::ShapePoint, -1.0,
-                1.0, used ? kClipCurveDefaults[point][2] : 0.0);
+            add(shapeFieldIndex(base, point, PointField::Curve), n + " " + tr(Str::ParamCurve), module,
+                ParamKind::ShapePoint, -1.0, 1.0, used ? kClipCurveDefaults[point][2] : 0.0);
         }
     }
 
     // The macros start at nothing, mapped to nothing.
     for (int macro = 0; macro < kMacros; ++macro) {
-        const std::string name = "Macro " + std::to_string(macro + 1);
-        const std::string module = "Macros/" + name;
+        const std::string name = trf(Str::ParamMacro, {std::to_string(macro + 1)});
+        const std::string module = tr(Str::ModuleMacros) + ("/" + name);
         add(paramIndex(macro, MacroParam::Value), name, module, ParamKind::Percent, 0.0, 1.0, 0.0);
         for (int slot = 0; slot < kSlots; ++slot) {
             const std::string n = std::to_string(slot + 1);
-            add(slotTargetIndex(kMaxSources + macro, slot), name + " Target " + n, module, ParamKind::ModTarget, 0.0,
-                kMaxParamId + 1.0, 0.0);
-            add(slotAmountIndex(kMaxSources + macro, slot), name + " Amount " + n, module, ParamKind::BipolarPercent,
-                -1.0, 1.0, 0.0);
+            add(slotTargetIndex(kMaxSources + macro, slot), name + " " + trf(Str::ParamTarget, {n}), module,
+                ParamKind::ModTarget, 0.0, kMaxParamId + 1.0, 0.0);
+            add(slotAmountIndex(kMaxSources + macro, slot), name + " " + trf(Str::ParamAmount, {n}), module,
+                ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
         }
-        add(paramIndex(macro, MacroParam::Bipolar), name + " Bipolar", module, ParamKind::Toggle, 0.0, 1.0, 0.0);
+        add(paramIndex(macro, MacroParam::Bipolar), name + " " + tr(Str::ParamBipolar), module, ParamKind::Toggle,
+            0.0, 1.0, 0.0);
     }
 
     // The note source starts mapped to nothing, over every MIDI note, in a straight line from nothing at C-1 to all
     // of it at G9.
+    const std::string note = tr(Str::ParamNote), wheel = tr(Str::ParamModWheel);
     for (int slot = 0; slot < kSlots; ++slot) {
         const std::string n = std::to_string(slot + 1);
-        add(slotTargetIndex(kNoteSource, slot), "Note Target " + n, "Note", ParamKind::ModTarget, 0.0,
-            kMaxParamId + 1.0, 0.0);
-        add(slotAmountIndex(kNoteSource, slot), "Note Amount " + n, "Note", ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        add(slotTargetIndex(kNoteSource, slot), note + " " + trf(Str::ParamTarget, {n}), note, ParamKind::ModTarget,
+            0.0, kMaxParamId + 1.0, 0.0);
+        add(slotAmountIndex(kNoteSource, slot), note + " " + trf(Str::ParamAmount, {n}), note,
+            ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
     }
     // The mod wheel starts mapped to nothing, like the macros.
     for (int slot = 0; slot < kSlots; ++slot) {
         const std::string n = std::to_string(slot + 1);
-        add(slotTargetIndex(kWheelSource, slot), "Mod Wheel Target " + n, "Mod Wheel", ParamKind::ModTarget, 0.0,
-            kMaxParamId + 1.0, 0.0);
-        add(slotAmountIndex(kWheelSource, slot), "Mod Wheel Amount " + n, "Mod Wheel", ParamKind::BipolarPercent, -1.0,
-            1.0, 0.0);
+        add(slotTargetIndex(kWheelSource, slot), wheel + " " + trf(Str::ParamTarget, {n}), wheel,
+            ParamKind::ModTarget, 0.0, kMaxParamId + 1.0, 0.0);
+        add(slotAmountIndex(kWheelSource, slot), wheel + " " + trf(Str::ParamAmount, {n}), wheel,
+            ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
     }
     // Both start unipolar, like the macros: they take their targets one way.
-    add(paramIndex(WheelParam::Bipolar), "Mod Wheel Bipolar", "Mod Wheel", ParamKind::Toggle, 0.0, 1.0, 0.0);
-    add(paramIndex(NoteParam::Bipolar), "Note Bipolar", "Note", ParamKind::Toggle, 0.0, 1.0, 0.0);
-    add(paramIndex(NoteParam::Low), "Note Low", "Note", ParamKind::NotePitch, 0.0, kMaxNotePitch, 0.0);
-    add(paramIndex(NoteParam::High), "Note High", "Note", ParamKind::NotePitch, 0.0, kMaxNotePitch, kMaxNotePitch);
+    add(paramIndex(WheelParam::Bipolar), wheel + " " + tr(Str::ParamBipolar), wheel, ParamKind::Toggle, 0.0, 1.0, 0.0);
+    add(paramIndex(NoteParam::Bipolar), note + " " + tr(Str::ParamBipolar), note, ParamKind::Toggle, 0.0, 1.0, 0.0);
+    add(paramIndex(NoteParam::Low), note + " " + tr(Str::ParamLow), note, ParamKind::NotePitch, 0.0, kMaxNotePitch,
+        0.0);
+    add(paramIndex(NoteParam::High), note + " " + tr(Str::ParamHigh), note, ParamKind::NotePitch, 0.0, kMaxNotePitch,
+        kMaxNotePitch);
     {
         const int base = paramIndex(NoteParam::Curve);
-        add(base, "Note Curve Points", "Note", ParamKind::ShapeCount, 2.0, kMaxShapePoints, 2.0);
+        const std::string curve = note + " " + tr(Str::ParamCurve);
+        add(base, curve + " " + tr(Str::ParamPoints), note, ParamKind::ShapeCount, 2.0, kMaxShapePoints, 2.0);
         for (int point = 0; point < kMaxShapePoints; ++point) {
-            const std::string n = "Note Curve " + std::to_string(point + 1);
-            add(shapeFieldIndex(base, point, PointField::X), n + " X", "Note", ParamKind::ShapePoint, 0.0, 1.0,
+            const std::string n = curve + " " + std::to_string(point + 1);
+            add(shapeFieldIndex(base, point, PointField::X), n + " X", note, ParamKind::ShapePoint, 0.0, 1.0,
                 point == 0 ? 0.0 : 1.0);
-            add(shapeFieldIndex(base, point, PointField::Y), n + " Y", "Note", ParamKind::ShapePoint, -1.0, 1.0,
+            add(shapeFieldIndex(base, point, PointField::Y), n + " Y", note, ParamKind::ShapePoint, -1.0, 1.0,
                 point == 0 ? -1.0 : 1.0);
-            add(shapeFieldIndex(base, point, PointField::Curve), n + " Curve", "Note", ParamKind::ShapePoint, -1.0,
-                1.0, 0.0);
+            add(shapeFieldIndex(base, point, PointField::Curve), n + " " + tr(Str::ParamCurve), note,
+                ParamKind::ShapePoint, -1.0, 1.0, 0.0);
         }
     }
 
     // The effects chain starts empty.
     for (int slot = 0; slot < kFxSlots; ++slot) {
-        const std::string name = "FX " + std::to_string(slot + 1);
-        const std::string module = "FX/" + name;
+        const std::string name = trf(Str::ParamFx, {std::to_string(slot + 1)});
+        const std::string module = tr(Str::ModuleFx) + ("/" + name);
         auto fx = [&](FxParam field, const std::string &label, ParamKind kind, double min, double max, double def) {
             add(paramIndex(slot, field), name + " " + label, module, kind, min, max, def);
         };
-        fx(FxParam::Type, "Type", ParamKind::FxType, 0.0, static_cast<double>(FxType::Count) - 1.0, 0.0);
-        fx(FxParam::Enabled, "On", ParamKind::Toggle, 0.0, 1.0, 1.0);
+        fx(FxParam::Type, tr(Str::ParamType), ParamKind::FxType, 0.0, static_cast<double>(FxType::Count) - 1.0, 0.0);
+        fx(FxParam::Enabled, tr(Str::ParamOn), ParamKind::Toggle, 0.0, 1.0, 1.0);
 
-        fx(FxParam::ShaperMode, "Shaper Curve", ParamKind::ClipMode, 0.0, static_cast<double>(ClipMode::Count) - 1.0,
-           static_cast<double>(ClipMode::Soft));
-        fx(FxParam::ShaperDrive, "Shaper Drive", ParamKind::Decibel, 0.0, 36.0, 6.0);
-        fx(FxParam::ShaperOutput, "Shaper Output", ParamKind::Decibel, -24.0, 6.0, 0.0);
-        fx(FxParam::ShaperMix, "Shaper Mix", ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::ShaperMode, tr(Str::ParamShaperCurve), ParamKind::ClipMode, 0.0,
+           static_cast<double>(ClipMode::Count) - 1.0, static_cast<double>(ClipMode::Soft));
+        fx(FxParam::ShaperDrive, tr(Str::ParamShaperDrive), ParamKind::Decibel, 0.0, 36.0, 6.0);
+        fx(FxParam::ShaperOutput, tr(Str::ParamShaperOutput), ParamKind::Decibel, -24.0, 6.0, 0.0);
+        fx(FxParam::ShaperMix, tr(Str::ParamShaperMix), ParamKind::Percent, 0.0, 1.0, 1.0);
         // The drawn curve starts as an S: flat at the ends, steep through the middle.
-        const std::string curve = name + " Shaper Curve";
-        add(clipCurveCountIndex(slot), curve + " Points", module, ParamKind::ShapeCount, 2.0, kMaxShapePoints, 3.0);
+        const std::string curve = name + " " + tr(Str::ParamShaperCurve);
+        add(clipCurveCountIndex(slot), curve + " " + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 2.0,
+            kMaxShapePoints, 3.0);
         const auto &curveDefaults = kClipCurveDefaults;
         for (int point = 0; point < kMaxShapePoints; ++point) {
             const std::string n = curve + " " + std::to_string(point + 1);
@@ -352,174 +396,190 @@ ParamTable buildTable() {
                 used ? curveDefaults[point][0] : 1.0);
             add(shapeFieldIndex(base, point, PointField::Y), n + " Y", module, ParamKind::ShapePoint, -1.0, 1.0,
                 used ? curveDefaults[point][1] : 1.0);
-            add(shapeFieldIndex(base, point, PointField::Curve), n + " Curve", module, ParamKind::ShapePoint, -1.0,
-                1.0, used ? curveDefaults[point][2] : 0.0);
+            add(shapeFieldIndex(base, point, PointField::Curve), n + " " + tr(Str::ParamCurve), module,
+                ParamKind::ShapePoint, -1.0, 1.0, used ? curveDefaults[point][2] : 0.0);
         }
 
         // A dotted eighth on the left and a quarter on the right.
-        fx(FxParam::DelayTimeL, "Delay Time L", ParamKind::Time, 0.0, normFromTime(kMaxFreeDelay),
+        fx(FxParam::DelayTimeL, tr(Str::ParamDelayTimeL), ParamKind::Time, 0.0, normFromTime(kMaxFreeDelay),
            normFromTime(0.375));
-        fx(FxParam::DelayTimeR, "Delay Time R", ParamKind::Time, 0.0, normFromTime(kMaxFreeDelay), normFromTime(0.5));
-        fx(FxParam::DelaySync, "Delay Sync", ParamKind::Toggle, 0.0, 1.0, 1.0);
-        fx(FxParam::DelayLink, "Delay Link", ParamKind::Toggle, 0.0, 1.0, 0.0);
-        fx(FxParam::DelayDivisionL, "Delay Division L", ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
+        fx(FxParam::DelayTimeR, tr(Str::ParamDelayTimeR), ParamKind::Time, 0.0, normFromTime(kMaxFreeDelay),
+            normFromTime(0.5));
+        fx(FxParam::DelaySync, tr(Str::ParamDelaySync), ParamKind::Toggle, 0.0, 1.0, 1.0);
+        fx(FxParam::DelayLink, tr(Str::ParamDelayLink), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::DelayDivisionL, tr(Str::ParamDelayDivisionL), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
            kEighthDotted);
-        fx(FxParam::DelayDivisionR, "Delay Division R", ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kQuarter);
-        fx(FxParam::DelayFeedback, "Delay Feedback", ParamKind::Percent, 0.0, 0.95, 0.4);
-        fx(FxParam::DelayTone, "Delay Tone", ParamKind::DelayTone, -1.0, 1.0, 0.0);
-        fx(FxParam::DelayWidth, "Delay Width", ParamKind::Percent, 0.0, 1.0, 1.0);
-        fx(FxParam::DelayPingPong, "Delay Ping-Pong", ParamKind::Toggle, 0.0, 1.0, 0.0);
-        fx(FxParam::DelayMix, "Delay Mix", ParamKind::Percent, 0.0, 1.0, 0.3);
+        fx(FxParam::DelayDivisionR, tr(Str::ParamDelayDivisionR), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
+            kQuarter);
+        fx(FxParam::DelayFeedback, tr(Str::ParamDelayFeedback), ParamKind::Percent, 0.0, 0.95, 0.4);
+        fx(FxParam::DelayTone, tr(Str::ParamDelayTone), ParamKind::DelayTone, -1.0, 1.0, 0.0);
+        fx(FxParam::DelayWidth, tr(Str::ParamDelayWidth), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::DelayPingPong, tr(Str::ParamDelayPingPong), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::DelayMix, tr(Str::ParamDelayMix), ParamKind::Percent, 0.0, 1.0, 0.3);
 
-        fx(FxParam::EqLow, "DJ EQ Low", ParamKind::EqGain, -1.0, 1.0, 0.0);
-        fx(FxParam::EqMid, "DJ EQ Mid", ParamKind::EqGain, -1.0, 1.0, 0.0);
-        fx(FxParam::EqHigh, "DJ EQ High", ParamKind::EqGain, -1.0, 1.0, 0.0);
+        fx(FxParam::EqLow, tr(Str::ParamEqLow), ParamKind::EqGain, -1.0, 1.0, 0.0);
+        fx(FxParam::EqMid, tr(Str::ParamEqMid), ParamKind::EqGain, -1.0, 1.0, 0.0);
+        fx(FxParam::EqHigh, tr(Str::ParamEqHigh), ParamKind::EqGain, -1.0, 1.0, 0.0);
 
         // Flat to begin with: a band in the lows and one in the highs.
         const double bandHz[kPeqBands] = {250.0, 4000.0};
         for (int band = 0; band < kPeqBands; ++band) {
-            const std::string b = "EQ Band " + std::to_string(band + 1);
-            add(peqFreqIndex(slot, band), name + " " + b + " Freq", module, ParamKind::Cutoff, 0.0, 1.0,
+            const std::string b = name + " " + trf(Str::ParamPeqBand, {std::to_string(band + 1)});
+            add(peqFreqIndex(slot, band), b + " " + tr(Str::ParamFreq), module, ParamKind::Cutoff, 0.0, 1.0,
                 normFromCutoff(bandHz[band]));
-            add(peqGainIndex(slot, band), name + " " + b + " Gain", module, ParamKind::Decibel, -kMaxPeqGain,
+            add(peqGainIndex(slot, band), b + " " + tr(Str::ParamGain), module, ParamKind::Decibel, -kMaxPeqGain,
                 kMaxPeqGain, 0.0);
-            add(peqQIndex(slot, band), name + " " + b + " Q", module, ParamKind::Q, 0.0, 1.0, normFromQ(1.0));
-            add(peqTypeIndex(slot, band), name + " " + b + " Type", module, ParamKind::PeqType, 0.0,
+            add(peqQIndex(slot, band), b + " " + tr(Str::ParamQ), module, ParamKind::Q, 0.0, 1.0, normFromQ(1.0));
+            add(peqTypeIndex(slot, band), b + " " + tr(Str::ParamType), module, ParamKind::PeqType, 0.0,
                 static_cast<double>(PeqType::Count) - 1.0, static_cast<double>(PeqType::Peak));
         }
 
-        fx(FxParam::FilterType, "Filter Type", ParamKind::FilterType, 0.0, static_cast<double>(FilterType::Count) - 1.0,
-           static_cast<double>(FilterType::LowPass));
-        fx(FxParam::FilterSlope, "Filter Slope", ParamKind::FilterSlope, 0.0, kFilterSlopes - 1.0, kDefaultSlope);
-        fx(FxParam::FilterCutoff, "Filter Cutoff", ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(2000.0));
-        fx(FxParam::FilterResonance, "Filter Resonance", ParamKind::Percent, 0.0, 1.0, 0.2);
-        fx(FxParam::FilterDrive, "Filter Drive", ParamKind::Percent, 0.0, 1.0, 0.0);
-        fx(FxParam::FilterMix, "Filter Mix", ParamKind::Percent, 0.0, 1.0, 1.0);
-        fx(FxParam::FilterKeyTrack, "Filter Key Track", ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::FilterType, tr(Str::ParamFilterType), ParamKind::FilterType, 0.0,
+           static_cast<double>(FilterType::Count) - 1.0, static_cast<double>(FilterType::LowPass));
+        fx(FxParam::FilterSlope, tr(Str::ParamFilterSlope), ParamKind::FilterSlope, 0.0, kFilterSlopes - 1.0,
+            kDefaultSlope);
+        fx(FxParam::FilterCutoff, tr(Str::ParamFilterCutoff), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(2000.0));
+        fx(FxParam::FilterResonance, tr(Str::ParamFilterResonance), ParamKind::Percent, 0.0, 1.0, 0.2);
+        fx(FxParam::FilterDrive, tr(Str::ParamFilterDrive), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::FilterMix, tr(Str::ParamFilterMix), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::FilterKeyTrack, tr(Str::ParamFilterKeyTrack), ParamKind::Percent, 0.0, 1.0, 0.0);
 
-        fx(FxParam::CompThreshold, "Comp Threshold", ParamKind::Decibel, -60.0, 0.0, -18.0);
-        fx(FxParam::CompRatio, "Comp Ratio", ParamKind::CompRatio, 1.0, 20.0, 4.0);
-        fx(FxParam::CompKnee, "Comp Knee", ParamKind::Decibel, 0.0, 24.0, 6.0);
-        fx(FxParam::CompAttack, "Comp Attack", ParamKind::Time, 0.0, normFromTime(0.5), normFromTime(0.01));
-        fx(FxParam::CompRelease, "Comp Release", ParamKind::Time, 0.0, normFromTime(2.0), normFromTime(0.15));
-        fx(FxParam::CompMakeup, "Comp Makeup", ParamKind::Decibel, 0.0, 24.0, 0.0);
-        fx(FxParam::CompMix, "Comp Mix", ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::CompThreshold, tr(Str::ParamCompThreshold), ParamKind::Decibel, -60.0, 0.0, -18.0);
+        fx(FxParam::CompRatio, tr(Str::ParamCompRatio), ParamKind::CompRatio, 1.0, 20.0, 4.0);
+        fx(FxParam::CompKnee, tr(Str::ParamCompKnee), ParamKind::Decibel, 0.0, 24.0, 6.0);
+        fx(FxParam::CompAttack, tr(Str::ParamCompAttack), ParamKind::Time, 0.0, normFromTime(0.5), normFromTime(0.01));
+        fx(FxParam::CompRelease, tr(Str::ParamCompRelease), ParamKind::Time, 0.0, normFromTime(2.0),
+            normFromTime(0.15));
+        fx(FxParam::CompMakeup, tr(Str::ParamCompMakeup), ParamKind::Decibel, 0.0, 24.0, 0.0);
+        fx(FxParam::CompMix, tr(Str::ParamCompMix), ParamKind::Percent, 0.0, 1.0, 1.0);
 
-        fx(FxParam::McLowFreq, "3-Band Low Crossover", ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(200.0));
-        fx(FxParam::McHighFreq, "3-Band High Crossover", ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(2500.0));
-        const char *const bandNames[kMcBands] = {"Low", "Mid", "High"};
+        fx(FxParam::McLowFreq, tr(Str::ParamMcLowCrossover), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(200.0));
+        fx(FxParam::McHighFreq, tr(Str::ParamMcHighCrossover), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(2500.0));
+        const Str bandNames[kMcBands] = {Str::BandLow, Str::BandMid, Str::BandHigh};
         for (int band = 0; band < kMcBands; ++band) {
-            const std::string b = std::string("3-Band ") + bandNames[band];
-            add(mcThresholdIndex(slot, band), name + " " + b + " Threshold", module, ParamKind::Decibel, -60.0, 0.0,
+            const std::string b = name + " " + trf(Str::ParamMcBand, {tr(bandNames[band])});
+            add(mcThresholdIndex(slot, band), b + " " + tr(Str::ParamThreshold), module, ParamKind::Decibel, -60.0, 0.0,
                 -20.0);
-            add(mcRatioIndex(slot, band), name + " " + b + " Ratio", module, ParamKind::CompRatio, 1.0, 20.0, 3.0);
-            add(mcGainIndex(slot, band), name + " " + b + " Gain", module, ParamKind::Decibel, -12.0, 12.0, 0.0);
+            add(mcRatioIndex(slot, band), b + " " + tr(Str::ParamRatio), module, ParamKind::CompRatio, 1.0, 20.0, 3.0);
+            add(mcGainIndex(slot, band), b + " " + tr(Str::ParamGain), module, ParamKind::Decibel, -12.0, 12.0, 0.0);
         }
-        fx(FxParam::McAttack, "3-Band Attack", ParamKind::Time, 0.0, normFromTime(0.5), normFromTime(0.01));
-        fx(FxParam::McRelease, "3-Band Release", ParamKind::Time, 0.0, normFromTime(2.0), normFromTime(0.15));
-        fx(FxParam::McMix, "3-Band Mix", ParamKind::Percent, 0.0, 1.0, 1.0);
-        fx(FxParam::McOutput, "3-Band Output", ParamKind::Decibel, -24.0, 24.0, 0.0);
-        fx(FxParam::McLink, "3-Band Link", ParamKind::Toggle, 0.0, 1.0, 0.0);
-        fx(FxParam::ShaperLink, "Shaper Link", ParamKind::Toggle, 0.0, 1.0, 1.0); // turning the drive keeps the level
-        fx(FxParam::ReverbType, "Reverb Type", ParamKind::ReverbType, 0.0, static_cast<double>(ReverbType::Count) - 1.0,
-           static_cast<double>(ReverbType::Hall));
+        fx(FxParam::McAttack, tr(Str::ParamMcAttack), ParamKind::Time, 0.0, normFromTime(0.5), normFromTime(0.01));
+        fx(FxParam::McRelease, tr(Str::ParamMcRelease), ParamKind::Time, 0.0, normFromTime(2.0), normFromTime(0.15));
+        fx(FxParam::McMix, tr(Str::ParamMcMix), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::McOutput, tr(Str::ParamMcOutput), ParamKind::Decibel, -24.0, 24.0, 0.0);
+        fx(FxParam::McLink, tr(Str::ParamMcLink), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::ShaperLink, tr(Str::ParamShaperLink), ParamKind::Toggle, 0.0, 1.0,
+            1.0); // turning the drive keeps the level
+        fx(FxParam::ReverbType, tr(Str::ParamReverbType), ParamKind::ReverbType, 0.0,
+           static_cast<double>(ReverbType::Count) - 1.0, static_cast<double>(ReverbType::Hall));
 
         // A medium room, a little dark, held back 20 ms.
-        fx(FxParam::ReverbSize, "Reverb Size", ParamKind::Percent, 0.0, 1.0, 0.6);
-        fx(FxParam::ReverbDecay, "Reverb Decay", ParamKind::Time, normFromTime(0.2), 1.0, normFromTime(2.5));
-        fx(FxParam::ReverbDamping, "Reverb Damping", ParamKind::Percent, 0.0, 1.0, 0.4);
-        fx(FxParam::ReverbPreDelay, "Reverb Pre-Delay", ParamKind::TimeOrOff, 0.0, normFromTime(0.25),
+        fx(FxParam::ReverbSize, tr(Str::ParamReverbSize), ParamKind::Percent, 0.0, 1.0, 0.6);
+        fx(FxParam::ReverbDecay, tr(Str::ParamReverbDecay), ParamKind::Time, normFromTime(0.2), 1.0, normFromTime(2.5));
+        fx(FxParam::ReverbDamping, tr(Str::ParamReverbDamping), ParamKind::Percent, 0.0, 1.0, 0.4);
+        fx(FxParam::ReverbPreDelay, tr(Str::ParamReverbPreDelay), ParamKind::TimeOrOff, 0.0, normFromTime(0.25),
            normFromTime(0.02));
-        fx(FxParam::ReverbWidth, "Reverb Width", ParamKind::Percent, 0.0, 1.0, 1.0);
-        fx(FxParam::ReverbMix, "Reverb Mix", ParamKind::Percent, 0.0, 1.0, 0.3);
+        fx(FxParam::ReverbWidth, tr(Str::ParamReverbWidth), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::ReverbMix, tr(Str::ParamReverbMix), ParamKind::Percent, 0.0, 1.0, 0.3);
         // A shimmer climbs an octave each time round, half of what goes round shifted.
-        fx(FxParam::ReverbShimmerPitch, "Reverb Shimmer Pitch", ParamKind::Transpose, -24.0, 24.0, 12.0);
-        fx(FxParam::ReverbShimmer, "Reverb Shimmer", ParamKind::Percent, 0.0, 1.0, 0.5);
+        fx(FxParam::ReverbShimmerPitch, tr(Str::ParamReverbShimmerPitch), ParamKind::Transpose, -24.0, 24.0, 12.0);
+        fx(FxParam::ReverbShimmer, tr(Str::ParamReverbShimmer), ParamKind::Percent, 0.0, 1.0, 0.5);
 
-        fx(FxParam::PhaserRate, "Phaser Rate", ParamKind::SweepRate, 0.0, normFromRate(20.0), normFromRate(0.4));
-        fx(FxParam::PhaserDepth, "Phaser Depth", ParamKind::Percent, 0.0, 1.0, 0.6);
-        fx(FxParam::PhaserCenter, "Phaser Center", ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(700.0));
-        fx(FxParam::PhaserFeedback, "Phaser Feedback", ParamKind::BipolarPercent, -1.0, 1.0, 0.5);
-        fx(FxParam::PhaserStages, "Phaser Stages", ParamKind::Count, 2.0, kMaxPhaserStages, 4.0);
-        fx(FxParam::PhaserMix, "Phaser Mix", ParamKind::Percent, 0.0, 1.0, 1.0);
-        fx(FxParam::PhaserStereo, "Phaser Stereo", ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::PhaserRate, tr(Str::ParamPhaserRate), ParamKind::SweepRate, 0.0, normFromRate(20.0),
+            normFromRate(0.4));
+        fx(FxParam::PhaserDepth, tr(Str::ParamPhaserDepth), ParamKind::Percent, 0.0, 1.0, 0.6);
+        fx(FxParam::PhaserCenter, tr(Str::ParamPhaserCenter), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(700.0));
+        fx(FxParam::PhaserFeedback, tr(Str::ParamPhaserFeedback), ParamKind::BipolarPercent, -1.0, 1.0, 0.5);
+        fx(FxParam::PhaserStages, tr(Str::ParamPhaserStages), ParamKind::Count, 2.0, kMaxPhaserStages, 4.0);
+        fx(FxParam::PhaserMix, tr(Str::ParamPhaserMix), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::PhaserStereo, tr(Str::ParamPhaserStereo), ParamKind::Toggle, 0.0, 1.0, 0.0);
         // Synced, a bar a sweep.
-        fx(FxParam::PhaserSync, "Phaser Sync", ParamKind::Toggle, 0.0, 1.0, 0.0);
-        fx(FxParam::PhaserDivision, "Phaser Division", ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kWhole);
+        fx(FxParam::PhaserSync, tr(Str::ParamPhaserSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::PhaserDivision, tr(Str::ParamPhaserDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
+            kWhole);
 
-        fx(FxParam::DisperserFreq, "Phase Disp Freq", ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(600.0));
-        fx(FxParam::DisperserStages, "Phase Disp Stages", ParamKind::Count, 1.0, kMaxDisperserStages, 8.0);
-        fx(FxParam::DisperserPinch, "Phase Disp Pinch", ParamKind::Percent, 0.0, 1.0, 0.5);
-        fx(FxParam::DisperserMix, "Phase Disp Mix", ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::DisperserFreq, tr(Str::ParamDisperserFreq), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(600.0));
+        fx(FxParam::DisperserStages, tr(Str::ParamDisperserStages), ParamKind::Count, 1.0, kMaxDisperserStages, 8.0);
+        fx(FxParam::DisperserPinch, tr(Str::ParamDisperserPinch), ParamKind::Percent, 0.0, 1.0, 0.5);
+        fx(FxParam::DisperserMix, tr(Str::ParamDisperserMix), ParamKind::Percent, 0.0, 1.0, 1.0);
 
         // Wide from the start, the lows left in the middle: the sides above 150 Hz, half in.
-        fx(FxParam::WidenerSize, "Widener Size", ParamKind::Percent, 0.0, 1.0, 0.5);
-        fx(FxParam::WidenerWidth, "Widener Width", ParamKind::Percent, 0.0, 1.0, 1.0);
-        fx(FxParam::WidenerHighPass, "Widener High Pass", ParamKind::Cutoff, 0.0, normFromCutoff(kMaxWidenerHighPass),
-           normFromCutoff(150.0));
-        fx(FxParam::WidenerMix, "Widener Mix", ParamKind::Percent, 0.0, 1.0, 0.5);
+        fx(FxParam::WidenerSize, tr(Str::ParamWidenerSize), ParamKind::Percent, 0.0, 1.0, 0.5);
+        fx(FxParam::WidenerWidth, tr(Str::ParamWidenerWidth), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::WidenerHighPass, tr(Str::ParamWidenerHighPass), ParamKind::Cutoff, 0.0,
+           normFromCutoff(kMaxWidenerHighPass), normFromCutoff(150.0));
+        fx(FxParam::WidenerMix, tr(Str::ParamWidenerMix), ParamKind::Percent, 0.0, 1.0, 0.5);
 
-        fx(FxParam::FlangerRate, "Flanger Rate", ParamKind::SweepRate, 0.0, normFromRate(20.0), normFromRate(0.25));
-        fx(FxParam::FlangerDepth, "Flanger Depth", ParamKind::Percent, 0.0, 1.0, 0.7);
-        fx(FxParam::FlangerDelay, "Flanger Delay", ParamKind::Time, 0.0, normFromTime(0.015), normFromTime(0.003));
-        fx(FxParam::FlangerFeedback, "Flanger Feedback", ParamKind::BipolarPercent, -1.0, 1.0, 0.5);
-        fx(FxParam::FlangerMix, "Flanger Mix", ParamKind::Percent, 0.0, 1.0, 1.0); // half wet, like the phaser
+        fx(FxParam::FlangerRate, tr(Str::ParamFlangerRate), ParamKind::SweepRate, 0.0, normFromRate(20.0),
+            normFromRate(0.25));
+        fx(FxParam::FlangerDepth, tr(Str::ParamFlangerDepth), ParamKind::Percent, 0.0, 1.0, 0.7);
+        fx(FxParam::FlangerDelay, tr(Str::ParamFlangerDelay), ParamKind::Time, 0.0, normFromTime(0.015),
+            normFromTime(0.003));
+        fx(FxParam::FlangerFeedback, tr(Str::ParamFlangerFeedback), ParamKind::BipolarPercent, -1.0, 1.0, 0.5);
+        // Half wet at full Mix, like the phaser.
+        fx(FxParam::FlangerMix, tr(Str::ParamFlangerMix), ParamKind::Percent, 0.0, 1.0, 1.0);
         // Stereo to begin with, unlike the phaser: the classic flanger's sides sweep apart.
-        fx(FxParam::FlangerStereo, "Flanger Stereo", ParamKind::Toggle, 0.0, 1.0, 1.0);
+        fx(FxParam::FlangerStereo, tr(Str::ParamFlangerStereo), ParamKind::Toggle, 0.0, 1.0, 1.0);
         // Synced, two bars a sweep.
-        fx(FxParam::FlangerSync, "Flanger Sync", ParamKind::Toggle, 0.0, 1.0, 0.0);
-        fx(FxParam::FlangerDivision, "Flanger Division", ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kTwoWhole);
+        fx(FxParam::FlangerSync, tr(Str::ParamFlangerSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::FlangerDivision, tr(Str::ParamFlangerDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
+            kTwoWhole);
 
         // No shift until turned, then up to 100 Hz either way.
-        fx(FxParam::ShiftRange, "Shift Range", ParamKind::ShiftRange, 0.0, 1.0, normFromShiftRange(100.0));
-        fx(FxParam::ShiftAmount, "Freq Shift", ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
-        fx(FxParam::ShiftSpread, "Shift Spread", ParamKind::Percent, 0.0, 1.0, 0.0);
-        fx(FxParam::ShiftFeedback, "Shift Feedback", ParamKind::Percent, 0.0, 0.9, 0.0);
-        fx(FxParam::ShiftMix, "Shift Mix", ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::ShiftRange, tr(Str::ParamShiftRange), ParamKind::ShiftRange, 0.0, 1.0, normFromShiftRange(100.0));
+        fx(FxParam::ShiftAmount, tr(Str::ParamShiftAmount), ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        fx(FxParam::ShiftSpread, tr(Str::ParamShiftSpread), ParamKind::Percent, 0.0, 1.0, 0.0);
+        fx(FxParam::ShiftFeedback, tr(Str::ParamShiftFeedback), ParamKind::Percent, 0.0, 0.9, 0.0);
+        fx(FxParam::ShiftMix, tr(Str::ParamShiftMix), ParamKind::Percent, 0.0, 1.0, 1.0);
     }
 
     // Sources start empty; the editor gives a place its type. Host names stay
     // with the place, whichever type it holds.
     for (int source = 0; source < kMaxSources; ++source) {
-        const std::string name = "Mod " + std::to_string(source + 1);
-        const std::string module = "Modulation/" + name;
+        const std::string name = trf(Str::ParamMod, {std::to_string(source + 1)});
+        const std::string module = tr(Str::ModuleModulation) + ("/" + name);
         auto field = [&](SourceParam f, const std::string &label, ParamKind kind, double min, double max, double def) {
             add(paramIndex(source, f), name + " " + label, module, kind, min, max, def);
         };
-        field(SourceParam::Type, "Type", ParamKind::SourceType, 0.0, static_cast<double>(SourceType::Count) - 1.0, 0.0);
-        field(SourceParam::Enabled, "On", ParamKind::Toggle, 0.0, 1.0, 1.0);
+        field(SourceParam::Type, tr(Str::ParamType), ParamKind::SourceType, 0.0,
+            static_cast<double>(SourceType::Count) - 1.0, 0.0);
+        field(SourceParam::Enabled, tr(Str::ParamOn), ParamKind::Toggle, 0.0, 1.0, 1.0);
         for (int slot = 0; slot < kSlots; ++slot) {
             const std::string n = std::to_string(slot + 1);
-            add(slotTargetIndex(source, slot), name + " Target " + n, module, ParamKind::ModTarget, 0.0,
-                kMaxParamId + 1.0, 0.0);
-            add(slotAmountIndex(source, slot), name + " Amount " + n, module, ParamKind::BipolarPercent, -1.0, 1.0,
-                0.0);
+            add(slotTargetIndex(source, slot), name + " " + trf(Str::ParamTarget, {n}), module, ParamKind::ModTarget,
+                0.0, kMaxParamId + 1.0, 0.0);
+            add(slotAmountIndex(source, slot), name + " " + trf(Str::ParamAmount, {n}), module,
+                ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
         }
 
-        field(SourceParam::Shape, "Shape", ParamKind::LfoShape, 0.0, static_cast<double>(LfoShape::Count) - 1.0, 0.0);
-        field(SourceParam::Rate, "Rate", ParamKind::Rate, 0.0, 1.0, normFromRate(2.0));
-        field(SourceParam::Sync, "Sync", ParamKind::Toggle, 0.0, 1.0, 1.0); // an LFO starts on quarter notes
-        field(SourceParam::Division, "Division", ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kQuarter);
-        field(SourceParam::Free, "Free", ParamKind::Toggle, 0.0, 1.0, 0.0);
-        field(SourceParam::Unipolar, "Unipolar", ParamKind::Toggle, 0.0, 1.0, 0.0);
-        field(SourceParam::OneShot, "One-Shot", ParamKind::Toggle, 0.0, 1.0, 0.0);
+        field(SourceParam::Shape, tr(Str::ParamShape), ParamKind::LfoShape, 0.0,
+            static_cast<double>(LfoShape::Count) - 1.0, 0.0);
+        field(SourceParam::Rate, tr(Str::ParamRate), ParamKind::Rate, 0.0, 1.0, normFromRate(2.0));
+        field(SourceParam::Sync, tr(Str::ParamSync), ParamKind::Toggle, 0.0, 1.0,
+            1.0); // an LFO starts on quarter notes
+        field(SourceParam::Division, tr(Str::ParamDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kQuarter);
+        field(SourceParam::Free, tr(Str::ParamFree), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        field(SourceParam::Unipolar, tr(Str::ParamUnipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        field(SourceParam::OneShot, tr(Str::ParamOneShot), ParamKind::Toggle, 0.0, 1.0, 0.0);
         // Random starts as plain sample and hold: steps, each landing anywhere.
-        field(SourceParam::RandomSmooth, "Smooth", ParamKind::Percent, 0.0, 1.0, 0.0);
-        field(SourceParam::RandomChaos, "Chaos", ParamKind::Percent, 0.0, 1.0, 1.0);
+        field(SourceParam::RandomSmooth, tr(Str::ParamSmooth), ParamKind::Percent, 0.0, 1.0, 0.0);
+        field(SourceParam::RandomChaos, tr(Str::ParamChaos), ParamKind::Percent, 0.0, 1.0, 1.0);
 
-        field(SourceParam::Attack, "Attack", ParamKind::Time, 0.0, 1.0, 0.0);
-        field(SourceParam::Decay, "Decay", ParamKind::Time, 0.0, 1.0, normFromTime(0.5));
-        field(SourceParam::Sustain, "Sustain", ParamKind::Percent, 0.0, 1.0, 1.0);
+        field(SourceParam::Attack, tr(Str::ParamAttack), ParamKind::Time, 0.0, 1.0, 0.0);
+        field(SourceParam::Decay, tr(Str::ParamDecay), ParamKind::Time, 0.0, 1.0, normFromTime(0.5));
+        field(SourceParam::Sustain, tr(Str::ParamSustain), ParamKind::Percent, 0.0, 1.0, 1.0);
         // The release an operator's envelope starts with.
-        field(SourceParam::Release, "Release", ParamKind::Time, 0.0, 1.0, normFromTime(0.015));
-        field(SourceParam::Hold, "Hold", ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
+        field(SourceParam::Release, tr(Str::ParamRelease), ParamKind::Time, 0.0, 1.0, normFromTime(0.015));
+        field(SourceParam::Hold, tr(Str::ParamHold), ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
         addCurves(paramIndex(source, SourceParam::AttackCurve), name, module);
-        field(SourceParam::EnvBipolar, "Bipolar", ParamKind::Toggle, 0.0, 1.0, 0.0); // takes its targets one way
+        field(SourceParam::EnvBipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0,
+            0.0); // takes its targets one way
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.
-        const std::string shape = name + " Shape";
-        add(shapeCountIndex(source), shape + " Points", module, ParamKind::ShapeCount, 2.0, kMaxShapePoints, 2.0);
+        const std::string shape = name + " " + tr(Str::ParamShape);
+        add(shapeCountIndex(source), shape + " " + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 2.0,
+            kMaxShapePoints, 2.0);
         const double defaults[2][2] = {{0.0, -1.0}, {0.5, 1.0}};
         for (int point = 0; point < kMaxShapePoints; ++point) {
             const std::string n = shape + " " + std::to_string(point + 1);
@@ -528,11 +588,11 @@ ParamTable buildTable() {
                 used ? defaults[point][0] : 1.0);
             add(shapePointIndex(source, point, PointField::Y), n + " Y", module, ParamKind::ShapePoint, -1.0, 1.0,
                 used ? defaults[point][1] : 0.0);
-            add(shapePointIndex(source, point, PointField::Curve), n + " Curve", module, ParamKind::ShapePoint, -1.0,
-                1.0, 0.0);
+            add(shapePointIndex(source, point, PointField::Curve), n + " " + tr(Str::ParamCurve), module,
+                ParamKind::ShapePoint, -1.0, 1.0, 0.0);
         }
         for (int slot = 0; slot < kSlots; ++slot)
-            add(slotBypassIndex(source, slot), name + " Bypass " + std::to_string(slot + 1), module,
+            add(slotBypassIndex(source, slot), name + " " + trf(Str::ParamBypass, {std::to_string(slot + 1)}), module,
                 ParamKind::SlotBypass, 0.0, 1.0, 0.0);
     }
     return t;
@@ -584,6 +644,13 @@ template <size_t N>
 int findName(const char *const (&names)[N], const char *text) {
     for (size_t i = 0; i < N; ++i)
         if (equalsIgnoreCase(text, names[i]))
+            return static_cast<int>(i);
+    return -1;
+}
+template <size_t N>
+int findName(const Str (&names)[N], const char *text) {
+    for (size_t i = 0; i < N; ++i)
+        if (equalsIgnoreCase(text, tr(names[i])))
             return static_cast<int>(i);
     return -1;
 }
@@ -657,7 +724,7 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         break;
     case ParamKind::TimeOrOff:
         if (value <= 0.0) {
-            std::snprintf(out, capacity, "Off");
+            std::snprintf(out, capacity, "%s", tr(Str::ValueOff));
             break;
         }
         [[fallthrough]];
@@ -672,7 +739,7 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     }
     case ParamKind::Toggle:
     case ParamKind::SlotBypass:
-        std::snprintf(out, capacity, "%s", value >= 0.5 ? "On" : "Off");
+        std::snprintf(out, capacity, "%s", value >= 0.5 ? tr(Str::ValueOn) : tr(Str::ValueOff));
         break;
     case ParamKind::Rate:
     case ParamKind::SweepRate:
@@ -721,7 +788,7 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::DelayTone: {
         // Within 1 % of the middle, neither filter is noticeable.
         if (std::abs(value) < 0.01) {
-            std::snprintf(out, capacity, "Open");
+            std::snprintf(out, capacity, "%s", tr(Str::ValueOpen));
             break;
         }
         const DelayTone tone = delayTone(value);
@@ -756,7 +823,7 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         break;
     case ParamKind::ModTarget: {
         const int target = slotTarget(value);
-        std::snprintf(out, capacity, "%s", target < 0 ? "None" : paramTable()[target].name.c_str());
+        std::snprintf(out, capacity, "%s", target < 0 ? tr(Str::ValueNone) : paramTable()[target].name.c_str());
         break;
     }
     case ParamKind::SyncDivision:
@@ -783,7 +850,10 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::NoiseSlope: {
         // Named at the three classic slopes, in dB per octave in between.
         const double db = std::round(value * 60.0) / 10.0;
-        const char *const name = db == 0.0 ? "White" : db == 3.0 ? "Pink" : db == 6.0 ? "Brown" : nullptr;
+        const char *const name = db == 0.0   ? tr(Str::NoiseWhite)
+                                 : db == 3.0 ? tr(Str::NoisePink)
+                                 : db == 6.0 ? tr(Str::NoiseBrown)
+                                             : nullptr;
         if (name)
             std::snprintf(out, capacity, "%s", name);
         else
@@ -793,7 +863,7 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::EqGain: {
         const double gain = eqGain(value);
         if (gain < 1e-4)
-            std::snprintf(out, capacity, "Kill");
+            std::snprintf(out, capacity, "%s", tr(Str::ValueKill));
         else
             std::snprintf(out, capacity, "%+.1f dB", 20.0 * std::log10(gain));
         break;
@@ -847,16 +917,16 @@ bool parseParam(int index, const char *text, double *out) {
         return true;
     }
     if (def.kind == ParamKind::Toggle || def.kind == ParamKind::SlotBypass || def.kind == ParamKind::TimeOrOff) {
-        if (equalsIgnoreCase(text, "Off")) {
+        if (equalsIgnoreCase(text, tr(Str::ValueOff))) {
             *out = 0.0;
             return true;
         }
-        if (def.kind != ParamKind::TimeOrOff && equalsIgnoreCase(text, "On")) {
+        if (def.kind != ParamKind::TimeOrOff && equalsIgnoreCase(text, tr(Str::ValueOn))) {
             *out = 1.0;
             return true;
         }
     }
-    if (def.kind == ParamKind::EqGain && equalsIgnoreCase(text, "Kill")) {
+    if (def.kind == ParamKind::EqGain && equalsIgnoreCase(text, tr(Str::ValueKill))) {
         *out = -1.0;
         return true;
     }
@@ -868,7 +938,7 @@ bool parseParam(int index, const char *text, double *out) {
         // "Open", "LP 2 kHz", "HP 300 Hz", or a bare percentage.
         const char kind = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
         const char pass = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0] ? text[1] : 0)));
-        if (equalsIgnoreCase(text, "Open")) {
+        if (equalsIgnoreCase(text, tr(Str::ValueOpen))) {
             *out = 0.0;
             return true;
         }
@@ -882,9 +952,9 @@ bool parseParam(int index, const char *text, double *out) {
         }
     }
     if (def.kind == ParamKind::NoiseSlope) {
-        const char *const names[] = {"White", "Pink", "Brown"};
+        const Str names[] = {Str::NoiseWhite, Str::NoisePink, Str::NoiseBrown};
         for (int i = 0; i < 3; ++i) {
-            if (equalsIgnoreCase(text, names[i])) {
+            if (equalsIgnoreCase(text, tr(names[i]))) {
                 *out = i * 0.5;
                 return true;
             }
@@ -916,7 +986,7 @@ bool parseParam(int index, const char *text, double *out) {
         }
     }
     if (def.kind == ParamKind::ModTarget) {
-        if (equalsIgnoreCase(text, "None")) {
+        if (equalsIgnoreCase(text, tr(Str::ValueNone))) {
             *out = 0.0;
             return true;
         }

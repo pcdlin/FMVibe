@@ -1,5 +1,7 @@
 #include "editor.h"
 
+#include "../uistrings.h"
+
 #include <windowsx.h>
 
 #include <commdlg.h>
@@ -511,8 +513,9 @@ void Editor::choosePreset(bool save) {
 }
 
 void Editor::browsePreset(bool save) {
-    // Filter pairs are NUL-separated, and the list ends with a double NUL.
-    static const wchar_t kFilter[] = L"FMVibe preset (*.fmv)\0*.fmv\0All files (*.*)\0*.*\0";
+    // Filter pairs are NUL-separated, and the list ends with a double NUL (the last one the string's own).
+    const std::wstring filter = widen(tr(Str::DialogPresetFiles)) + L'\0' + L"*.fmv" + L'\0' +
+                                widen(tr(Str::DialogAllFiles)) + L'\0' + L"*.*" + L'\0';
     // Both start in the preset folder (the scan makes it if need be); saving suggests the preset's name.
     controller_.rescanPresets();
     const std::wstring folder = controller_.presetFolder();
@@ -524,26 +527,27 @@ void Editor::browsePreset(bool save) {
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner = hwnd_;
-    dialog.lpstrFilter = kFilter;
+    dialog.lpstrFilter = filter.c_str();
     dialog.lpstrFile = path;
     dialog.nMaxFile = MAX_PATH;
     dialog.lpstrInitialDir = folder.empty() ? nullptr : folder.c_str();
     dialog.lpstrDefExt = L"fmv";
     dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    const std::wstring title = widen(tr(save ? Str::DialogSavePreset : Str::DialogLoadPreset));
     if (save) {
-        dialog.lpstrTitle = L"Save preset";
+        dialog.lpstrTitle = title.c_str();
         dialog.Flags |= OFN_OVERWRITEPROMPT;
         if (!GetSaveFileNameW(&dialog))
             return;
         if (!controller_.savePreset(path))
-            MessageBoxW(hwnd_, L"The preset could not be written.", L"FMVibe", MB_ICONWARNING);
+            MessageBoxW(hwnd_, widen(tr(Str::DialogWriteFailed)).c_str(), L"FMVibe", MB_ICONWARNING);
     } else {
-        dialog.lpstrTitle = L"Load preset";
+        dialog.lpstrTitle = title.c_str();
         dialog.Flags |= OFN_FILEMUSTEXIST;
         if (!GetOpenFileNameW(&dialog))
             return;
         if (!controller_.loadPreset(path))
-            MessageBoxW(hwnd_, L"That file is not an FMVibe preset.", L"FMVibe", MB_ICONWARNING);
+            MessageBoxW(hwnd_, widen(tr(Str::DialogNotPreset)).c_str(), L"FMVibe", MB_ICONWARNING);
     }
     invalidate();
 }

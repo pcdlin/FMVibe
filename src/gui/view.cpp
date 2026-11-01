@@ -2,6 +2,7 @@
 
 #include "../effects.h"
 #include "../filter.h"
+#include "../uistrings.h"
 #include "../wavetable.h"
 
 #include <algorithm>
@@ -18,7 +19,8 @@ namespace {
 // --- Look.
 
 struct Palette {
-    const char *name;
+    const char *name; // as the settings keep it
+    Str label;        // as the settings dialog shows it
     Color background, panel, raised, border, track, knobBody;
     Color text, dim, faint;
     Color accent;    // operators and FM routing
@@ -39,7 +41,7 @@ static_assert(static_cast<int>(FxType::Count) == 14, "a color for each effect ty
 
 // The themes the settings pick from, by name; the first is the default.
 constexpr Palette kThemes[] = {
-    {"Midnight",
+    {"Midnight", Str::ThemeMidnight,
      Color::hex(0x0D0F13), Color::hex(0x161920), Color::hex(0x1F232C), Color::hex(0x272C36), Color::hex(0x2D323D),
      Color::hex(0x252A35),
      Color::hex(0xE8EBF2), Color::hex(0x8D94A5), Color::hex(0x4A5162),
@@ -56,7 +58,7 @@ constexpr Palette kThemes[] = {
      {Color::hex(0xFB923C), Color::hex(0xF87171), Color::hex(0x60A5FA), Color::hex(0xFBBF24), Color::hex(0xFB923C),
       Color::hex(0xC084FC), Color::hex(0x34D399), Color::hex(0x2DD4BF), Color::hex(0x818CF8), Color::hex(0xF472B6),
       Color::hex(0xA3E635), Color::hex(0x22D3EE), Color::hex(0xCBD5E1), Color::hex(0xE879F9)}},
-    {"Graphite", // neutral grays, without the blue
+    {"Graphite", Str::ThemeGraphite, // neutral grays, without the blue
      Color::hex(0x111111), Color::hex(0x1A1A1A), Color::hex(0x252525), Color::hex(0x2F2F2F), Color::hex(0x363636),
      Color::hex(0x2C2C2C),
      Color::hex(0xEDEDED), Color::hex(0x9C9C9C), Color::hex(0x575757),
@@ -73,7 +75,7 @@ constexpr Palette kThemes[] = {
      {Color::hex(0xFACC15), Color::hex(0xFCA5A5), Color::hex(0x93C5FD), Color::hex(0xFCD34D), Color::hex(0xFDBA74),
       Color::hex(0xD8B4FE), Color::hex(0x6EE7B7), Color::hex(0x5EEAD4), Color::hex(0xA5B4FC), Color::hex(0xF9A8D4),
       Color::hex(0xBEF264), Color::hex(0x67E8F9), Color::hex(0xE2E8F0), Color::hex(0xF0ABFC)}},
-    {"Light", // crisp: white cards and knob caps on a cool gray, with deep, saturated colors
+    {"Light", Str::ThemeLight, // crisp: white cards and knob caps on a cool gray, with deep, saturated colors
      Color::hex(0xD5DAE3), Color::hex(0xF3F5F8), Color::hex(0xE4E8EF), Color::hex(0xC3CAD6), Color::hex(0xCDD3DD),
      Color::hex(0xFFFFFF),
      Color::hex(0x0F131B), Color::hex(0x444C5D), Color::hex(0x878FA0),
@@ -90,7 +92,7 @@ constexpr Palette kThemes[] = {
      {Color::hex(0xDD4F07), Color::hex(0xD11F1F), Color::hex(0x1F5BE0), Color::hex(0xC26505), Color::hex(0xDD4F07),
       Color::hex(0x8A2BE2), Color::hex(0x04805C), Color::hex(0x0B857A), Color::hex(0x4338CA), Color::hex(0xD0216D),
       Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x475569), Color::hex(0xB01ECA)}},
-    {"Paper", // warm: cream cards on sand, ink-brown text and earthy colors
+    {"Paper", Str::ThemePaper, // warm: cream cards on sand, ink-brown text and earthy colors
      Color::hex(0xE2DACB), Color::hex(0xF7F2E8), Color::hex(0xEDE6D8), Color::hex(0xD2C7B3), Color::hex(0xDDD3C0),
      Color::hex(0xFFFCF5),
      Color::hex(0x2A231C), Color::hex(0x695D4E), Color::hex(0xA19582),
@@ -155,12 +157,24 @@ void plotLine(Canvas &c, const Point *points, size_t count, Color color, float w
     c.polyline(points, count, color, width);
 }
 const char *const kNodeNames[kNodes] = {"A", "B", "C", "D", "E", "F", "F1", "F2", "S1", "S2"};
-const char *const kFxTitles[] = {"",       "SHAPER", "DELAY",  "DJ EQ",   "PARAM EQ",  "FILTER",
-                                 "COMPRESSOR", "3-BAND", "REVERB", "PHASER", "FLANGER", "FREQ SHIFT", "PHASE DISP",
-                                 "WIDENER"};
-const char *const kMcBandNames[kMcBands] = {"LOW", "MID", "HIGH"};
-static_assert(std::size(kFxTitles) == static_cast<size_t>(FxType::Count));
-const char *const kViewNames[] = {"ROUTING", "MATRIX", "FX"};
+// The effect cards' titles, by FxType from the shaper on.
+constexpr Str kFxTitles[] = {Str::FxTitleShaper, Str::FxTitleDelay, Str::FxTitleDjEq, Str::FxTitleParamEq,
+                             Str::FxTitleFilter, Str::FxTitleCompressor, Str::FxTitleMultiComp, Str::FxTitleReverb,
+                             Str::FxTitlePhaser, Str::FxTitleFlanger, Str::FxTitleFreqShifter, Str::FxTitleDisperser,
+                             Str::FxTitleWidener};
+static_assert(std::size(kFxTitles) == static_cast<size_t>(FxType::Count) - 1);
+const char *fxTitle(FxType type) {
+    return type == FxType::None ? "" : tr(kFxTitles[static_cast<int>(type) - 1]);
+}
+constexpr Str kMcBandNames[kMcBands] = {Str::BandButtonLow, Str::BandButtonMid, Str::BandButtonHigh};
+constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx};
+
+// `value` as `format` prints it, for the numbers a wording takes.
+std::string number(const char *format, double value) {
+    char text[32];
+    std::snprintf(text, sizeof(text), format, value);
+    return text;
+}
 
 // --- Layout, in logical pixels.
 
@@ -928,7 +942,7 @@ int routeTo(int from, int to) {
 
 // Why `from` can't go into a node: only a filter into itself or an earlier filter, or a shaper into a shaper, can't.
 const char *routeRefusal(int from) {
-    return isShaperNode(from) ? "A shaper can't feed itself or another shaper" : "A filter only feeds a later filter";
+    return tr(isShaperNode(from) ? Str::MsgRefuseShaper : Str::MsgRefuseFilter);
 }
 
 // Whether a port or arrowhead let go at `p` lands on the OUT bus.
@@ -981,9 +995,9 @@ bool isPartialCount(int param) {
 }
 
 std::string nodeTitle(int node) {
-    return isShaperNode(node)   ? "shaper " + std::to_string(shaperOfNode(node) + 1)
-           : isFilterNode(node) ? "filter " + std::to_string(node - kOps + 1)
-                                : "operator " + std::string(1, static_cast<char>('A' + node));
+    return isShaperNode(node)   ? trf(Str::NodeShaper, {std::to_string(shaperOfNode(node) + 1)})
+           : isFilterNode(node) ? trf(Str::NodeFilter, {std::to_string(node - kOps + 1)})
+                                : trf(Str::NodeOperator, {kNodeNames[node]});
 }
 
 constexpr float kHintX = kRouting.x + 330.0f; // the routing graph's hint, in its title row
@@ -1080,7 +1094,7 @@ EnvIndices envIndices(int env) {
 static_assert(paramIndex(0, OpParam::ReleaseCurve) == paramIndex(0, OpParam::AttackCurve) + 2);
 static_assert(paramIndex(0, SourceParam::ReleaseCurve) == paramIndex(0, SourceParam::AttackCurve) + 2);
 
-const char *const kEnvSegmentNames[] = {"Attack", "Decay", "Release"};
+constexpr Str kEnvSegmentNames[] = {Str::LabelAttack, Str::LabelDecay, Str::LabelRelease};
 
 // Attack, hold, decay and release each get kEnvMinSegment pixels, so short
 // ones keep their handles apart, plus `scale` pixels per unit of their
@@ -1424,14 +1438,14 @@ void View::assign(int source, int target) {
     for (int slot = kSlots - 1; slot >= 0; --slot) {
         const int current = slotTarget(value(slotTargetIndex(source, slot)));
         if (current == target) {
-            flash(sourceName(source) + " already modulates " + paramName(target));
+            flash(trf(Str::MsgAlreadyModulates, {sourceName(source), paramName(target)}));
             return;
         }
         if (current < 0)
             free = slot;
     }
     if (free < 0) {
-        flash(sourceName(source) + ": all " + std::to_string(kSlots) + " slots are in use");
+        flash(trf(Str::MsgSlotsFull, {sourceName(source), std::to_string(kSlots)}));
         return;
     }
     const double amount = 0.3; // a moderate depth, always upward to begin with
@@ -1502,8 +1516,7 @@ void View::reroute(int from, int to, int into) {
         return;
     }
     if (wired(next)) {
-        flash("There is a route from " + nodeTitle(from) + " to " + (into == kNodes ? "OUT" : nodeTitle(into)) +
-              " already");
+        flash(trf(Str::MsgRouteExists, {nodeTitle(from), into == kNodes ? tr(Str::BusOut) : nodeTitle(into)}));
         return;
     }
     const UndoScope step(controller_); // with the routes it keeps
@@ -1889,7 +1902,7 @@ void View::addEffect(FxType type, int copyOf, int at) {
         if (fxSlotType(s) == FxType::None)
             slot = s;
     if (slot < 0) {
-        flash("The chain holds up to " + std::to_string(kFxSlots) + " effects");
+        flash(trf(Str::MsgChainFull, {std::to_string(kFxSlots)}));
         return;
     }
     // The slot gets its settings, the original's for a copy, then its type last: that makes the host rescan
@@ -2009,7 +2022,7 @@ Point View::shapeCurvePos(int shape, int point) const {
 void View::addShapePoint(int shape, Point p) {
     const int count = shapePointCount(shape);
     if (count >= kMaxShapePoints) {
-        flash("A shape has at most " + std::to_string(kMaxShapePoints) + " points");
+        flash(trf(Str::MsgShapeFull, {std::to_string(kMaxShapePoints)}));
         return;
     }
     const double x = std::clamp(shapeXAt(shape, p), 0.001, 0.999);
@@ -2034,10 +2047,10 @@ void View::removeShapePoint(int shape, int point) {
     const int count = shapePointCount(shape);
     const bool end = isCurve(shape) && point + 1 == count;
     if (point == 0 || end || count <= 2) {
-        flash(isNoteCurve(shape) && (point == 0 || end)   ? "The end points stay: they set what Low and High give"
-              : isCurve(shape) && (point == 0 || end)     ? "The end points stay: they set what the loudest input gives"
-              : point == 0                                ? "The first point stays: it is where the cycle starts"
-                                                          : "A shape needs two points");
+        flash(tr(isNoteCurve(shape) && (point == 0 || end) ? Str::MsgNoteCurveEnds
+                 : isCurve(shape) && (point == 0 || end)   ? Str::MsgCurveEnds
+                 : point == 0                              ? Str::MsgFirstPoint
+                                                           : Str::MsgTwoPoints));
         return;
     }
     std::vector<std::pair<int, double>> changes;
@@ -2167,13 +2180,14 @@ std::string View::paramName(int index) const {
         return std::string();
     if (const int owner = bypassSourceOf(index); owner >= 0) {
         const int target = slotTarget(value(slotTargetIndex(owner, (index - kSlotBypassBase) % kSlots)));
-        return sourceName(owner) + " bypass" + (target >= 0 ? " on " + paramName(target) : std::string());
+        return target >= 0 ? trf(Str::ParamNameBypassOn, {sourceName(owner), paramName(target)})
+                           : trf(Str::ParamNameBypass, {sourceName(owner)});
     }
     const int source = sourceOf(index);
     const std::string &name = table_[index].name;
     if (source < 0)
         return name;
-    const size_t place = ("Mod " + std::to_string(source + 1) + " ").size(); // see buildTable()
+    const size_t place = trf(Str::ParamMod, {std::to_string(source + 1)}).size() + 1; // see buildTable()
     return sourceName(source) + " " + name.substr(place);
 }
 
@@ -2234,7 +2248,7 @@ void View::addSource(SourceType type, int copyOf) {
         if (sourceTypeOf(s) == SourceType::None)
             source = s;
     if (source < 0) {
-        flash("There is room for " + std::to_string(kMaxSources) + " LFOs and envelopes");
+        flash(trf(Str::MsgSourcesFull, {std::to_string(kMaxSources)}));
         return;
     }
     // Every field, its slots and its freeform shape: fresh, or as in the original.
@@ -2485,18 +2499,18 @@ std::vector<View::Widget> View::widgets() const {
     };
     const int globals[] = {paramIndex(GlobalParam::Volume), paramIndex(GlobalParam::FmAmount),
                            paramIndex(GlobalParam::Pitch), paramIndex(GlobalParam::Pan)};
-    const char *const globalLabels[] = {"Volume", "FM Amount", "Pitch", "Pan"};
+    const Str globalLabels[] = {Str::LabelVolume, Str::LabelFmAmount, Str::LabelPitch, Str::LabelPan};
     for (int i = 0; i < 4; ++i)
-        headerKnob(globals[i], kHeaderKnobX + i * kHeaderKnobW, kHeaderKnobW, globalLabels[i]);
+        headerKnob(globals[i], kHeaderKnobX + i * kHeaderKnobW, kHeaderKnobW, tr(globalLabels[i]));
     // Play cluster: Poly | Mono over Legato, then Glide with its Always switch.
     const int mono = paramIndex(GlobalParam::Mono);
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
     add(Kind::Toggle, {kPlayX, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::Legato));
-    headerKnob(paramIndex(GlobalParam::Glide), kPlayX + 98.0f, kHeaderKnobW, "Glide");
+    headerKnob(paramIndex(GlobalParam::Glide), kPlayX + 98.0f, kHeaderKnobW, tr(Str::LabelGlide));
     add(Kind::Toggle, {kPlayX + 206.0f, 23.0f, 56.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
-    headerKnob(paramIndex(GlobalParam::BendRange), 906.0f, 96.0f, "Bend");
-    headerKnob(paramIndex(GlobalParam::Voices), 1006.0f, kHeaderKnobW, "Voices");
+    headerKnob(paramIndex(GlobalParam::BendRange), 906.0f, 96.0f, tr(Str::LabelBend));
+    headerKnob(paramIndex(GlobalParam::Voices), 1006.0f, kHeaderKnobW, tr(Str::LabelVoices));
 
     // Routing panel, as a graph, as a matrix, or the effects chain; or the shape
     // editor of a freeform LFO, in place of all three.
@@ -2515,7 +2529,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::ShapeGrid, shapeGridButton(axis, part), -1, axis, part - 1);
         add(Kind::ShapeArea, shapeArea().inset(-8.0f), -1, editing);
         if (isNoteCurve(editing)) { // the range across, in the title row, after the title, close together
-            const char *const labels[] = {"Low", "High"};
+            const char *const labels[] = {tr(Str::LabelLow), tr(Str::LabelHigh)};
             const int range[] = {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)};
             for (int i = 0; i < 2; ++i) {
                 add(Kind::Knob, {kRouting.x + 148.0f + i * 96.0f, kRouting.y, 92.0f, 40.0f}, range[i]);
@@ -2584,7 +2598,7 @@ std::vector<View::Widget> View::widgets() const {
                 if (std::lround(value(at(FxParam::ShaperMode))) == static_cast<long>(ClipMode::Custom))
                     drawnCurve(slot, fxDisplay(screen, type));
                 knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
-                      {"Drive", "Output", "Mix"});
+                      {tr(Str::LabelDrive), tr(Str::LabelOutput), tr(Str::LabelMix)});
                 break;
             }
             case FxType::Delay: {
@@ -2600,13 +2614,16 @@ std::vector<View::Widget> View::widgets() const {
                 const int timeR = synced ? at(FxParam::DelayDivisionR) : at(FxParam::DelayTimeR);
                 const bool linked = value(at(FxParam::DelayLink)) >= 0.5;
                 knobs({timeL, linked ? -1 : timeR, at(FxParam::DelayFeedback)},
-                      {synced ? nullptr : (linked ? "Time" : "Time L"), synced ? nullptr : "Time R", "Feedback"}, 206.0f);
+                      {synced ? nullptr : tr(linked ? Str::LabelTime : Str::LabelTimeL),
+                       synced ? nullptr : tr(Str::LabelTimeR), tr(Str::LabelFeedback)},
+                      206.0f);
                 knobs({at(FxParam::DelayTone), at(FxParam::DelayWidth), at(FxParam::DelayMix)},
-                      {"Tone", "Width", "Mix"}, 266.0f);
+                      {tr(Str::LabelTone), tr(Str::LabelWidth), tr(Str::LabelMix)}, 266.0f);
                 break;
             }
             case FxType::Eq:
-                knobs({at(FxParam::EqLow), at(FxParam::EqMid), at(FxParam::EqHigh)}, {"Low", "Mid", "High"});
+                knobs({at(FxParam::EqLow), at(FxParam::EqMid), at(FxParam::EqHigh)},
+                      {tr(Str::LabelLow), tr(Str::LabelMid), tr(Str::LabelHigh)});
                 break;
             case FxType::ParamEq: {
                 const Rect area = fxDisplay(screen, type).inset(8.0f);
@@ -2618,9 +2635,10 @@ std::vector<View::Widget> View::widgets() const {
                 for (int band = 0; band < kPeqBands; ++band) {
                     const float y = band == 0 ? 206.0f : 266.0f;
                     add(Kind::PeqTypeButton, peqTypeButton(card, y), peqTypeIndex(slot, band), slot, band);
-                    const char *const labels[kPeqBands][3] = {{"Freq 1", "Gain 1", "Q 1"}, {"Freq 2", "Gain 2", "Q 2"}};
+                    const Str labels[kPeqBands][3] = {{Str::LabelFreq1, Str::LabelGain1, Str::LabelQ1},
+                                                      {Str::LabelFreq2, Str::LabelGain2, Str::LabelQ2}};
                     knobs({-1, peqFreqIndex(slot, band), peqGainIndex(slot, band), peqQIndex(slot, band)},
-                          {nullptr, labels[band][0], labels[band][1], labels[band][2]}, y);
+                          {nullptr, tr(labels[band][0]), tr(labels[band][1]), tr(labels[band][2])}, y);
                 }
                 break;
             }
@@ -2632,16 +2650,17 @@ std::vector<View::Widget> View::widgets() const {
                     add(Kind::Choice, {card.x + 14.0f + t * w, row, w - 4.0f, 20.0f}, at(FxParam::FilterType), -1, t);
                 add(Kind::ListButton, fxSlopeButton(card, fxDisplay(screen, type)), at(FxParam::FilterSlope));
                 knobs({at(FxParam::FilterCutoff), at(FxParam::FilterResonance), at(FxParam::FilterKeyTrack)},
-                      {"Cutoff", "Reso", "Key Track"}, 206.0f);
-                knobs({at(FxParam::FilterDrive), -1, at(FxParam::FilterMix)}, {"Drive", nullptr, "Mix"}, 266.0f);
+                      {tr(Str::LabelCutoff), tr(Str::LabelReso), tr(Str::LabelKeyTrack)}, 206.0f);
+                knobs({at(FxParam::FilterDrive), -1, at(FxParam::FilterMix)},
+                      {tr(Str::LabelDrive), nullptr, tr(Str::LabelMix)}, 266.0f);
                 break;
             }
             case FxType::Compressor:
                 knobs({at(FxParam::CompThreshold), at(FxParam::CompRatio), at(FxParam::CompKnee)},
-                      {"Threshold", "Ratio", "Knee"}, 206.0f);
+                      {tr(Str::LabelThreshold), tr(Str::LabelRatio), tr(Str::LabelKnee)}, 206.0f);
                 knobs({at(FxParam::CompAttack), at(FxParam::CompRelease), at(FxParam::CompMakeup),
                        at(FxParam::CompMix)},
-                      {"Attack", "Release", "Makeup", "Mix"}, 266.0f);
+                      {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelMakeup), tr(Str::LabelMix)}, 266.0f);
                 break;
             case FxType::MultiComp: {
                 // Band buttons pick which band's knobs show, then LINK; the crossovers and timing are shared.
@@ -2652,11 +2671,11 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::Toggle, {card.x + 14.0f + kMcBands * w, row, w - 6.0f, 22.0f}, at(FxParam::McLink));
                 const int band = value(at(FxParam::McLink)) >= 0.5 ? 0 : fxBand_[slot];
                 knobs({mcThresholdIndex(slot, band), mcRatioIndex(slot, band), mcGainIndex(slot, band)},
-                      {"Threshold", "Ratio", "Gain"}, 160.0f);
-                knobs({at(FxParam::McLowFreq), at(FxParam::McHighFreq), at(FxParam::McMix)}, {"Low X", "High X", "Mix"},
-                      216.0f);
+                      {tr(Str::LabelThreshold), tr(Str::LabelRatio), tr(Str::LabelGain)}, 160.0f);
+                knobs({at(FxParam::McLowFreq), at(FxParam::McHighFreq), at(FxParam::McMix)},
+                      {tr(Str::LabelLowX), tr(Str::LabelHighX), tr(Str::LabelMix)}, 216.0f);
                 knobs({at(FxParam::McAttack), at(FxParam::McRelease), at(FxParam::McOutput)},
-                      {"Attack", "Release", "Output"}, 268.0f);
+                      {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelOutput)}, 268.0f);
                 break;
             }
             case FxType::Reverb:
@@ -2665,16 +2684,17 @@ std::vector<View::Widget> View::widgets() const {
                     // Its interval and how much of what goes round it shifts, among the others.
                     knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay),
                            at(FxParam::ReverbShimmerPitch)},
-                          {"Size", "Decay", "Pre-Delay", "Pitch"}, 206.0f);
+                          {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay), tr(Str::LabelPitch)},
+                          206.0f);
                     knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbShimmer),
                            at(FxParam::ReverbMix)},
-                          {"Damp", "Width", "Shimmer", "Mix"}, 266.0f);
+                          {tr(Str::LabelDamp), tr(Str::LabelWidth), tr(Str::LabelShimmer), tr(Str::LabelMix)}, 266.0f);
                     break;
                 }
                 knobs({at(FxParam::ReverbSize), at(FxParam::ReverbDecay), at(FxParam::ReverbPreDelay)},
-                      {"Size", "Decay", "Pre-Delay"}, 206.0f);
+                      {tr(Str::LabelSize), tr(Str::LabelDecay), tr(Str::LabelPreDelay)}, 206.0f);
                 knobs({at(FxParam::ReverbDamping), at(FxParam::ReverbWidth), at(FxParam::ReverbMix)},
-                      {"Damp", "Width", "Mix"}, 266.0f);
+                      {tr(Str::LabelDamp), tr(Str::LabelWidth), tr(Str::LabelMix)}, 266.0f);
                 break;
             case FxType::Phaser:
             case FxType::Flanger: {
@@ -2691,32 +2711,33 @@ std::vector<View::Widget> View::widgets() const {
                                         : at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate);
                 if (phaser) {
                     knobs({rate, at(FxParam::PhaserDepth), at(FxParam::PhaserCenter)},
-                          {synced ? nullptr : "Rate", "Depth", "Center"}, 206.0f);
+                          {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelCenter)}, 206.0f);
                     knobs({at(FxParam::PhaserFeedback), at(FxParam::PhaserStages), at(FxParam::PhaserMix)},
-                          {"Feedback", "Stages", "Mix"}, 266.0f);
+                          {tr(Str::LabelFeedback), tr(Str::LabelStages), tr(Str::LabelMix)}, 266.0f);
                     break;
                 }
                 knobs({rate, at(FxParam::FlangerDepth), at(FxParam::FlangerDelay)},
-                      {synced ? nullptr : "Rate", "Depth", "Delay"}, 206.0f);
-                knobs({at(FxParam::FlangerFeedback), -1, at(FxParam::FlangerMix)}, {"Feedback", nullptr, "Mix"},
-                      266.0f);
+                      {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
+                knobs({at(FxParam::FlangerFeedback), -1, at(FxParam::FlangerMix)},
+                      {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
                 break;
             }
             case FxType::FreqShifter:
                 // The range, then the share of it the shift takes.
                 knobs({at(FxParam::ShiftRange), at(FxParam::ShiftAmount), at(FxParam::ShiftSpread)},
-                      {"Range", "Shift", "Spread"}, 206.0f);
-                knobs({at(FxParam::ShiftFeedback), -1, at(FxParam::ShiftMix)}, {"Feedback", nullptr, "Mix"}, 266.0f);
+                      {tr(Str::LabelRange), tr(Str::LabelShift), tr(Str::LabelSpread)}, 206.0f);
+                knobs({at(FxParam::ShiftFeedback), -1, at(FxParam::ShiftMix)},
+                      {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
                 break;
             case FxType::Disperser:
                 knobs({at(FxParam::DisperserFreq), at(FxParam::DisperserStages), at(FxParam::DisperserPinch),
                        at(FxParam::DisperserMix)},
-                      {"Freq", "Stages", "Pinch", "Mix"});
+                      {tr(Str::LabelFreq), tr(Str::LabelStages), tr(Str::LabelPinch), tr(Str::LabelMix)});
                 break;
             case FxType::Widener:
                 knobs({at(FxParam::WidenerSize), at(FxParam::WidenerWidth), at(FxParam::WidenerHighPass),
                        at(FxParam::WidenerMix)},
-                      {"Size", "Width", "High Pass", "Mix"});
+                      {tr(Str::LabelSize), tr(Str::LabelWidth), tr(Str::LabelHighPass), tr(Str::LabelMix)});
                 break;
             case FxType::None:
             case FxType::Count:
@@ -2822,7 +2843,7 @@ std::vector<View::Widget> View::widgets() const {
             if (params[i] >= 0)
                 knob(params[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 110.0f}, 32.0f, labels[i]);
     };
-    const char *const envLabels[] = {"Attack", "Hold", "Decay", "Sustain", "Release"};
+    const Str envLabels[] = {Str::LabelAttack, Str::LabelHold, Str::LabelDecay, Str::LabelSustain, Str::LabelRelease};
     // What feeds a filter or shaper, from the operators (and filter 1, or the shapers, into a filter) that are on.
     auto inputKnobs = [&](int into) {
         std::vector<int> sources;
@@ -2842,10 +2863,10 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::Toggle, kShaperLinkButton, paramIndex(shaper, ShaperParam::Link));
         const int params[] = {paramIndex(shaper, ShaperParam::Drive), paramIndex(shaper, ShaperParam::Output),
                               paramIndex(shaper, ShaperParam::Mix), paramIndex(shaper, ShaperParam::Out)};
-        const char *const labels[] = {"Drive", "Output", "Mix", "To Out"};
+        const Str labels[] = {Str::LabelDrive, Str::LabelOutput, Str::LabelMix, Str::LabelToOut};
         const float step = (kInspector.w - 32.0f) / 4.0f;
         for (int i = 0; i < 4; ++i)
-            knob(params[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 110.0f}, 34.0f, labels[i]);
+            knob(params[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 110.0f}, 34.0f, tr(labels[i]));
         if (clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom &&
             shapeEditing() != shaperCurve(shaper))
             drawnCurve(kFxSlots + shaper, kShaperDisplay);
@@ -2859,25 +2880,27 @@ std::vector<View::Widget> View::widgets() const {
             // Its slope and stereo spread take the place of the pitch knobs; the unison row shows the spectrum.
             const int params[] = {paramIndex(op, OpParam::NoiseSlope), paramIndex(op, OpParam::UnisonSpread), -1, -1,
                                   paramIndex(op, OpParam::Velocity), paramIndex(op, OpParam::Out)};
-            const char *const labels[] = {"Slope", "Spread", nullptr, nullptr, "Velocity", "Out"};
+            const char *const labels[] = {tr(Str::LabelSlope), tr(Str::LabelSpread),   nullptr,
+                                          nullptr,             tr(Str::LabelVelocity), tr(Str::LabelOut)};
             opKnobRow(params, labels);
         } else {
             const int params[] = {paramIndex(op, OpParam::Coarse), paramIndex(op, OpParam::Transpose),
                                   paramIndex(op, OpParam::Fine),   paramIndex(op, OpParam::Detune),
                                   paramIndex(op, OpParam::Velocity), paramIndex(op, OpParam::Out)};
-            const char *const labels[] = {"Ratio", "Pitch", "Fine", "Detune", "Velocity", "Out"};
+            const char *const labels[] = {tr(Str::LabelRatio),  tr(Str::LabelPitch),    tr(Str::LabelFine),
+                                          tr(Str::LabelDetune), tr(Str::LabelVelocity), tr(Str::LabelOut)};
             opKnobRow(params, labels);
             const int unison[] = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
                                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::PhaseRandom)};
-            const char *const unisonLabels[] = {"Unison", "Uni Detune", "Uni Spread", "Rnd Phase"};
+            const Str unisonLabels[] = {Str::LabelUnison, Str::LabelUniDetune, Str::LabelUniSpread, Str::LabelRndPhase};
             for (int i = 0; i < 4; ++i)
-                knob(unison[i], {kInspector.x + 30.0f + i * 56.0f, kInspector.y + 168.0f}, 34.0f, unisonLabels[i]);
+                knob(unison[i], {kInspector.x + 30.0f + i * 56.0f, kInspector.y + 168.0f}, 34.0f, tr(unisonLabels[i]));
         }
         const EnvIndices e = envIndices(op);
         const int ahdsr[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
         const float step = (kInspector.w - 32.0f) / 5.0f;
         for (int i = 0; i < 5; ++i)
-            knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 322.0f}, 30.0f, envLabels[i]);
+            knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 322.0f}, 30.0f, tr(envLabels[i]));
     } else {
         const int filter = node - kOps;
         for (int t = 0; t < static_cast<int>(FilterType::Count); ++t)
@@ -2887,7 +2910,8 @@ std::vector<View::Widget> View::widgets() const {
         const int params[] = {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance),
                               paramIndex(filter, FilterParam::KeyTrack), paramIndex(filter, FilterParam::Drive),
                               paramIndex(filter, FilterParam::Out)};
-        const char *const labels[] = {"Cutoff", "Resonance", "Key Track", "Drive", "Out"};
+        const char *const labels[] = {tr(Str::LabelCutoff), tr(Str::LabelResonance), tr(Str::LabelKeyTrack),
+                                      tr(Str::LabelDrive), tr(Str::LabelOut)};
         knobRow(params, labels);
         const Point handle = filterHandle(kFilterDisplay, value(params[0]), value(params[1]));
         add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, filter);
@@ -2963,8 +2987,8 @@ std::vector<View::Widget> View::widgets() const {
                 std::lround(value(paramIndex(s, SourceParam::Shape))) == static_cast<long>(LfoShape::Random);
             add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
             if (random) {
-                knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, "Smooth");
-                knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, "Chaos");
+                knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
+                knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
             }
             // Synced, the knob picks a note value instead of a rate and shows it as its label.
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
@@ -2974,13 +2998,13 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::Toggle, {p.x + 16.0f + i * 62.0f, p.y + 79.0f, 59.0f, 16.0f}, paramIndex(s, modes[i]));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 {p.right() - 44.0f, p.y + 47.0f}, 30.0f, synced ? nullptr : "Rate");
+                 {p.right() - 44.0f, p.y + 47.0f}, 30.0f, synced ? nullptr : tr(Str::LabelRate));
         } else {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
             const float step = (p.w - 24.0f) / 5.0f;
             for (int i = 0; i < 5; ++i)
-                knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, envLabels[i]);
+                knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
         }
         // The rows on screen, at least in part; cut off at the list's ends (their clip is set below).
         const std::vector<int> slots = usedSlots(s);
@@ -3203,26 +3227,27 @@ void View::paintSettings(Canvas &c) {
     const Rect panel = settingsPanel(height());
     c.fillRect(panel, kPanel, 10.0f);
     c.strokeRect(panel, kBorder, 1.0f, 10.0f);
-    c.text({panel.x + 24.0f, panel.y + 14.0f, 200.0f, 24.0f}, "Settings", 14.0f, kText, Align::Left, true);
+    c.text({panel.x + 24.0f, panel.y + 14.0f, 200.0f, 24.0f}, tr(Str::SettingsTitle), 14.0f, kText, Align::Left, true);
     c.line({panel.x + 1.0f, panel.y + 50.5f}, {panel.right() - 1.0f, panel.y + 50.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, panel.y + 60.0f, 200.0f, 16.0f}, "OVERSAMPLING", 10.5f, kFaint, Align::Left, true);
+    c.text({panel.x + 24.0f, panel.y + 60.0f, 200.0f, 16.0f}, tr(Str::SettingsOversampling), 10.5f, kFaint, Align::Left,
+           true);
     c.text({panel.x + 24.0f, panel.y + 122.0f, panel.w - 48.0f, 16.0f},
-           "The voices run this many times faster, then filter back down.", 10.0f, kDim, Align::Left);
+           tr(Str::SettingsOversamplingWhat), 10.0f, kDim, Align::Left);
     c.text({panel.x + 24.0f, panel.y + 140.0f, panel.w - 48.0f, 16.0f},
-           "Higher keeps bright FM and drive free of aliasing, at more CPU.", 10.0f, kDim, Align::Left);
+           tr(Str::SettingsOversamplingWhy), 10.0f, kDim, Align::Left);
     c.text({panel.x + 24.0f, panel.y + 158.0f, panel.w - 48.0f, 16.0f},
-           "Saved with the project; presets leave it alone.", 10.5f, kFaint, Align::Left);
+           tr(Str::SettingsOversamplingSaved), 10.5f, kFaint, Align::Left);
     c.line({panel.x + 24.0f, panel.y + 184.5f}, {panel.right() - 24.0f, panel.y + 184.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, panel.y + 192.0f, 200.0f, 16.0f}, "LOOK", 10.5f, kFaint, Align::Left, true);
+    c.text({panel.x + 24.0f, panel.y + 192.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), 10.5f, kFaint, Align::Left, true);
     const Rect glow = settingsGlow(panel);
-    c.text({panel.x + 24.0f, glow.y, 48.0f, glow.h}, "GLOW", 10.5f, kDim, Align::Left, true);
+    c.text({panel.x + 24.0f, glow.y, 48.0f, glow.h}, tr(Str::SettingsGlow), 10.5f, kDim, Align::Left, true);
     const float amount = shownGlow();
     char text[16];
     std::snprintf(text, sizeof(text), "%.0f %%", amount * 100.0f);
     c.text({glow.right() + 14.0f, glow.y, panel.right() - 24.0f - glow.right() - 14.0f, glow.h},
-           amount > 0.0f ? text : "Off", 10.5f, amount > 0.0f ? kText : kDim, Align::Left);
+           amount > 0.0f ? text : tr(Str::ValueOff), 10.5f, amount > 0.0f ? kText : kDim, Align::Left);
     c.text({panel.x + 24.0f, panel.y + 294.0f, panel.w - 48.0f, 16.0f},
-           "Yours rather than the project's: every FMVibe editor uses these.", 10.5f, kFaint, Align::Left);
+           tr(Str::SettingsLookSaved), 10.5f, kFaint, Align::Left);
     for (const Widget &w : settingsWidgets())
         paintWidget(c, w, {});
 }
@@ -3250,7 +3275,7 @@ void View::runPreset(PresetAction action) {
             if (controller_.loadPresetAt(pendingPreset_))
                 browserOpen_ = false;
             else
-                flash("That preset could not be read");
+                flash(tr(Str::MsgPresetUnreadable));
         } else {
             controller_.choosePreset(false);
         }
@@ -3341,18 +3366,18 @@ void View::paintBrowser(Canvas &c) {
     const Rect panel = browserPanel(height());
     c.fillRect(panel, kPanel, 10.0f);
     c.strokeRect(panel, kBorder, 1.0f, 10.0f);
-    c.text({panel.x + 24.0f, panel.y + 14.0f, 120.0f, 24.0f}, "Presets", 14.0f, kText, Align::Left, true);
+    c.text({panel.x + 24.0f, panel.y + 14.0f, 120.0f, 24.0f}, tr(Str::PresetsTitle), 14.0f, kText, Align::Left, true);
     const std::vector<std::pair<int, std::string>> rows = browserRows();
     const size_t count = controller_.presets().size();
     c.text({panel.x + 104.0f, panel.y + 16.0f, 200.0f, 20.0f},
-           count == 1 ? "1 in the folder" : std::to_string(count) + " in the folder", 10.5f, kFaint, Align::Left);
+           count == 1 ? std::string(tr(Str::PresetsCountOne)) : trf(Str::PresetsCount, {std::to_string(count)}), 10.5f,
+           kFaint, Align::Left);
     c.line({panel.x + 1.0f, panel.y + 50.5f}, {panel.right() - 1.0f, panel.y + 50.5f}, kBorder, 1.0f);
 
     const Rect area = browserList(panel);
     if (rows.empty()) {
-        c.text({area.x, area.center().y - 20.0f, area.w, 18.0f}, "No presets yet.", 12.0f, kDim);
-        c.text({area.x, area.center().y, area.w, 18.0f}, "Save one with the disk icon, or put .fmv files in the folder.",
-               10.5f, kFaint);
+        c.text({area.x, area.center().y - 20.0f, area.w, 18.0f}, tr(Str::PresetsNone), 12.0f, kDim);
+        c.text({area.x, area.center().y, area.w, 18.0f}, tr(Str::PresetsNoneHint), 10.5f, kFaint);
     }
     // Subfolders' headers; the presets' rows are widgets.
     const int shown = browserVisibleRows(panel);
@@ -3390,7 +3415,7 @@ void View::openPreset(int index) {
         browserOpen_ = false; // loaded from the browser, it closes; cancelled or unreadable, it stays for another pick
         hover_.reset();
     } else {
-        flash("That preset could not be read");
+        flash(tr(Str::MsgPresetUnreadable));
     }
 }
 
@@ -3399,7 +3424,7 @@ void View::stepPreset(int direction) {
     controller_.rescanPresets();
     const int count = static_cast<int>(controller_.presets().size());
     if (count == 0) {
-        flash("No presets in the folder yet");
+        flash(tr(Str::MsgNoPresets));
         return;
     }
     const int now = controller_.presetIndex();
@@ -3412,15 +3437,15 @@ void View::paintConfirm(Canvas &c) {
     c.fillRect(panel, kPanel, 10.0f);
     c.strokeRect(panel, kBorder, 1.0f, 10.0f);
     const bool init = confirm_ == static_cast<int>(PresetAction::Init);
-    c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f}, "Discard the current patch?", 14.0f, kText,
+    c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f}, tr(Str::ConfirmTitle), 14.0f, kText,
            Align::Left, true);
     const std::vector<PresetEntry> &presets = controller_.presets();
     const std::string loading = pendingPreset_ >= 0 && pendingPreset_ < static_cast<int>(presets.size())
-                                    ? "Loading " + presets[pendingPreset_].name + " replaces every setting."
-                                    : std::string("Loading a preset replaces every setting.");
+                                    ? trf(Str::ConfirmLoadPreset, {presets[pendingPreset_].name})
+                                    : std::string(tr(Str::ConfirmLoadAny));
     c.text({panel.x + 24.0f, panel.y + 48.0f, panel.w - 48.0f, 16.0f},
-           init ? std::string("Init sets every setting back to its default.") : loading, 10.5f, kDim, Align::Left);
-    c.text({panel.x + 24.0f, panel.y + 66.0f, panel.w - 48.0f, 16.0f}, "Save first to keep the patch as it is.",
+           init ? std::string(tr(Str::ConfirmInit)) : loading, 10.5f, kDim, Align::Left);
+    c.text({panel.x + 24.0f, panel.y + 66.0f, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst),
            10.5f, kDim, Align::Left);
     for (const Widget &w : confirmWidgets())
         paintWidget(c, w, {});
@@ -3652,7 +3677,7 @@ void View::paintHeader(Canvas &c) {
 
     char playing[16];
     std::snprintf(playing, sizeof(playing), "%d", telemetry_.voices);
-    c.text({1110.0f, 13.0f, 74.0f, 14.0f}, "PLAYING", 10.5f, kDim, Align::Right, true);
+    c.text({1110.0f, 13.0f, 74.0f, 14.0f}, tr(Str::HeadingPlaying), 10.5f, kDim, Align::Right, true);
     c.text({1110.0f, 28.0f, 74.0f, 22.0f}, playing, 15.0f, telemetry_.voices > 0 ? kText : kFaint, Align::Right,
            true);
 }
@@ -3660,8 +3685,10 @@ void View::paintHeader(Canvas &c) {
 void View::paintKeyboard(Canvas &c) {
     const float top = keyboardTop(controller_.layout().sourcesCollapsed);
     const Rect bend = bendWheel(top), mod = modWheel(top);
-    c.text({bend.x - 16.0f, bend.bottom() + 4.0f, bend.w + 32.0f, 14.0f}, "BEND", 10.5f, kFaint, Align::Center, true);
-    c.text({mod.x - 16.0f, mod.bottom() + 4.0f, mod.w + 32.0f, 14.0f}, "MOD", 10.5f, kFaint, Align::Center, true);
+    c.text({bend.x - 16.0f, bend.bottom() + 4.0f, bend.w + 32.0f, 14.0f}, tr(Str::HeadingBend), 10.5f, kFaint,
+           Align::Center, true);
+    c.text({mod.x - 16.0f, mod.bottom() + 4.0f, mod.w + 32.0f, 14.0f}, tr(Str::HeadingMod), 10.5f, kFaint,
+           Align::Center, true);
     const Rect down = octaveButton(-1, top);
     const Rect up = octaveButton(1, top);
     const std::string range = noteName(keyboardBase()) + " \xE2\x80\x93 " + noteName(keyboardBase() + kKeyCount - 1);
@@ -3713,8 +3740,7 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
 
 void View::paintRouting(Canvas &c) {
     c.text({kHintX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kHintX, 22.0f},
-           "drag edges to connect  \xC2\xB7  arrows to reroute  \xC2\xB7  labels for depth  \xC2\xB7  nodes to arrange",
-           10.5f, kFaint, Align::Right);
+           tr(Str::HintRouting), 10.5f, kFaint, Align::Right);
 
     // Output bus along the bottom, lit while a new or moving route would go there.
     const int moving = rerouting(); // drawn following the mouse instead
@@ -3722,7 +3748,7 @@ void View::paintRouting(Canvas &c) {
     const bool busTarget = busParam >= 0 && onBus(drag_.now) &&
                            (drag_.kind == DragKind::Connect || busParam == moving || !wired(busParam));
     c.line({kRouting.x + 48.0f, kBusY}, {kRouting.right() - 20.0f, kBusY}, busTarget ? kAccent : kTrack, 3.0f);
-    c.text({kRouting.x + 14.0f, kBusY - 9.0f, 30.0f, 18.0f}, "OUT", 10.5f, kDim, Align::Left, true);
+    c.text({kRouting.x + 14.0f, kBusY - 9.0f, 30.0f, 18.0f}, tr(Str::BusOut), 10.5f, kDim, Align::Left, true);
 
     // Modulated routes swell and thin with their modulation while notes play, and carry a thin core
     // in the color of the source that modulates them.
@@ -3848,7 +3874,7 @@ void View::paintMatrixLabels(Canvas &c) {
     for (int col = 0; col < kGridCols; ++col) {
         const Rect cell = gridCell(0, col);
         const bool out = col == kGridCols - 1;
-        c.text({cell.x - 6.0f, cell.y - 22.0f, cell.w + 12.0f, 18.0f}, out ? "OUT" : kNodeNames[col], 12.0f,
+        c.text({cell.x - 6.0f, cell.y - 22.0f, cell.w + 12.0f, 18.0f}, out ? tr(Str::BusOut) : kNodeNames[col], 12.0f,
                out ? kText : nameColor(col), Align::Center, true);
     }
     for (int row = 0; row < kNodes; ++row) {
@@ -3859,24 +3885,23 @@ void View::paintMatrixLabels(Canvas &c) {
                 c.fillRect(gridCell(row, col), kRaised.alpha(0.35f), 5.0f); // no such route
     }
     c.text({kLegendX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kLegendX, 22.0f},
-           "rows feed columns  \xC2\xB7  drag a cell to set it  \xC2\xB7  double-click toggles", 10.5f, kFaint,
-           Align::Right);
+           tr(Str::HintMatrix), 10.5f, kFaint, Align::Right);
 
     // Legend beside the grid.
     const float width = kRouting.right() - 16.0f - kLegendX;
     float y = kRouting.y + 72.0f;
-    c.text({kLegendX, y - 22.0f, width, 16.0f}, "HOW TO READ IT", 10.5f, kFaint, Align::Left, true);
+    c.text({kLegendX, y - 22.0f, width, 16.0f}, tr(Str::HeadingHowToRead), 10.5f, kFaint, Align::Left, true);
     struct Entry {
         Color color;
         bool outline;
         const char *text;
     };
     const Entry entries[] = {
-        {kAccent, false, "Operator modulates operator (FM)"},
-        {kAccent, true, "Diagonal: operator feedback"},
-        {kFilterColor, false, "Into a filter, or a filter's output onward"},
-        {kShaperColor, false, "Into a shaper, or a shaper's output onward"},
-        {kText, false, "Straight to the output"},
+        {kAccent, false, tr(Str::LegendFm)},
+        {kAccent, true, tr(Str::LegendFeedback)},
+        {kFilterColor, false, tr(Str::LegendFilter)},
+        {kShaperColor, false, tr(Str::LegendShaper)},
+        {kText, false, tr(Str::LegendOut)},
     };
     for (const Entry &e : entries) {
         const Rect swatch{kLegendX, y + 3.0f, 14.0f, 14.0f};
@@ -3888,17 +3913,10 @@ void View::paintMatrixLabels(Canvas &c) {
         y += 26.0f;
     }
     y += 10.0f;
-    c.text({kLegendX, y, width, 18.0f}, "Each row is a source: an operator, filter or shaper.", 11.0f, kFaint, Align::Left);
-    c.text({kLegendX, y + 20.0f, width, 18.0f}, "Its cells say how much of it goes to each column.", 11.0f, kFaint,
-           Align::Left);
-    c.text({kLegendX, y + 40.0f, width, 18.0f}, "The Routing tab shows the same connections as a graph.", 11.0f,
-           kFaint, Align::Left);
-    c.text({kLegendX, y + 60.0f, width, 18.0f}, "Nodes that are off are greyed out.", 11.0f, kFaint,
-           Align::Left);
-    c.text({kLegendX, y + 80.0f, width, 18.0f}, "Click a name to show it in the inspector; click it", 11.0f, kFaint,
-           Align::Left);
-    c.text({kLegendX, y + 100.0f, width, 18.0f}, "again, as its tab, to switch it off or on.", 11.0f, kFaint,
-           Align::Left);
+    const Str notes[] = {Str::MatrixRows, Str::MatrixCells, Str::MatrixGraph, Str::MatrixOff, Str::MatrixClick,
+                         Str::MatrixClickThen};
+    for (int i = 0; i < 6; ++i)
+        c.text({kLegendX, y + i * 20.0f, width, 18.0f}, tr(notes[i]), 11.0f, kFaint, Align::Left);
 }
 
 void View::paintFx(Canvas &c) {
@@ -3910,10 +3928,7 @@ void View::paintFx(Canvas &c) {
            Align::Left, full);
     const float hintX = count.right() + 8.0f;
     c.text({hintX, kFxPanel.y + 10.0f, kFxPanel.right() - 16.0f - hintX, 22.0f},
-           chain.empty() ? "the voices go straight out  \xC2\xB7  add an effect to start a chain"
-                         : "voices \xE2\x86\x92 effects, left to right \xE2\x86\x92 out  \xC2\xB7  click an icon to "
-                           "switch it  \xC2\xB7  drag a title to reorder  \xC2\xB7  right-click it to duplicate",
-           10.5f, kFaint, Align::Right);
+           tr(chain.empty() ? Str::HintFxEmpty : Str::HintFx), 10.5f, kFaint, Align::Right);
     // After a card, before the one at place `next`: the signal runs left to right. Under the mouse, or with its list
     // open, it is a plus that adds an effect there.
     auto chevron = [&](const Rect &card, size_t next) {
@@ -3944,8 +3959,7 @@ void View::paintFx(Canvas &c) {
         c.fillRect(card, kCardColor, 8.0f);
         c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f);
         if (fxFolded(slot)) { // its icon (a widget of its own) and cross, then its name down the strip
-            paintDownward(c, {card.x, card.y + 66.0f, card.w, card.h - 74.0f}, kFxTitles[static_cast<int>(type)],
-                          on ? kText : kDim);
+            paintDownward(c, {card.x, card.y + 66.0f, card.w, card.h - 74.0f}, fxTitle(type), on ? kText : kDim);
             if (i + 1 < chain.size())
                 chevron(card, i + 1);
             continue;
@@ -3953,7 +3967,7 @@ void View::paintFx(Canvas &c) {
 
         // Title row: the effect's icon (a widget of its own, which switches it) and its name.
         const Rect titleRect{card.x + 34.0f, card.y + 8.0f, card.w - 82.0f, 20.0f};
-        const char *title = kFxTitles[static_cast<int>(type)];
+        const char *title = fxTitle(type);
         float titleSize = 11.0f; // smaller for a long name, so it fits beside the icon
         while (titleSize > 9.0f && c.textWidth(title, titleSize, true) > titleRect.w)
             titleSize -= 0.5f;
@@ -4037,10 +4051,9 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     const Color color = kSourceColors[lfo];
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 104.0f, 22.0f};
     c.fillRect(title, color.alpha(0.18f), 6.0f);
-    c.text(title, sourceName(lfo) + " SHAPE", 11.0f, color, Align::Center, true);
+    c.text(title, trf(Str::TitleShape, {sourceName(lfo)}), 11.0f, color, Align::Center, true);
     c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f},
-           "double-click adds or deletes a point  \xC2\xB7  drag the small dots to bend  \xC2\xB7  Ctrl snaps to the grid",
-           10.5f, kFaint, Align::Right);
+           tr(Str::HintShape), 10.5f, kFaint, Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
@@ -4072,10 +4085,10 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
     if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo) {
         const double x = shapePointX(lfo, focus->b);
-        char text[64];
-        std::snprintf(text, sizeof(text), "point %d  \xC2\xB7  %.1f %% of the cycle  \xC2\xB7  %+.2f", focus->b + 1,
-                      x * 100.0, value(shapePointIndex(lfo, focus->b, PointField::Y)));
-        c.text({r.x, r.bottom() + 10.0f, r.w - 220.0f, 16.0f}, text, 10.5f, kDim, Align::Left);
+        const std::string cycle = number("%.1f", x * 100.0);
+        const std::string level = number("%+.2f", value(shapePointIndex(lfo, focus->b, PointField::Y)));
+        c.text({r.x, r.bottom() + 10.0f, r.w - 220.0f, 16.0f},
+               trf(Str::CaptionShapePoint, {std::to_string(focus->b + 1), cycle, level}), 10.5f, kDim, Align::Left);
     }
 }
 
@@ -4087,8 +4100,8 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
     const Rect title{panel.x + 16.0f, panel.y + 9.0f, 132.0f, 22.0f};
     c.fillRect(title, fx.alpha(0.18f), 6.0f);
     c.text(title,
-           unit < kFxSlots ? "FX " + std::to_string(unit + 1) + " SHAPER CURVE"
-                           : "SHAPER " + std::to_string(unit - kFxSlots + 1) + " CURVE",
+           unit < kFxSlots ? trf(Str::TitleFxShaperCurve, {std::to_string(unit + 1)})
+                           : trf(Str::TitleShaperCurve, {std::to_string(unit - kFxSlots + 1)}),
            11.0f, fx, Align::Center, true);
 
     const Rect r = shapeArea();
@@ -4096,8 +4109,8 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
     paintShapeGrid(c, 0.0, true);
     paintShapeGridControls(c);
     c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
-    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, "input \xE2\x86\x92", 10.5f, kFaint, Align::Right);
-    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, "output", 10.5f, kFaint, Align::Left);
+    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisInput), 10.5f, kFaint, Align::Right);
+    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOutput), 10.5f, kFaint, Align::Left);
 
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
@@ -4116,13 +4129,11 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
     const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
     const Rect below{r.x, r.bottom() + 10.0f, shapeGridButton(0, 0).x - 12.0f - r.x, 16.0f};
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
-        char text[64];
-        std::snprintf(text, sizeof(text), "point %d  \xC2\xB7  in %+.2f  \xC2\xB7  out %+.2f", focus->b + 1,
-                      2.0 * shapePointX(shape, focus->b) - 1.0, value(shapeIndex(shape, focus->b, PointField::Y)));
-        c.text(below, text, 10.5f, kDim, Align::Left);
+        const std::string in = number("%+.2f", 2.0 * shapePointX(shape, focus->b) - 1.0);
+        const std::string out = number("%+.2f", value(shapeIndex(shape, focus->b, PointField::Y)));
+        c.text(below, trf(Str::CaptionCurvePoint, {std::to_string(focus->b + 1), in, out}), 10.5f, kDim, Align::Left);
     } else {
-        c.text(below, "double-click: add or delete  \xC2\xB7  small dots: bend  \xC2\xB7  Ctrl: snap", 10.0f, kFaint,
-               Align::Left);
+        c.text(below, tr(Str::HintCurve), 10.0f, kFaint, Align::Left);
     }
 }
 
@@ -4135,7 +4146,7 @@ void View::paintNoteCurveEditor(Canvas &c) {
     const Color color = shapeColor(shape);
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
     c.fillRect(title, color.alpha(0.18f), 6.0f);
-    c.text(title, "NOTE CURVE", 11.0f, color, Align::Center, true);
+    c.text(title, tr(Str::TitleNoteCurve), 11.0f, color, Align::Center, true);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
@@ -4153,7 +4164,7 @@ void View::paintNoteCurveEditor(Canvas &c) {
         if (x > 0.03 && x < 0.97)
             c.text({shapeAt(x, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, noteName(octave * 12), 10.0f, kFaint);
     }
-    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, "out", 10.5f, kFaint, Align::Left);
+    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), 10.5f, kFaint, Align::Left);
 
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
@@ -4179,16 +4190,12 @@ void View::paintNoteCurveEditor(Canvas &c) {
     const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
     const Rect below{r.x, r.bottom() + 10.0f, shapeGridButton(0, 0).x - 12.0f - r.x, 16.0f};
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
-        char note[32], text[96];
+        char note[32];
         formatParam(paramIndex(NoteParam::Low), low + shapePointX(shape, focus->b) * (high - low), note, sizeof(note));
-        std::snprintf(text, sizeof(text), "point %d  \xC2\xB7  %s  \xC2\xB7  out %.0f %%", focus->b + 1, note,
-                      50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
-        c.text(below, text, 10.5f, kDim, Align::Left);
+        const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
+        c.text(below, trf(Str::CaptionNotePoint, {std::to_string(focus->b + 1), note, out}), 10.5f, kDim, Align::Left);
     } else {
-        c.text(below,
-               "notes from Low to High across, what it puts out up  \xC2\xB7  double-click: add or delete  \xC2\xB7  "
-               "small dots: bend  \xC2\xB7  Ctrl: snap",
-               10.0f, kFaint, Align::Left);
+        c.text(below, tr(Str::HintNoteCurve), 10.0f, kFaint, Align::Left);
     }
 }
 
@@ -4207,23 +4214,19 @@ int View::partialsShown(int op) const {
 void View::paintPartialEditor(Canvas &c, int op) {
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
     c.fillRect(title, kAccent.alpha(0.18f), 6.0f);
-    c.text(title, "OP " + std::string(1, static_cast<char>('A' + op)) + " PARTIALS", 11.0f, kAccent, Align::Center, true);
+    c.text(title, trf(Str::TitlePartials, {kNodeNames[op]}), 11.0f, kAccent, Align::Center, true);
     // Only the partials the wave plays show; the ones past them keep their values for when there are more again.
     const int count = partialsShown(op);
     // The partial under the mouse in numbers, or how to draw.
     const Widget *focus = drag_.kind == DragKind::Partials ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    std::string hint = "drag across the bars to draw  \xC2\xB7  double-click a bar for none";
+    std::string hint = tr(Str::HintPartials);
     if (focus && focus->kind == Kind::PartialArea) {
         const Point at = drag_.kind == DragKind::Partials ? drag_.now : hoverPoint_;
         const int k = partialAt(focus->b == 0 ? kPartialLevels : kPartialPhases, at.x, count);
         const double level = value(partialLevelIndex(op, k));
-        char levelText[24] = "none";
-        if (level > 0.0)
-            std::snprintf(levelText, sizeof(levelText), "%.1f dB", 20.0 * std::log10(level));
-        char text[96];
-        std::snprintf(text, sizeof(text), "partial %d  \xC2\xB7  level %s  \xC2\xB7  phase %.0f\xC2\xB0", k + 1, levelText,
-                      value(partialPhaseIndex(op, k)) * 360.0);
-        hint = text;
+        const std::string partial = std::to_string(k + 1), phase = number("%.0f", value(partialPhaseIndex(op, k)) * 360.0);
+        hint = level > 0.0 ? trf(Str::CaptionPartial, {partial, number("%.1f", 20.0 * std::log10(level)), phase})
+                           : trf(Str::CaptionPartialSilent, {partial, phase});
     }
     const float hintX = partialCountButton(static_cast<int>(std::size(kPartialCounts)) - 1).right() + 12.0f;
     c.text({hintX, kRouting.y + 10.0f, shapeReset().x - hintX - 12.0f, 22.0f}, hint, 10.5f, kFaint, Align::Right);
@@ -4252,8 +4255,8 @@ void View::paintPartialEditor(Canvas &c, int op) {
     for (int row = 0; row < 2; ++row) {
         const Rect area = row == 0 ? kPartialLevels : kPartialPhases;
         c.fillRect(area.inset(-6.0f), kDisplayColor, 6.0f);
-        c.text({area.x - 2.0f, area.y - 22.0f, 80.0f, 12.0f}, row == 0 ? "LEVEL" : "PHASE", 10.5f, kFaint, Align::Left,
-               true);
+        c.text({area.x - 2.0f, area.y - 22.0f, 80.0f, 12.0f}, tr(row == 0 ? Str::HeadingLevel : Str::HeadingPhase), 10.5f,
+               kFaint, Align::Left, true);
         for (int k = 0; k < count; ++k) {
             const Rect bar = partialBar(area, k, count);
             const double v = row == 0 ? partialBarFromLevel(value(partialLevelIndex(op, k)))
@@ -4308,7 +4311,7 @@ void View::paintShapeGrid(Canvas &c, double zero, bool centered) {
 // "GRID - 16 + x - 8 +" under the editor's right end; the buttons and counts are widgets.
 void View::paintShapeGridControls(Canvas &c) {
     const Rect first = shapeGridButton(0, 0);
-    c.text({first.x - 48.0f, first.y, 42.0f, first.h}, "GRID", 10.5f, kFaint, Align::Right, true);
+    c.text({first.x - 48.0f, first.y, 42.0f, first.h}, tr(Str::HeadingGrid), 10.5f, kFaint, Align::Right, true);
     const Rect across = shapeGridButton(0, 2), upDown = shapeGridButton(1, 0);
     c.text({across.right(), across.y, upDown.x - across.right(), across.h}, "\xC3\x97", 11.0f, kFaint);
 }
@@ -4569,9 +4572,9 @@ void View::paintEq(Canvas &c, Rect r, int slot) {
 
     const float labelY = inner.bottom() + 2.0f;
     const float edges[] = {inner.x, xOfHz(kEqLowHz), xOfHz(kEqHighHz), inner.right()};
-    const char *const names[] = {"LOW", "MID", "HIGH"};
     for (int b = 0; b < 3; ++b)
-        c.text({edges[b], labelY, edges[b + 1] - edges[b], 12.0f}, names[b], 10.5f, kFaint, Align::Center, true);
+        c.text({edges[b], labelY, edges[b + 1] - edges[b], 12.0f}, tr(kMcBandNames[b]), 10.5f, kFaint, Align::Center,
+               true);
 }
 
 // Static curves, input level across and output up, from -60 dB to 0, with the
@@ -4617,10 +4620,8 @@ void View::paintCompressor(Canvas &c, Rect r, int slot) {
                    value(paramIndex(slot, FxParam::CompKnee)), fx, 2.0f);
     const float reduction = telemetry_.fxReduction[slot][0];
     reductionMeter(c, {r.right() - 18.0f, plot.y, 8.0f, plot.h}, reduction, fx);
-    char text[24];
-    std::snprintf(text, sizeof(text), "GR %.1f dB", reduction);
-    c.text({plot.x + 4.0f, plot.y + 2.0f, plot.w, 14.0f}, text, 10.5f, reduction > 0.05f ? kText : kFaint,
-           Align::Left);
+    c.text({plot.x + 4.0f, plot.y + 2.0f, plot.w, 14.0f}, trf(Str::CaptionReduction, {number("%.1f", reduction)}),
+           10.5f, reduction > 0.05f ? kText : kFaint, Align::Left);
 }
 
 void View::paintMultiComp(Canvas &c, Rect r, int slot) {
@@ -4645,11 +4646,10 @@ void View::paintMultiComp(Canvas &c, Rect r, int slot) {
         most = std::max(most, reduction);
         reductionMeter(c, meter, reduction, band == shown || linked ? fx : fx.alpha(0.45f));
     }
-    char text[32];
-    if (linked)
-        std::snprintf(text, sizeof(text), "LINKED  GR %.1f dB", most);
-    else
-        std::snprintf(text, sizeof(text), "%s  GR %.1f dB", kMcBandNames[shown], telemetry_.fxReduction[slot][shown]);
+    const std::string text =
+        linked ? trf(Str::CaptionLinkedReduction, {number("%.1f", most)})
+               : trf(Str::CaptionBandReduction,
+                     {tr(kMcBandNames[shown]), number("%.1f", telemetry_.fxReduction[slot][shown])});
     c.text({plot.x + 4.0f, plot.y + 1.0f, plot.w, 14.0f}, text, 10.5f, kDim, Align::Left);
 }
 
@@ -4730,14 +4730,14 @@ void View::paintReverb(Canvas &c, Rect r, int slot) {
     const float dry = static_cast<float>(delayDryLevel(at(FxParam::ReverbMix))) * 0.5f * inner.h;
     c.fillRect({inner.x - 1.0f, mid - dry, 3.0f, 2.0f * dry}, kDim, 1.5f);
 
-    char decayText[32], preText[32], text[80];
+    char decayText[32], preText[32];
     formatParam(paramIndex(slot, FxParam::ReverbDecay), at(FxParam::ReverbDecay), decayText, sizeof(decayText));
     formatParam(paramIndex(slot, FxParam::ReverbPreDelay), at(FxParam::ReverbPreDelay), preText, sizeof(preText));
-    std::snprintf(text, sizeof(text), pre > 0.0 ? "%s  \xC2\xB7  pre %s" : "%s", decayText, preText);
+    std::string text = pre > 0.0 ? trf(Str::CaptionPreDelay, {decayText, preText}) : std::string(decayText);
     if (type == ReverbType::Shimmer) { // the interval it climbs by (or falls) in place of the pre-delay
         char pitchText[32];
         formatParam(paramIndex(slot, FxParam::ReverbShimmerPitch), interval, pitchText, sizeof(pitchText));
-        std::snprintf(text, sizeof(text), "%s  \xC2\xB7  shift %s", decayText, pitchText);
+        text = trf(Str::CaptionShimmer, {decayText, pitchText});
     }
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
 }
@@ -4794,7 +4794,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
                                                   : (phaser ? FxParam::PhaserRate : FxParam::FlangerRate));
     formatParam(rateParam, value(rateParam), rate, sizeof(rate));
     if (phaser)
-        std::snprintf(shape, sizeof(shape), "%d stages", stages);
+        std::snprintf(shape, sizeof(shape), "%s", trf(Str::CaptionStages, {std::to_string(stages)}).c_str());
     else
         formatParam(paramIndex(slot, FxParam::FlangerDelay), at(FxParam::FlangerDelay), shape, sizeof(shape));
     std::snprintf(text, sizeof(text), "%s  \xC2\xB7  %s", shape, rate);
@@ -4832,7 +4832,7 @@ void View::paintDisperser(Canvas &c, Rect r, int slot) {
     plotLine(c, points.data(), points.size(), fx, 1.8f);
     char freq[32], text[80];
     formatParam(paramIndex(slot, FxParam::DisperserFreq), at(FxParam::DisperserFreq), freq, sizeof(freq));
-    std::snprintf(text, sizeof(text), "%s  \xC2\xB7  up to %.1f ms", freq, most * 1000.0);
+    std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionDispersion, {freq, number("%.1f", most * 1000.0)}).c_str());
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
 }
 
@@ -4880,8 +4880,9 @@ void View::paintWidener(Canvas &c, Rect r, int slot) {
     char hp[32], text[80];
     formatParam(paramIndex(slot, FxParam::WidenerHighPass), highPass, hp, sizeof(hp));
     const double shortest = widenerTap(0, size, 0.0) * 1000.0, longest = widenerTap(kWidenerTaps - 1, size, 0.0) * 1000.0;
-    std::snprintf(text, sizeof(text), longest < 10.0 ? "HP %s  \xC2\xB7  %.1f\xE2\x80\x93%.1f ms" : "HP %s  \xC2\xB7  %.0f\xE2\x80\x93%.0f ms",
-                  hp, shortest, longest);
+    const char *const digits = longest < 10.0 ? "%.1f" : "%.0f";
+    std::snprintf(text, sizeof(text), "%s",
+                  trf(Str::CaptionWidener, {hp, number(digits, shortest), number(digits, longest)}).c_str());
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
     c.text({r.x + 4.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "L", 10.5f, kFaint);
     c.text({r.right() - 16.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "R", 10.5f, kFaint);
@@ -4916,7 +4917,7 @@ void View::paintNoteSource(Canvas &c, float top) {
             text += (cents > 0 ? " +" : " ") + std::to_string(cents);
     }
     c.text(box, text, 11.0f, telemetry_.voices > 0 ? kText : kFaint, Align::Center, telemetry_.voices > 0);
-    c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, "Note", 10.5f, kDim);
+    c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelNote), 10.5f, kDim);
     if (sourceBipolar(kNoteSource)) // swings both ways: a sign in its corner
         c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", 10.0f, color, Align::Center, true);
 }
@@ -4955,7 +4956,7 @@ void View::paintShifter(Canvas &c, Rect r, int slot) {
         std::snprintf(shift, sizeof(shift), "%+.2f kHz", hz / 1000.0);
     formatParam(paramIndex(slot, FxParam::ShiftRange), value(paramIndex(slot, FxParam::ShiftRange)), range,
                 sizeof(range));
-    std::snprintf(text, sizeof(text), "%s  \xC2\xB7  of %s", shift, range);
+    std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionShiftOf, {shift, range}).c_str());
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
     c.text({r.x + 4.0f, inner.y, 10.0f, 12.0f}, "L", 10.5f, kFaint);
     c.text({r.x + 4.0f, inner.bottom() - 12.0f, 10.0f, 12.0f}, "R", 10.5f, kFaint);
@@ -4975,29 +4976,27 @@ void View::paintInspector(Canvas &c) {
         const int op = node;
         const double ratio = coarseRatio(value(paramIndex(op, OpParam::Coarse))) *
                              (1.0 + value(paramIndex(op, OpParam::Fine)));
-        char text[96];
+        std::string summary = trf(Str::SummaryOp, {kNodeNames[op]}) + dot;
         if (isNoise(op)) {
             char slope[32];
             const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
             formatParam(slopeParam, value(slopeParam), slope, sizeof(slope));
-            std::snprintf(text, sizeof(text), "Op %s%sNoise%s%s", kNodeNames[op], dot, dot, slope);
+            summary += waveName(OpWave::Noise) + (dot + std::string(slope));
         } else {
-            std::snprintf(text, sizeof(text), "Op %s%s%s%sratio %.2f", kNodeNames[op], dot,
-                          waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))))), dot,
-                          ratio);
+            summary += waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))))) +
+                       (dot + trf(Str::SummaryRatio, {number("%.2f", ratio)}));
         }
-        std::string summary = text;
         const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
         if (copies > 1 && !isNoise(op))
-            summary += dot + std::to_string(copies) + "x unison";
+            summary += dot + trf(Str::SummaryUnison, {std::to_string(copies)});
         std::string feeds;
         if (value(paramIndex(op, OpParam::Out)) > 0.0)
-            feeds = "out";
+            feeds = tr(Str::SummaryOut);
         for (int to = 0; to < kNodes; ++to)
             if (to != op && nodeOn(to) && value(routeParam(op, to)) > 0.0)
                 feeds += (feeds.empty() ? "" : ", ") + std::string(kNodeNames[to]);
         if (!feeds.empty())
-            summary += dot + std::string("to ") + feeds;
+            summary += dot + trf(Str::SummaryTo, {feeds});
         c.text(summaryRect, summary, 11.0f, kDim, Align::Left);
         if (isNoise(op))
             paintNoiseSlope(c, kNoiseRect, op);
@@ -5009,7 +5008,7 @@ void View::paintInspector(Canvas &c) {
 
     const int filter = node - kOps;
     const auto type = static_cast<FilterType>(std::lround(value(paramIndex(filter, FilterParam::Type))));
-    std::string summary = std::string("Filter ") + std::to_string(filter + 1) + dot + filterTypeName(type);
+    std::string summary = trf(Str::SummaryFilter, {std::to_string(filter + 1)}) + dot + filterTypeName(type);
     if (hasSlope(type))
         summary += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
                    " dB";
@@ -5020,7 +5019,8 @@ void View::paintInspector(Canvas &c) {
                         paramIndex(filter, FilterParam::Resonance), paramIndex(filter, FilterParam::KeyTrack),
                         telemetry_.voices > 0 ? telemetry_.notePitch : 60.0, kFilterColor,
                         &telemetry_.filterSpectrum[filter]);
-    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, "INPUTS", 10.5f, kFaint, Align::Left, true);
+    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), 10.5f, kFaint,
+           Align::Left, true);
 }
 
 // A filter's or shaper's routes, for its page's summary: what goes into it, the filters and shapers it feeds and the
@@ -5038,22 +5038,23 @@ std::string View::boxRoutes(int node) const {
             name(other < kOps ? mods : to, kNodeNames[other]);
     }
     if (value(outParam(node)) > 0.0)
-        name(to, "out");
-    std::string text = dot + (from.empty() ? std::string("no input yet") : "from " + from);
+        name(to, tr(Str::SummaryOut));
+    std::string text = dot + (from.empty() ? std::string(tr(Str::SummaryNoInput)) : trf(Str::SummaryFrom, {from}));
     if (!to.empty())
-        text += dot + "to " + to;
+        text += dot + trf(Str::SummaryTo, {to});
     if (!mods.empty())
-        text += dot + "mods " + mods;
+        text += dot + trf(Str::SummaryMods, {mods});
     return text;
 }
 
 void View::paintShaperPage(Canvas &c, int shaper, Rect summaryRect) {
-    const std::string summary = "Shaper " + std::to_string(shaper + 1) + "  \xC2\xB7  " +
+    const std::string summary = trf(Str::SummaryShaper, {std::to_string(shaper + 1)}) + "  \xC2\xB7  " +
                                 clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode))));
     c.text(summaryRect, summary + boxRoutes(kOps + kFilters + shaper), 11.0f, kDim, Align::Left);
     c.fillRect(kShaperDisplay, kDisplayColor, 6.0f);
     paintShaperCurve(c, kShaperDisplay, kFxSlots + shaper);
-    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, "INPUTS", 10.5f, kFaint, Align::Left, true);
+    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), 10.5f, kFaint,
+           Align::Left, true);
 }
 
 // Where the unison copies sit: left to right by stereo position, up and down by detune.
@@ -5081,11 +5082,11 @@ void View::paintNoiseSlope(Canvas &c, Rect r, int op) {
     auto line = [&](double slope, Color color, float width) {
         c.line({inner.x, inner.y}, {inner.right(), inner.y + static_cast<float>(slope) * inner.h}, color, width);
     };
-    const char *const names[] = {"white", "pink", "brown"};
+    const Str names[] = {Str::NoiseWhiteCaption, Str::NoisePinkCaption, Str::NoiseBrownCaption};
     for (int i = 0; i < 3; ++i) {
         line(i * 0.5, kBorder, 1.0f);
         const float y = inner.y + i * 0.5f * inner.h;
-        c.text({inner.right() + 6.0f, y - 6.0f, 40.0f, 12.0f}, names[i], 10.5f, kFaint, Align::Left);
+        c.text({inner.right() + 6.0f, y - 6.0f, 40.0f, 12.0f}, tr(names[i]), 10.5f, kFaint, Align::Left);
     }
     const float drop = static_cast<float>(value(paramIndex(op, OpParam::NoiseSlope))) * inner.h;
     const Point slope[] = {{inner.x, inner.y}, {inner.right(), inner.y + drop}};
@@ -5261,9 +5262,9 @@ void View::paintSources(Canvas &c) {
     const std::vector<int> shown = sourcesShown();
     if (shown.empty()) {
         c.text({kModPanel.x, kCardTop + kCardH * 0.5f - 22.0f, kModPanel.w, 20.0f},
-               "No LFOs or envelopes yet: add one with the dashed cards, or ADD LFO and ADD ENV", 12.0f, kDim);
+               tr(Str::HintNoSources), 12.0f, kDim);
         c.text({kModPanel.x, kCardTop + kCardH * 0.5f, kModPanel.w, 20.0f},
-               "then drag its handle onto any knob, wire label or matrix cell", 11.0f, kFaint);
+               tr(Str::HintNoSourcesThen), 11.0f, kFaint);
         return;
     }
     c.pushClip(sourceCardClip());
@@ -5308,8 +5309,8 @@ void View::paintSource(Canvas &c, float card, int s) {
 
     const std::vector<int> slots = usedSlots(s);
     if (slots.empty()) {
-        c.text({p.x + 16.0f, p.y + 174.0f, p.w - 32.0f, 18.0f}, "Drag the handle onto any knob,", 11.0f, kFaint);
-        c.text({p.x + 16.0f, p.y + 192.0f, p.w - 32.0f, 18.0f}, "wire label or matrix cell", 11.0f, kFaint);
+        c.text({p.x + 16.0f, p.y + 174.0f, p.w - 32.0f, 18.0f}, tr(Str::HintNoTargets), 11.0f, kFaint);
+        c.text({p.x + 16.0f, p.y + 192.0f, p.w - 32.0f, 18.0f}, tr(Str::HintNoTargetsThen), 11.0f, kFaint);
         return;
     }
     const int rows = static_cast<int>(slots.size());
@@ -5387,7 +5388,10 @@ void View::paintNode(Canvas &c, const Widget &w) {
     if (isNoise(op)) {
         // No ratio: its color, or its slope between the named ones.
         const double db = std::round(value(paramIndex(op, OpParam::NoiseSlope)) * 60.0) / 10.0;
-        const char *const name = db == 0.0 ? "white" : db == 3.0 ? "pink" : db == 6.0 ? "brown" : nullptr;
+        const char *const name = db == 0.0   ? tr(Str::NoiseWhiteCaption)
+                                 : db == 3.0 ? tr(Str::NoisePinkCaption)
+                                 : db == 6.0 ? tr(Str::NoiseBrownCaption)
+                                             : nullptr;
         if (name)
             std::snprintf(ratio, sizeof(ratio), "%s", name);
         else
@@ -5419,19 +5423,19 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         bool relevant = w.param != paramIndex(GlobalParam::Legato) || value(paramIndex(GlobalParam::Mono)) >= 0.5;
         if (isLfoFree(w.param)) // a one-shot restarts with every note
             relevant = value(paramIndex(sourceOf(w.param), SourceParam::OneShot)) < 0.5;
-        const char *const clipModes[] = {"HARD", "SOFT", "ASYM"};
+        const Str clipModes[] = {Str::SwitchHard, Str::SwitchSoft, Str::SwitchAsym};
         const FxParam field = fxFieldOf(w.param);
         // Operators', filters', sources' and effects' on switches show the power symbol rather than a word.
         const bool power = isPowerParam(w.param) || isSourcePower(w.param) || field == FxParam::Enabled;
         const std::string count = std::to_string(w.b); // the partial editor's resolution
-        const char *text = power                                              ? ""
-                           : isPartialCount(w.param)                          ? count.c_str()
-                           : w.param == paramIndex(GlobalParam::Mono)         ? (w.b == 0 ? "POLY" : "MONO")
-                           : w.param == paramIndex(GlobalParam::Legato)       ? "LEGATO"
-                           : field == FxParam::ShaperMode                       ? clipModes[std::clamp(w.b, 0, 2)]
+        const char *text = power ? ""
+                           : isPartialCount(w.param) ? count.c_str()
+                           : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
+                           : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
+                           : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
-                           : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? "STEREO"
-                                                                               : "ALWAYS";
+                           : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? tr(Str::SwitchStereo)
+                                                                                               : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;
         if (sourceOf(w.param) >= 0)
@@ -5469,7 +5473,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
             c.fillRect(w.rect, kRaised, 6.0f);
         else if (hovered)
             c.fillRect(w.rect, kRaised.alpha(0.5f), 6.0f);
-        c.text(w.rect, kViewNames[w.a], 11.0f, selected ? kText : kDim, Align::Center, true);
+        c.text(w.rect, tr(kViewNames[w.a]), 11.0f, selected ? kText : kDim, Align::Center, true);
         // A dot on the FX tab while any effect is on.
         bool anyFx = false;
         for (int slot : fxChain())
@@ -5542,7 +5546,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         c.strokeRect(w.rect, focused ? kText : tint, 1.0f, 9.0f);
         std::string text = percent(amount);
         if (w.kind == Kind::WireLabel && w.a == w.b)
-            text = "fb " + text;
+            text = trf(Str::CaptionFeedback, {text});
         c.text({w.rect.x, w.rect.y - 2.0f, w.rect.w, w.rect.h}, text, 10.5f, focused ? kText : kDim);
         paintModRange(c, {w.rect.x + 7.0f, w.rect.bottom() - 4.0f, w.rect.w - 14.0f, 1.5f}, w.param, mods);
         break;
@@ -5574,8 +5578,8 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         // Like ADD EFFECT, without its chevron: these add at once.
         c.fillRect(w.rect, hovered ? kSourceAddColor.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, kSourceAddColor.alpha(hovered ? 0.9f : 0.45f), 1.0f, 5.0f);
-        c.text(w.rect, static_cast<SourceType>(w.a) == SourceType::Lfo ? "ADD LFO" : "ADD ENV", 10.5f,
-               hovered ? kText : kDim, Align::Center, true);
+        c.text(w.rect, tr(static_cast<SourceType>(w.a) == SourceType::Lfo ? Str::ButtonAddLfo : Str::ButtonAddEnv),
+               10.5f, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::Scrollbar: {
         // The widget is the track with some room around it, so the thin bar is easy to hit.
@@ -5604,8 +5608,8 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const Point open[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
         const Point shut[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.5f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
         c.polyline(collapsed ? shut : open, 3, hovered ? kText : kDim, 1.5f);
-        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, "MODULATION", 11.0f, hovered ? kText : kDim,
-               Align::Left, true);
+        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, tr(Str::HeadingModulation), 11.0f,
+               hovered ? kText : kDim, Align::Left, true);
         break;
     }
     case Kind::SourceHandle:
@@ -5694,7 +5698,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
     case Kind::ShapeReset:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, "RESET", 10.5f, hovered ? kText : kDim, Align::Center, true);
+        c.text(w.rect, tr(Str::ButtonReset), 10.5f, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ShapeGrid: {
         const UiLayout &layout = controller_.layout();
@@ -5744,7 +5748,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
                 formatParam(e.attack, value(e.attack), text, sizeof(text));
             } else if (w.b == 1) {
                 formatParam(e.hold, value(e.hold), a, sizeof(a));
-                std::snprintf(text, sizeof(text), "hold %s", a);
+                std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionHold, {a}).c_str());
             } else if (w.b == 2) {
                 formatParam(e.decay, value(e.decay), a, sizeof(a));
                 formatParam(e.sustain, value(e.sustain), b, sizeof(b));
@@ -5768,7 +5772,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
             char a[32], b[32], text[80];
             formatParam(cutoff, value(cutoff), a, sizeof(a));
             formatParam(resonance, value(resonance), b, sizeof(b));
-            std::snprintf(text, sizeof(text), "%s  \xC2\xB7  res %s", a, b);
+            std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionResonance, {a, b}).c_str());
             c.text({kFilterDisplay.x, kFilterDisplay.y + 2.0f, kFilterDisplay.w - 8.0f, 14.0f}, text, 10.5f, kText,
                    Align::Right);
         }
@@ -5819,7 +5823,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const bool lit = (hovered || (fxMenuOpen_ && fxMenuAt_.x < 0.0f)) && !full; // its list, not the dashed card's
         c.fillRect(w.rect, lit ? kFxColor.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, kFxColor.alpha(full ? 0.15f : (lit ? 0.9f : 0.45f)), 1.0f, 5.0f);
-        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, "ADD EFFECT", 10.5f,
+        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::ButtonAddEffect), 10.5f,
                full ? kFaint : (lit ? kText : kDim), Align::Left, true);
         const Point m{w.rect.right() - 13.0f, w.rect.center().y};
         const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
@@ -5839,7 +5843,9 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const Color ink = hovered ? kText : kDim;
         c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
         c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
-        const char *what = fx ? "ADD EFFECT" : (static_cast<SourceType>(w.a) == SourceType::Lfo ? "ADD LFO" : "ADD ENV");
+        const char *what = tr(fx ? Str::ButtonAddEffect
+                              : static_cast<SourceType>(w.a) == SourceType::Lfo ? Str::ButtonAddLfo
+                                                                               : Str::ButtonAddEnv);
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 16.0f}, what, 10.5f, ink, Align::Center, true);
         break;
     }
@@ -5894,12 +5900,12 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom)) {
             const Rect edit{w.rect.right() - 38.0f, w.rect.y + 4.0f, 34.0f, 15.0f};
             c.fillRect(edit, hovered ? kSourceColors[w.a].alpha(0.3f) : kRaised, 4.0f);
-            c.text(edit, "EDIT", 10.5f, hovered ? kText : kDim, Align::Center, true);
+            c.text(edit, tr(Str::ButtonEdit), 10.5f, hovered ? kText : kDim, Align::Center, true);
         }
         break;
     case Kind::ClipDisplay: // the EDIT button on a drawn curve's display
         c.fillRect(w.rect, hovered ? clipColor(w.a).alpha(0.3f) : kRaised, 4.0f);
-        c.text(w.rect, "EDIT", 10.5f, hovered ? kText : kDim, Align::Center, true);
+        c.text(w.rect, tr(Str::ButtonEdit), 10.5f, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ListButton: {
         // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.
@@ -5984,7 +5990,8 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         if (focused) {
             char amount[32], text[80];
             formatParam(w.param, value(w.param), amount, sizeof(amount));
-            std::snprintf(text, sizeof(text), "%s curve  \xC2\xB7  %s", kEnvSegmentNames[w.b], amount);
+            std::snprintf(text, sizeof(text), "%s",
+                          trf(Str::CaptionEnvCurve, {tr(kEnvSegmentNames[w.b]), amount}).c_str());
             const Rect r = envRect(w.a);
             c.text({r.x, r.y + 2.0f, r.w - 8.0f, 14.0f}, text, 10.5f, kText, Align::Right);
         }
@@ -5995,12 +6002,12 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
     case Kind::PartialReset:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, "RESET", 10.5f, hovered ? kText : kDim, Align::Center, true);
+        c.text(w.rect, tr(Str::ButtonReset), 10.5f, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ShapeDone:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, "DONE", 10.5f, kText, Align::Center, true);
+        c.text(w.rect, tr(Str::ButtonDone), 10.5f, kText, Align::Center, true);
         break;
     case Kind::Key:
         paintKey(c, w, hovered, active);
@@ -6101,7 +6108,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const bool on = themeIndex(controller_.theme()) == w.b;
         c.fillRect(w.rect, hovered && !on ? theme.raised : theme.panel, 5.0f);
         c.strokeRect(w.rect, on ? kAccent : (hovered ? kDim : kBorder), on ? 1.5f : 1.0f, 5.0f);
-        c.text({w.rect.x, w.rect.y, w.rect.w, w.rect.h - 4.0f}, theme.name, 10.5f, theme.text, Align::Center, on);
+        c.text({w.rect.x, w.rect.y, w.rect.w, w.rect.h - 4.0f}, tr(theme.label), 10.5f, theme.text, Align::Center, on);
         const float third = (w.rect.w - 16.0f) / 3.0f;
         const Color stripe[] = {theme.accent, theme.filter, theme.fx};
         for (int i = 0; i < 3; ++i)
@@ -6159,13 +6166,15 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
     case Kind::BrowserFolder:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, "OPEN FOLDER", 10.5f, hovered ? kText : kDim, Align::Center, true);
+        c.text(w.rect, tr(Str::ButtonOpenFolder), 10.5f, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ConfirmButton: {
         const bool ok = w.a == 1;
         c.fillRect(w.rect, ok ? kAccent.alpha(hovered ? 0.35f : 0.22f) : (hovered ? kTrack : kRaised), 6.0f);
         c.strokeRect(w.rect, ok ? kAccent : kBorder, 1.0f, 6.0f);
-        const char *label = !ok ? "Cancel" : confirm_ == static_cast<int>(PresetAction::Init) ? "Init" : "Load";
+        const char *label = tr(!ok                                                ? Str::ButtonCancel
+                               : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
+                                                                                  : Str::ButtonLoad);
         c.text(w.rect, label, 11.0f, kText, Align::Center, ok);
         break;
     }
@@ -6215,7 +6224,7 @@ void View::paintHoverTags(Canvas &c, const std::vector<Widget> &list) {
             const char *name = w.kind == Kind::TypeButton   ? filterTypeName(static_cast<FilterType>(w.b))
                                : w.kind == Kind::WaveButton ? waveName(static_cast<OpWave>(w.b))
                                : isMoreWave(picked)         ? waveName(picked)
-                                                            : "More waves";
+                                                            : tr(Str::TipMoreWaves);
             const Rect tip{w.rect.center().x - 40.0f, w.rect.bottom() + 3.0f, 80.0f, 16.0f};
             c.fillRect(tip, kRaised, 5.0f);
             c.text(tip, name, 10.5f, kText);
@@ -6249,7 +6258,7 @@ std::string View::modRangeText(int source, int slot) const {
         text += std::string("  ") + from + " \xE2\x86\x92 " + to;
     }
     if (slotBypassed(source, slot))
-        text += "  (off)";
+        text += std::string("  ") + tr(Str::CaptionBypassed);
     return text;
 }
 
@@ -6341,119 +6350,105 @@ void View::paintTooltip(Canvas &c) {
     const FxParam field = fxFieldOf(param);
     std::string text;
     if (hover_->kind == Kind::MacroName) {
-        text = "Double-click to rename";
+        text = tr(Str::TipRenameMacro);
     } else if (hover_->kind == Kind::NoteDisplay) {
-        text = "Click to draw how it follows the notes, across a range of them";
+        text = tr(Str::TipNoteDisplay);
     } else if (hover_->kind == Kind::WireEnd) {
-        text = "Drag the arrow onto another node or OUT to move the route there, or off them to remove it";
+        text = tr(Str::TipWireEnd);
     } else if (hover_->kind == Kind::Port) {
-        text = "Drag from the edge onto another node, or onto OUT, to connect";
+        text = tr(Str::TipPort);
     } else if (hover_->kind == Kind::FxInsert) {
-        text = "Add an effect here, between these two";
+        text = tr(Str::TipFxInsert);
     } else if (hover_->kind == Kind::McBand) {
-        const char *const bands[] = {"Low", "Mid", "High"};
-        text = value(paramIndex(hover_->a, FxParam::McLink)) >= 0.5
-                   ? "Linked: every band follows the low band's threshold, ratio and gain"
-                   : std::string(bands[hover_->b]) + " band: its curve on top, its threshold, ratio and gain below";
+        const Str bands[] = {Str::BandLow, Str::BandMid, Str::BandHigh};
+        text = value(paramIndex(hover_->a, FxParam::McLink)) >= 0.5 ? std::string(tr(Str::TipMcBandLinked))
+                                                                     : trf(Str::TipMcBand, {tr(bands[hover_->b])});
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
-        text = "Drag onto any knob, wire label or matrix cell for the mod wheel to move it";
+        text = tr(Str::TipWheelHandle);
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
-        text = "Drag onto a knob for it to follow the note played, from the lowest note to the highest";
+        text = tr(Str::TipNoteHandle);
     } else if (hover_->kind == Kind::MacroHandle) {
-        text = "Drag onto any knob, wire label or matrix cell for " + macroName(controller_.layout(), hover_->a - kMaxSources) +
-               " to move it";
+        text = trf(Str::TipMacroHandle, {macroName(controller_.layout(), hover_->a - kMaxSources)});
     } else if (hover_->kind == Kind::NodeTab || hover_->kind == Kind::MatrixLabel) {
         const bool on = nodeOn(hover_->a);
         const std::string title = nodeTitle(hover_->a);
-        text = controller_.layout().selectedNode != hover_->a ? (on ? "Show " : "Switch on and show ") + title
-               : on ? "Click to switch " + title + " off"
-                    : "Click to switch " + title + " on";
+        text = controller_.layout().selectedNode != hover_->a
+                   ? trf(on ? Str::TipShowNode : Str::TipSwitchOnAndShow, {title})
+                   : trf(on ? Str::TipSwitchNodeOff : Str::TipSwitchNodeOn, {title});
     } else if (hover_->kind == Kind::NodeGhost) {
-        text = nodeTitle(hover_->a) + " is off: click to switch it on";
+        text = trf(Str::TipNodeGhost, {nodeTitle(hover_->a)});
     } else if (isPartialCount(param)) {
-        text = "The wave from its first " + std::to_string(hover_->b) +
-               " partials; those past them keep their levels, unheard";
+        text = trf(Str::TipPartialCount, {std::to_string(hover_->b)});
     }
     else if (hover_->kind == Kind::PresetStep)
-        text = hover_->a < 0 ? "The previous preset in the folder" : "The next preset in the folder";
+        text = tr(hover_->a < 0 ? Str::TipPreviousPreset : Str::TipNextPreset);
     else if (hover_->kind == Kind::PresetNameBox)
-        text = controller_.patchEdited() ? "Changed since it was loaded  \xC2\xB7  click for the presets"
-                                         : "Click for the presets";
+        text = tr(controller_.patchEdited() ? Str::TipPresetChanged : Str::TipPresetName);
     else if (hover_->kind == Kind::BrowserFolder)
-        text = "Opens the preset folder";
+        text = tr(Str::TipOpenFolder);
     else if (hover_->kind == Kind::PresetButton)
-        text = hover_->a == 0   ? "Init: every setting back to its default"
-               : hover_->a == 1 ? "Load a preset"
-                                : "Save the patch as a preset";
+        text = tr(hover_->a == 0 ? Str::TipInit : hover_->a == 1 ? Str::TipLoad : Str::TipSave);
     else if (hover_->kind == Kind::SettingsButton)
-        text = "Settings";
+        text = tr(Str::TipSettings);
     else if (hover_->kind == Kind::SlotBypass)
-        text = slotBypassed(hover_->a, hover_->b) ? "Bypassed: click to let it modulate again"
-                                                  : "Bypass: it stops modulating, and keeps its target and depth";
+        text = tr(slotBypassed(hover_->a, hover_->b) ? Str::TipBypassed : Str::TipBypass);
     else if (hover_->kind == Kind::UndoButton)
         text = undoText(hover_->a == 1);
     else if (hover_->kind == Kind::ShapeReset)
-        text = isNoteCurve(hover_->a) ? "Back to every MIDI note, in a straight line from nothing to all of it"
-               : isClipCurve(hover_->a) || isShaperCurve(hover_->a) ? "Back to the S-curve a shaper starts with"
-                                      : "Back to the triangle a shape starts with";
+        text = tr(isNoteCurve(hover_->a)                                ? Str::TipResetNoteCurve
+                  : isClipCurve(hover_->a) || isShaperCurve(hover_->a) ? Str::TipResetCurve
+                                                                       : Str::TipResetShape);
     else if (hover_->kind == Kind::ShapeGrid)
-        text = hover_->a == 0 ? "Fewer or more grid lines across; Ctrl snaps points to them"
-                              : "Fewer or more grid lines up and down; Ctrl snaps points to them";
+        text = tr(hover_->a == 0 ? Str::TipGridAcross : Str::TipGridUpDown);
     else if (hover_->kind == Kind::FxRemove)
-        text = "Takes the effect out of the chain";
+        text = tr(Str::TipFxRemove);
     else if (hover_->kind == Kind::SourceRemove)
-        text = "Removes it, its modulation and whatever modulates its knobs";
+        text = tr(Str::TipSourceRemove);
     else if (hover_->kind == Kind::SourceAdd)
-        text = static_cast<SourceType>(hover_->a) == SourceType::Lfo ? "Adds an LFO" : "Adds an envelope";
+        text = tr(static_cast<SourceType>(hover_->a) == SourceType::Lfo ? Str::TipAddLfo : Str::TipAddEnv);
     else if (hover_->kind == Kind::PeqPoint)
-        text = isCut(peqType(value(peqTypeIndex(hover_->a, hover_->b))))
-                   ? "Drag for frequency and resonance, Alt-drag for resonance alone, double-click for none"
-                   : "Drag for frequency and gain, Alt-drag or scroll for Q, double-click for flat";
+        text = tr(isCut(peqType(value(peqTypeIndex(hover_->a, hover_->b)))) ? Str::TipCutHandle : Str::TipBandHandle);
     else if (isPowerParam(param))
-        text = "Off silences this and hides it from routing; its settings are kept";
+        text = tr(Str::TipNodePower);
     else if (isSourcePower(param))
-        text = "Off, it stands still and modulates nothing; its targets are kept";
+        text = tr(Str::TipSourcePower);
     else if (param == paramIndex(GlobalParam::Mono))
-        text = hover_->b == 0 ? "Every note gets its own voice" : "One voice moves from note to note";
+        text = tr(hover_->b == 0 ? Str::TipPoly : Str::TipMono);
     else if (param == paramIndex(GlobalParam::Legato))
-        text = "Mono: overlapping notes keep the envelopes running";
+        text = tr(Str::TipLegato);
     else if (field == FxParam::Enabled) // the icon on its card
-        text = value(param) >= 0.5 ? "Click to switch the effect off (off, it costs nothing), or drag to move it"
-                                   : "Off: click to switch the effect on again, or drag to move it";
+        text = tr(value(param) >= 0.5 ? Str::TipFxOn : Str::TipFxOff);
     else if (isLfoSync(param))
-        text = "Sync: the rate follows the host tempo as a note value";
+        text = tr(Str::TipLfoSync);
     else if (hover_->kind == Kind::ListButton && isFilterSlope(param))
-        text = slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0)
-                   ? "How steeply it cuts past the cutoff: 6 to 24 dB per octave"
-                   : "A band-pass or notch comes in 12 and 24 dB per octave";
+        text = tr(slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0) ? Str::TipSlope
+                                                                                                  : Str::TipSlopeBand);
     else if (isLfoFree(param))
-        text = "Free: runs on without restarting at each note, the same for every voice";
+        text = tr(Str::TipFree);
     else if (sourceFieldOf(param) == SourceParam::OneShot)
-        text = "One-shot: runs one cycle from each note, then stays where the cycle ends";
+        text = tr(Str::TipOneShot);
     else if (sourceFieldOf(param) == SourceParam::Unipolar)
-        text = "Unipolar: swings from 0 up instead of both ways, so it pushes its targets one way";
+        text = tr(Str::TipUnipolar);
     else if (field == FxParam::DelaySync)
-        text = "Sync: both delay times follow the host tempo as note values";
+        text = tr(Str::TipDelaySync);
     else if (field == FxParam::PhaserSync || field == FxParam::FlangerSync)
-        text = "Sync: the sweep follows the host tempo, a cycle per note value";
+        text = tr(Str::TipSweepSync);
     else if (field == FxParam::DelayPingPong)
-        text = "Ping-pong: the echoes bounce between left and right";
+        text = tr(Str::TipPingPong);
     else if (field == FxParam::DelayLink)
-        text = "Link: the right side waits as long as the left";
+        text = tr(Str::TipDelayLink);
     else if (field == FxParam::McLink)
-        text = "All three bands use the low band's threshold, ratio and gain; each keeps its own for unlinking";
+        text = tr(Str::TipBandLink);
     else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo)
-        text = "The right side's sweep runs a quarter cycle ahead of the left; off, both sweep together";
+        text = tr(Str::TipStereo);
     else if (field == FxParam::ShaperLink || shaperFieldOf(param) == ShaperParam::Link)
-        text = "Link: the output comes down as the drive goes up, by as much as keeps the level about even";
+        text = tr(Str::TipShaperLink);
     else if (field == FxParam::FilterType)
         text = filterTypeName(static_cast<FilterType>(hover_->b));
     else if (field == FxParam::ShaperMode)
-        text = hover_->b == 0   ? "Flat ceiling: loud and gritty"
-               : hover_->b == 1 ? "Rounded saturation that eases into the ceiling"
-                                : "Clips the lower half harder: even harmonics, tube-like";
+        text = tr(hover_->b == 0 ? Str::TipClipHard : hover_->b == 1 ? Str::TipClipSoft : Str::TipClipAsym);
     else
-        text = "Glide on every note (off: only between overlapping notes)";
+        text = tr(Str::TipGlideAlways);
     // As wide as its text, centered under the widget and kept inside the editor.
     const float width = std::min(std::ceil(c.textWidth(text, 11.0f)) + 24.0f, View::kWidth - 16.0f);
     const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
@@ -6565,13 +6560,12 @@ void View::paintTyping(Canvas &c) {
 std::string View::undoText(bool redo) const {
     const UndoStep *step = redo ? controller_.nextRedo() : controller_.nextUndo();
     if (!step)
-        return redo ? "Nothing to redo" : "Nothing to undo";
-    const std::string verb = redo ? "Redo " : "Undo ";
+        return tr(redo ? Str::RedoNothing : Str::UndoNothing);
     if (step->changes.size() == 1)
-        return verb + paramName(step->changes.front().index);
+        return trf(redo ? Str::RedoParam : Str::UndoParam, {paramName(step->changes.front().index)});
     if (step->changes.empty())
-        return verb + "the layout change";
-    return verb + std::to_string(step->changes.size()) + " changes";
+        return tr(redo ? Str::RedoLayout : Str::UndoLayout);
+    return trf(redo ? Str::RedoChanges : Str::UndoChanges, {std::to_string(step->changes.size())});
 }
 
 // --- Input.
@@ -6888,7 +6882,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::FxMenuButton:
         if (fxChain().size() >= static_cast<size_t>(kFxSlots)) {
-            flash("The chain holds up to " + std::to_string(kFxSlots) + " effects");
+            flash(trf(Str::MsgChainFull, {std::to_string(kFxSlots)}));
         } else {
             fxMenuOpen_ = !fxMenuOpen_ || fxMenuAt_.x >= 0.0f; // from another list, to the button's
             fxMenuAt_ = {-1.0f, -1.0f};
@@ -7022,7 +7016,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::ListButton:
         if (isFilterSlope(w.param) && !hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))))) {
-            flash("A comb filter has no slope");
+            flash(tr(Str::MsgCombSlope));
             break;
         }
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
@@ -7508,10 +7502,10 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     if (hit->kind == Kind::FxGrip || hit->kind == Kind::FxPower) {
         menuFx_ = hit->a;
         if (fxChain().size() < static_cast<size_t>(kFxSlots))
-            items.push_back({6, "Duplicate"});
-        items.push_back({8, "Reset settings"});
+            items.push_back({6, tr(Str::MenuDuplicate)});
+        items.push_back({8, tr(Str::MenuResetSettings)});
         items.push_back({0, ""});
-        items.push_back({7, "Remove"});
+        items.push_back({7, tr(Str::MenuRemove)});
         return items;
     }
     // Every source can swing its targets one way or both, from the menu of its card or handle (and a macro's knob,
@@ -7527,24 +7521,24 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     auto addPolarity = [&] {
         menuSource_ = polaritySource;
         const bool bipolar = sourceBipolar(polaritySource);
-        items.push_back({kUnipolarCommand, "Unipolar", !bipolar});
-        items.push_back({kBipolarCommand, "Bipolar", bipolar});
+        items.push_back({kUnipolarCommand, tr(Str::MenuUnipolar), !bipolar});
+        items.push_back({kBipolarCommand, tr(Str::MenuBipolar), bipolar});
     };
     if (hit->kind == Kind::SourceGrip || hit->kind == Kind::SourceHandle) {
         if (!usedSlots(hit->a).empty())
-            items.push_back({kClearCommand + hit->a, "Clear all " + sourceName(hit->a) + " targets"});
+            items.push_back({kClearCommand + hit->a, trf(Str::MenuClearTargets, {sourceName(hit->a)})});
         if (sources().size() < static_cast<size_t>(kMaxSources))
-            items.push_back({9, "Duplicate"});
+            items.push_back({9, tr(Str::MenuDuplicate)});
         if (!items.empty())
             items.push_back({0, ""});
         addPolarity();
         items.push_back({0, ""});
-        items.push_back({10, "Remove"});
+        items.push_back({10, tr(Str::MenuRemove)});
         return items;
     }
     if (hit->kind == Kind::MacroHandle || hit->kind == Kind::MacroName || hit->kind == Kind::NoteDisplay) {
         if (!usedSlots(polaritySource).empty()) {
-            items.push_back({kClearCommand + polaritySource, "Clear all " + sourceName(polaritySource) + " targets"});
+            items.push_back({kClearCommand + polaritySource, trf(Str::MenuClearTargets, {sourceName(polaritySource)})});
             items.push_back({0, ""});
         }
         addPolarity();
@@ -7559,33 +7553,33 @@ std::vector<MenuItem> View::contextMenu(Point p) {
                 menuValue_->kind = Kind::ValueText;
                 menuValue_->rect = {hit->rect.right() + 2.0f, hit->rect.y, 38.0f, hit->rect.h};
             }
-            items.push_back({11, "Edit depth\xE2\x80\xA6"});
+            items.push_back({11, tr(Str::MenuEditDepth)});
         }
         items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
-        items.push_back({100 + hit->a * kSlots + hit->b, "Remove " + sourceName(hit->a) + " modulation"});
+        items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {sourceName(hit->a)})});
         return items;
     }
     if (hit->kind == Kind::ShapePoint) {
         const bool end = isCurve(hit->a) && hit->b + 1 == shapePointCount(hit->a);
         if (hit->b > 0 && !end && shapePointCount(hit->a) > 2) {
             menuPoint_ = {hit->a, hit->b};
-            items.push_back({5, "Delete point"});
+            items.push_back({5, tr(Str::MenuDeletePoint)});
         }
         return items;
     }
     if (hit->kind == Kind::ShapeCurve) {
         menuParam_ = hit->param;
-        items.push_back({1, "Straighten"});
+        items.push_back({1, tr(Str::MenuStraighten)});
         return items;
     }
     if (hit->kind == Kind::Node || hit->kind == Kind::Port) { // the node, or its edge
         menuParam_ = enabledParam(hit->a);
-        items.push_back({4, "Switch off " + nodeTitle(hit->a)});
+        items.push_back({4, trf(Str::MenuSwitchOff, {nodeTitle(hit->a)})});
         return items;
     }
     if (hit->kind == Kind::WireEnd) {
         menuParam_ = hit->param;
-        items.push_back({3, "Disconnect"});
+        items.push_back({3, tr(Str::MenuDisconnect)});
         return items;
     }
     if (hit->param < 0)
@@ -7595,19 +7589,19 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     if (hit->kind == Kind::Knob || hit->kind == Kind::WireLabel || hit->kind == Kind::OutLabel ||
         hit->kind == Kind::GridCell) {
         menuValue_ = *hit;
-        items.push_back({11, "Edit value\xE2\x80\xA6"});
+        items.push_back({11, tr(Str::MenuEditValue)});
     }
-    items.push_back({1, "Reset to default"});
+    items.push_back({1, tr(Str::MenuResetDefault)});
     if ((hit->kind == Kind::WireLabel || hit->kind == Kind::OutLabel || hit->kind == Kind::GridCell) &&
         wired(hit->param))
-        items.push_back({3, "Disconnect"});
+        items.push_back({3, tr(Str::MenuDisconnect)});
     std::vector<MenuItem> removals, bypasses;
     for (const Assignment &m : assignments()) {
         if (m.target != hit->param)
             continue;
         if (!isStripSource(m.source))
             bypasses.push_back({kBypassCommand + m.source * kSlots + m.slot, bypassLabel(m.source, m.slot)});
-        removals.push_back({100 + m.source * kSlots + m.slot, "Remove " + sourceName(m.source) + " modulation"});
+        removals.push_back({100 + m.source * kSlots + m.slot, trf(Str::MenuRemoveModulation, {sourceName(m.source)})});
     }
     if (!removals.empty()) {
         items.push_back({0, ""});
@@ -7615,7 +7609,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({0, ""});
         items.insert(items.end(), removals.begin(), removals.end());
         if (removals.size() > 1)
-            items.push_back({2, "Remove all modulation"});
+            items.push_back({2, tr(Str::MenuRemoveAll)});
     }
     if (polaritySource >= 0) { // a macro's knob, or the mod wheel
         items.push_back({0, ""});
@@ -7625,7 +7619,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
 }
 
 std::string View::bypassLabel(int source, int slot) const {
-    return (slotBypassed(source, slot) ? "Resume " : "Bypass ") + sourceName(source) + " modulation";
+    return trf(slotBypassed(source, slot) ? Str::MenuResume : Str::MenuBypass, {sourceName(source)});
 }
 
 void View::menuCommand(int command) {
@@ -7766,7 +7760,7 @@ void View::endTyping(bool commit) {
         std::string name = start == std::string::npos ? std::string()
                                                       : t.text.substr(start, t.text.find_last_not_of(' ') - start + 1);
         name = name.substr(0, 24);
-        if (name == "Macro " + std::to_string(t.widget.a + 1))
+        if (name == trf(Str::MacroDefaultName, {std::to_string(t.widget.a + 1)}))
             name.clear();
         UiLayout &layout = controller_.layout();
         if (commit && name != layout.macroNames[t.widget.a]) {
@@ -7788,7 +7782,7 @@ void View::endTyping(bool commit) {
     if (parseParam(t.widget.param, text.c_str(), &v))
         edit(t.widget.param, v);
     else
-        flash("\"" + text + "\" doesn't read as a value for " + paramName(t.widget.param));
+        flash(trf(Str::MsgBadValue, {text, paramName(t.widget.param)}));
 }
 
 CursorKind View::cursor() const {

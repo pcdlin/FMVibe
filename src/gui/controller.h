@@ -2,6 +2,7 @@
 
 #include "../params.h"
 #include "../synth.h"
+#include "../uistrings.h"
 
 #include <array>
 #include <string>
@@ -55,7 +56,8 @@ struct UiLayout {
 
 // A macro's name as shown: its own, or "Macro 1" and so on.
 inline std::string macroName(const UiLayout &layout, int macro) {
-    return layout.macroNames[macro].empty() ? "Macro " + std::to_string(macro + 1) : layout.macroNames[macro];
+    return layout.macroNames[macro].empty() ? trf(Str::MacroDefaultName, {std::to_string(macro + 1)})
+                                        : layout.macroNames[macro];
 }
 
 // The grids the shape editor offers, across (a cycle, or the shaper's input) and up and down.
@@ -77,9 +79,9 @@ std::vector<int> shownSources(const UiLayout &layout, const Get &get) {
 template <class Get>
 std::string sourceName(const UiLayout &layout, const Get &get, int source) {
     if (isNote(source))
-        return "Note";
+        return tr(Str::SourceNameNote);
     if (isWheel(source))
-        return "Mod Wheel";
+        return tr(Str::SourceNameWheel);
     if (isMacro(source))
         return macroName(layout, source - kMaxSources);
     const SourceType type = sourceType(get(paramIndex(source, SourceParam::Type)));
@@ -89,7 +91,7 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
             break;
         number += sourceType(get(paramIndex(other, SourceParam::Type))) == type ? 1 : 0;
     }
-    return (type == SourceType::Env ? "Env " : "LFO ") + std::to_string(number);
+    return trf(type == SourceType::Env ? Str::SourceNameEnv : Str::SourceNameLfo, {std::to_string(number)});
 }
 
 // A preset in the library: a .fmv file in the preset folder, or in one of its subfolders.

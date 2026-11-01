@@ -9,6 +9,7 @@
 #include "gui/view.h"
 #include "params.h"
 #include "synth.h"
+#include "uistrings.h"
 
 #include <emscripten/em_js.h>
 #include <emscripten/emscripten.h>
@@ -48,7 +49,6 @@ EM_JS(void, js_set_setting, (const char *key, const char *value),
 
 constexpr int kDefaultOversampling = 2;
 constexpr char kFirstPreset[] = "PD Crystal Motion"; // the patch in docs/editor.png
-constexpr char kNoFiles[] = "Preset files need the plugin. The demo has the examples: click the preset's name.";
 
 std::string setting(const char *key) {
     char buffer[256];
@@ -115,7 +115,7 @@ public:
     }
     bool loadPreset(const std::wstring &) override { return false; }
     bool savePreset(const std::wstring &) override { return false; }
-    void choosePreset(bool) override { js_toast(kNoFiles); }
+    void choosePreset(bool) override { js_toast(tr(Str::DemoNoFiles)); }
     void rescanPresets() override {}
     const std::vector<PresetEntry> &presets() const override { return library_; }
     int presetIndex() const override {
@@ -126,7 +126,7 @@ public:
     }
     std::string presetName() const override {
         const int index = presetIndex();
-        return index < 0 ? "- Init -" : examples_[index].name;
+        return index < 0 ? tr(Str::PresetInit) : examples_[index].name;
     }
     bool loadPresetAt(int index) override {
         if (index < 0 || index >= static_cast<int>(examples_.size()))
@@ -145,8 +145,11 @@ public:
         setPreset(fileOf(index)); // in the step, so undoing it brings back the preset before
         return true;
     }
-    std::wstring presetFolder() const override { return L"Built-in examples"; }
-    void openPresetFolder() override { js_toast(kNoFiles); }
+    std::wstring presetFolder() const override {
+        const std::string name = tr(Str::DemoPresetFolder);
+        return std::wstring(name.begin(), name.end()); // the browser shows a folder as far as it is ASCII
+    }
+    void openPresetFolder() override { js_toast(tr(Str::DemoNoFiles)); }
 
     int oversampling() const override { return oversampling_; }
     void setOversampling(int factor) override {

@@ -16,6 +16,10 @@ feature.
 - Don't start Bitwig or another host yourself: the plugin is tried in the host by hand.
 - The editor draws through `Canvas`, which has two backends: Direct2D (`src/gui/canvas.cpp`) and the browser
   demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`). A new drawing call needs both.
+- Text the plugin shows (labels, tooltips, menus, messages, parameter names, remote control pages) is worded in
+  `src/uistrings.inc` and looked up by name: `tr(Str::Name)`, or `trf()` for a wording with `{1}`, `{2}` in it. New
+  text gets a line there. Tests that match on text (menu entries, page names) look it up the same way, so a
+  rewording keeps them green.
 
 ## Build
 
@@ -199,6 +203,7 @@ hit.
 | `src/plugin.cpp` | The CLAP plugin: process loop, events, ports, params, state, remote controls, voice info, gui |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
+| `src/uistrings.inc` | The wording of every piece of text the plugin shows, by name; `src/uistrings.h` looks it up |
 | `src/synth.cpp` | FM voices, matrix, filter routing, LFOs and mod envelopes, telemetry; independent of CLAP |
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
