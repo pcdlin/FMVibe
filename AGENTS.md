@@ -90,7 +90,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
     there only picks the node and a drag from further inside moves it; routing a carrier through a filter, and
     picking waves and filter types;
-  - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation;
+  - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
+    removing one by letting its arrowhead go in empty space;
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something
     (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, and the output meter and its clip light (read off

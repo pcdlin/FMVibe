@@ -3485,7 +3485,9 @@ void View::paint(Canvas &c) {
 
     if (drag_.kind == DragKind::Connect || rerouting() >= 0) {
         const int from = drag_.widget.a;
-        const Color color = nodeColor(from);
+        // A moving route away from the nodes and the bus is faint: let go of there, it goes.
+        const bool removing = rerouting() >= 0 && nodeAt(drag_.now) < 0 && !onBus(drag_.now);
+        const Color color = removing ? kFaint : nodeColor(from);
         // The route leaves its node toward the mouse; a moving one has its arrowhead under it.
         const Point origin = nodeCenter(from);
         const Point start = outlineToward(from, origin, drag_.now);
@@ -6266,7 +6268,7 @@ void View::paintTooltip(Canvas &c) {
     } else if (hover_->kind == Kind::NoteDisplay) {
         text = "Click to draw how it follows the notes, across a range of them";
     } else if (hover_->kind == Kind::WireEnd) {
-        text = "Drag the arrow onto another node, or onto OUT, to move the route there";
+        text = "Drag the arrow onto another node or OUT to move the route there, or off them to remove it";
     } else if (hover_->kind == Kind::Port) {
         text = "Drag from the edge onto another node, or onto OUT, to connect";
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
@@ -7175,8 +7177,8 @@ void View::mouseUp(Point p, Modifiers) {
         const int into = nodeAt(p) >= 0 ? nodeAt(p) : (onBus(p) ? kNodes : -1);
         if (into >= 0)
             reroute(w.a, w.b, into);
-        else
-            flash("Drop the arrow on a node, or on OUT, to move the route there");
+        else // let go of off the nodes and the bus, the route goes, with its modulation
+            disconnect(w.param);
         break;
     }
     case DragKind::ModSource: {

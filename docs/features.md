@@ -274,9 +274,9 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
       percentage label halfway down (beside the line, on its left, when the node sits too close to the bus for
       it). Drag an arrowhead onto another node to move the route there, or onto the bus to send its node out
       instead; the line to OUT's onto a node the same way. The route keeps its amount and its modulation, and
-      follows the mouse until it is let go; it can't go where its node has a route already, or where a port
-      couldn't take it, and let go of anywhere else, it stays where it was. An arrowhead's right-click menu
-      disconnects its route. The feedback loop above an operator has no arrowhead.
+      follows the mouse until it is let go; it can't go where its node has a route already, or where a node's edge
+      couldn't take it. Let go of off the nodes and the bus (where it turns faint), the route goes, with its
+      modulation, as its right-click menu's Disconnect does. The feedback loop above an operator has no arrowhead.
     - Drag a wire's percentage label up or down to set the depth; double-click it to remove the wire, and
       Ctrl+Click it (or pick Edit value… from its right-click menu) to type a depth. A wire, or
       a node's line to OUT, turned down to 0 % stays, so modulation can still be dropped on it; only removing it

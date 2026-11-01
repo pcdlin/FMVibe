@@ -1485,7 +1485,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // Dragging a wire's arrowhead moves the route there, with its amount and modulation: B -> A onto C, Env 1
     // going along, and back by undo; A's arrow to OUT onto C, then A -> C's onto the bus, so A goes out again.
-    // Let go of in empty space, an arrowhead leaves its route be.
+    // Let go of in empty space, an arrowhead takes its route away, with its modulation, and undo brings it back.
     {
         const Point cNode = nodeCenter(layout, 2);
         auto envTargets = [&](int param) {
@@ -1515,9 +1515,16 @@ void run(const std::filesystem::path &dir, float scale) {
         drag(view, arrowOf(a, cNode), {cNode.x + 150.0f, kBusY});
         check(outMoved && model.value(aOutParam) == 1.0 && model.value(matrixIndex(0, 2)) == 0.0,
               "an arrow to OUT moves onto a node, and a wire's arrow onto the OUT bus");
-        drag(view, arrowOf(b, a), {400.0f, 240.0f});
-        check(model.value(matrixIndex(1, 0)) == bToA && envTargets(matrixIndex(1, 0)),
-              "an arrowhead let go of away from the nodes and the bus leaves its route be");
+        view.mouseDown(arrowOf(b, a), {});
+        view.mouseMove({400.0f, 270.0f}, {});
+        view.mouseMove({400.0f, 240.0f}, {});
+        const bool removingShot = renderer.save(view, dir / "2f-removing.png");
+        view.mouseUp({400.0f, 240.0f}, {});
+        const bool removed = model.value(matrixIndex(1, 0)) == 0.0 && !envTargets(matrixIndex(1, 0)) &&
+                             canDisconnect() < 0;
+        view.undo();
+        check(removingShot && removed && model.value(matrixIndex(1, 0)) == bToA && envTargets(matrixIndex(1, 0)),
+              "an arrowhead let go of away from the nodes and the bus removes its route with its modulation, undoably");
         view.menuCommand(canDisconnect()); // B -> A goes, with Env 1's modulation, as before
         model.set(matrixIndex(1, 0), 0.3);
         view.poll();
