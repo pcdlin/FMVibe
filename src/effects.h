@@ -223,6 +223,7 @@ private:
         std::array<double, kShimmerLines> shimmerLow{}, shimmerBass{};
         double size = 1.0;      // the lines' length scale, gliding toward the knob
         double preLength = 0.0; // samples, gliding
+        double reach = 0.0;     // samples before what goes in has all come out of the pre-delay (see runReverb())
         double dry = 1.0;       // ramped
         double wet = 0.0;
         double width = 1.0;
@@ -230,7 +231,7 @@ private:
     };
 
     // First-order all-passes in a row, per side, their corners swept by the LFO; the right side's
-    // LFO runs a quarter cycle ahead.
+    // LFO runs a quarter cycle ahead. Those past Stages wait cleared, so more start clean.
     struct Phaser {
         std::array<std::array<double, kMaxPhaserStages>, 2> stages{};
         std::array<double, 2> last{}; // the last stage's output, fed back to the first

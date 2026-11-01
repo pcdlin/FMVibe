@@ -182,6 +182,116 @@ double throughDecimator(int factor, double hz) {
     return 10.0 * std::log10(2.0 * sum / static_cast<double>(frames - settle) + 1e-30);
 }
 
+// --- The effects chain: a reverb rings on while what went in still waits in its pre-delay; a jump in an effect's
+// param ramps however the host's events split the block; a drawn shaper curve passes a quiet, slow sine as drawn.
+void effectsChainChecks() {
+    std::printf("effects chain:\n");
+    auto defaults = [] {
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        return p;
+    };
+    {
+        // A 10 ms burst into a reverb with a 200 ms pre-delay, in the synth's 32-sample pieces: the reverb tells the
+        // host it rings on until its tail has been heard, and stops after that.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        p[paramIndex(0, FxParam::ReverbPreDelay)] = normFromTime(0.2);
+        p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(1.0);
+        constexpr uint32_t kPiece = 32;
+        float left[kPiece], right[kPiece];
+        double heard = 0.0, done = -1.0, after = 0.0;
+        for (size_t t = 0; t < static_cast<size_t>(4.0 * kSampleRate); t += kPiece) {
+            for (uint32_t s = 0; s < kPiece; ++s) {
+                const double phase = 2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate;
+                left[s] = right[s] = t + s < 480 ? static_cast<float>(0.5 * std::sin(phase)) : 0.0f;
+            }
+            fx.process(left, right, kPiece, p, 120.0, 60.0);
+            for (uint32_t s = 0; s < kPiece; ++s) {
+                const double level = std::max(std::abs(left[s]), std::abs(right[s]));
+                heard = level > 1e-5 ? (t + s) / kSampleRate : heard;
+                after = done >= 0.0 ? std::max(after, level) : after;
+            }
+            if (done < 0.0 && !fx.ringing())
+                done = (t + kPiece) / kSampleRate;
+        }
+        std::printf("      reverb, 200 ms pre-delay: heard until %.2f s, done at %.2f s, loudest after that %.0f dB\n",
+                    heard, done, 20.0 * std::log10(after + 1e-30));
+        check(done > heard && after < 1e-5,
+              "a reverb rings on while its input waits in the pre-delay, until its tail is heard");
+    }
+    {
+        // As Volume's (see the clicks), a jump rendered in single frames ramps as smoothly as in whole blocks.
+        struct Jump {
+            const char *name;
+            FxType type;
+            FxParam param;
+            double from, to;
+        };
+        const Jump jumps[] = {
+            {"compressor makeup +12 dB", FxType::Compressor, FxParam::CompMakeup, 0.0, 12.0},
+            {"delay mix 0 to 100 %", FxType::Delay, FxParam::DelayMix, 0.0, 1.0},
+            {"reverb mix 0 to 100 %", FxType::Reverb, FxParam::ReverbMix, 0.0, 1.0},
+            {"DJ EQ low band killed", FxType::Eq, FxParam::EqLow, 0.0, -1.0},
+        };
+        double worst = 0.0;
+        for (const Jump &jump : jumps) {
+            auto roughJump = [&jump](uint32_t piece) {
+                Engine e(2);
+                e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(jump.type);
+                e.p[paramIndex(0, jump.param)] = jump.from;
+                e.noteOn(48);
+                const std::vector<float> before = e.render(4800, piece);
+                e.p[paramIndex(0, jump.param)] = jump.to;
+                const std::vector<float> both = joined(before, e.render(2400, piece));
+                return roughness(both, before.size() - 2, both.size());
+            };
+            const double ratio = roughJump(1) / roughJump(kBlock);
+            std::printf("      %-30s %7.1fx in 1-frame blocks\n", jump.name, ratio);
+            worst = std::max(worst, ratio);
+        }
+        check(worst < 1.5, "an effect param jump ramps even when events split the block into single frames");
+    }
+    {
+        // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd so
+        // no DC blocker follows), at unity gain: each sample comes out as the curve has it at the middle of its step.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
+        p[paramIndex(0, FxParam::ShaperSymmetric)] = 1.0;
+        p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperLink)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperOutput)] = 0.0;
+        p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
+        const int curve = shaperParams(0).curve;
+        auto get = [&p](int index) { return p[index]; };
+        std::vector<float> left(kBlock), right(kBlock);
+        double last = 0.0, worst = 0.0;
+        for (size_t t = 0; t < static_cast<size_t>(kSampleRate); t += kBlock) {
+            for (uint32_t s = 0; s < kBlock; ++s) {
+                const double phase = 2.0 * std::numbers::pi * 50.0 * static_cast<double>(t + s) / kSampleRate;
+                left[s] = right[s] = static_cast<float>(0.01 * std::sin(phase));
+            }
+            const std::vector<float> in = left;
+            fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+            for (uint32_t s = 0; s < kBlock; ++s) {
+                const double drawn = shaperCurveValue(get, ClipMode::Custom, curve, true, 0.5 * (in[s] + last));
+                if (t + s >= 480) // once faded in
+                    worst = std::max(worst, std::abs(left[s] - drawn));
+                last = in[s];
+            }
+        }
+        std::printf("      drawn shaper curve, a -40 dB 50 Hz sine: off the curve by %.0f dB at most\n",
+                    20.0 * std::log10(worst + 1e-30));
+        check(worst < 1e-4, "a drawn shaper curve passes a quiet, slow sine as drawn, without spikes");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -596,6 +706,8 @@ int main() {
         std::printf("      %-30s %7.1fx\n", "volume jump, 1-frame blocks", ratio);
         check(ratio < 1.5, "a param jump ramps even when events split the block into single frames");
     }
+
+    effectsChainChecks();
 
     // --- The mod wheel leaves the FM alone until it is assigned: an FM pair sounds the same with it all the way up.
     {
