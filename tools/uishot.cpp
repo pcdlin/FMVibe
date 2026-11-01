@@ -665,8 +665,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Pulse) &&
               renderer.save(view, dir / "19b-pulse.png"),
           "the list behind ... picks an uncommon wave");
-    // Custom, at the end of that list, opens the partial editor: a stroke across the level bars draws them,
-    // and a double-click takes a bar to nothing.
+    // Custom, at the end of that list, opens the partial editor: a stroke across the level bars draws them
+    // (half way up the bars, which run from -60 dB to 0 dB, is -30 dB), and a double-click takes a bar to nothing.
     click(view, kMoreWavesButton);
     click(view, {1102.0f, 208.0f + 3.0f * 24.0f});
     const bool customPicked = model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Custom);
@@ -681,7 +681,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     doubleClick(view, {barX(0), halfway});
     bool drawn = model.value(partialLevelIndex(0, 0)) == 0.0;
     for (int partial = 1; partial <= 3; ++partial)
-        drawn = drawn && std::abs(model.value(partialLevelIndex(0, partial)) - 0.5) < 0.02;
+        drawn = drawn && std::abs(20.0 * std::log10(model.value(partialLevelIndex(0, partial))) + 30.0) < 1.5;
     drag(view, {barX(2), 402.0f + 48.0f * 0.75f}, {barX(2), 402.0f + 48.0f * 0.75f});
     view.mouseMove({barX(2), halfway}, {});
     check(customPicked && drawn && std::abs(model.value(partialPhaseIndex(0, 2)) - 0.25) < 0.03 &&

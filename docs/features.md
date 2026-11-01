@@ -347,8 +347,9 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     row of knobs starts with its shape, an icon in the band's color with its name under it, which opens the list
     of shapes.
   - **Partial editor**: picking Custom from an operator's **…** list opens its partials over the routing panel:
-    the wave they make, one cycle, then a bar per partial for its level and, in another color, one for its phase
-    (a full cycle at the top, faint while the partial is silent). Drag across the bars to draw them, double-click
+    the wave they make, one cycle, then a bar per partial for its level (in dB, from −60 just above the bottom
+    to 0 at the top, marked every 12; the bottom itself is none) and, in another color, one for its phase (a full
+    cycle at the top, faint while the partial is silent). Drag across the bars to draw them, double-click
     a bar to take it to nothing; hovering shows a partial's numbers. RESET goes back to a sine, DONE (or a tab)
     closes it, and Custom from the list opens it again. A stroke is one undo step.
   - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows EDIT) opens the

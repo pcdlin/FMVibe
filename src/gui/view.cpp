@@ -1220,6 +1220,15 @@ Rect partialBar(Rect area, int partial) {
 int partialAt(Rect area, float x) {
     return std::clamp(static_cast<int>((x - area.x) / (area.w / kPartials)), 0, kPartials - 1);
 }
+// The level bars run in dB, from 0 dB at the top down to the floor just above the bottom, which is none. The
+// levels themselves stay amplitudes.
+constexpr double kPartialFloorDb = -60.0;
+double partialLevelFromBar(double bar) {
+    return bar <= 0.0 ? 0.0 : std::pow(10.0, (1.0 - std::min(bar, 1.0)) * kPartialFloorDb / 20.0);
+}
+double partialBarFromLevel(double level) {
+    return level <= 0.0 ? 0.0 : std::clamp(1.0 - 20.0 * std::log10(level) / kPartialFloorDb, 0.0, 1.0);
+}
 
 } // namespace
 
@@ -4070,9 +4079,13 @@ void View::paintPartialEditor(Canvas &c, int op) {
     if (focus && focus->kind == Kind::PartialArea) {
         const Point at = drag_.kind == DragKind::Partials ? drag_.now : hoverPoint_;
         const int k = partialAt(focus->b == 0 ? kPartialLevels : kPartialPhases, at.x);
+        const double level = value(partialLevelIndex(op, k));
+        char levelText[24] = "none";
+        if (level > 0.0)
+            std::snprintf(levelText, sizeof(levelText), "%.1f dB", 20.0 * std::log10(level));
         char text[96];
-        std::snprintf(text, sizeof(text), "partial %d  \xC2\xB7  level %.0f %%  \xC2\xB7  phase %.0f\xC2\xB0", k + 1,
-                      value(partialLevelIndex(op, k)) * 100.0, value(partialPhaseIndex(op, k)) * 360.0);
+        std::snprintf(text, sizeof(text), "partial %d  \xC2\xB7  level %s  \xC2\xB7  phase %.0f\xC2\xB0", k + 1, levelText,
+                      value(partialPhaseIndex(op, k)) * 360.0);
         hint = text;
     }
     c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f}, hint, 10.5f,
@@ -4097,8 +4110,8 @@ void View::paintPartialEditor(Canvas &c, int op) {
                           wave.center().y - static_cast<float>(peak > 0.0 ? samples[i] / peak : 0.0) * wave.h * 0.5f});
     plotLine(c, points.data(), points.size(), kAccent, 2.0f);
 
-    // Levels and phases alike as bars from the bottom (a full cycle at the top), in different colors; a
-    // phase is faint while its partial is silent.
+    // Levels (in dB, a faint line every 12) and phases (a full cycle at the top) alike as bars from the bottom,
+    // in different colors; a phase is faint while its partial is silent.
     for (int row = 0; row < 2; ++row) {
         const Rect area = row == 0 ? kPartialLevels : kPartialPhases;
         c.fillRect(area.inset(-6.0f), kDisplayColor, 6.0f);
@@ -4106,7 +4119,8 @@ void View::paintPartialEditor(Canvas &c, int op) {
                true);
         for (int k = 0; k < kPartials; ++k) {
             const Rect bar = partialBar(area, k);
-            const double v = value(row == 0 ? partialLevelIndex(op, k) : partialPhaseIndex(op, k));
+            const double v = row == 0 ? partialBarFromLevel(value(partialLevelIndex(op, k)))
+                                      : value(partialPhaseIndex(op, k));
             const float h = static_cast<float>(v) * bar.h;
             c.fillRect({bar.x, area.y, bar.w, area.h}, kRaised.alpha(0.5f), 2.0f);
             if (h > 0.5f) {
@@ -4115,6 +4129,14 @@ void View::paintPartialEditor(Canvas &c, int op) {
                 c.fillRect({bar.x, bar.bottom() - h, bar.w, h}, (row == 0 ? kAccent : kFxColor).alpha(alpha), 2.0f);
             }
         }
+        if (row == 0)
+            for (int db = 0; db > kPartialFloorDb; db -= 12) {
+                const double bar = partialBarFromLevel(std::pow(10.0, db / 20.0));
+                const float y = area.bottom() - static_cast<float>(bar) * area.h;
+                if (db < 0)
+                    c.line({area.x, y}, {area.right(), y}, kBorder.alpha(0.5f), 1.0f);
+                c.text({area.x - 38.0f, y - 6.0f, 30.0f, 12.0f}, std::to_string(db), 9.0f, kFaint, Align::Right);
+            }
     }
     for (int k = 0; k < kPartials; ++k) {
         const Rect bar = partialBar(kPartialPhases, k);
@@ -6550,7 +6572,7 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::Partials: {
-        // A quick sweep sets every bar it passed, along a line from where the last move was.
+        // A quick sweep sets every bar it passed, along a line (in bar heights) from where the last move was.
         const int op = w.a;
         const Rect area = w.b == 0 ? kPartialLevels : kPartialPhases;
         const int k = partialAt(area, p.x);
@@ -6559,7 +6581,11 @@ void View::applyDrag(Point p) {
         const double fromValue = drag_.lastPartial < 0 ? v : drag_.startValue;
         for (int j = std::min(from, k); j <= std::max(from, k); ++j) {
             const double t = from == k ? 1.0 : static_cast<double>(j - from) / (k - from);
-            set(w.b == 0 ? partialLevelIndex(op, j) : partialPhaseIndex(op, j), fromValue + (v - fromValue) * t);
+            const double bar = fromValue + (v - fromValue) * t;
+            if (w.b == 0)
+                set(partialLevelIndex(op, j), partialLevelFromBar(bar));
+            else
+                set(partialPhaseIndex(op, j), bar);
         }
         drag_.lastPartial = k;
         drag_.startValue = v;
