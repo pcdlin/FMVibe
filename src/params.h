@@ -415,7 +415,7 @@ inline double clipOutputDb(double outputDb, double driveDb, bool linked) {
     return outputDb + 10.0 * std::log10(0.5 * kReference * kReference / meanSquare);
 }
 constexpr int kMaxPhaserStages = 12;
-constexpr int kMaxDisperserStages = 32;
+constexpr int kMaxDisperserStages = 64;
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
 constexpr int kPeqBands = 2;
 constexpr int kMcBands = 3;

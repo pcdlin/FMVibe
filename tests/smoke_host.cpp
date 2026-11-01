@@ -1797,7 +1797,7 @@ int main(int argc, char **argv) {
             {FxType::Flanger,
              {{fx(7, FxParam::FlangerFeedback), -1.0}, {fx(7, FxParam::FlangerDepth), 1.0},
               {fx(7, FxParam::FlangerRate), normFromRate(20.0)}}},
-            {FxType::Disperser, {{fx(7, FxParam::DisperserStages), 32.0}, {fx(7, FxParam::DisperserPinch), 1.0},
+            {FxType::Disperser, {{fx(7, FxParam::DisperserStages), 64.0}, {fx(7, FxParam::DisperserPinch), 1.0},
                                  {fx(7, FxParam::DisperserFreq), 1.0}}},
             {FxType::FreqShifter, {{fx(7, FxParam::ShiftRange), 1.0}, {fx(7, FxParam::ShiftAmount), 1.0},
                                    {fx(7, FxParam::ShiftFeedback), 0.9},
