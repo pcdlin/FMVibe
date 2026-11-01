@@ -1477,9 +1477,23 @@ void run(const std::filesystem::path &dir, float scale) {
               "an envelope handle dragged past its display lengthens its segment, the envelope staying inside");
     }
     // A double-click on a segment's bend handle straightens it to 0 %, whatever it started as: the decay's, halfway
-    // along the flat top of A's envelope (full sustain) and found there by its cursor, starts at +50 %.
+    // along the flat top of A's envelope (full sustain) and found there by its cursor, starts at +50 %. Hovered, its
+    // readout goes at the display's top right, over the flat top, whose line doesn't show through it (read off the
+    // rendered pixels: the readout is what changes from a render without it, the line the first row lit along much of
+    // the way, in a color well bluer than it is red).
     {
         const int decayCurve = paramIndex(0, OpParam::DecayCurve);
+        constexpr int kRows = 28, kColumns = 120;
+        auto corner = [&] {
+            std::vector<uint32_t> pixels;
+            for (int row = 0; row < kRows; ++row)
+                for (int column = 0; column < kColumns; ++column)
+                    pixels.push_back(renderer.pixel({1040.0f + column, 318.0f + row}));
+            return pixels;
+        };
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "4d-envelope-readout.png");
+        const std::vector<uint32_t> plain = corner();
         Point bend{0.0f, 0.0f};
         for (float y = 324.0f; y <= 336.0f && bend.x == 0.0f; y += 2.0f)
             for (float x = 950.0f; x < 1150.0f && bend.x == 0.0f; x += 2.0f) {
@@ -1487,6 +1501,36 @@ void run(const std::filesystem::path &dir, float scale) {
                 if (view.cursor() == CursorKind::Vertical)
                     bend = {x, y};
             }
+        const bool shot = renderer.save(view, dir / "4d-envelope-readout.png");
+        const std::vector<uint32_t> hovered = corner();
+        int top = kRows, bottom = -1, left = kColumns, right = -1, line = -1;
+        for (int row = 0; row < kRows; ++row) {
+            int lit = 0;
+            for (int column = 0; column < kColumns; ++column) {
+                const uint32_t color = plain[row * kColumns + column];
+                lit += std::max({color >> 16 & 255, color >> 8 & 255, color & 255}) > 120;
+                if (hovered[row * kColumns + column] != color) {
+                    top = std::min(top, row);
+                    bottom = row;
+                    left = std::min(left, column);
+                    right = std::max(right, column);
+                }
+            }
+            if (line < 0 && lit >= 40)
+                line = row;
+        }
+        auto blue = [](uint32_t color) {
+            return static_cast<int>(color & 255) - static_cast<int>(color >> 16 & 255) > 60;
+        };
+        int under = 0, through = 0; // the line's pixels across the readout (inside its edges), without it and with it
+        for (int column = left + 2; line >= 0 && column <= right - 2; ++column) {
+            under += blue(plain[line * kColumns + column]);
+            through += blue(hovered[line * kColumns + column]);
+        }
+        std::printf("      envelope readout: rows %d-%d, over the curve's line at row %d (%d pixels, %d showing)\n", top,
+                    bottom, line, under, through);
+        check(shot && top <= line && line <= bottom && under >= 20 && through == 0,
+              "an envelope handle's readout is drawn over the curve");
         const double before = model.value(decayCurve);
         doubleClick(view, bend);
         const bool straight = model.value(decayCurve) == 0.0 &&

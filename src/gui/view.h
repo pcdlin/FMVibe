@@ -466,6 +466,8 @@ private:
     void paintSources(Canvas &c);
     void paintSource(Canvas &c, float card, int source);
     void paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live);
+    // The values of the envelope handle `w` (hovered or dragged), at its display's top right over everything else.
+    void paintEnvReadout(Canvas &c, const Widget &w);
     // A filter's response, from its params; its key tracking (`keyTrackParam`) follows `pitch` (semitones, 69 is
     // A4). `spectrum`: what the filter puts out, measured, to show behind the response, if any.
     void paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam, int cutoffParam, int resonanceParam,

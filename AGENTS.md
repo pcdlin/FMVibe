@@ -112,7 +112,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle, the mod wheel and the note source's display;
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q;
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
-    off the rendered pixels), and straightening a segment's bend to 0 % with a double-click;
+    off the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
+    over the curve (read off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the play switches and the glide knob;

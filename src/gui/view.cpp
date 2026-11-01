@@ -3548,6 +3548,15 @@ void View::paint(Canvas &c) {
         }
     };
     paintWidgets(false);
+    // An envelope handle's readout goes over the curve and the other handles.
+    for (const Widget &w : list)
+        if ((w.kind == Kind::EnvPoint || w.kind == Kind::EnvCurve) && (isHovered(w) || isActive(w))) {
+            if (w.clip.w > 0.0f)
+                c.pushClip(w.clip);
+            paintEnvReadout(c, w);
+            if (w.clip.w > 0.0f)
+                c.popClip();
+        }
     // A switched-off source's card is dimmed below its title row (a folded one's name is already dim).
     c.pushClip(sourceCardClip());
     for (int s : sources()) {
@@ -5212,6 +5221,36 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
     }
 }
 
+void View::paintEnvReadout(Canvas &c, const Widget &w) {
+    const EnvIndices e = envIndices(w.a);
+    char a[32], b[32];
+    std::string text;
+    if (w.kind == Kind::EnvCurve) {
+        formatParam(w.param, value(w.param), a, sizeof(a));
+        text = trf(Str::CaptionEnvCurve, {tr(kEnvSegmentNames[w.b]), a});
+    } else if (w.b == 0) {
+        formatParam(e.attack, value(e.attack), a, sizeof(a));
+        text = a;
+    } else if (w.b == 1) {
+        formatParam(e.hold, value(e.hold), a, sizeof(a));
+        text = trf(Str::CaptionHold, {a});
+    } else if (w.b == 2) {
+        formatParam(e.decay, value(e.decay), a, sizeof(a));
+        formatParam(e.sustain, value(e.sustain), b, sizeof(b));
+        text = std::string(a) + "  \xC2\xB7  " + b;
+    } else {
+        formatParam(e.release, value(e.release), a, sizeof(a));
+        text = a;
+    }
+    // On a backdrop of the display's color, which the curve under it shows through faintly; left of a bipolar
+    // envelope's sign.
+    const Rect r = envRect(w.a);
+    const float right = r.right() - (w.a >= kOps && sourceBipolar(w.a - kOps) ? 24.0f : 8.0f);
+    const float width = c.textWidth(text, 10.5f);
+    c.fillRect({right - width - 5.0f, r.y + 2.0f, width + 10.0f, 14.0f}, kDisplayColor.alpha(0.85f), 4.0f);
+    c.text({r.x, r.y + 2.0f, right - r.x, 14.0f}, text, 10.5f, kText, Align::Right);
+}
+
 // How many cycles a random LFO's display shows.
 
 
@@ -5767,25 +5806,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const Color color = w.a < kOps ? kAccent : kSourceColors[w.a - kOps];
         c.fillCircle(center, hovered || active ? 5.5f : 4.0f, hovered || active ? color : kPanel);
         c.strokeCircle(center, hovered || active ? 5.5f : 4.0f, color, 1.8f);
-        if (hovered || active) {
-            const EnvIndices e = envIndices(w.a);
-            char a[32], b[32], text[80];
-            if (w.b == 0) {
-                formatParam(e.attack, value(e.attack), text, sizeof(text));
-            } else if (w.b == 1) {
-                formatParam(e.hold, value(e.hold), a, sizeof(a));
-                std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionHold, {a}).c_str());
-            } else if (w.b == 2) {
-                formatParam(e.decay, value(e.decay), a, sizeof(a));
-                formatParam(e.sustain, value(e.sustain), b, sizeof(b));
-                std::snprintf(text, sizeof(text), "%s  \xC2\xB7  %s", a, b);
-            } else {
-                formatParam(e.release, value(e.release), text, sizeof(text));
-            }
-            const Rect r = envRect(w.a);
-            c.text({r.x, r.y + 2.0f, r.w - 8.0f, 14.0f}, text, 10.5f, kText, Align::Right);
-        }
-        break;
+        break; // its readout goes over the other handles (paintEnvReadout())
     }
     case Kind::FilterPoint: {
         const Point center = w.rect.center();
@@ -6013,15 +6034,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const bool focused = hovered || active;
         const Color color = w.a < kOps ? kAccent : kSourceColors[w.a - kOps];
         c.fillCircle(w.rect.center(), focused ? 4.5f : 3.0f, focused ? kText : color.alpha(0.6f));
-        if (focused) {
-            char amount[32], text[80];
-            formatParam(w.param, value(w.param), amount, sizeof(amount));
-            std::snprintf(text, sizeof(text), "%s",
-                          trf(Str::CaptionEnvCurve, {tr(kEnvSegmentNames[w.b]), amount}).c_str());
-            const Rect r = envRect(w.a);
-            c.text({r.x, r.y + 2.0f, r.w - 8.0f, 14.0f}, text, 10.5f, kText, Align::Right);
-        }
-        break;
+        break; // its readout goes over the handles (paintEnvReadout())
     }
     case Kind::PartialArea:
         break; // drawn with its editor

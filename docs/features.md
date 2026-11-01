@@ -419,7 +419,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end
     (release). The small dot halfway along the attack, decay and release bends that segment (drag up or down,
-    double-click to straighten it, to 0 %). The display always zooms to fit the whole envelope across its width, so the handles of
+    double-click to straighten it, to 0 %). A hovered or dragged handle's values show at the display's top right,
+    over the curve. The display always zooms to fit the whole envelope across its width, so the handles of
     short segments stay apart; the zoom holds still while a handle is dragged, so it stays under the mouse, until
     the envelope would run past the display's end: then it zooms out to keep all of it in, the handle at the end,
     and dragging on lengthens the segment further. The same goes for the mod envelopes' displays. In the graph, an operator with unison is drawn as a stack of rings.
