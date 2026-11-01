@@ -3132,9 +3132,11 @@ void View::runPreset(PresetAction action) {
     case PresetAction::Init:
         controller_.resetPreset();
         break;
-    case PresetAction::Load: // a preset from the library, or a file from the dialog
+    case PresetAction::Load: // a preset from the library (which closes the browser), or a file from the dialog
         if (pendingPreset_ >= 0) {
-            if (!controller_.loadPresetAt(pendingPreset_))
+            if (controller_.loadPresetAt(pendingPreset_))
+                browserOpen_ = false;
+            else
                 flash("That preset could not be read");
         } else {
             controller_.choosePreset(false);
@@ -3271,7 +3273,10 @@ void View::openPreset(int index) {
         confirm_ = static_cast<int>(PresetAction::Load);
         pendingPreset_ = index;
         hover_.reset();
-    } else if (!controller_.loadPresetAt(index)) {
+    } else if (controller_.loadPresetAt(index)) {
+        browserOpen_ = false; // loaded from the browser, it closes; cancelled or unreadable, it stays for another pick
+        hover_.reset();
+    } else {
         flash("That preset could not be read");
     }
 }

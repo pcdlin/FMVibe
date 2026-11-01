@@ -501,8 +501,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
     preset in the folder, round from the last to the first. Clicking the name opens the **browser**: the presets
     at the top of the folder, then each subfolder's under its name, the current one marked; a click loads one
-    and leaves the browser open to try another; **OPEN FOLDER** shows the folder in Explorer, and the × or a
-    click around it closes it.
+    and closes the browser (if the patch has changed, it asks first, over the browser, which stays open when the
+    load is called off); **OPEN FOLDER** shows the folder in Explorer, and the × or a click around it closes it.
   - **Init** sets every param and the routing layout back to their defaults (the zoom stays). **Load** and
     **Save** read and write a `.fmv` file through the standard file dialog, which starts in the preset folder;
     Save suggests the current preset's name. The file holds the same data as the host's saved state, apart from

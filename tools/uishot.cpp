@@ -838,16 +838,25 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, previousPreset);
     click(view, previousPreset);
     check(stepped && model.presetIndex() == 2, "the arrows step through the presets, round from the first to the last");
+    // The browser: OPEN FOLDER shows the folder, and a preset picked loads and closes it. While it is open, its
+    // backdrop dims the header around it (read off the rendered pixels).
+    const Point headerGap{300.0f, 4.0f}; // above the header's knobs
+    view.mouseMove(presetBox, {});
+    renderer.save(view, dir / "22a-preset-stepped.png");
+    const uint32_t clear = renderer.pixel(headerGap);
     click(view, presetBox);
     const float browserTop = std::round((view.height() - 560.0f) * 0.5f); // the browser, centered in the editor
-    view.mouseMove({600.0f, browserTop + 56.0f + 2.0f * 24.0f + 12.0f}, {});
+    auto browserRow = [&](int row) { return Point{600.0f, browserTop + 56.0f + row * 24.0f + 12.0f}; };
+    view.mouseMove(browserRow(2), {});
     check(renderer.save(view, dir / "22b-preset-browser.png"), "render the preset browser");
-    click(view, {600.0f, browserTop + 56.0f + 2.0f * 24.0f + 12.0f}); // Bell, under the Examples header
+    const uint32_t dimmed = renderer.pixel(headerGap);
     click(view, {380.0f + 440.0f - 24.0f - 55.0f, browserTop + 560.0f - 27.0f}); // OPEN FOLDER
-    click(view, {380.0f + 440.0f - 26.0f, browserTop + 26.0f}); // the x
-    check(model.presetIndex() == 1 && model.folderOpens == 1, "the browser loads a preset and opens the folder");
+    click(view, browserRow(2)); // Bell, under the Examples header
     view.mouseMove(presetBox, {});
     check(renderer.save(view, dir / "22c-preset-bar.png"), "render the preset bar");
+    const bool closed = renderer.pixel(headerGap) == clear && clear != dimmed;
+    check(model.presetIndex() == 1 && model.folderOpens == 1 && closed,
+          "the browser opens the folder, and loading a preset from it closes it");
     // Undo and redo bring back which preset it was, and whether it had changed since.
     model.loadPresetAt(2);
     view.undo();
@@ -861,6 +870,17 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(changedPad && model.presetName() == "Pad" && !model.patchEdited(),
           "undoing the edits since a preset loaded leaves it unchanged again");
+    // While the patch has changed, a preset picked in the browser asks first, over it; going ahead loads it and
+    // closes the browser.
+    drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    click(view, presetBox);
+    click(view, browserRow(2)); // Bell
+    const bool asked = model.presetIndex() == 2;
+    click(view, {confirmPanel.right() - 64.0f, confirmPanel.bottom() - 38.0f}); // go ahead
+    view.mouseMove(presetBox, {});
+    renderer.save(view, dir / "22d-preset-loaded.png");
+    check(asked && model.presetIndex() == 1 && renderer.pixel(headerGap) == clear,
+          "a preset picked in the browser while the patch has changed asks first, then loads and closes it");
 
     // Dragging a source's handle to the panel's right end scrolls the cards along.
     for (int n = 0; n < 4; ++n)

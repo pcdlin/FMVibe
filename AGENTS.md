@@ -115,7 +115,8 @@ into a host are in the [README](README.md#build).
     rendered in each theme, and glowing), and closing it with its x or a click around it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
-  - the preset bar's arrows (asking first while the patch has changed) and the preset browser;
+  - the preset bar's arrows (asking first while the patch has changed) and the preset browser, which loading a
+    preset closes;
   - drawing a Custom wave's partials, and the LFO shape editor hiding the inspector;
   - the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered pixels), the list of
     more waves, the slot list's scrollbar, the shape editor's grid, snapping and RESET, and scrolling the source
