@@ -3180,7 +3180,7 @@ std::vector<View::Widget> View::widgets() const {
 // The settings dialog, centered over the editor.
 namespace {
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 330.0f;
+constexpr float kSettingsH = 364.0f;
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
 Rect settingsPanel(float viewHeight) {
     return {(View::kWidth - kSettingsW) * 0.5f, std::round((viewHeight - kSettingsH) * 0.5f), kSettingsW, kSettingsH};
@@ -3249,6 +3249,11 @@ void View::paintSettings(Canvas &c) {
            amount > 0.0f ? text : tr(Str::ValueOff), 10.5f, amount > 0.0f ? kText : kDim, Align::Left);
     c.text({panel.x + 24.0f, panel.y + 294.0f, panel.w - 48.0f, 16.0f},
            tr(Str::SettingsLookSaved), 10.5f, kFaint, Align::Left);
+    // The version and the license, at the bottom.
+    c.line({panel.x + 24.0f, panel.y + 320.5f}, {panel.right() - 24.0f, panel.y + 320.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, panel.y + 328.0f, panel.w - 48.0f, 16.0f};
+    c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), 10.5f, kFaint, Align::Left, true);
+    c.text(about, tr(Str::SettingsLicense), 10.5f, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())
         paintWidget(c, w, {});
 }

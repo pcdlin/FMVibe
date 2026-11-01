@@ -477,6 +477,8 @@ STR(SettingsOversamplingSaved, "Not stored in presets.")
 STR(SettingsLook, "LOOK")
 STR(SettingsGlow, "GLOW")
 STR(SettingsLookSaved, "Applies to all FMVibe instances.")
+STR(SettingsVersion, "FMVibe {1}") // the version number, at the bottom
+STR(SettingsLicense, "Released under the MIT license")
 
 // The preset browser, and the question before a preset replaces a changed patch.
 STR(PresetsTitle, "Presets")

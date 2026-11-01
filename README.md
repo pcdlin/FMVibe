@@ -45,3 +45,7 @@ the `debug` and `release` presets from `CMakePresets.json`.
 
 `.\build.ps1 -Install` copies the plugin into the per-user CLAP folder (`%LOCALAPPDATA%\Programs\Common\CLAP`),
 where hosts such as Bitwig Studio find it.
+
+## License
+
+FMVibe is released under the [MIT license](LICENSE).

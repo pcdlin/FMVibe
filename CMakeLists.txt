@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
-project(FMVibe VERSION 0.9.1 LANGUAGES CXX)
+project(FMVibe VERSION 0.1 LANGUAGES CXX)
+
+# The version hosts are told and the settings dialog shows, for every target (the browser demo's too). Change it
+# in project() above.
+add_compile_definitions(FMVIBE_VERSION="${PROJECT_VERSION}")
 
 include(FetchContent)
 
@@ -77,7 +81,6 @@ add_library(FMVibe MODULE
     src/gui/editor.h
 )
 target_link_libraries(FMVibe PRIVATE fmvibe-core)
-target_compile_definitions(FMVibe PRIVATE FMVIBE_VERSION="${PROJECT_VERSION}")
 set_target_properties(FMVibe PROPERTIES PREFIX "" SUFFIX ".clap")
 fmvibe_options(FMVibe)
 

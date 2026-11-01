@@ -2461,7 +2461,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;
-    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 330.0f) * 0.5f), 380.0f, 330.0f};
+    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 364.0f) * 0.5f), 380.0f, 364.0f};
     auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
     auto theme = [&](int i) {
         const float w = (dialog.w - 48.0f + 6.0f) / View::themeCount();
