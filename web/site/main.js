@@ -87,8 +87,10 @@ async function startAudio() {
 
 function fromAudio(message) {
   if (message.type === 'telemetry') {
-    // The struct's bytes, as the audio side's module laid them out; both modules come from the same header.
-    ui.HEAPU8.set(new Uint8Array(message.buffer), ui._ui_telemetry_buffer());
+    // The struct's bytes, as the audio side's module laid them out; both modules come from the same header. A
+    // stale cached module from another build may lay out more: never more than the editor's struct holds.
+    const size = Math.min(message.buffer.byteLength, ui._ui_telemetry_size());
+    ui.HEAPU8.set(new Uint8Array(message.buffer, 0, size), ui._ui_telemetry_buffer());
     ui._ui_telemetry_stamp(performance.now());
     send({type: 'buffer', buffer: message.buffer}, [message.buffer]);
   } else if (message.type === 'ready') {
@@ -430,6 +432,9 @@ window.addEventListener('keyup', (e) => {
     held.delete(e.code);
     host.note(note, false);
   }
+  // A Mac sends no keyup for keys let go while Command is down: none may hang once Command is let go too.
+  if (e.key === 'Meta')
+    releaseAll();
 });
 
 // No key may hang when the page loses the keyboard; what was being typed counts.
@@ -452,6 +457,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('resize', resize);
+// Moved to a screen of another pixel density, the page may keep its size: watch the density itself.
+function watchDensity() {
+  matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener('change', () => {
+    resize();
+    watchDensity();
+  }, {once: true});
+}
+watchDensity();
 showOctave();
 resize();
 requestAnimationFrame(frame);

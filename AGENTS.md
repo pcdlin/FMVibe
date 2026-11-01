@@ -76,7 +76,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken. It saves/loads state
-  through a stream that only moves 5 bytes per call, a layout as large as one gets among them, and checks that
+  through a stream that only moves 5 bytes per call, a layout as large as one gets among them (and one of NaNs,
+  which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: on the development machine, 16
   voices × 6 operators take about 22 % of one core at the default 2x oversampling, and about 38 % with every
   operator at 8 unison copies.
@@ -285,7 +286,10 @@ itself.
 - A slot's *target* param stores the target's id + 1 (0 = unused). Targets aren't offered for automation, since
   they are wiring, but they are saved like any other param. Their depths are normal automatable params.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events. Hosts
-  record automation and undo from these, and mark the project as changed. For half a second after the plugin
+  record automation and undo from these, and mark the project as changed. Loading a preset, or Init, sends them for
+  each param whose value changed. The last of the queue they wait in is kept for the ends of gestures already begun,
+  so a host is never left inside one; an edit that doesn't fit has the host read every value again (a values
+  rescan) instead. For half a second after the plugin
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment.
 - The state blob holds `(id, value)` pairs with a version number (currently 1), followed by the editor layout:
@@ -295,7 +299,8 @@ itself.
   the settings chunk and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
-  floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; states
+  floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
+  short keeps the floats that arrived whole, and a layout value that isn't a number keeps its default. States
   with a newer version are refused.
 - Times and LFO rates are stored as 0–1 on a log curve (1 ms–20 s, 0.02–100 Hz), so host knobs and modulation
   have resolution where it matters. The value text shows ms/s/Hz.

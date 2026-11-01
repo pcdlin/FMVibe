@@ -2,9 +2,11 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <cmath>
 #include <iterator>
 #include <numbers>
+#include <string>
 #include <utility>
 
 namespace fmvibe::gui {
@@ -202,28 +204,43 @@ float liftedSize(float size) {
     constexpr float kLiftBelow = 11.5f;
     return size < kLiftBelow ? size + (kLiftBelow - size) * 0.4f : size;
 }
-int widen(std::string_view utf8, wchar_t (&wide)[256]) {
-    return MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), wide,
-                               static_cast<int>(std::size(wide)));
+// The text in UTF-16: in `buffer` when it fits, as all but very long text does (UTF-16 never takes more units than
+// UTF-8 takes bytes), else in `longer`, rather than failing and leaving the text out.
+std::wstring_view widen(std::string_view utf8, wchar_t (&buffer)[256], std::wstring &longer) {
+    const int size = static_cast<int>(utf8.size());
+    if (utf8.size() <= std::size(buffer)) {
+        const int length =
+            MultiByteToWideChar(CP_UTF8, 0, utf8.data(), size, buffer, static_cast<int>(std::size(buffer)));
+        return {buffer, static_cast<size_t>(std::max(length, 0))};
+    }
+    const int length = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), size, nullptr, 0);
+    if (length <= 0)
+        return {};
+    longer.resize(static_cast<size_t>(length));
+    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), size, longer.data(), length);
+    return longer;
 }
 } // namespace
 
 void Canvas::text(Rect r, std::string_view utf8, float size, Color c, Align align, bool bold) {
-    wchar_t wide[256];
-    const int length = widen(utf8, wide);
-    if (length <= 0)
+    wchar_t buffer[256];
+    std::wstring longer;
+    const std::wstring_view wide = widen(utf8, buffer, longer);
+    if (wide.empty())
         return;
-    target_->DrawText(wide, static_cast<UINT32>(length), resources_.textFormat(liftedSize(size), bold, align), rc(r),
-                      brush(c), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    target_->DrawText(wide.data(), static_cast<UINT32>(wide.size()),
+                      resources_.textFormat(liftedSize(size), bold, align), rc(r), brush(c),
+                      D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
 float Canvas::textWidth(std::string_view utf8, float size, bool bold) {
-    wchar_t wide[256];
-    const int length = widen(utf8, wide);
-    if (length <= 0)
+    wchar_t buffer[256];
+    std::wstring longer;
+    const std::wstring_view wide = widen(utf8, buffer, longer);
+    if (wide.empty())
         return 0.0f;
     ComPtr<IDWriteTextLayout> layout;
-    if (FAILED(resources_.writeFactory()->CreateTextLayout(wide, static_cast<UINT32>(length),
+    if (FAILED(resources_.writeFactory()->CreateTextLayout(wide.data(), static_cast<UINT32>(wide.size()),
                                                            resources_.textFormat(liftedSize(size), bold, Align::Left),
                                                            1.0e4f, 100.0f, layout.GetAddressOf())))
         return 0.0f;

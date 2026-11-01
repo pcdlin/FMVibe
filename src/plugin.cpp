@@ -120,16 +120,21 @@ bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     return true;
 }
 
-bool readAll(const clap_istream_t *stream, void *data, size_t size) {
+// Reads until `size` bytes have come or the stream ends, and says how many came.
+size_t readUpTo(const clap_istream_t *stream, void *data, size_t size) {
     auto *bytes = static_cast<uint8_t *>(data);
-    while (size > 0) {
-        const int64_t read = stream->read(stream, bytes, size);
+    size_t done = 0;
+    while (done < size) {
+        const int64_t read = stream->read(stream, bytes + done, size - done);
         if (read <= 0)
-            return false;
-        bytes += read;
-        size -= static_cast<size_t>(read);
+            break;
+        done += static_cast<size_t>(read);
     }
-    return true;
+    return done;
+}
+
+bool readAll(const clap_istream_t *stream, void *data, size_t size) {
+    return readUpTo(stream, data, size) == size;
 }
 
 // Reads a chunk of floats that starts with `magic` and its count into `out`: up to `most` of them, skipping
@@ -142,8 +147,9 @@ bool readChunk(const clap_istream_t *stream, uint32_t magic, uint32_t most, std:
     if (!readAll(stream, chunk, sizeof(chunk)) || chunk[0] != magic)
         return false;
     out.resize(std::min(chunk[1], most));
-    if (!readAll(stream, out.data(), out.size() * sizeof(float))) {
-        out.clear();
+    const size_t came = readUpTo(stream, out.data(), out.size() * sizeof(float));
+    if (came < out.size() * sizeof(float)) {
+        out.resize(came / sizeof(float));
         return true;
     }
     float skipped[64];
@@ -169,8 +175,24 @@ clap_ostream_t fileOut(FILE *file) {
             }};
 }
 
-std::string utf8(const std::u8string &text) {
-    return std::string(text.begin(), text.end());
+// A path's text in UTF-8, or empty for one that has no UTF-8 form (a lone surrogate in a file name): the
+// exception std::filesystem throws for it mustn't reach the host or the window procedure.
+std::string utf8(const std::filesystem::path &path, bool generic = false) {
+    try {
+        const std::u8string text = generic ? path.generic_u8string() : path.u8string();
+        return std::string(text.begin(), text.end());
+    } catch (const std::exception &) {
+        return {};
+    }
+}
+
+// The path a UTF-8 text names, or an empty one for text that isn't UTF-8 (a damaged state), for the same reason.
+std::wstring widePath(std::string_view text) {
+    try {
+        return std::filesystem::path(std::u8string(text.begin(), text.end())).wstring();
+    } catch (const std::exception &) {
+        return {};
+    }
 }
 
 // Whether `a` sorts before `b`, ignoring case.
@@ -423,6 +445,12 @@ public:
         return true;
     }
 
+    // Producer only: how many more items fit for certain (the consumer may make more room meanwhile).
+    size_t room() const {
+        const size_t head = head_.load(std::memory_order_relaxed);
+        return (tail_.load(std::memory_order_acquire) + N - head - 1) % N;
+    }
+
     bool pop(T &item) {
         const size_t tail = tail_.load(std::memory_order_relaxed);
         if (tail == head_.load(std::memory_order_acquire))
@@ -445,6 +473,9 @@ struct EditEvent {
     clap_id id;
     double value;
 };
+
+// How much of the edit queue only gestures' ends may take.
+constexpr size_t kEndRoom = 256;
 
 // How long after the plugin tells the host a param's value it takes none for that param from the host.
 constexpr int64_t kHostEchoMs = 500;
@@ -641,7 +672,7 @@ private:
     void setParam(const clap_event_param_value_t &ev);
     void queueEdit(const EditEvent &ev);
     void sendEdits(const clap_output_events_t *out);
-    void notifyParams();
+    void notifyParams(const ParamValues &before);
     // Which effect each slot holds, the chain order and which source each place
     // holds: what hosts see of the effects and sources.
     static bool shapesSections(int index) {
@@ -951,10 +982,16 @@ void Plugin::setParam(const clap_event_param_value_t &ev) {
 }
 
 void Plugin::queueEdit(const EditEvent &ev) {
-    // The value itself is already stored; the event tells the host about it.
-    edits_.push(ev);
-    if (hostParams_)
-        hostParams_->request_flush(host_);
+    // The value itself is already stored; the event tells the host about it. The last of the queue is kept for
+    // the ends of gestures already begun, so the host is never left inside one; an edit that doesn't fit has the
+    // host read every value again instead.
+    const bool queued =
+        ev.type == EditEvent::Type::End ? edits_.push(ev) : edits_.room() > kEndRoom && edits_.push(ev);
+    if (!hostParams_)
+        return;
+    if (!queued)
+        hostParams_->rescan(host_, CLAP_PARAM_RESCAN_VALUES);
+    hostParams_->request_flush(host_);
 }
 
 void Plugin::sendEdits(const clap_output_events_t *out) {
@@ -1078,7 +1115,7 @@ bool Plugin::saveState(const clap_ostream_t *stream, bool settings) const {
         return false;
 
     // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
-    const std::string preset = (patchEdited() ? '\1' : '\0') + utf8(std::filesystem::path(presetFile()).u8string());
+    const std::string preset = (patchEdited() ? '\1' : '\0') + utf8(std::filesystem::path(presetFile()));
     const uint32_t presetChunk[] = {kPresetMagic, static_cast<uint32_t>(preset.size())};
     return writeAll(stream, presetChunk, sizeof(presetChunk)) && writeAll(stream, preset.data(), preset.size());
 }
@@ -1116,8 +1153,13 @@ bool Plugin::loadState(const clap_istream_t *stream, bool settings) {
     std::vector<float> stored;
     readChunk(stream, kLayoutMagic, kMaxLayoutFloats, stored);
     size_t field = 0;
+    // A value that isn't a number (a damaged file) keeps its default too: clamped, it would stay NaN, and turned
+    // into an index, reach far outside the arrays it indexes.
     auto next = [&](float fallback, float min, float max) {
-        return field < stored.size() ? std::clamp(stored[field++], min, max) : fallback;
+        if (field >= stored.size())
+            return fallback;
+        const float value = stored[field++];
+        return std::isfinite(value) ? std::clamp(value, min, max) : fallback;
     };
     for (float &x : layout.nodeX)
         x = next(x, 0.0f, 1.0f);
@@ -1187,8 +1229,7 @@ bool Plugin::loadState(const clap_istream_t *stream, bool settings) {
                 preset.clear();
         }
         if (!preset.empty()) {
-            setPreset(std::filesystem::path(std::u8string(preset.begin() + 1, preset.end())).wstring(),
-                      preset[0] != '\0');
+            setPreset(widePath(std::string_view(preset).substr(1)), preset[0] != '\0');
         } else {
             bool atInit = true;
             for (int i = 0; i < kParamCount && atInit; ++i)
@@ -1201,11 +1242,16 @@ bool Plugin::loadState(const clap_istream_t *stream, bool settings) {
     return true;
 }
 
-// Main thread. Every param changes at once, so tell the host about all of them.
-void Plugin::notifyParams() {
+// Main thread. Every param may have changed at once: tell the host about each one that did, since `before`. All
+// of them, three events each, would be more than the edit queue holds once two loads come before the host takes
+// them, and more than some hosts take in one go.
+void Plugin::notifyParams(const ParamValues &before) {
     for (int i = 0; i < kParamCount; ++i) {
+        const double value = values_[i].load();
+        if (value == before[i])
+            continue;
         queueEdit({EditEvent::Type::Begin, idOfIndex(i), 0.0});
-        queueEdit({EditEvent::Type::Value, idOfIndex(i), values_[i].load()});
+        queueEdit({EditEvent::Type::Value, idOfIndex(i), value});
         queueEdit({EditEvent::Type::End, idOfIndex(i), 0.0});
     }
     sectionsChanged();
@@ -1229,13 +1275,14 @@ void Plugin::resetPreset() {
     {
         gui::UndoScope step(*this);
         recordAll();
+        const auto told = std::make_unique<ParamValues>(valuesNow());
         const ParamTable &table = paramTable();
         for (int i = 0; i < kParamCount; ++i)
             values_[i].store(table[i].def);
         const gui::UiLayout before = layout_;
         layout_ = gui::UiLayout{};
         keepEditorLayout(before);
-        notifyParams();
+        notifyParams(*told);
         layoutChanged();
         setPreset(L"");
     }
@@ -1251,9 +1298,10 @@ bool Plugin::loadPreset(const std::wstring &path) {
     {
         gui::UndoScope step(*this);
         recordAll();
+        const auto told = std::make_unique<ParamValues>(valuesNow());
         loaded = loadState(&stream, false);
         if (loaded) {
-            notifyParams();
+            notifyParams(*told);
             layoutChanged();
             setPreset(path); // in the step, so undoing it brings back the preset before
         }
@@ -1328,8 +1376,11 @@ void Plugin::rescanPresets() {
         if (!it->is_regular_file(fileError) || _wcsicmp(it->path().extension().c_str(), L".fmv") != 0)
             continue;
         const fs::path parent = it->path().parent_path().lexically_relative(folder);
-        const std::string category = parent.empty() || parent == L"." ? std::string() : utf8(parent.generic_u8string());
-        found.push_back({{utf8(it->path().stem().u8string()), category}, it->path().lexically_normal()});
+        const std::string category = parent.empty() || parent == L"." ? std::string() : utf8(parent, true);
+        std::string name = utf8(it->path().stem());
+        if (name.empty()) // a name with no UTF-8 form can't be shown
+            continue;
+        found.push_back({{std::move(name), category}, it->path().lexically_normal()});
     }
     // The top folder's presets first, then each subfolder's, each by name.
     std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) {
@@ -1354,7 +1405,7 @@ int Plugin::presetIndex() const {
 }
 
 std::string Plugin::presetName() const {
-    return presetFile().empty() ? tr(Str::PresetInit) : utf8(std::filesystem::path(presetFile()).stem().u8string());
+    return presetFile().empty() ? tr(Str::PresetInit) : utf8(std::filesystem::path(presetFile()).stem());
 }
 
 bool Plugin::loadPresetAt(int index) {
