@@ -1208,6 +1208,26 @@ inline int slotTarget(double value) {
     return isModTarget(index) ? index : -1;
 }
 
+// What the macros and the mod wheel add to their targets, the same for every voice and the effects, notes playing or
+// not: calls `add(target, offset)` for each slot in use, the offset in plain units. `get(index)` returns a param
+// value.
+template <class Get, class Add>
+void forEachMacroMod(const Get &get, const Add &add) {
+    for (int source = kMaxSources; source < kAllSources; ++source) {
+        if (isNote(source))
+            continue;
+        // Bipolar, the knob's middle moves nothing, and its ends half the depth either way.
+        const double knob = get(stripKnobIndex(source)) - (sourceBipolar(get, source) ? 0.5 : 0.0);
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const int target = slotTarget(get(slotTargetIndex(source, slot)));
+            const double amount = get(slotAmountIndex(source, slot));
+            if (target < 0 || target >= kModulatedCount || amount == 0.0)
+                continue;
+            add(target, knob * amount * (paramTable()[target].max - paramTable()[target].min));
+        }
+    }
+}
+
 // Whether param `index` does anything with the current settings: an effect
 // slot's fields only count while the slot holds their type, and a source's
 // likewise. Hosts don't see the others. `get(index)` returns a param value.

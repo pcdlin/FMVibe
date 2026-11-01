@@ -1314,6 +1314,29 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 300.0f}, {});
     renderer.save(view, dir / "26a2-macro-mapped.png");
     const int macroLive = ringLevel(renderer, macroRing, 20.0f);
+    // With no note playing, FM Amount's knob shows where the macro takes it, a dot on its arc, which goes with the
+    // macro turned back to 0 while the rest of the knob stays as it was (read off the rendered pixels).
+    auto fmKnobPixels = [&] {
+        std::vector<uint32_t> pixels;
+        for (float dy = -30.0f; dy <= 30.0f; dy += 1.0f)
+            for (float dx = -40.0f; dx <= 40.0f; dx += 1.0f)
+                pixels.push_back(renderer.pixel({kFmAmountKnob.x + dx, kFmAmountKnob.y + dy}));
+        return pixels;
+    };
+    const std::vector<uint32_t> turnedUp = fmKnobPixels();
+    const double macroValue = model.value(paramIndex(0, MacroParam::Value));
+    model.set(paramIndex(0, MacroParam::Value), 0.0);
+    view.poll();
+    renderer.save(view, dir / "26a3-macro-at-zero.png");
+    const std::vector<uint32_t> turnedDown = fmKnobPixels();
+    model.set(paramIndex(0, MacroParam::Value), macroValue);
+    view.poll();
+    int dotPixels = 0;
+    for (size_t i = 0; i < turnedUp.size(); ++i)
+        dotPixels += turnedUp[i] != turnedDown[i];
+    std::printf("      FM Amount's knob with no note: %d pixels change with the macro turned to 0\n", dotPixels);
+    check(model.live.voices == 0 && dotPixels > 8 && dotPixels < 120,
+          "with no note playing, a knob shows where a macro takes it");
     doubleClick(view, {macroKnob(0).x, y + 26.0f});
     type(view, "Bright");
     view.typeKey(View::Key::Enter);

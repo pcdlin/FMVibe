@@ -3913,6 +3913,9 @@ bool View::isActive(const Widget &w) const {
 void View::paint(Canvas &c) {
     const std::vector<Widget> list = widgets();
     const std::vector<Assignment> mods = assignments();
+    std::fill(macroOffsets_.begin(), macroOffsets_.end(), 0.0f);
+    forEachMacroMod([this](int i) { return value(i); },
+                    [this](int target, double offset) { macroOffsets_[target] += static_cast<float>(offset); });
 
     theme_ = themeIndex(controller_.theme());
     look = kThemes[theme_];
@@ -4235,7 +4238,7 @@ void View::paintRouting(Canvas &c) {
 
 double View::liveAmount(int param) const {
     const ParamDef &def = table_[param];
-    const double offset = telemetry_.voices > 0 ? liveOffset(param) : 0.0;
+    const double offset = liveOffset(param);
     return std::clamp((value(param) + offset - def.min) / (def.max - def.min), 0.0, 1.0);
 }
 
@@ -4286,9 +4289,9 @@ void View::paintModRange(Canvas &c, Rect bar, int param, const std::vector<Assig
         return;
     if (focus)
         range(*focus, true);
-    // Where the set amount is, and where the newest voice is now.
+    // Where the set amount is, and where the newest voice (or with no note playing, the macros) takes it now.
     c.fillRect({bar.x + static_cast<float>(n) * bar.w - 0.75f, bar.y - 1.0f, 1.5f, bar.h + 2.0f}, kDim, 0.5f);
-    if (telemetry_.voices > 0 && liveOffset(param) != 0.0f)
+    if (liveOffset(param) != 0.0f)
         c.fillCircle({bar.x + static_cast<float>(liveAmount(param)) * bar.w, bar.center().y}, 2.2f, kText);
 }
 
@@ -6042,7 +6045,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
     case Kind::GridCell: {
         const double amount = value(w.param);
         const bool out = w.b == kGridCols - 1;
-        const float a = static_cast<float>(liveAmount(w.param)); // the fill follows modulation while notes play
+        const float a = static_cast<float>(liveAmount(w.param)); // the fill follows modulation (the macros' with no note)
         const bool boxes = isBoxNode(w.a) || (!out && isBoxNode(w.b));
         const Color fill = out ? kText.alpha(0.1f + 0.3f * a)
                                : routeColor(w.a, out ? w.a : w.b).alpha(0.12f + (boxes ? 0.5f : 0.55f) * a);
@@ -6781,9 +6784,9 @@ void View::paintKnob(Canvas &c, const Widget &w, const std::vector<Assignment> &
     c.line(Canvas::onCircle(center, (radius - 7.0f) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle),
            kText, 2.0f);
 
-    // Where modulation currently takes the newest voice.
+    // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
     const float offset = liveOffset(w.param);
-    if (telemetry_.voices > 0 && offset != 0.0f)
+    if (offset != 0.0f)
         c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))), 2.5f,
                      kText);
 

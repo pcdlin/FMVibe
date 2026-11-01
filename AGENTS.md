@@ -133,7 +133,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     rendered pixels), dragging cards by them, and folding cards, the icon staying put;
   - the right-click menu on knobs;
   - the macros' knobs, handles and names, the note source's handle, display and curve editor, and the mod wheel's
-    handle (new modulation starting upward);
+    handle (new modulation starting upward); with no note playing, a knob's dot showing where a macro takes it
+    (read off the rendered pixels);
   - the dashed cards that add effects (opening the list over themselves, staying over a switched-off card's dimming
     at the chain's right end, read off the rendered pixels) and sources, and the arrow between two effects adding
     one there;

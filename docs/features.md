@@ -507,9 +507,10 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     wheel over the names, gliding a row per notch (a trackpad moves it by parts of a row); the rows at the list's
     ends are cut off on the way. A target's name too long for its row is drawn smaller to fit, down to about 9 px;
     past that it ends in "…".
-  - While notes play, a white dot on each modulated knob shows where the newest voice currently is.
+  - While notes play, a white dot on each modulated knob shows where the newest voice currently is; with no note
+    playing, it shows where the macros and the mod wheel take it, as they apply with or without notes.
   - A modulated route shows it too: its wire (or its line to OUT) has a thin core in the source's color and
-    swells and thins with the modulation while notes play, and its label or matrix cell has a small bar along
+    swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
     its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps; sliders such as the depth bars, the
   Mod wheel and the glow slider then move from where they are, a tenth as fast), double-click to reset, use the mouse

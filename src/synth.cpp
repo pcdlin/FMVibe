@@ -363,21 +363,10 @@ void Synth::applyMacros(const ParamValues &params) {
     for (int i = 0; i < macroTargetCount_; ++i)
         macroMod_[macroTargets_[i]] = 0.0;
     macroTargetCount_ = 0;
-    for (int source = kMaxSources; source < kAllSources; ++source) { // the macros, and the mod wheel like them
-        if (isNote(source))
-            continue;
-        // Bipolar, the knob's middle moves nothing, and its ends half the depth either way.
-        const bool bipolar = sourceBipolar([&params](int i) { return params[i]; }, source);
-        const double knob = params[stripKnobIndex(source)] - (bipolar ? 0.5 : 0.0);
-        for (int slot = 0; slot < kSlots; ++slot) {
-            const int target = slotTarget(params[slotTargetIndex(source, slot)]);
-            const double amount = params[slotAmountIndex(source, slot)];
-            if (target < 0 || target >= kModulatedCount || amount == 0.0)
-                continue;
-            macroMod_[target] += knob * amount * (table_[target].max - table_[target].min);
-            macroTargets_[macroTargetCount_++] = target;
-        }
-    }
+    forEachMacroMod([&params](int i) { return params[i]; }, [this](int target, double offset) {
+        macroMod_[target] += offset;
+        macroTargets_[macroTargetCount_++] = target;
+    });
 }
 
 void Synth::render(float *left, float *right, uint32_t frames, const ParamValues &params) {

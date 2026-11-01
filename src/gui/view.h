@@ -608,10 +608,15 @@ private:
     double randomPhaseNow(int lfo) const;
     // The macros' names as their knobs' labels, in place for as long as the widgets that point at them.
     mutable std::array<std::array<char, 32>, kMacros> macroLabels_{};
-    // Where modulation takes param `index` for the newest voice, against its set value; nothing for the params
-    // that can't be modulated, such as the macros' own knobs.
+    // What the macros and the mod wheel add to each param, worked out from their settings at each paint, so it shows
+    // with no note playing too, while the host may have let the plugin sleep.
+    std::vector<float> macroOffsets_ = std::vector<float>(kModulatedCount, 0.0f);
+    // Where modulation takes param `index` for the newest voice, against its set value, or with no note playing
+    // where the macros take it; nothing for the params that can't be modulated, such as the macros' own knobs.
     float liveOffset(int index) const {
-        return index >= 0 && index < kModulatedCount ? telemetry_.modOffset[index] : 0.0f;
+        if (index < 0 || index >= kModulatedCount)
+            return 0.0f;
+        return telemetry_.voices > 0 ? telemetry_.modOffset[index] : macroOffsets_[index];
     }
     bool metering_ = false;                  // the output meter showed something when last polled
     float glow_ = 0.0f;                      // how strongly the curves glowed when painted last
