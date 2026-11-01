@@ -240,8 +240,8 @@ constexpr Rect kViewTabs[] = {{16.0f, 72.0f, 84.0f, 24.0f}, {104.0f, 72.0f, 74.0
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
 constexpr Rect kFxPanel{kRouting.x, kRouting.y, kInspector.x + kInspector.w - kRouting.x, kRouting.h};
 constexpr int kVisibleFx = 6;
-constexpr float kFxCardW = 178.0f;
-constexpr float kFxGap = (kFxPanel.w - 32.0f - kVisibleFx * kFxCardW) / (kVisibleFx - 1);
+constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
+constexpr float kFxCardW = (kFxPanel.w - 32.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
 // Header: global knobs, the play cluster between two dividers, then the voice controls.
 constexpr float kHeaderKnobX = 186.0f;

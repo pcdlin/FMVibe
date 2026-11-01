@@ -281,10 +281,10 @@ std::vector<int> fxChain(const FakeController &model) {
     return chain;
 }
 
-// FX cards, by position in the chain: 178 wide with 13.6 between them (spread over the panel's 1136), the
-// parametric EQ's one and a half card places wide, a folded card a strip 38 wide: the icon's place, 18 wide and
-// 10 in from the card's left edge, and as much on its right.
-constexpr float kFxCardW = 178.0f;
+// FX cards, by position in the chain: 22 apart and 171 wide (spread over the panel's 1136), the parametric EQ's one
+// and a half card places wide, a folded card a strip 38 wide: the icon's place, 18 wide and 10 in from the card's
+// left edge, and as much on its right.
+constexpr float kFxCardW = 171.0f;
 constexpr float kFxStep = kFxCardW + (1136.0f - 6.0f * kFxCardW) / 5.0f;
 constexpr float kFoldedSpan = (38.0f + kFxStep - kFxCardW) / kFxStep;
 float fxSpan(const FakeController &model, int slot) {
@@ -1992,7 +1992,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, {600.0f, 400.0f}); // anywhere else closes the list
     check(fxChain(model).empty(), "a click outside the ADD EFFECT list closes it");
     // The dashed card at the chain's end (its first place, while it is empty) opens the list over itself.
-    click(view, {fxCardX(model, 0) + 89.0f, 300.0f});
+    click(view, {fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 300.0f});
     auto shadowItem = [](FxType type) { return Point{130.0f, 176.0f + (static_cast<int>(type) - 1) * 26.0f}; };
     view.mouseMove(shadowItem(FxType::Shaper), {});
     check(renderer.save(view, dir / "8a2-fx-shadow-list.png"), "render the list of effects over the dashed card");
@@ -2028,7 +2028,7 @@ void run(const std::filesystem::path &dir, float scale) {
     }
 
     // The filter card's type buttons, in a row: Comb is the fifth.
-    click(view, {fxCardX(model, 3) + 14.0f + 4.0f * 30.8f + 13.0f, 152.0f + 44.0f + 10.0f});
+    click(view, {fxCardX(model, 3) + 14.0f + 4.0f * 29.4f + 13.0f, 152.0f + 44.0f + 10.0f});
     check(std::lround(model.value(paramIndex(3, FxParam::FilterType))) == static_cast<long>(FilterType::Comb),
           "the filter card's buttons pick the filter type");
 
@@ -2076,11 +2076,11 @@ void run(const std::filesystem::path &dir, float scale) {
     check(std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
           "the shaper's list picks its curve");
     // Custom draws the curve in the card, to edit right there: its plot is the display less 8 px all round
-    // (134 x 100), the full swing 6 px short of its edges. A double-click adds a point, a drag moves it.
+    // (127 x 100), the full swing 6 px short of its edges. A double-click adds a point, a drag moves it.
     click(view, clipButton);
     click(view, clipItem(ClipMode::Custom));
     auto cardAt = [&](double x, double y) {
-        return Point{fxCardX(model, 0) + 22.0f + static_cast<float>(x) * 134.0f,
+        return Point{fxCardX(model, 0) + 22.0f + static_cast<float>(x) * 127.0f,
                      284.0f - static_cast<float>(y) * (50.0f - 6.0f)};
     };
     view.doubleClick(cardAt(0.8, 0.4), {}); // under the bend handle of the curve's upper half
@@ -2094,7 +2094,7 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove(cardAt(0.8, 0.6), {});
     check(renderer.save(view, dir / "8d-clip-custom.png"), "render the curve being edited in the card");
     // Its EDIT button opens the big editor, which edits the same curve.
-    click(view, {fxCardX(model, 0) + 141.0f, 152.0f + 190.0f - 12.0f}); // EDIT, at the display's bottom right
+    click(view, {fxCardX(model, 0) + 134.0f, 152.0f + 190.0f - 12.0f}); // EDIT, at the display's bottom right
     view.doubleClick(clipAt(0.3, -0.5), {});
     check(model.value(clipCurveCountIndex(0)) == 5.0 &&
               std::abs(model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X)) - 0.3) < 0.01,
@@ -2110,10 +2110,10 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(paramIndex(4, FxParam::DelaySync), 0.0);
     model.set(paramIndex(4, FxParam::DelayWidth), 0.3);
     // The first delay's LINK switch, the middle of three across the card.
-    click(view, {fxCardX(model, 1) + 89.0f, 152.0f + 44.0f + 11.0f});
+    click(view, {fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 152.0f + 44.0f + 11.0f});
     check(model.value(paramIndex(1, FxParam::DelayLink)) == 1.0, "the delay's LINK switch links its sides");
     // The shaper's LINK, its chain over the Output knob, starts on; a click unlinks it, another links it again.
-    const Point clipLink{fxCardX(model, 0) + 89.0f, 152.0f + 194.0f + 10.0f};
+    const Point clipLink{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 152.0f + 194.0f + 10.0f};
     const bool linkedFirst = model.value(paramIndex(0, FxParam::ShaperLink)) == 1.0;
     click(view, clipLink);
     const bool unlinked = model.value(paramIndex(0, FxParam::ShaperLink)) == 0.0;
@@ -2221,17 +2221,17 @@ void run(const std::filesystem::path &dir, float scale) {
     fxScrolled = 1.5f;
     // The three-band card's MID button shows the mid band's knobs; LINK makes them set the low band, which
     // every band follows.
-    click(view, {fxCardX(model, 6) + 14.0f + 39.0f + 16.0f, 152.0f + 44.0f + 11.0f});
+    click(view, {fxCardX(model, 6) + 14.0f + 37.25f + 16.0f, 152.0f + 44.0f + 11.0f});
     drag(view, fxKnob(model, 6, 0, 3, 160.0f), {fxKnob(model, 6, 0, 3, 160.0f).x, fxKnob(model, 6, 0, 3, 160.0f).y - 20.0f});
     check(model.value(mcThresholdIndex(6, 1)) > -20.0 && model.value(mcThresholdIndex(6, 0)) == -20.0,
           "a three-band card's band buttons pick which band its knobs set");
-    click(view, {fxCardX(model, 6) + 14.0f + 3.0f * 39.0f + 16.0f, 152.0f + 44.0f + 11.0f});
+    click(view, {fxCardX(model, 6) + 14.0f + 3.0f * 37.25f + 16.0f, 152.0f + 44.0f + 11.0f});
     drag(view, fxKnob(model, 6, 1, 3, 160.0f), {fxKnob(model, 6, 1, 3, 160.0f).x, fxKnob(model, 6, 1, 3, 160.0f).y - 20.0f});
     const bool linked = model.value(paramIndex(6, FxParam::McLink)) == 1.0 && model.value(mcRatioIndex(6, 0)) > 3.0 &&
                         model.value(mcRatioIndex(6, 1)) == 3.0;
     view.mouseMove({600.0f, 300.0f}, {});
     check(linked && renderer.save(view, dir / "9d-3band-linked.png"), "LINK makes the knobs set the low band for all");
-    click(view, {fxCardX(model, 6) + 14.0f + 3.0f * 39.0f + 16.0f, 152.0f + 44.0f + 11.0f});
+    click(view, {fxCardX(model, 6) + 14.0f + 3.0f * 37.25f + 16.0f, 152.0f + 44.0f + 11.0f});
     drag(view, fxKnob(model, 6, 2, 3, 268.0f), {fxKnob(model, 6, 2, 3, 268.0f).x, fxKnob(model, 6, 2, 3, 268.0f).y - 20.0f});
     check(model.value(paramIndex(6, FxParam::McOutput)) > 0.0, "a three-band card's Output knob sets its level");
     model.live.fxReduction[5] = {4.5f, 0.0f, 0.0f};
