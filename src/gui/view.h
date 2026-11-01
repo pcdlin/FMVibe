@@ -274,6 +274,8 @@ private:
     bool shaperHasInput(int shaper) const;
     // Whether `node` is heard in the end: it goes out, or feeds or modulates a node that is.
     bool reachesOut(int node) const;
+    // Whether a filter's or shaper's own sound gets to the output: it goes out, or into a filter whose sound does.
+    bool boxGoesOut(int node) const;
     // Effects. The FX view takes the place of the routing panel and the inspector.
     bool fxWide() const;
     FxType fxSlotType(int slot) const;

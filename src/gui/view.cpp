@@ -1457,12 +1457,16 @@ void View::connect(int from, int to) {
     if (value(param) > 0.0)
         return;
     if (!isFilterNode(from) && isFilterNode(to)) {
-        // An operator or shaper that already goes to the output is moved through the filter.
+        // An operator or shaper that already goes to the output is moved through the filter, which goes out in its
+        // place unless its sound gets there already.
         const int out = outParam(from);
         const double level = value(out);
         edit(param, level > 0.0 ? level : 1.0);
-        if (level > 0.0)
+        if (level > 0.0) {
             disconnect(out);
+            if (!boxGoesOut(to))
+                edit(outParam(to), 1.0);
+        }
         keepRoutes();
         return;
     }
@@ -1489,11 +1493,29 @@ void View::reroute(int from, int to, int into) {
     for (const Assignment &m : assignments())
         if (m.target == param)
             changes.push_back({slotTargetIndex(m.source, m.slot), slotTargetValue(next)});
+    // A node's output moved into a filter or shaper goes out through it: the box goes out unless its sound gets
+    // there already.
+    const bool takesOver = to == kNodes && into < kNodes && isBoxNode(into) && !boxGoesOut(into);
+    if (takesOver)
+        changes.push_back({outParam(into), 1.0});
     editMany(changes);
     std::vector<int> &kept = controller_.layout().keptRoutes;
     std::erase(kept, param);
     kept.push_back(next); // shown even at 0 %, as the route was
+    if (takesOver && std::find(kept.begin(), kept.end(), outParam(into)) == kept.end())
+        kept.push_back(outParam(into));
     controller_.layoutChanged();
+}
+
+bool View::boxGoesOut(int node) const {
+    if (value(outParam(node)) > 0.0)
+        return true;
+    for (int filter = 0; filter < kFilters; ++filter) {
+        const int link = routeParam(node, kOps + filter); // into a later filter, or a shaper into a filter
+        if (link >= 0 && value(link) > 0.0 && nodeOn(kOps + filter) && boxGoesOut(kOps + filter))
+            return true;
+    }
+    return false;
 }
 
 int View::rerouting() const {
@@ -1508,9 +1530,10 @@ bool View::soundsOut(int node) const {
                                 : true;
 }
 
+// Operators, filters and shapers alike, whether anything goes into them or not.
 bool View::goesOut(int node) const {
     const int param = outParam(node);
-    return param >= 0 && wired(param) && (!isFilterNode(node) || filterHasInput(node - kOps));
+    return param >= 0 && wired(param);
 }
 
 bool View::wired(int param) const {

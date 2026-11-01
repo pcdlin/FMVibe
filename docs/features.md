@@ -45,10 +45,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   internally, so the low end is fine-grained. **FM Amount** scales the whole matrix.
 - **Filters F1 and F2**, per voice, each switchable on and off (a new instance starts with both off). Any
   operator or shaper can be sent into either filter, and filter 1 can feed filter 2 (`F1 → F2`), for a series
-  chain; each filter has its own output level. A filter's
+  chain; each filter has its own output level, its **Out**, which, like a shaper's or operators B–F's, is 0 to
+  begin with, so a filter is heard only once it is routed out (see the routing panel). A filter's
   output can also modulate operators, the same way an operator does (`F1 → A` and so on, scaled by FM Amount):
   noise through a band-pass, for example, gives a carrier a narrow band of grit. Operators hear the filter's
-  previous output sample. A filter that only modulates can have its output level at 0. Types:
+  previous output sample. A filter that only modulates can leave its output level at 0. Types:
   - Low-pass, High-pass, Band-pass and Notch: a state-variable filter that stays smooth under fast modulation.
     **Slope** picks 6, 12 (the default), 18 or 24 dB per octave. At 6 dB the filter is a one-pole, taken from the
     state-variable filter so resonance still adds a peak at the cutoff (as high as at 12 dB) while the slope past it
@@ -265,10 +266,12 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
       onto an operator to modulate it, back onto itself for feedback, onto a filter or shaper to send it there, or
       onto the **OUT** bus; from further inside, a drag moves the node, and a click on the edge only picks the node.
-      An operator that already goes to the output is moved through a filter rather than doubled. A filter's edge
-      works the same way: onto an operator to modulate it, onto filter 2 from filter 1, or onto the bus, and so
-      does a shaper's, onto an operator, a filter or the bus; an operator or shaper that already goes out is moved
-      through the filter it is connected to. Wires to or from a filter are
+      A filter's edge works the same way: onto an operator to modulate it, onto filter 2 from filter 1, or onto
+      the bus, and so does a shaper's, onto an operator, a filter or the bus. Operators, filters and shapers go out
+      alike: each has its line to OUT while it is routed there, whether anything goes into it or not. An operator
+      or shaper that already goes out is moved through a filter it is connected to rather than doubled, and the
+      filter goes out in its place unless its sound gets there already (through filter 2, say); so does a filter
+      or shaper a node's arrow to OUT is moved onto. Wires to or from a filter are
       purple, those to or from a shaper red, like the shaper effect.
     - A node's line to OUT ends in an arrowhead on the bus, like a wire's on the node it feeds, with its
       percentage label halfway down (beside the line, on its left, when the node sits too close to the bus for
@@ -393,8 +396,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   own shortcuts keep working everywhere else.
 - **Inspector** (right): tabs A–F, F1 and F2, and S1 and S2 pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on. A dot in a tab's top right corner says the
-  node's own sound goes out: an operator's or filter's Out is up (a filter's only while something goes into it), or
-  a shaper, which can't go out itself, feeds a filter that does. Clicking the selected tab switches it off, or on again (its
+  node's own sound goes out: its Out is up (a filter's or shaper's only while something goes into it). Clicking the
+  selected tab switches it off, or on again (its
   tooltip says which). The power switch next to the summary line does the same. While the node is off, its page
   is dimmed below the summary line; its knobs still work.
   - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine,

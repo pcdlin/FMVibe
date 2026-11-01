@@ -1614,12 +1614,23 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({400.0f, 300.0f}, {});
     renderer.save(view, dir / "3d-filter-unfed.png");
     const uint32_t unfed = tabDot(renderer, kOps);
+    // Like an operator or a shaper, it starts routed nowhere; its edge dragged onto the bus sends it out, with its
+    // line to OUT, though nothing goes into it, and that line's arrowhead let go of in empty space takes it away.
+    const int f1Out = paramIndex(0, FilterParam::Out);
+    const bool startsNowhere = model.value(f1Out) == 0.0;
+    drag(view, portOf(layout, kOps), {nodeCenter(layout, kOps).x + 120.0f, kBusY});
+    view.mouseMove({400.0f, 300.0f}, {});
+    const bool routedOut = model.value(f1Out) == 1.0 && renderer.save(view, dir / "3d-filter-out.png");
+    drag(view, outArrowOf(layout, kOps), {nodeCenter(layout, kOps).x + 120.0f, kBusY - 60.0f});
+    check(startsNowhere && routedOut && model.value(f1Out) == 0.0,
+          "a filter goes out by its edge dragged onto the bus, and stops by its arrowhead dragged away");
     drag(view, portOf(layout, 0), nodeCenter(layout, kOps));
     view.mouseMove({400.0f, 300.0f}, {});
     renderer.save(view, dir / "3e-filter-fed.png");
     const uint32_t fed = tabDot(renderer, kOps);
-    check(model.value(sendIndex(0, 0)) == 1.0 && model.value(paramIndex(0, OpParam::Out)) == 0.0,
-          "connecting a carrier to a filter routes its output through the filter");
+    check(model.value(sendIndex(0, 0)) == 1.0 && model.value(paramIndex(0, OpParam::Out)) == 0.0 &&
+              model.value(f1Out) == 1.0,
+          "connecting a carrier to a filter routes its output through the filter, which goes out in its place");
     // The F1 tab then has the dot that says it goes out, in the filters' purple, as an operator's tab has.
     check((unfed & 255) < 120 && (fed & 255) > 200 && (fed >> 8 & 255) < 170,
           "a filter's tab shows a dot while it sounds out, as an operator's does");

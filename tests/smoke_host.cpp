@@ -321,13 +321,14 @@ int main(int argc, char **argv) {
         for (int op = 0; op < kOps; ++op)
             defaults = defaults && infoOf(partialCountIndex(op)).default_value == 32.0;
         for (int f = 0; f < kFilters; ++f)
-            defaults = defaults && infoOf(paramIndex(f, FilterParam::KeyTrack)).default_value == 0.0;
+            defaults = defaults && infoOf(paramIndex(f, FilterParam::KeyTrack)).default_value == 0.0 &&
+                       infoOf(paramIndex(f, FilterParam::Out)).default_value == 0.0;
         const clap_param_info_t range = infoOf(paramIndex(0, FxParam::ShiftRange));
         char text[32] = {};
         defaults = defaults && params->value_to_text(plugin, range.id, range.default_value, text, sizeof(text)) &&
                    std::strcmp(text, "100 Hz") == 0;
-        check(defaults, "filters start without key tracking, a shaper linked, a shifter's range at 100 Hz, a flanger "
-                        "stereo and a Custom wave with 32 partials");
+        check(defaults, "filters start without key tracking or going out, a shaper linked, a shifter's range at 100 Hz, "
+                        "a flanger stereo and a Custom wave with 32 partials");
     }
     {
         bool opsOk = true;
@@ -747,20 +748,37 @@ int main(int argc, char **argv) {
         runBlock({&chokeAll.header, &aOn.header});
         check(operatorOff == 0.0f, "a switched-off operator is silent");
 
-        // A only through filter 1, with the filter switched off.
+        // A only through filter 1, which goes out, with the filter switched off.
         const clap_event_param_value_t route[] = {
             paramEvent(paramIndex(0, OpParam::Out), 0.0),
             paramEvent(sendIndex(0, 0), 1.0),
             paramEvent(paramIndex(0, FilterParam::Enabled), 0.0),
+            paramEvent(paramIndex(0, FilterParam::Out), 1.0),
         };
         const clap_event_note_t on2 = noteEvent(CLAP_EVENT_NOTE_ON, 46, 60);
-        runBlock({&route[0].header, &route[1].header, &route[2].header, &on2.header});
+        runBlock({&route[0].header, &route[1].header, &route[2].header, &route[3].header, &on2.header});
         const float filterOff = runBlocks(4);
         runBlock({&chokeAll.header});
         check(filterOff == 0.0f, "a switched-off filter passes nothing");
+        // Switched on, like a shaper or an operator it isn't heard until it goes out: routed nowhere it is silent,
+        // and by its Out it sounds.
+        auto throughFilter = [&](double out) {
+            const clap_event_param_value_t settings[] = {paramEvent(paramIndex(0, FilterParam::Enabled), 1.0),
+                                                         paramEvent(paramIndex(0, FilterParam::Out), out)};
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 47, 60);
+            runBlock({&settings[0].header, &settings[1].header, &on.header});
+            const float peak = runBlocks(4);
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const float filterNowhere = throughFilter(0.0), filterOut = throughFilter(1.0);
+        std::printf("      A through filter 1: peak %.4f routed nowhere, %.3f going out\n", filterNowhere, filterOut);
+        check(filterNowhere == 0.0f && filterOut > 0.05f, "a filter routed nowhere isn't heard, and goes out by its Out");
         const clap_event_param_value_t restore[] = {paramEvent(paramIndex(0, OpParam::Out), 1.0),
-                                                    paramEvent(sendIndex(0, 0), 0.0)};
-        runBlock({&restore[0].header, &restore[1].header});
+                                                    paramEvent(sendIndex(0, 0), 0.0),
+                                                    paramEvent(paramIndex(0, FilterParam::Enabled), 0.0),
+                                                    paramEvent(paramIndex(0, FilterParam::Out), 0.0)};
+        runBlock({&restore[0].header, &restore[1].header, &restore[2].header, &restore[3].header});
     }
 
     // Shapers. B's sine through shaper 1 onto A modulates A, as B itself would; switched off, the shaper passes
@@ -806,6 +824,7 @@ int main(int argc, char **argv) {
                                                        {shaperSendIndex(0, 0), 1.0},
                                                        {shaperFilterIndex(0, 0), 1.0},
                                                        {paramIndex(0, FilterParam::Enabled), 1.0},
+                                                       {paramIndex(0, FilterParam::Out), 1.0},
                                                        {paramIndex(0, FilterParam::Type), 0.0},
                                                        {paramIndex(0, FilterParam::Cutoff), 1.0},
                                                        {paramIndex(0, FilterParam::Resonance), 0.0},
@@ -832,7 +851,7 @@ int main(int argc, char **argv) {
             paramEvent(paramIndex(0, OpParam::Out), 1.0),        paramEvent(shaperSendIndex(0, 0), 0.0),
             paramEvent(shaperOn, 0.0),                           paramEvent(paramIndex(0, FilterParam::Enabled), 0.0),
             paramEvent(paramIndex(0, ShaperParam::Link), 1.0),   paramEvent(paramIndex(0, ShaperParam::Drive), 6.0),
-            paramEvent(paramIndex(0, ShaperParam::Out), 0.0)};
+            paramEvent(paramIndex(0, ShaperParam::Out), 0.0),   paramEvent(paramIndex(0, FilterParam::Out), 0.0)};
         std::vector<const clap_event_header_t *> events;
         for (const clap_event_param_value_t &ev : restore)
             events.push_back(&ev.header);

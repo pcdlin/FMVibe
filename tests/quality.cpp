@@ -282,6 +282,7 @@ int main() {
             p[paramIndex(0, OpParam::Out)] = 0.0;
             p[sendIndex(0, 0)] = 1.0;
             p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            p[paramIndex(0, FilterParam::Out)] = 1.0;
             p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LowPass);
             p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(220.0);
             p[paramIndex(0, FilterParam::KeyTrack)] = 0.0;
@@ -498,6 +499,7 @@ int main() {
             e.p[paramIndex(0, OpParam::Out)] = 0.0;
             e.p[sendIndex(0, 0)] = 1.0;
             e.p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+            e.p[paramIndex(0, FilterParam::Out)] = 1.0;
             e.p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::LowPass);
             e.p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(cutoffHz);
             e.p[paramIndex(0, FilterParam::KeyTrack)] = 0.0;

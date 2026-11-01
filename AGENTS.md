@@ -40,9 +40,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
     still ends;
-  - a new instance has only operator A on, no filter key tracking, its shaper effects linked, its frequency
-    shifters' range at 100 Hz, its flangers stereo and its Custom waves at 32 partials; a switched-off operator is
-    silent, and a switched-off filter passes nothing; filter 1 feeds filter 2;
+  - a new instance has only operator A on, no filter key tracking or going out, its shaper effects linked, its
+    frequency shifters' range at 100 Hz, its flangers stereo and its Custom waves at 32 partials; a switched-off
+    operator is silent, and a switched-off filter passes nothing; a filter routed nowhere isn't heard, and goes out
+    by its Out; filter 1 feeds filter 2;
   - a shaper's output modulates an operator (and one that is off doesn't), a hard shaper into a filter squares a
     sine off, and a shaper routed nowhere isn't heard but goes straight out by its To Out;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
@@ -88,8 +89,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   way it replays drags and clicks:
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
   - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
-    there only picks the node and a drag from further inside moves it; routing a carrier through a filter, and
-    picking waves and filter types;
+    there only picks the node and a drag from further inside moves it; a filter going out by its edge dragged onto
+    the bus, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
+    which goes out in its place, and picking waves and filter types;
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
     removing one by letting its arrowhead go in empty space;
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something

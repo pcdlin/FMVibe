@@ -60,9 +60,11 @@ struct Patch {
         return set(slotAmountIndex(source, slot), amount);
     }
     Patch &sourceSet(int source, SourceParam field, double value) { return set(paramIndex(source, field), value); }
-    // Filter `filter` switched on, its type, cutoff in Hz and resonance; its other fields as Init has them.
+    // Filter `filter` switched on and going out, its type, cutoff in Hz and resonance; its other fields as Init has
+    // them.
     Patch &filter(int filter, FilterType type, double cutoffHz, double resonance) {
         set(paramIndex(filter, FilterParam::Enabled), 1.0);
+        set(paramIndex(filter, FilterParam::Out), 1.0);
         set(paramIndex(filter, FilterParam::Type), static_cast<double>(type));
         set(paramIndex(filter, FilterParam::Cutoff), normFromCutoff(cutoffHz));
         return set(paramIndex(filter, FilterParam::Resonance), resonance);

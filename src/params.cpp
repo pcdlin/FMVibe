@@ -205,7 +205,8 @@ ParamTable buildTable() {
                 ParamKind::Percent, 0.0, 1.0, 0.0);
 
     // Filter 1 defaults to a warm low-pass and filter 2 to a band-pass for something different. Neither follows
-    // the note until its Key Track is turned up.
+    // the note until its Key Track is turned up, and like the shapers and operators B-F, neither goes out until it is
+    // routed there.
     struct FilterDefaults {
         FilterType type;
         double slope;
@@ -227,7 +228,7 @@ ParamTable buildTable() {
             d.resonance);
         add(paramIndex(filter, FilterParam::KeyTrack), name + " Key Track", module, ParamKind::Percent, 0.0, 1.0, 0.0);
         add(paramIndex(filter, FilterParam::Drive), name + " Drive", module, ParamKind::Percent, 0.0, 1.0, 0.0);
-        add(paramIndex(filter, FilterParam::Out), name + " Out", module, ParamKind::Percent, 0.0, 1.0, 1.0);
+        add(paramIndex(filter, FilterParam::Out), name + " Out", module, ParamKind::Percent, 0.0, 1.0, 0.0);
         add(paramIndex(filter, FilterParam::Slope), name + " Slope", module, ParamKind::FilterSlope, 0.0,
             kFilterSlopes - 1.0, d.slope);
         add(paramIndex(filter, FilterParam::Enabled), name + " On", module, ParamKind::Toggle, 0.0, 1.0, 0.0);
