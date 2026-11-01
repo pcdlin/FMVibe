@@ -2444,9 +2444,17 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kInitButton);
     click(view, ok);
     check(model.resets == 2, "the dialog's Init button resets the changed patch");
+    // A file still to be picked goes unsaid, so the dialog before one loads is a line shorter: a click just above
+    // where the longer one ends falls outside it and cancels, and Save then gets its click.
+    const Rect shorter{420.0f, std::round((view.height() - 132.0f) * 0.5f), 360.0f, 132.0f};
     click(view, kLoadButton);
-    click(view, ok);
+    view.mouseMove({shorter.right() - 64.0f, shorter.bottom() - 38.0f}, {});
+    const bool fileConfirm = renderer.save(view, dir / "15a-confirm-file.png");
+    click(view, {confirm.x + 40.0f, confirm.bottom() - 4.0f});
     click(view, kSaveButton);
+    check(fileConfirm && model.loads == 1 && model.saves == 1, "the dialog before a file loads is a line shorter");
+    click(view, kLoadButton);
+    click(view, {shorter.right() - 64.0f, shorter.bottom() - 38.0f});
     check(model.loads == 2 && model.saves == 1, "Load asks first, Save goes ahead");
     view.mouseMove(kSaveButton, {});
     check(renderer.save(view, dir / "15b-toolbar.png"), "render the preset icons with a tooltip");

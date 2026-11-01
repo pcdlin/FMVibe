@@ -492,6 +492,7 @@ private:
     // The settings dialog: while it is open it takes every click.
     std::vector<Widget> settingsWidgets() const;
     std::vector<Widget> confirmWidgets() const;
+    std::string confirmWhat() const;
     // The preset browser: while it is open it takes every click, and the confirm dialog goes over it.
     std::vector<Widget> browserWidgets() const;
     void paintBrowser(Canvas &c);

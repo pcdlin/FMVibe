@@ -3253,12 +3253,15 @@ void View::paintSettings(Canvas &c) {
         paintWidget(c, w, {});
 }
 
-// The dialog asking before Init or Load replaces a changed patch, centered like the settings.
+// The dialog asking before Init or Load replaces a changed patch, centered like the settings; a line shorter when
+// it doesn't say what replaces the patch.
 namespace {
 constexpr float kConfirmW = 360.0f;
 constexpr float kConfirmH = 150.0f;
-Rect confirmPanel(float viewHeight) {
-    return {(View::kWidth - kConfirmW) * 0.5f, std::round((viewHeight - kConfirmH) * 0.5f), kConfirmW, kConfirmH};
+constexpr float kConfirmLine = 18.0f;
+Rect confirmPanel(float viewHeight, bool shorter) {
+    const float h = kConfirmH - (shorter ? kConfirmLine : 0.0f);
+    return {(View::kWidth - kConfirmW) * 0.5f, std::round((viewHeight - h) * 0.5f), kConfirmW, h};
 }
 // 1 goes ahead, 0 cancels.
 Rect confirmButton(Rect panel, int ok) {
@@ -3287,8 +3290,19 @@ void View::runPreset(PresetAction action) {
     }
 }
 
+// What replaces the patch: Init, or the preset picked from the library. A file still to be picked in the dialog goes
+// unsaid.
+std::string View::confirmWhat() const {
+    if (confirm_ == static_cast<int>(PresetAction::Init))
+        return tr(Str::ConfirmInit);
+    const std::vector<PresetEntry> &presets = controller_.presets();
+    return pendingPreset_ >= 0 && pendingPreset_ < static_cast<int>(presets.size())
+               ? trf(Str::ConfirmLoadPreset, {presets[pendingPreset_].name})
+               : std::string();
+}
+
 std::vector<View::Widget> View::confirmWidgets() const {
-    const Rect panel = confirmPanel(height());
+    const Rect panel = confirmPanel(height(), confirmWhat().empty());
     std::vector<Widget> list;
     auto add = [&](Kind kind, Rect r, int a) {
         Widget w;
@@ -3434,20 +3448,18 @@ void View::stepPreset(int direction) {
 
 void View::paintConfirm(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
-    const Rect panel = confirmPanel(height());
+    const std::string what = confirmWhat();
+    const Rect panel = confirmPanel(height(), what.empty());
     c.fillRect(panel, kPanel, 10.0f);
     c.strokeRect(panel, kBorder, 1.0f, 10.0f);
-    const bool init = confirm_ == static_cast<int>(PresetAction::Init);
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f}, tr(Str::ConfirmTitle), 14.0f, kText,
            Align::Left, true);
-    const std::vector<PresetEntry> &presets = controller_.presets();
-    const std::string loading = pendingPreset_ >= 0 && pendingPreset_ < static_cast<int>(presets.size())
-                                    ? trf(Str::ConfirmLoadPreset, {presets[pendingPreset_].name})
-                                    : std::string(tr(Str::ConfirmLoadAny));
-    c.text({panel.x + 24.0f, panel.y + 48.0f, panel.w - 48.0f, 16.0f},
-           init ? std::string(tr(Str::ConfirmInit)) : loading, 10.5f, kDim, Align::Left);
-    c.text({panel.x + 24.0f, panel.y + 66.0f, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst),
-           10.5f, kDim, Align::Left);
+    float y = panel.y + 48.0f;
+    if (!what.empty()) {
+        c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, what, 10.5f, kDim, Align::Left);
+        y += kConfirmLine;
+    }
+    c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst), 10.5f, kDim, Align::Left);
     for (const Widget &w : confirmWidgets())
         paintWidget(c, w, {});
 }
@@ -3914,10 +3926,9 @@ void View::paintMatrixLabels(Canvas &c) {
         y += 26.0f;
     }
     y += 10.0f;
-    const Str notes[] = {Str::MatrixRows, Str::MatrixCells, Str::MatrixGraph, Str::MatrixOff, Str::MatrixClick,
-                         Str::MatrixClickThen};
-    for (int i = 0; i < 6; ++i)
-        c.text({kLegendX, y + i * 20.0f, width, 18.0f}, tr(notes[i]), 11.0f, kFaint, Align::Left);
+    const Str notes[] = {Str::MatrixClick, Str::MatrixClickThen};
+    for (size_t i = 0; i < std::size(notes); ++i)
+        c.text({kLegendX, y + static_cast<float>(i) * 20.0f, width, 18.0f}, tr(notes[i]), 11.0f, kFaint, Align::Left);
 }
 
 void View::paintFx(Canvas &c) {
@@ -3928,8 +3939,9 @@ void View::paintFx(Canvas &c) {
     c.text(count, std::to_string(chain.size()) + "/" + std::to_string(kFxSlots), 11.0f, full ? kText : kDim,
            Align::Left, full);
     const float hintX = count.right() + 8.0f;
-    c.text({hintX, kFxPanel.y + 10.0f, kFxPanel.right() - 16.0f - hintX, 22.0f},
-           tr(chain.empty() ? Str::HintFxEmpty : Str::HintFx), 10.5f, kFaint, Align::Right);
+    if (!chain.empty()) // how to work the cards, while there are some
+        c.text({hintX, kFxPanel.y + 10.0f, kFxPanel.right() - 16.0f - hintX, 22.0f}, tr(Str::HintFx), 10.5f, kFaint,
+               Align::Right);
     // After a card, before the one at place `next`: the signal runs left to right. Under the mouse, or with its list
     // open, it is a plus that adds an effect there.
     auto chevron = [&](const Rect &card, size_t next) {
@@ -4054,7 +4066,7 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     c.fillRect(title, color.alpha(0.18f), 6.0f);
     c.text(title, trf(Str::TitleShape, {sourceName(lfo)}), 11.0f, color, Align::Center, true);
     c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f},
-           tr(Str::HintShape), 10.5f, kFaint, Align::Right);
+           tr(Str::HintCurve), 10.5f, kFaint, Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
@@ -5262,10 +5274,8 @@ void View::paintSources(Canvas &c) {
         return; // the chips and the toggle are widgets
     const std::vector<int> shown = sourcesShown();
     if (shown.empty()) {
-        c.text({kModPanel.x, kCardTop + kCardH * 0.5f - 22.0f, kModPanel.w, 20.0f},
-               tr(Str::HintNoSources), 12.0f, kDim);
-        c.text({kModPanel.x, kCardTop + kCardH * 0.5f, kModPanel.w, 20.0f},
-               tr(Str::HintNoSourcesThen), 11.0f, kFaint);
+        c.text({kModPanel.x, kCardTop + kCardH * 0.5f - 10.0f, kModPanel.w, 20.0f}, tr(Str::HintNoSources), 12.0f,
+               kDim);
         return;
     }
     c.pushClip(sourceCardClip());
@@ -6345,7 +6355,7 @@ void View::paintKnob(Canvas &c, const Widget &w, const std::vector<Assignment> &
 void View::paintTooltip(Canvas &c) {
     if (!hover_ || drag_.kind != DragKind::None ||
         (hover_->kind != Kind::Choice && hover_->kind != Kind::Toggle && hover_->kind != Kind::NodeTab &&
-         hover_->kind != Kind::FxRemove && hover_->kind != Kind::PeqPoint && hover_->kind != Kind::SourceRemove &&
+         hover_->kind != Kind::FxRemove && hover_->kind != Kind::SourceRemove &&
          hover_->kind != Kind::SourceAdd && hover_->kind != Kind::PresetButton &&
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::BrowserFolder &&
@@ -6417,8 +6427,6 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipSourceRemove);
     else if (hover_->kind == Kind::SourceAdd)
         text = tr(static_cast<SourceType>(hover_->a) == SourceType::Lfo ? Str::TipAddLfo : Str::TipAddEnv);
-    else if (hover_->kind == Kind::PeqPoint)
-        text = tr(isCut(peqType(value(peqTypeIndex(hover_->a, hover_->b)))) ? Str::TipCutHandle : Str::TipBandHandle);
     else if (isPowerParam(param))
         text = tr(Str::TipNodePower);
     else if (isSourcePower(param))

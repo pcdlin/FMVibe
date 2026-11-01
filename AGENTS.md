@@ -133,8 +133,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     rendered in each theme, and glowing), and closing it with its x or a click around it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
-  - the preset bar's arrows (asking first while the patch has changed) and the preset browser, which loading a
-    preset closes;
+  - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
+    loads) and the preset browser, which loading a preset closes;
   - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, and
     the LFO shape editor hiding the inspector;
   - the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered pixels), the list of
