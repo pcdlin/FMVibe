@@ -329,6 +329,7 @@ Point randomKnob(float card, int knob) {
 // The used slots, kVisibleSlots rows at a time; `row` counts from the top of the list, fractions while it
 // scrolls and the rows at its ends are cut off.
 constexpr int kVisibleSlots = 4;
+constexpr float kSlotNameW = 96.0f; // the target's name, between the bypass dot and the depth bar
 Rect slotRow(float card, float row) {
     const Rect p = sourceCard(card);
     return {p.x + 12.0f, p.y + 160.0f + row * 24.0f, p.w - 24.0f, 20.0f};
@@ -4976,7 +4977,7 @@ void View::paintInspector(Canvas &c) {
         const int op = node;
         const double ratio = coarseRatio(value(paramIndex(op, OpParam::Coarse))) *
                              (1.0 + value(paramIndex(op, OpParam::Fine)));
-        std::string summary = trf(Str::SummaryOp, {kNodeNames[op]}) + dot;
+        std::string summary = std::string(kNodeNames[op]) + dot;
         if (isNoise(op)) {
             char slope[32];
             const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
@@ -4984,7 +4985,7 @@ void View::paintInspector(Canvas &c) {
             summary += waveName(OpWave::Noise) + (dot + std::string(slope));
         } else {
             summary += waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))))) +
-                       (dot + trf(Str::SummaryRatio, {number("%.2f", ratio)}));
+                       (dot + number("%.2f", ratio));
         }
         const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
         if (copies > 1 && !isNoise(op))
@@ -5008,7 +5009,7 @@ void View::paintInspector(Canvas &c) {
 
     const int filter = node - kOps;
     const auto type = static_cast<FilterType>(std::lround(value(paramIndex(filter, FilterParam::Type))));
-    std::string summary = trf(Str::SummaryFilter, {std::to_string(filter + 1)}) + dot + filterTypeName(type);
+    std::string summary = std::string(kNodeNames[node]) + dot + filterTypeName(type);
     if (hasSlope(type))
         summary += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
                    " dB";
@@ -5048,7 +5049,7 @@ std::string View::boxRoutes(int node) const {
 }
 
 void View::paintShaperPage(Canvas &c, int shaper, Rect summaryRect) {
-    const std::string summary = trf(Str::SummaryShaper, {std::to_string(shaper + 1)}) + "  \xC2\xB7  " +
+    const std::string summary = std::string(kNodeNames[kOps + kFilters + shaper]) + "  \xC2\xB7  " +
                                 clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode))));
     c.text(summaryRect, summary + boxRoutes(kOps + kFilters + shaper), 11.0f, kDim, Align::Left);
     c.fillRect(kShaperDisplay, kDisplayColor, 6.0f);
@@ -5324,8 +5325,18 @@ void View::paintSource(Canvas &c, float card, int s) {
             continue;
         const Rect r = slotRow(card, static_cast<float>(row) - first);
         c.fillRect(r, kRaised, 5.0f);
-        // A bypassed row is dimmed; its dot (the bypass switch, a widget) is hollow.
-        c.text({r.x + 18.0f, r.y, 96.0f, r.h}, paramName(target), 11.0f, slotBypassed(s, slots[row]) ? kFaint : kText,
+        // A bypassed row is dimmed; its dot (the bypass switch, a widget) is hollow. A long name is drawn smaller to
+        // fit, down to 7.5, which the canvas draws at about 9 px; its width is a straight line between the two.
+        const std::string name = paramName(target);
+        constexpr float kFull = 11.0f, kSmallest = 7.5f;
+        float size = kFull;
+        if (const float full = c.textWidth(name, kFull); full > kSlotNameW) {
+            const float smallest = c.textWidth(name, kSmallest);
+            size = smallest >= kSlotNameW ? kSmallest
+                                          : std::floor((kFull - (full - kSlotNameW) / (full - smallest) *
+                                                                   (kFull - kSmallest)) * 4.0f) / 4.0f;
+        }
+        c.text({r.x + 18.0f, r.y, kSlotNameW, r.h}, name, size, slotBypassed(s, slots[row]) ? kFaint : kText,
                Align::Left);
     }
     c.popClip();

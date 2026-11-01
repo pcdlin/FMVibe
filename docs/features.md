@@ -406,8 +406,11 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   dimmed, and clicking one switches its operator, filter or shaper on. A dot in a tab's top right corner says the
   node's own sound goes out: its Out is up (a filter's or shaper's only while something goes into it). Clicking the
   selected tab switches it off, or on again (its
-  tooltip says which). The power switch next to the summary line does the same. While the node is off, its page
-  is dimmed below the summary line; its knobs still work.
+  tooltip says which). Under the tabs, a summary line sums the node up in short: its letter, then an operator's
+  wave, ratio, unison copies (×4) and where it goes ("A · Saw · 1.20 · ×4 · to F1"), or a filter's type and slope,
+  or a shaper's curve, and what feeds them, where they go and the operators they modulate. The power switch next
+  to it does the same as clicking the selected tab. While the node is off, its page is dimmed below the summary
+  line; its knobs still work.
   - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine,
     Organ, Vowel and Custom (picked,
     one of these shows on that button); ratio, pitch, fine, detune, velocity and output, the unison knobs and Rnd Phase. A small fan display
@@ -481,7 +484,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   - Each source lists its targets with a depth slider and a remove button, four at a time; with more, a thin
     scrollbar beside them scrolls the list smoothly (drag its thumb or click its track), and so does the mouse
     wheel over the names, gliding a row per notch (a trackpad moves it by parts of a row); the rows at the list's
-    ends are cut off on the way.
+    ends are cut off on the way. A target's name too long for its row is drawn smaller to fit, down to about 9 px;
+    past that it ends in "…".
   - While notes play, a white dot on each modulated knob shows where the newest voice currently is.
   - A modulated route shows it too: its wire (or its line to OUT) has a thin core in the source's color and
     swells and thins with the modulation while notes play, and its label or matrix cell has a small bar along

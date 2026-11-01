@@ -523,14 +523,11 @@ STR(NoisePinkCaption, "pink")
 STR(NoiseBrownCaption, "brown")
 STR(TipMoreWaves, "More waves")
 
-// The inspector's summary line.
-STR(SummaryOp, "Op {1}")
-STR(SummaryRatio, "ratio {1}")
-STR(SummaryUnison, "{1}x unison")
+// The inspector's summary line, after the node's letter and its wave, filter type or curve; an operator's ratio
+// goes in as a bare number. Keep it short: the line has room for about 38 characters.
+STR(SummaryUnison, "×{1}") // the operator's unison copies
 STR(SummaryTo, "to {1}")
 STR(SummaryOut, "out")
-STR(SummaryFilter, "Filter {1}")
-STR(SummaryShaper, "Shaper {1}")
 STR(SummaryNoInput, "no input yet")
 STR(SummaryFrom, "from {1}")
 STR(SummaryMods, "mods {1}")

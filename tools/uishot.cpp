@@ -648,6 +648,33 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(slotBypassed && renderer.save(view, dir / "17b-bypassed-slot.png"), "render a bypassed modulation");
     view.menuCommand(menuEntry(kFineKnob, trf(Str::MenuResume, {trf(Str::SourceNameLfo, {"1"})})));
     check(model.value(slotBypassIndex(0, 0)) == 0.0, "a row's dot bypasses its modulation, and the knob's menu resumes it");
+    // A long target's name is drawn smaller to fit before the depth bar, where it would end in an ellipsis: three
+    // dots on the baseline with nothing above them (read off the rendered pixels; a name ending in L looks alike).
+    model.set(slotTargetIndex(0, 1), slotTargetValue(paramIndex(1, OpParam::UnisonDetune)));
+    model.set(slotTargetIndex(0, 2), slotTargetValue(paramIndex(0, FxParam::DelayFeedback)));
+    model.set(slotTargetIndex(0, 3), slotTargetValue(paramIndex(0, FxParam::McHighFreq))); // too long even so
+    view.poll();
+    auto lit = [&](float x, float y) { return (renderer.pixel({x, y}) >> 8 & 255) > 100; };
+    auto endsInEllipsis = [&](float rowY) {
+        float right = 0.0f; // the name's last lit column
+        for (float x = cardX(0) + 30.0f; x < cardX(0) + 126.0f; x += 1.0f)
+            for (float y = rowY - 8.0f; y <= rowY + 8.0f; y += 1.0f)
+                right = lit(x, y) ? x : right;
+        int rows = 0; // lit in its last three columns, the last dot's
+        for (float y = rowY - 8.0f; y <= rowY + 8.0f; y += 1.0f) {
+            bool any = false;
+            for (float x = right - 2.0f; x <= right; x += 1.0f)
+                any = any || lit(x, y);
+            rows += any;
+        }
+        return rows <= 2;
+    };
+    const bool longNames = renderer.save(view, dir / "17c-long-slot-names.png");
+    check(longNames && !endsInEllipsis(730.0f) && !endsInEllipsis(754.0f) && endsInEllipsis(778.0f),
+          "a long target's name is drawn smaller to fit its row, down to a smallest size");
+    for (int k = 1; k < 4; ++k)
+        model.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(k, OpParam::Fine)));
+    view.poll();
     click(view, {cardX(0) + kCardW - 6.0f, 780.0f}); // the scrollbar's track, below its thumb
     click(view, {cardX(0) + kCardW - 22.0f, 706.0f}); // the top row's x
     check(slotTarget(model.value(slotTargetIndex(0, 2))) < 0 && slotTarget(model.value(slotTargetIndex(0, 0))) >= 0,
