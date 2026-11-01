@@ -4199,7 +4199,9 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo) {
         const double x = shapePointX(lfo, focus->b);
         const std::string cycle = number("%.1f", x * 100.0);
-        const std::string level = number("%+.2f", value(shapePointIndex(lfo, focus->b, PointField::Y)));
+        // What the LFO puts out there: a unipolar one maps -1..1 onto 0..1.
+        const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
+        const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
         c.text({r.x, r.bottom() + 10.0f, r.w - 220.0f, 16.0f},
                trf(Str::CaptionShapePoint, {std::to_string(focus->b + 1), cycle, level}), 10.5f, kDim, Align::Left);
     }

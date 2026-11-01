@@ -376,7 +376,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     (or a tab) closes it, and Custom from the list opens it again. A stroke is one undo step.
   - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows EDIT) opens the
     shape over the routing panel and the inspector, which it hides while it is open; DONE closes it, and RESET puts back the shape it started with. Drag points to
-    move them; double-click empty space to add a point and a point to delete it (or right-click it).
+    move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
+    unipolar one). Double-click empty space to add a point and a point to delete it (or right-click it).
     Shift+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
     click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
     height to the grid too). The points between those lines go; a step beside another starts where that one ends,
