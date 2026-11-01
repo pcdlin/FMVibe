@@ -2489,10 +2489,10 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.sourcesCollapsed, "once it is closed, the editor takes clicks again");
     click(view, kSourcesToggle);
     runMore(dir, renderer);
-    renderExample(dir, renderer, "Crystal Motion", "24-example", 6);
-    renderExample(dir, renderer, "Reese Bass", "25-reese", 4);
-    renderExample(dir, renderer, "Folded Lead", "31-folded-lead", 2);
-    renderExample(dir, renderer, "Fuzz Bass", "32-fuzz-bass", 2);
+    renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6);
+    renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
+    renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
+    renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
     renderLfoOnLfo(dir, renderer);
     testMacros(dir, renderer);
     testMeter(dir, renderer);

@@ -517,17 +517,19 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   unipolar or bipolar (± in the display's corner).
 - **Presets**: presets are `.fmv` files in `Documents\FMVibe\presets` and its subfolders. The first time the
   library is used (the browser, the arrows or a file dialog), FMVibe makes that folder with its examples in the
-  `Examples` subfolder: Electric Piano, FM Bass, Glass Bell, Warm Pad, Drawbar Organ, Pluck Delay; Crystal
-  Motion, which uses everything at once (all six operators in three layers, two filters, four LFOs and a mod
-  envelope, and six effects); Reese Bass, a heavy drum and bass reese (two stacks of detuned saws through a
-  driven low-pass, a clean sub, clipping and three-band compression); Wobble Bass (an eighth-note LFO throwing
-  open a resonant filter and the FM together); Shimmer Pad (unison layers through two filters, three LFOs and the
-  shimmer reverb); Trance Gate (supersaws chopped in sixteenths by a square LFO, a filter sweep over two bars);
-  FM Brass (two stacks that blat in with velocity, an envelope on the FM, vibrato); Industrial Hit (a body
-  dropping two octaves, band-passed noise, metallic partials and a sine-fold shaper); Folded Lead (a mono lead
-  whose modulator goes through a sine-fold shaper on its way to the carrier, driven harder as each note starts);
-  and Fuzz Bass (an FM pair through an asymmetric shaper into a plucked low-pass, the shaper also growling back
-  onto the modulator, over a clean sub). A folder made before an
+  `Examples` subfolder. Each name starts with two letters for its category, so the library lists them in groups:
+  BA bass, FX effect, KY keys (bells and organs too), LD lead (brass too), PD pad (moving textures too), PL pluck
+  and SQ sequence (rhythmic, gated). They are KY Electric Piano, BA FM Bass, KY Glass Bell, PD Warm Pad, KY Drawbar
+  Organ, PL Pluck Delay; PD Crystal Motion, which uses everything at once (all six operators in three layers, two
+  filters, four LFOs and a mod envelope, and six effects); BA Reese Bass, a heavy drum and bass reese (two stacks
+  of detuned saws through a driven low-pass, a clean sub, clipping and three-band compression); BA Wobble Bass (an
+  eighth-note LFO throwing open a resonant filter and the FM together); PD Shimmer Pad (unison layers through two
+  filters, three LFOs and the shimmer reverb); SQ Trance Gate (supersaws chopped in sixteenths by a square LFO, a
+  filter sweep over two bars); LD FM Brass (two stacks that blat in with velocity, an envelope on the FM,
+  vibrato); FX Industrial Hit (a body dropping two octaves, band-passed noise, metallic partials and a sine-fold
+  shaper); LD Folded Lead (a mono lead whose modulator goes through a sine-fold shaper on its way to the carrier,
+  driven harder as each note starts); and BA Fuzz Bass (an FM pair through an asymmetric shaper into a plucked
+  low-pass, the shaper also growling back onto the modulator, over a clean sub). A folder made before an
   example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone.
   - The **preset bar** in the middle of the tabs' row shows the preset loaded or saved last, or **- Init -** (as

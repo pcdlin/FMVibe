@@ -81,6 +81,8 @@ struct Patch {
 
 } // namespace
 
+// Each name starts with two letters for its category, so the presets sort into groups: BA bass, FX effect, KY keys
+// (bells and organs too), LD lead (brass too), PD pad (moving textures too), PL pluck, SQ sequence (rhythmic, gated).
 std::vector<FactoryPreset> factoryPresets() {
     std::vector<FactoryPreset> presets;
 
@@ -96,7 +98,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.mod(3, 2, 0.2);
         p.fx(0, FxType::Reverb, {{FxParam::ReverbSize, 0.45}, {FxParam::ReverbDecay, normFromTime(1.6)},
                                  {FxParam::ReverbMix, 0.2}});
-        presets.push_back({"Electric Piano", p.changes});
+        presets.push_back({"KY Electric Piano", p.changes});
     }
     // Mono and gliding: a carrier with a sub an octave down, and a modulator with feedback for grit whose
     // brightness falls quickly to a growl.
@@ -107,7 +109,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.op(1, 1, 0.0, 0.0, 0.35, 0.3, 0.1).opSet(1, OpParam::Velocity, 0.7);
         p.mod(1, 0, 0.5).mod(1, 1, 0.35);
         p.op(2, 0, 0.5, 0.0, 2.0, 1.0, 0.08);
-        presets.push_back({"FM Bass", p.changes});
+        presets.push_back({"BA FM Bass", p.changes});
     }
     // Ratios of 3.5 and 7.5 make inharmonic partials that ring out long, in a large room.
     {
@@ -120,7 +122,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.mod(3, 2, 0.3);
         p.fx(0, FxType::Reverb, {{FxParam::ReverbSize, 0.8}, {FxParam::ReverbDecay, normFromTime(4.5)},
                                  {FxParam::ReverbDamping, 0.3}, {FxParam::ReverbMix, 0.35}});
-        presets.push_back({"Glass Bell", p.changes});
+        presets.push_back({"KY Glass Bell", p.changes});
     }
     // Four detuned copies fading in slowly, a gentle second harmonic that an LFO lets breathe.
     {
@@ -132,7 +134,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.lfo(0, LfoShape::Sine, 0.25, matrixIndex(1, 0), 0.24);
         p.fx(0, FxType::Reverb, {{FxParam::ReverbSize, 0.85}, {FxParam::ReverbDecay, normFromTime(5.0)},
                                  {FxParam::ReverbMix, 0.35}});
-        presets.push_back({"Warm Pad", p.changes});
+        presets.push_back({"PD Warm Pad", p.changes});
     }
     // Drawbars: sine partials at 0.5, 1, 2, 3 and 4 times the note, keyed on and off at once, a touch of
     // feedback, and a slow phaser for some movement.
@@ -146,7 +148,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.fx(0, FxType::Phaser, {{FxParam::PhaserRate, normFromRate(0.7)}, {FxParam::PhaserDepth, 0.4},
                                  {FxParam::PhaserFeedback, 0.2}, {FxParam::PhaserMix, 0.7}});
         p.fx(1, FxType::Reverb, {{FxParam::ReverbMix, 0.15}});
-        presets.push_back({"Drawbar Organ", p.changes});
+        presets.push_back({"KY Drawbar Organ", p.changes});
     }
     // A short, bright pluck into dotted-eighth echoes.
     {
@@ -157,7 +159,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.fx(0, FxType::Delay, {{FxParam::DelayFeedback, 0.35}, {FxParam::DelayTone, -0.3},
                                 {FxParam::DelayMix, 0.22}});
         p.fx(1, FxType::Reverb, {{FxParam::ReverbMix, 0.15}});
-        presets.push_back({"Pluck Delay", p.changes});
+        presets.push_back({"PL Pluck Delay", p.changes});
     }
     // Later examples, after the first kFirstExamples.
 
@@ -224,7 +226,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                  {FxParam::ReverbMix, 0.3}});
         // Each stack in a column, its modulator above its carrier: keys, pad over its low-pass, shimmer
         // beside its band-pass.
-        presets.push_back({"Crystal Motion",
+        presets.push_back({"PD Crystal Motion",
                            p.changes,
                            {{0.18f, 0.55f}, {0.18f, 0.1f}, {0.5f, 0.55f}, {0.5f, 0.1f}, {0.82f, 0.55f},
                             {0.82f, 0.1f}, {0.42f, 1.0f}, {0.68f, 1.0f}}});
@@ -277,7 +279,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                  {FxParam::PhaserCenter, normFromCutoff(900.0)}, {FxParam::PhaserFeedback, 0.3},
                                  {FxParam::PhaserStages, 6.0}, {FxParam::PhaserMix, 0.4}});
         // The saw stacks side by side over their filter, the sub off to the right, the growl above.
-        presets.push_back({"Reese Bass",
+        presets.push_back({"BA Reese Bass",
                            p.changes,
                            {{0.2f, 0.55f}, {0.45f, 0.55f}, {0.8f, 0.55f}, {0.32f, 0.1f}, {0.6f, 0.1f},
                             {0.85f, 0.1f}, {0.32f, 1.0f}, {0.65f, 1.0f}}});
@@ -318,7 +320,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.fx(3, FxType::Reverb, {{FxParam::ReverbType, static_cast<double>(ReverbType::Room)},
                                  {FxParam::ReverbSize, 0.3}, {FxParam::ReverbDecay, normFromTime(0.8)},
                                  {FxParam::ReverbMix, 0.1}});
-        presets.push_back({"Wobble Bass",
+        presets.push_back({"BA Wobble Bass",
                            p.changes,
                            {{0.25f, 0.55f}, {0.25f, 0.1f}, {0.75f, 0.55f}, {0.5f, 0.1f}, {0.6f, 0.55f},
                             {0.85f, 0.1f}, {0.25f, 1.0f}, {0.65f, 1.0f}}});
@@ -356,7 +358,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.fx(3, FxType::Reverb, {{FxParam::ReverbType, static_cast<double>(ReverbType::Shimmer)},
                                  {FxParam::ReverbSize, 0.9}, {FxParam::ReverbDecay, normFromTime(7.0)},
                                  {FxParam::ReverbDamping, 0.35}, {FxParam::ReverbMix, 0.45}});
-        presets.push_back({"Shimmer Pad",
+        presets.push_back({"PD Shimmer Pad",
                            p.changes,
                            {{0.2f, 0.55f}, {0.2f, 0.1f}, {0.5f, 0.55f}, {0.5f, 0.1f}, {0.8f, 0.55f},
                             {0.8f, 0.1f}, {0.2f, 1.0f}, {0.8f, 1.0f}}});
@@ -397,7 +399,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                 {FxParam::DelayMix, 0.25}});
         p.fx(3, FxType::Reverb, {{FxParam::ReverbType, static_cast<double>(ReverbType::Plate)},
                                  {FxParam::ReverbDecay, normFromTime(2.5)}, {FxParam::ReverbMix, 0.25}});
-        presets.push_back({"Trance Gate",
+        presets.push_back({"SQ Trance Gate",
                            p.changes,
                            {{0.25f, 0.55f}, {0.6f, 0.55f}, {0.6f, 0.1f}, {0.5f, 0.1f}, {0.2f, 0.55f},
                             {0.8f, 0.55f}, {0.42f, 1.0f}, {0.65f, 1.0f}}});
@@ -424,7 +426,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                   {FxParam::PeqType2, static_cast<double>(PeqType::LowCut)},
                                   {FxParam::PeqFreq2, normFromCutoff(70.0)}});
         p.fx(2, FxType::Reverb, {{FxParam::ReverbDecay, normFromTime(2.2)}, {FxParam::ReverbMix, 0.2}});
-        presets.push_back({"FM Brass",
+        presets.push_back({"LD FM Brass",
                            p.changes,
                            {{0.3f, 0.55f}, {0.3f, 0.1f}, {0.7f, 0.55f}, {0.7f, 0.1f}, {0.5f, 0.1f},
                             {0.85f, 0.55f}, {0.35f, 1.0f}, {0.65f, 1.0f}}});
@@ -457,7 +459,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.fx(3, FxType::Reverb, {{FxParam::ReverbType, static_cast<double>(ReverbType::Room)},
                                  {FxParam::ReverbSize, 0.3}, {FxParam::ReverbDecay, normFromTime(0.8)},
                                  {FxParam::ReverbMix, 0.2}});
-        presets.push_back({"Industrial Hit",
+        presets.push_back({"FX Industrial Hit",
                            p.changes,
                            {{0.2f, 0.55f}, {0.45f, 0.55f}, {0.75f, 0.55f}, {0.75f, 0.1f}, {0.2f, 0.1f},
                             {0.9f, 0.1f}, {0.3f, 1.0f}, {0.55f, 1.0f}}});
@@ -485,7 +487,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.fx(1, FxType::Reverb, {{FxParam::ReverbType, static_cast<double>(ReverbType::Plate)},
                                  {FxParam::ReverbSize, 0.4}, {FxParam::ReverbDecay, normFromTime(1.4)},
                                  {FxParam::ReverbMix, 0.15}});
-        presets.push_back({"Folded Lead",
+        presets.push_back({"LD Folded Lead",
                            p.changes,
                            {{0.55f, 0.55f}, {0.25f, 0.1f}, {0.85f, 0.55f}, {0.55f, 0.1f}, {0.85f, 0.1f},
                             {0.08f, 0.55f}, {0.35f, 1.0f}, {0.65f, 1.0f}, {0.25f, 0.55f}}});
@@ -511,7 +513,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                      {FxParam::CompRelease, normFromTime(0.12)}, {FxParam::CompMakeup, 3.0}});
         p.fx(1, FxType::ParamEq, {{FxParam::PeqType1, static_cast<double>(PeqType::LowCut)},
                                   {FxParam::PeqFreq1, normFromCutoff(30.0)}});
-        presets.push_back({"Fuzz Bass",
+        presets.push_back({"BA Fuzz Bass",
                            p.changes,
                            {{0.45f, 0.55f}, {0.62f, 0.1f}, {0.85f, 0.55f}, {0.85f, 0.1f}, {0.2f, 0.1f},
                             {0.35f, 0.1f}, {0.5f, 1.0f}, {0.75f, 1.0f}, {0.15f, 1.0f}}});

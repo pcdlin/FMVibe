@@ -47,7 +47,7 @@ EM_JS(void, js_set_setting, (const char *key, const char *value),
       { Module.fmvHost.setSetting(UTF8ToString(key), UTF8ToString(value)); });
 
 constexpr int kDefaultOversampling = 2;
-constexpr char kFirstPreset[] = "Crystal Motion"; // the patch in docs/editor.png
+constexpr char kFirstPreset[] = "PD Crystal Motion"; // the patch in docs/editor.png
 constexpr char kNoFiles[] = "Preset files need the plugin. The demo has the examples: click the preset's name.";
 
 std::string setting(const char *key) {
