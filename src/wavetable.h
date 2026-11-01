@@ -17,6 +17,7 @@ namespace fmvibe {
 class WaveTables {
 public:
     static constexpr int kSize = 4096;
+    static_assert((kSize & (kSize - 1)) == 0); // read() masks its index with it
     static constexpr int kHarmonics = kSize / 4; // in the richest table
     static constexpr int kLevels = 11;           // 1024 harmonics down to 1
 
@@ -27,10 +28,11 @@ public:
     // The level whose harmonics stay below Nyquist at a phase increment.
     static int level(double increment);
 
-    // Phase in cycles, any range.
+    // Phase in cycles, any range. A phase that isn't a number gives one back, without reading outside the table: kSize
+    // is a power of two, so the mask leaves every other index as it is.
     static float read(const float *table, double phase) {
         const double x = (phase - std::floor(phase)) * kSize;
-        const int i = std::min(static_cast<int>(x), kSize - 1);
+        const int i = std::min(static_cast<int>(x), kSize - 1) & (kSize - 1);
         return table[i] + (table[i + 1] - table[i]) * static_cast<float>(x - i);
     }
 

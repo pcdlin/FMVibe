@@ -125,8 +125,10 @@ private:
     // Moves one sample along the current segment; returns how far along it is (0..1).
     double advance(const EnvSegment &s) {
         t_ = std::min(t_ + s.dt, 1.0);
-        if (std::abs(s.k) < kLinearSteepness)
+        if (std::abs(s.k) < kLinearSteepness) {
+            resync_ = true; // e_ stands still meanwhile: bent again, even to the same slope, it starts over from t_
             return t_;
+        }
         if (resync_ || s.k != k_) { // a new segment, or the slope changed
             k_ = s.k;
             resync_ = false;

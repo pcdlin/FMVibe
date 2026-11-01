@@ -780,7 +780,7 @@ std::vector<FactoryPreset> factoryPresets() {
         // The rise: the cutoff up by more than half its travel, B two octaves (24 of the Pitch knob's 96 semitones),
         // the shifter's Shift from nothing to 70 % of its 400 Hz.
         p.env(0, 8.0, 1.0, 1.0, 1.5, paramIndex(0, FilterParam::Cutoff), 0.55);
-        p.sourceSet(0, SourceParam::AttackCurve, 0);
+        p.sourceSet(0, SourceParam::AttackCurve, -0.7);
         p.aim(0, 1, paramIndex(1, OpParam::Transpose), 0.25).aim(0, 2, paramIndex(0, FxParam::ShiftAmount), 0.35);
 
         p.fx(0, FxType::FreqShifter, {{FxParam::ShiftRange, normFromShiftRange(400.0)}, {FxParam::ShiftSpread, 0.3},

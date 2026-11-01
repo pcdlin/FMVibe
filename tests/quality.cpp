@@ -292,6 +292,215 @@ void effectsChainChecks() {
     }
 }
 
+// --- Notes, voices and their state: every note reports its end once, in mono, on a key struck again and when a
+// lower voice limit cuts it; a velocity or expression that isn't a number; host modulation of the macros; a comb
+// read at its line's end; a voice's right channel back from a stretch in mono; and an envelope's curve straightened
+// for a while.
+void noteAndVoiceChecks() {
+    std::printf("notes and voices:\n");
+    // Renders `blocks` host blocks, counting into `ends` (by note id, 0 to 9) the notes whose end the plugin reports:
+    // ended, and no voice left that the host takes for theirs (see Plugin::reportEndedNotes()). False if anything
+    // came out that isn't a number.
+    auto play = [](Engine &e, int blocks, int (&ends)[10]) {
+        std::vector<float> left(kBlock), right(kBlock);
+        bool finite = true;
+        for (int b = 0; b < blocks; ++b) {
+            e.synth().render(left.data(), right.data(), kBlock, e.p);
+            for (uint32_t s = 0; s < kBlock; ++s)
+                finite = finite && std::isfinite(left[s]) && std::isfinite(right[s]);
+            for (const NoteRef &note : e.synth().endedNotes())
+                if (!e.synth().isActive(note) && note.noteId >= 0 && note.noteId < 10)
+                    ++ends[note.noteId];
+            e.synth().clearEndedNotes();
+        }
+        return finite;
+    };
+    {
+        // Mono: a note let go and taken over by the next while it still releases is over then; each ends once.
+        Engine e(2);
+        e.synth().setPlayMode(true, true, false);
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.5);
+        int ends[10] = {};
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        play(e, 10, ends);
+        e.synth().noteOff({1, 0, 0, 60});
+        play(e, 2, ends);
+        e.synth().noteOn({2, 0, 0, 64}, 1.0);
+        play(e, 10, ends);
+        e.synth().noteOff({2, 0, 0, 64});
+        play(e, 400, ends);
+        std::printf("      mono, a note taken over in its release: ends %d time(s), the next %d\n", ends[1], ends[2]);
+        check(ends[1] == 1 && ends[2] == 1 && e.synth().activeVoiceCount() == 0,
+              "mono: a note taken over in its release ends once, and so does the next");
+    }
+    {
+        // A key struck again while its last note still rings: with note ids, the last note's end is reported once it
+        // is over, though the key sounds on; without them, the host keeps one voice per key, which the new note keeps.
+        auto strikeAgain = [&play](Engine &e, int32_t first, int32_t second, int (&ends)[10]) {
+            e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.3);
+            e.synth().noteOn({first, 0, 0, 60}, 1.0);
+            play(e, 4, ends);
+            e.synth().noteOff({first, 0, 0, 60});
+            play(e, 1, ends);
+            e.synth().noteOn({second, 0, 0, 60}, 1.0);
+            play(e, 200, ends);
+        };
+        Engine e(2), plain(2);
+        int ends[10] = {}, plainEnds[10] = {};
+        strikeAgain(e, 1, 2, ends);
+        strikeAgain(plain, -1, -1, plainEnds);
+        std::printf("      a key struck again while it rings: the last note ends %d time(s), the new one %d\n", ends[1],
+                    ends[2]);
+        check(ends[1] == 1 && ends[2] == 0 && e.synth().activeVoiceCount() == 1 &&
+                  plain.synth().isActive({-1, 0, 0, 60}),
+              "with note ids, a note on a key struck again reports its end, and the new one sounds on");
+    }
+    {
+        // A velocity or a note expression that isn't a number, on an FM pair (where it would reach the phases): the
+        // note stays finite, and ends once let go.
+        bool fine = true;
+        const int32_t expressions[] = {-1, CLAP_NOTE_EXPRESSION_TUNING, CLAP_NOTE_EXPRESSION_VOLUME,
+                                       CLAP_NOTE_EXPRESSION_PAN};
+        for (int32_t expression : expressions) {
+            Engine e(2);
+            e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+            e.p[paramIndex(1, OpParam::Out)] = 0.0;
+            e.p[matrixIndex(1, 0)] = 0.5;
+            int ends[10] = {};
+            e.synth().noteOn({1, 0, 0, 60}, expression < 0 ? std::nan("") : 1.0);
+            if (expression >= 0)
+                e.synth().noteExpression({1, 0, 0, 60}, expression, std::nan(""));
+            bool finite = play(e, 20, ends);
+            e.synth().noteOff({1, 0, 0, 60});
+            finite = play(e, 100, ends) && finite;
+            fine = fine && finite && ends[1] == 1;
+        }
+        check(fine, "a velocity or note expression that isn't a number leaves the note finite, and it ends");
+    }
+    {
+        // Eight notes sounding, and the voice limit lowered to two: the six oldest fade out at once, as stolen ones
+        // do, each reporting its end once. A new note then steals the oldest of the two left.
+        Engine e(2);
+        int ends[10] = {};
+        for (int k = 0; k < 8; ++k)
+            e.synth().noteOn({k, 0, 0, static_cast<int16_t>(48 + k)}, 1.0);
+        play(e, 4, ends);
+        e.synth().setVoiceLimit(2);
+        play(e, 4, ends);
+        const int cut = e.synth().activeVoiceCount();
+        const bool oldest = std::all_of(ends, ends + 6, [](int n) { return n == 1; }) && ends[6] == 0 && ends[7] == 0;
+        e.synth().noteOn({8, 0, 0, 60}, 1.0);
+        play(e, 4, ends);
+        std::printf("      eight notes, the limit lowered to two: %d voice(s) left; a ninth note: %d\n", cut,
+                    e.synth().activeVoiceCount());
+        check(cut == 2 && oldest && ends[6] == 1 && ends[7] == 0 && e.synth().activeVoiceCount() == 2,
+              "a lower voice limit cuts the voices past it at once, each note ending once");
+    }
+    {
+        // Host modulation for every voice, of a macro's knob, the mod wheel or the note source's depth, moves their
+        // targets as turning them does: each takes A's Out down by 100 %, so modulated all the way, A goes silent.
+        // The note source puts out all of it at C4, the top of its range here.
+        auto peakWith = [](int source, int modulated, double amount, double mod) {
+            Engine e(2);
+            e.p[slotTargetIndex(source, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+            e.p[slotAmountIndex(source, 0)] = amount;
+            e.p[paramIndex(NoteParam::High)] = 60.0;
+            e.synth().paramMod(modulated, {-1, -1, -1, -1}, mod);
+            e.noteOn(60);
+            const std::vector<float> out = e.render(9600);
+            float peak = 0.0f;
+            for (size_t i = 4800; i < out.size(); ++i)
+                peak = std::max(peak, std::abs(out[i]));
+            return peak;
+        };
+        const int note = slotAmountIndex(kNoteSource, 0);
+        const float macro = peakWith(kMaxSources, paramIndex(0, MacroParam::Value), -1.0, 1.0);
+        const float wheel = peakWith(kWheelSource, paramIndex(GlobalParam::ModWheel), -1.0, 1.0);
+        const float depth = peakWith(kNoteSource, note, 0.0, -1.0);
+        const float still = peakWith(kMaxSources, paramIndex(0, MacroParam::Value), -1.0, 0.0);
+        std::printf("      A's peak, modulated away by the host through a macro %.4f, the mod wheel %.4f, the note "
+                    "source %.4f; %.3f unmodulated\n", macro, wheel, depth, still);
+        check(macro < 1e-3f && wheel < 1e-3f && depth < 1e-3f && still > 0.5f,
+              "host modulation of a macro, the mod wheel and the note source's depth moves their targets");
+    }
+    {
+        // A comb whose delay lies a hair over a whole number of samples (at a cutoff of 1 kHz at 2x, say) reads only
+        // inside its line: the float past the line's end, which it would read for the line's start, is never heard
+        // (here it isn't a number).
+        bool inside = true;
+        const double rate = 2.0 * kSampleRate;
+        const int size = combLength(rate);
+        for (double hz : {1000.0, 1600.0, 3200.0, 4800.0}) {
+            std::vector<float> line(static_cast<size_t>(size) + 1, 0.0f);
+            line[static_cast<size_t>(size)] = std::nanf("");
+            Filter comb;
+            const FilterSettings s =
+                filterSettings(FilterType::Comb, 1, cutoffFromNorm(normFromCutoff(hz)), 1.0, 0.0, rate);
+            for (int i = 0; i < 3 * size; ++i)
+                inside = inside && std::isfinite(comb.process(i == 0 ? 1.0 : 0.0, s, line.data(), size));
+        }
+        check(inside, "a comb never reads past the end of its line");
+    }
+    {
+        // A resonant comb rung in stereo (two unison copies spread apart); then the spread goes, and the comb's input
+        // with it, while it rings out; then the spread comes back. The right channel carries on from where the left
+        // is, quiet by then, rather than from where it stood still, ringing again.
+        Engine e(2);
+        const int spread = paramIndex(0, OpParam::UnisonSpread);
+        e.p[paramIndex(0, OpParam::Out)] = 0.0;
+        e.p[paramIndex(0, OpParam::Decay)] = normFromTime(0.01);
+        e.p[paramIndex(0, OpParam::Unison)] = 2.0;
+        e.p[spread] = 1.0;
+        e.p[sendIndex(0, 0)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Comb);
+        e.p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(110.0);
+        e.p[paramIndex(0, FilterParam::KeyTrack)] = 0.0;
+        e.p[paramIndex(0, FilterParam::Resonance)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Out)] = 1.0;
+        e.noteOn(45);
+        e.render(24000);
+        e.p[spread] = 0.0;
+        e.p[paramIndex(0, OpParam::Sustain)] = 0.0;
+        e.render(96000);
+        e.p[spread] = 1.0;
+        std::vector<float> left(kBlock), right(kBlock);
+        float peak[2] = {};
+        for (int b = 0; b < 10; ++b) {
+            e.synth().render(left.data(), right.data(), kBlock, e.p);
+            for (uint32_t s = 0; s < kBlock; ++s) {
+                peak[0] = std::max(peak[0], std::abs(left[s]));
+                peak[1] = std::max(peak[1], std::abs(right[s]));
+            }
+        }
+        std::printf("      a comb back in stereo after ringing out in mono: left %.4f, right %.4f\n", peak[0], peak[1]);
+        check(peak[1] < 0.01f && std::abs(peak[1] - peak[0]) < 1e-3f,
+              "a voice's right channel comes back from mono where the left is, not where it stood still");
+    }
+    {
+        // An envelope's decay bent, then straightened for a while, then bent again just as before: it carries on
+        // along its curve as if it had stayed bent, not from where it was when straightened.
+        auto rates = [](double curve) {
+            return envRates(0.0, 0.0, normFromTime(1.0), 0.0, 0.5, 0.0, curve, 0.5, kSampleRate);
+        };
+        const EnvRates bent = rates(0.5), straight = rates(0.0);
+        Envelope changed, along;
+        changed.start();
+        along.start();
+        for (int i = 0; i < 4900; ++i)
+            changed.next(bent);
+        for (int i = 0; i < 9600; ++i)
+            changed.next(straight);
+        changed.next(bent);
+        for (int i = 0; i < 4900 + 9600 + 1; ++i)
+            along.next(bent);
+        std::printf("      a decay bent again after a straight stretch: %.4f, bent all along %.4f\n", changed.level(),
+                    along.level());
+        check(std::abs(changed.level() - along.level()) < 1e-6,
+              "an envelope's curve bent again after a straight stretch carries on along it");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -818,6 +1027,8 @@ int main() {
                   t.clipHold > 1.0f,
               "the output meter follows the peak, falls 24 dB a second, and lights up past full scale");
     }
+
+    noteAndVoiceChecks();
 
     // --- What oversampling costs: 16 voices of a 6-operator stack, one second.
     std::printf("cost (16 voices, 6 operators, ms per second of audio):\n");
