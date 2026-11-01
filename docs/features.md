@@ -532,8 +532,20 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   filter sweep over two bars); LD FM Brass (two stacks that blat in with velocity, an envelope on the FM,
   vibrato); FX Industrial Hit (a body dropping two octaves, band-passed noise, metallic partials and a sine-fold
   shaper); LD Folded Lead (a mono lead whose modulator goes through a sine-fold shaper on its way to the carrier,
-  driven harder as each note starts); and BA Fuzz Bass (an FM pair through an asymmetric shaper into a plucked
-  low-pass, the shaper also growling back onto the modulator, over a clean sub). A folder made before an
+  driven harder as each note starts); BA Fuzz Bass (an FM pair through an asymmetric shaper into a plucked
+  low-pass, the shaper also growling back onto the modulator, over a clean sub); PL Comb String (a noise burst
+  ringing a comb tuned to the note, on through a 6 dB low-pass; the mod wheel damps it); PL Chip Pluck (alternating,
+  half and abs sines like the classic FM chips, the note source easing the FM off up the keyboard, a hard clipper
+  going out beside it, and a Bite macro on FM Amount); SQ Step Filter (an organ wave and a pulse through a resonant
+  18 dB low-pass that a drawn LFO shape opens on every eighth note, each its own height, into a cubic shaper; its
+  Cutoff and Accent macros, the latter deepening the pattern); SQ Glass Steps (a custom wave from 64 partials, the
+  Fibonacci ones, through a notch that jumps at random every sixteenth note); LD Vowel Lead (a vowel wave with a
+  held bite and breath noise modulating it through a band-pass, gliding into every note, a bipolar envelope scooping
+  into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); FX Laser Zap (a
+  one-shot LFO throwing the pitch down four octaves in a quarter second, a phase disperser and a staircase-curve
+  shaper crushing it; its Speed and Grit macros); and FX Noise Riser (wide noise through a high-pass and a climbing
+  sine, swept over eight seconds by an envelope that starts slowly and rushes, turning a frequency shifter's spiral
+  faster). A folder made before an
   example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone.
   - The **preset bar** in the middle of the tabs' row shows the preset loaded or saved last, or **- Init -** (as
