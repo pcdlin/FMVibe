@@ -1,0 +1,16 @@
+# CMake build trees (also hold the fetched CLAP SDK and clap-validator)
+build/
+out/
+cmake-build-*/
+CMakeUserPresets.json
+
+# Visual Studio / VS Code
+.vs/
+*.user
+*.suo
+.vscode/settings.json
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store

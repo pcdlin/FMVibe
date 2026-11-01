@@ -1,0 +1,210 @@
+#pragma once
+
+#include "params.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <limits>
+#include <numbers>
+#include <vector>
+
+namespace fmvibe {
+
+// The shapers' curves, which the shaper effect and the voices' shapers share: the formulas (see ClipMode), a drawn
+// curve read through a table, the first-order antiderivative anti-aliasing both run them with, and the rest of what
+// runs a shaper.
+
+namespace clip {
+
+// log(cosh(x)) without overflowing for large x.
+inline double logCosh(double x) {
+    const double a = std::abs(x);
+    return a + std::log1p(std::exp(-2.0 * a)) - std::numbers::ln2;
+}
+
+// Where x sits in the Fold curve's period of 4, from 0 at -1.
+inline double foldPhase(double x) {
+    const double m = std::fmod(x + 1.0, 4.0);
+    return m < 0.0 ? m + 4.0 : m;
+}
+
+} // namespace clip
+
+// A drawn curve's table: kClipTableSteps + 1 values across -1..1, then their running integral.
+constexpr int kClipTableSteps = 512;
+constexpr double kClipTableStep = 2.0 / kClipTableSteps;
+constexpr int kClipTableSize = 2 * (kClipTableSteps + 1);
+
+// Fills `table` (kClipTableSize long) from the drawn curve whose point count is param `base`.
+template <class Get>
+void buildClipTable(const Get &get, int base, float *table) {
+    float *integral = table + kClipTableSteps + 1;
+    for (int i = 0; i <= kClipTableSteps; ++i)
+        table[i] = static_cast<float>(clipCurveValue(get, base, -1.0 + i * kClipTableStep));
+    integral[0] = 0.0f;
+    for (int i = 1; i <= kClipTableSteps; ++i)
+        integral[i] = integral[i - 1] + static_cast<float>(0.5 * kClipTableStep * (table[i - 1] + table[i]));
+}
+
+inline double clipTableValue(const float *table, double x) {
+    const double pos = std::clamp((x + 1.0) / kClipTableStep, 0.0, static_cast<double>(kClipTableSteps));
+    const int i = std::min(static_cast<int>(pos), kClipTableSteps - 1);
+    return table[i] + (table[i + 1] - table[i]) * (pos - i);
+}
+
+// Exact for the straight lines between the table's values; level past the ends.
+inline double clipTableIntegral(const float *table, double x) {
+    const float *integral = table + kClipTableSteps + 1;
+    if (x <= -1.0)
+        return (x + 1.0) * table[0];
+    if (x >= 1.0)
+        return integral[kClipTableSteps] + (x - 1.0) * table[kClipTableSteps];
+    const int i = std::min(static_cast<int>((x + 1.0) / kClipTableStep), kClipTableSteps - 1);
+    const double from = -1.0 + i * kClipTableStep;
+    return integral[i] + (x - from) * 0.5 * (table[i] + clipTableValue(table, x));
+}
+
+// A shaper's curve, for an input that is already driven (no anti-aliasing; for drawing).
+// Custom needs the drawn points (clipCurveValue()); here it is a plain hard clip.
+inline double clipShape(ClipMode mode, double x) {
+    switch (mode) {
+    case ClipMode::Hard:
+        return std::clamp(x, -1.0, 1.0);
+    case ClipMode::Soft:
+        return std::tanh(x);
+    case ClipMode::Asymmetric: // soft on top, twice as steep and half as high below: even harmonics
+        return x >= 0.0 ? std::tanh(x) : 0.5 * std::tanh(2.0 * x);
+    case ClipMode::Cubic:
+        return std::abs(x) <= 1.0 ? 1.5 * x - 0.5 * x * x * x : (x > 0.0 ? 1.0 : -1.0);
+    case ClipMode::Gentle:
+        return x / (1.0 + std::abs(x));
+    case ClipMode::SineFold:
+        return std::sin(0.5 * std::numbers::pi * x);
+    case ClipMode::Fold:
+        return 1.0 - std::abs(clip::foldPhase(x) - 2.0);
+    case ClipMode::Custom: // needs the drawn points; see clipCurveValue()
+    case ClipMode::Count:
+        break;
+    }
+    return std::clamp(x, -1.0, 1.0);
+}
+
+// Curves that aren't symmetric shift the signal's average, which a DC blocker after them takes out.
+constexpr bool clipNeedsBlocker(ClipMode mode) { return mode == ClipMode::Asymmetric || mode == ClipMode::Custom; }
+
+// A shaper curve: one of the formulas, or (Custom) the drawn one through its table.
+struct ClipCurve {
+    ClipMode mode;
+    const float *table;
+
+    double shape(double x) const { return mode == ClipMode::Custom ? clipTableValue(table, x) : clipShape(mode, x); }
+
+    // The antiderivative, for first-order antiderivative anti-aliasing.
+    double integral(double x) const {
+        switch (mode) {
+        case ClipMode::Hard:
+            return std::abs(x) <= 1.0 ? 0.5 * x * x : std::abs(x) - 0.5;
+        case ClipMode::Soft:
+            return clip::logCosh(x);
+        case ClipMode::Asymmetric:
+            return x >= 0.0 ? clip::logCosh(x) : 0.25 * clip::logCosh(2.0 * x);
+        case ClipMode::Cubic:
+            return std::abs(x) <= 1.0 ? 0.75 * x * x - 0.125 * x * x * x * x : std::abs(x) - 0.375;
+        case ClipMode::Gentle:
+            return std::abs(x) - std::log1p(std::abs(x));
+        case ClipMode::SineFold:
+            return -2.0 / std::numbers::pi * std::cos(0.5 * std::numbers::pi * x);
+        case ClipMode::Fold: { // periodic, as the curve averages to 0 over a period
+            const double m = clip::foldPhase(x);
+            return m <= 2.0 ? 0.5 * m * m - m : -0.5 * m * m + 3.0 * m - 4.0;
+        }
+        case ClipMode::Custom:
+            return clipTableIntegral(table, x);
+        case ClipMode::Count:
+            break;
+        }
+        return 0.0;
+    }
+};
+
+// The shaper curve averaged over the last sample step, which keeps the
+// harmonics that hard and steep curves add from aliasing as badly.
+inline double clipAntialiased(const ClipCurve &curve, double x, double last) {
+    const double dx = x - last;
+    if (std::abs(dx) < 1e-6)
+        return curve.shape(0.5 * (x + last));
+    return (curve.integral(x) - curve.integral(last)) / dx;
+}
+
+inline ClipMode clipMode(double value) {
+    return static_cast<ClipMode>(
+        std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(ClipMode::Count) - 1));
+}
+
+// What follows runs a shaper, the effect's and the voices' alike (see shaperParams()).
+
+// What a shaper's params ask of it: its curve, and its drive, output (linked to the drive or not, see
+// clipOutputDb()) and mix as gains.
+struct ShaperSettings {
+    ClipMode mode;
+    double drive;
+    double output;
+    double mix;
+};
+template <class Get>
+ShaperSettings shaperSettings(const Get &get, const ShaperParams &p) {
+    const double driveDb = get(p.drive);
+    return {clipMode(get(p.mode)), std::pow(10.0, driveDb / 20.0),
+            std::pow(10.0, clipOutputDb(get(p.output), driveDb, get(p.link) >= 0.5) / 20.0), get(p.mix)};
+}
+
+// A drawn curve's table (see buildClipTable()), built again whenever the points it was built from change. Its
+// values are allocated when it is made, so the audio thread only fills them.
+struct ClipTable {
+    std::vector<float> values = std::vector<float>(kClipTableSize, 0.0f);
+    std::array<double, kShapeParamCount> points; // NaN until the first build
+
+    ClipTable() { points.fill(std::numeric_limits<double>::quiet_NaN()); }
+
+    // `base`: the drawn curve's point count.
+    template <class Get>
+    void update(const Get &get, int base) {
+        bool same = true;
+        for (int i = 0; i < kShapeParamCount && same; ++i)
+            same = points[i] == get(base + i);
+        if (same)
+            return;
+        for (int i = 0; i < kShapeParamCount; ++i)
+            points[i] = get(base + i);
+        buildClipTable(get, base, values.data());
+    }
+};
+
+// The DC blocker after the uneven curves (see clipNeedsBlocker()): a 5 Hz high-pass, by its pole at `rate`.
+inline double clipBlockerPole(double rate) {
+    return 1.0 - 2.0 * std::numbers::pi * 5.0 / rate;
+}
+
+// One side of a shaper as it runs: its last driven input, for the anti-aliasing, and its DC blocker, which keeps
+// running whether its curve needs it or not, so it is settled when one that does is picked.
+struct ClipState {
+    double last = 0.0;
+    double dcIn = 0.0;
+    double dcOut = 0.0;
+
+    // `x` driven through the curve (blocked if `block`), then at `output`, and `mix` of that against x.
+    double run(const ClipCurve &curve, double x, double drive, double output, double mix, bool block, double pole) {
+        const double driven = x * drive;
+        double y = clipAntialiased(curve, driven, last);
+        last = driven;
+        const double blocked = y - dcIn + pole * dcOut;
+        dcIn = y;
+        dcOut = blocked;
+        if (block)
+            y = blocked;
+        return x + (y * output - x) * mix;
+    }
+};
+
+} // namespace fmvibe

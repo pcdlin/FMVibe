@@ -1,0 +1,1085 @@
+#include "effects.h"
+
+#include <algorithm>
+#include <bit>
+#include <cmath>
+#include <complex>
+#include <limits>
+#include <numbers>
+
+namespace fmvibe {
+
+namespace {
+
+double dbToGain(double db) {
+    return std::pow(10.0, db / 20.0);
+}
+
+enum class BiquadType { LowPass, HighPass, AllPass };
+
+struct Coefs {
+    double b0, b1, b2, a1, a2;
+};
+
+// Butterworth-Q biquads (RBJ cookbook): two in a row make a Linkwitz-Riley crossover.
+Coefs biquad(BiquadType type, double hz, double sampleRate) {
+    const double w = 2.0 * std::numbers::pi * hz / sampleRate;
+    const double cosW = std::cos(w);
+    const double alpha = std::sin(w) / std::numbers::sqrt2; // sin(w) / (2Q), Q = 1/sqrt(2)
+    double b0 = 0.0, b1 = 0.0, b2 = 0.0;
+    switch (type) {
+    case BiquadType::LowPass:
+        b0 = b2 = (1.0 - cosW) * 0.5;
+        b1 = 1.0 - cosW;
+        break;
+    case BiquadType::HighPass:
+        b0 = b2 = (1.0 + cosW) * 0.5;
+        b1 = -(1.0 + cosW);
+        break;
+    case BiquadType::AllPass:
+        b0 = 1.0 - alpha;
+        b1 = -2.0 * cosW;
+        b2 = 1.0 + alpha;
+        break;
+    }
+    const double a0 = 1.0 + alpha;
+    return {b0 / a0, b1 / a0, b2 / a0, -2.0 * cosW / a0, (1.0 - alpha) / a0};
+}
+
+// A parametric EQ band (RBJ cookbook: peaking EQ, shelves, high- and low-pass), from its params.
+Coefs peqCoefs(PeqType type, double freq, double gainDb, double q, double sampleRate) {
+    const double hz = std::min(cutoffFromNorm(freq), 0.45 * sampleRate);
+    const double a = std::pow(10.0, gainDb / 40.0);
+    const double w = 2.0 * std::numbers::pi * hz / sampleRate;
+    const double cosW = std::cos(w);
+    const double alpha = std::sin(w) / (2.0 * qFromNorm(q));
+    const double shelf = 2.0 * std::sqrt(a) * alpha;
+    double b0 = 1.0, b1 = 0.0, b2 = 0.0, a0 = 1.0, a1 = 0.0, a2 = 0.0;
+    switch (type) {
+    case PeqType::Peak:
+    case PeqType::Count:
+        b0 = 1.0 + alpha * a, b1 = -2.0 * cosW, b2 = 1.0 - alpha * a;
+        a0 = 1.0 + alpha / a, a1 = -2.0 * cosW, a2 = 1.0 - alpha / a;
+        break;
+    case PeqType::LowShelf:
+        b0 = a * ((a + 1.0) - (a - 1.0) * cosW + shelf), b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cosW);
+        b2 = a * ((a + 1.0) - (a - 1.0) * cosW - shelf);
+        a0 = (a + 1.0) + (a - 1.0) * cosW + shelf, a1 = -2.0 * ((a - 1.0) + (a + 1.0) * cosW);
+        a2 = (a + 1.0) + (a - 1.0) * cosW - shelf;
+        break;
+    case PeqType::HighShelf:
+        b0 = a * ((a + 1.0) + (a - 1.0) * cosW + shelf), b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cosW);
+        b2 = a * ((a + 1.0) + (a - 1.0) * cosW - shelf);
+        a0 = (a + 1.0) - (a - 1.0) * cosW + shelf, a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cosW);
+        a2 = (a + 1.0) - (a - 1.0) * cosW - shelf;
+        break;
+    case PeqType::LowCut:
+        b0 = 0.5 * (1.0 + cosW), b1 = -(1.0 + cosW), b2 = 0.5 * (1.0 + cosW);
+        a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
+        break;
+    case PeqType::HighCut:
+        b0 = 0.5 * (1.0 - cosW), b1 = 1.0 - cosW, b2 = 0.5 * (1.0 - cosW);
+        a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
+        break;
+    }
+    return {b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0};
+}
+
+
+// Per-sample smoothing factor for a time constant of `seconds`.
+double smoothing(double seconds, double sampleRate) {
+    return std::exp(-1.0 / (seconds * sampleRate));
+}
+
+// Moves a band's gain reduction (dB) toward what the curve asks for at detector
+// level `peak`: at the attack pace while it has to come down, else at the release pace.
+double followReduction(double &reduction, double peak, double thresholdDb, double ratio, double kneeDb,
+                       double attack, double release) {
+    const double inDb = 20.0 * std::log10(std::max(peak, 1e-9));
+    const double target = compressorCurve(inDb, thresholdDb, ratio, kneeDb) - inDb;
+    reduction = target + (reduction - target) * (target < reduction ? attack : release);
+    return reduction;
+}
+
+// One-pole smoothing coefficient for a corner at `hz`.
+double onePole(double hz, double sampleRate) {
+    return 1.0 - std::exp(-2.0 * std::numbers::pi * std::min(hz, 0.45 * sampleRate) / sampleRate);
+}
+
+// The reverb's lines (at full size) and diffusers, in seconds: no two share a factor that would make
+// their echoes line up. The all-passes' gains go with the diffusers.
+constexpr double kReverbSeconds[] = {0.0313, 0.0379, 0.0413, 0.0479, 0.0531, 0.0617, 0.0679, 0.0737};
+constexpr double kDiffuserSeconds[] = {0.00477, 0.00359, 0.01273, 0.00931, 0.00213, 0.00631, 0.00167, 0.00419};
+constexpr double kDiffuserGains[] = {0.7, 0.7, 0.6, 0.6, 0.7, 0.65, 0.6, 0.55};
+constexpr double kMaxPreDelay = 0.25;
+constexpr double kMaxFlangerDelay = 0.032; // the longest center delay at full depth, with room
+constexpr double kWidenerSweep = 0.12;    // how far the widener's taps are swept either way, of their delay
+
+// Reads a delay line `delay` samples behind `write`, between samples.
+double readBehind(const std::vector<float> &line, int write, double delay) {
+    const int size = static_cast<int>(line.size());
+    double pos = write - delay;
+    while (pos < 0.0)
+        pos += size;
+    const int i0 = std::min(static_cast<int>(pos), size - 1);
+    const int i1 = i0 + 1 == size ? 0 : i0 + 1;
+    return line[i0] + (line[i1] - line[i0]) * (pos - i0);
+}
+
+// The reverb's size knob: from a quarter of the lines' full length to all of it.
+double reverbScale(double size) {
+    return 0.25 + 0.75 * std::clamp(size, 0.0, 1.0);
+}
+
+} // namespace
+
+double phaserCorner(double centerNorm, double depth, double lfo) {
+    return cutoffFromNorm(centerNorm) * std::exp2(2.5 * depth * lfo);
+}
+
+double flangerDelay(double delayNorm, double depth, double lfo) {
+    return timeFromNorm(delayNorm) * (1.0 + 0.95 * depth * lfo);
+}
+
+double sweepFeedback(double feedback) {
+    return 0.9 * std::clamp(feedback, -1.0, 1.0);
+}
+
+double sweepGain(double feedback) {
+    const double g = sweepFeedback(feedback);
+    return std::sqrt(1.0 - g * g);
+}
+
+double phaserResponse(double hz, double cornerHz, int stages, double feedback, double mix) {
+    using Complex = std::complex<double>;
+    const Complex s(0.0, hz / cornerHz);
+    const Complex stage = (1.0 - s) / (1.0 + s); // the analog first-order all-pass
+    Complex chain = 1.0;
+    for (int k = 0; k < stages; ++k)
+        chain *= stage;
+    const double g = sweepFeedback(feedback);
+    return std::abs(1.0 - mix + mix * sweepGain(feedback) * chain / (1.0 - g * chain));
+}
+
+double flangerResponse(double hz, double delaySeconds, double feedback, double mix) {
+    using Complex = std::complex<double>;
+    const Complex delay = std::polar(1.0, -2.0 * std::numbers::pi * hz * delaySeconds);
+    const double g = sweepFeedback(feedback);
+    return std::abs(1.0 - mix + mix * sweepGain(feedback) * delay / (1.0 - g * delay));
+}
+
+double reverbDecay(double norm) {
+    return timeFromNorm(norm);
+}
+
+double reverbPreDelay(double norm) {
+    return norm <= 0.0 ? 0.0 : timeFromNorm(norm);
+}
+
+ReverbStyle reverbStyle(ReverbType type) {
+    switch (type) {
+    case ReverbType::Room:
+        return {0.45, 0.6, 4, 0.55, 0.0};
+    case ReverbType::Plate:
+        return {0.6, 1.8, 8, 0.0, 0.0};
+    case ReverbType::Shimmer: // a hall, brighter, each octave 4.4 dB below the one it comes from
+        return {1.0, 1.3, 4, 0.0, 0.6};
+    case ReverbType::Hall:
+    case ReverbType::Count:
+        break;
+    }
+    return {1.0, 1.0, 4, 0.0, 0.0};
+}
+
+ReverbType reverbType(double value) {
+    return static_cast<ReverbType>(std::clamp(static_cast<int>(std::lround(value)), 0,
+                                              static_cast<int>(ReverbType::Count) - 1));
+}
+
+double reverbSpace(double sizeNorm, ReverbType type) {
+    return reverbScale(sizeNorm) * reverbStyle(type).length;
+}
+
+std::array<double, 2> Effects::Hilbert::process(double x) {
+    constexpr double kA[] = {0.6923878, 0.9360654322959, 0.9882295226860, 0.9987488452737};
+    constexpr double kB[] = {0.4021921162426, 0.8561710882420, 0.9722909545651, 0.9952884791278};
+    // Each section is y[n] = c^2 (x[n] + y[n-2]) - x[n-2].
+    auto chain = [](std::array<std::array<double, 4>, 4> &sections, const double (&c)[4], double in) {
+        for (int i = 0; i < 4; ++i) {
+            std::array<double, 4> &s = sections[i];
+            const double y = c[i] * c[i] * (in + s[3]) - s[1];
+            s[1] = s[0];
+            s[0] = in;
+            s[3] = s[2];
+            s[2] = y;
+            in = y;
+        }
+        return in;
+    };
+    const double first = chain(a, kA, x);
+    const double second = chain(b, kB, x);
+    const double inPhase = delayed;
+    delayed = first;
+    return {inPhase, -second}; // the second chain runs 90 degrees ahead: turned round, it lags like a Hilbert transform
+}
+
+double eqResponse(double hz, double low, double mid, double high) {
+    using Complex = std::complex<double>;
+    const Complex s1(0.0, hz / kEqLowHz);
+    const Complex s2(0.0, hz / kEqHighHz);
+    const Complex lp1 = 1.0 / (s1 * s1 + std::numbers::sqrt2 * s1 + 1.0);
+    const Complex hp1 = s1 * s1 * lp1;
+    const Complex lp2 = 1.0 / (s2 * s2 + std::numbers::sqrt2 * s2 + 1.0);
+    const Complex hp2 = s2 * s2 * lp2;
+    const Complex ap2 = (s2 * s2 - std::numbers::sqrt2 * s2 + 1.0) * lp2;
+    return std::abs(eqGain(low) * ap2 * lp1 * lp1 + eqGain(mid) * hp1 * hp1 * lp2 * lp2 +
+                    eqGain(high) * hp1 * hp1 * hp2 * hp2);
+}
+
+double peqResponse(double hz, PeqType type, double freq, double gainDb, double q) {
+    // The analog filters the digital ones are made from.
+    using Complex = std::complex<double>;
+    const Complex s(0.0, hz / cutoffFromNorm(freq));
+    const double a = std::pow(10.0, gainDb / 40.0);
+    const double bandwidth = 1.0 / qFromNorm(q);
+    const double root = std::sqrt(a) * bandwidth;
+    switch (type) {
+    case PeqType::LowShelf:
+        return std::abs(a * (s * s + root * s + a) / (a * s * s + root * s + 1.0));
+    case PeqType::HighShelf:
+        return std::abs(a * (a * s * s + root * s + 1.0) / (s * s + root * s + a));
+    case PeqType::LowCut:
+        return std::abs(s * s / (s * s + bandwidth * s + 1.0));
+    case PeqType::HighCut:
+        return std::abs(1.0 / (s * s + bandwidth * s + 1.0));
+    case PeqType::Peak:
+    case PeqType::Count:
+        break;
+    }
+    return std::abs((s * s + s * bandwidth * a + 1.0) / (s * s + s * bandwidth / a + 1.0));
+}
+
+void Effects::prepare(double sampleRate) {
+    sampleRate_ = sampleRate;
+    const size_t length = static_cast<size_t>(std::ceil(kMaxDelay * sampleRate)) + 4;
+    for (Slot &slot : slots_) {
+        for (std::vector<float> &line : slot.delay.lines)
+            line.assign(length, 0.0f);
+        for (std::vector<float> &comb : slot.filter.combs)
+            comb.assign(static_cast<size_t>(combLength(sampleRate)), 0.0f);
+        const size_t longest = static_cast<size_t>(std::ceil(kReverbSeconds[kReverbLines - 1] * sampleRate)) + 4;
+        for (std::vector<float> &line : slot.reverb.lines)
+            line.assign(longest, 0.0f);
+        const double longestDiffuser = *std::max_element(std::begin(kDiffuserSeconds), std::end(kDiffuserSeconds));
+        const size_t widest = static_cast<size_t>(std::ceil(longestDiffuser * sampleRate)) + 4;
+        for (std::vector<float> &diffuser : slot.reverb.diffusers)
+            diffuser.assign(widest, 0.0f);
+        // Room for a room's latest early reflection behind the longest pre-delay.
+        const double behind = kMaxPreDelay + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1];
+        slot.reverb.preDelay.assign(static_cast<size_t>(std::ceil(behind * sampleRate)) + 4, 0.0f);
+        slot.reverb.shimmer.assign(static_cast<size_t>(std::ceil((kShimmerLoop + kShimmerWindow) * sampleRate)) + 4,
+                                   0.0f);
+        const double longestTap = kWidenerDelays[kWidenerTaps - 1] * (1.0 + kWidenerSweep);
+        slot.widener.line.assign(static_cast<size_t>(std::ceil(longestTap * sampleRate)) + 4, 0.0f);
+        for (std::vector<float> &line : slot.flanger.lines)
+            line.assign(static_cast<size_t>(std::ceil(kMaxFlangerDelay * sampleRate)) + 4, 0.0f);
+        Analyzer::prepare(slot.analyzed);
+    }
+    analyzer_.prepare(sampleRate);
+    for (int i = 0; i < kReverbLines; ++i)
+        reverbLengths_[i] = static_cast<int>(std::lround(kReverbSeconds[i] * sampleRate));
+    for (int i = 0; i < kDiffusers; ++i)
+        diffuserLengths_[i] = static_cast<int>(std::lround(kDiffuserSeconds[i] * sampleRate));
+    auto set = [&](BiquadCoefs &c, BiquadType type, double hz) {
+        const Coefs b = biquad(type, hz, sampleRate);
+        c = {b.b0, b.b1, b.b2, b.a1, b.a2};
+    };
+    set(lowPass1_, BiquadType::LowPass, kEqLowHz);
+    set(highPass1_, BiquadType::HighPass, kEqLowHz);
+    set(lowPass2_, BiquadType::LowPass, kEqHighHz);
+    set(highPass2_, BiquadType::HighPass, kEqHighHz);
+    set(allPass2_, BiquadType::AllPass, kEqHighHz);
+    reset();
+}
+
+void Effects::reset() {
+    // Each effect clears its state when it fades in again.
+    for (Slot &slot : slots_) {
+        slot.fade = 0.0;
+        slot.running = FxType::None;
+    }
+    tail_ = 0;
+}
+
+double Effects::delayTarget(int slot, int side, const ParamValues &p, double tempo) const {
+    if (p[paramIndex(slot, FxParam::DelayLink)] >= 0.5)
+        side = 0; // linked, the right side waits as long as the left
+    const double seconds =
+        p[paramIndex(slot, FxParam::DelaySync)] >= 0.5
+            ? divisionSeconds(p[paramIndex(slot, side == 0 ? FxParam::DelayDivisionL : FxParam::DelayDivisionR)], tempo)
+            : timeFromNorm(p[paramIndex(slot, side == 0 ? FxParam::DelayTimeL : FxParam::DelayTimeR)]);
+    const double size = static_cast<double>(slots_[slot].delay.lines[0].size());
+    return std::clamp(seconds * sampleRate_, 1.0, size - 2.0);
+}
+
+// Clears an effect that is about to fade in, and jumps its ramps to the current settings.
+void Effects::start(int slot, const ParamValues &p, double tempo) {
+    Slot &s = slots_[slot];
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    switch (s.running) {
+    case FxType::Shaper: {
+        const ShaperSettings settings = shaperSettings([&p](int index) { return p[index]; }, shaperParams(slot));
+        s.shaper = Shaper{};
+        s.shaper.drive = settings.drive;
+        s.shaper.output = settings.output;
+        s.shaper.mix = settings.mix;
+        break;
+    }
+    case FxType::Delay: {
+        Delay &d = s.delay;
+        for (std::vector<float> &line : d.lines)
+            std::fill(line.begin(), line.end(), 0.0f);
+        d.write = 0;
+        d.length = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
+        d.lowPass = {};
+        d.highPass = {};
+        d.feedback = at(FxParam::DelayFeedback);
+        d.dry = delayDryLevel(at(FxParam::DelayMix));
+        d.wet = delayWetLevel(at(FxParam::DelayMix));
+        d.width = at(FxParam::DelayWidth);
+        break;
+    }
+    case FxType::Eq:
+        s.eq.channels = {};
+        s.eq.gains = {eqGain(at(FxParam::EqLow)), eqGain(at(FxParam::EqMid)), eqGain(at(FxParam::EqHigh))};
+        break;
+    case FxType::ParamEq:
+        s.peq = ParamEq{};
+        s.analyzed.clear();
+        break;
+    case FxType::Filter:
+        s.filter.channels = {};
+        for (std::vector<float> &comb : s.filter.combs)
+            std::fill(comb.begin(), comb.end(), 0.0f);
+        s.filter.mix = at(FxParam::FilterMix);
+        break;
+    case FxType::Compressor:
+        s.comp = {0.0, dbToGain(at(FxParam::CompMakeup)), at(FxParam::CompMix)};
+        break;
+    case FxType::MultiComp:
+        s.multi = MultiComp{};
+        for (int band = 0; band < kMcBands; ++band)
+            s.multi.gains[band] = dbToGain(p[mcGainIndex(slot, band)]);
+        s.multi.mix = at(FxParam::McMix);
+        s.multi.output = dbToGain(at(FxParam::McOutput));
+        break;
+    case FxType::Reverb: {
+        Reverb &r = s.reverb;
+        for (std::vector<float> &line : r.lines)
+            std::fill(line.begin(), line.end(), 0.0f);
+        for (std::vector<float> &diffuser : r.diffusers)
+            std::fill(diffuser.begin(), diffuser.end(), 0.0f);
+        std::fill(r.preDelay.begin(), r.preDelay.end(), 0.0f);
+        std::fill(r.shimmer.begin(), r.shimmer.end(), 0.0f);
+        r.lineWrite = r.diffuserWrite = r.preWrite = r.shimmerWrite = 0;
+        r.shimmerPhase = r.shimmerLow = r.shimmerBass = 0.0;
+        r.damp = {};
+        r.size = reverbSpace(at(FxParam::ReverbSize), reverbType(at(FxParam::ReverbType)));
+        r.preLength = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
+        r.dry = delayDryLevel(at(FxParam::ReverbMix));
+        r.wet = delayWetLevel(at(FxParam::ReverbMix));
+        r.width = at(FxParam::ReverbWidth);
+        break;
+    }
+    case FxType::Phaser:
+        s.phaser = Phaser{};
+        s.phaser.mix = phaserWet(at(FxParam::PhaserMix));
+        break;
+    case FxType::Flanger:
+        for (std::vector<float> &line : s.flanger.lines)
+            std::fill(line.begin(), line.end(), 0.0f);
+        s.flanger.write = 0;
+        s.flanger.last = {};
+        s.flanger.phase = 0.0;
+        s.flanger.mix = at(FxParam::FlangerMix);
+        break;
+    case FxType::FreqShifter:
+        s.shifter = Shifter{};
+        s.shifter.mix = at(FxParam::ShiftMix);
+        break;
+    case FxType::Disperser:
+        s.disperser = Disperser{};
+        s.disperser.mix = at(FxParam::DisperserMix);
+        break;
+    case FxType::Widener: {
+        Widener &e = s.widener;
+        std::fill(e.line.begin(), e.line.end(), 0.0f);
+        e.write = 0;
+        e.highPass = Biquad{};
+        e.phases = {0.0, 0.25, 0.5, 0.75}; // apart from the start, so the sides never sweep together
+        e.size = at(FxParam::WidenerSize);
+        e.width = at(FxParam::WidenerWidth);
+        e.mix = at(FxParam::WidenerMix);
+        break;
+    }
+    case FxType::None:
+    case FxType::Count:
+        break;
+    }
+}
+
+void Effects::process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch) {
+    const FxOrder order = fxOrder(p[paramIndex(GlobalParam::FxOrder)]);
+    const double fadeStep = 1.0 / (0.005 * sampleRate_);
+    for (uint32_t done = 0; done < frames; done += kChunk) {
+        const uint32_t n = std::min(kChunk, frames - done);
+        float *const io[2] = {left + done, right + done};
+#ifdef __EMSCRIPTEN__
+        // WebAssembly can't flush denormals to zero as the plugin's process() does, and tails decaying into them
+        // cost many times the CPU. A signal far below hearing (-300 dB) keeps every state above them: a pulse every
+        // fourth sample, whose low, middle and top frequencies no effect's filters take out all at once.
+        for (uint32_t s = 0; s < n; s += 4) {
+            io[0][s] += 1e-15f;
+            io[1][s] += 1e-15f;
+        }
+#endif
+        int64_t keep = 0; // how long this chunk keeps the effects going
+        for (uint32_t s = 0; s < n && keep == 0; ++s)
+            if (std::abs(io[0][s]) > 1e-6f || std::abs(io[1][s]) > 1e-6f)
+                keep = static_cast<int64_t>(0.05 * sampleRate_); // filter and DC blocker tails
+
+        for (int slot : order) {
+            Slot &fx = slots_[slot];
+            const FxType type = fxType(p[paramIndex(slot, FxParam::Type)]);
+            if (fx.running != type && fx.fade <= 0.0)
+                fx.running = type;
+            const bool on = fx.running == type && type != FxType::None && p[paramIndex(slot, FxParam::Enabled)] >= 0.5;
+            if (!on && fx.fade <= 0.0) {
+                reduction_[slot] = {};
+                fx.analyzed.bands = {};
+                continue;
+            }
+            if (fx.fade <= 0.0)
+                start(slot, p, tempo);
+            float dry[2][kChunk];
+            std::copy_n(io[0], n, dry[0]);
+            std::copy_n(io[1], n, dry[1]);
+            switch (fx.running) {
+            case FxType::Shaper:
+                runShaper(slot, io, n, p);
+                break;
+            case FxType::Delay:
+                // While anything goes in or comes out, another echo may follow.
+                if (runDelay(slot, io, n, p, tempo) > 1e-5)
+                    keep = std::max(keep, static_cast<int64_t>(std::max(fx.delay.length[0], fx.delay.length[1]) +
+                                                               0.05 * sampleRate_));
+                break;
+            case FxType::Eq:
+                runEq(slot, io, n, p);
+                break;
+            case FxType::ParamEq:
+                runParamEq(slot, io, n, p);
+                break;
+            case FxType::Filter:
+                // A resonant comb rings on; keep going while it does.
+                if (runFilter(slot, io, n, p, pitch) > 1e-5)
+                    keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
+                feedAnalyzer(slot, io, n);
+                break;
+            case FxType::Compressor:
+                runCompressor(slot, io, n, p);
+                break;
+            case FxType::MultiComp:
+                runMultiComp(slot, io, n, p);
+                break;
+            case FxType::Reverb:
+            case FxType::Phaser:
+            case FxType::Flanger:
+            case FxType::FreqShifter:
+            case FxType::Disperser:
+            case FxType::Widener: {
+                // Tails and feedback ring on; keep going while they do.
+                const double peak = fx.running == FxType::Reverb      ? runReverb(slot, io, n, p)
+                                    : fx.running == FxType::Phaser    ? runPhaser(slot, io, n, p, tempo)
+                                    : fx.running == FxType::Flanger   ? runFlanger(slot, io, n, p, tempo)
+                                    : fx.running == FxType::Disperser ? runDisperser(slot, io, n, p)
+                                    : fx.running == FxType::Widener  ? runWidener(slot, io, n, p)
+                                                                      : runShifter(slot, io, n, p);
+                if (peak > 1e-5)
+                    keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
+                break;
+            }
+            case FxType::None:
+            case FxType::Count:
+                break;
+            }
+            if (on && fx.fade >= 1.0)
+                continue;
+            for (uint32_t s = 0; s < n; ++s) {
+                fx.fade = std::clamp(fx.fade + (on ? fadeStep : -fadeStep), 0.0, 1.0);
+                for (int c = 0; c < 2; ++c)
+                    io[c][s] = static_cast<float>(dry[c][s] + (io[c][s] - dry[c][s]) * fx.fade);
+            }
+        }
+        tail_ = std::max(tail_ - static_cast<int64_t>(n), keep);
+    }
+}
+
+// The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them.
+void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    Slot &place = slots_[slot];
+    Shaper &sh = place.shaper;
+    auto get = [&p](int index) { return p[index]; };
+    const ShaperParams fields = shaperParams(slot);
+    const ShaperSettings settings = shaperSettings(get, fields);
+    if (settings.mode == ClipMode::Custom)
+        place.curve.update(get, fields.curve);
+    const ClipCurve curve{settings.mode, place.curve.values.data()};
+    const bool block = clipNeedsBlocker(settings.mode);
+    const double pole = clipBlockerPole(sampleRate_);
+    const double inv = 1.0 / n;
+    const double driveStep = (settings.drive - sh.drive) * inv;
+    const double outputStep = (settings.output - sh.output) * inv;
+    const double mixStep = (settings.mix - sh.mix) * inv;
+    for (uint32_t s = 0; s < n; ++s) {
+        sh.drive += driveStep;
+        sh.output += outputStep;
+        sh.mix += mixStep;
+        for (int ch = 0; ch < 2; ++ch)
+            io[ch][s] = static_cast<float>(sh.sides[ch].run(curve, io[ch][s], sh.drive, sh.output, sh.mix, block, pole));
+    }
+}
+
+double Effects::runDelay(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
+    Delay &d = slots_[slot].delay;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    const double targets[2] = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
+    const double glide = 1.0 - std::exp(-1.0 / (0.02 * sampleRate_)); // time changes glide, like tape
+    const double mix = at(FxParam::DelayMix);
+    const double inv = 1.0 / n;
+    const double feedbackStep = (at(FxParam::DelayFeedback) - d.feedback) * inv;
+    const double dryStep = (delayDryLevel(mix) - d.dry) * inv;
+    const double wetStep = (delayWetLevel(mix) - d.wet) * inv;
+    const double widthStep = (at(FxParam::DelayWidth) - d.width) * inv;
+    // The low-pass fades in over the first tenth of its travel, so the tone knob has no step at the middle.
+    const double toneValue = at(FxParam::DelayTone);
+    const DelayTone tone = delayTone(toneValue);
+    const double lowPass = tone.lowPassHz > 0.0 ? onePole(tone.lowPassHz, sampleRate_) : 1.0;
+    const double lowPassAmount = std::clamp(-toneValue * 10.0, 0.0, 1.0);
+    const double highPass = onePole(tone.highPassHz, sampleRate_);
+    const bool pingPong = at(FxParam::DelayPingPong) >= 0.5;
+    const int size = static_cast<int>(d.lines[0].size());
+
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        d.feedback += feedbackStep;
+        d.dry += dryStep;
+        d.wet += wetStep;
+        d.width += widthStep;
+        double wet[2];
+        for (int c = 0; c < 2; ++c) {
+            d.length[c] += (targets[c] - d.length[c]) * glide;
+            double pos = d.write - d.length[c];
+            if (pos < 0.0)
+                pos += size;
+            const int i0 = std::min(static_cast<int>(pos), size - 1);
+            const int i1 = i0 + 1 == size ? 0 : i0 + 1;
+            const float *line = d.lines[c].data();
+            const double read = line[i0] + (line[i1] - line[i0]) * (pos - i0);
+            // Each echo passes the tone filters again, so repeats get darker (or thinner).
+            d.lowPass[c] += lowPass * (read - d.lowPass[c]);
+            const double toned = read + (d.lowPass[c] - read) * lowPassAmount;
+            d.highPass[c] += highPass * (toned - d.highPass[c]);
+            wet[c] = toned - d.highPass[c];
+        }
+        const double x[2] = {io[0][s], io[1][s]};
+        // Ping-pong: the input goes in on the left, and each echo crosses to the other side.
+        d.lines[0][d.write] = static_cast<float>(pingPong ? 0.5 * (x[0] + x[1]) + d.feedback * wet[1]
+                                                          : x[0] + d.feedback * wet[0]);
+        d.lines[1][d.write] = static_cast<float>(pingPong ? d.feedback * wet[0] : x[1] + d.feedback * wet[1]);
+        d.write = d.write + 1 == size ? 0 : d.write + 1;
+        // Width narrows what comes out toward the middle; the echoes themselves keep their sides.
+        const double middle = 0.5 * (wet[0] + wet[1]);
+        const double side = 0.5 * (wet[0] - wet[1]) * d.width;
+        io[0][s] = static_cast<float>(x[0] * d.dry + (middle + side) * d.wet);
+        io[1][s] = static_cast<float>(x[1] * d.dry + (middle - side) * d.wet);
+        peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(wet[0]), std::abs(wet[1])});
+    }
+    return peak;
+}
+
+void Effects::runEq(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    Eq &eq = slots_[slot].eq;
+    const double targets[3] = {eqGain(p[paramIndex(slot, FxParam::EqLow)]), eqGain(p[paramIndex(slot, FxParam::EqMid)]),
+                               eqGain(p[paramIndex(slot, FxParam::EqHigh)])};
+    double steps[3];
+    for (int b = 0; b < 3; ++b)
+        steps[b] = (targets[b] - eq.gains[b]) / n;
+    for (uint32_t s = 0; s < n; ++s) {
+        for (int b = 0; b < 3; ++b)
+            eq.gains[b] += steps[b];
+        for (int ch = 0; ch < 2; ++ch) {
+            EqChannel &e = eq.channels[ch];
+            const double x = io[ch][s];
+            const double low = e.lowPhase.process(e.lowB.process(e.lowA.process(x, lowPass1_), lowPass1_), allPass2_);
+            const double rest = e.restB.process(e.restA.process(x, highPass1_), highPass1_);
+            const double mid = e.midB.process(e.midA.process(rest, lowPass2_), lowPass2_);
+            const double high = e.highB.process(e.highA.process(rest, highPass2_), highPass2_);
+            io[ch][s] = static_cast<float>(eq.gains[0] * low + eq.gains[1] * mid + eq.gains[2] * high);
+        }
+    }
+}
+
+void Effects::runParamEq(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    ParamEq &eq = slots_[slot].peq;
+    // New coefficients every chunk are smooth enough for knob moves and modulation.
+    for (int band = 0; band < kPeqBands; ++band) {
+        const PeqType type = peqType(p[peqTypeIndex(slot, band)]);
+        const double gain = p[peqGainIndex(slot, band)];
+        if (!isCut(type) && std::abs(gain) < 1e-3) {
+            eq.bands[band] = {}; // flat: leave the band out, and start it clean when it comes back
+            continue;
+        }
+        const Coefs b = peqCoefs(type, p[peqFreqIndex(slot, band)], gain, p[peqQIndex(slot, band)], sampleRate_);
+        const BiquadCoefs c{b.b0, b.b1, b.b2, b.a1, b.a2};
+        for (int ch = 0; ch < 2; ++ch) {
+            Biquad &f = eq.bands[band][ch];
+            for (uint32_t s = 0; s < n; ++s)
+                io[ch][s] = static_cast<float>(f.process(io[ch][s], c));
+        }
+    }
+    feedAnalyzer(slot, io, n);
+}
+
+// What a parametric EQ or a filter puts out goes to its analyzer, while the editor is open.
+void Effects::feedAnalyzer(int slot, float *const *io, uint32_t n) {
+    if (!analyzing_)
+        return;
+    Slot &place = slots_[slot];
+    for (uint32_t s = 0; s < n; ++s)
+        analyzer_.push(place.analyzed, 0.5f * (io[0][s] + io[1][s]));
+}
+
+double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamValues &p, double pitch) {
+    FilterFx &filter = slots_[slot].filter;
+    const auto type = static_cast<FilterType>(
+        std::clamp(static_cast<int>(std::lround(p[paramIndex(slot, FxParam::FilterType)])), 0,
+                   static_cast<int>(FilterType::Count) - 1));
+    // Key tracking moves the cutoff with the pitch from C4 on, as a voice filter's does.
+    const double cutoffHz = cutoffFromNorm(p[paramIndex(slot, FxParam::FilterCutoff)]) *
+                            std::exp2((pitch - 60.0) / 12.0 * p[paramIndex(slot, FxParam::FilterKeyTrack)]);
+    const FilterSettings settings =
+        filterSettings(type, p[paramIndex(slot, FxParam::FilterSlope)] >= 0.5, cutoffHz,
+                       p[paramIndex(slot, FxParam::FilterResonance)], p[paramIndex(slot, FxParam::FilterDrive)],
+                       sampleRate_);
+    const double mixStep = (p[paramIndex(slot, FxParam::FilterMix)] - filter.mix) / n;
+    const int combSize = static_cast<int>(filter.combs[0].size());
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        filter.mix += mixStep;
+        for (int ch = 0; ch < 2; ++ch) {
+            const double x = io[ch][s];
+            const double y = filter.channels[ch].process(x, settings, filter.combs[ch].data(), combSize);
+            io[ch][s] = static_cast<float>(x + (y - x) * filter.mix);
+            peak = std::max(peak, std::abs(y));
+        }
+    }
+    return peak;
+}
+
+void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    Compressor &c = slots_[slot].comp;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    const double threshold = at(FxParam::CompThreshold);
+    const double ratio = at(FxParam::CompRatio);
+    const double knee = at(FxParam::CompKnee);
+    const double attack = smoothing(timeFromNorm(at(FxParam::CompAttack)), sampleRate_);
+    const double release = smoothing(timeFromNorm(at(FxParam::CompRelease)), sampleRate_);
+    const double makeupStep = (dbToGain(at(FxParam::CompMakeup)) - c.makeup) / n;
+    const double mixStep = (at(FxParam::CompMix) - c.mix) / n;
+    double most = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        c.makeup += makeupStep;
+        c.mix += mixStep;
+        // Both sides follow the louder one, so the stereo image stays put.
+        const double peak = std::max(std::abs(io[0][s]), std::abs(io[1][s]));
+        const double reduction = followReduction(c.reduction, peak, threshold, ratio, knee, attack, release);
+        most = std::min(most, reduction);
+        const double gain = dbToGain(reduction) * c.makeup;
+        for (int ch = 0; ch < 2; ++ch) {
+            const double x = io[ch][s];
+            io[ch][s] = static_cast<float>(x + (x * gain - x) * c.mix);
+        }
+    }
+    reduction_[slot] = {static_cast<float>(-most), 0.0f, 0.0f};
+}
+
+void Effects::runMultiComp(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    MultiComp &m = slots_[slot].multi;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    // The high crossover stays at least a third of an octave above the low one.
+    const double lowHz = std::min(cutoffFromNorm(at(FxParam::McLowFreq)), 0.3 * sampleRate_);
+    const double highHz = std::clamp(cutoffFromNorm(at(FxParam::McHighFreq)), lowHz * 1.26, 0.45 * sampleRate_);
+    auto coefs = [&](BiquadType type, double hz) {
+        const Coefs b = biquad(type, hz, sampleRate_);
+        return BiquadCoefs{b.b0, b.b1, b.b2, b.a1, b.a2};
+    };
+    const BiquadCoefs lp1 = coefs(BiquadType::LowPass, lowHz), hp1 = coefs(BiquadType::HighPass, lowHz),
+                      lp2 = coefs(BiquadType::LowPass, highHz), hp2 = coefs(BiquadType::HighPass, highHz),
+                      ap2 = coefs(BiquadType::AllPass, highHz);
+    const double attack = smoothing(timeFromNorm(at(FxParam::McAttack)), sampleRate_);
+    const double release = smoothing(timeFromNorm(at(FxParam::McRelease)), sampleRate_);
+    std::array<double, kMcBands> threshold{}, ratio{}, gainStep{};
+    for (int b = 0; b < kMcBands; ++b) {
+        const int from = at(FxParam::McLink) >= 0.5 ? 0 : b; // linked, every band takes the low band's
+        threshold[b] = p[mcThresholdIndex(slot, from)];
+        ratio[b] = p[mcRatioIndex(slot, from)];
+        gainStep[b] = (dbToGain(p[mcGainIndex(slot, from)]) - m.gains[b]) / n;
+    }
+    const double mixStep = (at(FxParam::McMix) - m.mix) / n;
+    const double outputStep = (dbToGain(at(FxParam::McOutput)) - m.output) / n;
+    std::array<double, kMcBands> most{};
+    for (uint32_t s = 0; s < n; ++s) {
+        m.mix += mixStep;
+        m.output += outputStep;
+        double bands[2][kMcBands];
+        for (int ch = 0; ch < 2; ++ch) {
+            EqChannel &e = m.channels[ch];
+            const double x = io[ch][s];
+            bands[ch][0] = e.lowPhase.process(e.lowB.process(e.lowA.process(x, lp1), lp1), ap2);
+            const double rest = e.restB.process(e.restA.process(x, hp1), hp1);
+            bands[ch][1] = e.midB.process(e.midA.process(rest, lp2), lp2);
+            bands[ch][2] = e.highB.process(e.highA.process(rest, hp2), hp2);
+        }
+        double gain[kMcBands];
+        for (int b = 0; b < kMcBands; ++b) {
+            m.gains[b] += gainStep[b];
+            const double peak = std::max(std::abs(bands[0][b]), std::abs(bands[1][b]));
+            const double reduction =
+                followReduction(m.reduction[b], peak, threshold[b], ratio[b], kMcKnee, attack, release);
+            most[b] = std::min(most[b], reduction);
+            gain[b] = dbToGain(reduction) * m.gains[b];
+        }
+        // The dry side is the bands' plain sum, so a partial mix doesn't comb with the crossovers' phase shift.
+        for (int ch = 0; ch < 2; ++ch) {
+            const double dry = bands[ch][0] + bands[ch][1] + bands[ch][2];
+            const double wet = bands[ch][0] * gain[0] + bands[ch][1] * gain[1] + bands[ch][2] * gain[2];
+            io[ch][s] = static_cast<float>((dry + (wet - dry) * m.mix) * m.output);
+        }
+    }
+    for (int b = 0; b < kMcBands; ++b)
+        reduction_[slot][b] = static_cast<float>(-most[b]);
+}
+
+double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    Reverb &r = slots_[slot].reverb;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    const double glide = 1.0 - std::exp(-1.0 / (0.05 * sampleRate_)); // size and pre-delay changes glide
+    const ReverbType type = reverbType(at(FxParam::ReverbType));
+    const ReverbStyle style = reverbStyle(type);
+    const double sizeTarget = reverbSpace(at(FxParam::ReverbSize), type); // a new algorithm's length glides too
+    const double preTarget = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
+    // A room's early reflections spread with its size, after the pre-delay; they stay inside the buffer.
+    const double echoScale = reverbScale(at(FxParam::ReverbSize)) * sampleRate_;
+    const double echoRoom = static_cast<double>(r.preDelay.size()) - 2.0;
+    const double mix = at(FxParam::ReverbMix);
+    const double inv = 1.0 / n;
+    const double dryStep = (delayDryLevel(mix) - r.dry) * inv;
+    const double wetStep = (delayWetLevel(mix) - r.wet) * inv;
+    const double widthStep = (at(FxParam::ReverbWidth) - r.width) * inv;
+    // Damping lowers the lines' low-pass from 20 kHz to 1 kHz. Each line's gain takes it down 60 dB
+    // in the decay time, for the length it has at this chunk's size.
+    const double damping =
+        onePole(20000.0 * std::pow(0.05, at(FxParam::ReverbDamping)) * style.brightness, sampleRate_);
+    const double decay = reverbDecay(at(FxParam::ReverbDecay));
+    std::array<double, kReverbLines> gains{};
+    for (int i = 0; i < kReverbLines; ++i)
+        gains[i] = std::pow(10.0, -3.0 * reverbLengths_[i] * r.size / (decay * sampleRate_));
+    constexpr double kSigns[2][kReverbLines] = {{1, -1, 1, -1, 1, -1, 1, -1}, {1, 1, -1, -1, 1, 1, -1, -1}};
+    const double scale = 1.0 / std::sqrt(static_cast<double>(kReverbLines));
+    const int lineSize = static_cast<int>(r.lines[0].size());
+    const int diffuserSize = static_cast<int>(r.diffusers[0].size());
+    const int preSize = static_cast<int>(r.preDelay.size());
+    const int shimmerSize = static_cast<int>(r.shimmer.size());
+    const double shimmerWindow = kShimmerWindow * sampleRate_;
+    // The shimmer's octaves are band-passed on each round, so they don't build up rumble below or turn harsh
+    // above: from 250 Hz up to 8 kHz, which the damping takes down to 2 kHz.
+    const bool shimmer = style.shimmer > 0.0;
+    const double shimmerLow = onePole(8000.0 * std::pow(0.25, at(FxParam::ReverbDamping)), sampleRate_);
+    const double shimmerBass = onePole(250.0, sampleRate_);
+    if (!shimmer)
+        r.shimmerLow = r.shimmerBass = 0.0;
+
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        r.dry += dryStep;
+        r.wet += wetStep;
+        r.width += widthStep;
+        r.size += (sizeTarget - r.size) * glide;
+        r.preLength += (preTarget - r.preLength) * glide;
+        const double x[2] = {io[0][s], io[1][s]};
+        r.preDelay[r.preWrite] = static_cast<float>(0.5 * (x[0] + x[1]));
+        double in = readBehind(r.preDelay, r.preWrite, r.preLength);
+        double early[2] = {0.0, 0.0};
+        if (style.early > 0.0) {
+            for (size_t e = 0; e < std::size(kRoomEchoSeconds); ++e) {
+                const double behind = std::min(r.preLength + kRoomEchoSeconds[e] * echoScale, echoRoom);
+                early[e % 2] += readBehind(r.preDelay, r.preWrite, behind) * kRoomEchoLevels[e] * style.early;
+            }
+        }
+        r.preWrite = r.preWrite + 1 == preSize ? 0 : r.preWrite + 1;
+        for (int d = 0; d < style.diffusers; ++d) {
+            const double g = kDiffuserGains[d];
+            const double v = readBehind(r.diffusers[d], r.diffuserWrite, diffuserLengths_[d]);
+            const double w = in + g * v;
+            r.diffusers[d][r.diffuserWrite] = static_cast<float>(w);
+            in = v - g * w;
+        }
+        r.diffuserWrite = r.diffuserWrite + 1 == diffuserSize ? 0 : r.diffuserWrite + 1;
+
+        double out[kReverbLines], sum = 0.0;
+        for (int i = 0; i < kReverbLines; ++i) {
+            out[i] = readBehind(r.lines[i], r.lineWrite, reverbLengths_[i] * r.size);
+            r.damp[i] += damping * (out[i] - r.damp[i]);
+            sum += r.damp[i] * gains[i];
+        }
+        const double householder = 2.0 * sum / kReverbLines;
+        double wet[2] = {0.0, 0.0};
+        for (int i = 0; i < kReverbLines; ++i) {
+            wet[0] += out[i] * kSigns[0][i] * scale;
+            wet[1] += out[i] * kSigns[1][(i + 3) % kReverbLines] * scale;
+        }
+        // Shimmer: the octave up of what went into the lines a loop ago, which goes in with the input and, through
+        // the heads again, brings the next octave in after it. The heads' gains keep the power whatever their
+        // phase; at most they add up to sqrt(2), and with the band-pass and each octave's level the loop stays
+        // below unity. The input goes in all the while, so a shimmer starts from what came in just before.
+        double up = 0.0;
+        if (shimmer) {
+            const double loop = 1.0 + kShimmerLoop * r.size * sampleRate_;
+            const double a = r.shimmerPhase, b = a + 0.5 >= 1.0 ? a - 0.5 : a + 0.5;
+            const double headA = readBehind(r.shimmer, r.shimmerWrite, loop + (1.0 - a) * shimmerWindow);
+            const double headB = readBehind(r.shimmer, r.shimmerWrite, loop + (1.0 - b) * shimmerWindow);
+            const double shifted = headA * std::sin(std::numbers::pi * a) + headB * std::sin(std::numbers::pi * b);
+            r.shimmerLow += shimmerLow * (shifted - r.shimmerLow);
+            r.shimmerBass += shimmerBass * (r.shimmerLow - r.shimmerBass);
+            up = (r.shimmerLow - r.shimmerBass) * style.shimmer;
+        }
+        r.shimmer[r.shimmerWrite] = static_cast<float>(in + up);
+        r.shimmerWrite = r.shimmerWrite + 1 == shimmerSize ? 0 : r.shimmerWrite + 1;
+        r.shimmerPhase += 1.0 / shimmerWindow;
+        if (r.shimmerPhase >= 1.0)
+            r.shimmerPhase -= 1.0;
+        // The octaves go in signed otherwise than the input, so they come out wider than it.
+        for (int i = 0; i < kReverbLines; ++i) {
+            const double back = r.damp[i] * gains[i] - householder + (in * kSigns[1][i] + up * kSigns[0][i]) * scale;
+            r.lines[i][r.lineWrite] = static_cast<float>(back);
+        }
+        r.lineWrite = r.lineWrite + 1 == lineSize ? 0 : r.lineWrite + 1;
+        wet[0] += early[0];
+        wet[1] += early[1];
+        const double middle = 0.5 * (wet[0] + wet[1]);
+        const double side = 0.5 * (wet[0] - wet[1]) * r.width;
+        io[0][s] = static_cast<float>(x[0] * r.dry + (middle + side) * r.wet);
+        io[1][s] = static_cast<float>(x[1] * r.dry + (middle - side) * r.wet);
+        peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(wet[0]), std::abs(wet[1])});
+    }
+    return peak;
+}
+
+double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
+    Phaser &ph = slots_[slot].phaser;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    const double step = sweepHz([&p](int i) { return p[i]; }, slot, true, tempo) / sampleRate_;
+    const double center = at(FxParam::PhaserCenter);
+    const double depth = at(FxParam::PhaserDepth);
+    const double feedback = sweepFeedback(at(FxParam::PhaserFeedback));
+    const double gain = sweepGain(at(FxParam::PhaserFeedback));
+    const int stages = std::clamp(static_cast<int>(std::lround(at(FxParam::PhaserStages))), 1, kMaxPhaserStages);
+    const double mixStep = (phaserWet(at(FxParam::PhaserMix)) - ph.mix) / n;
+    const double spread = at(FxParam::PhaserStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        ph.mix += mixStep;
+        ph.phase += step;
+        ph.phase -= std::floor(ph.phase);
+        for (int ch = 0; ch < 2; ++ch) {
+            const double lfo = std::sin(2.0 * std::numbers::pi * (ph.phase + spread * ch));
+            const double t = std::tan(std::numbers::pi *
+                                      std::clamp(phaserCorner(center, depth, lfo), 20.0, 0.45 * sampleRate_) /
+                                      sampleRate_);
+            const double a = (t - 1.0) / (t + 1.0);
+            const double x = io[ch][s];
+            double y = x + feedback * ph.last[ch];
+            for (int k = 0; k < stages; ++k) { // y = a x + z; z = x - a y
+                double &z = ph.stages[ch][k];
+                const double out = a * y + z;
+                z = y - a * out;
+                y = out;
+            }
+            ph.last[ch] = y;
+            io[ch][s] = static_cast<float>(x + (y * gain - x) * ph.mix);
+            peak = std::max({peak, std::abs(x), std::abs(y)});
+        }
+    }
+    return peak;
+}
+
+std::array<double, 5> disperserCoefs(double freqNorm, double pinch, double sampleRate) {
+    const double hz = std::min(cutoffFromNorm(freqNorm), 0.45 * sampleRate);
+    const double w = 2.0 * std::numbers::pi * hz / sampleRate;
+    const double q = 0.3 * std::pow(20.0, std::clamp(pinch, 0.0, 1.0));
+    const double alpha = std::sin(w) / (2.0 * q), a0 = 1.0 + alpha;
+    return {(1.0 - alpha) / a0, -2.0 * std::cos(w) / a0, 1.0, -2.0 * std::cos(w) / a0, (1.0 - alpha) / a0};
+}
+
+double disperserDelay(double hz, double freqNorm, double pinch, int stages, double sampleRate) {
+    // An all-pass's delay is how fast its phase turns with frequency.
+    const std::array<double, 5> c = disperserCoefs(freqNorm, pinch, sampleRate);
+    auto phase = [&](double w) {
+        const std::complex<double> z1 = std::polar(1.0, -w), z2 = z1 * z1;
+        return std::arg((c[0] + c[1] * z1 + c[2] * z2) / (1.0 + c[3] * z1 + c[4] * z2));
+    };
+    const double w = 2.0 * std::numbers::pi * std::min(hz, 0.45 * sampleRate) / sampleRate;
+    const double dw = 1e-4 * w + 1e-7;
+    double turn = phase(w + dw) - phase(w - dw);
+    turn -= 2.0 * std::numbers::pi * std::round(turn / (2.0 * std::numbers::pi));
+    return -turn / (2.0 * dw) * stages / sampleRate;
+}
+
+float Effects::sweepPhase(int slot) const {
+    const Slot &s = slots_[slot];
+    return static_cast<float>(s.running == FxType::Phaser     ? s.phaser.phase
+                              : s.running == FxType::Flanger  ? s.flanger.phase
+                              : s.running == FxType::Widener ? s.widener.phases[0]
+                                                              : 0.0);
+}
+
+double widenerTap(int tap, double size, double lfo) {
+    return kWidenerDelays[tap] * (0.2 + 0.8 * std::clamp(size, 0.0, 1.0)) * (1.0 + kWidenerSweep * lfo);
+}
+
+double widenerSpread(double hz, double highPassNorm) {
+    const std::complex<double> s(0.0, hz / cutoffFromNorm(highPassNorm));
+    return std::abs(s * s / (s * s + std::numbers::sqrt2 * s + 1.0));
+}
+
+double Effects::runWidener(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    Widener &e = slots_[slot].widener;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    const Coefs hp = biquad(BiquadType::HighPass,
+                            std::min(cutoffFromNorm(at(FxParam::WidenerHighPass)), 0.45 * sampleRate_), sampleRate_);
+    const BiquadCoefs highPass{hp.b0, hp.b1, hp.b2, hp.a1, hp.a2};
+    const double glide = 1.0 - std::exp(-1.0 / (0.05 * sampleRate_)); // size changes glide, like tape
+    const double sizeTarget = at(FxParam::WidenerSize);
+    const double widthStep = (at(FxParam::WidenerWidth) - e.width) / n;
+    const double mixStep = (at(FxParam::WidenerMix) - e.mix) / n;
+    const int size = static_cast<int>(e.line.size());
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        e.size += (sizeTarget - e.size) * glide;
+        e.width += widthStep;
+        e.mix += mixStep;
+        double taps[kWidenerTaps];
+        for (int k = 0; k < kWidenerTaps; ++k) {
+            e.phases[k] += kWidenerRates[k] / sampleRate_;
+            e.phases[k] -= std::floor(e.phases[k]);
+            const double lfo = std::sin(2.0 * std::numbers::pi * e.phases[k]);
+            taps[k] = readBehind(e.line, e.write, std::clamp(widenerTap(k, e.size, lfo) * sampleRate_, 1.0, size - 2.0));
+        }
+        const double x[2] = {io[0][s], io[1][s]};
+        e.line[e.write] = static_cast<float>(e.highPass.process(0.5 * (x[0] + x[1]), highPass));
+        e.write = e.write + 1 == size ? 0 : e.write + 1;
+        // The sides: what the taps on the left have and those on the right lack, which cancels in a mono sum.
+        // The middle: all four together, a chorus.
+        const double side = 0.5 * (taps[0] - taps[1] + taps[2] - taps[3]) * e.width;
+        const double middle = 0.35 * (taps[0] + taps[1] + taps[2] + taps[3]) * (1.0 - e.width);
+        io[0][s] = static_cast<float>(x[0] + (middle + side) * e.mix);
+        io[1][s] = static_cast<float>(x[1] + (middle - side) * e.mix);
+        peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(taps[0]), std::abs(taps[3])});
+    }
+    return peak;
+}
+
+double Effects::runDisperser(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    Disperser &d = slots_[slot].disperser;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    const std::array<double, 5> b = disperserCoefs(at(FxParam::DisperserFreq), at(FxParam::DisperserPinch), sampleRate_);
+    const BiquadCoefs c{b[0], b[1], b[2], b[3], b[4]};
+    const int stages =
+        std::clamp(static_cast<int>(std::lround(at(FxParam::DisperserStages))), 1, kMaxDisperserStages);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int k = stages; k < kMaxDisperserStages; ++k)
+            d.stages[ch][k] = Biquad{};
+    const double mixStep = (at(FxParam::DisperserMix) - d.mix) / n;
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        d.mix += mixStep;
+        for (int ch = 0; ch < 2; ++ch) {
+            const double x = io[ch][s];
+            double y = x;
+            for (int k = 0; k < stages; ++k)
+                y = d.stages[ch][k].process(y, c);
+            io[ch][s] = static_cast<float>(x + (y - x) * d.mix);
+            peak = std::max({peak, std::abs(x), std::abs(y)});
+        }
+    }
+    return peak;
+}
+
+double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
+    Flanger &f = slots_[slot].flanger;
+    auto at = [&](FxParam field) { return p[paramIndex(slot, field)]; };
+    const double step = sweepHz([&p](int i) { return p[i]; }, slot, false, tempo) / sampleRate_;
+    const double delay = at(FxParam::FlangerDelay);
+    const double depth = at(FxParam::FlangerDepth);
+    const double feedback = sweepFeedback(at(FxParam::FlangerFeedback));
+    const double gain = sweepGain(at(FxParam::FlangerFeedback));
+    const double mixStep = (at(FxParam::FlangerMix) - f.mix) / n;
+    const int size = static_cast<int>(f.lines[0].size());
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        f.mix += mixStep;
+        f.phase += step;
+        f.phase -= std::floor(f.phase);
+        for (int ch = 0; ch < 2; ++ch) {
+            const double lfo = std::sin(2.0 * std::numbers::pi * (f.phase + 0.25 * ch));
+            const double samples = std::clamp(flangerDelay(delay, depth, lfo) * sampleRate_, 1.0, size - 2.0);
+            const double delayed = readBehind(f.lines[ch], f.write, samples);
+            const double x = io[ch][s];
+            f.lines[ch][f.write] = static_cast<float>(x + feedback * delayed);
+            f.last[ch] = delayed;
+            io[ch][s] = static_cast<float>(x + (delayed * gain - x) * f.mix);
+            peak = std::max({peak, std::abs(x), std::abs(delayed)});
+        }
+        f.write = f.write + 1 == size ? 0 : f.write + 1;
+    }
+    return peak;
+}
+
+double Effects::runShifter(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    Shifter &sh = slots_[slot].shifter;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    const double hz = shiftHz(at(FxParam::ShiftAmount), at(FxParam::ShiftRange));
+    const double steps[2] = {hz / sampleRate_, hz * (1.0 - 2.0 * at(FxParam::ShiftSpread)) / sampleRate_};
+    const double feedback = at(FxParam::ShiftFeedback);
+    const double mixStep = (at(FxParam::ShiftMix) - sh.mix) / n;
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        sh.mix += mixStep;
+        for (int ch = 0; ch < 2; ++ch) {
+            sh.phase[ch] += steps[ch];
+            sh.phase[ch] -= std::floor(sh.phase[ch]);
+            const double x = io[ch][s];
+            const std::array<double, 2> parts = sh.hilbert[ch].process(x + feedback * sh.last[ch]);
+            // The analytic signal turned by the oscillator: every partial moves up by `hz` (down if negative).
+            const double angle = 2.0 * std::numbers::pi * sh.phase[ch];
+            const double y = parts[0] * std::cos(angle) - parts[1] * std::sin(angle);
+            sh.last[ch] = y;
+            io[ch][s] = static_cast<float>(x + (y - x) * sh.mix);
+            peak = std::max({peak, std::abs(x), std::abs(y)});
+        }
+    }
+    return peak;
+}
+
+} // namespace fmvibe

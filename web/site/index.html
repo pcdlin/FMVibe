@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FMVibe browser demo</title>
+  <meta name="description" content="FMVibe, a six-operator FM synthesizer, running in the browser: the plugin's own engine and editor, compiled to WebAssembly.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="stage">
+    <canvas id="editor" tabindex="0" aria-label="FMVibe editor"></canvas>
+  </main>
+  <footer>
+    <div id="sound" class="banner">Click the editor or press a key to turn the sound on</div>
+    <div id="failed" class="banner failed" hidden></div>
+    <p id="hint">
+      Play it from your computer keyboard: <kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> <kbd>E</kbd> <kbd>D</kbd> <kbd>F</kbd>
+      <kbd>T</kbd> <kbd>G</kbd> <kbd>Y</kbd> <kbd>H</kbd> <kbd>U</kbd> <kbd>J</kbd> <kbd>K</kbd> … , with
+      <kbd>Z</kbd> and <kbd>X</kbd> to shift the octave (<span id="octave">C4</span>). Or click the keys under the editor.
+    </p>
+  </footer>
+  <div id="menu" role="menu" hidden></div>
+  <div id="toast" role="status"></div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

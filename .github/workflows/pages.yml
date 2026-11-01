@@ -1,0 +1,74 @@
+# Builds the browser demo (web/, see AGENTS.md) and publishes it on GitHub Pages whenever the release branch is
+# pushed. Needs Pages set to deploy from GitHub Actions, and the github-pages environment to allow the release
+# branch (see "Publishing" in AGENTS.md).
+name: Browser demo
+
+on:
+  push:
+    branches: [release]
+
+# One deployment at a time; a newer push waits for the one under way instead of cutting it off.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      # build-web.ps1 pins the Emscripten version; the demo is built with the same one here.
+      - name: Emscripten version
+        id: emsdk
+        run: |
+          version=$(sed -n "s/^\$EmsdkVersion = '\([^']*\)'.*/\1/p" build-web.ps1)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Emscripten
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: build/emsdk
+          key: emsdk-${{ runner.os }}-${{ steps.emsdk.outputs.version }}
+
+      - name: Install Emscripten
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          VERSION: ${{ steps.emsdk.outputs.version }}
+        run: |
+          git clone --quiet https://github.com/emscripten-core/emsdk build/emsdk
+          git -C build/emsdk -c advice.detachedHead=false checkout --quiet "$VERSION"
+          build/emsdk/emsdk install "$VERSION"
+          build/emsdk/emsdk activate "$VERSION"
+
+      - name: Install Ninja
+        run: command -v ninja || (sudo apt-get update -q && sudo apt-get install -y -q ninja-build)
+
+      - name: Build
+        run: |
+          source build/emsdk/emsdk_env.sh
+          cmake --preset web
+          cmake --build --preset web
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/web/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
