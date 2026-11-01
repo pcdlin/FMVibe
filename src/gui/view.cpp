@@ -6811,7 +6811,7 @@ void View::paintTooltip(Canvas &c) {
     if (!hover_ || drag_.kind != DragKind::None ||
         (hover_->kind != Kind::Choice && hover_->kind != Kind::Toggle && hover_->kind != Kind::NodeTab &&
          hover_->kind != Kind::FxRemove && hover_->kind != Kind::SourceRemove &&
-         hover_->kind != Kind::SourceAdd && hover_->kind != Kind::PresetButton &&
+         hover_->kind != Kind::PresetButton &&
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
@@ -6880,8 +6880,6 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipFxRemove);
     else if (hover_->kind == Kind::SourceRemove)
         text = tr(Str::TipSourceRemove);
-    else if (hover_->kind == Kind::SourceAdd)
-        text = tr(static_cast<SourceType>(hover_->a) == SourceType::Lfo ? Str::TipAddLfo : Str::TipAddEnv);
     else if (isPowerParam(param))
         text = tr(Str::TipNodePower);
     else if (isSourcePower(param))
