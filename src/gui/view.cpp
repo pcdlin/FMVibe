@@ -4049,8 +4049,8 @@ void View::paintFx(Canvas &c) {
         const bool lit = (hover_ && hover_->kind == Kind::FxInsert && hover_->a == static_cast<int>(next)) ||
                          (fxMenuOpen_ && fxInsertAt_ == static_cast<int>(next));
         if (lit) {
-            c.fillCircle(m, 8.0f, kFxColor.alpha(0.25f));
-            c.strokeCircle(m, 8.0f, kFxColor, 1.2f);
+            c.fillCircle(m, 8.0f, kAccent.alpha(0.25f));
+            c.strokeCircle(m, 8.0f, kAccent, 1.2f);
             c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, kText, 1.5f);
             c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, kText, 1.5f);
             return;
@@ -5627,12 +5627,6 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         else if (hovered)
             c.fillRect(w.rect, kRaised.alpha(0.5f), 6.0f);
         c.text(w.rect, tr(kViewNames[w.a]), 11.0f, selected ? kText : kDim, Align::Center, true);
-        // A dot on the FX tab while any effect is on.
-        bool anyFx = false;
-        for (int slot : fxChain())
-            anyFx = anyFx || value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
-        if (w.a == static_cast<int>(RoutingView::Fx) && anyFx)
-            c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, kFxColor);
         break;
     }
     case Kind::NodeTab: {
@@ -5953,11 +5947,11 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
                    kFaint, 1.0f, true);
         break;
     case Kind::FxMenuButton: {
-        // A button with a chevron; full, it is dimmed.
+        // A button with a chevron, in the theme's accent; full, it is dimmed.
         const bool full = fxChain().size() >= static_cast<size_t>(kFxSlots);
         const bool lit = (hovered || (fxMenuOpen_ && fxMenuAt_.x < 0.0f)) && !full; // its list, not the dashed card's
-        c.fillRect(w.rect, lit ? kFxColor.alpha(0.18f) : kRaised, 5.0f);
-        c.strokeRect(w.rect, kFxColor.alpha(full ? 0.15f : (lit ? 0.9f : 0.45f)), 1.0f, 5.0f);
+        c.fillRect(w.rect, lit ? kAccent.alpha(0.18f) : kRaised, 5.0f);
+        c.strokeRect(w.rect, kAccent.alpha(full ? 0.15f : (lit ? 0.9f : 0.45f)), 1.0f, 5.0f);
         c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::ButtonAddEffect), 10.5f,
                full ? kFaint : (lit ? kText : kDim), Align::Left, true);
         const Point m{w.rect.right() - 13.0f, w.rect.center().y};
@@ -5967,9 +5961,10 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
     }
     case Kind::FxShadow:
     case Kind::SourceShadow: {
-        // A dashed outline with a plus in it and what it adds under that, lit while hovered.
+        // A dashed outline with a plus in it and what it adds under that, lit while hovered (an effect's in the
+        // theme's accent, like ADD EFFECT).
         const bool fx = w.kind == Kind::FxShadow;
-        const Color color = fx ? kFxColor : kSourceAddColor;
+        const Color color = fx ? kAccent : kSourceAddColor;
         if (hovered)
             c.fillRect(w.rect, color.alpha(0.07f), 8.0f);
         c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint, 1.2f, 8.0f, true);
