@@ -200,7 +200,8 @@ constexpr Rect kShaperLinkButton{kInspector.x + kInspector.w - 16.0f - 44.0f, kI
 constexpr Rect kShaperDisplay = kFilterDisplay;
 // An operator's wave buttons: the common waves, then "..." with a list of the others.
 constexpr OpWave kCommonWaves[] = {OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWave::Square, OpWave::Noise};
-constexpr OpWave kMoreWaves[] = {OpWave::Pulse, OpWave::HalfSine, OpWave::AbsSine, OpWave::Custom};
+constexpr OpWave kMoreWaves[] = {OpWave::Pulse,   OpWave::HalfSine, OpWave::AbsSine, OpWave::AltSine,
+                                 OpWave::Organ,   OpWave::Vowel,    OpWave::Custom};
 static_assert(std::size(kCommonWaves) + std::size(kMoreWaves) == static_cast<size_t>(OpWave::Count));
 constexpr int kWaveButtons = static_cast<int>(std::size(kCommonWaves)) + 1;
 Rect waveButton(int button) {
@@ -472,7 +473,7 @@ Rect fxDisplay(float position, FxType type) {
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
                          type == FxType::Reverb || type == FxType::Phaser || type == FxType::Flanger ||
                          type == FxType::Filter || type == FxType::FreqShifter;
-    // The filter's slope switch, the phaser's and flanger's SYNC and the phaser's STEREO go under their displays.
+    // The filter's slope switch and the phaser's and flanger's SYNC and STEREO go under their displays.
     const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Filter;
     // The shaper's LINK goes between its display and its knobs.
     const float bottom = switchesUnder               ? 158.0f
@@ -852,10 +853,24 @@ float nodeExtent(int node, Point dir) {
     return std::min(tx, ty);
 }
 
-Point portOf(int node, Point center) {
-    if (isBoxNode(node))
-        return {center.x + kFilterHalfW, center.y};
-    return {center.x + kNodeRadius * 0.72f, center.y + kNodeRadius * 0.72f};
+// A node's edge, a band along its outline from kEdgeIn inside it to kEdgeOut outside: a drag from there connects the
+// node to another, while one from further inside moves it.
+constexpr float kEdgeIn = 6.0f, kEdgeOut = 5.0f;
+bool onNodeEdge(int node, Point center, Point p) {
+    if (isBoxNode(node)) {
+        const float dx = std::abs(p.x - center.x), dy = std::abs(p.y - center.y);
+        return dx <= kFilterHalfW + kEdgeOut && dy <= kFilterHalfH + kEdgeOut &&
+               (dx >= kFilterHalfW - kEdgeIn || dy >= kFilterHalfH - kEdgeIn);
+    }
+    const float d = std::hypot(p.x - center.x, p.y - center.y);
+    return d >= kNodeRadius - kEdgeIn && d <= kNodeRadius + kEdgeOut;
+}
+
+// Where a route leaving `node` toward `to` crosses its outline.
+Point outlineToward(int node, Point center, Point to) {
+    const Point dir = normalize({to.x - center.x, to.y - center.y});
+    const float extent = nodeExtent(node, dir);
+    return {center.x + dir.x * extent, center.y + dir.y * extent};
 }
 
 Point loopCenter(Point node) {
@@ -941,6 +956,10 @@ bool isLfoFree(int param) {
     return sourceFieldOf(param) == SourceParam::Free;
 }
 
+bool isPartialCount(int param) {
+    return param >= partialCountIndex(0) && param <= partialCountIndex(kOps - 1);
+}
+
 std::string nodeTitle(int node) {
     return isShaperNode(node)   ? "shaper " + std::to_string(shaperOfNode(node) + 1)
            : isFilterNode(node) ? "filter " + std::to_string(node - kOps + 1)
@@ -999,7 +1018,7 @@ Rect arrowGrip(Point base, Point dir) {
 
 // A node's line down to the OUT bus: from its outline to the base of the arrowhead, whose tip touches the bus, with
 // its label halfway along. A node too close to the bus for the label to fit in between has it beside the line, on
-// the left (an operator's port is on the right).
+// the left.
 struct OutWire {
     Point start;
     Point end; // base of the arrowhead
@@ -1190,6 +1209,25 @@ std::vector<Point> wavePoints(OpWave wave, Rect r) {
         for (int i = 0; i <= 48; ++i)
             at(i / 48.0f, 2.0f * std::abs(std::sin(2.0f * kPi * i / 48.0f)) - 1.0f);
         break;
+    case OpWave::AltSine: // a whole sine in the first half, then flat
+        for (int i = 0; i <= 24; ++i)
+            at(i / 48.0f, std::sin(2.0f * kPi * i / 24.0f));
+        at(1.0f, 0.0f);
+        break;
+    case OpWave::Organ: // its drawbars added up
+        for (int i = 0; i <= 48; ++i) {
+            const float t = 2.0f * kPi * i / 48.0f;
+            at(i / 48.0f, 0.44f * (std::sin(t) + std::sin(2.0f * t) +
+                                   0.5f * (std::sin(3.0f * t) + std::sin(4.0f * t)) +
+                                   0.25f * (std::sin(6.0f * t) + std::sin(8.0f * t))));
+        }
+        break;
+    case OpWave::Vowel: // a ripple at the formant, dying away through each cycle
+        for (int i = 0; i <= 48; ++i) {
+            const float t = i / 48.0f;
+            at(t, std::exp(-3.5f * t) * std::sin(2.0f * kPi * 4.0f * t + 0.6f));
+        }
+        break;
     case OpWave::Noise: {
         const float values[] = {0.1f, 0.8f, -0.5f, 0.3f, -0.9f, 0.6f, -0.2f, 0.9f, -0.7f, 0.2f, -0.4f, 0.7f, -0.8f};
         for (int i = 0; i < 13; ++i)
@@ -1213,12 +1251,18 @@ std::vector<Point> wavePoints(OpWave wave, Rect r) {
 constexpr Rect kPartialWave{kRouting.x + 40.0f, kRouting.y + 44.0f, kRouting.w - 80.0f, 106.0f};
 constexpr Rect kPartialLevels{kRouting.x + 40.0f, kRouting.y + 182.0f, kRouting.w - 80.0f, 84.0f};
 constexpr Rect kPartialPhases{kRouting.x + 40.0f, kRouting.y + 298.0f, kRouting.w - 80.0f, 48.0f};
-Rect partialBar(Rect area, int partial) {
-    const float step = area.w / kPartials;
-    return {area.x + partial * step + 3.0f, area.y, step - 6.0f, area.h};
+// The bars share the width out among the `count` partials the wave plays, closer together the more there are.
+Rect partialBar(Rect area, int partial, int count) {
+    const float step = area.w / count;
+    const float gap = std::min(3.0f, step * 0.125f);
+    return {area.x + partial * step + gap, area.y, step - 2.0f * gap, area.h};
 }
-int partialAt(Rect area, float x) {
-    return std::clamp(static_cast<int>((x - area.x) / (area.w / kPartials)), 0, kPartials - 1);
+int partialAt(Rect area, float x, int count) {
+    return std::clamp(static_cast<int>((x - area.x) / (area.w / count)), 0, count - 1);
+}
+// The resolution switches in the title row, after the title: 16, 32 and 64 partials.
+Rect partialCountButton(int choice) {
+    return {kRouting.x + 144.0f + choice * 36.0f, kRouting.y + 9.0f, 34.0f, 22.0f};
 }
 // The level bars run in dB, from 0 dB at the top down to the floor just above the bottom, which is none. The
 // levels themselves stay amplitudes.
@@ -2439,6 +2483,8 @@ std::vector<View::Widget> View::widgets() const {
     } else if (partials >= 0) {
         add(Kind::ShapeDone, shapeDone());
         add(Kind::PartialReset, shapeReset(), -1, partials);
+        for (int choice = 0; choice < static_cast<int>(std::size(kPartialCounts)); ++choice)
+            add(Kind::Choice, partialCountButton(choice), partialCountIndex(partials), -1, kPartialCounts[choice]);
         add(Kind::PartialArea, kPartialLevels, -1, partials, 0);
         add(Kind::PartialArea, kPartialPhases, -1, partials, 1);
     } else if (view == RoutingView::Fx) {
@@ -2579,14 +2625,14 @@ std::vector<View::Widget> View::widgets() const {
                 break;
             case FxType::Phaser:
             case FxType::Flanger: {
-                // Under the display, SYNC (the delay's metronome) at the left, over the Rate knob, and the phaser's
-                // STEREO in the middle. Synced, the Rate knob picks a note value and shows it as its label.
+                // Under the display, SYNC (the delay's metronome) at the left, over the Rate knob, and STEREO in the
+                // middle. Synced, the Rate knob picks a note value and shows it as its label.
                 const bool phaser = type == FxType::Phaser;
                 const int sync = at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync);
                 const float under = fxDisplay(screen, type).bottom() + 4.0f;
                 add(Kind::Toggle, {card.x + 14.0f, under, 34.0f, 18.0f}, sync);
-                if (phaser)
-                    add(Kind::Toggle, {card.center().x - 36.0f, under, 72.0f, 18.0f}, at(FxParam::PhaserStereo));
+                add(Kind::Toggle, {card.center().x - 36.0f, under, 72.0f, 18.0f},
+                    at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo));
                 const bool synced = value(sync) >= 0.5;
                 const int rate = synced ? at(phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision)
                                         : at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate);
@@ -2644,13 +2690,14 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::MatrixLabel, {col.x - 2.0f, col.y - 22.0f, col.w + 4.0f, 18.0f}, -1, node);
         }
     } else {
-        // Nodes, then depth labels and ports on top of them.
+        // Nodes, each with its edge, then depth labels and arrowheads on top of them.
         for (int node : on) {
             const Point c = nodeCenter(node);
             const Rect r = isBoxNode(node)
                                ? Rect{c.x - kFilterHalfW, c.y - kFilterHalfH, 2.0f * kFilterHalfW, 2.0f * kFilterHalfH}
                                : Rect{c.x - kNodeRadius, c.y - kNodeRadius, 2.0f * kNodeRadius, 2.0f * kNodeRadius};
             add(Kind::Node, r, -1, node);
+            add(Kind::Port, r.inset(-kEdgeOut), -1, node);
         }
         const int moving = rerouting(); // follows the mouse, without its label
         for (int from : on) {
@@ -2682,10 +2729,6 @@ std::vector<View::Widget> View::widgets() const {
             if (goesOut(from) && outParam(from) != moving)
                 add(Kind::WireEnd, arrowGrip(outWireOf(from, nodeCenter(from)).end, {0.0f, 1.0f}), outParam(from), from,
                     kNodes);
-        }
-        for (int node : on) {
-            const Point port = portOf(node, nodeCenter(node));
-            add(Kind::Port, {port.x - 7.0f, port.y - 7.0f, 14.0f, 14.0f}, -1, node);
         }
         // The nodes that are off, as dashed ghosts in the graph's top left, over any node moved there.
         float x = kRouting.x + 16.0f;
@@ -3335,6 +3378,9 @@ std::optional<View::Widget> View::hitTest(Point p) const {
             const Point c = it->rect.center();
             if (std::hypot(p.x - c.x, p.y - c.y) <= kNodeRadius)
                 return *it;
+        } else if (it->kind == Kind::Port) {
+            if (onNodeEdge(it->a, it->rect.center(), p))
+                return *it;
         } else if (it->rect.contains(p)) {
             return *it;
         }
@@ -3440,14 +3486,16 @@ void View::paint(Canvas &c) {
     if (drag_.kind == DragKind::Connect || rerouting() >= 0) {
         const int from = drag_.widget.a;
         const Color color = nodeColor(from);
+        // The route leaves its node toward the mouse; a moving one has its arrowhead under it.
+        const Point origin = nodeCenter(from);
+        const Point start = outlineToward(from, origin, drag_.now);
         if (drag_.kind == DragKind::Connect) {
-            c.line(portOf(from, nodeCenter(from)), drag_.now, color, 2.0f, true);
-        } else { // the route leaves its node toward the mouse, its arrowhead under it
-            const Point center = nodeCenter(from);
-            const Point dir = normalize({drag_.now.x - center.x, drag_.now.y - center.y});
-            const float extent = nodeExtent(from, dir);
+            if (drag_.moved)
+                c.line(start, drag_.now, color, 2.0f, true);
+        } else {
+            const Point dir = normalize({drag_.now.x - origin.x, drag_.now.y - origin.y});
             const Point base{drag_.now.x - dir.x * 4.0f, drag_.now.y - dir.y * 4.0f};
-            c.line({center.x + dir.x * extent, center.y + dir.y * extent}, base, color, 2.0f, true);
+            c.line(start, base, color, 2.0f, true);
             arrowHead(c, base, dir, color);
         }
         const int target = nodeAt(drag_.now);
@@ -3603,7 +3651,7 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
 
 void View::paintRouting(Canvas &c) {
     c.text({kHintX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kHintX, 22.0f},
-           "drag + to connect  \xC2\xB7  arrows to reroute  \xC2\xB7  labels for depth  \xC2\xB7  nodes to arrange",
+           "drag edges to connect  \xC2\xB7  arrows to reroute  \xC2\xB7  labels for depth  \xC2\xB7  nodes to arrange",
            10.5f, kFaint, Align::Right);
 
     // Output bus along the bottom, lit while a new or moving route would go there.
@@ -4068,17 +4116,22 @@ int View::partialEditing() const {
                : -1;
 }
 
+int View::partialsShown(int op) const {
+    return partialCount(value(partialCountIndex(op)));
+}
+
 void View::paintPartialEditor(Canvas &c, int op) {
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
     c.fillRect(title, kAccent.alpha(0.18f), 6.0f);
     c.text(title, "OP " + std::string(1, static_cast<char>('A' + op)) + " PARTIALS", 11.0f, kAccent, Align::Center, true);
+    // Only the partials the wave plays show; the ones past them keep their values for when there are more again.
+    const int count = partialsShown(op);
     // The partial under the mouse in numbers, or how to draw.
     const Widget *focus = drag_.kind == DragKind::Partials ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    std::string hint = "drag across the bars to draw  \xC2\xB7  levels above, phases below  \xC2\xB7  double-click a "
-                       "bar for none";
+    std::string hint = "drag across the bars to draw  \xC2\xB7  double-click a bar for none";
     if (focus && focus->kind == Kind::PartialArea) {
         const Point at = drag_.kind == DragKind::Partials ? drag_.now : hoverPoint_;
-        const int k = partialAt(focus->b == 0 ? kPartialLevels : kPartialPhases, at.x);
+        const int k = partialAt(focus->b == 0 ? kPartialLevels : kPartialPhases, at.x, count);
         const double level = value(partialLevelIndex(op, k));
         char levelText[24] = "none";
         if (level > 0.0)
@@ -4088,8 +4141,8 @@ void View::paintPartialEditor(Canvas &c, int op) {
                       value(partialPhaseIndex(op, k)) * 360.0);
         hint = text;
     }
-    c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f}, hint, 10.5f,
-           kFaint, Align::Right);
+    const float hintX = partialCountButton(static_cast<int>(std::size(kPartialCounts)) - 1).right() + 12.0f;
+    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - hintX - 12.0f, 22.0f}, hint, 10.5f, kFaint, Align::Right);
 
     // The wave they make, one cycle, at its loudest from top to bottom, as the operator plays it.
     const Rect wave = kPartialWave;
@@ -4099,7 +4152,7 @@ void View::paintPartialEditor(Canvas &c, int op) {
     double peak = 0.0;
     for (size_t i = 0; i < samples.size(); ++i) {
         const double x = static_cast<double>(i) / (samples.size() - 1);
-        for (int k = 0; k < kPartials; ++k)
+        for (int k = 0; k < count; ++k)
             if (const double level = value(partialLevelIndex(op, k)); level > 0.0)
                 samples[i] += level * std::sin(2.0 * std::numbers::pi * ((k + 1) * x + value(partialPhaseIndex(op, k))));
         peak = std::max(peak, std::abs(samples[i]));
@@ -4117,8 +4170,8 @@ void View::paintPartialEditor(Canvas &c, int op) {
         c.fillRect(area.inset(-6.0f), kDisplayColor, 6.0f);
         c.text({area.x - 2.0f, area.y - 22.0f, 80.0f, 12.0f}, row == 0 ? "LEVEL" : "PHASE", 10.5f, kFaint, Align::Left,
                true);
-        for (int k = 0; k < kPartials; ++k) {
-            const Rect bar = partialBar(area, k);
+        for (int k = 0; k < count; ++k) {
+            const Rect bar = partialBar(area, k, count);
             const double v = row == 0 ? partialBarFromLevel(value(partialLevelIndex(op, k)))
                                       : value(partialPhaseIndex(op, k));
             const float h = static_cast<float>(v) * bar.h;
@@ -4138,9 +4191,12 @@ void View::paintPartialEditor(Canvas &c, int op) {
                 c.text({area.x - 38.0f, y - 6.0f, 30.0f, 12.0f}, std::to_string(db), 9.0f, kFaint, Align::Right);
             }
     }
-    for (int k = 0; k < kPartials; ++k) {
-        const Rect bar = partialBar(kPartialPhases, k);
-        c.text({bar.x - 4.0f, kPartialPhases.bottom() + 8.0f, bar.w + 8.0f, 12.0f}, std::to_string(k + 1), 10.0f,
+    // Each partial's number under it; of 64, the first and every fourth, where there is room for them.
+    for (int k = 0; k < count; ++k) {
+        if (count > kFirstPartials && k > 0 && (k + 1) % 4 != 0)
+            continue;
+        const Rect bar = partialBar(kPartialPhases, k, count);
+        c.text({bar.center().x - 12.0f, kPartialPhases.bottom() + 8.0f, 24.0f, 12.0f}, std::to_string(k + 1), 10.0f,
                kFaint);
     }
 }
@@ -4617,12 +4673,12 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     };
     c.line({inner.x, yOfDb(0.0)}, {inner.right(), yOfDb(0.0)}, kBorder, 1.0f);
     // The response at both ends of the sweep faintly, and bright where its LFO is now (moved on from the
-    // last snapshot at its rate), or in the middle while no audio runs. A stereo phaser's right side, a
+    // last snapshot at its rate), or in the middle while no audio runs. A stereo sweep's right side, a
     // quarter cycle ahead, is the thinner of the two bright curves.
     const bool running = telemetry_.age < 0.5f;
     const double rateHz = sweepHz([this](int i) { return value(i); }, slot, phaser, telemetry_.tempo);
     const double phase = telemetry_.fxPhases[slot] + rateHz * std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
-    const bool stereo = phaser && at(FxParam::PhaserStereo) >= 0.5;
+    const bool stereo = at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo) >= 0.5;
     struct Curve {
         double lfo;
         float alpha, width;
@@ -5301,13 +5357,15 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const FxParam field = fxFieldOf(w.param);
         // Operators', filters', sources' and effects' on switches show the power symbol rather than a word.
         const bool power = isPowerParam(w.param) || isSourcePower(w.param) || field == FxParam::Enabled;
+        const std::string count = std::to_string(w.b); // the partial editor's resolution
         const char *text = power                                              ? ""
+                           : isPartialCount(w.param)                          ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono)         ? (w.b == 0 ? "POLY" : "MONO")
                            : w.param == paramIndex(GlobalParam::Legato)       ? "LEGATO"
                            : field == FxParam::ShaperMode                       ? clipModes[std::clamp(w.b, 0, 2)]
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
                            : field == FxParam::McLink                          ? "LINK"
-                           : field == FxParam::PhaserStereo                    ? "STEREO"
+                           : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? "STEREO"
                                                                                : "ALWAYS";
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;
@@ -5392,15 +5450,19 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? kFilterColor : kDim);
         break;
     }
-    case Kind::Port: {
-        const Point center = w.rect.center();
+    case Kind::Port: { // under the mouse, or dragged from, the node's outline glows in its color
+        if (!hovered && !(drag_.kind == DragKind::Connect && drag_.widget.a == w.a))
+            break;
         const Color color = nodeColor(w.a);
-        const bool lit = hovered || (drag_.kind == DragKind::Connect && drag_.widget.a == w.a);
-        c.fillCircle(center, 6.5f, lit ? color : kPanel);
-        c.strokeCircle(center, 6.5f, color, 1.5f);
-        const Color plus = lit ? kBackground : color;
-        c.line({center.x - 3.0f, center.y}, {center.x + 3.0f, center.y}, plus, 1.5f);
-        c.line({center.x, center.y - 3.0f}, {center.x, center.y + 3.0f}, plus, 1.5f);
+        const Rect node = w.rect.inset(kEdgeOut);
+        if (isBoxNode(w.a)) {
+            const float radius = isShaperNode(w.a) ? 3.0f : 8.0f;
+            c.strokeRect(node.inset(-2.0f), color.alpha(0.35f), 5.0f, radius + 2.0f);
+            c.strokeRect(node, color, 2.5f, radius);
+        } else {
+            c.strokeCircle(node.center(), kNodeRadius + 2.0f, color.alpha(0.35f), 5.0f);
+            c.strokeCircle(node.center(), kNodeRadius, color, 2.5f);
+        }
         break;
     }
     case Kind::WireEnd: // drawn with its wire, which lights up under the mouse
@@ -6192,7 +6254,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
-         hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd &&
+         hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
          !(hover_->kind == Kind::ListButton && isFilterSlope(hover_->param)) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
@@ -6205,6 +6267,8 @@ void View::paintTooltip(Canvas &c) {
         text = "Click to draw how it follows the notes, across a range of them";
     } else if (hover_->kind == Kind::WireEnd) {
         text = "Drag the arrow onto another node, or onto OUT, to move the route there";
+    } else if (hover_->kind == Kind::Port) {
+        text = "Drag from the edge onto another node, or onto OUT, to connect";
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
         text = "Drag onto any knob, wire label or matrix cell for the mod wheel to move it";
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
@@ -6220,6 +6284,9 @@ void View::paintTooltip(Canvas &c) {
                     : "Click to switch " + title + " on";
     } else if (hover_->kind == Kind::NodeGhost) {
         text = nodeTitle(hover_->a) + " is off: click to switch it on";
+    } else if (isPartialCount(param)) {
+        text = "The wave from its first " + std::to_string(hover_->b) +
+               " partials; those past them keep their levels, unheard";
     }
     else if (hover_->kind == Kind::PresetStep)
         text = hover_->a < 0 ? "The previous preset in the folder" : "The next preset in the folder";
@@ -6289,7 +6356,7 @@ void View::paintTooltip(Canvas &c) {
         text = "Link: the right side waits as long as the left";
     else if (field == FxParam::McLink)
         text = "All three bands use the low band's threshold, ratio and gain; each keeps its own for unlinking";
-    else if (field == FxParam::PhaserStereo)
+    else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo)
         text = "The right side's sweep runs a quarter cycle ahead of the left; off, both sweep together";
     else if (field == FxParam::ShaperLink || shaperFieldOf(param) == ShaperParam::Link)
         text = "Link: the output comes down as the drive goes up, by as much as keeps the level about even";
@@ -6575,7 +6642,7 @@ void View::applyDrag(Point p) {
         // A quick sweep sets every bar it passed, along a line (in bar heights) from where the last move was.
         const int op = w.a;
         const Rect area = w.b == 0 ? kPartialLevels : kPartialPhases;
-        const int k = partialAt(area, p.x);
+        const int k = partialAt(area, p.x, partialsShown(op));
         const double v = std::clamp((area.bottom() - p.y) / area.h, 0.0f, 1.0f);
         const int from = drag_.lastPartial < 0 ? k : drag_.lastPartial;
         const double fromValue = drag_.lastPartial < 0 ? v : drag_.startValue;
@@ -7090,6 +7157,10 @@ void View::mouseUp(Point p, Modifiers) {
             controller_.layoutChanged();
         break;
     case DragKind::Connect: {
+        if (!drag_.moved) { // a click on the edge picks the node, like one further inside
+            controller_.layout().selectedNode = w.a;
+            break;
+        }
         const int to = nodeAt(p);
         if (to >= 0) {
             connect(w.a, to);
@@ -7204,7 +7275,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         return;
     }
     if (hit && hit->kind == Kind::PartialArea) { // that bar to nothing
-        const int k = partialAt(hit->b == 0 ? kPartialLevels : kPartialPhases, p.x);
+        const int k = partialAt(hit->b == 0 ? kPartialLevels : kPartialPhases, p.x, partialsShown(hit->a));
         edit(hit->b == 0 ? partialLevelIndex(hit->a, k) : partialPhaseIndex(hit->a, k), 0.0);
         return;
     }
@@ -7408,7 +7479,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({1, "Straighten"});
         return items;
     }
-    if (hit->kind == Kind::Node) {
+    if (hit->kind == Kind::Node || hit->kind == Kind::Port) { // the node, or its edge
         menuParam_ = enabledParam(hit->a);
         items.push_back({4, "Switch off " + nodeTitle(hit->a)});
         return items;

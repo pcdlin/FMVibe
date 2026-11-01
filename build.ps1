@@ -7,11 +7,13 @@ Configures, builds and smoke-tests FMVibe with the Visual Studio C++ toolchain.
 .\build.ps1 -Config debug
 .\build.ps1 -Validate           # also run clap-validator on the plugin
 .\build.ps1 -Install            # also copy it to %LOCALAPPDATA%\Programs\Common\CLAP
+.\build.ps1 -Install -SkipTests # build and install without running the tests
 #>
 param(
     [ValidateSet('debug', 'release')] [string] $Config = 'release',
     [switch] $Validate,
-    [switch] $Install
+    [switch] $Install,
+    [switch] $SkipTests
 )
 $ErrorActionPreference = 'Stop'
 
@@ -35,8 +37,10 @@ function Invoke-Step([string] $What, [scriptblock] $Command) {
 Push-Location $PSScriptRoot
 try {
     Invoke-Step 'configure' { cmake --preset $Config }
-    Invoke-Step 'build' { cmake --build --preset $Config }
-    Invoke-Step 'smoke test' { ctest --preset $Config }
+    # Without the tests, only the plugin itself is built.
+    $targets = if ($SkipTests) { @('--target', 'FMVibe') } else { @() }
+    Invoke-Step 'build' { cmake --build --preset $Config @targets }
+    if (-not $SkipTests) { Invoke-Step 'smoke test' { ctest --preset $Config } }
     if ($Validate) { Invoke-Step 'clap-validator' { cmake --build --preset $Config --target validate } }
     if ($Install) { Invoke-Step 'install' { cmake --install "build\$Config" } }
 }

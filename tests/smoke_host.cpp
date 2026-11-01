@@ -307,8 +307,8 @@ int main(int argc, char **argv) {
         }
         check(rangeOk, "the note source's Low and High run over every MIDI note, C-1 to G9, and start at its ends");
     }
-    // What a new instance starts with: no filter follows the note, a shaper's output is linked to its drive, and a
-    // frequency shifter's Shift takes a share of 100 Hz.
+    // What a new instance starts with: no filter follows the note, a shaper's output is linked to its drive, a
+    // frequency shifter's Shift takes a share of 100 Hz, a flanger is stereo and a Custom wave has 32 partials.
     {
         auto infoOf = [&](int index) {
             clap_param_info_t info{};
@@ -316,14 +316,18 @@ int main(int argc, char **argv) {
             return info;
         };
         bool defaults = infoOf(paramIndex(0, FxParam::ShaperLink)).default_value == 1.0 &&
-                        infoOf(paramIndex(0, FxParam::FilterKeyTrack)).default_value == 0.0;
+                        infoOf(paramIndex(0, FxParam::FilterKeyTrack)).default_value == 0.0 &&
+                        infoOf(paramIndex(0, FxParam::FlangerStereo)).default_value == 1.0;
+        for (int op = 0; op < kOps; ++op)
+            defaults = defaults && infoOf(partialCountIndex(op)).default_value == 32.0;
         for (int f = 0; f < kFilters; ++f)
             defaults = defaults && infoOf(paramIndex(f, FilterParam::KeyTrack)).default_value == 0.0;
         const clap_param_info_t range = infoOf(paramIndex(0, FxParam::ShiftRange));
         char text[32] = {};
         defaults = defaults && params->value_to_text(plugin, range.id, range.default_value, text, sizeof(text)) &&
                    std::strcmp(text, "100 Hz") == 0;
-        check(defaults, "filters start without key tracking, a shaper linked and a shifter's range at 100 Hz");
+        check(defaults, "filters start without key tracking, a shaper linked, a shifter's range at 100 Hz, a flanger "
+                        "stereo and a Custom wave with 32 partials");
     }
     {
         bool opsOk = true;
@@ -666,6 +670,15 @@ int main(int argc, char **argv) {
     check(wavesSound, "every operator wave sounds at a sane level");
     const double saw = secondHarmonicRatio({.wave = OpWave::Saw});
     check(saw > 0.4 && saw < 0.6, "a saw has its 2nd harmonic at about half the fundamental");
+    // The newer waves: Alt Sine's 2nd harmonic is 3 pi / 8 of its fundamental, Organ's 4' drawbar as loud as its
+    // 8', and Vowel's 2nd harmonic well below its fundamental, its formants further up.
+    const double altSine = secondHarmonicRatio({.wave = OpWave::AltSine});
+    const double organ = secondHarmonicRatio({.wave = OpWave::Organ});
+    const double vowel = secondHarmonicRatio({.wave = OpWave::Vowel});
+    std::printf("      880/440 Hz: %.3f Alt Sine, %.3f Organ, %.3f Vowel\n", altSine, organ, vowel);
+    check(std::abs(altSine / (3.0 * 3.141592653589793 / 8.0) - 1.0) < 0.05 && std::abs(organ - 1.0) < 0.05 &&
+              vowel < 0.7,
+          "Alt Sine, Organ and Vowel have the harmonics they are made of");
 
     // Filters, with A's saw routed through filter 1.
     const double lowPassed = secondHarmonicRatio(
@@ -1126,6 +1139,16 @@ int main(int argc, char **argv) {
     std::printf("      Custom wave 880/440 Hz: %.1f with the second partial alone, %.4f with the first\n", octave,
                 fundamental);
     check(octave > 20.0 && fundamental < 0.01, "a Custom wave plays the partials it is drawn from");
+    // It plays as many partials as its count says, 32 to begin with: the 40th alone is silent, until there are 64.
+    // Turned back down, the 40th keeps its level, unheard.
+    setParams({{partialLevelIndex(0, 0), 0.0}, {partialLevelIndex(0, 39), 1.0}});
+    const float at32 = peakOf(play({.wave = OpWave::Custom}));
+    setParams({{partialCountIndex(0), 64.0}});
+    const float at64 = peakOf(play({.wave = OpWave::Custom}));
+    setParams({{partialCountIndex(0), 32.0}, {partialLevelIndex(0, 0), 1.0}});
+    std::printf("      Custom wave with the 40th partial alone: peak %.3f of 32, %.3f of 64\n", at32, at64);
+    check(at32 < 1e-4 && at64 > 0.05, "a Custom wave plays only as many partials as its count");
+    setParams({{partialLevelIndex(0, 39), 0.0}});
 
     // A macro moves what it is mapped to, for every voice: mapped to A's output at -100 % and turned up, it
     // silences A; turned down, A sounds again.
@@ -1587,6 +1610,20 @@ int main(int argc, char **argv) {
                   chorusSides / chorusSum < 1e-4 && std::abs(chorusSum / drySum - 1.0) > 0.05 &&
                   highSides / highSum < 0.3 * wideSides / wideSum,
               "the widener widens above its high-pass and keeps the mono sum dry at full width");
+
+        // The flanger's sides sweep apart while it is stereo, as it starts, and together, the same on both sides,
+        // when it isn't.
+        setParams({{type(7), static_cast<double>(FxType::Flanger)},
+                   {fx(7, FxParam::FlangerRate), normFromRate(2.0)},
+                   {fx(7, FxParam::FlangerDepth), 0.7}});
+        const auto [stereoSum, stereoSides] = sumAndSides(16);
+        setParams({{fx(7, FxParam::FlangerStereo), 0.0}});
+        const auto [monoSum, monoSides] = sumAndSides(16);
+        setParams({{fx(7, FxParam::FlangerStereo), 1.0}});
+        std::printf("      flanger on a 440 Hz sine: sides %.3f of the sum in stereo, %.5f in mono\n",
+                    stereoSides / stereoSum, monoSides / monoSum);
+        check(stereoSides / stereoSum > 0.05 && monoSides / monoSum < 1e-4,
+              "a stereo flanger sweeps its sides apart, a mono one together");
 
         setParams({{type(7), static_cast<double>(FxType::FreqShifter)},
                    {fx(7, FxParam::ShiftRange), normFromShiftRange(200.0)},

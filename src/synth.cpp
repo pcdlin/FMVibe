@@ -379,8 +379,15 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
     std::fill_n(left, frames, 0.0f);
     std::fill_n(right, frames, 0.0f);
     applyMacros(params);
-    for (int op = 0; op < kOps; ++op) // the Custom waves follow their partials, built again when they change
-        customWaves_[op].update(&params[partialLevelIndex(op, 0)]);
+    for (int op = 0; op < kOps; ++op) { // the Custom waves follow their partials, built again when they change
+        std::array<double, 2 * kPartials> partials{}; // those past the count stay silent
+        const int count = partialCount(params[partialCountIndex(op)]);
+        for (int k = 0; k < count; ++k) {
+            partials[2 * k] = params[partialLevelIndex(op, k)];
+            partials[2 * k + 1] = params[partialPhaseIndex(op, k)];
+        }
+        customWaves_[op].update(partials.data());
+    }
     for (int sh = 0; sh < kShapers; ++sh) { // and the shapers' drawn curves their points
         const ShaperParams fields = shaperParams(kFxSlots + sh);
         if (clipMode(params[fields.mode]) == ClipMode::Custom)

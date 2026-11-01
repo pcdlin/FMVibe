@@ -268,7 +268,7 @@ std::vector<int> fxPageParams(int slot, FxType type, const ParamValues &values) 
                    FxParam::PhaserFeedback, FxParam::PhaserStages, FxParam::PhaserMix, FxParam::PhaserStereo});
     case FxType::Flanger:
         return at({FxParam::Enabled, FxParam::FlangerRate, FxParam::FlangerDepth, FxParam::FlangerDelay,
-                   FxParam::FlangerFeedback, FxParam::FlangerMix});
+                   FxParam::FlangerFeedback, FxParam::FlangerMix, FxParam::FlangerStereo});
     case FxType::FreqShifter:
         return at({FxParam::Enabled, FxParam::ShiftRange, FxParam::ShiftAmount, FxParam::ShiftSpread,
                    FxParam::ShiftFeedback, FxParam::ShiftMix});

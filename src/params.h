@@ -187,8 +187,10 @@ constexpr int kWheelParamCount = static_cast<int>(WheelParam::Count);
 // Stored in projects by number: only append.
 enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 // Stored in projects by number: only append.
-// Custom is a wave drawn from partials: see partialLevelIndex().
-enum class OpWave { Sine, Triangle, Saw, Square, Pulse, HalfSine, AbsSine, Noise, Custom, Count };
+// Custom is a wave drawn from partials: see partialLevelIndex(). Alt Sine is a sine at twice the rate for the first
+// half of the cycle and silence for the second, like the classic FM chips'; Organ a stack of drawbar harmonics; Vowel
+// a buzz through two formant peaks, an "ah".
+enum class OpWave { Sine, Triangle, Saw, Square, Pulse, HalfSine, AbsSine, Noise, Custom, AltSine, Organ, Vowel, Count };
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
 // The types that come in more than one slope.
@@ -377,6 +379,7 @@ enum class FxParam {
     // goes round is shifted.
     ReverbShimmerPitch,
     ReverbShimmer,
+    FlangerStereo, // the flanger's right side a quarter cycle ahead of its left; off, both sweep together
     Count
 };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as
@@ -429,18 +432,26 @@ constexpr int kClipCurveBase = kShapeBase + kMaxSources * kShapeParamCount;
 // Each source's slots can be bypassed one by one: the slot stops modulating but keeps its target and depth.
 constexpr int kSlotBypassBase = kClipCurveBase + kFxSlots * kShapeParamCount;
 // Each operator's Custom wave: the level (0..1) and phase (0..1 of a cycle) of each of its first kPartials
-// harmonics. Hidden from hosts, like the drawn shapes; only ever read as set.
-constexpr int kPartials = 32;
+// harmonics, and how many of them it plays (16, 32 or 64; see partialCountIndex()): the ones past that keep their
+// values, unheard. Hidden from hosts, like the drawn shapes; only ever read as set. The first kFirstPartials sit
+// here, the ones added later after the mod wheel (see partialLevelIndex()).
+constexpr int kPartials = 64;
+constexpr int kFirstPartials = 32;
+constexpr int kPartialCounts[] = {16, 32, 64}; // what the partial editor offers
+constexpr int kDefaultPartials = 32;
 constexpr int kPartialBase = kSlotBypassBase + kMaxSources * kSlots;
 // The macros: a knob each and, like a source, kSlots (target, amount) pairs (see MacroParam).
-constexpr int kMacroBase = kPartialBase + kOps * 2 * kPartials;
+constexpr int kMacroBase = kPartialBase + kOps * 2 * kFirstPartials;
 // The note source's slots (see NoteParam).
 constexpr int kNoteBase = kMacroBase + kMacros * kMacroParamCount;
 // Each voice shaper's drawn curve, laid out like a shaper effect's: hidden from hosts, only ever read as set.
 constexpr int kShaperCurveBase = kNoteBase + kNoteParamCount;
 // The mod wheel's slots (see WheelParam).
 constexpr int kWheelBase = kShaperCurveBase + kShapers * kShapeParamCount;
-constexpr int kParamCount = kWheelBase + kWheelParamCount;
+// How many partials each operator's Custom wave plays, then the partials past the first kFirstPartials.
+constexpr int kPartialCountBase = kWheelBase + kWheelParamCount;
+constexpr int kLaterPartialBase = kPartialCountBase + kOps;
+constexpr int kParamCount = kLaterPartialBase + kOps * 2 * (kPartials - kFirstPartials);
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -505,6 +516,7 @@ constexpr FxParam fxFieldOf(int index) {
 constexpr FxType fxTypeOfField(FxParam f) {
     return f == FxParam::PhaserSync || f == FxParam::PhaserDivision     ? FxType::Phaser
            : f == FxParam::FlangerSync || f == FxParam::FlangerDivision ? FxType::Flanger
+           : f == FxParam::FlangerStereo                                ? FxType::Flanger
            : f == FxParam::FilterKeyTrack                               ? FxType::Filter
            : f == FxParam::ShiftRange                                   ? FxType::FreqShifter
            : f == FxParam::ReverbShimmerPitch || f == FxParam::ReverbShimmer ? FxType::Reverb
@@ -577,8 +589,15 @@ constexpr int slotBypassIndex(int source, int slot) {
     return isStripSource(source) ? -1 : kSlotBypassBase + source * kSlots + slot;
 }
 // The source a bypass param belongs to; -1 for other params.
-constexpr int partialLevelIndex(int op, int partial) { return kPartialBase + op * 2 * kPartials + 2 * partial; }
+constexpr int partialLevelIndex(int op, int partial) {
+    return partial < kFirstPartials
+               ? kPartialBase + op * 2 * kFirstPartials + 2 * partial
+               : kLaterPartialBase + op * 2 * (kPartials - kFirstPartials) + 2 * (partial - kFirstPartials);
+}
 constexpr int partialPhaseIndex(int op, int partial) { return partialLevelIndex(op, partial) + 1; }
+constexpr int partialCountIndex(int op) { return kPartialCountBase + op; }
+// How many partials a Custom wave plays, from its count param.
+inline int partialCount(double value) { return static_cast<int>(std::clamp(std::lround(value), 1L, long{kPartials})); }
 constexpr int bypassSourceOf(int index) {
     return index >= kSlotBypassBase && index < kPartialBase ? (index - kSlotBypassBase) / kSlots : -1;
 }
@@ -665,11 +684,13 @@ constexpr Section kSections[] = {
     {kShapeBase, kMaxSources, kShapeParamCount, 4000, 100},
     {kClipCurveBase, kFxSlots, kShapeParamCount, 7000, 50},
     {kSlotBypassBase, kMaxSources, kSlots, 9000, 20},
-    {kPartialBase, kOps, 2 * kPartials, 10000, 100},
+    {kPartialBase, kOps, 2 * kFirstPartials, 10000, 100},
     {kMacroBase, kMacros, kMacroParamCount, 11000, 40},
     {kNoteBase, 1, kNoteParamCount, 11400, 100},
     {kShaperCurveBase, kShapers, kShapeParamCount, 13000, 50},
     {kWheelBase, 1, kWheelParamCount, 11500, 100},
+    {kPartialCountBase, 1, kOps, 14000, 100},
+    {kLaterPartialBase, kOps, 2 * (kPartials - kFirstPartials), 14100, 100},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -768,6 +789,9 @@ static_assert(idOfIndex(paramIndex(1, FxParam::ReverbType)) == 1400 + 80 + 79 &&
 // Projects store params by id: the fields sources had before the later slots keep theirs.
 static_assert(idOfIndex(slotAmountIndex(1, kFirstSlots - 1)) == 2849 && idOfIndex(paramIndex(1, SourceParam::Shape)) == 2850 &&
               idOfIndex(slotTargetIndex(1, kFirstSlots)) == 6030);
+// And the partials Custom waves had at first keep theirs.
+static_assert(idOfIndex(partialPhaseIndex(1, kFirstPartials - 1)) == 10163 &&
+              idOfIndex(partialLevelIndex(1, kFirstPartials)) == 14200);
 
 // The highest id in use; sections aren't in id order.
 constexpr clap_id maxParamId() {
@@ -1082,7 +1106,7 @@ enum class ParamKind {
     Q,          // 0..1 on a log curve, see qFromNorm()
     EqGain,     // -1..1, see eqGain()
     CompRatio,  // 1..20, shown as "4.0:1"
-    ShapeCount, // stepped; freeform LFO data, hidden from hosts
+    ShapeCount, // stepped; how many points a drawn shape has, or partials a Custom wave plays: hidden from hosts
     ShapePoint, // continuous, but not a modulation target
     NoiseSlope, // 0..1, shown as White / Pink / Brown or in dB per octave
     FilterSlope, // stepped: 12 or 24 dB per octave

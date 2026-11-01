@@ -93,7 +93,7 @@ private:
         TypeButton,   // a = filter, b = type
         Node,         // a = node (operators, then filters)
         NodeGhost,    // a = node that is off: a dashed button in the graph's top left that switches it on
-        Port,         // a = node: drag to connect
+        Port,         // a = node: its edge, a band along its outline; drag from it to connect
         WireLabel,    // param = route amount, a = from node, b = to node
         OutLabel,     // param = output level, a = node
         WireEnd,      // param = the route, a = from node, b = to node (kNodes: the output): its arrowhead, to drag elsewhere
@@ -429,6 +429,7 @@ private:
     void paintShapeGridControls(Canvas &c);
     // The partial editor: an operator's Custom wave, over the routing panel while the shape editor isn't.
     int partialEditing() const;
+    int partialsShown(int op) const; // how many partials its Custom wave plays, and the editor shows
     void paintPartialEditor(Canvas &c, int op);
     // A shaper's transfer curve, or its drawn curve to edit: an effect slot's or (unit kFxSlots + shaper) a voice shaper's.
     void paintShaperCurve(Canvas &c, Rect r, int unit);

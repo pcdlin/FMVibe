@@ -24,6 +24,7 @@ You need:
 .\build.ps1 -Config debug      # debug build in build\debug
 .\build.ps1 -Validate          # also run clap-validator against the plugin
 .\build.ps1 -Install           # also copy the plugin to %LOCALAPPDATA%\Programs\Common\CLAP
+.\build.ps1 -Install -SkipTests  # build only the plugin and install it, without the tests
 ```
 
 The plugin ends up at `build\<config>\FMVibe.clap`. `build.ps1` loads the Visual Studio developer environment

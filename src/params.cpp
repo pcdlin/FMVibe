@@ -14,8 +14,8 @@ namespace {
 
 const char *const kLfoShapeNames[] = {"Sine", "Triangle", "Saw", "Square", "Random", "Custom"};
 static_assert(std::size(kLfoShapeNames) == static_cast<size_t>(LfoShape::Count));
-const char *const kWaveNames[] = {"Sine",      "Triangle", "Saw",   "Square", "Pulse",
-                                  "Half Sine", "Abs Sine", "Noise", "Custom"};
+const char *const kWaveNames[] = {"Sine",     "Triangle", "Saw",     "Square",   "Pulse", "Half Sine",
+                                  "Abs Sine", "Noise",    "Custom",  "Alt Sine", "Organ", "Vowel"};
 static_assert(std::size(kWaveNames) == static_cast<size_t>(OpWave::Count));
 const char *const kFilterTypeNames[] = {"Low-pass", "High-pass", "Band-pass", "Notch", "Comb"};
 const char *const kFilterTypeShortNames[] = {"LP", "HP", "BP", "Notch", "Comb"};
@@ -182,7 +182,9 @@ ParamTable buildTable() {
         addCurves(paramIndex(op, OpParam::AttackCurve), name, module);
         add(paramIndex(op, OpParam::NoiseSlope), name + " Noise Slope", module, ParamKind::NoiseSlope, 0.0, 1.0,
             0.0);
-        // The Custom wave starts as a sine: the first partial alone.
+        // The Custom wave starts as a sine: the first partial alone, of 32.
+        add(partialCountIndex(op), name + " Partials", module, ParamKind::ShapeCount, kPartialCounts[0],
+            kPartials, kDefaultPartials);
         for (int partial = 0; partial < kPartials; ++partial) {
             const std::string n = name + " Partial " + std::to_string(partial + 1);
             add(partialLevelIndex(op, partial), n + " Level", module, ParamKind::ShapePoint, 0.0, 1.0,
@@ -457,6 +459,8 @@ ParamTable buildTable() {
         fx(FxParam::FlangerDelay, "Flanger Delay", ParamKind::Time, 0.0, normFromTime(0.015), normFromTime(0.003));
         fx(FxParam::FlangerFeedback, "Flanger Feedback", ParamKind::BipolarPercent, -1.0, 1.0, 0.5);
         fx(FxParam::FlangerMix, "Flanger Mix", ParamKind::Percent, 0.0, 1.0, 0.5);
+        // Stereo to begin with, unlike the phaser: the classic flanger's sides sweep apart.
+        fx(FxParam::FlangerStereo, "Flanger Stereo", ParamKind::Toggle, 0.0, 1.0, 1.0);
         // Synced, two bars a sweep.
         fx(FxParam::FlangerSync, "Flanger Sync", ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::FlangerDivision, "Flanger Division", ParamKind::SyncDivision, 0.0, kDivisions - 1.0, kTwoWhole);

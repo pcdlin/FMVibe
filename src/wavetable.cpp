@@ -37,6 +37,18 @@ Harmonic harmonic(OpWave wave, int n) {
         return {odd ? 0.0 : -2.0 / (pi * (n * n - 1.0)), 0.0};
     case OpWave::AbsSine: // |sin|: only even harmonics, so it sounds an octave up
         return {odd ? 0.0 : -4.0 / (pi * (n * n - 1.0)), 0.0};
+    case OpWave::AltSine: // sin(2t) for the first half of the cycle, then nothing
+        if (n == 2)
+            return {0.0, 0.5};
+        return {odd ? 4.0 / (pi * (4.0 - n * n)) : 0.0, 0.0};
+    case OpWave::Organ: { // drawbars 8' 4' 2 2/3' 2' 1 1/3' 1' at 8 8 6 6 4 4, 3 dB a step
+        constexpr double kDrawbars[] = {1.0, 1.0, 0.5, 0.5, 0.0, 0.25, 0.0, 0.25};
+        return {0.0, n <= 8 ? kDrawbars[n - 1] : 0.0};
+    }
+    case OpWave::Vowel: { // a buzz falling 6 dB an octave, through formant peaks at harmonics 7, 11 and 24: an "ah"
+        auto peak = [n](double at, double width) { return 1.0 / (1.0 + (n - at) * (n - at) / (width * width)); };
+        return {0.0, (0.15 + peak(7.0, 1.2) + 0.7 * peak(11.0, 1.5) + 0.3 * peak(24.0, 2.5)) / n};
+    }
     case OpWave::Noise:
     case OpWave::Custom: // drawn from partials: see CustomWave
     case OpWave::Count:

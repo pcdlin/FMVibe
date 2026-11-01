@@ -19,8 +19,8 @@ feature.
 
 ## Build
 
-What you need, `build.ps1` (which runs the tests below with every build), the plain CMake commands and installing
-into a host are in the [README](README.md#build).
+What you need, `build.ps1` (which runs the tests below with every build, unless `-SkipTests` builds only the plugin),
+the plain CMake commands and installing into a host are in the [README](README.md#build).
 
 ## Testing
 
@@ -34,14 +34,15 @@ into a host are in the [README](README.md#build).
   - per-voice host modulation, and a mod-envelope slot driving its target, and running its release out after
     the operators have faded (the voice reporting `NOTE_END` only then);
   - spectrum checks on an A4: the matrix produces FM sidebands; every wave sounds; a saw's 2nd harmonic sits at
-    half the fundamental; a low-pass at 300 Hz and a high-pass at 2 kHz move that ratio the right way, each slope
-    from 6 to 24 dB harder than the one before (the 6 dB low-pass a one-pole), and a band-pass set to 6 or 18 dB
-    plays 12 or 24;
+    half the fundamental, and Alt Sine's, Organ's and Vowel's where their series put them; a Custom wave plays its
+    partials, only as many as its count (the 40th silent at 32, heard at 64); a low-pass at 300 Hz and a high-pass
+    at 2 kHz move that ratio the right way, each slope from 6 to 24 dB harder than the one before (the 6 dB
+    low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
     still ends;
-  - a new instance has only operator A on, no filter key tracking, its shaper effects linked and its frequency
-    shifters' range at 100 Hz; a switched-off operator is silent, and a switched-off filter passes nothing;
-    filter 1 feeds filter 2;
+  - a new instance has only operator A on, no filter key tracking, its shaper effects linked, its frequency
+    shifters' range at 100 Hz, its flangers stereo and its Custom waves at 32 partials; a switched-off operator is
+    silent, and a switched-off filter passes nothing; filter 1 feeds filter 2;
   - a shaper's output modulates an operator (and one that is off doesn't), a hard shaper into a filter squares a
     sine off, and a shaper routed nowhere isn't heard but goes straight out by its To Out;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
@@ -51,7 +52,8 @@ into a host are in the [README](README.md#build).
     bend; its range and curve shape what it puts out, a straight line over every MIDI note as it starts;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
-    widening the sides above its high-pass while the mono sum stays dry, a linked shaper keeping its level, and
+    widening the sides above its high-pass while the mono sum stays dry, a stereo flanger's sides sweeping apart and
+    a mono one's together, a linked shaper keeping its level, and
     the filter effect's key tracking putting a cutoff at C4 onto an A4, and the frequency shifter moving by its
     Shift's share of its Range;
   - unison copies spread across the stereo field (and match when centered);
@@ -84,7 +86,9 @@ into a host are in the [README](README.md#build).
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
-  - connecting operators, routing a carrier through a filter, and picking waves and filter types;
+  - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
+    there only picks the node and a drag from further inside moves it; routing a carrier through a filter, and
+    picking waves and filter types;
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation;
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something
     (read off the rendered pixels);
@@ -104,7 +108,8 @@ into a host are in the [README](README.md#build).
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
-    filter's Key Track and the shaper's and delay's LINK too) and the list of effects with their icons;
+    flanger's STEREO, the filter's Key Track and the shaper's and delay's LINK too) and the list of effects with
+    their icons;
   - a filter's response moving with the note its key tracking follows (read off the rendered pixels);
   - switching effects with their cards' icons (a switched-off one's staying grey under the mouse, read off the
     rendered pixels), dragging cards by them, and folding cards, the icon staying put;
@@ -119,10 +124,11 @@ into a host are in the [README](README.md#build).
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed) and the preset browser, which loading a
     preset closes;
-  - drawing a Custom wave's partials, and the LFO shape editor hiding the inspector;
+  - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, and
+    the LFO shape editor hiding the inspector;
   - the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered pixels), the list of
-    more waves, the slot list's scrollbar, the shape editor's grid, snapping and RESET, and scrolling the source
-    cards by holding a dragged handle at the panel's edge.
+    more waves (Organ among them), the slot list's scrollbar, the shape editor's grid, snapping and RESET, and
+    scrolling the source cards by holding a dragged handle at the panel's edge.
 
   Pass a scale to render larger: `build\release\fmvibe-uishot.exe out 2`.
 
@@ -218,8 +224,9 @@ itself.
   1400 + 80·slot (their fields past
   the 80th 12000 + 20·slot), source places
   2800 + 40·place, freeform shapes 4000 + 100·place, the sources' later slots 6000 + 30·place, shaper effects' curves
-  7000 + 50·slot, slot bypasses 9000 + 20·place, Custom waves' partials 10000 + 100·op, macros 11000 + 40·macro,
-  the note source 11400+ (its slots, then its range and curve), the mod wheel's slots 11500+.
+  7000 + 50·slot, slot bypasses 9000 + 20·place, Custom waves' first 32 partials 10000 + 100·op, macros
+  11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod wheel's slots 11500+, the
+  Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type and source type lists,
   which are stored by number.

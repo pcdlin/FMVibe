@@ -417,7 +417,7 @@ Point shaperCurveAt(double x, double y) {
 }
 constexpr Point kShaperEdit{1145.0f, 353.5f};
 
-// An operator's port sits at its lower right, a filter's or shaper's on its right edge.
+// A point on a node's edge, where a drag connects it: an operator's lower right, a filter's or shaper's right side.
 Point portOf(const UiLayout &layout, int node) {
     const Point c = nodeCenter(layout, node);
     if (node >= kOps)
@@ -668,14 +668,14 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // Custom, at the end of that list, opens the partial editor: a stroke across the level bars draws them
     // (half way up the bars, which run from -60 dB to 0 dB, is -30 dB), and a double-click takes a bar to nothing.
     click(view, kMoreWavesButton);
-    click(view, {1102.0f, 208.0f + 3.0f * 24.0f});
+    click(view, {1102.0f, 208.0f + 6.0f * 24.0f});
     const bool customPicked = model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Custom);
     // Picked after the 25 % pulse, the partials start as the pulse's: the first loudest, the fourth silent.
     const bool fromPulse = std::abs(model.value(partialLevelIndex(0, 0)) - 1.0) < 1e-9 &&
                            std::abs(model.value(partialLevelIndex(0, 1)) - std::sqrt(0.5)) < 0.01 &&
                            model.value(partialLevelIndex(0, 3)) == 0.0;
     check(fromPulse, "picking Custom starts its partials from the wave it was");
-    auto barX = [](int partial) { return 56.0f + (partial + 0.5f) * 772.0f / kPartials; };
+    auto barX = [](int partial, int count = kDefaultPartials) { return 56.0f + (partial + 0.5f) * 772.0f / count; };
     const float halfway = 286.0f + 84.0f * 0.5f;
     drag(view, {barX(1), halfway}, {barX(3), halfway});
     doubleClick(view, {barX(0), halfway});
@@ -687,7 +687,31 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(customPicked && drawn && std::abs(model.value(partialPhaseIndex(0, 2)) - 0.25) < 0.03 &&
               renderer.save(view, dir / "23-partials.png"),
           "picking Custom opens the partial editor, which draws levels and phases");
+    // Its resolution, 16, 32 or 64 partials, in the title row: at 64, the 50th can be drawn; at 16, the bars widen
+    // to the first 16 and the 50th, unheard, keeps its level, there again at 64.
+    auto partialCount = [](int choice) { return Point{177.0f + choice * 36.0f, 124.0f}; };
+    const int countParam = partialCountIndex(0), fiftieth = partialLevelIndex(0, 49);
+    click(view, partialCount(2));
+    drag(view, {barX(49, 64), halfway}, {barX(49, 64), halfway});
+    const bool at64 = model.value(countParam) == 64.0 &&
+                      std::abs(20.0 * std::log10(model.value(fiftieth)) + 30.0) < 1.5;
+    click(view, partialCount(0));
+    doubleClick(view, {barX(14, 16), halfway}); // the 15th, next to last at 16
+    view.mouseMove({barX(1, 16), halfway}, {});
+    const bool at16 = model.value(countParam) == 16.0 && model.value(partialLevelIndex(0, 14)) == 0.0 &&
+                      model.value(partialLevelIndex(0, 13)) > 0.0 && renderer.save(view, dir / "23b-partials-16.png");
+    const double kept = model.value(fiftieth);
+    click(view, partialCount(2));
+    view.mouseMove({barX(49, 64), halfway}, {});
+    check(at64 && at16 && kept > 0.0 && model.value(fiftieth) == kept && renderer.save(view, dir / "23c-partials-64.png"),
+          "the partial editor shows 16, 32 or 64 partials, keeping those it hides");
+    click(view, partialCount(1));
     click(view, kRoutingEditorDone);
+    // The list's newer waves: Alt Sine, Organ and Vowel, between Abs Sine and Custom.
+    click(view, kMoreWavesButton);
+    click(view, {1102.0f, 208.0f + 4.0f * 24.0f});
+    check(model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Organ), "the list picks Organ");
+    view.undo();
 
     // The shape editor spans the inspector, which it hides: no operator tab or knob where they were. Its grid: a
     // step up across is 24 lines, and Ctrl snaps a point to them.
@@ -961,6 +985,13 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     check(model.value(paramIndex(0, FxParam::PhaserSync)) == 1.0 && model.value(division) != divisionBefore &&
               model.value(rate) == rateBefore,
           "the phaser's SYNC turns its Rate knob into a note value");
+    // The flanger's STEREO, in the middle under its display like the phaser's, is on to begin with.
+    const int flangerStereo = paramIndex(1, FxParam::FlangerStereo);
+    const Point stereo{fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 152.0f + 171.0f};
+    click(view, stereo);
+    const bool flangerMono = model.value(flangerStereo) == 0.0;
+    click(view, stereo);
+    check(flangerMono && model.value(flangerStereo) == 1.0, "the flanger's STEREO switches its sides apart and together");
     // The filter's Key Track, the third knob of its first row.
     const int keyTrack = paramIndex(3, FxParam::FilterKeyTrack);
     drag(view, fxKnob(model, 3, 2, 3, 206.0f), {fxKnob(model, 3, 2, 3, 206.0f).x, fxKnob(model, 3, 2, 3, 206.0f).y - 20.0f});
@@ -1505,6 +1536,23 @@ void run(const std::filesystem::path &dir, float scale) {
     renderer.save(view, dir / "3-connecting.png");
     view.mouseUp(a, {});
     check(model.value(matrixIndex(2, 0)) > 0.0, "dragging a port onto a node creates a wire");
+    // Anywhere on a node's edge connects it, while further inside a drag moves it. A click on the edge only picks the
+    // node: no feedback.
+    {
+        const Point c = nodeCenter(layout, 2);
+        view.mouseMove({c.x - 22.0f, c.y}, {});
+        check(renderer.save(view, dir / "3-edge-hover.png"), "render a node's edge lit under the mouse");
+        click(view, {c.x, c.y - 22.0f});
+        check(layout.selectedNode == 2 && model.value(matrixIndex(2, 2)) == 0.0,
+              "a click on a node's edge picks it, without feedback");
+        drag(view, {c.x - 22.0f, c.y}, b);
+        check(model.value(matrixIndex(2, 1)) > 0.0, "dragging from a node's left edge onto another connects them");
+        view.undo();
+        const float x = layout.nodeX[2];
+        drag(view, {c.x - 8.0f, c.y}, {c.x + 22.0f, c.y});
+        check(layout.nodeX[2] > x && model.value(matrixIndex(2, 1)) == 0.0, "a drag from inside a node moves it");
+        view.undo();
+    }
     click(view, a);
 
     // Operator A gets a saw wave.

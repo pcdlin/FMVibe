@@ -1108,6 +1108,7 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
     const double feedback = sweepFeedback(at(FxParam::FlangerFeedback));
     const double gain = sweepGain(at(FxParam::FlangerFeedback));
     const double mixStep = (at(FxParam::FlangerMix) - f.mix) / n;
+    const double spread = at(FxParam::FlangerStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     const int size = static_cast<int>(f.lines[0].size());
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
@@ -1115,7 +1116,7 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
         f.phase += step;
         f.phase -= std::floor(f.phase);
         for (int ch = 0; ch < 2; ++ch) {
-            const double lfo = std::sin(2.0 * std::numbers::pi * (f.phase + 0.25 * ch));
+            const double lfo = std::sin(2.0 * std::numbers::pi * (f.phase + spread * ch));
             const double samples = std::clamp(flangerDelay(delay, depth, lfo) * sampleRate_, 1.0, size - 2.0);
             const double delayed = readBehind(f.lines[ch], f.write, samples);
             const double x = io[ch][s];

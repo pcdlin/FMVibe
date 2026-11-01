@@ -48,7 +48,8 @@ const WaveTables &waveTables();
 class CustomWave {
 public:
     CustomWave() : data_(static_cast<size_t>(WaveTables::kLevels) * (WaveTables::kSize + 1), 0.0f) {}
-    // From the levels and phases of partials 1 to kPartials, alternating. True if they changed.
+    // From the levels and phases of partials 1 to kPartials, alternating (a level of 0 leaves a partial out). True
+    // if they changed.
     bool update(const double *partials);
     const float *table(double increment) const {
         return &data_[static_cast<size_t>(WaveTables::level(increment)) * (WaveTables::kSize + 1)];

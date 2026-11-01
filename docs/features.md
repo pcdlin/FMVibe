@@ -6,10 +6,15 @@ What the plugin does and how its editor works, in full. Building and installing 
 ## Sound engine
 
 - **Operators A–F**, each of which can be switched on or off, and each with:
-  - a **wave**: Sine, Triangle, Saw, Square or Noise, or one of the less common Pulse (25 %), Half Sine and Abs
-    Sine (an octave up, like the classic FM chips), or **Custom**: a wave drawn from its first 32 partials, each
-    with a level and a phase (picked after another wave, the partials start as that wave's; otherwise a plain
-    sine), band-limited like the others and normalized to its
+  - a **wave**: Sine, Triangle, Saw, Square or Noise, or one of the less common Pulse (25 %), Half Sine, Abs
+    Sine (an octave up) and Alt Sine (a whole sine in the first half of the cycle, then silence: a strong 2nd
+    harmonic over the fundamental), the last three like the classic FM chips'; **Organ** (drawbars 8', 4', 2 2/3',
+    2', 1 1/3' and 1' pulled to 8 8 6 6 4 4); **Vowel** (a buzz falling 6 dB an octave through formant peaks at
+    the 7th, 11th and 24th harmonics, an "ah" around 100 Hz that turns brighter or duller as the note rises or
+    falls); or **Custom**: a wave drawn from its first 16, 32 (to begin with) or 64 partials, each with a level and
+    a phase (picked after another wave, the partials start as that wave's, all 64 of them; otherwise a plain sine).
+    Fewer partials leave the ones past them out of the sound, but keep their levels and phases for when there are
+    more again. It is band-limited like the others and normalized to its
     peak; the synth builds its tables again whenever the partials change. Noise has no pitch or unison: instead a **Slope** moves it from white through pink (−3 dB per
     octave) to brown (−6 dB per octave) at about the same loudness, and **Spread** (the Uni Spread param) widens it
     from mono to fully uncorrelated left and right;
@@ -186,8 +191,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     ahead. Mix runs to 100 %, which is half wet: there the notches are deepest, and past it they would only get
     shallower again.
   - **Flanger**: a 1–15 ms Delay that an LFO (Rate, 0–20 Hz) sweeps by Depth, with Feedback of either sign (a
-    negative one gives the hollower sound) and Mix, the right side a quarter cycle ahead. **Sync** works like the
-    phaser's, two bars a sweep to begin with.
+    negative one gives the hollower sound) and Mix. **Sync** works like the phaser's, two bars a sweep to begin
+    with, and so does **Stereo**, under its display, but on to begin with: the right side a quarter cycle ahead.
   - **Phase Disp** (phase disperser): 1–32 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound.
@@ -256,11 +261,13 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     while it sounds. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
     graph, and shows it in the inspector.
-    - Drag a node's **+** port onto an operator to modulate it, onto itself for feedback, onto a filter or shaper
-      to send it there, or onto the **OUT** bus. An operator that already goes to the output is moved through a
-      filter rather than doubled. A filter's port works the same way: onto an operator to modulate it, onto filter
-      2 from filter 1, or onto the bus, and so does a shaper's, onto an operator, a filter or the bus; an operator
-      or shaper that already goes out is moved through the filter it is connected to. Wires to or from a filter are
+    - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
+      onto an operator to modulate it, back onto itself for feedback, onto a filter or shaper to send it there, or
+      onto the **OUT** bus; from further inside, a drag moves the node, and a click on the edge only picks the node.
+      An operator that already goes to the output is moved through a filter rather than doubled. A filter's edge
+      works the same way: onto an operator to modulate it, onto filter 2 from filter 1, or onto the bus, and so
+      does a shaper's, onto an operator, a filter or the bus; an operator or shaper that already goes out is moved
+      through the filter it is connected to. Wires to or from a filter are
       purple, those to or from a shaper red, like the shaper effect.
     - A node's line to OUT ends in an arrowhead on the bus, like a wire's on the node it feeds, with its
       percentage label halfway down (beside the line, on its left, when the node sits too close to the bus for
@@ -306,7 +313,7 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
       the fainter, with the interval over the display. Its algorithm comes from a list under the card's title,
       like the shaper's curves; a shimmer's card has two rows of four knobs, its Pitch and Shimmer among them;
     - the phaser's and flanger's responses faintly at both ends of their sweep, and bright where their LFO is,
-      moving while the audio runs (a stereo phaser's right side as a second, thinner curve);
+      moving while the audio runs (a stereo one's right side as a second, thinner curve);
     - the phase disperser's delay across frequency, peaking at Freq;
     - the frequency shifter's move: a 220 Hz tone's partials, and where it takes them on each side, under the
       shift in Hz and the range it is a share of;
@@ -319,7 +326,7 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     chain links for Link (the right side follows the left) and a ball between two paddles for Ping-Pong. The
     shaper's Link, over its Output knob (which it ties to the drive), is the same chain; its curve's list takes the
     whole row above the display. Every effect with a Sync
-    has that metronome: the phaser and flanger at the left under their displays (the phaser's STEREO beside it),
+    has that metronome: the phaser and flanger at the left under their displays (their STEREO beside it),
     over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
     do. The filter's slope is a list under its display, like a voice filter's (see the inspector). The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
@@ -350,8 +357,10 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     the wave they make, one cycle, then a bar per partial for its level (in dB, from −60 just above the bottom
     to 0 at the top, marked every 12; the bottom itself is none) and, in another color, one for its phase (a full
     cycle at the top, faint while the partial is silent). Drag across the bars to draw them, double-click
-    a bar to take it to nothing; hovering shows a partial's numbers. RESET goes back to a sine, DONE (or a tab)
-    closes it, and Custom from the list opens it again. A stroke is one undo step.
+    a bar to take it to nothing; hovering shows a partial's numbers. **16 / 32 / 64**, after the title, pick how
+    many partials the wave has, and so how many bars there are (numbered each, or of 64 the first and every
+    fourth); the ones a lower count hides keep what was drawn. RESET goes back to a sine, leaving the count, DONE
+    (or a tab) closes it, and Custom from the list opens it again. A stroke is one undo step.
   - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows EDIT) opens the
     shape over the routing panel and the inspector, which it hides while it is open; DONE closes it, and RESET puts back the shape it started with. Drag points to
     move them; double-click empty space to add a point and a point to delete it (or right-click it). The small
@@ -387,7 +396,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   a shaper, which can't go out itself, feeds a filter that does. Clicking the selected tab switches it off, or on again (its
   tooltip says which). The power switch next to the summary line does the same. While the node is off, its page
   is dimmed below the summary line; its knobs still work.
-  - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine and Custom (picked,
+  - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine,
+    Organ, Vowel and Custom (picked,
     one of these shows on that button); ratio, pitch, fine, detune, velocity and output, the unison knobs and Rnd Phase. A small fan display
     shows where the copies sit (left/right by spread, up/down by detune). A noise operator shows Slope and Spread
     instead of the pitch and unison knobs, and its spectrum against white, pink and brown; its circle in the graph
