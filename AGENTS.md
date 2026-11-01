@@ -85,9 +85,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM, feedback and a driven filter;
   - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
-  - clicks when a voice is stolen, and when a param jumps while events split the block into single frames;
-  - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, and
-    an undamped tail falling 60 dB around 1 kHz in its decay time;
+  - clicks when a voice is stolen, and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
+    reverb's Mix, a DJ EQ band) jumps while events split the block into single frames;
+  - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
+    undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
+    until its tail has been heard, and stopping after;
+  - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
+    curve's table steps;
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;

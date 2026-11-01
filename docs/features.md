@@ -193,7 +193,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),
     Decay (0.2–20 s to fall 60 dB), Damp (Damping in the host; the corner, from 20 kHz down to 1 kHz, above which the tail falls five
     times as fast, by as much in every line), Pre-Delay (off to 250 ms), Width and Mix (like the delay's: the dry
-    sound stays at full level up to 50 %).
+    sound stays at full level up to 50 %). The plugin keeps processing until the tail has died away, the
+    pre-delay's wait included.
   - **Phaser**: 2–12 first-order all-passes (Stages) whose corner an LFO (Rate, 0–20 Hz; at 0 the sweep stands
     still) sweeps up to 2.5 octaves either way of Center (Depth), with Feedback (either sign) from the last stage
     into the first. **Sync** (off to begin with) makes the LFO go round once per note value of the host tempo
@@ -222,7 +223,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     the 90-degree copy it needs, which keeps what is left at the old frequency around 50 dB down.
 
   The phaser and flanger keep their feedback from ringing louder: what they send round is scaled so their level
-  across the spectrum stays where it was without it. Effect knobs can be modulated like any other. As the effects are shared by all voices, the LFOs and envelopes
+  across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and
+  mixes ramp to a new setting sample by sample, however the host splits the block. As the effects are shared by all voices, the LFOs and envelopes
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of
   every effect type, and hosts only list the ones of the effect it holds. Each effect gets a remote control page in
   chain order.
