@@ -308,8 +308,9 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
       FFT in 96 bands from 20 Hz to 20 kHz, 0 dB at the top, falling away at 55 dB a second), which it only
       measures while the editor is open;
     - the compressors' curves (input level across, output up) with a gain reduction meter; the 3-band card's
-      LOW / MID / HIGH buttons pick which band's curve is on top and which band its first row of knobs sets
-      (a thin line divides those from the shared knobs), and LINK beside them gives the bands one curve;
+      band buttons, each an icon of its slice of the spectrum (low, mid and high) named on hover, pick which
+      band's curve is on top and which band its first row of knobs sets (a thin line divides those from the
+      shared knobs), and Link beside them, the shaper's chain links, gives the bands one curve;
     - the reverb's tail: after the pre-delay it builds up (slower in a bigger space, with its early reflections
       spread wider) and falls to nothing at the decay time, its texture sparser the bigger the space; a room's
       early reflections stand out, a plate is dense from the start, and a shimmer's shifted tail sparkles above it
@@ -328,8 +329,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
 
     The delay's switches above its display are icons across the card, named on hover: a metronome for Sync, two
     chain links for Link (the right side follows the left) and a ball between two paddles for Ping-Pong. The
-    shaper's Link, over its Output knob (which it ties to the drive), is the same chain; its curve's list takes the
-    whole row above the display. Every effect with a Sync
+    shaper's Link, over its Output knob (which it ties to the drive), is the same chain, and so is the 3-band
+    card's; the shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (their STEREO beside it),
     over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
     do. The filter's slope is a list under its display, like a voice filter's (see the inspector). The filter's

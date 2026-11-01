@@ -528,10 +528,11 @@ bool isFxSync(FxParam field) {
 }
 
 // Effect switches drawn as icons, named in their tooltips: a metronome for any effect's SYNC, two chain links for
-// the delay's and the shaper's LINK, and a ball bouncing between two paddles for the delay's PING-PONG.
+// the delay's, the shaper's and the three-band compressor's LINK, and a ball bouncing between two paddles for the
+// delay's PING-PONG.
 bool isFxIconSwitch(FxParam field) {
     return isFxSync(field) || field == FxParam::DelayLink || field == FxParam::ShaperLink ||
-           field == FxParam::DelayPingPong;
+           field == FxParam::McLink || field == FxParam::DelayPingPong;
 }
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
     if (isFxSync(field)) {
@@ -540,7 +541,7 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
         c.polyline(body, std::size(body), color, 1.3f);
         c.line({m.x, m.y + 3.5f}, {m.x + 5.5f, m.y - 6.0f}, color, 1.3f);
         c.fillCircle({m.x + 2.8f, m.y - 1.4f}, 1.6f, color);
-    } else if (field == FxParam::DelayLink || field == FxParam::ShaperLink) {
+    } else if (field == FxParam::DelayLink || field == FxParam::ShaperLink || field == FxParam::McLink) {
         c.strokeRect({m.x - 9.0f, m.y - 3.5f, 11.0f, 7.0f}, color, 1.4f, 3.5f);
         c.strokeRect({m.x - 2.0f, m.y - 3.5f, 11.0f, 7.0f}, color, 1.4f, 3.5f);
     } else {
@@ -550,6 +551,25 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
         c.polyline(path, std::size(path), color.alpha(0.6f), 1.0f);
         c.fillCircle({m.x - 4.5f, m.y + 3.0f}, 1.8f, color);
     }
+}
+
+// A three-band compressor's band, for its button: its slice of the spectrum (frequency across) raised over a faint
+// baseline, the low band falling away to the right, the mid one a plateau, the high one rising from the left.
+void mcBandIcon(Canvas &c, Rect r, int band, Color color) {
+    c.line({r.x, r.bottom()}, {r.right(), r.bottom()}, color.alpha(0.35f), 1.0f);
+    auto rise = [](float x, float at) { // 0 well below `at`, 1 well above, smoothly across a crossover
+        const float t = std::clamp((x - at) / 0.22f + 0.5f, 0.0f, 1.0f);
+        return t * t * (3.0f - 2.0f * t);
+    };
+    std::vector<Point> points;
+    for (int i = 0; i <= 24; ++i) {
+        const float x = i / 24.0f;
+        const float level = band == 0 ? 1.0f - rise(x, 0.45f)
+                            : band == 1 ? rise(x, 0.25f) * (1.0f - rise(x, 0.75f))
+                                        : rise(x, 0.55f);
+        points.push_back({r.x + x * r.w, r.bottom() - level * r.h});
+    }
+    c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
 // An LFO's mode switches, named in their tooltips: FREE an infinity sign, ONE-SHOT a single cycle that then stays
@@ -5389,7 +5409,6 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
                            : w.param == paramIndex(GlobalParam::Legato)       ? "LEGATO"
                            : field == FxParam::ShaperMode                       ? clipModes[std::clamp(w.b, 0, 2)]
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
-                           : field == FxParam::McLink                          ? "LINK"
                            : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? "STEREO"
                                                                                : "ALWAYS";
         // LFO switches take their LFO's color, effect switches the effects' color.
@@ -5553,7 +5572,8 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         c.fillRect(w.rect, selected ? fxColor(w.a).alpha(0.22f) : (hovered && !linked ? kTrack : kRaised), 5.0f);
         if (selected)
             c.strokeRect(w.rect, fxColor(w.a), 1.0f, 5.0f);
-        c.text(w.rect, kMcBandNames[w.b], 10.5f, linked ? kFaint : (selected ? kText : kDim), Align::Center, selected);
+        mcBandIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 6.0f, 20.0f, w.rect.h - 12.0f}, w.b,
+                   linked ? kFaint : (selected ? fxColor(w.a) : (hovered ? kText : kDim)));
         break;
     }
     case Kind::SourcesToggle: {
@@ -6280,6 +6300,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
+         hover_->kind != Kind::McBand &&
          !(hover_->kind == Kind::ListButton && isFilterSlope(hover_->param)) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
@@ -6294,6 +6315,11 @@ void View::paintTooltip(Canvas &c) {
         text = "Drag the arrow onto another node or OUT to move the route there, or off them to remove it";
     } else if (hover_->kind == Kind::Port) {
         text = "Drag from the edge onto another node, or onto OUT, to connect";
+    } else if (hover_->kind == Kind::McBand) {
+        const char *const bands[] = {"Low", "Mid", "High"};
+        text = value(paramIndex(hover_->a, FxParam::McLink)) >= 0.5
+                   ? "Linked: every band follows the low band's threshold, ratio and gain"
+                   : std::string(bands[hover_->b]) + " band: its curve on top, its threshold, ratio and gain below";
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
         text = "Drag onto any knob, wire label or matrix cell for the mod wheel to move it";
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
