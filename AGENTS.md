@@ -97,6 +97,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and sounds at a sane level;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
+  - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
+    struck again while it rings, and the voices a lower voice limit cuts; a velocity or note expression that isn't
+    a number staying finite; host modulation of a macro, the mod wheel and the note source's depth moving their
+    targets; a comb never reading past its line; a voice's right channel coming back from mono where the left is;
+    and an envelope's curve bent again after a straight stretch carrying on along it;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
@@ -313,7 +318,7 @@ itself.
   host voice while its key is down and reports `NOTE_END` when the key is let go. Per-note modulation follows the
   note that is sounding.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
-  allocates. Lowering the limit takes effect at once. Raising it past what is allocated calls
+  allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()`, and the host then deactivates and reactivates the plugin. Each voice takes about
   55 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 95 KB, so 512 voices use about 50 MB. Voices isn't automatable for the same reason.

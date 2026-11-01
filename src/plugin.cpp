@@ -1025,8 +1025,8 @@ void Plugin::sendEdits(const clap_output_events_t *out) {
 }
 
 void Plugin::reportEndedNotes(const clap_output_events_t *out, uint32_t frames) {
-    // The host keeps one voice per port/channel/key; if that key was struck
-    // again later in this block, its voice is still alive.
+    // A host without note ids keeps one voice per port/channel/key: if that key was struck again later in this
+    // block, its voice is still alive (see Synth::isActive()).
     for (const NoteRef &note : synth_.endedNotes()) {
         if (synth_.isActive(note))
             continue;

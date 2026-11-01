@@ -120,8 +120,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
     dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. A new LFO starts synced, in
     quarter notes.
-  - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends, which is
-    where it started (a one-shot is never free).
+  - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
+    is never free): for a sine, a triangle or a drawn shape that is where it started, while a saw holds at its top,
+    a square low and a random one at the value it took.
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers.
   - **Random** takes a new value every cycle. **Chaos** sets how far it may move from the last one: up to a tenth
@@ -243,10 +244,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Glide** (0 = off, 1 ms–20 s) slides the pitch from the previous note, in mono and poly alike. By default it
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
-- **Host modulation**: all continuous parameters accept CLAP modulation, either globally or per voice (Volume
-  globally only), so Bitwig's modulators (including per-note ones) can drive any of them directly.
+- **Host modulation**: all continuous parameters accept CLAP modulation globally, the macros' knobs and depths, the
+  mod wheel and the note source's range and depths among them; those the voices read also per voice (not Volume,
+  the mod wheel, the effects, the macros or the note source), so Bitwig's modulators (including per-note ones) can
+  drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
-  clicking), and CLAP note expressions (tuning, volume, pan). Voices are stereo all the way through the filters.
+  clicking), and CLAP note expressions (tuning, volume, pan). Lowering the voice limit while more voices sound fades
+  out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
   default, and come back down through a polyphase IIR half-band decimator: flat to 20 kHz, no latency. This keeps
@@ -280,8 +284,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
       A filter's edge works the same way: onto an operator to modulate it, onto filter 2 from filter 1, onto a
       shaper, or onto the bus, and so does a shaper's, onto an operator, a filter or the bus. Operators, filters and
       shapers go out alike: each has its line to OUT while it is routed there, whether anything goes into it or not.
-      A node that already goes out is moved through a filter or shaper it is connected to rather than doubled, and
-      that goes out in its place unless its sound gets there already (through filter 2, say); so does a filter or
+      A node that already goes out is moved through a filter or shaper it is connected to rather than doubled, its
+      output's modulation going along onto the send, and that goes out in its place unless its sound gets there already (through filter 2, say); so does a filter or
       shaper a node's arrow to OUT is moved onto. Wires to or from a filter are
       purple, those to or from a shaper red, like the shaper effect.
     - A node's line to OUT ends in an arrowhead on the bus, like a wire's on the node it feeds, with its
@@ -403,7 +407,7 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     the editor and in the card alike: the left half is drawn as its mirror (behind a veil in the editor) with faint
     rings for the points it mirrors, the points left of the middle are hidden, and a click there counts as one on
     its mirror image. Switching Symmetric on in the editor gives the curve a point in the middle if it has none,
-    which then stays there: it only moves up and down, and can't be deleted. The note source's curve opens over the routing panel from its display in the
+    which then stays there: it only moves up and down, and can't be deleted (a step drawn across it keeps it, at the step's height). The note source's curve opens over the routing panel from its display in the
     keyboard strip (a second click closes it): the notes from Low to High across, the Cs among them named under
     the plot, and what the source puts out up, from nothing at the bottom to all of it at the top, with a dot
     where the newest voice is while notes play. A dashed line shows, for the range set, what would take a cutoff
@@ -425,7 +429,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   own shortcuts keep working everywhere else.
 - **Inspector** (right): tabs A–F, F1 and F2, and S1 and S2 pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on. A dot in a tab's top right corner says the
-  node's own sound goes out: its Out is up (a filter's or shaper's only while something goes into it). Clicking the
+  node's own sound goes out: its Out is up and it is switched on (a filter's or shaper's only while something goes
+  into it). Clicking the
   selected tab switches it off, or on again (its
   tooltip says which). Under the tabs, a summary line sums the node up in short: its letter, then an operator's
   wave, ratio, unison copies (×4) and where it goes ("A · Saw · 1.20 · ×4 · to F1"), or a filter's type and slope,
@@ -516,7 +521,10 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps; sliders such as the depth bars, the
   Mod wheel and the glow slider then move from where they are, a tenth as fast), double-click to reset, use the mouse
-  wheel, or right-click for reset/remove options. Double-click the number a knob or a target's depth shows (under
+  wheel (a trackpad's smaller steps add up to whole notches on what moves in steps: a stepped knob, Voices, an
+  operator's pitch, the shape grid and the preset browser's list; while something is being dragged the wheel does
+  nothing, a held key aside), or right-click for reset/remove options. A double-click whose first click closed the
+  preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a
   time is 300 ms, `1.2k` on a cutoff 1.2 kHz); Enter or a click elsewhere sets it, Escape drops it. The editor
@@ -528,7 +536,7 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   octave). Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
   played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs
   back to center on release; the **Mod** wheel is the Mod Wheel param, and the handle right of it drags onto what
-  it should move, like a macro's (faint, like theirs, until it moves something). The wheel's and its handle's
+  it should move (not the wheel itself), like a macro's (faint, like theirs, until it moves something). The wheel's and its handle's
   right-click menus make it unipolar or bipolar; bipolar, it fills from its middle, where it moves nothing.
 - **Macros** (in the keyboard strip, above the keys): eight knobs, each in a color of its own, with a handle
   beside it to drag onto anything a source can modulate, just like an LFO's, and its name under it: double-click
