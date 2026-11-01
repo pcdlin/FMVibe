@@ -233,10 +233,10 @@ itself.
 ## Plugin facts
 
 - CLAP id `io.github.pcdlin.fmvibe`. Changing it makes hosts treat it as a different plugin.
-- Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
 - The version (0.1) is set once, in `project()` at the top of `CMakeLists.txt`. It reaches the code as
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
+- Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter sends last), matrix 400 + 10·from + to, filter modulation
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past
