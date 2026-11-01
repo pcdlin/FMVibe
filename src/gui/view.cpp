@@ -1882,7 +1882,7 @@ void View::revealFx(int position) {
     fxScroll_ = place < first ? place : (place + span > first + kVisibleFx ? place + span - kVisibleFx : first);
 }
 
-void View::addEffect(FxType type, int copyOf) {
+void View::addEffect(FxType type, int copyOf, int at) {
     std::vector<int> chain = fxChain();
     int slot = -1;
     for (int s = 0; s < kFxSlots && slot < 0; ++s)
@@ -1892,9 +1892,8 @@ void View::addEffect(FxType type, int copyOf) {
         flash("The chain holds up to " + std::to_string(kFxSlots) + " effects");
         return;
     }
-    // A copy goes right after its original; a new effect at the end. The type
-    // comes last: it makes the host rescan the slot's fields, which by then hold
-    // what they should.
+    // The slot gets its settings, the original's for a copy, then its type last: that makes the host rescan
+    // the slot's fields, which by then hold what they should.
     std::vector<std::pair<int, double>> changes;
     for (int f = 0; f < kFxParamCount; ++f) {
         const int index = paramIndex(slot, static_cast<FxParam>(f));
@@ -1907,9 +1906,9 @@ void View::addEffect(FxType type, int copyOf) {
         changes.push_back({index, copyOf >= 0 ? value(clipCurveCountIndex(copyOf) + f) : table_[index].def});
     }
     changes.push_back({paramIndex(slot, FxParam::Type), static_cast<double>(type)});
-    // A new effect, a copy too, goes at the end of the chain, which scrolls to show it.
-    const int position = static_cast<int>(chain.size());
-    chain.push_back(slot);
+    // A new effect, a copy too, goes where it was asked for, or at the end of the chain, which scrolls to show it.
+    const int position = at >= 0 && at < static_cast<int>(chain.size()) ? at : static_cast<int>(chain.size());
+    chain.insert(chain.begin() + position, slot);
     changes.push_back({paramIndex(GlobalParam::FxOrder), fxOrderWith(chain)});
     setFolded(true, slot, false);
     editMany(changes);
@@ -2726,6 +2725,13 @@ std::vector<View::Widget> View::widgets() const {
         }
         if (const float place = fxOffset(chain, chain.size()) - fxScroll(); fxShadow() && onScreen(place, kVisibleFx))
             add(Kind::FxShadow, fxCard(place));
+        // The arrows between the cards, while there is room for another effect: a click adds one there.
+        for (size_t pos = 1; pos < chain.size() && fxShadow(); ++pos)
+            if (const float place = fxScreen(chain, pos); place > 0.0f && place < kVisibleFx) {
+                const Rect card = fxCard(place);
+                add(Kind::FxInsert, {card.x - kFxGap * 0.5f - 10.0f, card.center().y - 14.0f, 20.0f, 28.0f}, -1,
+                    static_cast<int>(pos));
+            }
         for (size_t i = cardsStart; i < list.size(); ++i)
             list[i].clip = fxCardClip();
     } else if (view == RoutingView::Matrix) {
@@ -3908,8 +3914,19 @@ void View::paintFx(Canvas &c) {
                          : "voices \xE2\x86\x92 effects, left to right \xE2\x86\x92 out  \xC2\xB7  click an icon to "
                            "switch it  \xC2\xB7  drag a title to reorder  \xC2\xB7  right-click it to duplicate",
            10.5f, kFaint, Align::Right);
-    auto chevron = [&](const Rect &card) { // after `card`: the signal runs left to right
+    // After a card, before the one at place `next`: the signal runs left to right. Under the mouse, or with its list
+    // open, it is a plus that adds an effect there.
+    auto chevron = [&](const Rect &card, size_t next) {
         const Point m{card.right() + kFxGap * 0.5f, card.center().y};
+        const bool lit = (hover_ && hover_->kind == Kind::FxInsert && hover_->a == static_cast<int>(next)) ||
+                         (fxMenuOpen_ && fxInsertAt_ == static_cast<int>(next));
+        if (lit) {
+            c.fillCircle(m, 8.0f, kFxColor.alpha(0.25f));
+            c.strokeCircle(m, 8.0f, kFxColor, 1.2f);
+            c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, kText, 1.5f);
+            c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, kText, 1.5f);
+            return;
+        }
         const Point arrow[] = {{m.x - 3.0f, m.y - 6.0f}, {m.x + 3.0f, m.y}, {m.x - 3.0f, m.y + 6.0f}};
         c.polyline(arrow, 3, kFaint, 1.5f);
     };
@@ -3930,7 +3947,7 @@ void View::paintFx(Canvas &c) {
             paintDownward(c, {card.x, card.y + 66.0f, card.w, card.h - 74.0f}, kFxTitles[static_cast<int>(type)],
                           on ? kText : kDim);
             if (i + 1 < chain.size())
-                chevron(card);
+                chevron(card, i + 1);
             continue;
         }
 
@@ -3994,7 +4011,7 @@ void View::paintFx(Canvas &c) {
         if (!on)
             c.fillRect(display, kPanel.alpha(0.55f), 6.0f); // dimmed while switched off
         if (i + 1 < chain.size())
-            chevron(card);
+            chevron(card, i + 1);
     }
     c.popClip();
 
@@ -5826,6 +5843,8 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 16.0f}, what, 10.5f, ink, Align::Center, true);
         break;
     }
+    case Kind::FxInsert: // drawn with the arrows between the cards
+        break;
     case Kind::FxMenu:
         if (w.a == 1) { // the list's panel
             c.fillRect(w.rect, kRaised, 7.0f);
@@ -6314,7 +6333,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
-         hover_->kind != Kind::McBand &&
+         hover_->kind != Kind::McBand && hover_->kind != Kind::FxInsert &&
          !(hover_->kind == Kind::ListButton && isFilterSlope(hover_->param)) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
@@ -6329,6 +6348,8 @@ void View::paintTooltip(Canvas &c) {
         text = "Drag the arrow onto another node or OUT to move the route there, or off them to remove it";
     } else if (hover_->kind == Kind::Port) {
         text = "Drag from the edge onto another node, or onto OUT, to connect";
+    } else if (hover_->kind == Kind::FxInsert) {
+        text = "Add an effect here, between these two";
     } else if (hover_->kind == Kind::McBand) {
         const char *const bands[] = {"Low", "Mid", "High"};
         text = value(paramIndex(hover_->a, FxParam::McLink)) >= 0.5
@@ -6869,15 +6890,26 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (fxChain().size() >= static_cast<size_t>(kFxSlots)) {
             flash("The chain holds up to " + std::to_string(kFxSlots) + " effects");
         } else {
-            fxMenuOpen_ = !fxMenuOpen_ || fxMenuAt_.x >= 0.0f; // from the shadow card's list, to the button's
+            fxMenuOpen_ = !fxMenuOpen_ || fxMenuAt_.x >= 0.0f; // from another list, to the button's
             fxMenuAt_ = {-1.0f, -1.0f};
+            fxInsertAt_ = -1;
         }
         break;
     case Kind::FxShadow: // the list over the card, kept inside the panel
         fxMenuAt_ = {std::min(w.rect.x + 8.0f, kFxPanel.right() - 8.0f - fxMenu({0.0f, 0.0f}).w), w.rect.y + 8.0f};
         fxMenuOpen_ = true;
+        fxInsertAt_ = -1;
         hover_.reset();
         break;
+    case Kind::FxInsert: { // the list over the cards on either side, its middle at the arrow, kept inside the panel
+        const float width = fxMenu({0.0f, 0.0f}).w;
+        fxMenuAt_ = {std::clamp(w.rect.center().x - 0.5f * width, kFxPanel.x + 8.0f, kFxPanel.right() - 8.0f - width),
+                     kFxTop + 8.0f};
+        fxMenuOpen_ = true;
+        fxInsertAt_ = w.a;
+        hover_.reset();
+        break;
+    }
     case Kind::SourceShadow:
         addSource(static_cast<SourceType>(w.a));
         break;
@@ -6887,7 +6919,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::FxAdd:
         fxMenuOpen_ = false;
-        addEffect(static_cast<FxType>(w.a));
+        addEffect(static_cast<FxType>(w.a), -1, fxInsertAt_);
+        fxInsertAt_ = -1;
         break;
     case Kind::FxRemove:
         removeEffect(w.a);

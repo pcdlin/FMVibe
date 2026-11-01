@@ -116,6 +116,7 @@ private:
         FxPower,      // param = its switch, a = effect slot, b = position: the icon; a click switches it, a drag moves it
         FxMenuButton, // ADD EFFECT: opens the list of effect types
         FxShadow,     // the dashed card after the effects: opens the list of effect types over itself
+        FxInsert,     // a = place in the chain: the arrow between two cards; opens the list to add an effect there
         SourceShadow, // a = SourceType: the dashed cards after the sources, LFO above ENV: adds one
         FxMenu,       // a = 1 on the open list, 0 around it (a click there closes it)
         FxAdd,        // a = FxType: an entry of the list, puts that effect at the end of the chain
@@ -286,7 +287,8 @@ private:
     std::vector<int> fxChain() const;
     std::vector<int> fxChainShown() const;
     // Fills an empty slot with a fresh effect of `type`, or a copy of slot `copyOf`, and puts it in the chain.
-    void addEffect(FxType type, int copyOf = -1);
+    // A new effect, or a copy of the one in slot `copyOf`, at place `at` in the chain, or at its end.
+    void addEffect(FxType type, int copyOf = -1, int at = -1);
     void removeEffect(int slot);
     // The chain order with `chain` first, then the empty slots.
     double fxOrderWith(const std::vector<int> &chain) const;
@@ -533,6 +535,7 @@ private:
     float fxScroll_ = 0.0f;                  // how many effect cards are scrolled past, before clamping
     bool fxMenuOpen_ = false;                // the ADD EFFECT list
     Point fxMenuAt_{-1.0f, -1.0f};           // its top left: over the shadow card it opened from, or (x < 0) under ADD EFFECT
+    int fxInsertAt_ = -1;                    // where the list puts the effect it adds: a place in the chain, or (-1) its end
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1

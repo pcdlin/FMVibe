@@ -347,7 +347,9 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
     effect costs nothing) or on again, in its color; dragged, it moves the card like the title. **ADD EFFECT** at the panel's top left
     opens a list of the effect types (beside it, how many of the 16
     places are taken, as in 3/16), and so does a dashed card with a plus after the last effect, over itself; the
-    one picked goes at the end of the chain, which scrolls to show it, and so does a copy. The dashed card takes a
+    one picked goes at the end of the chain, which scrolls to show it, and so does a copy. The arrow between two
+    cards turns into a plus under the mouse: a click opens the list over the cards there, and the one picked goes
+    between those two. The dashed card takes a
     card place at the chain's end while there is room for another effect. Six cards fit across, the Param EQ's
     taking one and a half places for a wider spectrum; with more,
     a scrollbar under them (drag its thumb or click its track) or the mouse wheel over the panel scrolls the chain

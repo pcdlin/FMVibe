@@ -123,7 +123,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the macros' knobs, handles and names, the note source's handle, display and curve editor, and the mod wheel's
     handle (new modulation starting upward);
   - the dashed cards that add effects (opening the list over themselves, staying over a switched-off card's dimming
-    at the chain's right end, read off the rendered pixels) and sources;
+    at the chain's right end, read off the rendered pixels) and sources, and the arrow between two effects adding
+    one there;
   - picking the oversampling and the theme, and dragging the glow slider, in the settings dialog (with the editor
     rendered in each theme, and glowing), and closing it with its x or a click around it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;

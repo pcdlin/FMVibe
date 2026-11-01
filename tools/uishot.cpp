@@ -2158,6 +2158,26 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, fxRemove(model, 5));
     fxScrolled = 0.0f;
     check(fxChain(model) == std::vector<int>{1, 2, 0, 3, 4}, "the x takes an effect out of the chain");
+    // The arrow between the first two cards turns into a plus under the mouse, and adds an effect there: the list
+    // opens over the cards, its middle at the arrow, and Delay, picked from it, goes in second. (The row was left
+    // half a place along; the wheel over the panel's title row takes it back to the start.)
+    {
+        view.wheel({600.0f, 125.0f}, 10.0f, {});
+        const Point arrow{fxCardX(model, 1) - (kFxStep - kFxCardW) * 0.5f, 304.0f};
+        view.mouseMove(arrow, {});
+        const bool hoverShot = renderer.save(view, dir / "8d-fx-insert.png");
+        click(view, arrow);
+        const Point delay{arrow.x, 160.0f + 4.0f + 26.0f + 12.0f}; // the list's second entry
+        view.mouseMove(delay, {});
+        const bool insertListShot = renderer.save(view, dir / "8e-fx-insert-list.png");
+        click(view, delay);
+        const std::vector<int> chain = fxChain(model);
+        const bool inserted = chain.size() == 6 && chain[0] == 1 && chain[2] == 2 && chain[3] == 0 &&
+                              model.value(paramIndex(chain[1], FxParam::Type)) == static_cast<double>(FxType::Delay);
+        view.undo();
+        check(hoverShot && insertListShot && inserted && fxChain(model) == std::vector<int>{1, 2, 0, 3, 4},
+              "the arrow between two effects adds one there, undoably");
+    }
 
     // More effects than fit (seven cards, seven and a half places with the EQ's): the one added last scrolls
     // into view, so the compressors land on screen places 4 and 5.
