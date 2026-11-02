@@ -260,6 +260,8 @@ Point filterHandle(Rect r, double cutoff, double resonance) {
 
 constexpr float kAddPlusArm = 3.5f;                    // half its width
 constexpr float kAddPlusW = 2.0f * kAddPlusArm + 5.0f; // with the gap before the name
+// How far the name goes up: centering its line, descenders and all, leaves the capitals under the plus's middle.
+constexpr float kAddNameLift = 0.6f;
 
 // The plus, its left end at `left`.
 void paintAddPlus(Canvas &c, Point left, Color color) {
@@ -4388,7 +4390,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const float x = std::round(w.rect.center().x - (kAddPlusW + width) * 0.5f);
         const Color ink = hovered ? kText : kDim;
         paintAddPlus(c, {x, w.rect.center().y}, ink);
-        c.text({x + kAddPlusW, w.rect.y, width + 2.0f, w.rect.h}, name, 10.5f, ink, Align::Left, true);
+        c.text({x + kAddPlusW, w.rect.y - kAddNameLift, width + 2.0f, w.rect.h}, name, 10.5f, ink, Align::Left, true);
         break;
     }
     case Kind::Scrollbar: {
@@ -4628,7 +4630,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillRect(w.rect, lit ? kAccent.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, kAccent.alpha(full ? 0.15f : (lit ? 0.9f : 0.45f)), 1.0f, 5.0f);
         paintAddPlus(c, {w.rect.x + 10.0f, w.rect.center().y}, full ? kFaint : (lit ? kText : kDim));
-        c.text({w.rect.x + 10.0f + kAddPlusW, w.rect.y, w.rect.w - 30.0f - kAddPlusW, w.rect.h}, tr(Str::ButtonEffect),
+        c.text({w.rect.x + 10.0f + kAddPlusW, w.rect.y - kAddNameLift, w.rect.w - 30.0f - kAddPlusW, w.rect.h},
+               tr(Str::ButtonEffect),
                10.5f, full ? kFaint : (lit ? kText : kDim), Align::Left, true);
         const Point m{w.rect.right() - 13.0f, w.rect.center().y};
         const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
