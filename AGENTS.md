@@ -186,6 +186,9 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme and glow are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave.
+- The page ships FMVibe's `LICENSE` (as `LICENSE.txt`) and `web/site/THIRD-PARTY-NOTICES.txt`, the licenses of the
+  code its modules hold from CLAP, Emscripten and musl, both linked from its footer. When `build-web.ps1` pins
+  another Emscripten version, the notices take that version's `LICENSE` and `system/lib/libc/musl/COPYRIGHT`.
 - WebAssembly can't flush denormals to zero, which `Plugin::process()` does. Instead, the effects' input, the
   voice filters' input and the decimators get a signal far below hearing, behind `__EMSCRIPTEN__`. Without it,
   tails ringing out cost many times the CPU. The plugin's build is unchanged.
