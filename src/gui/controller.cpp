@@ -9,7 +9,8 @@ namespace {
 // The parts of the layout that belong to the patch, which undo and redo bring back with the params.
 bool samePatchLayout(const UiLayout &a, const UiLayout &b) {
     return a.nodeX == b.nodeX && a.nodeY == b.nodeY && a.boxX == b.boxX && a.boxY == b.boxY &&
-           a.sourceOrder == b.sourceOrder && a.keptRoutes == b.keptRoutes && a.macroNames == b.macroNames;
+           a.sourceOrder == b.sourceOrder && a.keptRoutes == b.keptRoutes && a.macroNames == b.macroNames &&
+           a.wireBends == b.wireBends;
 }
 
 void restorePatchLayout(UiLayout &to, const UiLayout &from) {
@@ -20,6 +21,7 @@ void restorePatchLayout(UiLayout &to, const UiLayout &from) {
     to.sourceOrder = from.sourceOrder;
     to.keptRoutes = from.keptRoutes;
     to.macroNames = from.macroNames;
+    to.wireBends = from.wireBends;
 }
 
 } // namespace

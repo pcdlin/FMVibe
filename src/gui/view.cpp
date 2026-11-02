@@ -369,11 +369,14 @@ std::vector<View::Assignment> View::assignments() const {
         all.push_back(kMaxSources + macro);         // and the mod wheel's
     all.push_back(kNoteSource);
     all.push_back(kWheelSource);
+    all.push_back(kVelocitySource);
     for (int s : all) {
+        const bool bipolar = sourceBipolar(s);
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(value(slotTargetIndex(s, slot)));
             if (target >= 0)
-                list.push_back({s, slot, target, value(slotAmountIndex(s, slot)), slotBypassed(s, slot)});
+                list.push_back({s, slot, target, value(slotAmountIndex(s, slot)), slotBypassed(s, slot),
+                                fmvibe::slotBipolar(value(slotPolarityIndex(s, slot)), bipolar)});
         }
     }
     return list;
@@ -456,9 +459,10 @@ void View::assign(int source, int target) {
         flash(trf(Str::MsgSlotsFull, {sourceName(source), std::to_string(kSlots)}));
         return;
     }
-    const double amount = 0.3; // a moderate depth, always upward to begin with
+    const double amount = 0.3; // a moderate depth, always upward to begin with, swinging as its source does
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, free), slotTargetValue(target)},
-                                                {slotAmountIndex(source, free), amount}};
+                                                {slotAmountIndex(source, free), amount},
+                                                {slotPolarityIndex(source, free), 0.0}};
     if (!isStripSource(source))
         changes.push_back({slotBypassIndex(source, free), 0.0});
     editMany(changes);
@@ -473,7 +477,8 @@ void View::assign(int source, int target) {
 
 void View::removeSlot(int source, int slot) {
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, slot), 0.0},
-                                                {slotAmountIndex(source, slot), 0.0}};
+                                                {slotAmountIndex(source, slot), 0.0},
+                                                {slotPolarityIndex(source, slot), 0.0}};
     if (!isStripSource(source))
         changes.push_back({slotBypassIndex(source, slot), 0.0});
     editMany(changes);
@@ -489,8 +494,46 @@ void View::toggleBypass(int source, int slot) {
         edit(slotBypassIndex(source, slot), slotBypassed(source, slot) ? 0.0 : 1.0);
 }
 
+bool View::slotBipolar(int source, int slot) const {
+    return fmvibe::slotBipolar([this](int index) { return value(index); }, source, slot);
+}
+
+void View::setSlotPolarity(int source, int slot, bool bipolar) {
+    edit(slotPolarityIndex(source, slot),
+         static_cast<double>(bipolar ? SlotPolarity::Bipolar : SlotPolarity::Unipolar));
+}
+
+// The source's own switch, and every one of its slots back to following it, as one step.
+void View::setSourcePolarity(int source, bool bipolar) {
+    const Polarity polarity = polarityOf(source, sourceTypeOf(source));
+    const std::pair<int, double> own{polarity.index, bipolar ? polarity.bipolar : 1.0 - polarity.bipolar};
+    std::vector<std::pair<int, double>> changes;
+    if (value(own.first) != own.second)
+        changes.push_back(own);
+    for (int slot = 0; slot < kSlots; ++slot)
+        if (slotPolarity(value(slotPolarityIndex(source, slot))) != SlotPolarity::Source)
+            changes.push_back({slotPolarityIndex(source, slot), static_cast<double>(SlotPolarity::Source)});
+    editMany(changes);
+}
+
+float View::wireBend(int param) const {
+    for (const auto &[route, bend] : controller_.layout().wireBends)
+        if (route == param)
+            return bend;
+    return kDefaultWireBend;
+}
+
+void View::setWireBend(int param, float bend) {
+    std::vector<std::pair<int, float>> &bends = controller_.layout().wireBends;
+    std::erase_if(bends, [&](const auto &b) { return b.first == param; });
+    bend = std::clamp(bend, -kMaxWireBend, kMaxWireBend);
+    if (bend != kDefaultWireBend)
+        bends.push_back({param, bend});
+    controller_.layoutChanged();
+}
+
 bool View::droppable(const Widget &w, int source) const {
-    const bool own = isStripSource(source) && !isNote(source) && w.param == stripKnobIndex(source);
+    const bool own = isStripSource(source) && !isNoteBorne(source) && w.param == stripKnobIndex(source);
     return w.param >= 0 && isModTarget(w.param) && !own &&
            (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
             w.kind == Kind::SlotBar);
@@ -522,7 +565,7 @@ Color View::clipColor(int unit) const {
 
 bool View::inspectorCovered() const {
     const int shape = shapeEditing();
-    return fxWide() || (shape >= 0 && !isNoteCurve(shape) && !isShaperCurve(shape));
+    return fxWide() || (shape >= 0 && !isStripCurve(shape) && !isShaperCurve(shape));
 }
 
 bool View::fxWide() const {
@@ -868,6 +911,11 @@ std::string View::paramName(int index) const {
         return target >= 0 ? trf(Str::ParamNameBypassOn, {sourceName(owner), paramName(target)})
                            : trf(Str::ParamNameBypass, {sourceName(owner)});
     }
+    if (const int owner = polaritySourceOf(index); owner >= 0) {
+        const int target = slotTarget(value(slotTargetIndex(owner, (index - kSlotPolarityBase) % kSlots)));
+        return target >= 0 ? trf(Str::ParamNamePolarityOn, {sourceName(owner), paramName(target)})
+                           : trf(Str::ParamNamePolarity, {sourceName(owner)});
+    }
     const int source = sourceOf(index);
     const std::string &name = table_[index].name;
     if (source < 0)
@@ -954,8 +1002,10 @@ void View::addSource(SourceType type, int copyOf) {
                  paramIndex(std::max(copyOf, 0), static_cast<SourceParam>(f)));
     for (int f = 0; f < kShapeParamCount; ++f)
         take(shapeCountIndex(source) + f, shapeCountIndex(std::max(copyOf, 0)) + f);
-    for (int slot = 0; slot < kSlots; ++slot)
+    for (int slot = 0; slot < kSlots; ++slot) {
         take(slotBypassIndex(source, slot), slotBypassIndex(std::max(copyOf, 0), slot));
+        take(slotPolarityIndex(source, slot), slotPolarityIndex(std::max(copyOf, 0), slot));
+    }
     changes.push_back({paramIndex(source, SourceParam::Type), static_cast<double>(type)});
     const auto at = copyOf >= 0 ? std::find(shown.begin(), shown.end(), copyOf) + 1 : shown.end();
     shown.insert(at, source);
@@ -1469,7 +1519,22 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::MatrixLabel, {col.x - 2.0f, col.y - kMatrixNamesH, col.w + 4.0f, 18.0f}, -1, node);
         }
     } else {
-        // Nodes, each with its edge, then depth labels and arrowheads on top of them.
+        // The wires between the nodes, under everything else: dragged sideways, they bend. Then the nodes, each with
+        // its edge, then depth labels and arrowheads on top of them.
+        const int rerouted = rerouting();
+        for (int from : on) {
+            for (int to : on) {
+                const int param = routeParam(from, to);
+                if (param < 0 || from == to || !wired(param) || param == rerouted)
+                    continue;
+                const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
+                const float left = std::min({w.start.x, w.control.x, w.end.x});
+                const float top = std::min({w.start.y, w.control.y, w.end.y});
+                const float right = std::max({w.start.x, w.control.x, w.end.x});
+                const float bottom = std::max({w.start.y, w.control.y, w.end.y});
+                add(Kind::Wire, Rect{left, top, right - left, bottom - top}.inset(-kWireGrab), param, from, to);
+            }
+        }
         for (int node : on) {
             const Point c = nodeCenter(node);
             const Rect r = isBoxNode(node)
@@ -1488,7 +1553,7 @@ std::vector<View::Widget> View::widgets() const {
                     const Point loop = loopCenter(nodeCenter(from));
                     add(Kind::WireLabel, chip({loop.x + 32.0f, loop.y}, 44.0f), param, from, to);
                 } else {
-                    const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to));
+                    const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
                     add(Kind::WireLabel, chip(w.label), param, from, to);
                 }
             }
@@ -1502,7 +1567,7 @@ std::vector<View::Widget> View::widgets() const {
                 const int param = routeParam(from, to);
                 if (param < 0 || from == to || !wired(param) || param == moving)
                     continue;
-                const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to));
+                const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
                 add(Kind::WireEnd, arrowGrip(w.end, w.tangent), param, from, to);
             }
             if (goesOut(from) && outParam(from) != moving)
@@ -1743,7 +1808,8 @@ std::vector<View::Widget> View::widgets() const {
         for (int row = top; row < std::min(top + kVisibleSlots + 1, static_cast<int>(slots.size())); ++row) {
             const Rect r = slotRow(card, static_cast<float>(row) - first);
             add(Kind::SlotBypass, {r.x + 1.0f, r.y, 16.0f, r.h}, slotBypassIndex(s, slots[row]), s, slots[row]);
-            add(Kind::SlotBar, {r.x + 116.0f, r.y, 76.0f, r.h}, slotAmountIndex(s, slots[row]), s, slots[row]);
+            add(Kind::SlotPolarity, {r.x + 108.0f, r.y, 13.0f, r.h}, -1, s, slots[row]);
+            add(Kind::SlotBar, {r.x + 122.0f, r.y, 70.0f, r.h}, slotAmountIndex(s, slots[row]), s, slots[row]);
             add(Kind::ValueText, {r.x + 194.0f, r.y, 38.0f, r.h}, slotAmountIndex(s, slots[row]), s, slots[row]);
             add(Kind::SlotRemove, {r.right() - 20.0f, r.y, 20.0f, r.h}, -1, s, slots[row]);
         }
@@ -1805,12 +1871,14 @@ std::vector<View::Widget> View::widgets() const {
         std::snprintf(macroLabels_[macro].data(), macroLabels_[macro].size(), "%s",
                       macroName(controller_.layout(), macro).c_str());
         knob(paramIndex(macro, MacroParam::Value), center, 34.0f, macroLabels_[macro].data());
-        add(Kind::MacroName, {center.x - 50.0f, center.y + 18.0f, 100.0f, 17.0f}, -1, macro);
+        add(Kind::MacroName, {center.x - 0.5f * kMacroCell, center.y + 18.0f, kMacroCell, 17.0f}, -1, macro);
         add(Kind::MacroHandle, {center.x - 42.0f, center.y - 10.0f, 20.0f, 20.0f}, -1, kMaxSources + macro);
     }
-    // The note source's handle, left of them, works the same way; its display opens its curve.
+    // The note source's handle and velocity's, after them, work the same way; their displays open their curves.
     add(Kind::MacroHandle, noteHandle(macros), -1, kNoteSource);
-    add(Kind::NoteDisplay, noteDisplay(macros));
+    add(Kind::NoteDisplay, noteDisplay(macros), -1, kNoteSource);
+    add(Kind::MacroHandle, velocityHandle(macros), -1, kVelocitySource);
+    add(Kind::NoteDisplay, velocityDisplay(macros), -1, kVelocitySource);
 
     // Keyboard strip. The white keys come first, so the black keys on top win the hits. Collapsed, only the mod
     // wheel's handle stays, moved up into the top row.
@@ -1939,6 +2007,10 @@ std::optional<View::Widget> View::hitTest(Point p) const {
         } else if (it->kind == Kind::Port) {
             if (onNodeEdge(it->a, it->rect.center(), p))
                 return *it;
+        } else if (it->kind == Kind::Wire) {
+            const Wire w = wireBetween(it->a, nodeCenter(it->a), it->b, nodeCenter(it->b), wireBend(it->param));
+            if (it->rect.contains(p) && distanceToWire(w, p) <= kWireGrab)
+                return *it;
         } else if (it->rect.contains(p)) {
             return *it;
         }
@@ -1988,6 +2060,7 @@ void View::paint(Canvas &c) {
         paintInspector(c);
     paintKeyboard(c);
     paintNoteSource(c, keyboardTop(controller_.layout().sourcesCollapsed));
+    paintVelocitySource(c, keyboardTop(controller_.layout().sourcesCollapsed));
     paintSources(c);
     // The open lists (of effects, curves, EQ shapes, waves) go over everything else, the dimmed cards included.
     auto paintWidgets = [&](bool lists) {
@@ -2249,7 +2322,7 @@ void View::paintRouting(Canvas &c) {
     const std::vector<int> on = enabledNodes();
     auto focused = [&](int param) {
         return (hover_ && hover_->param == param && drag_.kind == DragKind::None) ||
-               (drag_.kind == DragKind::Value && drag_.widget.param == param);
+               ((drag_.kind == DragKind::Value || drag_.kind == DragKind::Bend) && drag_.widget.param == param);
     };
     for (int node : on) {
         const int param = outParam(node);
@@ -2281,7 +2354,7 @@ void View::paintRouting(Canvas &c) {
                     c.strokeCircle(loopCenter(nodeCenter(from)), 9.0f, core->alpha(0.9f), 1.2f);
                 continue;
             }
-            const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to));
+            const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
             c.curve(w.start, w.control, w.end, color, width);
             if (core)
                 c.curve(w.start, w.control, w.end, core->alpha(0.9f), 1.2f);
@@ -2305,12 +2378,12 @@ std::optional<Color> View::modColor(int param) const {
     return color;
 }
 
-// How far a modulation of `amount` takes its target from the set value, down and up: a bipolar source half of it
-// either way, a unipolar one all of it one way.
-std::pair<double, double> View::modReach(int source, double amount) const {
-    if (sourceBipolar(source))
-        return {-0.5 * std::abs(amount), 0.5 * std::abs(amount)};
-    return {std::min(amount, 0.0), std::max(amount, 0.0)};
+// How far a modulation takes its target from the set value, down and up: bipolar, half its depth either way;
+// unipolar, all of it one way.
+std::pair<double, double> View::modReach(const Assignment &m) const {
+    if (m.bipolar)
+        return {-0.5 * std::abs(m.amount), 0.5 * std::abs(m.amount)};
+    return {std::min(m.amount, 0.0), std::max(m.amount, 0.0)};
 }
 
 bool View::sourceBipolar(int source) const {
@@ -2329,7 +2402,7 @@ void View::paintModRange(Canvas &c, Rect bar, int param) {
     const double n = norm(param);
     // The modulation whose depth handle is under the mouse goes last, twice as thick, over the others.
     auto range = [&](const Assignment &m, bool focused) {
-        const auto [down, up] = modReach(m.source, m.amount);
+        const auto [down, up] = modReach(m);
         const double from = std::clamp(n + down, 0.0, 1.0);
         const double to = std::clamp(n + up, 0.0, 1.0);
         const float alpha = sourceOn(m.source) && !m.bypassed ? 1.0f : (focused ? 0.4f : 0.3f);
@@ -2544,6 +2617,10 @@ void View::paintShapeEditor(Canvas &c, int shape) {
         paintNoteCurveEditor(c);
         return;
     }
+    if (isVelocityCurve(shape)) {
+        paintVelocityCurveEditor(c);
+        return;
+    }
     if (isClipCurve(shape) || isShaperCurve(shape)) {
         paintClipCurveEditor(c, shape);
         return;
@@ -2724,6 +2801,64 @@ void View::paintNoteCurveEditor(Canvas &c) {
         c.text(below, trf(Str::CaptionNotePoint, {std::to_string(focus->b + 1), note, out}), 10.5f, kDim, Align::Left);
     } else {
         c.text(below, tr(Str::HintNoteCurve), 10.0f, kFaint, Align::Left);
+    }
+}
+
+// Velocity's curve: the velocities across (0 to 127, marked every 32), what the source puts out up, from nothing at
+// the bottom to all of it at the top, and for reference, dashed, the straight line it starts as; while notes play, a
+// dot where the newest voice's velocity is.
+void View::paintVelocityCurveEditor(Canvas &c) {
+    const int shape = kVelocityCurve;
+    const Color color = shapeColor(shape);
+    const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 136.0f, 22.0f};
+    c.fillRect(title, color.alpha(0.18f), 6.0f);
+    c.text(title, tr(Str::TitleVelocityCurve), 11.0f, color, Align::Center, true);
+
+    const Rect r = shapeArea();
+    c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
+    paintShapeGrid(c, -1.0, false);
+    paintShapeGridControls(c);
+    c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
+    for (int velocity = 32; velocity < 127; velocity += 32)
+        c.text({shapeAt(velocity / 127.0, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, std::to_string(velocity),
+               10.0f, kFaint);
+    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisVelocity), 10.5f, kFaint, Align::Right);
+    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), 10.5f, kFaint, Align::Left);
+
+    auto get = [this](int index) { return value(index); };
+    const int base = shapeBase(shape);
+    std::vector<double> key = curveKey(Curve::VelocityEditor, r);
+    keyShape(key, base);
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 400; ++i) {
+            const double x = i / 400.0;
+            points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
+        }
+        return points;
+    });
+    std::vector<Point> area = points;
+    area.push_back(shapeAt(1.0, -1.0));
+    area.push_back(shapeAt(0.0, -1.0));
+    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
+    plotLine(c, points.data(), points.size(), color, 2.0f);
+    if (telemetry_.voices > 0) {
+        const double x = std::clamp(static_cast<double>(telemetry_.noteVelocity), 0.0, 1.0);
+        const Point dot = shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0));
+        c.fillCircle(dot, 8.0f, color.alpha(0.25f));
+        c.fillCircle(dot, 3.5f, kText);
+    }
+
+    // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
+    const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
+    const Rect below{r.x, r.bottom() + 10.0f, shapeGridButton(0, 0).x - 12.0f - r.x, 16.0f};
+    if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
+        const std::string in = number("%.0f", 127.0 * shapePointX(shape, focus->b));
+        const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
+        c.text(below, trf(Str::CaptionVelocityPoint, {std::to_string(focus->b + 1), in, out}), 10.5f, kDim,
+               Align::Left);
+    } else {
+        c.text(below, tr(Str::HintVelocityCurve), 10.0f, kFaint, Align::Left);
     }
 }
 
@@ -3483,7 +3618,8 @@ void View::paintNoteSource(Canvas &c, float top) {
     // how many cents off it is; a dash while nothing plays.
     const Rect box = noteDisplay(top);
     const Color color = kSourceColors[kNoteSource];
-    const bool lit = (hover_ && hover_->kind == Kind::NoteDisplay && drag_.kind == DragKind::None) ||
+    const bool lit = (hover_ && hover_->kind == Kind::NoteDisplay && hover_->a == kNoteSource &&
+                      drag_.kind == DragKind::None) ||
                      shapeEditing() == kNoteCurve; // it opens the curve, or has
     c.fillRect(box, lit ? kTrack : kDisplayColor, 5.0f);
     c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, 5.0f);
@@ -3509,6 +3645,36 @@ void View::paintNoteSource(Canvas &c, float top) {
     c.text(box, text, 11.0f, telemetry_.voices > 0 ? kText : kFaint, Align::Center, telemetry_.voices > 0);
     c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelNote), 10.5f, kDim);
     if (sourceBipolar(kNoteSource)) // swings both ways: a sign in its corner
+        c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", 10.0f, color, Align::Center, true);
+}
+
+void View::paintVelocitySource(Canvas &c, float top) {
+    // The velocity the newest voice came with, as MIDI has it (0 to 127); a dash while nothing plays.
+    const Rect box = velocityDisplay(top);
+    const Color color = kSourceColors[kVelocitySource];
+    const bool lit = (hover_ && hover_->kind == Kind::NoteDisplay && hover_->a == kVelocitySource &&
+                      drag_.kind == DragKind::None) ||
+                     shapeEditing() == kVelocityCurve; // it opens the curve, or has
+    c.fillRect(box, lit ? kTrack : kDisplayColor, 5.0f);
+    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, 5.0f);
+    // Behind the number, faintly, its curve across the box, with a mark where the newest voice's velocity is.
+    auto get = [this](int index) { return value(index); };
+    auto at = [&](double x) {
+        return Point{box.x + 4.0f + static_cast<float>(x) * (box.w - 8.0f),
+                     box.bottom() - 4.0f - static_cast<float>(velocitySourceValue(get, x)) * (box.h - 8.0f)};
+    };
+    std::vector<Point> curve;
+    for (int i = 0; i <= 24; ++i)
+        curve.push_back(at(i / 24.0));
+    c.polyline(curve.data(), curve.size(), color.alpha(0.3f), 1.2f);
+    const bool playing = telemetry_.voices > 0;
+    if (playing)
+        c.fillCircle(at(telemetry_.noteVelocity), 2.0f, color.alpha(0.6f));
+    const double velocity = std::clamp(static_cast<double>(telemetry_.noteVelocity), 0.0, 1.0);
+    const std::string text = playing ? std::to_string(std::lround(127.0 * velocity)) : "\xE2\x80\x93";
+    c.text(box, text, 11.0f, playing ? kText : kFaint, Align::Center, playing);
+    c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelVelocitySource), 10.5f, kDim);
+    if (sourceBipolar(kVelocitySource)) // swings both ways: a sign in its corner
         c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", 10.0f, color, Align::Center, true);
 }
 
@@ -3852,7 +4018,7 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
         forEachMod(param, [&](const Assignment &m) {
             if (m.bypassed || !sourceOn(m.source))
                 return;
-            const auto [down, up] = modReach(m.source, m.amount);
+            const auto [down, up] = modReach(m);
             low += down;
             high += up;
         });
@@ -4587,7 +4753,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::ShapeArea:
     case Kind::MatrixLabel:
     case Kind::NoteDisplay:
-        break; // drawn with their card, editor, matrix or the keyboard strip
+    case Kind::Wire:
+        break; // drawn with their card, editor, matrix, the graph or the keyboard strip
     case Kind::FxPower: {
         // The effect's icon: in its color while the effect is on, grey while it is off, as its card is, whatever
         // the mouse does. An effect that is on lights it up while the card is grabbed, by its title or the icon,
@@ -5020,6 +5187,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillCircle(center, 3.5f, color);
         break;
     }
+    case Kind::SlotPolarity: {
+        // How the row's modulation swings its target: a wave about its middle line for both ways, or humps up from
+        // its baseline for one way; dimmed with a bypassed row.
+        const Color color = slotBypassed(w.a, w.b) ? kFaint : (hovered ? kText : kDim);
+        if (hovered)
+            c.fillRect(w.rect.inset(1.0f), kTrack, 3.0f);
+        polarityIcon(c, w.rect.center(), slotBipolar(w.a, w.b), color);
+        break;
+    }
     }
 }
 
@@ -5051,7 +5227,7 @@ void View::paintHoverTags(Canvas &c, const std::vector<Widget> &list) {
 }
 
 // A modulation in words: its source, and what it takes its target through in the target's own units, from
-// half the depth below the set value to half above for a bipolar source, or from it one way for a unipolar one.
+// half the depth below the set value to half above for a bipolar modulation, or from it one way for a unipolar one.
 std::string View::modRangeText(int source, int slot) const {
     std::string text = sourceName(source);
     const int target = slotTarget(value(slotTargetIndex(source, slot)));
@@ -5059,7 +5235,7 @@ std::string View::modRangeText(int source, int slot) const {
         const ParamDef &def = table_[target];
         const double set = value(target);
         const double reach = value(slotAmountIndex(source, slot)) * (def.max - def.min);
-        const bool both = sourceBipolar(source);
+        const bool both = slotBipolar(source, slot);
         const double start = both ? set - 0.5 * reach : set; // a negative depth runs the other way
         const double end = both ? set + 0.5 * reach : set + reach;
         char from[32], to[32];
@@ -5101,13 +5277,12 @@ void View::paintKnob(Canvas &c, const Widget &w) {
             focus = m;
             return;
         }
-        const bool both = sourceBipolar(m.source);
-        const auto [down, up] = modReach(m.source, m.amount);
-        const float alpha = (both ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
+        const auto [down, up] = modReach(m);
+        const float alpha = (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
         c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha), 2.5f);
     });
     if (focus) {
-        const auto [down, up] = modReach(focus->source, focus->amount);
+        const auto [down, up] = modReach(*focus);
         const float alpha = sourceOn(focus->source) && !focus->bypassed ? 1.0f : 0.4f;
         c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[focus->source].alpha(alpha),
               4.0f);
@@ -5151,6 +5326,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::ShapeDone && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
+         hover_->kind != Kind::SlotPolarity && hover_->kind != Kind::Wire &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
@@ -5168,7 +5344,7 @@ void View::paintTooltip(Canvas &c) {
     if (hover_->kind == Kind::MacroName) {
         text = tr(Str::TipRenameMacro);
     } else if (hover_->kind == Kind::NoteDisplay) {
-        text = tr(Str::TipNoteDisplay);
+        text = tr(isVelocity(hover_->a) ? Str::TipVelocityDisplay : Str::TipNoteDisplay);
     } else if (hover_->kind == Kind::WireEnd) {
         text = tr(Str::TipWireEnd);
     } else if (hover_->kind == Kind::Port) {
@@ -5183,6 +5359,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipWheelHandle);
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
         text = tr(Str::TipNoteHandle);
+    } else if (hover_->kind == Kind::MacroHandle && isVelocity(hover_->a)) {
+        text = tr(Str::TipVelocityHandle);
     } else if (hover_->kind == Kind::MacroHandle) {
         text = trf(Str::TipMacroHandle, {macroName(controller_.layout(), hover_->a - kMaxSources)});
     } else if (hover_->kind == Kind::SourceHandle) {
@@ -5210,10 +5388,15 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipSettings);
     else if (hover_->kind == Kind::SlotBypass)
         text = tr(slotBypassed(hover_->a, hover_->b) ? Str::TipBypassed : Str::TipBypass);
+    else if (hover_->kind == Kind::SlotPolarity)
+        text = tr(slotBipolar(hover_->a, hover_->b) ? Str::TipSlotBipolar : Str::TipSlotUnipolar);
+    else if (hover_->kind == Kind::Wire)
+        text = tr(Str::TipWire);
     else if (hover_->kind == Kind::UndoButton)
         text = undoText(hover_->a == 1);
     else if (hover_->kind == Kind::ShapeReset)
         text = tr(isNoteCurve(hover_->a)                                ? Str::TipResetNoteCurve
+                  : isVelocityCurve(hover_->a)                          ? Str::TipResetVelocityCurve
                   : isClipCurve(hover_->a) || isShaperCurve(hover_->a) ? Str::TipResetCurve
                                                                        : Str::TipResetShape);
     else if (hover_->kind == Kind::PartialReset)
@@ -5605,6 +5788,19 @@ void View::applyDrag(Point p) {
         if (const auto tab = hitTest(p); tab && tab->kind == Kind::OpTab)
             controller_.layout().opTab = static_cast<InspectorTab>(tab->a);
         break;
+    case DragKind::Bend: {
+        // The wire's middle follows the mouse sideways, from where it was grabbed: it lies half as far out as the
+        // curve's control point.
+        const Point a = nodeCenter(w.a), b = nodeCenter(w.b);
+        const float span = std::max(std::hypot(b.x - a.x, b.y - a.y), 1.0f);
+        const Point left = leftOf(a, b);
+        const float moved = (p.x - drag_.start.x) * left.x + (p.y - drag_.start.y) * left.y;
+        const float bend = std::clamp(static_cast<float>(drag_.startValue) + 2.0f * moved / span, -kMaxWireBend,
+                                      kMaxWireBend);
+        if (bend != wireBend(w.param))
+            setWireBend(w.param, bend);
+        break;
+    }
     case DragKind::None:
     case DragKind::Connect:
     case DragKind::Reroute:
@@ -5698,6 +5894,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::WireEnd:
         drag_.kind = DragKind::Reroute;
+        break;
+    case Kind::Wire:
+        drag_.kind = DragKind::Bend;
+        drag_.startValue = wireBend(w.param);
+        drag_.step = true; // bending it is an undo step
+        controller_.beginStep();
         break;
     case Kind::SourceHandle:
     case Kind::MacroHandle:
@@ -5856,6 +6058,8 @@ void View::mouseDown(Point p, Modifiers mods) {
             switchSymmetric(w.param);
         else if (fixedSwitchOp(w.param) >= 0)
             switchFixed(fixedSwitchOp(w.param));
+        else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // as the LFO's menu: for all of its targets
+            setSourcePolarity(sourceOf(w.param), value(w.param) >= 0.5);
         else
             edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         break;
@@ -5872,7 +6076,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         shapeEditor_ = kMaxSources + w.a;
         break;
     case Kind::NoteDisplay:
-        shapeEditor_ = shapeEditor_ == kNoteCurve ? -1 : kNoteCurve; // a second click closes it
+        shapeEditor_ = shapeEditor_ == curveOf(w.a) ? -1 : curveOf(w.a); // a second click closes it
         hover_.reset();
         break;
     case Kind::ListButton:
@@ -6032,6 +6236,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SlotBypass:
         toggleBypass(w.a, w.b);
         break;
+    case Kind::SlotPolarity:
+        setSlotPolarity(w.a, w.b, !slotBipolar(w.a, w.b));
+        break;
     case Kind::SlotScroll: {
         // On the thumb, drag it; elsewhere on the track, the thumb jumps to center on the click and can be dragged on.
         const float card = cardOf(w.a);
@@ -6179,6 +6386,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Scroll:
     case DragKind::SlotScroll:
     case DragKind::TextSelect:
+    case DragKind::Bend: // each move set it already
     case DragKind::None:
         break; // finishDrag() ends what they hold
     }
@@ -6223,6 +6431,7 @@ void View::finishDrag() {
         break;
     case DragKind::Partials: // its undo step closes below
     case DragKind::Node:
+    case DragKind::Bend:
     case DragKind::Connect:
     case DragKind::Reroute:
     case DragKind::ModSource:
@@ -6270,6 +6479,11 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && hit->kind == Kind::MacroName) {
         startTyping(*hit);
+        return;
+    }
+    if (hit && hit->kind == Kind::Wire) { // back to how it bows to begin with
+        const UndoScope step(controller_);
+        setWireBend(hit->param, kDefaultWireBend);
         return;
     }
     if (hit && hit->kind == Kind::BrowserSearch) { // the word there, up to the spaces either side
@@ -6430,6 +6644,10 @@ constexpr int kBypassCommand = kClearCommand + kAllSources;
 // A source's polarity, in the menus of its card, its handle, and a macro's knob and name.
 constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
+constexpr int kResetBendCommand = 14;
+// A modulation made unipolar or bipolar, by source and slot.
+constexpr int kSlotUnipolarCommand = kBypassCommand + kMaxSources * kSlots;
+constexpr int kSlotBipolarCommand = kSlotUnipolarCommand + kAllSources * kSlots;
 
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
@@ -6452,21 +6670,27 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({7, tr(Str::MenuRemove)});
         return items;
     }
-    // Every source can swing its targets one way or both, from the menu of its card or handle (and a macro's knob,
-    // the mod wheel and the note source's display).
+    // Every source can swing all of its targets one way or both, from the menu of its card or handle (and a macro's
+    // knob, the mod wheel and the note source's or velocity's display): each is checked while every modulation it has
+    // goes that way, or with none, while the source does.
     const int polaritySource = hit->kind == Kind::SourceGrip || hit->kind == Kind::SourceHandle ||
-                                       hit->kind == Kind::MacroHandle
+                                       hit->kind == Kind::MacroHandle || hit->kind == Kind::NoteDisplay
                                    ? hit->a
                                : hit->kind == Kind::MacroName              ? kMaxSources + hit->a
-                               : hit->kind == Kind::NoteDisplay            ? kNoteSource
                                : hit->kind == Kind::ModWheel               ? kWheelSource
                                : hit->kind == Kind::Knob && macroOf(hit->param) >= 0 ? kMaxSources + macroOf(hit->param)
                                                                                      : -1;
     auto addPolarity = [&] {
         menuSource_ = polaritySource;
-        const bool bipolar = sourceBipolar(polaritySource);
-        items.push_back({kUnipolarCommand, tr(Str::MenuUnipolar), !bipolar});
-        items.push_back({kBipolarCommand, tr(Str::MenuBipolar), bipolar});
+        const std::vector<int> slots = usedSlots(polaritySource);
+        int bipolar = 0;
+        for (int slot : slots)
+            bipolar += slotBipolar(polaritySource, slot) ? 1 : 0;
+        const bool allBipolar =
+            slots.empty() ? sourceBipolar(polaritySource) : bipolar == static_cast<int>(slots.size());
+        const bool allUnipolar = slots.empty() ? !allBipolar : bipolar == 0;
+        items.push_back({kUnipolarCommand, tr(Str::MenuAllUnipolar), allUnipolar});
+        items.push_back({kBipolarCommand, tr(Str::MenuAllBipolar), allBipolar});
     };
     if (hit->kind == Kind::SourceGrip || hit->kind == Kind::SourceHandle) {
         if (!usedSlots(hit->a).empty())
@@ -6489,9 +6713,9 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         return items;
     }
     if (hit->kind == Kind::SlotBar || hit->kind == Kind::SlotRemove || hit->kind == Kind::ModDot ||
-        hit->kind == Kind::ValueText || hit->kind == Kind::SlotBypass) {
+        hit->kind == Kind::ValueText || hit->kind == Kind::SlotBypass || hit->kind == Kind::SlotPolarity) {
         // The depth types where it shows: beside its bar, or under a knob's dot.
-        if (hit->kind != Kind::SlotRemove && hit->kind != Kind::SlotBypass) {
+        if (hit->kind != Kind::SlotRemove && hit->kind != Kind::SlotBypass && hit->kind != Kind::SlotPolarity) {
             menuValue_ = *hit;
             if (hit->kind == Kind::SlotBar) {
                 menuValue_->kind = Kind::ValueText;
@@ -6501,6 +6725,12 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         }
         if (!isStripSource(hit->a)) // a macro's, the note source's or the mod wheel's can't be bypassed
             items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
+        // This modulation alone one way or both, the one in force checked.
+        const bool bipolar = slotBipolar(hit->a, hit->b);
+        items.push_back({0, ""});
+        items.push_back({kSlotUnipolarCommand + hit->a * kSlots + hit->b, tr(Str::MenuUnipolar), !bipolar});
+        items.push_back({kSlotBipolarCommand + hit->a * kSlots + hit->b, tr(Str::MenuBipolar), bipolar});
+        items.push_back({0, ""});
         items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {sourceName(hit->a)})});
         return items;
     }
@@ -6522,8 +6752,10 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({4, trf(Str::MenuSwitchOff, {nodeTitle(hit->a)})});
         return items;
     }
-    if (hit->kind == Kind::WireEnd) {
+    if (hit->kind == Kind::WireEnd || hit->kind == Kind::Wire) {
         menuParam_ = hit->param;
+        if (hit->kind == Kind::Wire && wireBend(hit->param) != kDefaultWireBend)
+            items.push_back({kResetBendCommand, tr(Str::MenuResetBend)});
         items.push_back({3, tr(Str::MenuDisconnect)});
         return items;
     }
@@ -6604,8 +6836,10 @@ void View::menuCommand(int command) {
     } else if (command == 11 && menuValue_) {
         startTyping(*menuValue_);
     } else if ((command == kUnipolarCommand || command == kBipolarCommand) && menuSource_ >= 0) {
-        const Polarity polarity = polarityOf(menuSource_, sourceTypeOf(menuSource_));
-        edit(polarity.index, command == kBipolarCommand ? polarity.bipolar : 1.0 - polarity.bipolar);
+        setSourcePolarity(menuSource_, command == kBipolarCommand);
+    } else if (command == kResetBendCommand && menuParam_ >= 0) {
+        const UndoScope step(controller_);
+        setWireBend(menuParam_, kDefaultWireBend);
     } else if (command >= 100 && command < kClearCommand) {
         removeSlot((command - 100) / kSlots, (command - 100) % kSlots);
     } else if (command >= kClearCommand && command < kClearCommand + kAllSources) {
@@ -6614,6 +6848,10 @@ void View::menuCommand(int command) {
             removeSlot(command - kClearCommand, slot);
     } else if (command >= kBypassCommand && command < kBypassCommand + kMaxSources * kSlots) {
         toggleBypass((command - kBypassCommand) / kSlots, (command - kBypassCommand) % kSlots);
+    } else if (command >= kSlotUnipolarCommand && command < kSlotBipolarCommand + kAllSources * kSlots) {
+        const bool bipolar = command >= kSlotBipolarCommand;
+        const int slot = command - (bipolar ? kSlotBipolarCommand : kSlotUnipolarCommand);
+        setSlotPolarity(slot / kSlots, slot % kSlots, bipolar);
     }
 }
 
@@ -6809,6 +7047,7 @@ CursorKind View::cursor() const {
     case Kind::FxGrip:
     case Kind::SourceGrip:
     case Kind::ShapePoint:
+    case Kind::Wire:
         return CursorKind::Move;
     default:
         return CursorKind::Hand;

@@ -482,16 +482,38 @@ int main(int argc, char **argv) {
     runBlock({&envBipolar.header});
     runBlocks(2);
     const float bipolarLevel = runBlocks(4);
+    // Each slot can be set one way or the other on its own, whatever its source is: set unipolar, the bipolar
+    // envelope's slot silences A again; set bipolar, with the envelope unipolar, it halves A as the bipolar envelope
+    // did; set back to follow its source (unipolar), it silences A.
+    auto slotPolarityEvent = [&](SlotPolarity polarity) {
+        return paramEvent(slotPolarityIndex(env1, 0), static_cast<double>(polarity));
+    };
+    const clap_event_param_value_t slotUnipolar = slotPolarityEvent(SlotPolarity::Unipolar);
+    runBlock({&slotUnipolar.header});
+    runBlocks(2);
+    const float slotUnipolarLevel = runBlocks(4);
     const clap_event_param_value_t envUnipolar = paramEvent(paramIndex(env1, SourceParam::EnvBipolar), 0.0);
+    const clap_event_param_value_t slotBipolar = slotPolarityEvent(SlotPolarity::Bipolar);
+    runBlock({&envUnipolar.header, &slotBipolar.header});
+    runBlocks(2);
+    const float slotBipolarLevel = runBlocks(4);
+    const clap_event_param_value_t slotAsSource = slotPolarityEvent(SlotPolarity::Source);
+    runBlock({&slotAsSource.header});
+    runBlocks(2);
+    const float asSourceLevel = runBlocks(4);
     const clap_event_param_value_t envAmountOff = paramEvent(slotAmountIndex(env1, 0), 0.0);
-    runBlock({&envUnipolar.header, &envAmountOff.header});
+    runBlock({&envAmountOff.header});
     runBlocks(2);
     const float full = runBlocks(4);
-    std::printf("      envelope on A's output at -100 %%, full sustain: peak %.3f bipolar, %.3f without it\n",
-                bipolarLevel, full);
+    std::printf("      envelope on A's output at -100 %%, full sustain: peak %.3f bipolar, %.3f without it; its slot "
+                "unipolar %.3f, bipolar %.3f, as its source %.3f\n",
+                bipolarLevel, full, slotUnipolarLevel, slotBipolarLevel, asSourceLevel);
     check(full > 0.05f, "clearing the slot amount brings the note back");
     check(bipolarLevel > 0.4f * full && bipolarLevel < 0.6f * full,
           "a bipolar envelope swings its target about its middle");
+    check(slotUnipolarLevel < 1e-4f && slotBipolarLevel > 0.4f * full && slotBipolarLevel < 0.6f * full &&
+              asSourceLevel < 1e-4f,
+          "a slot set unipolar or bipolar goes that way whatever its source, and follows its source again after");
     const clap_event_param_value_t envEmpty = paramEvent(paramIndex(env1, SourceParam::Type), 0.0);
     runBlock({&envEmpty.header, &chokeAll.header});
 
@@ -1463,6 +1485,54 @@ int main(int argc, char **argv) {
               "as it starts, the note source follows the cutoff knobs' curve over every MIDI note");
     }
 
+    // Velocity, through its curve: as it starts, a straight line, it takes A's output (at 0, modulated by 100 %) as far
+    // as the note's velocity: a quarter of it at 0.25, half at 0.5, all of it at 1. Bipolar, it swings about the middle
+    // of what it puts out: nothing at 0.5, half at 1; and so does its slot set bipolar on its own. With its curve drawn
+    // the other way round, a soft note brings A out and a hard one doesn't.
+    {
+        const int curve = paramIndex(VelocityParam::Curve);
+        setParams({{paramIndex(0, OpParam::Out), 0.0},
+                   {paramIndex(0, OpParam::Velocity), 0.0},
+                   {slotTargetIndex(kVelocitySource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kVelocitySource, 0), 1.0}});
+        auto peakAt = [&](double velocity) {
+            clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 91, 69);
+            on.velocity = velocity;
+            runBlock({&on.header});
+            runBlocks(4);
+            const float peak = runBlocks(8);
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const float quarter = peakAt(0.25), half = peakAt(0.5), whole = peakAt(1.0);
+        setParams({{paramIndex(VelocityParam::Bipolar), 1.0}});
+        const float bipolarHalf = peakAt(0.5), bipolarWhole = peakAt(1.0);
+        setParams({{paramIndex(VelocityParam::Bipolar), 0.0},
+                   {slotPolarityIndex(kVelocitySource, 0), static_cast<double>(SlotPolarity::Bipolar)}});
+        const float slotBipolarHalf = peakAt(0.5), slotBipolarWhole = peakAt(1.0);
+        setParams({{slotPolarityIndex(kVelocitySource, 0), static_cast<double>(SlotPolarity::Source)},
+                   {shapeFieldIndex(curve, 0, PointField::Y), 1.0},
+                   {shapeFieldIndex(curve, 1, PointField::Y), -1.0}});
+        const float flippedSoft = peakAt(0.25), flippedHard = peakAt(1.0);
+        setParams({{shapeFieldIndex(curve, 0, PointField::Y), -1.0},
+                   {shapeFieldIndex(curve, 1, PointField::Y), 1.0},
+                   {paramIndex(0, OpParam::Out), 1.0},
+                   {paramIndex(0, OpParam::Velocity), 0.5}, // as it starts
+                   {slotTargetIndex(kVelocitySource, 0), 0.0},
+                   {slotAmountIndex(kVelocitySource, 0), 0.0}});
+        std::printf("      A's output by velocity: peak %.3f / %.3f / %.3f at 0.25 / 0.5 / 1; bipolar %.3f / %.3f at "
+                    "0.5 / 1, its slot bipolar %.3f / %.3f; curve flipped %.3f at 0.25, %.3f at 1\n",
+                    quarter, half, whole, bipolarHalf, bipolarWhole, slotBipolarHalf, slotBipolarWhole, flippedSoft,
+                    flippedHard);
+        check(whole > 0.2f && std::abs(quarter / whole - 0.25f) < 0.03f && std::abs(half / whole - 0.5f) < 0.03f,
+              "velocity takes its target as far as the note's velocity, in a straight line as it starts");
+        check(bipolarHalf < 0.005f && std::abs(bipolarWhole / whole - 0.5f) < 0.03f && slotBipolarHalf < 0.005f &&
+                  std::abs(slotBipolarWhole / whole - 0.5f) < 0.03f,
+              "bipolar velocity, or its slot set bipolar, swings about the middle of what it puts out");
+        check(std::abs(flippedSoft / whole - 0.75f) < 0.03f && flippedHard < 0.005f,
+              "velocity's curve shapes what it puts out");
+    }
+
     // Effects, on the plain sine. Slot 0 holds a shaper, slot 1 a DJ EQ, slot 2
     // a delay, slot 3 a filter, slots 4 and 5 parametric EQs; each starts on.
     {
@@ -2349,9 +2419,9 @@ int main(int argc, char **argv) {
         check(loaded && sourcePage && unique, "every remote control page has an id of its own");
     }
 
-    // A layout as large as one gets (every route kept at 0 %, every macro's name at full length: past 256 floats)
-    // loads whole, and what follows it too: saved again, it comes back as it was, with the settings chunk's
-    // oversampling after it.
+    // A layout as large as one gets (every route kept at 0 % and its wire bent, every macro's name at full length:
+    // past 256 floats) loads whole, and what follows it too: saved again, it comes back as it was, with the settings
+    // chunk's oversampling after it.
     {
         std::vector<float> layout;
         for (int node = 0; node < 2 * kOps + 2 * (kFilters + kShapers); ++node) // the node places
@@ -2396,6 +2466,11 @@ int main(int argc, char **argv) {
         layout.insert(layout.end(), {5.0f, 2.0f}); // folded cards
         layout.push_back(1.0f);                    // the keyboard collapsed
         layout.insert(layout.end(), {2.0f, 4.0f}); // the operator page's scope, over 4 cycles
+        layout.push_back(static_cast<float>(routes.size())); // every wire bent, some each way
+        for (size_t k = 0; k < routes.size(); ++k) {
+            layout.push_back(static_cast<float>(idOfIndex(routes[k])));
+            layout.push_back(k % 2 == 0 ? 0.5f : -0.25f);
+        }
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

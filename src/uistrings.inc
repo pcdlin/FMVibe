@@ -79,6 +79,11 @@ STR(FxFreqShifter, "Freq Shifter")
 STR(FxDisperser, "Phase Disp")
 STR(FxWidener, "Widener")
 
+// How a modulation swings its target: as its source does, one way, or both ways.
+STR(PolaritySource, "Source")
+STR(PolarityUnipolar, "Unipolar")
+STR(PolarityBipolar, "Bipolar")
+
 // What a modulation place holds.
 STR(SourceEmpty, "Empty")
 STR(SourceLfo, "LFO")
@@ -125,6 +130,7 @@ STR(ParamGlideAlways, "Glide Always")
 STR(ParamFxOrder, "FX Order")
 STR(ParamModWheel, "Mod Wheel")
 STR(ParamNote, "Note")
+STR(ParamVelocitySource, "Velocity") // the velocity source, as hosts name its fields
 
 // What a parameter's name starts with; the field's name follows.
 STR(ParamOp, "Op {1}")
@@ -184,6 +190,7 @@ STR(ParamTarget, "Target {1}")
 STR(ParamAmount, "Amount {1}")
 STR(ParamBypass, "Bypass {1}")
 STR(ParamBipolar, "Bipolar")
+STR(ParamPolarity, "Polarity {1}") // a slot's: as its source, unipolar or bipolar
 STR(ParamLow, "Low")
 STR(ParamHigh, "High")
 STR(ParamShape, "Shape")
@@ -285,9 +292,11 @@ STR(ParamShiftSpread, "Shift Spread")
 STR(ParamShiftFeedback, "Shift Feedback")
 STR(ParamShiftMix, "Shift Mix")
 
-// A modulation slot's bypass, as the editor names it: the source, then the target it modulates.
+// A modulation slot's bypass and polarity, as the editor names them: the source, then the target it modulates.
 STR(ParamNameBypass, "{1} bypass")
 STR(ParamNameBypassOn, "{1} bypass on {2}")
+STR(ParamNamePolarity, "{1} polarity")
+STR(ParamNamePolarityOn, "{1} polarity on {2}")
 
 // --- The host's remote control pages, and the plugin's ports
 
@@ -308,6 +317,7 @@ STR(SourceNameLfo, "LFO {1}") // numbered by type in the order the sources show
 STR(SourceNameEnv, "Env {1}")
 STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
+STR(SourceNameVelocity, "Velocity")
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
 
@@ -337,6 +347,7 @@ STR(HeadingLevel, "LEVEL")
 STR(HeadingPhase, "PHASE")
 STR(HeadingGrid, "GRID")
 STR(LabelNote, "Note") // under the note source's display
+STR(LabelVelocitySource, "Velocity") // under the velocity source's display
 
 // The effect cards' titles.
 STR(FxTitleShaper, "SHAPER")
@@ -358,10 +369,12 @@ STR(TitleShape, "{1} SHAPE")
 STR(TitleFxShaperCurve, "FX {1} SHAPER CURVE")
 STR(TitleShaperCurve, "SHAPER {1} CURVE")
 STR(TitleNoteCurve, "NOTE CURVE")
+STR(TitleVelocityCurve, "VELOCITY CURVE")
 STR(TitlePartials, "OP {1} PARTIALS")
 STR(AxisInput, "input →")
 STR(AxisOutput, "output")
 STR(AxisOut, "out")
+STR(AxisVelocity, "velocity →")
 
 // Knob labels.
 STR(LabelVolume, "Volume")
@@ -468,6 +481,8 @@ STR(HintFx, "click an icon to toggle  ·  drag title to reorder")
 STR(HintCurve, "double-click: add or delete  ·  Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
 STR(HintNoteCurve, "across: notes from Low to High  ·  up: output  ·  double-click: add or delete  ·  "
                    "Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
+STR(HintVelocityCurve, "across: velocity  ·  up: output  ·  double-click: add or delete  ·  "
+                       "Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
 STR(HintPartials, "drag across the bars to draw  ·  double-click a bar for none")
 STR(HintNoSources, "No modulators yet.")
 STR(HintNoTargets, "Drag the handle onto any knob,") // on a source's card, over two lines
@@ -512,6 +527,7 @@ STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
 STR(CaptionCurvePoint, "point {1}  ·  in {2}  ·  out {3}")
 STR(CaptionNotePoint, "point {1}  ·  {2}  ·  out {3} %")
+STR(CaptionVelocityPoint, "point {1}  ·  velocity {2}  ·  out {3} %")
 STR(CaptionPartial, "partial {1}  ·  level {2} dB  ·  phase {3}°")
 STR(CaptionPartialSilent, "partial {1}  ·  level none  ·  phase {2}°")
 STR(CaptionReduction, "GR {1} dB")
@@ -553,11 +569,14 @@ STR(NodeShaper, "shaper {1}")
 
 STR(TipRenameMacro, "Double-click to rename")
 STR(TipNoteDisplay, "Click to edit the note curve")
+STR(TipVelocityDisplay, "Click to edit the velocity curve")
 STR(TipWireEnd, "Drag to reroute")
+STR(TipWire, "Drag to bend, double-click to reset")
 STR(TipPort, "Drag to another node or OUT to connect")
 STR(TipFxInsert, "Add an effect here") // the arrow between two effect cards
 STR(TipWheelHandle, "Drag to assign mod wheel modulation")
 STR(TipNoteHandle, "Drag to assign note pitch modulation")
+STR(TipVelocityHandle, "Drag to assign velocity modulation")
 STR(TipMacroHandle, "Drag to assign {1}")
 STR(TipSourceHandle, "Drag to assign {1}") // an LFO's or an envelope's handle, with its name
 STR(TipShowNode, "Show {1}")
@@ -576,7 +595,10 @@ STR(TipSave, "Save preset")
 STR(TipSettings, "Settings")
 STR(TipBypassed, "Bypassed. Click to resume")
 STR(TipBypass, "Bypass this modulation")
+STR(TipSlotUnipolar, "Unipolar: moves its target one way. Click for bipolar")
+STR(TipSlotBipolar, "Bipolar: swings its target both ways. Click for unipolar")
 STR(TipResetNoteCurve, "Reset to track the note on a cutoff, over all notes")
+STR(TipResetVelocityCurve, "Reset to a straight line")
 STR(TipResetCurve, "Reset to the default S-curve")
 STR(TipResetShape, "Reset to the default triangle")
 STR(TipResetPartials, "Reset to a plain sine")
@@ -597,7 +619,7 @@ STR(TipSlope, "Filter slope")
 STR(TipSlopeBand, "Filter slope")
 STR(TipFree, "Free")
 STR(TipOneShot, "One shot")
-STR(TipUnipolar, "Unipolar")
+STR(TipUnipolar, "Unipolar, all targets") // the LFO's switch, which sets every modulation it has
 STR(TipDelaySync, "Sync delay times to host tempo")
 STR(TipSweepSync, "Sync sweep to host tempo")
 STR(TipPingPong, "Bounce echoes between left and right")
@@ -619,8 +641,11 @@ STR(TipGlideAlways, "Glide on every note, not just overlapping ones")
 STR(MenuDuplicate, "Duplicate")
 STR(MenuResetSettings, "Reset settings")
 STR(MenuRemove, "Remove")
-STR(MenuUnipolar, "Unipolar")
+STR(MenuUnipolar, "Unipolar") // a modulation's, in its depth handle's and its row's menus
 STR(MenuBipolar, "Bipolar")
+STR(MenuAllUnipolar, "Unipolar, All Targets") // a source's, setting every modulation it has and gets
+STR(MenuAllBipolar, "Bipolar, All Targets")
+STR(MenuResetBend, "Reset Bend") // a wire in the graph, back to how it bows to begin with
 STR(MenuClearTargets, "Clear all {1} targets")
 STR(MenuEditDepth, "Edit depth…")
 STR(MenuBypass, "Bypass {1} modulation")

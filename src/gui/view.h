@@ -112,10 +112,11 @@ private:
         NodeTab,      // a = node: selects it; the selected one switches it on and off
         MatrixLabel,  // a = node: a matrix row's or column's name; a click does what the node's tab does
         MacroName,    // a = macro: the name under its knob; double-click renames it
-        NoteDisplay,  // the note source's display above the wheels: a click opens its curve
+        NoteDisplay,  // a = kNoteSource or kVelocitySource: its display in the keyboard strip; a click opens its curve
         FxFold,       // a = effect slot: folds its card to a strip, or unfolds it
         SourceFold,   // a = source place: the same for its card
-        MacroHandle,  // a = kMaxSources + macro, kNoteSource or kWheelSource: drag onto a target, as a source's handle
+        MacroHandle,  // a = kMaxSources + macro, kNoteSource, kWheelSource or kVelocitySource: drag onto a target, as a
+                      // source's handle
         WaveButton,   // a = op, b = wave: one of the common waves
         WaveMore,     // a = op: "..." opens the list of the other waves
         WaveMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
@@ -127,6 +128,7 @@ private:
         WireLabel,    // param = route amount, a = from node, b = to node
         OutLabel,     // param = output level, a = node
         WireEnd,      // param = the route, a = from node, b = to node (kNodes: the output): its arrowhead, to drag elsewhere
+        Wire,         // param = the route, a = from node, b = to node: along its curve; drag to bend it
         GridCell,     // param, a = row node, b = column
         SourceHandle, // a = source: drag onto a param to modulate it
         SourceGrip,   // a = source, b = its position among the sources: drag to reorder
@@ -137,6 +139,7 @@ private:
         SlotBar,      // param = slot amount, a = source, b = slot
         SlotRemove,   // a = source, b = slot
         SlotBypass,   // param = the slot's bypass, a = source, b = slot: the dot at the row's start
+        SlotPolarity, // a = source, b = slot: switches its modulation between unipolar and bipolar
         SlotScroll,   // a = source: the bar beside a long slot list; drag the thumb, or click to jump there
         ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
         EnvPoint,     // a = envelope (ops, then kOps + source), b = point
@@ -234,6 +237,7 @@ private:
         SlotScroll,
         Glow,
         TextSelect, // across the browser's search
+        Bend,       // a wire, sideways: how far it bows
     };
 
     struct Drag {
@@ -264,6 +268,7 @@ private:
         int target;
         double amount;
         bool bypassed; // kept, but modulating nothing for now
+        bool bipolar;  // swings its target both ways (see slotBipolar())
     };
 
     // While a paint or a hit test goes on, nothing they read changes (but for what the host may change meanwhile, which
@@ -291,7 +296,7 @@ private:
         std::optional<float> fxLength, sourcesLength;
         std::array<std::optional<std::vector<int>>, kAllSources> slots{};
         std::array<std::optional<float>, kMaxSources> cards{};
-        std::array<std::optional<Rect>, kMaxSources + kShaperUnits + 2> shapeAreas{}; // by shape + 1, to kNoteCurve
+        std::array<std::optional<Rect>, kMaxSources + kShaperUnits + 3> shapeAreas{}; // by shape + 1, to kVelocityCurve
         std::optional<ModTable> mods;
         std::optional<std::vector<Widget>> widgets;
     };
@@ -328,6 +333,15 @@ private:
     void removeSlot(int source, int slot);
     bool slotBypassed(int source, int slot) const;
     void toggleBypass(int source, int slot);
+    // Whether a slot swings its target both ways (see fmvibe::slotBipolar()): as set for it, or as its source does.
+    bool slotBipolar(int source, int slot) const;
+    // Sets it for that slot alone; for a source, sets the source's own polarity and puts all of its slots back to
+    // following it. Each is one undo step.
+    void setSlotPolarity(int source, int slot, bool bipolar);
+    void setSourcePolarity(int source, bool bipolar);
+    // How far a route's wire bows to its left, as a share of the distance it spans: as dragged, or kDefaultWireBend.
+    float wireBend(int param) const;
+    void setWireBend(int param, float bend); // kDefaultWireBend forgets it
     // "Bypass LFO 1 modulation", or "Resume ..." for one that is bypassed.
     std::string bypassLabel(int source, int slot) const;
     void connect(int from, int to);
@@ -400,9 +414,10 @@ private:
     // Several params changed as one gesture.
     void editMany(const std::vector<std::pair<int, double>> &changes);
     // Drawn shapes: a freeform LFO's (shape = the source), a shaper's curve (shape = kMaxSources + the shaper's
-    // unit: an effect slot, or kFxSlots + a shaper) or the note source's curve (shape = kNoteCurve). The big editor
-    // shows over the routing panel and the inspector while the LFO's shape is Custom, over the routing panel while
-    // the note source's curve or a voice shaper's is open, or over the effects for a shaper effect's Custom curve;
+    // unit: an effect slot, or kFxSlots + a shaper), the note source's curve (shape = kNoteCurve) or velocity's
+    // (kVelocityCurve). The big editor shows over the routing panel and the inspector while the LFO's shape is
+    // Custom, over the routing panel while the note source's or velocity's curve or a voice shaper's is open, or over
+    // the effects for a shaper effect's Custom curve;
     // a shaper effect's card, or a voice shaper's page in the inspector, lets you edit its curve too. A curve's
     // points run from the left edge to the right one; an LFO's wrap around.
     int shapeEditing() const;
@@ -424,18 +439,25 @@ private:
     bool inspectorCovered() const;
     // Shaper units (see shaperParams()): the shaper effects, by slot, then the voices' shapers, kFxSlots + the shaper.
     static constexpr int kNoteCurve = kMaxSources + kShaperUnits;
-    static bool isCurve(int shape) { return shape >= kMaxSources; } // a shaper's or the note source's: no wrap
+    static constexpr int kVelocityCurve = kNoteCurve + 1;
+    static bool isCurve(int shape) { return shape >= kMaxSources; } // a shaper's, the note's or velocity's: no wrap
     static bool isClipCurve(int shape) { return shape >= kMaxSources && shape < kMaxSources + kFxSlots; } // an effect's
     static bool isShaperCurve(int shape) { return shape >= kMaxSources + kFxSlots && shape < kNoteCurve; }
     static bool isNoteCurve(int shape) { return shape == kNoteCurve; }
+    static bool isVelocityCurve(int shape) { return shape == kVelocityCurve; }
+    // The curves of the sources in the keyboard strip, which open from their displays there.
+    static bool isStripCurve(int shape) { return isNoteCurve(shape) || isVelocityCurve(shape); }
+    // The curve of the note source or velocity, and back.
+    static int curveOf(int source) { return isVelocity(source) ? kVelocityCurve : kNoteCurve; }
+    static int sourceOfCurve(int shape) { return isVelocityCurve(shape) ? kVelocitySource : kNoteSource; }
     static int shaperCurve(int shaper) { return kMaxSources + kFxSlots + shaper; }
     // The color of a shaper unit: its effect's, or the voice shapers'.
     Color clipColor(int unit) const;
     Color shapeColor(int shape) const;
     static int shapeBase(int shape);
     // How many points it can have, and how many params it takes from shapeBase() on.
-    static int shapeMaxPoints(int shape) { return isNoteCurve(shape) ? kMaxNotePoints : kMaxShapePoints; }
-    static int shapeParamCount(int shape) { return isNoteCurve(shape) ? kNoteCurveParamCount : kShapeParamCount; }
+    static int shapeMaxPoints(int shape) { return isStripCurve(shape) ? kMaxNotePoints : kMaxShapePoints; }
+    static int shapeParamCount(int shape) { return isStripCurve(shape) ? kNoteCurveParamCount : kShapeParamCount; }
     int shapeIndex(int shape, int point, PointField field) const;
     int shapePointCount(int shape) const;
     // Onto a PointCache key: a drawn shape's point count (its param `base`) and its points, as many as it has.
@@ -473,7 +495,7 @@ private:
     std::vector<int> sourcesShown() const;
     std::vector<int> sourcesMoved() const; // sourcesShown() worked out
     SourceType sourceTypeOf(int source) const;
-    std::pair<double, double> modReach(int source, double amount) const;
+    std::pair<double, double> modReach(const Assignment &m) const;
     // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).
     bool sourceBipolar(int source) const;
     // What a double-click or Reset sets a param to: its default, or a bipolar macro's middle.
@@ -541,6 +563,7 @@ private:
     void paintShapeEditor(Canvas &c, int shape);
     void paintClipCurveEditor(Canvas &c, int shape);
     void paintNoteCurveEditor(Canvas &c);
+    void paintVelocityCurveEditor(Canvas &c);
     // The editor's grid; `zero` is where the zero line goes, and a centered grid stresses its middle line.
     void paintShapeGrid(Canvas &c, double zero, bool centered);
     void paintShapeGridControls(Canvas &c);
@@ -552,8 +575,10 @@ private:
     void paintShaperCurve(Canvas &c, Rect r, int unit);
     void paintDisperser(Canvas &c, Rect r, int slot);
     void paintWidener(Canvas &c, Rect r, int slot);
-    // The note source above the wheels, left of the macros: the note the newest voice plays, and its name.
+    // The note source in the keyboard strip, right of the macros: the note the newest voice plays, and its name; and
+    // velocity, right of it: the velocity the newest voice came with.
     void paintNoteSource(Canvas &c, float top);
+    void paintVelocitySource(Canvas &c, float top);
     void paintClipCurveCard(Canvas &c, Rect r, int unit);
     void paintMirroredPoints(Canvas &c, int shape, float radius);
     void paintDelay(Canvas &c, Rect r, int slot);

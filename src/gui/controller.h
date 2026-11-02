@@ -63,7 +63,15 @@ struct UiLayout {
     uint32_t sourcesFolded = 0;
     InspectorTab opTab = InspectorTab::Envelope;
     int scopeCycles = 2;
+    // How far the graph's wires bow to their left, as a share of the distance each spans, by route (a param index):
+    // those dragged away from kDefaultWireBend, which the others keep. Part of the patch, like the node places.
+    std::vector<std::pair<int, float>> wireBends;
 };
+
+// How far a wire bows to its left, as a share of the distance it spans, until it is dragged: enough that two wires
+// running opposite ways between two nodes don't overlap. Dragged, it goes from -kMaxWireBend to kMaxWireBend.
+constexpr float kDefaultWireBend = 0.18f;
+constexpr float kMaxWireBend = 1.0f;
 
 // A macro's name as shown: its own, or "Macro 1" and so on.
 inline std::string macroName(const UiLayout &layout, int macro) {
@@ -93,6 +101,8 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
         return tr(Str::SourceNameNote);
     if (isWheel(source))
         return tr(Str::SourceNameWheel);
+    if (isVelocity(source))
+        return tr(Str::SourceNameVelocity);
     if (isMacro(source))
         return macroName(layout, source - kMaxSources);
     const SourceType type = sourceType(get(paramIndex(source, SourceParam::Type)));

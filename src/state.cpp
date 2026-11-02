@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <iterator>
+#include <limits>
 #include <vector>
 
 namespace fmvibe {
@@ -21,10 +22,11 @@ constexpr uint32_t kPresetMagic = 0x54535250;   // "PRST"
 constexpr size_t kMaxMacroName = 24; // bytes of a macro's name that are saved
 // The most of a layout chunk the loader reads, any more is skipped: plenty of room past the most this version
 // writes (see layoutFields()), which is its fixed fields, every route kept (a node's output and its route into
-// each node, at most) and every macro's name at full length.
+// each node, at most), every macro's name at full length and every route's wire bent.
 constexpr uint32_t kMaxLayoutFloats = 4096;
-static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + gui::kNodes * (gui::kNodes + 1) + 2 +
-                  kMacros * (1 + kMaxMacroName) + 2 <=
+constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
+static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
+                  kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 // 2: Volume gives back the 12 dB the voices go into the effects with, so a version 1 Volume loads 12 dB lower.
@@ -148,6 +150,14 @@ struct LayoutWriter {
         for (size_t i = 0; i < text.size() && i < most; ++i)
             out.push_back(static_cast<float>(static_cast<unsigned char>(text[i])));
     }
+    // Values by param, as their count and then each param's id and its value.
+    void paramValues(const std::vector<std::pair<int, float>> &values, float, float) {
+        out.push_back(static_cast<float>(values.size()));
+        for (const auto &[index, value] : values) {
+            out.push_back(static_cast<float>(idOfIndex(index)));
+            out.push_back(value);
+        }
+    }
 };
 
 // Takes each layout field back from the chunk, into a layout that starts with the defaults: a field the chunk
@@ -197,6 +207,19 @@ struct LayoutReader {
         for (int i = 0; i < length; ++i)
             text.push_back(static_cast<char>(std::lround(next(32.0f, 32.0f, 255.0f))));
     }
+    // Each value clamped to `min`..`max`; one whose id names no param, or a param listed already, is left out, and
+    // so is one that isn't a number.
+    void paramValues(std::vector<std::pair<int, float>> &values, float min, float max) {
+        values.clear();
+        const int count = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(kParamCount))));
+        for (int k = 0; k < count && field < stored.size(); ++k) {
+            const int index = indexOfId(static_cast<clap_id>(std::lround(next(0.0f, 0.0f, 1.0e6f))));
+            const float value = next(std::numeric_limits<float>::quiet_NaN(), min, max);
+            if (index >= 0 && std::isfinite(value) &&
+                std::none_of(values.begin(), values.end(), [&](const auto &v) { return v.first == index; }))
+                values.push_back({index, value});
+        }
+    }
 };
 
 // The layout chunk's fields, in order; later versions only append. Writing (LayoutWriter) and reading
@@ -228,6 +251,8 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.keysCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     io.number(ui.opTab, 0.0f, 2.0f, rounded<gui::InspectorTab>);
     io.number(ui.scopeCycles, 0.0f, 4.0f, rounded<int>, oneOf(gui::kScopeCycleChoices));
+    // The wires dragged to bow other than they start, by route.
+    io.paramValues(ui.wireBends, -gui::kMaxWireBend, gui::kMaxWireBend);
 }
 
 } // namespace

@@ -692,7 +692,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(slotBypassed && renderer.save(view, dir / "17b-bypassed-slot.png"), "render a bypassed modulation");
     view.menuCommand(menuEntry(kFineKnob, trf(Str::MenuResume, {trf(Str::SourceNameLfo, {"1"})})));
     check(model.value(slotBypassIndex(0, 0)) == 0.0, "a row's dot bypasses its modulation, and the knob's menu resumes it");
-    // A long target's name is drawn smaller to fit before the depth bar, where it would end in an ellipsis: three
+    // A long target's name is drawn smaller to fit before the polarity switch, where it would end in an ellipsis: three
     // dots on the baseline with nothing above them (read off the rendered pixels; a name ending in L looks alike).
     model.set(slotTargetIndex(0, 1), slotTargetValue(paramIndex(1, OpParam::UnisonDetune)));
     model.set(slotTargetIndex(0, 2), slotTargetValue(paramIndex(0, FxParam::DelayFeedback)));
@@ -701,7 +701,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     auto lit = [&](float x, float y) { return (renderer.pixel({x, y}) >> 8 & 255) > 100; };
     auto endsInEllipsis = [&](float rowY) {
         float right = 0.0f; // the name's last lit column
-        for (float x = cardX(0) + 30.0f; x < cardX(0) + 126.0f; x += 1.0f)
+        for (float x = cardX(0) + 30.0f; x < cardX(0) + 119.0f; x += 1.0f) // up to the polarity switch
             for (float y = rowY - 8.0f; y <= rowY + 8.0f; y += 1.0f)
                 right = lit(x, y) ? x : right;
         int rows = 0; // lit in its last three columns, the last dot's
@@ -1373,10 +1373,10 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
     const float y = view.height() - 179.0f;
-    auto macroKnob = [&](int macro) { return Point{196.375f + 112.75f * macro, y}; };
+    auto macroKnob = [&](int macro) { return Point{188.0f + 96.0f * macro, y}; };
     // Until a macro modulates something, its handle, arc and name are faint, and so is the note source's handle
     // (read off the rendered pixels).
-    const Point macroRing{macroKnob(0).x - 26.0f, y - 10.0f}, noteRing{1098.0f, y - 10.0f};
+    const Point macroRing{macroKnob(0).x - 26.0f, y - 10.0f}, noteRing{982.0f, y - 10.0f};
     view.mouseMove({600.0f, 300.0f}, {});
     const bool idleShot = renderer.save(view, dir / "26a-macros-idle.png");
     const int macroIdle = ringLevel(renderer, macroRing, 20.0f), noteIdle = ringLevel(renderer, noteRing, 20.0f);
@@ -1436,7 +1436,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     check(unipolarReset && bipolarReset, "a double-click sets a macro's knob to 0, or a bipolar one's to its middle");
     // The note source, right of the macros: its handle, left of its display, maps it the same way, onto filter 1's
     // cutoff here, and while a note plays its display names it (an A4 bent 30 cents up).
-    const Point noteHandle{1092.0f, y};
+    const Point noteHandle{976.0f, y};
     click(view, kF1Tab);
     drag(view, noteHandle, {918.0f, 214.0f});
     const bool noteMapped =
@@ -1494,19 +1494,19 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
                 }
             return checked;
         };
-        const bool macroWasUnipolar = polarity(macroKnob(0), tr(Str::MenuUnipolar));
-        polarity(macroKnob(0), tr(Str::MenuBipolar));
+        const bool macroWasUnipolar = polarity(macroKnob(0), tr(Str::MenuAllUnipolar));
+        polarity(macroKnob(0), tr(Str::MenuAllBipolar));
         const bool macroBipolar = model.value(paramIndex(0, MacroParam::Bipolar)) == 1.0;
-        const bool handleShowsIt = polarity({macroKnob(0).x - 32.0f, y}, tr(Str::MenuBipolar));
-        polarity({74.0f + 13.0f, view.height() - 87.0f}, tr(Str::MenuBipolar)); // the wheel itself
+        const bool handleShowsIt = polarity({macroKnob(0).x - 32.0f, y}, tr(Str::MenuAllBipolar));
+        polarity({74.0f + 13.0f, view.height() - 87.0f}, tr(Str::MenuAllBipolar)); // the wheel itself
         const bool wheelBipolar = model.value(paramIndex(WheelParam::Bipolar)) == 1.0;
-        polarity({1142.0f, y}, tr(Str::MenuBipolar)); // the note source's display
+        polarity({1026.0f, y}, tr(Str::MenuAllBipolar)); // the note source's display
         const bool noteBipolar = model.value(paramIndex(NoteParam::Bipolar)) == 1.0;
         view.mouseMove({600.0f, 300.0f}, {});
         const bool stripShot = renderer.save(view, dir / "26h-bipolar-strip.png");
-        polarity({114.0f, view.height() - 87.0f}, tr(Str::MenuUnipolar)); // the wheel's handle
-        polarity(macroKnob(0), tr(Str::MenuUnipolar));
-        polarity({1142.0f, y}, tr(Str::MenuUnipolar));
+        polarity({114.0f, view.height() - 87.0f}, tr(Str::MenuAllUnipolar)); // the wheel's handle
+        polarity(macroKnob(0), tr(Str::MenuAllUnipolar));
+        polarity({1026.0f, y}, tr(Str::MenuAllUnipolar));
         check(macroWasUnipolar && macroBipolar && handleShowsIt && wheelBipolar && noteBipolar && stripShot &&
                   model.value(paramIndex(0, MacroParam::Bipolar)) == 0.0 &&
                   model.value(paramIndex(WheelParam::Bipolar)) == 0.0 && model.value(paramIndex(NoteParam::Bipolar)) == 0.0,
@@ -1538,7 +1538,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const float open = view.height();
         click(view, toggle);
         const bool shorter = model.ui.keysCollapsed && view.height() == open - 120.0f;
-        const Point wheelHandle{1044.0f, y};
+        const Point wheelHandle{928.0f, y};
         drag(view, wheelHandle, {918.0f, 214.0f});
         const bool wheelMapped =
             slotTarget(model.value(slotTargetIndex(kWheelSource, 1))) == paramIndex(0, FilterParam::Cutoff);
@@ -1552,7 +1552,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the
     // title row (whole notes as they are dragged); a double-click adds a point to its three, and the reset button
     // goes back to every MIDI note along the cutoff knobs' curve.
-    click(view, {1142.0f, y});
+    click(view, {1026.0f, y});
     const int low = paramIndex(NoteParam::Low), high = paramIndex(NoteParam::High);
     const double lowFrom = model.value(low);
     drag(view, {182.0f, 124.0f}, {182.0f, 24.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
@@ -1606,6 +1606,204 @@ void testSourceShadow(const std::filesystem::path &dir, Renderer &renderer) {
           "the square dashed cards after the sources add an LFO and an envelope");
 }
 
+// Each modulation swings its target one way or both on its own: the switch after its row's name flips it, its depth
+// handle's and row's menus pick either (the one in force checked), and the source's menu, or an LFO's UNIPOLAR switch,
+// sets it for all of the source's targets at once, each an undo step.
+void testSlotPolarity(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    model.set(slotTargetIndex(0, 1), slotTargetValue(paramIndex(0, OpParam::Detune)));
+    model.set(slotAmountIndex(0, 1), 0.4);
+    view.poll();
+    auto polarity = [&](int slot) {
+        return static_cast<SlotPolarity>(std::lround(model.value(slotPolarityIndex(0, slot))));
+    };
+    auto pick = [&](Point at, const std::string &label) {
+        bool checked = false;
+        for (const MenuItem &item : view.contextMenu(at))
+            if (item.label == label) {
+                checked = item.checked;
+                view.menuCommand(item.command);
+            }
+        return checked;
+    };
+    // The LFO starts bipolar: the second row's switch makes that modulation alone unipolar, and undo takes it back.
+    const Point secondSwitch{cardX(0) + 12.0f + 108.0f + 6.5f, 730.0f};
+    click(view, secondSwitch);
+    const bool switched = polarity(1) == SlotPolarity::Unipolar && polarity(0) == SlotPolarity::Source;
+    view.undo();
+    const bool undone = polarity(1) == SlotPolarity::Source;
+    view.redo();
+    view.mouseMove(secondSwitch, {});
+    const bool shot = renderer.save(view, dir / "17g-slot-polarity.png");
+    check(switched && undone && shot && polarity(1) == SlotPolarity::Unipolar,
+          "a row's polarity switch sets its modulation alone one way or both, undoably");
+    // The first row's depth bar menu shows it bipolar, as its LFO, and makes it unipolar; the LFO's own menu, its two
+    // targets now going one way, checks Unipolar, All Targets.
+    const Point firstBar{cardX(0) + 160.0f, 706.0f};
+    const bool wasBipolar = pick(firstBar, tr(Str::MenuBipolar));
+    pick(firstBar, tr(Str::MenuUnipolar));
+    const bool firstUnipolar = polarity(0) == SlotPolarity::Unipolar;
+    const bool allUnipolarChecked = pick(sourceGrip(0), tr(Str::MenuAllUnipolar));
+    const bool lfoUnipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0 &&
+                             polarity(0) == SlotPolarity::Source && polarity(1) == SlotPolarity::Source;
+    check(wasBipolar && firstUnipolar && allUnipolarChecked && lfoUnipolar,
+          "a depth bar's menu picks its modulation's polarity, and the source's menu sets all of its targets");
+    // A target set bipolar on its own keeps the source's menu from checking either; the LFO's UNIPOLAR switch, as
+    // its menu, takes every target along, as one undo step.
+    pick(firstBar, tr(Str::MenuBipolar));
+    bool mixedChecked = false;
+    for (const MenuItem &item : view.contextMenu(sourceGrip(0)))
+        mixedChecked = mixedChecked || (item.checked && (item.label == tr(Str::MenuAllUnipolar) ||
+                                                         item.label == tr(Str::MenuAllBipolar)));
+    click(view, unipolarToggle(0)); // off: bipolar
+    const bool switchSetsAll = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0 &&
+                               polarity(0) == SlotPolarity::Source && polarity(1) == SlotPolarity::Source;
+    view.undo();
+    check(!mixedChecked && switchSetsAll && model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0 &&
+              polarity(0) == SlotPolarity::Bipolar,
+          "an LFO's UNIPOLAR switch sets all of its targets, undoably");
+}
+
+// Velocity, at the strip's right end after the note source: its handle maps it like the note source's (faint until
+// it does), its display shows the newest voice's velocity (0 to 127) and opens its curve over the routing panel,
+// where a double-click adds a point and the reset button brings back the straight line; its menu picks its polarity.
+void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const float y = view.height() - 179.0f;
+    const Point handle{1092.0f, y}, ring{1098.0f, y - 10.0f}, display{1142.0f, y};
+    view.mouseMove({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "26k-velocity-idle.png");
+    const int idle = ringLevel(renderer, ring, 20.0f);
+    drag(view, handle, kFineKnob);
+    const bool mapped = slotTarget(model.value(slotTargetIndex(kVelocitySource, 0))) == paramIndex(0, OpParam::Fine) &&
+                        model.value(slotAmountIndex(kVelocitySource, 0)) == 0.3;
+    model.live.voices = 1;
+    model.live.noteVelocity = 100.0f / 127.0f;
+    view.poll();
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool shot = renderer.save(view, dir / "26l-velocity.png");
+    const int live = ringLevel(renderer, ring, 20.0f);
+    std::string removal;
+    for (const MenuItem &item : view.contextMenu(kFineKnob))
+        if (item.label.find(tr(Str::SourceNameVelocity)) != std::string::npos)
+            removal = item.label;
+    std::printf("      velocity's handle: brightness %d idle, %d mapped\n", idle, live);
+    check(mapped && shot && idle * 18 < live * 10 &&
+              removal == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameVelocity)}),
+          "velocity's handle maps it like the note source's, and is faint until it does");
+    // Its display's menu makes it bipolar, and back.
+    bool bipolar = false;
+    for (const MenuItem &item : view.contextMenu(display))
+        if (item.label == tr(Str::MenuAllBipolar))
+            view.menuCommand(item.command);
+    bipolar = model.value(paramIndex(VelocityParam::Bipolar)) == 1.0;
+    for (const MenuItem &item : view.contextMenu(display))
+        if (item.label == tr(Str::MenuAllUnipolar))
+            view.menuCommand(item.command);
+    check(bipolar && model.value(paramIndex(VelocityParam::Bipolar)) == 0.0,
+          "velocity's display menu makes it unipolar or bipolar");
+    // Its curve, opened from the display: a straight line to begin with, two points; a double-click adds a third,
+    // and the reset button takes it back to the line.
+    const int curve = paramIndex(VelocityParam::Curve);
+    click(view, display);
+    view.doubleClick(noteCurveAt(0.5, 0.6), {});
+    const bool pointAdded = model.value(curve) == 3.0;
+    view.mouseMove(noteCurveAt(0.5, 0.6), {});
+    const bool curveShot = renderer.save(view, dir / "26m-velocity-curve.png");
+    click(view, kNoteCurveReset);
+    const bool reset = model.value(curve) == 2.0 && model.value(shapeFieldIndex(curve, 1, PointField::Y)) == 1.0;
+    click(view, display); // a second click closes it
+    view.mouseMove({600.0f, 300.0f}, {});
+    check(pointAdded && curveShot && reset && renderer.save(view, dir / "26n-velocity-closed.png"),
+          "velocity's display opens its curve, where a point is added, and the reset button straightens it");
+}
+
+// A wire in the graph bends when dragged sideways (its label following its middle), keeps the bend through a save of
+// the layout and back, goes back to how it bowed with a double-click or Reset Bend, and each is an undo step.
+void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.5);
+    model.ui.keptRoutes.push_back(matrixIndex(1, 0));
+    view.poll();
+    const UiLayout &layout = model.layout();
+    const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1);
+    const float span = std::hypot(a.x - b.x, a.y - b.y);
+    const Point left{-(a.y - b.y) / span, (a.x - b.x) / span}; // left of B -> A
+    // A point along the wire at `t` (0 at B's outline, 1 at the arrowhead's base by A), as it bows by `bend` of the
+    // span (mirrors wireBetween() in routing.h: it leaves and meets the circles toward its control point).
+    auto onWire = [&](float bend, float t) {
+        const Point control{(a.x + b.x) * 0.5f + left.x * span * bend, (a.y + b.y) * 0.5f + left.y * span * bend};
+        auto toward = [&](Point from, float by) {
+            const float d = std::hypot(control.x - from.x, control.y - from.y);
+            return Point{from.x + (control.x - from.x) / d * by, from.y + (control.y - from.y) / d * by};
+        };
+        const Point start = toward(b, 24.0f), end = toward(a, 32.0f);
+        const float s = 1.0f - t;
+        return Point{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
+                     s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
+    };
+    const Point grab = onWire(0.18f, 0.35f);
+    view.mouseMove(grab, {});
+    const bool lit = renderer.save(view, dir / "2g-wire-hover.png") && view.cursor() == CursorKind::Move;
+    // Dragged 30 px further left, the curve's middle goes 30 px along: the bend grows by twice that share of the span.
+    view.mouseDown(grab, {});
+    view.mouseMove({grab.x + left.x * 15.0f, grab.y + left.y * 15.0f}, {});
+    view.mouseMove({grab.x + left.x * 30.0f, grab.y + left.y * 30.0f}, {});
+    view.mouseUp({grab.x + left.x * 30.0f, grab.y + left.y * 30.0f}, {});
+    auto bendOf = [&] {
+        for (const auto &[route, bend] : layout.wireBends)
+            if (route == matrixIndex(1, 0))
+                return bend;
+        return kDefaultWireBend;
+    };
+    const float bent = bendOf();
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool shot = renderer.save(view, dir / "2h-wire-bent.png");
+    std::printf("      B -> A's wire dragged 30 px left: bend %.3f, from %.2f\n", bent, kDefaultWireBend);
+    // Its label, at the curve's middle, went along: dragging it now changes the route's amount.
+    const Point label = onWire(bent, 0.5f);
+    drag(view, label, {label.x, label.y - 20.0f});
+    const bool labelFollows = model.value(matrixIndex(1, 0)) > 0.5;
+    view.undo();
+    check(lit && shot && std::abs(bent - (kDefaultWireBend + 60.0f / span)) < 0.01f && labelFollows &&
+              model.value(matrixIndex(1, 0)) == 0.5,
+          "a wire dragged sideways bends, its label following its middle");
+    view.undo();
+    const bool undone = bendOf() == kDefaultWireBend;
+    view.redo();
+    // Dragged the other way past straight, it bows to its right; a double-click on it brings back the bow it
+    // started with.
+    const Point now = onWire(bendOf(), 0.35f);
+    drag(view, now, {now.x - left.x * 120.0f, now.y - left.y * 120.0f});
+    const bool right = bendOf() < 0.0f;
+    doubleClick(view, onWire(bendOf(), 0.35f));
+    const bool reset = bendOf() == kDefaultWireBend && layout.wireBends.empty();
+    view.undo();
+    bool menuReset = false;
+    for (const MenuItem &item : view.contextMenu(onWire(bendOf(), 0.35f)))
+        if (item.label == tr(Str::MenuResetBend)) {
+            view.menuCommand(item.command);
+            menuReset = bendOf() == kDefaultWireBend;
+        }
+    check(undone && right && reset && menuReset, "a wire bends either way, and a double-click or Reset Bend undoes it");
+    // Disconnected, the wire's bend goes with it.
+    const Point again = onWire(bendOf(), 0.35f);
+    drag(view, again, {again.x + left.x * 30.0f, again.y + left.y * 30.0f});
+    const bool bentAgain = !layout.wireBends.empty();
+    for (const MenuItem &item : view.contextMenu(onWire(bendOf(), 0.35f)))
+        if (item.label == tr(Str::MenuDisconnect))
+            view.menuCommand(item.command);
+    check(bentAgain && layout.wireBends.empty() && model.value(matrixIndex(1, 0)) == 0.0,
+          "a wire disconnected takes its bend with it");
+}
+
 // LFO 2 modulating LFO 1's depth on operator A's Fine: hovering LFO 2's handle draws a dashed line to that
 // depth bar, which has a dot for the modulation, like a matrix cell's.
 void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
@@ -1619,15 +1817,15 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     model.values[slotAmountIndex(1, 0)] = 0.5;
     view.poll();
     // With Shift a depth bar moves from where it is, a tenth as fast: half its width is 10 % then.
-    const Point bar{cardX(0) + 12.0f + 116.0f + 38.0f, 706.0f};
+    const Point bar{cardX(0) + 12.0f + 122.0f + 35.0f, 706.0f};
     view.mouseDown(bar, {true, false});
-    view.mouseMove({bar.x + 38.0f, bar.y}, {true, false});
-    view.mouseUp({bar.x + 38.0f, bar.y}, {true, false});
+    view.mouseMove({bar.x + 35.0f, bar.y}, {true, false});
+    view.mouseUp({bar.x + 35.0f, bar.y}, {true, false});
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6, "Shift drags a depth bar finely, from where it is");
     view.mouseMove(sourceHandle(1), {});
     const bool shot = renderer.save(view, dir / "18c-lfo-on-lfo.png");
     // Hovered, the dot says what the modulation takes its target through, in the target's units.
-    const Point dot{cardX(0) + 12.0f + 116.0f + 76.0f - 4.0f, 696.0f + 4.0f}; // on LFO 1's depth bar
+    const Point dot{cardX(0) + 12.0f + 122.0f + 70.0f - 4.0f, 696.0f + 4.0f}; // on LFO 1's depth bar
     view.mouseMove(dot, {});
     const bool popup = renderer.save(view, dir / "18d-depth-popup.png");
     view.mouseMove({600.0f, 300.0f}, {});
@@ -2877,13 +3075,13 @@ void run(const std::filesystem::path &dir, float scale) {
             }
         return checked;
     };
-    const bool envWasUnipolar = !polarity(sourceGrip(3), tr(Str::MenuBipolar));
+    const bool envWasUnipolar = !polarity(sourceGrip(3), tr(Str::MenuAllBipolar));
     const bool envBipolar = model.value(paramIndex(1, SourceParam::EnvBipolar)) == 1.0;
     view.mouseMove({600.0f, 300.0f}, {});
     const bool envShot = renderer.save(view, dir / "11f-bipolar-env.png");
-    const bool lfoWasUnipolar = !polarity(sourceGrip(0), tr(Str::MenuBipolar));
+    const bool lfoWasUnipolar = !polarity(sourceGrip(0), tr(Str::MenuAllBipolar));
     const bool lfoBipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0;
-    polarity(sourceGrip(0), tr(Str::MenuUnipolar));
+    polarity(sourceGrip(0), tr(Str::MenuAllUnipolar));
     check(envWasUnipolar && envBipolar && envShot && lfoWasUnipolar && lfoBipolar &&
               model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0,
           "a source's title menu makes it unipolar or bipolar");
@@ -3080,7 +3278,10 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
     renderExample(dir, renderer, "SQ Step Filter", "33-step-filter", 3);
     renderLfoOnLfo(dir, renderer);
+    testSlotPolarity(dir, renderer);
     testMacros(dir, renderer);
+    testVelocity(dir, renderer);
+    testWireBend(dir, renderer);
     testMeter(dir, renderer);
     renderNewEffects(dir, renderer);
     testShapers(dir, renderer);
