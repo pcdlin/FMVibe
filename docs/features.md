@@ -21,6 +21,12 @@ What the plugin does and how its editor works, in full. Building and installing 
   - Coarse ratio (0.5, 1…32), Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
     ratio; the knob moves in whole semitones, while LFOs, envelopes and host modulation glide through it), Detune
     (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release);
+  - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
+    (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
+    global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
+    its unison copies still spread about it. Freq can be modulated (a pitch sweep on a fixed operator is a mod
+    envelope on it); Mult, a few steps, can't. Below about 20 Hz a fixed modulator gives a wobble that ignores
+    the note;
   - **Hold**: every envelope (operators and mod envelopes alike) can stay at full level for a while after its
     attack, before the decay starts (off by default);
   - **Envelope curves**: the attack, decay and release of every envelope (operators and mod envelopes alike) can
@@ -449,7 +455,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   line; its knobs still work.
   - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine,
     Organ, Vowel and Custom (picked,
-    one of these shows on that button); ratio, pitch, fine, detune, velocity and output. Under them, tabs pick what
+    one of these shows on that button); ratio, pitch, fine, detune, velocity and output. A keyboard on the summary
+    line, left of the power switch, switches fixed pitch: faint while the operator follows the keys, crossed out
+    and lit while it is fixed. Switched on, Freq and Mult are set to where the ratio put an A4 (the smallest Mult
+    that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq and Mult take the Ratio
+    and Fine knobs' places, Pitch and Detune are dimmed and take no drags, wheel or typing (nor do their depth
+    handles), and the summary line and the operator's circle in the graph show the frequency in Hz instead of the
+    ratio. Switched off, the ratio, Fine, Pitch and Detune count again as they were. Under the knobs, tabs pick what
     the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
     as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
     handle over a tab opens it, so its knobs can take the drop:
@@ -658,7 +670,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 | Section | Pages |
 | --- | --- |
 | Mix | Macros (the eight knobs, the page shown first), Global (Volume, FM Amount, Pitch, Pan), Play (Mono, Legato, Glide, Glide Always, Bend Range, Voices), Outputs (A–F, then S1 and S2 To Out) |
-| Operators | Op A … Op F: Wave, Coarse, Fine, Detune, Attack, Decay, Sustain, Release |
+| Operators | Op A … Op F: Wave, Coarse, Fine (Fixed Freq and Fixed Mult while the operator is fixed), Detune, Attack, Decay, Sustain, Release |
 | Filters | Filter 1 and 2: Type, Cutoff, Resonance, Key Track, Drive, Out, On, Slope; Filter links: F1 → F2 |
 | Shapers | Shaper 1 and 2: On, Curve, Drive, Output, Mix, Link, then what it feeds into F1 and F2 |
 | FX | One page per effect in the chain, named after its place and type, with that effect's knobs (a shimmer reverb's Pitch and Shimmer in place of its Pre-Delay and Width) |

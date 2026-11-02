@@ -1591,12 +1591,23 @@ std::vector<View::Widget> View::widgets() const {
                                           nullptr,             tr(Str::LabelVelocity), tr(Str::LabelOut)};
             opKnobRow(params, labels);
         } else {
-            const int params[] = {paramIndex(op, OpParam::Coarse), paramIndex(op, OpParam::Fine),
+            // Fixed, Freq and Mult take Ratio's and Fine's places, and Pitch and Detune, which it ignores, are dimmed.
+            const bool fixed = isFixed(op);
+            const int params[] = {paramIndex(op, fixed ? OpParam::FixedFreq : OpParam::Coarse),
+                                  paramIndex(op, fixed ? OpParam::FixedMult : OpParam::Fine),
                                   paramIndex(op, OpParam::Transpose), paramIndex(op, OpParam::Detune),
                                   paramIndex(op, OpParam::Velocity), paramIndex(op, OpParam::Out)};
-            const char *const labels[] = {tr(Str::LabelRatio),  tr(Str::LabelFine),     tr(Str::LabelPitch),
-                                          tr(Str::LabelDetune), tr(Str::LabelVelocity), tr(Str::LabelOut)};
+            const char *const labels[] = {tr(fixed ? Str::LabelFreq : Str::LabelRatio),
+                                          tr(fixed ? Str::LabelMult : Str::LabelFine),
+                                          tr(Str::LabelPitch),
+                                          tr(Str::LabelDetune),
+                                          tr(Str::LabelVelocity),
+                                          tr(Str::LabelOut)};
+            const size_t row = list.size();
             opKnobRow(params, labels);
+            for (size_t i = row; i < list.size(); ++i)
+                list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
+            add(Kind::Toggle, kFixedSwitch, paramIndex(op, OpParam::Fixed));
             const int unison[] = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
                                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::PhaseRandom)};
             const Str unisonLabels[] = {Str::LabelUnison, Str::LabelUniDetune, Str::LabelUniSpread, Str::LabelRndPhase};
@@ -1781,6 +1792,7 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ModDot, {x - 5.0f, base.y - 5.0f, 10.0f, 10.0f}, slotAmountIndex(here[k].source, here[k].slot),
                 here[k].source, here[k].slot);
             list.back().clip = list[i].clip;
+            list.back().disabled = list[i].disabled;
         }
     }
 
@@ -1916,7 +1928,7 @@ std::optional<View::Widget> View::hitTest(Point p) const {
                                                        : std::vector<Widget>();
     const std::vector<Widget> &list = overlay ? dialog : scopedWidgets();
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
-        if (it->clip.w > 0.0f && !it->clip.contains(p))
+        if ((it->clip.w > 0.0f && !it->clip.contains(p)) || it->disabled)
             continue;
         if (it->kind == Kind::Node && !isBoxNode(it->a)) {
             const Point c = it->rect.center();
@@ -1987,6 +1999,8 @@ void View::paint(Canvas &c) {
             if (w.clip.w > 0.0f)
                 c.pushClip(w.clip);
             paintWidget(c, w);
+            if (w.disabled) // dimmed as a switched-off node's page is
+                c.fillRect(w.rect.inset(-1.0f), kPanel.alpha(0.6f), 4.0f);
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
@@ -3539,7 +3553,7 @@ void View::paintShifter(Canvas &c, Rect r, int slot) {
 void View::paintInspector(Canvas &c) {
     const int node = controller_.layout().selectedNode;
     // Leaves room for the on/off switch at the right.
-    const Rect summaryRect{kInspector.x + 16.0f, kInspector.y + 38.0f, kInspector.w - 84.0f, 18.0f};
+    Rect summaryRect{kInspector.x + 16.0f, kInspector.y + 38.0f, kInspector.w - 84.0f, 18.0f};
     const char *dot = "  \xC2\xB7  ";
 
     if (isShaperNode(node)) {
@@ -3551,6 +3565,7 @@ void View::paintInspector(Canvas &c) {
         const double ratio = coarseRatio(value(paramIndex(op, OpParam::Coarse))) *
                              (1.0 + value(paramIndex(op, OpParam::Fine)));
         std::string summary = std::string(kNodeNames[op]) + dot;
+        summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
         if (isNoise(op)) {
             char slope[32];
             const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
@@ -3558,7 +3573,7 @@ void View::paintInspector(Canvas &c) {
             summary += waveName(OpWave::Noise) + (dot + std::string(slope));
         } else {
             summary += waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))))) +
-                       (dot + number("%.2f", ratio));
+                       (dot + (isFixed(op) ? fixedHzText(op, false) : number("%.2f", ratio)));
         }
         const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
         if (copies > 1 && !isNoise(op))
@@ -3660,6 +3675,37 @@ void View::paintUnison(Canvas &c, Rect r, int op) {
         c.line({dot.x, r.center().y}, dot, (copies > 1 ? kAccent : kDim).alpha(0.4f), 1.5f);
         c.fillCircle(dot, 4.0f, copies > 1 ? kAccent : kDim);
     }
+}
+
+bool View::isFixed(int op) const {
+    return value(paramIndex(op, OpParam::Fixed)) >= 0.5;
+}
+
+// A fixed operator's Freq x Mult: "440 Hz" in the summary line, "440Hz" or "5.3kHz" inside its circle in the graph.
+std::string View::fixedHzText(int op, bool compact) const {
+    const double hz = fixedHz(value(paramIndex(op, OpParam::FixedFreq)), value(paramIndex(op, OpParam::FixedMult)));
+    const char *unit = compact ? "Hz" : " Hz";
+    if (hz >= 1000.0)
+        return number(compact ? "%.2g" : "%.2f", hz / 1000.0) + (compact ? "kHz" : " kHz");
+    return number(hz >= 100.0 ? "%.0f" : hz >= 10.0 ? "%.1f" : hz >= 0.1 ? "%.2f" : "%.3f", hz) + unit;
+}
+
+// Switched to fixed, the operator plays where its ratio put it at A4: its Freq and Mult are set to that, with the
+// smallest Mult that keeps the Freq in its range, in the same undo step.
+void View::switchFixed(int op) {
+    const int fixed = paramIndex(op, OpParam::Fixed);
+    std::vector<std::pair<int, double>> changes;
+    if (!isFixed(op)) {
+        const double hz = 440.0 * coarseRatio(value(paramIndex(op, OpParam::Coarse))) *
+                          (1.0 + value(paramIndex(op, OpParam::Fine)));
+        int mult = 0;
+        while (mult + 1 < kFixedMultCount && hz / kFixedMults[mult] > kMaxFixedFreq)
+            ++mult;
+        changes.push_back({paramIndex(op, OpParam::FixedFreq), normFromFixedFreq(hz / kFixedMults[mult])});
+        changes.push_back({paramIndex(op, OpParam::FixedMult), static_cast<double>(mult)});
+    }
+    changes.push_back({fixed, isFixed(op) ? 0.0 : 1.0});
+    editMany(changes);
 }
 
 InspectorTab View::opTabShown(int op) const {
@@ -4114,6 +4160,8 @@ void View::paintNode(Canvas &c, const Widget &w) {
     char ratio[16];
     const double r = coarseRatio(value(paramIndex(op, OpParam::Coarse))) * (1.0 + value(paramIndex(op, OpParam::Fine)));
     std::snprintf(ratio, sizeof(ratio), "\xC3\x97%.2g", r);
+    if (isFixed(op))
+        std::snprintf(ratio, sizeof(ratio), "%s", fixedHzText(op, true).c_str());
     if (isNoise(op)) {
         // No ratio: its color, or its slope between the named ones.
         const double db = std::round(value(paramIndex(op, OpParam::NoiseSlope)) * 60.0) / 10.0;
@@ -4181,6 +4229,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                        static_cast<FilterType>(w.b), on ? color : kDim);
         else if (power)
             powerIcon(c, w.rect.center(), on ? color : (hovered ? kText : kDim));
+        else if (fixedSwitchOp(w.param) >= 0) // a keyboard, crossed out while the operator doesn't follow it
+            keyboardIcon(c, w.rect.center(), on ? color : (hovered ? kText : kFaint), on);
         else if (shaperFieldOf(w.param) == ShaperParam::Link) // a voice shaper's link, as the shaper effect's
             fxSwitchIcon(c, w.rect.center(), FxParam::ShaperLink, on ? color : (hovered ? kText : kDim));
         else if (shaperFieldOf(w.param) == ShaperParam::Symmetric)
@@ -5175,6 +5225,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipSourceRemove);
     else if (isPowerParam(param))
         text = tr(Str::TipNodePower);
+    else if (fixedSwitchOp(param) >= 0)
+        text = tr(value(param) >= 0.5 ? Str::TipFixedOn : Str::TipFixedOff);
     else if (isSourcePower(param))
         text = tr(Str::TipSourcePower);
     else if (param == paramIndex(GlobalParam::Mono))
@@ -5799,6 +5851,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::Toggle:
         if (fxFieldOf(w.param) == FxParam::ShaperSymmetric || shaperFieldOf(w.param) == ShaperParam::Symmetric)
             switchSymmetric(w.param);
+        else if (fixedSwitchOp(w.param) >= 0)
+            switchFixed(fixedSwitchOp(w.param));
         else
             edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         break;

@@ -156,6 +156,9 @@ STR(ParamUnisonDetune, "Unison Detune")
 STR(ParamUnisonSpread, "Unison Spread")
 STR(ParamPhaseRandom, "Phase Random")
 STR(ParamNoiseSlope, "Noise Slope")
+STR(ParamFixed, "Fixed") // the operator plays a fixed frequency instead of following the note
+STR(ParamFixedFreq, "Fixed Freq")
+STR(ParamFixedMult, "Fixed Mult")
 STR(ParamPartials, "Partials") // how many the Custom wave plays
 STR(ParamPartial, "Partial {1}")
 STR(ParamLevel, "Level")
@@ -422,6 +425,7 @@ STR(LabelSlope, "Slope")
 STR(LabelVelocity, "Velocity")
 STR(LabelOut, "Out")
 STR(LabelFine, "Fine")
+STR(LabelMult, "Mult") // a fixed operator's knob in Fine's place, Freq in Ratio's
 STR(LabelDetune, "Detune")
 STR(LabelUnison, "Unison")
 STR(LabelUniDetune, "Uni Detune")
@@ -528,6 +532,8 @@ STR(NoiseWhiteCaption, "white")
 STR(NoisePinkCaption, "pink")
 STR(NoiseBrownCaption, "brown")
 STR(TipMoreWaves, "More waves")
+STR(TipFixedOff, "Fixed pitch: plays at Freq × Mult, whatever the note") // the keyboard switch, tracking the keys
+STR(TipFixedOn, "Fixed pitch is on: click to follow the keys again")
 
 // The inspector's summary line, after the node's letter and its wave, filter type or curve; an operator's ratio
 // goes in as a bare number. Keep it short: the line has room for about 38 characters.

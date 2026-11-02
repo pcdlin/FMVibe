@@ -7,8 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, filter type, effect type and source type lists, and the state layout are stored in host
-  projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
+- Parameter ids, the wave, filter type, effect type, source type and fixed Mult lists, and the state layout are
+  stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (smoke test, audio quality, UI snapshots). New editor interactions get a replay in
   `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`.
 - When a feature changes, update [docs/features.md](docs/features.md); keep `README.md` to its short
@@ -44,6 +44,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
     still ends;
+  - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, with its
+    Pitch and Detune turned and modulated;
   - a new instance has only operator A on, no filter key tracking or going out, its shaper effects linked, its
     frequency shifters' range at 100 Hz, its flangers stereo and its Custom waves at 32 partials; a switched-off
     operator is silent, and a switched-off filter passes nothing; a filter routed nowhere isn't heard, and goes out
@@ -145,6 +147,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
     modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
+  - an operator's fixed pitch switched on by its keyboard, Freq and Mult set to where the ratio was in one undo
+    step and taking Ratio's and Fine's places, Mult stepping, and Pitch and Detune dimmed (read off the rendered
+    pixels) and not turning;
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the play switches and the glide knob;
@@ -314,7 +319,8 @@ itself.
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
-  room: globals 0+, operators 100 + 50·op (their filter sends last), matrix 400 + 10·from + to, filter modulation
+  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq and Mult), matrix
+  400 + 10·from + to, filter modulation
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past
   the 80th 12000 + 20·slot), source places
@@ -325,7 +331,8 @@ itself.
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, and the voice shapers'
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper).
   Once released, new fields go at the end of their section's
-  enum and fields are never reordered. The same goes for the wave, filter type, effect type and source type lists,
+  enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type and fixed
+  Mult lists,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`.

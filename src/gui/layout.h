@@ -41,6 +41,8 @@ constexpr float kCellStep = (kRouting.h - 2.0f * kMatrixMargin - kMatrixNamesH +
 constexpr float kCell = kCellStep - kCellGap;
 constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMatrixNamesH};
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
+// An operator's Fixed switch, a keyboard on the summary line left of the power switch.
+constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
 // An operator's page: under its knob row, tabs (one per InspectorTab) pick what the lower half shows.
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;

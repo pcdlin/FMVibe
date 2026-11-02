@@ -992,10 +992,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             v.levels.index[i].fill(0.0);
             continue;
         }
-        const double ratio = coarseRatio(p[paramIndex(i, OpParam::Coarse)]) * (1.0 + p[paramIndex(i, OpParam::Fine)]);
-        const double cents = p[paramIndex(i, OpParam::Detune)];
-        const double semitones = p[paramIndex(i, OpParam::Transpose)];
-        const double inc = std::min(noteHz * ratio * std::exp2(semitones / 12.0 + cents / 1200.0) / rate_, 0.5);
+        // Fixed, it plays at its Freq x Mult: the note, bend, glide and tuning, its ratio, Pitch and Detune don't move
+        // it; its unison copies still spread about it.
+        double hz = fixedHz(p[paramIndex(i, OpParam::FixedFreq)], p[paramIndex(i, OpParam::FixedMult)]);
+        if (p[paramIndex(i, OpParam::Fixed)] < 0.5) {
+            const double ratio =
+                coarseRatio(p[paramIndex(i, OpParam::Coarse)]) * (1.0 + p[paramIndex(i, OpParam::Fine)]);
+            const double cents = p[paramIndex(i, OpParam::Detune)];
+            const double semitones = p[paramIndex(i, OpParam::Transpose)];
+            hz = noteHz * ratio * std::exp2(semitones / 12.0 + cents / 1200.0);
+        }
+        const double inc = std::min(hz / rate_, 0.5);
         const auto shape = static_cast<OpWave>(
             stepped(p[paramIndex(i, OpParam::Wave)], static_cast<int>(OpWave::Count) - 1));
         noise[i] = shape == OpWave::Noise;

@@ -205,6 +205,7 @@ private:
         int b = -1;
         const char *label = nullptr;
         bool compact = false; // header knob with its label beside it
+        bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
@@ -305,6 +306,9 @@ private:
     double value(int index) const;
     // Noise has no pitch or unison copies: just a slope and a stereo spread.
     bool isNoise(int op) const;
+    // Plays at its Freq x Mult rather than following the note (see OpParam::Fixed).
+    bool isFixed(int op) const;
+    std::string fixedHzText(int op, bool compact) const;
     double norm(int index) const;
     void edit(int index, double value);
     std::vector<Assignment> assignments() const;
@@ -450,6 +454,7 @@ private:
     bool middlePoint(int shape, int point) const;
     Point unmirrored(int shape, Point p) const;
     void switchSymmetric(int param);
+    void switchFixed(int op);
     void addShapeStep(int shape, Point p, bool snap);
     bool drawsStep(const Widget &w, Modifiers mods) const;
     void removeShapePoint(int shape, int point);

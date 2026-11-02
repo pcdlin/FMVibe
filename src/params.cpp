@@ -211,6 +211,13 @@ void buildTable(ParamTable &t) {
         addCurves(paramIndex(op, OpParam::AttackCurve), name, module);
         add(paramIndex(op, OpParam::NoiseSlope), name + " " + tr(Str::ParamNoiseSlope), module, ParamKind::NoiseSlope,
             0.0, 1.0, 0.0);
+        // Fixed, it plays 440 Hz until its Freq and Mult are set (the editor sets them to where the ratio was).
+        add(paramIndex(op, OpParam::Fixed), name + " " + tr(Str::ParamFixed), module, ParamKind::Toggle, 0.0, 1.0,
+            0.0);
+        add(paramIndex(op, OpParam::FixedFreq), name + " " + tr(Str::ParamFixedFreq), module, ParamKind::FixedFreq,
+            0.0, 1.0, normFromFixedFreq(440.0));
+        add(paramIndex(op, OpParam::FixedMult), name + " " + tr(Str::ParamFixedMult), module, ParamKind::FixedMult,
+            0.0, kFixedMultCount - 1.0, 3.0);
         // The Custom wave starts as a sine: the first partial alone, of 32.
         add(partialCountIndex(op), name + " " + tr(Str::ParamPartials), module, ParamKind::ShapeCount,
             kPartialCounts[0], kPartials, kDefaultPartials);
@@ -720,7 +727,7 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::SyncDivision || kind == ParamKind::ClipMode || kind == ParamKind::FxOrder ||
            kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
-           kind == ParamKind::ReverbType;
+           kind == ParamKind::ReverbType || kind == ParamKind::FixedMult;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -840,6 +847,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::FilterSlope:
         std::snprintf(out, capacity, "%s", nameAt(kFilterSlopeNames, value));
         break;
+    case ParamKind::FixedMult:
+        std::snprintf(out, capacity, "\xC3\x97%g", fixedMult(value)); // x0.001 ... x10
+        break;
     case ParamKind::ModTarget: {
         const int target = slotTarget(value);
         std::snprintf(out, capacity, "%s", target < 0 ? tr(Str::ValueNone) : paramTable()[target].name.c_str());
@@ -899,8 +909,10 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
             std::snprintf(out, capacity, "%s%ld %+ld", name, octave, cents);
         break;
     }
+    case ParamKind::FixedFreq:
     case ParamKind::ShiftRange: {
-        const double hz = shiftRangeFromNorm(value);
+        const double hz = paramTable()[index].kind == ParamKind::FixedFreq ? fixedFreqFromNorm(value)
+                                                                            : shiftRangeFromNorm(value);
         if (hz < 10.0)
             std::snprintf(out, capacity, "%.2f Hz", hz);
         else if (hz < 100.0)
@@ -1036,6 +1048,12 @@ bool parseParam(int index, const char *text, double *out) {
         }
     }
 
+    if (def.kind == ParamKind::FixedMult) { // "×10", "x10" or "10"
+        if (std::strncmp(text, "\xC3\x97", 2) == 0)
+            text += 2;
+        else if (*text == 'x' || *text == 'X')
+            ++text;
+    }
     char *end = nullptr;
     double value = std::strtod(text, &end);
     if (end == text || !std::isfinite(value))
@@ -1113,6 +1131,18 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::ShiftRange: // Hz, or kHz with a k
         value = normFromShiftRange(*end == 'k' || *end == 'K' ? value * 1000.0 : value);
         break;
+    case ParamKind::FixedFreq:
+        value = normFromFixedFreq(*end == 'k' || *end == 'K' ? value * 1000.0 : value);
+        break;
+    case ParamKind::FixedMult: { // the nearest factor, on a log scale
+        int nearest = 0;
+        for (int k = 1; k < kFixedMultCount; ++k)
+            if (std::abs(std::log10(std::max(value, 1e-6)) - std::log10(kFixedMults[k])) <
+                std::abs(std::log10(std::max(value, 1e-6)) - std::log10(kFixedMults[nearest])))
+                nearest = k;
+        value = nearest;
+        break;
+    }
     case ParamKind::SyncDivision:
     case ParamKind::Transpose:
     case ParamKind::NotePitch: // a bare number is a MIDI note

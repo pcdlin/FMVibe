@@ -25,6 +25,19 @@ void powerIcon(Canvas &c, Point center, Color color) {
     c.line({center.x, center.y - kRadius - 1.5f}, {center.x, center.y - 0.5f}, color, 1.6f);
 }
 
+// A few piano keys, crossed out for an operator that doesn't follow them (its Fixed switch).
+void keyboardIcon(Canvas &c, Point center, Color color, bool crossed) {
+    const Rect keys{center.x - 8.0f, center.y - 5.0f, 16.0f, 10.0f};
+    c.strokeRect(keys, color, 1.2f, 1.5f);
+    for (float x : {-4.0f, 4.0f}) { // a black key over each of these white keys' edges, the edge on below it
+        c.fillRect({center.x + x - 1.3f, keys.y, 2.6f, 5.5f}, color);
+        c.line({center.x + x, keys.y + 5.5f}, {center.x + x, keys.bottom()}, color, 1.0f);
+    }
+    c.line({center.x, keys.y}, {center.x, keys.bottom()}, color, 1.0f);
+    if (crossed)
+        c.line({center.x - 9.0f, center.y + 7.0f}, {center.x + 9.0f, center.y - 7.0f}, color, 1.6f);
+}
+
 // A circular arrow, running clockwise from the upper right round to the top.
 void resetIcon(Canvas &c, Point center, Color color) {
     constexpr float kFrom = 1.0f, kTo = 6.0f, kRadius = 6.0f;

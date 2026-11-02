@@ -2077,6 +2077,42 @@ void run(const std::filesystem::path &dir, float scale) {
         check(layout.opTab == InspectorTab::Envelope && layout.scopeCycles == 2, "the ENVELOPE tab is back");
     }
 
+    // Fixed pitch: the keyboard on A's summary line switches it, setting Freq and Mult to where the ratio put A4 in
+    // one undo step. Freq and Mult take Ratio's and Fine's places (Mult stepping, 10 px up a step), and Pitch and
+    // Detune, dimmed, don't turn (read off the rendered pixels: the Pitch knob's column darkens).
+    {
+        constexpr Point kFixedSwitch{1125.0f, 150.0f};
+        const Point pitchColumn{kPitchKnob.x, 198.0f};
+        const int fixed = paramIndex(0, OpParam::Fixed), freq = paramIndex(0, OpParam::FixedFreq),
+                  mult = paramIndex(0, OpParam::FixedMult);
+        const double tracked = 440.0 * coarseRatio(model.value(paramIndex(0, OpParam::Coarse))) *
+                               (1.0 + model.value(paramIndex(0, OpParam::Fine)));
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool trackingShot = renderer.save(view, dir / "3f-tracking.png");
+        const int lit = ringLevel(renderer, pitchColumn, 32.0f);
+        click(view, kFixedSwitch);
+        const double fixedAt = fixedHz(model.value(freq), model.value(mult));
+        const bool set = model.value(fixed) == 1.0 && model.value(mult) == 3.0 && std::abs(fixedAt - tracked) < 0.01;
+        drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 10.0f}); // Mult, in Fine's place: x1 to x10
+        const double pitch = model.value(paramIndex(0, OpParam::Transpose));
+        drag(view, kPitchKnob, {kPitchKnob.x, kPitchKnob.y - 30.0f});
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool fixedShot = renderer.save(view, dir / "3f-fixed.png");
+        const int dim = ringLevel(renderer, pitchColumn, 32.0f);
+        view.mouseMove(kFixedSwitch, {});
+        check(renderer.save(view, dir / "3f-fixed-tooltip.png"), "render the fixed switch's tooltip");
+        const bool stepped = model.value(mult) == 4.0;
+        const bool still = model.value(paramIndex(0, OpParam::Transpose)) == pitch;
+        view.undo();
+        const bool multBack = model.value(mult) == 3.0 && model.value(fixed) == 1.0;
+        view.undo();
+        std::printf("      A fixed at %.1f Hz (its ratio's at A4: %.1f); Pitch knob's column %d tracking, %d fixed\n",
+                    fixedAt, tracked, lit, dim);
+        check(trackingShot && fixedShot && set && stepped && still && multBack && model.value(fixed) == 0.0 &&
+                  dim * 10 < lit * 7,
+              "the keyboard switch fixes an operator's pitch where its ratio was, its knobs becoming Freq and Mult");
+    }
+
     // Play switches: Mono on, Legato off and on again, Glide to 0.5 (100 px up), Always on.
     click(view, kMonoButton);
     click(view, kLegatoToggle);

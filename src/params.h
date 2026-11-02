@@ -75,7 +75,10 @@ enum class OpParam {
     Transpose,    // semitones, on top of the ratio; continuous, so modulation glides
     Sends,        // one per filter
     ShaperSends = Sends + kFilters, // one per shaper
-    Count = ShaperSends + kShapers
+    Fixed = ShaperSends + kShapers, // on: plays at FixedFreq x FixedMult whatever the note (see fixedHz())
+    FixedFreq,                      // 0..1 on a log curve, see fixedFreqFromNorm()
+    FixedMult,                      // one of kFixedMults, by number
+    Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
 // Shapers: how much of the filter goes into each shaper (see filterShaperIndex()). Stored in projects by number: only
@@ -893,7 +896,9 @@ static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(param
               "global param ids moved");
 static_assert(idOfIndex(paramIndex(0, OpParam::Coarse)) == 100 && idOfIndex(paramIndex(0, OpParam::Transpose)) == 120 &&
                   idOfIndex(sendIndex(0, 0)) == 121 && idOfIndex(shaperSendIndex(0, 0)) == 123 &&
-                  idOfIndex(shaperSendIndex(kOps - 1, kShapers - 1)) == 374,
+                  idOfIndex(shaperSendIndex(kOps - 1, kShapers - 1)) == 374 &&
+                  idOfIndex(paramIndex(0, OpParam::Fixed)) == 125 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::FixedMult)) == 377,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -1061,6 +1066,29 @@ inline double normFromShiftRange(double hz) {
            std::log(kMaxShiftRange / kMinShiftRange);
 }
 inline double shiftHz(double shift, double rangeNorm) { return shift * shiftRangeFromNorm(rangeNorm); }
+// A fixed operator's frequency: Freq, 0..1 for kMinFixedFreq..kMaxFixedFreq Hz on a log curve, times its Mult, one
+// of kFixedMults (stored by number: only append).
+constexpr double kMinFixedFreq = 1.0;
+constexpr double kMaxFixedFreq = 2000.0;
+constexpr double kFixedMults[] = {0.001, 0.01, 0.1, 1.0, 10.0};
+constexpr int kFixedMultCount = static_cast<int>(std::size(kFixedMults));
+static_assert(kFixedMultCount == 5 && kFixedMults[3] == 1.0, "the stored Mult list changed: only append to it");
+inline double fixedFreqFromNorm(double x) { return kMinFixedFreq * std::pow(kMaxFixedFreq / kMinFixedFreq, x); }
+inline double normFromFixedFreq(double hz) {
+    return std::log(std::clamp(hz, kMinFixedFreq, kMaxFixedFreq) / kMinFixedFreq) /
+           std::log(kMaxFixedFreq / kMinFixedFreq);
+}
+inline double fixedMult(double value) {
+    return kFixedMults[std::clamp(static_cast<int>(std::lround(value)), 0, kFixedMultCount - 1)];
+}
+inline double fixedHz(double freqNorm, double mult) { return fixedFreqFromNorm(freqNorm) * fixedMult(mult); }
+// The operator whose Fixed switch the param is, or -1.
+inline int fixedSwitchOp(int index) {
+    for (int op = 0; op < kOps; ++op)
+        if (index == paramIndex(op, OpParam::Fixed))
+            return op;
+    return -1;
+}
 // Coarse is stepped 0..32; 0 stands for a ratio of 0.5.
 inline double coarseRatio(double coarse) {
     const long c = std::lround(coarse);
@@ -1330,6 +1358,8 @@ enum class ParamKind {
     ReverbType,  // the reverb's algorithm
     SweepRate,   // like Rate, but its lowest setting is 0 Hz: a sweep held still (see sweepRateHz())
     NotePitch,   // semitones in MIDI numbering, shown as a note and its cents; continuous, but the editor sets whole ones
+    FixedFreq,   // 0..1 on a log curve, shown in Hz; see fixedFreqFromNorm()
+    FixedMult,   // stepped: one of kFixedMults, shown as x0.001 and so on
 };
 
 struct ParamDef {

@@ -201,7 +201,8 @@ private:
     // holds: what hosts see of the effects and sources.
     static bool shapesSections(int index) {
         return fxFieldOf(index) == FxParam::Type || sourceFieldOf(index) == SourceParam::Type ||
-               index == paramIndex(GlobalParam::FxOrder) || fxFieldOf(index) == FxParam::ReverbType;
+               index == paramIndex(GlobalParam::FxOrder) || fxFieldOf(index) == FxParam::ReverbType ||
+               fixedSwitchOp(index) >= 0; // a fixed operator's page has Freq and Mult in Ratio's and Fine's places
     }
     void sectionsChanged();
     // The editor's height follows the modulation panel; asks the host to resize the window.

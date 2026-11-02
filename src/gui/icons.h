@@ -61,6 +61,7 @@ inline std::vector<double> curveKey(Curve curve, Rect r) {
 }
 
 void powerIcon(Canvas &c, Point center, Color color);
+void keyboardIcon(Canvas &c, Point center, Color color, bool crossed);
 void resetIcon(Canvas &c, Point center, Color color);
 void doneIcon(Canvas &c, Point center, Color color);
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color);

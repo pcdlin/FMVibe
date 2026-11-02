@@ -639,6 +639,62 @@ int main(int argc, char **argv) {
         return peak;
     };
 
+    // A fixed operator plays at its Freq x Mult whatever the note: A at 300 Hz x1 for a C3 and an A4, under a full
+    // bend, with its Pitch and Detune turned and modulated; at 1 kHz x0.1 it plays 100 Hz, at 50 Hz x10 500 Hz.
+    {
+        auto playFixed = [&](int key, double freq, int mult, bool moved) {
+            const clap_event_param_value_t settings[] = {
+                paramEvent(paramIndex(1, OpParam::Enabled), 0.0),
+                paramEvent(paramIndex(0, OpParam::Fixed), 1.0),
+                paramEvent(paramIndex(0, OpParam::FixedFreq), normFromFixedFreq(freq)),
+                paramEvent(paramIndex(0, OpParam::FixedMult), mult),
+                paramEvent(paramIndex(0, OpParam::Transpose), moved ? 7.0 : 0.0),
+                paramEvent(paramIndex(0, OpParam::Detune), moved ? 40.0 : 0.0),
+            };
+            const clap_event_param_mod_t pitchMod = paramModEvent(paramIndex(0, OpParam::Transpose), -1, moved ? 12.0 : 0.0);
+            const clap_event_midi_t bend = bendEvent(moved ? 1.0 : 0.0);
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 21, static_cast<int16_t>(key));
+            std::vector<const clap_event_header_t *> events;
+            for (const auto &s : settings)
+                events.push_back(&s.header);
+            events.insert(events.end(), {&pitchMod.header, &bend.header, &on.header});
+            runBlock(events);
+            runBlocks(4);
+            std::vector<float> signal;
+            for (int b = 0; b < 16; ++b) {
+                runBlock();
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            runBlock({&chokeAll.header});
+            return signal;
+        };
+        // How much louder the expected frequency is than the one the note would have played.
+        auto lead = [&](const std::vector<float> &signal, double want, double tracked) {
+            return magnitude(signal, want) / std::max(magnitude(signal, tracked), 1e-9);
+        };
+        const double c3 = lead(playFixed(48, 300.0, 3, false), 300.0, 130.81);
+        const double a4 = lead(playFixed(69, 300.0, 3, false), 300.0, 440.0);
+        const double moved = lead(playFixed(69, 300.0, 3, true), 300.0, 440.0 * std::exp2(19.0 / 12.0 + 0.4 / 12.0));
+        const double tenth = lead(playFixed(69, 1000.0, 2, false), 100.0, 1000.0);
+        const double tenfold = lead(playFixed(69, 50.0, 4, false), 500.0, 50.0);
+        std::printf("      fixed A, at its frequency against elsewhere: C3 %.0fx, A4 %.0fx, bent and pitched %.0fx, "
+                    "x0.1 %.0fx, x10 %.0fx\n",
+                    c3, a4, moved, tenth, tenfold);
+        const clap_event_param_value_t unfix[] = {
+            paramEvent(paramIndex(0, OpParam::Fixed), 0.0),
+            paramEvent(paramIndex(0, OpParam::FixedFreq), normFromFixedFreq(440.0)),
+            paramEvent(paramIndex(0, OpParam::FixedMult), 3.0),
+            paramEvent(paramIndex(0, OpParam::Transpose), 0.0),
+            paramEvent(paramIndex(0, OpParam::Detune), 0.0),
+        };
+        const clap_event_param_mod_t unmod = paramModEvent(paramIndex(0, OpParam::Transpose), -1, 0.0);
+        const clap_event_midi_t unbend = bendEvent(0.0);
+        runBlock({&unfix[0].header, &unfix[1].header, &unfix[2].header, &unfix[3].header, &unfix[4].header,
+                  &unmod.header, &unbend.header});
+        check(c3 > 30.0 && a4 > 30.0 && moved > 30.0 && tenth > 30.0 && tenfold > 30.0,
+              "a fixed operator plays its Freq x Mult whatever the note, bend, Pitch and Detune");
+    }
+
     // The matrix does FM: B -> A puts the 2nd harmonic onto a pure-sine carrier.
     const double pure = secondHarmonicRatio({});
     const double fm = secondHarmonicRatio({.bToA = 0.4});
