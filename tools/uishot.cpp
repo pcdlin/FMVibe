@@ -231,11 +231,11 @@ Point sourceAdd(SourceType type) {
 }
 
 Point sourceGrip(float card) {
-    return {cardX(card) + 14.0f, 544.0f};
+    return {cardX(card) + 90.0f, 544.0f}; // over its name
 }
 
 Point sourceHandle(float card) {
-    return {cardX(card) + 36.0f, 543.0f};
+    return {cardX(card) + 24.0f, 543.0f};
 }
 
 // An LFO's sync switch, a square left of its Rate knob.
@@ -1401,6 +1401,19 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({macroKnob(0).x - 32.0f, y}, {});
     check(turned && mapped && renamed && undone && renderer.save(view, dir / "26-macros.png"),
           "a macro's knob turns, its handle maps it, and a double-click renames it, undoably");
+    // A double-click on a macro's knob sets it back to 0, or a bipolar one's to its middle.
+    const int macro2 = paramIndex(1, MacroParam::Value);
+    model.set(macro2, 0.8);
+    doubleClick(view, macroKnob(1));
+    const bool unipolarReset = model.value(macro2) == 0.0;
+    model.set(paramIndex(1, MacroParam::Bipolar), 1.0);
+    model.set(macro2, 0.8);
+    doubleClick(view, macroKnob(1));
+    const bool bipolarReset = model.value(macro2) == 0.5;
+    model.set(paramIndex(1, MacroParam::Bipolar), 0.0);
+    model.set(macro2, 0.0);
+    view.poll();
+    check(unipolarReset && bipolarReset, "a double-click sets a macro's knob to 0, or a bipolar one's to its middle");
     // The note source, right of the macros: its handle, left of its display, maps it the same way, onto filter 1's
     // cutoff here, and while a note plays its display names it (an A4 bent 30 cents up).
     const Point noteHandle{1092.0f, y};
@@ -2400,8 +2413,8 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(paramIndex(1, FxParam::DelayTone), -0.4);
     model.set(paramIndex(4, FxParam::DelaySync), 0.0);
     model.set(paramIndex(4, FxParam::DelayWidth), 0.3);
-    // The first delay's LINK switch, the middle of three across the card.
-    click(view, {fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 152.0f + 44.0f + 11.0f});
+    // The first delay's LINK switch, the middle of three across the card under its display.
+    click(view, {fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 152.0f + 171.0f});
     check(model.value(paramIndex(1, FxParam::DelayLink)) == 1.0, "the delay's LINK switch links its sides");
     // The shaper's LINK, its chain under the display in the card's middle (with no SYM beside it, but for a Custom
     // curve), starts on; a click unlinks it, another links it again.

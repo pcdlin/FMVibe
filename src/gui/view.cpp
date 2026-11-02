@@ -1289,11 +1289,12 @@ std::vector<View::Widget> View::widgets() const {
                 break;
             }
             case FxType::Delay: {
-                // Sync, link and ping-pong, as icons, across the card.
+                // Sync, link and ping-pong, as icons, across the card under the display.
                 const FxParam switches[] = {FxParam::DelaySync, FxParam::DelayLink, FxParam::DelayPingPong};
                 const float w = (card.w - 28.0f + 4.0f) / 3.0f;
+                const float under = fxDisplay(screen, type).bottom() + 4.0f;
                 for (int i = 0; i < 3; ++i)
-                    add(Kind::Toggle, {card.x + 14.0f + i * w, row, w - 4.0f, 22.0f}, at(switches[i]));
+                    add(Kind::Toggle, {card.x + 14.0f + i * w, under, w - 4.0f, 18.0f}, at(switches[i]));
                 // Synced, the time knobs pick note values and show them as their labels. Linked, the
                 // left one sets both sides.
                 const bool synced = value(at(FxParam::DelaySync)) >= 0.5;
@@ -1668,7 +1669,7 @@ std::vector<View::Widget> View::widgets() const {
         const float fold = sourcePower(card).x - 4.0f - 18.0f;
         add(Kind::SourceGrip, {p.x, p.y, fold - 4.0f - p.x, 34.0f}, -1, s, position);
         add(Kind::SourceFold, {fold, p.y + 8.0f, 18.0f, 19.0f}, -1, s);
-        add(Kind::SourceHandle, {p.x + 26.0f, p.y + 7.0f, 20.0f, 20.0f}, -1, s);
+        add(Kind::SourceHandle, {p.x + 14.0f, p.y + 7.0f, 20.0f, 20.0f}, -1, s);
         add(Kind::Toggle, sourcePower(card), sourceEnabledIndex(s));
         add(Kind::SourceRemove, sourceRemove(card), -1, s);
         if (lfo) {
@@ -2276,6 +2277,14 @@ std::pair<double, double> View::modReach(int source, double amount) const {
 
 bool View::sourceBipolar(int source) const {
     return fmvibe::sourceBipolar([this](int index) { return value(index); }, source);
+}
+
+double View::resetValue(int param) const {
+    // A bipolar macro moves nothing at its knob's middle, so that is where it goes back to.
+    if (const int macro = macroOf(param);
+        macro >= 0 && param == paramIndex(macro, MacroParam::Value) && sourceBipolar(kMaxSources + macro))
+        return 0.5;
+    return table_[param].def;
 }
 
 void View::paintModRange(Canvas &c, Rect bar, int param) {
@@ -3891,12 +3900,9 @@ void View::paintSource(Canvas &c, float card, int s) {
         return;
     }
 
-    // Title row: grip, the handle (a widget) and the name.
-    const bool grip =
-        (hover_ && hover_->kind == Kind::SourceGrip && hover_->a == s && drag_.kind == DragKind::None) || dragged;
-    for (int d = 0; d < 6; ++d)
-        c.fillCircle({p.x + 11.0f + (d % 2) * 5.0f, p.y + 12.0f + (d / 2) * 5.0f}, 1.4f, grip ? kText : kFaint);
-    c.text({p.x + 52.0f, p.y + 7.0f, 80.0f, 21.0f}, sourceName(s), 11.5f, kText, Align::Left, true);
+    // Title row: the handle (a widget) and the name, grey while the source is off; the row drags the card.
+    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, sourceName(s), 11.5f, sourceOn(s) ? kText : kDim, Align::Left,
+           true);
 
     if (lfo)
         paintLfo(c, sourceDisplay(card, std::lround(value(paramIndex(s, SourceParam::Shape))) ==
@@ -4196,10 +4202,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::Scrollbar: {
-        // The widget is the track with some room around it, so the thin bar is easy to hit.
+        // The widget is the track with some room around it, so the thin bar is easy to hit. Away from the mouse it
+        // is drawn thinner still.
         const auto area = static_cast<ScrollArea>(w.a);
-        c.fillRect(w.rect.inset(4.0f), kRaised, 3.0f);
-        c.fillRect(scrollThumb(area), hovered || active ? kDim : kFaint, 3.0f);
+        const float thin = hovered || active ? 0.0f : 1.0f;
+        const Rect track = w.rect.inset(4.0f), thumb = scrollThumb(area);
+        c.fillRect({track.x, track.y + thin, track.w, track.h - 2.0f * thin}, kRaised, 3.0f - thin);
+        c.fillRect({thumb.x, thumb.y + thin, thumb.w, thumb.h - 2.0f * thin}, hovered || active ? kDim : kFaint,
+                   3.0f - thin);
         break;
     }
     case Kind::SourceGrip:
@@ -4269,8 +4279,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const float card = cardOf(w.a);
         if (card == kOffScreen)
             break;
-        c.fillRect(slotScrollTrack(card), kBorder, 1.5f);
-        c.fillRect(slotThumb(w.a, card), kSourceColors[w.a].alpha(hovered || active ? 1.0f : 0.7f), 1.5f);
+        // Thinner away from the mouse, like the panels' scrollbars.
+        const float thin = hovered || active ? 0.0f : 0.5f;
+        const Rect track = slotScrollTrack(card), thumb = slotThumb(w.a, card);
+        c.fillRect({track.x + thin, track.y, track.w - 2.0f * thin, track.h}, kBorder, 1.5f - thin);
+        c.fillRect({thumb.x + thin, thumb.y, thumb.w - 2.0f * thin, thumb.h},
+                   kSourceColors[w.a].alpha(hovered || active ? 1.0f : 0.7f), 1.5f - thin);
         break;
     }
     case Kind::ValueText:
@@ -6087,7 +6101,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         break;
     case Kind::Knob:
     case Kind::SlotBar:
-        edit(hit->param, table_[hit->param].def);
+        edit(hit->param, resetValue(hit->param));
         break;
     case Kind::OutLabel: // like a wire label: shown, so wired, so off
         disconnect(hit->param);
@@ -6342,7 +6356,7 @@ void View::menuCommand(int command) {
     if (!menuLive_) // what the menu was opened on may have changed or gone since
         return;
     if (command == 1 && menuParam_ >= 0) {
-        edit(menuParam_, table_[menuParam_].def);
+        edit(menuParam_, resetValue(menuParam_));
     } else if (command == 2 && menuParam_ >= 0) {
         const UndoScope step(controller_);
         for (const Assignment &m : assignments())

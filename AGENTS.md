@@ -150,7 +150,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - switching effects with their cards' icons (a switched-off one's staying grey under the mouse, read off the
     rendered pixels), dragging cards by them, and folding cards, the icon staying put;
   - the right-click menu on knobs;
-  - the macros' knobs, handles and names, the note source's handle, display and curve editor, and the mod wheel's
+  - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
+    handle, display and curve editor, and the mod wheel's
     handle (new modulation starting upward); with no note playing, a knob's dot showing where a macro takes it
     (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard strip
     to its top row by its chevron or title, the mod wheel's handle moving into it and still mapping the wheel;

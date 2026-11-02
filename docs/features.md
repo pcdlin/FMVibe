@@ -349,7 +349,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       and Mix take them, wavering with the sweep while the audio runs; what Width leaves in the middle thickens
       the line. Above it, the high-pass and the taps' delays.
 
-    The delay's switches above its display are icons across the card, named on hover: a metronome for Sync, two
+    The delay's switches under its display are icons across the card, named on hover: a metronome for Sync, two
     chain links for Link (the right side follows the left) and a ball between two paddles for Ping-Pong. The
     shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band card's,
     centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
@@ -370,8 +370,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     between those two. The dashed card takes a
     card place at the chain's end while there is room for another effect. Six cards fit across, the Param EQ's
     taking one and a half places for a wider spectrum; with more,
-    a scrollbar under them (drag its thumb or click its track) or the mouse wheel over the panel scrolls the chain
-    smoothly, cutting off the cards at the ends. Drag a card by its
+    a scrollbar under them (drag its thumb or click its track; drawn thinner while the mouse is away from it) or the
+    mouse wheel over the panel scrolls the chain smoothly, cutting off the cards at the ends. Drag a card by its
     title to move it along the chain (held at either end of the row, it scrolls the chain along that way),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings or
     remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
@@ -480,14 +480,14 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ LFO** and
   **+ ENV** (a drawn plus, like + EFFECT's) to add a source (which opens a collapsed panel). Below, the sources' cards show four at a time, and
   after the last one, while there is room for more, two square dashed cards with a plus, ADD LFO above ADD ENV,
-  add one too. With more than fit, the scrollbar under them or the mouse wheel over the panel scrolls them
-  smoothly. LFOs and envelopes are numbered by type in the order they show.
-  - Drag a card by its title to move it along; held at either end of the row, it scrolls the row along that way.
+  add one too. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
+  scrollbar) or the mouse wheel over the panel scrolls them smoothly. LFOs and envelopes are numbered by type in the order they show.
+  - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its settings and targets), clear its targets, make it **Unipolar** or
     **Bipolar** (the one in force checked) or remove it; the × removes it too, together with its modulation and
     whatever modulates its knobs. A bipolar envelope's display has a dashed line at its middle level and ± in its
     corner.
-  - The power switch turns a source on and off; one that is off has its card dimmed and its handle and its rings
+  - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings
     on knobs faint (the handle can still be dragged onto targets).
   - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip
     to drag it by, the switch and ×, then the name, which unfolds it.
@@ -561,7 +561,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   macro modulates something, its handle, its knob's arc and its name are faint, and hovering the handle shows a
   "Drag to assign" tooltip. The right-click menu of its knob,
   handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
-  macro's arc starts from the knob's middle, where it moves nothing.
+  macro's arc starts from the knob's middle, where it moves nothing, and a double-click on its knob (or Reset in
+  the knob's menu) sets it back there, to 50 %, where a unipolar one's goes back to 0.
 - **Note** (in the keyboard strip, right of the macros): the note source's handle, level with the macros', to drag
   onto a target like a macro's (and like a macro's, faint until it modulates something), and beside it the note
   the newest voice plays, as the source follows it, its name under it: the note's name, and

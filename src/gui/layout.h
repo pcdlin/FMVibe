@@ -198,7 +198,7 @@ inline Rect slotClip(float card, Rect cards) {
     return {x, y, std::max(right - x, 0.0f), std::max(bottom - y, 0.0f)};
 }
 
-// Title row: grip, handle and name, then (LFOs) SYNC, the power switch and the remove cross at the right.
+// Title row: handle and name (the row drags the card), then (LFOs) SYNC, the power switch and the remove cross at the right.
 inline Rect sourceRemove(float card) {
     const Rect p = sourceCard(card);
     return {p.right() - 26.0f, p.y + 7.0f, 18.0f, 21.0f};
@@ -317,15 +317,16 @@ inline Rect fxIconRect(Rect card) {
 // row of them, or two for the delay, the parametric EQ and the effects with six knobs or so.
 inline Rect fxDisplay(float position, FxType type) {
     const Rect card = fxCard(position, fxSpan(type));
-    const bool buttons = type == FxType::Shaper || type == FxType::Delay || type == FxType::MultiComp ||
-                         type == FxType::Reverb;
+    const bool buttons = type == FxType::Shaper || type == FxType::MultiComp || type == FxType::Reverb;
     const bool buttonRow = buttons || type == FxType::Filter;
     const float top = buttonRow ? 74.0f : 44.0f;
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
                          type == FxType::Reverb || type == FxType::Phaser || type == FxType::Flanger ||
                          type == FxType::Filter || type == FxType::FreqShifter;
-    // The filter's slope switch and the phaser's and flanger's SYNC and STEREO go under their displays.
-    const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Filter;
+    // The filter's slope switch, the delay's SYNC, LINK and PING-PONG and the phaser's and flanger's SYNC and STEREO
+    // go under their displays.
+    const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Filter ||
+                               type == FxType::Delay;
     // The shaper's LINK goes between its display and its knobs.
     const float bottom = switchesUnder               ? 158.0f
                          : twoRows                   ? 180.0f

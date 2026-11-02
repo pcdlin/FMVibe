@@ -469,6 +469,8 @@ private:
     std::pair<double, double> modReach(int source, double amount) const;
     // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).
     bool sourceBipolar(int source) const;
+    // What a double-click or Reset sets a param to: its default, or a bipolar macro's middle.
+    double resetValue(int param) const;
     std::string sourceName(int source) const;
     // A param's name as the editor shows it: a source's fields go by the source's name, not their place's.
     std::string paramName(int index) const;
