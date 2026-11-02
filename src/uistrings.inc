@@ -647,7 +647,6 @@ STR(MsgTwoPoints, "A shape needs two points")
 STR(MsgSourcesFull, "No room for more than {1} LFOs and envelopes")
 STR(MsgPresetUnreadable, "That preset could not be read")
 STR(MsgNoPresets, "No presets in the folder yet")
-STR(MsgCombSlope, "A comb filter has no slope")
 STR(MsgBadValue, "\"{1}\" isn't a valid value for {2}")
 
 // --- The plugin's file dialogs

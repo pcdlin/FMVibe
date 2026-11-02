@@ -5582,10 +5582,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         hover_.reset();
         break;
     case Kind::ListButton:
-        if (isFilterSlope(w.param) && !hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))))) {
-            flash(tr(Str::MsgCombSlope));
-            break;
-        }
+        if (isFilterSlope(w.param) && !hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param))))))
+            break; // a comb has no slope: its list stays shut
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
     case Kind::ListMenu:
