@@ -205,9 +205,9 @@ constexpr Point kLegatoToggle{668.0f, 44.0f};
 constexpr Point kGlideKnob{740.0f, 32.0f};
 constexpr Point kAlwaysToggle{858.0f, 32.0f};
 // The view tabs sit above the panels.
-constexpr Point kRoutingTab{80.0f, 88.0f};
-constexpr Point kMatrixTab{176.0f, 88.0f};
-constexpr Point kFxTab{256.0f, 88.0f};
+constexpr Point kRoutingTab{64.0f, 88.0f};
+constexpr Point kMatrixTab{160.0f, 88.0f};
+constexpr Point kFxTab{240.0f, 88.0f};
 constexpr Point kF1Tab{1068.0f, 124.0f};
 // Init, Load, Save and the settings cog at the right end of the view tabs' row.
 constexpr Point kInitButton{1068.0f, 84.0f};
@@ -2084,6 +2084,9 @@ void run(const std::filesystem::path &dir, float scale) {
     model.ui.keptRoutes.clear();
     check(renderer.save(view, dir / "5a-unheard.png"), "render an operator that isn't heard");
     model.set(matrixIndex(5, 4), 0.45);
+    // The Routing tab shown runs on down the panel's left edge, its corner square; the matrix's is round.
+    auto cornerSquare = [&] { return renderer.pixel({18.0f, 106.0f}) == renderer.pixel({18.0f, 140.0f}); };
+    const bool routingCorner = cornerSquare();
 
     // The same routing as a matrix: double-click toggles C -> F2 off.
     click(view, kMatrixTab);
@@ -2094,6 +2097,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // shows a tab's shape.
     auto edgeOpen = [&](Point tab) { return renderer.pixel({tab.x, 104.0f}) == renderer.pixel({tab.x, 112.0f}); };
     const bool tabJoined = edgeOpen(kMatrixTab) && !edgeOpen(kRoutingTab) && !edgeOpen(kFxTab);
+    check(routingCorner && !cornerSquare(), "the Routing tab shown runs on down its panel's left edge");
     const uint32_t fxTabAlone = renderer.pixel({kFxTab.x, 76.0f});
     view.mouseMove(kFxTab, {});
     check(tabJoined && renderer.save(view, dir / "6a-view-tab-hovered.png") &&

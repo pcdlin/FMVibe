@@ -41,7 +41,7 @@ constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx};
 
 // A view tab's outline over `r`, from its bottom-left corner up around its rounded top and down to its bottom-right
 // one. With a flare, its sides curve out into the edge at its bottom by that much on either side, as the tab shown
-// joins its panel.
+// joins its panel; a tab over the panel's left edge runs straight down that edge instead, past its rounded corner.
 std::vector<Point> viewTabOutline(Rect r, float flare) {
     constexpr int kSteps = 8; // points per quarter circle
     std::vector<Point> points;
@@ -52,7 +52,9 @@ std::vector<Point> viewTabOutline(Rect r, float flare) {
         }
     };
     const float bottom = r.bottom(), right = r.right(), radius = kViewTabRadius;
-    if (flare > 0.0f)
+    if (flare > 0.0f && r.x <= kRouting.x)
+        points.push_back({r.x, bottom + kPanelRadius});
+    else if (flare > 0.0f)
         quarter({r.x - flare, bottom - flare}, flare, 0.5f * kPi, 0.0f);
     else
         points.push_back({r.x, bottom});
@@ -2030,8 +2032,8 @@ void View::paintPanels(Canvas &c) {
     else
         panels.insert(panels.end(), {kRouting, kInspector});
     for (const Rect &p : panels) {
-        c.fillRect(p, kPanel, 10.0f);
-        c.strokeRect(p, kBorder, 1.0f, 10.0f);
+        c.fillRect(p, kPanel, kPanelRadius);
+        c.strokeRect(p, kBorder, 1.0f, kPanelRadius);
     }
 }
 
@@ -4027,6 +4029,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             fill.push_back({outline.back().x, w.rect.bottom() + 1.0f});
             fill.push_back({outline.front().x, w.rect.bottom() + 1.0f});
             c.fillPolygon(fill.data(), fill.size(), kPanel);
+            if (w.rect.x <= kRouting.x) // squaring the panel's corner its side runs down
+                c.fillRect({w.rect.x, w.rect.bottom(), kPanelRadius, kPanelRadius}, kPanel);
             c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
             c.line({w.rect.x + kViewTabRadius, w.rect.y + 1.5f}, {w.rect.right() - kViewTabRadius, w.rect.y + 1.5f},
                    kAccent, 2.0f);

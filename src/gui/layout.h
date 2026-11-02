@@ -23,6 +23,7 @@ constexpr float kKnobSweep = 1.5f * kPi;
 // Tabs above the panels pick what they show: the routing graph or matrix next
 // to the inspector, or the effects across both.
 constexpr float kPanelsTop = 104.0f;
+constexpr float kPanelRadius = 10.0f; // the panels' corners
 constexpr Rect kRouting{16.0f, kPanelsTop, 852.0f, 372.0f};
 constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
@@ -79,10 +80,10 @@ inline bool isMoreWave(OpWave wave) {
 constexpr float kTopRowY = 72.0f;
 constexpr float kTopRowH = 24.0f;
 // Tabs of the routing panel, one per RoutingView: folder tabs from the row's top down onto the panels' top edge,
-// starting over the panel's inner margin so the shown one's curves flare into its straight edge.
+// the first one's left side over the panel's left edge, which it runs on into while it is shown.
 constexpr float kViewTabH = kPanelsTop - kTopRowY;
 constexpr Rect kViewTabs[] = {
-    {32.0f, kTopRowY, 96.0f, kViewTabH}, {132.0f, kTopRowY, 88.0f, kViewTabH}, {224.0f, kTopRowY, 64.0f, kViewTabH}};
+    {16.0f, kTopRowY, 96.0f, kViewTabH}, {116.0f, kTopRowY, 88.0f, kViewTabH}, {208.0f, kTopRowY, 64.0f, kViewTabH}};
 constexpr float kViewTabRadius = 8.0f; // its top corners
 constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
 // The FX view covers the routing panel and the inspector: one card per effect,
