@@ -7,6 +7,7 @@ import {createCanvas2d} from './canvas2d.js';
 
 const canvas = document.getElementById('editor');
 const stage = document.getElementById('stage');
+const editorFrame = document.getElementById('frame');
 const soundBanner = document.getElementById('sound');
 const failedBanner = document.getElementById('failed');
 const menu = document.getElementById('menu');
@@ -181,7 +182,7 @@ function resize() {
   viewHeight = ui._ui_height();
   const room = stage.clientWidth - 32;
   const below = document.querySelector('footer').offsetHeight + 34;
-  const roomHeight = window.innerHeight - stage.getBoundingClientRect().top - window.scrollY - below;
+  const roomHeight = window.innerHeight - editorFrame.getBoundingClientRect().top - window.scrollY - below;
   const width = Math.max(300, Math.min(room, Math.max(roomHeight, 400) * viewWidth / viewHeight, 1800));
   const height = width * viewHeight / viewWidth;
   canvas.style.width = `${width}px`;
@@ -374,7 +375,17 @@ function releaseAll() {
   held.clear();
 }
 
+// The message over the editor: a click on it, or any key, turns the sound on.
+soundBanner.addEventListener('click', () => {
+  canvas.focus({preventScroll: true});
+  startAudio();
+});
+
+const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock', 'Escape']);
+
 window.addEventListener('keydown', (e) => {
+  if (!audio && !MODIFIERS.has(e.key))
+    startAudio();
   if (!menu.hidden && e.key === 'Escape') {
     closeMenu();
     return;

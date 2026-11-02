@@ -29,6 +29,10 @@ body {
   padding: 12px 16px 0;
 }
 
+#frame {
+  position: relative;
+}
+
 #editor {
   display: block;
   outline: none;
@@ -46,6 +50,37 @@ footer {
   padding: 0 16px;
 }
 
+/* Over the editor, dimming it, until the sound is on. */
+#sound {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(13, 15, 19, 0.6);
+  font: inherit;
+  cursor: pointer;
+}
+
+#sound[hidden] {
+  display: none;
+}
+
+#sound .banner {
+  padding: 10px 22px;
+  font-size: 16px;
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+#sound:hover .banner,
+#sound:focus-visible .banner {
+  filter: brightness(1.1);
+}
+
 #hint,
 #source {
   margin: 0;
@@ -54,6 +89,35 @@ footer {
   line-height: 1.8;
   text-align: center;
 }
+
+#hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+}
+
+/* The keys that play, laid out as a piano's: the sharps a row up, between the keys they lie between. */
+.piano {
+  display: inline-grid;
+  grid-template-columns: repeat(16, 11px);
+  gap: 3px 2px;
+  line-height: 1.5;
+}
+
+.piano kbd {
+  grid-row: 2;
+  grid-column: span 2;
+  min-width: 0;
+  padding: 0;
+}
+
+.piano kbd:nth-child(2) { grid-area: 1 / 2 / 2 / span 2; }  /* W */
+.piano kbd:nth-child(4) { grid-area: 1 / 4 / 2 / span 2; }  /* E */
+.piano kbd:nth-child(7) { grid-area: 1 / 8 / 2 / span 2; }  /* T */
+.piano kbd:nth-child(9) { grid-area: 1 / 10 / 2 / span 2; } /* Y */
+.piano kbd:nth-child(11) { grid-area: 1 / 12 / 2 / span 2; } /* U */
 
 #source a {
   color: var(--accent);
