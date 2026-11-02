@@ -2790,6 +2790,30 @@ void run(const std::filesystem::path &dir, float scale) {
     const std::vector<int> after = usedOf(0);
     check(gliding && after.size() == used.size() - 1 && after[0] == used[0] && after[1] == used[2],
           "the wheel glides a slot list a row along");
+    // Dragging the source's handle outlines the targets on screen, not its rows scrolled out of the list: the
+    // fifth row, under the list at its top, leaves the card's edge and what is below it as they were.
+    view.wheel(firstRow, 1.0f, {});
+    for (int n = 0; n < 40; ++n)
+        view.poll();
+    const Point away{400.0f, 300.0f};
+    auto hiddenRow = [&] {
+        std::vector<uint32_t> line;
+        for (float x = cardX(0) + 4.0f; x < cardX(0) + kCardW - 4.0f; x += 1.0f)
+            for (float y = 793.0f; y < 815.0f; y += 3.0f)
+                line.push_back(renderer.pixel({x, y}));
+        return line;
+    };
+    view.mouseMove(away, {});
+    const bool still = renderer.save(view, dir / "11e-slot-list-scrolled.png");
+    const std::vector<uint32_t> before = hiddenRow();
+    view.mouseDown(sourceHandle(0), {});
+    view.mouseMove(away, {});
+    const bool dragging = renderer.save(view, dir / "11f-slot-list-dragging.png");
+    const std::vector<uint32_t> during = hiddenRow();
+    view.mouseMove(sourceHandle(0), {});
+    view.mouseUp(sourceHandle(0), {});
+    check(still && dragging && before == during && usedOf(0) == after,
+          "a handle's drag doesn't outline the rows scrolled out of its slot list");
 
     // Up to 16: then the add buttons go.
     for (int n = static_cast<int>(shown(model).size()); n < kMaxSources; ++n)

@@ -5093,6 +5093,14 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
     for (const Widget &w : list) {
         if (!droppable(w, source))
             continue;
+        // A target scrolled out of its card or slot list isn't outlined; one partly out is outlined as far as it
+        // shows, with room left round the clip for the ring drawn outside it.
+        const bool clipped = w.clip.w > 0.0f;
+        if (clipped && (w.rect.right() <= w.clip.x || w.rect.x >= w.clip.right() || w.rect.bottom() <= w.clip.y ||
+                        w.rect.y >= w.clip.bottom()))
+            continue;
+        if (clipped)
+            c.pushClip(w.clip.inset(-4.0f));
         const bool over = target && target->same(w);
         const Color ring = color.alpha(over ? 1.0f : 0.35f);
         if (w.kind == Kind::Knob) {
@@ -5100,6 +5108,8 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         } else {
             c.strokeRect(w.rect.inset(w.kind == Kind::GridCell ? -1.0f : -3.0f), ring, over ? 2.0f : 1.0f, 6.0f);
         }
+        if (clipped)
+            c.popClip();
     }
     c.line(drag_.start, drag_.now, color.alpha(0.6f), 1.5f, true);
     c.fillCircle(drag_.now, 7.0f, color.alpha(0.5f));

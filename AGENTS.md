@@ -174,7 +174,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     fit (read off the rendered pixels), the shape editor's grid, snapping and reset button, and scrolling the source cards by holding a
     dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
-  - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels);
+  - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels), and a
+    dragged source handle outlining no rows scrolled out of a slot list (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
     pixels).
 
