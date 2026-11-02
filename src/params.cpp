@@ -105,7 +105,7 @@ std::string letter(int op) {
 void buildTable(ParamTable &t) {
     auto add = [&t](int index, std::string name, std::string module, ParamKind kind, double min, double max,
                     double def) {
-        // Continuous params accept host modulation, globally or per voice (Bitwig's
+        // Continuous params accept host modulation, globally or (those the voices read) per voice (Bitwig's
         // modulators, for example); stepped ones are plain automation. Slot targets
         // and what each effect slot or source place holds are wiring, set from the editor, so hosts
         // don't offer them for automation. The voice limit reallocates voices, so
@@ -122,8 +122,10 @@ void buildTable(ParamTable &t) {
         if (isStepped(kind))
             flags |= CLAP_PARAM_IS_STEPPED;
         else if (!shape)
-            flags |= CLAP_PARAM_IS_MODULATABLE | CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID |
-                     CLAP_PARAM_IS_MODULATABLE_PER_KEY;
+            flags |= CLAP_PARAM_IS_MODULATABLE;
+        // The effects, the macros, the note source's and the mod wheel's are shared by all voices.
+        if ((flags & CLAP_PARAM_IS_MODULATABLE) && index < kVoiceParamCount)
+            flags |= CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY;
         if (kind == ParamKind::LfoShape || kind == ParamKind::OpWave || kind == ParamKind::FilterType ||
             kind == ParamKind::FilterSlope || kind == ParamKind::Toggle || kind == ParamKind::SyncDivision ||
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
@@ -157,7 +159,10 @@ void buildTable(ParamTable &t) {
     add(paramIndex(GlobalParam::GlideAlways), tr(Str::ParamGlideAlways), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
     add(paramIndex(GlobalParam::FxOrder), tr(Str::ParamFxOrder), tr(Str::ModuleFx), ParamKind::FxOrder, 0.0,
         static_cast<double>(kFxOrders - 1), 0.0);
+    // The mod wheel moves its targets for every voice, like a macro: hosts modulate it globally too.
     add(paramIndex(GlobalParam::ModWheel), tr(Str::ParamModWheel), global, ParamKind::Percent, 0.0, 1.0, 0.0);
+    t[paramIndex(GlobalParam::ModWheel)].flags &=
+        ~static_cast<clap_param_info_flags>(CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY);
 
     // Default patch: operator A, a plain sine carrier; the others start switched
     // off, to be added from the routing panel. Every operator has the same settings otherwise.
@@ -980,7 +985,8 @@ bool parseParam(int index, const char *text, double *out) {
             else if (*c == 'b')
                 --note, ++c;
             char *end = nullptr;
-            const long octave = std::strtol(c, &end, 10);
+            // Held to a few octaves past the range's ends, so a long run of digits can't overflow.
+            const long octave = std::clamp(std::strtol(c, &end, 10), -10L, 20L);
             if (end == c)
                 return false;
             double cents = 0.0;
@@ -988,6 +994,8 @@ bool parseParam(int index, const char *text, double *out) {
                 ++end;
             if (*end == '+' || *end == '-')
                 cents = std::strtod(end, nullptr);
+            if (!std::isfinite(cents))
+                return false;
             *out = std::clamp((octave + 1) * 12.0 + note + cents / 100.0, def.min, def.max);
             return true;
         }
@@ -1014,6 +1022,8 @@ bool parseParam(int index, const char *text, double *out) {
         }
         if (side == 'L' || side == 'R') {
             const double percent = std::strtod(text + 1, nullptr);
+            if (!std::isfinite(percent))
+                return false;
             *out = std::clamp((side == 'L' ? -percent : percent) / 100.0, -1.0, 1.0);
             return true;
         }

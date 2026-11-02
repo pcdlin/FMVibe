@@ -91,6 +91,14 @@ double smoothing(double seconds, double sampleRate) {
     return std::exp(-1.0 / (seconds * sampleRate));
 }
 
+// The step that ramps a gain or mix from `from` to `to` over a chunk of `n` samples. The synth hands the effects 32
+// samples at a time; a chunk the host's events cut shorter goes only its share of the way, as the voices' levels
+// do (see Synth::renderBlock()), so a jump ramps as smoothly however the block is split.
+double rampStep(double from, double to, uint32_t n) {
+    constexpr uint32_t kShortest = 32;
+    return (to - from) / std::max(n, kShortest);
+}
+
 // Moves a band's gain reduction (dB) toward what the curve asks for at detector
 // level `peak`: at the attack pace while it has to come down, else at the release pace.
 double followReduction(double &reduction, double peak, double thresholdDb, double ratio, double kneeDb,
@@ -397,14 +405,15 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         for (std::vector<float> &comb : s.filter.combs)
             std::fill(comb.begin(), comb.end(), 0.0f);
         s.filter.mix = at(FxParam::FilterMix);
+        s.analyzed.clear();
         break;
     case FxType::Compressor:
         s.comp = {0.0, dbToGain(at(FxParam::CompMakeup)), at(FxParam::CompMix)};
         break;
     case FxType::MultiComp:
         s.multi = MultiComp{};
-        for (int band = 0; band < kMcBands; ++band)
-            s.multi.gains[band] = dbToGain(p[mcGainIndex(slot, band)]);
+        for (int band = 0; band < kMcBands; ++band) // linked, every band takes the low band's, as runMultiComp() has it
+            s.multi.gains[band] = dbToGain(p[mcGainIndex(slot, at(FxParam::McLink) >= 0.5 ? 0 : band)]);
         s.multi.mix = at(FxParam::McMix);
         s.multi.output = dbToGain(at(FxParam::McOutput));
         break;
@@ -453,6 +462,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     case FxType::Disperser:
         s.disperser = Disperser{};
         s.disperser.mix = at(FxParam::DisperserMix);
+        s.analyzed.clear();
         break;
     case FxType::Widener: {
         Widener &e = s.widener;
@@ -541,15 +551,17 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             case FxType::FreqShifter:
             case FxType::Disperser:
             case FxType::Widener: {
-                // Tails and feedback ring on; keep going while they do.
+                // Tails and feedback ring on; keep going while they do. A reverb's input may still wait in its
+                // pre-delay, as a delay's in its lines.
                 const double peak = fx.running == FxType::Reverb      ? runReverb(slot, io, n, p)
                                     : fx.running == FxType::Phaser    ? runPhaser(slot, io, n, p, tempo)
                                     : fx.running == FxType::Flanger   ? runFlanger(slot, io, n, p, tempo)
                                     : fx.running == FxType::Disperser ? runDisperser(slot, io, n, p)
                                     : fx.running == FxType::Widener  ? runWidener(slot, io, n, p)
                                                                       : runShifter(slot, io, n, p);
+                const double waiting = fx.running == FxType::Reverb ? fx.reverb.reach : 0.0;
                 if (peak > 1e-5)
-                    keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
+                    keep = std::max(keep, static_cast<int64_t>(waiting + 0.05 * sampleRate_));
                 if (fx.running == FxType::Disperser)
                     feedAnalyzer(slot, io, n);
                 break;
@@ -582,10 +594,9 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
     const ClipCurve curve{settings.mode, place.curve.values.data(), settings.symmetric};
     const bool block = clipNeedsBlocker(settings.mode, settings.symmetric);
     const double pole = clipBlockerPole(sampleRate_);
-    const double inv = 1.0 / n;
-    const double driveStep = (settings.drive - sh.drive) * inv;
-    const double outputStep = (settings.output - sh.output) * inv;
-    const double mixStep = (settings.mix - sh.mix) * inv;
+    const double driveStep = rampStep(sh.drive, settings.drive, n);
+    const double outputStep = rampStep(sh.output, settings.output, n);
+    const double mixStep = rampStep(sh.mix, settings.mix, n);
     for (uint32_t s = 0; s < n; ++s) {
         sh.drive += driveStep;
         sh.output += outputStep;
@@ -601,11 +612,10 @@ double Effects::runDelay(int slot, float *const *io, uint32_t n, const ParamValu
     const double targets[2] = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
     const double glide = 1.0 - std::exp(-1.0 / (0.02 * sampleRate_)); // time changes glide, like tape
     const double mix = at(FxParam::DelayMix);
-    const double inv = 1.0 / n;
-    const double feedbackStep = (at(FxParam::DelayFeedback) - d.feedback) * inv;
-    const double dryStep = (delayDryLevel(mix) - d.dry) * inv;
-    const double wetStep = (delayWetLevel(mix) - d.wet) * inv;
-    const double widthStep = (at(FxParam::DelayWidth) - d.width) * inv;
+    const double feedbackStep = rampStep(d.feedback, at(FxParam::DelayFeedback), n);
+    const double dryStep = rampStep(d.dry, delayDryLevel(mix), n);
+    const double wetStep = rampStep(d.wet, delayWetLevel(mix), n);
+    const double widthStep = rampStep(d.width, at(FxParam::DelayWidth), n);
     // The low-pass fades in over the first tenth of its travel, so the tone knob has no step at the middle.
     const double toneValue = at(FxParam::DelayTone);
     const DelayTone tone = delayTone(toneValue);
@@ -659,7 +669,7 @@ void Effects::runEq(int slot, float *const *io, uint32_t n, const ParamValues &p
                                eqGain(p[paramIndex(slot, FxParam::EqHigh)])};
     double steps[3];
     for (int b = 0; b < 3; ++b)
-        steps[b] = (targets[b] - eq.gains[b]) / n;
+        steps[b] = rampStep(eq.gains[b], targets[b], n);
     for (uint32_t s = 0; s < n; ++s) {
         for (int b = 0; b < 3; ++b)
             eq.gains[b] += steps[b];
@@ -717,7 +727,7 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
         filterSettings(type, filterSlope(p[paramIndex(slot, FxParam::FilterSlope)]), cutoffHz,
                        p[paramIndex(slot, FxParam::FilterResonance)], p[paramIndex(slot, FxParam::FilterDrive)],
                        sampleRate_);
-    const double mixStep = (p[paramIndex(slot, FxParam::FilterMix)] - filter.mix) / n;
+    const double mixStep = rampStep(filter.mix, p[paramIndex(slot, FxParam::FilterMix)], n);
     const int combSize = static_cast<int>(filter.combs[0].size());
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
@@ -740,8 +750,8 @@ void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamV
     const double knee = at(FxParam::CompKnee);
     const double attack = smoothing(timeFromNorm(at(FxParam::CompAttack)), sampleRate_);
     const double release = smoothing(timeFromNorm(at(FxParam::CompRelease)), sampleRate_);
-    const double makeupStep = (dbToGain(at(FxParam::CompMakeup)) - c.makeup) / n;
-    const double mixStep = (at(FxParam::CompMix) - c.mix) / n;
+    const double makeupStep = rampStep(c.makeup, dbToGain(at(FxParam::CompMakeup)), n);
+    const double mixStep = rampStep(c.mix, at(FxParam::CompMix), n);
     double most = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
         c.makeup += makeupStep;
@@ -779,10 +789,10 @@ void Effects::runMultiComp(int slot, float *const *io, uint32_t n, const ParamVa
         const int from = at(FxParam::McLink) >= 0.5 ? 0 : b; // linked, every band takes the low band's
         threshold[b] = p[mcThresholdIndex(slot, from)];
         ratio[b] = p[mcRatioIndex(slot, from)];
-        gainStep[b] = (dbToGain(p[mcGainIndex(slot, from)]) - m.gains[b]) / n;
+        gainStep[b] = rampStep(m.gains[b], dbToGain(p[mcGainIndex(slot, from)]), n);
     }
-    const double mixStep = (at(FxParam::McMix) - m.mix) / n;
-    const double outputStep = (dbToGain(at(FxParam::McOutput)) - m.output) / n;
+    const double mixStep = rampStep(m.mix, at(FxParam::McMix), n);
+    const double outputStep = rampStep(m.output, dbToGain(at(FxParam::McOutput)), n);
     std::array<double, kMcBands> most{};
     for (uint32_t s = 0; s < n; ++s) {
         m.mix += mixStep;
@@ -828,10 +838,9 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const double echoScale = reverbScale(at(FxParam::ReverbSize)) * sampleRate_;
     const double echoRoom = static_cast<double>(r.preDelay[0].size()) - 2.0;
     const double mix = at(FxParam::ReverbMix);
-    const double inv = 1.0 / n;
-    const double dryStep = (delayDryLevel(mix) - r.dry) * inv;
-    const double wetStep = (delayWetLevel(mix) - r.wet) * inv;
-    const double widthStep = (at(FxParam::ReverbWidth) - r.width) * inv;
+    const double dryStep = rampStep(r.dry, delayDryLevel(mix), n);
+    const double wetStep = rampStep(r.wet, delayWetLevel(mix), n);
+    const double widthStep = rampStep(r.width, at(FxParam::ReverbWidth), n);
     // A shimmer reads its shifted lines through two heads each that sweep a window behind the line's length: as fast
     // as the interval asks, closing in for a shift up and falling back for one down, each crossfading as it jumps
     // back across the window. They read with the line's own head, as far as the Shimmer knob says.
@@ -844,7 +853,7 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     // between, a blend. Either way the loop stays below unity.
     const double power = std::clamp(2.0 * std::abs(pitch) - 1.0, 0.0, 1.0);
     const double shimmerTarget = style.shimmer ? std::clamp(at(FxParam::ReverbShimmer), 0.0, 1.0) : 0.0;
-    const double shimmerStep = (shimmerTarget - r.shimmer) * inv;
+    const double shimmerStep = rampStep(r.shimmer, shimmerTarget, n);
     // What the shifters read is band-passed each time round, so it doesn't build up rumble below or turn harsh
     // above: from 200 Hz up to 8 kHz, which the damping takes down to 2 kHz.
     const double shimmerLow = onePole(8000.0 * std::pow(0.25, at(FxParam::ReverbDamping)), sampleRate_);
@@ -950,7 +959,12 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
         io[1][s] = static_cast<float>(x[1] * r.dry + (middle - side) * r.wet);
         peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(wet[0]), std::abs(wet[1])});
     }
-    if (!style.shimmer) // faded out over the chunk
+    // What goes in now comes out after the pre-delay, and in a room its last early reflection later still: until
+    // then, the reverb may be silent with more to come.
+    r.reach = style.early > 0.0
+                  ? std::min(r.preLength + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1] * echoScale, echoRoom)
+                  : r.preLength;
+    if (!style.shimmer && r.shimmer < 1e-9) // faded out (over more than one chunk, if events cut them short)
         r.shimmer = 0.0;
     // The wavering phasors keep their length.
     for (int i = 0; i < kReverbLines; ++i) {
@@ -970,7 +984,10 @@ double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamVal
     const double feedback = sweepFeedback(at(FxParam::PhaserFeedback));
     const double gain = sweepGain(at(FxParam::PhaserFeedback));
     const int stages = std::clamp(static_cast<int>(std::lround(at(FxParam::PhaserStages))), 1, kMaxPhaserStages);
-    const double mixStep = (sweepWet(at(FxParam::PhaserMix)) - ph.mix) / n;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int k = stages; k < kMaxPhaserStages; ++k)
+            ph.stages[ch][k] = 0.0;
+    const double mixStep = rampStep(ph.mix, sweepWet(at(FxParam::PhaserMix)), n);
     const double spread = at(FxParam::PhaserStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
@@ -1046,8 +1063,8 @@ double Effects::runWidener(int slot, float *const *io, uint32_t n, const ParamVa
     const BiquadCoefs highPass{hp.b0, hp.b1, hp.b2, hp.a1, hp.a2};
     const double glide = 1.0 - std::exp(-1.0 / (0.05 * sampleRate_)); // size changes glide, like tape
     const double sizeTarget = at(FxParam::WidenerSize);
-    const double widthStep = (at(FxParam::WidenerWidth) - e.width) / n;
-    const double mixStep = (at(FxParam::WidenerMix) - e.mix) / n;
+    const double widthStep = rampStep(e.width, at(FxParam::WidenerWidth), n);
+    const double mixStep = rampStep(e.mix, at(FxParam::WidenerMix), n);
     const int size = static_cast<int>(e.line.size());
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
@@ -1085,7 +1102,7 @@ double Effects::runDisperser(int slot, float *const *io, uint32_t n, const Param
     for (int ch = 0; ch < 2; ++ch)
         for (int k = stages; k < kMaxDisperserStages; ++k)
             d.stages[ch][k] = Biquad{};
-    const double mixStep = (at(FxParam::DisperserMix) - d.mix) / n;
+    const double mixStep = rampStep(d.mix, at(FxParam::DisperserMix), n);
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
         d.mix += mixStep;
@@ -1109,7 +1126,7 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
     const double depth = at(FxParam::FlangerDepth);
     const double feedback = sweepFeedback(at(FxParam::FlangerFeedback));
     const double gain = sweepGain(at(FxParam::FlangerFeedback));
-    const double mixStep = (sweepWet(at(FxParam::FlangerMix)) - f.mix) / n;
+    const double mixStep = rampStep(f.mix, sweepWet(at(FxParam::FlangerMix)), n);
     const double spread = at(FxParam::FlangerStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     const int size = static_cast<int>(f.lines[0].size());
     double peak = 0.0;
@@ -1138,7 +1155,7 @@ double Effects::runShifter(int slot, float *const *io, uint32_t n, const ParamVa
     const double hz = shiftHz(at(FxParam::ShiftAmount), at(FxParam::ShiftRange));
     const double steps[2] = {hz / sampleRate_, hz * (1.0 - 2.0 * at(FxParam::ShiftSpread)) / sampleRate_};
     const double feedback = at(FxParam::ShiftFeedback);
-    const double mixStep = (at(FxParam::ShiftMix) - sh.mix) / n;
+    const double mixStep = rampStep(sh.mix, at(FxParam::ShiftMix), n);
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
         sh.mix += mixStep;

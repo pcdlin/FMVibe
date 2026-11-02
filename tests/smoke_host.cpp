@@ -2349,6 +2349,38 @@ int main(int argc, char **argv) {
         if (settingsAt + sizeof(float) <= third.data.size())
             std::memcpy(&thirdFactor, third.data.data() + settingsAt, sizeof(thirdFactor));
         check(loadedLonger && thirdFactor == 2.0f, "a layout chunk longer than this version knows is skipped past");
+
+        // A damaged layout, NaN in every place, loads as no layout at all, every field at its default, rather than
+        // turning the selected node and the sources' order into indices far outside the editor's arrays.
+        auto layoutAfterLoading = [&](const std::vector<float> &stored) {
+            MemoryStream source;
+            auto add = [&source](const void *data, size_t size) {
+                const auto *bytes = static_cast<const uint8_t *>(data);
+                source.data.insert(source.data.end(), bytes, bytes + size);
+            };
+            const uint32_t chunk[] = {layoutChunk[0], static_cast<uint32_t>(stored.size())};
+            add(header, sizeof(header));
+            add(chunk, sizeof(chunk));
+            add(stored.data(), stored.size() * sizeof(float));
+            std::vector<float> saved;
+            if (!state->load(plugin, &source.in))
+                return saved;
+            plugin->on_main_thread(plugin);
+            MemoryStream back;
+            const size_t start = 12 + static_cast<size_t>(kParamCount) * 12;
+            uint32_t savedChunk[2] = {};
+            if (!state->save(plugin, &back.out) || start + sizeof(savedChunk) > back.data.size())
+                return saved;
+            std::memcpy(savedChunk, back.data.data() + start, sizeof(savedChunk));
+            if (start + sizeof(savedChunk) + savedChunk[1] * sizeof(float) <= back.data.size()) {
+                saved.resize(savedChunk[1]);
+                std::memcpy(saved.data(), back.data.data() + start + sizeof(savedChunk), saved.size() * sizeof(float));
+            }
+            return saved;
+        };
+        const std::vector<float> plain = layoutAfterLoading({});
+        const std::vector<float> damaged = layoutAfterLoading(std::vector<float>(layout.size(), std::nanf("")));
+        check(!plain.empty() && damaged == plain, "a layout of NaNs loads as the defaults");
     }
 
     plugin->destroy(plugin);

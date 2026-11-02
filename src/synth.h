@@ -83,8 +83,9 @@ public:
     void reset();
     int capacity() const { return capacity_; }
     int oversampling() const { return oversampling_; }
-    // How many of the allocated voices may sound at once.
-    void setVoiceLimit(int limit) { limit_ = std::clamp(limit, 1, std::max(capacity(), 1)); }
+    // How many of the allocated voices may sound at once. Lowered, it takes effect at once: the voices past it fade
+    // out as stolen ones do.
+    void setVoiceLimit(int limit);
     // Mono plays one voice that moves from note to note; legato (mono only) keeps
     // its envelopes running between overlapping notes. Glide happens on every note
     // with glideAlways, otherwise only between overlapping ones; its time is a param.
@@ -100,7 +101,9 @@ public:
     void choke(const NoteRef &match);
     void noteExpression(const NoteRef &match, int32_t expression, double value);
     // Host modulation: an offset in plain units on param `index`, for every voice
-    // when `match` is all wildcards, otherwise for the matching voices only.
+    // when `match` is all wildcards, otherwise for the matching voices only. Only params flagged modulatable take
+    // it, and those after the voices' (the effects, the macros, the note source's and the mod wheel's) only for
+    // every voice.
     void paramMod(int index, const NoteRef &match, double amount);
     // -1..1, scaled by the Bend Range param.
     void pitchBend(double amount) { bend_ = amount; }
@@ -114,6 +117,8 @@ public:
 
     void render(float *left, float *right, uint32_t frames, const ParamValues &params);
 
+    // Whether a voice still plays `note`'s key. A host without note ids keeps one voice per key, so a key struck again
+    // keeps it alive; with note ids, an overlapping note on the same key is a voice of its own.
     bool isActive(const NoteRef &note) const;
     int activeVoiceCount() const;
     // Effects still sounding after the voices ended (delay echoes).
@@ -204,6 +209,9 @@ private:
         std::array<std::array<double, 2>, kFilters> filterLast{}; // latest filter output per channel (what shapers hear)
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]
         std::array<double, kShapers> shaperOut{};               // latest mono shaper output (what operators hear)
+        // Channel 1 of the filters and shapers stood still through a block without stereo spread: it takes channel 0's
+        // state before it runs again, rather than carrying on from where it stopped (a comb would ring again).
+        bool rightStale = false;
         std::array<double, kMaxSources> sourceValues{};
         // Slot modulation of the latest block. Sources read their own params (rates,
         // times, amounts) with these applied, so LFO 1 can modulate LFO 2's rate
@@ -219,6 +227,8 @@ private:
     };
 
     Voice &allocateVoice();
+    // The voice to steal at the limit: one already released if possible, then the quietest, then the oldest.
+    Voice *stealable();
     // Sounding and still playing its note: not ended, not fading out.
     static bool live(const Voice &v) { return v.active && !v.fading; }
     Voice *newestVoice();
@@ -265,6 +275,11 @@ private:
     std::array<int, (kMacros + 1) * kSlots> macroTargets_{}; // the macros' and the mod wheel's
     int macroTargetCount_ = 0;
     void applyMacros(const ParamValues &params);
+    // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
+    // note source read their knobs, depths and range.
+    double hostValue(const ParamValues &params, int index) const {
+        return std::clamp(params[index] + globalMod_[index], table_[index].min, table_[index].max);
+    }
     // Whether one of a voice's mod envelopes that modulates something (switched on, with a target) is still going.
     bool modEnvReleasing(const Voice &v, const ParamValues &params) const;
     // The clocks free LFOs follow instead of their own: they run at the newest

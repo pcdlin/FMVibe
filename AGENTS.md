@@ -76,7 +76,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken. It saves/loads state
-  through a stream that only moves 5 bytes per call, a layout as large as one gets among them, and checks that
+  through a stream that only moves 5 bytes per call, a layout as large as one gets among them (and one of NaNs,
+  which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: on the development machine, 16
   voices × 6 operators take about 22 % of one core at the default 2x oversampling, and about 38 % with every
   operator at 8 unison copies.
@@ -84,14 +85,23 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM, feedback and a driven filter;
   - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
-  - clicks when a voice is stolen, and when a param jumps while events split the block into single frames;
-  - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, and
-    an undamped tail falling 60 dB around 1 kHz in its decay time;
+  - clicks when a voice is stolen, and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
+    reverb's Mix, a DJ EQ band) jumps while events split the block into single frames;
+  - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
+    undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
+    until its tail has been heard, and stopping after;
+  - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
+    curve's table steps;
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
+  - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
+    struck again while it rings, and the voices a lower voice limit cuts; a velocity or note expression that isn't
+    a number staying finite; host modulation of a macro, the mod wheel and the note source's depth moving their
+    targets; a comb never reading past its line; a voice's right channel coming back from mono where the left is;
+    and an envelope's curve bent again after a straight stretch carrying on along it;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
@@ -285,7 +295,10 @@ itself.
 - A slot's *target* param stores the target's id + 1 (0 = unused). Targets aren't offered for automation, since
   they are wiring, but they are saved like any other param. Their depths are normal automatable params.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events. Hosts
-  record automation and undo from these, and mark the project as changed. For half a second after the plugin
+  record automation and undo from these, and mark the project as changed. Loading a preset, or Init, sends them for
+  each param whose value changed. The last of the queue they wait in is kept for the ends of gestures already begun,
+  so a host is never left inside one; an edit that doesn't fit has the host read every value again (a values
+  rescan) instead. For half a second after the plugin
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment.
 - The state blob holds `(id, value)` pairs with a version number (currently 1), followed by the editor layout:
@@ -295,7 +308,8 @@ itself.
   the settings chunk and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
-  floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; states
+  floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
+  short keeps the floats that arrived whole, and a layout value that isn't a number keeps its default. States
   with a newer version are refused.
 - Times and LFO rates are stored as 0–1 on a log curve (1 ms–20 s, 0.02–100 Hz), so host knobs and modulation
   have resolution where it matters. The value text shows ms/s/Hz.
@@ -304,7 +318,7 @@ itself.
   host voice while its key is down and reports `NOTE_END` when the key is let go. Per-note modulation follows the
   note that is sounding.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
-  allocates. Lowering the limit takes effect at once. Raising it past what is allocated calls
+  allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()`, and the host then deactivates and reactivates the plugin. Each voice takes about
   55 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 95 KB, so 512 voices use about 50 MB. Voices isn't automatable for the same reason.

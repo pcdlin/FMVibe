@@ -31,31 +31,33 @@ inline double foldPhase(double x) {
 
 } // namespace clip
 
-// A drawn curve's table: kClipTableSteps + 1 values across -1..1, then their running integral.
+// A drawn curve's table: kClipTableSteps + 1 values across -1..1, then their running integral. Doubles: the
+// anti-aliasing divides the integral's change by the input's, which for a quiet, slow sound is tiny, so a float's
+// rounding where the input crosses a step would come out as a spike.
 constexpr int kClipTableSteps = 512;
 constexpr double kClipTableStep = 2.0 / kClipTableSteps;
 constexpr int kClipTableSize = 2 * (kClipTableSteps + 1);
 
 // Fills `table` (kClipTableSize long) from the drawn curve whose point count is param `base`.
 template <class Get>
-void buildClipTable(const Get &get, int base, float *table) {
-    float *integral = table + kClipTableSteps + 1;
+void buildClipTable(const Get &get, int base, double *table) {
+    double *integral = table + kClipTableSteps + 1;
     for (int i = 0; i <= kClipTableSteps; ++i)
-        table[i] = static_cast<float>(clipCurveValue(get, base, -1.0 + i * kClipTableStep));
-    integral[0] = 0.0f;
+        table[i] = clipCurveValue(get, base, -1.0 + i * kClipTableStep);
+    integral[0] = 0.0;
     for (int i = 1; i <= kClipTableSteps; ++i)
-        integral[i] = integral[i - 1] + static_cast<float>(0.5 * kClipTableStep * (table[i - 1] + table[i]));
+        integral[i] = integral[i - 1] + 0.5 * kClipTableStep * (table[i - 1] + table[i]);
 }
 
-inline double clipTableValue(const float *table, double x) {
+inline double clipTableValue(const double *table, double x) {
     const double pos = std::clamp((x + 1.0) / kClipTableStep, 0.0, static_cast<double>(kClipTableSteps));
     const int i = std::min(static_cast<int>(pos), kClipTableSteps - 1);
     return table[i] + (table[i + 1] - table[i]) * (pos - i);
 }
 
 // Exact for the straight lines between the table's values; level past the ends.
-inline double clipTableIntegral(const float *table, double x) {
-    const float *integral = table + kClipTableSteps + 1;
+inline double clipTableIntegral(const double *table, double x) {
+    const double *integral = table + kClipTableSteps + 1;
     if (x <= -1.0)
         return (x + 1.0) * table[0];
     if (x >= 1.0)
@@ -101,7 +103,7 @@ constexpr bool clipNeedsBlocker(ClipMode mode, bool symmetric = false) {
 // doesn't pass through 0 jumps there). Only a drawn curve is ever run symmetric (see shaperSettings()).
 struct ClipCurve {
     ClipMode mode;
-    const float *table;
+    const double *table;
     bool symmetric = false;
 
     double shape(double x) const { return symmetric && x < 0.0 ? -plainShape(-x) : plainShape(x); }
@@ -190,7 +192,7 @@ double shaperCurveValue(const Get &get, ClipMode mode, int curveBase, bool symme
 // A drawn curve's table (see buildClipTable()), built again whenever the points it was built from change. Its
 // values are allocated when it is made, so the audio thread only fills them.
 struct ClipTable {
-    std::vector<float> values = std::vector<float>(kClipTableSize, 0.0f);
+    std::vector<double> values = std::vector<double>(kClipTableSize, 0.0);
     std::array<double, kShapeParamCount> points; // NaN until the first build
 
     ClipTable() { points.fill(std::numeric_limits<double>::quiet_NaN()); }

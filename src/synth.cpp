@@ -195,7 +195,8 @@ void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool
 void Synth::noteOn(const NoteRef &note, double velocity) {
     if (note.key < 0 || note.key > 127 || voices_.empty())
         return;
-    const HeldNote played{note, std::clamp(velocity, 0.0, 1.0)};
+    // A velocity that isn't a number plays as 0, so the note still plays out and ends.
+    const HeldNote played{note, std::isfinite(velocity) ? std::clamp(velocity, 0.0, 1.0) : 0.0};
     const bool overlapping = !held_.empty(); // another key is still down: played legato
     if (held_.size() == held_.capacity())
         held_.erase(held_.begin()); // forget the oldest key rather than allocate
@@ -274,6 +275,10 @@ void Synth::choke(const NoteRef &match) {
 }
 
 void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) {
+    // A voice still releasing its note, whose key is already up, takes the new one: the old note is over. (One
+    // whose key is still down reports its end when that key is let go.)
+    if (v.released)
+        reportEnded(v.note);
     v.note = to.note;
     v.velocity = to.velocity;
     v.released = false;
@@ -328,6 +333,8 @@ bool Synth::voiceHas(const NoteRef &note) const {
 }
 
 void Synth::noteExpression(const NoteRef &match, int32_t expression, double value) {
+    if (!std::isfinite(value))
+        return; // not a number, it would spread through the voice's levels and phases, and stay there
     for (Voice &v : voices_) {
         if (!live(v) || !matches(match, v.note))
             continue;
@@ -346,14 +353,15 @@ void Synth::noteExpression(const NoteRef &match, int32_t expression, double valu
 }
 
 void Synth::paramMod(int index, const NoteRef &match, double amount) {
-    if (index < 0 || index >= kModulatedCount || !std::isfinite(amount))
+    if (index < 0 || index >= kParamCount || !(table_[index].flags & CLAP_PARAM_IS_MODULATABLE) ||
+        !std::isfinite(amount))
         return;
     if (match == NoteRef{-1, -1, -1, -1}) {
         globalMod_[index] = amount;
         return;
     }
     if (index >= kVoiceParamCount)
-        return; // the effects are shared by all voices
+        return; // the effects, macros and the rest are shared by all voices
     for (Voice &v : voices_)
         if (live(v) && matches(match, v.note))
             v.mod[index] = amount;
@@ -363,7 +371,7 @@ void Synth::applyMacros(const ParamValues &params) {
     for (int i = 0; i < macroTargetCount_; ++i)
         macroMod_[macroTargets_[i]] = 0.0;
     macroTargetCount_ = 0;
-    forEachMacroMod([&params](int i) { return params[i]; }, [this](int target, double offset) {
+    forEachMacroMod([this, &params](int i) { return hostValue(params, i); }, [this](int target, double offset) {
         macroMod_[target] += offset;
         macroTargets_[macroTargetCount_++] = target;
     });
@@ -504,7 +512,8 @@ void Synth::analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues
 
 bool Synth::isActive(const NoteRef &note) const {
     return std::any_of(voices_.begin(), voices_.end(), [&](const Voice &v) {
-        return live(v) && v.note.port == note.port && v.note.channel == note.channel && v.note.key == note.key;
+        return live(v) && v.note.port == note.port && v.note.channel == note.channel && v.note.key == note.key &&
+               (note.noteId == -1 || v.note.noteId == -1 || v.note.noteId == note.noteId);
     });
 }
 
@@ -556,18 +565,30 @@ void Synth::telemetry(Telemetry &out) const {
     out.notePitch = static_cast<float>(newest->pitch);
 }
 
+void Synth::setVoiceLimit(int limit) {
+    const int before = limit_;
+    limit_ = std::clamp(limit, 1, std::max(capacity(), 1));
+    if (limit_ >= before)
+        return;
+    for (int playing = static_cast<int>(std::count_if(voices_.begin(), voices_.end(), live)); playing > limit_;
+         --playing)
+        startFade(*stealable());
+}
+
+Synth::Voice *Synth::stealable() {
+    auto rank = [](const Voice &v) { return std::tuple(!v.released, v.peak, v.order); };
+    Voice *victim = nullptr;
+    for (Voice &v : voices_)
+        if (live(v) && (!victim || rank(v) < rank(*victim)))
+            victim = &v;
+    return victim;
+}
+
 Synth::Voice &Synth::allocateVoice() {
-    // At the limit: steal one already released if possible, then the quietest,
-    // then the oldest. It fades out in a place of its own.
-    if (std::count_if(voices_.begin(), voices_.end(), live) >= limit_) {
-        auto rank = [](const Voice &v) { return std::tuple(!v.released, v.peak, v.order); };
-        Voice *victim = nullptr;
-        for (Voice &v : voices_)
-            if (live(v) && (!victim || rank(v) < rank(*victim)))
-                victim = &v;
-        if (victim)
+    // At the limit: steal one (see stealable()). It fades out in a place of its own.
+    if (std::count_if(voices_.begin(), voices_.end(), live) >= limit_)
+        if (Voice *victim = stealable())
             startFade(*victim);
-    }
     // A free place, else the fading voice closest to silence. There are more
     // places than the limit, so one of the two is always there.
     Voice *quietest = nullptr;
@@ -726,16 +747,16 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
     // The note source follows that pitch, through its range and curve, and modulates from this block on: a
     // cutoff it takes to the note sits on the pitch the operators play now. Its targets are worked out again with the other sources' modulation,
-    // which they already hold; a target that moves the pitch itself moves it from here. Its slots aren't
-    // modulated, so they are read as set.
+    // which they already hold; a target that moves the pitch itself moves it from here. Its range and slots take
+    // only the host's modulation for every voice, no LFO's or envelope's.
     v.pitch = pitch;
     // Bipolar, it swings about the middle of its output, like a macro.
-    const double note = noteSourceValue([&params](int i) { return params[i]; }, pitch) -
+    const double note = noteSourceValue([&](int i) { return hostValue(params, i); }, pitch) -
                         (params[paramIndex(NoteParam::Bipolar)] >= 0.5 ? 0.5 : 0.0);
     const int noteModsStart = v.slotModCount;
     for (int s = 0; s < kSlots; ++s) {
         const int target = slotTarget(params[slotTargetIndex(kNoteSource, s)]);
-        const double amount = params[slotAmountIndex(kNoteSource, s)];
+        const double amount = hostValue(params, slotAmountIndex(kNoteSource, s));
         if (target >= 0 && amount != 0.0)
             v.slotMods[v.slotModCount++] = {target, note * amount * (table_[target].max - table_[target].min)};
     }
@@ -932,6 +953,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // ramping down counts), and only once (on the left channel, copied right)
     // while the voice has no stereo spread.
     const int channels = stereo ? 2 : 1;
+    if (stereo && v.rightStale) { // without spread, channel 1 would have been where channel 0 is
+        for (int f = 0; f < kFilters; ++f) {
+            v.filters[f][1] = v.filters[f][0];
+            std::copy_n(combLine(v, f, 0), combSize_, combLine(v, f, 1));
+        }
+        for (int sh = 0; sh < kShapers; ++sh)
+            v.shapers[sh][1] = v.shapers[sh][0];
+    }
+    v.rightStale = !stereo;
     // Shapers run only while something goes into them and their output goes somewhere. A route counts while it is
     // set or still ramping down.
     auto routed = [](double to, double now) { return std::max(to, now) > 0.0; };

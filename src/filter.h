@@ -142,6 +142,8 @@ public:
             double read = combPos_ - std::min(s.combDelay, combSize - 2.0);
             if (read < 0.0)
                 read += combSize;
+            if (read >= combSize) // a hair below 0 rounds up to the line's end when wrapped: that is its start
+                read -= combSize;
             const int i = static_cast<int>(read);
             const double delayed = comb[i] + (comb[(i + 1) % combSize] - comb[i]) * (read - i);
             const double y = in + s.combFeedback * delayed;

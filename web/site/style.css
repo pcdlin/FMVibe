@@ -109,13 +109,15 @@ kbd {
   user-select: none;
 }
 
-#menu [role="menuitem"] {
+#menu [role="menuitem"],
+#menu [role="menuitemcheckbox"] {
   padding: 5px 16px;
   white-space: nowrap;
   cursor: default;
 }
 
-#menu [role="menuitem"]:hover {
+#menu [role="menuitem"]:hover,
+#menu [role="menuitemcheckbox"]:hover {
   background: rgba(142, 162, 255, 0.18);
 }
 
