@@ -664,7 +664,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   stronger and wider the halo.
   The editor shows it while it is dragged and keeps it when it is let go. Both are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
-  switch along. The dialog's bottom line shows the version (FMVibe 0.1) and that FMVibe is released under the MIT
+  switch along. The dialog's bottom line shows the version (FMVibe 0.2) and that FMVibe is released under the MIT
   license.
 
 ### Remote-control pages (Bitwig)

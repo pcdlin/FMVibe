@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(FMVibe VERSION 0.1 LANGUAGES CXX)
+project(FMVibe VERSION 0.2 LANGUAGES CXX)
 
 # The version hosts are told and the settings dialog shows, for every target (the browser demo's too). Change it
 # in project() above.
