@@ -1336,13 +1336,13 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     auto macroKnob = [&](int macro) { return Point{196.375f + 112.75f * macro, y}; };
     // Until a macro modulates something, its handle, arc and name are faint, and so is the note source's handle
     // (read off the rendered pixels).
-    const Point macroRing{macroKnob(0).x - 36.0f, y - 10.0f}, noteRing{1098.0f, y - 10.0f};
+    const Point macroRing{macroKnob(0).x - 26.0f, y - 10.0f}, noteRing{1098.0f, y - 10.0f};
     view.mouseMove({600.0f, 300.0f}, {});
     const bool idleShot = renderer.save(view, dir / "26a-macros-idle.png");
     const int macroIdle = ringLevel(renderer, macroRing, 20.0f), noteIdle = ringLevel(renderer, noteRing, 20.0f);
     drag(view, macroKnob(0), {macroKnob(0).x, y - 40.0f});
     const bool turned = model.value(paramIndex(0, MacroParam::Value)) > 0.1;
-    drag(view, {macroKnob(0).x - 42.0f, y}, kFmAmountKnob); // its handle onto FM Amount
+    drag(view, {macroKnob(0).x - 32.0f, y}, kFmAmountKnob); // its handle onto FM Amount
     const bool mapped =
         slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(GlobalParam::FmAmount);
     view.mouseMove({600.0f, 300.0f}, {});
@@ -1378,7 +1378,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const bool undone = model.ui.macroNames[0].empty();
     view.redo();
-    view.mouseMove({macroKnob(0).x - 42.0f, y}, {});
+    view.mouseMove({macroKnob(0).x - 32.0f, y}, {});
     check(turned && mapped && renamed && undone && renderer.save(view, dir / "26-macros.png"),
           "a macro's knob turns, its handle maps it, and a double-click renames it, undoably");
     // The note source, right of the macros: its handle, left of its display, maps it the same way, onto filter 1's
@@ -1444,7 +1444,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const bool macroWasUnipolar = polarity(macroKnob(0), tr(Str::MenuUnipolar));
         polarity(macroKnob(0), tr(Str::MenuBipolar));
         const bool macroBipolar = model.value(paramIndex(0, MacroParam::Bipolar)) == 1.0;
-        const bool handleShowsIt = polarity({macroKnob(0).x - 42.0f, y}, tr(Str::MenuBipolar));
+        const bool handleShowsIt = polarity({macroKnob(0).x - 32.0f, y}, tr(Str::MenuBipolar));
         polarity({74.0f + 13.0f, view.height() - 87.0f}, tr(Str::MenuBipolar)); // the wheel itself
         const bool wheelBipolar = model.value(paramIndex(WheelParam::Bipolar)) == 1.0;
         polarity({1142.0f, y}, tr(Str::MenuBipolar)); // the note source's display

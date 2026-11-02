@@ -1726,7 +1726,7 @@ std::vector<View::Widget> View::widgets() const {
                       macroName(controller_.layout(), macro).c_str());
         knob(paramIndex(macro, MacroParam::Value), center, 34.0f, macroLabels_[macro].data());
         add(Kind::MacroName, {center.x - 50.0f, center.y + 18.0f, 100.0f, 17.0f}, -1, macro);
-        add(Kind::MacroHandle, {center.x - 52.0f, center.y - 10.0f, 20.0f, 20.0f}, -1, kMaxSources + macro);
+        add(Kind::MacroHandle, {center.x - 42.0f, center.y - 10.0f, 20.0f, 20.0f}, -1, kMaxSources + macro);
     }
     // The note source's handle, left of them, works the same way; its display opens its curve.
     add(Kind::MacroHandle, noteHandle(macros), -1, kNoteSource);
