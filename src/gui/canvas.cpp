@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iterator>
 #include <numbers>
 #include <string>
@@ -169,7 +170,12 @@ void Canvas::curve(Point a, Point control, Point b, Color c, float width, bool d
 }
 
 void Canvas::polyline(const Point *points, size_t count, Color c, float width, bool dashed) {
-    if (count < 2)
+    polylineStrokes(points, count, &c, &width, 1, dashed);
+}
+
+void Canvas::polylineStrokes(const Point *points, size_t count, const Color *colors, const float *widths,
+                             size_t strokes, bool dashed) {
+    if (count < 2 || strokes == 0)
         return;
     ComPtr<ID2D1PathGeometry> path;
     resources_.factory()->CreatePathGeometry(path.GetAddressOf());
@@ -180,7 +186,9 @@ void Canvas::polyline(const Point *points, size_t count, Color c, float width, b
         sink->AddLine(pt(points[i]));
     sink->EndFigure(D2D1_FIGURE_END_OPEN);
     sink->Close();
-    target_->DrawGeometry(path.Get(), brush(c), width, dashed ? resources_.dashedStroke() : resources_.roundStroke());
+    ID2D1StrokeStyle *style = dashed ? resources_.dashedStroke() : resources_.roundStroke();
+    for (size_t i = 0; i < strokes; ++i)
+        target_->DrawGeometry(path.Get(), brush(colors[i]), widths[i], style);
 }
 
 void Canvas::fillPolygon(const Point *points, size_t count, Color c) {
@@ -233,7 +241,19 @@ void Canvas::text(Rect r, std::string_view utf8, float size, Color c, Align alig
                       D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
+// A text is measured once in each format (textFormat() tells them apart by a tenth of their size, and boldness): the
+// width found is kept with the resources, a few thousand of them at most, as the browser's canvas2d.js keeps them.
 float Canvas::textWidth(std::string_view utf8, float size, bool bold) {
+    if (utf8.empty())
+        return 0.0f;
+    const float lifted = liftedSize(size);
+    const int format = static_cast<int>(lifted * 10.0f) * 2 + (bold ? 1 : 0);
+    std::string key(sizeof(format) + utf8.size(), '\0');
+    std::memcpy(key.data(), &format, sizeof(format));
+    std::memcpy(key.data() + sizeof(format), utf8.data(), utf8.size());
+    std::unordered_map<std::string, float> &widths = resources_.textWidths();
+    if (const auto known = widths.find(key); known != widths.end())
+        return known->second;
     wchar_t buffer[256];
     std::wstring longer;
     const std::wstring_view wide = widen(utf8, buffer, longer);
@@ -241,11 +261,14 @@ float Canvas::textWidth(std::string_view utf8, float size, bool bold) {
         return 0.0f;
     ComPtr<IDWriteTextLayout> layout;
     if (FAILED(resources_.writeFactory()->CreateTextLayout(wide.data(), static_cast<UINT32>(wide.size()),
-                                                           resources_.textFormat(liftedSize(size), bold, Align::Left),
-                                                           1.0e4f, 100.0f, layout.GetAddressOf())))
+                                                           resources_.textFormat(lifted, bold, Align::Left), 1.0e4f,
+                                                           100.0f, layout.GetAddressOf())))
         return 0.0f;
     DWRITE_TEXT_METRICS metrics{};
     layout->GetMetrics(&metrics);
+    if (widths.size() >= 4096)
+        widths.clear();
+    widths.emplace(std::move(key), metrics.widthIncludingTrailingWhitespace);
     return metrics.widthIncludingTrailingWhitespace;
 }
 

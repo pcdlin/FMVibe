@@ -724,7 +724,7 @@ private:
     std::atomic<int> oversampling_{kDefaultOversampling};
     // Written by the audio thread (param events) and the main thread (editor,
     // state load), read by both, hence atomics. The audio thread works from a
-    // per-segment copy.
+    // copy taken at the start of each block, which the block's param events update.
     std::array<std::atomic<double>, kParamCount> values_;
     ParamValues snapshot_{};
     // Presets set every param at once, about three events each.
@@ -860,16 +860,18 @@ clap_process_status Plugin::process(const clap_process_t *process) {
     float *left = output.data32[0];
     float *right = output.data32[1];
 
-    // Render up to each event's timestamp, then apply it: sample-accurate notes and automation.
+    // Render up to each event's timestamp, then apply it: sample-accurate notes and automation. The params are read
+    // once for the block; a param event in it updates the copy as well (see setParam()), so what follows hears it,
+    // and an edit in the editor meanwhile is heard from the next block on.
     const clap_input_events_t *in = process->in_events;
     const uint32_t frames = process->frames_count;
     const uint32_t eventCount = in->size(in);
+    const ParamValues &params = currentParams();
     uint32_t cursor = 0;
     for (uint32_t i = 0; i <= eventCount; ++i) {
         const clap_event_header_t *ev = i < eventCount ? in->get(in, i) : nullptr;
         const uint32_t until = ev ? std::min(ev->time, frames) : frames;
         if (until > cursor) {
-            const ParamValues &params = currentParams();
             synth_.setVoiceLimit(static_cast<int>(std::lround(params[paramIndex(GlobalParam::Voices)])));
             applyPlayMode();
             synth_.render(left + cursor, right + cursor, until - cursor, params);
@@ -968,7 +970,9 @@ void Plugin::setParam(const clap_event_param_value_t &ev) {
     // handing back (Bitwig does): taken, it would flip a preset just loaded back to the one before.
     if (steadyMs() - toldAt_[i] < kHostEchoMs)
         return;
-    values_[i].store(std::clamp(ev.value, paramTable()[i].min, paramTable()[i].max));
+    const double value = std::clamp(ev.value, paramTable()[i].min, paramTable()[i].max);
+    values_[i].store(value);
+    snapshot_[i] = value; // the rest of the block being processed hears it (see process())
     // Voice settings apply before any note-ons that follow in the same block.
     if (i == paramIndex(GlobalParam::Voices)) {
         synth_.setVoiceLimit(voiceLimit());

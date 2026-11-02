@@ -8,11 +8,46 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
 #include <numbers>
+#include <numeric>
 #include <string_view>
 
 namespace fmvibe::gui {
+
+// Keys are compared bit for bit (+0 and -0 apart), so points are only found again for a key that make() would turn
+// into the same points. Past a few dozen curves, the one used least recently makes room for a new one.
+template <class Make>
+std::vector<Point> PointCache::get(const std::vector<double> &key, Make &&make) {
+    constexpr size_t kMostEntries = 96;
+    uint64_t hash = key.size();
+    for (double v : key) {
+        uint64_t bits = 0;
+        std::memcpy(&bits, &v, sizeof(bits));
+        hash = (hash ^ bits) * 0x9E3779B97F4A7C15ull;
+        hash ^= hash >> 31;
+    }
+    ++clock_;
+    for (Entry &entry : entries_)
+        if (entry.hash == hash && entry.key.size() == key.size() &&
+            std::memcmp(entry.key.data(), key.data(), key.size() * sizeof(double)) == 0) {
+            entry.used = clock_;
+            return entry.points;
+        }
+    std::vector<Point> points = make(); // before a place is picked for it, so make() may use the cache too
+    Entry *slot = nullptr;
+    if (entries_.size() < kMostEntries)
+        slot = &entries_.emplace_back();
+    else
+        slot = &*std::min_element(entries_.begin(), entries_.end(),
+                                  [](const Entry &a, const Entry &b) { return a.used < b.used; });
+    slot->hash = hash;
+    slot->key = key;
+    slot->points = std::move(points);
+    slot->used = clock_;
+    return slot->points;
+}
 
 namespace {
 
@@ -145,17 +180,33 @@ Color fxTypeColor(FxType type) {
 float glowing = 0.0f; // how strongly graphs' curves glow, 0..1, which View::paint() sets from the controller too
 
 // A graph's curve. Glowing, it is drawn thinner, over a soft halo of its own color that fades outward; the
-// halo grows stronger and wider with the glow (at half, three strokes 6, 3.5 and 2 times the curve's width).
+// halo grows stronger and wider with the glow (at half, three strokes 6, 3.5 and 2 times the curve's width). The
+// halo and the curve are strokes of one path.
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width) {
     if (glowing > 0.0f) {
         const float strength = 2.0f * glowing, radius = 0.5f + glowing;
-        c.polyline(points, count, color.alpha(0.05f * strength), width * (1.0f + 5.0f * radius));
-        c.polyline(points, count, color.alpha(0.08f * strength), width * (1.0f + 2.5f * radius));
-        c.polyline(points, count, color.alpha(0.16f * strength), width * (1.0f + radius));
-        width *= 1.0f - 0.3f * std::min(strength, 1.0f);
+        const Color colors[] = {color.alpha(0.05f * strength), color.alpha(0.08f * strength),
+                                color.alpha(0.16f * strength), color};
+        const float widths[] = {width * (1.0f + 5.0f * radius), width * (1.0f + 2.5f * radius),
+                                width * (1.0f + radius), width * (1.0f - 0.3f * std::min(strength, 1.0f))};
+        c.polylineStrokes(points, count, colors, widths, std::size(colors));
+        return;
     }
     c.polyline(points, count, color, width);
 }
+
+// What tells the curves apart in a PointCache key: its first value, then where the curve goes.
+enum class Curve {
+    Filter = 1, ParamEq, Sweep, Driven, Drawn, Shaper, LfoEditor, ClipEditor, NoteEditor, NoteExact, Partials, Lfo,
+    Envelope, Eq, LfoIcon, WaveIcon, ModeIcon, FilterIcon, PeqIcon, BandIcon,
+};
+std::vector<double> curveKey(Curve curve, Rect r) {
+    return {static_cast<double>(curve), r.x, r.y, r.w, r.h};
+}
+// The icons' points, which depend on nothing but which icon and where: one cache for every editor, which all paint
+// on the main thread (as `look` above assumes).
+PointCache icons;
+
 const char *const kNodeNames[kNodes] = {"A", "B", "C", "D", "E", "F", "F1", "F2", "S1", "S2"};
 // The effect cards' titles, by FxType from the shaper on.
 constexpr Str kFxTitles[] = {Str::FxTitleShaper, Str::FxTitleDelay, Str::FxTitleDjEq, Str::FxTitleParamEq,
@@ -516,32 +567,37 @@ void powerIcon(Canvas &c, Point center, Color color) {
 
 // A filter type's response in a few strokes, for the type buttons: frequency across, level up.
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color) {
-    std::vector<Point> points;
-    auto peak = [](float x, float at, float narrow) { return std::exp(-(x - at) * (x - at) * narrow); };
-    for (int i = 0; i <= 24; ++i) {
-        const float x = i / 24.0f;
-        float y = 0.0f;
-        switch (type) {
-        case FilterType::LowPass: // flat, a little resonance at the corner, then down
-            y = x < 0.55f ? 0.35f + 0.35f * peak(x, 0.55f, 80.0f) : 0.7f - 3.4f * (x - 0.55f);
-            break;
-        case FilterType::HighPass:
-            y = x > 0.45f ? 0.35f + 0.35f * peak(x, 0.45f, 80.0f) : 0.7f - 3.4f * (0.45f - x);
-            break;
-        case FilterType::BandPass:
-            y = -0.9f + 1.7f * peak(x, 0.5f, 30.0f);
-            break;
-        case FilterType::Notch:
-            y = 0.5f - 1.4f * peak(x, 0.5f, 120.0f);
-            break;
-        case FilterType::Comb: // evenly spaced teeth
-            y = -0.8f + 1.5f * std::pow(std::abs(std::cos(3.0f * kPi * x)), 6.0f);
-            break;
-        case FilterType::Count:
-            break;
+    std::vector<double> key = curveKey(Curve::FilterIcon, r);
+    key.push_back(static_cast<double>(type));
+    const std::vector<Point> points = icons.get(key, [&] {
+        std::vector<Point> points;
+        auto peak = [](float x, float at, float narrow) { return std::exp(-(x - at) * (x - at) * narrow); };
+        for (int i = 0; i <= 24; ++i) {
+            const float x = i / 24.0f;
+            float y = 0.0f;
+            switch (type) {
+            case FilterType::LowPass: // flat, a little resonance at the corner, then down
+                y = x < 0.55f ? 0.35f + 0.35f * peak(x, 0.55f, 80.0f) : 0.7f - 3.4f * (x - 0.55f);
+                break;
+            case FilterType::HighPass:
+                y = x > 0.45f ? 0.35f + 0.35f * peak(x, 0.45f, 80.0f) : 0.7f - 3.4f * (0.45f - x);
+                break;
+            case FilterType::BandPass:
+                y = -0.9f + 1.7f * peak(x, 0.5f, 30.0f);
+                break;
+            case FilterType::Notch:
+                y = 0.5f - 1.4f * peak(x, 0.5f, 120.0f);
+                break;
+            case FilterType::Comb: // evenly spaced teeth
+                y = -0.8f + 1.5f * std::pow(std::abs(std::cos(3.0f * kPi * x)), 6.0f);
+                break;
+            case FilterType::Count:
+                break;
+            }
+            points.push_back({r.x + x * r.w, r.center().y - std::clamp(y, -1.0f, 1.0f) * r.h * 0.5f});
         }
-        points.push_back({r.x + x * r.w, r.center().y - std::clamp(y, -1.0f, 1.0f) * r.h * 0.5f});
-    }
+        return points;
+    });
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
@@ -589,40 +645,52 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
 // baseline, the low band falling away to the right, the mid one a plateau, the high one rising from the left.
 void mcBandIcon(Canvas &c, Rect r, int band, Color color) {
     c.line({r.x, r.bottom()}, {r.right(), r.bottom()}, color.alpha(0.35f), 1.0f);
-    auto rise = [](float x, float at) { // 0 well below `at`, 1 well above, smoothly across a crossover
-        const float t = std::clamp((x - at) / 0.22f + 0.5f, 0.0f, 1.0f);
-        return t * t * (3.0f - 2.0f * t);
-    };
-    std::vector<Point> points;
-    for (int i = 0; i <= 24; ++i) {
-        const float x = i / 24.0f;
-        const float level = band == 0 ? 1.0f - rise(x, 0.45f)
-                            : band == 1 ? rise(x, 0.25f) * (1.0f - rise(x, 0.75f))
-                                        : rise(x, 0.55f);
-        points.push_back({r.x + x * r.w, r.bottom() - level * r.h});
-    }
+    std::vector<double> key = curveKey(Curve::BandIcon, r);
+    key.push_back(band);
+    const std::vector<Point> points = icons.get(key, [&] {
+        auto rise = [](float x, float at) { // 0 well below `at`, 1 well above, smoothly across a crossover
+            const float t = std::clamp((x - at) / 0.22f + 0.5f, 0.0f, 1.0f);
+            return t * t * (3.0f - 2.0f * t);
+        };
+        std::vector<Point> points;
+        for (int i = 0; i <= 24; ++i) {
+            const float x = i / 24.0f;
+            const float level = band == 0 ? 1.0f - rise(x, 0.45f)
+                                : band == 1 ? rise(x, 0.25f) * (1.0f - rise(x, 0.75f))
+                                            : rise(x, 0.55f);
+            points.push_back({r.x + x * r.w, r.bottom() - level * r.h});
+        }
+        return points;
+    });
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
 // An LFO's mode switches, named in their tooltips: FREE an infinity sign, ONE-SHOT a single cycle that then stays
 // where it ends, UNIPOLAR a wave that only rises from its baseline.
 void lfoModeIcon(Canvas &c, Point m, SourceParam mode, Color color) {
-    std::vector<Point> points;
-    if (mode == SourceParam::Free) {
-        for (int i = 0; i <= 48; ++i) {
-            const float t = i / 48.0f * 2.0f * kPi, d = 1.0f + std::sin(t) * std::sin(t);
-            points.push_back({m.x + 10.0f * std::cos(t) / d, m.y + 11.0f * std::sin(t) * std::cos(t) / d});
+    const std::vector<double> key{static_cast<double>(Curve::ModeIcon), m.x, m.y, static_cast<double>(mode)};
+    const std::vector<Point> points = icons.get(key, [&] {
+        std::vector<Point> points;
+        if (mode == SourceParam::Free) {
+            for (int i = 0; i <= 48; ++i) {
+                const float t = i / 48.0f * 2.0f * kPi, d = 1.0f + std::sin(t) * std::sin(t);
+                points.push_back({m.x + 10.0f * std::cos(t) / d, m.y + 11.0f * std::sin(t) * std::cos(t) / d});
+            }
+        } else if (mode == SourceParam::OneShot) {
+            for (int i = 0; i <= 24; ++i)
+                points.push_back({m.x - 10.0f + i * 0.5f, m.y - 4.5f * std::sin(i / 24.0f * 2.0f * kPi)});
+            points.push_back({m.x + 10.0f, m.y});
+        } else {
+            for (int i = 0; i <= 32; ++i)
+                points.push_back(
+                    {m.x - 10.0f + i * 0.625f, m.y + 5.0f - 4.5f * (1.0f - std::cos(i / 32.0f * 4.0f * kPi))});
         }
-    } else if (mode == SourceParam::OneShot) {
-        for (int i = 0; i <= 24; ++i)
-            points.push_back({m.x - 10.0f + i * 0.5f, m.y - 4.5f * std::sin(i / 24.0f * 2.0f * kPi)});
-        points.push_back({m.x + 10.0f, m.y});
+        return points;
+    });
+    if (mode == SourceParam::OneShot)
         c.fillCircle(points.back(), 1.7f, color);
-    } else {
+    else if (mode != SourceParam::Free)
         c.line({m.x - 11.0f, m.y + 5.0f}, {m.x + 11.0f, m.y + 5.0f}, color.alpha(0.5f), 1.0f);
-        for (int i = 0; i <= 32; ++i)
-            points.push_back({m.x - 10.0f + i * 0.625f, m.y + 5.0f - 4.5f * (1.0f - std::cos(i / 32.0f * 4.0f * kPi))});
-    }
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
@@ -733,14 +801,19 @@ Point peqAt(Rect area, double freq, double db) {
 // A band shape's response in a few strokes: frequency across, level up. Cuts show a little resonance
 // at their corner, which tells them from the shelves.
 void peqIcon(Canvas &c, Rect r, PeqType type, Color color) {
-    std::vector<Point> points;
-    const double q = normFromQ(isCut(type) ? 2.2 : 0.7);
-    for (int i = 0; i <= 20; ++i) {
-        const double x = i / 20.0;
-        const double db = 20.0 * std::log10(peqResponse(cutoffFromNorm(0.15 + 0.7 * x), type, 0.5, 9.0, q));
-        points.push_back({r.x + static_cast<float>(x) * r.w,
-                          r.center().y - static_cast<float>(std::clamp(db, -15.0, 15.0) / 15.0) * r.h * 0.5f});
-    }
+    std::vector<double> key = curveKey(Curve::PeqIcon, r);
+    key.push_back(static_cast<double>(type));
+    const std::vector<Point> points = icons.get(key, [&] {
+        std::vector<Point> points;
+        const double q = normFromQ(isCut(type) ? 2.2 : 0.7);
+        for (int i = 0; i <= 20; ++i) {
+            const double x = i / 20.0;
+            const double db = 20.0 * std::log10(peqResponse(cutoffFromNorm(0.15 + 0.7 * x), type, 0.5, 9.0, q));
+            points.push_back({r.x + static_cast<float>(x) * r.w,
+                              r.center().y - static_cast<float>(std::clamp(db, -15.0, 15.0) / 15.0) * r.h * 0.5f});
+        }
+        return points;
+    });
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
@@ -1297,6 +1370,18 @@ std::vector<Point> wavePoints(OpWave wave, Rect r) {
     return points;
 }
 
+// An LFO shape's or a wave's icon, as lfoPoints() and wavePoints() draw it, kept with the other icons.
+std::vector<Point> shapeIcon(LfoShape shape, Rect r) {
+    std::vector<double> key = curveKey(Curve::LfoIcon, r);
+    key.push_back(static_cast<double>(shape));
+    return icons.get(key, [&] { return lfoPoints(shape, r); });
+}
+std::vector<Point> waveIcon(OpWave wave, Rect r) {
+    std::vector<double> key = curveKey(Curve::WaveIcon, r);
+    key.push_back(static_cast<double>(wave));
+    return icons.get(key, [&] { return wavePoints(wave, r); });
+}
+
 // The partial editor, over the routing panel: the wave the partials make, their levels, and their phases.
 // Each row's label sits between its box and the one above, 32 apart.
 constexpr Rect kPartialWave{kRouting.x + 40.0f, kRouting.y + 44.0f, kRouting.w - 80.0f, 106.0f};
@@ -1347,6 +1432,50 @@ View::~View() {
     finishDrag();
 }
 
+View::DerivedScope::DerivedScope(const View &view) : view_(view) {
+    if (view_.derivedDepth_++ == 0)
+        view_.derived_ = Derived{};
+}
+
+View::DerivedScope::~DerivedScope() {
+    if (--view_.derivedDepth_ == 0)
+        view_.derived_ = Derived{};
+}
+
+View::ModTable View::modTable() const {
+    ModTable table;
+    table.all = assignments();
+    table.byTarget.resize(table.all.size());
+    std::iota(table.byTarget.begin(), table.byTarget.end(), 0);
+    std::stable_sort(table.byTarget.begin(), table.byTarget.end(),
+                     [&](int a, int b) { return table.all[a].target < table.all[b].target; });
+    return table;
+}
+
+template <class F>
+void View::forEachMod(int target, F &&f) const {
+    std::optional<ModTable> fresh;
+    const ModTable *table = nullptr;
+    if (derivedDepth_ > 0) {
+        if (!derived_.mods)
+            derived_.mods = modTable();
+        table = &*derived_.mods;
+    } else {
+        table = &fresh.emplace(modTable());
+    }
+    auto at = std::lower_bound(table->byTarget.begin(), table->byTarget.end(), target,
+                               [&](int index, int t) { return table->all[index].target < t; });
+    for (; at != table->byTarget.end() && table->all[*at].target == target; ++at)
+        f(table->all[*at]);
+}
+
+// The scope drops them when it ends.
+const std::vector<View::Widget> &View::scopedWidgets() const {
+    if (!derived_.widgets)
+        derived_.widgets = widgets();
+    return *derived_.widgets;
+}
+
 // --- Model access.
 
 double View::value(int index) const {
@@ -1391,10 +1520,15 @@ std::vector<View::Assignment> View::assignments() const {
 }
 
 std::vector<int> View::usedSlots(int source) const {
+    const bool keeps = source >= 0 && source < kAllSources;
+    if (keeps && derived_.slots[source]) // only kept while a scope goes on
+        return *derived_.slots[source];
     std::vector<int> slots;
     for (int slot = 0; slot < kSlots; ++slot)
         if (slotTarget(value(slotTargetIndex(source, slot))) >= 0)
             slots.push_back(slot);
+    if (keeps && derivedDepth_ > 0)
+        derived_.slots[source] = slots;
     return slots;
 }
 
@@ -1720,6 +1854,19 @@ Rect View::shapePanel() const {
 }
 
 Rect View::shapeArea(int shape) const {
+    if (shape < -1 || shape > kNoteCurve)
+        return shapeAreaNow(shape);
+    std::optional<Rect> &kept = derived_.shapeAreas[shape + 1]; // only kept while a scope goes on
+    if (!kept) {
+        const Rect area = shapeAreaNow(shape);
+        if (derivedDepth_ <= 0)
+            return area;
+        kept = area;
+    }
+    return *kept;
+}
+
+Rect View::shapeAreaNow(int shape) const {
     if (shape >= 0 && isClipCurve(shape) && shapeEditing() != shape) { // in its card
         const std::vector<int> chain = fxChainShown();
         const auto at = std::find(chain.begin(), chain.end(), shape - kMaxSources);
@@ -1784,14 +1931,27 @@ FxType View::fxSlotType(int slot) const {
 }
 
 std::vector<int> View::fxChain() const {
+    if (derived_.chain) // only kept while a scope goes on
+        return *derived_.chain;
     std::vector<int> chain;
     for (int slot : fxOrder(value(paramIndex(GlobalParam::FxOrder))))
         if (fxSlotType(slot) != FxType::None)
             chain.push_back(slot);
+    if (derivedDepth_ > 0)
+        derived_.chain = chain;
     return chain;
 }
 
 std::vector<int> View::fxChainShown() const {
+    if (derived_.chainShown) // only kept while a scope goes on
+        return *derived_.chainShown;
+    std::vector<int> chain = fxChainMoved();
+    if (derivedDepth_ > 0)
+        derived_.chainShown = chain;
+    return chain;
+}
+
+std::vector<int> View::fxChainMoved() const {
     std::vector<int> chain = fxChain();
     if (drag_.kind != DragKind::FxMove || !drag_.moved) // a click on a card's title moves nothing
         return chain;
@@ -1885,12 +2045,20 @@ static bool onScreen(float place, int shown, float span = 1.0f) {
 }
 
 float View::scrollLength(ScrollArea area) const {
+    std::optional<float> &kept = area == ScrollArea::Sources ? derived_.sourcesLength : derived_.fxLength;
+    if (kept) // only kept while a scope goes on
+        return *kept;
+    float length = 0.0f;
     if (area == ScrollArea::Sources) {
         const std::vector<int> shown = sources();
-        return sourceOffset(shown, shown.size()) + (sourceShadow() ? kSourceShadowSpan : 0.0f);
+        length = sourceOffset(shown, shown.size()) + (sourceShadow() ? kSourceShadowSpan : 0.0f);
+    } else {
+        const std::vector<int> chain = fxChain();
+        length = fxOffset(chain, chain.size()) + (fxShadow() ? 1.0f : 0.0f);
     }
-    const std::vector<int> chain = fxChain();
-    return fxOffset(chain, chain.size()) + (fxShadow() ? 1.0f : 0.0f);
+    if (derivedDepth_ > 0)
+        kept = length;
+    return length;
 }
 
 bool View::fxShadow() const {
@@ -2029,6 +2197,12 @@ int View::shapeIndex(int shape, int point, PointField field) const {
 
 int View::shapePointCount(int shape) const {
     return fmvibe::shapePointCount(value(shapeBase(shape)), shapeMaxPoints(shape));
+}
+
+void View::keyShape(std::vector<double> &key, int base) const {
+    const int count = fmvibe::shapePointCount(value(base)); // as many as shapeValue() and clipCurveValue() read
+    for (int i = 0; i < 1 + 3 * count; ++i)
+        key.push_back(value(base + i));
 }
 
 // The first point sits at the start; a curve's last one at the end.
@@ -2308,10 +2482,24 @@ int View::keyboardBase() const {
 }
 
 std::vector<int> View::sources() const {
-    return shownSources(controller_.layout(), [this](int index) { return value(index); });
+    if (derived_.sources) // only kept while a scope goes on
+        return *derived_.sources;
+    std::vector<int> shown = shownSources(controller_.layout(), [this](int index) { return value(index); });
+    if (derivedDepth_ > 0)
+        derived_.sources = shown;
+    return shown;
 }
 
 std::vector<int> View::sourcesShown() const {
+    if (derived_.sourcesShown) // only kept while a scope goes on
+        return *derived_.sourcesShown;
+    std::vector<int> shown = sourcesMoved();
+    if (derivedDepth_ > 0)
+        derived_.sourcesShown = shown;
+    return shown;
+}
+
+std::vector<int> View::sourcesMoved() const {
     std::vector<int> shown = sources();
     if (drag_.kind != DragKind::SourceMove || !drag_.moved) // a click on a card's title moves nothing
         return shown;
@@ -2382,12 +2570,18 @@ float View::sourceScroll() const {
 }
 
 float View::cardOf(int source) const {
-    if (controller_.layout().sourcesCollapsed)
-        return kOffScreen;
-    const std::vector<int> shown = sourcesShown();
-    const auto at = std::find(shown.begin(), shown.end(), source);
-    const float card = sourceOffset(shown, static_cast<size_t>(at - shown.begin())) - sourceScroll();
-    return at != shown.end() && onScreen(card, kVisibleCards, sourceSpan(source)) ? card : kOffScreen;
+    if (source >= 0 && source < kMaxSources && derived_.cards[source]) // only kept while a scope goes on
+        return *derived_.cards[source];
+    float card = kOffScreen;
+    if (!controller_.layout().sourcesCollapsed) {
+        const std::vector<int> shown = sourcesShown();
+        const auto at = std::find(shown.begin(), shown.end(), source);
+        const float place = sourceOffset(shown, static_cast<size_t>(at - shown.begin())) - sourceScroll();
+        card = at != shown.end() && onScreen(place, kVisibleCards, sourceSpan(source)) ? place : kOffScreen;
+    }
+    if (derivedDepth_ > 0 && source >= 0 && source < kMaxSources)
+        derived_.cards[source] = card;
+    return card;
 }
 
 void View::revealSource(int source) {
@@ -2631,8 +2825,9 @@ float View::envScale(int env) const {
 }
 
 std::vector<View::Widget> View::widgets() const {
+    const DerivedScope scope(*this);
     std::vector<Widget> list;
-    list.reserve(240);
+    list.reserve(400);
     auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
         Widget w;
         w.kind = kind;
@@ -3228,24 +3423,22 @@ std::vector<View::Widget> View::widgets() const {
 
     // Depth handles in the gap under each modulated knob, and small ones in the top right corner of each
     // modulated wire label, matrix cell and source's depth bar (another source modulating its depth).
-    const std::vector<Assignment> mods = assignments();
     const size_t count = list.size();
+    std::vector<Assignment> here;
     for (size_t i = 0; i < count; ++i) {
         const Kind kind = list[i].kind;
         if (kind != Kind::Knob && kind != Kind::WireLabel && kind != Kind::OutLabel && kind != Kind::GridCell &&
             kind != Kind::SlotBar)
             continue;
-        std::vector<const Assignment *> here;
-        for (const Assignment &m : mods)
-            if (m.target == list[i].param)
-                here.push_back(&m);
+        here.clear();
+        forEachMod(list[i].param, [&](const Assignment &m) { here.push_back(m); });
         const Rect r = list[i].rect;
         if (kind != Kind::Knob) {
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
             for (size_t k = 0; k < here.size(); ++k) {
                 const Point c{r.right() - (cell ? 4.0f : 3.0f) - k * (cell ? 6.0f : 7.0f), r.y + (cell ? 4.0f : 2.0f)};
                 add(Kind::ModDot, {c.x - 3.5f, c.y - 3.5f, 7.0f, 7.0f},
-                    slotAmountIndex(here[k]->source, here[k]->slot), here[k]->source, here[k]->slot);
+                    slotAmountIndex(here[k].source, here[k].slot), here[k].source, here[k].slot);
                 list.back().compact = true;
                 list.back().clip = list[i].clip; // a depth bar's is cut off with its card
             }
@@ -3254,8 +3447,8 @@ std::vector<View::Widget> View::widgets() const {
         const Point base = list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f} : Point{r.center().x, r.y + r.w - 1.0f};
         for (size_t k = 0; k < here.size(); ++k) {
             const float x = base.x + (k - (here.size() - 1) * 0.5f) * 9.0f;
-            add(Kind::ModDot, {x - 5.0f, base.y - 5.0f, 10.0f, 10.0f}, slotAmountIndex(here[k]->source, here[k]->slot),
-                here[k]->source, here[k]->slot);
+            add(Kind::ModDot, {x - 5.0f, base.y - 5.0f, 10.0f, 10.0f}, slotAmountIndex(here[k].source, here[k].slot),
+                here[k].source, here[k].slot);
             list.back().clip = list[i].clip;
         }
     }
@@ -3445,7 +3638,7 @@ void View::paintSettings(Canvas &c) {
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), 10.5f, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), 10.5f, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())
-        paintWidget(c, w, {});
+        paintWidget(c, w);
 }
 
 // The dialog asking before Init or Load replaces a changed patch, centered like the settings; a line shorter when
@@ -3857,7 +4050,7 @@ void View::paintBrowser(Canvas &c) {
         shownFolder = "\xE2\x80\xA6" + folder.substr(folder.size() - (shownFolder.size() - 4));
     c.text({panel.x + 24.0f, panel.bottom() - 40.0f, room, 26.0f}, shownFolder, 10.5f, kFaint, Align::Left);
     for (const Widget &w : browserWidgets())
-        paintWidget(c, w, {});
+        paintWidget(c, w);
 }
 
 void View::openPreset(int index) {
@@ -3900,14 +4093,17 @@ void View::paintConfirm(Canvas &c) {
     }
     c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst), 10.5f, kDim, Align::Left);
     for (const Widget &w : confirmWidgets())
-        paintWidget(c, w, {});
+        paintWidget(c, w);
 }
 
 std::optional<View::Widget> View::hitTest(Point p) const {
-    const std::vector<Widget> list = settingsOpen_     ? settingsWidgets()
-                                     : confirm_ >= 0   ? confirmWidgets()
-                                     : browserOpen_    ? browserWidgets()
-                                                       : widgets();
+    const DerivedScope scope(*this); // asked while painting, the widgets painted
+    const bool overlay = settingsOpen_ || confirm_ >= 0 || browserOpen_;
+    const std::vector<Widget> dialog = settingsOpen_   ? settingsWidgets()
+                                       : confirm_ >= 0 ? confirmWidgets()
+                                       : browserOpen_  ? browserWidgets()
+                                                       : std::vector<Widget>();
+    const std::vector<Widget> &list = overlay ? dialog : scopedWidgets();
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
         if (it->clip.w > 0.0f && !it->clip.contains(p))
             continue;
@@ -3936,8 +4132,8 @@ bool View::isActive(const Widget &w) const {
 // --- Painting.
 
 void View::paint(Canvas &c) {
-    const std::vector<Widget> list = widgets();
-    const std::vector<Assignment> mods = assignments();
+    const DerivedScope scope(*this);
+    const std::vector<Widget> &list = scopedWidgets();
     std::fill(macroOffsets_.begin(), macroOffsets_.end(), 0.0f);
     forEachMacroMod([this](int i) { return value(i); },
                     [this](int target, double offset) { macroOffsets_[target] += static_cast<float>(offset); });
@@ -3979,7 +4175,7 @@ void View::paint(Canvas &c) {
                 continue;
             if (w.clip.w > 0.0f)
                 c.pushClip(w.clip);
-            paintWidget(c, w, mods);
+            paintWidget(c, w);
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
@@ -4217,7 +4413,6 @@ void View::paintRouting(Canvas &c) {
     // Modulated routes swell and thin with their modulation while notes play, and carry a thin core
     // in the color of the source that modulates them.
     const std::vector<int> on = enabledNodes();
-    const std::vector<Assignment> mods = assignments();
     auto focused = [&](int param) {
         return (hover_ && hover_->param == param && drag_.kind == DragKind::None) ||
                (drag_.kind == DragKind::Value && drag_.widget.param == param);
@@ -4231,7 +4426,7 @@ void View::paintRouting(Canvas &c) {
         const Color base = isBoxNode(node) ? nodeColor(node) : kText;
         const Color color = focused(param) ? kText : base.alpha(0.25f + 0.5f * out);
         c.line(w.start, w.end, color, 1.5f + 2.0f * out);
-        if (const auto core = modColor(param, mods))
+        if (const auto core = modColor(param))
             c.line(w.start, w.end, core->alpha(0.9f), 1.2f);
         arrowHead(c, w.end, {0.0f, 1.0f}, color);
     }
@@ -4242,7 +4437,7 @@ void View::paintRouting(Canvas &c) {
             if (param < 0 || !wired(param) || param == moving)
                 continue;
             const float amount = static_cast<float>(liveAmount(param));
-            const std::optional<Color> core = modColor(param, mods);
+            const std::optional<Color> core = modColor(param);
             const Color base = routeColor(from, to);
             const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
             const float width = 1.2f + 3.0f * amount;
@@ -4267,11 +4462,13 @@ double View::liveAmount(int param) const {
     return std::clamp((value(param) + offset - def.min) / (def.max - def.min), 0.0, 1.0);
 }
 
-std::optional<Color> View::modColor(int param, const std::vector<Assignment> &mods) const {
-    for (const Assignment &m : mods)
-        if (m.target == param && !m.bypassed && sourceOn(m.source))
-            return kSourceColors[m.source];
-    return std::nullopt;
+std::optional<Color> View::modColor(int param) const {
+    std::optional<Color> color;
+    forEachMod(param, [&](const Assignment &m) {
+        if (!color && !m.bypassed && sourceOn(m.source))
+            color = kSourceColors[m.source];
+    });
+    return color;
 }
 
 // How far a modulation of `amount` takes its target from the set value, down and up: a bipolar source half of it
@@ -4286,7 +4483,7 @@ bool View::sourceBipolar(int source) const {
     return fmvibe::sourceBipolar([this](int index) { return value(index); }, source);
 }
 
-void View::paintModRange(Canvas &c, Rect bar, int param, const std::vector<Assignment> &mods) {
+void View::paintModRange(Canvas &c, Rect bar, int param) {
     const double n = norm(param);
     // The modulation whose depth handle is under the mouse goes last, twice as thick, over the others.
     auto range = [&](const Assignment &m, bool focused) {
@@ -4300,16 +4497,14 @@ void View::paintModRange(Canvas &c, Rect bar, int param, const std::vector<Assig
                    kSourceColors[m.source].alpha(alpha), 1.0f);
     };
     bool any = false;
-    const Assignment *focus = nullptr;
-    for (const Assignment &m : mods) {
-        if (m.target != param)
-            continue;
+    std::optional<Assignment> focus;
+    forEachMod(param, [&](const Assignment &m) {
         any = true;
         if (modFocused(m))
-            focus = &m;
+            focus = m;
         else
             range(m, false);
-    }
+    });
     if (!any)
         return;
     if (focus)
@@ -4528,11 +4723,16 @@ void View::paintShapeEditor(Canvas &c, int shape) {
 
     // The curve, filled toward the zero line.
     auto get = [this](int index) { return value(index); };
-    std::vector<Point> points;
-    for (int i = 0; i <= 400; ++i) {
-        const double x = i / 400.0;
-        points.push_back(shapeAt(x, shapeValue(get, lfo, x)));
-    }
+    std::vector<double> key = curveKey(Curve::LfoEditor, r);
+    keyShape(key, shapeCountIndex(lfo));
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 400; ++i) {
+            const double x = i / 400.0;
+            points.push_back(shapeAt(x, shapeValue(get, lfo, x)));
+        }
+        return points;
+    });
     std::vector<Point> area = points;
     area.push_back(shapeAt(1.0, zero));
     area.push_back(shapeAt(0.0, zero));
@@ -4581,11 +4781,17 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
     const bool symmetric = curveSymmetric(shape);
-    std::vector<Point> points;
-    for (int i = 0; i <= 400; ++i) {
-        const double x = i / 400.0;
-        points.push_back(shapeAt(x, shaperCurveValue(get, ClipMode::Custom, base, symmetric, 2.0 * x - 1.0)));
-    }
+    std::vector<double> key = curveKey(Curve::ClipEditor, r);
+    key.push_back(symmetric ? 1.0 : 0.0);
+    keyShape(key, base);
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 400; ++i) {
+            const double x = i / 400.0;
+            points.push_back(shapeAt(x, shaperCurveValue(get, ClipMode::Custom, base, symmetric, 2.0 * x - 1.0)));
+        }
+        return points;
+    });
     std::vector<Point> area = points;
     area.push_back(shapeAt(1.0, 0.0));
     area.push_back(shapeAt(0.0, 0.0));
@@ -4623,11 +4829,16 @@ void View::paintNoteCurveEditor(Canvas &c) {
     paintShapeGrid(c, -1.0, false);
     paintShapeGridControls(c);
     const double low = value(paramIndex(NoteParam::Low)), high = value(paramIndex(NoteParam::High));
-    std::vector<Point> exact; // what would put a cutoff at 0 by 100 % on the note, over this range
-    for (int i = 0; i <= 120; ++i) {
-        const double x = i / 120.0;
-        exact.push_back(shapeAt(x, 2.0 * cutoffNormOfPitch(low + x * (high - low)) - 1.0));
-    }
+    std::vector<double> key = curveKey(Curve::NoteExact, r);
+    key.insert(key.end(), {low, high});
+    const std::vector<Point> exact = curves_.get(key, [&] { // what would put a cutoff at 0 by 100 % on the note
+        std::vector<Point> exact;
+        for (int i = 0; i <= 120; ++i) {
+            const double x = i / 120.0;
+            exact.push_back(shapeAt(x, 2.0 * cutoffNormOfPitch(low + x * (high - low)) - 1.0));
+        }
+        return exact;
+    });
     c.polyline(exact.data(), exact.size(), kFaint.alpha(0.6f), 1.0f, true);
     for (int octave = 0; octave * 12.0 <= kMaxNotePitch; ++octave) {
         const double x = high == low ? -1.0 : (octave * 12.0 - low) / (high - low);
@@ -4638,11 +4849,16 @@ void View::paintNoteCurveEditor(Canvas &c) {
 
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
-    std::vector<Point> points;
-    for (int i = 0; i <= 400; ++i) {
-        const double x = i / 400.0;
-        points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
-    }
+    key = curveKey(Curve::NoteEditor, r);
+    keyShape(key, base);
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 400; ++i) {
+            const double x = i / 400.0;
+            points.push_back(shapeAt(x, clipCurveValue(get, base, 2.0 * x - 1.0)));
+        }
+        return points;
+    });
     std::vector<Point> area = points;
     area.push_back(shapeAt(1.0, -1.0));
     area.push_back(shapeAt(0.0, -1.0));
@@ -4705,19 +4921,27 @@ void View::paintPartialEditor(Canvas &c, int op) {
     const Rect wave = kPartialWave;
     c.fillRect(wave.inset(-6.0f), kDisplayColor, 6.0f);
     c.line({wave.x, wave.center().y}, {wave.right(), wave.center().y}, kBorder, 1.0f);
-    std::vector<double> samples(241, 0.0);
-    double peak = 0.0;
-    for (size_t i = 0; i < samples.size(); ++i) {
-        const double x = static_cast<double>(i) / (samples.size() - 1);
-        for (int k = 0; k < count; ++k)
-            if (const double level = value(partialLevelIndex(op, k)); level > 0.0)
-                samples[i] += level * std::sin(2.0 * std::numbers::pi * ((k + 1) * x + value(partialPhaseIndex(op, k))));
-        peak = std::max(peak, std::abs(samples[i]));
-    }
-    std::vector<Point> points;
-    for (size_t i = 0; i < samples.size(); ++i)
-        points.push_back({wave.x + wave.w * i / (samples.size() - 1),
-                          wave.center().y - static_cast<float>(peak > 0.0 ? samples[i] / peak : 0.0) * wave.h * 0.5f});
+    std::vector<double> key = curveKey(Curve::Partials, wave);
+    for (int k = 0; k < count; ++k)
+        key.insert(key.end(), {value(partialLevelIndex(op, k)), value(partialPhaseIndex(op, k))});
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<double> samples(241, 0.0);
+        double peak = 0.0;
+        for (size_t i = 0; i < samples.size(); ++i) {
+            const double x = static_cast<double>(i) / (samples.size() - 1);
+            for (int k = 0; k < count; ++k)
+                if (const double level = value(partialLevelIndex(op, k)); level > 0.0)
+                    samples[i] +=
+                        level * std::sin(2.0 * std::numbers::pi * ((k + 1) * x + value(partialPhaseIndex(op, k))));
+            peak = std::max(peak, std::abs(samples[i]));
+        }
+        std::vector<Point> points;
+        for (size_t i = 0; i < samples.size(); ++i) {
+            const float y = static_cast<float>(peak > 0.0 ? samples[i] / peak : 0.0);
+            points.push_back({wave.x + wave.w * i / (samples.size() - 1), wave.center().y - y * wave.h * 0.5f});
+        }
+        return points;
+    });
     plotLine(c, points.data(), points.size(), kAccent, 2.0f);
 
     // Levels (in dB, a faint line every 12) and phases (a full cycle at the top) alike as bars from the bottom,
@@ -4813,12 +5037,20 @@ void View::paintShaperCurve(Canvas &c, Rect r, int unit) {
         std::pow(10.0, clipOutputDb(value(clip.output), value(clip.drive), value(clip.link) >= 0.5) / 20.0);
     const double mix = value(clip.mix);
     auto get = [this](int index) { return value(index); };
-    auto shape = [&](double x) { return shaperCurveValue(get, mode, shapeBase(curve), curveSymmetric(curve), x); };
-    std::vector<Point> points;
-    for (int i = 0; i <= 240; ++i) {
-        const double x = kRange * (2.0 * i / 240.0 - 1.0);
-        points.push_back(at(x, x + (shape(x * drive) * output - x) * mix));
-    }
+    const bool symmetric = curveSymmetric(curve);
+    auto shape = [&](double x) { return shaperCurveValue(get, mode, shapeBase(curve), symmetric, x); };
+    std::vector<double> key = curveKey(Curve::Shaper, inner);
+    key.insert(key.end(), {static_cast<double>(mode), symmetric ? 1.0 : 0.0, drive, output, mix});
+    if (mode == ClipMode::Custom) // a drawn curve whose big editor has its points
+        keyShape(key, shapeBase(curve));
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 240; ++i) {
+            const double x = kRange * (2.0 * i / 240.0 - 1.0);
+            points.push_back(at(x, x + (shape(x * drive) * output - x) * mix));
+        }
+        return points;
+    });
     plotLine(c, points.data(), points.size(), fx, 2.0f);
 }
 
@@ -4850,13 +5082,28 @@ void View::paintClipCurveCard(Canvas &c, Rect r, int unit) {
     const double mix = value(clip.mix);
     const bool symmetric = curveSymmetric(shape);
     auto curve = [&](double in) { return shaperCurveValue(get, ClipMode::Custom, base, symmetric, in); };
-    std::vector<Point> driven, points;
-    for (int i = 0; i <= 160; ++i) {
-        const double x = i / 160.0, in = 2.0 * x - 1.0;
-        const double out = in + (curve(in * drive) * output - in) * mix;
-        driven.push_back(shapeAt(shape, x, std::clamp(out, -1.1, 1.1)));
-        points.push_back(shapeAt(shape, x, curve(in)));
-    }
+    std::vector<double> key = curveKey(Curve::Drawn, shapeArea(shape));
+    key.push_back(symmetric ? 1.0 : 0.0);
+    keyShape(key, base);
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 160; ++i) {
+            const double x = i / 160.0, in = 2.0 * x - 1.0;
+            points.push_back(shapeAt(shape, x, curve(in)));
+        }
+        return points;
+    });
+    key[0] = static_cast<double>(Curve::Driven);
+    key.insert(key.end(), {drive, output, mix});
+    const std::vector<Point> driven = curves_.get(key, [&] {
+        std::vector<Point> driven;
+        for (int i = 0; i <= 160; ++i) {
+            const double x = i / 160.0, in = 2.0 * x - 1.0;
+            const double out = in + (curve(in * drive) * output - in) * mix;
+            driven.push_back(shapeAt(shape, x, std::clamp(out, -1.1, 1.1)));
+        }
+        return driven;
+    });
     c.polyline(driven.data(), driven.size(), fx.alpha(0.35f), 1.0f);
     std::vector<Point> area = points;
     area.push_back(shapeAt(shape, 1.0, 0.0));
@@ -4987,18 +5234,25 @@ void View::paintParamEq(Canvas &c, Rect r, int slot) {
     paintSpectrum(c, area, telemetry_.fxSpectrum[slot]);
     const Color bandColors[kPeqBands] = {kSourceColors[0], kSourceColors[1]};
     auto curve = [&](int only) { // only one band, or both (-1)
-        std::vector<Point> points;
-        for (int i = 0; i <= 120; ++i) {
-            const double x = i / 120.0;
-            double magnitude = 1.0;
-            for (int band = 0; band < kPeqBands; ++band)
-                if (only < 0 || only == band)
-                    magnitude *= peqResponse(cutoffFromNorm(x), peqType(value(peqTypeIndex(slot, band))),
-                                             value(peqFreqIndex(slot, band)), value(peqGainIndex(slot, band)),
-                                             value(peqQIndex(slot, band)));
-            points.push_back(peqAt(area, x, 20.0 * std::log10(std::max(magnitude, 1e-6))));
-        }
-        return points;
+        std::vector<double> key = curveKey(Curve::ParamEq, area);
+        key.push_back(only);
+        for (int band = 0; band < kPeqBands; ++band)
+            key.insert(key.end(), {value(peqTypeIndex(slot, band)), value(peqFreqIndex(slot, band)),
+                                   value(peqGainIndex(slot, band)), value(peqQIndex(slot, band))});
+        return curves_.get(key, [&] {
+            std::vector<Point> points;
+            for (int i = 0; i <= 120; ++i) {
+                const double x = i / 120.0;
+                double magnitude = 1.0;
+                for (int band = 0; band < kPeqBands; ++band)
+                    if (only < 0 || only == band)
+                        magnitude *= peqResponse(cutoffFromNorm(x), peqType(value(peqTypeIndex(slot, band))),
+                                                 value(peqFreqIndex(slot, band)), value(peqGainIndex(slot, band)),
+                                                 value(peqQIndex(slot, band)));
+                points.push_back(peqAt(area, x, 20.0 * std::log10(std::max(magnitude, 1e-6))));
+            }
+            return points;
+        });
     };
     // A cut falls far below the display, so the curves are cut off at its edge.
     c.pushClip(r);
@@ -5039,13 +5293,18 @@ void View::paintEq(Canvas &c, Rect r, int slot) {
     const double low = value(paramIndex(slot, FxParam::EqLow));
     const double mid = value(paramIndex(slot, FxParam::EqMid));
     const double high = value(paramIndex(slot, FxParam::EqHigh));
-    std::vector<Point> points;
-    for (int i = 0; i <= 120; ++i) {
-        const double x = i / 120.0;
-        const double magnitude = eqResponse(cutoffFromNorm(x), low, mid, high);
-        const float db = static_cast<float>(20.0 * std::log10(std::max(magnitude, 1e-6)));
-        points.push_back({inner.x + static_cast<float>(x) * inner.w, yOfDb(db)});
-    }
+    std::vector<double> key = curveKey(Curve::Eq, inner);
+    key.insert(key.end(), {low, mid, high});
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 120; ++i) {
+            const double x = i / 120.0;
+            const double magnitude = eqResponse(cutoffFromNorm(x), low, mid, high);
+            const float db = static_cast<float>(20.0 * std::log10(std::max(magnitude, 1e-6)));
+            points.push_back({inner.x + static_cast<float>(x) * inner.w, yOfDb(db)});
+        }
+        return points;
+    });
     std::vector<Point> area = points;
     area.push_back({inner.right(), inner.bottom()});
     area.push_back({inner.x, inner.bottom()});
@@ -5245,26 +5504,33 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     const double rateHz = sweepHz([this](int i) { return value(i); }, slot, phaser, telemetry_.tempo);
     const double phase = telemetry_.fxPhases[slot] + rateHz * std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
     const bool stereo = at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo) >= 0.5;
-    struct Curve {
+    struct Response {
         double lfo;
         float alpha, width;
     };
-    std::vector<Curve> curves = {{-1.0, 0.3f, 1.0f}, {1.0, 0.3f, 1.0f}};
+    std::vector<Response> curves = {{-1.0, 0.3f, 1.0f}, {1.0, 0.3f, 1.0f}};
     if (stereo && running)
         curves.push_back({std::sin(2.0 * std::numbers::pi * (phase + 0.25)), 0.7f, 1.2f});
     curves.push_back({running ? std::sin(2.0 * std::numbers::pi * phase) : 0.0, 1.0f, 1.8f});
-    for (const Curve &curve : curves) {
-        std::vector<Point> points;
-        for (int i = 0; i <= 160; ++i) {
-            const double x = i / 160.0;
-            const double hz = cutoffFromNorm(x);
-            const double lfo = curve.lfo;
-            const double magnitude =
-                phaser ? phaserResponse(hz, phaserCorner(at(FxParam::PhaserCenter), depth, lfo), stages, feedback, mix)
-                       : flangerResponse(hz, flangerDelay(at(FxParam::FlangerDelay), depth, lfo), feedback, mix);
-            points.push_back({inner.x + static_cast<float>(x) * inner.w,
-                              yOfDb(20.0 * std::log10(std::max(magnitude, 1e-6)))});
-        }
+    for (const Response &curve : curves) {
+        std::vector<double> key = curveKey(Curve::Sweep, inner);
+        key.insert(key.end(), {phaser ? 1.0 : 0.0, curve.lfo, feedback, mix, depth, static_cast<double>(stages),
+                               at(phaser ? FxParam::PhaserCenter : FxParam::FlangerDelay)});
+        const std::vector<Point> points = curves_.get(key, [&] {
+            std::vector<Point> points;
+            for (int i = 0; i <= 160; ++i) {
+                const double x = i / 160.0;
+                const double hz = cutoffFromNorm(x);
+                const double lfo = curve.lfo;
+                const double magnitude =
+                    phaser
+                        ? phaserResponse(hz, phaserCorner(at(FxParam::PhaserCenter), depth, lfo), stages, feedback, mix)
+                        : flangerResponse(hz, flangerDelay(at(FxParam::FlangerDelay), depth, lfo), feedback, mix);
+                points.push_back({inner.x + static_cast<float>(x) * inner.w,
+                                  yOfDb(20.0 * std::log10(std::max(magnitude, 1e-6)))});
+            }
+            return points;
+        });
         if (curve.width > 1.5f)
             plotLine(c, points.data(), points.size(), fx, curve.width);
         else
@@ -5593,32 +5859,36 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
     const double cutoff = value(cutoffParam);
     const double resonance = value(resonanceParam);
     const int steps = type == FilterType::Comb ? 240 : 96; // comb teeth need more points
+    const double slope = value(slopeParam);
     auto response = [&](double cutoffNorm, double res) {
-        std::vector<Point> points;
-        for (int i = 0; i <= steps; ++i) {
-            const double x = static_cast<double>(i) / steps;
-            const double magnitude =
-                filterResponse(type, filterSlope(value(slopeParam)), cutoffFromNorm(cutoffNorm), res, cutoffFromNorm(x));
-            const float db = static_cast<float>(20.0 * std::log10(std::max(magnitude, 1e-6)));
-            points.push_back({inner.x + static_cast<float>(x) * inner.w, yOfDb(db)});
-        }
-        return points;
+        std::vector<double> key = curveKey(Curve::Filter, inner);
+        key.insert(key.end(), {static_cast<double>(type), slope, cutoffNorm, res});
+        return curves_.get(key, [&] {
+            std::vector<Point> points;
+            for (int i = 0; i <= steps; ++i) {
+                const double x = static_cast<double>(i) / steps;
+                const double magnitude =
+                    filterResponse(type, filterSlope(slope), cutoffFromNorm(cutoffNorm), res, cutoffFromNorm(x));
+                const float db = static_cast<float>(20.0 * std::log10(std::max(magnitude, 1e-6)));
+                points.push_back({inner.x + static_cast<float>(x) * inner.w, yOfDb(db)});
+            }
+            return points;
+        });
     };
     // Modulated, the curve shows how far its modulation takes it either way, faintly (as a knob's ring
     // does), and while notes play it follows where the newest voice is. Key tracking moves all of it with
     // `pitch` from C4 on, an octave per octave at 100 %, as far as the filter's cutoff goes (down to 10 Hz).
     const double keyShift = value(keyTrackParam) * (pitch - 60.0) / 12.0 / std::log2(kMaxCutoff / kMinCutoff);
     auto tracked = [&](double cutoffNorm) { return std::clamp(cutoffNorm + keyShift, normFromCutoff(10.0), 1.0); };
-    const std::vector<Assignment> mods = assignments();
     auto reach = [&](int param, double set) {
         double low = set, high = set;
-        for (const Assignment &m : mods) {
-            if (m.target != param || m.bypassed || !sourceOn(m.source))
-                continue;
+        forEachMod(param, [&](const Assignment &m) {
+            if (m.bypassed || !sourceOn(m.source))
+                return;
             const auto [down, up] = modReach(m.source, m.amount);
             low += down;
             high += up;
-        }
+        });
         return std::pair{std::clamp(low, 0.0, 1.0), std::clamp(high, 0.0, 1.0)};
     };
     const auto [cutoffLow, cutoffHigh] = reach(cutoffParam, cutoff);
@@ -5648,15 +5918,21 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
     const double sustain = value(e.sustain);
     const EnvShape s = envShape(r, e, [this](int index) { return value(index); }, envScale(env));
     const float height = s.bottom - s.top;
-    std::vector<Point> points{s.p0};
-    for (int segment = 0; segment < 3; ++segment) {
-        if (segment == 1)
-            points.push_back(s.ph); // the end of the hold
-        if (segment == 2)
-            points.push_back(s.p3); // the end of the sustain hold
-        for (int i = 1; i <= 24; ++i)
-            points.push_back(envSegmentPoint(s, segment, i / 24.0, value(e.curve(segment)), sustain));
-    }
+    std::vector<double> key = curveKey(Curve::Envelope, r);
+    key.insert(key.end(), {s.scale, value(e.attack), value(e.hold), value(e.decay), sustain, value(e.release),
+                           value(e.curve(0)), value(e.curve(1)), value(e.curve(2))});
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points{s.p0};
+        for (int segment = 0; segment < 3; ++segment) {
+            if (segment == 1)
+                points.push_back(s.ph); // the end of the hold
+            if (segment == 2)
+                points.push_back(s.p3); // the end of the sustain hold
+            for (int i = 1; i <= 24; ++i)
+                points.push_back(envSegmentPoint(s, segment, i / 24.0, value(e.curve(segment)), sustain));
+        }
+        return points;
+    });
 
     std::vector<Point> area = points;
     area.push_back({s.p4.x, s.bottom});
@@ -5721,24 +5997,36 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     auto at = [&](double x, double y) {
         points.push_back({inner.x + static_cast<float>(x) * inner.w, inner.center().y - static_cast<float>(y) * inner.h * 0.5f});
     };
-    if (shape == LfoShape::Custom) {
-        auto get = [this](int index) { return value(index); };
-        for (int i = 0; i <= 96; ++i)
-            at(i / 96.0, shapeValue(get, lfo, i / 96.0));
-    } else if (shape == LfoShape::Random && !randomSweep(lfo)) {
-        // Four cycles of a made-up run with this LFO's chaos and smoothing, until it runs.
-        const double smooth = value(paramIndex(lfo, SourceParam::RandomSmooth));
-        const double chaos = value(paramIndex(lfo, SourceParam::RandomChaos));
-        uint32_t rng = 0x2545F491u;
-        double from = 0.3;
-        for (int cycle = 0; cycle < kRandomCycles; ++cycle) {
-            const double to = randomStep(from, chaos, rng);
-            for (int i = 0; i <= 24; ++i)
-                at((cycle + i / 24.0) / kRandomCycles, randomGlide(from, to, i / 24.0, smooth));
-            from = to;
-        }
-    } else if (shape != LfoShape::Random) {
-        points = lfoPoints(shape, inner);
+    if (shape != LfoShape::Random || !randomSweep(lfo)) {
+        std::vector<double> key = curveKey(Curve::Lfo, inner);
+        key.push_back(static_cast<double>(shape));
+        if (shape == LfoShape::Custom)
+            keyShape(key, shapeCountIndex(lfo));
+        if (shape == LfoShape::Random)
+            key.insert(key.end(), {value(paramIndex(lfo, SourceParam::RandomSmooth)),
+                                   value(paramIndex(lfo, SourceParam::RandomChaos))});
+        points = curves_.get(key, [&] {
+            if (shape == LfoShape::Custom) {
+                auto get = [this](int index) { return value(index); };
+                for (int i = 0; i <= 96; ++i)
+                    at(i / 96.0, shapeValue(get, lfo, i / 96.0));
+            } else if (shape == LfoShape::Random) {
+                // Four cycles of a made-up run with this LFO's chaos and smoothing, until it runs.
+                const double smooth = value(paramIndex(lfo, SourceParam::RandomSmooth));
+                const double chaos = value(paramIndex(lfo, SourceParam::RandomChaos));
+                uint32_t rng = 0x2545F491u;
+                double from = 0.3;
+                for (int cycle = 0; cycle < kRandomCycles; ++cycle) {
+                    const double to = randomStep(from, chaos, rng);
+                    for (int i = 0; i <= 24; ++i)
+                        at((cycle + i / 24.0) / kRandomCycles, randomGlide(from, to, i / 24.0, smooth));
+                    from = to;
+                }
+            } else {
+                points = lfoPoints(shape, inner);
+            }
+            return points;
+        });
     }
     const Color color = kSourceColors[lfo];
     plotLine(c, points.data(), points.size(), color, 2.0f);
@@ -5899,7 +6187,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
         c.strokeCircle(center, kNodeRadius + 4.5f, kText.alpha(0.5f), 1.0f);
     // Wave glyph above the letter, ratio below it.
     const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
-    const std::vector<Point> glyph = wavePoints(wave, {center.x - 6.0f, center.y - 16.0f, 12.0f, 5.0f});
+    const std::vector<Point> glyph = waveIcon(wave, {center.x - 6.0f, center.y - 16.0f, 12.0f, 5.0f});
     c.polyline(glyph.data(), glyph.size(), kDim, 1.0f);
     c.text({center.x - 20.0f, center.y - 11.0f, 40.0f, 20.0f}, kNodeNames[op], 15.0f, kText, Align::Center, true);
     char ratio[16];
@@ -5920,12 +6208,12 @@ void View::paintNode(Canvas &c, const Widget &w) {
     c.text({center.x - 22.0f, center.y + 5.0f, 44.0f, 14.0f}, ratio, 10.0f, kDim); // inside the ring
 }
 
-void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment> &mods) {
+void View::paintWidget(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w);
     const bool active = isActive(w);
     switch (w.kind) {
     case Kind::Knob:
-        paintKnob(c, w, mods);
+        paintKnob(c, w);
         break;
     case Kind::Node:
         paintNode(c, w);
@@ -6021,7 +6309,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const bool custom = lfo && static_cast<LfoShape>(w.b) == LfoShape::Custom;
         const Rect icon = w.rect.inset(custom ? 6.5f : (lfo ? 8.0f : 7.0f));
         const std::vector<Point> points =
-            lfo ? lfoPoints(static_cast<LfoShape>(w.b), icon) : wavePoints(static_cast<OpWave>(w.b), icon);
+            lfo ? shapeIcon(static_cast<LfoShape>(w.b), icon) : waveIcon(static_cast<OpWave>(w.b), icon);
         c.polyline(points.data(), points.size(), selected ? color : kDim, 1.5f);
         if (custom)
             customShapeDots(c, icon, selected ? color : kDim);
@@ -6064,7 +6352,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         if (w.kind == Kind::WireLabel && w.a == w.b)
             text = trf(Str::CaptionFeedback, {text});
         c.text({w.rect.x, w.rect.y - 2.0f, w.rect.w, w.rect.h}, text, 10.5f, focused ? kText : kDim);
-        paintModRange(c, {w.rect.x + 7.0f, w.rect.bottom() - 4.0f, w.rect.w - 14.0f, 1.5f}, w.param, mods);
+        paintModRange(c, {w.rect.x + 7.0f, w.rect.bottom() - 4.0f, w.rect.w - 14.0f, 1.5f}, w.param);
         break;
     }
     case Kind::GridCell: {
@@ -6087,7 +6375,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         const bool shown = amount > 0.0 || wired(w.param); // a route kept at 0 % shows its 0, dimmed
         c.text(w.rect, shown ? text : "\xC2\xB7", 12.0f,
                off ? kFaint : (amount > 0.0 ? kText : (shown ? kDim : kFaint)), Align::Center, amount > 0.0 && !off);
-        paintModRange(c, {w.rect.x + 4.0f, w.rect.bottom() - 5.0f, w.rect.w - 8.0f, 1.5f}, w.param, mods);
+        paintModRange(c, {w.rect.x + 4.0f, w.rect.bottom() - 5.0f, w.rect.w - 8.0f, 1.5f}, w.param);
         break;
     }
     case Kind::SourceAdd:
@@ -6151,7 +6439,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         c.line({mid, cy - 4.0f}, {mid, cy + 4.0f}, kFaint, 1.0f);
         c.fillCircle({x, cy}, hovered || active ? 5.0f : 4.0f, color);
         // Another source modulating this depth shows how far it takes it, under the bar.
-        paintModRange(c, {w.rect.x, cy + 6.0f, w.rect.w, 1.5f}, w.param, mods);
+        paintModRange(c, {w.rect.x, cy + 6.0f, w.rect.w, 1.5f}, w.param);
         char text[16];
         std::snprintf(text, sizeof(text), "%+.0f%%", amount * 100.0);
         c.text({w.rect.right() + 2.0f, w.rect.y, 38.0f, w.rect.h}, text, 10.5f, kDim, Align::Right);
@@ -6183,7 +6471,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         if (selected) {
             c.strokeRect(w.rect, kAccent, 1.0f, 6.0f);
             const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
-            const std::vector<Point> points = wavePoints(wave, icon);
+            const std::vector<Point> points = waveIcon(wave, icon);
             c.polyline(points.data(), points.size(), kAccent, 1.5f);
             const Point m{w.rect.right() - 8.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.0f, m.y - 1.5f}, {m.x, m.y + 1.5f}, {m.x + 3.0f, m.y - 1.5f}};
@@ -6205,7 +6493,7 @@ void View::paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment>
         if (hovered || selected)
             c.fillRect(w.rect, kAccent.alpha(hovered ? 0.18f : 0.1f), 5.0f);
         const Rect icon{w.rect.x + 8.0f, w.rect.y + 7.0f, 22.0f, w.rect.h - 14.0f};
-        const std::vector<Point> points = wavePoints(static_cast<OpWave>(w.b), icon);
+        const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), icon);
         c.polyline(points.data(), points.size(), selected ? kAccent : kDim, 1.5f);
         c.text({icon.right() + 10.0f, w.rect.y, w.rect.right() - icon.right() - 14.0f, w.rect.h},
                waveName(static_cast<OpWave>(w.b)), 11.0f, hovered || selected ? kText : kDim, Align::Left, selected);
@@ -6763,7 +7051,7 @@ std::string View::modRangeText(int source, int slot) const {
     return text;
 }
 
-void View::paintKnob(Canvas &c, const Widget &w, const std::vector<Assignment> &mods) {
+void View::paintKnob(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool focused = isHovered(w) || isActive(w);
     const Point center = w.compact ? Point{w.rect.x + 18.0f, w.rect.y + 20.0f}
@@ -6784,19 +7072,17 @@ void View::paintKnob(Canvas &c, const Widget &w, const std::vector<Assignment> &
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
     // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
     // mouse is wider, over the others.
-    const Assignment *focus = nullptr;
-    for (const Assignment &m : mods) {
-        if (m.target != w.param)
-            continue;
+    std::optional<Assignment> focus;
+    forEachMod(w.param, [&](const Assignment &m) {
         if (modFocused(m)) {
-            focus = &m;
-            continue;
+            focus = m;
+            return;
         }
         const bool both = sourceBipolar(m.source);
         const auto [down, up] = modReach(m.source, m.amount);
         const float alpha = (both ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
         c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha), 2.5f);
-    }
+    });
     if (focus) {
         const auto [down, up] = modReach(focus->source, focus->amount);
         const float alpha = sourceOn(focus->source) && !focus->bypassed ? 1.0f : 0.4f;
@@ -7278,11 +7564,20 @@ void View::applyDrag(Point p) {
     }
 }
 
-void View::mouseMove(Point p, Modifiers mods) {
+bool View::mouseMove(Point p, Modifiers mods) {
     hoverPoint_ = p;
     if (drag_.kind == DragKind::None) {
-        hover_ = hitTest(p);
-        return;
+        // The widget under the mouse, all of it (a tooltip goes under its rect), or for the partial editor's bars,
+        // where along them the mouse is: its caption names the partial under it.
+        std::optional<Widget> hit = hitTest(p);
+        auto same = [](const Widget &a, const Widget &b) {
+            return a.same(b) && a.label == b.label && a.compact == b.compact &&
+                   std::memcmp(&a.rect, &b.rect, sizeof(Rect)) == 0 && std::memcmp(&a.clip, &b.clip, sizeof(Rect)) == 0;
+        };
+        const bool changed = hit.has_value() != hover_.has_value() || (hit && !same(*hit, *hover_)) ||
+                             (hit && hit->kind == Kind::PartialArea);
+        hover_ = std::move(hit);
+        return changed;
     }
     if ((drag_.kind == DragKind::Value || drag_.kind == DragKind::ModWheel || drag_.kind == DragKind::Glow) &&
         mods.shift != drag_.fine) {
@@ -7296,6 +7591,7 @@ void View::mouseMove(Point p, Modifiers mods) {
     if (std::hypot(p.x - drag_.start.x, p.y - drag_.start.y) > 3.0f)
         drag_.moved = true;
     applyDrag(p);
+    return true;
 }
 
 void View::mouseDown(Point p, Modifiers mods) {

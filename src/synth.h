@@ -10,11 +10,37 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <span>
 #include <vector>
 
 namespace fmvibe {
+
+// What `make()` gave for the inputs it was last called with, made again only when they change, bit for bit: for
+// settings a voice works out from its params each block, whose exp, pow and tan calls cost more than looking.
+template <class T, size_t N>
+class Memo {
+public:
+    template <class Make>
+    const T &get(const std::array<double, N> &inputs, const Make &make) {
+        if (std::memcmp(inputs.data(), inputs_.data(), sizeof inputs) != 0) {
+            inputs_ = inputs;
+            value_ = make();
+        }
+        return value_;
+    }
+
+private:
+    std::array<double, N> inputs_ = [] { // none yet: params hold numbers, so the first get() makes it
+        std::array<double, N> none;
+        none.fill(std::numeric_limits<double>::quiet_NaN());
+        return none;
+    }();
+    T value_{};
+};
 
 // Identifies a note the way the host sent it, so the plugin can report its end.
 struct NoteRef {
@@ -135,12 +161,19 @@ public:
     void clearEndedNotes() { ended_.clear(); }
 
 private:
+    // An operator's unison copies: each one's phase increment and stereo gains (see renderBlock()).
+    struct UnisonCopies {
+        std::array<double, kMaxUnison> inc, gainL, gainR;
+    };
+
     struct Operator {
         std::array<double, kMaxUnison> phases{}; // in cycles, one per unison copy
         double amp = 0.0;     // velocity, ramped per block
         double out = 0.0;     // latest mono output sample (what other operators hear)
         double prevOut = 0.0; // the one before, for feedback smoothing
         Envelope env;
+        Memo<EnvRates, 8> rates; // its envelope's, from its params
+        Memo<UnisonCopies, 4> unison; // its copies, from its pitch and its unison params
         std::array<NoiseColor::State, 2> noise{}; // the Noise wave's color filters: middle and sides
     };
 
@@ -204,6 +237,9 @@ private:
         // Each source place has both, for whichever type it holds.
         std::array<Lfo, kMaxSources> lfos{};
         std::array<Envelope, kMaxSources> modEnvs{};
+        std::array<Memo<EnvRates, 8>, kMaxSources> modEnvRates{};
+        std::array<Memo<FilterSettings, 7>, kFilters> filterSettings{};
+        std::array<Memo<ShaperSettings, 6>, kShapers> shaperSettings{};
         std::array<std::array<Filter, 2>, kFilters> filters{}; // [filter][channel]
         std::array<double, kFilters> filterOut{};               // latest mono filter output (what operators hear)
         std::array<std::array<double, 2>, kFilters> filterLast{}; // latest filter output per channel (what shapers hear)
@@ -212,6 +248,9 @@ private:
         // Channel 1 of the filters and shapers stood still through a block without stereo spread: it takes channel 0's
         // state before it runs again, rather than carrying on from where it stopped (a comb would ring again).
         bool rightStale = false;
+        // The comb lines (see combLine()) that still hold an earlier note's sound: a comb clears them before it first
+        // reads them, rather than every note clearing them, comb or not.
+        std::array<std::array<bool, 2>, kFilters> combDirty{};
         std::array<double, kMaxSources> sourceValues{};
         // Slot modulation of the latest block. Sources read their own params (rates,
         // times, amounts) with these applied, so LFO 1 can modulate LFO 2's rate
@@ -219,6 +258,10 @@ private:
         std::array<SlotMod, (kMaxSources + 1) * kSlots> slotMods{};
         int slotModCount = 0;
         std::array<double, kVoiceParamCount> mod{}; // per-voice host modulation
+        // The params whose host modulation was set since the note started (to 0 too), each once: the others' is 0.
+        std::array<uint16_t, kVoiceParamCount> modded{};
+        int moddedCount = 0;
+        std::bitset<kVoiceParamCount> modSet;
     };
 
     struct HeldNote {
@@ -226,6 +269,9 @@ private:
         double velocity;
     };
 
+    // Sets a voice's host modulation of param `index`, and forgets all of it.
+    static void setVoiceMod(Voice &v, int index, double amount);
+    static void clearVoiceMods(Voice &v);
     Voice &allocateVoice();
     // The voice to steal at the limit: one already released if possible, then the quietest, then the oldest.
     Voice *stealable();
@@ -280,6 +326,22 @@ private:
     double hostValue(const ParamValues &params, int index) const {
         return std::clamp(params[index] + globalMod_[index], table_[index].min, table_[index].max);
     }
+    // The params the voices read, with the host's modulation for every voice and the macros' added: as summed
+    // (voiceBase_), and in their ranges (voiceClamped_). None of it changes during a render(), so it is worked out
+    // once there, when the first voice needs it, and each voice works out again only the params its own modulation
+    // moves (see renderBlock()). On the heap, like macroMod_.
+    std::vector<double> voiceBase_ = std::vector<double>(kVoiceParamCount, 0.0);
+    std::vector<double> voiceClamped_ = std::vector<double>(kVoiceParamCount, 0.0);
+    bool voiceBaseReady_ = false;
+    void shareVoiceParams(const ParamValues &params);
+    // The modulated params' ranges, apart from the rest of their table entries, so loops over them read only these.
+    std::vector<double> paramMin_ = std::vector<double>(kModulatedCount, 0.0);
+    std::vector<double> paramMax_ = std::vector<double>(kModulatedCount, 0.0);
+    // renderBlock()'s scratch for adding up the slots that modulate a param: each pass of it has a number, and a
+    // param's sum is valid in the pass whose number it has.
+    std::vector<double> slotSum_ = std::vector<double>(kVoiceParamCount, 0.0);
+    std::vector<uint32_t> slotPassOf_ = std::vector<uint32_t>(kVoiceParamCount, 0u);
+    uint32_t slotPass_ = 0;
     // Whether one of a voice's mod envelopes that modulates something (switched on, with a target) is still going.
     bool modEnvReleasing(const Voice &v, const ParamValues &params) const;
     // The clocks free LFOs follow instead of their own: they run at the newest
@@ -302,6 +364,11 @@ private:
     Analyzer analyzer_;
     Effects effects_;
     ParamValues fxParams_{}; // effect params with the newest voice's modulation, per control block
+    // The effect params as summed for this render() (see render()), from kFxBase on, and those the newest voice's
+    // slots moved in the last control block.
+    std::vector<double> fxBase_ = std::vector<double>(kShapeBase - kFxBase, 0.0);
+    std::array<int, (kMaxSources + 1) * kSlots> fxMoved_{};
+    int fxMovedCount_ = 0;
     double fxPitch_ = 60.0;  // the newest voice's pitch, for the effects' key tracking; kept once it has ended
     double volumeGain_ = -1.0; // Volume's gain after the effects, gliding toward the knob (-1: not yet set)
     double volumeGlide_ = 0.0;

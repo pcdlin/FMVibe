@@ -14,9 +14,13 @@ namespace fmvibe::gui {
 
 namespace {
 
-// Colors cross as one 0xRRGGBBAA number; the JS side caches the style string for each.
+// Colors cross as one 0xRRGGBBAA number; the JS side caches the style string for each. Each channel is rounded as
+// std::lround() would, halves up, without its call: in double, adding the half to a float is exact.
 uint32_t rgba(Color c) {
-    auto byte = [](float v) { return static_cast<uint32_t>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f)); };
+    auto byte = [](float v) {
+        const float scaled = std::clamp(v, 0.0f, 1.0f) * 255.0f;
+        return scaled > 0.0f ? static_cast<uint32_t>(static_cast<double>(scaled) + 0.5) : 0u;
+    };
     return byte(c.r) << 24 | byte(c.g) << 16 | byte(c.b) << 8 | byte(c.a);
 }
 
@@ -49,6 +53,14 @@ EM_JS(void, js_curve, (float x1, float y1, float cx, float cy, float x2, float y
 // Points are (x, y) float pairs in the module's memory.
 EM_JS(void, js_polyline, (const float *points, int count, uint32_t color, float width, int dashed),
       { Module.fmv2d.polyline(HEAPF32.subarray(points >> 2, (points >> 2) + 2 * count), color, width, dashed != 0); });
+// The same points stroked up to four times over (`strokes` of the colors and widths, in turn), in one crossing.
+EM_JS(void, js_polyline_strokes,
+      (const float *points, int count, int strokes, uint32_t color0, float width0, uint32_t color1, float width1,
+       uint32_t color2, float width2, uint32_t color3, float width3, int dashed),
+      {
+          Module.fmv2d.polylineStrokes(HEAPF32.subarray(points >> 2, (points >> 2) + 2 * count), strokes, color0,
+                                       width0, color1, width1, color2, width2, color3, width3, dashed != 0);
+      });
 EM_JS(void, js_fill_polygon, (const float *points, int count, uint32_t color),
       { Module.fmv2d.fillPolygon(HEAPF32.subarray(points >> 2, (points >> 2) + 2 * count), color); });
 EM_JS(void, js_text,
@@ -118,6 +130,19 @@ void Canvas::polyline(const Point *points, size_t count, Color c, float width, b
     static_assert(sizeof(Point) == 2 * sizeof(float));
     if (count >= 2)
         js_polyline(&points[0].x, static_cast<int>(count), rgba(c), width, dashed);
+}
+
+void Canvas::polylineStrokes(const Point *points, size_t count, const Color *colors, const float *widths,
+                             size_t strokes, bool dashed) {
+    if (count < 2)
+        return;
+    for (size_t first = 0; first < strokes; first += 4) { // four strokes a crossing
+        const size_t n = std::min<size_t>(strokes - first, 4);
+        auto color = [&](size_t i) { return i < n ? rgba(colors[first + i]) : 0u; };
+        auto width = [&](size_t i) { return i < n ? widths[first + i] : 0.0f; };
+        js_polyline_strokes(&points[0].x, static_cast<int>(count), static_cast<int>(n), color(0), width(0), color(1),
+                            width(1), color(2), width(2), color(3), width(3), dashed);
+    }
 }
 
 void Canvas::fillPolygon(const Point *points, size_t count, Color c) {

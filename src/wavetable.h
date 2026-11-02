@@ -53,6 +53,23 @@ public:
     // From the levels and phases of partials 1 to kPartials, alternating (a level of 0 leaves a partial out). True
     // if they changed.
     bool update(const double *partials);
+    // The same from the first `count` partials' `level(k)` and `phase(k)`, the rest silent: looked over first, and
+    // only copied out when they changed, since the synth asks for it every time it renders.
+    template <class Level, class Phase>
+    bool update(int count, const Level &level, const Phase &phase) {
+        bool same = true;
+        for (int k = 0; k < kPartials && same; ++k)
+            same = partials_[2 * k] == (k < count ? level(k) : 0.0) &&
+                   partials_[2 * k + 1] == (k < count ? phase(k) : 0.0);
+        if (same)
+            return false;
+        std::array<double, 2 * kPartials> partials{};
+        for (int k = 0; k < count; ++k) {
+            partials[2 * k] = level(k);
+            partials[2 * k + 1] = phase(k);
+        }
+        return update(partials.data());
+    }
     const float *table(double increment) const {
         return &data_[static_cast<size_t>(WaveTables::level(increment)) * (WaveTables::kSize + 1)];
     }
