@@ -535,36 +535,64 @@ constexpr int fxSlotOf(int index) { return index >= kFxBase && index < kShapeBas
 constexpr FxParam fxFieldOf(int index) {
     return fxSlotOf(index) < 0 ? FxParam::Count : static_cast<FxParam>((index - kFxBase) % kFxParamCount);
 }
-// The effect type a slot field belongs to; None for the fields every slot uses (Type, Enabled).
+// The effect type each slot field belongs to, a run of fields a line, in FxParam's order: None for the fields every
+// slot uses (Type, Enabled). A field added to FxParam needs a line here too (fxFieldRunsCoverAll() checks).
+struct FxFieldRun {
+    FxParam first, last;
+    FxType type;
+};
+constexpr FxFieldRun kFxFieldRuns[] = {
+    {FxParam::Type, FxParam::Enabled, FxType::None},
+    {FxParam::ShaperMode, FxParam::ShaperMix, FxType::Shaper},
+    {FxParam::DelayTimeL, FxParam::DelayMix, FxType::Delay},
+    {FxParam::EqLow, FxParam::EqHigh, FxType::Eq},
+    {FxParam::PeqFreq1, FxParam::PeqQ2, FxType::ParamEq},
+    {FxParam::FilterType, FxParam::FilterSlope, FxType::Filter},
+    {FxParam::CompThreshold, FxParam::CompMix, FxType::Compressor},
+    {FxParam::McLowFreq, FxParam::McMix, FxType::MultiComp},
+    {FxParam::DelayLink, FxParam::DelayLink, FxType::Delay},
+    {FxParam::McOutput, FxParam::McOutput, FxType::MultiComp},
+    {FxParam::ReverbSize, FxParam::ReverbMix, FxType::Reverb},
+    {FxParam::PhaserRate, FxParam::PhaserMix, FxType::Phaser},
+    {FxParam::FlangerRate, FxParam::FlangerMix, FxType::Flanger},
+    {FxParam::ShiftAmount, FxParam::ShiftMix, FxType::FreqShifter},
+    {FxParam::PeqType1, FxParam::PeqType2, FxType::ParamEq},
+    {FxParam::McLink, FxParam::McLink, FxType::MultiComp},
+    {FxParam::ShaperLink, FxParam::ShaperLink, FxType::Shaper},
+    {FxParam::ReverbType, FxParam::ReverbType, FxType::Reverb},
+    {FxParam::PhaserStereo, FxParam::PhaserStereo, FxType::Phaser},
+    {FxParam::DisperserFreq, FxParam::DisperserMix, FxType::Disperser},
+    {FxParam::WidenerSize, FxParam::WidenerMix, FxType::Widener},
+    {FxParam::PhaserSync, FxParam::PhaserDivision, FxType::Phaser},
+    {FxParam::FlangerSync, FxParam::FlangerDivision, FxType::Flanger},
+    {FxParam::FilterKeyTrack, FxParam::FilterKeyTrack, FxType::Filter},
+    {FxParam::ShiftRange, FxParam::ShiftRange, FxType::FreqShifter},
+    {FxParam::ReverbShimmerPitch, FxParam::ReverbShimmer, FxType::Reverb},
+    {FxParam::FlangerStereo, FxParam::FlangerStereo, FxType::Flanger},
+    {FxParam::ShaperSymmetric, FxParam::ShaperSymmetric, FxType::Shaper},
+};
+// Whether the runs take every field once, in order, up to the last.
+constexpr bool fxFieldRunsCoverAll() {
+    int next = 0;
+    for (const FxFieldRun &run : kFxFieldRuns) {
+        if (static_cast<int>(run.first) != next || run.last < run.first)
+            return false;
+        next = static_cast<int>(run.last) + 1;
+    }
+    return next == kFxParamCount;
+}
+static_assert(fxFieldRunsCoverAll(), "every FxParam field needs its effect type in kFxFieldRuns, in order");
+// The runs spread out, a type per field.
+constexpr std::array<FxType, kFxParamCount> kFxFieldTypes = [] {
+    std::array<FxType, kFxParamCount> types{};
+    for (const FxFieldRun &run : kFxFieldRuns)
+        for (int f = static_cast<int>(run.first); f <= static_cast<int>(run.last); ++f)
+            types[static_cast<size_t>(f)] = run.type;
+    return types;
+}();
 constexpr FxType fxTypeOfField(FxParam f) {
-    return f == FxParam::PhaserSync || f == FxParam::PhaserDivision     ? FxType::Phaser
-           : f == FxParam::FlangerSync || f == FxParam::FlangerDivision ? FxType::Flanger
-           : f == FxParam::FlangerStereo                                ? FxType::Flanger
-           : f == FxParam::FilterKeyTrack                               ? FxType::Filter
-           : f == FxParam::ShiftRange                                   ? FxType::FreqShifter
-           : f == FxParam::ReverbShimmerPitch || f == FxParam::ReverbShimmer ? FxType::Reverb
-           : f >= FxParam::WidenerSize && f <= FxParam::WidenerMix     ? FxType::Widener
-           : f >= FxParam::DisperserFreq && f <= FxParam::DisperserMix ? FxType::Disperser
-           : f == FxParam::PhaserStereo                                 ? FxType::Phaser
-           : f == FxParam::ReverbType                                   ? FxType::Reverb
-           : f == FxParam::ShaperLink || f == FxParam::ShaperSymmetric  ? FxType::Shaper
-           : f == FxParam::McLink                                       ? FxType::MultiComp
-           : f == FxParam::PeqType1 || f == FxParam::PeqType2           ? FxType::ParamEq
-           : f == FxParam::DelayLink                                    ? FxType::Delay
-           : f == FxParam::McOutput                                     ? FxType::MultiComp
-           : f >= FxParam::ReverbSize && f < FxParam::PhaserRate        ? FxType::Reverb
-           : f >= FxParam::PhaserRate && f < FxParam::FlangerRate       ? FxType::Phaser
-           : f >= FxParam::FlangerRate && f < FxParam::ShiftAmount      ? FxType::Flanger
-           : f >= FxParam::ShiftAmount && f <= FxParam::ShiftMix        ? FxType::FreqShifter
-           : f < FxParam::ShaperMode      ? FxType::None
-           : f < FxParam::DelayTimeL      ? FxType::Shaper
-           : f < FxParam::EqLow           ? FxType::Delay
-           : f < FxParam::PeqFreq1        ? FxType::Eq
-           : f < FxParam::FilterType      ? FxType::ParamEq
-           : f < FxParam::CompThreshold   ? FxType::Filter
-           : f < FxParam::McLowFreq       ? FxType::Compressor
-           : f < FxParam::Count           ? FxType::MultiComp
-                                          : FxType::None;
+    const int field = static_cast<int>(f);
+    return field >= 0 && field < kFxParamCount ? kFxFieldTypes[static_cast<size_t>(field)] : FxType::None;
 }
 inline FxType fxType(double value) {
     const long t = std::lround(value);
@@ -842,6 +870,127 @@ static_assert(idOfIndex(shapeFieldIndex(clipCurveCountIndex(1), 15, PointField::
               idOfIndex(shapeFieldIndex(clipCurveCountIndex(1), 16, PointField::X)) == 17200 &&
               idOfIndex(shapeFieldIndex(shaperCurveCountIndex(1), 15, PointField::Curve)) == 13098 &&
               idOfIndex(shapeFieldIndex(shaperCurveCountIndex(1), 16, PointField::X)) == 21200);
+
+// --- Pinned ids. Projects, automation and preset files store params by id, so a released id never changes. The
+// round trip above only checks that the layout holds together; these pin each section's ids as they stand: its
+// first field and its last one so far, at its first and last block. If one fails, a change has renumbered stored
+// params (a count below changed, or a field went in before others or moved): undo it, and append new fields at the
+// end of their enum instead; a section out of room goes on in a later id range, as the effects' fields past the
+// 80th do. Appending a field leaves these as they are.
+
+// The counts the layout comes from. Each one moves the fields laid out after it: OpParam's ShaperSends after its
+// Sends (kFilters), ShaperParam's Mods and Out (kFilters, kOps), the fields after the slots of sources, macros, the
+// note source and the mod wheel (kSlots), and blocks past the room their section has.
+static_assert(kOps == 6 && kMacros == 8 && kMaxSources == 16 && kSlots == 16 && kFirstSlots == 4 && kFilters == 2 &&
+                  kShapers == 2 && kFxSlots == 16 && kMaxShapePoints == 64 && kMaxNotePoints == 16 &&
+                  kPartials == 64 && kFirstPartials == 32,
+              "a count the param ids are laid out by changed: see Pinned ids");
+static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(paramIndex(GlobalParam::ModWheel)) == 11,
+              "global param ids moved");
+static_assert(idOfIndex(paramIndex(0, OpParam::Coarse)) == 100 && idOfIndex(paramIndex(0, OpParam::Transpose)) == 120 &&
+                  idOfIndex(sendIndex(0, 0)) == 121 && idOfIndex(shaperSendIndex(0, 0)) == 123 &&
+                  idOfIndex(shaperSendIndex(kOps - 1, kShapers - 1)) == 374,
+              "operator param ids moved");
+static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
+              "matrix param ids moved");
+static_assert(idOfIndex(filterModIndex(0, 0)) == 500 && idOfIndex(filterModIndex(kFilters - 1, kOps - 1)) == 515,
+              "filter modulation param ids moved");
+static_assert(idOfIndex(paramIndex(0, FilterParam::Type)) == 800 &&
+                  idOfIndex(paramIndex(0, FilterParam::Slope)) == 807 && idOfIndex(filterShaperIndex(0, 0)) == 808 &&
+                  idOfIndex(filterShaperIndex(kFilters - 1, kShapers - 1)) == 829,
+              "filter param ids moved");
+static_assert(kFilterLinks == 1 && idOfIndex(filterLinkIndex(0, 1)) == 900, "filter link param ids moved");
+static_assert(idOfIndex(paramIndex(0, ShaperParam::Enabled)) == 600 && idOfIndex(shaperFilterIndex(0, 0)) == 606 &&
+                  idOfIndex(shaperModIndex(0, 0)) == 608 && idOfIndex(paramIndex(0, ShaperParam::Out)) == 614 &&
+                  idOfIndex(paramIndex(kShapers - 1, ShaperParam::Symmetric)) == 665,
+              "shaper param ids moved");
+static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
+                  idOfIndex(slotAmountIndex(kMaxSources - 1, kFirstSlots - 1)) == 3409 &&
+                  idOfIndex(paramIndex(0, SourceParam::Shape)) == 2810 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::EnvBipolar)) == 3427 &&
+                  idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
+                  idOfIndex(slotAmountIndex(kMaxSources - 1, kSlots - 1)) == 6473,
+              "source param ids moved");
+static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ReverbType)) == 2679 &&
+                  idOfIndex(paramIndex(0, FxParam::PhaserStereo)) == 12000 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperSymmetric)) == 12318,
+              "effect slot param ids moved");
+static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
+                  idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
+                  idOfIndex(shapePointIndex(0, 33, PointField::X)) == 15000 &&
+                  idOfIndex(shapePointIndex(kMaxSources - 1, kMaxShapePoints - 1, PointField::Curve)) == 16592,
+              "freeform LFO shape param ids moved");
+static_assert(idOfIndex(clipCurveCountIndex(0)) == 7000 &&
+                  idOfIndex(shapeFieldIndex(clipCurveCountIndex(kFxSlots - 1), 15, PointField::Curve)) == 7798 &&
+                  idOfIndex(shapeFieldIndex(clipCurveCountIndex(0), 16, PointField::X)) == 17000 &&
+                  idOfIndex(shapeFieldIndex(clipCurveCountIndex(kFxSlots - 1), kMaxShapePoints - 1,
+                                            PointField::Curve)) == 20143,
+              "shaper effect curve param ids moved");
+static_assert(idOfIndex(slotBypassIndex(0, 0)) == 9000 &&
+                  idOfIndex(slotBypassIndex(kMaxSources - 1, kSlots - 1)) == 9315,
+              "slot bypass param ids moved");
+static_assert(idOfIndex(partialLevelIndex(0, 0)) == 10000 &&
+                  idOfIndex(partialPhaseIndex(kOps - 1, kFirstPartials - 1)) == 10563,
+              "Custom wave partial param ids moved");
+static_assert(idOfIndex(paramIndex(0, MacroParam::Value)) == 11000 &&
+                  idOfIndex(paramIndex(kMacros - 1, MacroParam::Bipolar)) == 11313,
+              "macro param ids moved");
+static_assert(idOfIndex(paramIndex(NoteParam::Slots)) == 11400 && idOfIndex(paramIndex(NoteParam::Low)) == 11432 &&
+                  idOfIndex(paramIndex(NoteParam::Curve)) == 11434 &&
+                  idOfIndex(shapeFieldIndex(paramIndex(NoteParam::Curve), kMaxNotePoints - 1, PointField::Curve)) ==
+                      11482 &&
+                  idOfIndex(paramIndex(NoteParam::Bipolar)) == 11483,
+              "note source param ids moved");
+static_assert(idOfIndex(paramIndex(WheelParam::Slots)) == 11500 && idOfIndex(paramIndex(WheelParam::Bipolar)) == 11532,
+              "mod wheel param ids moved");
+static_assert(idOfIndex(shaperCurveCountIndex(0)) == 13000 &&
+                  idOfIndex(shapeFieldIndex(shaperCurveCountIndex(kShapers - 1), 15, PointField::Curve)) == 13098 &&
+                  idOfIndex(shapeFieldIndex(shaperCurveCountIndex(0), 16, PointField::X)) == 21000 &&
+                  idOfIndex(shapeFieldIndex(shaperCurveCountIndex(kShapers - 1), kMaxShapePoints - 1,
+                                            PointField::Curve)) == 21343,
+              "voice shaper curve param ids moved");
+static_assert(idOfIndex(partialCountIndex(0)) == 14000 && idOfIndex(partialCountIndex(kOps - 1)) == 14005 &&
+                  idOfIndex(partialLevelIndex(0, kFirstPartials)) == 14100 &&
+                  idOfIndex(partialPhaseIndex(kOps - 1, kPartials - 1)) == 14663,
+              "Custom wave partial count and later partial param ids moved");
+
+// Waves, filter types, effect types, source types, LFO shapes, shaper curves, EQ band shapes and reverb algorithms
+// are stored by number too: each member keeps its number. Append a new one just before Count, and here.
+template <class E>
+constexpr bool numberedInOrder(std::initializer_list<E> members) { // each member's number is its place in the list
+    int place = 0;
+    for (E member : members)
+        if (static_cast<int>(member) != place++)
+            return false;
+    return true;
+}
+static_assert(numberedInOrder({OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWave::Square, OpWave::Pulse,
+                               OpWave::HalfSine, OpWave::AbsSine, OpWave::Noise, OpWave::Custom, OpWave::AltSine,
+                               OpWave::Organ, OpWave::Vowel, OpWave::Count}),
+              "OpWave is stored by number: only append");
+static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
+                               FilterType::Comb, FilterType::Count}),
+              "FilterType is stored by number: only append");
+static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxType::Eq, FxType::ParamEq,
+                               FxType::Filter, FxType::Compressor, FxType::MultiComp, FxType::Reverb, FxType::Phaser,
+                               FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
+                               FxType::Count}),
+              "FxType is stored by number: only append");
+static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Count}),
+              "SourceType is stored by number: only append");
+static_assert(numberedInOrder({LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square, LfoShape::Random,
+                               LfoShape::Custom, LfoShape::Count}),
+              "LfoShape is stored by number: only append");
+static_assert(numberedInOrder({ClipMode::Hard, ClipMode::Soft, ClipMode::Asymmetric, ClipMode::Cubic, ClipMode::Gentle,
+                               ClipMode::SineFold, ClipMode::Fold, ClipMode::Custom, ClipMode::Count}),
+              "ClipMode is stored by number: only append");
+static_assert(numberedInOrder({PeqType::Peak, PeqType::LowShelf, PeqType::HighShelf, PeqType::LowCut, PeqType::HighCut,
+                               PeqType::Count}),
+              "PeqType is stored by number: only append");
+static_assert(numberedInOrder({ReverbType::Hall, ReverbType::Room, ReverbType::Plate, ReverbType::Shimmer,
+                               ReverbType::Count}),
+              "ReverbType is stored by number: only append");
 
 // The highest id in use; sections aren't in id order.
 constexpr clap_id maxParamId() {

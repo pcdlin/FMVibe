@@ -66,8 +66,22 @@ add_library(fmvibe-core STATIC
     src/gui/canvas.h
     src/gui/controller.cpp
     src/gui/controller.h
+    src/gui/dialogs.cpp
+    src/gui/icons.cpp
+    src/gui/icons.h
+    src/gui/layout.h
+    src/gui/routing.cpp
+    src/gui/routing.h
+    src/gui/shapes.cpp
+    src/gui/theme.cpp
+    src/gui/theme.h
     src/gui/view.cpp
     src/gui/view.h
+    src/remotepages.cpp
+    src/remotepages.h
+    src/sharedtelemetry.h
+    src/state.cpp
+    src/state.h
 )
 target_include_directories(fmvibe-core PUBLIC src)
 target_link_libraries(fmvibe-core PUBLIC clap d2d1 dwrite)
@@ -77,6 +91,10 @@ add_library(FMVibe MODULE
     src/entry.cpp
     src/plugin.cpp
     src/plugin.h
+    src/presets.cpp
+    src/presets.h
+    src/usersettings.cpp
+    src/usersettings.h
     src/gui/editor.cpp
     src/gui/editor.h
 )

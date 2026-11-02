@@ -96,6 +96,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;
+  - each factory preset's content (the params it sets, by id, its node places and macro names) against its
+    checksum in `kPresetChecksums`, so an edit can't change a preset unnoticed; a preset changed on purpose, or a
+    new one, gets the checksum the check prints;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
@@ -243,7 +246,12 @@ hit.
 | Path | What |
 | --- | --- |
 | `src/entry.cpp` | Exported `clap_entry` and the plugin factory |
-| `src/plugin.cpp` | The CLAP plugin: process loop, events, ports, params, state, remote controls, voice info, gui |
+| `src/plugin.cpp` | The CLAP plugin: the Plugin class and its extension tables (process loop, events, ports, params, state, remote controls, voice info, gui) |
+| `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
+| `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
+| `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, glow, examples given) |
+| `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
 | `src/uistrings.inc` | The wording of every piece of text the plugin shows, by name; `src/uistrings.h` looks it up |
@@ -253,7 +261,13 @@ hit.
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
-| `src/gui/view.cpp` | The editor: layout, drawing, mouse handling. Window-free, so it also renders offscreen |
+| `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
+| `src/gui/theme.h`, `src/gui/theme.cpp` | The editor's color themes, the colors of the one being painted, and the graphs' glow |
+| `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
+| `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
+| `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
+| `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
+| `src/gui/dialogs.cpp` | The settings and confirm dialogs and the preset browser with its search |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
@@ -268,7 +282,8 @@ hit.
 | `build-web.ps1` | Builds the browser demo with Emscripten, and serves it |
 | `.github/workflows/release.yml` | On a version tag: a GitHub release with the plugin, and the browser demo on GitHub Pages |
 
-Everything except `entry.cpp`, `plugin.cpp` and `editor.cpp` builds into the `fmvibe-core` static library, which
+Everything except `entry.cpp`, `plugin.cpp`, `presets.cpp`, `usersettings.cpp` and `editor.cpp` builds into the
+`fmvibe-core` static library, which
 the plugin and the tools share. The browser demo builds the engine (`FMVIBE_ENGINE_SOURCES`) into its modules
 itself.
 
@@ -291,7 +306,9 @@ itself.
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type and source type lists,
-  which are stored by number.
+  which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
+  the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
+  `FxParam` also needs its effect type in `kFxFieldRuns`.
 - Like an effect slot, each of the 16 source places has the fields of both an LFO and an envelope, and a Type param
   (Empty, LFO or Envelope) that picks which are used. Hosts name the fields by place ("Mod 3 Rate"), since a name
   can't follow the type; fields of the other type are hidden from them.

@@ -10,9 +10,12 @@
 #include <chrono>
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <cstdio>
 #include <iterator>
+#include <map>
 #include <numbers>
+#include <string>
 #include <vector>
 
 using namespace fmvibe;
@@ -501,6 +504,103 @@ void noteAndVoiceChecks() {
     }
 }
 
+// --- The factory presets' contents: each one pinned by a checksum, so an edit can't change a preset unnoticed.
+// When a preset is changed on purpose, update its checksum here (the check prints the new one); a new preset gets
+// a line too.
+struct PinnedPreset {
+    const char *name;
+    uint64_t checksum;
+};
+constexpr PinnedPreset kPresetChecksums[] = {
+    {"KY Electric Piano", 0x4f25ed3795409f2dull},
+    {"BA FM Bass", 0xdb4512b0784f2a90ull},
+    {"KY Glass Bell", 0x9112811c8b922d88ull},
+    {"PD Warm Pad", 0xbd71a9521240edd8ull},
+    {"KY Drawbar Organ", 0x5253f61b36869235ull},
+    {"PL Pluck Delay", 0x54bdfad9cabec732ull},
+    {"PD Crystal Motion", 0xd9dc08d9966b8b31ull},
+    {"BA Reese Bass", 0xcf6ca8ebd4d2c4ebull},
+    {"BA Wobble Bass", 0x052b5bd725de4ac5ull},
+    {"PD Shimmer Pad", 0x2941affb37adab8aull},
+    {"SQ Trance Gate", 0x2c09c3637889d5dcull},
+    {"LD FM Brass", 0x7e6f2b150bfa91d8ull},
+    {"FX Industrial Hit", 0xa1cd1a7b125f51d8ull},
+    {"LD Folded Lead", 0x8aea699d01cb8c70ull},
+    {"BA Fuzz Bass", 0x99895bc872e2c284ull},
+    {"PL Comb String", 0x7069c6afdc9fa794ull},
+    {"PL Chip Pluck", 0xc4274cc781d3610dull},
+    {"SQ Step Filter", 0xd511c60c618cd3b7ull},
+    {"SQ Glass Steps", 0x94a0df1834a25bceull},
+    {"LD Vowel Lead", 0x28b0b789d131828full},
+    {"FX Laser Zap", 0xb500242d44284008ull},
+    {"FX Noise Riser", 0x0e08d1adac580a1dull},
+};
+
+// FNV-1a over the preset's name, the params it sets (by id, so params added later leave it alone, in id order, each
+// with the value it ends up with), its nodes' places and its macros' names. Whole numbers go in exactly, other values
+// rounded to a float: a last bit that two C libraries' log() round apart doesn't count.
+uint64_t presetChecksum(const FactoryPreset &preset) {
+    uint64_t hash = 14695981039346656037ull;
+    auto add = [&](const void *data, size_t size) {
+        for (size_t i = 0; i < size; ++i)
+            hash = (hash ^ static_cast<const unsigned char *>(data)[i]) * 1099511628211ull;
+    };
+    auto addCount = [&](size_t count) {
+        const uint32_t n = static_cast<uint32_t>(count);
+        add(&n, sizeof n);
+    };
+    auto addText = [&](const std::string &text) { add(text.c_str(), text.size() + 1); };
+    addText(preset.name);
+    std::map<clap_id, double> values; // a param set twice ends up with the later value
+    for (const auto &[index, value] : preset.changes)
+        values[idOfIndex(index)] = value;
+    addCount(values.size());
+    for (const auto &[id, value] : values) {
+        add(&id, sizeof id);
+        if (std::abs(value) < 1e15 && value == std::round(value)) {
+            const int64_t whole = static_cast<int64_t>(value);
+            add(&whole, sizeof whole);
+        } else {
+            const float rounded = static_cast<float>(value);
+            add(&rounded, sizeof rounded);
+        }
+    }
+    addCount(preset.nodes.size());
+    for (const auto &[x, y] : preset.nodes) {
+        add(&x, sizeof x);
+        add(&y, sizeof y);
+    }
+    addCount(preset.macros.size());
+    for (const std::string &macro : preset.macros)
+        addText(macro);
+    return hash;
+}
+
+void presetContentChecks() {
+    std::printf("factory preset contents:\n");
+    const std::vector<FactoryPreset> presets = factoryPresets();
+    bool same = true;
+    for (const FactoryPreset &preset : presets) {
+        const uint64_t checksum = presetChecksum(preset);
+        const PinnedPreset *pinned = std::find_if(std::begin(kPresetChecksums), std::end(kPresetChecksums),
+                                                  [&](const PinnedPreset &p) { return preset.name == p.name; });
+        if (pinned != std::end(kPresetChecksums) && pinned->checksum == checksum)
+            continue;
+        std::printf("      %-20s %s: its checksum is now 0x%016llxull\n", preset.name.c_str(),
+                    pinned == std::end(kPresetChecksums) ? "is new" : "changed",
+                    static_cast<unsigned long long>(checksum));
+        same = false;
+    }
+    for (const PinnedPreset &pinned : kPresetChecksums) {
+        auto named = [&](const FactoryPreset &p) { return p.name == pinned.name; };
+        if (std::none_of(presets.begin(), presets.end(), named)) {
+            std::printf("      %-20s is gone\n", pinned.name);
+            same = false;
+        }
+    }
+    check(same, "every factory preset holds what its checksum pins (one changed on purpose: update kPresetChecksums)");
+}
+
 } // namespace
 
 int main() {
@@ -878,6 +978,7 @@ int main() {
         }
         check(sane, "the example presets hold valid values and sound at a sane level");
     }
+    presetContentChecks();
 
     // --- Clicks. Roughness is the largest second difference; a steady low sine has almost none.
     std::printf("clicks (largest second difference, against a smooth reference):\n");

@@ -185,7 +185,7 @@ private:
     ComPtr<IWICBitmap> last_;
 };
 
-// Screen positions of a few controls in the default layout (mirrors view.cpp).
+// Screen positions of a few controls in the default layout (mirrors src/gui/layout.h).
 constexpr Point kFineKnob{1012.0f, 214.0f};
 constexpr Point kOutKnob{1146.0f, 214.0f};
 constexpr float kBusY = 446.0f; // the routing graph's OUT line
