@@ -576,9 +576,8 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); FX Laser Zap (a
   one-shot LFO throwing the pitch down four octaves in a quarter second, a phase disperser and a staircase-curve
   shaper crushing it; its Speed and Grit macros); and FX Noise Riser (wide noise through a high-pass and a climbing
-  sine, swept over eight seconds by an envelope that starts slowly and rushes, turning a frequency shifter's spiral
-  faster). A folder made before an
-  example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
+  sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster). A folder made
+  before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone.
   - The **preset bar** in the middle of the tabs' row shows the preset loaded or saved last, or **- Init -** (as
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
