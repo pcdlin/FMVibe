@@ -101,16 +101,31 @@ bool isFilterSlope(int param) {
     return slopeTypeParam(param) >= 0;
 }
 
-// A choice that opens a list under its button (a shaper's curve, the reverb's algorithm, a filter's slope): which
+bool isLfoShape(int param) {
+    return sourceFieldOf(param) == SourceParam::Shape;
+}
+
+// An LFO shape's icon, as its list shows it, in a box about 16 x 10.
+void lfoShapeIcon(Canvas &c, Rect r, LfoShape shape, Color color) {
+    const std::vector<Point> points = shapeIcon(shape, r);
+    c.polyline(points.data(), points.size(), color, 1.5f);
+    if (shape == LfoShape::Custom)
+        customShapeDots(c, r, color);
+}
+
+// A choice that opens a list under its button (an LFO's shape, a shaper's curve, the reverb's algorithm, a filter's slope): which
 // values it has, and their names.
 int listCount(int param) {
     return isFilterSlope(param)                       ? kFilterSlopes
+           : isLfoShape(param)                        ? static_cast<int>(LfoShape::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
                                                       : static_cast<int>(ClipMode::Count);
 }
 std::string listItemName(int param, int value) {
     if (isFilterSlope(param))
         return std::to_string(slopeDb(value)) + " dB";
+    if (isLfoShape(param))
+        return lfoShapeName(static_cast<LfoShape>(value));
     return fxFieldOf(param) == FxParam::ReverbType ? reverbTypeName(static_cast<ReverbType>(value))
                                                     : clipModeName(static_cast<ClipMode>(value));
 }
@@ -466,6 +481,8 @@ Color View::fxColor(int slot) const {
 }
 
 Color View::listColor(int param) const {
+    if (isLfoShape(param))
+        return kSourceColors[sourceOf(param)];
     return shaperOf(param) >= 0 ? kShaperColor : fxSlotOf(param) >= 0 ? fxColor(fxSlotOf(param)) : kFilterColor;
 }
 
@@ -1415,7 +1432,7 @@ std::vector<View::Widget> View::widgets() const {
         for (int node = 0; node < kNodes; ++node) {
             const Rect row = gridCell(node, 0), col = gridCell(0, node);
             add(Kind::MatrixLabel, {row.x - 32.0f, row.y, 28.0f, row.h}, -1, node);
-            add(Kind::MatrixLabel, {col.x - 2.0f, col.y - 22.0f, col.w + 4.0f, 18.0f}, -1, node);
+            add(Kind::MatrixLabel, {col.x - 2.0f, col.y - kMatrixNamesH, col.w + 4.0f, 18.0f}, -1, node);
         }
     } else {
         // Nodes, each with its edge, then depth labels and arrowheads on top of them.
@@ -1534,10 +1551,10 @@ std::vector<View::Widget> View::widgets() const {
                                           nullptr,             tr(Str::LabelVelocity), tr(Str::LabelOut)};
             opKnobRow(params, labels);
         } else {
-            const int params[] = {paramIndex(op, OpParam::Coarse), paramIndex(op, OpParam::Transpose),
-                                  paramIndex(op, OpParam::Fine),   paramIndex(op, OpParam::Detune),
+            const int params[] = {paramIndex(op, OpParam::Coarse), paramIndex(op, OpParam::Fine),
+                                  paramIndex(op, OpParam::Transpose), paramIndex(op, OpParam::Detune),
                                   paramIndex(op, OpParam::Velocity), paramIndex(op, OpParam::Out)};
-            const char *const labels[] = {tr(Str::LabelRatio),  tr(Str::LabelPitch),    tr(Str::LabelFine),
+            const char *const labels[] = {tr(Str::LabelRatio),  tr(Str::LabelFine),     tr(Str::LabelPitch),
                                           tr(Str::LabelDetune), tr(Str::LabelVelocity), tr(Str::LabelOut)};
             opKnobRow(params, labels);
             const int unison[] = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
@@ -1611,6 +1628,7 @@ std::vector<View::Widget> View::widgets() const {
     if (scrollLength(ScrollArea::Sources) > kVisibleCards + 0.01f && !collapsed)
         add(Kind::Scrollbar, sourceScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::Sources));
     const size_t sourceCardsStart = list.size();
+    Rect lfoList{}; // the button of the LFO whose shape list is open, on screen
     for (const auto &[position, card] : cards) {
         const int s = cardSources[position];
         if (sourceFolded(s)) { // a strip: the handle, a grip, the switch and cross, then the rest unfolds it
@@ -1631,8 +1649,9 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::Toggle, sourcePower(card), sourceEnabledIndex(s));
         add(Kind::SourceRemove, sourceRemove(card), -1, s);
         if (lfo) {
-            for (int shape = 0; shape < static_cast<int>(LfoShape::Count); ++shape)
-                add(Kind::ShapeButton, {p.x + 16.0f + shape * 31.0f, p.y + 40.0f, 28.0f, 26.0f}, -1, s, shape);
+            add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
+            if (listMenu_ == paramIndex(s, SourceParam::Shape))
+                lfoList = lfoShapeButton(card);
             const bool random =
                 std::lround(value(paramIndex(s, SourceParam::Shape))) == static_cast<long>(LfoShape::Random);
             add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
@@ -1642,13 +1661,13 @@ std::vector<View::Widget> View::widgets() const {
             }
             // Synced, the knob picks a note value instead of a rate and shows it as its label.
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
-            // Free, one-shot and unipolar, as icons, each under two of the shapes, in a row with the sync switch.
+            // Free, one-shot and unipolar, as icons, under the shape list.
             const SourceParam modes[] = {SourceParam::Free, SourceParam::OneShot, SourceParam::Unipolar};
             for (int i = 0; i < 3; ++i)
-                add(Kind::Toggle, {p.x + 16.0f + i * 62.0f, p.y + 79.0f, 59.0f, 16.0f}, paramIndex(s, modes[i]));
+                add(Kind::Toggle, lfoModeSwitch(card, i), paramIndex(s, modes[i]));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 {p.right() - 44.0f, p.y + 47.0f}, 30.0f, synced ? nullptr : tr(Str::LabelRate));
+                 lfoRateKnob(card), 30.0f, synced ? nullptr : tr(Str::LabelRate));
         } else {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
@@ -1789,6 +1808,17 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
             for (int item = 0; item < items; ++item)
                 add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
+        }
+    }
+    // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card.
+    if (lfoList.w > 0.0f) {
+        const int items = listCount(listMenu_);
+        add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
+        add(Kind::ListMenu, listMenu(lfoList, items), -1, 1);
+        list.back().clip = sourceCardClip();
+        for (int item = 0; item < items; ++item) {
+            add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1, item);
+            list.back().clip = sourceCardClip();
         }
     }
     // A shaper's list of curves or a filter's slopes, under its button on its page.
@@ -2270,12 +2300,12 @@ void View::paintMatrixLabels(Canvas &c) {
     const Color plate = nodeColor(selected).alpha(nodeOn(selected) ? 0.22f : 0.1f);
     const Rect first = gridCell(selected, 0), top = gridCell(0, selected); // the first cells of its row and column
     c.fillRect({first.x - 31.0f, first.y + 3.0f, 26.0f, first.h - 6.0f}, plate, 5.0f);
-    c.fillRect({top.x - 1.0f, top.y - 22.0f, top.w + 2.0f, 18.0f}, plate, 5.0f);
+    c.fillRect({top.x - 1.0f, top.y - kMatrixNamesH, top.w + 2.0f, 18.0f}, plate, 5.0f);
     for (int col = 0; col < kGridCols; ++col) {
         const Rect cell = gridCell(0, col);
         const bool out = col == kGridCols - 1;
-        c.text({cell.x - 6.0f, cell.y - 22.0f, cell.w + 12.0f, 18.0f}, out ? tr(Str::BusOut) : kNodeNames[col], 12.0f,
-               out ? kText : nameColor(col), Align::Center, true);
+        c.text({cell.x - 6.0f, cell.y - kMatrixNamesH, cell.w + 12.0f, 18.0f},
+               out ? tr(Str::BusOut) : kNodeNames[col], 12.0f, out ? kText : nameColor(col), Align::Center, true);
     }
     for (int row = 0; row < kNodes; ++row) {
         const Rect cell = gridCell(row, 0);
@@ -4052,22 +4082,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, selected ? kBackground : color);
         break;
     }
-    case Kind::ShapeButton:
     case Kind::WaveButton: {
-        const bool lfo = w.kind == Kind::ShapeButton;
-        const Color color = lfo ? kSourceColors[w.a] : kAccent;
-        const int param = lfo ? paramIndex(w.a, SourceParam::Shape) : paramIndex(w.a, OpParam::Wave);
-        const bool selected = std::lround(value(param)) == w.b;
-        c.fillRect(w.rect, selected ? color.alpha(0.18f) : (hovered ? kTrack : kRaised), 6.0f);
+        const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
+        c.fillRect(w.rect, selected ? kAccent.alpha(0.18f) : (hovered ? kTrack : kRaised), 6.0f);
         if (selected)
-            c.strokeRect(w.rect, color, 1.0f, 6.0f);
-        const bool custom = lfo && static_cast<LfoShape>(w.b) == LfoShape::Custom;
-        const Rect icon = w.rect.inset(custom ? 6.5f : (lfo ? 8.0f : 7.0f));
-        const std::vector<Point> points =
-            lfo ? shapeIcon(static_cast<LfoShape>(w.b), icon) : waveIcon(static_cast<OpWave>(w.b), icon);
-        c.polyline(points.data(), points.size(), selected ? color : kDim, 1.5f);
-        if (custom)
-            customShapeDots(c, icon, selected ? color : kDim);
+            c.strokeRect(w.rect, kAccent, 1.0f, 6.0f);
+        const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
+        c.polyline(points.data(), points.size(), selected ? kAccent : kDim, 1.5f);
         break;
     }
     case Kind::TypeButton: {
@@ -4462,8 +4483,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, 5.0f);
         const Color text = !relevant ? kFaint : lit ? kText : kDim;
-        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, listItemName(w.param, shown), 11.0f, text,
-               Align::Left, true);
+        // An LFO's shape shows its icon before its name.
+        const float indent = isLfoShape(w.param) ? 24.0f : 0.0f;
+        if (isLfoShape(w.param))
+            lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown),
+                         color);
+        c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 30.0f - indent, w.rect.h}, listItemName(w.param, shown),
+               11.0f, text, Align::Left, true);
         const Point m{w.rect.right() - 13.0f, w.rect.center().y};
         const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
         c.polyline(chevron, 3, text, 1.5f);
@@ -4509,8 +4535,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = listShown(w.param) == w.b;
         if ((hovered && fits) || selected)
             c.fillRect(w.rect, listColor(w.param).alpha(hovered && fits ? 0.18f : 0.1f), 5.0f);
-        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, listItemName(w.param, w.b), 11.0f,
-               !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
+        const float indent = isLfoShape(w.param) ? 24.0f : 0.0f;
+        if (isLfoShape(w.param))
+            lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(w.b),
+                         selected ? listColor(w.param) : kDim);
+        c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h}, listItemName(w.param, w.b),
+               11.0f, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
     case Kind::ShapePoint: { // compact: smaller, in a shaper's card
@@ -5572,11 +5602,6 @@ void View::mouseDown(Point p, Modifiers mods) {
             edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         break;
 
-    case Kind::ShapeButton:
-        edit(paramIndex(w.a, SourceParam::Shape), w.b);
-        if (w.b == static_cast<int>(LfoShape::Custom))
-            shapeEditor_ = w.a;
-        break;
     case Kind::LfoDisplay:
         if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom))
             shapeEditor_ = w.a;
@@ -5606,6 +5631,8 @@ void View::mouseDown(Point p, Modifiers mods) {
             break; // the list stays open for another pick
         listMenu_ = -1;
         edit(w.param, w.b); // a drawn curve is edited in the card, or the big editor
+        if (isLfoShape(w.param) && w.b == static_cast<int>(LfoShape::Custom))
+            shapeEditor_ = sourceOf(w.param); // an LFO's opens the shape editor
         break;
     case Kind::PeqTypeButton:
         peqMenu_ = peqMenu_ == w.param ? -1 : w.param;

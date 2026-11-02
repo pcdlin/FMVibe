@@ -32,11 +32,14 @@ constexpr float kNodeRadius = 24.0f;
 constexpr float kFilterHalfW = 33.0f;
 constexpr float kFilterHalfH = 17.0f;
 constexpr int kGridCols = kNodes + 1; // operators, filters, shapers, output
-// The matrix lists every operator, filter and shaper, and fills the panel's height: the column names above the
-// first row, the last row 14 px above the panel's bottom.
-constexpr float kCell = 27.0f;
-constexpr float kCellStep = 31.0f;
-constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kRouting.h - 14.0f - (kNodes - 1) * kCellStep - kCell};
+// The matrix lists every operator, filter and shaper, and fills the panel's height: the column names 14 px below
+// the panel's top, then the rows, the last one 14 px above its bottom.
+constexpr float kMatrixMargin = 14.0f;
+constexpr float kMatrixNamesH = 22.0f; // the column names' row, over the first row of cells
+constexpr float kCellGap = 4.0f;
+constexpr float kCellStep = (kRouting.h - 2.0f * kMatrixMargin - kMatrixNamesH + kCellGap) / kNodes;
+constexpr float kCell = kCellStep - kCellGap;
+constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMatrixNamesH};
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
 constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 214.0f, kInspector.w - 32.0f, 78.0f};
 constexpr Rect kUnisonRect{kInspector.x + 226.0f, kInspector.y + 150.0f, 58.0f, 40.0f};
@@ -206,10 +209,28 @@ inline Rect sourcePower(float card) {
     return {p.right() - 30.0f - 26.0f, p.y + 8.0f, 26.0f, 19.0f};
 }
 
-// An LFO's sync switch, under its Rate knob (and the knob's label), in the row of its other switches.
-inline Rect sourceSync(float card) {
+// An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its free,
+// one-shot and unipolar switches (0..2, as icons), the two rows as wide.
+inline Rect lfoModeSwitch(float card, int mode) {
     const Rect p = sourceCard(card);
-    return {p.right() - 44.0f - 22.0f, p.y + 79.0f, 44.0f, 16.0f};
+    return {p.x + 16.0f + mode * 44.0f, p.y + 72.0f, 40.0f, 16.0f};
+}
+
+inline Rect lfoShapeButton(float card) {
+    const Rect p = sourceCard(card);
+    return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, 2).right() - p.x - 16.0f, 22.0f};
+}
+
+// Right of those two rows, the Rate knob with its label, centered on them, and its sync switch, a small square
+// right of the knob.
+inline Point lfoRateKnob(float card) {
+    const Rect top = lfoShapeButton(card), bottom = lfoModeSwitch(card, 2);
+    return {bottom.right() + 32.0f, (top.y + bottom.bottom()) * 0.5f - 9.0f}; // the label takes 18 px under the knob
+}
+
+inline Rect sourceSync(float card) {
+    const Point rate = lfoRateKnob(card);
+    return {rate.x + 25.0f, rate.y - 10.0f, 20.0f, 20.0f};
 }
 
 // ADD EFFECT at the top left, and the list it opens under it: one row per type,

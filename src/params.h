@@ -1405,6 +1405,7 @@ bool fieldInUse(const Get &get, int index) {
 bool formatParam(int index, double value, char *out, uint32_t capacity);
 bool parseParam(int index, const char *text, double *out);
 
+const char *lfoShapeName(LfoShape shape);
 const char *waveName(OpWave wave);
 const char *filterTypeName(FilterType type);
 const char *filterTypeShortName(FilterType type);

@@ -165,9 +165,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     double-click for a word), cutting and pasting;
   - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, and
     the LFO shape editor hiding the inspector;
-  - the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered pixels), the list of
-    more waves (Organ among them), the slot list's scrollbar and its long names drawn smaller to fit (read off the
-    rendered pixels), the shape editor's grid, snapping and RESET, and scrolling the source cards by holding a
+  - an LFO's shape list, the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
+    pixels), the list of more waves (Organ among them), the slot list's scrollbar and its long names drawn smaller to
+    fit (read off the rendered pixels), the shape editor's grid, snapping and RESET, and scrolling the source cards by holding a
     dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
   - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels);

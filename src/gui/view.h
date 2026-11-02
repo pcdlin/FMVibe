@@ -114,7 +114,6 @@ private:
         FxFold,       // a = effect slot: folds its card to a strip, or unfolds it
         SourceFold,   // a = source place: the same for its card
         MacroHandle,  // a = kMaxSources + macro, kNoteSource or kWheelSource: drag onto a target, as a source's handle
-        ShapeButton,  // a = lfo, b = shape
         WaveButton,   // a = op, b = wave: one of the common waves
         WaveMore,     // a = op: "..." opens the list of the other waves
         WaveMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
@@ -156,7 +155,7 @@ private:
         PeqPoint,     // param = the band's Q (for the wheel), a = effect slot, b = band: frequency and gain handle
         LfoDisplay,   // a = lfo: click opens the shape editor of a freeform LFO
         ClipDisplay,  // a = effect slot: the EDIT button on a drawn curve's display, which opens the big editor
-        ListButton,   // param = an effect's choice (the shaper's curve, the reverb's algorithm): opens its list
+        ListButton,   // param = a choice (an LFO's shape, the shaper's curve, the reverb's algorithm): opens its list
         ListMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
         ListItem,     // param, b = the value it picks: an entry of the list
         PeqTypeButton, // param = the band's type, a = effect slot, b = band: opens the list of band shapes

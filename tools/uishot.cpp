@@ -190,10 +190,10 @@ private:
 };
 
 // Screen positions of a few controls in the default layout (mirrors src/gui/layout.h).
-constexpr Point kFineKnob{1012.0f, 214.0f};
+constexpr Point kFineKnob{967.0f, 214.0f};
 constexpr Point kOutKnob{1146.0f, 214.0f};
 constexpr float kBusY = 446.0f; // the routing graph's OUT line
-constexpr Point kPitchKnob{967.0f, 214.0f};
+constexpr Point kPitchKnob{1012.0f, 214.0f};
 constexpr Point kUnisonKnob{914.0f, 272.0f};
 constexpr Point kPhaseKnob{1082.0f, 272.0f};
 constexpr Point kSlopeKnob{922.0f, 214.0f};
@@ -238,9 +238,9 @@ Point sourceHandle(float card) {
     return {cardX(card) + 36.0f, 543.0f};
 }
 
-// An LFO's sync switch, under its Rate knob, in the row of its other switches.
+// An LFO's sync switch, a square right of its Rate knob.
 Point sourceSync(float card) {
-    return {cardX(card) + kCardW - 44.0f, 623.0f};
+    return {cardX(card) + 211.0f, 592.0f};
 }
 
 Point sourcePower(float card) {
@@ -251,21 +251,26 @@ Point sourceRemove(float card) {
     return {cardX(card) + kCardW - 17.0f, 545.0f};
 }
 
-Point shapeButton(float card, LfoShape shape) {
-    return {cardX(card) + 30.0f + static_cast<int>(shape) * 31.0f, 589.0f};
+// An LFO card's shape list: its button, and a shape in the list it opens.
+Point shapeButton(float card) {
+    return {cardX(card) + 80.0f, 589.0f};
 }
 
-// An LFO card's switches under its shapes.
+Point shapeItem(float card, LfoShape shape) {
+    return {shapeButton(card).x, 619.0f + static_cast<int>(shape) * 22.0f};
+}
+
+// An LFO card's switches under its shape list.
 Point oneShotToggle(float card) {
-    return {cardX(card) + 98.0f, 623.0f};
+    return {cardX(card) + 80.0f, 616.0f};
 }
 
 Point unipolarToggle(float card) {
-    return {cardX(card) + 168.0f, 623.0f};
+    return {cardX(card) + 124.0f, 616.0f};
 }
 
 Point rateKnob(float card) {
-    return {cardX(card) + kCardW - 44.0f, 583.0f};
+    return {cardX(card) + 176.0f, 592.0f};
 }
 
 // The places holding a source, in the order they show, and what the editor calls one.
@@ -373,7 +378,7 @@ Point slopeItem(int slope) {
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
 Point gridCellCenter(int row, int col) {
-    return {72.0f + col * 31.0f + 13.5f, 156.0f + row * 31.0f + 13.5f};
+    return {72.0f + col * 32.6f + 14.3f, 140.0f + row * 32.6f + 14.3f};
 }
 
 Point nodeCenter(const UiLayout &layout, int node) {
@@ -591,7 +596,12 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // A random LFO shows Smooth and Chaos beside a preview of what they do.
     check(rateFromNorm(1.0) == 100.0, "LFOs run up to 100 Hz");
     click(view, sourceAdd(SourceType::Lfo));
-    click(view, shapeButton(0, LfoShape::Random));
+    click(view, shapeButton(0));
+    const bool shapeListShot = renderer.save(view, dir / "17-lfo-shape-list.png");
+    click(view, shapeItem(0, LfoShape::Random));
+    check(shapeListShot &&
+              std::lround(model.value(paramIndex(0, SourceParam::Shape))) == static_cast<long>(LfoShape::Random),
+          "an LFO's shape list picks its shape");
     drag(view, randomKnob(0, 0), {randomKnob(0, 0).x, randomKnob(0, 0).y - 120.0f});
     drag(view, randomKnob(0, 1), {randomKnob(0, 1).x, randomKnob(0, 1).y + 140.0f});
     check(std::abs(model.value(paramIndex(0, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
@@ -777,7 +787,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The shape editor spans the inspector, which it hides: no operator tab or knob where they were. Its grid: a
     // step up across is 24 lines, and Ctrl snaps a point to them.
-    click(view, shapeButton(0, LfoShape::Custom));
+    click(view, shapeButton(0));
+    click(view, shapeItem(0, LfoShape::Custom));
     const double fineBefore = model.value(paramIndex(0, OpParam::Fine));
     drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 30.0f});
     check(model.value(paramIndex(0, OpParam::Fine)) == fineBefore && model.value(shapeCountIndex(0)) == 2.0,
@@ -1112,7 +1123,7 @@ void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
     auto ring = [&] { // above the knob, where both ranges run
         std::vector<uint32_t> pixels;
         for (float y = 192.0f; y < 207.0f; y += 1.0f)
-            for (float x = 992.0f; x < 1033.0f; x += 1.0f)
+            for (float x = kFineKnob.x - 20.0f; x < kFineKnob.x + 21.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
     };
@@ -2547,7 +2558,8 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // A freeform LFO 2: picking Custom opens its shape editor over the routing panel.
     // The default shape is a triangle, with points at (0, -1) and (0.5, 1).
-    click(view, shapeButton(2, LfoShape::Custom));
+    click(view, shapeButton(2));
+    click(view, shapeItem(2, LfoShape::Custom));
     const int count = shapeCountIndex(2);
     auto pointValue = [&](int point, PointField field) { return model.value(shapePointIndex(2, point, field)); };
     check(std::lround(model.value(paramIndex(2, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom) &&

@@ -18,10 +18,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     peak; the synth builds its tables again whenever the partials change. Noise has no pitch or unison: instead a **Slope** moves it from white through pink (−3 dB per
     octave) to brown (−6 dB per octave) at about the same loudness, and **Spread** (the Uni Spread param) widens it
     from mono to fully uncorrelated left and right;
-  - Coarse ratio (0.5, 1…32), **Pitch** (±48 semitones on top of the ratio; the knob moves in whole semitones,
-    while LFOs, envelopes and host modulation glide through it), Fine (adds up to +100 % to the
-    ratio), Detune (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a
-    15 ms release);
+  - Coarse ratio (0.5, 1…32), Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
+    ratio; the knob moves in whole semitones, while LFOs, envelopes and host modulation glide through it), Detune
+    (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release);
   - **Hold**: every envelope (operators and mod envelopes alike) can stay at full level for a while after its
     attack, before the decay starts (off by default);
   - **Envelope curves**: the attack, decay and release of every envelope (operators and mod envelopes alike) can
@@ -306,8 +305,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it.
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
-    panel's height; the routes that can't be (a shaper into a shaper, or a filter into itself or the filter before it)
-    are blank; the row and
+    panel's height, as far from its top as from its bottom; the routes that can't be (a shaper into a shaper, or a
+    filter into itself or the filter before it) are blank; the row and
     column of a node that is off are greyed out, its routes kept as they are. The diagonal is feedback. Drag cells
     vertically; double-click toggles a cell on or off; Ctrl+Click types an amount. Dragging a cell, or toggling it
     on, switches on the nodes it joins. A row's or column's name works like the node's tab in the
@@ -496,12 +495,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     LFO has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
     while notes play it shows the LFO's own last four cycles instead, swept across: each new cycle takes the next
     quarter, round from the right end to the left, the older ones fainter, with the live dot on the newest (at
-    the end of a cycle, it waits there until the next one comes in). An LFO's sync switch, the metronome the
-    effects' SYNC has, sits under its Rate knob and turns it into a note-value knob (as it starts, on). Left of it,
-    under its shapes, three more switches drawn as icons (named on hover), each under two shapes: an infinity sign
+    the end of a cycle, it waits there until the next one comes in). An LFO picks its shape from a list, like a
+    shaper's curve, its button and each entry showing the shape's icon before its name. Under the shape list, as
+    wide as it, three small switches drawn as icons (named on hover): an infinity sign
     for **Free**, which stops notes from restarting it, a single cycle that ends in a dot for **One-Shot**, and
-    humps on a baseline for **Unipolar**. A unipolar LFO's display has its zero line at the
-    bottom.
+    humps on a baseline for **Unipolar**. Right of those two rows, centered on them, is the Rate knob, and right of
+    it the sync switch, a small square button with the metronome the effects' SYNC has, which turns the knob into a
+    note-value knob (as it starts, on). A unipolar LFO's display has its zero line at the bottom.
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click or

@@ -681,6 +681,10 @@ const char *divisionName(int division) {
     return nameAt(kDivisionNames, division);
 }
 
+const char *lfoShapeName(LfoShape shape) {
+    return nameAt(kLfoShapeNames, static_cast<double>(shape));
+}
+
 const char *clipModeName(ClipMode mode) {
     return nameAt(kClipModeNames, static_cast<double>(mode));
 }
