@@ -1058,6 +1058,11 @@ bool View::poll() {
     }
     if (changed)
         keepRoutes(); // whatever turned a route on, the editor or the host
+    // The audio thread captures the operator whose scope shows, and nothing while none does.
+    const UiLayout &layout = controller_.layout();
+    const bool scope = layout.selectedNode < kOps && !inspectorCovered() &&
+                       opTabShown(layout.selectedNode) == InspectorTab::Scope;
+    controller_.setScope(scope ? layout.selectedNode : -1, layout.scopeCycles);
     Telemetry t;
     controller_.telemetry(t);
     if (t.voices > 0 || telemetry_.voices > 0 || t.keys != telemetry_.keys)
@@ -1570,6 +1575,14 @@ std::vector<View::Widget> View::widgets() const {
         for (int b = 0; b + 1 < kWaveButtons; ++b)
             add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
         add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
+        // The tabs, a noise operator's without the scope, then what the shown one holds.
+        const InspectorTab tab = opTabShown(op);
+        for (int t = 0; t < 3; ++t)
+            if (!isNoise(op) || static_cast<InspectorTab>(t) != InspectorTab::Scope)
+                add(Kind::OpTab, opTab(t), -1, t);
+        if (tab == InspectorTab::Scope)
+            for (int k = 0; k < 3; ++k)
+                add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
         if (isNoise(op)) {
             // Its slope and stereo spread take the place of the pitch knobs; the unison row shows the spectrum.
             const int params[] = {paramIndex(op, OpParam::NoiseSlope), paramIndex(op, OpParam::UnisonSpread), -1, -1,
@@ -1587,14 +1600,20 @@ std::vector<View::Widget> View::widgets() const {
             const int unison[] = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
                                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::PhaseRandom)};
             const Str unisonLabels[] = {Str::LabelUnison, Str::LabelUniDetune, Str::LabelUniSpread, Str::LabelRndPhase};
-            for (int i = 0; i < 4; ++i)
-                knob(unison[i], {kInspector.x + 30.0f + i * 56.0f, kInspector.y + 168.0f}, 34.0f, tr(unisonLabels[i]));
+            const float step = (kInspector.w - 32.0f) / 4.0f;
+            if (tab == InspectorTab::Unison)
+                for (int i = 0; i < 4; ++i)
+                    knob(unison[i], {kInspector.x + 16.0f + step * (i + 0.5f), kUnisonKnobsY}, 34.0f,
+                         tr(unisonLabels[i]));
         }
-        const EnvIndices e = envIndices(op);
-        const int ahdsr[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
-        const float step = (kInspector.w - 32.0f) / 5.0f;
-        for (int i = 0; i < 5; ++i)
-            knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 322.0f}, 30.0f, tr(envLabels[i]));
+        if (tab == InspectorTab::Envelope) {
+            const EnvIndices e = envIndices(op);
+            const int ahdsr[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
+            const float step = (kInspector.w - 32.0f) / 5.0f;
+            for (int i = 0; i < 5; ++i)
+                knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 322.0f}, 30.0f,
+                     tr(envLabels[i]));
+        }
     } else {
         const int filter = node - kOps;
         for (int t = 0; t < static_cast<int>(FilterType::Count); ++t)
@@ -1629,7 +1648,7 @@ std::vector<View::Widget> View::widgets() const {
     for (const auto &[position, card] : cards) // a folded card shows no envelope
         if (sourceTypeOf(cardSources[position]) == SourceType::Env && !sourceFolded(cardSources[position]))
             envs.push_back(kOps + cardSources[position]);
-    if (node < kOps && !wide)
+    if (node < kOps && !wide && opTabShown(node) == InspectorTab::Envelope)
         envs.push_back(node);
     for (int env : envs) {
         const EnvIndices e = envIndices(env);
@@ -3553,11 +3572,23 @@ void View::paintInspector(Canvas &c) {
         if (!feeds.empty())
             summary += dot + trf(Str::SummaryTo, {feeds});
         c.text(summaryRect, summary, 11.0f, kDim, Align::Left);
-        if (isNoise(op))
-            paintNoiseSlope(c, kNoiseRect, op);
-        else
-            paintUnison(c, kUnisonRect, op);
-        paintEnvelope(c, kOpEnvRect, op, kAccent, false);
+        // The tabs' line, which the shown one's accent sits on.
+        c.line({kInspector.x + 16.0f, kOpTabsY + kOpTabH}, {kInspector.right() - 16.0f, kOpTabsY + kOpTabH}, kBorder,
+               1.0f);
+        switch (opTabShown(op)) {
+        case InspectorTab::Unison:
+            if (isNoise(op))
+                paintNoiseSlope(c, kNoiseRect, op);
+            else
+                paintUnison(c, kUnisonRect, op);
+            break;
+        case InspectorTab::Envelope:
+            paintEnvelope(c, kOpEnvRect, op, kAccent, false);
+            break;
+        case InspectorTab::Scope:
+            paintScope(c, kScopeRect, op);
+            break;
+        }
         return;
     }
 
@@ -3616,6 +3647,7 @@ void View::paintShaperPage(Canvas &c, int shaper, Rect summaryRect) {
 void View::paintUnison(Canvas &c, Rect r, int op) {
     c.fillRect(r, kDisplayColor, 6.0f);
     c.line({r.center().x, r.y + 6.0f}, {r.center().x, r.bottom() - 6.0f}, kBorder, 1.0f);
+    c.line({r.x + 18.0f, r.center().y}, {r.right() - 18.0f, r.center().y}, kBorder.alpha(0.6f), 1.0f);
     c.text({r.x + 4.0f, r.bottom() - 14.0f, 12.0f, 12.0f}, "L", 10.5f, kFaint);
     c.text({r.right() - 16.0f, r.bottom() - 14.0f, 12.0f, 12.0f}, "R", 10.5f, kFaint);
     const int copies = std::clamp(static_cast<int>(std::lround(value(paramIndex(op, OpParam::Unison)))), 1, kMaxUnison);
@@ -3623,10 +3655,90 @@ void View::paintUnison(Canvas &c, Rect r, int op) {
     const double spread = value(paramIndex(op, OpParam::UnisonSpread));
     for (int k = 0; k < copies; ++k) {
         const double offset = copies > 1 ? 2.0 * k / (copies - 1) - 1.0 : 0.0;
-        const Point dot{r.center().x + static_cast<float>(offset * spread) * (r.w * 0.5f - 10.0f),
-                        r.center().y - static_cast<float>(offset * detune) * (r.h * 0.5f - 7.0f)};
-        c.fillCircle(dot, 3.0f, copies > 1 ? kAccent : kDim);
+        const Point dot{r.center().x + static_cast<float>(offset * spread) * (r.w * 0.5f - 24.0f),
+                        r.center().y - static_cast<float>(offset * detune) * (r.h * 0.5f - 12.0f)};
+        c.line({dot.x, r.center().y}, dot, (copies > 1 ? kAccent : kDim).alpha(0.4f), 1.5f);
+        c.fillCircle(dot, 4.0f, copies > 1 ? kAccent : kDim);
     }
+}
+
+InspectorTab View::opTabShown(int op) const {
+    const InspectorTab tab = controller_.layout().opTab;
+    return tab == InspectorTab::Scope && isNoise(op) ? InspectorTab::Envelope : tab;
+}
+
+// Whether a source modulates one of the knobs on an operator's tab, which shows a dot on the tab while it is hidden.
+bool View::opTabModulated(int op, InspectorTab tab) const {
+    std::vector<int> params;
+    if (tab == InspectorTab::Unison && !isNoise(op))
+        params = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
+                  paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::PhaseRandom)};
+    if (tab == InspectorTab::Envelope) {
+        const EnvIndices e = envIndices(op);
+        params = {e.attack, e.hold, e.decay, e.sustain, e.release};
+    }
+    for (const Assignment &m : assignments())
+        if (std::find(params.begin(), params.end(), m.target) != params.end())
+            return true;
+    return false;
+}
+
+// The operator's output in the newest voice, a point per bin across the display: the cycles the switch in the corner
+// picks, at their real level between dashed lines at full scale. A slow operator's span is drawn as it fills, up to
+// its cursor, the last one's rest faintly after it. With nothing captured, the wave's plain shape is drawn faintly.
+void View::paintScope(Canvas &c, Rect r, int op) {
+    c.fillRect(r, kDisplayColor, 6.0f);
+    const int cycles = controller_.layout().scopeCycles;
+    const Rect inner{r.x + 8.0f, r.y + 28.0f, r.w - 16.0f, r.h - 40.0f};
+    const float middle = inner.center().y;
+    const float half = inner.h * 0.5f;
+    c.line({inner.x, inner.y}, {inner.right(), inner.y}, kBorder, 1.0f, true);
+    c.line({inner.x, inner.bottom()}, {inner.right(), inner.bottom()}, kBorder, 1.0f, true);
+    c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
+    for (int k = 1; k < cycles; ++k) {
+        const float x = inner.x + inner.w * k / cycles;
+        c.line({x, inner.y - 6.0f}, {x, inner.bottom() + 6.0f}, kBorder.alpha(0.6f), 1.0f, true);
+    }
+
+    const int bins = cycles * kScopeBinsPerCycle;
+    if (telemetry_.voices == 0 || telemetry_.scopeBins != bins) {
+        const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
+        for (int k = 0; k < cycles; ++k) {
+            const Rect cycle{inner.x + inner.w * k / cycles, inner.y, inner.w / cycles, inner.h};
+            const std::vector<Point> points = wavePoints(wave, cycle);
+            c.polyline(points.data(), points.size(), kDim.alpha(0.5f), 1.5f, true);
+        }
+        return;
+    }
+    // A bin per point, but no more points than the display has pixels across, twice over.
+    const int step = std::max(1, bins / static_cast<int>(inner.w * 2.0f));
+    auto at = [&](int bin) { // full scale at the dashed lines; louder runs a little past them
+        const float level = std::clamp(telemetry_.scope[bin], -1.15f, 1.15f);
+        return Point{inner.x + inner.w * bin / (bins - 1), middle - level * half};
+    };
+    const int cursor = telemetry_.scopeCursor < 0.0f
+                           ? bins
+                           : std::clamp(static_cast<int>(telemetry_.scopeCursor * bins), 0, bins);
+    std::vector<Point> fresh, stale;
+    float peak = 0.0f;
+    for (int bin = 0; bin < bins; bin += step) {
+        (bin < cursor ? fresh : stale).push_back(at(bin));
+        if (bin < cursor)
+            peak = std::max(peak, std::abs(telemetry_.scope[bin]));
+    }
+    if (!stale.empty() && !fresh.empty())
+        stale.insert(stale.begin(), fresh.back());
+    if (stale.size() > 1)
+        c.polyline(stale.data(), stale.size(), kAccent.alpha(0.3f), 1.5f);
+    if (fresh.size() > 1)
+        plotLine(c, fresh.data(), fresh.size(), kAccent, 1.5f);
+    if (cursor < bins) {
+        const float x = inner.x + inner.w * cursor / bins;
+        c.line({x, inner.y - 6.0f}, {x, inner.bottom() + 6.0f}, kDim, 1.0f);
+    }
+    if (peak > 1e-4f)
+        c.text({r.x + 8.0f, r.y + 6.0f, 100.0f, 16.0f}, number("%.1f dB", 20.0 * std::log10(peak)), 10.5f, kFaint,
+               Align::Left);
 }
 
 // The noise's spectrum from 20 Hz to 20 kHz, over faint white, pink and brown slopes.
@@ -4108,6 +4220,29 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillPolygon(outline.data(), outline.size(), kPanel.alpha(0.6f));
         }
         c.text(w.rect, tr(kViewNames[w.a]), 11.0f, selected || hovered ? kText : kDim, Align::Center, true);
+        break;
+    }
+    case Kind::OpTab: {
+        // Names on the tabs' line, the shown one's accent over it; a hidden one with a modulated knob has a dot.
+        const int op = controller_.layout().selectedNode;
+        const auto tab = static_cast<InspectorTab>(w.a);
+        const bool selected = opTabShown(op) == tab;
+        const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope};
+        c.text(w.rect, tr(names[w.a]), 10.5f, selected || hovered ? kText : kDim, Align::Center, true);
+        if (selected)
+            c.line({w.rect.x + 4.0f, w.rect.bottom() - 1.0f}, {w.rect.right() - 4.0f, w.rect.bottom() - 1.0f},
+                   kAccent, 2.0f);
+        else if (opTabModulated(op, tab))
+            c.fillCircle({w.rect.right() - 3.0f, w.rect.y + 5.0f}, 2.0f, kAccent);
+        break;
+    }
+    case Kind::ScopeCycles: {
+        const bool selected = controller_.layout().scopeCycles == w.b;
+        c.fillRect(w.rect, selected ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), 4.0f);
+        if (selected)
+            c.strokeRect(w.rect, kAccent, 1.0f, 4.0f);
+        c.text(w.rect, std::to_string(w.b), 10.5f, selected ? kText : (hovered ? kText : kDim), Align::Center,
+               selected);
         break;
     }
     case Kind::NodeTab: {
@@ -5411,10 +5546,13 @@ void View::applyDrag(Point p) {
             setScroll(area, static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / room * (cards - shown));
         break;
     }
+    case DragKind::ModSource: // over an operator's tab, a dragged handle opens it, so its knobs can take the drop
+        if (const auto tab = hitTest(p); tab && tab->kind == Kind::OpTab)
+            controller_.layout().opTab = static_cast<InspectorTab>(tab->a);
+        break;
     case DragKind::None:
     case DragKind::Connect:
     case DragKind::Reroute:
-    case DragKind::ModSource:
     case DragKind::FxMove:
     case DragKind::SourceMove:
         break;
@@ -5623,6 +5761,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         partialEditor_ = -1;
         fxMenuOpen_ = false;
         listMenu_ = -1;
+        break;
+    case Kind::OpTab:
+        layout.opTab = static_cast<InspectorTab>(w.a);
+        break;
+    case Kind::ScopeCycles:
+        layout.scopeCycles = w.b;
         break;
     case Kind::SourceGrip:
         drag_.kind = DragKind::SourceMove;

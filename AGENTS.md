@@ -109,6 +109,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     a number staying finite; host modulation of a macro, the mod wheel and the note source's depth moving their
     targets; a comb never reading past its line; a voice's right channel coming back from mono where the left is;
     and an envelope's curve bent again after a straight stretch carrying on along it;
+  - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
+    square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
+    at half the ratio, a slow span shown as it fills, and nothing again once it isn't asked for;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
@@ -138,6 +141,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
     off the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
     over the curve (read off the rendered pixels);
+  - an operator page's UNISON, ENVELOPE and SCOPE tabs: the unison knobs on theirs, the scope asking for its
+    operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
+    and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
+    modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the play switches and the glide knob;
@@ -337,7 +344,8 @@ itself.
 - The state blob holds `(id, value)` pairs with a version number (currently 1), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
-  effect and source cards are folded and whether the keyboard strip is collapsed. The host's state goes on with
+  effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab and the
+  scope's cycle count. The host's state goes on with
   the settings chunk and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096

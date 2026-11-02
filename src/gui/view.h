@@ -106,6 +106,8 @@ private:
         Choice,       // param, b = the value it selects (segmented buttons)
         Toggle,       // param: flips between 0 and 1
         ViewTab,      // a = RoutingView: picks what the panels under the tabs show
+        OpTab,        // a = InspectorTab: picks what the lower half of an operator's page shows
+        ScopeCycles,  // b = how many cycles the scope shows
 
         NodeTab,      // a = node: selects it; the selected one switches it on and off
         MatrixLabel,  // a = node: a matrix row's or column's name; a click does what the node's tab does
@@ -575,6 +577,10 @@ private:
     void paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam, int cutoffParam, int resonanceParam,
                              int keyTrackParam, double pitch, Color color, const Spectrum *spectrum = nullptr);
     void paintUnison(Canvas &c, Rect r, int op);
+    void paintScope(Canvas &c, Rect r, int op);
+    // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
+    InspectorTab opTabShown(int op) const;
+    bool opTabModulated(int op, InspectorTab tab) const;
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintLfo(Canvas &c, Rect r, int lfo);
     void paintWidget(Canvas &c, const Widget &w);

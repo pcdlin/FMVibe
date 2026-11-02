@@ -421,6 +421,16 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         if (analyzing_)
             for (std::vector<double> &tap : filterTaps_)
                 std::fill_n(tap.begin(), n * oversampling_, 0.0);
+        // The scope follows the newest voice; a voice newer than the one it took starts it again.
+        scopeVoice_ = nullptr;
+        if (scope_.op >= 0) {
+            scopeVoice_ = newestVoice();
+            if (scopeVoice_ && scopeVoice_->order != scope_.order) {
+                scope_.order = scopeVoice_->order;
+                scopeRestart();
+            }
+            scope_.live = scopeVoice_ != nullptr;
+        }
         bool sounding = false;
         for (Voice &v : voices_) {
             if (v.active) {
@@ -545,8 +555,70 @@ int Synth::activeVoiceCount() const {
     return static_cast<int>(std::count_if(voices_.begin(), voices_.end(), [](const Voice &v) { return v.active; }));
 }
 
+void Synth::setScope(int op, int cycles) {
+    op = op >= 0 && op < kOps ? op : -1;
+    cycles = std::clamp(cycles, 1, kScopeMaxCycles);
+    if (op == scope_.op && cycles == scope_.cycles)
+        return;
+    scope_.op = op;
+    scope_.cycles = cycles;
+    scope_.live = false;
+    scopeRestart();
+}
+
+void Synth::scopeRestart() {
+    scope_.started = false;
+    scope_.whole = false;
+    scope_.filling.fill(0.0f);
+    scope_.frame.fill(0.0f);
+}
+
+void Synth::scopeTake(double phase, double value) {
+    ScopeCapture &s = scope_;
+    const int total = s.cycles * kScopeBinsPerCycle;
+    double delta = phase - s.lastPhase;
+    if (delta < -0.5) // copy 0 went on into its next cycle
+        delta += 1.0;
+    if (!s.started || delta < 0.0 || delta >= 0.5) {
+        // The first sample, or the phases were set again (a note started over): the span goes on from here.
+        s.started = true;
+        s.lastPos = phase;
+        s.next = static_cast<int64_t>(std::ceil(phase * kScopeBinsPerCycle));
+        if (s.next >= total) {
+            s.next -= total;
+            s.lastPos -= s.cycles;
+        }
+    } else {
+        double pos = s.lastPos + delta;
+        while (static_cast<double>(s.next) <= pos * kScopeBinsPerCycle) {
+            const double t = (static_cast<double>(s.next) / kScopeBinsPerCycle - s.lastPos) / delta;
+            s.filling[s.next] = static_cast<float>(s.lastValue + (value - s.lastValue) * t);
+            if (++s.next == total) { // a whole span, published; the next one starts at 0
+                std::copy_n(s.filling.begin(), total, s.frame.begin());
+                s.whole = true;
+                s.next = 0;
+                s.lastPos -= s.cycles;
+                pos -= s.cycles;
+            }
+        }
+        s.lastPos = pos;
+        s.inc = delta;
+    }
+    s.lastPhase = phase;
+    s.lastValue = value;
+}
+
 void Synth::telemetry(Telemetry &out) const {
     out = Telemetry{};
+    if (scope_.op >= 0 && scope_.live) {
+        // A slow span (or the first one, before it is whole) shows as it fills; a quick one a whole span at a time.
+        const int total = scope_.cycles * kScopeBinsPerCycle;
+        const bool slow = scope_.inc <= 0.0 || scope_.cycles / (scope_.inc * rate_) > kScopeSlowSpan;
+        const bool filling = slow || !scope_.whole;
+        std::copy_n((filling ? scope_.filling : scope_.frame).begin(), total, out.scope.begin());
+        out.scopeBins = total;
+        out.scopeCursor = filling ? static_cast<float>(scope_.next) / static_cast<float>(total) : -1.0f;
+    }
     out.tempo = static_cast<float>(tempo_);
     out.fxPitch = static_cast<float>(fxPitch_);
     out.outPeak = {static_cast<float>(outPeak_[0]), static_cast<float>(outPeak_[1])};
@@ -1185,6 +1257,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
     Levels &level = v.levels;
     double blockPeak = 0.0;
+    const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
     for (uint32_t s = 0; s < frames; ++s) {
         v.fmScale += fmStep;
         v.gainL += gainLStep;
@@ -1218,6 +1291,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
             op.amp += ampStep[i];
             const double envLevel = op.env.next(rates[i]) * op.amp;
+            const double scopePhase = i == scopeOp ? op.phases[0] : 0.0; // where this sample is read
             double mono = 0.0, l = 0.0, r = 0.0;
             if (noise[i]) {
                 mono = nextRandom(v.rng);
@@ -1250,6 +1324,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             op.prevOut = op.out;
             op.out = mono * monoGain[i] * envLevel;
+            if (i == scopeOp)
+                scopeTake(scopePhase, op.out);
             l *= envLevel;
             r *= envLevel;
             if (route.out) {

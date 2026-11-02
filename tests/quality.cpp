@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -603,6 +604,94 @@ void presetContentChecks() {
     check(same, "every factory preset holds what its checksum pins (one changed on purpose: update kPresetChecksums)");
 }
 
+// The scope: an operator's output, phase-locked to it, captured only while asked for.
+void scopeChecks() {
+    std::printf("scope:\n");
+    auto telemetry = std::make_unique<Telemetry>(); // large: the analyzers' spectra are in it
+    // How alike a captured span is to `shape` (a cycle, 0..1 -> value) repeated over it: 1 is the same up to level.
+    auto likeness = [&](double (*shape)(double)) {
+        double dot = 0.0, own = 0.0, its = 0.0;
+        for (int bin = 0; bin < telemetry->scopeBins; ++bin) {
+            const double want = shape(static_cast<double>(bin) / kScopeBinsPerCycle);
+            dot += telemetry->scope[bin] * want;
+            own += telemetry->scope[bin] * telemetry->scope[bin];
+            its += want * want;
+        }
+        return own > 0.0 ? dot / std::sqrt(own * its) : 0.0;
+    };
+    auto sine = [](double x) { return std::sin(2.0 * std::numbers::pi * x); };
+    auto square = [](double x) { return x - std::floor(x) < 0.5 ? 1.0 : -1.0; };
+
+    Engine e(2);
+    e.noteOn(69);
+    e.render(4800);
+    e.synth().telemetry(*telemetry);
+    const bool idle = telemetry->scopeBins == 0;
+    e.synth().setScope(0, 2);
+    e.render(4800);
+    e.synth().telemetry(*telemetry);
+    const double sineLike = likeness(sine);
+    const bool whole = telemetry->scopeBins == 2 * kScopeBinsPerCycle && telemetry->scopeCursor < 0.0f;
+    std::printf("      a sine at A4 over 2 cycles: %d points, %.4f like a sine from its start\n", telemetry->scopeBins,
+                sineLike);
+    check(idle && whole && sineLike > 0.999,
+          "the scope captures nothing until asked, then a sine's cycles from where they start");
+
+    // It stands still from one span to the next, FM bending it or not.
+    auto still = [&] {
+        e.synth().telemetry(*telemetry);
+        const std::vector<float> first(telemetry->scope.begin(), telemetry->scope.begin() + telemetry->scopeBins);
+        e.render(kBlock * 3 + 7);
+        e.synth().telemetry(*telemetry);
+        double most = 0.0, peak = 0.0;
+        for (size_t bin = 0; bin < first.size(); ++bin) {
+            most = std::max(most, static_cast<double>(std::abs(telemetry->scope[bin] - first[bin])));
+            peak = std::max(peak, static_cast<double>(std::abs(first[bin])));
+        }
+        return peak > 0.1 && most < 0.02 * peak;
+    };
+    const bool sineStill = still();
+    e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+    e.p[matrixIndex(1, 0)] = 0.5;
+    e.render(4800);
+    const bool fmStill = still();
+    const double fmLike = likeness(sine);
+    std::printf("      B into A at 50 %%: %.4f like a sine\n", fmLike);
+    check(sineStill && fmStill && fmLike < 0.98, "FM changes the scope's span, which stands still from one to the next");
+
+    // A modulator at half the ratio makes the two cycles differ.
+    e.p[paramIndex(1, OpParam::Coarse)] = 0.0;
+    e.render(4800);
+    e.synth().telemetry(*telemetry);
+    double apart = 0.0;
+    for (int bin = 0; bin < kScopeBinsPerCycle; ++bin)
+        apart = std::max(apart, static_cast<double>(
+                                    std::abs(telemetry->scope[bin] - telemetry->scope[bin + kScopeBinsPerCycle])));
+    std::printf("      B at ratio 0.5: the two cycles differ by up to %.3f\n", apart);
+    check(apart > 0.2, "a modulator at half the ratio makes the scope's two cycles differ");
+    e.p[paramIndex(1, OpParam::Enabled)] = 0.0;
+
+    // A square, one cycle; a low note's span, over 4 cycles, shows as it fills; asked for nothing, nothing again.
+    e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Square);
+    e.synth().setScope(0, 1);
+    e.render(4800);
+    e.synth().telemetry(*telemetry);
+    const double squareLike = likeness(square);
+    e.noteOff(69);
+    e.render(48000);
+    e.noteOn(12); // 16 Hz: 4 cycles take a quarter of a second
+    e.synth().setScope(0, 4);
+    e.render(2400);
+    e.synth().telemetry(*telemetry);
+    const float cursor = telemetry->scopeCursor;
+    e.synth().setScope(-1, 4);
+    e.render(kBlock);
+    e.synth().telemetry(*telemetry);
+    std::printf("      a square: %.4f like one; a low note's span filled %.2f of the way\n", squareLike, cursor);
+    check(squareLike > 0.95 && cursor > 0.0f && cursor < 1.0f && telemetry->scopeBins == 0,
+          "the scope takes a square's shape, shows a slow span as it fills, and stops when not asked");
+}
+
 } // namespace
 
 int main() {
@@ -981,6 +1070,7 @@ int main() {
         check(sane, "the example presets hold valid values and sound at a sane level");
     }
     presetContentChecks();
+    scopeChecks();
 
     // --- Clicks. Roughness is the largest second difference; a steady low sine has almost none.
     std::printf("clicks (largest second difference, against a smooth reference):\n");

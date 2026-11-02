@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -49,6 +50,10 @@ public:
     }
     int lastNote = -1; // the last key played
     void pitchWheel(double) override {}
+    void setScope(int op, int cycles) override {
+        scopeOp = op;
+        scopeCycles = cycles;
+    }
     void resetPreset() override { ++resets; }
     bool loadPreset(const std::wstring &) override { return false; }
     bool savePreset(const std::wstring &) override { return false; }
@@ -104,6 +109,8 @@ public:
     std::string themeName;
     double glowLevel = 0.0;
     Telemetry live{};
+    int scopeOp = -1; // what the view last asked the scope to capture
+    int scopeCycles = 0;
     UiLayout ui{};
     int openEdits = 0;
     std::vector<int> sets; // the params setValue() was given, in order
@@ -194,10 +201,13 @@ constexpr Point kFineKnob{967.0f, 214.0f};
 constexpr Point kOutKnob{1146.0f, 214.0f};
 constexpr float kBusY = 446.0f; // the routing graph's OUT line
 constexpr Point kPitchKnob{1012.0f, 214.0f};
-constexpr Point kUnisonKnob{914.0f, 272.0f};
-constexpr Point kPhaseKnob{1082.0f, 272.0f};
+constexpr Point kUnisonKnob{934.0f, 306.0f}; // on the UNISON tab
+constexpr Point kPhaseKnob{1134.0f, 306.0f};
 constexpr Point kSlopeKnob{922.0f, 214.0f};
 constexpr Point kDecayKnob{1034.0f, 426.0f};
+// An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
+constexpr float kOpEnvTop = 284.0f;
+constexpr float kOpEnvBottom = 398.0f;
 constexpr Point kFmAmountKnob{308.0f, 32.0f};
 constexpr Point kVoicesKnob{1024.0f, 32.0f};
 constexpr Point kMonoButton{690.0f, 21.0f};
@@ -373,6 +383,15 @@ Point waveButton(int button) {
     return {900.0f + button * kStep + (kStep - 4.0f) * 0.5f, 177.0f};
 }
 const Point kNoiseButton = waveButton(4);
+// An operator page's tabs, UNISON, ENVELOPE and SCOPE, and the scope's buttons for 1, 2 and 4 cycles in its
+// display's top right corner.
+Point opTabPoint(InspectorTab tab) {
+    constexpr float kX[] = {931.0f, 1003.0f, 1071.0f};
+    return {kX[static_cast<int>(tab)], 264.0f};
+}
+Point scopeCycleButton(int choice) {
+    return {1112.0f + choice * 20.0f, 298.0f};
+}
 const Point kMoreWavesButton = waveButton(5);
 
 Point typeButton(int type) {
@@ -1659,7 +1678,7 @@ void run(const std::filesystem::path &dir, float scale) {
     {
         const double total = normFromTime(1.5) + normFromTime(0.015); // A's decay and release
         const float zoom = static_cast<float>((248.0f * 0.84f - 40.0f) / total);
-        drag(view, {930.0f, 330.0f}, {930.0f + 0.2f * zoom, 330.0f});
+        drag(view, {930.0f, kOpEnvTop + 12.0f}, {930.0f + 0.2f * zoom, kOpEnvTop + 12.0f});
         check(std::abs(model.value(paramIndex(0, OpParam::Hold)) - 0.2) < 1e-3 && model.openEdits == 0,
               "dragging the hold handle sets the hold, at the zoom the drag started with");
     }
@@ -1671,17 +1690,17 @@ void run(const std::filesystem::path &dir, float scale) {
         const double before = model.value(release);
         auto edge = [&] {
             std::vector<uint32_t> column;
-            for (float y = 318.0f; y < 397.0f; y += 1.0f)
+            for (float y = kOpEnvTop; y < kOpEnvBottom + 1.0f; y += 1.0f)
                 column.push_back(renderer.pixel({1176.0f, y}));
             return column;
         };
         const bool shot = renderer.save(view, dir / "4c-envelope-dragged.png");
         const std::vector<uint32_t> still = edge();
-        view.mouseDown({1158.0f, 386.0f}, {});
-        view.mouseMove({1240.0f, 386.0f}, {});
-        view.mouseMove({1320.0f, 386.0f}, {});
+        view.mouseDown({1158.0f, kOpEnvBottom - 10.0f}, {});
+        view.mouseMove({1240.0f, kOpEnvBottom - 10.0f}, {});
+        view.mouseMove({1320.0f, kOpEnvBottom - 10.0f}, {});
         const bool inside = renderer.save(view, dir / "4c-envelope-dragged.png") && edge() == still;
-        view.mouseUp({1320.0f, 386.0f}, {});
+        view.mouseUp({1320.0f, kOpEnvBottom - 10.0f}, {});
         const bool longer = model.value(release) > before + 0.2;
         view.undo();
         check(shot && inside && longer && model.value(release) == before,
@@ -1699,14 +1718,14 @@ void run(const std::filesystem::path &dir, float scale) {
             std::vector<uint32_t> pixels;
             for (int row = 0; row < kRows; ++row)
                 for (int column = 0; column < kColumns; ++column)
-                    pixels.push_back(renderer.pixel({1040.0f + column, 318.0f + row}));
+                    pixels.push_back(renderer.pixel({1040.0f + column, kOpEnvTop + row}));
             return pixels;
         };
         view.mouseMove({600.0f, 300.0f}, {});
         renderer.save(view, dir / "4d-envelope-readout.png");
         const std::vector<uint32_t> plain = corner();
         Point bend{0.0f, 0.0f};
-        for (float y = 324.0f; y <= 336.0f && bend.x == 0.0f; y += 2.0f)
+        for (float y = kOpEnvTop + 6.0f; y <= kOpEnvTop + 18.0f && bend.x == 0.0f; y += 2.0f)
             for (float x = 950.0f; x < 1150.0f && bend.x == 0.0f; x += 2.0f) {
                 view.mouseMove({x, y}, {});
                 if (view.cursor() == CursorKind::Vertical)
@@ -1787,15 +1806,15 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(4, OpParam::Enabled)) == 1.0 && layout.selectedNode == 4,
           "a switched-off operator's tab switches it on and selects it");
     // While it is off, its page is dimmed (read off the rendered pixels: the envelope's line darkens).
-    const Point envColumn{1034.0f, 318.0f};
+    const Point envColumn{1034.0f, kOpEnvTop};
     view.mouseMove({600.0f, 300.0f}, {});
     const bool pageOnShot = renderer.save(view, dir / "1d-op-on.png");
-    const int pageOn = ringLevel(renderer, envColumn, 78.0f);
+    const int pageOn = ringLevel(renderer, envColumn, kOpEnvBottom - kOpEnvTop);
     click(view, nodeTab(4));
     const bool tabOff = model.value(paramIndex(4, OpParam::Enabled)) == 0.0 && layout.selectedNode == 4;
     view.mouseMove({600.0f, 300.0f}, {});
     const bool pageOffShot = renderer.save(view, dir / "1e-op-off.png");
-    const int pageOff = ringLevel(renderer, envColumn, 78.0f);
+    const int pageOff = ringLevel(renderer, envColumn, kOpEnvBottom - kOpEnvTop);
     click(view, nodeTab(4));
     check(tabOff && model.value(paramIndex(4, OpParam::Enabled)) == 1.0, "the selected tab switches its operator off and on");
     std::printf("      E's page: brightness %d on, %d off\n", pageOn, pageOff);
@@ -1955,7 +1974,9 @@ void run(const std::filesystem::path &dir, float scale) {
     check(std::lround(model.value(paramIndex(0, OpParam::Wave))) == static_cast<long>(OpWave::Saw),
           "wave buttons set the selected operator's wave");
 
-    // Unison: 30 px up on a stepped knob is 3 steps, from 1 to 4 copies.
+    // Unison, on its tab: 30 px up on a stepped knob is 3 steps, from 1 to 4 copies.
+    click(view, opTabPoint(InspectorTab::Unison));
+    check(layout.opTab == InspectorTab::Unison, "the UNISON tab shows the operator's unison");
     drag(view, kUnisonKnob, {kUnisonKnob.x, kUnisonKnob.y - 30.0f});
     check(model.value(paramIndex(0, OpParam::Unison)) == 4.0, "the unison knob steps through copy counts");
     drag(view, kPhaseKnob, {kPhaseKnob.x, kPhaseKnob.y - 100.0f});
@@ -1978,6 +1999,83 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "3b-noise.png"), "render a noise operator");
     model.set(paramIndex(0, OpParam::Wave), 0.0);
     model.set(paramIndex(0, OpParam::NoiseSlope), 0.0);
+
+    // The SCOPE tab asks the audio thread for A's output over 2 cycles. With no note it draws the sine faintly; a
+    // frame handed in through the telemetry is drawn at its level, across 2 cycles or, picked in its corner, 4; a
+    // slow operator's span up to its cursor. Read off the rendered pixels: the trace's first peak, at a quarter of
+    // the first cycle, 0.8 of the way up to the full-scale line.
+    {
+        const Telemetry before = model.live;
+        click(view, opTabPoint(InspectorTab::Scope));
+        view.poll();
+        check(layout.opTab == InspectorTab::Scope && model.scopeOp == 0 && model.scopeCycles == 2,
+              "the SCOPE tab asks for its operator's output");
+        auto peakAt = [&](int cycles) { // the first peak: 8 px across the inner display, 69 px from the middle up
+            const float x = 908.0f + 252.0f * (0.25f / cycles);
+            return ringLevel(renderer, {x, 381.0f - 0.8f * 69.0f - 4.0f}, 8.0f);
+        };
+        auto frame = [&](int cycles, float cursor) {
+            model.live.voices = 1;
+            model.live.scopeBins = cycles * kScopeBinsPerCycle;
+            model.live.scopeCursor = cursor;
+            for (int bin = 0; bin < model.live.scopeBins; ++bin)
+                model.live.scope[bin] =
+                    0.8f * static_cast<float>(std::sin(2.0 * std::numbers::pi * bin / kScopeBinsPerCycle));
+            view.poll();
+        };
+        model.live.voices = 0;
+        model.live.scopeBins = 0;
+        view.poll();
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool idleShot = renderer.save(view, dir / "3e-scope-idle.png");
+        const int idle = peakAt(2);
+        frame(2, -1.0f);
+        const bool shot = renderer.save(view, dir / "3e-scope.png");
+        const int traced = peakAt(2);
+        click(view, scopeCycleButton(2));
+        frame(4, -1.0f);
+        const bool fourShot = renderer.save(view, dir / "3e-scope-4.png");
+        const int four = peakAt(4);
+        const bool asked = layout.scopeCycles == 4 && model.scopeCycles == 4;
+        frame(4, 0.5f);
+        check(renderer.save(view, dir / "3e-scope-filling.png"), "render a slow operator's scope as it fills");
+        std::printf("      scope's first peak: %d with no note, %d over 2 cycles, %d over 4\n", idle, traced, four);
+        check(idleShot && shot && fourShot && asked && traced > 150 && four > 150 && idle * 10 < traced * 6,
+              "the scope draws the operator's output over the cycles picked");
+        // A noise operator has no scope: its page shows the envelope, and nothing is captured.
+        model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Noise));
+        view.poll();
+        check(model.scopeOp == -1, "a noise operator's page asks for no scope");
+        model.set(paramIndex(0, OpParam::Wave), 0.0);
+        // A hidden tab with a modulated knob shows a dot: LFO 1 on A's decay, on the ENVELOPE tab.
+        const Point dot{1037.0f, 257.0f};
+        view.mouseMove({600.0f, 300.0f}, {});
+        renderer.save(view, dir / "3e-scope-tab-dot.png");
+        const int plain = ringLevel(renderer, dot, 4.0f);
+        model.set(slotTargetIndex(0, 7), slotTargetValue(paramIndex(0, OpParam::Decay)));
+        model.set(slotAmountIndex(0, 7), 0.3);
+        view.poll();
+        const bool dotShot = renderer.save(view, dir / "3e-scope-tab-dot.png");
+        const int lit = ringLevel(renderer, dot, 4.0f);
+        model.set(slotTargetIndex(0, 7), 0.0);
+        model.set(slotAmountIndex(0, 7), 0.0);
+        std::printf("      ENVELOPE tab's corner: %d, %d with its decay modulated\n", plain, lit);
+        check(dotShot && lit > plain + 60, "a hidden tab with a modulated knob shows a dot");
+        // A source's handle dragged over a tab opens it; let go of in empty space, it assigns nothing.
+        view.mouseDown(sourceHandle(0), {});
+        view.mouseMove({sourceHandle(0).x + 40.0f, sourceHandle(0).y - 40.0f}, {});
+        view.mouseMove(opTabPoint(InspectorTab::Unison), {});
+        const bool opened = layout.opTab == InspectorTab::Unison;
+        view.mouseUp({600.0f, 300.0f}, {});
+        view.poll();
+        check(opened && model.scopeOp == -1, "a dragged handle opens the tab it is held over, and the scope stops");
+        model.live = before;
+        click(view, opTabPoint(InspectorTab::Scope));
+        click(view, scopeCycleButton(1));
+        click(view, opTabPoint(InspectorTab::Envelope));
+        view.poll();
+        check(layout.opTab == InspectorTab::Envelope && layout.scopeCycles == 2, "the ENVELOPE tab is back");
+    }
 
     // Play switches: Mono on, Legato off and on again, Glide to 0.5 (100 px up), Always on.
     click(view, kMonoButton);

@@ -54,6 +54,9 @@ class FMVibeProcessor extends AudioWorkletProcessor {
       case 'oversampling':
         this.dsp.dsp_set_oversampling(message.factor);
         break;
+      case 'scope':
+        this.dsp.dsp_scope(message.op, message.cycles);
+        break;
       case 'buffer':
         this.spare.push(message.buffer);
         break;

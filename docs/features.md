@@ -449,9 +449,25 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   line; its knobs still work.
   - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine,
     Organ, Vowel and Custom (picked,
-    one of these shows on that button); ratio, pitch, fine, detune, velocity and output, the unison knobs and Rnd Phase. A small fan display
-    shows where the copies sit (left/right by spread, up/down by detune). A noise operator shows Slope and Spread
-    instead of the pitch and unison knobs, and its spectrum against white, pink and brown; its circle in the graph
+    one of these shows on that button); ratio, pitch, fine, detune, velocity and output. Under them, tabs pick what
+    the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
+    as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
+    handle over a tab opens it, so its knobs can take the drop:
+    - **UNISON**: the unison knobs and Rnd Phase, and a display of where the copies sit (left/right by spread,
+      up/down by detune).
+    - **ENVELOPE** (to begin with): the operator's envelope, and its knobs.
+    - **SCOPE**: the operator's output in the newest voice as it plays, with its unison copies together and
+      everything that moves it (the FM it gets, its envelope, the modulation on its level and pitch), before it
+      reaches the filters, shapers or the output. It is caught at the operator's own phase, so a span starts where a
+      cycle does and stands still even under heavy FM. The buttons in its corner show 1, 2 or 4 cycles across
+      (2 to begin with): real cycles, so a modulator at a ratio of 0.5 or detuned copies make them differ. The trace
+      is drawn at its level, between dashed lines at full scale, its peak in dB in the top left corner. A slow
+      operator, whose cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left
+      of the last span faint after it. With no note playing, the wave's plain shape shows faintly. The audio thread
+      captures only while the tab is shown.
+
+    A noise operator shows Slope and Spread instead of the pitch knobs; its first tab is **SPECTRUM**, its spectrum
+    against white, pink and brown, and it has no scope (picked, it shows its envelope). Its circle in the graph
     is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end
     (release). The small dot halfway along the attack, decay and release bends that segment (drag up or down,

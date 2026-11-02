@@ -41,10 +41,25 @@ constexpr float kCellStep = (kRouting.h - 2.0f * kMatrixMargin - kMatrixNamesH +
 constexpr float kCell = kCellStep - kCellGap;
 constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMatrixNamesH};
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
-constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 214.0f, kInspector.w - 32.0f, 78.0f};
-constexpr Rect kUnisonRect{kInspector.x + 226.0f, kInspector.y + 150.0f, 58.0f, 40.0f};
-// Where a noise operator's unison row would be: its spectrum.
-constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 148.0f, kInspector.w - 32.0f, 48.0f};
+// An operator's page: under its knob row, tabs (one per InspectorTab) pick what the lower half shows.
+constexpr float kOpTabsY = kInspector.y + 150.0f;
+constexpr float kOpTabH = 20.0f;
+inline Rect opTab(int tab) {
+    constexpr float kX[] = {0.0f, 66.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f};
+    return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
+}
+// Envelope: the curve, its knobs under it at y + 322.
+constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 180.0f, kInspector.w - 32.0f, 114.0f};
+// Unison: the knobs at y + 202, where the copies sit under them.
+constexpr float kUnisonKnobsY = kInspector.y + 202.0f;
+constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 244.0f, kInspector.w - 32.0f, 114.0f};
+// A noise operator's spectrum, in Unison's place.
+constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 180.0f, kInspector.w - 32.0f, 114.0f};
+// Scope: the operator's output, the cycle count's buttons in its top right corner.
+constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 180.0f, kInspector.w - 32.0f, 178.0f};
+inline Rect scopeCycleButton(int choice) {
+    return {kScopeRect.right() - 6.0f - (3 - choice) * 20.0f, kScopeRect.y + 6.0f, 20.0f, 16.0f};
+}
 constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
 // A filter's slope list, at the right end of its row of type buttons.
 constexpr Rect kFilterSlopeButton{kInspector.x + kInspector.w - 16.0f - 62.0f, kInspector.y + 62.0f, 62.0f, 22.0f};

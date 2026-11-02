@@ -321,6 +321,10 @@ STR(HeadingMod, "MOD")
 STR(ViewRouting, "ROUTING")
 STR(ViewMatrix, "MATRIX")
 STR(ViewFx, "FX")
+STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
+STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
+STR(TabEnvelope, "ENVELOPE")
+STR(TabScope, "SCOPE")
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix

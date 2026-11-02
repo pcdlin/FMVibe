@@ -4,6 +4,7 @@
 #include "params.h"
 #include "synth.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -33,6 +34,9 @@ struct SharedTelemetry {
     std::atomic<int> voices{0};
     std::atomic<float> tempo{120.0f};
     std::array<std::atomic<uint32_t>, 4> keys{};
+    std::array<std::atomic<float>, kScopeBins> scope{};
+    std::atomic<int> scopeBins{0};
+    std::atomic<float> scopeCursor{-1.0f};
 
     void store(const Telemetry &t) {
         for (size_t i = 0; i < keys.size(); ++i)
@@ -63,6 +67,10 @@ struct SharedTelemetry {
         clipHold.store(t.clipHold, std::memory_order_relaxed);
         voices.store(t.voices, std::memory_order_relaxed);
         tempo.store(t.tempo, std::memory_order_relaxed);
+        for (int i = 0; i < t.scopeBins; ++i) // only what was captured: its first scopeBins
+            scope[i].store(t.scope[i], std::memory_order_relaxed);
+        scopeBins.store(t.scopeBins, std::memory_order_relaxed);
+        scopeCursor.store(t.scopeCursor, std::memory_order_relaxed);
         stamp.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
     }
 
@@ -95,6 +103,10 @@ struct SharedTelemetry {
         t.clipHold = clipHold.load(std::memory_order_relaxed);
         t.voices = voices.load(std::memory_order_relaxed);
         t.tempo = tempo.load(std::memory_order_relaxed);
+        t.scopeBins = std::clamp(scopeBins.load(std::memory_order_relaxed), 0, kScopeBins);
+        for (int i = 0; i < t.scopeBins; ++i)
+            t.scope[i] = scope[i].load(std::memory_order_relaxed);
+        t.scopeCursor = scopeCursor.load(std::memory_order_relaxed);
         const auto elapsed = std::chrono::steady_clock::duration(
             std::chrono::steady_clock::now().time_since_epoch().count() - stamp.load(std::memory_order_relaxed));
         t.age = std::chrono::duration<float>(elapsed).count();

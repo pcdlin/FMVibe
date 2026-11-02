@@ -17,6 +17,13 @@ constexpr int kNodes = kOps + kFilters + kShapers;
 // routing) or the effects chain. Saved by number.
 enum class RoutingView { Graph, Matrix, Fx };
 
+// What the lower half of an operator's page shows, one for every operator. Saved by number. A noise operator shows
+// its spectrum in Unison's place, and its envelope in Scope's.
+enum class InspectorTab { Unison, Envelope, Scope };
+
+// How many of the operator's cycles the scope shows across.
+constexpr int kScopeCycleChoices[] = {1, 2, 4};
+
 constexpr std::array<int, kMaxSources> identitySourceOrder() {
     std::array<int, kMaxSources> order{};
     for (int i = 0; i < kMaxSources; ++i)
@@ -53,6 +60,8 @@ struct UiLayout {
     // but not undone.
     uint32_t fxFolded = 0;
     uint32_t sourcesFolded = 0;
+    InspectorTab opTab = InspectorTab::Envelope;
+    int scopeCycles = 2;
 };
 
 // A macro's name as shown: its own, or "Macro 1" and so on.
@@ -153,6 +162,9 @@ public:
     // The virtual keyboard: a MIDI note number (60 is middle C), and the bend wheel, -1..1.
     virtual void playNote(int note, bool on) = 0;
     virtual void pitchWheel(double amount) = 0;
+    // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
+    // over how many of its cycles.
+    virtual void setScope(int op, int cycles) = 0;
 
     // Presets: the whole patch, as a file. Init sets every param and the layout back to their defaults.
     virtual void resetPreset() = 0;

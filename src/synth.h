@@ -67,6 +67,12 @@ double randomStep(double last, double chaos, uint32_t &rng);
 // went past full scale, in seconds.
 constexpr double kMeterFallDb = 24.0;
 constexpr double kClipHold = 1.5;
+// The scope: an operator's output over up to kScopeMaxCycles of its cycles, kScopeBinsPerCycle points each.
+constexpr int kScopeBinsPerCycle = 256;
+constexpr int kScopeMaxCycles = 4;
+constexpr int kScopeBins = kScopeBinsPerCycle * kScopeMaxCycles;
+// A span of cycles that lasts longer than this, in seconds, shows as it fills, up to a cursor.
+constexpr double kScopeSlowSpan = 0.2;
 
 struct Telemetry {
     std::array<float, kModulatedCount> modOffset{}; // LFO/envelope modulation, in plain units
@@ -89,6 +95,12 @@ struct Telemetry {
     int voices = 0;
     float tempo = 120.0f; // host tempo, for showing synced times
     std::array<uint32_t, 4> keys{}; // keys held down, one bit per MIDI key (key 0 is bit 0 of keys[0])
+    // The scope's operator in that voice (see Synth::setScope()): its output (unison copies together, as other
+    // operators hear it) at evenly spaced points of its phase, the first scopeBins of them; 0 while nothing is
+    // captured. A slow operator's span shows while it fills: scopeCursor is how far (0..1), -1 for a whole span.
+    std::array<float, kScopeBins> scope{};
+    int scopeBins = 0;
+    float scopeCursor = -1.0f;
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };
@@ -155,6 +167,9 @@ public:
         effects_.setAnalyzing(on);
     }
     void telemetry(Telemetry &out) const;
+    // Which operator's output the telemetry's scope captures from the newest voice (-1: none, and nothing is
+    // done), over how many of its cycles (1 to kScopeMaxCycles).
+    void setScope(int op, int cycles);
 
     // Notes whose voice went silent since the last clearEndedNotes().
     std::span<const NoteRef> endedNotes() const { return ended_; }
@@ -377,6 +392,28 @@ private:
     std::array<double, 2> outPeak_{};
     double clipHold_ = 0.0;
     void meterOutput(const float *left, const float *right, uint32_t frames);
+    // The scope (see Telemetry::scope): each sample of the operator goes in at its copy 0's phase, which FM doesn't
+    // move, so a span starts where a cycle does and stands still under FM; the points between two samples are drawn
+    // in between them. A span is published whole once it is full.
+    struct ScopeCapture {
+        int op = -1;
+        int cycles = 2;
+        uint64_t order = 0;     // the voice it captures, by its note-on number
+        bool started = false;   // has a first sample
+        bool live = false;      // a voice was captured in the last control block
+        bool whole = false;     // frame holds a full span
+        double lastPos = 0.0;   // where the last sample went, in cycles since the first
+        double lastPhase = 0.0;
+        double lastValue = 0.0;
+        double inc = 0.0;       // cycles a sample, for telling a slow span
+        int64_t next = 0;       // the next point to fill, counted since the first sample's cycle
+        std::array<float, kScopeBins> filling{};
+        std::array<float, kScopeBins> frame{};
+    };
+    ScopeCapture scope_;
+    const Voice *scopeVoice_ = nullptr; // the voice whose operator the scope takes, this control block
+    void scopeTake(double phase, double value);
+    void scopeRestart();
     std::vector<NoteRef> ended_; // reserved in prepare(), never grows on the audio thread
 };
 

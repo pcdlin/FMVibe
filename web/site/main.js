@@ -138,6 +138,9 @@ const host = {
   bend(amount) {
     send({type: 'bend', amount});
   },
+  scope(op, cycles) {
+    send({type: 'scope', op, cycles});
+  },
   oversampling(factor) {
     flush();
     send({type: 'oversampling', factor});

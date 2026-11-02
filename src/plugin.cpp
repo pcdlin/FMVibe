@@ -137,6 +137,10 @@ public:
     }
     void playNote(int note, bool on) override;
     void pitchWheel(double amount) override { wheelBend_.store(amount); }
+    void setScope(int op, int cycles) override {
+        scopeOp_.store(op, std::memory_order_relaxed);
+        scopeCycles_.store(cycles, std::memory_order_relaxed);
+    }
     void resetPreset() override;
     bool loadPreset(const std::wstring &path) override;
     bool savePreset(const std::wstring &path) override;
@@ -253,6 +257,8 @@ private:
     std::atomic<double> wheelBend_{0.0};
     SharedTelemetry telemetry_;
     std::atomic<bool> editorOpen_{false};
+    std::atomic<int> scopeOp_{-1}; // what the editor's scope shows (see Controller::setScope())
+    std::atomic<int> scopeCycles_{2};
     gui::UiLayout layout_;
     std::unique_ptr<gui::Editor> editor_;
     // The preset library as last scanned, with each entry's file (the patch's own is the Controller's).
@@ -367,6 +373,8 @@ clap_process_status Plugin::process(const clap_process_t *process) {
     playKeys();
     synth_.setWheelBend(wheelBend_.load());
     synth_.setAnalyzing(editorOpen_.load(std::memory_order_relaxed));
+    synth_.setScope(editorOpen_.load(std::memory_order_relaxed) ? scopeOp_.load(std::memory_order_relaxed) : -1,
+                    scopeCycles_.load(std::memory_order_relaxed));
     // Editor changes to these land between blocks; apply them before this block's notes.
     synth_.setVoiceLimit(voiceLimit());
     applyPlayMode();
@@ -701,6 +709,8 @@ void Plugin::keepEditorLayout(const gui::UiLayout &from) {
     layout_.keysCollapsed = from.keysCollapsed;
     layout_.shapeGridX = from.shapeGridX;
     layout_.shapeGridY = from.shapeGridY;
+    layout_.opTab = from.opTab;
+    layout_.scopeCycles = from.scopeCycles;
 }
 
 // Init and loading a preset are undo steps like any edit in the editor; afterwards the patch is

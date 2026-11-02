@@ -33,6 +33,7 @@ EM_JS(void, js_all_params, (const double *values, int count),
       { Module.fmvHost.allParams(HEAPF64.slice(values >> 3, (values >> 3) + count)); });
 EM_JS(void, js_note, (int key, int on), { Module.fmvHost.note(key, on != 0); });
 EM_JS(void, js_bend, (double amount), { Module.fmvHost.bend(amount); });
+EM_JS(void, js_scope, (int op, int cycles), { Module.fmvHost.scope(op, cycles); });
 EM_JS(void, js_oversampling, (int factor), { Module.fmvHost.oversampling(factor); });
 EM_JS(void, js_layout_changed, (), { Module.fmvHost.layoutChanged(); });
 EM_JS(void, js_toast, (const char *utf8), { Module.fmvHost.toast(UTF8ToString(utf8)); });
@@ -100,6 +101,14 @@ public:
     void layoutChanged() override { js_layout_changed(); }
     void playNote(int note, bool on) override { js_note(note, on); }
     void pitchWheel(double amount) override { js_bend(amount); }
+    // The view asks every poll; only a change goes to the worklet.
+    void setScope(int op, int cycles) override {
+        if (op == scopeOp_ && cycles == scopeCycles_)
+            return;
+        scopeOp_ = op;
+        scopeCycles_ = cycles;
+        js_scope(op, cycles);
+    }
 
     // Init and loading an example are undo steps like any edit in the editor, as in the plugin.
     void resetPreset() override {
@@ -198,10 +207,14 @@ private:
         layout_.keysCollapsed = before.keysCollapsed;
         layout_.shapeGridX = before.shapeGridX;
         layout_.shapeGridY = before.shapeGridY;
+        layout_.opTab = before.opTab;
+        layout_.scopeCycles = before.scopeCycles;
     }
 
     ParamValues values_{};
     UiLayout layout_;
+    int scopeOp_ = -1;
+    int scopeCycles_ = 2;
     std::vector<FactoryPreset> examples_;
     std::vector<PresetEntry> library_;
     Telemetry received_{};

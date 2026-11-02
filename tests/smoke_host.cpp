@@ -2312,6 +2312,7 @@ int main(int argc, char **argv) {
         }
         layout.insert(layout.end(), {5.0f, 2.0f}); // folded cards
         layout.push_back(1.0f);                    // the keyboard collapsed
+        layout.insert(layout.end(), {2.0f, 4.0f}); // the operator page's scope, over 4 cycles
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

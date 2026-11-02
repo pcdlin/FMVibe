@@ -73,6 +73,10 @@ EMSCRIPTEN_KEEPALIVE void dsp_bend(double amount) {
     wheelBend = amount;
 }
 
+EMSCRIPTEN_KEEPALIVE void dsp_scope(int op, int cycles) {
+    synth.setScope(op, cycles);
+}
+
 EMSCRIPTEN_KEEPALIVE void dsp_set_oversampling(int factor) {
     oversampling = factor;
 }
