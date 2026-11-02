@@ -157,6 +157,10 @@ bool isLfoFree(int param) {
     return sourceFieldOf(param) == SourceParam::Free;
 }
 
+bool isLfoPhase(int param) {
+    return sourceFieldOf(param) == SourceParam::Phase;
+}
+
 bool isPartialCount(int param) {
     return param >= partialCountIndex(0) && param <= partialCountIndex(kOps - 1);
 }
@@ -986,6 +990,13 @@ double View::lfoPhaseNow(int lfo) const {
     return phase - std::floor(phase);
 }
 
+bool View::lfoPhaseUsed(int lfo) const {
+    const bool free = value(paramIndex(lfo, SourceParam::Free)) >= 0.5 &&
+                      value(paramIndex(lfo, SourceParam::OneShot)) < 0.5;
+    return !free &&
+           std::lround(value(paramIndex(lfo, SourceParam::Shape))) != static_cast<long>(LfoShape::Random);
+}
+
 double View::lfoValueNow(int lfo) const {
     const auto shape = static_cast<LfoShape>(std::clamp(
         static_cast<int>(std::lround(value(paramIndex(lfo, SourceParam::Shape)))), 0, static_cast<int>(LfoShape::Count) - 1));
@@ -1679,7 +1690,8 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::Toggle, lfoModeSwitch(card, i), paramIndex(s, modes[i]));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
-                 lfoRateKnob(card), 30.0f, synced ? nullptr : tr(Str::LabelRate));
+                 lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
+            knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
         } else {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
@@ -3776,6 +3788,11 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     c.line({inner.x, zero}, {inner.right(), zero}, kBorder, 1.0f);
     const auto shape = static_cast<LfoShape>(std::clamp(
         static_cast<int>(std::lround(value(paramIndex(lfo, SourceParam::Shape)))), 0, static_cast<int>(LfoShape::Count) - 1));
+    // Where notes start it, past the cycle's start.
+    if (const double start = value(paramIndex(lfo, SourceParam::Phase)); lfoPhaseUsed(lfo) && start > 0.0 && start < 1.0) {
+        const float x = inner.x + static_cast<float>(start) * inner.w;
+        c.line({x, r.y + 4.0f}, {x, r.bottom() - 4.0f}, kSourceColors[lfo].alpha(0.45f), 1.0f);
+    }
     std::vector<Point> points;
     auto at = [&](double x, double y) {
         points.push_back({inner.x + static_cast<float>(x) * inner.w, inner.center().y - static_cast<float>(y) * inner.h * 0.5f});
@@ -4861,8 +4878,10 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f);
     // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
     const int macro = macroOf(w.param);
-    const bool idle = macro >= 0 && !sourceLive(kMaxSources + macro);
-    const Color arc = macro >= 0 ? kSourceColors[kMaxSources + macro].alpha(idle ? 0.3f : 1.0f) : kAccent;
+    // An LFO's Phase is faint too while notes don't start the LFO there.
+    const bool idle = (macro >= 0 && !sourceLive(kMaxSources + macro)) ||
+                      (isLfoPhase(w.param) && !lfoPhaseUsed(sourceOf(w.param)));
+    const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : kAccent).alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
     c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);

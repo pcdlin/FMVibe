@@ -182,6 +182,7 @@ private:
         double hz = 0.0;   // the rate it last ran at
         double held = 0.0; // the Random shape's value for this cycle
         double from = 0.0; // and for the last one, which it glides from
+        bool restart = false; // a note (re)started it: its next block moves it to its Phase
     };
 
     // One LFO/envelope slot's contribution to a param, in plain units.

@@ -583,6 +583,7 @@ void buildTable(ParamTable &t) {
         addCurves(paramIndex(source, SourceParam::AttackCurve), name, module);
         field(SourceParam::EnvBipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0,
             0.0); // takes its targets one way
+        field(SourceParam::Phase, tr(Str::ParamPhase), ParamKind::Percent, 0.0, 1.0, 0.0);
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.

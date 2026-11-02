@@ -213,7 +213,7 @@ inline Rect sourcePower(float card) {
 // one-shot and unipolar switches (0..2, as icons), the two rows as wide.
 inline Rect lfoModeSwitch(float card, int mode) {
     const Rect p = sourceCard(card);
-    return {p.x + 16.0f + mode * 44.0f, p.y + 72.0f, 40.0f, 16.0f};
+    return {p.x + 16.0f + mode * 42.0f, p.y + 72.0f, 38.0f, 16.0f};
 }
 
 inline Rect lfoShapeButton(float card) {
@@ -221,16 +221,17 @@ inline Rect lfoShapeButton(float card) {
     return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, 2).right() - p.x - 16.0f, 22.0f};
 }
 
-// Right of those two rows, the Rate knob with its label, centered on them, and its sync switch, a small square
-// right of the knob.
-inline Point lfoRateKnob(float card) {
+// Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, centered on them, each over a random
+// LFO's Smooth and Chaos; Rate's sync switch, a small square, sits between the rows and its knob.
+inline Point lfoKnob(float card, int knob) {
     const Rect top = lfoShapeButton(card), bottom = lfoModeSwitch(card, 2);
-    return {bottom.right() + 32.0f, (top.y + bottom.bottom()) * 0.5f - 9.0f}; // the label takes 18 px under the knob
+    return {randomKnob(card, knob).x, (top.y + bottom.bottom()) * 0.5f - 9.0f}; // the label takes 18 px under the knob
 }
 
 inline Rect sourceSync(float card) {
-    const Point rate = lfoRateKnob(card);
-    return {rate.x + 25.0f, rate.y - 10.0f, 20.0f, 20.0f};
+    const Point rate = lfoKnob(card, 0);
+    const float x = (lfoModeSwitch(card, 2).right() + rate.x - 15.0f) * 0.5f;
+    return {x - 10.0f, rate.y - 10.0f, 20.0f, 20.0f};
 }
 
 // ADD EFFECT at the top left, and the list it opens under it: one row per type,

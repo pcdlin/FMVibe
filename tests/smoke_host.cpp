@@ -1102,6 +1102,20 @@ int main(int argc, char **argv) {
         check(freeFirst == 0.0f && freeLater > 0.1f && retrigFirst == 0.0f && retrigLater == 0.0f,
               "a free LFO keeps running across notes; a retriggered one restarts");
 
+        // Phase: started half way through its cycle, the drawn square sounds 0.1 s into a note; free, it keeps the
+        // shared clock, muted 0.1 s after a reset. A one-shot runs from there to the cycle's end: 0.35 s in, it has
+        // ended, muted, where from the cycle's start it still sounds (checked below).
+        setParams({{paramIndex(0, SourceParam::Phase), 0.5}});
+        const float phased = levelAt(120.0, 0.1);
+        const float phasedFree = twoNotes(1.0).first;
+        setParams({{paramIndex(0, SourceParam::Free), 0.0}, {paramIndex(0, SourceParam::OneShot), 1.0}});
+        const float phasedOneShot = levelAt(120.0, 0.35);
+        setParams({{paramIndex(0, SourceParam::OneShot), 0.0}, {paramIndex(0, SourceParam::Phase), 0.0}});
+        std::printf("      drawn square at 50 %% phase: %.3f at 0.1 s, %.3f free, one-shot %.3f at 0.35 s\n", phased,
+                    phasedFree, phasedOneShot);
+        check(phased > 0.1f && phasedFree == 0.0f && phasedOneShot == 0.0f,
+              "an LFO's Phase sets where notes start it, and a free one keeps its clock");
+
         // One-shot: the drawn square runs once and then stays at its end, where the
         // cycle started (muted); looping, 0.85 s in is back in the sounding half.
         const float looping = levelAt(120.0, 0.85);

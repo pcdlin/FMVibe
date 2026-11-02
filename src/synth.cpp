@@ -235,8 +235,10 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         op.env.start();
     for (Envelope &env : v.modEnvs)
         env.start();
-    for (Lfo &lfo : v.lfos) // the first step comes in the voice's first block, with its chaos
+    for (Lfo &lfo : v.lfos) { // the first step and the start phase come in the voice's first block
         lfo.from = lfo.held = nextRandom(v.rng);
+        lfo.restart = true;
+    }
 }
 
 void Synth::noteOff(const NoteRef &match) {
@@ -307,6 +309,7 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
         for (Lfo &lfo : v.lfos) { // Random carries on from the value it holds
             lfo.phase = 0.0;
             lfo.from = lfo.held;
+            lfo.restart = true;
         }
     }
 }
@@ -757,6 +760,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 lfo.held = randomStep(lfo.from, chaos, v.rng);
             const auto shape = static_cast<LfoShape>(stepped(p[paramIndex(s, SourceParam::Shape)],
                                                              static_cast<int>(LfoShape::Count) - 1));
+            // A note starts it at its Phase (100 % is 0 % again), read here so that host modulation sent with the
+            // note applies. A free one keeps the shared clock, and Random its steps.
+            if (lfo.restart && shape != LfoShape::Random) {
+                const double start = p[paramIndex(s, SourceParam::Phase)];
+                lfo.phase = start - std::floor(start);
+            }
+            lfo.restart = false;
             const double value =
                 shape == LfoShape::Custom ? shapeValue([&params](int i) { return params[i]; }, s, lfo.phase)
                 : shape == LfoShape::Random

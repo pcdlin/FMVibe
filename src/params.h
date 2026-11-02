@@ -127,7 +127,9 @@ enum class SourceType { None, Lfo, Env, Count };
 // across the set value, half below and half above (100 % is -50 % to +50 %). A one-shot LFO runs one cycle
 // from each note and then stays where the cycle ends; it is never free. The
 // Random shape takes a new value each cycle: Chaos sets how far it may jump from
-// the last one (at 100 % anywhere), Smooth how much of the cycle it glides there. An envelope is unipolar
+// the last one (at 100 % anywhere), Smooth how much of the cycle it glides there. Phase is where in its cycle an
+// LFO starts with each note (a one-shot runs from there to the cycle's end); a free or Random one ignores it. An
+// envelope is unipolar
 // unless EnvBipolar, which swings its depth across the set value like a bipolar LFO's (see sourceBipolar()).
 enum class SourceParam {
     Type,
@@ -154,6 +156,7 @@ enum class SourceParam {
     RandomSmooth,
     RandomChaos,
     EnvBipolar, // a mod envelope's field
+    Phase,      // an LFO's
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -513,7 +516,8 @@ constexpr SourceParam sourceFieldOf(int index) {
 // The source type a field belongs to; None for the fields every source uses (Type, Enabled, slots).
 constexpr SourceType sourceTypeOfField(SourceParam f) {
     return f == SourceParam::EnvBipolar ? SourceType::Env
-           : f >= SourceParam::RandomSmooth && f <= SourceParam::RandomChaos ? SourceType::Lfo
+           : (f >= SourceParam::RandomSmooth && f <= SourceParam::RandomChaos) || f == SourceParam::Phase
+               ? SourceType::Lfo
            : f < SourceParam::Shape ? SourceType::None
            : f < SourceParam::Attack ? SourceType::Lfo
            : f < SourceParam::Count  ? SourceType::Env
@@ -908,6 +912,8 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kFirstSlots - 1)) == 3409 &&
                   idOfIndex(paramIndex(0, SourceParam::Shape)) == 2810 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::EnvBipolar)) == 3427 &&
+                  idOfIndex(paramIndex(0, SourceParam::Phase)) == 2828 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Phase)) == 3428 &&
                   idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");

@@ -238,9 +238,9 @@ Point sourceHandle(float card) {
     return {cardX(card) + 36.0f, 543.0f};
 }
 
-// An LFO's sync switch, a square right of its Rate knob.
+// An LFO's sync switch, a square left of its Rate knob.
 Point sourceSync(float card) {
-    return {cardX(card) + 211.0f, 592.0f};
+    return {cardX(card) + 155.0f, 592.0f};
 }
 
 Point sourcePower(float card) {
@@ -261,16 +261,25 @@ Point shapeItem(float card, LfoShape shape) {
 }
 
 // An LFO card's switches under its shape list.
+Point freeToggle(float card) {
+    return {cardX(card) + 35.0f, 616.0f};
+}
+
 Point oneShotToggle(float card) {
-    return {cardX(card) + 80.0f, 616.0f};
+    return {cardX(card) + 77.0f, 616.0f};
 }
 
 Point unipolarToggle(float card) {
-    return {cardX(card) + 124.0f, 616.0f};
+    return {cardX(card) + 119.0f, 616.0f};
 }
 
+// Its Rate and Phase knobs, over a random LFO's Smooth and Chaos.
 Point rateKnob(float card) {
-    return {cardX(card) + 176.0f, 592.0f};
+    return {cardX(card) + 186.0f, 592.0f};
+}
+
+Point phaseKnob(float card) {
+    return {cardX(card) + 236.0f, 592.0f};
 }
 
 // The places holding a source, in the order they show, and what the editor calls one.
@@ -2227,6 +2236,29 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, sourceSync(0));
     check(quarters && freed && syncShot && model.value(sync) == 1.0 && model.value(division) == divisionBefore + 2.0,
           "an LFO starts synced in quarter notes, its knob a note value, and its sync switch frees it");
+
+    // Its Phase knob sets where notes start it, which a tick on its display marks; free, the knob goes faint and the
+    // tick away (read off the rendered pixels: the tick under the curve's peak at 25 %, the knob's arc).
+    const int phase = paramIndex(0, SourceParam::Phase);
+    drag(view, phaseKnob(0), {phaseKnob(0).x, phaseKnob(0).y - 50.0f});
+    view.mouseMove({400.0f, 300.0f}, {});
+    const Point tick{cardX(0) + 26.0f + 0.25f * (kCardW - 52.0f), 678.0f};
+    const Point arc{phaseKnob(0).x - 12.4f, phaseKnob(0).y + 4.0f}; // on the arc, near its start at the lower left
+    auto brightness = [&](Point p) {
+        const uint32_t color = renderer.pixel(p);
+        return (color >> 16 & 255) + (color >> 8 & 255) + (color & 255);
+    };
+    const bool phaseShot = renderer.save(view, dir / "4c-lfo-phase.png");
+    const uint32_t tickThen = brightness(tick), arcThen = brightness(arc);
+    click(view, freeToggle(0));
+    view.mouseMove({400.0f, 300.0f}, {});
+    const bool freeShot = renderer.save(view, dir / "4d-lfo-phase-free.png");
+    const bool faint = brightness(tick) < tickThen && brightness(arc) < arcThen;
+    click(view, freeToggle(0));
+    check(std::abs(model.value(phase) - 0.25) < 1e-6 && phaseShot && freeShot && faint &&
+              model.value(paramIndex(0, SourceParam::Free)) == 0.0,
+          "an LFO's Phase knob sets its start, marked on its display, and goes faint while the LFO is free");
+    model.set(phase, 0.0);
 
     // The FX chain starts empty and covers the routing panel and the inspector.
     click(view, kFxTab);

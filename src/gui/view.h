@@ -493,6 +493,8 @@ private:
     // Where an LFO of the newest voice is now, and its output there.
     double lfoPhaseNow(int lfo) const;
     double lfoValueNow(int lfo) const;
+    // Whether notes start an LFO at its Phase: not while it is free (and not a one-shot), nor Random.
+    bool lfoPhaseUsed(int lfo) const;
 
     // Geometry.
     std::vector<Widget> widgets() const;

@@ -425,6 +425,7 @@ STR(LabelUniSpread, "Uni Spread")
 STR(LabelRndPhase, "Rnd Phase")
 STR(LabelSmooth, "Smooth")
 STR(LabelChaos, "Chaos")
+STR(LabelPhase, "Phase")
 
 // Switches and buttons.
 STR(SwitchPoly, "POLY")

@@ -115,7 +115,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     top, so leave it at 0, where it starts, for an exact match.
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
     runs at the rate the newest voice hears (like the effects) and keeps going between notes. Off (the default),
-    every note retriggers the LFO from the start of its cycle.
+    every note retriggers the LFO from its Phase.
+  - **Phase** (0–100 %, 0 to begin with) is where in its cycle each note starts an LFO: at 25 % a sine starts at
+    its peak, and 100 % is the cycle's start again. A free LFO keeps its shared clock and a random one its steps,
+    so neither uses it. A one-shot runs from there to the cycle's end, so at 50 % it plays only the second half.
   - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
     dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. A new LFO starts synced, in
     quarter notes.
@@ -501,9 +504,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     shaper's curve, its button and each entry showing the shape's icon before its name. Under the shape list, as
     wide as it, three small switches drawn as icons (named on hover): an infinity sign
     for **Free**, which stops notes from restarting it, a single cycle that ends in a dot for **One-Shot**, and
-    humps on a baseline for **Unipolar**. Right of those two rows, centered on them, is the Rate knob, and right of
-    it the sync switch, a small square button with the metronome the effects' SYNC has, which turns the knob into a
-    note-value knob (as it starts, on). A unipolar LFO's display has its zero line at the bottom.
+    humps on a baseline for **Unipolar**. Right of those two rows, centered on them, are the Rate and Phase knobs,
+    over a random LFO's Smooth and Chaos, with the sync switch between the rows and Rate: a small square button
+    with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
+    The Phase knob is faint while it does nothing (a free or random LFO), and otherwise a thin line on the display
+    marks where notes start the LFO. A unipolar LFO's display has its zero line at the bottom.
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click or

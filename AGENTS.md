@@ -53,6 +53,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     shaper squares it off too, and a filter and a shaper feeding each other in a loop still end with their note,
     and stay finite when the loop lifts itself past unity;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
+  - an LFO's Phase moving where notes start it (a one-shot running from there to its cycle's end), while a free
+    one keeps its clock;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
     the note source about the middle of what they put out;
   - the note source, its curve drawn along the cutoff knobs', tunes a notch at 0 to an A4, and follows a pitch
@@ -138,7 +140,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the play switches and the glide knob;
-  - an LFO starting synced in quarter notes, and its sync switch freeing it;
+  - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
+    and faint while the LFO is free (read off the rendered pixels);
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
     flanger's STEREO, the filter's Key Track and the shaper's and delay's LINK too) and the list of effects with
     their icons;
