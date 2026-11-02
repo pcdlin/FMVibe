@@ -1,6 +1,6 @@
-## Bugs
-
 ## New Features
+
+- Make velocity an assignable mod source
 
 - Add auxiliary modulation sources, like Phase Plant and Serum
     - **In one line:** the aux-source idea the next item spells out, so it's planned there; new source *types*
@@ -40,19 +40,11 @@
            uishot replays for the tab, a drop on a depth handle and a row's controls; features.md.
     - Decided: Amount is a 0–100 % scaler on the depth, like Serum's Output. The tab is called **MODS** for now.
 
-- Toggleable pitch tracking for operators, fixed frequncy if turned off
-    - **In one line:** add Key Track and Freq at the end of the operator's params, so no stored id moves; with Key
-      Track off, the operator plays at Freq and ignores the note, bend and glide.
-    - **Feasible, small.**
-        1. Two fields at the end of `OpParam`, after the shaper sends, so no id moves (25 of 50 ids used): *Key
-           Track* (on to begin with) and *Freq* (1 Hz–20 kHz on a log curve, 440 Hz to begin with).
-        2. `synth.cpp`: off, the operator's increment comes from Freq instead of the note's Hz × ratio, so the
-           note, bend, glide and global Pitch don't move it; its Pitch, Detune and unison detune still do.
-        3. Editor: a switch beside the ratio knob; off, a Freq knob takes Coarse's place, and the graph node and
-           summary line show Hz instead of the ratio.
-        4. Smoke: a fixed operator's peak stays put across two notes; features.md.
+
 
 ## Issues 
+
+- Add a way to change the curvature of arrows in the routing view, to avoid overlapping arrows. 
 
 - When assigning too many automation sources to a control, the automation blips spill over onto other elements. Not sure how to solve this.
     - **In one line:** show only as many depth handles as fit under the knob, label or cell, plus a "+n" pill that
@@ -66,6 +58,8 @@
 
 
 ## Improvements 
+
+- Make modulation unipolar/bipolar setting per-target instead of per-source
 
 - Move factory presets out of the C++ code, into committed .FMV files. They should be compiled into the code on build.
     - **In one line:** move the preset reading and writing into the core library, export today's presets once as
@@ -83,16 +77,6 @@
            web build alike, regenerated when a file changes.
         4. `factoryPresets()` decodes those, and `writeExamples()` copies the bytes as they are; the builder in
            `factory.cpp` (~700 lines) goes. quality.cpp's preset checks and uishot keep using `factoryPresets()`.
-
-- In the LFO card, the rate knob area is a bit cramped
-    - **In one line:** narrow the shape buttons (31 → 28 px) to free ~18 px for the Rate knob, and take a few px from
-      the display's height.
-    - **Feasible, small.** The Rate knob (30 px) has its top against the title row, above the shape buttons, 19 px
-      from the last of them, with the sync switch right under its label.
-        1. Narrow the shape buttons' pitch from 31 to 28 px and the three mode switches to match (~18 px freed).
-        2. Centre the knob in the wider column at the buttons' height, the sync switch under it, taking the few px
-           it needs from the display (52 → 46 px high).
-        3. Check the uishot shots at scale 2, synced (a label like 1/16T) and free.
 
 - The shimmer reverb does not sound good
     - **In one line:** move the pitch shifter out of the reverb's delay lines into a feedback path after it, with
