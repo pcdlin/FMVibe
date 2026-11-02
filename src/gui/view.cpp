@@ -681,8 +681,9 @@ Rect View::scrollThumb(ScrollArea area) const {
     const float cards = std::max(scrollLength(area), 1.0f);
     const float shown = static_cast<float>(area == ScrollArea::Fx ? kVisibleFx : kVisibleCards);
     const float width = std::max(track.w * std::min(shown, cards) / cards, 24.0f);
-    const float hidden = std::max(cards - shown, 1.0f);
-    return {track.x + (track.w - width) * scrollFirst(area) / hidden, track.y, width, track.h};
+    const float hidden = cards - shown; // less than a card when only the dashed cards at the end are out of view
+    return {track.x + (hidden > 0.0f ? (track.w - width) * scrollFirst(area) / hidden : 0.0f), track.y, width,
+            track.h};
 }
 
 void View::revealFx(int position) {

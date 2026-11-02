@@ -2678,6 +2678,15 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, fxPower(model, 0));
     check(model.value(paramIndex(1, FxParam::Enabled)) == 0.0, "the done button closes the editor and the FX view is back");
 
+    // Four sources and the dashed cards, less than a card more than fit: dragged all the way, the scrollbar's thumb
+    // reaches the track's right end (read off the rendered pixels).
+    drag(view, {485.0f, 805.0f}, {485.0f + 500.0f, 805.0f});
+    view.mouseMove({400.0f, 300.0f}, {});
+    const bool endShot = renderer.save(view, dir / "11g-sources-scrolled-end.png");
+    check(endShot && renderer.pixel({1168.0f, 805.0f}) == renderer.pixel({700.0f, 805.0f}),
+          "the scrollbar's thumb reaches the end with the dashed cards less than a card past the row");
+    view.wheel({60.0f, 513.0f}, 10.0f, {});
+
     // A fifth source scrolls the cards along to show it; the wheel over the panel scrolls back.
     click(view, sourceAdd(SourceType::Lfo));
     click(view, sourcePower(3));
