@@ -1,29 +1,27 @@
 #include "plugin.h"
 
-#include "factory.h"
 #include "gui/controller.h"
 #include "gui/editor.h"
 #include "params.h"
+#include "presets.h"
+#include "remotepages.h"
+#include "sharedtelemetry.h"
+#include "state.h"
 #include "synth.h"
 #include "uistrings.h"
+#include "usersettings.h"
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include <shellapi.h>
-#include <shlobj.h>
 #include <xmmintrin.h>
 
 namespace fmvibe {
@@ -37,398 +35,10 @@ const char *const kFeatures[] = {
     nullptr,
 };
 
-// State blob: magic, version, param count, (id, value) pairs, then the editor
-// layout chunk, then (in the host's state, not in preset files) the settings chunk.
-constexpr uint32_t kStateMagic = 0x38454C43;    // "CLE8"
-constexpr uint32_t kLayoutMagic = 0x5459414C;   // "LAYT"
-constexpr uint32_t kSettingsMagic = 0x47544553; // "SETG"
-constexpr uint32_t kPresetMagic = 0x54535250;   // "PRST"
-constexpr int kDefaultOversampling = 2;
-constexpr size_t kMaxMacroName = 24; // bytes of a macro's name that are saved
-// The most of a layout chunk the loader reads, any more is skipped: plenty of room past the most this version
-// writes (see writePatch()), which is its fixed fields, every route kept (a node's output and its route into
-// each node, at most) and every macro's name at full length.
-constexpr uint32_t kMaxLayoutFloats = 4096;
-static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + gui::kNodes * (gui::kNodes + 1) + 2 +
-                  kMacros * (1 + kMaxMacroName) + 2 <=
-              kMaxLayoutFloats);
-constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
-
-int validOversampling(long factor) {
-    return factor >= 8 ? 8 : factor >= 4 ? 4 : factor >= 2 ? 2 : 1;
-}
-
-// The editor's look is the user's rather than the project's: FMVibe's settings file in the roaming app
-// data, read again whenever an editor opens, so a look picked in another process shows too.
-std::filesystem::path userSettingsFile() {
-    PWSTR appData = nullptr;
-    std::filesystem::path file;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &appData)))
-        file = std::filesystem::path(appData) / L"FMVibe" / L"settings.txt";
-    CoTaskMemFree(appData);
-    return file;
-}
-
-struct UserSettings {
-    std::string theme;
-    double glow = 0.5;
-    int examples = -1; // how many examples the preset folder has been given, or -1 if not known
-};
-UserSettings userSettings; // as the settings file has them; editors only run on the main thread
-
-void readUserSettings() {
-    userSettings = {};
-    const std::filesystem::path file = userSettingsFile();
-    if (file.empty())
-        return;
-    std::ifstream in(file);
-    std::string line;
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r')
-            line.pop_back();
-        if (line.starts_with("theme="))
-            userSettings.theme = line.substr(6);
-        else if (line.starts_with("glowLevel=")) // a plain "glow=" came before the 50 % default: left alone
-            userSettings.glow = std::clamp(std::atof(line.c_str() + 10), 0.0, 1.0);
-        else if (line.starts_with("examples="))
-            userSettings.examples = std::max(std::atoi(line.c_str() + 9), 0);
-    }
-}
-
-void writeUserSettings() {
-    const std::filesystem::path file = userSettingsFile();
-    if (file.empty())
-        return;
-    std::error_code error;
-    std::filesystem::create_directories(file.parent_path(), error);
-    std::ofstream out(file);
-    out << "theme=" << userSettings.theme << "\nglowLevel=" << userSettings.glow << '\n';
-    if (userSettings.examples >= 0)
-        out << "examples=" << userSettings.examples << '\n';
-}
-constexpr uint32_t kStateVersion = 1;
-
-bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
-    auto *bytes = static_cast<const uint8_t *>(data);
-    while (size > 0) {
-        const int64_t written = stream->write(stream, bytes, size);
-        if (written <= 0)
-            return false;
-        bytes += written;
-        size -= static_cast<size_t>(written);
-    }
-    return true;
-}
-
-// Reads until `size` bytes have come or the stream ends, and says how many came.
-size_t readUpTo(const clap_istream_t *stream, void *data, size_t size) {
-    auto *bytes = static_cast<uint8_t *>(data);
-    size_t done = 0;
-    while (done < size) {
-        const int64_t read = stream->read(stream, bytes + done, size - done);
-        if (read <= 0)
-            break;
-        done += static_cast<size_t>(read);
-    }
-    return done;
-}
-
-bool readAll(const clap_istream_t *stream, void *data, size_t size) {
-    return readUpTo(stream, data, size) == size;
-}
-
-// Reads a chunk of floats that starts with `magic` and its count into `out`: up to `most` of them, skipping
-// any past those, so whatever follows is read from its start. Chunks only grow at their end, so what is kept
-// still means what it did. False, with `out` empty, when the chunk is something else; if the stream ends
-// partway, `out` keeps what came whole.
-bool readChunk(const clap_istream_t *stream, uint32_t magic, uint32_t most, std::vector<float> &out) {
-    out.clear();
-    uint32_t chunk[2];
-    if (!readAll(stream, chunk, sizeof(chunk)) || chunk[0] != magic)
-        return false;
-    out.resize(std::min(chunk[1], most));
-    const size_t came = readUpTo(stream, out.data(), out.size() * sizeof(float));
-    if (came < out.size() * sizeof(float)) {
-        out.resize(came / sizeof(float));
-        return true;
-    }
-    float skipped[64];
-    for (uint32_t left = chunk[1] - static_cast<uint32_t>(out.size()); left > 0;) {
-        const uint32_t n = std::min<uint32_t>(left, static_cast<uint32_t>(std::size(skipped)));
-        if (!readAll(stream, skipped, n * sizeof(float)))
-            break;
-        left -= n;
-    }
-    return true;
-}
-
-// Streams over a file, for presets.
-clap_istream_t fileIn(FILE *file) {
-    return {file, [](const clap_istream_t *s, void *buffer, uint64_t size) -> int64_t {
-                return static_cast<int64_t>(std::fread(buffer, 1, size, static_cast<FILE *>(s->ctx)));
-            }};
-}
-
-clap_ostream_t fileOut(FILE *file) {
-    return {file, [](const clap_ostream_t *s, const void *buffer, uint64_t size) -> int64_t {
-                return static_cast<int64_t>(std::fwrite(buffer, 1, size, static_cast<FILE *>(s->ctx)));
-            }};
-}
-
-// A path's text in UTF-8, or empty for one that has no UTF-8 form (a lone surrogate in a file name): the
-// exception std::filesystem throws for it mustn't reach the host or the window procedure.
-std::string utf8(const std::filesystem::path &path, bool generic = false) {
-    try {
-        const std::u8string text = generic ? path.generic_u8string() : path.u8string();
-        return std::string(text.begin(), text.end());
-    } catch (const std::exception &) {
-        return {};
-    }
-}
-
-// The path a UTF-8 text names, or an empty one for text that isn't UTF-8 (a damaged state), for the same reason.
-std::wstring widePath(std::string_view text) {
-    try {
-        return std::filesystem::path(std::u8string(text.begin(), text.end())).wstring();
-    } catch (const std::exception &) {
-        return {};
-    }
-}
-
-// Whether `a` sorts before `b`, ignoring case.
-bool lessNoCase(const std::string &a, const std::string &b) {
-    return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end(), [](char x, char y) {
-        return std::tolower(static_cast<unsigned char>(x)) < std::tolower(static_cast<unsigned char>(y));
-    });
-}
-
-// The state's first part, which a preset file holds too: magic, version, param count, (id, value)
-// pairs, then the editor layout chunk.
-bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const gui::UiLayout &ui) {
-    const uint32_t header[] = {kStateMagic, kStateVersion, static_cast<uint32_t>(kParamCount)};
-    if (!writeAll(stream, header, sizeof(header)))
-        return false;
-    for (int i = 0; i < kParamCount; ++i) {
-        const uint32_t id = idOfIndex(i);
-        if (!writeAll(stream, &id, sizeof(id)) || !writeAll(stream, &values[i], sizeof(values[i])))
-            return false;
-    }
-
-    // Layout chunk fields, in order; later versions only append.
-    std::vector<float> layout(ui.nodeX.begin(), ui.nodeX.end());
-    layout.insert(layout.end(), ui.nodeY.begin(), ui.nodeY.end());
-    layout.insert(layout.end(), ui.boxX.begin(), ui.boxX.end());
-    layout.insert(layout.end(), ui.boxY.begin(), ui.boxY.end());
-    layout.push_back(static_cast<float>(ui.selectedNode));
-    layout.push_back(ui.zoom);
-    layout.push_back(static_cast<float>(ui.view));
-    layout.push_back(ui.sourcesCollapsed ? 1.0f : 0.0f);
-    for (int source : ui.sourceOrder)
-        layout.push_back(static_cast<float>(source));
-    // The routes kept at 0 %, by param id.
-    layout.push_back(static_cast<float>(ui.keptRoutes.size()));
-    for (int index : ui.keptRoutes)
-        layout.push_back(static_cast<float>(idOfIndex(index)));
-    layout.push_back(static_cast<float>(ui.shapeGridX));
-    layout.push_back(static_cast<float>(ui.shapeGridY));
-    // The macros' names, each as its length and then its bytes.
-    for (const std::string &name : ui.macroNames) {
-        layout.push_back(static_cast<float>(std::min<size_t>(name.size(), kMaxMacroName)));
-        for (size_t i = 0; i < name.size() && i < kMaxMacroName; ++i)
-            layout.push_back(static_cast<float>(static_cast<unsigned char>(name[i])));
-    }
-    layout.push_back(static_cast<float>(ui.fxFolded)); // 16 bits each: exact as floats
-    layout.push_back(static_cast<float>(ui.sourcesFolded));
-    const uint32_t chunk[] = {kLayoutMagic, static_cast<uint32_t>(layout.size())};
-    return writeAll(stream, chunk, sizeof(chunk)) && writeAll(stream, layout.data(), layout.size() * sizeof(float));
-}
-
 // Note, param-mod and note-expression events all address voices the same way.
 template <class Event>
 NoteRef noteRef(const Event &ev) {
     return {ev.note_id, ev.port_index, ev.channel, ev.key};
-}
-
-// The knobs of an effect slot's page, for the effect it holds (and for a reverb, its algorithm).
-std::vector<int> fxPageParams(int slot, FxType type, const ParamValues &values) {
-    auto at = [slot](std::initializer_list<FxParam> fields) {
-        std::vector<int> indices;
-        for (FxParam f : fields)
-            indices.push_back(paramIndex(slot, f));
-        return indices;
-    };
-    switch (type) {
-    case FxType::Shaper:
-        return at({FxParam::Enabled, FxParam::ShaperMode, FxParam::ShaperDrive, FxParam::ShaperOutput, FxParam::ShaperMix,
-                   FxParam::ShaperLink, FxParam::ShaperSymmetric});
-    case FxType::Delay:
-        return at({FxParam::Enabled, FxParam::DelayTimeL, FxParam::DelayTimeR, FxParam::DelayFeedback,
-                   FxParam::DelayTone, FxParam::DelayWidth, FxParam::DelayPingPong, FxParam::DelayMix});
-    case FxType::Eq:
-        return at({FxParam::Enabled, FxParam::EqLow, FxParam::EqMid, FxParam::EqHigh});
-    case FxType::ParamEq:
-        return at({FxParam::Enabled, FxParam::PeqFreq1, FxParam::PeqGain1, FxParam::PeqQ1, FxParam::PeqFreq2,
-                   FxParam::PeqGain2, FxParam::PeqQ2});
-    case FxType::Filter:
-        return at({FxParam::Enabled, FxParam::FilterType, FxParam::FilterSlope, FxParam::FilterCutoff,
-                   FxParam::FilterResonance, FxParam::FilterKeyTrack, FxParam::FilterDrive, FxParam::FilterMix});
-    case FxType::Compressor:
-        return at({FxParam::Enabled, FxParam::CompThreshold, FxParam::CompRatio, FxParam::CompKnee,
-                   FxParam::CompAttack, FxParam::CompRelease, FxParam::CompMakeup, FxParam::CompMix});
-    case FxType::MultiComp: // the band ratios and gains are left to the editor
-        return {paramIndex(slot, FxParam::McLowFreq),  paramIndex(slot, FxParam::McHighFreq),
-                mcThresholdIndex(slot, 0),             mcThresholdIndex(slot, 1),
-                mcThresholdIndex(slot, 2),             paramIndex(slot, FxParam::McAttack),
-                paramIndex(slot, FxParam::McRelease),  paramIndex(slot, FxParam::McMix)};
-    case FxType::Reverb: // a shimmer's interval and amount in place of the pre-delay and width
-        if (reverbType(values[paramIndex(slot, FxParam::ReverbType)]) == ReverbType::Shimmer)
-            return at({FxParam::Enabled, FxParam::ReverbType, FxParam::ReverbSize, FxParam::ReverbDecay,
-                       FxParam::ReverbDamping, FxParam::ReverbShimmerPitch, FxParam::ReverbShimmer, FxParam::ReverbMix});
-        return at({FxParam::Enabled, FxParam::ReverbType, FxParam::ReverbSize, FxParam::ReverbDecay,
-                   FxParam::ReverbDamping, FxParam::ReverbPreDelay, FxParam::ReverbWidth, FxParam::ReverbMix});
-    case FxType::Phaser:
-        return at({FxParam::Enabled, FxParam::PhaserRate, FxParam::PhaserDepth, FxParam::PhaserCenter,
-                   FxParam::PhaserFeedback, FxParam::PhaserStages, FxParam::PhaserMix, FxParam::PhaserStereo});
-    case FxType::Flanger:
-        return at({FxParam::Enabled, FxParam::FlangerRate, FxParam::FlangerDepth, FxParam::FlangerDelay,
-                   FxParam::FlangerFeedback, FxParam::FlangerMix, FxParam::FlangerStereo});
-    case FxType::FreqShifter:
-        return at({FxParam::Enabled, FxParam::ShiftRange, FxParam::ShiftAmount, FxParam::ShiftSpread,
-                   FxParam::ShiftFeedback, FxParam::ShiftMix});
-    case FxType::Disperser:
-        return at({FxParam::Enabled, FxParam::DisperserFreq, FxParam::DisperserStages, FxParam::DisperserPinch,
-                   FxParam::DisperserMix});
-    case FxType::Widener:
-        return at({FxParam::Enabled, FxParam::WidenerSize, FxParam::WidenerWidth, FxParam::WidenerHighPass,
-                   FxParam::WidenerMix});
-    case FxType::None:
-    case FxType::Count:
-        break;
-    }
-    return {};
-}
-
-// Pages of 8 knobs that hosts like Bitwig show on the device. Each effect in
-// the chain gets a page, in chain order, for whatever it is; so does each
-// source, in the order the editor shows them.
-std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &values, const gui::UiLayout &layout) {
-    std::vector<clap_remote_controls_page_t> pages;
-    clap_id nextId = 0;
-    auto add = [&](const char *section, const std::string &name, const std::vector<int> &indices,
-                   clap_id id = CLAP_INVALID_ID) {
-        clap_remote_controls_page_t page{};
-        std::snprintf(page.section_name, sizeof(page.section_name), "%s", section);
-        page.page_id = id != CLAP_INVALID_ID ? id : nextId++;
-        std::snprintf(page.page_name, sizeof(page.page_name), "%s", name.c_str());
-        std::fill(std::begin(page.param_ids), std::end(page.param_ids), CLAP_INVALID_ID);
-        for (size_t i = 0; i < indices.size() && i < CLAP_REMOTE_CONTROLS_COUNT; ++i)
-            page.param_ids[i] = idOfIndex(indices[i]);
-        pages.push_back(page);
-    };
-    auto letter = [](int op) { return std::string(1, static_cast<char>('A' + op)); };
-
-    // The macros first, as the page a host shows to begin with. Its id is its own, past the effects' (1000 on)
-    // and the sources' (2000 on).
-    std::vector<int> macros;
-    for (int macro = 0; macro < kMacros; ++macro)
-        macros.push_back(paramIndex(macro, MacroParam::Value));
-    const char *const mix = tr(Str::PageMix);
-    add(mix, tr(Str::PageMacros), macros, 3000);
-    add(mix, tr(Str::PageGlobal),
-        {paramIndex(GlobalParam::Volume), paramIndex(GlobalParam::FmAmount), paramIndex(GlobalParam::Pitch),
-         paramIndex(GlobalParam::Pan)});
-    add(mix, tr(Str::PagePlay),
-        {paramIndex(GlobalParam::Mono), paramIndex(GlobalParam::Legato), paramIndex(GlobalParam::Glide),
-         paramIndex(GlobalParam::GlideAlways), paramIndex(GlobalParam::BendRange), paramIndex(GlobalParam::Voices)});
-    std::vector<int> outputs;
-    for (int op = 0; op < kOps; ++op)
-        outputs.push_back(paramIndex(op, OpParam::Out));
-    for (int shaper = 0; shaper < kShapers; ++shaper)
-        outputs.push_back(paramIndex(shaper, ShaperParam::Out));
-    add(mix, tr(Str::PageOutputs), outputs);
-    // Effect pages keep their slot's id whatever else changes.
-    for (int slot : fxOrder(values[paramIndex(GlobalParam::FxOrder)])) {
-        const FxType type = fxType(values[paramIndex(slot, FxParam::Type)]);
-        if (type != FxType::None)
-            add(tr(Str::ModuleFx), std::to_string(slot + 1) + " " + fxName(type), fxPageParams(slot, type, values),
-                static_cast<clap_id>(1000 + slot));
-    }
-
-    for (int op = 0; op < kOps; ++op) {
-        add(tr(Str::ModuleOperators), trf(Str::ParamOp, {letter(op)}),
-            {paramIndex(op, OpParam::Wave), paramIndex(op, OpParam::Coarse), paramIndex(op, OpParam::Fine),
-             paramIndex(op, OpParam::Detune), paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Decay),
-             paramIndex(op, OpParam::Sustain), paramIndex(op, OpParam::Release)});
-    }
-
-    for (int filter = 0; filter < kFilters; ++filter) { // its own fields; what it feeds goes on the Matrix pages
-        std::vector<int> fields;
-        for (int f = 0; f < static_cast<int>(FilterParam::Shapers); ++f)
-            fields.push_back(paramIndex(filter, FilterParam::Type) + f);
-        add(tr(Str::ModuleFilters), trf(Str::ParamFilter, {std::to_string(filter + 1)}), fields);
-    }
-    std::vector<int> links;
-    for (int from = 0; from < kFilters; ++from)
-        for (int to = from + 1; to < kFilters; ++to)
-            links.push_back(filterLinkIndex(from, to));
-    add(tr(Str::ModuleFilters), tr(Str::PageFilterLinks), links);
-    // A shaper's page: its switch, curve and knobs, then what it feeds into the filters.
-    for (int shaper = 0; shaper < kShapers; ++shaper) {
-        std::vector<int> fields;
-        for (int f = 0; f < static_cast<int>(ShaperParam::Mods); ++f)
-            fields.push_back(paramIndex(shaper, ShaperParam::Enabled) + f);
-        add(tr(Str::ModuleShapers), trf(Str::ParamShaper, {std::to_string(shaper + 1)}), fields);
-    }
-
-    // What each operator modulates, what goes into each filter and shaper, and what each filter and shaper
-    // modulates.
-    for (int from = 0; from < kOps; ++from) {
-        std::vector<int> row;
-        for (int to = 0; to < kOps; ++to)
-            row.push_back(matrixIndex(from, to));
-        add(tr(Str::ModuleMatrix), trf(Str::PageModulates, {letter(from)}), row);
-    }
-    for (int filter = 0; filter < kFilters; ++filter) {
-        std::vector<int> row;
-        for (int op = 0; op < kOps; ++op)
-            row.push_back(sendIndex(op, filter));
-        add(tr(Str::ModuleMatrix), trf(Str::PageInto, {"F" + std::to_string(filter + 1)}), row);
-    }
-    for (int filter = 0; filter < kFilters; ++filter) {
-        std::vector<int> row;
-        for (int to = 0; to < kOps; ++to)
-            row.push_back(filterModIndex(filter, to));
-        add(tr(Str::ModuleMatrix), trf(Str::PageModulates, {"F" + std::to_string(filter + 1)}), row);
-    }
-    for (int shaper = 0; shaper < kShapers; ++shaper) {
-        std::vector<int> into, mods;
-        for (int op = 0; op < kOps; ++op) {
-            into.push_back(shaperSendIndex(op, shaper));
-            mods.push_back(shaperModIndex(shaper, op));
-        }
-        for (int filter = 0; filter < kFilters; ++filter) // and from the filters
-            into.push_back(filterShaperIndex(filter, shaper));
-        add(tr(Str::ModuleMatrix), trf(Str::PageInto, {"S" + std::to_string(shaper + 1)}), into);
-        add(tr(Str::ModuleMatrix), trf(Str::PageModulates, {"S" + std::to_string(shaper + 1)}), mods);
-    }
-
-    // Sources with their slot depths; the targets themselves are set in the editor.
-    // Pages keep their place's id, like the effects'.
-    auto get = [&values](int i) { return values[i]; };
-    for (int source : gui::shownSources(layout, get)) {
-        auto at = [source](SourceParam f) { return paramIndex(source, f); };
-        std::vector<int> fields =
-            sourceType(values[at(SourceParam::Type)]) == SourceType::Lfo
-                ? std::vector<int>{at(SourceParam::Shape), at(SourceParam::Rate), at(SourceParam::Sync),
-                                   at(SourceParam::Division)}
-                : std::vector<int>{at(SourceParam::Attack), at(SourceParam::Decay), at(SourceParam::Sustain),
-                                   at(SourceParam::Release)};
-        for (int slot = 0; slot < kSlots && fields.size() < CLAP_REMOTE_CONTROLS_COUNT; ++slot)
-            fields.push_back(slotAmountIndex(source, slot));
-        add(tr(Str::ModuleModulation), gui::sourceName(layout, get, source), fields,
-            static_cast<clap_id>(2000 + source));
-    }
-    return pages;
 }
 
 // Single-producer single-consumer ring buffer: editor (main thread) to audio thread.
@@ -494,96 +104,6 @@ struct KeyEvent {
 // Velocity of notes played from the virtual keyboard.
 constexpr double kKeyVelocity = 100.0 / 127.0;
 
-// Telemetry handed from the audio thread to the editor. Values may come from
-// different blocks, which is harmless for drawing.
-struct SharedTelemetry {
-    std::array<std::atomic<float>, kModulatedCount> modOffset{};
-    std::array<std::atomic<float>, kMaxSources> sources{};
-    std::array<std::atomic<float>, kMaxSources> lfoPhases{};
-    std::array<std::atomic<float>, kMaxSources> lfoRates{};
-    std::array<std::atomic<float>, kMaxSources> lfoFrom{};
-    std::array<std::atomic<float>, kMaxSources> lfoTo{};
-    std::array<std::atomic<float>, kOps> opLevels{};
-    std::atomic<float> notePitch{0.0f};
-    std::atomic<float> fxPitch{60.0f};
-    std::array<std::atomic<float>, kFxSlots * kMcBands> fxReduction{};
-    std::array<std::atomic<float>, kFxSlots * kSpectrumBands> fxSpectrum{};
-    std::array<std::atomic<float>, kFilters * kSpectrumBands> filterSpectrum{};
-    std::array<std::atomic<float>, kFxSlots> fxPhases{};
-    std::array<std::atomic<float>, 2> outPeak{};
-    std::atomic<float> clipHold{0.0f};
-    std::atomic<int64_t> stamp{0}; // steady_clock ticks when stored, for Telemetry::age
-    std::atomic<int> voices{0};
-    std::atomic<float> tempo{120.0f};
-    std::array<std::atomic<uint32_t>, 4> keys{};
-
-    void store(const Telemetry &t) {
-        for (size_t i = 0; i < keys.size(); ++i)
-            keys[i].store(t.keys[i], std::memory_order_relaxed);
-        for (int i = 0; i < kModulatedCount; ++i)
-            modOffset[i].store(t.modOffset[i], std::memory_order_relaxed);
-        for (int i = 0; i < kMaxSources; ++i) {
-            sources[i].store(t.sources[i], std::memory_order_relaxed);
-            lfoPhases[i].store(t.lfoPhases[i], std::memory_order_relaxed);
-            lfoRates[i].store(t.lfoRates[i], std::memory_order_relaxed);
-            lfoFrom[i].store(t.lfoFrom[i], std::memory_order_relaxed);
-            lfoTo[i].store(t.lfoTo[i], std::memory_order_relaxed);
-        }
-        for (int i = 0; i < kOps; ++i)
-            opLevels[i].store(t.opLevels[i], std::memory_order_relaxed);
-        notePitch.store(t.notePitch, std::memory_order_relaxed);
-        fxPitch.store(t.fxPitch, std::memory_order_relaxed);
-        for (int i = 0; i < kFxSlots * kMcBands; ++i)
-            fxReduction[i].store(t.fxReduction[i / kMcBands][i % kMcBands], std::memory_order_relaxed);
-        for (int i = 0; i < kFxSlots * kSpectrumBands; ++i)
-            fxSpectrum[i].store(t.fxSpectrum[i / kSpectrumBands][i % kSpectrumBands], std::memory_order_relaxed);
-        for (int i = 0; i < kFilters * kSpectrumBands; ++i)
-            filterSpectrum[i].store(t.filterSpectrum[i / kSpectrumBands][i % kSpectrumBands], std::memory_order_relaxed);
-        for (int i = 0; i < kFxSlots; ++i)
-            fxPhases[i].store(t.fxPhases[i], std::memory_order_relaxed);
-        for (int c = 0; c < 2; ++c)
-            outPeak[c].store(t.outPeak[c], std::memory_order_relaxed);
-        clipHold.store(t.clipHold, std::memory_order_relaxed);
-        voices.store(t.voices, std::memory_order_relaxed);
-        tempo.store(t.tempo, std::memory_order_relaxed);
-        stamp.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
-    }
-
-    void load(Telemetry &t) const {
-        for (size_t i = 0; i < keys.size(); ++i)
-            t.keys[i] = keys[i].load(std::memory_order_relaxed);
-        for (int i = 0; i < kModulatedCount; ++i)
-            t.modOffset[i] = modOffset[i].load(std::memory_order_relaxed);
-        for (int i = 0; i < kMaxSources; ++i) {
-            t.sources[i] = sources[i].load(std::memory_order_relaxed);
-            t.lfoPhases[i] = lfoPhases[i].load(std::memory_order_relaxed);
-            t.lfoRates[i] = lfoRates[i].load(std::memory_order_relaxed);
-            t.lfoFrom[i] = lfoFrom[i].load(std::memory_order_relaxed);
-            t.lfoTo[i] = lfoTo[i].load(std::memory_order_relaxed);
-        }
-        for (int i = 0; i < kOps; ++i)
-            t.opLevels[i] = opLevels[i].load(std::memory_order_relaxed);
-        t.notePitch = notePitch.load(std::memory_order_relaxed);
-        t.fxPitch = fxPitch.load(std::memory_order_relaxed);
-        for (int i = 0; i < kFxSlots * kMcBands; ++i)
-            t.fxReduction[i / kMcBands][i % kMcBands] = fxReduction[i].load(std::memory_order_relaxed);
-        for (int i = 0; i < kFxSlots * kSpectrumBands; ++i)
-            t.fxSpectrum[i / kSpectrumBands][i % kSpectrumBands] = fxSpectrum[i].load(std::memory_order_relaxed);
-        for (int i = 0; i < kFilters * kSpectrumBands; ++i)
-            t.filterSpectrum[i / kSpectrumBands][i % kSpectrumBands] = filterSpectrum[i].load(std::memory_order_relaxed);
-        for (int i = 0; i < kFxSlots; ++i)
-            t.fxPhases[i] = fxPhases[i].load(std::memory_order_relaxed);
-        for (int c = 0; c < 2; ++c)
-            t.outPeak[c] = outPeak[c].load(std::memory_order_relaxed);
-        t.clipHold = clipHold.load(std::memory_order_relaxed);
-        t.voices = voices.load(std::memory_order_relaxed);
-        t.tempo = tempo.load(std::memory_order_relaxed);
-        const auto elapsed = std::chrono::steady_clock::duration(
-            std::chrono::steady_clock::now().time_since_epoch().count() - stamp.load(std::memory_order_relaxed));
-        t.age = std::chrono::duration<float>(elapsed).count();
-    }
-};
-
 } // namespace
 
 const clap_plugin_descriptor_t kDescriptor = {
@@ -621,8 +141,8 @@ public:
     bool loadPreset(const std::wstring &path) override;
     bool savePreset(const std::wstring &path) override;
     void choosePreset(bool save) override;
-    void rescanPresets() override;
-    const std::vector<gui::PresetEntry> &presets() const override { return presetList_; }
+    void rescanPresets() override { presets_.rescan(); }
+    const std::vector<gui::PresetEntry> &presets() const override { return presets_.entries(); }
     int presetIndex() const override;
     std::string presetName() const override;
     bool loadPresetAt(int index) override;
@@ -692,9 +212,6 @@ private:
     // What a preset leaves as it is: how big the editor is, whether the modulation panel is
     // collapsed, the shape editor's grid.
     void keepEditorLayout(const gui::UiLayout &from);
-    // Writes the example presets into a new preset folder.
-    // Writes the examples from number `from` on into `folder`.
-    void writeExamples(const std::filesystem::path &folder, size_t from) const;
     // A new oversampling factor takes a deactivate/activate, like more voices.
     void restartIfNeeded();
 
@@ -740,8 +257,7 @@ private:
     std::unique_ptr<gui::Editor> editor_;
     // The preset library as last scanned, with each entry's file (the patch's own is the Controller's).
     // Main thread.
-    std::vector<gui::PresetEntry> presetList_;
-    std::vector<std::wstring> presetFiles_;
+    PresetLibrary presets_;
 };
 
 Plugin::Plugin(const clap_host_t *host) : host_(host) {
@@ -1111,41 +627,16 @@ bool Plugin::saveState(const clap_ostream_t *stream, bool settings) const {
         return false;
     if (!settings)
         return true;
-
-    // Settings chunk fields, in order; later versions only append.
-    const float stored[] = {static_cast<float>(oversampling_.load())};
-    const uint32_t settingsChunk[] = {kSettingsMagic, static_cast<uint32_t>(std::size(stored))};
-    if (!writeAll(stream, settingsChunk, sizeof(settingsChunk)) || !writeAll(stream, stored, sizeof(stored)))
+    if (!writeSettings(stream, oversampling_.load()))
         return false;
-
     // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
-    const std::string preset = (patchEdited() ? '\1' : '\0') + utf8(std::filesystem::path(presetFile()));
-    const uint32_t presetChunk[] = {kPresetMagic, static_cast<uint32_t>(preset.size())};
-    return writeAll(stream, presetChunk, sizeof(presetChunk)) && writeAll(stream, preset.data(), preset.size());
+    return writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile())));
 }
 
 bool Plugin::loadState(const clap_istream_t *stream, bool settings) {
-    uint32_t header[3];
-    if (!readAll(stream, header, sizeof(header)) || header[0] != kStateMagic || header[1] < 1 ||
-        header[1] > kStateVersion)
-        return false;
-
-    // Params missing from the state keep their defaults; unknown ids are skipped.
-    const ParamTable &table = paramTable();
     ParamValues loaded;
-    for (int i = 0; i < kParamCount; ++i)
-        loaded[i] = table[i].def;
-    for (uint32_t n = 0; n < header[2]; ++n) {
-        uint32_t id;
-        double value;
-        if (!readAll(stream, &id, sizeof(id)) || !readAll(stream, &value, sizeof(value)))
-            return false;
-        if (!std::isfinite(value))
-            continue;
-        const int i = indexOfId(id);
-        if (i >= 0)
-            loaded[i] = std::clamp(value, table[i].min, table[i].max);
-    }
+    if (!readParams(stream, loaded))
+        return false;
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(loaded[i]);
     // Hosts re-read the values only when asked; any hidden flags follow in sectionsChanged().
@@ -1153,61 +644,7 @@ bool Plugin::loadState(const clap_istream_t *stream, bool settings) {
         hostParams_->rescan(host_, CLAP_PARAM_RESCAN_VALUES);
 
     // The editor layout is optional; whatever is missing keeps its default.
-    gui::UiLayout layout;
-    std::vector<float> stored;
-    readChunk(stream, kLayoutMagic, kMaxLayoutFloats, stored);
-    size_t field = 0;
-    // A value that isn't a number (a damaged file) keeps its default too: clamped, it would stay NaN, and turned
-    // into an index, reach far outside the arrays it indexes.
-    auto next = [&](float fallback, float min, float max) {
-        if (field >= stored.size())
-            return fallback;
-        const float value = stored[field++];
-        return std::isfinite(value) ? std::clamp(value, min, max) : fallback;
-    };
-    for (float &x : layout.nodeX)
-        x = next(x, 0.0f, 1.0f);
-    for (float &y : layout.nodeY)
-        y = next(y, 0.0f, 1.0f);
-    for (float &x : layout.boxX)
-        x = next(x, 0.0f, 1.0f);
-    for (float &y : layout.boxY)
-        y = next(y, 0.0f, 1.0f);
-    layout.selectedNode = static_cast<int>(next(0.0f, 0.0f, gui::kNodes - 1.0f));
-    layout.zoom = next(layout.zoom, 0.5f, 3.0f);
-    layout.view = static_cast<gui::RoutingView>(std::lround(next(0.0f, 0.0f, 2.0f)));
-    layout.sourcesCollapsed = next(0.0f, 0.0f, 1.0f) >= 0.5f;
-    // The source order lists every place once; anything else falls back to the default.
-    std::array<bool, kMaxSources> listed{};
-    bool valid = true;
-    for (int &source : layout.sourceOrder) {
-        source = static_cast<int>(std::lround(next(static_cast<float>(source), 0.0f, kMaxSources - 1.0f)));
-        valid = valid && !listed[source];
-        listed[source] = true;
-    }
-    if (!valid)
-        layout.sourceOrder = gui::identitySourceOrder();
-    const int kept = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(kParamCount))));
-    for (int k = 0; k < kept && field < stored.size(); ++k) {
-        const int index = indexOfId(static_cast<clap_id>(std::lround(next(0.0f, 0.0f, 1.0e6f))));
-        if (index >= 0 && std::find(layout.keptRoutes.begin(), layout.keptRoutes.end(), index) == layout.keptRoutes.end())
-            layout.keptRoutes.push_back(index);
-    }
-    // A grid the editor doesn't offer falls back to the default.
-    auto grid = [&](int fallback, const auto &offered) {
-        const int lines = static_cast<int>(std::lround(next(static_cast<float>(fallback), 0.0f, 64.0f)));
-        return std::find(std::begin(offered), std::end(offered), lines) != std::end(offered) ? lines : fallback;
-    };
-    layout.shapeGridX = grid(layout.shapeGridX, gui::kShapeGridsX);
-    layout.shapeGridY = grid(layout.shapeGridY, gui::kShapeGridsY);
-    for (std::string &name : layout.macroNames) { // saved before the macros came, they keep their numbers
-        name.clear();
-        const int length = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(kMaxMacroName))));
-        for (int i = 0; i < length; ++i)
-            name.push_back(static_cast<char>(std::lround(next(32.0f, 32.0f, 255.0f))));
-    }
-    layout.fxFolded = static_cast<uint32_t>(std::lround(next(0.0f, 0.0f, 65535.0f)));
-    layout.sourcesFolded = static_cast<uint32_t>(std::lround(next(0.0f, 0.0f, 65535.0f)));
+    const gui::UiLayout layout = readLayout(stream);
     // A preset leaves the editor as it is (its size, the modulation panel, the shape grid) from the start,
     // so its window isn't resized to the preset's and back.
     const gui::UiLayout before = layout_;
@@ -1217,24 +654,16 @@ bool Plugin::loadState(const clap_istream_t *stream, bool settings) {
 
     // The settings are optional too: a project saved before them gets the defaults.
     if (settings) {
-        std::vector<float> values;
-        readChunk(stream, kSettingsMagic, kMaxSettingsFloats, values);
-        const float factor = values.empty() || !std::isfinite(values[0]) ? kDefaultOversampling : values[0];
-        oversampling_.store(validOversampling(std::lround(factor)));
+        oversampling_.store(readSettings(stream));
         restartIfNeeded();
 
         // Which preset it was. Without that, it shows Init, changed unless it is Init.
         std::string preset;
-        uint32_t presetChunk[2];
-        if (readAll(stream, presetChunk, sizeof(presetChunk)) && presetChunk[0] == kPresetMagic &&
-            presetChunk[1] >= 1 && presetChunk[1] <= 4096) {
-            preset.resize(presetChunk[1]);
-            if (!readAll(stream, preset.data(), preset.size()))
-                preset.clear();
-        }
-        if (!preset.empty()) {
-            setPreset(widePath(std::string_view(preset).substr(1)), preset[0] != '\0');
+        bool edited = false;
+        if (readPresetChunk(stream, preset, edited)) {
+            setPreset(widePath(preset), edited);
         } else {
+            const ParamTable &table = paramTable();
             bool atInit = true;
             for (int i = 0; i < kParamCount && atInit; ++i)
                 atInit = loaded[i] == table[i].def;
@@ -1334,78 +763,11 @@ void Plugin::choosePreset(bool save) {
 }
 
 std::wstring Plugin::presetFolder() const {
-    PWSTR documents = nullptr;
-    std::wstring folder;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documents)))
-        folder = std::wstring(documents) + L"\\FMVibe\\presets";
-    CoTaskMemFree(documents);
-    return folder;
-}
-
-// The first scan makes the folder, with the examples in a subfolder of their own; a folder made before
-// later examples came gets those once. The settings file counts the examples given, so deleted ones
-// stay gone.
-void Plugin::rescanPresets() {
-    namespace fs = std::filesystem;
-    presetList_.clear();
-    presetFiles_.clear();
-    const std::wstring name = presetFolder();
-    if (name.empty())
-        return;
-    const fs::path folder(name);
-    std::error_code error;
-    const bool fresh = !fs::exists(folder, error) && !error;
-    readUserSettings();
-    const size_t given = fresh                        ? 0
-                         : userSettings.examples >= 0 ? static_cast<size_t>(userSettings.examples)
-                                                      : kFirstExamples;
-    const size_t examples = factoryPresets().size();
-    if (!error && given < examples) {
-        fs::create_directories(folder / L"Factory", error);
-        if (!error) {
-            writeExamples(folder / L"Factory", given);
-            userSettings.examples = static_cast<int>(examples);
-            writeUserSettings();
-        }
-    }
-    struct Found {
-        gui::PresetEntry entry;
-        fs::path path;
-    };
-    std::vector<Found> found;
-    error.clear();
-    for (fs::recursive_directory_iterator it(folder, fs::directory_options::skip_permission_denied, error), end;
-         !error && it != end; it.increment(error)) {
-        std::error_code fileError;
-        if (!it->is_regular_file(fileError) || _wcsicmp(it->path().extension().c_str(), L".fmv") != 0)
-            continue;
-        const fs::path parent = it->path().parent_path().lexically_relative(folder);
-        const std::string category = parent.empty() || parent == L"." ? std::string() : utf8(parent, true);
-        std::string name = utf8(it->path().stem());
-        if (name.empty()) // a name with no UTF-8 form can't be shown
-            continue;
-        found.push_back({{std::move(name), category}, it->path().lexically_normal()});
-    }
-    // The top folder's presets first, then each subfolder's, each by name.
-    std::sort(found.begin(), found.end(), [](const Found &a, const Found &b) {
-        if (a.entry.category != b.entry.category)
-            return a.entry.category.empty() || (!b.entry.category.empty() && lessNoCase(a.entry.category, b.entry.category));
-        return lessNoCase(a.entry.name, b.entry.name);
-    });
-    for (const Found &f : found) {
-        presetList_.push_back(f.entry);
-        presetFiles_.push_back(f.path.wstring());
-    }
+    return PresetLibrary::folderPath();
 }
 
 int Plugin::presetIndex() const {
-    if (presetFile().empty())
-        return -1;
-    const std::wstring current = std::filesystem::path(presetFile()).lexically_normal().wstring();
-    for (size_t i = 0; i < presetFiles_.size(); ++i)
-        if (_wcsicmp(presetFiles_[i].c_str(), current.c_str()) == 0)
-            return static_cast<int>(i);
-    return -1;
+    return presets_.indexOf(presetFile());
 }
 
 std::string Plugin::presetName() const {
@@ -1413,36 +775,11 @@ std::string Plugin::presetName() const {
 }
 
 bool Plugin::loadPresetAt(int index) {
-    return index >= 0 && index < static_cast<int>(presetFiles_.size()) && loadPreset(presetFiles_[index]);
+    return index >= 0 && index < static_cast<int>(presets_.files().size()) && loadPreset(presets_.files()[index]);
 }
 
 void Plugin::openPresetFolder() {
-    rescanPresets(); // makes it if it isn't there yet
-    const std::wstring folder = presetFolder();
-    if (!folder.empty())
-        ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-}
-
-void Plugin::writeExamples(const std::filesystem::path &folder, size_t from) const {
-    const ParamTable &table = paramTable();
-    const std::vector<FactoryPreset> presets = factoryPresets();
-    for (size_t n = from; n < presets.size(); ++n) {
-        const FactoryPreset &preset = presets[n];
-        ParamValues values;
-        for (int i = 0; i < kParamCount; ++i)
-            values[i] = table[i].def;
-        for (const auto &[index, value] : preset.changes)
-            values[index] = value;
-        FILE *file = nullptr;
-        const std::wstring name(preset.name.begin(), preset.name.end()); // the examples' names are ASCII
-        const std::filesystem::path path = folder / (name + L".fmv");
-        std::error_code error;
-        if (std::filesystem::exists(path, error) || _wfopen_s(&file, path.c_str(), L"wb") != 0 || !file)
-            continue; // never over a preset of the same name
-        const clap_ostream_t stream = fileOut(file);
-        writePatch(&stream, values, exampleLayout(preset));
-        std::fclose(file);
-    }
+    presets_.openFolder();
 }
 
 const clap_plugin_audio_ports_t Plugin::kAudioPorts = {
