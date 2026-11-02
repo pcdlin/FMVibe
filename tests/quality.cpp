@@ -533,7 +533,7 @@ constexpr PinnedPreset kPresetChecksums[] = {
     {"SQ Glass Steps", 0x94a0df1834a25bceull},
     {"LD Vowel Lead", 0x28b0b789d131828full},
     {"FX Laser Zap", 0xb500242d44284008ull},
-    {"FX Noise Riser", 0x0516de5b063ad845ull},
+    {"FX Noise Riser", 0x0e08d1adac580a1dull},
 };
 
 // FNV-1a over the preset's name, the params it sets (by id, so params added later leave it alone, in id order, each
