@@ -25,6 +25,7 @@ class FMVibeProcessor extends AudioWorkletProcessor {
     this.blocksPerTelemetry = 1;
     this.blocks = 0;
     this.memory = null;
+    this.frames = 0;
     this.port.onmessage = (e) => this.receive(e.data);
     this.port.postMessage({type: 'ready', telemetrySize: this.telemetrySize, paramCount: this.paramCount});
   }
@@ -59,27 +60,36 @@ class FMVibeProcessor extends AudioWorkletProcessor {
     }
   }
 
+  // Views on the module's memory: the output's as long as a block, and the telemetry's. Made again only when the
+  // memory grew or the block's length changed, so a block makes no garbage on the audio thread.
+  views(frames) {
+    if (this.memory === this.dsp.memory.buffer && this.frames === frames)
+      return;
+    this.memory = this.dsp.memory.buffer;
+    this.frames = frames;
+    this.left = new Float32Array(this.memory, this.dsp.dsp_left(), Math.min(frames, 4096));
+    this.right = new Float32Array(this.memory, this.dsp.dsp_right(), Math.min(frames, 4096));
+    this.telemetryBytes = null; // made when the telemetry's place is known
+  }
+
   process(inputs, outputs) {
     const out = outputs[0];
     const frames = out[0].length;
     this.dsp.dsp_render(frames);
-    // Views on the module's memory, made again only when it grew.
-    if (this.memory !== this.dsp.memory.buffer) {
-      this.memory = this.dsp.memory.buffer;
-      this.left = new Float32Array(this.memory, this.dsp.dsp_left(), 4096);
-      this.right = new Float32Array(this.memory, this.dsp.dsp_right(), 4096);
-      this.bytes = new Uint8Array(this.memory);
-    }
-    out[0].set(frames === 4096 ? this.left : this.left.subarray(0, frames));
+    this.views(frames);
+    out[0].set(this.left);
     if (out.length > 1)
-      out[1].set(frames === 4096 ? this.right : this.right.subarray(0, frames));
+      out[1].set(this.right);
 
     this.blocksPerTelemetry = Math.max(1, Math.round(TELEMETRY_SECONDS * sampleRate / frames));
     if (++this.blocks >= this.blocksPerTelemetry && this.spare.length > 0) {
       this.blocks = 0;
       const buffer = this.spare.pop();
       const at = this.dsp.dsp_telemetry();
-      new Uint8Array(buffer).set(this.bytes.subarray(at, at + this.telemetrySize));
+      this.views(frames);
+      if (!this.telemetryBytes || this.telemetryBytes.byteOffset !== at)
+        this.telemetryBytes = new Uint8Array(this.memory, at, this.telemetrySize);
+      new Uint8Array(buffer).set(this.telemetryBytes);
       this.port.postMessage({type: 'telemetry', buffer}, [buffer]);
     }
     return true;

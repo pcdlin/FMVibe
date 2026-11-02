@@ -17,6 +17,7 @@ namespace fmvibe {
 class WaveTables {
 public:
     static constexpr int kSize = 4096;
+    static_assert((kSize & (kSize - 1)) == 0); // read() masks its index with it
     static constexpr int kHarmonics = kSize / 4; // in the richest table
     static constexpr int kLevels = 11;           // 1024 harmonics down to 1
 
@@ -27,10 +28,11 @@ public:
     // The level whose harmonics stay below Nyquist at a phase increment.
     static int level(double increment);
 
-    // Phase in cycles, any range.
+    // Phase in cycles, any range. A phase that isn't a number gives one back, without reading outside the table: kSize
+    // is a power of two, so the mask leaves every other index as it is.
     static float read(const float *table, double phase) {
         const double x = (phase - std::floor(phase)) * kSize;
-        const int i = std::min(static_cast<int>(x), kSize - 1);
+        const int i = std::min(static_cast<int>(x), kSize - 1) & (kSize - 1);
         return table[i] + (table[i + 1] - table[i]) * static_cast<float>(x - i);
     }
 
@@ -51,6 +53,23 @@ public:
     // From the levels and phases of partials 1 to kPartials, alternating (a level of 0 leaves a partial out). True
     // if they changed.
     bool update(const double *partials);
+    // The same from the first `count` partials' `level(k)` and `phase(k)`, the rest silent: looked over first, and
+    // only copied out when they changed, since the synth asks for it every time it renders.
+    template <class Level, class Phase>
+    bool update(int count, const Level &level, const Phase &phase) {
+        bool same = true;
+        for (int k = 0; k < kPartials && same; ++k)
+            same = partials_[2 * k] == (k < count ? level(k) : 0.0) &&
+                   partials_[2 * k + 1] == (k < count ? phase(k) : 0.0);
+        if (same)
+            return false;
+        std::array<double, 2 * kPartials> partials{};
+        for (int k = 0; k < count; ++k) {
+            partials[2 * k] = level(k);
+            partials[2 * k + 1] = phase(k);
+        }
+        return update(partials.data());
+    }
     const float *table(double increment) const {
         return &data_[static_cast<size_t>(WaveTables::level(increment)) * (WaveTables::kSize + 1)];
     }

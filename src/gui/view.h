@@ -4,6 +4,7 @@
 #include "controller.h"
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <string>
@@ -25,6 +26,25 @@ struct MenuItem {
     bool checked = false; // shown with a check mark: the choice in force
 };
 
+// Points that depend only on what their key holds (the params a curve is drawn from, where it goes), kept from
+// frame to frame and worked out again only when any of that changes.
+class PointCache {
+public:
+    // The points for `key` (its first value telling the curves apart), from make() unless they are kept already.
+    template <class Make>
+    std::vector<Point> get(const std::vector<double> &key, Make &&make);
+
+private:
+    struct Entry {
+        uint64_t hash = 0;
+        std::vector<double> key;
+        std::vector<Point> points;
+        uint64_t used = 0;
+    };
+    std::vector<Entry> entries_;
+    uint64_t clock_ = 0;
+};
+
 // The whole editor: layout, drawing and mouse handling in logical coordinates
 // (kWidth x kHeight). Only depends on Direct2D, so it can render into a window
 // or an offscreen bitmap alike.
@@ -36,7 +56,7 @@ public:
     float height() const { return heightFor(controller_.layout()); }
 
     explicit View(Controller &controller);
-    ~View(); // lets go of a key still held, so no note hangs
+    ~View(); // ends a drag still going on, so no note hangs and no gesture stays open
 
     // The color themes, by the names Controller::theme() takes; the first is the default.
     static int themeCount();
@@ -49,7 +69,9 @@ public:
     // where the audio is now rather than from the last poll.
     void refreshTelemetry() { controller_.telemetry(telemetry_); }
 
-    void mouseMove(Point p, Modifiers mods);
+    // True if what the editor shows changed: what is under the mouse, or what a drag moves. A move that changes
+    // neither needs no paint.
+    bool mouseMove(Point p, Modifiers mods);
     void mouseDown(Point p, Modifiers mods);
     void mouseUp(Point p, Modifiers mods);
     void mouseLeave();
@@ -241,6 +263,42 @@ private:
         bool bypassed; // kept, but modulating nothing for now
     };
 
+    // While a paint or a hit test goes on, nothing they read changes (but for what the host may change meanwhile, which
+    // the next poll() brings), so what is derived from the params, the layout and the editor's state is worked out
+    // once and kept until the outermost scope ends: the effects chain and the sources as they show, how far their
+    // rows are scrolled, each source's slots, where the cards' shapes are, the modulation by target and the widgets.
+    // Outside a scope, each call works it out afresh.
+    class DerivedScope {
+    public:
+        explicit DerivedScope(const View &view);
+        ~DerivedScope();
+        DerivedScope(const DerivedScope &) = delete;
+        DerivedScope &operator=(const DerivedScope &) = delete;
+
+    private:
+        const View &view_;
+    };
+    // assignments(), and in it each target's, in the same order.
+    struct ModTable {
+        std::vector<Assignment> all;
+        std::vector<int> byTarget; // indices into `all`, by target and then in their order there
+    };
+    struct Derived {
+        std::optional<std::vector<int>> chain, chainShown, sources, sourcesShown;
+        std::optional<float> fxLength, sourcesLength;
+        std::array<std::optional<std::vector<int>>, kAllSources> slots{};
+        std::array<std::optional<float>, kMaxSources> cards{};
+        std::array<std::optional<Rect>, kMaxSources + kShaperUnits + 2> shapeAreas{}; // by shape + 1, to kNoteCurve
+        std::optional<ModTable> mods;
+        std::optional<std::vector<Widget>> widgets;
+    };
+    ModTable modTable() const;
+    // Calls f(m) for each assignment of `target`, in assignments() order.
+    template <class F>
+    void forEachMod(int target, F &&f) const;
+    // The widgets, built once while a scope goes on: paint() and hitTest() ask, each in a scope of its own.
+    const std::vector<Widget> &scopedWidgets() const;
+
     // Model access.
     double value(int index) const;
     // Noise has no pitch or unison copies: just a slope and a stereo spread.
@@ -271,6 +329,9 @@ private:
     void reroute(int from, int to, int into);
     // The route whose arrowhead is being dragged elsewhere, which the graph then draws following the mouse; else -1.
     int rerouting() const;
+    // Whether a source's handle let go of on `w` modulates what it shows: a knob, a route's label or matrix cell, or
+    // a depth bar, as the drag's overlay rings them; never the source's own output (the mod wheel's knob).
+    bool droppable(const Widget &w, int source) const;
     // The color of the effect in `slot`: each type of effect has its own.
     Color fxColor(int slot) const;
     // A list's color (its effect's, the voice shapers' or the filters'), and whether it can pick `item`: a band-pass's
@@ -296,6 +357,7 @@ private:
     // dragged already moved to where it would land.
     std::vector<int> fxChain() const;
     std::vector<int> fxChainShown() const;
+    std::vector<int> fxChainMoved() const; // fxChainShown() worked out
     // Fills an empty slot with a fresh effect of `type`, or a copy of slot `copyOf`, and puts it in the chain.
     // A new effect, or a copy of the one in slot `copyOf`, at place `at` in the chain, or at its end.
     void addEffect(FxType type, int copyOf = -1, int at = -1);
@@ -343,6 +405,7 @@ private:
     // sits there; without a shape, the big editor's.
     Rect shapePanel() const;
     Rect shapeArea(int shape = -1) const;
+    Rect shapeAreaNow(int shape) const; // shapeArea() worked out
     Rect shapeDone() const;
     Rect shapeReset() const;
     Rect shapeGridButton(int axis, int part) const;
@@ -369,6 +432,8 @@ private:
     static int shapeParamCount(int shape) { return isNoteCurve(shape) ? kNoteCurveParamCount : kShapeParamCount; }
     int shapeIndex(int shape, int point, PointField field) const;
     int shapePointCount(int shape) const;
+    // Onto a PointCache key: a drawn shape's point count (its param `base`) and its points, as many as it has.
+    void keyShape(std::vector<double> &key, int base) const;
     double shapePointX(int shape, int point) const;
     Point shapePointPos(int shape, int point) const;
     Point shapeCurvePos(int shape, int point) const;
@@ -399,6 +464,7 @@ private:
     // with the card being dragged already moved to where it would land.
     std::vector<int> sources() const;
     std::vector<int> sourcesShown() const;
+    std::vector<int> sourcesMoved() const; // sourcesShown() worked out
     SourceType sourceTypeOf(int source) const;
     std::pair<double, double> modReach(int source, double amount) const;
     // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).
@@ -445,6 +511,12 @@ private:
     // was when the drag began, as long as the envelope still fits.
     float envScale(int env) const;
     void applyDrag(Point p);
+    // Ends the drag going on: its gestures and undo step, a key it plays, the bend wheel it holds. When the button
+    // goes up, after what letting go does; or when its button-up never came, at the next press.
+    void finishDrag();
+    // Whole notches of the wheel on `target` (a param, or another of the wheel's targets), with `steps` added: a
+    // trackpad's smaller steps add up toward them while the wheel stays on that target.
+    int wheelNotches(int target, float steps);
 
     // Painting.
     void paintPanels(Canvas &c);
@@ -501,17 +573,17 @@ private:
     void paintUnison(Canvas &c, Rect r, int op);
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintLfo(Canvas &c, Rect r, int lfo);
-    void paintWidget(Canvas &c, const Widget &w, const std::vector<Assignment> &mods);
+    void paintWidget(Canvas &c, const Widget &w);
     void paintNode(Canvas &c, const Widget &w);
-    void paintKnob(Canvas &c, const Widget &w, const std::vector<Assignment> &mods);
+    void paintKnob(Canvas &c, const Widget &w);
     std::string modRangeText(int source, int slot) const;
     void paintModOverlay(Canvas &c, const std::vector<Widget> &list);
     // A route's amount where modulation takes the newest voice right now (0..1), or as set while nothing plays.
     double liveAmount(int param) const;
     // The color of the first source that modulates `param` (switched on, not bypassed), or none.
-    std::optional<Color> modColor(int param, const std::vector<Assignment> &mods) const;
+    std::optional<Color> modColor(int param) const;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
-    void paintModRange(Canvas &c, Rect bar, int param, const std::vector<Assignment> &mods);
+    void paintModRange(Canvas &c, Rect bar, int param);
     // Lines from a hovered source handle to whatever it modulates that is on screen.
     void paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source);
     void paintTyping(Canvas &c);
@@ -548,8 +620,8 @@ private:
     bool wired(int param) const;
     // Whether the graph shows `node`'s line to OUT: it is wired, and a filter has something to put out.
     bool goesOut(int node) const;
-    // Whether `node`'s own sound reaches the output, as the dot on its tab shows: its Out is up, and a filter or
-    // shaper has something going into it.
+    // Whether `node`'s own sound reaches the output, as the dot on its tab shows: its Out is up, an operator is on, and
+    // a filter or shaper has something going into it.
     bool soundsOut(int node) const;
     void keepRoutes();
     void disconnect(int param); // to 0 %, and its wire goes
@@ -568,6 +640,14 @@ private:
     std::optional<Widget> hover_;
     Point hoverPoint_; // where the mouse is
     Drag drag_;
+    // What the last press hit, as it went down, and where: a double-click after it goes with it.
+    std::optional<Widget> pressed_;
+    Point pressPoint_{-1000.0f, -1000.0f};
+    int wheelTarget_ = -1; // what the wheel turned last (see wheelNotches()), and its steps short of a notch
+    float wheelRest_ = 0.0f;
+    // The open context menu's targets (below) still are what it opened on: no undo, redo or wheel since. The web
+    // demo's menu stays open while those reach the editor.
+    bool menuLive_ = false;
     int menuParam_ = -1;
     int menuFx_ = -1;                        // the effect slot of the open context menu
     int menuSource_ = -1;                    // the source of the open context menu
@@ -639,6 +719,9 @@ private:
     int flashTicks_ = 0;
     std::optional<Typing> typing_;
     int caretTicks_ = 0; // polls since the last key, for the caret's blink
+    mutable Derived derived_; // see DerivedScope
+    mutable int derivedDepth_ = 0;
+    mutable PointCache curves_; // the graphs' curves, worked out again only when what they are drawn from changes
 };
 
 } // namespace fmvibe::gui

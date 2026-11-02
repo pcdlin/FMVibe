@@ -123,12 +123,21 @@ public:
             // anti-aliasing), so the harmonics it adds alias far less.
             const double driven = in * s.drive;
             const double dx = driven - lastDriven_;
-            const double y = std::abs(dx) < 1e-6 ? std::tanh(0.5 * (driven + lastDriven_))
-                                                 : (logCosh(driven) - logCosh(lastDriven_)) / dx;
+            double y;
+            if (std::abs(dx) < 1e-6) {
+                y = std::tanh(0.5 * (driven + lastDriven_));
+                lastKnown_ = false;
+            } else {
+                const double from = lastKnown_ ? lastLogCosh_ : logCosh(lastDriven_);
+                lastLogCosh_ = logCosh(driven);
+                lastKnown_ = true;
+                y = (lastLogCosh_ - from) / dx;
+            }
             lastDriven_ = driven;
             in = y / std::sqrt(s.drive);
         } else {
             lastDriven_ = in;
+            lastKnown_ = false;
         }
         switch (s.type) {
         case FilterType::LowPass:
@@ -142,6 +151,8 @@ public:
             double read = combPos_ - std::min(s.combDelay, combSize - 2.0);
             if (read < 0.0)
                 read += combSize;
+            if (read >= combSize) // a hair below 0 rounds up to the line's end when wrapped: that is its start
+                read -= combSize;
             const int i = static_cast<int>(read);
             const double delayed = comb[i] + (comb[(i + 1) % combSize] - comb[i]) * (read - i);
             const double y = in + s.combFeedback * delayed;
@@ -183,6 +194,8 @@ private:
     Svf b_;
     int combPos_ = 0;
     double lastDriven_ = 0.0; // the saturator's previous input
+    double lastLogCosh_ = 0.0; // and logCosh() of it, when worked out already (lastKnown_)
+    bool lastKnown_ = false;
 #ifdef __EMSCRIPTEN__
     double guard_ = 1e-20; // see process()
 #endif

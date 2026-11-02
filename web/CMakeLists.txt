@@ -27,6 +27,11 @@ add_executable(fmvibe-ui
     ${engine}
     ${PROJECT_SOURCE_DIR}/src/gui/canvas_web.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/controller.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/dialogs.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/icons.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/routing.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/shapes.cpp
+    ${PROJECT_SOURCE_DIR}/src/gui/theme.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/view.cpp
 )
 fmvibe_web_options(fmvibe-ui)

@@ -28,7 +28,7 @@ std::vector<FactoryPreset> factoryPresets();
 gui::UiLayout exampleLayout(const FactoryPreset &preset);
 
 // The examples the preset library started with; later ones go after them, and a preset folder made before
-// they came gets them once (see Plugin::rescanPresets()).
+// they came gets them once (see PresetLibrary::rescan()).
 constexpr size_t kFirstExamples = 6;
 
 } // namespace fmvibe

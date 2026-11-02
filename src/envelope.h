@@ -75,6 +75,17 @@ public:
     double level() const { return level_; }
 
     double next(const EnvRates &r) {
+        if (stage_ == Stage::Sustain) { // where a held note spends most of its time: short, so it can be inlined
+            level_ = r.sustain + (level_ - r.sustain) * r.followCoef;
+            return level_;
+        }
+        return nextStage(r);
+    }
+
+private:
+    enum class Stage { Idle, Attack, Hold, Decay, Sustain, Release };
+
+    double nextStage(const EnvRates &r) {
         switch (stage_) {
         case Stage::Attack:
             if (t_ < 0.0) {
@@ -99,22 +110,17 @@ public:
             if (t_ >= 1.0)
                 stage_ = Stage::Sustain;
             break;
-        case Stage::Sustain:
-            level_ = r.sustain + (level_ - r.sustain) * r.followCoef;
-            break;
         case Stage::Release:
             level_ = from_ * (1.0 - advance(r.release));
             if (t_ >= 1.0)
                 stop();
             break;
+        case Stage::Sustain: // see next()
         case Stage::Idle:
             break;
         }
         return level_;
     }
-
-private:
-    enum class Stage { Idle, Attack, Hold, Decay, Sustain, Release };
 
     void enterSegment() {
         from_ = level_;
@@ -125,8 +131,10 @@ private:
     // Moves one sample along the current segment; returns how far along it is (0..1).
     double advance(const EnvSegment &s) {
         t_ = std::min(t_ + s.dt, 1.0);
-        if (std::abs(s.k) < kLinearSteepness)
+        if (std::abs(s.k) < kLinearSteepness) {
+            resync_ = true; // e_ stands still meanwhile: bent again, even to the same slope, it starts over from t_
             return t_;
+        }
         if (resync_ || s.k != k_) { // a new segment, or the slope changed
             k_ = s.k;
             resync_ = false;

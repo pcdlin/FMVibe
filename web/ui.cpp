@@ -249,8 +249,9 @@ EMSCRIPTEN_KEEPALIVE void ui_paint() {
     view->paint(canvas);
 }
 
-EMSCRIPTEN_KEEPALIVE void ui_mouse_move(float x, float y, int shift, int ctrl) {
-    view->mouseMove({x, y}, mods(shift, ctrl));
+// 1 if what the editor shows changed, so it wants a paint.
+EMSCRIPTEN_KEEPALIVE int ui_mouse_move(float x, float y, int shift, int ctrl) {
+    return view->mouseMove({x, y}, mods(shift, ctrl)) ? 1 : 0;
 }
 
 EMSCRIPTEN_KEEPALIVE void ui_mouse_down(float x, float y, int shift, int ctrl) {

@@ -87,8 +87,10 @@ async function startAudio() {
 
 function fromAudio(message) {
   if (message.type === 'telemetry') {
-    // The struct's bytes, as the audio side's module laid them out; both modules come from the same header.
-    ui.HEAPU8.set(new Uint8Array(message.buffer), ui._ui_telemetry_buffer());
+    // The struct's bytes, as the audio side's module laid them out; both modules come from the same header. A
+    // stale cached module from another build may lay out more: never more than the editor's struct holds.
+    const size = Math.min(message.buffer.byteLength, ui._ui_telemetry_size());
+    ui.HEAPU8.set(new Uint8Array(message.buffer, 0, size), ui._ui_telemetry_buffer());
     ui._ui_telemetry_stamp(performance.now());
     send({type: 'buffer', buffer: message.buffer}, [message.buffer]);
   } else if (message.type === 'ready') {
@@ -198,13 +200,24 @@ function paint() {
   ui._ui_paint();
 }
 
-// About sixty polls a second, as the plugin window's timer; frames come when something moved.
-function frame() {
+// About sixty polls a second, as the plugin window's timer, whatever the display's rate: a frame of the display
+// polls once about a sixtieth of a second has gone by since the last poll, the time short of it or past it carried
+// over, so a 120 Hz display polls every other frame and a 144 Hz one 60 times a second all the same. Frames come
+// when something moved.
+const POLL_MS = 1000 / 60;
+let lastFrame = 0; // when the display's last frame came
+let owed = 0;      // ms since the last poll, with what was carried over
+function frame(now) {
+  requestAnimationFrame(frame);
+  owed += now - lastFrame;
+  lastFrame = now;
+  if (owed < POLL_MS - 4) // a 60 Hz display's frames come a little early at times
+    return;
+  owed = Math.min(owed - POLL_MS, POLL_MS / 2); // after a long wait (a hidden page), no burst of polls
   if (ui._ui_poll())
     dirty = true;
   if (dirty)
     paint();
-  requestAnimationFrame(frame);
 }
 
 function viewPoint(e) {
@@ -217,9 +230,16 @@ function ctrlOf(e) {
   return e.ctrlKey || e.metaKey;
 }
 
-function afterInput() {
-  canvas.style.cursor = CURSORS[ui._ui_cursor()] ?? 'default';
-  dirty = true;
+let cursor = null; // as last set on the canvas
+// `changed`: whether what the editor shows changed, so it wants a paint (a mouse move may change nothing).
+function afterInput(changed = true) {
+  const now = CURSORS[ui._ui_cursor()] ?? 'default';
+  if (now !== cursor) {
+    canvas.style.cursor = now;
+    cursor = now;
+  }
+  if (changed)
+    dirty = true;
 }
 
 // --- Mouse --------------------------------------------------------------------------------------------------
@@ -248,8 +268,7 @@ window.addEventListener('mousemove', (e) => {
   if (!dragging && e.target !== canvas)
     return;
   const [x, y] = lastPoint = viewPoint(e);
-  ui._ui_mouse_move(x, y, e.shiftKey, ctrlOf(e));
-  afterInput();
+  afterInput(ui._ui_mouse_move(x, y, e.shiftKey, ctrlOf(e)) !== 0);
 });
 
 window.addEventListener('mouseup', (e) => {
@@ -430,6 +449,9 @@ window.addEventListener('keyup', (e) => {
     held.delete(e.code);
     host.note(note, false);
   }
+  // A Mac sends no keyup for keys let go while Command is down: none may hang once Command is let go too.
+  if (e.key === 'Meta')
+    releaseAll();
 });
 
 // No key may hang when the page loses the keyboard; what was being typed counts.
@@ -452,6 +474,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('resize', resize);
+// Moved to a screen of another pixel density, the page may keep its size: watch the density itself.
+function watchDensity() {
+  matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener('change', () => {
+    resize();
+    watchDensity();
+  }, {once: true});
+}
+watchDensity();
 showOctave();
 resize();
 requestAnimationFrame(frame);

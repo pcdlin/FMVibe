@@ -255,15 +255,17 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case kPresetMessage:
         browsePreset(wParam != 0);
         return 0;
-    case WM_MOUSEMOVE:
+    case WM_MOUSEMOVE: {
         if (!trackingLeave_) {
             TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hwnd_, 0};
             trackingLeave_ = TrackMouseEvent(&track) != FALSE;
         }
-        view_.mouseMove(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers());
+        const bool changed = view_.mouseMove(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)), modifiers());
         updateCursor();
-        invalidate();
+        if (changed) // else nothing to paint again: the poll timer paints what animates meanwhile
+            invalidate();
         return 0;
+    }
     case WM_MOUSELEAVE:
         trackingLeave_ = false;
         view_.mouseLeave();
@@ -373,6 +375,7 @@ void Editor::invalidate() {
 void Editor::paint() {
     PAINTSTRUCT ps;
     BeginPaint(hwnd_, &ps);
+    bool lost = false;
     if (!target_) {
         const D2D1_RENDER_TARGET_PROPERTIES props =
             D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(), 96.0f, 96.0f);
@@ -392,10 +395,16 @@ void Editor::paint() {
             Canvas canvas(target_.Get(), resources_);
             view_.paint(canvas);
         }
-        if (target_->EndDraw() == D2DERR_RECREATE_TARGET)
-            target_.Reset(); // device lost; recreated on the next paint
+        if (target_->EndDraw() == D2DERR_RECREATE_TARGET) {
+            target_.Reset(); // device lost; recreated on the next paint, asked for below
+            lost = true;
+        }
     }
     EndPaint(hwnd_, &ps);
+    // EndPaint takes the window as painted, though nothing showed: without another paint, a patch that stands
+    // still would leave the editor blank.
+    if (lost)
+        invalidate();
 }
 
 void Editor::updateCursor() {

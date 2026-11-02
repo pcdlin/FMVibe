@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <numbers>
 #include <vector>
@@ -31,31 +32,33 @@ inline double foldPhase(double x) {
 
 } // namespace clip
 
-// A drawn curve's table: kClipTableSteps + 1 values across -1..1, then their running integral.
+// A drawn curve's table: kClipTableSteps + 1 values across -1..1, then their running integral. Doubles: the
+// anti-aliasing divides the integral's change by the input's, which for a quiet, slow sound is tiny, so a float's
+// rounding where the input crosses a step would come out as a spike.
 constexpr int kClipTableSteps = 512;
 constexpr double kClipTableStep = 2.0 / kClipTableSteps;
 constexpr int kClipTableSize = 2 * (kClipTableSteps + 1);
 
 // Fills `table` (kClipTableSize long) from the drawn curve whose point count is param `base`.
 template <class Get>
-void buildClipTable(const Get &get, int base, float *table) {
-    float *integral = table + kClipTableSteps + 1;
+void buildClipTable(const Get &get, int base, double *table) {
+    double *integral = table + kClipTableSteps + 1;
     for (int i = 0; i <= kClipTableSteps; ++i)
-        table[i] = static_cast<float>(clipCurveValue(get, base, -1.0 + i * kClipTableStep));
-    integral[0] = 0.0f;
+        table[i] = clipCurveValue(get, base, -1.0 + i * kClipTableStep);
+    integral[0] = 0.0;
     for (int i = 1; i <= kClipTableSteps; ++i)
-        integral[i] = integral[i - 1] + static_cast<float>(0.5 * kClipTableStep * (table[i - 1] + table[i]));
+        integral[i] = integral[i - 1] + 0.5 * kClipTableStep * (table[i - 1] + table[i]);
 }
 
-inline double clipTableValue(const float *table, double x) {
+inline double clipTableValue(const double *table, double x) {
     const double pos = std::clamp((x + 1.0) / kClipTableStep, 0.0, static_cast<double>(kClipTableSteps));
     const int i = std::min(static_cast<int>(pos), kClipTableSteps - 1);
     return table[i] + (table[i + 1] - table[i]) * (pos - i);
 }
 
 // Exact for the straight lines between the table's values; level past the ends.
-inline double clipTableIntegral(const float *table, double x) {
-    const float *integral = table + kClipTableSteps + 1;
+inline double clipTableIntegral(const double *table, double x) {
+    const double *integral = table + kClipTableSteps + 1;
     if (x <= -1.0)
         return (x + 1.0) * table[0];
     if (x >= 1.0)
@@ -101,10 +104,17 @@ constexpr bool clipNeedsBlocker(ClipMode mode, bool symmetric = false) {
 // doesn't pass through 0 jumps there). Only a drawn curve is ever run symmetric (see shaperSettings()).
 struct ClipCurve {
     ClipMode mode;
-    const float *table;
+    const double *table;
     bool symmetric = false;
+    uint32_t version = 0; // the table's (see ClipTable): it is filled again in place when its points change
 
     double shape(double x) const { return symmetric && x < 0.0 ? -plainShape(-x) : plainShape(x); }
+
+    // Whether this is the curve `other` is, its table as it was then: one whose integral() is the same everywhere.
+    bool same(const ClipCurve &other) const {
+        return mode == other.mode && symmetric == other.symmetric &&
+               (mode != ClipMode::Custom || (table == other.table && version == other.version));
+    }
 
     // The antiderivative, for first-order antiderivative anti-aliasing. Symmetric, it is even: F(|x|) - F(0).
     double integral(double x) const {
@@ -142,15 +152,6 @@ private:
         return 0.0;
     }
 };
-
-// The shaper curve averaged over the last sample step, which keeps the
-// harmonics that hard and steep curves add from aliasing as badly.
-inline double clipAntialiased(const ClipCurve &curve, double x, double last) {
-    const double dx = x - last;
-    if (std::abs(dx) < 1e-6)
-        return curve.shape(0.5 * (x + last));
-    return (curve.integral(x) - curve.integral(last)) / dx;
-}
 
 inline ClipMode clipMode(double value) {
     return static_cast<ClipMode>(
@@ -190,8 +191,9 @@ double shaperCurveValue(const Get &get, ClipMode mode, int curveBase, bool symme
 // A drawn curve's table (see buildClipTable()), built again whenever the points it was built from change. Its
 // values are allocated when it is made, so the audio thread only fills them.
 struct ClipTable {
-    std::vector<float> values = std::vector<float>(kClipTableSize, 0.0f);
+    std::vector<double> values = std::vector<double>(kClipTableSize, 0.0);
     std::array<double, kShapeParamCount> points; // NaN until the first build
+    uint32_t version = 0;                        // how many times it was built
 
     ClipTable() { points.fill(std::numeric_limits<double>::quiet_NaN()); }
 
@@ -206,6 +208,7 @@ struct ClipTable {
         for (int i = 0; i < kShapeParamCount; ++i)
             points[i] = get(base + i);
         buildClipTable(get, base, values.data());
+        ++version;
     }
 };
 
@@ -220,11 +223,29 @@ struct ClipState {
     double last = 0.0;
     double dcIn = 0.0;
     double dcOut = 0.0;
+    // The curve's integral at `last`, worked out in the step before, which this one needs again: kept with the curve
+    // it was worked out on, and taken while that stays the same.
+    double lastIntegral = 0.0;
+    ClipCurve integralOf{ClipMode::Count, nullptr};
+    bool integralKnown = false;
 
-    // `x` driven through the curve (blocked if `block`), then at `output`, and `mix` of that against x.
+    // `x` driven through the curve (blocked if `block`), then at `output`, and `mix` of that against x. The curve is
+    // averaged over the last sample step (first-order antiderivative anti-aliasing), which keeps the harmonics that
+    // hard and steep curves add from aliasing as badly.
     double run(const ClipCurve &curve, double x, double drive, double output, double mix, bool block, double pole) {
         const double driven = x * drive;
-        double y = clipAntialiased(curve, driven, last);
+        const double dx = driven - last;
+        double y;
+        if (std::abs(dx) < 1e-6) {
+            y = curve.shape(0.5 * (driven + last));
+            integralKnown = false;
+        } else {
+            const double from = integralKnown && curve.same(integralOf) ? lastIntegral : curve.integral(last);
+            lastIntegral = curve.integral(driven);
+            integralOf = curve;
+            integralKnown = true;
+            y = (lastIntegral - from) / dx;
+        }
         last = driven;
         const double blocked = y - dcIn + pole * dcOut;
         dcIn = y;
