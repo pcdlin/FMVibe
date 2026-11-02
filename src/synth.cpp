@@ -582,6 +582,8 @@ void Synth::scopeTake(double phase, double value) {
     if (!s.started || delta < 0.0 || delta >= 0.5) {
         // The first sample, or the phases were set again (a note started over): the span goes on from here.
         s.started = true;
+        s.waiting = false;
+        s.taken = 0;
         s.lastPos = phase;
         s.next = static_cast<int64_t>(std::ceil(phase * kScopeBinsPerCycle));
         if (s.next >= total) {
@@ -590,15 +592,39 @@ void Synth::scopeTake(double phase, double value) {
         }
     } else {
         double pos = s.lastPos + delta;
-        while (static_cast<double>(s.next) <= pos * kScopeBinsPerCycle) {
-            const double t = (static_cast<double>(s.next) / kScopeBinsPerCycle - s.lastPos) / delta;
-            s.filling[s.next] = static_cast<float>(s.lastValue + (value - s.lastValue) * t);
-            if (++s.next == total) { // a whole span, published; the next one starts at 0
-                std::copy_n(s.filling.begin(), total, s.frame.begin());
-                s.whole = true;
-                s.next = 0;
+        // A span shorter than its points (a high operator) costs more points than samples, and a copy every few
+        // samples: after one, the spans pass by unfilled until as many samples as points have gone, so the scope
+        // costs about two writes a sample at most, and still shows a whole span tens of times a second.
+        if (s.waiting) {
+            s.rest = std::max<int64_t>(s.rest - 1, 0);
+            if (pos >= s.cycles) { // the next span starts: filled if the rest is over
                 s.lastPos -= s.cycles;
                 pos -= s.cycles;
+                if (s.rest == 0) {
+                    s.waiting = false;
+                    s.next = 0;
+                    s.taken = 0;
+                }
+            }
+        }
+        if (!s.waiting) {
+            ++s.taken;
+            while (static_cast<double>(s.next) <= pos * kScopeBinsPerCycle) {
+                const double t = (static_cast<double>(s.next) / kScopeBinsPerCycle - s.lastPos) / delta;
+                s.filling[s.next] = static_cast<float>(s.lastValue + (value - s.lastValue) * t);
+                if (++s.next == total) { // a whole span, published; the next one starts at 0
+                    std::copy_n(s.filling.begin(), total, s.frame.begin());
+                    s.whole = true;
+                    s.next = 0;
+                    s.lastPos -= s.cycles;
+                    pos -= s.cycles;
+                    if (s.taken < total) {
+                        s.waiting = true;
+                        s.rest = total - s.taken;
+                        break;
+                    }
+                    s.taken = 0;
+                }
             }
         }
         s.lastPos = pos;

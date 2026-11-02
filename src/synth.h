@@ -406,7 +406,10 @@ private:
         double lastPhase = 0.0;
         double lastValue = 0.0;
         double inc = 0.0;       // cycles a sample, for telling a slow span
-        int64_t next = 0;       // the next point to fill, counted since the first sample's cycle
+        int64_t next = 0;       // the next point to fill in the span
+        int64_t taken = 0;      // samples that went into the span being filled
+        bool waiting = false;   // a short span was published: spans pass unfilled for a while (see scopeTake())
+        int64_t rest = 0;       // samples still to let go by before the next span is filled
         std::array<float, kScopeBins> filling{};
         std::array<float, kScopeBins> frame{};
     };

@@ -690,6 +690,41 @@ void scopeChecks() {
     std::printf("      a square: %.4f like one; a low note's span filled %.2f of the way\n", squareLike, cursor);
     check(squareLike > 0.95 && cursor > 0.0f && cursor < 1.0f && telemetry->scopeBins == 0,
           "the scope takes a square's shape, shows a slow span as it fills, and stops when not asked");
+
+    // A high operator, a cycle of 4.5 samples (24 x A4 at 1x): the scope still shows a sine, standing still (but
+    // for the lines between samples moving a little with where the samples fall in the cycle), and costs little more
+    // than the voice, letting most short spans go by. Timed as the fastest of a few runs.
+    {
+        Engine high(1);
+        high.p[paramIndex(0, OpParam::Coarse)] = 24.0;
+        high.noteOn(69);
+        high.render(4800);
+        auto fastest = [&] {
+            double best = 1e9;
+            for (int run = 0; run < 5; ++run) {
+                const auto start = std::chrono::steady_clock::now();
+                high.render(48000);
+                best = std::min(best, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+            }
+            return best;
+        };
+        const double without = fastest();
+        high.synth().setScope(0, 1);
+        const double with = fastest();
+        high.synth().telemetry(*telemetry);
+        const double highLike = likeness(sine);
+        const std::vector<float> first(telemetry->scope.begin(), telemetry->scope.begin() + kScopeBinsPerCycle);
+        high.render(kBlock * 5 + 3);
+        high.synth().telemetry(*telemetry);
+        double most = 0.0;
+        for (int bin = 0; bin < kScopeBinsPerCycle; ++bin)
+            most = std::max(most, static_cast<double>(std::abs(telemetry->scope[bin] - first[bin])));
+        std::printf("      A at 10.6 kHz: %.3f like a sine, moving by %.4f; a second of it %.2f ms, %.2f ms scoped\n",
+                    highLike, most, without * 1000.0, with * 1000.0);
+        check(telemetry->scopeBins == kScopeBinsPerCycle && telemetry->scopeCursor < 0.0f && highLike > 0.9 &&
+                  most < 0.1 && with < 1.5 * without + 0.0005,
+              "a high operator's scope shows its cycle, standing still, for little more than the voice costs");
+    }
 }
 
 } // namespace

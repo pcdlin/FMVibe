@@ -113,7 +113,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and an envelope's curve bent again after a straight stretch carrying on along it;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
-    at half the ratio, a slow span shown as it fills, and nothing again once it isn't asked for;
+    at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, and a high operator's
+    (a cycle of 4.5 samples) for little more than the voice costs;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
