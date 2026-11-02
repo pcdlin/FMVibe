@@ -124,7 +124,7 @@ public:
         synth_.prepare(kSampleRate, voices, oversampling);
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
-        p[paramIndex(GlobalParam::Volume)] = 12.0; // the voices go into the effects 12 dB down: back to full level
+        p[paramIndex(GlobalParam::Volume)] = 0.0; // full level, rather than the 12 dB of room it starts with
         for (int op = 0; op < kOps; ++op)
             p[paramIndex(op, OpParam::Velocity)] = 0.0;
     }
@@ -530,7 +530,7 @@ constexpr PinnedPreset kPresetChecksums[] = {
     {"FX Industrial Hit", 0xa1cd1a7b125f51d8ull},
     {"LD Folded Lead", 0x8aea699d01cb8c70ull},
     {"BA Fuzz Bass", 0x99895bc872e2c284ull},
-    {"PL Comb String", 0x7069c6afdc9fa794ull},
+    {"PL Comb String", 0xf874f7955bb87133ull},
     {"PL Chip Pluck", 0xc4274cc781d3610dull},
     {"SQ Step Filter", 0xd511c60c618cd3b7ull},
     {"SQ Glass Steps", 0x94a0df1834a25bceull},
@@ -1218,7 +1218,7 @@ int main() {
     }
 
     // --- The output meter: each side's peak, falling 24 dB a second once the sound stops; past full scale (six
-    // sines in step, 6 dB up) its clip light comes on and stays on.
+    // sines in step, 6 dB down) its clip light comes on and stays on.
     std::printf("output meter:\n");
     {
         auto peakOf = [](const std::vector<float> &x, size_t from) {
@@ -1228,7 +1228,7 @@ int main() {
             return peak;
         };
         Engine e(2);
-        e.p[paramIndex(GlobalParam::Volume)] = -6.0;
+        e.p[paramIndex(GlobalParam::Volume)] = -18.0;
         e.noteOn(69);
         const float peak = peakOf(e.render(9600), 4800);
         Telemetry t;
@@ -1240,7 +1240,7 @@ int main() {
         e.synth().telemetry(t);
         const double fell = 20.0 * std::log10(held / t.outPeak[0]);
         Engine loud(2);
-        loud.p[paramIndex(GlobalParam::Volume)] = 6.0;
+        loud.p[paramIndex(GlobalParam::Volume)] = -6.0;
         for (int op = 1; op < kOps; ++op) {
             loud.p[paramIndex(op, OpParam::Enabled)] = 1.0;
             loud.p[paramIndex(op, OpParam::Out)] = 1.0;
@@ -1249,7 +1249,7 @@ int main() {
         const float over = peakOf(loud.render(4800), 0);
         loud.synth().telemetry(t);
         std::printf("      A4 sine: peak %.3f, metered %.3f, %.1f dB lower half a second after it ends; "
-                    "six of them 6 dB up: peak %.2f, clip light on for %.2f s more\n",
+                    "six of them 6 dB down: peak %.2f, clip light on for %.2f s more\n",
                     peak, held, fell, over, t.clipHold);
         check(std::abs(held / peak - 1.0f) < 0.02f && dark && fell > 10.0 && fell < 13.0 && over > 1.0f &&
                   t.clipHold > 1.0f,

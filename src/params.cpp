@@ -144,8 +144,9 @@ void buildTable(ParamTable &t) {
     };
 
     const char *const global = tr(Str::ModuleGlobal);
-    // The level after the effects, for the whole output: hosts modulate it globally, not per note.
-    add(paramIndex(GlobalParam::Volume), tr(Str::ParamVolume), global, ParamKind::Decibel, -60.0, 12.0, 0.0);
+    // The level after the effects, for the whole output: hosts modulate it globally, not per note. At 0 dB a
+    // full-scale operator comes out at full scale; it starts 12 dB down, room for chords and stacked operators.
+    add(paramIndex(GlobalParam::Volume), tr(Str::ParamVolume), global, ParamKind::Decibel, -60.0, 12.0, -12.0);
     t[paramIndex(GlobalParam::Volume)].flags &=
         ~static_cast<clap_param_info_flags>(CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY);
     add(paramIndex(GlobalParam::FmAmount), tr(Str::ParamFmAmount), global, ParamKind::Percent, 0.0, 2.0, 1.0);

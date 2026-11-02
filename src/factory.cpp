@@ -563,7 +563,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.filter(1, FilterType::LowPass, 2500.0, 0.0).filterSet(1, FilterParam::Slope, 0.0); // 6 dB
         p.filterSet(1, FilterParam::KeyTrack, 0.5).set(filterLinkIndex(0, 1), 1.0);
         p.aim(kWheelSource, 0, paramIndex(0, FilterParam::Resonance), -0.4);
-        p.set(paramIndex(GlobalParam::Volume), 5.0); // a struck comb puts out less than a sounding operator
+        p.set(paramIndex(GlobalParam::Volume), -7.0); // a struck comb puts out less than a sounding operator
 
         p.fx(0, FxType::Widener, {{FxParam::WidenerSize, 0.35}, {FxParam::WidenerHighPass, normFromCutoff(250.0)},
                                   {FxParam::WidenerMix, 0.4}});

@@ -2258,7 +2258,7 @@ int main(int argc, char **argv) {
 
         MemoryStream newer;
         newer.data = patch.data;
-        newer.data[4] = 2; // a state version from the future
+        newer.data[4] = 3; // a state version from the future
         check(!state->load(plugin, &newer.in), "load rejects a newer state version");
 
         // Hosts see a slot's fields for the effect it holds, and not the others.
@@ -2294,6 +2294,33 @@ int main(int argc, char **argv) {
         }
         check(sourcePages == std::vector<std::string>{trf(Str::SourceNameLfo, {"1"}), trf(Str::SourceNameEnv, {"1"})},
               "each source gets a remote control page");
+    }
+
+    // Volume gives back the 12 dB the voices go into the effects with since version 2: a version 1 state's Volume
+    // loads 12 dB lower, so it sounds as loud as it did, and a version 2 state's as it is.
+    {
+        auto volumeFrom = [&](uint32_t version, double stored) {
+            MemoryStream old;
+            const uint32_t header[] = {0x38454C43, version, 1};
+            const uint32_t id = idOfIndex(volume);
+            const auto *parts = reinterpret_cast<const uint8_t *>(header);
+            old.data.assign(parts, parts + sizeof(header));
+            old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                            reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+            old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&stored),
+                            reinterpret_cast<const uint8_t *>(&stored) + sizeof(stored));
+            const bool loaded = state->load(plugin, &old.in);
+            plugin->on_main_thread(plugin);
+            double value = 99.0;
+            if (loaded)
+                params->get_value(plugin, idOfIndex(volume), &value);
+            return value;
+        };
+        const double fromOne = volumeFrom(1, 0.0), fromOneLow = volumeFrom(1, -55.0), fromTwo = volumeFrom(2, 0.0);
+        std::printf("      Volume 0 dB from a version 1 state: %+.1f dB, -55 dB: %+.1f dB; 0 dB from version 2: %+.1f dB\n",
+                    fromOne, fromOneLow, fromTwo);
+        check(fromOne == -12.0 && fromOneLow == -60.0 && fromTwo == 0.0,
+              "a version 1 state's Volume loads 12 dB lower, held at the bottom of its range");
     }
 
     // Every remote control page has an id of its own, the macros' too, also with a source in place 0, whose page

@@ -27,7 +27,8 @@ static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + gui::
                   kMacros * (1 + kMaxMacroName) + 2 <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
-constexpr uint32_t kStateVersion = 1;
+// 2: Volume gives back the 12 dB the voices go into the effects with, so a version 1 Volume loads 12 dB lower.
+constexpr uint32_t kStateVersion = 2;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -274,6 +275,7 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     const ParamTable &table = paramTable();
     for (int i = 0; i < kParamCount; ++i)
         loaded[i] = table[i].def;
+    const int volume = paramIndex(GlobalParam::Volume);
     for (uint32_t n = 0; n < header[2]; ++n) {
         uint32_t id;
         double value;
@@ -282,6 +284,8 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         if (!std::isfinite(value))
             continue;
         const int i = indexOfId(id);
+        if (i == volume && header[1] < 2)
+            value -= 12.0; // as loud as it was
         if (i >= 0)
             loaded[i] = std::clamp(value, table[i].min, table[i].max);
     }

@@ -240,10 +240,12 @@ What the plugin does and how its editor works, in full. Building and installing 
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of
   every effect type, and hosts only list the ones of the effect it holds. Each effect gets a remote control page in
   chain order.
-- **Global**: **Volume**, the level of the whole output after the effects (−60 to +12 dB, 0 to begin with; the
-  voices go into the effects at a level of their own, 12 dB down, so the effects' drive and thresholds don't
-  depend on it; hosts modulate it globally, and LFOs and envelopes through the newest voice, as they do effect
-  knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, Bend Range for
+- **Global**: **Volume**, the level of the whole output after the effects (−60 to +12 dB, −12 to begin with, room
+  for chords and stacked operators; at 0 dB a full-scale operator comes out at full scale. The voices go into the
+  effects at a level of their own, 12 dB down, so the effects' drive and thresholds don't depend on it, and Volume
+  gives those 12 dB back. A project or preset saved by FMVibe 0.1, whose Volume didn't, loads it 12 dB lower, so
+  it sounds as loud as it did. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
+  do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, Bend Range for
   MIDI pitch bend, **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
 - **Play modes**:

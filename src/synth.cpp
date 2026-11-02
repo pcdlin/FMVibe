@@ -19,7 +19,7 @@ constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out
 constexpr double kStealFade = 0.003; // seconds a stolen voice takes to fade out
 constexpr double kVolumeGlide = 0.005; // seconds Volume takes to glide most of the way to a new level
 // How loud each voice goes into the effects, -12 dB: Volume comes after them, so drive and thresholds don't
-// depend on it.
+// depend on it. Volume gives the 12 dB back, so at 0 dB a full-scale operator comes out at full scale.
 constexpr double kVoiceLevel = 0.25118864315095801;
 // How far the shapers hear a filter's output go, +18 dB. A filter and a shaper feeding each other grow without end
 // when part of the shaper's input goes through unshaped (Mix below 100 %) and a resonant filter lifts it past
@@ -498,7 +498,8 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             for (int m = 0; m < newest->slotModCount; ++m)
                 if (newest->slotMods[m].index == volume)
                     db += newest->slotMods[m].offset;
-        const double gain = std::pow(10.0, std::clamp(db, table_[volume].min, table_[volume].max) / 20.0);
+        const double gain =
+            std::pow(10.0, std::clamp(db, table_[volume].min, table_[volume].max) / 20.0) / kVoiceLevel;
         if (volumeGain_ < 0.0)
             volumeGain_ = gain;
         for (uint32_t s = done; s < done + n; ++s) {
