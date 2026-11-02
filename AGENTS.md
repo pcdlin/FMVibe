@@ -94,8 +94,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - clicks when a voice is stolen, and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band) jumps while events split the block into single frames;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
-    undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
-    until its tail has been heard, and stopping after;
+    undamped tail falling 60 dB around 1 kHz in its decay time, a shimmer's still falling at its longest decay
+    with its Shimmer up full, and a reverb with a 200 ms pre-delay ringing on until its tail has been heard, and
+    stopping after;
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
     curve's table steps;
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric

@@ -1038,6 +1038,49 @@ int main() {
         const double t60 = 2.0 * (at35 - at5);
         std::printf("      undamped hall falls 60 dB around 1 kHz in %.2f s (set to 2.5 s)\n", t60);
         check(std::abs(t60 / 2.5 - 1.0) < 0.15, "an undamped reverb's tail falls 60 dB in its decay time");
+
+        // A shimmer feeds its shifted tail back in under unity. At its longest decay and size, undamped, its Shimmer
+        // up full and shifting a semitone, so its band-pass hardly takes anything away, half a second of noise
+        // still leaves a tail that keeps falling: each 5 s of it quieter than the 5 s before.
+        bool falling = true;
+        for (double semitones : {1.0, -1.0}) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Shimmer);
+            p[paramIndex(0, FxParam::ReverbSize)] = 1.0;
+            p[paramIndex(0, FxParam::ReverbDecay)] = 1.0;
+            p[paramIndex(0, FxParam::ReverbDamping)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+            p[paramIndex(0, FxParam::ReverbShimmerPitch)] = semitones;
+            p[paramIndex(0, FxParam::ReverbShimmer)] = 1.0;
+            const size_t span = static_cast<size_t>(5.0 * kSampleRate), total = 5 * span;
+            std::array<std::vector<float>, 2> sides{std::vector<float>(total, 0.0f), std::vector<float>(total, 0.0f)};
+            uint32_t noise = 1;
+            for (size_t i = 0; i < static_cast<size_t>(0.5 * kSampleRate); ++i) {
+                noise = noise * 1664525u + 1013904223u;
+                sides[0][i] = sides[1][i] = 0.5f * (static_cast<float>(noise >> 8) / 8388608.0f - 1.0f);
+            }
+            for (size_t done = 0; done < total; done += kBlock)
+                fx.process(sides[0].data() + done, sides[1].data() + done,
+                           static_cast<uint32_t>(std::min<size_t>(kBlock, total - done)), p, 120.0, 60.0);
+            std::printf("      shimmer at its limits, %+.0f semitone, each 5 s (dB):", semitones);
+            double last = 0.0;
+            for (size_t from = 0; from < total; from += span) {
+                double power = 0.0;
+                for (size_t i = from; i < from + span; ++i)
+                    power += sides[0][i] * sides[0][i] + sides[1][i] * sides[1][i];
+                const double db = 10.0 * std::log10(power / span + 1e-30);
+                std::printf(" %.1f", db);
+                falling = falling && std::isfinite(db) && (from == 0 || db < last - 1.0);
+                last = db;
+            }
+            std::printf("\n");
+        }
+        check(falling, "a shimmer's tail keeps falling at its longest decay, its Shimmer up full");
     }
 
     // --- The voice filters' analyzers: an A4 sine through filter 1 shows in its band, turned down by a low-pass

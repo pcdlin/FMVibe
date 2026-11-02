@@ -193,15 +193,20 @@ What the plugin does and how its editor works, in full. Building and installing 
     mono sound. Four algorithms: **Hall** (that network, four all-passes a side); **Room** (lines under half as
     long, a darker tail and tighter wavering, with six distinct early reflections that spread with the size);
     **Plate** (lines 60 % as long, six all-passes a side for a denser start, a brighter tail, little wavering); and
-    **Shimmer**, a brighter hall that feeds its own tail back into itself pitch-shifted: four of its lines are
-    read through pitch shifters as well (two read heads each, crossfading as they jump back across an 80 ms
-    window), band-passed (200 Hz up to 8 kHz, which the damping lowers to 2 kHz), so each time round part of the
-    tail climbs (or falls) by the interval, and the shifted part shifts again the next time. **Pitch** sets the
-    interval, −24 to +24 semitones (an octave up to begin with), and **Shimmer** how much of those lines is
-    shifted (50 % to begin with; at 0 it is a plain bright hall). Shifted a semitone or more, the crossfades keep
-    the power of what they blend, so the tail lasts; within half a semitone, where the heads read much the same
-    sound, they keep its level instead, so it can't build up. In the second after an A4 ends, its tail holds the
-    octave about as loud as the note, and two octaves up at about a third of it. Size (the
+    **Shimmer**, a brighter hall that feeds its own tail back into itself pitch-shifted: each side of what it puts
+    out is band-passed (200 Hz up to 8 kHz, which the damping lowers to 2 kHz; for a shift up the top comes down
+    so the shifted sound stays under Nyquist, and for a shift down the bottom goes up as far, so it doesn't pile
+    up rumble), pitch-shifted and fed back in with the input, ahead of the all-passes, so it is smeared again on
+    its way round and what comes out climbs (or falls) by the interval each time. The shifter has four read heads
+    a quarter of a cycle apart, each sweeping a 120 ms window under a Hann fade, and each grain starts up to 25 ms
+    further back at random, so the crossfades never come round the same way twice and don't flutter. **Pitch**
+    sets the interval, −24 to +24 semitones (an octave up to begin with), and **Shimmer** how much goes round
+    (50 % to begin with; at 0 it is a plain bright hall): the share of the shifted tail's energy that comes back,
+    up to 90 % at full, worked out from the decay and size so the loop always stays under unity, and its tail
+    keeps falling even at the longest decay with a semitone's shift, where the band-pass takes nothing away. With
+    no shift the loop is off, and within a semitone it fades out, since there the grains add up in level. In the
+    second after an A4 ends, its tail holds the octave about as loud as the note, and two octaves up at about
+    half of it. Size (the
     lines from a quarter of their length to all of it, gliding when turned, also when the algorithm changes),
     Decay (0.2–20 s to fall 60 dB), Damp (Damping in the host; the corner, from 20 kHz down to 1 kHz, above which the tail falls five
     times as fast, by as much in every line), Pre-Delay (off to 250 ms), Width and Mix (like the delay's: the dry
