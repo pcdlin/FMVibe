@@ -74,8 +74,17 @@ inline Rect waveMenuItem(int item) {
 inline bool isMoreWave(OpWave wave) {
     return std::find(std::begin(kMoreWaves), std::end(kMoreWaves), wave) != std::end(kMoreWaves);
 }
-// Tabs of the routing panel, one per RoutingView.
-constexpr Rect kViewTabs[] = {{16.0f, 72.0f, 84.0f, 24.0f}, {104.0f, 72.0f, 74.0f, 24.0f}, {182.0f, 72.0f, 48.0f, 24.0f}};
+// The row between the header and the panels: the view tabs at its left, the preset bar in its middle, the toolbar
+// at its right.
+constexpr float kTopRowY = 72.0f;
+constexpr float kTopRowH = 24.0f;
+// Tabs of the routing panel, one per RoutingView: folder tabs from the row's top down onto the panels' top edge,
+// starting over the panel's inner margin so the shown one's curves flare into its straight edge.
+constexpr float kViewTabH = kPanelsTop - kTopRowY;
+constexpr Rect kViewTabs[] = {
+    {32.0f, kTopRowY, 96.0f, kViewTabH}, {132.0f, kTopRowY, 88.0f, kViewTabH}, {224.0f, kTopRowY, 64.0f, kViewTabH}};
+constexpr float kViewTabRadius = 8.0f; // its top corners
+constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
 // The FX view covers the routing panel and the inspector: one card per effect,
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
 constexpr Rect kFxPanel{kRouting.x, kRouting.y, kInspector.x + kInspector.w - kRouting.x, kRouting.h};
@@ -373,7 +382,7 @@ inline float buttonY(float top) { // level with the macros' knobs
 // Init, Load, Save and the settings cog: icons at the right end of the view tabs' row.
 inline Rect toolbarButton(int i) {
     constexpr float kW = 28.0f, kGap = 6.0f;
-    return {kInspector.right() - (4 - i) * (kW + kGap) + kGap, kViewTabs[0].y, kW, kViewTabs[0].h};
+    return {kInspector.right() - (4 - i) * (kW + kGap) + kGap, kTopRowY, kW, kTopRowH};
 }
 // Undo and redo, a little apart to their left.
 inline Rect undoButton(int redo) {
@@ -381,7 +390,7 @@ inline Rect undoButton(int redo) {
     return {init.x - 14.0f - (2 - redo) * 34.0f, init.y, 28.0f, init.h};
 }
 // The preset bar, in the middle of the view tabs' row: back, the preset's name, forward.
-constexpr Rect kPresetName{430.0f, 72.0f, 340.0f, 24.0f};
+constexpr Rect kPresetName{430.0f, kTopRowY, 340.0f, kTopRowH};
 inline Rect presetStep(int direction) {
     return {direction < 0 ? kPresetName.x - 30.0f : kPresetName.right() + 4.0f, kPresetName.y, 26.0f, kPresetName.h};
 }

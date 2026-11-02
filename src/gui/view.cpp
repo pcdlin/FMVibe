@@ -39,6 +39,32 @@ const char *fxTitle(FxType type) {
 constexpr Str kMcBandNames[kMcBands] = {Str::BandButtonLow, Str::BandButtonMid, Str::BandButtonHigh};
 constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx};
 
+// A view tab's outline over `r`, from its bottom-left corner up around its rounded top and down to its bottom-right
+// one. With a flare, its sides curve out into the edge at its bottom by that much on either side, as the tab shown
+// joins its panel.
+std::vector<Point> viewTabOutline(Rect r, float flare) {
+    constexpr int kSteps = 8; // points per quarter circle
+    std::vector<Point> points;
+    auto quarter = [&](Point center, float radius, float from, float to) {
+        for (int i = 0; i <= kSteps; ++i) {
+            const float angle = from + (to - from) * i / kSteps;
+            points.push_back({center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)});
+        }
+    };
+    const float bottom = r.bottom(), right = r.right(), radius = kViewTabRadius;
+    if (flare > 0.0f)
+        quarter({r.x - flare, bottom - flare}, flare, 0.5f * kPi, 0.0f);
+    else
+        points.push_back({r.x, bottom});
+    quarter({r.x + radius, r.y + radius}, radius, kPi, 1.5f * kPi);
+    quarter({right - radius, r.y + radius}, radius, 1.5f * kPi, 2.0f * kPi);
+    if (flare > 0.0f)
+        quarter({right + flare, bottom - flare}, flare, kPi, 0.5f * kPi);
+    else
+        points.push_back({right, bottom});
+    return points;
+}
+
 // `value` as `format` prints it, for the numbers a wording takes.
 std::string number(const char *format, double value) {
     char text[32];
@@ -3977,14 +4003,26 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::ViewTab: {
-        // While an editor has the panels (shape, shaper curve or partials), none of the tabs is the one shown.
+        // Folder tabs. The one shown is part of its panel: filled like it, its outline running on into the panel's
+        // top edge through curves that flare into it, the edge open beneath it, the accent along its top. The others
+        // are their names, with a tab's shape faintly under the mouse. While an editor has the panels (shape, shaper
+        // curve or partials), none of them is the one shown.
         const bool selected = controller_.layout().view == static_cast<RoutingView>(w.a) && shapeEditing() < 0 &&
                               partialEditing() < 0;
-        if (selected)
-            c.fillRect(w.rect, kRaised, 6.0f);
-        else if (hovered)
-            c.fillRect(w.rect, kRaised.alpha(0.5f), 6.0f);
-        c.text(w.rect, tr(kViewNames[w.a]), 11.0f, selected ? kText : kDim, Align::Center, true);
+        if (selected) {
+            const std::vector<Point> outline = viewTabOutline(w.rect, kViewTabFlare);
+            std::vector<Point> fill = outline; // down over the panel's edge, to open it
+            fill.push_back({outline.back().x, w.rect.bottom() + 1.0f});
+            fill.push_back({outline.front().x, w.rect.bottom() + 1.0f});
+            c.fillPolygon(fill.data(), fill.size(), kPanel);
+            c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
+            c.line({w.rect.x + kViewTabRadius, w.rect.y + 1.5f}, {w.rect.right() - kViewTabRadius, w.rect.y + 1.5f},
+                   kAccent, 2.0f);
+        } else if (hovered) {
+            const std::vector<Point> outline = viewTabOutline({w.rect.x, w.rect.y, w.rect.w, w.rect.h - 0.5f}, 0.0f);
+            c.fillPolygon(outline.data(), outline.size(), kPanel.alpha(0.6f));
+        }
+        c.text(w.rect, tr(kViewNames[w.a]), 11.0f, selected || hovered ? kText : kDim, Align::Center, true);
         break;
     }
     case Kind::NodeTab: {

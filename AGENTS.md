@@ -126,7 +126,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the shaper effect's SYM switch, hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
     mirrored left half adding a point on the right, the middle point refusing to be deleted, and the switch
     undoing with its point;
-  - dragging the filter response handle, switching between the graph and matrix views, and toggling a matrix cell;
+  - dragging the filter response handle, switching between the graph and matrix views (the tab shown opening its
+    panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
   - making sources unipolar and bipolar from their menus: an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display;

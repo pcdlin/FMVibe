@@ -269,8 +269,10 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
 
 - **ROUTING / MATRIX / FX** tabs, under the header, pick what the panels below them show: the routing graph or
   the matrix (two views of the same connections) next to the inspector, or the effects chain across both. The
-  choice is saved with the patch. While the shape, shaper curve or partial editor has the panels, no tab is
-  highlighted, and clicking one closes the editor.
+  choice is saved with the patch. They are folder tabs: the one shown is part of the panel under it, its outline
+  curving into the panel's edge, with the theme's accent along its top; the others are their names, a tab's shape
+  showing faintly under the mouse. While the shape, shaper curve or partial editor has the panels, no tab is
+  shown, and clicking one closes the editor.
 - **Routing panel**: the graph shows only what is switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their

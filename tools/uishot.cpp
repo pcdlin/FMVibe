@@ -201,9 +201,9 @@ constexpr Point kLegatoToggle{668.0f, 44.0f};
 constexpr Point kGlideKnob{740.0f, 32.0f};
 constexpr Point kAlwaysToggle{858.0f, 32.0f};
 // The view tabs sit above the panels.
-constexpr Point kRoutingTab{58.0f, 84.0f};
-constexpr Point kMatrixTab{141.0f, 84.0f};
-constexpr Point kFxTab{206.0f, 84.0f};
+constexpr Point kRoutingTab{80.0f, 88.0f};
+constexpr Point kMatrixTab{176.0f, 88.0f};
+constexpr Point kFxTab{256.0f, 88.0f};
 constexpr Point kF1Tab{1068.0f, 124.0f};
 // Init, Load, Save and the settings cog at the right end of the view tabs' row.
 constexpr Point kInitButton{1068.0f, 84.0f};
@@ -2024,6 +2024,15 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.view == RoutingView::Matrix, "the Matrix tab switches the routing panel to the grid");
     view.mouseMove(gridCellCenter(0, kOps), {});
     check(renderer.save(view, dir / "6-matrix.png"), "render the matrix view");
+    // The tab shown opens the panel's top edge under it, the edge running on under the others; one under the mouse
+    // shows a tab's shape.
+    auto edgeOpen = [&](Point tab) { return renderer.pixel({tab.x, 104.0f}) == renderer.pixel({tab.x, 112.0f}); };
+    const bool tabJoined = edgeOpen(kMatrixTab) && !edgeOpen(kRoutingTab) && !edgeOpen(kFxTab);
+    const uint32_t fxTabAlone = renderer.pixel({kFxTab.x, 76.0f});
+    view.mouseMove(kFxTab, {});
+    check(tabJoined && renderer.save(view, dir / "6a-view-tab-hovered.png") &&
+              renderer.pixel({kFxTab.x, 76.0f}) != fxTabAlone,
+          "the tab shown opens its panel's edge, and a hovered one shows a tab's shape");
     view.doubleClick({gridCellCenter(1, 0).x + 10.0f, gridCellCenter(1, 0).y - 10.0f}, {}); // Env 1's dot on B -> A
     check(slotTarget(model.value(slotTargetIndex(1, 1))) < 0 &&
               slotTarget(model.value(slotTargetIndex(1, 0))) == fmAmount,
