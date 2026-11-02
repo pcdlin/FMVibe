@@ -4886,11 +4886,16 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
-         hover_->kind != Kind::MacroHandle && hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
+         hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
+         hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
          hover_->kind != Kind::McBand && hover_->kind != Kind::FxInsert &&
          !(hover_->kind == Kind::ListButton && isFilterSlope(hover_->param)) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
+        return;
+    // A source's handle tells how to use it only until it modulates something.
+    const bool handle = hover_->kind == Kind::MacroHandle || hover_->kind == Kind::SourceHandle;
+    if (handle && !usedSlots(hover_->a).empty())
         return;
     const int param = hover_->param;
     const FxParam field = fxFieldOf(param);
@@ -4915,6 +4920,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipNoteHandle);
     } else if (hover_->kind == Kind::MacroHandle) {
         text = trf(Str::TipMacroHandle, {macroName(controller_.layout(), hover_->a - kMaxSources)});
+    } else if (hover_->kind == Kind::SourceHandle) {
+        text = trf(Str::TipSourceHandle, {sourceName(hover_->a)});
     } else if (hover_->kind == Kind::NodeTab || hover_->kind == Kind::MatrixLabel) {
         const bool on = nodeOn(hover_->a);
         const std::string title = nodeTitle(hover_->a);

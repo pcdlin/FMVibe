@@ -547,6 +547,7 @@ STR(TipFxInsert, "Add an effect here") // the arrow between two effect cards
 STR(TipWheelHandle, "Drag to assign mod wheel modulation")
 STR(TipNoteHandle, "Drag to assign note pitch modulation")
 STR(TipMacroHandle, "Drag to assign {1}")
+STR(TipSourceHandle, "Drag to assign {1}") // an LFO's or an envelope's handle, with its name
 STR(TipShowNode, "Show {1}")
 STR(TipSwitchOnAndShow, "Turn on and show {1}")
 STR(TipSwitchNodeOff, "Click to switch {1} off")

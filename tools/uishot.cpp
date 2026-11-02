@@ -687,10 +687,36 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
           "clicking a slot list's scrollbar scrolls it to the end");
     view.undo();
 
-    // Hovering a source's handle draws lines to what it modulates.
-    drag(view, sourceHandle(0), kFmAmountKnob);
+    // Until a source modulates something, hovering its handle shows a "Drag to assign" tooltip below it (read off
+    // the rendered pixels, against the same view with the mouse away).
+    auto belowHandle = [&](const char *name) {
+        std::vector<uint32_t> pixels;
+        if (renderer.save(view, dir / name))
+            for (float x = sourceHandle(0).x - 40.0f; x <= sourceHandle(0).x + 40.0f; x += 2.0f)
+                pixels.push_back(renderer.pixel({x, 572.0f}));
+        return pixels;
+    };
+    std::vector<double> targetsBefore;
+    for (int slot = 0; slot < kSlots; ++slot) {
+        targetsBefore.push_back(model.value(slotTargetIndex(0, slot)));
+        model.set(slotTargetIndex(0, slot), 0.0);
+    }
+    view.poll();
+    view.mouseMove({600.0f, 300.0f}, {});
+    const std::vector<uint32_t> away = belowHandle("18a-handle-away.png");
     view.mouseMove(sourceHandle(0), {});
-    check(renderer.save(view, dir / "18-source-links.png"), "render the links from a hovered handle");
+    const bool tipped = belowHandle("18b-handle-tooltip.png") != away;
+    for (int slot = 0; slot < kSlots; ++slot)
+        model.set(slotTargetIndex(0, slot), targetsBefore[slot]);
+    view.poll();
+
+    // Hovering a source's handle draws lines to what it modulates, and no tooltip.
+    drag(view, sourceHandle(0), kFmAmountKnob);
+    view.mouseMove({600.0f, 300.0f}, {});
+    const std::vector<uint32_t> linkedAway = belowHandle("18-source-links.png");
+    view.mouseMove(sourceHandle(0), {});
+    check(tipped && belowHandle("18-source-links.png") == linkedAway,
+          "a source's handle shows its tooltip only until it modulates something");
 
     // The uncommon waves sit in a list behind "...".
     click(view, kMoreWavesButton);

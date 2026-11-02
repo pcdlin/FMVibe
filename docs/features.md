@@ -490,7 +490,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     or matrix cell; a filter's cutoff is the classic target. Held near the left or right end of the modulation
     panel or the effects chain, it scrolls those cards that way, faster nearer the edge, so a knob on a card out of
     view can be reached. Hovering the handle draws a dashed line to each of its targets on screen, ending at the
-    small dot it has there (see below), with a ring round the dot. A random
+    small dot it has there (see below), with a ring round the dot; while the source has no targets, it shows a
+    "Drag to assign" tooltip instead, as the macros', the note source's and the mod wheel's handles do. A random
     LFO has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
     while notes play it shows the LFO's own last four cycles instead, swept across: each new cycle takes the next
     quarter, round from the right end to the left, the older ones fainter, with the live dot on the newest (at
@@ -549,7 +550,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   the name to change it (Enter
   keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
   Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. Until a
-  macro modulates something, its handle, its knob's arc and its name are faint. The right-click menu of its knob,
+  macro modulates something, its handle, its knob's arc and its name are faint, and hovering the handle shows a
+  "Drag to assign" tooltip. The right-click menu of its knob,
   handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
   macro's arc starts from the knob's middle, where it moves nothing.
 - **Note** (in the keyboard strip, right of the macros): the note source's handle, level with the macros', to drag
