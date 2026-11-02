@@ -17,7 +17,8 @@ constexpr int kNodes = kOps + kFilters + kShapers;
 // routing) or the effects chain. Saved by number.
 enum class RoutingView { Graph, Matrix, Fx };
 
-// What the lower half of an operator's page shows, one for every operator. Saved by number. A noise operator shows
+// What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
+// the page (Envelope, Unison, Scope) is layout.h's opTab(). A noise operator shows
 // its spectrum in Unison's place, and its envelope in Scope's.
 enum class InspectorTab { Unison, Envelope, Scope };
 

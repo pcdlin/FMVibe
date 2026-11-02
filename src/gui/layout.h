@@ -47,7 +47,7 @@ constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f,
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
 inline Rect opTab(int tab) {
-    constexpr float kX[] = {0.0f, 66.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f};
+    constexpr float kX[] = {78.0f, 0.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f}; // ENVELOPE, UNISON, SCOPE
     return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
 }
 // Envelope: the curve, its knobs under it at y + 322.

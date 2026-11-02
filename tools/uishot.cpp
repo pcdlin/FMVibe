@@ -383,10 +383,10 @@ Point waveButton(int button) {
     return {900.0f + button * kStep + (kStep - 4.0f) * 0.5f, 177.0f};
 }
 const Point kNoiseButton = waveButton(4);
-// An operator page's tabs, UNISON, ENVELOPE and SCOPE, and the scope's buttons for 1, 2 and 4 cycles in its
-// display's top right corner.
+// An operator page's tabs, ENVELOPE, UNISON and SCOPE (by InspectorTab), and the scope's buttons for 1, 2 and 4
+// cycles in its display's top right corner.
 Point opTabPoint(InspectorTab tab) {
-    constexpr float kX[] = {931.0f, 1003.0f, 1071.0f};
+    constexpr float kX[] = {1009.0f, 937.0f, 1071.0f};
     return {kX[static_cast<int>(tab)], 270.0f};
 }
 Point scopeCycleButton(int choice) {
@@ -2048,7 +2048,7 @@ void run(const std::filesystem::path &dir, float scale) {
         check(model.scopeOp == -1, "a noise operator's page asks for no scope");
         model.set(paramIndex(0, OpParam::Wave), 0.0);
         // A hidden tab with a modulated knob shows a dot: LFO 1 on A's decay, on the ENVELOPE tab.
-        const Point dot{1037.0f, 263.0f};
+        const Point dot{971.0f, 263.0f};
         view.mouseMove({600.0f, 300.0f}, {});
         renderer.save(view, dir / "3e-scope-tab-dot.png");
         const int plain = ringLevel(renderer, dot, 4.0f);
