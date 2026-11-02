@@ -4296,9 +4296,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::ShapeReset:
+    case Kind::PartialReset:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, tr(Str::ButtonReset), 10.5f, hovered ? kText : kDim, Align::Center, true);
+        resetIcon(c, w.rect.center(), hovered ? kText : kDim);
         break;
     case Kind::ShapeGrid: {
         const UiLayout &layout = controller_.layout();
@@ -4584,15 +4585,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::PartialArea:
         break; // drawn with its editor
-    case Kind::PartialReset:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, tr(Str::ButtonReset), 10.5f, hovered ? kText : kDim, Align::Center, true);
-        break;
     case Kind::ShapeDone:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, tr(Str::ButtonDone), 10.5f, kText, Align::Center, true);
+        doneIcon(c, w.rect.center(), kText);
         break;
     case Kind::Key:
         paintKey(c, w, hovered, active);
@@ -4607,18 +4603,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;
         switch (static_cast<PresetAction>(w.a)) {
-        case PresetAction::Init: {
-            // A circular arrow, running clockwise from the upper right round to the top.
-            constexpr float kFrom = 1.0f, kTo = 6.0f, kRadius = 6.0f;
-            c.arc(m, kRadius, kFrom, kTo, color, 1.5f);
-            const Point end = Canvas::onCircle(m, kRadius, kTo);
-            const Point along{std::cos(kTo), std::sin(kTo)}, out{std::sin(kTo), -std::cos(kTo)};
-            const Point head[] = {{end.x + along.x * 3.5f, end.y + along.y * 3.5f},
-                                  {end.x + out.x * 3.0f, end.y + out.y * 3.0f},
-                                  {end.x - out.x * 3.0f, end.y - out.y * 3.0f}};
-            c.fillPolygon(head, std::size(head), color);
+        case PresetAction::Init:
+            resetIcon(c, m, color);
             break;
-        }
         case PresetAction::Load: {
             // An open folder: a tab on the back, the front tilted forward.
             const Point back[] = {{m.x - 7.0f, m.y + 5.0f}, {m.x - 7.0f, m.y - 5.0f}, {m.x - 2.5f, m.y - 5.0f},
@@ -4937,7 +4924,8 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
          hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
-         hover_->kind != Kind::ShapeReset && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
+         hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
+         hover_->kind != Kind::ShapeDone && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
@@ -5003,6 +4991,10 @@ void View::paintTooltip(Canvas &c) {
         text = tr(isNoteCurve(hover_->a)                                ? Str::TipResetNoteCurve
                   : isClipCurve(hover_->a) || isShaperCurve(hover_->a) ? Str::TipResetCurve
                                                                        : Str::TipResetShape);
+    else if (hover_->kind == Kind::PartialReset)
+        text = tr(Str::TipResetPartials);
+    else if (hover_->kind == Kind::ShapeDone)
+        text = tr(Str::TipDone);
     else if (hover_->kind == Kind::ShapeGrid)
         text = tr(hover_->a == 0 ? Str::TipGridAcross : Str::TipGridUpDown);
     else if (hover_->kind == Kind::FxRemove)

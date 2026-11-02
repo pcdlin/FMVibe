@@ -25,6 +25,25 @@ void powerIcon(Canvas &c, Point center, Color color) {
     c.line({center.x, center.y - kRadius - 1.5f}, {center.x, center.y - 0.5f}, color, 1.6f);
 }
 
+// A circular arrow, running clockwise from the upper right round to the top.
+void resetIcon(Canvas &c, Point center, Color color) {
+    constexpr float kFrom = 1.0f, kTo = 6.0f, kRadius = 6.0f;
+    c.arc(center, kRadius, kFrom, kTo, color, 1.5f);
+    const Point end = Canvas::onCircle(center, kRadius, kTo);
+    const Point along{std::cos(kTo), std::sin(kTo)}, out{std::sin(kTo), -std::cos(kTo)};
+    const Point head[] = {{end.x + along.x * 3.5f, end.y + along.y * 3.5f},
+                          {end.x + out.x * 3.0f, end.y + out.y * 3.0f},
+                          {end.x - out.x * 3.0f, end.y - out.y * 3.0f}};
+    c.fillPolygon(head, std::size(head), color);
+}
+
+// A check mark.
+void doneIcon(Canvas &c, Point center, Color color) {
+    const Point check[] = {{center.x - 6.0f, center.y + 0.5f}, {center.x - 2.0f, center.y + 4.5f},
+                           {center.x + 6.0f, center.y - 4.5f}};
+    c.polyline(check, std::size(check), color, 1.8f);
+}
+
 // A filter type's response in a few strokes, for the type buttons: frequency across, level up.
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color) {
     std::vector<double> key = curveKey(Curve::FilterIcon, r);

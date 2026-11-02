@@ -61,6 +61,8 @@ inline std::vector<double> curveKey(Curve curve, Rect r) {
 }
 
 void powerIcon(Canvas &c, Point center, Color color);
+void resetIcon(Canvas &c, Point center, Color color);
+void doneIcon(Canvas &c, Point center, Color color);
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color);
 bool isFxIconSwitch(FxParam field);
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);

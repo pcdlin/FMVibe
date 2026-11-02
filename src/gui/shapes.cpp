@@ -51,12 +51,12 @@ Rect View::shapeAreaNow(int shape) const {
 
 Rect View::shapeDone() const {
     const Rect panel = shapePanel();
-    return {panel.right() - 16.0f - 60.0f, panel.y + 9.0f, 60.0f, 22.0f};
+    return {panel.right() - 16.0f - 28.0f, panel.y + 9.0f, 28.0f, 22.0f};
 }
 
 Rect View::shapeReset() const {
     const Rect done = shapeDone();
-    return {done.x - 8.0f - 60.0f, done.y, 60.0f, 22.0f};
+    return {done.x - 6.0f - 28.0f, done.y, 28.0f, 22.0f};
 }
 
 // The grid's controls, under the editor's right end: per axis a step down (part 0), the count and a step up.

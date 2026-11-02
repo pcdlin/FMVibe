@@ -386,11 +386,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     cycle at the top, faint while the partial is silent). Drag across the bars to draw them, double-click
     a bar to take it to nothing; hovering shows a partial's numbers. **16 / 32 / 64**, after the title, pick how
     many partials the wave has, and so how many bars there are (numbered each, or of 64 the first and every
-    fourth); the ones a lower count hides keep what was drawn. RESET goes back to a sine, leaving the count, DONE
-    (or a tab) closes it, and Custom from the list opens it again. A stroke is one undo step.
+    fourth); the ones a lower count hides keep what was drawn. The reset button (a circular arrow) goes back to a
+    sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list opens it
+    again. A stroke is one undo step.
   - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows EDIT) opens the
-    shape over the routing panel and the inspector, which it hides while it is open; DONE closes it, and RESET puts back the shape it started with. Drag points to
-    move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
+    shape over the routing panel and the inspector, which it hides while it is open; the done button (a check mark,
+    top right) closes it, and the reset button (a circular arrow) beside it puts back the shape it started with.
+    Drag points to move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
     unipolar one). Double-click empty space to add a point and a point to delete it (or right-click it).
     Shift+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
     click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
@@ -414,8 +416,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the plot, and what the source puts out up, from nothing at the bottom to all of it at the top, with a dot
     where the newest voice is while notes play. A dashed line shows, for the range set, what would take a cutoff
     at 0 by 100 % onto the note. **Low** and **High** are knobs side by side in its title row, dragged in whole
-    notes (or typed, as `C4`, `F#2 -20` or a MIDI note number); its ends stay at the ends too, and RESET brings
-    back every MIDI note and the straight line.
+    notes (or typed, as `C4`, `F#2 -20` or a MIDI note number); its ends stay at the ends too, and the reset button
+    brings back every MIDI note and the straight line.
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then

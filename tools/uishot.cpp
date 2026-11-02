@@ -350,13 +350,13 @@ Point shapeAt(double x, double y, float width = 1088.0f) {
 Point noteCurveAt(double x, double y) {
     return shapeAt(x, y, 772.0f);
 }
-constexpr Point kShapeDone{1138.0f, 124.0f};
-constexpr Point kRoutingEditorDone{822.0f, 124.0f}; // the note curve's and the partial editor's
+constexpr Point kShapeDone{1154.0f, 124.0f};
+constexpr Point kRoutingEditorDone{838.0f, 124.0f}; // the note curve's and the partial editor's
 // A shaper's big curve editor is a 520 px panel in the middle of the effects' panel, its plot 440 wide.
 Point clipAt(double x, double y) {
     return {380.0f + static_cast<float>(x) * 440.0f, 302.0f - static_cast<float>(y) * 126.0f};
 }
-constexpr Point kClipDone{814.0f, 124.0f};
+constexpr Point kClipDone{830.0f, 124.0f};
 
 // The common waves' buttons (Sine, Triangle, Saw, Square, Noise), then "..." with the others.
 Point waveButton(int button) {
@@ -477,10 +477,10 @@ void drag(View &view, Point from, Point to) {
 // Undo and redo at the left of the toolbar.
 constexpr Point kUndoButton{986.0f, 84.0f};
 constexpr Point kRedoButton{1020.0f, 84.0f};
-// The LFO shape editor's RESET (the note curve's further left), and its grid's buttons: per axis (0 across) a step
-// down (part 0), the count, a step up.
-constexpr Point kShapeReset{1070.0f, 124.0f};
-constexpr Point kNoteCurveReset{754.0f, 124.0f};
+// The LFO shape editor's reset button (the note curve's further left), and its grid's buttons: per axis (0 across)
+// a step down (part 0), the count, a step up.
+constexpr Point kShapeReset{1120.0f, 124.0f};
+constexpr Point kNoteCurveReset{804.0f, 124.0f};
 Point shapeGrid(int axis, int part) {
     constexpr float kParts[] = {18.0f, 28.0f, 18.0f};
     const float x = 1144.0f - (axis == 0 ? 148.0f : 64.0f) + (part > 0 ? 18.0f : 0.0f) + (part > 1 ? 28.0f : 0.0f);
@@ -808,7 +808,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kShapeReset);
     const bool reset = model.value(point) == 0.5 && model.value(shapeCountIndex(0)) == 2.0;
     view.undo();
-    check(reset && std::abs(model.value(point) - 7.0 / 24.0) < 1e-9, "RESET brings the first shape back, and undoes");
+    check(reset && std::abs(model.value(point) - 7.0 / 24.0) < 1e-9, "the reset button brings the first shape back, and undoes");
     click(view, kShapeDone);
 
     // Taking an effect out is one step, its modulation included.
@@ -1508,8 +1508,8 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     }
 
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the
-    // title row (whole notes as they are dragged); a double-click adds a point, and RESET goes back to every MIDI
-    // note in a straight line.
+    // title row (whole notes as they are dragged); a double-click adds a point, and the reset button goes back to
+    // every MIDI note in a straight line.
     click(view, {1142.0f, y});
     const int low = paramIndex(NoteParam::Low), high = paramIndex(NoteParam::High);
     const double lowFrom = model.value(low);
@@ -1526,7 +1526,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
                        model.value(paramIndex(NoteParam::Curve)) == 2.0;
     click(view, kRoutingEditorDone);
     check(raised && pointAdded && curveShot && reset,
-          "the note source's display opens its curve, with its range's knobs, and RESET puts both back");
+          "the note source's display opens its curve, with its range's knobs, and the reset button puts both back");
 }
 
 // The output meter left of Volume: each side's peak in the theme's color, and the zone past full scale red while the
@@ -2362,7 +2362,7 @@ void run(const std::filesystem::path &dir, float scale) {
     }
     click(view, kClipDone);
     view.mouseMove({600.0f, 400.0f}, {});
-    check(layout.view == RoutingView::Fx, "DONE goes back to the chain");
+    check(layout.view == RoutingView::Fx, "the done button goes back to the chain");
     model.set(paramIndex(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Asymmetric));
     model.set(paramIndex(1, FxParam::DelayPingPong), 1.0);
     model.set(paramIndex(1, FxParam::DelayTone), -0.4);
@@ -2631,7 +2631,7 @@ void run(const std::filesystem::path &dir, float scale) {
     }
     click(view, kShapeDone);
     click(view, fxPower(model, 0));
-    check(model.value(paramIndex(1, FxParam::Enabled)) == 0.0, "DONE closes the editor and the FX view is back");
+    check(model.value(paramIndex(1, FxParam::Enabled)) == 0.0, "the done button closes the editor and the FX view is back");
 
     // A fifth source scrolls the cards along to show it; the wheel over the panel scrolls back.
     click(view, sourceAdd(SourceType::Lfo));
