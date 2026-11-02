@@ -201,12 +201,12 @@ constexpr Point kFineKnob{967.0f, 214.0f};
 constexpr Point kOutKnob{1146.0f, 214.0f};
 constexpr float kBusY = 446.0f; // the routing graph's OUT line
 constexpr Point kPitchKnob{1012.0f, 214.0f};
-constexpr Point kUnisonKnob{934.0f, 306.0f}; // on the UNISON tab
-constexpr Point kPhaseKnob{1134.0f, 306.0f};
+constexpr Point kUnisonKnob{934.0f, 310.0f}; // on the UNISON tab
+constexpr Point kPhaseKnob{1134.0f, 310.0f};
 constexpr Point kSlopeKnob{922.0f, 214.0f};
 constexpr Point kDecayKnob{1034.0f, 426.0f};
 // An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
-constexpr float kOpEnvTop = 284.0f;
+constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
 constexpr Point kFmAmountKnob{308.0f, 32.0f};
 constexpr Point kVoicesKnob{1024.0f, 32.0f};
@@ -387,10 +387,10 @@ const Point kNoiseButton = waveButton(4);
 // display's top right corner.
 Point opTabPoint(InspectorTab tab) {
     constexpr float kX[] = {931.0f, 1003.0f, 1071.0f};
-    return {kX[static_cast<int>(tab)], 264.0f};
+    return {kX[static_cast<int>(tab)], 270.0f};
 }
 Point scopeCycleButton(int choice) {
-    return {1112.0f + choice * 20.0f, 298.0f};
+    return {1112.0f + choice * 20.0f, 302.0f};
 }
 const Point kMoreWavesButton = waveButton(5);
 
@@ -2010,9 +2010,9 @@ void run(const std::filesystem::path &dir, float scale) {
         view.poll();
         check(layout.opTab == InspectorTab::Scope && model.scopeOp == 0 && model.scopeCycles == 2,
               "the SCOPE tab asks for its operator's output");
-        auto peakAt = [&](int cycles) { // the first peak: 8 px across the inner display, 69 px from the middle up
+        auto peakAt = [&](int cycles) { // the first peak: 8 px across the inner display, 67 px from the middle up
             const float x = 908.0f + 252.0f * (0.25f / cycles);
-            return ringLevel(renderer, {x, 381.0f - 0.8f * 69.0f - 4.0f}, 8.0f);
+            return ringLevel(renderer, {x, 383.0f - 0.8f * 67.0f - 4.0f}, 8.0f);
         };
         auto frame = [&](int cycles, float cursor) {
             model.live.voices = 1;
@@ -2048,7 +2048,7 @@ void run(const std::filesystem::path &dir, float scale) {
         check(model.scopeOp == -1, "a noise operator's page asks for no scope");
         model.set(paramIndex(0, OpParam::Wave), 0.0);
         // A hidden tab with a modulated knob shows a dot: LFO 1 on A's decay, on the ENVELOPE tab.
-        const Point dot{1037.0f, 257.0f};
+        const Point dot{1037.0f, 263.0f};
         view.mouseMove({600.0f, 300.0f}, {});
         renderer.save(view, dir / "3e-scope-tab-dot.png");
         const int plain = ringLevel(renderer, dot, 4.0f);
