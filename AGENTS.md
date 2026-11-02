@@ -78,9 +78,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   value the host hands back right after isn't taken. It saves/loads state
   through a stream that only moves 5 bytes per call, a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
-  every remote control page has an id of its own. It also reports CPU cost: on the development machine, 16
-  voices × 6 operators take about 22 % of one core at the default 2x oversampling, and about 38 % with every
-  operator at 8 unison copies.
+  every remote control page has an id of its own. It also reports CPU cost: 16 voices × 6 operators take about a third of what they took
+  before the engine's per-block route lists and shared params, which on the development machine was about 22 % of
+  one core at the default 2x oversampling and about 38 % with every operator at 8 unison copies (now roughly 7–8 %
+  and 25 %; the smoke test prints the figures).
 - **Audio quality** (`tests/quality.cpp`): drives the engine directly and measures, at every oversampling factor:
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM, feedback and a driven filter;
@@ -196,6 +197,8 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme and glow are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave.
+- The page polls and paints at most about 60 times a second, whatever the display's rate, and, like the plugin
+  window, repaints on a mouse move only when what the editor shows changes.
 - WebAssembly can't flush denormals to zero, which `Plugin::process()` does. Instead, the effects' input, the
   voice filters' input and the decimators get a signal far below hearing, behind `__EMSCRIPTEN__`. Without it,
   tails ringing out cost many times the CPU. The plugin's build is unchanged.
@@ -320,8 +323,8 @@ itself.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
   allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()`, and the host then deactivates and reactivates the plugin. Each voice takes about
-  55 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
-  2x, about 95 KB, so 512 voices use about 50 MB. Voices isn't automatable for the same reason.
+  66 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
+  2x, about 105 KB, so 512 voices use about 54 MB. Voices isn't automatable for the same reason.
 - The CRT is linked statically. The `.clap` depends only on Windows system DLLs (kernel32, user32, Direct2D,
   DirectWrite), not on the VC++ redistributable.
 
