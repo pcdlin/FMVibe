@@ -767,9 +767,9 @@ std::vector<FactoryPreset> factoryPresets() {
     // FX Noise Riser
     // A riser for builds: wide white noise (A, its sides wholly apart) fading in over six seconds, slowly and then in a
     // rush (its attack curve), through an 18 dB high-pass (filter 1), and a sine (B) that climbs two octaves, both swept
-    // by one envelope over eight seconds that also starts slowly and rushes at the end: the high-pass climbs from the
-    // lows to the top, and the frequency shifter's spiral turns faster and faster. Then the shifter with feedback, a
-    // low shelf keeping the lows out of the way, the widener and a long hall.
+    // by one envelope that climbs evenly over eight seconds: the high-pass climbs from the lows to the top, and the
+    // frequency shifter's spiral turns faster and faster. Then the shifter with feedback, a low shelf keeping the lows
+    // out of the way, the widener and a long hall.
     {
         Patch p;
         p.op(0, 1, 0.0, 6.0, 1.0, 1.0, 1.5).opSet(0, OpParam::Wave, static_cast<double>(OpWave::Noise));
@@ -780,7 +780,7 @@ std::vector<FactoryPreset> factoryPresets() {
         // The rise: the cutoff up by more than half its travel, B two octaves (24 of the Pitch knob's 96 semitones),
         // the shifter's Shift from nothing to 70 % of its 400 Hz.
         p.env(0, 8.0, 1.0, 1.0, 1.5, paramIndex(0, FilterParam::Cutoff), 0.55);
-        p.sourceSet(0, SourceParam::AttackCurve, -0.7);
+        p.sourceSet(0, SourceParam::AttackCurve, 0);
         p.aim(0, 1, paramIndex(1, OpParam::Transpose), 0.25).aim(0, 2, paramIndex(0, FxParam::ShiftAmount), 0.35);
 
         p.fx(0, FxType::FreqShifter, {{FxParam::ShiftRange, normFromShiftRange(400.0)}, {FxParam::ShiftSpread, 0.3},
