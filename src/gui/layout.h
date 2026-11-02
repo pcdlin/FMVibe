@@ -336,29 +336,37 @@ inline Rect peqTypeButton(Rect card, float y) {
     return {card.x + card.w * 0.125f - 17.0f, card.y + y - 14.0f, 34.0f, 28.0f};
 }
 
-// The keyboard strip under the modulation panel, `top` down: along its top the note source, the macros and the
-// octave shift, and under them the wheels on the left and six octaves of keys.
+// The keyboard strip under the modulation panel, `top` down: along its top the collapse toggle with the strip's
+// title, the macros and the note source, and under them the wheels on the left and six octaves of keys, the octave
+// shift under their right end. Collapsed, only the top row shows, the mod wheel's handle joining it.
 constexpr float kKeyboardH = 192.0f;
+constexpr float kKeyboardBarH = 72.0f; // the top row, the names under it included: all that shows while collapsed
 constexpr Rect kKeys{130.0f, 76.0f, 1046.0f, 98.0f}; // relative to the strip's top
 constexpr float kStripRow = 29.0f;                   // the middle of the row above the keys, below the strip's top
-inline float keyboardTop(bool collapsed) {
-    return modPanel(collapsed).bottom() + 16.0f;
+inline float keyboardTop(bool sourcesCollapsed) {
+    return modPanel(sourcesCollapsed).bottom() + 16.0f;
 }
-inline Rect keyboardPanel(float top) {
-    return {16.0f, top, 1168.0f, kKeyboardH};
+inline Rect keyboardPanel(float top, bool collapsed) {
+    return {16.0f, top, 1168.0f, collapsed ? kKeyboardBarH : kKeyboardH};
 }
-// The macros in a row above the keys, as far as the octave shift: a knob each, its name under it (double-click
+// The chevron and the title, as far from the strip's top as the modulation panel's from its.
+inline Rect keysToggle(float top) {
+    const Rect sources = sourcesToggle();
+    return {sources.x, top + sources.y - kModPanel.y, sources.w, sources.h};
+}
+// The macros in a row above the keys, as far as the note source: a knob each, its name under it (double-click
 // to rename), and left of it a handle to drag onto what it moves, as with a source's.
 inline Point macroKnob(float keyboardTop, int macro) {
     const float cell = (1032.0f - kKeys.x) / kMacros;
     return {kKeys.x + (macro + 0.5f) * cell + 10.0f, keyboardTop + kStripRow};
 }
-// The note source, above the wheels: its handle, and beside it the note it follows, its name under that.
-inline Rect noteHandle(float keyboardTop) {
-    return {26.0f, keyboardTop + kStripRow - 10.0f, 20.0f, 20.0f};
-}
+// The note source, at the row's right end: the note it follows, its name under it, and left of it its handle,
+// level with the macros'.
 inline Rect noteDisplay(float keyboardTop) {
-    return {52.0f, keyboardTop + kStripRow - 12.0f, 68.0f, 24.0f};
+    return {1108.0f, keyboardTop + kStripRow - 12.0f, 68.0f, 24.0f};
+}
+inline Rect noteHandle(float keyboardTop) {
+    return {1082.0f, keyboardTop + kStripRow - 10.0f, 20.0f, 20.0f};
 }
 inline Rect bendWheel(float top) {
     return {34.0f, top + kKeys.y, 26.0f, 90.0f};
@@ -366,9 +374,11 @@ inline Rect bendWheel(float top) {
 inline Rect modWheel(float top) {
     return {74.0f, top + kKeys.y, 26.0f, 90.0f};
 }
-// The mod wheel's handle, right of it, to drag onto what it moves, as a macro's.
-inline Rect wheelHandle(float top) {
-    return {104.0f, top + kKeys.y + 35.0f, 20.0f, 20.0f};
+// The mod wheel's handle, right of it, to drag onto what it moves, as a macro's; collapsed, in the top row between
+// the macros and the note source, its name under it.
+inline Rect wheelHandle(float top, bool collapsed) {
+    return collapsed ? Rect{1034.0f, top + kStripRow - 10.0f, 20.0f, 20.0f}
+                     : Rect{104.0f, top + kKeys.y + 35.0f, 20.0f, 20.0f};
 }
 constexpr int kKeyCount = 73; // C to C, six octaves
 constexpr int kWhiteKeys = 43;
@@ -376,9 +386,6 @@ constexpr float kWhiteW = kKeys.w / kWhiteKeys;
 constexpr float kBlackW = kWhiteW * 0.6f;
 constexpr float kBlackH = kKeys.h * 0.6f;
 constexpr int kBaseNote = 24; // C1, where the keyboard starts before any octave shift
-inline float buttonY(float top) { // level with the macros' knobs
-    return top + kStripRow - 13.0f;
-}
 // Init, Load, Save and the settings cog: icons at the right end of the view tabs' row.
 inline Rect toolbarButton(int i) {
     constexpr float kW = 28.0f, kGap = 6.0f;
@@ -394,8 +401,9 @@ constexpr Rect kPresetName{430.0f, kTopRowY, 340.0f, kTopRowH};
 inline Rect presetStep(int direction) {
     return {direction < 0 ? kPresetName.x - 30.0f : kPresetName.right() + 4.0f, kPresetName.y, 26.0f, kPresetName.h};
 }
+// The octave shift: two small buttons under the keys' right end, the keys' range between them.
 inline Rect octaveButton(int dir, float top) {
-    return {dir < 0 ? 1040.0f : 1148.0f, buttonY(top), 28.0f, 26.0f};
+    return {dir < 0 ? 1094.0f : 1162.0f, top + kKeys.y + kKeys.h + 2.0f, 14.0f, 12.0f};
 }
 
 // Within an octave, the white keys (C D E F G A B) and the black keys (C# D# F# G# A#).

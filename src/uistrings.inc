@@ -322,6 +322,7 @@ STR(ViewRouting, "ROUTING")
 STR(ViewMatrix, "MATRIX")
 STR(ViewFx, "FX")
 STR(HeadingModulation, "MODULATION")
+STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
 STR(HeadingHowToRead, "LEGEND")
 STR(HeadingInputs, "INPUTS")

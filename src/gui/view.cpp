@@ -236,7 +236,7 @@ Point filterHandle(Rect r, double cutoff, double resonance) {
 } // namespace
 
 float View::heightFor(const UiLayout &layout) {
-    return keyboardPanel(keyboardTop(layout.sourcesCollapsed)).bottom() + 16.0f;
+    return keyboardPanel(keyboardTop(layout.sourcesCollapsed), layout.keysCollapsed).bottom() + 16.0f;
 }
 
 View::View(Controller &controller) : controller_(controller), table_(paramTable()) {
@@ -1730,18 +1730,25 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::MacroHandle, noteHandle(macros), -1, kNoteSource);
     add(Kind::NoteDisplay, noteDisplay(macros));
 
-    // Keyboard strip. The white keys come first, so the black keys on top win the hits.
+    // Keyboard strip. The white keys come first, so the black keys on top win the hits. Collapsed, only the mod
+    // wheel's handle stays, moved up into the top row.
     const float keys = keyboardTop(controller_.layout().sourcesCollapsed);
-    add(Kind::BendWheel, bendWheel(keys));
-    add(Kind::ModWheel, modWheel(keys), paramIndex(GlobalParam::ModWheel));
-    add(Kind::MacroHandle, wheelHandle(keys), -1, kWheelSource);
-    for (int key = 0; key < kKeyCount; ++key) {
+    const bool keysCollapsed = controller_.layout().keysCollapsed;
+    add(Kind::KeysToggle, keysToggle(keys));
+    add(Kind::MacroHandle, wheelHandle(keys, keysCollapsed), -1, kWheelSource);
+    if (!keysCollapsed) {
+        add(Kind::BendWheel, bendWheel(keys));
+        add(Kind::ModWheel, modWheel(keys), paramIndex(GlobalParam::ModWheel));
+        add(Kind::Octave, octaveButton(-1, keys), -1, -1);
+        add(Kind::Octave, octaveButton(1, keys), -1, 1);
+    }
+    for (int key = 0; key < kKeyCount && !keysCollapsed; ++key) {
         if (isBlackKey(key))
             continue;
         const float x = kKeys.x + (key / 12 * 7 + kWhiteSlot[key % 12]) * kWhiteW;
         add(Kind::Key, {x, keys + kKeys.y, kWhiteW, kKeys.h}, -1, key);
     }
-    for (int key = 0; key < kKeyCount; ++key) {
+    for (int key = 0; key < kKeyCount && !keysCollapsed; ++key) {
         if (!isBlackKey(key))
             continue;
         const float x = kKeys.x + (key / 12 * 7 + kBlackAfter[key % 12] + 1) * kWhiteW - kBlackW * 0.5f;
@@ -1755,8 +1762,6 @@ std::vector<View::Widget> View::widgets() const {
     for (int action = 0; action < 3; ++action)
         add(Kind::PresetButton, toolbarButton(action), -1, action);
     add(Kind::SettingsButton, toolbarButton(3));
-    add(Kind::Octave, octaveButton(-1, keys), -1, -1);
-    add(Kind::Octave, octaveButton(1, keys), -1, 1);
 
     if (fxMenuOpen_ && fxWide()) {
         add(Kind::FxMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
@@ -2016,7 +2021,8 @@ void View::paint(Canvas &c) {
 
 void View::paintPanels(Canvas &c) {
     const bool collapsed = controller_.layout().sourcesCollapsed;
-    std::vector<Rect> panels = {modPanel(collapsed), keyboardPanel(keyboardTop(collapsed))};
+    std::vector<Rect> panels = {modPanel(collapsed),
+                                keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed)};
     if (shapeEditing() >= 0 && isClipCurve(shapeEditing()))
         panels.push_back(shapePanel()); // the shaper curve's editor, narrower than the effects it covers
     else if (inspectorCovered())
@@ -2071,6 +2077,12 @@ void View::paintHeader(Canvas &c) {
 
 void View::paintKeyboard(Canvas &c) {
     const float top = keyboardTop(controller_.layout().sourcesCollapsed);
+    if (controller_.layout().keysCollapsed) { // the mod wheel's name, under its handle
+        const Rect handle = wheelHandle(top, true);
+        c.text({handle.x - 30.0f, top + kStripRow + 19.0f, handle.w + 60.0f, 16.0f}, tr(Str::HeadingMod), 10.5f,
+               kFaint, Align::Center, true);
+        return;
+    }
     const Rect bend = bendWheel(top), mod = modWheel(top);
     c.text({bend.x - 16.0f, bend.bottom() + 4.0f, bend.w + 32.0f, 14.0f}, tr(Str::HeadingBend), 10.5f, kFaint,
            Align::Center, true);
@@ -2079,7 +2091,7 @@ void View::paintKeyboard(Canvas &c) {
     const Rect down = octaveButton(-1, top);
     const Rect up = octaveButton(1, top);
     const std::string range = noteName(keyboardBase()) + " \xE2\x80\x93 " + noteName(keyboardBase() + kKeyCount - 1);
-    c.text({down.right() + 4.0f, buttonY(top), up.x - down.right() - 8.0f, 26.0f}, range, 10.5f, kDim);
+    c.text({down.right() + 2.0f, down.y, up.x - down.right() - 4.0f, down.h}, range, 10.0f, kDim);
 }
 
 void View::paintKey(Canvas &c, const Widget &w, bool hovered, bool active) {
@@ -4144,15 +4156,18 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                    linked ? kFaint : (selected ? fxColor(w.a) : (hovered ? kText : kDim)));
         break;
     }
-    case Kind::SourcesToggle: {
-        // A chevron pointing down while open, right while collapsed.
-        const bool collapsed = controller_.layout().sourcesCollapsed;
+    case Kind::SourcesToggle:
+    case Kind::KeysToggle: {
+        // A chevron pointing down while open, right while collapsed, and the panel's title beside it.
+        const bool sources = w.kind == Kind::SourcesToggle;
+        const bool collapsed = sources ? controller_.layout().sourcesCollapsed : controller_.layout().keysCollapsed;
         const Point m{w.rect.x + 9.0f, w.rect.center().y};
         const Point open[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
         const Point shut[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.5f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
         c.polyline(collapsed ? shut : open, 3, hovered ? kText : kDim, 1.5f);
-        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, tr(Str::HeadingModulation), 11.0f,
-               hovered ? kText : kDim, Align::Left, true);
+        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h},
+               tr(sources ? Str::HeadingModulation : Str::HeadingKeyboard), 11.0f, hovered ? kText : kDim, Align::Left,
+               true);
         break;
     }
     case Kind::SourceHandle:
@@ -4574,11 +4589,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         }
         break;
     }
-    case Kind::Octave:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, w.a < 0 ? "-" : "+", 13.0f, kText, Align::Center, true);
+    case Kind::Octave: {
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, 3.0f);
+        c.strokeRect(w.rect, kBorder, 1.0f, 3.0f);
+        // A minus or a plus, drawn: a glyph this small sits off center.
+        const Point m = w.rect.center();
+        c.line({m.x - 3.0f, m.y}, {m.x + 3.0f, m.y}, kText, 1.2f);
+        if (w.a > 0)
+            c.line({m.x, m.y - 3.0f}, {m.x, m.y + 3.0f}, kText, 1.2f);
         break;
+    }
     case Kind::SettingsButton: {
         const bool open = settingsOpen_;
         c.fillRect(w.rect, hovered || open ? kTrack : kRaised, 6.0f);
@@ -5480,6 +5500,10 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SourcesToggle:
         layout.sourcesCollapsed = !layout.sourcesCollapsed;
         controller_.layoutChanged(); // asks the host for the new window size
+        break;
+    case Kind::KeysToggle:
+        layout.keysCollapsed = !layout.keysCollapsed;
+        controller_.layoutChanged();
         break;
     case Kind::NodeTab:
     case Kind::MatrixLabel:

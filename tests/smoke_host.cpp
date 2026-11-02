@@ -2288,6 +2288,7 @@ int main(int argc, char **argv) {
                 layout.push_back(static_cast<float>('a' + (macro + i) % 26));
         }
         layout.insert(layout.end(), {5.0f, 2.0f}); // folded cards
+        layout.push_back(1.0f);                    // the keyboard collapsed
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

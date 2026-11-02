@@ -132,6 +132,7 @@ private:
         SourceAdd,    // a = SourceType: fills a free place with a new source of that type
         SourceRemove, // a = source
         SourcesToggle, // collapses the modulation panel to its title row, or opens it again
+        KeysToggle,    // collapses the keyboard panel to its top row, or opens it again
         SlotBar,      // param = slot amount, a = source, b = slot
         SlotRemove,   // a = source, b = slot
         SlotBypass,   // param = the slot's bypass, a = source, b = slot: the dot at the row's start

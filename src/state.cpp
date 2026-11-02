@@ -224,6 +224,7 @@ void layoutFields(Io &io, Layout &ui) {
         io.text(name, kMaxMacroName);
     io.number(ui.fxFolded, 0.0f, 65535.0f, rounded<uint32_t>); // 16 bits each: exact as floats
     io.number(ui.sourcesFolded, 0.0f, 65535.0f, rounded<uint32_t>);
+    io.number(ui.keysCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
 }
 
 } // namespace

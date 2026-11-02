@@ -43,7 +43,11 @@ public:
     void telemetry(Telemetry &out) const override { out = live; }
     UiLayout &layout() override { return ui; }
     void layoutChanged() override {}
-    void playNote(int, bool) override {}
+    void playNote(int note, bool on) override {
+        if (on)
+            lastNote = note;
+    }
+    int lastNote = -1; // the last key played
     void pitchWheel(double) override {}
     void resetPreset() override { ++resets; }
     bool loadPreset(const std::wstring &) override { return false; }
@@ -1306,7 +1310,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     auto macroKnob = [&](int macro) { return Point{196.375f + 112.75f * macro, y}; };
     // Until a macro modulates something, its handle, arc and name are faint, and so is the note source's handle
     // (read off the rendered pixels).
-    const Point macroRing{macroKnob(0).x - 36.0f, y - 10.0f}, noteRing{42.0f, y - 10.0f};
+    const Point macroRing{macroKnob(0).x - 36.0f, y - 10.0f}, noteRing{1098.0f, y - 10.0f};
     view.mouseMove({600.0f, 300.0f}, {});
     const bool idleShot = renderer.save(view, dir / "26a-macros-idle.png");
     const int macroIdle = ringLevel(renderer, macroRing, 20.0f), noteIdle = ringLevel(renderer, noteRing, 20.0f);
@@ -1351,9 +1355,9 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({macroKnob(0).x - 42.0f, y}, {});
     check(turned && mapped && renamed && undone && renderer.save(view, dir / "26-macros.png"),
           "a macro's knob turns, its handle maps it, and a double-click renames it, undoably");
-    // The note source, left of the macros above the wheels: its handle maps it the same way, onto filter 1's
+    // The note source, right of the macros: its handle, left of its display, maps it the same way, onto filter 1's
     // cutoff here, and while a note plays its display names it (an A4 bent 30 cents up).
-    const Point noteHandle{36.0f, y};
+    const Point noteHandle{1092.0f, y};
     click(view, kF1Tab);
     drag(view, noteHandle, {918.0f, 214.0f});
     const bool noteMapped =
@@ -1417,23 +1421,59 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const bool handleShowsIt = polarity({macroKnob(0).x - 42.0f, y}, tr(Str::MenuBipolar));
         polarity({74.0f + 13.0f, view.height() - 87.0f}, tr(Str::MenuBipolar)); // the wheel itself
         const bool wheelBipolar = model.value(paramIndex(WheelParam::Bipolar)) == 1.0;
-        polarity({86.0f, y}, tr(Str::MenuBipolar)); // the note source's display
+        polarity({1142.0f, y}, tr(Str::MenuBipolar)); // the note source's display
         const bool noteBipolar = model.value(paramIndex(NoteParam::Bipolar)) == 1.0;
         view.mouseMove({600.0f, 300.0f}, {});
         const bool stripShot = renderer.save(view, dir / "26h-bipolar-strip.png");
         polarity({114.0f, view.height() - 87.0f}, tr(Str::MenuUnipolar)); // the wheel's handle
         polarity(macroKnob(0), tr(Str::MenuUnipolar));
-        polarity({86.0f, y}, tr(Str::MenuUnipolar));
+        polarity({1142.0f, y}, tr(Str::MenuUnipolar));
         check(macroWasUnipolar && macroBipolar && handleShowsIt && wheelBipolar && noteBipolar && stripShot &&
                   model.value(paramIndex(0, MacroParam::Bipolar)) == 0.0 &&
                   model.value(paramIndex(WheelParam::Bipolar)) == 0.0 && model.value(paramIndex(NoteParam::Bipolar)) == 0.0,
               "the macros', the mod wheel's and the note source's menus make them unipolar or bipolar");
     }
 
+    // The octave shift's small buttons, under the keys' right end, move the keys an octave: the first C, a C1, plays
+    // a C2 after +, and a C1 again after -.
+    {
+        const Point firstC{140.0f, y + 121.0f}, down{1101.0f, y + 153.0f}, up{1169.0f, y + 153.0f};
+        click(view, firstC);
+        const int before = model.lastNote;
+        click(view, up);
+        click(view, firstC);
+        const int shifted = model.lastNote;
+        view.mouseMove(up, {});
+        const bool shot = renderer.save(view, dir / "26i-octave-up.png");
+        click(view, down);
+        click(view, firstC);
+        check(before == 24 && shifted == 36 && model.lastNote == 24 && shot,
+              "the octave shift's buttons under the keys move them an octave up and back");
+    }
+
+    // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px
+    // shorter: the keys, the wheels and the octave shift go, and the mod wheel's handle joins the row between the
+    // macros and the note source, where it still maps the wheel, onto filter 1's cutoff here.
+    {
+        const Point toggle{35.0f, y - 8.0f}, title{80.0f, y - 8.0f};
+        const float open = view.height();
+        click(view, toggle);
+        const bool shorter = model.ui.keysCollapsed && view.height() == open - 120.0f;
+        const Point wheelHandle{1044.0f, y};
+        drag(view, wheelHandle, {918.0f, 214.0f});
+        const bool wheelMapped =
+            slotTarget(model.value(slotTargetIndex(kWheelSource, 1))) == paramIndex(0, FilterParam::Cutoff);
+        view.mouseMove(toggle, {});
+        const bool shot = renderer.save(view, dir / "26j-keys-collapsed.png");
+        click(view, title);
+        check(shorter && wheelMapped && shot && !model.ui.keysCollapsed && view.height() == open,
+              "the keyboard panel collapses to its top row, the mod wheel's handle moving into it, and opens again");
+    }
+
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the
     // title row (whole notes as they are dragged); a double-click adds a point, and RESET goes back to every MIDI
     // note in a straight line.
-    click(view, {86.0f, y});
+    click(view, {1142.0f, y});
     const int low = paramIndex(NoteParam::Low), high = paramIndex(NoteParam::High);
     const double lowFrom = model.value(low);
     drag(view, {182.0f, 124.0f}, {182.0f, 24.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one

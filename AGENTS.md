@@ -149,7 +149,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the right-click menu on knobs;
   - the macros' knobs, handles and names, the note source's handle, display and curve editor, and the mod wheel's
     handle (new modulation starting upward); with no note playing, a knob's dot showing where a macro takes it
-    (read off the rendered pixels);
+    (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard strip
+    to its top row by its chevron or title, the mod wheel's handle moving into it and still mapping the wheel;
   - the dashed cards that add effects (opening the list over themselves, staying over a switched-off card's dimming
     at the chain's right end, read off the rendered pixels) and sources, and the arrow between two effects adding
     one there;
@@ -327,8 +328,8 @@ itself.
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment.
 - The state blob holds `(id, value)` pairs with a version number (currently 1), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
-  the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names and which
-  effect and source cards are folded. The host's state goes on with
+  the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
+  effect and source cards are folded and whether the keyboard strip is collapsed. The host's state goes on with
   the settings chunk and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096

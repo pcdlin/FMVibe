@@ -265,7 +265,7 @@ switching one on and wiring it in is the whole job.
 ## Editor
 
 The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. Collapsing
-the modulation panel makes it shorter (the plugin asks the host to resize the window).
+the modulation panel or the keyboard strip makes it shorter (the plugin asks the host to resize the window).
 
 - **ROUTING / MATRIX / FX** tabs, under the header, pick what the panels below them show: the routing graph or
   the matrix (two views of the same connections) next to the inspector, or the effects chain across both. The
@@ -533,9 +533,13 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   takes the keyboard while you type and hands it back afterwards; the keys are taken straight off the window's
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
-- **Keyboard strip**: along its top the note source, the macros and the octave shift; under them the wheels and
-  six octaves of virtual keys, from C1 to C7 (the − and + buttons at the top right shift them by an
-  octave). Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
+- **Keyboard strip**: along its top the **KEYBOARD** toggle, the macros and the note source; under them the
+  wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
+  range between them, shift them by an octave). The toggle (a chevron and the title, like the modulation panel's,
+  as far from the strip's top) collapses the strip to its top row, taking the wheels, the keys and the octave
+  shift away; the mod wheel's handle then joins the row between the macros and the note source, so the wheel can
+  still be assigned. Whether it is collapsed is kept with the editor, like the modulation panel's, and loading a
+  preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
   played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs
   back to center on release; the **Mod** wheel is the Mod Wheel param, and the handle right of it drags onto what
   it should move (not the wheel itself), like a macro's (faint, like theirs, until it moves something). The wheel's and its handle's
@@ -548,8 +552,9 @@ the modulation panel makes it shorter (the plugin asks the host to resize the wi
   macro modulates something, its handle, its knob's arc and its name are faint. The right-click menu of its knob,
   handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
   macro's arc starts from the knob's middle, where it moves nothing.
-- **Note** (in the keyboard strip, left of the macros, above the wheels): the note source's handle, to drag onto a
-  target like a macro's (and like a macro's, faint until it modulates something), and beside it the note the newest voice plays, as the source follows it: its name, and
+- **Note** (in the keyboard strip, right of the macros): the note source's handle, level with the macros', to drag
+  onto a target like a macro's (and like a macro's, faint until it modulates something), and beside it the note
+  the newest voice plays, as the source follows it, its name under it: the note's name, and
   the cents it is off while bent or gliding (a dash while nothing plays), over a faint picture of its curve. A
   click on it opens the curve's editor (see the shape editor). Its right-click menu, and its handle's, make it
   unipolar or bipolar (± in the display's corner).

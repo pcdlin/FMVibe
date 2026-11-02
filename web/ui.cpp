@@ -195,6 +195,7 @@ private:
         layout_ = patch;
         layout_.zoom = before.zoom;
         layout_.sourcesCollapsed = before.sourcesCollapsed;
+        layout_.keysCollapsed = before.keysCollapsed;
         layout_.shapeGridX = before.shapeGridX;
         layout_.shapeGridY = before.shapeGridY;
     }

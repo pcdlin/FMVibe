@@ -698,6 +698,7 @@ void Plugin::notifyParams(const ParamValues &before) {
 void Plugin::keepEditorLayout(const gui::UiLayout &from) {
     layout_.zoom = from.zoom;
     layout_.sourcesCollapsed = from.sourcesCollapsed;
+    layout_.keysCollapsed = from.keysCollapsed;
     layout_.shapeGridX = from.shapeGridX;
     layout_.shapeGridY = from.shapeGridY;
 }

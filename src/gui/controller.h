@@ -39,6 +39,7 @@ struct UiLayout {
     RoutingView view = RoutingView::Graph;
     float zoom = 1.0f;       // editor size relative to the default, before DPI scaling
     bool sourcesCollapsed = false; // the modulation panel shows only its title row; the editor is shorter
+    bool keysCollapsed = false;    // the keyboard panel shows only its top row, without the wheels and keys
     // Routes (param indices) that keep their wire at 0 %, so modulation can still be dropped on
     // them. A route joins once it is on, and leaves only when it is disconnected.
     std::vector<int> keptRoutes;
