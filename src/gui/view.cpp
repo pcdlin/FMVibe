@@ -250,6 +250,18 @@ Point filterHandle(Rect r, double cutoff, double resonance) {
             r.bottom() - 10.0f - static_cast<float>(resonance) * (r.h - 20.0f)};
 }
 
+// --- The plus before the name on ADD EFFECT, ADD LFO and ADD ENV.
+
+constexpr float kAddPlusArm = 3.5f;                    // half its width
+constexpr float kAddPlusW = 2.0f * kAddPlusArm + 5.0f; // with the gap before the name
+
+// The plus, its left end at `left`.
+void paintAddPlus(Canvas &c, Point left, Color color) {
+    const Point m{left.x + kAddPlusArm, left.y};
+    c.line({m.x - kAddPlusArm, m.y}, {m.x + kAddPlusArm, m.y}, color, 1.5f);
+    c.line({m.x, m.y - kAddPlusArm}, {m.x, m.y + kAddPlusArm}, color, 1.5f);
+}
+
 } // namespace
 
 float View::heightFor(const UiLayout &layout) {
@@ -4154,13 +4166,18 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintModRange(c, {w.rect.x + 4.0f, w.rect.bottom() - 5.0f, w.rect.w - 8.0f, 1.5f}, w.param);
         break;
     }
-    case Kind::SourceAdd:
-        // Like ADD EFFECT, without its chevron: these add at once.
+    case Kind::SourceAdd: {
+        // Like ADD EFFECT, without its chevron: these add at once. The plus and the name are centered together.
         c.fillRect(w.rect, hovered ? kSourceAddColor.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, kSourceAddColor.alpha(hovered ? 0.9f : 0.45f), 1.0f, 5.0f);
-        c.text(w.rect, tr(static_cast<SourceType>(w.a) == SourceType::Lfo ? Str::ButtonAddLfo : Str::ButtonAddEnv),
-               10.5f, hovered ? kText : kDim, Align::Center, true);
+        const char *name = tr(static_cast<SourceType>(w.a) == SourceType::Lfo ? Str::ButtonLfo : Str::ButtonEnv);
+        const float width = c.textWidth(name, 10.5f, true);
+        const float x = std::round(w.rect.center().x - (kAddPlusW + width) * 0.5f);
+        const Color ink = hovered ? kText : kDim;
+        paintAddPlus(c, {x, w.rect.center().y}, ink);
+        c.text({x + kAddPlusW, w.rect.y, width + 2.0f, w.rect.h}, name, 10.5f, ink, Align::Left, true);
         break;
+    }
     case Kind::Scrollbar: {
         // The widget is the track with some room around it, so the thin bar is easy to hit.
         const auto area = static_cast<ScrollArea>(w.a);
@@ -4388,8 +4405,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool lit = (hovered || (fxMenuOpen_ && fxMenuAt_.x < 0.0f)) && !full; // its list, not the dashed card's
         c.fillRect(w.rect, lit ? kAccent.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, kAccent.alpha(full ? 0.15f : (lit ? 0.9f : 0.45f)), 1.0f, 5.0f);
-        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::ButtonAddEffect), 10.5f,
-               full ? kFaint : (lit ? kText : kDim), Align::Left, true);
+        paintAddPlus(c, {w.rect.x + 10.0f, w.rect.center().y}, full ? kFaint : (lit ? kText : kDim));
+        c.text({w.rect.x + 10.0f + kAddPlusW, w.rect.y, w.rect.w - 30.0f - kAddPlusW, w.rect.h}, tr(Str::ButtonEffect),
+               10.5f, full ? kFaint : (lit ? kText : kDim), Align::Left, true);
         const Point m{w.rect.right() - 13.0f, w.rect.center().y};
         const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
         c.polyline(chevron, 3, full ? kFaint : (lit ? kText : kDim), 1.5f);

@@ -359,7 +359,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 
     Each effect has an icon, at the left of its card's title and in the list of effects. On the card, the icon
     is the effect's switch: a click turns it off (the icon turns grey with the card, under the mouse too, and the
-    effect costs nothing) or on again, in its color; dragged, it moves the card like the title. **ADD EFFECT** at the panel's top left
+    effect costs nothing) or on again, in its color; dragged, it moves the card like the title. **+ EFFECT** (a drawn plus before the word) at the panel's top left
     opens a list of the effect types (beside it, how many of the 16
     places are taken, as in 3/16), and so does a dashed card with a plus after the last effect, over itself; the
     one picked goes at the end of the chain, which scrolls to show it, and so does a copy. The arrow between two
@@ -472,8 +472,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
     that is off shows none. Underneath are the send knobs of everything that feeds the filter.
 - **Modulation**: the panel's title row has the **MODULATION** toggle, which collapses the panel to that row and
-  opens it again (the editor gets shorter; saved with the project, but not part of presets), then **ADD LFO** and
-  **ADD ENV** to add a source (which opens a collapsed panel). Below, the sources' cards show four at a time, and
+  opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ LFO** and
+  **+ ENV** (a drawn plus, like + EFFECT's) to add a source (which opens a collapsed panel). Below, the sources' cards show four at a time, and
   after the last one, while there is room for more, two square dashed cards with a plus, ADD LFO above ADD ENV,
   add one too. With more than fit, the scrollbar under them or the mouse wheel over the panel scrolls them
   smoothly. LFOs and envelopes are numbered by type in the order they show.
