@@ -303,10 +303,12 @@ int main(int argc, char **argv) {
             rangeOk = rangeOk && params->get_info(plugin, static_cast<uint32_t>(index), &info) &&
                       params->value_to_text(plugin, info.id, info.min_value, low, sizeof(low)) &&
                       params->value_to_text(plugin, info.id, info.max_value, high, sizeof(high)) &&
-                      std::strcmp(low, "C-1") == 0 && std::strcmp(high, "G9") == 0 &&
+                      std::strcmp(low, "C-1") == 0 && std::strcmp(high, "D#10 +8") == 0 &&
+                      std::abs(hzOfPitch(info.max_value) - kMaxCutoff) < 1e-6 &&
                       info.default_value == (index == paramIndex(NoteParam::Low) ? info.min_value : info.max_value);
         }
-        check(rangeOk, "the note source's Low and High run over every MIDI note, C-1 to G9, and start at its ends");
+        check(rangeOk, "the note source's Low and High run over every MIDI note, C-1 to G9, on to the pitch at 20 kHz, "
+                       "and start at its ends");
     }
     // What a new instance starts with: no filter follows the note, a shaper's output is linked to its drive, a
     // frequency shifter's Shift takes a share of 100 Hz, a flanger is stereo and a Custom wave has 32 partials.
@@ -1308,22 +1310,25 @@ int main(int argc, char **argv) {
               "a bipolar mod wheel swings its target both ways");
     }
 
-    // With its curve drawn along the cutoff knobs' (nothing up to the pitch at 20 Hz, then straight up to where G9
-    // sits on them), the note source puts a cutoff right on the note: a narrow notch at 0, modulated 100 % by it,
-    // takes an A4 saw's fundamental away. Bent two semitones up (the default range), the notch goes along to 494 Hz.
+    // As it starts, its curve drawn along the cutoff knobs' (nothing up to the pitch at 20 Hz, then straight up to
+    // the top at the pitch at 20 kHz), the note source puts a cutoff right on the note: a narrow notch at 0,
+    // modulated 100 % by it, takes an A4 saw's fundamental away. Bent two semitones up (the default range), the
+    // notch goes along to 494 Hz. Bipolar, it does the same to a notch at the cutoff a filter starts with, the
+    // knob's middle.
     {
-        const int curve = paramIndex(NoteParam::Curve);
         const Patch notch{.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::Notch, .cutoffHz = 20.0,
                           .resonance = 0.9};
         const double open = magnitude(play({.wave = OpWave::Saw}), 440.0);
         setParams({{slotTargetIndex(kNoteSource, 0), slotTargetValue(paramIndex(0, FilterParam::Cutoff))},
-                   {slotAmountIndex(kNoteSource, 0), 1.0},
-                   {curve, 3.0},
-                   {shapeFieldIndex(curve, 1, PointField::X), pitchOfHz(kMinCutoff) / kMaxNotePitch},
-                   {shapeFieldIndex(curve, 1, PointField::Y), -1.0},
-                   {shapeFieldIndex(curve, 2, PointField::X), 1.0},
-                   {shapeFieldIndex(curve, 2, PointField::Y), 2.0 * cutoffNormOfPitch(kMaxNotePitch) - 1.0}});
+                   {slotAmountIndex(kNoteSource, 0), 1.0}});
         const double onNote = magnitude(play(notch), 440.0) / open;
+        clap_param_info_t cutoffInfo;
+        params->get_info(plugin, static_cast<uint32_t>(paramIndex(0, FilterParam::Cutoff)), &cutoffInfo);
+        Patch centered = notch;
+        centered.cutoffHz = cutoffFromNorm(cutoffInfo.default_value);
+        setParams({{paramIndex(NoteParam::Bipolar), 1.0}});
+        const double bipolarOnNote = magnitude(play(centered), 440.0) / open;
+        setParams({{paramIndex(NoteParam::Bipolar), 0.0}});
         const clap_event_midi_t bendUp = bendEvent(1.0), center = bendEvent(0.0);
         runBlock({&bendUp.header});
         const std::vector<float> bent = play(notch);
@@ -1335,15 +1340,17 @@ int main(int argc, char **argv) {
         // Without it, the notch sits at 20 Hz and the fundamental comes through.
         setParams({{slotTargetIndex(kNoteSource, 0), 0.0}, {slotAmountIndex(kNoteSource, 0), 0.0}});
         const double offNote = magnitude(play(notch), 440.0) / open;
-        std::printf("      A4 saw through a notch the note source tunes: fundamental x%.4f, bent x%.4f, untuned x%.3f\n",
-                    onNote, onBent, offNote);
+        std::printf("      A4 saw through a notch the note source tunes: fundamental x%.4f, bent x%.4f, untuned x%.3f; "
+                    "bipolar from %.0f Hz x%.4f\n", onNote, onBent, offNote, centered.cutoffHz, bipolarOnNote);
         check(onNote < 0.03 && onBent < 0.03 && offNote > 0.8,
               "the note source puts a cutoff on the note's pitch, pitch bend included");
+        check(bipolarOnNote < 0.03,
+              "a bipolar note source puts a cutoff at the one a filter starts with on the note's pitch");
     }
 
     // Its range and curve: across A3 to A5 in a straight line, it takes A's output (at 0, modulated by 100 %)
     // to half at A4 and all of it at A5, none at A3; with the curve drawn the other way round, an A3 brings A
-    // out in full and an A5 not at all. As it starts, it rises in a straight line over every MIDI note.
+    // out in full and an A5 not at all. As it starts, it follows the cutoff knobs' curve over every MIDI note.
     {
         const int curve = paramIndex(NoteParam::Curve);
         play({}); // A straight out again, through no filter
@@ -1390,12 +1397,14 @@ int main(int argc, char **argv) {
                    {slotAmountIndex(kNoteSource, 0), 0.0}});
         std::printf("      A's output by the note over A3..A5: peak %.3f / %.3f / %.3f, curve flipped %.3f at A3, %.3f at A5\n",
                     a3, a4, a5, flippedA3, flippedA5);
-        std::printf("      as it starts: peak %.3f at G#1, %.3f at B6 (x%.3f and x%.3f of A5's)\n", lowKey, highKey,
-                    lowKey / a5, highKey / a5);
+        const float lowAim = static_cast<float>(cutoffNormOfPitch(32.0)),
+                    highAim = static_cast<float>(cutoffNormOfPitch(95.0));
+        std::printf("      as it starts: peak %.3f at G#1, %.3f at B6 (x%.3f and x%.3f of A5's, aiming at x%.3f and "
+                    "x%.3f)\n", lowKey, highKey, lowKey / a5, highKey / a5, lowAim, highAim);
         check(a3 < 0.005f && a5 > 0.2f && std::abs(a4 / a5 - 0.5f) < 0.05f && flippedA3 > 0.2f && flippedA5 < 0.005f,
               "the note source spans its range through its curve");
-        check(std::abs(lowKey / a5 - 32.0f / 127.0f) < 0.03f && std::abs(highKey / a5 - 95.0f / 127.0f) < 0.04f,
-              "as it starts, the note source rises in a straight line from C-1 to G9");
+        check(std::abs(lowKey / a5 - lowAim) < 0.03f && std::abs(highKey / a5 - highAim) < 0.04f,
+              "as it starts, the note source follows the cutoff knobs' curve over every MIDI note");
     }
 
     // Effects, on the plain sine. Slot 0 holds a shaper, slot 1 a DJ EQ, slot 2

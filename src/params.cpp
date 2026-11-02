@@ -235,17 +235,16 @@ void buildTable(ParamTable &t) {
             add(filterModIndex(filter, to), "F" + std::to_string(filter + 1) + " → " + letter(to),
                 tr(Str::ModuleMatrix), ParamKind::Percent, 0.0, 1.0, 0.0);
 
-    // Filter 1 defaults to a warm low-pass and filter 2 to a band-pass for something different. Neither follows
-    // the note until its Key Track is turned up, and like the shapers and operators B-F, neither goes out until it is
-    // routed there.
+    // Filter 1 defaults to a warm low-pass and filter 2 to a band-pass for something different, both at
+    // kDefaultCutoff. Neither follows the note until its Key Track is turned up (or the note source is put on its
+    // cutoff), and like the shapers and operators B-F, neither goes out until it is routed there.
     struct FilterDefaults {
         FilterType type;
         double slope;
-        double cutoffHz;
         double resonance;
     };
-    const FilterDefaults filterDefaults[] = {{FilterType::LowPass, kDefaultSlope, 1200.0, 0.3},
-                                             {FilterType::BandPass, kDefaultSlope, 800.0, 0.5}};
+    const FilterDefaults filterDefaults[] = {{FilterType::LowPass, kDefaultSlope, 0.3},
+                                             {FilterType::BandPass, kDefaultSlope, 0.5}};
     static_assert(std::size(filterDefaults) == static_cast<size_t>(kFilters));
     for (int filter = 0; filter < kFilters; ++filter) {
         const std::string name = trf(Str::ParamFilter, {std::to_string(filter + 1)});
@@ -254,7 +253,7 @@ void buildTable(ParamTable &t) {
         add(paramIndex(filter, FilterParam::Type), name + " " + tr(Str::ParamType), module, ParamKind::FilterType, 0.0,
             static_cast<double>(FilterType::Count) - 1.0, static_cast<double>(d.type));
         add(paramIndex(filter, FilterParam::Cutoff), name + " " + tr(Str::ParamCutoff), module, ParamKind::Cutoff,
-            0.0, 1.0, normFromCutoff(d.cutoffHz));
+            0.0, 1.0, kDefaultCutoff);
         add(paramIndex(filter, FilterParam::Resonance), name + " " + tr(Str::ParamResonance), module,
             ParamKind::Percent, 0.0, 1.0, d.resonance);
         add(paramIndex(filter, FilterParam::KeyTrack), name + " " + tr(Str::ParamKeyTrack), module,
@@ -336,8 +335,8 @@ void buildTable(ParamTable &t) {
             0.0, 1.0, 0.0);
     }
 
-    // The note source starts mapped to nothing, over every MIDI note, in a straight line from nothing at C-1 to all
-    // of it at G9.
+    // The note source starts mapped to nothing, over every MIDI note and on to the pitch at 20 kHz, its curve
+    // tracking the note on a cutoff (below).
     const std::string note = tr(Str::ParamNote), wheel = tr(Str::ParamModWheel);
     for (int slot = 0; slot < kSlots; ++slot) {
         const std::string n = std::to_string(slot + 1);
@@ -361,16 +360,19 @@ void buildTable(ParamTable &t) {
         0.0);
     add(paramIndex(NoteParam::High), note + " " + tr(Str::ParamHigh), note, ParamKind::NotePitch, 0.0, kMaxNotePitch,
         kMaxNotePitch);
+    // Its curve starts drawn along the cutoff knobs' over that range: nothing up to the pitch at 20 Hz, then straight
+    // up to the top at 20 kHz; the points it doesn't use wait at the last one.
     {
         const int base = paramIndex(NoteParam::Curve);
         const std::string curve = note + " " + tr(Str::ParamCurve);
-        add(base, curve + " " + tr(Str::ParamPoints), note, ParamKind::ShapeCount, 2.0, kMaxNotePoints, 2.0);
+        const double kneeX = pitchOfHz(kMinCutoff) / kMaxNotePitch, topY = 1.0;
+        add(base, curve + " " + tr(Str::ParamPoints), note, ParamKind::ShapeCount, 2.0, kMaxNotePoints, 3.0);
         for (int point = 0; point < kMaxNotePoints; ++point) {
             const std::string n = curve + " " + std::to_string(point + 1);
             add(shapeFieldIndex(base, point, PointField::X), n + " X", note, ParamKind::ShapePoint, 0.0, 1.0,
-                point == 0 ? 0.0 : 1.0);
+                point == 0 ? 0.0 : point == 1 ? kneeX : 1.0);
             add(shapeFieldIndex(base, point, PointField::Y), n + " Y", note, ParamKind::ShapePoint, -1.0, 1.0,
-                point == 0 ? -1.0 : 1.0);
+                point < 2 ? -1.0 : topY);
             add(shapeFieldIndex(base, point, PointField::Curve), n + " " + tr(Str::ParamCurve), note,
                 ParamKind::ShapePoint, -1.0, 1.0, 0.0);
         }
@@ -446,7 +448,7 @@ void buildTable(ParamTable &t) {
            static_cast<double>(FilterType::Count) - 1.0, static_cast<double>(FilterType::LowPass));
         fx(FxParam::FilterSlope, tr(Str::ParamFilterSlope), ParamKind::FilterSlope, 0.0, kFilterSlopes - 1.0,
             kDefaultSlope);
-        fx(FxParam::FilterCutoff, tr(Str::ParamFilterCutoff), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(2000.0));
+        fx(FxParam::FilterCutoff, tr(Str::ParamFilterCutoff), ParamKind::Cutoff, 0.0, 1.0, kDefaultCutoff);
         fx(FxParam::FilterResonance, tr(Str::ParamFilterResonance), ParamKind::Percent, 0.0, 1.0, 0.2);
         fx(FxParam::FilterDrive, tr(Str::ParamFilterDrive), ParamKind::Percent, 0.0, 1.0, 0.0);
         fx(FxParam::FilterMix, tr(Str::ParamFilterMix), ParamKind::Percent, 0.0, 1.0, 1.0);

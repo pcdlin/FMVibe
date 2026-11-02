@@ -59,9 +59,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     and the note source on it at 100 %, its curve drawn along the cutoff knobs' (and Key Track left at 0), it
     rings at the pitch of the note.
 
-  Each filter also has Resonance, Key Track (how far the cutoff follows the note from C4 on, an octave per octave
-  at 100 %; 0 to begin with, on every filter) and Drive (saturation before the filter, anti-aliased like the
-  shapers). A voice only ends once its filters have rung out.
+  Every filter's Cutoff, the filter effect's too, starts (and resets) at its knob's middle, about 632 Hz: there,
+  a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
+  far the cutoff follows the note from C4 on, an octave per octave at 100 %; 0 to begin with, on every filter) and
+  Drive (saturation before the filter, anti-aliased like the shapers). A voice only ends once its filters have
+  rung out.
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
   voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
   effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with) and Symmetric
@@ -103,16 +105,17 @@ What the plugin does and how its editor works, in full. Building and installing 
     runs per voice, like the LFOs and envelopes, and reaches the effects through the newest voice. What it
     modulates follows the pitch within the same block, without lagging behind it.
     Its **range** and **curve** shape what it puts out: the notes from **Low** to **High** (any MIDI note, C-1
-    to G9, with their cents; High may lie below Low, which turns it round) run across a curve drawn like a
+    to G9, and on to D#10 +8, the pitch of 20 kHz, with their cents; High may lie below Low, which turns it
+    round) run across a curve drawn like a
     shaper's, which sets what each puts out, from nothing to all of it; notes past either end put out what that
-    end does. As it starts, the range spans every MIDI note and the curve is a straight line, from nothing at C-1
-    to all of it at G9. Over A3 to A5 with a straight line, it would put out nothing at A3, half at A4 and all at
-    A5, and a curve drawn the other way round reverses that. The range and curve are part of the patch.
-    Drawn along each note's place on the cutoff knobs' curve, 20 Hz to 20 kHz (nothing up to the pitch at 20 Hz,
-    D#0 +49, where the knobs start, then a straight line up to where G9, 12.5 kHz, sits on them: the dashed line
-    in its editor), it tracks exactly: a cutoff set to 0 and modulated 100 % by it sits right on the note's root
-    frequency, and an A4 bent up two semitones takes it to 494 Hz. The filters' Key Track adds its own tracking on
-    top, so leave it at 0, where it starts, for an exact match.
+    end does. Over A3 to A5 with a straight line, it would put out nothing at A3, half at A4 and all at A5, and a
+    curve drawn the other way round reverses that. The range and curve are part of the patch.
+    As it starts, the range spans all of that, C-1 to D#10 +8, and the curve is drawn along each note's place on
+    the cutoff knobs' curve, 20 Hz to 20 kHz: nothing up to the pitch at 20 Hz, D#0 +49, where the knobs start,
+    then a straight line up to the top at 20 kHz (the dashed line in its editor). So it tracks exactly: a
+    cutoff set to 0 and modulated 100 % by it sits right on the note's root frequency, and an A4 bent up two
+    semitones takes it to 494 Hz. The filters' Key Track adds its own tracking on top, so leave it at 0, where it
+    starts, for an exact match.
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
     runs at the rate the newest voice hears (like the effects) and keeps going between notes. Off (the default),
     every note retriggers the LFO from its Phase.
@@ -420,7 +423,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     where the newest voice is while notes play. A dashed line shows, for the range set, what would take a cutoff
     at 0 by 100 % onto the note. **Low** and **High** are knobs side by side in its title row, dragged in whole
     notes (or typed, as `C4`, `F#2 -20` or a MIDI note number); its ends stay at the ends too, and the reset button
-    brings back every MIDI note and the straight line.
+    brings back every MIDI note and the curve along the dashed line.
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then

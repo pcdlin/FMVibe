@@ -1231,8 +1231,9 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 300.0f}, {});
     check(turned && renderer.save(view, dir / "27-new-effects.png") && fxChain(model).size() == 5,
           "render a synced stereo phaser and a flanger mid-sweep, a phase disperser, a filter's spectrum and an widener");
-    // Its response follows the note its key tracking does, like a voice filter's: at 100 %, a C7 takes the 2 kHz
+    // Its response follows the note its key tracking does, like a voice filter's: at 100 %, a C7 takes a 2 kHz
     // low-pass three octaves up, so 7 kHz, 22 dB down at C4, is filled down from -12 dB.
+    model.set(paramIndex(3, FxParam::FilterCutoff), normFromCutoff(2000.0));
     model.set(keyTrack, 1.0);
     auto fillAt = [&](float pitch) {
         model.live.fxPitch = pitch;
@@ -1530,22 +1531,22 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     }
 
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the
-    // title row (whole notes as they are dragged); a double-click adds a point, and the reset button goes back to
-    // every MIDI note in a straight line.
+    // title row (whole notes as they are dragged); a double-click adds a point to its three, and the reset button
+    // goes back to every MIDI note along the cutoff knobs' curve.
     click(view, {1142.0f, y});
     const int low = paramIndex(NoteParam::Low), high = paramIndex(NoteParam::High);
     const double lowFrom = model.value(low);
     drag(view, {182.0f, 124.0f}, {182.0f, 24.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
     const bool raised = model.value(low) == std::round(lowFrom) + 10.0;
     view.doubleClick(noteCurveAt(0.5, 0.6), {});
-    const bool pointAdded = model.value(paramIndex(NoteParam::Curve)) == 3.0;
+    const bool pointAdded = model.value(paramIndex(NoteParam::Curve)) == 4.0;
     model.live.notePitch = 72.0f;
     view.poll();
     view.mouseMove(noteCurveAt(0.5, 0.6), {});
     const bool curveShot = renderer.save(view, dir / "26c-note-curve.png");
     click(view, kNoteCurveReset);
     const bool reset = model.value(low) == paramTable()[low].def && model.value(high) == paramTable()[high].def &&
-                       model.value(paramIndex(NoteParam::Curve)) == 2.0;
+                       model.value(paramIndex(NoteParam::Curve)) == 3.0;
     click(view, kRoutingEditorDone);
     check(raised && pointAdded && curveShot && reset,
           "the note source's display opens its curve, with its range's knobs, and the reset button puts both back");

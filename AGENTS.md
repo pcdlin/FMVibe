@@ -31,7 +31,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 `ctest` runs three programs:
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. It loads the `.clap` and checks the parameter
-  table, text round-trips, the note source's range (every MIDI note) and remote-control pages. It then plays
+  table, text round-trips, the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:
   - sound comes out and `NOTE_END` arrives after the release;
   - voice stealing and choke;
@@ -57,8 +57,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     one keeps its clock;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
     the note source about the middle of what they put out;
-  - the note source, its curve drawn along the cutoff knobs', tunes a notch at 0 to an A4, and follows a pitch
-    bend; its range and curve shape what it puts out, a straight line over every MIDI note as it starts;
+  - the note source, its curve drawn along the cutoff knobs' as it starts, tunes a notch at 0 to an A4, and
+    follows a pitch bend; bipolar, it does the same from the cutoff a filter starts with; its range and curve shape
+    what it puts out;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest

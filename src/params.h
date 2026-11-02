@@ -188,9 +188,9 @@ constexpr int kNoteCurveParamCount = static_cast<int>(ShapeParam::Points) + 3 * 
 // The note source: kSlots (target, amount) pairs, like a macro's without a knob, then the range of notes it
 // spans (Low to High, semitones in MIDI numbering) and a curve drawn across it, laid out like a shaper's
 // (see noteSourceValue()). Per voice, it puts out where the voice's pitch (bend and glide included) falls in
-// the range, through the curve, 0..1. As it starts, the range spans every MIDI note, C-1 to G9, and the curve
-// is a straight line from nothing to all of it. Drawn along each note's place on the cutoff knobs' curve (see
-// cutoffNormOfPitch()), it would put a cutoff at 0 modulated by 100 % right on the note. It counts as source
+// the range, through the curve, 0..1. As it starts, the range spans every MIDI note, C-1 to G9, and on to the
+// pitch at 20 kHz (kMaxNotePitch), and the curve is drawn along each note's place on the cutoff knobs' curve (see
+// cutoffNormOfPitch()), so that it puts a cutoff at 0 modulated by 100 % right on the note. It counts as source
 // kNoteSource, after the macros. Bipolar, like a macro's. Stored in projects by number: only append.
 enum class NoteParam {
     Slots,
@@ -1038,10 +1038,16 @@ inline double normFromCutoff(double hz) { return std::log(hz / kMinCutoff) / std
 // Pitches in semitones (MIDI numbering, 69 is A4 at 440 Hz) and frequencies.
 inline double pitchOfHz(double hz) { return 69.0 + 12.0 * std::log2(hz / 440.0); }
 inline double hzOfPitch(double pitch) { return 440.0 * std::exp2((pitch - 69.0) / 12.0); }
-constexpr double kMaxNotePitch = 127.0; // the top of the note source's range, G9, the highest MIDI note (C-1 the lowest)
+// The top of the note source's range: the pitch at the cutoff knobs' top, 20 kHz, D#10 +8, past G9, the highest
+// MIDI note (C-1, the lowest, is its bottom).
+inline const double kMaxNotePitch = pitchOfHz(kMaxCutoff);
 // Where a pitch sits on the cutoff knobs' curve, kept within 0..1 (20 Hz to 20 kHz): what the note source puts
 // out for it to take a cutoff at 0, modulated by 100 %, right onto the note.
 inline double cutoffNormOfPitch(double pitch) { return std::clamp(normFromCutoff(hzOfPitch(pitch)), 0.0, 1.0); }
+// Where the filters' cutoffs (the voices' and the filter effect's) start: the knobs' middle, about 632 Hz. A bipolar
+// note source swings its targets about the middle of what it puts out, so there, modulated by 100 % by it, a cutoff
+// sits right on the note.
+constexpr double kDefaultCutoff = 0.5;
 // The delay line holds this much; free delay times go up to kMaxFreeDelay.
 constexpr double kMaxDelay = 4.0;
 constexpr double kMaxFreeDelay = 2.0;
@@ -1207,7 +1213,7 @@ double clipCurveValue(const Get &get, int base, double x) {
 
 // The note source's output (0..1) for a pitch in semitones: where it falls between Low and High (outside them,
 // at their ends; High may lie below Low), through the drawn curve, whose points run across that range and
-// whose y (-1..1) is 0..1 of the output. As it starts, the output rises in a straight line from C-1 to G9 (see
+// whose y (-1..1) is 0..1 of the output. As it starts, the output follows the cutoff knobs' curve (see
 // NoteParam).
 template <class Get>
 double noteSourceValue(const Get &get, double pitch) {

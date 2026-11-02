@@ -402,12 +402,14 @@ void noteAndVoiceChecks() {
     {
         // Host modulation for every voice, of a macro's knob, the mod wheel or the note source's depth, moves their
         // targets as turning them does: each takes A's Out down by 100 %, so modulated all the way, A goes silent.
-        // The note source puts out all of it at C4, the top of its range here.
+        // The note source puts out all of it at C4, the top of its range here, its curve's end raised to the top.
         auto peakWith = [](int source, int modulated, double amount, double mod) {
             Engine e(2);
             e.p[slotTargetIndex(source, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
             e.p[slotAmountIndex(source, 0)] = amount;
             e.p[paramIndex(NoteParam::High)] = 60.0;
+            const int curve = paramIndex(NoteParam::Curve);
+            e.p[shapeFieldIndex(curve, static_cast<int>(e.p[curve]) - 1, PointField::Y)] = 1.0;
             e.synth().paramMod(modulated, {-1, -1, -1, -1}, mod);
             e.noteOn(60);
             const std::vector<float> out = e.render(9600);
