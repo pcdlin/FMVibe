@@ -42,6 +42,8 @@ constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx};
 // A view tab's outline over `r`, from its bottom-left corner up around its rounded top and down to its bottom-right
 // one. With a flare, its sides curve out into the edge at its bottom by that much on either side, as the tab shown
 // joins its panel; a tab over the panel's left edge runs straight down that edge instead, past its rounded corner.
+// To meet the panel's border, which strokeRect draws inside the panel, the shown tab's `r` is the line its border's
+// middle runs along: half a pixel inside the tab, its bottom on the middle of the panel's top border.
 std::vector<Point> viewTabOutline(Rect r, float flare) {
     constexpr int kSteps = 8; // points per quarter circle
     std::vector<Point> points;
@@ -52,7 +54,7 @@ std::vector<Point> viewTabOutline(Rect r, float flare) {
         }
     };
     const float bottom = r.bottom(), right = r.right(), radius = kViewTabRadius;
-    if (flare > 0.0f && r.x <= kRouting.x)
+    if (flare > 0.0f && r.x < kRouting.x + 1.0f)
         points.push_back({r.x, bottom + kPanelRadius});
     else if (flare > 0.0f)
         quarter({r.x - flare, bottom - flare}, flare, 0.5f * kPi, 0.0f);
@@ -4090,15 +4092,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = controller_.layout().view == static_cast<RoutingView>(w.a) && shapeEditing() < 0 &&
                               partialEditing() < 0;
         if (selected) {
-            const std::vector<Point> outline = viewTabOutline(w.rect, kViewTabFlare);
-            std::vector<Point> fill = outline; // down over the panel's edge, to open it
-            fill.push_back({outline.back().x, w.rect.bottom() + 1.0f});
-            fill.push_back({outline.front().x, w.rect.bottom() + 1.0f});
+            const std::vector<Point> outline =
+                viewTabOutline({w.rect.x + 0.5f, w.rect.y + 0.5f, w.rect.w - 1.0f, w.rect.h}, kViewTabFlare);
+            std::vector<Point> fill = outline; // down past the panel's border, to open it without a seam left
+            fill.push_back({outline.back().x, w.rect.bottom() + 2.0f});
+            fill.push_back({outline.front().x, w.rect.bottom() + 2.0f});
             c.fillPolygon(fill.data(), fill.size(), kPanel);
             if (w.rect.x <= kRouting.x) // squaring the panel's corner its side runs down
                 c.fillRect({w.rect.x, w.rect.bottom(), kPanelRadius, kPanelRadius}, kPanel);
             c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
-            c.line({w.rect.x + kViewTabRadius, w.rect.y + 1.5f}, {w.rect.right() - kViewTabRadius, w.rect.y + 1.5f},
+            c.line({w.rect.x + kViewTabRadius, w.rect.y + 2.0f}, {w.rect.right() - kViewTabRadius, w.rect.y + 2.0f},
                    kAccent, 2.0f);
         } else if (hovered) {
             const std::vector<Point> outline = viewTabOutline({w.rect.x, w.rect.y, w.rect.w, w.rect.h - 0.5f}, 0.0f);
