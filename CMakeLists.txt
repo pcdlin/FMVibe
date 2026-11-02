@@ -66,6 +66,15 @@ add_library(fmvibe-core STATIC
     src/gui/canvas.h
     src/gui/controller.cpp
     src/gui/controller.h
+    src/gui/dialogs.cpp
+    src/gui/icons.cpp
+    src/gui/icons.h
+    src/gui/layout.h
+    src/gui/routing.cpp
+    src/gui/routing.h
+    src/gui/shapes.cpp
+    src/gui/theme.cpp
+    src/gui/theme.h
     src/gui/view.cpp
     src/gui/view.h
 )
