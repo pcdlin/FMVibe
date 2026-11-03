@@ -271,8 +271,12 @@ private:
         std::array<double, kMaxSources> sourceValues{};
         // Slot modulation of the latest block. Sources read their own params (rates,
         // times, amounts) with these applied, so LFO 1 can modulate LFO 2's rate
-        // one block later. Velocity's come after the places', and the note source's last.
-        std::array<SlotMod, (kMaxSources + 2) * kSlots> slotMods{};
+        // one block later. Velocity's come after the places', then the macros' and the mod wheel's that an aux scales
+        // per voice, and the note source's last.
+        std::array<SlotMod, kAllSources * kSlots> slotMods{};
+        // What each source that runs per voice puts out, 0..1 as a unipolar one would, for the slots it scales as an
+        // aux: as of this block for the sources before them, else the last block's.
+        std::array<double, kAllSources> auxOut{};
         int slotModCount = 0;
         std::array<double, kVoiceParamCount> mod{}; // per-voice host modulation
         // The params whose host modulation was set since the note started (to 0 too), each once: the others' is 0.
@@ -337,6 +341,9 @@ private:
     std::vector<double> macroMod_ = std::vector<double>(kModulatedCount, 0.0); // on the heap: the synth is big enough
     std::array<int, (kMacros + 1) * kSlots> macroTargets_{}; // the macros' and the mod wheel's
     int macroTargetCount_ = 0;
+    // The macros' and the mod wheel's slots that an aux running per voice scales, which the voices add (source, slot).
+    std::array<std::pair<int, int>, (kMacros + 1) * kSlots> voiceMacroSlots_{};
+    int voiceMacroSlotCount_ = 0;
     void applyMacros(const ParamValues &params);
     // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
     // note source read their knobs, depths and range.
@@ -384,7 +391,7 @@ private:
     // The effect params as summed for this render() (see render()), from kFxBase on, and those the newest voice's
     // slots moved in the last control block.
     std::vector<double> fxBase_ = std::vector<double>(kShapeBase - kFxBase, 0.0);
-    std::array<int, (kMaxSources + 2) * kSlots> fxMoved_{};
+    std::array<int, kAllSources * kSlots> fxMoved_{};
     int fxMovedCount_ = 0;
     double fxPitch_ = 60.0;  // the newest voice's pitch, for the effects' key tracking; kept once it has ended
     double volumeGain_ = -1.0; // Volume's gain after the effects, gliding toward the knob (-1: not yet set)

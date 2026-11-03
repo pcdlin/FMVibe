@@ -69,6 +69,7 @@ add_library(fmvibe-core STATIC
     src/gui/dialogs.cpp
     src/gui/icons.cpp
     src/gui/icons.h
+    src/gui/mods.cpp
     src/gui/layout.h
     src/gui/routing.cpp
     src/gui/routing.h

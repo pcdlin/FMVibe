@@ -103,6 +103,16 @@ std::string letter(int op) {
     return std::string(1, static_cast<char>('A' + op));
 }
 
+// A source as hosts name its fields ("Mod 3", "Macro 2", "Note"), or None for -1: an Aux param's value text.
+std::string auxSourceName(int source) {
+    return source < 0             ? std::string(tr(Str::ValueNone))
+           : isVelocity(source) ? std::string(tr(Str::ParamVelocitySource))
+           : isWheel(source)    ? std::string(tr(Str::ParamModWheel))
+           : isNote(source)     ? std::string(tr(Str::ParamNote))
+           : isMacro(source)    ? trf(Str::ParamMacro, {std::to_string(source - kMaxSources + 1)})
+                                : trf(Str::ParamMod, {std::to_string(source + 1)});
+}
+
 // Filled in place: the table is too large for a host thread's stack.
 void buildTable(ParamTable &t) {
     auto add = [&t](int index, std::string name, std::string module, ParamKind kind, double min, double max,
@@ -114,7 +124,8 @@ void buildTable(ParamTable &t) {
         // it isn't automatable either. Freeform LFO points are drawn in the editor,
         // slots are bypassed there and the chain order is set by dragging; hosts don't show them.
         const bool shape = kind == ParamKind::ShapeCount || kind == ParamKind::ShapePoint ||
-                           kind == ParamKind::SlotBypass || kind == ParamKind::SlotPolarity;
+                           kind == ParamKind::SlotBypass || kind == ParamKind::SlotPolarity ||
+                           kind == ParamKind::SlotAux;
         const bool wiring = kind == ParamKind::ModTarget || kind == ParamKind::FxType ||
                             kind == ParamKind::SourceType || kind == ParamKind::FxOrder;
         clap_param_info_flags flags = wiring || kind == ParamKind::VoiceCount || shape ? 0u : CLAP_PARAM_IS_AUTOMATABLE;
@@ -428,6 +439,14 @@ void buildTable(ParamTable &t) {
         for (int slot = 0; slot < kSlots; ++slot)
             add(slotPolarityIndex(source, slot), name + " " + trf(Str::ParamPolarity, {std::to_string(slot + 1)}),
                 module, ParamKind::SlotPolarity, 0.0, static_cast<double>(SlotPolarity::Count) - 1.0, 0.0);
+        // No aux, and all of the depth.
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const std::string n = std::to_string(slot + 1);
+            add(slotAuxIndex(source, slot), name + " " + trf(Str::ParamAux, {n}), module, ParamKind::SlotAux, 0.0,
+                static_cast<double>(kAllSources), 0.0);
+            add(slotScaleIndex(source, slot), name + " " + trf(Str::ParamAuxAmount, {n}), module, ParamKind::Percent,
+                0.0, 1.0, 1.0);
+        }
     }
 
     // The effects chain starts empty.
@@ -772,7 +791,8 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::SyncDivision || kind == ParamKind::ClipMode || kind == ParamKind::FxOrder ||
            kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
-           kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotPolarity;
+           kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotPolarity ||
+           kind == ParamKind::SlotAux;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -882,6 +902,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         break;
     case ParamKind::SlotPolarity:
         std::snprintf(out, capacity, "%s", nameAt(kPolarityNames, value));
+        break;
+    case ParamKind::SlotAux:
+        std::snprintf(out, capacity, "%s", auxSourceName(slotAuxSource(value)).c_str());
         break;
     case ParamKind::LfoShape:
         std::snprintf(out, capacity, "%s", nameAt(kLfoShapeNames, value));
@@ -995,6 +1018,14 @@ bool parseParam(int index, const char *text, double *out) {
     if (named >= 0) {
         *out = named;
         return true;
+    }
+    if (def.kind == ParamKind::SlotAux) { // a source's name as formatParam() writes it, or None
+        for (int source = -1; source < kAllSources; ++source)
+            if (equalsIgnoreCase(text, auxSourceName(source).c_str())) {
+                *out = slotAuxValue(source);
+                return true;
+            }
+        return false;
     }
     if (def.kind == ParamKind::Toggle || def.kind == ParamKind::SlotBypass || def.kind == ParamKind::TimeOrOff) {
         if (equalsIgnoreCase(text, tr(Str::ValueOff))) {
@@ -1167,6 +1198,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::FxType:
     case ParamKind::SourceType:
     case ParamKind::SlotPolarity:
+    case ParamKind::SlotAux:
     case ParamKind::ShapeCount:
         value = std::round(value);
         break;

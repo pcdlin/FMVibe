@@ -66,6 +66,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     what it puts out;
   - velocity taking its target as far as the note's velocity, in a straight line as it starts; bipolar, or its slot
     set bipolar, about the middle of what it puts out; its curve drawn the other way round reversing it;
+  - a slot's Amount scaling its depth, and its aux: velocity scaling a macro's slot in each voice, the mod wheel down
+    leaving its target alone;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
@@ -130,6 +132,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     which goes out in its place, and picking waves and filter types;
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
     removing one by letting its arrowhead go in empty space;
+  - the MODS tab: a row per modulation, its Amount bar, polarity switch and aux's × changing it; + Aux's, the
+    target's (three levels deep, into an operator's params) and the source's cascading menus picking an aux, a target
+    and a source, the modulation keeping its depth, Amount, aux and polarity as it moves, undoably; the wheel scrolling
+    the rows; and a source's handle dropped on a depth handle becoming that modulation's aux, ringed in its color;
   - bending a wire by dragging it sideways (lit under the mouse, its label following its middle), either way,
     undoably, back to its first bow by a double-click or Reset Bend, and its bend going with it when it is
     disconnected;
@@ -303,6 +309,7 @@ hit.
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
 | `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
+| `src/gui/mods.cpp` | The MODS view: every modulation as a row, and the cascading menus that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs and the preset browser with its search |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
@@ -341,12 +348,12 @@ itself.
   11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod wheel's slots 11500+,
   velocity 11600+ (its slots, then its curve and Bipolar), the
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the voice shapers'
-  curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), and every slot's polarity
-  24000 + 20·source (the places, the macros, the note source, the mod wheel and velocity, by their number as
-  sources: a source added later takes the next block).
+  curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
+  22000 + 40·source (a pair per slot), and every slot's polarity 24000 + 20·source (both by the sources' number:
+  the places, the macros, the note source, the mod wheel and velocity; a source added later takes the next block).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, slot
-  polarity and fixed Mult lists,
+  polarity, slot aux field and fixed Mult lists, and the routing views,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`.
@@ -356,7 +363,9 @@ itself.
 - A slot's *target* param stores the target's id + 1 (0 = unused). Targets aren't offered for automation, since
   they are wiring, but they are saved like any other param. Their depths are normal automatable params. Each slot
   also has a hidden polarity param (`SlotPolarity`: as its source, unipolar or bipolar); 0, the default, follows
-  the source's own switch, so states saved before slots had one load as they sounded.
+  the source's own switch, so states saved before slots had one load as they sounded. And an aux (the source + 1
+  that scales it, 0 = none; wiring, hidden) and an Amount (0–1, 1 to begin with, automatable), whose defaults leave
+  a slot as it was.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events. Hosts
   record automation and undo from these, and mark the project as changed. Loading a preset, or Init, sends them for
   each param whose value changed. The last of the queue they wait in is kept for the ends of gestures already begun,

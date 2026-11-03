@@ -14,8 +14,8 @@ namespace fmvibe::gui {
 constexpr int kNodes = kOps + kFilters + kShapers;
 
 // What the routing panel shows: the graph, the matrix (both edit the same
-// routing) or the effects chain. Saved by number.
-enum class RoutingView { Graph, Matrix, Fx };
+// routing), the effects chain or every modulation (MODS). Saved by number: only append.
+enum class RoutingView { Graph, Matrix, Fx, Mods };
 
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
 // the page (Envelope, Unison, Scope) is layout.h's opTab(). A noise operator shows

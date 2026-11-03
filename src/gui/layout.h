@@ -102,8 +102,10 @@ constexpr float kTopRowH = 24.0f;
 // Tabs of the routing panel, one per RoutingView: folder tabs from the row's top down onto the panels' top edge,
 // the first one's left side over the panel's left edge, which it runs on into while it is shown.
 constexpr float kViewTabH = kPanelsTop - kTopRowY;
-constexpr Rect kViewTabs[] = {
-    {16.0f, kTopRowY, 96.0f, kViewTabH}, {116.0f, kTopRowY, 88.0f, kViewTabH}, {208.0f, kTopRowY, 64.0f, kViewTabH}};
+constexpr Rect kViewTabs[] = {{16.0f, kTopRowY, 96.0f, kViewTabH},
+                               {116.0f, kTopRowY, 88.0f, kViewTabH},
+                               {208.0f, kTopRowY, 64.0f, kViewTabH},
+                               {276.0f, kTopRowY, 76.0f, kViewTabH}};
 constexpr float kViewTabRadius = 8.0f; // its top corners
 constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
 // The FX view covers the routing panel and the inspector: one card per effect,
@@ -113,6 +115,32 @@ constexpr int kVisibleFx = 6;
 constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
 constexpr float kFxCardW = (kFxPanel.w - 32.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
+// The MODS view covers them too: a row per modulation under a title row and the columns' names, scrolling with a
+// bar at the right. Within a row, from its left: the bypass dot, the source, an arrow, the target, the depth bar with
+// its value, the polarity switch, the Amount bar with its value, the aux and the remove button.
+constexpr float kModsRowH = 28.0f;
+constexpr float kModsRowStep = 30.0f;
+constexpr Rect kModsList{kFxPanel.x + 12.0f, kFxPanel.y + 70.0f, kFxPanel.w - 24.0f - 14.0f, kFxPanel.h - 80.0f};
+constexpr float kModsHeaderY = kFxPanel.y + 46.0f;
+inline Rect modsRow(float row) { // row: counted from the list's top, fractions while it scrolls
+    return {kModsList.x, kModsList.y + row * kModsRowStep, kModsList.w, kModsRowH};
+}
+inline Rect modsScrollTrack() {
+    return {kModsList.right() + 6.0f, kModsList.y + 2.0f, 4.0f, kModsList.h - 4.0f};
+}
+// The columns, as x within a row and width.
+struct ModsColumn {
+    float x, w;
+};
+constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 156.0f}, kModsArrow{186.0f, 16.0f},
+    kModsTarget{206.0f, 232.0f}, kModsDepth{446.0f, 200.0f}, kModsPolarity{700.0f, 24.0f}, kModsScale{736.0f, 100.0f},
+    kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f};
+inline Rect modsCell(Rect row, ModsColumn column) { return {row.x + column.x, row.y, column.w, row.h}; }
+// The cascading menus a row's source, target or aux opens: each level a column of entries, the next level beside the
+// entry it opens from.
+constexpr float kCascadeItemH = 22.0f;
+constexpr float kCascadeHeaderH = 20.0f;
+constexpr float kCascadePad = 4.0f;
 // Header: global knobs, the play cluster between two dividers, then the voice controls.
 constexpr float kHeaderKnobX = 186.0f;
 constexpr float kHeaderKnobW = 104.0f;

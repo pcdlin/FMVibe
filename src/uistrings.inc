@@ -191,6 +191,8 @@ STR(ParamAmount, "Amount {1}")
 STR(ParamBypass, "Bypass {1}")
 STR(ParamBipolar, "Bipolar")
 STR(ParamPolarity, "Polarity {1}") // a slot's: as its source, unipolar or bipolar
+STR(ParamAux, "Aux {1}") // the source that scales a slot
+STR(ParamAuxAmount, "Amount {1}") // how much of its depth a slot keeps, 0 to 100 %
 STR(ParamLow, "Low")
 STR(ParamHigh, "High")
 STR(ParamShape, "Shape")
@@ -334,6 +336,7 @@ STR(HeadingMod, "MOD")
 STR(ViewRouting, "ROUTING")
 STR(ViewMatrix, "MATRIX")
 STR(ViewFx, "FX")
+STR(ViewMods, "MODS") // every modulation, as a table
 STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
 STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
 STR(TabEnvelope, "ENVELOPE")
@@ -674,6 +677,7 @@ STR(RedoChanges, "Redo {1} changes")
 
 STR(MsgAlreadyModulates, "{1} already modulates {2}")
 STR(MsgSlotsFull, "{1}: all {2} slots are in use")
+STR(MsgOwnKnob, "{1} can't modulate its own knob")
 STR(MsgRouteExists, "There is a route from {1} to {2} already")
 STR(MsgRefuseShaper, "A shaper can't feed itself or another shaper")
 STR(MsgRefuseFilter, "A filter only feeds a later filter")
@@ -702,3 +706,48 @@ STR(DialogNotPreset, "That file is not an FMVibe preset.")
 
 STR(DemoNoFiles, "Loading and saving files not supported. Click the preset name to browse the factory presets.")
 STR(DemoPresetFolder, "Built-in factory presets")
+
+// --- The MODS view: every modulation as a row, and the cascading menus of its rows
+
+STR(ModsHeadSource, "SOURCE")
+STR(ModsHeadTarget, "TARGET")
+STR(ModsHeadDepth, "DEPTH")
+STR(ModsHeadPolarity, "POL") // the polarity switch's column
+STR(ModsHeadAmount, "AMOUNT")
+STR(ModsHeadAux, "AUX")
+STR(ModsAddAux, "+ Aux") // a row without an aux: opens the menu of auxes
+STR(ModsCount, "{1} modulations")
+STR(ModsCountOne, "1 modulation")
+STR(ModsBypassed, "{1} bypassed")
+STR(ModsAtZero, "{1} at 0 %")
+STR(HintMods, "click a source, target or aux to change it  ·  drop a handle on a depth handle for its aux")
+STR(HintNoMods, "No modulations yet: drag a source's handle onto a knob to add one.")
+STR(TipModsSource, "Move to another source")
+STR(TipModsTarget, "Move to another target")
+STR(TipModsAux, "Scale its depth by another source")
+STR(TipModsAuxClear, "No aux")
+STR(TipModsScale, "Amount: how much of its depth the modulation keeps")
+STR(CascadeLfos, "LFOs")
+STR(CascadeEnvelopes, "Envelopes")
+STR(CascadeMacros, "Macros")
+STR(CascadeKeyboard, "Keyboard") // the note source, velocity and the mod wheel
+STR(CascadeGlobal, "Global")
+STR(CascadeOperators, "Operators")
+STR(CascadeMatrix, "Matrix")
+STR(CascadeFilters, "Filters")
+STR(CascadeShapers, "Shapers")
+STR(CascadeEffects, "Effects")
+STR(CascadeModulation, "Modulation")
+STR(CascadePitch, "PITCH")
+STR(CascadeLevel, "LEVEL")
+STR(CascadeEnvelope, "ENVELOPE")
+STR(CascadeUnison, "UNISON")
+STR(CascadeNoise, "NOISE")
+STR(CascadeFields, "SETTINGS") // a source's own knobs, before the depths of its modulations
+STR(CascadeDepths, "DEPTHS")
+STR(CascadeFeedback, "Feedback") // a node into itself, in the matrix's list
+STR(CascadeAlready, "on it already") // a source that modulates the row's target already
+STR(CascadeSlotsFull, "no slot free")
+STR(CascadeItself, "itself") // a row's own source, which can't be its aux
+STR(CascadeOwnKnob, "its own knob")
+STR(CascadeOff, "off") // a switched-off operator

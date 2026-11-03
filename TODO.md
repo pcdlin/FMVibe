@@ -1,53 +1,17 @@
 ## New Features
 
-- Add auxiliary modulation sources, like Phase Plant and Serum
-    - **In one line:** the aux-source idea the next item spells out, so it's planned there; new source *types*
-      instead would each be a new `SourceType`, with 12 spare ids a place.
-    - **Feasible.** Read as the aux-source mechanism the next item spells out, and planned there (its steps 1, 2
-      and 4 are the engine and the drag; the MODS view only shows it).
-    - If it means more source *types* instead (aftertouch, random per note, a MIDI CC, slew or remap modifiers):
-      each is a new `SourceType` appended to the list, its fields at the end of `SourceParam` (12 spare ids a place),
-      a card body and a smoke check. A per-note one like velocity (done: a strip source with a curve, see
-      `VelocityParam`) can go into the keyboard strip instead, as a source after `kVelocitySource`; its slots'
-      polarities then take the next block of the polarity section.
+- More modulation source types (aftertouch, random per note, a MIDI CC, slew or remap modifiers)
+    - **In one line:** each a new `SourceType` (12 spare ids a place) or, per note like velocity, a source in the
+      keyboard strip after `kVelocitySource`.
+    - **Feasible.** A card source: a new `SourceType` appended to the list, its fields at the end of `SourceParam`, a
+      card body and a smoke check. A strip source, like velocity (see `VelocityParam`): its slots' polarities, auxes
+      and Amounts then take the next block of their sections, and it joins the MODS view's Keyboard category.
 
-- Add an automation matrix that lists all active automation from LFOs, Env, Macros, Note, Modwheel, Velocity and
-  allows changing their parameters
-    - Extra navigation entry next to Routing/Matrix/FX called "Mod matrix"
-    - Also has an extra "amount" slider per automation that fine-controls the modulation amount
-    - Also shows the aux source
-    - Allow using a automation source (LFOs, Env, Macros, Note, Modwheel) as an "aux source" for an existing automation by dragging it to a control's automation blip
-    - The aux source controls the amount of the original automation being applied
-    - Only one aux source allowed per automation
-    - **In one line:** two new fields on every slot of every source, Aux (which source) and Amount (0–100 %); the
-      engine multiplies depth × Amount × the aux's value; a **MODS** tab after FX lists every modulation as a row;
-      dropping a source's handle on a depth handle (which does nothing today) sets that slot's aux.
-    - **Feasible; the biggest item** (params, engine, a new view, tests). Plan:
-        1. Params: a new section with two fields per slot of every source (16 places, 8 macros, note, mod wheel,
-           velocity):
-           *Aux* (wiring like a target: source + 1, 0 = none, not automatable) and *Amount* (a 0–100 % scaler on
-           the depth, like Serum's Output; 100 to begin with, automatable), at ids of their own (say 22000 +
-           40·source, clear of the slots' polarities at 24000 + 20·source). One Aux field per slot makes the "only one
-           aux" rule.
-        2. Engine (`synth.cpp`, `collectSlots` and the macro, note, velocity and mod wheel paths): a slot's offset =
-           depth × Amount × the aux's value (0–1, taken as unipolar; the previous block's for per-voice sources, as
-           sources already see each other a block late). Macro and mod wheel slots stay global unless their aux runs per
-           voice; then that slot goes into the voice's slot mods.
-        3. Editor: `RoutingView::Mods` appended (it is stored by number), a **MODS** tab after FX, and a table across
-           both panels like FX: a row per modulation with its source (its color), target, a wide depth bar, its
-           polarity switch (as on a source's row), Amount, Aux (a menu or a dropped handle; × clears it), bypass and
-           remove. It scrolls like the slot lists.
-           Clicking a row's source or target picks another from a menu, which moves the modulation there: it keeps
-           its depth, polarity, Amount and Aux (and its bypass), as one undo step. The source moves into a free slot of
-           the new source (refused, as a drop is, when that source already modulates the target or has no free slot);
-           the target changes in place.
-        4. Dropping a source's handle on a depth handle (ignored today, see `DragKind::ModSource`) sets that slot's
-           Aux, replacing the one there; the depth handle gets a ring in the aux's color.
-        5. Checks: smoke (aux at 0 silences the slot, Amount at 50 % halves it, a per-voice aux on a macro slot);
-           uishot replays for the tab, a drop on a depth handle and a row's controls; features.md.
-    - Decided: Amount is a 0–100 % scaler on the depth, like Serum's Output. The tab is called **MODS** for now.
-
-
+- MODS view: the filter field over the table, and a search in the target menu (both in the draft)
+    - **In one line:** a text field in the MODS view's title row narrowing the rows to those whose source and target
+      names hold every word typed, and one atop the target menu listing the matching targets flat, with their path.
+    - **Feasible, small:** the preset browser's search (`dialogs.cpp`) already edits text this way; the rows and the
+      menu's entries are built by name (`modsRows()`, `cascadeTree()` in `mods.cpp`).
 
 ## Issues 
 
@@ -58,7 +22,7 @@
       and cells 6–7 px apart leftwards (`view.cpp`, "Depth handles in the gap under each modulated knob").
         1. Show as many as fit the knob's (label's, cell's) width; past that, the last place becomes a "+n" pill.
         2. Hovering or clicking the pill lists the rest in a small popup, each with its depth handle (drag, bypass,
-           remove); once the MODS view exists, it can open that instead, filtered to the target.
+           remove), or open the MODS view, scrolled to the target's first row.
         3. uishot: eight sources on one knob, nothing drawn outside its column (read off the pixels).
 
 
