@@ -783,6 +783,36 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
           "the partial editor shows 16, 32 or 64 partials, keeping those it hides");
     click(view, partialCount(1));
     click(view, kRoutingEditorDone);
+    // While the wave is Custom, EDIT on the summary line, left of the keyboard switch, opens the partial editor again,
+    // lit while it is open, and a second click closes it (read off the rendered pixels: the editor's title).
+    {
+        constexpr Point kPartialEdit{1090.0f, 150.0f};
+        auto partialsTitle = [&] {
+            std::vector<uint32_t> pixels;
+            for (float y = 114.0f; y < 134.0f; y += 2.0f)
+                for (float x = 34.0f; x < 150.0f; x += 3.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool closedShot = renderer.save(view, dir / "23d-partials-closed.png");
+        const std::vector<uint32_t> closed = partialsTitle();
+        click(view, kPartialEdit);
+        view.mouseMove({barX(5), halfway}, {});
+        const bool openShot = renderer.save(view, dir / "23e-partials-edit.png");
+        const bool opened = partialsTitle() != closed;
+        const double level = model.value(partialLevelIndex(0, 5));
+        drag(view, {barX(5), halfway}, {barX(5), halfway});
+        const bool draws = level != model.value(partialLevelIndex(0, 5)) &&
+                           std::abs(20.0 * std::log10(model.value(partialLevelIndex(0, 5))) + 30.0) < 1.5;
+        view.undo();
+        click(view, kPartialEdit);
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool shut = renderer.save(view, dir / "23f-partials-shut.png") && partialsTitle() == closed;
+        check(closedShot && openShot && opened && draws && shut &&
+                  model.value(partialLevelIndex(0, 5)) == level,
+              "a Custom wave's EDIT opens its partial editor, and a second click closes it");
+    }
     // The list's newer waves: Alt Sine, Organ and Vowel, between Abs Sine and Custom.
     click(view, kMoreWavesButton);
     click(view, {1102.0f, 208.0f + 4.0f * 24.0f});

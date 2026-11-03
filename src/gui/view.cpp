@@ -1717,6 +1717,8 @@ std::vector<View::Widget> View::widgets() const {
             for (size_t i = row; i < list.size(); ++i)
                 list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
             add(Kind::Toggle, kFixedSwitch, paramIndex(op, OpParam::Fixed));
+            if (isCustomWave(op))
+                add(Kind::PartialEdit, kPartialEditButton, -1, op);
             const int unison[] = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
                                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::PhaseRandom)};
             const Str unisonLabels[] = {Str::LabelUnison, Str::LabelUniDetune, Str::LabelUniSpread, Str::LabelRndPhase};
@@ -2953,9 +2955,7 @@ void View::paintVelocityCurveEditor(Canvas &c) {
 int View::partialEditing() const {
     if (partialEditor_ < 0 || shapeEditing() >= 0)
         return -1;
-    return std::lround(value(paramIndex(partialEditor_, OpParam::Wave))) == static_cast<long>(OpWave::Custom)
-               ? partialEditor_
-               : -1;
+    return isCustomWave(partialEditor_) ? partialEditor_ : -1;
 }
 
 int View::partialsShown(int op) const {
@@ -3822,6 +3822,8 @@ void View::paintInspector(Canvas &c) {
                              (1.0 + value(paramIndex(op, OpParam::Fine)));
         std::string summary = std::string(kNodeNames[op]) + dot;
         summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
+        if (isCustomWave(op))
+            summaryRect.w -= kPartialEditButton.w + 4.0f; // and a Custom wave's EDIT, left of that
         if (isNoise(op)) {
             char slope[32];
             const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
@@ -3931,6 +3933,10 @@ void View::paintUnison(Canvas &c, Rect r, int op) {
         c.line({dot.x, r.center().y}, dot, (copies > 1 ? kAccent : kDim).alpha(0.4f), 1.5f);
         c.fillCircle(dot, 4.0f, copies > 1 ? kAccent : kDim);
     }
+}
+
+bool View::isCustomWave(int op) const {
+    return std::lround(value(paramIndex(op, OpParam::Wave))) == static_cast<long>(OpWave::Custom);
 }
 
 bool View::isFixed(int op) const {
@@ -4958,6 +4964,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.text(edit, tr(Str::ButtonEdit), 10.5f, hovered ? kText : kDim, Align::Center, true);
         }
         break;
+    case Kind::PartialEdit: { // a Custom wave's EDIT, lit while its partial editor is open
+        const bool open = partialEditing() == w.a;
+        c.fillRect(w.rect, open ? kAccent.alpha(0.22f) : hovered ? kAccent.alpha(0.3f) : kRaised, 5.0f);
+        if (open)
+            c.strokeRect(w.rect, kAccent, 1.0f, 5.0f);
+        c.text(w.rect, tr(Str::ButtonEdit), 10.5f, open || hovered ? kText : kDim, Align::Center, true);
+        break;
+    }
     case Kind::ClipDisplay: // the EDIT button on a drawn curve's display
         c.fillRect(w.rect, hovered ? clipColor(w.a).alpha(0.3f) : kRaised, 4.0f);
         c.text(w.rect, tr(Str::ButtonEdit), 10.5f, hovered ? kText : kDim, Align::Center, true);
@@ -5535,6 +5549,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
+         hover_->kind != Kind::PartialEdit &&
          hover_->kind != Kind::ShapeDone && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
@@ -5630,6 +5645,8 @@ void View::paintTooltip(Canvas &c) {
                                                                        : Str::TipResetShape);
     else if (hover_->kind == Kind::PartialReset)
         text = tr(Str::TipResetPartials);
+    else if (hover_->kind == Kind::PartialEdit)
+        text = tr(partialEditing() == hover_->a ? Str::TipClosePartials : Str::TipEditPartials);
     else if (hover_->kind == Kind::ShapeDone)
         text = tr(Str::TipDone);
     else if (hover_->kind == Kind::ShapeGrid)
@@ -6479,6 +6496,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::ClipDisplay:
         shapeEditor_ = kMaxSources + w.a;
+        break;
+    case Kind::PartialEdit: // a second click closes it
+        partialEditor_ = partialEditing() == w.a ? -1 : w.a;
+        shapeEditor_ = -1;
         break;
     case Kind::NoteDisplay:
         shapeEditor_ = shapeEditor_ == curveOf(w.a) ? -1 : curveOf(w.a); // a second click closes it

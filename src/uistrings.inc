@@ -598,6 +598,8 @@ STR(TipResetVelocityCurve, "Reset to a straight line")
 STR(TipResetCurve, "Reset to the default S-curve")
 STR(TipResetShape, "Reset to the default triangle")
 STR(TipResetPartials, "Reset to a plain sine")
+STR(TipEditPartials, "Draw the wave's partials") // a Custom wave's EDIT, by the keyboard switch
+STR(TipClosePartials, "Close the partial editor")
 STR(TipDone, "Done")
 STR(TipGridAcross, "Horizontal grid. Hold Ctrl to snap")
 STR(TipGridUpDown, "Vertical grid. Hold Ctrl to snap")

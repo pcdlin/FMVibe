@@ -206,7 +206,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
     its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
     double-click for a word), cutting and pasting;
-  - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, and
+  - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, the
+    EDIT button by the keyboard switch opening the partial editor and closing it (read off the rendered pixels), and
     the LFO shape editor hiding the inspector;
   - an LFO's shape list, the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
     pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, and

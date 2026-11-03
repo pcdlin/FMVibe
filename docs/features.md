@@ -476,8 +476,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     a bar to take it to nothing; hovering shows a partial's numbers. **16 / 32 / 64**, after the title, pick how
     many partials the wave has, and so how many bars there are (numbered each, or of 64 the first and every
     fourth); the ones a lower count hides keep what was drawn. The reset button (a circular arrow) goes back to a
-    sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list opens it
-    again. A stroke is one undo step.
+    sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
+    **EDIT** button on the operator's summary line opens it again. A stroke is one undo step.
   - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows EDIT) opens the
     shape over the routing panel and the inspector, which it hides while it is open; the done button (a check mark,
     top right) closes it, and the reset button (a circular arrow) beside it puts back the shape it started with.
@@ -540,7 +540,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq and Mult take the Ratio
     and Fine knobs' places, Pitch and Detune are dimmed and take no drags, wheel or typing (nor do their depth
     handles), and the summary line and the operator's circle in the graph show the frequency in Hz instead of the
-    ratio. Switched off, the ratio, Fine, Pitch and Detune count again as they were. Under the knobs, tabs pick what
+    ratio. Switched off, the ratio, Fine, Pitch and Detune count again as they were. While the wave is Custom,
+    **EDIT**, left of the keyboard, opens the operator's partial editor (lit while it is open; a second click closes
+    it). Under the knobs, tabs pick what
     the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
     as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
     handle over a tab opens it, so its knobs can take the drop:
