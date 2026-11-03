@@ -212,6 +212,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, and
     scrolling the source cards by holding a dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
+  - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle
+    button held: over a knob without turning it, stopping at the row's end and following back from there at once,
+    and doing nothing while the left button drags a knob;
   - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
     nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
     bypassing, setting the depth of and removing its modulations and closing at a click elsewhere, opening under a

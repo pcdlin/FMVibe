@@ -77,6 +77,11 @@ public:
     void mouseLeave();
     void doubleClick(Point p, Modifiers mods);
     void wheel(Point p, float steps, Modifiers mods);
+    // The middle button held over a panel that scrolls (the effects, the source cards, the MODS view's rows, the
+    // preset browser's list) grabs what it shows: until it goes up, mouseMove() drags that along with the mouse.
+    // Elsewhere, or while the left button drags something, it does nothing.
+    void middleDown(Point p);
+    void middleUp(Point p);
     std::vector<MenuItem> contextMenu(Point p);
     void menuCommand(int command);
     CursorKind cursor() const;
@@ -254,6 +259,7 @@ private:
         TextSelect, // across the browser's search
         Bend,       // a wire, sideways: how far it bows
         ModsScroll, // the MODS view's thumb
+        Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
     };
 
     struct Drag {
@@ -483,6 +489,9 @@ private:
     // The card rows that scroll: the effects chain and the modulation sources. How many
     // card places each has, how many fit, and its thumb.
     enum class ScrollArea { Fx, Sources };
+    // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
+    enum class PanArea { Fx, Sources, Mods, Browser };
+    void applyPan(Point p);
     float scrollLength(ScrollArea area) const;
     // While there is room for more, a dashed card after the last effect (a card place wide) and two after the last
     // source (LFO above ENV, square) add one.

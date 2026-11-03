@@ -276,6 +276,15 @@ EMSCRIPTEN_KEEPALIVE void ui_mouse_up(float x, float y, int shift, int ctrl) {
     view->mouseUp({x, y}, mods(shift, ctrl));
 }
 
+// The middle button, which drags a panel that scrolls along with the mouse.
+EMSCRIPTEN_KEEPALIVE void ui_middle_down(float x, float y) {
+    view->middleDown({x, y});
+}
+
+EMSCRIPTEN_KEEPALIVE void ui_middle_up(float x, float y) {
+    view->middleUp({x, y});
+}
+
 EMSCRIPTEN_KEEPALIVE void ui_mouse_leave() {
     view->mouseLeave();
 }
