@@ -34,9 +34,13 @@
            sources already see each other a block late). Macro and mod wheel slots stay global unless their aux runs per
            voice; then that slot goes into the voice's slot mods.
         3. Editor: `RoutingView::Mods` appended (it is stored by number), a **MODS** tab after FX, and a table across
-           both panels like FX: a row per modulation with its source (its color; a click shows its card), target,
-           a wide depth bar, its polarity switch (as on a source's row), Amount, Aux (a menu or a dropped handle; ×
-           clears it), bypass and remove. It scrolls like the slot lists.
+           both panels like FX: a row per modulation with its source (its color), target, a wide depth bar, its
+           polarity switch (as on a source's row), Amount, Aux (a menu or a dropped handle; × clears it), bypass and
+           remove. It scrolls like the slot lists.
+           Clicking a row's source or target picks another from a menu, which moves the modulation there: it keeps
+           its depth, polarity, Amount and Aux (and its bypass), as one undo step. The source moves into a free slot of
+           the new source (refused, as a drop is, when that source already modulates the target or has no free slot);
+           the target changes in place.
         4. Dropping a source's handle on a depth handle (ignored today, see `DragKind::ModSource`) sets that slot's
            Aux, replacing the one there; the depth handle gets a ring in the aux's color.
         5. Checks: smoke (aux at 0 silences the slot, Amount at 50 % halves it, a per-voice aux on a macro slot);
