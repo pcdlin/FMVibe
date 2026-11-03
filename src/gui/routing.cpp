@@ -180,22 +180,34 @@ bool View::boxHasInput(int node) const {
 }
 
 bool View::reachesOut(int node) const {
-    // A search along the routes that are on, from `node` through switched-on nodes to one that goes out.
+    // A search along the routes that are open, from `node` through switched-on nodes to one that goes out.
     std::array<bool, kNodes> visited{};
     auto reaches = [&](auto &self, int from) -> bool {
         if (visited[from] || !nodeOn(from))
             return false;
         visited[from] = true;
-        if (const int out = outParam(from); out >= 0 && value(out) > 0.0)
+        if (const int out = outParam(from); out >= 0 && liveAmount(out) > 0.0)
             return true;
         for (int to = 0; to < kNodes; ++to) {
             const int param = to == from ? -1 : routeParam(from, to);
-            if (param >= 0 && value(param) > 0.0 && self(self, to))
+            if (param >= 0 && liveAmount(param) > 0.0 && self(self, to))
                 return true;
         }
         return false;
     };
     return reaches(reaches, node);
+}
+
+double View::outLevel(int node) const {
+    if (!nodeOn(node))
+        return 0.0;
+    double level = liveAmount(outParam(node));
+    for (int to = 0; to < kNodes; ++to) {
+        const int param = to == node ? -1 : routeParam(node, to);
+        if (param >= 0 && liveAmount(param) > level && reachesOut(to))
+            level = liveAmount(param);
+    }
+    return level;
 }
 
 Point View::nodeCenter(int node) const {

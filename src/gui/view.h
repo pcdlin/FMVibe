@@ -222,7 +222,7 @@ private:
         int a = -1;
         int b = -1;
         const char *label = nullptr;
-        bool compact = false; // header knob with its label beside it
+        bool compact = false; // header knob with its label beside it (one row high: see smallKnob())
         bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
         bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
@@ -348,7 +348,7 @@ private:
     float wireBend(int param) const;
     void setWireBend(int param, float bend); // kDefaultWireBend forgets it
     // The MODS view: every modulation as a row, the sources in the order of assignments(), then the empty ones
-    // (UiLayout::emptyMods) and a row that adds one, over the routing panel and the inspector. Its rows scroll: how
+    // (UiLayout::emptyMods; one from a source that has rows goes after them instead) and a row that adds one, over the routing panel and the inspector. Its rows scroll: how
     // many are scrolled past as shown (gliding), the most that can be, and scrolling them, gliding or at once; the
     // thumb of its bar.
     bool modsWide() const;
@@ -365,6 +365,9 @@ private:
     float modsFirst() const;
     float modsEnd() const;
     void scrollMods(float first, bool glide);
+    // Scrolls the rows at once to `slot`'s row of `source` (an empty modulation's too), with as many of its source's
+    // rows above it as fit, and says where it is shown.
+    Rect revealModsRow(int source, int slot);
     bool glideMods();
     Rect modsThumb() const;
     void paintMods(Canvas &c);
@@ -375,8 +378,8 @@ private:
     void moveModulation(int source, int slot, int to);
     void retarget(int source, int slot, int target);
     void setAux(int source, int slot, int aux);
-    // Adds an empty modulation at the end of the list, from `source` (-1 for none yet), scrolls to it and opens the
-    // menu of what it lacks; refused past kMaxEmptyMods.
+    // Adds an empty modulation from `source` (-1 for none yet), at the end of the list or after its source's rows,
+    // scrolls to it and opens the menu of what it lacks; refused past kMaxEmptyMods.
     void addEmptyMod(int source = -1);
     // Shows a routing view (the tabs' click), taking the panels back from the shape and partial editors.
     void showView(RoutingView view);
@@ -385,7 +388,7 @@ private:
     void showSourceMods(int source);
     // Picks an empty modulation's source, or its target (-1 leaves it as it is). With both, it becomes a modulation of
     // that source as a handle dropped on the target makes one, and leaves the list; refused, as assign() refuses,
-    // the row stays as it was. One undo step.
+    // the row stays as it was. One undo step. Either way the rows scroll to where it is now, among its source's.
     void fillEmptyMod(int row, int source, int target);
     void removeEmptyMod(int row);
     // The cascading menus of a MODS row: its sources by category (LFOs, envelopes, macros, the keyboard's), the same
@@ -440,8 +443,11 @@ private:
     std::vector<int> enabledNodes() const;
     // Whether sound gets into a filter or shaper: from an operator that is on, or a filter or shaper that has some.
     bool boxHasInput(int node) const;
-    // Whether `node` is heard in the end: it goes out, or feeds or modulates a node that is.
+    // Whether `node` is heard in the end: it goes out, or feeds or modulates a node that is, by routes open where
+    // modulation takes them now (see liveAmount()).
     bool reachesOut(int node) const;
+    // How far `node` is let through to the output now: the largest live amount of its routes that lead there (0..1).
+    double outLevel(int node) const;
     // Whether a filter's or shaper's own sound gets to the output: it goes out, or into a filter or shaper whose sound
     // does.
     bool boxGoesOut(int node) const;
@@ -608,6 +614,8 @@ private:
     Point nodeCenter(int node) const;
     int nodeAt(Point p) const;
     Rect envRect(int env) const;
+    // A small header knob, one row high, has its label and number on that row beside it (the Glide knob).
+    static bool smallKnob(const Widget &w) { return w.compact && w.rect.h < 30.0f; }
     static Point knobCenter(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.
@@ -695,8 +703,6 @@ private:
     void paintModOverlay(Canvas &c, const std::vector<Widget> &list);
     // A route's amount where modulation takes the newest voice right now (0..1), or as set while nothing plays.
     double liveAmount(int param) const;
-    // The color of the first source that modulates `param` (switched on, not bypassed), or none.
-    std::optional<Color> modColor(int param) const;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
     void paintModRange(Canvas &c, Rect bar, int param);
     // A pill's list: every modulation of its target, a row each, under the pill (or over it, short of room), kept

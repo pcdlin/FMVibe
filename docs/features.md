@@ -310,8 +310,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Routing panel**: the graph shows only what is switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their
-    type) and squarer boxes the shapers (with their curve). A colored outline means the node is heard, and it glows
-    while it sounds. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
+    type) and squarer boxes the shapers (with their curve). A colored outline means the node is heard, as its routes are set, and a
+    halo glows around it while it sounds: an operator's as brightly as its envelope and the routes taking it to the
+    output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
+    opens. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
     graph, and shows it in the inspector.
     - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
@@ -339,7 +341,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     - A wire between two nodes bows to its left as it starts, so two running opposite ways between the same nodes
       don't overlap. To keep wires apart where they would, drag one sideways anywhere along it (it lights up under
       the mouse, apart from its label and arrowhead): its middle follows the mouse, out to either side or straight,
-      its label and arrowhead going along. A double-click on it, or Reset Bend in its right-click menu, brings back
+      its label and arrowhead going along. A wire that would spill out of the routing panel bows only as far as
+      keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
+      once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
       the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
       an undo step; a wire that is removed or moved to another node starts bowing as a new one does.
     - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it.
@@ -455,7 +459,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     places, a hollow dot, and only its ×): it modulates nothing. Picking its source and its target from their menus,
     in either order, makes it a modulation of that source, as its handle dropped on the target makes one (at +30 %),
     which takes its place among the source's rows; until then its source's menu offers any source with a slot free,
-    and its target's every target. Each pick is an undo step, and empty modulations are saved with the patch (up to
+    and its target's every target. An empty modulation whose source already has rows goes right after them, as
+    soon as it has that source (added from it, or once it is picked), and the list jumps there, showing as many of
+    the source's rows above it as fit; so does the modulation it becomes. Each pick is an undo step, and empty modulations are saved with the patch (up to
     32 of them). With more rows than fit (about ten), a bar at the right (drag its thumb or click its track) or the
     mouse wheel over the rows (not on a bar, which the wheel turns) scrolls them smoothly, a row a notch.
   - **Partial editor**: picking Custom from an operator's **…** list opens its partials over the routing panel:
@@ -500,8 +506,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster (Poly/Mono, Legato, Glide and its Always switch, each switch
-  explaining itself on hover); Bend; Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and
+  the global knobs; the play cluster (Poly/Mono over Legato, then a small Glide knob, its label and number beside it, over its
+  Always switch, each switch explaining itself on hover); Bend; Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and
   how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
@@ -611,7 +617,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     for **Free**, which stops notes from restarting it, a single cycle that ends in a dot for **One-Shot**, and
     humps on a baseline for **Unipolar**. Right of those two rows, centered
     on them, are the Rate and Phase knobs,
-    over a random LFO's Smooth and Chaos, with the sync switch between the rows and Rate: a small square button
+    over a random LFO's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
     with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
     The Phase knob is faint while it does nothing (a free or random LFO), and otherwise a thin line on the display
     marks where notes start the LFO. A unipolar LFO's display has its zero line at the bottom.
@@ -652,7 +658,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     ways of the set value while its source is bipolar, or one way while it is unipolar.
   - While notes play, a white dot on each modulated knob shows where the newest voice currently is; with no note
     playing, it shows where the macros and the mod wheel take it, as they apply with or without notes.
-  - A modulated route shows it too: its wire (or its line to OUT) has a thin core in the source's color and
+  - A modulated route shows it too: its wire (or its line to OUT), in its own color as any other,
     swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
     its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps; sliders such as the depth bars, the

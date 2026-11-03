@@ -43,11 +43,17 @@ bool View::modsWide() const {
     return controller_.layout().view == RoutingView::Mods && shapeEditing() < 0 && partialEditing() < 0;
 }
 
+// An empty modulation from a source that has rows goes after them, the others at the end.
 std::vector<View::Assignment> View::modsRows() const {
     std::vector<Assignment> rows = assignments();
     for (int row = 0; row < static_cast<int>(controller_.layout().emptyMods.size()); ++row) {
         const auto [source, target] = emptyMod(row);
-        rows.push_back({source, emptyModSlot(row), target, 0.0, false, source >= 0 && sourceBipolar(source), 1.0, -1});
+        const Assignment empty{source, emptyModSlot(row), target, 0.0, false, source >= 0 && sourceBipolar(source),
+                               1.0, -1};
+        const auto last = std::find_if(rows.rbegin(), rows.rend(), [&](const Assignment &m) {
+            return source >= 0 && m.source == source;
+        });
+        rows.insert(last == rows.rend() ? rows.end() : last.base(), empty);
     }
     return rows;
 }
@@ -82,6 +88,21 @@ void View::scrollMods(float first, bool glide) {
     modsScroll_ = std::clamp(first, 0.0f, modsEnd());
     if (!glide)
         modsGlide_ = modsScroll_;
+}
+
+Rect View::revealModsRow(int source, int slot) {
+    const std::vector<Assignment> rows = modsRows();
+    const auto at = std::find_if(rows.begin(), rows.end(),
+                                 [&](const Assignment &m) { return m.source == source && m.slot == slot; });
+    if (at == rows.end())
+        return modsRow(-1.0f);
+    const auto row = static_cast<float>(at - rows.begin());
+    auto group = at;
+    while (group != rows.begin() && source >= 0 && (group - 1)->source == source)
+        --group;
+    const float shown = std::floor(kModsList.h / kModsRowStep);
+    scrollMods(std::max(static_cast<float>(group - rows.begin()), row + 1.0f - shown), false);
+    return modsRow(row - modsFirst());
 }
 
 // The shown place closes most of the way to where the wheel sent the rows each poll, then settles.
@@ -180,8 +201,7 @@ void View::addEmptyMod(int source) {
         controller_.layoutChanged();
     }
     const int row = static_cast<int>(empty.size()) - 1;
-    scrollMods(modsEnd(), false);
-    const Rect r = modsRow(static_cast<float>(assignments().size() + row) - modsFirst());
+    const Rect r = revealModsRow(source, emptyModSlot(row));
     if (source < 0)
         openCascade(CascadeKind::Source, -1, emptyModSlot(row), modsCell(r, kModsSource));
     else
@@ -216,9 +236,12 @@ void View::fillEmptyMod(int row, int source, int target) {
     s = source >= 0 ? source : s;
     t = target >= 0 ? target : t;
     if (s < 0 || t < 0) {
-        const UndoScope step(controller_);
-        empty[row] = {s, t};
-        controller_.layoutChanged();
+        {
+            const UndoScope step(controller_);
+            empty[row] = {s, t};
+            controller_.layoutChanged();
+        }
+        revealModsRow(s, emptyModSlot(row));
         return;
     }
     if (!canModulate(s, t)) {
@@ -235,12 +258,17 @@ void View::fillEmptyMod(int row, int source, int target) {
         flash(trf(Str::MsgAlreadyModulates, {sourceName(s), paramName(t)}));
         return;
     }
-    const UndoScope step(controller_);
-    assign(s, t); // refuses a source with no slot free, saying so
-    if (modulates()) {
-        empty.erase(empty.begin() + row);
-        controller_.layoutChanged();
+    {
+        const UndoScope step(controller_);
+        assign(s, t); // refuses a source with no slot free, saying so
+        if (modulates()) {
+            empty.erase(empty.begin() + row);
+            controller_.layoutChanged();
+        }
     }
+    for (int slot = 0; slot < kSlots; ++slot)
+        if (slotTarget(value(slotTargetIndex(s, slot))) == t)
+            revealModsRow(s, slot);
 }
 
 void View::removeEmptyMod(int row) {

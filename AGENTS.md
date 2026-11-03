@@ -139,11 +139,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (read off the rendered pixels);
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
-    its × removes it; a source card's button showing its modulations in MODS, or with none adding an empty one
+    its × removes it; one given a source that has rows going among them; a source card's button showing its modulations in MODS, or with none adding an empty one
     from it;
   - bending a wire by dragging it sideways (lit under the mouse, its label following its middle), either way,
-    undoably, back to its first bow by a double-click or Reset Bend, and its bend going with it when it is
-    disconnected;
+    undoably, back to its first bow by a double-click or Reset Bend, its bend going with it when it is
+    disconnected, and one along the panel's top bowing only as far as keeps it and its label inside (read off the
+    rendered pixels);
+  - an operator lighting up while modulation opens its route from 0 % (read off the rendered pixels);
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something
     (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, and the output meter and its clip light (read off

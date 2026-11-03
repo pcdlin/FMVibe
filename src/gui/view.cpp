@@ -1136,11 +1136,13 @@ bool View::poll() {
 // --- Geometry.
 
 Point View::knobCenter(const Widget &w) {
+    if (smallKnob(w))
+        return {w.rect.x + 11.0f, w.rect.center().y};
     return w.compact ? Point{w.rect.x + 18.0f, w.rect.y + 20.0f} : Point{w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
 }
 
 float View::knobRadius(const Widget &w) {
-    return w.compact ? 17.0f : w.rect.w * 0.5f;
+    return smallKnob(w) ? 11.0f : w.compact ? 17.0f : w.rect.w * 0.5f;
 }
 
 // A knob's number shows under it, or beside it in the header.
@@ -1149,6 +1151,8 @@ bool View::onValue(const Widget &w, Point p) {
         return true;
     if (w.kind != Kind::Knob)
         return false;
+    if (smallKnob(w))
+        return p.x >= w.rect.x + kSmallKnobValue;
     return w.compact ? p.x >= w.rect.x + 38.0f : p.y >= w.rect.y + w.rect.w;
 }
 
@@ -1224,8 +1228,10 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
     add(Kind::Toggle, {kPlayX, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::Legato));
-    headerKnob(paramIndex(GlobalParam::Glide), kPlayX + 98.0f, kHeaderKnobW, tr(Str::LabelGlide));
-    add(Kind::Toggle, {kPlayX + 206.0f, 23.0f, 56.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
+    add(Kind::Knob, {kPlayX + 98.0f, 12.0f, 150.0f, 19.0f}, paramIndex(GlobalParam::Glide)); // as small as Poly | Mono
+    list.back().label = tr(Str::LabelGlide);
+    list.back().compact = true;
+    add(Kind::Toggle, {kPlayX + 98.0f, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
     headerKnob(paramIndex(GlobalParam::BendRange), 906.0f, 96.0f, tr(Str::LabelBend));
     headerKnob(paramIndex(GlobalParam::Voices), 1006.0f, kHeaderKnobW, tr(Str::LabelVoices));
 
@@ -1278,8 +1284,8 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::PartialArea, kPartialPhases, -1, partials, 1);
     } else if (view == RoutingView::Mods) {
         // A row per modulation, cut off at the list's ends while it scrolls, then one that adds an empty modulation.
-        // The first of a source's rows names it, with its polarity switch after the name; an empty modulation's row
-        // has only its source, its target and its remove.
+        // The first of a source's rows names it, with its polarity switch after the name (an empty modulation among
+        // them too); an empty modulation's row has only its source, its target and its remove.
         const std::vector<Assignment> rows = modsRows();
         const float first = modsFirst();
         const int top = static_cast<int>(std::floor(first));
@@ -1292,7 +1298,7 @@ std::vector<View::Widget> View::widgets() const {
             if (!empty && !isStripSource(m.source)) // the others' slots can't be bypassed: their dot is only drawn
                 add(Kind::SlotBypass, modsCell(r, kModsBypass), slotBypassIndex(m.source, m.slot), m.source, m.slot);
             add(Kind::ModsSource, modsCell(r, kModsSource), -1, m.source, m.slot);
-            const bool named = empty || row == 0 || rows[row - 1].source != m.source;
+            const bool named = m.source < 0 || row == 0 || rows[row - 1].source != m.source;
             list.back().compact = named;
             if (named && m.source >= 0)
                 add(Kind::SourcePolarity, modsCell(r, kModsPolarity), -1, m.source, m.slot);
@@ -1886,9 +1892,13 @@ std::vector<View::Widget> View::widgets() const {
             }
             continue;
         }
-        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left.
-        const Point base = list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f} : Point{r.center().x, r.y + r.w - 1.0f};
-        const float width = list[i].compact ? 34.0f : r.w;
+        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left, and a small one's
+        // at its row's right end, past its number.
+        const bool oneRow = smallKnob(list[i]);
+        const Point base = oneRow            ? Point{r.right() - 20.0f, r.center().y}
+                           : list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f}
+                                             : Point{r.center().x, r.y + r.w - 1.0f};
+        const float width = oneRow ? 40.0f : list[i].compact ? 34.0f : r.w;
         const int fit = static_cast<int>((width - 7.0f) / 9.0f) + 1;
         int shown = n;
         float pillW = 0.0f;
@@ -2408,8 +2418,7 @@ void View::paintRouting(Canvas &c) {
     c.line({kRouting.x + 48.0f, kBusY}, {kRouting.right() - 20.0f, kBusY}, busTarget ? kAccent : kTrack, 3.0f);
     c.text({kRouting.x + 14.0f, kBusY - 9.0f, 30.0f, 18.0f}, tr(Str::BusOut), 10.5f, kDim, Align::Left, true);
 
-    // Modulated routes swell and thin with their modulation while notes play, and carry a thin core
-    // in the color of the source that modulates them.
+    // Modulated routes swell and thin with their modulation while notes play.
     const std::vector<int> on = enabledNodes();
     auto focused = [&](int param) {
         return (hover_ && hover_->param == param && drag_.kind == DragKind::None) ||
@@ -2424,8 +2433,6 @@ void View::paintRouting(Canvas &c) {
         const Color base = isBoxNode(node) ? nodeColor(node) : kText;
         const Color color = focused(param) ? kText : base.alpha(0.25f + 0.5f * out);
         c.line(w.start, w.end, color, 1.5f + 2.0f * out);
-        if (const auto core = modColor(param))
-            c.line(w.start, w.end, core->alpha(0.9f), 1.2f);
         arrowHead(c, w.end, {0.0f, 1.0f}, color);
     }
 
@@ -2435,20 +2442,15 @@ void View::paintRouting(Canvas &c) {
             if (param < 0 || !wired(param) || param == moving)
                 continue;
             const float amount = static_cast<float>(liveAmount(param));
-            const std::optional<Color> core = modColor(param);
             const Color base = routeColor(from, to);
             const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
             const float width = 1.2f + 3.0f * amount;
             if (from == to) {
                 c.strokeCircle(loopCenter(nodeCenter(from)), 9.0f, color, width);
-                if (core)
-                    c.strokeCircle(loopCenter(nodeCenter(from)), 9.0f, core->alpha(0.9f), 1.2f);
                 continue;
             }
             const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
             c.curve(w.start, w.control, w.end, color, width);
-            if (core)
-                c.curve(w.start, w.control, w.end, core->alpha(0.9f), 1.2f);
             arrowHead(c, w.end, w.tangent, color);
         }
     }
@@ -2458,15 +2460,6 @@ double View::liveAmount(int param) const {
     const ParamDef &def = table_[param];
     const double offset = liveOffset(param);
     return std::clamp((value(param) + offset - def.min) / (def.max - def.min), 0.0, 1.0);
-}
-
-std::optional<Color> View::modColor(int param) const {
-    std::optional<Color> color;
-    forEachMod(param, [&](const Assignment &m) {
-        if (!color && !m.bypassed && sourceOn(m.source))
-            color = kSourceColors[m.source];
-    });
-    return color;
 }
 
 // How far a modulation takes its target from the set value, down and up: bipolar, half its depth either way;
@@ -4381,9 +4374,10 @@ void View::paintNode(Canvas &c, const Widget &w) {
         heard = heard || (nodeOn(kOps + filter) && value(sendIndex(op, filter)) > 0.0);
     for (int shaper = 0; shaper < kShapers; ++shaper)
         heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
-    // It lights up while playing only if it ends up in the output.
-    const float level = std::min(telemetry_.opLevels[op], 1.0f);
-    if (level > 0.01f && reachesOut(op))
+    // Its halo lights up while playing only if it ends up in the output, as brightly as its envelope and the routes
+    // that take it there let it through, where modulation takes them now: one an LFO opens from 0 % lights up too.
+    const float level = std::min(telemetry_.opLevels[op], 1.0f) * static_cast<float>(std::sqrt(outLevel(op)));
+    if (level > 0.01f)
         c.fillCircle(center, kNodeRadius + 7.0f, kAccent.alpha(0.22f * level));
     if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
         // Unison: a stack of rings peeking out on both sides.
@@ -5463,13 +5457,13 @@ std::string View::modRangeText(int source, int slot) const {
 void View::paintKnob(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool focused = isHovered(w) || isActive(w);
-    const Point center = w.compact ? Point{w.rect.x + 18.0f, w.rect.y + 20.0f}
-                                   : Point{w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
-    const float radius = w.compact ? 17.0f : w.rect.w * 0.5f;
+    const Point center = knobCenter(w);
+    const float radius = knobRadius(w);
+    const float k = smallKnob(w) ? radius / 17.0f : 1.0f; // a small knob's rings and pointer, scaled down with it
     const double n = norm(w.param);
     const float angle = knobAngle(n);
 
-    c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f);
+    c.arc(center, radius - 2.0f * k, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f * k);
     // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
     const int macro = macroOf(w.param);
     // An LFO's Phase is faint too while notes don't start the LFO there.
@@ -5478,7 +5472,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : kAccent).alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
-    c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
+    c.arc(center, radius - 2.0f * k, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f * k);
 
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
     // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
@@ -5492,31 +5486,37 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         }
         const auto [down, up] = modReach(m);
         const float alpha = (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
-        c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha), 2.5f);
+        c.arc(center, radius + 2.5f * k, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha),
+              2.5f * k);
     });
     for (const Assignment &f : focus) {
         const auto [down, up] = modReach(f);
         const float alpha = sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f;
-        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha), 4.0f);
+        c.arc(center, radius + 3.0f * k, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha),
+              4.0f * k);
     }
 
-    c.fillCircle(center, radius - 7.0f, kKnobBody);
-    c.strokeCircle(center, radius - 7.0f, kBorder, 1.0f);
-    c.line(Canvas::onCircle(center, (radius - 7.0f) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle),
-           kText, 2.0f);
+    c.fillCircle(center, radius - 7.0f * k, kKnobBody);
+    c.strokeCircle(center, radius - 7.0f * k, kBorder, 1.0f);
+    c.line(Canvas::onCircle(center, (radius - 7.0f * k) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f * k, angle),
+           kText, 2.0f * k);
 
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
     const float offset = liveOffset(w.param);
     if (offset != 0.0f)
-        c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))), 2.5f,
-                     kText);
+        c.fillCircle(Canvas::onCircle(center, radius - 2.0f * k, knobAngle(n + offset / (def.max - def.min))),
+                     2.5f * std::max(k, 0.8f), kText);
 
     char text[64];
     formatParam(w.param, value(w.param), text, sizeof(text));
     std::string shown = text;
     if (def.kind == ParamKind::Ratio)
         shown = "\xC3\x97" + shown;
-    if (w.compact) {
+    if (smallKnob(w)) { // the label and the number on its row
+        c.text({w.rect.x + 28.0f, w.rect.y, kSmallKnobValue - 30.0f, w.rect.h}, w.label, 10.5f, kDim, Align::Left);
+        c.text({w.rect.x + kSmallKnobValue, w.rect.y, w.rect.w - kSmallKnobValue, w.rect.h}, shown, 13.0f, kText,
+               Align::Left, true);
+    } else if (w.compact) {
         const float textWidth = w.rect.w - 42.0f;
         c.text({w.rect.x + 42.0f, w.rect.y + 3.0f, textWidth, 16.0f}, w.label, 10.5f, kDim, Align::Left);
         c.text({w.rect.x + 42.0f, w.rect.y + 18.0f, textWidth, 18.0f}, shown, 13.0f, kText, Align::Left, true);
@@ -5880,6 +5880,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
 
 Rect View::typingField() const {
     const Widget &w = typing_->widget;
+    if (w.kind == Kind::Knob && smallKnob(w))
+        return {w.rect.x + kSmallKnobValue - 4.0f, w.rect.y, 70.0f, w.rect.h};
     if (w.kind == Kind::Knob && w.compact)
         return {w.rect.x + 38.0f, w.rect.y + 17.0f, w.rect.w - 36.0f, 20.0f};
     if (w.kind == Kind::Knob)
@@ -6140,8 +6142,10 @@ void View::applyDrag(Point p) {
         const float span = std::max(std::hypot(b.x - a.x, b.y - a.y), 1.0f);
         const Point left = leftOf(a, b);
         const float moved = (p.x - drag_.start.x) * left.x + (p.y - drag_.start.y) * left.y;
-        const float bend = std::clamp(static_cast<float>(drag_.startValue) + 2.0f * moved / span, -kMaxWireBend,
-                                      kMaxWireBend);
+        // It stops where it would leave the panel.
+        const float bend = fitBend(w.a, a, w.b, b,
+                                   std::clamp(static_cast<float>(drag_.startValue) + 2.0f * moved / span,
+                                              -kMaxWireBend, kMaxWireBend));
         if (bend != wireBend(w.param))
             setWireBend(w.param, bend);
         break;
@@ -6307,7 +6311,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Wire:
         drag_.kind = DragKind::Bend;
-        drag_.startValue = wireBend(w.param);
+        drag_.startValue = fitBend(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param)); // as drawn
         drag_.step = true; // bending it is an undo step
         controller_.beginStep();
         break;

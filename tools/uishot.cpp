@@ -212,8 +212,8 @@ constexpr Point kFmAmountKnob{308.0f, 32.0f};
 constexpr Point kVoicesKnob{1024.0f, 32.0f};
 constexpr Point kMonoButton{690.0f, 21.0f};
 constexpr Point kLegatoToggle{668.0f, 44.0f};
-constexpr Point kGlideKnob{740.0f, 32.0f};
-constexpr Point kAlwaysToggle{858.0f, 32.0f};
+constexpr Point kGlideKnob{733.0f, 21.0f};
+constexpr Point kAlwaysToggle{766.0f, 44.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};
@@ -869,7 +869,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(1, FxParam::ReverbSize), paramTable()[paramIndex(1, FxParam::ReverbSize)].def);
     click(view, kRoutingTab);
 
-    // A modulated route: its wire carries the source's color and swells with it, its label shows the range.
+    // A modulated route: its wire swells with its modulation, its label shows the range.
     model.set(paramIndex(1, OpParam::Enabled), 1.0);
     view.poll();
     const Point aNode = nodeCenter(model.layout(), 0), bNode = nodeCenter(model.layout(), 1);
@@ -888,6 +888,20 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 200.0f}, {});
     check(routeModulated && renderer.save(view, dir / "18b-modulated-route.png"),
           "render a modulated route, its wire swelling and its label showing the range");
+    // That route turned down to 0 %: B, sounding, lights up only while its modulation opens the route again, just
+    // above it (read off the rendered pixels).
+    const double routed = model.value(matrixIndex(1, 0));
+    model.set(matrixIndex(1, 0), 0.0);
+    model.live.opLevels[1] = 1.0f;
+    auto aboveB = [&](float offset) {
+        model.live.modOffset[matrixIndex(1, 0)] = offset;
+        view.poll();
+        renderer.save(view, dir / "18b2-modulated-route-glow.png");
+        return renderer.pixel({bNode.x, bNode.y - 28.0f});
+    };
+    const uint32_t shut = aboveB(0.0f), opened = aboveB(0.3f);
+    check(opened != shut, "an operator lights up while modulation opens its route from 0 %");
+    model.set(matrixIndex(1, 0), routed);
     model.live = Telemetry{};
     view.poll();
 
@@ -1716,6 +1730,28 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
             view.menuCommand(item.command);
     check(bentAgain && layout.wireBends.empty() && model.value(matrixIndex(1, 0)) == 0.0,
           "a wire disconnected takes its bend with it");
+    // Along the graph's top, B right of A, a wire bowed up as far as it goes would leave the panel: it bows only as
+    // far as stays inside, nothing drawn over the view tabs above (read off the rendered pixels), and keeps its bend.
+    model.set(matrixIndex(1, 0), 0.5);
+    model.ui.keptRoutes.push_back(matrixIndex(1, 0));
+    model.ui.nodeX[0] = 0.2f;
+    model.ui.nodeX[1] = 0.8f;
+    model.ui.nodeY[0] = model.ui.nodeY[1] = 0.0f;
+    view.poll();
+    auto aboveGraph = [&] {
+        std::vector<uint32_t> pixels;
+        for (float y = 66.0f; y < 104.0f; y += 2.0f)
+            for (float x = 150.0f; x < 750.0f; x += 3.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    const bool plainShot = renderer.save(view, dir / "2i-wire-at-edge.png");
+    const std::vector<uint32_t> plain = aboveGraph();
+    model.ui.wireBends.push_back({matrixIndex(1, 0), kMaxWireBend});
+    view.poll();
+    const bool fitShot = renderer.save(view, dir / "2j-wire-at-edge-bent.png");
+    check(plainShot && fitShot && aboveGraph() == plain && bendOf() == kMaxWireBend,
+          "a wire bowed out of the panel bows only as far as stays inside");
 }
 
 // The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls
@@ -1907,6 +1943,24 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     check(cardShot && model.ui.view == RoutingView::Mods &&
               model.ui.emptyMods == std::vector<std::pair<int, int>>{{1, -1}},
           "a card's button, its source modulating nothing, adds an empty modulation from it in MODS");
+    // With LFO 1's row and then Env 1's, a new empty modulation given LFO 1 moves up among LFO 1's rows: its target,
+    // picked in the second row (its middle at y 218), makes it LFO 1's, Env 1's left as it was.
+    click(view, {600.0f, 440.0f}); // closes the target menu the card's button opened
+    model.ui.emptyMods.clear();
+    model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(1, OpParam::Fine)));
+    view.poll();
+    click(view, {100.0f, 248.0f}); // the button, under Env 1's row, opens the source menu at y 264
+    view.mouseMove({80.0f, 264.0f + 4.0f + 11.0f}, {}); // LFOs
+    click(view, {230.0f, 264.0f + 4.0f + 11.0f});     // LFO 1, beside it
+    const bool lfoSourced = model.ui.emptyMods == std::vector<std::pair<int, int>>{{0, -1}};
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool sortedShot = renderer.save(view, dir / "35k-mods-empty-sorted.png");
+    openGlobal();
+    click(view, globalEntry(0));
+    check(lfoSourced && sortedShot && model.ui.emptyMods.empty() &&
+              slotTarget(model.value(slotTargetIndex(0, 1))) == globals[0] &&
+              slotTarget(model.value(slotTargetIndex(1, 0))) == paramIndex(1, OpParam::Fine),
+          "an empty modulation given a source with rows goes among them");
 }
 
 // Eight LFOs on Op A's Fine: under the knob, two depth handles and a "+6" pill, nothing drawn outside the knob's

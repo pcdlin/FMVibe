@@ -146,6 +146,7 @@ constexpr float kCascadePad = 4.0f;
 constexpr float kHeaderKnobX = 186.0f;
 constexpr float kHeaderKnobW = 104.0f;
 constexpr float kPlayX = 624.0f;
+constexpr float kSmallKnobValue = 64.0f; // where a small header knob's number starts, past its knob and label
 constexpr float kDividers[] = {612.0f, 896.0f};
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
 // past full scale.
@@ -258,7 +259,8 @@ inline Rect lfoShapeButton(float card) {
 }
 
 // Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, centered on them, each over a random
-// LFO's Smooth and Chaos; Rate's sync switch, a small square, sits between the rows and its knob.
+// LFO's Smooth and Chaos; Rate's sync switch, a small square, sits between the shape list and the knob, level with
+// the list.
 inline Point lfoKnob(float card, int knob) {
     const Rect top = lfoShapeButton(card), bottom = lfoModeSwitch(card, 2);
     return {randomKnob(card, knob).x, (top.y + bottom.bottom()) * 0.5f - 9.0f}; // the label takes 18 px under the knob
@@ -267,7 +269,7 @@ inline Point lfoKnob(float card, int knob) {
 inline Rect sourceSync(float card) {
     const Point rate = lfoKnob(card, 0);
     const float x = (lfoModeSwitch(card, 2).right() + rate.x - 15.0f) * 0.5f;
-    return {x - 10.0f, rate.y - 10.0f, 20.0f, 20.0f};
+    return {x - 10.0f, lfoShapeButton(card).center().y - 10.0f, 20.0f, 20.0f};
 }
 
 // ADD EFFECT at the top left, and the list it opens under it: one row per type,
