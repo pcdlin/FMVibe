@@ -2018,6 +2018,11 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, {100.0f, 248.0f}); // the button, under Env 1's row, opens the source menu at y 264
     view.mouseMove({80.0f, 264.0f + 4.0f + 11.0f}, {}); // LFOs
+    // The menu's first entry under the mouse leaves LFO 1's row (its source's and slot's numbers the entry's) unlit:
+    // it matches Env 1's between its aux and its x (read off the rendered pixels).
+    const bool overRowsShot = renderer.save(view, dir / "35n-mods-menu-over-rows.png");
+    const bool rowUnlit = renderer.pixel({1110.0f, 188.0f}) == renderer.pixel({1110.0f, 218.0f});
+    check(overRowsShot && rowUnlit, "an open menu's entry under the mouse lights no MODS row");
     click(view, {230.0f, 264.0f + 4.0f + 11.0f});     // LFO 1, beside it
     const bool lfoSourced = model.ui.emptyMods == std::vector<std::pair<int, int>>{{0, -1}};
     view.mouseMove({600.0f, 440.0f}, {});

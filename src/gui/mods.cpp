@@ -735,7 +735,9 @@ void View::paintMods(Canvas &c) {
          ++row) {
         const Assignment &m = rows[row];
         const Rect r = modsRow(static_cast<float>(row) - first);
-        const bool lit = (hover_ && hover_->a == m.source && hover_->b == m.slot && kModsList.contains(hoverPoint_) &&
+        // An open menu's items number their level and place in a and b, which aren't a row's.
+        const bool lit = (hover_ && hover_->kind != Kind::CascadeMenu && hover_->kind != Kind::CascadeItem &&
+                          hover_->a == m.source && hover_->b == m.slot && kModsList.contains(hoverPoint_) &&
                           drag_.kind == DragKind::None) ||
                          (cascade_ && cascade_->source == m.source && cascade_->slot == m.slot);
         c.fillRect(r, lit ? kTrack.alpha(0.7f) : kRaised, 5.0f);
