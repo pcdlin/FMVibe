@@ -851,6 +851,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             scale *= runsPerVoice(aux) ? v.auxOut[aux] : hostValue(params, stripKnobIndex(aux));
         return scale;
     };
+    // The pitch the voice plays: its glide, tuning and the bend, with the params as `p` holds them when it is asked.
+    const double bend = std::clamp(bend_ + wheelBend_, -1.0, 1.0);
+    auto pitchNow = [&] {
+        return v.glide + v.tuning + bend * p[paramIndex(GlobalParam::BendRange)] + p[paramIndex(GlobalParam::Pitch)];
+    };
+    // Velocity puts out what the note came with, known before the places run, so the slots it scales as their aux
+    // take this block's value; on a note's first block, so do those the note source scales, from the pitch the note
+    // starts at (after that, they take the last block's, as it follows the pitch further down).
+    v.auxOut[kVelocitySource] = velocitySourceValue(getParam, v.velocity);
+    if (v.fresh)
+        v.auxOut[kNoteSource] = noteSourceValue([&](int i) { return hostValue(params, i); }, pitchNow());
     auto collectSlots = [&](int source, double shown, double unipolar, double bipolar, bool bipolarSource) {
         v.sourceValues[source] = shown;
         v.auxOut[source] = unipolar;
@@ -921,8 +932,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // Velocity, through its curve, from what the note came with: like the note source's, its depths take only the
     // host's modulation for every voice. It modulates from the note's first block, as the LFOs and envelopes do.
     {
-        const double out = velocitySourceValue(getParam, v.velocity);
-        v.auxOut[kVelocitySource] = out;
+        const double out = v.auxOut[kVelocitySource]; // worked out before the places
         const double swing = params[paramIndex(VelocityParam::Bipolar)] >= 0.5 ? out - 0.5 : out;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(params[slotTargetIndex(kVelocitySource, s)]);
@@ -974,10 +984,6 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // same ramp rather than jumping.
     const uint32_t frames = hostFrames * static_cast<uint32_t>(oversampling_);
     const double ramp = 1.0 / (kControlBlock * oversampling_);
-    const double bend = std::clamp(bend_ + wheelBend_, -1.0, 1.0);
-    auto pitchNow = [&] {
-        return v.glide + v.tuning + bend * p[paramIndex(GlobalParam::BendRange)] + p[paramIndex(GlobalParam::Pitch)];
-    };
     double pitch = pitchNow();
 
     // The note source follows that pitch, through its range and curve, and modulates from this block on: a

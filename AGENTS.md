@@ -65,7 +65,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - velocity taking its target as far as the note's velocity, in a straight line as it starts; bipolar, about the
     middle of what it puts out; its curve drawn the other way round reversing it;
   - a slot's Amount scaling its depth, and its aux: velocity scaling a macro's slot in each voice, the mod wheel down
-    leaving its target alone; a macro's and velocity's slots bypassed leaving theirs alone;
+    leaving its target alone; a macro's and velocity's slots bypassed leaving theirs alone; velocity and the note
+    source scaling an LFO's slot as its aux from a note's first block;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
@@ -133,7 +134,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the MODS tab: a row per modulation, its Amount bar and aux's × changing it, and the switch after its source's
     name the source's polarity; + Aux's, the target's (three levels deep, into an operator's params) and the source's
     cascading menus picking an aux, a target and a source, the modulation keeping its depth, Amount and aux as it
-    moves, undoably, and what modulates its depth following it (or, onto a macro, going); the wheel scrolling the rows; a row's typed depth, Edit depth and bypass dot (a macro's too); and a source's
+    moves, undoably, and what modulates its depth following it (or, onto a macro or when it is removed, going); the wheel scrolling the rows; a row's typed depth, Edit depth and bypass dot (a macro's too); and a source's
     handle dropped on a depth handle becoming that modulation's aux, ringed in its color, the macro then no longer
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);

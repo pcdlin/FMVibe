@@ -1937,6 +1937,15 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     check(slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(0, OpParam::Fine) &&
               slotTarget(model.value(slotTargetIndex(1, 0))) < 0,
           "a modulation moved to a macro takes away what modulated its depth");
+    // Removed by its row's x (at x 1144), it takes what modulated its depth with it, in one undo step.
+    view.undo();
+    click(view, {1144.0f, 188.0f});
+    const bool removed = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
+                         slotTarget(model.value(slotTargetIndex(1, 0))) < 0;
+    view.undo();
+    check(removed && slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Fine) &&
+              slotTarget(model.value(slotTargetIndex(1, 0))) == slotAmountIndex(0, 0),
+          "a removed modulation takes what modulated its depth with it, in one undo step");
 }
 
 // Modulations added in the MODS view: the row after the last adds an empty one and opens its source's menu; picking

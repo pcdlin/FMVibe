@@ -440,12 +440,28 @@ void View::removeSlot(int source, int slot) {
         removeEmptyMod(row);
         return;
     }
+    const UndoScope step(controller_); // with what goes along
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, slot), 0.0},
                                                 {slotAmountIndex(source, slot), 0.0},
                                                 {slotScaleIndex(source, slot), 1.0},
                                                 {slotAuxIndex(source, slot), 0.0},
                                                 {slotBypassIndex(source, slot), 0.0}};
     editMany(changes);
+    // What modulated its depth goes too, rather than wait on the emptied slot to scale the next modulation there;
+    // and an empty modulation onto it loses its target. The slot is empty by now, so two modulations of each other's
+    // depths end.
+    const int depth = slotAmountIndex(source, slot);
+    for (const Assignment &m : assignments())
+        if (m.target == depth)
+            removeSlot(m.source, m.slot);
+    bool emptied = false;
+    for (auto &[from, onto] : controller_.layout().emptyMods)
+        if (onto == depth) {
+            onto = -1;
+            emptied = true;
+        }
+    if (emptied)
+        controller_.layoutChanged();
 }
 
 bool View::slotBypassed(int source, int slot) const {

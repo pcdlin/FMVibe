@@ -1566,6 +1566,46 @@ int main(int argc, char **argv) {
               "a macro's and velocity's bypassed slots leave their targets alone");
     }
 
+    // An LFO's slot scaled by velocity or the note source modulates from a note's first block, as one with no aux
+    // does: a slow unipolar square, up at the start, at -100 % on A's output silences A from the start, scaled by a
+    // note at full velocity, or by the note source with its range below the note (where it puts out all of it). The
+    // first block's peak (A's attack and the level's ramp in it) matches the one without an aux, and is well below
+    // the unmodulated one.
+    {
+        const int lfo = 5;
+        setParams({{paramIndex(0, OpParam::Velocity), 0.0},
+                   {paramIndex(lfo, SourceParam::Type), static_cast<double>(SourceType::Lfo)},
+                   {paramIndex(lfo, SourceParam::Shape), static_cast<double>(LfoShape::Square)},
+                   {paramIndex(lfo, SourceParam::Rate), normFromRate(0.5)},
+                   {paramIndex(lfo, SourceParam::Unipolar), 1.0},
+                   {paramIndex(NoteParam::High), 1.0},
+                   {slotTargetIndex(lfo, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(lfo, 0), -1.0}});
+        auto firstBlock = [&] {
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 93, 69);
+            const float peak = runBlock({&on.header});
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const float plain = firstBlock();
+        setParams({{slotAuxIndex(lfo, 0), slotAuxValue(kVelocitySource)}});
+        const float byVelocity = firstBlock();
+        setParams({{slotAuxIndex(lfo, 0), slotAuxValue(kNoteSource)}});
+        const float byNote = firstBlock();
+        setParams({{slotAuxIndex(lfo, 0), 0.0}, {slotAmountIndex(lfo, 0), 0.0}});
+        const float open = firstBlock();
+        setParams({{slotTargetIndex(lfo, 0), 0.0},
+                   {paramIndex(lfo, SourceParam::Type), static_cast<double>(SourceType::None)},
+                   {paramIndex(NoteParam::High), kMaxNotePitch},
+                   {paramIndex(0, OpParam::Velocity), 0.5}}); // as they start
+        std::printf("      first block under an LFO at -100 %%: peak %.3f, scaled by velocity %.3f, by the note %.3f; "
+                    "%.3f unmodulated\n",
+                    plain, byVelocity, byNote, open);
+        check(open > 0.1f && plain < 0.5f * open && std::abs(byVelocity - plain) < 0.01f &&
+                  std::abs(byNote - plain) < 0.01f,
+              "velocity and the note source scale a slot as their aux from a note's first block");
+    }
+
     // Effects, on the plain sine. Slot 0 holds a shaper, slot 1 a DJ EQ, slot 2
     // a delay, slot 3 a filter, slots 4 and 5 parametric EQs; each starts on.
     {

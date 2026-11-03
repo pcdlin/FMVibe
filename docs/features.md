@@ -104,7 +104,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
   editor); the aux also by dropping a source's handle on the modulation's depth handle. An aux that runs per voice
   (an LFO, an envelope, the note source, velocity) scales it in each voice by its own output there, as of the last
-  32-sample block (or this one, for a source that comes before it); a macro or the mod wheel scales it the same for
+  32-sample block (or this one, for a source that comes before it, and velocity, known from the note; on a note's
+  first block the note source's comes from the pitch the note starts at); a macro or the mod wheel scales it the same for
   all. A macro's or the mod wheel's modulation with an aux that runs per voice then runs per voice too, reaching the
   effects through the newest voice. A switched-off aux puts out nothing, so it scales its modulation to nothing; a
   source can't be its own modulations' aux. Once a key is
@@ -451,7 +452,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
     - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on
       either opens the menu of sources, None first, the row's own source faint;
-    - the × that removes the modulation.
+    - the × that removes the modulation. Removing a modulation, here or anywhere else, removes whatever modulates
+      its depth with it, in the same undo step.
 
     The right-click menu of any of a row's cells is its modulation's (Edit depth on the depth, Bypass, Remove).
 
