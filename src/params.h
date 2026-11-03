@@ -226,6 +226,12 @@ constexpr int kVelocityParamCount = static_cast<int>(VelocityParam::Count);
 // Every slot of every source has one, set in the editor and hidden from hosts. Stored in projects by number: only
 // append.
 enum class SlotPolarity { Source, Unipolar, Bipolar, Count };
+// Each slot of every source also has an Aux and an Amount (see slotAuxIndex()): its depth is scaled by Amount (0..1,
+// all of it to begin with) and, while it has an aux, by what that other source puts out now, 0..1, taken as unipolar
+// (see auxValue()). Aux holds the aux's source number + 1 (0 = none): wiring like a target, set in the editor. Stored
+// in projects by number: only append.
+enum class SlotAuxParam { Aux, Amount, Count };
+constexpr int kSlotAuxFields = static_cast<int>(SlotAuxParam::Count);
 
 // Stored in projects by number: only append.
 enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
@@ -501,7 +507,9 @@ constexpr int kVelocityBase = kLaterPartialBase + kOps * 2 * (kPartials - kFirst
 // Each slot's polarity (see SlotPolarity): kSlots a source, for the places, the macros, the note source, the mod
 // wheel and velocity in turn.
 constexpr int kSlotPolarityBase = kVelocityBase + kVelocityParamCount;
-constexpr int kParamCount = kSlotPolarityBase + kAllSources * kSlots;
+// Each slot's aux and Amount (see SlotAuxParam): kSlots pairs a source, the sources in turn.
+constexpr int kSlotAuxBase = kSlotPolarityBase + kAllSources * kSlots;
+constexpr int kParamCount = kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -723,6 +731,27 @@ constexpr int slotTargetIndex(int source, int slot) {
 }
 constexpr int slotAmountIndex(int source, int slot) { return slotTargetIndex(source, slot) + 1; }
 constexpr int slotPolarityIndex(int source, int slot) { return kSlotPolarityBase + source * kSlots + slot; }
+constexpr int slotAuxIndex(int source, int slot) {
+    return kSlotAuxBase + (source * kSlots + slot) * kSlotAuxFields + static_cast<int>(SlotAuxParam::Aux);
+}
+constexpr int slotScaleIndex(int source, int slot) {
+    return kSlotAuxBase + (source * kSlots + slot) * kSlotAuxFields + static_cast<int>(SlotAuxParam::Amount);
+}
+// The source an aux or Amount param belongs to; -1 for other params.
+constexpr int auxSourceOf(int index) {
+    return index >= kSlotAuxBase && index < kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields
+               ? (index - kSlotAuxBase) / (kSlots * kSlotAuxFields)
+               : -1;
+}
+// The source an Aux param's value names, or -1 for none.
+inline int slotAuxSource(double value) {
+    const long source = std::lround(value) - 1;
+    return source >= 0 && source < kAllSources ? static_cast<int>(source) : -1;
+}
+inline double slotAuxValue(int source) { return source < 0 ? 0.0 : source + 1.0; }
+// The sources that run in each voice (the places, the note source and velocity), whose output differs from voice to
+// voice; the macros and the mod wheel are the same for all.
+constexpr bool runsPerVoice(int source) { return !isStripSource(source) || isNoteBorne(source); }
 // The source and slot a polarity param belongs to; -1 for other params.
 constexpr int polaritySourceOf(int index) {
     return index >= kSlotPolarityBase && index < kSlotPolarityBase + kAllSources * kSlots
@@ -799,6 +828,7 @@ constexpr Section kSections[] = {
     {kVelocityBase, 1, kVelocityParamCount, 11600, 100},
     // A block per source, in source order: sources added later take blocks after these.
     {kSlotPolarityBase, kAllSources, kSlots, 24000, 20},
+    {kSlotAuxBase, kAllSources, kSlots * kSlotAuxFields, 22000, 40},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1017,6 +1047,11 @@ static_assert(idOfIndex(slotPolarityIndex(0, 0)) == 24000 && idOfIndex(slotPolar
                   idOfIndex(slotPolarityIndex(kWheelSource, 0)) == 24500 &&
                   idOfIndex(slotPolarityIndex(kVelocitySource, kSlots - 1)) == 24535,
               "slot polarity param ids moved");
+static_assert(idOfIndex(slotAuxIndex(0, 0)) == 22000 && idOfIndex(slotScaleIndex(0, 0)) == 22001 &&
+                  idOfIndex(slotScaleIndex(0, kSlots - 1)) == 22031 &&
+                  idOfIndex(slotAuxIndex(kVelocitySource, 0)) == 23040 &&
+                  idOfIndex(slotScaleIndex(kVelocitySource, kSlots - 1)) == 23071,
+              "slot aux param ids moved");
 static_assert(idOfIndex(shaperCurveCountIndex(0)) == 13000 &&
                   idOfIndex(shapeFieldIndex(shaperCurveCountIndex(kShapers - 1), 15, PointField::Curve)) == 13098 &&
                   idOfIndex(shapeFieldIndex(shaperCurveCountIndex(0), 16, PointField::X)) == 21000 &&
@@ -1055,6 +1090,8 @@ static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::En
 static_assert(numberedInOrder({SlotPolarity::Source, SlotPolarity::Unipolar, SlotPolarity::Bipolar,
                                SlotPolarity::Count}),
               "SlotPolarity is stored by number: only append");
+static_assert(numberedInOrder({SlotAuxParam::Aux, SlotAuxParam::Amount, SlotAuxParam::Count}),
+              "SlotAuxParam is stored by number: only append");
 static_assert(numberedInOrder({LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square, LfoShape::Random,
                                LfoShape::Custom, LfoShape::Count}),
               "LfoShape is stored by number: only append");
@@ -1434,6 +1471,7 @@ enum class ParamKind {
     FixedFreq,   // 0..1 on a log curve, shown in Hz; see fixedFreqFromNorm()
     FixedMult,   // stepped: one of kFixedMults, shown as x0.001 and so on
     SlotPolarity, // stepped: a slot's SlotPolarity, set in the editor and hidden from hosts
+    SlotAux,      // stepped: the source + 1 that scales a slot (0 = none), set in the editor and hidden from hosts
 };
 
 struct ParamDef {
@@ -1473,9 +1511,17 @@ inline int slotTarget(double value) {
     return isModTarget(index) ? index : -1;
 }
 
+// A slot's aux (see SlotAuxParam): the source that scales it, or -1. A source can't scale its own slots.
+template <class Get>
+int slotAux(const Get &get, int source, int slot) {
+    const int aux = slotAuxSource(get(slotAuxIndex(source, slot)));
+    return aux == source ? -1 : aux;
+}
+
 // What the macros and the mod wheel add to their targets, the same for every voice and the effects, notes playing or
 // not: calls `add(target, offset)` for each slot in use, the offset in plain units. `get(index)` returns a param
-// value.
+// value. A slot whose aux runs per voice (an LFO, say) is left to the voices, which add it with their aux's value
+// (see Synth::renderBlock()); one scaled by a macro or the mod wheel takes that knob's value here.
 template <class Get, class Add>
 void forEachMacroMod(const Get &get, const Add &add) {
     for (int source = kMaxSources; source < kAllSources; ++source) {
@@ -1489,8 +1535,12 @@ void forEachMacroMod(const Get &get, const Add &add) {
             const double amount = get(slotAmountIndex(source, slot));
             if (target < 0 || target >= kModulatedCount || amount == 0.0)
                 continue;
+            const int aux = slotAux(get, source, slot);
+            if (aux >= 0 && runsPerVoice(aux))
+                continue;
+            const double scale = get(slotScaleIndex(source, slot)) * (aux >= 0 ? get(stripKnobIndex(aux)) : 1.0);
             const double swing = knob - (slotBipolar(get(slotPolarityIndex(source, slot)), bipolar) ? 0.5 : 0.0);
-            add(target, swing * amount * (paramTable()[target].max - paramTable()[target].min));
+            add(target, swing * amount * scale * (paramTable()[target].max - paramTable()[target].min));
         }
     }
 }

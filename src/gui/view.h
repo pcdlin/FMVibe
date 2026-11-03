@@ -140,6 +140,14 @@ private:
         SlotRemove,   // a = source, b = slot
         SlotBypass,   // param = the slot's bypass, a = source, b = slot: the dot at the row's start
         SlotPolarity, // a = source, b = slot: switches its modulation between unipolar and bipolar
+        ModsSource,   // a = source, b = slot: a MODS row's source; a click opens the menu that moves it to another
+        ModsTarget,   // a = source, b = slot: a MODS row's target; a click opens the menu of targets
+        ModsScale,    // param = the slot's Amount, a = source, b = slot: a MODS row's Amount bar, dragged across
+        ModsAux,      // a = source, b = slot: a MODS row's aux, or + Aux; a click opens the menu of auxes
+        ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
+        ModsScroll,   // the MODS view's scrollbar: drag the thumb, or click the track to jump there
+        CascadeMenu,  // a = 1 on a level of the open cascading menu (b = the level), 0 around it (a click closes it)
+        CascadeItem,  // a = level, b = entry: an entry of the open cascading menu
         SlotScroll,   // a = source: the bar beside a long slot list; drag the thumb, or click to jump there
         ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
         EnvPoint,     // a = envelope (ops, then kOps + source), b = point
@@ -238,6 +246,7 @@ private:
         Glow,
         TextSelect, // across the browser's search
         Bend,       // a wire, sideways: how far it bows
+        ModsScroll, // the MODS view's thumb
     };
 
     struct Drag {
@@ -269,6 +278,8 @@ private:
         double amount;
         bool bypassed; // kept, but modulating nothing for now
         bool bipolar;  // swings its target both ways (see slotBipolar())
+        double scale;  // its Amount, which scales the depth (see SlotAuxParam)
+        int aux;       // the source that scales it too, or -1
     };
 
     // While a paint or a hit test goes on, nothing they read changes (but for what the host may change meanwhile, which
@@ -342,6 +353,53 @@ private:
     // How far a route's wire bows to its left, as a share of the distance it spans: as dragged, or kDefaultWireBend.
     float wireBend(int param) const;
     void setWireBend(int param, float bend); // kDefaultWireBend forgets it
+    // The MODS view: every modulation as a row, the sources in the order of assignments(), over the routing panel and
+    // the inspector. Its rows scroll like a slot list: how many are scrolled past as shown (gliding), the most that
+    // can be, and scrolling them, gliding or at once; the thumb of its bar.
+    bool modsWide() const;
+    std::vector<Assignment> modsRows() const;
+    float modsFirst() const;
+    float modsEnd() const;
+    void scrollMods(float first, bool glide);
+    bool glideMods();
+    Rect modsThumb() const;
+    void paintMods(Canvas &c);
+    // Changing a modulation from its row. Moving it to another source takes a free slot there, keeping its target,
+    // depth, polarity (as it is now), Amount, aux and bypass, as one undo step; refused when that source modulates the
+    // target already or has no slot free. Changing its target keeps the rest; refused when the source modulates that
+    // target already. An aux of -1 takes it away.
+    void moveModulation(int source, int slot, int to);
+    void retarget(int source, int slot, int target);
+    void setAux(int source, int slot, int aux);
+    // The cascading menus of a MODS row: its sources by category (LFOs, envelopes, macros, the keyboard's), the same
+    // with None for its aux, and every target by category, only the effects in the chain among them. Each entry is a
+    // category (with entries of its own), a heading, or a pick: a source (-1 for None) or a target param.
+    enum class CascadeKind { Source, Target, Aux };
+    struct MenuNode {
+        std::string label;
+        std::optional<Color> color; // a dot before the label
+        bool heading = false;
+        bool enabled = true;
+        bool checked = false;  // what the row has now
+        bool holds = false;    // a category that has what the row has now somewhere in it
+        int pick = -2;         // a source or target; -2 for a category or heading
+        std::string note;      // after the label, faint: why it can't be picked
+        std::vector<MenuNode> children;
+    };
+    struct Cascade {
+        CascadeKind kind = CascadeKind::Source;
+        int source = -1, slot = -1; // the row
+        Point at;                   // the first level's top left
+        std::vector<int> open;      // the entry opened at each level so far
+    };
+    MenuNode cascadeTree() const;
+    // The open menu's levels, from the first: their entries, and where they show.
+    std::vector<const MenuNode *> cascadeLevels(const MenuNode &root) const;
+    std::vector<Rect> cascadeRects(const MenuNode &root) const;
+    Rect cascadeItemRect(const MenuNode &level, Rect at, int index) const;
+    void openCascade(CascadeKind kind, int source, int slot, Rect from);
+    void pickCascade(int level, int index);
+    void paintCascade(Canvas &c);
     // "Bypass LFO 1 modulation", or "Resume ..." for one that is bypassed.
     std::string bypassLabel(int source, int slot) const;
     void connect(int from, int to);
@@ -703,6 +761,9 @@ private:
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
+    std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
+    float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
+    float modsGlide_ = 0.0f;                 // and where it shows, gliding after it
     std::array<int, kFxSlots> fxBand_{};     // the band each three-band compressor's card shows
     std::array<float, kMaxSources> slotScroll_{}; // rows each source's slot list is scrolled to, before clamping
     std::array<float, kMaxSources> slotGlide_{};  // and where it shows, gliding after it

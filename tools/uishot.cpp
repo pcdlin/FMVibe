@@ -1804,6 +1804,110 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
           "a wire disconnected takes its bend with it");
 }
 
+// The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls
+// them). A row's Amount bar, polarity switch, aux and its menu, target and source change it from the table; the
+// menus cascade by category; and a source's handle dropped on a depth handle makes it that modulation's aux.
+void testMods(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
+    const OpParam fillers[] = {OpParam::Detune,  OpParam::Transpose, OpParam::Out,     OpParam::Velocity,
+                               OpParam::Attack,  OpParam::Decay,     OpParam::Sustain, OpParam::Release,
+                               OpParam::Hold,    OpParam::UnisonDetune};
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    model.set(slotScaleIndex(0, 0), 0.5);
+    model.set(slotAuxIndex(0, 0), slotAuxValue(kMaxSources + 1)); // Macro 2
+    for (int k = 0; k < 10; ++k) {
+        model.set(slotTargetIndex(0, k + 1), slotTargetValue(paramIndex(0, fillers[k])));
+        model.set(slotAmountIndex(0, k + 1), 0.2);
+    }
+    model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount)));
+    model.set(slotAmountIndex(1, 0), 0.3);
+    model.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
+    model.set(slotAmountIndex(kMaxSources, 0), 0.35);
+    view.poll();
+    // The tab, after FX; the first row's middle at y 188, its cells across from x 28 (see layout.h's kMods...).
+    click(view, {314.0f, 88.0f});
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool shot = renderer.save(view, dir / "35-mods.png");
+    check(model.ui.view == RoutingView::Mods && shot, "the MODS tab shows every modulation as a row");
+    const float y = 188.0f;
+    auto slotIs = [&](int source, int slot, int target) {
+        return slotTarget(model.value(slotTargetIndex(source, slot))) == target;
+    };
+    // Its Amount bar, 56 px wide from x 764, takes the click's place; its polarity switch flips LFO 1's bipolar
+    // modulation to unipolar alone; the aux's x takes Macro 2 away.
+    click(view, {764.0f + 0.75f * 56.0f, y});
+    click(view, {740.0f, y});
+    click(view, {1102.0f, y});
+    check(std::abs(model.value(slotScaleIndex(0, 0)) - 0.75) < 1e-6 &&
+              model.value(slotPolarityIndex(0, 0)) == static_cast<double>(SlotPolarity::Unipolar) &&
+              model.value(slotAuxIndex(0, 0)) == 0.0 && model.value(slotPolarityIndex(0, 1)) == 0.0,
+          "a MODS row's Amount bar, polarity switch and aux x change its modulation alone");
+    // + Aux opens None and the sources by category; over Envelopes (the third entry) Env 1 shows beside it, and
+    // picking it makes it the aux.
+    click(view, {950.0f, y});
+    view.mouseMove({940.0f, 201.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {});
+    const bool auxShot = renderer.save(view, dir / "35e-mods-aux-menu.png");
+    click(view, {1080.0f, 245.0f + 4.0f + 11.0f});
+    check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
+    // The target opens every target by category: Operators, then B, then (under PITCH) Detune, three levels deep.
+    click(view, {300.0f, y});
+    view.mouseMove({250.0f, 204.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
+    view.mouseMove({380.0f, 226.0f + 4.0f + 22.0f + 11.0f}, {});       // B
+    const Point detune{520.0f, 248.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
+    view.mouseMove(detune, {});
+    const bool menuShot = renderer.save(view, dir / "35a-mods-target-menu.png");
+    click(view, detune);
+    const bool retargeted = slotIs(0, 0, paramIndex(1, OpParam::Detune)) &&
+                            std::abs(model.value(slotAmountIndex(0, 0)) - 0.4) < 1e-9 &&
+                            std::abs(model.value(slotScaleIndex(0, 0)) - 0.75) < 1e-6 &&
+                            slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1;
+    view.undo();
+    check(menuShot && retargeted && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+          "a row's target menu moves its modulation to another target, keeping the rest, undoably");
+    // Its source moves it to a free slot of another source, Macro 1 here, with its depth, Amount, aux and polarity as
+    // it swings now, in one undo step.
+    click(view, {90.0f, y});
+    view.mouseMove({80.0f, 204.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {}); // Macros
+    view.mouseMove({200.0f, 248.0f + 4.0f + 11.0f}, {});              // Macro 1
+    const bool sourceShot = renderer.save(view, dir / "35b-mods-source-menu.png");
+    click(view, {200.0f, 248.0f + 4.0f + 11.0f});
+    const bool moved = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
+                       slotIs(kMaxSources, 1, paramIndex(0, OpParam::Fine)) &&
+                       std::abs(model.value(slotAmountIndex(kMaxSources, 1)) - 0.4) < 1e-9 &&
+                       std::abs(model.value(slotScaleIndex(kMaxSources, 1)) - 0.75) < 1e-6 &&
+                       slotAuxSource(model.value(slotAuxIndex(kMaxSources, 1))) == 1 &&
+                       model.value(slotPolarityIndex(kMaxSources, 1)) == static_cast<double>(SlotPolarity::Unipolar);
+    view.undo();
+    check(sourceShot && moved && slotIs(0, 0, paramIndex(0, OpParam::Fine)) &&
+              slotTarget(model.value(slotTargetIndex(kMaxSources, 1))) < 0,
+          "a row's source menu moves its modulation to another source with its settings, undoably");
+    // Thirteen rows: the wheel over them (not on a bar, which it turns) scrolls them, gliding a row a notch; two
+    // notches down, the top row's x is LFO 1's third modulation's.
+    view.wheel({300.0f, 300.0f}, -2.0f, {});
+    for (int i = 0; i < 30; ++i)
+        view.poll();
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool scrolledShot = renderer.save(view, dir / "35c-mods-scrolled.png");
+    click(view, {1144.0f, y});
+    const bool removed = slotTarget(model.value(slotTargetIndex(0, 2))) < 0 && slotIs(0, 1, paramIndex(0, fillers[0]));
+    view.undo();
+    check(scrolledShot && removed && slotIs(0, 2, paramIndex(0, fillers[1])),
+          "the wheel scrolls the MODS view's rows, the scrolled-to row's controls under the mouse");
+    // Macro 2's handle dropped on LFO 1's depth handle under Op A's Fine knob makes Macro 2 that modulation's aux.
+    click(view, {64.0f, 88.0f}); // back to ROUTING, with the inspector
+    const float strip = view.height() - 179.0f;
+    drag(view, {252.0f, strip}, {kFineKnob.x, 229.0f});
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool ringShot = renderer.save(view, dir / "35d-aux-ring.png");
+    check(ringShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == kMaxSources + 1 &&
+              slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0,
+          "a source's handle dropped on a depth handle becomes that modulation's aux");
+}
+
 // LFO 2 modulating LFO 1's depth on operator A's Fine: hovering LFO 2's handle draws a dashed line to that
 // depth bar, which has a dot for the modulation, like a matrix cell's.
 void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
@@ -3282,6 +3386,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testMacros(dir, renderer);
     testVelocity(dir, renderer);
     testWireBend(dir, renderer);
+    testMods(dir, renderer);
     testMeter(dir, renderer);
     renderNewEffects(dir, renderer);
     testShapers(dir, renderer);

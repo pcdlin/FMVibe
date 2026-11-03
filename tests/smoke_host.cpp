@@ -1533,6 +1533,46 @@ int main(int argc, char **argv) {
               "velocity's curve shapes what it puts out");
     }
 
+    // A slot's depth is scaled by its Amount and its aux: a macro turned up, at -100 % on A's output, silences A; at 50 %
+    // Amount it takes A down by half. With velocity for its aux, which runs per voice, a note at full velocity is
+    // silenced and one at half velocity halved, each in its own voice; with the mod wheel for its aux, the wheel down
+    // leaves A alone. A's own velocity scaling is off, so only the slot moves its level.
+    {
+        setParams({{paramIndex(0, OpParam::Velocity), 0.0},
+                   {slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kMaxSources, 0), -1.0},
+                   {paramIndex(0, MacroParam::Value), 1.0}});
+        auto peakAt = [&](double velocity) {
+            clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 92, 69);
+            on.velocity = velocity;
+            runBlock({&on.header});
+            runBlocks(4);
+            const float peak = runBlocks(8);
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const float muted = peakAt(1.0);
+        setParams({{slotScaleIndex(kMaxSources, 0), 0.5}});
+        const float halved = peakAt(1.0);
+        setParams({{slotScaleIndex(kMaxSources, 0), 1.0}, {slotAuxIndex(kMaxSources, 0), slotAuxValue(kVelocitySource)}});
+        const float hard = peakAt(1.0), soft = peakAt(0.5);
+        setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kWheelSource)}});
+        const float wheelDown = peakAt(1.0);
+        setParams({{slotAuxIndex(kMaxSources, 0), 0.0},
+                   {slotTargetIndex(kMaxSources, 0), 0.0},
+                   {slotAmountIndex(kMaxSources, 0), 0.0},
+                   {paramIndex(0, MacroParam::Value), 0.0}});
+        const float full = peakAt(1.0);
+        setParams({{paramIndex(0, OpParam::Velocity), 0.5}}); // as it starts
+        std::printf("      macro at -100 %% on A's output: peak %.3f, at 50 %% Amount %.3f; velocity as aux %.3f at full, "
+                    "%.3f at half; mod wheel (down) as aux %.3f; %.3f without it\n",
+                    muted, halved, hard, soft, wheelDown, full);
+        check(muted < 0.005f && std::abs(halved / full - 0.5f) < 0.03f, "a slot's Amount scales its depth");
+        check(hard < 0.005f && std::abs(soft / full - 0.5f) < 0.03f,
+              "an aux that runs per voice scales a macro's slot in each voice");
+        check(std::abs(wheelDown - full) < 1e-3f, "an aux at 0 leaves its slot's target alone");
+    }
+
     // Effects, on the plain sine. Slot 0 holds a shaper, slot 1 a DJ EQ, slot 2
     // a delay, slot 3 a filter, slots 4 and 5 parametric EQs; each starts on.
     {

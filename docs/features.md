@@ -100,7 +100,16 @@ What the plugin does and how its editor works, in full. Building and installing 
   down at rest and up at its peak), and a macro's, the mod wheel's, the note source's or velocity's about the middle
   of what it puts out (a macro moves nothing with its knob at 50 %). LFOs and envelopes run
   per voice and restart
-  with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later. Once a key is
+  with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later.
+  Each modulation also has an **Amount** (0–100 %, all of it to begin with), which scales its depth, and can have an
+  **aux**: another source whose output scales it too, as a unipolar source puts it out (0 to 1), so a macro can
+  fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
+  editor); the aux also by dropping a source's handle on the modulation's depth handle. An aux that runs per voice
+  (an LFO, an envelope, the note source, velocity) scales it in each voice by its own output there, as of the last
+  32-sample block (or this one, for a source that comes before it); a macro or the mod wheel scales it the same for
+  all. A macro's or the mod wheel's modulation with an aux that runs per voice then runs per voice too, reaching the
+  effects through the newest voice. A switched-off aux puts out nothing, so it scales its modulation to nothing; a
+  source can't be its own modulations' aux. Once a key is
   let go, a mod envelope that modulates something runs its release out even after the operators have faded: the
   voice keeps running its modulation alone (rendering no sound) until the release is over, so what it moves, an
   effect's knob for one, follows it down instead of jumping back, and only then reports its note's end to the host.
@@ -270,7 +279,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
 - **Host modulation**: all continuous parameters accept CLAP modulation globally, the macros' knobs and depths, the
-  mod wheel, the note source's range and depths and velocity's depths among them; those the voices read also per
+  mod wheel, the note source's range and depths, velocity's depths and every modulation's Amount among them; those
+  the voices read also per
   voice (not Volume, the mod wheel, the effects, the macros, the note source or velocity), so Bitwig's modulators
   (including per-note ones) can drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
@@ -292,8 +302,9 @@ switching one on and wiring it in is the whole job.
 The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. Collapsing
 the modulation panel or the keyboard strip makes it shorter (the plugin asks the host to resize the window).
 
-- **ROUTING / MATRIX / FX** tabs, under the header, pick what the panels below them show: the routing graph or
-  the matrix (two views of the same connections) next to the inspector, or the effects chain across both. The
+- **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panels below them show: the routing graph
+  or the matrix (two views of the same connections) next to the inspector, or across both the effects chain or
+  every modulation. The
   choice is saved with the patch. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
@@ -412,6 +423,34 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     double-click takes the resonance away. Each band's
     row of knobs starts with its shape, an icon in the band's color with its name under it, which opens the list
     of shapes.
+  - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
+    in the order their cards show, then the macros, the note source, the mod wheel and velocity), the first of a
+    source's rows naming it with its handle's look and the others a line in its color down the source's column.
+    Modulations at 0 % are listed too. Over the rows, the count (how many are bypassed and at 0 % with it); then
+    the columns' names. A row has, from its left:
+    - the bypass dot, as on a source's row (a macro's, the note source's, the mod wheel's and velocity's
+      modulations can't be bypassed, and their dot is only drawn);
+    - the **source** and the **target**: a click on either opens a cascading menu, the next level opening beside
+      an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Macros, and Keyboard:
+      Note, Velocity and Mod Wheel); picking one moves the modulation there, into a free slot, with its depth,
+      polarity (as it swings now), Amount, aux and bypass, as one undo step. A source that modulates the target
+      already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists every
+      target by category: Global; Operators, each with its params under PITCH, LEVEL, ENVELOPE, UNISON and NOISE;
+      the Matrix, by the node a route comes from (into each node it can feed, and out); Filters; Shapers; Effects,
+      only those in the chain, in its order, each with the knobs of its type; and Modulation, each LFO's and
+      envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
+      rest. What the row has now is checked, and the categories it is in have a dot; a click elsewhere closes the
+      menu, and so does a second click on what opened it;
+    - the **depth**, a bar like a source row's, with its value (double-click or Ctrl+Click types one);
+    - the **polarity** switch, as on a source's row;
+    - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
+    - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on
+      either opens the menu of sources, None first, the row's own source faint;
+    - the × that removes the modulation.
+
+    The right-click menu of any of a row's cells is its modulation's (Edit depth on the depth, Bypass, Unipolar /
+    Bipolar, Remove). With more rows than fit (about ten), a bar at the right (drag its thumb or click its track) or
+    the mouse wheel over the rows (not on a bar, which the wheel turns) scrolls them smoothly, a row a notch.
   - **Partial editor**: picking Custom from an operator's **…** list opens its partials over the routing panel:
     the wave they make, one cycle, then a bar per partial for its level (in dB, from −60 just above the bottom
     to 0 at the top, marked every 12; the bottom itself is none) and, in another color, one for its phase (a full
@@ -573,6 +612,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap. A source can modulate another source's depth too (drop its handle on
     a depth bar in that source's list): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
+  - **Aux**: a source's handle dropped on another source's depth handle (while it is dragged, the depth handles
+    are ringed faintly, the one under it brightly) makes the dropped source that modulation's aux, in place of
+    any it had; the depth handle then has a ring in the aux's color. A modulation's ring on its knob, and its range
+    on a label or cell, show how far its depth and Amount take it, which an aux lets it go at most.
   - **Bypass**: the dot at the start of each target's row in the source's list switches that modulation off and
     on again, keeping its target and depth; so do **Bypass** / **Resume** in the right-click menus of the row, the
     knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed. Bypasses

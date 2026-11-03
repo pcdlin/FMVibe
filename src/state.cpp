@@ -233,7 +233,7 @@ void layoutFields(Io &io, Layout &ui) {
     io.numbers(ui.boxY, 0.0f, 1.0f);
     io.number(ui.selectedNode, 0.0f, gui::kNodes - 1.0f, truncated<int>);
     io.number(ui.zoom, 0.5f, 3.0f);
-    io.number(ui.view, 0.0f, 2.0f, rounded<gui::RoutingView>);
+    io.number(ui.view, 0.0f, 3.0f, rounded<gui::RoutingView>);
     io.number(ui.sourcesCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     // The source order lists every place once; anything else falls back to the default.
     io.numbers(ui.sourceOrder, 0.0f, kMaxSources - 1.0f, rounded<int>, everyPlaceOnce);
