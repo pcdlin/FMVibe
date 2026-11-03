@@ -210,10 +210,10 @@ constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
 constexpr Point kFmAmountKnob{308.0f, 32.0f};
 constexpr Point kVoicesKnob{1024.0f, 32.0f};
-constexpr Point kMonoButton{727.0f, 21.0f};
-constexpr Point kLegatoToggle{705.0f, 44.0f};
-constexpr Point kGlideKnob{770.0f, 21.0f};
-constexpr Point kAlwaysToggle{803.0f, 44.0f};
+constexpr Point kMonoButton{702.0f, 21.0f};
+constexpr Point kLegatoToggle{680.0f, 44.0f};
+constexpr Point kGlideKnob{766.0f, 32.0f};
+constexpr Point kAlwaysToggle{848.0f, 22.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};

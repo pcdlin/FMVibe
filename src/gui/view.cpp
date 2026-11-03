@@ -1149,13 +1149,11 @@ bool View::poll() {
 // --- Geometry.
 
 Point View::knobCenter(const Widget &w) {
-    if (smallKnob(w))
-        return {w.rect.x + 11.0f, w.rect.center().y};
     return w.compact ? Point{w.rect.x + 18.0f, w.rect.y + 20.0f} : Point{w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
 }
 
 float View::knobRadius(const Widget &w) {
-    return smallKnob(w) ? 11.0f : w.compact ? 17.0f : w.rect.w * 0.5f;
+    return w.compact ? 17.0f : w.rect.w * 0.5f;
 }
 
 // A knob's number shows under it, or beside it in the header.
@@ -1164,8 +1162,6 @@ bool View::onValue(const Widget &w, Point p) {
         return true;
     if (w.kind != Kind::Knob)
         return false;
-    if (smallKnob(w))
-        return p.x >= w.rect.x + kSmallKnobValue;
     return w.compact ? p.x >= w.rect.x + 38.0f : p.y >= w.rect.y + w.rect.w;
 }
 
@@ -1236,15 +1232,14 @@ std::vector<View::Widget> View::widgets() const {
     const Str globalLabels[] = {Str::LabelVolume, Str::LabelFmAmount, Str::LabelPitch, Str::LabelPan};
     for (int i = 0; i < 4; ++i)
         headerKnob(globals[i], kHeaderKnobX + i * kHeaderKnobW, kHeaderKnobW, tr(globalLabels[i]));
-    // Play cluster: Poly | Mono over Legato, then Glide with its Always switch.
+    // Play cluster: Poly | Mono over Legato, then the Glide knob with its Always switch beside its label (added after
+    // the knob, so it takes the clicks there).
     const int mono = paramIndex(GlobalParam::Mono);
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
     add(Kind::Toggle, {kPlayX, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::Legato));
-    add(Kind::Knob, {kPlayX + 98.0f, 12.0f, 128.0f, 19.0f}, paramIndex(GlobalParam::Glide)); // as small as Poly | Mono
-    list.back().label = tr(Str::LabelGlide);
-    list.back().compact = true;
-    add(Kind::Toggle, {kPlayX + 98.0f, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
+    headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
+    add(Kind::Toggle, {kGlideX + kGlideW - 52.0f, 15.0f, 52.0f, 15.0f}, paramIndex(GlobalParam::GlideAlways));
     headerKnob(paramIndex(GlobalParam::BendRange), 906.0f, 96.0f, tr(Str::LabelBend));
     headerKnob(paramIndex(GlobalParam::Voices), 1006.0f, kHeaderKnobW, tr(Str::LabelVoices));
 
@@ -1905,13 +1900,9 @@ std::vector<View::Widget> View::widgets() const {
             }
             continue;
         }
-        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left, and a small one's
-        // at its row's right end, past its number.
-        const bool oneRow = smallKnob(list[i]);
-        const Point base = oneRow            ? Point{r.right() - 20.0f, r.center().y}
-                           : list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f}
-                                             : Point{r.center().x, r.y + r.w - 1.0f};
-        const float width = oneRow ? 40.0f : list[i].compact ? 34.0f : r.w;
+        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left.
+        const Point base = list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f} : Point{r.center().x, r.y + r.w - 1.0f};
+        const float width = list[i].compact ? 34.0f : r.w;
         const int fit = static_cast<int>((width - 7.0f) / 9.0f) + 1;
         int shown = n;
         float pillW = 0.0f;
@@ -5471,11 +5462,10 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const bool focused = isHovered(w) || isActive(w);
     const Point center = knobCenter(w);
     const float radius = knobRadius(w);
-    const float k = smallKnob(w) ? radius / 17.0f : 1.0f; // a small knob's rings and pointer, scaled down with it
     const double n = norm(w.param);
     const float angle = knobAngle(n);
 
-    c.arc(center, radius - 2.0f * k, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f * k);
+    c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f);
     // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
     const int macro = macroOf(w.param);
     // An LFO's Phase is faint too while notes don't start the LFO there.
@@ -5484,7 +5474,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : kAccent).alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
-    c.arc(center, radius - 2.0f * k, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f * k);
+    c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
 
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
     // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
@@ -5498,37 +5488,33 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         }
         const auto [down, up] = modReach(m);
         const float alpha = (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
-        c.arc(center, radius + 2.5f * k, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha),
-              2.5f * k);
+        c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha),
+              2.5f);
     });
     for (const Assignment &f : focus) {
         const auto [down, up] = modReach(f);
         const float alpha = sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f;
-        c.arc(center, radius + 3.0f * k, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha),
-              4.0f * k);
+        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha),
+              4.0f);
     }
 
-    c.fillCircle(center, radius - 7.0f * k, kKnobBody);
-    c.strokeCircle(center, radius - 7.0f * k, kBorder, 1.0f);
-    c.line(Canvas::onCircle(center, (radius - 7.0f * k) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f * k, angle),
-           kText, 2.0f * k);
+    c.fillCircle(center, radius - 7.0f, kKnobBody);
+    c.strokeCircle(center, radius - 7.0f, kBorder, 1.0f);
+    c.line(Canvas::onCircle(center, (radius - 7.0f) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle),
+           kText, 2.0f);
 
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
     const float offset = liveOffset(w.param);
     if (offset != 0.0f)
-        c.fillCircle(Canvas::onCircle(center, radius - 2.0f * k, knobAngle(n + offset / (def.max - def.min))),
-                     2.5f * std::max(k, 0.8f), kText);
+        c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))),
+                     2.5f, kText);
 
     char text[64];
     formatParam(w.param, value(w.param), text, sizeof(text));
     std::string shown = text;
     if (def.kind == ParamKind::Ratio)
         shown = "\xC3\x97" + shown;
-    if (smallKnob(w)) { // the label and the number on its row
-        c.text({w.rect.x + 28.0f, w.rect.y, kSmallKnobValue - 30.0f, w.rect.h}, w.label, 10.5f, kDim, Align::Left);
-        c.text({w.rect.x + kSmallKnobValue, w.rect.y, w.rect.w - kSmallKnobValue, w.rect.h}, shown, 13.0f, kText,
-               Align::Left, true);
-    } else if (w.compact) {
+    if (w.compact) {
         const float textWidth = w.rect.w - 42.0f;
         c.text({w.rect.x + 42.0f, w.rect.y + 3.0f, textWidth, 16.0f}, w.label, 10.5f, kDim, Align::Left);
         c.text({w.rect.x + 42.0f, w.rect.y + 18.0f, textWidth, 18.0f}, shown, 13.0f, kText, Align::Left, true);
@@ -5892,8 +5878,6 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
 
 Rect View::typingField() const {
     const Widget &w = typing_->widget;
-    if (w.kind == Kind::Knob && smallKnob(w))
-        return {w.rect.x + kSmallKnobValue - 4.0f, w.rect.y, 70.0f, w.rect.h};
     if (w.kind == Kind::Knob && w.compact)
         return {w.rect.x + 38.0f, w.rect.y + 17.0f, w.rect.w - 36.0f, 20.0f};
     if (w.kind == Kind::Knob)

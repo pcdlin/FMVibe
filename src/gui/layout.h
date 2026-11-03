@@ -145,8 +145,9 @@ constexpr float kCascadePad = 4.0f;
 // Header: global knobs, the play cluster between two dividers, then the voice controls.
 constexpr float kHeaderKnobX = 186.0f;
 constexpr float kHeaderKnobW = 104.0f;
-constexpr float kPlayX = 661.0f; // its switches' middle half way between the dividers
-constexpr float kSmallKnobValue = 64.0f; // where a small header knob's number starts, past its knob and label
+constexpr float kPlayX = 636.0f;  // Poly | Mono over Legato, 24 px past the first divider
+constexpr float kGlideX = 748.0f; // the Glide knob 24 px past them, its Always switch ending 22 px before the second
+constexpr float kGlideW = 126.0f;
 constexpr float kDividers[] = {612.0f, 896.0f};
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
 // past full scale.

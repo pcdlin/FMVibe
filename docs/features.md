@@ -511,9 +511,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster (Poly/Mono over Legato, then a small Glide knob, its label and number beside it, over its
-  Always switch, each switch explaining itself on hover, centered between the dividers either side of it); Bend; Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and
-  how many voices are playing.
+  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, then a Glide knob like the global
+  ones, its Always switch beside its label, each switch explaining itself on hover); Bend; Voices (it drags on a log
+  scale, so 4 and 512 are both easy to reach); and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
   value, adding or removing an effect or source (with its modulation), moving nodes or cards, bending a wire, Init

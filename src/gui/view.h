@@ -222,7 +222,7 @@ private:
         int a = -1;
         int b = -1;
         const char *label = nullptr;
-        bool compact = false; // header knob with its label beside it (one row high: see smallKnob())
+        bool compact = false; // header knob with its label and number beside it
         bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
         bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
@@ -615,8 +615,6 @@ private:
     Point nodePlace(int node, Point want) const;
     int nodeAt(Point p) const;
     Rect envRect(int env) const;
-    // A small header knob, one row high, has its label and number on that row beside it (the Glide knob).
-    static bool smallKnob(const Widget &w) { return w.compact && w.rect.h < 30.0f; }
     static Point knobCenter(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.
