@@ -1108,6 +1108,10 @@ constexpr clap_id kMaxParamId = maxParamId();
 
 constexpr double kMinTime = 0.001;
 constexpr double kMaxTime = 20.0;
+// The longest attack, decay and release of an envelope (operators' and mod envelopes'): on the same curve as the
+// other times, so their stored values keep their meaning, but their range stops short of its top. A state or preset
+// with a longer one loads it as this.
+constexpr double kMaxEnvTime = 10.0;
 constexpr double kMinRate = 0.02;
 constexpr double kMaxRate = 100.0;
 constexpr double kMinCutoff = 20.0;
@@ -1115,6 +1119,8 @@ constexpr double kMaxCutoff = 20000.0;
 
 inline double timeFromNorm(double x) { return kMinTime * std::pow(kMaxTime / kMinTime, x); }
 inline double normFromTime(double seconds) { return std::log(seconds / kMinTime) / std::log(kMaxTime / kMinTime); }
+// Where kMaxEnvTime sits on that curve: the top of the envelopes' attack, decay and release.
+inline const double kMaxEnvNorm = normFromTime(kMaxEnvTime);
 inline double rateFromNorm(double x) { return kMinRate * std::pow(kMaxRate / kMinRate, x); }
 inline double normFromRate(double hz) { return std::log(hz / kMinRate) / std::log(kMaxRate / kMinRate); }
 // The phaser's and flanger's rates: an LFO's curve, but at its bottom the sweep stands still.

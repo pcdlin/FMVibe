@@ -20,7 +20,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     from mono to fully uncorrelated left and right;
   - Coarse ratio (0.5, 1…32), Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
     ratio; the knob moves in whole semitones, while LFOs, envelopes and host modulation glide through it), Detune
-    (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release);
+    (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release;
+    its attack, decay and release each go from 1 ms to 10 s, its hold up to 20 s);
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
     global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
@@ -85,7 +86,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   a shaper's Mix below 100 %) grows loud but never without end. It
   runs only while something goes in and its output goes somewhere.
 - **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square, random or a freeform shape;
-  0.02–100 Hz) and mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release). A new
+  0.02–100 Hz) and mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
+  operator's envelope has them). A new
   instance has none; each one added starts
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
   has 16 slots, and a slot can
