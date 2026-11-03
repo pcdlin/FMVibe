@@ -1470,7 +1470,6 @@ int main(int argc, char **argv) {
     {
         const int curve = paramIndex(VelocityParam::Curve);
         setParams({{paramIndex(0, OpParam::Out), 0.0},
-                   {paramIndex(0, OpParam::Velocity), 0.0},
                    {slotTargetIndex(kVelocitySource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
                    {slotAmountIndex(kVelocitySource, 0), 1.0}});
         auto peakAt = [&](double velocity) {
@@ -1492,7 +1491,6 @@ int main(int argc, char **argv) {
         setParams({{shapeFieldIndex(curve, 0, PointField::Y), -1.0},
                    {shapeFieldIndex(curve, 1, PointField::Y), 1.0},
                    {paramIndex(0, OpParam::Out), 1.0},
-                   {paramIndex(0, OpParam::Velocity), 0.5}, // as it starts
                    {slotTargetIndex(kVelocitySource, 0), 0.0},
                    {slotAmountIndex(kVelocitySource, 0), 0.0}});
         std::printf("      A's output by velocity: peak %.3f / %.3f / %.3f at 0.25 / 0.5 / 1; bipolar %.3f / %.3f at "
@@ -1510,11 +1508,9 @@ int main(int argc, char **argv) {
     // Amount it takes A down by half. With velocity for its aux, which runs per voice, a note at full velocity is
     // silenced and one at half velocity halved, each in its own voice; with the mod wheel for its aux, the wheel down
     // leaves A alone. Bypassed, the macro's slot leaves A alone, with an aux running per voice or not, and so does
-    // velocity's, which at -100 % silences A at full velocity until it is bypassed. A's own velocity scaling is off,
-    // so only the slots move its level.
+    // velocity's, which at -100 % silences A at full velocity until it is bypassed.
     {
-        setParams({{paramIndex(0, OpParam::Velocity), 0.0},
-                   {slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+        setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
                    {slotAmountIndex(kMaxSources, 0), -1.0},
                    {paramIndex(0, MacroParam::Value), 1.0}});
         auto peakAt = [&](double velocity) {
@@ -1550,8 +1546,7 @@ int main(int argc, char **argv) {
         const float velocityBypassed = peakAt(1.0);
         setParams({{slotTargetIndex(kVelocitySource, 0), 0.0},
                    {slotAmountIndex(kVelocitySource, 0), 0.0},
-                   {slotBypassIndex(kVelocitySource, 0), 0.0},
-                   {paramIndex(0, OpParam::Velocity), 0.5}}); // as it starts
+                   {slotBypassIndex(kVelocitySource, 0), 0.0}});
         std::printf("      macro at -100 %% on A's output: peak %.3f, at 50 %% Amount %.3f; velocity as aux %.3f at full, "
                     "%.3f at half; mod wheel (down) as aux %.3f; %.3f without it\n",
                     muted, halved, hard, soft, wheelDown, full);
@@ -1573,8 +1568,7 @@ int main(int argc, char **argv) {
     // the unmodulated one.
     {
         const int lfo = 5;
-        setParams({{paramIndex(0, OpParam::Velocity), 0.0},
-                   {paramIndex(lfo, SourceParam::Type), static_cast<double>(SourceType::Lfo)},
+        setParams({{paramIndex(lfo, SourceParam::Type), static_cast<double>(SourceType::Lfo)},
                    {paramIndex(lfo, SourceParam::Shape), static_cast<double>(LfoShape::Square)},
                    {paramIndex(lfo, SourceParam::Rate), normFromRate(0.5)},
                    {paramIndex(lfo, SourceParam::Unipolar), 1.0},
@@ -1596,8 +1590,7 @@ int main(int argc, char **argv) {
         const float open = firstBlock();
         setParams({{slotTargetIndex(lfo, 0), 0.0},
                    {paramIndex(lfo, SourceParam::Type), static_cast<double>(SourceType::None)},
-                   {paramIndex(NoteParam::High), kMaxNotePitch},
-                   {paramIndex(0, OpParam::Velocity), 0.5}}); // as they start
+                   {paramIndex(NoteParam::High), kMaxNotePitch}});
         std::printf("      first block under an LFO at -100 %%: peak %.3f, scaled by velocity %.3f, by the note %.3f; "
                     "%.3f unmodulated\n",
                     plain, byVelocity, byNote, open);

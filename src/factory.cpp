@@ -100,15 +100,14 @@ std::vector<FactoryPreset> factoryPresets() {
     std::vector<FactoryPreset> presets;
 
     // KY Electric Piano
-    // Two carrier pairs: a soft body whose brightness dies away, and a bell-like tine (ratio 14) on top,
-    // both brighter the harder the key is struck.
+    // Two carrier pairs: a soft body whose brightness dies away, and a bell-like tine (ratio 14) on top.
     {
         Patch p;
-        p.op(0, 1, 0.8, 0.0, 3.0, 0.0, 0.5).opSet(0, OpParam::Velocity, 0.4);
-        p.op(1, 1, 0.0, 0.0, 0.9, 0.1, 0.5).opSet(1, OpParam::Velocity, 0.9);
+        p.op(0, 1, 0.8, 0.0, 3.0, 0.0, 0.5);
+        p.op(1, 1, 0.0, 0.0, 0.9, 0.1, 0.5);
         p.mod(1, 0, 0.35);
         p.op(2, 1, 0.5, 0.0, 2.5, 0.0, 0.5).opSet(2, OpParam::Detune, 7.0);
-        p.op(3, 14, 0.0, 0.0, 0.15, 0.0, 0.1).opSet(3, OpParam::Velocity, 1.0);
+        p.op(3, 14, 0.0, 0.0, 0.15, 0.0, 0.1);
         p.mod(3, 2, 0.2);
         p.fx(0, FxType::Reverb, {{FxParam::ReverbSize, 0.45}, {FxParam::ReverbDecay, normFromTime(1.6)},
                                  {FxParam::ReverbMix, 0.2}});
@@ -120,8 +119,8 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.set(paramIndex(GlobalParam::Mono), 1.0).set(paramIndex(GlobalParam::Glide), normFromTime(0.04));
-        p.op(0, 1, 0.9, 0.0, 1.5, 0.85, 0.08).opSet(0, OpParam::Velocity, 0.3);
-        p.op(1, 1, 0.0, 0.0, 0.35, 0.3, 0.1).opSet(1, OpParam::Velocity, 0.7);
+        p.op(0, 1, 0.9, 0.0, 1.5, 0.85, 0.08);
+        p.op(1, 1, 0.0, 0.0, 0.35, 0.3, 0.1);
         p.mod(1, 0, 0.5).mod(1, 1, 0.35);
         p.op(2, 0, 0.5, 0.0, 2.0, 1.0, 0.08);
         presets.push_back({"BA FM Bass", p.changes});
@@ -144,9 +143,9 @@ std::vector<FactoryPreset> factoryPresets() {
     // Four detuned copies fading in slowly, a gentle second harmonic that an LFO lets breathe.
     {
         Patch p;
-        p.op(0, 1, 0.7, 0.9, 2.0, 1.0, 1.8).opSet(0, OpParam::Velocity, 0.2);
+        p.op(0, 1, 0.7, 0.9, 2.0, 1.0, 1.8);
         p.opSet(0, OpParam::Unison, 4.0).opSet(0, OpParam::UnisonDetune, 14.0).opSet(0, OpParam::UnisonSpread, 0.8);
-        p.op(1, 2, 0.0, 1.2, 3.0, 0.7, 2.0).opSet(1, OpParam::Velocity, 0.2);
+        p.op(1, 2, 0.0, 1.2, 3.0, 0.7, 2.0);
         p.mod(1, 0, 0.22);
         p.lfo(0, LfoShape::Sine, 0.25, matrixIndex(1, 0), 0.24);
         p.fx(0, FxType::Reverb, {{FxParam::ReverbSize, 0.85}, {FxParam::ReverbDecay, normFromTime(5.0)},
@@ -161,7 +160,7 @@ std::vector<FactoryPreset> factoryPresets() {
         const int ratios[] = {1, 0, 2, 3, 4};
         const double levels[] = {0.55, 0.45, 0.35, 0.25, 0.2};
         for (int op = 0; op < 5; ++op)
-            p.op(op, ratios[op], levels[op], 0.004, 1.0, 1.0, 0.04).opSet(op, OpParam::Velocity, 0.0);
+            p.op(op, ratios[op], levels[op], 0.004, 1.0, 1.0, 0.04);
         p.mod(0, 0, 0.12);
         p.fx(0, FxType::Phaser, {{FxParam::PhaserRate, normFromRate(0.7)}, {FxParam::PhaserDepth, 0.4},
                                  {FxParam::PhaserFeedback, 0.2}, {FxParam::PhaserMix, 0.7}});
@@ -173,7 +172,7 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.op(0, 1, 0.8, 0.0, 0.7, 0.0, 0.25);
-        p.op(1, 2, 0.0, 0.0, 0.12, 0.0, 0.1).opSet(1, OpParam::Velocity, 0.8);
+        p.op(1, 2, 0.0, 0.0, 0.12, 0.0, 0.1);
         p.mod(1, 0, 0.45);
         p.fx(0, FxType::Delay, {{FxParam::DelayFeedback, 0.35}, {FxParam::DelayTone, -0.3},
                                 {FxParam::DelayMix, 0.22}});
@@ -190,16 +189,16 @@ std::vector<FactoryPreset> factoryPresets() {
     // gentle compression, a cut below and air above, a chorusing flanger, ping-pong echoes and a large room.
     {
         Patch p;
-        p.op(0, 1, 0.45, 0.005, 2.5, 0.6, 1.2).opSet(0, OpParam::Velocity, 0.4);
-        p.op(1, 2, 0.0, 0.0, 1.2, 0.35, 1.0).opSet(1, OpParam::Velocity, 0.8);
+        p.op(0, 1, 0.45, 0.005, 2.5, 0.6, 1.2);
+        p.op(1, 2, 0.0, 0.0, 1.2, 0.35, 1.0);
         p.mod(1, 0, 0.28);
-        p.op(2, 1, 0.0, 0.35, 3.0, 0.8, 1.8).opSet(2, OpParam::Velocity, 0.2);
+        p.op(2, 1, 0.0, 0.35, 3.0, 0.8, 1.8);
         p.opSet(2, OpParam::Wave, static_cast<double>(OpWave::Triangle)).opSet(2, OpParam::Detune, 5.0);
         p.opSet(2, OpParam::Unison, 3.0).opSet(2, OpParam::UnisonDetune, 16.0).opSet(2, OpParam::UnisonSpread, 0.9);
-        p.op(3, 3, 0.0, 0.5, 2.5, 0.5, 1.5).opSet(3, OpParam::Velocity, 0.3);
+        p.op(3, 3, 0.0, 0.5, 2.5, 0.5, 1.5);
         p.mod(3, 2, 0.2).mod(1, 2, 0.06);
-        p.op(4, 4, 0.12, 0.0, 1.4, 0.0, 0.9).opSet(4, OpParam::Velocity, 0.9);
-        p.op(5, 7, 0.0, 0.0, 0.5, 0.0, 0.4).opSet(5, OpParam::Fine, 1.0 / 14.0).opSet(5, OpParam::Velocity, 1.0);
+        p.op(4, 4, 0.12, 0.0, 1.4, 0.0, 0.9);
+        p.op(5, 7, 0.0, 0.0, 0.5, 0.0, 0.4).opSet(5, OpParam::Fine, 1.0 / 14.0);
         p.mod(5, 4, 0.3).mod(5, 5, 0.12);
 
         p.filter(0, FilterType::LowPass, 1400.0, 0.35).filterSet(0, FilterParam::Drive, 0.15);
@@ -260,13 +259,13 @@ std::vector<FactoryPreset> factoryPresets() {
         Patch p;
         p.set(paramIndex(GlobalParam::Mono), 1.0).set(paramIndex(GlobalParam::Glide), normFromTime(0.06));
         for (int op = 0; op < 2; ++op) {
-            p.op(op, 1, 0.0, 0.003, 1.0, 1.0, 0.12).opSet(op, OpParam::Velocity, 0.2);
+            p.op(op, 1, 0.0, 0.003, 1.0, 1.0, 0.12);
             p.opSet(op, OpParam::Wave, static_cast<double>(OpWave::Saw)).opSet(op, OpParam::PhaseRandom, 1.0);
         }
         p.opSet(0, OpParam::Unison, 4.0).opSet(0, OpParam::UnisonDetune, 22.0).opSet(0, OpParam::UnisonSpread, 0.5);
         p.opSet(1, OpParam::Detune, -9.0).opSet(1, OpParam::Unison, 2.0).opSet(1, OpParam::UnisonDetune, 12.0);
-        p.op(2, 0, 0.45, 0.003, 1.0, 1.0, 0.1).opSet(2, OpParam::Velocity, 0.1);
-        p.op(3, 1, 0.0, 0.003, 0.8, 0.6, 0.12).opSet(3, OpParam::Velocity, 0.4);
+        p.op(2, 0, 0.45, 0.003, 1.0, 1.0, 0.1);
+        p.op(3, 1, 0.0, 0.003, 0.8, 0.6, 0.12);
         p.mod(3, 0, 0.12).mod(3, 1, 0.08);
 
         p.filter(0, FilterType::LowPass, 520.0, 0.25).filterSet(0, FilterParam::Drive, 0.45);
@@ -312,12 +311,12 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.set(paramIndex(GlobalParam::Mono), 1.0).set(paramIndex(GlobalParam::Glide), normFromTime(0.03));
-        p.op(0, 1, 0.0, 0.003, 1.0, 1.0, 0.1).opSet(0, OpParam::Velocity, 0.2);
+        p.op(0, 1, 0.0, 0.003, 1.0, 1.0, 0.1);
         p.opSet(0, OpParam::Wave, static_cast<double>(OpWave::Saw)).opSet(0, OpParam::Unison, 2.0);
         p.opSet(0, OpParam::UnisonDetune, 8.0).opSet(0, OpParam::PhaseRandom, 1.0);
-        p.op(1, 1, 0.0, 0.003, 1.0, 0.8, 0.1).opSet(1, OpParam::Velocity, 0.3);
-        p.op(2, 0, 0.4, 0.003, 1.0, 1.0, 0.1).opSet(2, OpParam::Velocity, 0.1);
-        p.op(3, 2, 0.0, 0.003, 0.6, 0.5, 0.1).opSet(3, OpParam::Velocity, 0.3);
+        p.op(1, 1, 0.0, 0.003, 1.0, 0.8, 0.1);
+        p.op(2, 0, 0.4, 0.003, 1.0, 1.0, 0.1);
+        p.op(3, 2, 0.0, 0.003, 0.6, 0.5, 0.1);
         p.mod(1, 0, 0.35).mod(3, 1, 0.25);
         p.filter(0, FilterType::LowPass, 300.0, 0.55).filterSet(0, FilterParam::Slope, 3.0);
         p.filterSet(0, FilterParam::Drive, 0.5).filterSet(0, FilterParam::KeyTrack, 0.3);
@@ -354,11 +353,11 @@ std::vector<FactoryPreset> factoryPresets() {
     // long shimmering hall.
     {
         Patch p;
-        p.op(0, 1, 0.0, 0.45, 2.0, 0.9, 3.0).opSet(0, OpParam::Velocity, 0.2);
+        p.op(0, 1, 0.0, 0.45, 2.0, 0.9, 3.0);
         p.opSet(0, OpParam::Wave, static_cast<double>(OpWave::Triangle)).opSet(0, OpParam::Unison, 5.0);
         p.opSet(0, OpParam::UnisonDetune, 18.0).opSet(0, OpParam::UnisonSpread, 1.0);
-        p.op(1, 2, 0.0, 0.6, 2.5, 0.7, 3.0).opSet(1, OpParam::Velocity, 0.2);
-        p.op(2, 0, 0.3, 0.5, 2.0, 0.9, 3.0).opSet(2, OpParam::Velocity, 0.1);
+        p.op(1, 2, 0.0, 0.6, 2.5, 0.7, 3.0);
+        p.op(2, 0, 0.3, 0.5, 2.0, 0.9, 3.0);
         p.op(3, 3, 0.0, 0.8, 3.0, 0.6, 3.0).opSet(3, OpParam::Fine, 0.01);
         p.op(4, 2, 0.0, 0.5, 2.0, 0.8, 3.0).opSet(4, OpParam::Wave, static_cast<double>(OpWave::Saw));
         p.opSet(4, OpParam::Unison, 3.0).opSet(4, OpParam::UnisonDetune, 22.0).opSet(4, OpParam::UnisonSpread, 1.0);
@@ -392,7 +391,7 @@ std::vector<FactoryPreset> factoryPresets() {
     // compression, more air, dotted-eighth ping-pong echoes and a plate.
     {
         Patch p;
-        p.op(0, 1, 0.0, 0.005, 1.0, 1.0, 0.3).opSet(0, OpParam::Velocity, 0.2);
+        p.op(0, 1, 0.0, 0.005, 1.0, 1.0, 0.3);
         p.opSet(0, OpParam::Wave, static_cast<double>(OpWave::Saw)).opSet(0, OpParam::Unison, 7.0);
         p.opSet(0, OpParam::UnisonDetune, 25.0).opSet(0, OpParam::UnisonSpread, 0.9);
         p.op(1, 2, 0.0, 0.005, 1.0, 1.0, 0.3).opSet(1, OpParam::Wave, static_cast<double>(OpWave::Saw));
@@ -430,15 +429,15 @@ std::vector<FactoryPreset> factoryPresets() {
     }
     // LD FM Brass
     // FM brass: two stacks a few cents apart, each modulator coming in a little after its carrier so the note
-    // blats in, harder the harder it is played; a third operator brightens the first stack's modulator. An
+    // blats in; a third operator brightens the first stack's modulator. An
     // envelope pushes the FM at the start and an LFO adds vibrato. Then compression, a presence peak and a hall.
     {
         Patch p;
-        p.op(0, 1, 0.6, 0.06, 0.6, 0.8, 0.25).opSet(0, OpParam::Velocity, 0.5);
-        p.op(1, 1, 0.0, 0.08, 0.5, 0.6, 0.25).opSet(1, OpParam::Velocity, 0.8);
-        p.op(2, 1, 0.35, 0.06, 0.6, 0.8, 0.25).opSet(2, OpParam::Detune, 6.0).opSet(2, OpParam::Velocity, 0.5);
-        p.op(3, 1, 0.0, 0.1, 0.5, 0.6, 0.25).opSet(3, OpParam::Velocity, 0.8);
-        p.op(4, 3, 0.0, 0.05, 0.3, 0.3, 0.2).opSet(4, OpParam::Velocity, 0.9);
+        p.op(0, 1, 0.6, 0.06, 0.6, 0.8, 0.25);
+        p.op(1, 1, 0.0, 0.08, 0.5, 0.6, 0.25);
+        p.op(2, 1, 0.35, 0.06, 0.6, 0.8, 0.25).opSet(2, OpParam::Detune, 6.0);
+        p.op(3, 1, 0.0, 0.1, 0.5, 0.6, 0.25);
+        p.op(4, 3, 0.0, 0.05, 0.3, 0.3, 0.2);
         p.mod(1, 0, 0.45).mod(3, 2, 0.35).mod(4, 1, 0.08);
         p.env(0, 0.0, 0.15, 0.0, 0.2, matrixIndex(1, 0), 0.15).aim(0, 1, matrixIndex(3, 2), 0.12);
         // Vibrato: a few cents either way on both carriers.
@@ -462,10 +461,10 @@ std::vector<FactoryPreset> factoryPresets() {
     // fast compression, a low cut and a small room.
     {
         Patch p;
-        p.op(0, 1, 0.7, 0.0, 0.4, 0.0, 0.3).opSet(0, OpParam::Velocity, 0.6);
+        p.op(0, 1, 0.7, 0.0, 0.4, 0.0, 0.3);
         p.op(1, 1, 0.25, 0.0, 0.18, 0.0, 0.15).opSet(1, OpParam::Wave, static_cast<double>(OpWave::Noise));
-        p.opSet(1, OpParam::NoiseSlope, 0.3).opSet(1, OpParam::Velocity, 0.8);
-        p.op(2, 3, 0.2, 0.0, 0.3, 0.0, 0.2).opSet(2, OpParam::Fine, 1.0 / 6.0).opSet(2, OpParam::Velocity, 0.8);
+        p.opSet(1, OpParam::NoiseSlope, 0.3);
+        p.op(2, 3, 0.2, 0.0, 0.3, 0.0, 0.2).opSet(2, OpParam::Fine, 1.0 / 6.0);
         p.op(3, 7, 0.0, 0.0, 0.1, 0.0, 0.1).opSet(3, OpParam::Fine, 1.0 / 14.0);
         p.op(4, 1, 0.0, 0.0, 0.05, 0.0, 0.05).opSet(4, OpParam::Wave, static_cast<double>(OpWave::Square));
         p.mod(3, 2, 0.4).mod(4, 0, 0.15);
@@ -498,9 +497,9 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.set(paramIndex(GlobalParam::Mono), 1.0).set(paramIndex(GlobalParam::Glide), normFromTime(0.04));
-        p.op(0, 1, 0.7, 0.005, 1.0, 1.0, 0.25).opSet(0, OpParam::Velocity, 0.3);
-        p.op(1, 1, 0.0, 0.005, 1.0, 1.0, 0.25).opSet(1, OpParam::Velocity, 0.5);
-        p.op(2, 0, 0.25, 0.005, 1.0, 1.0, 0.25).opSet(2, OpParam::Velocity, 0.2);
+        p.op(0, 1, 0.7, 0.005, 1.0, 1.0, 0.25);
+        p.op(1, 1, 0.0, 0.005, 1.0, 1.0, 0.25);
+        p.op(2, 0, 0.25, 0.005, 1.0, 1.0, 0.25);
         p.shaper(0, ClipMode::SineFold, 6.0).set(shaperSendIndex(1, 0), 1.0).set(shaperModIndex(0, 0), 0.45);
         // The fold: up by a third of the Drive knob's 36 dB as a note starts, down to a tenth of it held.
         p.env(0, 0.0, 0.6, 0.3, 0.3, paramIndex(0, ShaperParam::Drive), 0.3);
@@ -522,13 +521,13 @@ std::vector<FactoryPreset> factoryPresets() {
     // BA Fuzz Bass
     // A fuzz bass: an FM pair distorted by a shaper on its way into a filter. B growls into A, A goes through shaper
     // 1 (the asymmetric curve, hard), and the shaper feeds a 24 dB low-pass that plucks open on each note; the
-    // shaper's output also comes round onto B, so the harder it is played the dirtier the growl gets. Under it a
+    // shaper's output also comes round onto B, dirtying the growl further. Under it a
     // clean sine an octave down, straight out. Then a compressor and a low cut.
     {
         Patch p;
-        p.op(0, 1, 0.0, 0.002, 1.0, 1.0, 0.12).opSet(0, OpParam::Velocity, 0.3);
-        p.op(1, 1, 0.0, 0.002, 0.8, 0.6, 0.12).opSet(1, OpParam::Velocity, 0.6);
-        p.op(2, 0, 0.45, 0.002, 1.0, 1.0, 0.12).opSet(2, OpParam::Velocity, 0.1);
+        p.op(0, 1, 0.0, 0.002, 1.0, 1.0, 0.12);
+        p.op(1, 1, 0.0, 0.002, 0.8, 0.6, 0.12);
+        p.op(2, 0, 0.45, 0.002, 1.0, 1.0, 0.12);
         p.mod(1, 0, 0.3);
         p.shaper(0, ClipMode::Asymmetric, 20.0).set(shaperSendIndex(0, 0), 1.0).set(shaperModIndex(0, 1), 0.12);
         p.set(shaperFilterIndex(0, 0), 0.8);
@@ -555,9 +554,8 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.op(0, 1, 0.0, 0.0, 0.2, 0.0, 0.06).opSet(0, OpParam::Wave, static_cast<double>(OpWave::Noise));
-        p.opSet(0, OpParam::NoiseSlope, 0.4).opSet(0, OpParam::UnisonSpread, 0.6).opSet(0, OpParam::Velocity, 0.8);
+        p.opSet(0, OpParam::NoiseSlope, 0.4).opSet(0, OpParam::UnisonSpread, 0.6);
         p.op(1, 1, 0.1, 0.0, 0.8, 0.0, 0.3).opSet(1, OpParam::Wave, static_cast<double>(OpWave::HalfSine));
-        p.opSet(1, OpParam::Velocity, 0.5);
         p.filter(0, FilterType::Comb, 261.63, 1.0).filterSet(0, FilterParam::KeyTrack, 1.0);
         p.filterSet(0, FilterParam::Out, 0.0).set(sendIndex(0, 0), 1.0);
         p.filter(1, FilterType::LowPass, 2500.0, 0.0).filterSet(1, FilterParam::Slope, 0.0); // 6 dB
@@ -585,9 +583,8 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.op(0, 1, 0.6, 0.0, 1.5, 0.0, 0.3).opSet(0, OpParam::Wave, static_cast<double>(OpWave::AltSine));
-        p.opSet(0, OpParam::DecayCurve, 0.7).opSet(0, OpParam::Velocity, 0.5);
+        p.opSet(0, OpParam::DecayCurve, 0.7);
         p.op(1, 2, 0.0, 0.0, 0.25, 0.0, 0.2).opSet(1, OpParam::Wave, static_cast<double>(OpWave::HalfSine));
-        p.opSet(1, OpParam::Velocity, 0.8);
         p.mod(1, 0, 0.45).mod(1, 1, 0.2);
         p.op(2, 1, 0.2, 0.0, 0.35, 0.0, 0.2).opSet(2, OpParam::Wave, static_cast<double>(OpWave::AbsSine));
         p.shaper(0, ClipMode::Hard, 12.0).set(shaperSendIndex(0, 0), 0.6).shaperSet(0, ShaperParam::Out, 0.25);
@@ -615,9 +612,7 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.op(0, 1, 0.0, 0.003, 1.0, 1.0, 0.15).opSet(0, OpParam::Wave, static_cast<double>(OpWave::Organ));
-        p.opSet(0, OpParam::Velocity, 0.3);
         p.op(1, 0, 0.0, 0.003, 1.0, 1.0, 0.15).opSet(1, OpParam::Wave, static_cast<double>(OpWave::Pulse));
-        p.opSet(1, OpParam::Velocity, 0.3);
         p.filter(0, FilterType::LowPass, 280.0, 0.62).filterSet(0, FilterParam::Slope, 2.0); // 18 dB
         p.filterSet(0, FilterParam::KeyTrack, 0.4).filterSet(0, FilterParam::Drive, 0.25);
         p.filterSet(0, FilterParam::Out, 0.0).set(sendIndex(0, 0), 0.8).set(sendIndex(1, 0), 0.6);
@@ -662,7 +657,7 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.op(0, 1, 0.0, 0.0, 1.5, 0.35, 0.6).opSet(0, OpParam::Wave, static_cast<double>(OpWave::Custom));
-        p.opSet(0, OpParam::Velocity, 0.4).set(partialCountIndex(0), 64.0);
+        p.set(partialCountIndex(0), 64.0);
         const int fibonacci[] = {1, 2, 3, 5, 8, 13, 21, 34, 55};
         for (int k = 0; k < 9; ++k) {
             p.set(partialLevelIndex(0, fibonacci[k] - 1), std::pow(10.0, -3.0 * k / 20.0));
@@ -670,7 +665,7 @@ std::vector<FactoryPreset> factoryPresets() {
         }
         p.filter(0, FilterType::Notch, 2000.0, 0.15).filterSet(0, FilterParam::Slope, 3.0); // 24 dB: deep and wide
         p.filterSet(0, FilterParam::KeyTrack, 1.0).set(sendIndex(0, 0), 1.0);
-        p.op(1, 0, 0.25, 0.0, 1.5, 0.5, 0.6).opSet(1, OpParam::Velocity, 0.3);
+        p.op(1, 0, 0.25, 0.0, 1.5, 0.5, 0.6);
         // The jumps: a random LFO stepping in sixteenths (division 19), on one clock, gliding only a little into each.
         p.lfo(0, LfoShape::Random, 1.0, paramIndex(0, FilterParam::Cutoff), 0.3);
         p.sourceSet(0, SourceParam::Sync, 1.0).sourceSet(0, SourceParam::Division, 19.0);
@@ -699,9 +694,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.set(paramIndex(GlobalParam::Mono), 1.0).set(paramIndex(GlobalParam::Glide), normFromTime(0.08));
         p.set(paramIndex(GlobalParam::GlideAlways), 1.0).set(paramIndex(GlobalParam::BendRange), 12.0);
         p.op(0, 1, 0.55, 0.01, 1.0, 1.0, 0.2).opSet(0, OpParam::Wave, static_cast<double>(OpWave::Vowel));
-        p.opSet(0, OpParam::Velocity, 0.3);
         p.op(1, 1, 0.0, 0.01, 0.4, 0.4, 0.2).opSet(1, OpParam::Hold, normFromTime(0.06));
-        p.opSet(1, OpParam::Velocity, 0.6);
         p.mod(1, 0, 0.22);
         p.op(2, 1, 0.0, 0.02, 1.0, 1.0, 0.2).opSet(2, OpParam::Wave, static_cast<double>(OpWave::Noise));
         p.opSet(2, OpParam::NoiseSlope, 0.5);
@@ -738,7 +731,7 @@ std::vector<FactoryPreset> factoryPresets() {
     // ping-pong echoes.
     {
         Patch p;
-        p.op(0, 1, 0.6, 0.0, 0.6, 0.0, 0.3).opSet(0, OpParam::Velocity, 0.5);
+        p.op(0, 1, 0.6, 0.0, 0.6, 0.0, 0.3);
         p.op(1, 3, 0.0, 0.0, 0.15, 0.0, 0.1).opSet(1, OpParam::Fine, 1.0 / 6.0);
         p.mod(0, 0, 0.25).mod(1, 0, 0.3);
         p.lfo(0, LfoShape::Saw, 4.0, paramIndex(GlobalParam::Pitch), -0.5).sourceSet(0, SourceParam::OneShot, 1.0);
@@ -773,10 +766,10 @@ std::vector<FactoryPreset> factoryPresets() {
     {
         Patch p;
         p.op(0, 1, 0.0, 6.0, 1.0, 1.0, 1.5).opSet(0, OpParam::Wave, static_cast<double>(OpWave::Noise));
-        p.opSet(0, OpParam::AttackCurve, -0.6).opSet(0, OpParam::UnisonSpread, 1.0).opSet(0, OpParam::Velocity, 0.0);
+        p.opSet(0, OpParam::AttackCurve, -0.6).opSet(0, OpParam::UnisonSpread, 1.0);
         p.filter(0, FilterType::HighPass, 150.0, 0.35).filterSet(0, FilterParam::Slope, 2.0); // 18 dB
         p.filterSet(0, FilterParam::Out, 0.6).set(sendIndex(0, 0), 1.0);
-        p.op(1, 1, 0.15, 0.6, 1.0, 1.0, 1.5).opSet(1, OpParam::Velocity, 0.0);
+        p.op(1, 1, 0.15, 0.6, 1.0, 1.0, 1.5);
         // The rise: the cutoff up by more than half its travel, B two octaves (24 of the Pitch knob's 96 semitones),
         // the shifter's Shift from nothing to 70 % of its 400 Hz.
         p.env(0, 8.0, 1.0, 1.0, 1.5, paramIndex(0, FilterParam::Cutoff), 0.55);

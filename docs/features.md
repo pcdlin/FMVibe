@@ -34,12 +34,15 @@ What the plugin does and how its editor works, in full. Building and installing 
     settles). Every segment arrives in its set time, whatever its curve. By default the attack is straight and
     decay and release sit at +50 %, an exponential fall of 60 dB over the segment's time.
   - Out (level straight to the audio output) and sends into the two filters and the two shapers;
-  - Velocity (how much note velocity scales the operator; on a modulator that means brightness);
+  - **Phase**: where a note starts the waveform, 0 to 100 % of a cycle (0 % by default; a sine at 25 % starts at
+    its peak). It is read as a note starts, with the host's and the sources' modulation on it then, and holds for the
+    note. A noise operator has none. Operators don't follow velocity themselves: velocity reaches them as a source
+    (see Velocity, under the modulation sources), aimed at Out or wherever else;
   - **Unison**: up to 16 copies of the operator. *Uni Detune* spreads them in pitch (the outermost copies by up to
     ±100 cents) and *Uni Spread* across the stereo field. On a modulator, the copies' sum is what its targets
     hear; on a carrier, every copy is modulated by the same signal.
-  - **Rnd Phase** (phase randomization): at 0 % (the default) every note starts the waveform, and each unison copy, at the same
-    point, so notes sound alike from the first sample; turned up, each copy starts up to that much of a cycle
+  - **Rnd Phase** (phase randomization): at 0 % (the default) every note starts the waveform, and each unison copy, at
+    Phase, so notes sound alike from the first sample; turned up, each copy starts up to that much of a cycle
     later, at random. Unison copies at 0 % start in step and drift apart as they detune.
 
   Waves come from band-limited wavetables with one table per octave, so saws and squares stay clean high up the
@@ -444,7 +447,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
-      its params under PITCH, LEVEL, ENVELOPE, UNISON and NOISE;
+      its params under PITCH, LEVEL, PHASE, ENVELOPE, UNISON and NOISE;
       the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
       only those in the chain, in its order, each with the knobs of its type; and Modulation, each LFO's and
       envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
@@ -534,7 +537,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   line; its knobs still work.
   - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine,
     Organ, Vowel and Custom (picked,
-    one of these shows on that button); ratio, pitch, fine, detune, velocity and output. A keyboard on the summary
+    one of these shows on that button); ratio, pitch, fine, detune, phase and output. A keyboard on the summary
     line, left of the power switch, switches fixed pitch: faint while the operator follows the keys, crossed out
     and lit while it is fixed. Switched on, Freq and Mult are set to where the ratio put an A4 (the smallest Mult
     that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq and Mult take the Ratio
@@ -557,9 +560,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       of the last span faint after it. With no note playing, the wave's plain shape shows faintly. The audio thread
       captures only while the tab is shown.
 
-    A noise operator shows Slope and Spread instead of the pitch knobs; its first tab is **SPECTRUM**, its spectrum
-    against white, pink and brown, and it has no scope (picked, it shows its envelope). Its circle in the graph
-    is labeled with its color instead of a ratio. The envelope is a curve with draggable
+    A noise operator shows Slope and Spread instead of the pitch knobs, and no Phase; its first tab is
+    **SPECTRUM**, its spectrum against white, pink and brown, and it has no scope (picked, it shows its envelope).
+    Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end
     (release). The small dot halfway along the attack, decay and release bends that segment (drag up or down,
     double-click to straighten it, to 0 %). A hovered or dragged handle's values show at the display's top right,
@@ -727,7 +730,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   of detuned saws through a driven low-pass, a clean sub, clipping and three-band compression); BA Wobble Bass (an
   eighth-note LFO throwing open a resonant filter and the FM together); PD Shimmer Pad (unison layers through two
   filters, three LFOs and the shimmer reverb); SQ Trance Gate (supersaws chopped in sixteenths by a square LFO, a
-  filter sweep over two bars); LD FM Brass (two stacks that blat in with velocity, an envelope on the FM,
+  filter sweep over two bars); LD FM Brass (two stacks that blat in, an envelope on the FM,
   vibrato); FX Industrial Hit (a body dropping two octaves, band-passed noise, metallic partials and a sine-fold
   shaper); LD Folded Lead (a mono lead whose modulator goes through a sine-fold shaper on its way to the carrier,
   driven harder as each note starts); BA Fuzz Bass (an FM pair through an asymmetric shaper into a plucked

@@ -1763,7 +1763,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
-    const OpParam fillers[] = {OpParam::Detune,  OpParam::Transpose, OpParam::Out,     OpParam::Velocity,
+    const OpParam fillers[] = {OpParam::Detune,  OpParam::Transpose, OpParam::Out,     OpParam::Phase,
                                OpParam::Attack,  OpParam::Decay,     OpParam::Sustain, OpParam::Release,
                                OpParam::Hold,    OpParam::UnisonDetune};
     model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));

@@ -1698,11 +1698,12 @@ std::vector<View::Widget> View::widgets() const {
             for (int k = 0; k < 3; ++k)
                 add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
         if (isNoise(op)) {
-            // Its slope and stereo spread take the place of the pitch knobs; the unison row shows the spectrum.
+            // Its slope and stereo spread take the place of the pitch knobs; the unison row shows the spectrum. Noise
+            // has no cycle to start, so no Phase.
             const int params[] = {paramIndex(op, OpParam::NoiseSlope), paramIndex(op, OpParam::UnisonSpread), -1, -1,
-                                  paramIndex(op, OpParam::Velocity), paramIndex(op, OpParam::Out)};
-            const char *const labels[] = {tr(Str::LabelSlope), tr(Str::LabelSpread),   nullptr,
-                                          nullptr,             tr(Str::LabelVelocity), tr(Str::LabelOut)};
+                                  -1, paramIndex(op, OpParam::Out)};
+            const char *const labels[] = {tr(Str::LabelSlope), tr(Str::LabelSpread), nullptr,
+                                          nullptr,             nullptr,              tr(Str::LabelOut)};
             opKnobRow(params, labels);
         } else {
             // Fixed, Freq and Mult take Ratio's and Fine's places, and Pitch and Detune, which it ignores, are dimmed.
@@ -1710,12 +1711,12 @@ std::vector<View::Widget> View::widgets() const {
             const int params[] = {paramIndex(op, fixed ? OpParam::FixedFreq : OpParam::Coarse),
                                   paramIndex(op, fixed ? OpParam::FixedMult : OpParam::Fine),
                                   paramIndex(op, OpParam::Transpose), paramIndex(op, OpParam::Detune),
-                                  paramIndex(op, OpParam::Velocity), paramIndex(op, OpParam::Out)};
+                                  paramIndex(op, OpParam::Phase), paramIndex(op, OpParam::Out)};
             const char *const labels[] = {tr(fixed ? Str::LabelFreq : Str::LabelRatio),
                                           tr(fixed ? Str::LabelMult : Str::LabelFine),
                                           tr(Str::LabelPitch),
                                           tr(Str::LabelDetune),
-                                          tr(Str::LabelVelocity),
+                                          tr(Str::LabelPhase),
                                           tr(Str::LabelOut)};
             const size_t row = list.size();
             opKnobRow(params, labels);
