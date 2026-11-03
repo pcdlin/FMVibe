@@ -65,7 +65,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - velocity taking its target as far as the note's velocity, in a straight line as it starts; bipolar, about the
     middle of what it puts out; its curve drawn the other way round reversing it;
   - a slot's Amount scaling its depth, and its aux: velocity scaling a macro's slot in each voice, the mod wheel down
-    leaving its target alone;
+    leaving its target alone; a macro's and velocity's slots bypassed leaving theirs alone;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
@@ -133,7 +133,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the MODS tab: a row per modulation, its Amount bar and aux's × changing it, and the switch after its source's
     name the source's polarity; + Aux's, the target's (three levels deep, into an operator's params) and the source's
     cascading menus picking an aux, a target and a source, the modulation keeping its depth, Amount and aux as it
-    moves, undoably; the wheel scrolling the rows; a row's typed depth, Edit depth and bypass dot; and a source's
+    moves, undoably, and what modulates its depth following it (or, onto a macro, going); the wheel scrolling the rows; a row's typed depth, Edit depth and bypass dot (a macro's too); and a source's
     handle dropped on a depth handle becoming that modulation's aux, ringed in its color, the macro then no longer
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);
@@ -353,7 +353,8 @@ itself.
   the 80th 12000 + 20·slot), source places
   2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
-  17000 + 200·slot), slot bypasses 9000 + 20·place, Custom waves' first 32 partials 10000 + 100·op, macros
+  17000 + 200·slot), slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's and
+  velocity's, 9320 + 20 a source by the sources' number), Custom waves' first 32 partials 10000 + 100·op, macros
   11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod wheel's slots 11500+,
   velocity 11600+ (its slots, then its curve and Bipolar), the
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the voice shapers'

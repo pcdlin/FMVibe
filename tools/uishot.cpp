@@ -1850,6 +1850,22 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(scrolledShot && removed && slotIs(0, 2, paramIndex(0, fillers[1])),
           "the wheel scrolls the MODS view's rows, the scrolled-to row's controls under the mouse");
+    // Scrolled to the end, Macro 1's row (the last of the thirteen, the add row after it) has a bypass dot like the
+    // others: a click bypasses its modulation, and another lets it go again.
+    view.wheel({300.0f, 300.0f}, -10.0f, {});
+    for (int i = 0; i < 40; ++i)
+        view.poll();
+    // The rows are 30 px apart, 28 high, in a list 292 high whose first row's middle is at y 188: the fourteen (the
+    // add row too) scroll as far as the first shown is row 4.2 (see View::modsEnd()).
+    const float lastFirst = (14.0f * 30.0f - 2.0f - 292.0f) / 30.0f;
+    const Point macroDot{41.0f, 188.0f + (12.0f - lastFirst) * 30.0f};
+    click(view, macroDot);
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool macroBypassed = model.value(slotBypassIndex(kMaxSources, 0)) == 1.0;
+    const bool macroBypassShot = renderer.save(view, dir / "35l-mods-macro-bypassed.png");
+    click(view, macroDot);
+    check(macroBypassed && macroBypassShot && model.value(slotBypassIndex(kMaxSources, 0)) == 0.0,
+          "a macro's modulation has a bypass dot in the MODS view, like a source's");
     // Macro 2's handle dropped on LFO 1's depth handle under Op A's Fine knob makes Macro 2 that modulation's aux.
     // Modulating nothing itself, Macro 2 isn't faint as Macro 3 is, which does nothing (read off the rendered
     // pixels, the macros' handles 96 px apart).
@@ -1879,6 +1895,48 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(to, {});
     const bool linkShot = renderer.save(view, dir / "35i-depth-handle-link.png");
     check(linkShot && aroundMiddle() != plain, "a hovered depth handle draws the line from its source's handle");
+}
+
+// A modulation moved to another source takes what modulates its depth along: LFO 1's on Op A's Fine, its depth
+// modulated by LFO 2, moved to Env 1 leaves LFO 2 modulating Env 1's depth; moved to Macro 1, whose depths can't be
+// modulated, it takes LFO 2's modulation away with it. The menus open as in testMods(): the first row's source at
+// x 90, y 188, its menu's categories 22 px apart from y 208 (LFOs, Envelopes, Macros), each opening beside it from x 176.
+void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Env));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    model.set(slotTargetIndex(1, 0), slotTargetValue(slotAmountIndex(0, 0)));
+    model.set(slotAmountIndex(1, 0), 0.25);
+    view.poll();
+    click(view, {314.0f, 88.0f}); // MODS
+    auto moveTo = [&](int category) {
+        const float y = 208.0f + 22.0f * static_cast<float>(category) + 11.0f;
+        click(view, {90.0f, 188.0f});
+        view.mouseMove({80.0f, y}, {});
+        view.mouseMove({200.0f, y}, {}); // the category's first source
+        click(view, {200.0f, y});
+    };
+    moveTo(1); // Env 1
+    const bool followed = slotTarget(model.value(slotTargetIndex(2, 0))) == paramIndex(0, OpParam::Fine) &&
+                          slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
+                          slotTarget(model.value(slotTargetIndex(1, 0))) == slotAmountIndex(2, 0) &&
+                          std::abs(model.value(slotAmountIndex(1, 0)) - 0.25) < 1e-9;
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool shot = renderer.save(view, dir / "35m-mods-moved-with-depth.png");
+    view.undo();
+    const bool back = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Fine) &&
+                      slotTarget(model.value(slotTargetIndex(1, 0))) == slotAmountIndex(0, 0) &&
+                      slotTarget(model.value(slotTargetIndex(2, 0))) < 0;
+    check(followed && shot && back,
+          "a modulation moved to another source takes what modulates its depth along, in one undo step");
+    moveTo(2); // Macro 1
+    check(slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(0, OpParam::Fine) &&
+              slotTarget(model.value(slotTargetIndex(1, 0))) < 0,
+          "a modulation moved to a macro takes away what modulated its depth");
 }
 
 // Modulations added in the MODS view: the row after the last adds an empty one and opens its source's menu; picking
@@ -3508,6 +3566,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testWireBend(dir, renderer);
     testModsEmpty(dir, renderer);
     testMods(dir, renderer);
+    testModsMoveDepth(dir, renderer);
     testMeter(dir, renderer);
     renderNewEffects(dir, renderer);
     testShapers(dir, renderer);

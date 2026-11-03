@@ -424,9 +424,8 @@ void View::assign(int source, int target) {
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, free), slotTargetValue(target)},
                                                 {slotAmountIndex(source, free), amount},
                                                 {slotScaleIndex(source, free), 1.0},
-                                                {slotAuxIndex(source, free), 0.0}};
-    if (!isStripSource(source))
-        changes.push_back({slotBypassIndex(source, free), 0.0});
+                                                {slotAuxIndex(source, free), 0.0},
+                                                {slotBypassIndex(source, free), 0.0}};
     editMany(changes);
     // A modulated route opens and closes with the modulation, so its wire shows, even at 0 %.
     std::vector<int> &kept = controller_.layout().keptRoutes;
@@ -444,19 +443,17 @@ void View::removeSlot(int source, int slot) {
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, slot), 0.0},
                                                 {slotAmountIndex(source, slot), 0.0},
                                                 {slotScaleIndex(source, slot), 1.0},
-                                                {slotAuxIndex(source, slot), 0.0}};
-    if (!isStripSource(source))
-        changes.push_back({slotBypassIndex(source, slot), 0.0});
+                                                {slotAuxIndex(source, slot), 0.0},
+                                                {slotBypassIndex(source, slot), 0.0}};
     editMany(changes);
 }
 
-// A macro's or the note source's slots can't be bypassed.
 bool View::slotBypassed(int source, int slot) const {
-    return !isStripSource(source) && value(slotBypassIndex(source, slot)) >= 0.5;
+    return slot >= 0 && value(slotBypassIndex(source, slot)) >= 0.5;
 }
 
 void View::toggleBypass(int source, int slot) {
-    if (!isStripSource(source))
+    if (slot >= 0) // an empty modulation has nothing to bypass
         edit(slotBypassIndex(source, slot), slotBypassed(source, slot) ? 0.0 : 1.0);
 }
 
@@ -856,7 +853,7 @@ std::string View::paramName(int index) const {
     if (index < 0 || index >= kParamCount)
         return std::string();
     if (const int owner = bypassSourceOf(index); owner >= 0) {
-        const int target = slotTarget(value(slotTargetIndex(owner, (index - kSlotBypassBase) % kSlots)));
+        const int target = slotTarget(value(slotTargetIndex(owner, bypassSlotOf(index))));
         return target >= 0 ? trf(Str::ParamNameBypassOn, {sourceName(owner), paramName(target)})
                            : trf(Str::ParamNameBypass, {sourceName(owner)});
     }
@@ -1295,7 +1292,7 @@ std::vector<View::Widget> View::widgets() const {
             const Assignment &m = rows[row];
             const Rect r = modsRow(static_cast<float>(row) - first);
             const bool empty = m.slot < 0;
-            if (!empty && !isStripSource(m.source)) // the others' slots can't be bypassed: their dot is only drawn
+            if (!empty)
                 add(Kind::SlotBypass, modsCell(r, kModsBypass), slotBypassIndex(m.source, m.slot), m.source, m.slot);
             add(Kind::ModsSource, modsCell(r, kModsSource), -1, m.source, m.slot);
             const bool named = m.source < 0 || row == 0 || rows[row - 1].source != m.source;
@@ -7119,8 +7116,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
             }
             items.push_back({11, tr(Str::MenuEditDepth)});
         }
-        if (!isStripSource(hit->a)) // a macro's, the note source's or the mod wheel's can't be bypassed
-            items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
+        items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
         items.push_back({0, ""});
         items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {sourceName(hit->a)})});
         return items;
@@ -7167,8 +7163,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     for (const Assignment &m : assignments()) {
         if (m.target != hit->param)
             continue;
-        if (!isStripSource(m.source))
-            bypasses.push_back({kBypassCommand + m.source * kSlots + m.slot, bypassLabel(m.source, m.slot)});
+        bypasses.push_back({kBypassCommand + m.source * kSlots + m.slot, bypassLabel(m.source, m.slot)});
         removals.push_back({100 + m.source * kSlots + m.slot, trf(Str::MenuRemoveModulation, {sourceName(m.source)})});
     }
     if (!removals.empty()) {
@@ -7237,7 +7232,7 @@ void View::menuCommand(int command) {
         const UndoScope step(controller_);
         for (int slot : usedSlots(command - kClearCommand))
             removeSlot(command - kClearCommand, slot);
-    } else if (command >= kBypassCommand && command < kBypassCommand + kMaxSources * kSlots) {
+    } else if (command >= kBypassCommand && command < kBypassCommand + kAllSources * kSlots) {
         toggleBypass((command - kBypassCommand) / kSlots, (command - kBypassCommand) % kSlots);
     }
 }

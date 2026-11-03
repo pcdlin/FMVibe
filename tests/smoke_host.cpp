@@ -1509,7 +1509,9 @@ int main(int argc, char **argv) {
     // A slot's depth is scaled by its Amount and its aux: a macro turned up, at -100 % on A's output, silences A; at 50 %
     // Amount it takes A down by half. With velocity for its aux, which runs per voice, a note at full velocity is
     // silenced and one at half velocity halved, each in its own voice; with the mod wheel for its aux, the wheel down
-    // leaves A alone. A's own velocity scaling is off, so only the slot moves its level.
+    // leaves A alone. Bypassed, the macro's slot leaves A alone, with an aux running per voice or not, and so does
+    // velocity's, which at -100 % silences A at full velocity until it is bypassed. A's own velocity scaling is off,
+    // so only the slots move its level.
     {
         setParams({{paramIndex(0, OpParam::Velocity), 0.0},
                    {slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
@@ -1531,12 +1533,25 @@ int main(int argc, char **argv) {
         const float hard = peakAt(1.0), soft = peakAt(0.5);
         setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kWheelSource)}});
         const float wheelDown = peakAt(1.0);
-        setParams({{slotAuxIndex(kMaxSources, 0), 0.0},
+        setParams({{slotAuxIndex(kMaxSources, 0), 0.0}, {slotBypassIndex(kMaxSources, 0), 1.0}});
+        const float macroBypassed = peakAt(1.0);
+        setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kVelocitySource)}});
+        const float macroBypassedPerVoice = peakAt(1.0);
+        setParams({{slotBypassIndex(kMaxSources, 0), 0.0},
+                   {slotAuxIndex(kMaxSources, 0), 0.0},
                    {slotTargetIndex(kMaxSources, 0), 0.0},
                    {slotAmountIndex(kMaxSources, 0), 0.0},
                    {paramIndex(0, MacroParam::Value), 0.0}});
         const float full = peakAt(1.0);
-        setParams({{paramIndex(0, OpParam::Velocity), 0.5}}); // as it starts
+        setParams({{slotTargetIndex(kVelocitySource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kVelocitySource, 0), -1.0}});
+        const float velocityMuted = peakAt(1.0);
+        setParams({{slotBypassIndex(kVelocitySource, 0), 1.0}});
+        const float velocityBypassed = peakAt(1.0);
+        setParams({{slotTargetIndex(kVelocitySource, 0), 0.0},
+                   {slotAmountIndex(kVelocitySource, 0), 0.0},
+                   {slotBypassIndex(kVelocitySource, 0), 0.0},
+                   {paramIndex(0, OpParam::Velocity), 0.5}}); // as it starts
         std::printf("      macro at -100 %% on A's output: peak %.3f, at 50 %% Amount %.3f; velocity as aux %.3f at full, "
                     "%.3f at half; mod wheel (down) as aux %.3f; %.3f without it\n",
                     muted, halved, hard, soft, wheelDown, full);
@@ -1544,6 +1559,11 @@ int main(int argc, char **argv) {
         check(hard < 0.005f && std::abs(soft / full - 0.5f) < 0.03f,
               "an aux that runs per voice scales a macro's slot in each voice");
         check(std::abs(wheelDown - full) < 1e-3f, "an aux at 0 leaves its slot's target alone");
+        std::printf("      bypassed: macro %.3f, with velocity as aux %.3f; velocity at -100 %% %.3f, bypassed %.3f\n",
+                    macroBypassed, macroBypassedPerVoice, velocityMuted, velocityBypassed);
+        check(std::abs(macroBypassed - full) < 1e-3f && std::abs(macroBypassedPerVoice - full) < 1e-3f &&
+                  velocityMuted < 0.005f && std::abs(velocityBypassed - full) < 1e-3f,
+              "a macro's and velocity's bypassed slots leave their targets alone");
     }
 
     // Effects, on the plain sine. Slot 0 holds a shaper, slot 1 a DJ EQ, slot 2

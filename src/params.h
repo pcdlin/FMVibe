@@ -503,7 +503,10 @@ constexpr int kVelocityBase = kLaterPartialBase + kOps * 2 * (kPartials - kFirst
 // Each slot's aux and Amount (see SlotAuxParam): kSlots pairs a source, for the places, the macros, the note source,
 // the mod wheel and velocity in turn.
 constexpr int kSlotAuxBase = kVelocityBase + kVelocityParamCount;
-constexpr int kParamCount = kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields;
+// The bypasses of the slots of the sources under the keyboard (the macros, the note source, the mod wheel and
+// velocity in turn), like the places' (see kSlotBypassBase).
+constexpr int kStripBypassBase = kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields;
+constexpr int kParamCount = kStripBypassBase + (kAllSources - kMaxSources) * kSlots;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -668,9 +671,10 @@ constexpr ShaperParams shaperParams(int unit) {
             paramIndex(shaper, ShaperParam::Link),   shaperCurveCountIndex(shaper),
             paramIndex(shaper, ShaperParam::Symmetric)};
 }
-// The macros' and the note source's slots have no bypass: -1.
+// Every source's slots can be bypassed: the places' with their own, the others' after the slots' auxes.
 constexpr int slotBypassIndex(int source, int slot) {
-    return isStripSource(source) ? -1 : kSlotBypassBase + source * kSlots + slot;
+    return isStripSource(source) ? kStripBypassBase + (source - kMaxSources) * kSlots + slot
+                                 : kSlotBypassBase + source * kSlots + slot;
 }
 // The source a bypass param belongs to; -1 for other params.
 constexpr int partialLevelIndex(int op, int partial) {
@@ -683,7 +687,13 @@ constexpr int partialCountIndex(int op) { return kPartialCountBase + op; }
 // How many partials a Custom wave plays, from its count param.
 inline int partialCount(double value) { return static_cast<int>(std::clamp(std::lround(value), 1L, long{kPartials})); }
 constexpr int bypassSourceOf(int index) {
-    return index >= kSlotBypassBase && index < kPartialBase ? (index - kSlotBypassBase) / kSlots : -1;
+    return index >= kSlotBypassBase && index < kPartialBase ? (index - kSlotBypassBase) / kSlots
+           : index >= kStripBypassBase && index < kParamCount ? kMaxSources + (index - kStripBypassBase) / kSlots
+                                                              : -1;
+}
+// The slot a bypass param belongs to, for bypassSourceOf()'s source.
+constexpr int bypassSlotOf(int index) {
+    return (index - (index >= kStripBypassBase ? kStripBypassBase : kSlotBypassBase)) % kSlots;
 }
 // How much of operator `op` goes into `filter`.
 constexpr int sendIndex(int op, int filter) { return paramIndex(op, OpParam::Sends) + filter; }
@@ -799,6 +809,8 @@ constexpr Section kSections[] = {
     {kVelocityBase, 1, kVelocityParamCount, 11600, 100},
     // A block per source, in source order: sources added later take blocks after these.
     {kSlotAuxBase, kAllSources, kSlots * kSlotAuxFields, 22000, 40},
+    // A block per source under the keyboard, in source order, after the places' bypasses.
+    {kStripBypassBase, kAllSources - kMaxSources, kSlots, 9320, 20},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -992,6 +1004,11 @@ static_assert(idOfIndex(clipCurveCountIndex(0)) == 7000 &&
 static_assert(idOfIndex(slotBypassIndex(0, 0)) == 9000 &&
                   idOfIndex(slotBypassIndex(kMaxSources - 1, kSlots - 1)) == 9315,
               "slot bypass param ids moved");
+static_assert(idOfIndex(slotBypassIndex(kMaxSources, 0)) == 9320 &&
+                  idOfIndex(slotBypassIndex(kNoteSource, 0)) == 9480 &&
+                  idOfIndex(slotBypassIndex(kWheelSource, 0)) == 9500 &&
+                  idOfIndex(slotBypassIndex(kVelocitySource, kSlots - 1)) == 9535,
+              "strip source bypass param ids moved");
 static_assert(idOfIndex(partialLevelIndex(0, 0)) == 10000 &&
                   idOfIndex(partialPhaseIndex(kOps - 1, kFirstPartials - 1)) == 10563,
               "Custom wave partial param ids moved");
@@ -1493,7 +1510,7 @@ void forEachMacroMod(const Get &get, const Add &add) {
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(get(slotTargetIndex(source, slot)));
             const double amount = get(slotAmountIndex(source, slot));
-            if (target < 0 || target >= kModulatedCount || amount == 0.0)
+            if (target < 0 || target >= kModulatedCount || amount == 0.0 || get(slotBypassIndex(source, slot)) >= 0.5)
                 continue;
             const int aux = slotAux(get, source, slot);
             if (aux >= 0 && runsPerVoice(aux))

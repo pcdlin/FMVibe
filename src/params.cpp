@@ -423,7 +423,7 @@ void buildTable(ParamTable &t) {
             0.0, 1.0, 0.0);
     }
 
-    // Every slot of every source has an aux and an Amount.
+    // Every slot of every source has an aux and an Amount, and those of the sources under the keyboard their bypass.
     for (int source = 0; source < kAllSources; ++source) {
         const std::string name = isVelocity(source) ? tr(Str::ParamVelocitySource)
                                  : isWheel(source)  ? tr(Str::ParamModWheel)
@@ -440,6 +440,9 @@ void buildTable(ParamTable &t) {
                 static_cast<double>(kAllSources), 0.0);
             add(slotScaleIndex(source, slot), name + " " + trf(Str::ParamAuxAmount, {n}), module, ParamKind::Percent,
                 0.0, 1.0, 1.0);
+            if (isStripSource(source)) // the places' bypasses come with their other fields
+                add(slotBypassIndex(source, slot), name + " " + trf(Str::ParamBypass, {n}), module,
+                    ParamKind::SlotBypass, 0.0, 1.0, 0.0);
         }
     }
 

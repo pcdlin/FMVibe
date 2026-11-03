@@ -155,10 +155,33 @@ void View::moveModulation(int source, int slot, int to) {
         {slotTargetIndex(to, free), slotTargetValue(target)},
         {slotAmountIndex(to, free), value(slotAmountIndex(source, slot))},
         {slotScaleIndex(to, free), value(slotScaleIndex(source, slot))},
-        {slotAuxIndex(to, free), slotAuxValue(aux == to ? -1 : aux)}};
-    if (!isStripSource(to))
-        changes.push_back({slotBypassIndex(to, free), slotBypassed(source, slot) ? 1.0 : 0.0});
+        {slotAuxIndex(to, free), slotAuxValue(aux == to ? -1 : aux)},
+        {slotBypassIndex(to, free), slotBypassed(source, slot) ? 1.0 : 0.0}};
     editMany(changes);
+    // What modulates its depth follows it to its new slot where that depth can be modulated (an LFO's or an
+    // envelope's), unless its source modulates that already; else it goes, rather than wait in the old slot for the
+    // next modulation there. So does an empty modulation onto it.
+    const int depth = slotAmountIndex(source, slot), newDepth = slotAmountIndex(to, free);
+    for (const Assignment &m : assignments()) {
+        if (m.target != depth)
+            continue;
+        const std::vector<int> used = usedSlots(m.source);
+        const bool follows = isModTarget(newDepth) && std::none_of(used.begin(), used.end(), [&](int s) {
+                                 return slotTarget(value(slotTargetIndex(m.source, s))) == newDepth;
+                             });
+        if (follows)
+            edit(slotTargetIndex(m.source, m.slot), slotTargetValue(newDepth));
+        else
+            removeSlot(m.source, m.slot);
+    }
+    bool emptied = false;
+    for (auto &[from, onto] : controller_.layout().emptyMods)
+        if (onto == depth) {
+            onto = isModTarget(newDepth) ? newDepth : -1;
+            emptied = true;
+        }
+    if (emptied)
+        controller_.layoutChanged();
     removeSlot(source, slot);
 }
 
@@ -699,8 +722,8 @@ void View::paintMods(Canvas &c) {
     for (const auto &[column, name] : columns)
         c.text({modsCell(head, column).x, head.y, column.w + 20.0f, head.h}, tr(name), 9.5f, kDim, Align::Left, true);
 
-    // The rows' backgrounds, the one under the mouse (or whose menu is open) lit; their arrows, and the dot of a row
-    // whose source can't be bypassed (the others' are widgets). The cells are widgets.
+    // The rows' backgrounds, the one under the mouse (or whose menu is open) lit; their arrows, and an empty
+    // modulation's dot (the others' bypass dots are widgets). The cells are widgets.
     const float first = modsFirst();
     const int top = static_cast<int>(std::floor(first));
     c.pushClip(kModsList);
@@ -718,9 +741,7 @@ void View::paintMods(Canvas &c) {
         const Point tip{arrow.right() - 2.0f, arrow.center().y};
         const Point head2[] = {{tip.x - 4.0f, tip.y - 3.5f}, tip, {tip.x - 4.0f, tip.y + 3.5f}};
         c.polyline(head2, 3, faint, 1.3f);
-        if (m.slot >= 0 && isStripSource(m.source))
-            c.fillCircle(modsCell(r, kModsBypass).center(), 3.5f, kSourceColors[m.source]);
-        else if (m.slot < 0) // an empty modulation: a hollow dot, until it has a source and a target
+        if (m.slot < 0) // an empty modulation: a hollow dot, until it has a source and a target
             c.strokeCircle(modsCell(r, kModsBypass).center(), 3.2f, kFaint, 1.2f);
     }
     c.popClip();

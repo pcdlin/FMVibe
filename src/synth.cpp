@@ -392,7 +392,8 @@ void Synth::applyMacros(const ParamValues &params) {
             continue;
         for (int slot = 0; slot < kSlots; ++slot)
             if (const int aux = slotAux(get, source, slot); aux >= 0 && runsPerVoice(aux) &&
-                                                             slotTarget(params[slotTargetIndex(source, slot)]) >= 0)
+                                                             slotTarget(params[slotTargetIndex(source, slot)]) >= 0 &&
+                                                             params[slotBypassIndex(source, slot)] < 0.5)
                 voiceMacroSlots_[voiceMacroSlotCount_++] = {source, slot};
     }
 }
@@ -926,7 +927,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(params[slotTargetIndex(kVelocitySource, s)]);
             const double amount = hostValue(params, slotAmountIndex(kVelocitySource, s));
-            if (target < 0 || amount == 0.0)
+            if (target < 0 || amount == 0.0 || params[slotBypassIndex(kVelocitySource, s)] >= 0.5)
                 continue;
             v.slotMods[v.slotModCount++] = {
                 target, swing * amount * scaleOf(kVelocitySource, s) * (table_[target].max - table_[target].min)};
@@ -992,7 +993,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     for (int s = 0; s < kSlots; ++s) {
         const int target = slotTarget(params[slotTargetIndex(kNoteSource, s)]);
         const double amount = hostValue(params, slotAmountIndex(kNoteSource, s));
-        if (target >= 0 && amount != 0.0) {
+        if (target >= 0 && amount != 0.0 && params[slotBypassIndex(kNoteSource, s)] < 0.5) {
             v.slotMods[v.slotModCount++] = {
                 target, swing * amount * scaleOf(kNoteSource, s) * (table_[target].max - table_[target].min)};
         }

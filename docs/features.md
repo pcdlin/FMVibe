@@ -117,7 +117,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Mod Wheel**: a macro of its own, its knob the Mod Wheel param (the wheel in the keyboard strip), with 16
     slots like a macro's. It moves nothing until something is assigned to it.
   - **Note**: a source that follows the pitch each voice plays, pitch bend, glide (and legato slides), note
-    tuning and the global Pitch included. Like a macro it has 16 slots and no switch or bypasses, but it
+    tuning and the global Pitch included. Like a macro it has 16 slots and no switch, but it
     runs per voice, like the LFOs and envelopes, and reaches the effects through the newest voice. What it
     modulates follows the pitch within the same block, without lagging behind it.
     Its **range** and **curve** shape what it puts out: the notes from **Low** to **High** (any MIDI note, C-1
@@ -133,7 +133,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     semitones takes it to 494 Hz. The filters' Key Track adds its own tracking on top, so leave it at 0, where it
     starts, for an exact match.
   - **Velocity**: a source that puts out the velocity each voice's note came with (in mono, the velocity of the key
-    it plays now). Like the note source it has 16 slots and no switch or bypasses, runs per voice, reaches the
+    it plays now). Like the note source it has 16 slots and no switch, runs per voice, reaches the
     effects through the newest voice, and modulates from a note's first block on. Its **curve**, drawn like the
     note source's (up to 16 points, each segment bendable), runs across the velocities from 0 to 127 and sets what
     each puts out, from nothing to all of it. As it starts, the curve is a straight line, so it puts out the
@@ -429,15 +429,16 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
     Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the count (how many
     are bypassed, at 0 % and empty with it); then the columns' names. A row has, from its left:
-    - the bypass dot, which switches the modulation off and on again (a macro's, the note source's, the mod wheel's
-      and velocity's modulations can't be bypassed, and their dot is only drawn);
+    - the bypass dot, which switches the modulation off and on again, whatever its source;
     - the **source** and the **target**, and between them, after the source's name on the first of its rows, the
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
       while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
       an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Macros, and Keyboard:
       Note, Velocity and Mod Wheel); picking one moves the modulation there, into a free slot, with its depth,
-      Amount, aux and bypass, as one undo step; it then swings as its new source does. A source that modulates the
+      Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
+      follows it to its new slot, or, moved to a macro, the note source, the mod wheel or velocity (whose depths
+      can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
       its params under PITCH, LEVEL, ENVELOPE, UNISON and NOISE;
@@ -650,7 +651,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
     which an aux lets it go at most.
   - **Bypass**: the dot at the start of a modulation's row in the MODS view or a pill's list switches that
-    modulation off and on again, keeping its target and depth; so do **Bypass** / **Resume** in the right-click
+    modulation off and on again, keeping its target and depth, whatever its source (an LFO, an envelope, a macro, the
+    note source, the mod wheel or velocity); so do **Bypass** / **Resume** in the right-click
     menus of the row, the
     knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed. Bypasses
     are saved with the patch (as hidden params, like the drawn shapes).
