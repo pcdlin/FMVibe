@@ -449,11 +449,16 @@ View::MenuNode View::cascadeTree() const {
     }
     keep(std::move(operators));
 
-    // The routes, by the node they come from: into each node it can feed, and out.
+    // The routes, by the node they come from: into each other node it can feed, and out, then its feedback last.
     MenuNode matrix = category(tr(Str::CascadeMatrix));
     for (int from = 0; from < kNodes; ++from) {
         MenuNode node = category(kNodeNames[from]);
-        for (int to = 0; to <= kNodes; ++to) {
+        std::vector<int> order;
+        for (int to = 0; to <= kNodes; ++to)
+            if (to != from)
+                order.push_back(to);
+        order.push_back(from);
+        for (int to : order) {
             const int param = routeTo(from, to);
             if (param < 0 || !isModTarget(param))
                 continue;

@@ -443,7 +443,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
       its params under PITCH, LEVEL, ENVELOPE, UNISON and NOISE;
-      the Matrix, by the node a route comes from (into each node it can feed, and out); Filters; Shapers; Effects,
+      the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
       only those in the chain, in its order, each with the knobs of its type; and Modulation, each LFO's and
       envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
       rest. What the row has now is checked, and the categories it is in have a dot; a click elsewhere closes the
