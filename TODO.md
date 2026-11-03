@@ -1,5 +1,7 @@
 ## New Features
 
+- Add middle-click drag to scroll in all scrollable panels (Effects, Env/LFO, MODS, ...)
+
 - More modulation source types (aftertouch, random per note, a MIDI CC, slew or remap modifiers)
     - **In one line:** each a new `SourceType` (12 spare ids a place) or, per note like velocity, a source in the
       keyboard strip after `kVelocitySource`.
