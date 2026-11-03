@@ -5340,7 +5340,10 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         const Point to = dot != list.end() ? dot->rect.center() : (w.kind == Kind::Knob ? knobCenter(w) : w.rect.center());
         if (w.clip.w > 0.0f && !w.clip.contains(to))
             continue;
-        const Color color = kSourceColors[source].alpha(sourceOn(source) && modulated ? 1.0f : 0.4f); // bypassed: faint
+        // A bypassed modulation's line, ring and outline are grey: it is kept, but does nothing. A switched-off
+        // source's are faint in its color.
+        const Color color = !modulated ? kDim.alpha(sourceOn(source) ? 0.7f : 0.4f)
+                                       : kSourceColors[source].alpha(sourceOn(source) ? 1.0f : 0.4f);
         // Bowed to one side, so lines to targets in a row fan out rather than run over each other.
         const Point d{to.x - from.x, to.y - from.y};
         const Point control{(from.x + to.x) * 0.5f + d.y * 0.15f, (from.y + to.y) * 0.5f - d.x * 0.15f};

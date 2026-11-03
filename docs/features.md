@@ -551,8 +551,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **Bypass**: the dot at the start of each target's row in the source's list switches that modulation off and
     on again, keeping its target and depth; so do **Bypass** / **Resume** in the right-click menus of the row, the
-    knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed. Bypasses
-    are saved with the patch (as hidden params, like the drawn shapes).
+    knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed, and the
+    dashed line its source's hovered handle draws to it grey. Bypasses are saved with the patch (as hidden params,
+    like the drawn shapes).
   - Each source lists its targets with a depth slider and a remove button, four at a time; with more, a thin
     scrollbar beside them scrolls the list smoothly (drag its thumb or click its track), and so does the mouse
     wheel over the names, gliding a row per notch (a trackpad moves it by parts of a row); the rows at the list's
