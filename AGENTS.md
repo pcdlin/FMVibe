@@ -400,9 +400,9 @@ itself.
   short keeps the floats that arrived whole, and a layout value that isn't a number keeps its default. States
   with a newer version are refused.
 - Times and LFO rates are stored as 0–1 on a log curve (1 ms–20 s, 0.02–100 Hz), so host knobs and modulation
-  have resolution where it matters. The value text shows ms/s/Hz. Envelopes' attacks, decays and releases stop at
-  10 s (`kMaxEnvTime`), their range ending short of the curve's top; a state or preset holding a longer one loads it
-  as 10 s, since loading holds every param within its range.
+  have resolution where it matters. The value text shows ms/s/Hz. Envelopes' attacks, holds, decays and releases
+  stop at 10 s (`kMaxEnvTime`), their range ending short of the curve's top; a state or preset holding a longer one
+  loads it as 10 s, since loading holds every param within its range.
 - The plugin takes CLAP note events (preferred) and raw MIDI note on/off, and reports `NOTE_END` so hosts with
   polyphonic modulation (Bitwig) know when a voice has finished. In mono, a note that is taken over keeps its
   host voice while its key is down and reports `NOTE_END` when the key is let go. Per-note modulation follows the
