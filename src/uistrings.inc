@@ -716,7 +716,6 @@ STR(ModsCountOne, "1 modulation")
 STR(ModsBypassed, "{1} bypassed")
 STR(ModsAtZero, "{1} at 0 %")
 STR(ModsEmpty, "{1} empty") // modulations without a source or a target yet
-STR(HintMods, "click a source, target or aux to change it  ·  drop a handle on a depth handle for its aux")
 STR(HintNoMods, "No modulations yet: drag a source's handle onto a knob, or add one here.")
 STR(TipModsSource, "Move to another source")
 STR(TipModsTarget, "Move to another target")

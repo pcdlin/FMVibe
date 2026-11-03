@@ -709,7 +709,6 @@ void View::paintMods(Canvas &c) {
         count += " \xC2\xB7 " + trf(Str::ModsAtZero, {std::to_string(zero)});
     if (empty > 0)
         count += " \xC2\xB7 " + trf(Str::ModsEmpty, {std::to_string(empty)});
-    c.text({kFxPanel.x + 16.0f, kFxPanel.y + 10.0f, 700.0f, 24.0f}, tr(Str::HintMods), 10.5f, kFaint, Align::Left);
     c.text({kFxPanel.right() - 316.0f, kFxPanel.y + 10.0f, 300.0f, 24.0f}, count, 11.0f, kDim, Align::Right);
     if (rows.empty()) { // only the button that adds one
         c.text({kFxPanel.x, kFxPanel.y + 120.0f, kFxPanel.w, 30.0f}, tr(Str::HintNoMods), 11.5f, kDim);
