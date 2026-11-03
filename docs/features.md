@@ -612,10 +612,24 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap. A source can modulate another source's depth too (drop its handle on
     a depth bar in that source's list): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
-  - **Aux**: a source's handle dropped on another source's depth handle (while it is dragged, the depth handles
-    are ringed faintly, the one under it brightly) makes the dropped source that modulation's aux, in place of
-    any it had; the depth handle then has a ring in the aux's color. A modulation's ring on its knob, and its range
-    on a label or cell, show how far its depth and Amount take it, which an aux lets it go at most.
+  - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 30
+    or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 4, a depth bar 11), in the order the
+    sources show. Past that, as many as fit beside a **+n** pill (2 under a knob, 3 on a label, 2 on a cell, 9 on
+    a depth bar) hold the rest, so nothing runs under the next control. Hovering the pill draws the ranges of the
+    modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds
+    draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
+    it, short of room below), in the accent color while it is open: the target's name and every modulation of it,
+    a row each as on a source's card, with the source's name in place of the target's (its bypass dot, polarity
+    switch, depth bar and remove; hovering a row draws its range wider). A click anywhere else closes it, but not
+    on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a pill opens
+    its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
+    list closes again. The list closes with its pill, when the modulations come down to what fits. While every
+    modulation the pill holds is bypassed or its source switched off, the pill is hollow.
+  - **Aux**: a source's handle dropped on another source's depth handle, or on a row of a pill's list (while it
+    is dragged, the depth handles and rows are ringed faintly, the one under it brightly) makes the dropped source
+    that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color. A
+    modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
+    which an aux lets it go at most.
   - **Bypass**: the dot at the start of each target's row in the source's list switches that modulation off and
     on again, keeping its target and depth; so do **Bypass** / **Resume** in the right-click menus of the row, the
     knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed. Bypasses

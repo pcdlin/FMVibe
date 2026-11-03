@@ -15,18 +15,16 @@
 
 ## Issues 
 
-- When assigning too many automation sources to a control, the automation blips spill over onto other elements. Not sure how to solve this.
-    - **In one line:** show only as many depth handles as fit under the knob, label or cell, plus a "+n" pill that
-      opens a list of the rest.
-    - **Feasible, small.** The depth handles under a knob are laid 9 px apart with no limit, and those on labels
-      and cells 6–7 px apart leftwards (`view.cpp`, "Depth handles in the gap under each modulated knob").
-        1. Show as many as fit the knob's (label's, cell's) width; past that, the last place becomes a "+n" pill.
-        2. Hovering or clicking the pill lists the rest in a small popup, each with its depth handle (drag, bypass,
-           remove), or open the MODS view, scrolled to the target's first row.
-        3. uishot: eight sources on one knob, nothing drawn outside its column (read off the pixels).
-
-
 ## Improvements 
+
+- A source dropped on a depth bar sets that slot's aux, in place of modulating that depth
+    - **In one line:** decided: a source no longer modulates another source's depth; dropped on a depth bar in a
+      source's list, it becomes that modulation's aux, as on its depth handle.
+    - **Feasible, small.** `droppable()` stops taking a `SlotBar` (the drop goes to `setAux()` instead), and
+      `slotTarget()` stops taking a slot's depth, so a patch with a source modulating another's depth loads
+      without it (no factory preset has one). The bar shows its aux as the one dot in its top right corner, where
+      the depth modulation's dots were. Host modulation of the depths stays. uishot's `renderLfoOnLfo` becomes the
+      aux drop on a depth bar; features.md's Modulation section.
 
 - Move factory presets out of the C++ code, into committed .FMV files. They should be compiled into the code on build.
     - **In one line:** move the preset reading and writing into the core library, export today's presets once as

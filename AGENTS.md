@@ -204,6 +204,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     fit (read off the rendered pixels), the shape editor's grid, snapping and reset button, and scrolling the source cards by holding a
     dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
+  - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
+    nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
+    bypassing, setting the depth of and removing its modulations and closing at a click elsewhere, opening under a
+    macro's handle held over the pill and taking it as a row's aux, and a source's line ending at the pill holding
+    its handle;
   - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels), and a
     dragged source handle outlining no rows scrolled out of a slot list (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
