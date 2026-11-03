@@ -4716,7 +4716,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Point chevron[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.0f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
         c.polyline(chevron, 3, hovered ? kText : kDim, 1.4f);
         if (count == 0) {
-            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardAddInMods), 11.0f,
+            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardNoModulations), 11.0f,
                    hovered ? kText : kDim, Align::Left);
             break;
         }

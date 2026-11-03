@@ -599,7 +599,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     "Drag to assign" tooltip instead, as the macros', the note source's, the mod wheel's and velocity's handles do.
   - A card doesn't list its modulations, and ends with a button under its display: it counts them, with **MODS ›**
     at its right, and shows them in the MODS view, scrolled to the source's first row. While the source modulates
-    nothing, it reads **Add one in MODS** and adds an empty modulation from the source there (see the MODS view),
+    nothing, it reads **No modulations** and adds an empty modulation from the source there (see the MODS view),
     with its target's menu open.
     A random
     LFO has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;

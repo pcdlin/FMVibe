@@ -708,7 +708,7 @@ STR(ModsHeadAmount, "AMOUNT")
 STR(ModsHeadAux, "AUX")
 STR(ModsAddAux, "+ Aux") // a row without an aux: opens the menu of auxes
 STR(ModsAddModulation, "+ Add modulation") // after the last row: adds an empty one
-STR(CardAddInMods, "Add one in MODS") // a source card's button, while the source modulates nothing
+STR(CardNoModulations, "No modulations") // a source card's button, while the source modulates nothing
 STR(ModsPickSource, "Source…") // an empty modulation's, until one is picked
 STR(ModsPickTarget, "Target…")
 STR(ModsCount, "{1} modulations")
