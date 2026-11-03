@@ -154,6 +154,10 @@ private:
         EnvCurve,     // param = curve, a = envelope, b = segment (attack, decay, release): bends it
         FilterPoint,  // a = filter: cutoff and resonance handle
         ModDot,       // param = slot amount, a = source, b = slot: depth handle on a knob
+        ModPill,      // a = the target param, b = how many depth handles show before it: "+n" in place of the handles
+                      // that don't fit; a click opens the list of the target's modulations
+        ModList,      // a = the target param: the open list of every modulation of the target, under its pill
+        ModListRow,   // a = source, b = slot: a row of the list; a source's handle dropped on it sets the row's aux
         FxGrip,       // a = effect slot, b = its position in the chain: drag to reorder
         FxPower,      // param = its switch, a = effect slot, b = position: the icon; a click switches it, a drag moves it
         FxMenuButton, // ADD EFFECT: opens the list of effect types
@@ -218,6 +222,7 @@ private:
         bool compact = false; // header knob with its label beside it
         bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
+        bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };
@@ -682,6 +687,23 @@ private:
     std::optional<Color> modColor(int param) const;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
     void paintModRange(Canvas &c, Rect bar, int param);
+    // A pill's list: every modulation of its target, a row each, under the pill (or over it, short of room), kept
+    // inside the editor. It opens from a click on the pill, or under a source's handle dragged over the pill (then it
+    // closes again unless the handle is let go of on a row); a click anywhere else but on a source's handle closes it,
+    // and so does the pill going away.
+    struct ModListOpen {
+        int target = -1;
+        Rect anchor; // the pill it opened from
+        bool sprung = false; // opened under a dragged handle
+    };
+    bool modListOn(const Widget &pill) const;
+    Rect modListPanel(Rect anchor, int rows) const;
+    // Whether the pill the open list belongs to still shows; if not, the list closes.
+    bool modListPillShown() const;
+    void openModList(const Widget &pill, bool sprung);
+    void paintModPill(Canvas &c, const Widget &w, bool hovered);
+    void paintModList(Canvas &c, const Widget &w);
+    void paintModListRow(Canvas &c, const Widget &w);
     // Lines from a hovered source handle to whatever it modulates that is on screen.
     void paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source);
     void paintTyping(Canvas &c);
@@ -751,6 +773,7 @@ private:
     int menuSource_ = -1;                    // the source of the open context menu
     std::optional<Widget> menuValue_;        // what the open context menu's "Edit value" types into
     std::pair<int, int> menuPoint_{-1, -1}; // lfo and shape point of the open context menu
+    std::optional<ModListOpen> modList_;     // a pill's open list
     int shapeEditor_ = -1;                   // the LFO whose shape the routing panel shows, or -1
     int partialEditor_ = -1;                 // the operator whose Custom wave's partials it shows, or -1
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping

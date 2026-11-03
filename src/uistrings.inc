@@ -337,6 +337,8 @@ STR(ViewRouting, "ROUTING")
 STR(ViewMatrix, "MATRIX")
 STR(ViewFx, "FX")
 STR(ViewMods, "MODS") // every modulation, as a table
+STR(ModListCount, "{1} modulations") // in a pill's list, after the name of what they modulate
+STR(ModListCountOne, "1 modulation")
 STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
 STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
 STR(TabEnvelope, "ENVELOPE")
@@ -571,6 +573,7 @@ STR(NodeShaper, "shaper {1}")
 // --- The editor: tooltips
 
 STR(TipRenameMacro, "Double-click to rename")
+STR(TipModPill, "{1} more: click to list them all") // the "+n" pill in place of depth handles that don't fit
 STR(TipNoteDisplay, "Click to edit the note curve")
 STR(TipVelocityDisplay, "Click to edit the velocity curve")
 STR(TipWireEnd, "Drag to reroute")

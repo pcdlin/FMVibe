@@ -1908,6 +1908,114 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
           "a source's handle dropped on a depth handle becomes that modulation's aux");
 }
 
+// Eight LFOs on Op A's Fine: under the knob, two depth handles and a "+6" pill, nothing drawn outside the knob's
+// column (read off the rendered pixels). The pill opens the list of all eight, whose rows bypass, set the depth of
+// and remove their modulation as a card's rows do; a click elsewhere closes it. A macro's handle held over the pill
+// opens the list under it, and let go of on a row makes the macro that row's aux; let go of anywhere else, the list
+// closes again. Six on a matrix cell: two handles and a smaller pill, none in the next cell.
+void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, OpParam::Fine), 0.5);
+    // Beside the knob, between its column and the next ones' (Ratio's and Pitch's), at the depth handles' height.
+    auto beside = [&] {
+        std::vector<uint32_t> pixels;
+        for (float y = 224.0f; y < 235.0f; y += 1.0f)
+            for (float x = 17.0f; x < 27.0f; x += 1.0f) {
+                pixels.push_back(renderer.pixel({kFineKnob.x - x, y}));
+                pixels.push_back(renderer.pixel({kFineKnob.x + x, y}));
+            }
+        return pixels;
+    };
+    view.mouseMove({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "40-pill-none.png");
+    const std::vector<uint32_t> none = beside();
+    const int fine = paramIndex(0, OpParam::Fine);
+    for (int s = 0; s < 8; ++s) {
+        model.set(paramIndex(s, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+        model.set(slotTargetIndex(s, 0), slotTargetValue(fine));
+        model.set(slotAmountIndex(s, 0), 0.05 + 0.03 * s);
+    }
+    view.poll();
+    const bool shot = renderer.save(view, dir / "40a-pill.png");
+    check(shot && beside() == none, "eight modulations on a knob show two handles and a pill, nothing outside its column");
+
+    // The pill sits right of the two handles: 30 px across, centered under the knob, its middle 9 px right of the
+    // knob's. Its list, 265 px wide, centered under it: the rows 24 px apart from 24 px down, as on a card.
+    const Point pill{kFineKnob.x + 9.0f, 229.0f};
+    const float listX = pill.x - 132.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
+    auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
+    view.mouseMove(pill, {});
+    const bool hoverShot = renderer.save(view, dir / "40b-pill-hover.png");
+    click(view, pill);
+    view.mouseMove(row(3, 60.0f), {}); // on LFO 4's name: its ring is drawn wider
+    const bool listShot = renderer.save(view, dir / "40c-pill-list.png");
+    const uint32_t open = renderer.pixel(row(5, 60.0f));
+    click(view, row(7, 9.0f)); // LFO 8's bypass dot
+    const bool bypassed = model.value(slotBypassIndex(7, 0)) == 1.0;
+    drag(view, row(0, 122.0f + 35.0f), row(0, 122.0f + 52.5f)); // LFO 1's depth bar, to half way right: +50 %
+    const bool deep = std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6;
+    click(view, row(6, 243.0f)); // LFO 7's remove
+    const bool removed = slotTarget(model.value(slotTargetIndex(6, 0))) < 0;
+    click(view, {600.0f, 300.0f}); // elsewhere: the list closes
+    view.mouseMove({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "40d-pill-closed.png");
+    const uint32_t closed = renderer.pixel(row(5, 60.0f));
+    check(hoverShot && listShot && bypassed && deep && removed && open != closed,
+          "a pill's list bypasses, sets the depth of and removes its modulations, and closes at a click elsewhere");
+
+    // Macro 2's handle held over the pill opens the list; let go of on LFO 4's row, Macro 2 becomes its aux.
+    const float strip = view.height() - 179.0f;
+    view.mouseDown({252.0f, strip}, {});
+    view.mouseMove({600.0f, strip - 100.0f}, {});
+    view.mouseMove(pill, {});
+    view.mouseMove(row(3, 60.0f), {});
+    const bool dropShot = renderer.save(view, dir / "40e-pill-drop.png");
+    view.mouseUp(row(3, 60.0f), {});
+    const bool aux = slotAuxSource(model.value(slotAuxIndex(3, 0))) == kMaxSources + 1 &&
+                     slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0;
+    view.mouseMove({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "40f-pill-aux.png");
+    const bool stays = renderer.pixel(row(5, 60.0f)) == open;
+    click(view, {600.0f, 300.0f});
+    // Held over the pill and let go of elsewhere, the list closes again and nothing changes.
+    view.mouseDown({252.0f, strip}, {});
+    view.mouseMove(pill, {});
+    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseUp({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "40g-pill-sprung.png");
+    check(dropShot && aux && stays && renderer.pixel(row(5, 60.0f)) == closed &&
+              slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0,
+          "a handle held over a pill opens its list, a row takes it as an aux, and elsewhere the list closes");
+
+    // LFO 3's handle hovered: its depth handle is in the pill, where its dashed line ends.
+    view.mouseMove(sourceHandle(2), {});
+    check(renderer.save(view, dir / "40h-pill-link.png"), "render a source's line ending at the pill holding its handle");
+
+    // Six on the matrix's B -> C cell: two handles in its corner and a pill, none in the corner of B -> B left of it.
+    click(view, {160.0f, 88.0f}); // MATRIX
+    const Point cell = gridCellCenter(1, 2), left = gridCellCenter(1, 1);
+    auto corner = [&] {
+        std::vector<uint32_t> pixels;
+        for (float y = cell.y - 14.3f; y < cell.y - 6.0f; y += 1.0f)
+            for (float x = left.x; x < left.x + 15.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    view.mouseMove({600.0f, 440.0f}, {});
+    renderer.save(view, dir / "40i-cell-none.png");
+    const std::vector<uint32_t> plain = corner();
+    const int route = matrixIndex(1, 2);
+    for (int s = 8; s < 14; ++s) {
+        model.set(paramIndex(s, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+        model.set(slotTargetIndex(s, 0), slotTargetValue(route));
+        model.set(slotAmountIndex(s, 0), 0.2);
+    }
+    view.poll();
+    const bool cellShot = renderer.save(view, dir / "40j-cell-pill.png");
+    check(cellShot && corner() == plain, "six modulations on a matrix cell show two handles and a pill, none in the next cell");
+}
+
 // LFO 2 modulating LFO 1's depth on operator A's Fine: hovering LFO 2's handle draws a dashed line to that
 // depth bar, which has a dot for the modulation, like a matrix cell's.
 void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
@@ -3394,6 +3502,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testSourceShadow(dir, renderer);
     testCardEdgeScroll(dir, renderer);
     testModFocus(dir, renderer);
+    testModPill(dir, renderer);
 }
 
 int main(int argc, char **argv) {

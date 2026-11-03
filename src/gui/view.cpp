@@ -541,7 +541,7 @@ void View::setWireBend(int param, float bend) {
 
 bool View::droppable(const Widget &w, int source) const {
     const bool own = isStripSource(source) && !isNoteBorne(source) && w.param == stripKnobIndex(source);
-    return w.param >= 0 && isModTarget(w.param) && !own &&
+    return w.param >= 0 && isModTarget(w.param) && !own && !w.popup && // a list's row takes it as an aux instead
            (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
             w.kind == Kind::SlotBar);
 }
@@ -937,7 +937,22 @@ bool View::sourceOn(int source) const {
 
 bool View::modFocused(const Assignment &m) const {
     const Widget *w = drag_.kind != DragKind::None ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    return w && w->kind == Kind::ModDot && w->a == m.source && w->b == m.slot;
+    if (!w)
+        return false;
+    // Its depth handle, or its row in a pill's list.
+    if ((w->kind == Kind::ModDot || (w->popup && w->kind != Kind::ModList)) && w->a == m.source && w->b == m.slot)
+        return true;
+    // A hovered pill: the modulations it holds.
+    if (w->kind == Kind::ModPill && drag_.kind == DragKind::None && w->a == m.target) {
+        int index = 0, at = -1;
+        forEachMod(m.target, [&](const Assignment &o) {
+            if (o.source == m.source && o.slot == m.slot)
+                at = index;
+            ++index;
+        });
+        return at >= w->b;
+    }
+    return false;
 }
 
 bool View::sourceLive(int source) const {
@@ -1164,6 +1179,10 @@ bool View::poll() {
         changed = true;
     if (glideMods())
         changed = true;
+    if (modList_ && !modListPillShown()) { // its pill went: fewer modulations, or what showed it changed
+        modList_.reset();
+        changed = true;
+    }
     if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_) // picked in another editor
         changed = true;
     if ((typing_ || browserOpen_) && ++caretTicks_ % 32 == 0)
@@ -1885,7 +1904,8 @@ std::vector<View::Widget> View::widgets() const {
             list[i].clip = sourceCardClip();
 
     // Depth handles in the gap under each modulated knob, and small ones in the top right corner of each
-    // modulated wire label, matrix cell and source's depth bar (another source modulating its depth).
+    // modulated wire label, matrix cell and source's depth bar (another source modulating its depth). As many as
+    // the knob's, label's or cell's width holds; past that, as many as fit beside a "+n" pill holding the rest.
     const size_t count = list.size();
     std::vector<Assignment> here;
     for (size_t i = 0; i < count; ++i) {
@@ -1895,26 +1915,63 @@ std::vector<View::Widget> View::widgets() const {
             continue;
         here.clear();
         forEachMod(list[i].param, [&](const Assignment &m) { here.push_back(m); });
+        if (here.empty())
+            continue;
         const Rect r = list[i].rect;
+        const int n = static_cast<int>(here.size());
+        auto pill = [&](Rect rect, int shown, bool compact) {
+            add(Kind::ModPill, rect, -1, list[i].param, shown);
+            list.back().compact = compact;
+            list.back().clip = list[i].clip;
+            list.back().disabled = list[i].disabled;
+        };
         if (kind != Kind::Knob) {
+            // Leftwards from the corner, 7 px apart on a label and 6 on a cell or depth bar; past what fits, the
+            // pill takes the last two places.
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
-            for (size_t k = 0; k < here.size(); ++k) {
-                const Point c{r.right() - (cell ? 4.0f : 3.0f) - k * (cell ? 6.0f : 7.0f), r.y + (cell ? 4.0f : 2.0f)};
+            const float margin = cell ? 4.0f : 3.0f, step = cell ? 6.0f : 7.0f, y = r.y + (cell ? 4.0f : 2.0f);
+            const int fit = static_cast<int>((r.w - 2.0f * margin) / step) + 1;
+            const int shown = n > fit ? std::max(fit - 2, 0) : n;
+            for (int k = 0; k < shown; ++k) {
+                const Point c{r.right() - margin - static_cast<float>(k) * step, y};
                 add(Kind::ModDot, {c.x - 3.5f, c.y - 3.5f, 7.0f, 7.0f},
                     slotAmountIndex(here[k].source, here[k].slot), here[k].source, here[k].slot);
                 list.back().compact = true;
                 list.back().clip = list[i].clip; // a depth bar's is cut off with its card
             }
+            if (n > fit) {
+                const float w = n - shown >= 10 ? kModPillWideCompact : kModPillCompact;
+                const float edge =
+                    r.right() - margin - static_cast<float>(std::max(shown - 1, 0)) * step - (shown > 0 ? 4.25f : 0.0f);
+                pill({edge - w, y - 0.5f * kModPillCompactH, w, kModPillCompactH}, shown, true);
+            }
             continue;
         }
+        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left.
         const Point base = list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f} : Point{r.center().x, r.y + r.w - 1.0f};
-        for (size_t k = 0; k < here.size(); ++k) {
-            const float x = base.x + (k - (here.size() - 1) * 0.5f) * 9.0f;
+        const float width = list[i].compact ? 34.0f : r.w;
+        const int fit = static_cast<int>((width - 7.0f) / 9.0f) + 1;
+        int shown = n;
+        float pillW = 0.0f;
+        if (n > fit) {
+            pillW = kModPill;
+            shown = static_cast<int>((width - pillW) / 9.0f);
+            if (n - shown >= 10) { // two digits
+                pillW = kModPillWide;
+                shown = static_cast<int>((width - pillW) / 9.0f);
+            }
+        }
+        const float left =
+            base.x - (n > fit ? static_cast<float>(shown) * 9.0f + pillW : static_cast<float>(n - 1) * 9.0f + 7.0f) * 0.5f;
+        for (int k = 0; k < shown; ++k) {
+            const float x = left + 3.5f + static_cast<float>(k) * 9.0f;
             add(Kind::ModDot, {x - 5.0f, base.y - 5.0f, 10.0f, 10.0f}, slotAmountIndex(here[k].source, here[k].slot),
                 here[k].source, here[k].slot);
             list.back().clip = list[i].clip;
             list.back().disabled = list[i].disabled;
         }
+        if (n > fit)
+            pill({left + static_cast<float>(shown) * 9.0f, base.y - 0.5f * kModPillH, pillW, kModPillH}, shown, false);
     }
 
     // The macros: their knobs, the names under them and their handles.
@@ -2053,6 +2110,29 @@ std::vector<View::Widget> View::widgets() const {
                         static_cast<int>(k), static_cast<int>(i));
         }
     }
+    // A pill's open list, over everything: its rows' bypass dots, polarity switches, depth bars and removes work as on
+    // a source's card.
+    if (modList_) {
+        std::vector<Assignment> rows;
+        forEachMod(modList_->target, [&](const Assignment &m) { rows.push_back(m); });
+        const Rect panel = modListPanel(modList_->anchor, static_cast<int>(rows.size()));
+        add(Kind::ModList, panel, -1, modList_->target);
+        list.back().popup = true;
+        for (size_t k = 0; k < rows.size(); ++k) {
+            const int s = rows[k].source, slot = rows[k].slot;
+            const size_t first = list.size();
+            const Rect r{panel.x + kModListPad, panel.y + kModListTitleH + static_cast<float>(k) * kModListRowStep,
+                         kCardW - 24.0f, 20.0f};
+            add(Kind::ModListRow, r, -1, s, slot);
+            add(Kind::SlotBypass, {r.x + 1.0f, r.y, 16.0f, r.h}, slotBypassIndex(s, slot), s, slot);
+            add(Kind::SlotPolarity, {r.x + 108.0f, r.y, 13.0f, r.h}, -1, s, slot);
+            add(Kind::SlotBar, {r.x + 122.0f, r.y, 70.0f, r.h}, slotAmountIndex(s, slot), s, slot);
+            add(Kind::ValueText, {r.x + 194.0f, r.y, 38.0f, r.h}, slotAmountIndex(s, slot), s, slot);
+            add(Kind::SlotRemove, {r.right() - 20.0f, r.y, 20.0f, r.h}, -1, s, slot);
+            for (size_t i = first; i < list.size(); ++i)
+                list[i].popup = true;
+        }
+    }
     return list;
 }
 
@@ -2138,7 +2218,7 @@ void View::paint(Canvas &c) {
             const bool open = w.kind == Kind::FxMenu || w.kind == Kind::FxAdd || w.kind == Kind::ListMenu ||
                               w.kind == Kind::ListItem || w.kind == Kind::PeqTypeMenu ||
                               w.kind == Kind::PeqTypeItem || w.kind == Kind::WaveMenu ||
-                              w.kind == Kind::WaveMenuItem;
+                              w.kind == Kind::WaveMenuItem || w.popup;
             if (open != lists)
                 continue;
             if (w.clip.w > 0.0f)
@@ -2485,18 +2565,18 @@ void View::paintModRange(Canvas &c, Rect bar, int param) {
                    kSourceColors[m.source].alpha(alpha), 1.0f);
     };
     bool any = false;
-    std::optional<Assignment> focus;
+    std::vector<Assignment> focus;
     forEachMod(param, [&](const Assignment &m) {
         any = true;
         if (modFocused(m))
-            focus = m;
+            focus.push_back(m);
         else
             range(m, false);
     });
     if (!any)
         return;
-    if (focus)
-        range(*focus, true);
+    for (const Assignment &f : focus)
+        range(f, true);
     // Where the set amount is, and where the newest voice (or with no note playing, the macros) takes it now.
     c.fillRect({bar.x + static_cast<float>(n) * bar.w - 0.75f, bar.y - 1.0f, 1.5f, bar.h + 2.0f}, kDim, 0.5f);
     if (liveOffset(param) != 0.0f)
@@ -4284,6 +4364,21 @@ void View::paintSources(Canvas &c) {
     c.popClip();
 }
 
+namespace {
+// A slot row's name, drawn smaller to fit its place when it is long, down to 7.5, which the canvas draws at about 9 px;
+// its width is a straight line between the two.
+float slotNameSize(Canvas &c, const std::string &name) {
+    constexpr float kFull = 11.0f, kSmallest = 7.5f;
+    const float full = c.textWidth(name, kFull);
+    if (full <= kSlotNameW)
+        return kFull;
+    const float smallest = c.textWidth(name, kSmallest);
+    return smallest >= kSlotNameW
+               ? kSmallest
+               : std::floor((kFull - (full - kSlotNameW) / (full - smallest) * (kFull - kSmallest)) * 4.0f) / 4.0f;
+}
+} // namespace
+
 void View::paintSource(Canvas &c, float card, int s) {
     const Rect p = sourceCard(card, sourceSpan(s));
     const Color color = kSourceColors[s];
@@ -4331,18 +4426,10 @@ void View::paintSource(Canvas &c, float card, int s) {
         const Rect r = slotRow(card, static_cast<float>(row) - first);
         c.fillRect(r, kRaised, 5.0f);
         // A bypassed row is dimmed; its dot (the bypass switch, a widget) is hollow. A long name is drawn smaller to
-        // fit, down to 7.5, which the canvas draws at about 9 px; its width is a straight line between the two.
+        // fit (see slotNameSize()).
         const std::string name = paramName(target);
-        constexpr float kFull = 11.0f, kSmallest = 7.5f;
-        float size = kFull;
-        if (const float full = c.textWidth(name, kFull); full > kSlotNameW) {
-            const float smallest = c.textWidth(name, kSmallest);
-            size = smallest >= kSlotNameW ? kSmallest
-                                          : std::floor((kFull - (full - kSlotNameW) / (full - smallest) *
-                                                                   (kFull - kSmallest)) * 4.0f) / 4.0f;
-        }
-        c.text({r.x + 18.0f, r.y, kSlotNameW, r.h}, name, size, slotBypassed(s, slots[row]) ? kFaint : kText,
-               Align::Left);
+        c.text({r.x + 18.0f, r.y, kSlotNameW, r.h}, name, slotNameSize(c, name),
+               slotBypassed(s, slots[row]) ? kFaint : kText, Align::Left);
     }
     c.popClip();
     // More rows than fit: the wheel over the list scrolls them, and so does the bar beside them (a widget).
@@ -5251,6 +5338,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeCircle(center, radius + 1.8f, kSourceColors[aux], 1.3f);
         break;
     }
+    case Kind::ModPill:
+        paintModPill(c, w, hovered);
+        break;
+    case Kind::ModList:
+        paintModList(c, w);
+        break;
+    case Kind::ModListRow:
+        paintModListRow(c, w);
+        break;
     case Kind::ModsSource: {
         // The first of a source's rows has its handle's look and its name, the others a line in its color; under the
         // mouse, or while its menu is open, a chevron says it opens one.
@@ -5443,21 +5539,21 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
     // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
     // mouse is wider, over the others.
-    std::optional<Assignment> focus;
+    // (A hovered pill focuses all of those it holds.)
+    std::vector<Assignment> focus;
     forEachMod(w.param, [&](const Assignment &m) {
         if (modFocused(m)) {
-            focus = m;
+            focus.push_back(m);
             return;
         }
         const auto [down, up] = modReach(m);
         const float alpha = (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
         c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha), 2.5f);
     });
-    if (focus) {
-        const auto [down, up] = modReach(*focus);
-        const float alpha = sourceOn(focus->source) && !focus->bypassed ? 1.0f : 0.4f;
-        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[focus->source].alpha(alpha),
-              4.0f);
+    for (const Assignment &f : focus) {
+        const auto [down, up] = modReach(f);
+        const float alpha = sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f;
+        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha), 4.0f);
     }
 
     c.fillCircle(center, radius - 7.0f, kKnobBody);
@@ -5498,6 +5594,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::ShapeDone && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
+         hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SlotPolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
          hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
          hover_->kind != Kind::ModsScale &&
@@ -5517,6 +5614,12 @@ void View::paintTooltip(Canvas &c) {
     std::string text;
     if (hover_->kind == Kind::MacroName) {
         text = tr(Str::TipRenameMacro);
+    } else if (hover_->kind == Kind::ModPill) {
+        if (modListOn(*hover_))
+            return; // its list shows them
+        int count = 0;
+        forEachMod(hover_->a, [&](const Assignment &) { ++count; });
+        text = trf(Str::TipModPill, {std::to_string(count - hover_->b)});
     } else if (hover_->kind == Kind::NoteDisplay) {
         text = tr(isVelocity(hover_->a) ? Str::TipVelocityDisplay : Str::TipNoteDisplay);
     } else if (hover_->kind == Kind::WireEnd) {
@@ -5647,11 +5750,102 @@ void View::paintTooltip(Canvas &c) {
     c.text(tip, text, 11.0f, kText);
 }
 
+// The pill: in the track's color, the count of what it holds in bold; lighter under the mouse, in the accent while
+// its list is open, and hollow while everything it holds is bypassed or its source is off.
+void View::paintModPill(Canvas &c, const Widget &w, bool hovered) {
+    const bool open = modListOn(w);
+    bool live = false;
+    int index = 0;
+    forEachMod(w.a, [&](const Assignment &m) {
+        if (index++ >= w.b && sourceOn(m.source) && !m.bypassed)
+            live = true;
+    });
+    const float round = w.rect.h * 0.5f;
+    if (open)
+        c.fillRect(w.rect, kAccent, round);
+    else if (live)
+        c.fillRect(w.rect, hovered ? kFaint : kTrack, round);
+    else
+        c.strokeRect(w.rect.inset(0.5f), hovered ? kDim : kFaint, 1.0f, round);
+    const std::string text = "+" + std::to_string(index - w.b);
+    c.text({w.rect.x - 2.0f, w.rect.y - 1.0f, w.rect.w + 4.0f, w.rect.h + 1.0f}, text, w.compact ? 6.5f : 7.5f,
+           open ? kBackground : (live ? kText : kDim), Align::Center, true);
+}
+
+void View::openModList(const Widget &pill, bool sprung) {
+    modList_ = ModListOpen{pill.a, pill.rect, sprung};
+    listMenu_ = -1; // one open list at a time
+    fxMenuOpen_ = false;
+    cascade_.reset();
+}
+
+bool View::modListPillShown() const {
+    const std::vector<Widget> list = widgets();
+    return std::any_of(list.begin(), list.end(), [&](const Widget &w) { return w.kind == Kind::ModPill && modListOn(w); });
+}
+
+bool View::modListOn(const Widget &pill) const {
+    return modList_ && modList_->target == pill.a && modList_->anchor.x == pill.rect.x &&
+           modList_->anchor.y == pill.rect.y;
+}
+
+Rect View::modListPanel(Rect anchor, int rows) const {
+    const float w = kCardW - 24.0f + 2.0f * kModListPad;
+    const float h = kModListTitleH + static_cast<float>(rows) * kModListRowStep + kModListPad - 4.0f;
+    const float x = std::clamp(anchor.center().x - w * 0.5f, 4.0f, View::kWidth - 4.0f - w);
+    float y = anchor.bottom() + 6.0f; // under the pill; over it when there is no room below
+    if (y + h > height() - 4.0f)
+        y = std::max(anchor.y - 6.0f - h, 4.0f);
+    return {x, y, w, h};
+}
+
+void View::paintModList(Canvas &c, const Widget &w) {
+    c.fillRect(w.rect.inset(-3.0f), kBackground.alpha(0.35f), 11.0f); // a soft edge against what it covers
+    c.fillRect(w.rect, kPanel, 8.0f);
+    c.strokeRect(w.rect, kBorder, 1.0f, 8.0f);
+    int rows = 0;
+    forEachMod(w.a, [&](const Assignment &) { ++rows; });
+    const Rect title{w.rect.x + kModListPad + 4.0f, w.rect.y + 2.0f, w.rect.w - 2.0f * kModListPad - 8.0f,
+                     kModListTitleH - 4.0f};
+    const std::string count = rows == 1 ? std::string(tr(Str::ModListCountOne))
+                                        : trf(Str::ModListCount, {std::to_string(rows)});
+    const float countW = std::ceil(c.textWidth(count, 10.5f));
+    c.text({title.x, title.y, title.w - countW - 8.0f, title.h}, paramName(w.a), 11.0f, kText, Align::Left, true);
+    c.text({title.right() - countW, title.y, countW, title.h}, count, 10.5f, kDim, Align::Right);
+}
+
+// A row: as on a source's card, with the source's name (dimmed while bypassed or off) in place of the target's.
+void View::paintModListRow(Canvas &c, const Widget &w) {
+    const bool lit = hover_ && hover_->popup && hover_->a == w.a && hover_->b == w.b && drag_.kind == DragKind::None;
+    c.fillRect(w.rect, lit ? kTrack : kRaised, 5.0f);
+    const bool off = slotBypassed(w.a, w.b) || !sourceOn(w.a);
+    const std::string name = sourceName(w.a);
+    c.text({w.rect.x + 18.0f, w.rect.y, kSlotNameW, w.rect.h}, name, slotNameSize(c, name), off ? kFaint : kText,
+           Align::Left);
+}
+
 void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
     const int source = drag_.widget.a;
     const Color color = kSourceColors[source];
     const auto target = hitTest(drag_.now);
+    // What an open pill's list covers takes no drop: it isn't ringed over the list.
+    const auto panel = std::find_if(list.begin(), list.end(), [](const Widget &w) { return w.kind == Kind::ModList; });
+    auto covered = [&](Rect r) {
+        if (panel == list.end())
+            return false;
+        const Rect p = panel->rect;
+        return r.x < p.right() && r.right() > p.x && r.y < p.bottom() && r.bottom() > p.y;
+    };
     for (const Widget &w : list) {
+        if (w.kind == Kind::ModListRow && w.a != source) { // so does a row of a pill's list
+            const bool over = target && target->popup && target->a == w.a && target->b == w.b;
+            c.strokeRect(w.rect.inset(-1.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, 6.0f);
+            continue;
+        }
+        if (w.popup || covered(w.kind == Kind::Knob ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f,
+                                                           w.rect.w + 14.0f}
+                                                     : w.rect.inset(-4.0f)))
+            continue;
         if (w.kind == Kind::ModDot && w.a != source) { // a depth handle takes it as the modulation's aux
             if (w.clip.w > 0.0f && !w.clip.contains(w.rect.center()))
                 continue;
@@ -5712,7 +5906,13 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             return d.kind == Kind::ModDot && d.a == source && w.rect.inset(-2.0f).contains(d.rect.center()) &&
                    slotTarget(value(slotTargetIndex(source, d.b))) == w.param;
         });
-        const Point to = dot != list.end() ? dot->rect.center() : (w.kind == Kind::Knob ? knobCenter(w) : w.rect.center());
+        // A dot the widget had no room for is in its pill: the line ends there.
+        const auto pill = dot != list.end() ? list.end() : std::find_if(list.begin(), list.end(), [&](const Widget &d) {
+            return d.kind == Kind::ModPill && d.a == w.param && w.rect.inset(-2.0f).contains(d.rect.center());
+        });
+        const Point to = dot != list.end()    ? dot->rect.center()
+                         : pill != list.end() ? pill->rect.center()
+                         : (w.kind == Kind::Knob ? knobCenter(w) : w.rect.center());
         if (w.clip.w > 0.0f && !w.clip.contains(to))
             continue;
         const Color color = kSourceColors[source].alpha(sourceOn(source) && modulated ? 1.0f : 0.4f); // bypassed: faint
@@ -5722,6 +5922,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         c.curve(from, control, to, color.alpha(0.75f), 1.5f, true);
         if (dot != list.end()) // a ring round the dot the line points at
             c.strokeCircle(to, dot->compact ? 5.5f : 7.5f, color, 1.5f);
+        else if (pill != list.end()) // or round the pill
+            c.strokeRect(pill->rect.inset(-2.0f), color, 1.5f, pill->rect.h * 0.5f + 2.0f);
         if (w.kind == Kind::Knob)
             c.strokeCircle(knobCenter(w), knobRadius(w) + 5.0f, color.alpha(0.5f), 1.0f);
         else
@@ -5979,10 +6181,16 @@ void View::applyDrag(Point p) {
             setScroll(area, static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / room * (cards - shown));
         break;
     }
-    case DragKind::ModSource: // over an operator's tab, a dragged handle opens it, so its knobs can take the drop
-        if (const auto tab = hitTest(p); tab && tab->kind == Kind::OpTab)
-            controller_.layout().opTab = static_cast<InspectorTab>(tab->a);
+    case DragKind::ModSource: {
+        // Over an operator's tab, a dragged handle opens it, so its knobs can take the drop; over a pill, its list, so
+        // one of its rows can take the handle as that modulation's aux.
+        const auto at = hitTest(p);
+        if (at && at->kind == Kind::OpTab)
+            controller_.layout().opTab = static_cast<InspectorTab>(at->a);
+        if (at && at->kind == Kind::ModPill && !modListOn(*at))
+            openModList(*at, true);
         break;
+    }
     case DragKind::ModsScroll: { // the rows follow the thumb
         const float room = modsScrollTrack().h - modsThumb().h;
         if (room > 0.0f)
@@ -6069,6 +6277,13 @@ void View::mouseDown(Point p, Modifiers mods) {
     // state load may have replaced the layout since it last ran.
     keepRoutes();
     const auto hit = hitTest(p);
+    // A pill's open list closes at a click anywhere else, which does nothing more; but not at a source's handle,
+    // which can then be dragged onto one of its rows.
+    if (modList_ && !(hit && (hit->popup || hit->kind == Kind::ModPill || hit->kind == Kind::SourceHandle ||
+                              hit->kind == Kind::MacroHandle))) {
+        modList_.reset();
+        return;
+    }
     if (!hit)
         return;
     const Widget &w = *hit;
@@ -6101,6 +6316,15 @@ void View::mouseDown(Point p, Modifiers mods) {
         if ((w.kind == Kind::SlotBar || w.kind == Kind::ModsScale) && !drag_.fine) // to the mouse at once; with
             applyDrag(p);                                                           // Shift, from where it is
         break;
+    case Kind::ModPill: // opens its list, or closes it again
+        if (modListOn(w))
+            modList_.reset();
+        else
+            openModList(w, false);
+        break;
+    case Kind::ModList:
+    case Kind::ModListRow:
+        break; // the list stays open
     case Kind::ModsSource:
         openCascade(CascadeKind::Source, w.a, w.b, w.rect);
         break;
@@ -6596,10 +6820,19 @@ void View::mouseUp(Point p, Modifiers) {
     }
     case DragKind::ModSource: {
         const auto target = hitTest(p);
-        if (target && target->kind == Kind::ModDot && target->a != w.a) // on a depth handle: it becomes that one's aux
+        // On a depth handle, or a row of a pill's list: it becomes that modulation's aux.
+        const bool row = target && target->popup && target->kind != Kind::ModList;
+        if (target && (target->kind == Kind::ModDot || row) && target->a != w.a)
             setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target
             assign(w.a, target->param);
+        // A list that opened under the handle stays open only when the handle went onto one of its rows.
+        if (modList_ && modList_->sprung) {
+            if (row)
+                modList_->sprung = false;
+            else
+                modList_.reset();
+        }
         break;
     }
     case DragKind::Glow:
@@ -6838,6 +7071,9 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
     const auto hit = hitTest(p);
+    // Over a pill's list, only its depth bars take the wheel: nothing under the list scrolls.
+    if (hit && (hit->popup || hit->kind == Kind::ModPill) && hit->kind != Kind::SlotBar && hit->kind != Kind::ValueText)
+        return;
     // What moves in whole steps (the grid, a stepped param, an operator's pitch, a note) moves by whole notches.
     const int target = hit && hit->kind == Kind::ShapeGrid ? kWheelGrid + hit->a : (hit ? hit->param : -1);
     const int whole = wheelNotches(target, steps);

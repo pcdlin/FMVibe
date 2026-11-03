@@ -219,6 +219,15 @@ inline Point randomKnob(float card, int knob) {
 // scrolls and the rows at its ends are cut off.
 constexpr int kVisibleSlots = 4;
 constexpr float kSlotNameW = 90.0f; // the target's name, between the bypass dot and the polarity switch
+
+// The "+n" pill that takes the place of the depth handles a knob, label or cell has no room for: under a knob, and
+// smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation, laid out as
+// a source card's rows are, the source's name in place of the target's.
+constexpr float kModPill = 12.0f, kModPillWide = 15.0f, kModPillH = 9.0f;
+constexpr float kModPillCompact = 11.0f, kModPillWideCompact = 14.0f, kModPillCompactH = 8.0f;
+constexpr float kModListPad = 6.0f;
+constexpr float kModListTitleH = 24.0f;
+constexpr float kModListRowStep = 24.0f; // a row is 20 px high, as on a card
 inline Rect slotRow(float card, float row) {
     const Rect p = sourceCard(card);
     return {p.x + 12.0f, p.y + 160.0f + row * 24.0f, p.w - 24.0f, 20.0f};
