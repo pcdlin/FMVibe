@@ -217,6 +217,49 @@ Point View::nodeCenter(int node) const {
     return {kGraph.x + layout.nodeX[node] * kGraph.w, kGraph.y + layout.nodeY[node] * kGraph.h};
 }
 
+// Where a node dragged to `want` goes: there, unless it would cover another node shown, when it is pushed out of
+// that one's way to kNodeGap past its outline, and kept inside the graph. A node and the one it is pushed from each
+// take a rounded box, their outlines' sum: a circle's is a point grown by its radius, a filter's or a shaper's its box.
+// Pushed into a third one with no room left, it stays where it was.
+Point View::nodePlace(int node, Point want) const {
+    constexpr float kNodeGap = 10.0f; // the edges' bands, kEdgeOut each, just meet
+    auto half = [](int n) { return isBoxNode(n) ? Point{kFilterHalfW, kFilterHalfH} : Point{0.0f, 0.0f}; };
+    auto radius = [](int n) { return isBoxNode(n) ? 0.0f : kNodeRadius; };
+    // How far, and which way, `at` has to move to clear `other`.
+    auto push = [&](Point at, int other) -> Point {
+        const Point c = nodeCenter(other);
+        const Point h{half(node).x + half(other).x, half(node).y + half(other).y};
+        const float r = radius(node) + radius(other) + kNodeGap;
+        const Point d{at.x - c.x, at.y - c.y};
+        const Point e{d.x - std::clamp(d.x, -h.x, h.x), d.y - std::clamp(d.y, -h.y, h.y)};
+        const float out = std::hypot(e.x, e.y);
+        if (out > 1e-4f)
+            return out >= r - 0.01f ? Point{} : Point{e.x / out * (r - out), e.y / out * (r - out)}; // rounding aside
+        const float x = h.x + r - std::abs(d.x), y = h.y + r - std::abs(d.y); // inside the box: out the nearer side
+        return x <= y ? Point{d.x < 0.0f ? -x : x, 0.0f} : Point{0.0f, d.y < 0.0f ? -y : y};
+    };
+    auto inGraph = [](Point at) {
+        return Point{std::clamp(at.x, kGraph.x, kGraph.right()), std::clamp(at.y, kGraph.y, kGraph.bottom())};
+    };
+    const std::vector<int> on = enabledNodes();
+    Point at = inGraph(want);
+    for (int pass = 0; pass < 8; ++pass) {
+        bool clear = true;
+        for (int other : on) {
+            if (other == node)
+                continue;
+            const Point by = push(at, other);
+            if (by.x != 0.0f || by.y != 0.0f) {
+                at = inGraph({at.x + by.x, at.y + by.y});
+                clear = false;
+            }
+        }
+        if (clear)
+            return at;
+    }
+    return nodeCenter(node);
+}
+
 int View::nodeAt(Point p) const {
     for (int node = kNodes - 1; node >= 0; --node) {
         if (!nodeOn(node))

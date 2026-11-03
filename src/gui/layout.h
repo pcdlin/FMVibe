@@ -145,7 +145,7 @@ constexpr float kCascadePad = 4.0f;
 // Header: global knobs, the play cluster between two dividers, then the voice controls.
 constexpr float kHeaderKnobX = 186.0f;
 constexpr float kHeaderKnobW = 104.0f;
-constexpr float kPlayX = 624.0f;
+constexpr float kPlayX = 661.0f; // its switches' middle half way between the dividers
 constexpr float kSmallKnobValue = 64.0f; // where a small header knob's number starts, past its knob and label
 constexpr float kDividers[] = {612.0f, 896.0f};
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
@@ -400,7 +400,7 @@ inline Rect peqTypeButton(Rect card, float y) {
 
 // The keyboard strip under the modulation panel, `top` down: along its top the collapse toggle with the strip's
 // title, the macros, the note source and velocity, and under them the wheels on the left and six octaves of keys,
-// the octave shift under their right end. Collapsed, only the top row shows, the mod wheel's handle joining it.
+// the octave shift under their right end, the mod wheel's handle in the top row. Collapsed, only the top row shows.
 constexpr float kKeyboardH = 192.0f;
 constexpr float kKeyboardBarH = 72.0f; // the top row, the names under it included: all that shows while collapsed
 constexpr Rect kKeys{130.0f, 76.0f, 1046.0f, 98.0f}; // relative to the strip's top
@@ -446,11 +446,10 @@ inline Rect bendWheel(float top) {
 inline Rect modWheel(float top) {
     return {74.0f, top + kKeys.y, 26.0f, 90.0f};
 }
-// The mod wheel's handle, right of it, to drag onto what it moves, as a macro's; collapsed, in the top row between
-// the macros and the note source, its name under it.
-inline Rect wheelHandle(float top, bool collapsed) {
-    return collapsed ? Rect{918.0f, top + kStripRow - 10.0f, 20.0f, 20.0f}
-                     : Rect{104.0f, top + kKeys.y + 35.0f, 20.0f, 20.0f};
+// The mod wheel's handle, to drag onto what it moves, as a macro's: in the top row between the macros and the note
+// source, its name under it, whether the keys show or not.
+inline Rect wheelHandle(float top) {
+    return {918.0f, top + kStripRow - 10.0f, 20.0f, 20.0f};
 }
 constexpr int kKeyCount = 73; // C to C, six octaves
 constexpr int kWhiteKeys = 43;

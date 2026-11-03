@@ -210,10 +210,10 @@ constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
 constexpr Point kFmAmountKnob{308.0f, 32.0f};
 constexpr Point kVoicesKnob{1024.0f, 32.0f};
-constexpr Point kMonoButton{690.0f, 21.0f};
-constexpr Point kLegatoToggle{668.0f, 44.0f};
-constexpr Point kGlideKnob{733.0f, 21.0f};
-constexpr Point kAlwaysToggle{766.0f, 44.0f};
+constexpr Point kMonoButton{727.0f, 21.0f};
+constexpr Point kLegatoToggle{705.0f, 44.0f};
+constexpr Point kGlideKnob{770.0f, 21.0f};
+constexpr Point kAlwaysToggle{803.0f, 44.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};
@@ -1448,10 +1448,10 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     check(noteMapped && shot && removal == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameNote)}),
           "the note source's handle maps it like a macro's, and its display names the note");
 
-    // The mod wheel's handle, right of the wheel, maps it the same way (faint until it does), onto FM Amount here,
-    // where it starts upward, as every new modulation does.
+    // The mod wheel's handle, in the row between the macros and the note source, maps it the same way (faint until it
+    // does), onto FM Amount here, where it starts upward, as every new modulation does.
     {
-        const Point wheelHandle{114.0f, view.height() - 87.0f}, wheelRing{120.0f, view.height() - 97.0f};
+        const Point wheelHandle{928.0f, y}, wheelRing{934.0f, y - 10.0f};
         view.mouseMove({600.0f, 300.0f}, {});
         renderer.save(view, dir / "26f-wheel-idle.png");
         const int idle = ringLevel(renderer, wheelRing, 20.0f);
@@ -1494,7 +1494,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const bool noteBipolar = model.value(paramIndex(NoteParam::Bipolar)) == 1.0;
         view.mouseMove({600.0f, 300.0f}, {});
         const bool stripShot = renderer.save(view, dir / "26h-bipolar-strip.png");
-        polarity({114.0f, view.height() - 87.0f}, tr(Str::MenuUnipolar)); // the wheel's handle
+        polarity({928.0f, y}, tr(Str::MenuUnipolar)); // the wheel's handle
         polarity(macroKnob(0), tr(Str::MenuUnipolar));
         polarity({1026.0f, y}, tr(Str::MenuUnipolar));
         check(macroWasUnipolar && macroBipolar && handleShowsIt && wheelBipolar && noteBipolar && stripShot &&
@@ -1521,7 +1521,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     }
 
     // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px
-    // shorter: the keys, the wheels and the octave shift go, and the mod wheel's handle joins the row between the
+    // shorter: the keys, the wheels and the octave shift go, and the mod wheel's handle stays in the row between the
     // macros and the note source, where it still maps the wheel, onto filter 1's cutoff here.
     {
         const Point toggle{35.0f, y - 8.0f}, title{80.0f, y - 8.0f};
@@ -1536,7 +1536,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const bool shot = renderer.save(view, dir / "26j-keys-collapsed.png");
         click(view, title);
         check(shorter && wheelMapped && shot && !model.ui.keysCollapsed && view.height() == open,
-              "the keyboard panel collapses to its top row, the mod wheel's handle moving into it, and opens again");
+              "the keyboard panel collapses to its top row, the mod wheel's handle staying in it, and opens again");
     }
 
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the
@@ -2514,6 +2514,21 @@ void run(const std::filesystem::path &dir, float scale) {
         drag(view, {c.x - 8.0f, c.y}, {c.x + 22.0f, c.y});
         check(layout.nodeX[2] > x && model.value(matrixIndex(2, 1)) == 0.0, "a drag from inside a node moves it");
         view.undo();
+        // Dragged onto another, it stops short of it, its outline 10 px from the other's; past it, it goes on.
+        const Point bAt = nodeCenter(layout, 1);
+        view.mouseDown({c.x - 8.0f, c.y}, {});
+        view.mouseMove({bAt.x + 5.0f, bAt.y + 2.0f}, {});
+        const Point held = nodeCenter(layout, 2);
+        check(renderer.save(view, dir / "3-node-blocked.png"), "render a node held off another");
+        view.mouseUp({bAt.x + 5.0f, bAt.y + 2.0f}, {});
+        const float apart = std::hypot(held.x - bAt.x, held.y - bAt.y);
+        view.undo();
+        drag(view, {c.x - 8.0f, c.y}, {bAt.x + 100.0f, bAt.y});
+        const float past = nodeCenter(layout, 2).x - (bAt.x + 100.0f);
+        view.undo();
+        std::printf("      held %.1f px from the other node, %.1f px off the mouse past it\n", apart, past);
+        check(apart > 57.0f && apart < 59.0f && std::abs(past) < 0.5f,
+              "a node dragged onto another is held off it, and goes on past it");
     }
     click(view, a);
 

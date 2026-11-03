@@ -347,7 +347,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
       the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
       an undo step; a wire that is removed or moved to another node starts bowing as a new one does.
-    - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it.
+    - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it. A node dragged onto another
+      stops short of it, held 10 px off its outline and sliding round it, and goes on once the mouse is past.
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
     panel's height, as far from its top as from its bottom; the routes that can't be (a shaper into a shaper, or a
@@ -511,7 +512,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
   the global knobs; the play cluster (Poly/Mono over Legato, then a small Glide knob, its label and number beside it, over its
-  Always switch, each switch explaining itself on hover); Bend; Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and
+  Always switch, each switch explaining itself on hover, centered between the dividers either side of it); Bend; Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and
   how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
@@ -681,13 +682,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Keyboard strip**: along its top the **KEYBOARD** toggle, the macros close together, the note source and, at the
   right end, velocity; under them the
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
-  range between them, shift them by an octave). The toggle (a chevron and the title, like the modulation panel's,
+  range between them, shift them by an octave). The mod wheel's handle sits in the top row between the macros and the
+  note source, its name under it. The toggle (a chevron and the title, like the modulation panel's,
   as far from the strip's top) collapses the strip to its top row, taking the wheels, the keys and the octave
-  shift away; the mod wheel's handle then joins the row between the macros and the note source, so the wheel can
-  still be assigned. Whether it is collapsed is kept with the editor, like the modulation panel's, and loading a
+  shift away; the mod wheel's handle stays, so the wheel can still be assigned. Whether it is collapsed is kept with the editor, like the modulation panel's, and loading a
   preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
   played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs
-  back to center on release; the **Mod** wheel is the Mod Wheel param, and the handle right of it drags onto what
+  back to center on release; the **Mod** wheel is the Mod Wheel param, and its handle in the top row drags onto what
   it should move (not the wheel itself), like a macro's (faint, like theirs, until it moves something). The wheel's and its handle's
   right-click menus make it unipolar or bipolar; bipolar, it fills from its middle, where it moves nothing.
 - **Macros** (in the keyboard strip, above the keys): eight knobs, each in a color of its own, with a handle

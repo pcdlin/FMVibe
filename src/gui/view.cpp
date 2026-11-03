@@ -1241,7 +1241,7 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
     add(Kind::Toggle, {kPlayX, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::Legato));
-    add(Kind::Knob, {kPlayX + 98.0f, 12.0f, 150.0f, 19.0f}, paramIndex(GlobalParam::Glide)); // as small as Poly | Mono
+    add(Kind::Knob, {kPlayX + 98.0f, 12.0f, 128.0f, 19.0f}, paramIndex(GlobalParam::Glide)); // as small as Poly | Mono
     list.back().label = tr(Str::LabelGlide);
     list.back().compact = true;
     add(Kind::Toggle, {kPlayX + 98.0f, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
@@ -1952,12 +1952,12 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::MacroHandle, velocityHandle(macros), -1, kVelocitySource);
     add(Kind::NoteDisplay, velocityDisplay(macros), -1, kVelocitySource);
 
-    // Keyboard strip. The white keys come first, so the black keys on top win the hits. Collapsed, only the mod
-    // wheel's handle stays, moved up into the top row.
+    // Keyboard strip. The white keys come first, so the black keys on top win the hits. Collapsed, only its top row
+    // stays, where the mod wheel's handle is anyway.
     const float keys = keyboardTop(controller_.layout().sourcesCollapsed);
     const bool keysCollapsed = controller_.layout().keysCollapsed;
     add(Kind::KeysToggle, keysToggle(keys));
-    add(Kind::MacroHandle, wheelHandle(keys, keysCollapsed), -1, kWheelSource);
+    add(Kind::MacroHandle, wheelHandle(keys), -1, kWheelSource);
     if (!keysCollapsed) {
         add(Kind::BendWheel, bendWheel(keys));
         add(Kind::ModWheel, modWheel(keys), paramIndex(GlobalParam::ModWheel));
@@ -2359,12 +2359,11 @@ void View::paintHeader(Canvas &c) {
 
 void View::paintKeyboard(Canvas &c) {
     const float top = keyboardTop(controller_.layout().sourcesCollapsed);
-    if (controller_.layout().keysCollapsed) { // the mod wheel's name, under its handle
-        const Rect handle = wheelHandle(top, true);
-        c.text({handle.x - 30.0f, top + kStripRow + 19.0f, handle.w + 60.0f, 16.0f}, tr(Str::HeadingMod), 10.5f,
-               kFaint, Align::Center, true);
+    const Rect handle = wheelHandle(top); // the mod wheel's name, under its handle
+    c.text({handle.x - 30.0f, top + kStripRow + 19.0f, handle.w + 60.0f, 16.0f}, tr(Str::HeadingMod), 10.5f, kFaint,
+           Align::Center, true);
+    if (controller_.layout().keysCollapsed)
         return;
-    }
     const Rect bend = bendWheel(top), mod = modWheel(top);
     c.text({bend.x - 16.0f, bend.bottom() + 4.0f, bend.w + 32.0f, 14.0f}, tr(Str::HeadingBend), 10.5f, kFaint,
            Align::Center, true);
@@ -6022,8 +6021,9 @@ void View::applyDrag(Point p) {
     }
     case DragKind::Node: {
         UiLayout &layout = controller_.layout();
-        const float x = std::clamp((p.x - kGraph.x) / kGraph.w, 0.0f, 1.0f);
-        const float y = std::clamp((p.y - kGraph.y) / kGraph.h, 0.0f, 1.0f);
+        const Point at = nodePlace(w.a, p); // kept off the other nodes
+        const float x = std::clamp((at.x - kGraph.x) / kGraph.w, 0.0f, 1.0f);
+        const float y = std::clamp((at.y - kGraph.y) / kGraph.h, 0.0f, 1.0f);
         if (isBoxNode(w.a)) {
             layout.boxX[w.a - kOps] = x;
             layout.boxY[w.a - kOps] = y;

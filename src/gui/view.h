@@ -612,6 +612,7 @@ private:
     std::vector<Widget> widgets() const;
     std::optional<Widget> hitTest(Point p) const;
     Point nodeCenter(int node) const;
+    Point nodePlace(int node, Point want) const;
     int nodeAt(Point p) const;
     Rect envRect(int env) const;
     // A small header knob, one row high, has its label and number on that row beside it (the Glide knob).
