@@ -5796,6 +5796,13 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
                            over ? 2.0f : 1.0f);
             continue;
         }
+        if (w.kind == Kind::ModsAux && w.a != source) { // a MODS row's aux cell takes it as the aux too
+            if (w.clip.w > 0.0f && (w.rect.y < w.clip.y || w.rect.bottom() > w.clip.bottom()))
+                continue;
+            const bool over = target && target->same(w);
+            c.strokeRect(w.rect.inset(-2.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, 8.0f);
+            continue;
+        }
         if (!droppable(w, source))
             continue;
         // A target scrolled out of its card or list isn't outlined; one partly out is outlined as far as it
@@ -6741,9 +6748,9 @@ void View::mouseUp(Point p, Modifiers) {
     }
     case DragKind::ModSource: {
         const auto target = hitTest(p);
-        // On a depth handle, or a row of a pill's list: it becomes that modulation's aux.
+        // On a depth handle, a row of a pill's list or a MODS row's aux cell: it becomes that modulation's aux.
         const bool row = target && target->popup && target->kind != Kind::ModList;
-        if (target && (target->kind == Kind::ModDot || row) && target->a != w.a)
+        if (target && (target->kind == Kind::ModDot || target->kind == Kind::ModsAux || row) && target->a != w.a)
             setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target
             assign(w.a, target->param);
