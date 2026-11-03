@@ -20,7 +20,8 @@
     - Only one aux source allowed per automation
     - **In one line:** two new fields on every slot of every source, Aux (which source) and Amount (0–100 %); the
       engine multiplies depth × Amount × the aux's value; a **MODS** tab after FX lists every modulation as a row;
-      dropping a source's handle on a depth handle (which does nothing today) sets that slot's aux.
+      dropping a source's handle on a depth handle (which does nothing today) or on a depth bar in a source's
+      list (which today makes it modulate that depth) sets that slot's aux.
     - **Feasible; the biggest item** (params, engine, a new view, tests). Plan:
         1. Params: a new section with two fields per slot of every source (16 places, 8 macros, note, mod wheel):
            *Aux* (wiring like a target: source + 1, 0 = none, not automatable) and *Amount* (a 0–100 % scaler on
@@ -35,10 +36,16 @@
            a wide depth bar, Amount, Aux (a menu or a dropped handle; × clears it), bypass and remove. It scrolls
            like the slot lists.
         4. Dropping a source's handle on a depth handle (ignored today, see `DragKind::ModSource`) sets that slot's
-           Aux, replacing the one there; the depth handle gets a ring in the aux's color.
+           Aux, replacing the one there; the depth handle gets a ring in the aux's color. Dropping it on a depth
+           bar in a source's list does the same, in place of modulating that depth: `droppable()` stops taking a
+           `SlotBar`, and `slotTarget()` stops taking a slot's depth, so a patch with a source modulating another's
+           depth loads without it (no factory preset has one). The bar shows its aux as the one dot in its top
+           right corner, where the depth modulation's dots were. Host modulation of the depths stays.
         5. Checks: smoke (aux at 0 silences the slot, Amount at 50 % halves it, a per-voice aux on a macro slot);
-           uishot replays for the tab, a drop on a depth handle and a row's controls; features.md.
+           uishot replays for the tab, a drop on a depth handle and on a depth bar (`renderLfoOnLfo` becomes the
+           latter) and a row's controls; features.md (its Modulation section's source on a depth bar).
     - Decided: Amount is a 0–100 % scaler on the depth, like Serum's Output. The tab is called **MODS** for now.
+      Dropping a source on a depth bar sets that slot's aux; a source no longer modulates another source's depth.
 
 
 
@@ -54,6 +61,10 @@
         1. Show as many as fit the knob's (label's, cell's) width; past that, the last place becomes a "+n" pill.
         2. Hovering or clicking the pill lists the rest in a small popup, each with its depth handle (drag, bypass,
            remove); once the MODS view exists, it can open that instead, filtered to the target.
+           With the aux source, each row takes a dropped source's handle as its aux; while a handle is dragged,
+           holding it over the pill opens the list, as holding it over an operator's tab opens that tab.
+    - UI draft: https://claude.ai/artifact/GJBbSa6NbZAsFpURKWLV7k (2+ handles and a "+n" pill per control, the
+      list as a prototype, the pill's states).
         3. uishot: eight sources on one knob, nothing drawn outside its column (read off the pixels).
 
 
