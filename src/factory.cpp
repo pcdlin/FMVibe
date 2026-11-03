@@ -127,7 +127,8 @@ std::vector<FactoryPreset> factoryPresets() {
         presets.push_back({"BA FM Bass", p.changes});
     }
     // KY Glass Bell
-    // Ratios of 3.5 and 7.5 make inharmonic partials that ring out long, in a large room.
+    // Ratios of 3.5 and 7.5 make inharmonic partials that ring out long, in a large room. The two stacks stand side
+    // by side, each modulator above its carrier, so no route runs behind another node.
     {
         Patch p;
         p.op(0, 1, 0.7, 0.0, 4.0, 0.0, 2.5);
@@ -138,7 +139,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.mod(3, 2, 0.3);
         p.fx(0, FxType::Reverb, {{FxParam::ReverbSize, 0.8}, {FxParam::ReverbDecay, normFromTime(4.5)},
                                  {FxParam::ReverbDamping, 0.3}, {FxParam::ReverbMix, 0.35}});
-        presets.push_back({"KY Glass Bell", p.changes});
+        presets.push_back({"KY Glass Bell", p.changes, {{0.3f, 0.55f}, {0.3f, 0.1f}, {0.7f, 0.55f}, {0.7f, 0.1f}}});
     }
     // PD Warm Pad
     // Four detuned copies fading in slowly, a gentle second harmonic that an LFO lets breathe.
@@ -155,7 +156,8 @@ std::vector<FactoryPreset> factoryPresets() {
     }
     // KY Drawbar Organ
     // Drawbars: sine partials at 0.5, 1, 2, 3 and 4 times the note, keyed on and off at once, a touch of
-    // feedback, and a slow phaser for some movement.
+    // feedback, and a slow phaser for some movement. The five carriers stand in a row, lowest partial first, so no
+    // route runs behind another node.
     {
         Patch p;
         const int ratios[] = {1, 0, 2, 3, 4};
@@ -166,7 +168,7 @@ std::vector<FactoryPreset> factoryPresets() {
         p.fx(0, FxType::Phaser, {{FxParam::PhaserRate, normFromRate(0.7)}, {FxParam::PhaserDepth, 0.4},
                                  {FxParam::PhaserFeedback, 0.2}, {FxParam::PhaserMix, 0.7}});
         p.fx(1, FxType::Reverb, {{FxParam::ReverbMix, 0.15}});
-        presets.push_back({"KY Drawbar Organ", p.changes});
+        presets.push_back({"KY Drawbar Organ", p.changes, {{0.3f, 0.4f}, {0.1f, 0.4f}, {0.5f, 0.4f}, {0.7f, 0.4f}, {0.9f, 0.4f}}});
     }
     // PL Pluck Delay
     // A short, bright pluck into dotted-eighth echoes.
@@ -581,7 +583,8 @@ std::vector<FactoryPreset> factoryPresets() {
     // which sounds an octave up, for the chiff. The note source eases the FM off from C3 up, most in the top octaves
     // (its curve), as those chips' key scaling did, so high notes stay sweet; the Bite macro turns all the FM up. Part
     // of A goes through shaper 1's hard clipper for grit, and out beside it. Then the DJ EQ thins the lows and lifts the
-    // highs, a slapback delay a different length on each side, and a cut above 9 kHz.
+    // highs, a slapback delay a different length on each side, and a cut above 9 kHz. B stands above A and C beside
+    // it, so no route runs behind another node.
     {
         Patch p;
         p.op(0, 1, 0.6, 0.0, 1.5, 0.0, 0.3).opSet(0, OpParam::Wave, static_cast<double>(OpWave::AltSine));
@@ -603,7 +606,7 @@ std::vector<FactoryPreset> factoryPresets() {
                                 {FxParam::DelayMix, 0.2}});
         p.fx(2, FxType::ParamEq, {{FxParam::PeqType1, static_cast<double>(PeqType::HighCut)},
                                   {FxParam::PeqFreq1, normFromCutoff(9000.0)}});
-        presets.push_back({"PL Chip Pluck", p.changes, {}, {"Bite"}});
+        presets.push_back({"PL Chip Pluck", p.changes, {{0.5f, 0.55f}, {0.5f, 0.1f}, {0.8f, 0.55f}}, {"Bite"}});
     }
     // SQ Step Filter
     // A step sequence drawn as an LFO shape: an organ wave (A) and a 25 % pulse an octave down (B) through a resonant
