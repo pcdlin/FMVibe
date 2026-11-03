@@ -43,8 +43,17 @@ constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMa
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
 // An operator's Fixed switch, a keyboard on the summary line left of the power switch.
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
-// A Custom wave's EDIT button, left of the keyboard switch: opens its partial editor.
-constexpr Rect kPartialEditButton{kFixedSwitch.x - 4.0f - 36.0f, kFixedSwitch.y, 36.0f, kFixedSwitch.h};
+// A Custom wave's edit button (a pencil, as big as the keyboard switch, left of it): opens its partial editor.
+constexpr Rect kPartialEditButton{kFixedSwitch.x - 4.0f - kFixedSwitch.w, kFixedSwitch.y, kFixedSwitch.w,
+                                  kFixedSwitch.h};
+// The edit buttons in a display's corner, a pencil each: a Custom LFO's top right, a drawn shaper curve's bottom right.
+constexpr float kEditButtonW = 24.0f, kEditButtonH = 16.0f;
+inline Rect lfoEditButton(Rect display) {
+    return {display.right() - 4.0f - kEditButtonW, display.y + 4.0f, kEditButtonW, kEditButtonH};
+}
+inline Rect clipEditButton(Rect display) {
+    return {display.right() - 6.0f - kEditButtonW, display.bottom() - 5.0f - kEditButtonH, kEditButtonW, kEditButtonH};
+}
 // An operator's page: under its knob row, tabs (one per InspectorTab) pick what the lower half shows.
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;

@@ -444,7 +444,8 @@ Point nodeTab(int node) {
 }
 
 // A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output, Mix and To Out knobs, the
-// list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with EDIT in the display's corner.
+// list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with its edit button in the display's
+// corner.
 constexpr Point kShaperList{1009.0f, 177.0f};
 constexpr Point kShaperSym{1096.0f, 177.0f};
 constexpr Point kShaperLink{1146.0f, 177.0f};
@@ -457,7 +458,7 @@ Point shaperListItem(ClipMode mode) {
 Point shaperCurveAt(double x, double y) {
     return {908.0f + static_cast<float>(x) * 252.0f, 310.0f - static_cast<float>(y) * 42.24f};
 }
-constexpr Point kShaperEdit{1145.0f, 353.5f};
+constexpr Point kShaperEdit{1150.0f, 353.0f};
 
 // A point on a node's edge, where a drag connects it: an operator's lower right, a filter's or shaper's right side.
 Point portOf(const UiLayout &layout, int node) {
@@ -783,10 +784,10 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
           "the partial editor shows 16, 32 or 64 partials, keeping those it hides");
     click(view, partialCount(1));
     click(view, kRoutingEditorDone);
-    // While the wave is Custom, EDIT on the summary line, left of the keyboard switch, opens the partial editor again,
-    // lit while it is open, and a second click closes it (read off the rendered pixels: the editor's title).
+    // While the wave is Custom, a pencil on the summary line, left of the keyboard switch, opens the partial editor
+    // again, lit while it is open, and a second click closes it (read off the rendered pixels: the editor's title).
     {
-        constexpr Point kPartialEdit{1090.0f, 150.0f};
+        constexpr Point kPartialEdit{1095.0f, 150.0f};
         auto partialsTitle = [&] {
             std::vector<uint32_t> pixels;
             for (float y = 114.0f; y < 134.0f; y += 2.0f)
@@ -811,7 +812,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         const bool shut = renderer.save(view, dir / "23f-partials-shut.png") && partialsTitle() == closed;
         check(closedShot && openShot && opened && draws && shut &&
                   model.value(partialLevelIndex(0, 5)) == level,
-              "a Custom wave's EDIT opens its partial editor, and a second click closes it");
+              "a Custom wave's edit button opens its partial editor, and a second click closes it");
     }
     // The list's newer waves: Alt Sine, Organ and Vowel, between Abs Sine and Custom.
     click(view, kMoreWavesButton);
@@ -1286,7 +1287,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // A shaper's page: the curve list picks Hard, the link switch unlinks, Drive turns; picked from the list, Custom shows
-// its points in the display to drag, and EDIT opens the big editor over the routing panel, the page staying.
+// its points in the display to drag, and its pencil opens the big editor over the routing panel, the page staying.
 void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -1333,7 +1334,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     const bool editorShot = renderer.save(view, dir / "30b-shaper-editor.png");
     click(view, kRoutingEditorDone);
     check(added && pageStays && editorShot && model.layout().view == RoutingView::Graph,
-          "EDIT opens a shaper's curve over the routing panel, its page staying beside it");
+          "the pencil opens a shaper's curve over the routing panel, its page staying beside it");
 }
 
 // Folding cards: the chevron left of an effect card's cross folds it to a strip (38 px, its neighbours closing
@@ -3113,12 +3114,12 @@ void run(const std::filesystem::path &dir, float scale) {
           "a point of the curve drags in the card");
     view.mouseMove(cardAt(0.8, 0.6), {});
     check(renderer.save(view, dir / "8d-clip-custom.png"), "render the curve being edited in the card");
-    // Its EDIT button opens the big editor, which edits the same curve.
-    click(view, {fxCardX(model, 0) + 134.0f, 152.0f + 190.0f - 12.0f}); // EDIT, at the display's bottom right
+    // Its edit button, a pencil, opens the big editor, which edits the same curve.
+    click(view, {fxCardX(model, 0) + 134.0f, 152.0f + 190.0f - 12.0f}); // the pencil, at the display's bottom right
     view.doubleClick(clipAt(0.3, -0.5), {});
     check(model.value(clipCurveCountIndex(0)) == 5.0 &&
               std::abs(model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X)) - 0.3) < 0.01,
-          "EDIT opens the big curve editor, which adds points too");
+          "the pencil opens the big curve editor, which adds points too");
     view.mouseMove(clipAt(0.3, -0.5), {});
     check(renderer.save(view, dir / "8c-clip-curve.png"), "render the shaper's big curve editor");
     {

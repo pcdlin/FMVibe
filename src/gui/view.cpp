@@ -1197,7 +1197,7 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::Knob, knobRect(center, diameter), param);
         list.back().label = label;
     };
-    // A drawn shaper curve is edited right in its display, as in the big editor its EDIT button opens.
+    // A drawn shaper curve is edited right in its display, as in the big editor its edit button opens.
     auto drawnCurve = [&](int unit, Rect display) {
         const int shape = kMaxSources + unit;
         add(Kind::ShapeArea, display, -1, shape);
@@ -1217,8 +1217,8 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, shape, point);
             list.back().compact = true;
         }
-        // EDIT in the corner a curve leaves empty
-        add(Kind::ClipDisplay, {display.right() - 40.0f, display.bottom() - 20.0f, 34.0f, 15.0f}, -1, unit);
+        // The edit button in the corner a curve leaves empty
+        add(Kind::ClipDisplay, clipEditButton(display), -1, unit);
     };
 
     // Header.
@@ -3823,7 +3823,7 @@ void View::paintInspector(Canvas &c) {
         std::string summary = std::string(kNodeNames[op]) + dot;
         summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
         if (isCustomWave(op))
-            summaryRect.w -= kPartialEditButton.w + 4.0f; // and a Custom wave's EDIT, left of that
+            summaryRect.w -= kPartialEditButton.w + 4.0f; // and a Custom wave's edit button, left of that
         if (isNoise(op)) {
             char slope[32];
             const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
@@ -4422,6 +4422,17 @@ void View::paintNode(Canvas &c, const Widget &w) {
     c.text({center.x - 22.0f, center.y + 5.0f, 44.0f, 14.0f}, ratio, 10.0f, kDim); // inside the ring
 }
 
+namespace {
+// An edit button, the same pencil wherever it opens an editor: lit in `color` under the mouse, and outlined in it
+// while what it opens is open.
+void editButton(Canvas &c, Rect r, Color color, bool hovered, bool open) {
+    c.fillRect(r, open ? color.alpha(0.22f) : hovered ? color.alpha(0.3f) : kRaised, 5.0f);
+    if (open)
+        c.strokeRect(r, color, 1.0f, 5.0f);
+    editIcon(c, r.center(), open || hovered ? kText : kDim);
+}
+} // namespace
+
 void View::paintWidget(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w);
     const bool active = isActive(w);
@@ -4958,23 +4969,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::LfoDisplay:
         // A freeform LFO's display opens its editor.
-        if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom)) {
-            const Rect edit{w.rect.right() - 38.0f, w.rect.y + 4.0f, 34.0f, 15.0f};
-            c.fillRect(edit, hovered ? kSourceColors[w.a].alpha(0.3f) : kRaised, 4.0f);
-            c.text(edit, tr(Str::ButtonEdit), 10.5f, hovered ? kText : kDim, Align::Center, true);
-        }
+        if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom))
+            editButton(c, lfoEditButton(w.rect), kSourceColors[w.a], hovered, false);
         break;
-    case Kind::PartialEdit: { // a Custom wave's EDIT, lit while its partial editor is open
-        const bool open = partialEditing() == w.a;
-        c.fillRect(w.rect, open ? kAccent.alpha(0.22f) : hovered ? kAccent.alpha(0.3f) : kRaised, 5.0f);
-        if (open)
-            c.strokeRect(w.rect, kAccent, 1.0f, 5.0f);
-        c.text(w.rect, tr(Str::ButtonEdit), 10.5f, open || hovered ? kText : kDim, Align::Center, true);
+    case Kind::PartialEdit: // a Custom wave's, lit while its partial editor is open
+        editButton(c, w.rect, kAccent, hovered, partialEditing() == w.a);
         break;
-    }
-    case Kind::ClipDisplay: // the EDIT button on a drawn curve's display
-        c.fillRect(w.rect, hovered ? clipColor(w.a).alpha(0.3f) : kRaised, 4.0f);
-        c.text(w.rect, tr(Str::ButtonEdit), 10.5f, hovered ? kText : kDim, Align::Center, true);
+    case Kind::ClipDisplay: // the edit button on a drawn curve's display
+        editButton(c, w.rect, clipColor(w.a), hovered, false);
         break;
     case Kind::ListButton: {
         // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.
@@ -5549,7 +5551,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
-         hover_->kind != Kind::PartialEdit &&
+         hover_->kind != Kind::PartialEdit && hover_->kind != Kind::ClipDisplay &&
          hover_->kind != Kind::ShapeDone && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
@@ -5647,6 +5649,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipResetPartials);
     else if (hover_->kind == Kind::PartialEdit)
         text = tr(partialEditing() == hover_->a ? Str::TipClosePartials : Str::TipEditPartials);
+    else if (hover_->kind == Kind::ClipDisplay)
+        text = tr(Str::TipEditCurve);
     else if (hover_->kind == Kind::ShapeDone)
         text = tr(Str::TipDone);
     else if (hover_->kind == Kind::ShapeGrid)

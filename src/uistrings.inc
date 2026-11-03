@@ -463,7 +463,6 @@ STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
 STR(ButtonEnv, "ENV")
 STR(ButtonEffect, "EFFECT")
-STR(ButtonEdit, "EDIT")
 STR(ButtonOpenFolder, "OPEN FOLDER")
 STR(ButtonCancel, "Cancel")
 STR(ButtonInit, "Discard")
@@ -598,7 +597,8 @@ STR(TipResetVelocityCurve, "Reset to a straight line")
 STR(TipResetCurve, "Reset to the default S-curve")
 STR(TipResetShape, "Reset to the default triangle")
 STR(TipResetPartials, "Reset to a plain sine")
-STR(TipEditPartials, "Draw the wave's partials") // a Custom wave's EDIT, by the keyboard switch
+STR(TipEditPartials, "Draw the wave's partials") // a Custom wave's edit button, by the keyboard switch
+STR(TipEditCurve, "Edit the curve in the big editor") // a drawn shaper curve's edit button
 STR(TipClosePartials, "Close the partial editor")
 STR(TipDone, "Done")
 STR(TipGridAcross, "Horizontal grid. Hold Ctrl to snap")
