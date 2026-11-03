@@ -672,7 +672,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
 
     // A card lists no modulations: the button under its display counts them and shows them in the MODS view, where
-    // LFO 1's first row is the top one (its middle at y 188). There a row's number takes a typed depth, its depth
+    // LFO 1's first row is the top one (its middle at y 154). There a row's number takes a typed depth, its depth
     // bar's menu has Edit depth and its dot bypasses it; back in ROUTING, the modulated knob's menu resumes it.
     for (int k = 0; k < 6; ++k) {
         model.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(k, OpParam::Fine)));
@@ -684,16 +684,16 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     const bool buttonShot = renderer.save(view, dir / "17b-card-mods-button.png");
     click(view, modsButton);
     check(buttonShot && model.ui.view == RoutingView::Mods, "a source card's button shows its modulations in MODS");
-    const Point topNumber{701.0f, 188.0f};
+    const Point topNumber{701.0f, 154.0f};
     doubleClick(view, topNumber);
     type(view, "-25");
     view.typeKey(View::Key::Enter);
     check(std::abs(model.value(slotAmountIndex(0, 0)) + 0.25) < 1e-9, "a slot's number takes a typed depth");
-    view.menuCommand(menuEntry({576.0f, 188.0f}, tr(Str::MenuEditDepth))); // on the depth bar
+    view.menuCommand(menuEntry({576.0f, 154.0f}, tr(Str::MenuEditDepth))); // on the depth bar
     type(view, "45");
     view.typeKey(View::Key::Enter);
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.45) < 1e-9, "a depth bar's menu has Edit depth");
-    click(view, {41.0f, 188.0f});
+    click(view, {41.0f, 154.0f});
     const bool slotBypassed = model.value(slotBypassIndex(0, 0)) == 1.0;
     view.mouseMove({400.0f, 440.0f}, {});
     check(slotBypassed && renderer.save(view, dir / "17c-bypassed-slot.png"), "render a bypassed modulation");
@@ -1779,12 +1779,12 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
     model.set(slotAmountIndex(kMaxSources, 0), 0.35);
     view.poll();
-    // The tab, after FX; the first row's middle at y 188, its cells across from x 28 (see layout.h's kMods...).
+    // The tab, after FX; the first row's middle at y 154, its cells across from x 28 (see layout.h's kMods...).
     click(view, {314.0f, 88.0f});
     view.mouseMove({600.0f, 440.0f}, {});
     const bool shot = renderer.save(view, dir / "35-mods.png");
     check(model.ui.view == RoutingView::Mods && shot, "the MODS tab shows every modulation as a row");
-    const float y = 188.0f;
+    const float y = 154.0f;
     auto slotIs = [&](int source, int slot, int target) {
         return slotTarget(model.value(slotTargetIndex(source, slot))) == target;
     };
@@ -1803,15 +1803,15 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     // + Aux opens None and the sources by category; over Envelopes (the third entry) Env 1 shows beside it, and
     // picking it makes it the aux.
     click(view, {950.0f, y});
-    view.mouseMove({940.0f, 201.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {});
+    view.mouseMove({940.0f, 167.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {});
     const bool auxShot = renderer.save(view, dir / "35e-mods-aux-menu.png");
-    click(view, {1080.0f, 245.0f + 4.0f + 11.0f});
+    click(view, {1080.0f, 211.0f + 4.0f + 11.0f});
     check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
     // The target opens every target by category: Operators, then B, then (under PITCH) Detune, three levels deep.
     click(view, {300.0f, y});
-    view.mouseMove({250.0f, 204.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
-    view.mouseMove({380.0f, 226.0f + 4.0f + 22.0f + 11.0f}, {});       // B
-    const Point detune{520.0f, 248.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
+    view.mouseMove({250.0f, 170.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
+    view.mouseMove({380.0f, 192.0f + 4.0f + 22.0f + 11.0f}, {});       // B
+    const Point detune{520.0f, 214.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
     view.mouseMove(detune, {});
     const bool menuShot = renderer.save(view, dir / "35a-mods-target-menu.png");
     click(view, detune);
@@ -1825,10 +1825,10 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     // Its source moves it to a free slot of another source, Macro 1 here, with its depth, Amount and aux, in one undo
     // step.
     click(view, {90.0f, y});
-    view.mouseMove({80.0f, 204.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {}); // Macros
-    view.mouseMove({200.0f, 248.0f + 4.0f + 11.0f}, {});              // Macro 1
+    view.mouseMove({80.0f, 170.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {}); // Macros
+    view.mouseMove({200.0f, 214.0f + 4.0f + 11.0f}, {});              // Macro 1
     const bool sourceShot = renderer.save(view, dir / "35b-mods-source-menu.png");
-    click(view, {200.0f, 248.0f + 4.0f + 11.0f});
+    click(view, {200.0f, 214.0f + 4.0f + 11.0f});
     const bool moved = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
                        slotIs(kMaxSources, 1, paramIndex(0, OpParam::Fine)) &&
                        std::abs(model.value(slotAmountIndex(kMaxSources, 1)) - 0.4) < 1e-9 &&
@@ -1855,10 +1855,10 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     view.wheel({300.0f, 300.0f}, -10.0f, {});
     for (int i = 0; i < 40; ++i)
         view.poll();
-    // The rows are 30 px apart, 28 high, in a list 292 high whose first row's middle is at y 188: the fourteen (the
-    // add row too) scroll as far as the first shown is row 4.2 (see View::modsEnd()).
-    const float lastFirst = (14.0f * 30.0f - 2.0f - 292.0f) / 30.0f;
-    const Point macroDot{41.0f, 188.0f + (12.0f - lastFirst) * 30.0f};
+    // The rows are 30 px apart, 28 high, in a list 326 high whose first row's middle is at y 154: the fourteen (the
+    // add row too) scroll as far as the first shown is row 3.1 (see View::modsEnd()).
+    const float lastFirst = (14.0f * 30.0f - 2.0f - 326.0f) / 30.0f;
+    const Point macroDot{41.0f, 154.0f + (12.0f - lastFirst) * 30.0f};
     click(view, macroDot);
     view.mouseMove({600.0f, 440.0f}, {});
     const bool macroBypassed = model.value(slotBypassIndex(kMaxSources, 0)) == 1.0;
@@ -1900,7 +1900,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
 // A modulation moved to another source takes what modulates its depth along: LFO 1's on Op A's Fine, its depth
 // modulated by LFO 2, moved to Env 1 leaves LFO 2 modulating Env 1's depth; moved to Macro 1, whose depths can't be
 // modulated, it takes LFO 2's modulation away with it. The menus open as in testMods(): the first row's source at
-// x 90, y 188, its menu's categories 22 px apart from y 208 (LFOs, Envelopes, Macros), each opening beside it from x 176.
+// x 90, y 154, its menu's categories 22 px apart from y 174 (LFOs, Envelopes, Macros), each opening beside it from x 176.
 void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -1914,8 +1914,8 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, {314.0f, 88.0f}); // MODS
     auto moveTo = [&](int category) {
-        const float y = 208.0f + 22.0f * static_cast<float>(category) + 11.0f;
-        click(view, {90.0f, 188.0f});
+        const float y = 174.0f + 22.0f * static_cast<float>(category) + 11.0f;
+        click(view, {90.0f, 154.0f});
         view.mouseMove({80.0f, y}, {});
         view.mouseMove({200.0f, y}, {}); // the category's first source
         click(view, {200.0f, y});
@@ -1939,7 +1939,7 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
           "a modulation moved to a macro takes away what modulated its depth");
     // Removed by its row's x (at x 1144), it takes what modulated its depth with it, in one undo step.
     view.undo();
-    click(view, {1144.0f, 188.0f});
+    click(view, {1144.0f, 154.0f});
     const bool removed = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
                          slotTarget(model.value(slotTargetIndex(1, 0))) < 0;
     view.undo();
@@ -1950,24 +1950,35 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
 
 // Modulations added in the MODS view: the row after the last adds an empty one and opens its source's menu; picking
 // a source leaves it empty, waiting for a target, and picking a target then makes it a modulation of that source,
-// each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it.
+// each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it. With no
+// modulations at all, the columns' names show above the button.
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
+    // The columns' names, their middle at y 126: along it, under SOURCE (from x 54), the text's pixels differ from
+    // the panel's (read off the rendered pixels).
+    click(view, {314.0f, 88.0f}); // the MODS tab
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool noneShot = renderer.save(view, dir / "35e2-mods-none.png");
+    bool headed = false;
+    for (float x = 54.0f; x < 110.0f && !headed; x += 1.0f)
+        headed = renderer.pixel({x, 126.0f}) != renderer.pixel({48.0f, 126.0f});
+    check(noneShot && headed, "the MODS view shows its columns' names with no modulations");
+    click(view, kRoutingTab);
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
     model.set(slotAmountIndex(0, 0), 0.4);
     view.poll();
     click(view, {314.0f, 88.0f}); // the MODS tab
-    // Under LFO 1's row (its middle at y 188), the button adds a second: its source's menu opens under its source,
-    // at x 54 and y 234. Over Macros, the second entry, the macros show beside it; Macro 1 is picked.
-    const float y = 218.0f;
+    // Under LFO 1's row (its middle at y 154), the button adds a second: its source's menu opens under its source,
+    // at x 54 and y 200. Over Macros, the second entry, the macros show beside it; Macro 1 is picked.
+    const float y = 184.0f;
     click(view, {100.0f, y});
     const bool added = model.ui.emptyMods == std::vector<std::pair<int, int>>{{-1, -1}};
-    view.mouseMove({80.0f, 234.0f + 4.0f + 22.0f + 11.0f}, {}); // Macros
-    view.mouseMove({230.0f, 234.0f + 4.0f + 22.0f + 11.0f}, {}); // Macro 1, beside it
+    view.mouseMove({80.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {}); // Macros
+    view.mouseMove({230.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {}); // Macro 1, beside it
     const bool menuShot = renderer.save(view, dir / "35f-mods-empty-source.png");
-    click(view, {230.0f, 234.0f + 4.0f + 22.0f + 11.0f});
+    click(view, {230.0f, 200.0f + 4.0f + 22.0f + 11.0f});
     const bool sourced = model.ui.emptyMods == std::vector<std::pair<int, int>>{{kMaxSources, -1}};
     view.mouseMove({600.0f, 440.0f}, {});
     const bool shot = renderer.save(view, dir / "35g-mods-empty.png");
@@ -1981,9 +1992,9 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
             globals.push_back(g);
     auto openGlobal = [&] {
         click(view, {300.0f, y});
-        view.mouseMove({250.0f, 234.0f + 4.0f + 11.0f}, {});
+        view.mouseMove({250.0f, 200.0f + 4.0f + 11.0f}, {});
     };
-    auto globalEntry = [&](size_t k) { return Point{400.0f, 234.0f + 4.0f + 22.0f * k + 11.0f}; };
+    auto globalEntry = [&](size_t k) { return Point{400.0f, 200.0f + 4.0f + 22.0f * k + 11.0f}; };
     openGlobal();
     const bool globalShot = renderer.save(view, dir / "35h-mods-global-targets.png");
     click(view, globalEntry(globals.size()));
@@ -2011,19 +2022,19 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
               model.ui.emptyMods == std::vector<std::pair<int, int>>{{1, -1}},
           "a card's button, its source modulating nothing, adds an empty modulation from it in MODS");
     // With LFO 1's row and then Env 1's, a new empty modulation given LFO 1 moves up among LFO 1's rows: its target,
-    // picked in the second row (its middle at y 218), makes it LFO 1's, Env 1's left as it was.
+    // picked in the second row (its middle at y 184), makes it LFO 1's, Env 1's left as it was.
     click(view, {600.0f, 440.0f}); // closes the target menu the card's button opened
     model.ui.emptyMods.clear();
     model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(1, OpParam::Fine)));
     view.poll();
-    click(view, {100.0f, 248.0f}); // the button, under Env 1's row, opens the source menu at y 264
-    view.mouseMove({80.0f, 264.0f + 4.0f + 11.0f}, {}); // LFOs
+    click(view, {100.0f, 214.0f}); // the button, under Env 1's row, opens the source menu at y 230
+    view.mouseMove({80.0f, 230.0f + 4.0f + 11.0f}, {}); // LFOs
     // The menu's first entry under the mouse leaves LFO 1's row (its source's and slot's numbers the entry's) unlit:
     // it matches Env 1's between its aux and its x (read off the rendered pixels).
     const bool overRowsShot = renderer.save(view, dir / "35n-mods-menu-over-rows.png");
-    const bool rowUnlit = renderer.pixel({1110.0f, 188.0f}) == renderer.pixel({1110.0f, 218.0f});
+    const bool rowUnlit = renderer.pixel({1110.0f, 154.0f}) == renderer.pixel({1110.0f, 184.0f});
     check(overRowsShot && rowUnlit, "an open menu's entry under the mouse lights no MODS row");
-    click(view, {230.0f, 264.0f + 4.0f + 11.0f});     // LFO 1, beside it
+    click(view, {230.0f, 230.0f + 4.0f + 11.0f});     // LFO 1, beside it
     const bool lfoSourced = model.ui.emptyMods == std::vector<std::pair<int, int>>{{0, -1}};
     view.mouseMove({600.0f, 440.0f}, {});
     const bool sortedShot = renderer.save(view, dir / "35k-mods-empty-sorted.png");
@@ -2158,7 +2169,7 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a tenth as fast; half
     // its width (204 px from x 474) is 10 % then.
     click(view, {314.0f, 88.0f});
-    const Point bar{474.0f + 102.0f, 188.0f};
+    const Point bar{474.0f + 102.0f, 154.0f};
     view.mouseDown(bar, {true, false});
     view.mouseMove({bar.x + 102.0f, bar.y}, {true, false});
     view.mouseUp({bar.x + 102.0f, bar.y}, {true, false});
@@ -2166,7 +2177,7 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(sourceHandle(1), {});
     const bool shot = renderer.save(view, dir / "18c-lfo-on-lfo.png");
     // Hovered, the dot says what the modulation takes its target through, in the target's units.
-    const Point dot{474.0f + 204.0f - 4.0f, 174.0f + 4.0f}; // on LFO 1's depth bar
+    const Point dot{474.0f + 204.0f - 4.0f, 140.0f + 4.0f}; // on LFO 1's depth bar
     view.mouseMove(dot, {});
     const bool popup = renderer.save(view, dir / "18d-depth-popup.png");
     view.mouseMove({600.0f, 300.0f}, {});

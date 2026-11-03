@@ -115,14 +115,14 @@ constexpr int kVisibleFx = 6;
 constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
 constexpr float kFxCardW = (kFxPanel.w - 32.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
-// The MODS view covers them too: a row per modulation under a title row and the columns' names, scrolling with a
-// bar at the right. Within a row, from its left: the bypass dot, the source and its polarity switch, an arrow, the
-// target, the depth bar with its value, the Amount bar with its value, the aux and the remove button. After the last
-// row, the button that adds an empty one.
+// The MODS view covers them too: a row per modulation under the columns' names (the count at the right of their
+// row), scrolling with a bar at the right. Within a row, from its left: the bypass dot, the source and its polarity
+// switch, an arrow, the target, the depth bar with its value, the Amount bar with its value, the aux and the remove
+// button. After the last row, the button that adds an empty one.
 constexpr float kModsRowH = 28.0f;
 constexpr float kModsRowStep = 30.0f;
-constexpr Rect kModsList{kFxPanel.x + 12.0f, kFxPanel.y + 70.0f, kFxPanel.w - 24.0f - 14.0f, kFxPanel.h - 80.0f};
-constexpr float kModsHeaderY = kFxPanel.y + 46.0f;
+constexpr Rect kModsList{kFxPanel.x + 12.0f, kFxPanel.y + 36.0f, kFxPanel.w - 24.0f - 14.0f, kFxPanel.h - 46.0f};
+constexpr float kModsHeaderY = kFxPanel.y + 12.0f;
 inline Rect modsRow(float row) { // row: counted from the list's top, fractions while it scrolls
     return {kModsList.x, kModsList.y + row * kModsRowStep, kModsList.w, kModsRowH};
 }

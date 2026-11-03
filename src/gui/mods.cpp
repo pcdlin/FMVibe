@@ -706,25 +706,38 @@ void View::paintMods(Canvas &c) {
         bypassed += m.bypassed ? 1 : 0;
         zero += m.amount == 0.0 ? 1 : 0;
     }
-    std::string count =
-        modulations == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(modulations)});
-    if (bypassed > 0)
-        count += " \xC2\xB7 " + trf(Str::ModsBypassed, {std::to_string(bypassed)});
-    if (zero > 0)
-        count += " \xC2\xB7 " + trf(Str::ModsAtZero, {std::to_string(zero)});
-    if (empty > 0)
-        count += " \xC2\xB7 " + trf(Str::ModsEmpty, {std::to_string(empty)});
-    c.text({kFxPanel.right() - 316.0f, kFxPanel.y + 10.0f, 300.0f, 24.0f}, count, 11.0f, kDim, Align::Right);
-    if (rows.empty()) { // only the button that adds one
-        c.text({kFxPanel.x, kFxPanel.y + 120.0f, kFxPanel.w, 30.0f}, tr(Str::HintNoMods), 11.5f, kDim);
-        return;
-    }
     const Rect head{kModsList.x, kModsHeaderY, kModsList.w, 20.0f};
     const std::pair<ModsColumn, Str> columns[] = {
         {kModsSource, Str::ModsHeadSource}, {kModsTarget, Str::ModsHeadTarget}, {kModsDepth, Str::ModsHeadDepth},
         {kModsScale, Str::ModsHeadAmount},  {kModsAux, Str::ModsHeadAux}};
     for (const auto &[column, name] : columns)
         c.text({modsCell(head, column).x, head.y, column.w + 20.0f, head.h}, tr(name), 9.5f, kDim, Align::Left, true);
+    // The count, at the right of the names' row after Aux's: what is bypassed, at 0 % and empty goes with it, as much
+    // of it as fits.
+    std::vector<std::string> parts{modulations == 1 ? tr(Str::ModsCountOne)
+                                                    : trf(Str::ModsCount, {std::to_string(modulations)})};
+    if (bypassed > 0)
+        parts.push_back(trf(Str::ModsBypassed, {std::to_string(bypassed)}));
+    if (zero > 0)
+        parts.push_back(trf(Str::ModsAtZero, {std::to_string(zero)}));
+    if (empty > 0)
+        parts.push_back(trf(Str::ModsEmpty, {std::to_string(empty)}));
+    const float countX = modsCell(head, kModsAux).x + c.textWidth(tr(Str::ModsHeadAux), 9.5f, true) + 24.0f;
+    const float countW = kFxPanel.right() - 16.0f - countX;
+    std::string count;
+    for (;;) {
+        count = parts[0];
+        for (size_t i = 1; i < parts.size(); ++i)
+            count += " \xC2\xB7 " + parts[i];
+        if (parts.size() == 1 || c.textWidth(count, 11.0f) <= countW)
+            break;
+        parts.pop_back();
+    }
+    c.text({countX, head.y, countW, head.h}, count, 11.0f, kDim, Align::Right);
+    if (rows.empty()) { // only the button that adds one
+        c.text({kFxPanel.x, kModsList.y + 50.0f, kFxPanel.w, 30.0f}, tr(Str::HintNoMods), 11.5f, kDim);
+        return;
+    }
 
     // The rows' backgrounds, the one under the mouse (or whose menu is open) lit; their arrows, and an empty
     // modulation's dot (the others' bypass dots are widgets). The cells are widgets.

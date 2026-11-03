@@ -428,8 +428,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
     in the order their cards show, then the macros, the note source, the mod wheel and velocity), the first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
-    Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the count (how many
-    are bypassed, at 0 % and empty with it); then the columns' names. A row has, from its left:
+    Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the columns' names,
+    shown with no modulations too (with a hint under the button that adds one), and at the right of their row the
+    count (how many are bypassed, at 0 % and empty with it, as much of that as fits). A row has, from its left:
     - the bypass dot, which switches the modulation off and on again, whatever its source;
     - the **source** and the **target**, and between them, after the source's name on the first of its rows, the
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline

@@ -138,6 +138,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle dropped on a depth handle becoming that modulation's aux, ringed in its color, the macro then no longer
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);
+  - the MODS tab's columns' names with no modulations (read off the rendered pixels);
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
