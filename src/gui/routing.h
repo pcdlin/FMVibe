@@ -158,7 +158,8 @@ inline int gridParam(int row, int col) {
 }
 
 // A wire bows to its left by `bend` of the distance it spans (kDefaultWireBend until it is dragged), so A -> B and
-// B -> A don't overlap; dragged, it bows either way, or runs straight.
+// B -> A don't overlap; dragged, it bows either way, or runs straight. Near the panel's edge it bows only as far as
+// stays inside (see fitBend()).
 struct Wire {
     Point start;
     Point control;
@@ -173,7 +174,7 @@ inline Point leftOf(Point a, Point b) {
     return {-u.y, u.x};
 }
 
-inline Wire wireBetween(int fromNode, Point a, int toNode, Point b, float bend) {
+inline Wire bentWire(int fromNode, Point a, int toNode, Point b, float bend) {
     const Point d{b.x - a.x, b.y - a.y};
     const Point left = leftOf(a, b);
     const float reach = std::hypot(d.x, d.y) * bend;
@@ -189,6 +190,46 @@ inline Wire wireBetween(int fromNode, Point a, int toNode, Point b, float bend) 
                0.25f * w.start.y + 0.5f * w.control.y + 0.25f * w.end.y};
     w.tangent = normalize({w.end.x - w.control.x, w.end.y - w.control.y});
     return w;
+}
+
+// Whether a wire stays inside the routing panel, a little in from its edge, its label too. A quadratic curve goes
+// furthest along each axis at its ends or where its slope along that axis is 0.
+inline bool wireInside(const Wire &w) {
+    const Rect frame = kRouting.inset(6.0f);
+    if (w.label.x < kRouting.x + 26.0f || w.label.x > kRouting.right() - 26.0f || w.label.y < kRouting.y + 12.0f ||
+        w.label.y > kRouting.bottom() - 12.0f) // half a label chip in from the edge
+        return false;
+    auto within = [](float p0, float p1, float p2, float lo, float hi) {
+        float low = std::min(p0, p2), high = std::max(p0, p2);
+        if (const float d = p0 - 2.0f * p1 + p2; std::abs(d) > 1e-6f) {
+            const float t = (p0 - p1) / d;
+            if (t > 0.0f && t < 1.0f) {
+                const float at = (1.0f - t) * (1.0f - t) * p0 + 2.0f * (1.0f - t) * t * p1 + t * t * p2;
+                low = std::min(low, at);
+                high = std::max(high, at);
+            }
+        }
+        return low >= lo && high <= hi;
+    };
+    return within(w.start.x, w.control.x, w.end.x, frame.x, frame.right()) &&
+           within(w.start.y, w.control.y, w.end.y, frame.y, frame.bottom());
+}
+
+// The bend a wire is drawn with: `bend`, or as far that way as keeps it and its label inside the panel, so a wire
+// along the panel's edge bows less rather than spill out of it.
+inline float fitBend(int fromNode, Point a, int toNode, Point b, float bend) {
+    if (wireInside(bentWire(fromNode, a, toNode, b, bend)))
+        return bend;
+    float in = 0.0f, out = bend;
+    for (int i = 0; i < 12; ++i) {
+        const float mid = 0.5f * (in + out);
+        (wireInside(bentWire(fromNode, a, toNode, b, mid)) ? in : out) = mid;
+    }
+    return in;
+}
+
+inline Wire wireBetween(int fromNode, Point a, int toNode, Point b, float bend) {
+    return bentWire(fromNode, a, toNode, b, fitBend(fromNode, a, toNode, b, bend));
 }
 
 // How far `p` is from a wire, along its curve between the nodes (its arrowhead's base included).

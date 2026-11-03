@@ -139,16 +139,19 @@ private:
         SlotBar,      // param = slot amount, a = source, b = slot
         SlotRemove,   // a = source, b = slot
         SlotBypass,   // param = the slot's bypass, a = source, b = slot: the dot at the row's start
-        SlotPolarity, // a = source, b = slot: switches its modulation between unipolar and bipolar
+        SourcePolarity, // a = source: switches it between unipolar and bipolar, for every modulation it has (the
+                        // switch after a MODS row's source)
         ModsSource,   // a = source, b = slot: a MODS row's source; a click opens the menu that moves it to another
+                      // (an empty modulation's: a = its source or -1, b = emptyModSlot() of it)
         ModsTarget,   // a = source, b = slot: a MODS row's target; a click opens the menu of targets
+        ModsAdd,      // the row after the MODS view's last: adds an empty modulation
         ModsScale,    // param = the slot's Amount, a = source, b = slot: a MODS row's Amount bar, dragged across
         ModsAux,      // a = source, b = slot: a MODS row's aux, or + Aux; a click opens the menu of auxes
         ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
         ModsScroll,   // the MODS view's scrollbar: drag the thumb, or click the track to jump there
         CascadeMenu,  // a = 1 on a level of the open cascading menu (b = the level), 0 around it (a click closes it)
         CascadeItem,  // a = level, b = entry: an entry of the open cascading menu
-        SlotScroll,   // a = source: the bar beside a long slot list; drag the thumb, or click to jump there
+        SourceMods,   // a = source: the button on its card that shows its modulations in the MODS view
         ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
         EnvPoint,     // a = envelope (ops, then kOps + source), b = point
         EnvCurve,     // param = curve, a = envelope, b = segment (attack, decay, release): bends it
@@ -219,7 +222,7 @@ private:
         int a = -1;
         int b = -1;
         const char *label = nullptr;
-        bool compact = false; // header knob with its label beside it
+        bool compact = false; // header knob with its label beside it (one row high: see smallKnob())
         bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
         bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
@@ -247,7 +250,6 @@ private:
         Key,
         ModWheel,
         BendWheel,
-        SlotScroll,
         Glow,
         TextSelect, // across the browser's search
         Bend,       // a wire, sideways: how far it bows
@@ -282,7 +284,7 @@ private:
         int target;
         double amount;
         bool bypassed; // kept, but modulating nothing for now
-        bool bipolar;  // swings its target both ways (see slotBipolar())
+        bool bipolar;  // swings its target both ways, as its source does (see sourceBipolar())
         double scale;  // its Amount, which scales the depth (see SlotAuxParam)
         int aux;       // the source that scales it too, or -1
     };
@@ -334,38 +336,38 @@ private:
     void edit(int index, double value);
     std::vector<Assignment> assignments() const;
     std::vector<int> usedSlots(int source) const;
-    // A source's card lists its used slots, a few rows at a time: the first row it shows,
-    // and scrolling so that `slot` shows.
-    // How many rows of a source's list are scrolled past as shown (fractions while it glides), the most
-    // that can be, and scrolling it: gliding there over a few polls, or at once.
-    float slotFirst(int source) const;
-    float slotEnd(int source) const;
-    void scrollSlots(int source, float first, bool glide);
-    bool glideSlots(); // moves the gliding lists on; true if any moved
-    void revealSlot(int source, int slot);
-    // The thumb of a long slot list's scrollbar, on the card at screen place `card`.
-    Rect slotThumb(int source, float card) const;
+    // Whether a source does something: it modulates a target, or scales another source's modulation as its aux.
+    bool sourceUsed(int source) const;
     void assign(int source, int target);
     void removeSlot(int source, int slot);
     bool slotBypassed(int source, int slot) const;
     void toggleBypass(int source, int slot);
-    // Whether a slot swings its target both ways (see fmvibe::slotBipolar()): as set for it, or as its source does.
-    bool slotBipolar(int source, int slot) const;
-    // Sets it for that slot alone; for a source, sets the source's own polarity and puts all of its slots back to
-    // following it. Each is one undo step.
-    void setSlotPolarity(int source, int slot, bool bipolar);
+    // Makes a source swing every one of its targets both ways, or one way.
     void setSourcePolarity(int source, bool bipolar);
     // How far a route's wire bows to its left, as a share of the distance it spans: as dragged, or kDefaultWireBend.
     float wireBend(int param) const;
     void setWireBend(int param, float bend); // kDefaultWireBend forgets it
-    // The MODS view: every modulation as a row, the sources in the order of assignments(), over the routing panel and
-    // the inspector. Its rows scroll like a slot list: how many are scrolled past as shown (gliding), the most that
-    // can be, and scrolling them, gliding or at once; the thumb of its bar.
+    // The MODS view: every modulation as a row, the sources in the order of assignments(), then the empty ones
+    // (UiLayout::emptyMods; one from a source that has rows goes after them instead) and a row that adds one, over the routing panel and the inspector. Its rows scroll: how
+    // many are scrolled past as shown (gliding), the most that can be, and scrolling them, gliding or at once; the
+    // thumb of its bar.
     bool modsWide() const;
     std::vector<Assignment> modsRows() const;
+    // An empty modulation's row stands in for a slot as emptyModSlot(its place in the list), always below -1;
+    // emptyModOf() takes it back, -1 for a slot of a source.
+    static constexpr int emptyModSlot(int row) { return -2 - row; }
+    static constexpr int emptyModOf(int slot) { return slot <= -2 ? -2 - slot : -1; }
+    // An empty modulation's source and target, -1 for none: a source since removed, or a target no longer there,
+    // reads as none.
+    std::pair<int, int> emptyMod(int row) const;
+    // What a row modulates: its slot's target, or an empty modulation's.
+    int modsRowTarget(int source, int slot) const;
     float modsFirst() const;
     float modsEnd() const;
     void scrollMods(float first, bool glide);
+    // Scrolls the rows at once to `slot`'s row of `source` (an empty modulation's too), with as many of its source's
+    // rows above it as fit, and says where it is shown.
+    Rect revealModsRow(int source, int slot);
     bool glideMods();
     Rect modsThumb() const;
     void paintMods(Canvas &c);
@@ -376,6 +378,19 @@ private:
     void moveModulation(int source, int slot, int to);
     void retarget(int source, int slot, int target);
     void setAux(int source, int slot, int aux);
+    // Adds an empty modulation from `source` (-1 for none yet), at the end of the list or after its source's rows,
+    // scrolls to it and opens the menu of what it lacks; refused past kMaxEmptyMods.
+    void addEmptyMod(int source = -1);
+    // Shows a routing view (the tabs' click), taking the panels back from the shape and partial editors.
+    void showView(RoutingView view);
+    // The MODS view, its rows scrolled to the source's first; with none there yet, a new empty modulation from it
+    // (see a card's SourceMods button).
+    void showSourceMods(int source);
+    // Picks an empty modulation's source, or its target (-1 leaves it as it is). With both, it becomes a modulation of
+    // that source as a handle dropped on the target makes one, and leaves the list; refused, as assign() refuses,
+    // the row stays as it was. One undo step. Either way the rows scroll to where it is now, among its source's.
+    void fillEmptyMod(int row, int source, int target);
+    void removeEmptyMod(int row);
     // The cascading menus of a MODS row: its sources by category (LFOs, envelopes, macros, the keyboard's), the same
     // with None for its aux, and every target by category, only the effects in the chain among them. Each entry is a
     // category (with entries of its own), a heading, or a pick: a source (-1 for None) or a target param.
@@ -428,8 +443,11 @@ private:
     std::vector<int> enabledNodes() const;
     // Whether sound gets into a filter or shaper: from an operator that is on, or a filter or shaper that has some.
     bool boxHasInput(int node) const;
-    // Whether `node` is heard in the end: it goes out, or feeds or modulates a node that is.
+    // Whether `node` is heard in the end: it goes out, or feeds or modulates a node that is, by routes open where
+    // modulation takes them now (see liveAmount()).
     bool reachesOut(int node) const;
+    // How far `node` is let through to the output now: the largest live amount of its routes that lead there (0..1).
+    double outLevel(int node) const;
     // Whether a filter's or shaper's own sound gets to the output: it goes out, or into a filter or shaper whose sound
     // does.
     bool boxGoesOut(int node) const;
@@ -570,7 +588,7 @@ private:
     // Whether `m`'s depth handle is under the mouse or being dragged: its range is drawn wider, over the others.
     bool modFocused(const Assignment &m) const;
     // Whether it does anything, as its handle shows: an LFO or envelope while it is on, a macro or the note source
-    // once it modulates something.
+    // once it is used (see sourceUsed()).
     bool sourceLive(int source) const;
     // How many sources are scrolled past, as a fraction, and the screen place (0..3,
     // fractions while scrolling) of a source's card, or kOffScreen.
@@ -596,6 +614,8 @@ private:
     Point nodeCenter(int node) const;
     int nodeAt(Point p) const;
     Rect envRect(int env) const;
+    // A small header knob, one row high, has its label and number on that row beside it (the Glide knob).
+    static bool smallKnob(const Widget &w) { return w.compact && w.rect.h < 30.0f; }
     static Point knobCenter(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.
@@ -683,8 +703,6 @@ private:
     void paintModOverlay(Canvas &c, const std::vector<Widget> &list);
     // A route's amount where modulation takes the newest voice right now (0..1), or as set while nothing plays.
     double liveAmount(int param) const;
-    // The color of the first source that modulates `param` (switched on, not bypassed), or none.
-    std::optional<Color> modColor(int param) const;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
     void paintModRange(Canvas &c, Rect bar, int param);
     // A pill's list: every modulation of its target, a row each, under the pill (or over it, short of room), kept
@@ -704,8 +722,9 @@ private:
     void paintModPill(Canvas &c, const Widget &w, bool hovered);
     void paintModList(Canvas &c, const Widget &w);
     void paintModListRow(Canvas &c, const Widget &w);
-    // Lines from a hovered source handle to whatever it modulates that is on screen.
-    void paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source);
+    // Lines from a hovered source handle to whatever it modulates that is on screen; with a `slot`, from the handle
+    // (when it is on screen) to that modulation's alone, as when its depth handle is hovered.
+    void paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source, int slot = -1);
     void paintTyping(Canvas &c);
     std::string undoText(bool redo) const;
     void paintTooltip(Canvas &c);
@@ -788,8 +807,6 @@ private:
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it
     std::array<int, kFxSlots> fxBand_{};     // the band each three-band compressor's card shows
-    std::array<float, kMaxSources> slotScroll_{}; // rows each source's slot list is scrolled to, before clamping
-    std::array<float, kMaxSources> slotGlide_{};  // and where it shows, gliding after it
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1
     bool settingsOpen_ = false;
     int theme_ = 0;                          // the theme painted last

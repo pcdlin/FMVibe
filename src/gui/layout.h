@@ -115,13 +115,14 @@ constexpr int kVisibleFx = 6;
 constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
 constexpr float kFxCardW = (kFxPanel.w - 32.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
-// The MODS view covers them too: a row per modulation under a title row and the columns' names, scrolling with a
-// bar at the right. Within a row, from its left: the bypass dot, the source, an arrow, the target, the depth bar with
-// its value, the polarity switch, the Amount bar with its value, the aux and the remove button.
+// The MODS view covers them too: a row per modulation under the columns' names (the count at the right of their
+// row), scrolling with a bar at the right. Within a row, from its left: the bypass dot, the source and its polarity
+// switch, an arrow, the target, the depth bar with its value, the Amount bar with its value, the aux and the remove
+// button. After the last row, the button that adds an empty one.
 constexpr float kModsRowH = 28.0f;
 constexpr float kModsRowStep = 30.0f;
-constexpr Rect kModsList{kFxPanel.x + 12.0f, kFxPanel.y + 70.0f, kFxPanel.w - 24.0f - 14.0f, kFxPanel.h - 80.0f};
-constexpr float kModsHeaderY = kFxPanel.y + 46.0f;
+constexpr Rect kModsList{kFxPanel.x + 12.0f, kFxPanel.y + 36.0f, kFxPanel.w - 24.0f - 14.0f, kFxPanel.h - 46.0f};
+constexpr float kModsHeaderY = kFxPanel.y + 12.0f;
 inline Rect modsRow(float row) { // row: counted from the list's top, fractions while it scrolls
     return {kModsList.x, kModsList.y + row * kModsRowStep, kModsList.w, kModsRowH};
 }
@@ -132,9 +133,9 @@ inline Rect modsScrollTrack() {
 struct ModsColumn {
     float x, w;
 };
-constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 156.0f}, kModsArrow{186.0f, 16.0f},
-    kModsTarget{206.0f, 232.0f}, kModsDepth{446.0f, 200.0f}, kModsPolarity{700.0f, 24.0f}, kModsScale{736.0f, 100.0f},
-    kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f};
+constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 130.0f}, kModsPolarity{158.0f, 24.0f},
+    kModsArrow{186.0f, 16.0f}, kModsTarget{206.0f, 232.0f}, kModsDepth{446.0f, 250.0f}, kModsScale{736.0f, 100.0f},
+    kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f}, kModsAdd{4.0f, 178.0f};
 inline Rect modsCell(Rect row, ModsColumn column) { return {row.x + column.x, row.y, column.w, row.h}; }
 // The cascading menus a row's source, target or aux opens: each level a column of entries, the next level beside the
 // entry it opens from.
@@ -145,6 +146,7 @@ constexpr float kCascadePad = 4.0f;
 constexpr float kHeaderKnobX = 186.0f;
 constexpr float kHeaderKnobW = 104.0f;
 constexpr float kPlayX = 624.0f;
+constexpr float kSmallKnobValue = 64.0f; // where a small header knob's number starts, past its knob and label
 constexpr float kDividers[] = {612.0f, 896.0f};
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
 // past full scale.
@@ -157,8 +159,8 @@ constexpr Color kMeterRed = Color::hex(0xEF4444);
 // param to modulate it, click it to bring its card into view) and the buttons
 // that add sources, then the sources' cards, kVisibleCards at a time, in the
 // order they show (UiLayout::sourceOrder).
-// Open, tall enough for a card's four slot rows to end 8 px above its bottom.
-constexpr Rect kModPanel{16.0f, kPanelsTop + 372.0f + 16.0f, 1168.0f, 322.0f};
+// Open, tall enough for a card's button under its display to end 12 px above its bottom.
+constexpr Rect kModPanel{16.0f, kPanelsTop + 372.0f + 16.0f, 1168.0f, 258.0f};
 constexpr float kModBarH = 42.0f; // the title row: all that shows while collapsed
 constexpr int kVisibleCards = 4;
 constexpr float kCardGap = 12.0f;
@@ -215,41 +217,22 @@ inline Point randomKnob(float card, int knob) {
     return {display.right() + 25.0f + knob * 50.0f, display.y + 15.0f};
 }
 
-// The used slots, kVisibleSlots rows at a time; `row` counts from the top of the list, fractions while it
-// scrolls and the rows at its ends are cut off.
-constexpr int kVisibleSlots = 4;
-constexpr float kSlotNameW = 90.0f; // the target's name, between the bypass dot and the polarity switch
+// A row of a pill's list: the target's name, between the bypass dot and the depth bar.
+constexpr float kSlotNameW = 96.0f;
 
 // The "+n" pill that takes the place of the depth handles a knob, label or cell has no room for: under a knob, and
-// smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation, laid out as
-// a source card's rows are, the source's name in place of the target's.
+// smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation: its bypass
+// dot, the source's name, its depth bar with its value and its remove.
 constexpr float kModPill = 12.0f, kModPillWide = 15.0f, kModPillH = 9.0f;
 constexpr float kModPillCompact = 11.0f, kModPillWideCompact = 14.0f, kModPillCompactH = 8.0f;
 constexpr float kModListPad = 6.0f;
 constexpr float kModListTitleH = 24.0f;
-constexpr float kModListRowStep = 24.0f; // a row is 20 px high, as on a card
-inline Rect slotRow(float card, float row) {
+constexpr float kModListRowStep = 24.0f; // a row is 20 px high
+
+// Under a source's display, at the card's foot, the button that shows its modulations in the MODS view.
+inline Rect sourceModsButton(float card) {
     const Rect p = sourceCard(card);
-    return {p.x + 12.0f, p.y + 160.0f + row * 24.0f, p.w - 24.0f, 20.0f};
-}
-
-// Where the rows go, and the scrollbar beside them when there are more rows than fit.
-inline Rect slotList(float card) {
-    const Rect first = slotRow(card, 0);
-    return {first.x, first.y, first.w + 10.0f, slotRow(card, kVisibleSlots - 1).bottom() - first.y};
-}
-
-inline Rect slotScrollTrack(float card) {
-    const Rect list = slotList(card);
-    return {list.right() - 6.0f, list.y + 2.0f, 3.0f, list.h - 4.0f};
-}
-
-// Where the rows of the list show: within the list and within the row of cards.
-inline Rect slotClip(float card, Rect cards) {
-    const Rect list = slotList(card);
-    const float x = std::max(list.x - 2.0f, cards.x), y = std::max(list.y, cards.y);
-    const float right = std::min(list.right(), cards.right()), bottom = std::min(list.bottom(), cards.bottom());
-    return {x, y, std::max(right - x, 0.0f), std::max(bottom - y, 0.0f)};
+    return {p.x + 16.0f, p.y + 160.0f, p.w - 32.0f, 24.0f};
 }
 
 // Title row: handle and name (the row drags the card), then (LFOs) SYNC, the power switch and the remove cross at the right.
@@ -276,7 +259,8 @@ inline Rect lfoShapeButton(float card) {
 }
 
 // Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, centered on them, each over a random
-// LFO's Smooth and Chaos; Rate's sync switch, a small square, sits between the rows and its knob.
+// LFO's Smooth and Chaos; Rate's sync switch, a small square, sits between the shape list and the knob, level with
+// the list.
 inline Point lfoKnob(float card, int knob) {
     const Rect top = lfoShapeButton(card), bottom = lfoModeSwitch(card, 2);
     return {randomKnob(card, knob).x, (top.y + bottom.bottom()) * 0.5f - 9.0f}; // the label takes 18 px under the knob
@@ -285,7 +269,7 @@ inline Point lfoKnob(float card, int knob) {
 inline Rect sourceSync(float card) {
     const Point rate = lfoKnob(card, 0);
     const float x = (lfoModeSwitch(card, 2).right() + rate.x - 15.0f) * 0.5f;
-    return {x - 10.0f, rate.y - 10.0f, 20.0f, 20.0f};
+    return {x - 10.0f, lfoShapeButton(card).center().y - 10.0f, 20.0f, 20.0f};
 }
 
 // ADD EFFECT at the top left, and the list it opens under it: one row per type,

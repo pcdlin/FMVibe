@@ -275,7 +275,8 @@ private:
         // per voice, and the note source's last.
         std::array<SlotMod, kAllSources * kSlots> slotMods{};
         // What each source that runs per voice puts out, 0..1 as a unipolar one would, for the slots it scales as an
-        // aux: as of this block for the sources before them, else the last block's.
+        // aux: as of this block for the sources before them and velocity (and on a note's first block, the note
+        // source), else the last block's.
         std::array<double, kAllSources> auxOut{};
         int slotModCount = 0;
         std::array<double, kVoiceParamCount> mod{}; // per-voice host modulation

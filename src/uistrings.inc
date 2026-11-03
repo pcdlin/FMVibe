@@ -79,11 +79,6 @@ STR(FxFreqShifter, "Freq Shifter")
 STR(FxDisperser, "Phase Disp")
 STR(FxWidener, "Widener")
 
-// How a modulation swings its target: as its source does, one way, or both ways.
-STR(PolaritySource, "Source")
-STR(PolarityUnipolar, "Unipolar")
-STR(PolarityBipolar, "Bipolar")
-
 // What a modulation place holds.
 STR(SourceEmpty, "Empty")
 STR(SourceLfo, "LFO")
@@ -190,7 +185,6 @@ STR(ParamTarget, "Target {1}")
 STR(ParamAmount, "Amount {1}")
 STR(ParamBypass, "Bypass {1}")
 STR(ParamBipolar, "Bipolar")
-STR(ParamPolarity, "Polarity {1}") // a slot's: as its source, unipolar or bipolar
 STR(ParamAux, "Aux {1}") // the source that scales a slot
 STR(ParamAuxAmount, "Amount {1}") // how much of its depth a slot keeps, 0 to 100 %
 STR(ParamLow, "Low")
@@ -294,11 +288,9 @@ STR(ParamShiftSpread, "Shift Spread")
 STR(ParamShiftFeedback, "Shift Feedback")
 STR(ParamShiftMix, "Shift Mix")
 
-// A modulation slot's bypass and polarity, as the editor names them: the source, then the target it modulates.
+// A modulation slot's bypass, as the editor names it: the source, then the target it modulates.
 STR(ParamNameBypass, "{1} bypass")
 STR(ParamNameBypassOn, "{1} bypass on {2}")
-STR(ParamNamePolarity, "{1} polarity")
-STR(ParamNamePolarityOn, "{1} polarity on {2}")
 
 // --- The host's remote control pages, and the plugin's ports
 
@@ -490,8 +482,6 @@ STR(HintVelocityCurve, "across: velocity  ·  up: output  ·  double-click: add 
                        "Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
 STR(HintPartials, "drag across the bars to draw  ·  double-click a bar for none")
 STR(HintNoSources, "No modulators yet.")
-STR(HintNoTargets, "Drag the handle onto any knob,") // on a source's card, over two lines
-STR(HintNoTargetsThen, "wire label or matrix cell")
 
 // The matrix's legend.
 STR(LegendFm, "Operator modulates operator (FM)")
@@ -601,8 +591,8 @@ STR(TipSave, "Save preset")
 STR(TipSettings, "Settings")
 STR(TipBypassed, "Bypassed. Click to resume")
 STR(TipBypass, "Bypass this modulation")
-STR(TipSlotUnipolar, "Unipolar: moves its target one way. Click for bipolar")
-STR(TipSlotBipolar, "Bipolar: swings its target both ways. Click for unipolar")
+STR(TipSourceUnipolar, "{1} is unipolar: moves its targets one way. Click for bipolar") // a MODS row's switch
+STR(TipSourceBipolar, "{1} is bipolar: swings its targets both ways. Click for unipolar")
 STR(TipResetNoteCurve, "Reset to track the note on a cutoff, over all notes")
 STR(TipResetVelocityCurve, "Reset to a straight line")
 STR(TipResetCurve, "Reset to the default S-curve")
@@ -625,7 +615,7 @@ STR(TipSlope, "Filter slope")
 STR(TipSlopeBand, "Filter slope")
 STR(TipFree, "Free")
 STR(TipOneShot, "One shot")
-STR(TipUnipolar, "Unipolar, all targets") // the LFO's switch, which sets every modulation it has
+STR(TipUnipolar, "Unipolar")
 STR(TipDelaySync, "Sync delay times to host tempo")
 STR(TipSweepSync, "Sync sweep to host tempo")
 STR(TipPingPong, "Bounce echoes between left and right")
@@ -647,10 +637,8 @@ STR(TipGlideAlways, "Glide on every note, not just overlapping ones")
 STR(MenuDuplicate, "Duplicate")
 STR(MenuResetSettings, "Reset settings")
 STR(MenuRemove, "Remove")
-STR(MenuUnipolar, "Unipolar") // a modulation's, in its depth handle's and its row's menus
+STR(MenuUnipolar, "Unipolar") // a source's, in the menus of its card, handle or knob
 STR(MenuBipolar, "Bipolar")
-STR(MenuAllUnipolar, "Unipolar, All Targets") // a source's, setting every modulation it has and gets
-STR(MenuAllBipolar, "Bipolar, All Targets")
 STR(MenuResetBend, "Reset Bend") // a wire in the graph, back to how it bows to begin with
 STR(MenuClearTargets, "Clear all {1} targets")
 STR(MenuEditDepth, "Edit depth…")
@@ -681,6 +669,7 @@ STR(RedoChanges, "Redo {1} changes")
 STR(MsgAlreadyModulates, "{1} already modulates {2}")
 STR(MsgSlotsFull, "{1}: all {2} slots are in use")
 STR(MsgOwnKnob, "{1} can't modulate its own knob")
+STR(MsgEmptyModsFull, "At most {1} empty modulations: pick a source and a target for one first")
 STR(MsgRouteExists, "There is a route from {1} to {2} already")
 STR(MsgRefuseShaper, "A shaper can't feed itself or another shaper")
 STR(MsgRefuseFilter, "A filter only feeds a later filter")
@@ -715,18 +704,23 @@ STR(DemoPresetFolder, "Built-in factory presets")
 STR(ModsHeadSource, "SOURCE")
 STR(ModsHeadTarget, "TARGET")
 STR(ModsHeadDepth, "DEPTH")
-STR(ModsHeadPolarity, "POL") // the polarity switch's column
 STR(ModsHeadAmount, "AMOUNT")
 STR(ModsHeadAux, "AUX")
 STR(ModsAddAux, "+ Aux") // a row without an aux: opens the menu of auxes
+STR(ModsAddModulation, "+ Add modulation") // after the last row: adds an empty one
+STR(CardNoModulations, "No modulations") // a source card's button, while the source modulates nothing
+STR(ModsPickSource, "Source…") // an empty modulation's, until one is picked
+STR(ModsPickTarget, "Target…")
 STR(ModsCount, "{1} modulations")
 STR(ModsCountOne, "1 modulation")
 STR(ModsBypassed, "{1} bypassed")
 STR(ModsAtZero, "{1} at 0 %")
-STR(HintMods, "click a source, target or aux to change it  ·  drop a handle on a depth handle for its aux")
-STR(HintNoMods, "No modulations yet: drag a source's handle onto a knob to add one.")
+STR(ModsEmpty, "{1} empty") // modulations without a source or a target yet
+STR(HintNoMods, "No modulations yet: drag a source's handle onto a knob, or add one here.")
 STR(TipModsSource, "Move to another source")
 STR(TipModsTarget, "Move to another target")
+STR(TipModsPickSource, "Pick its source") // an empty modulation's
+STR(TipModsPickTarget, "Pick its target")
 STR(TipModsAux, "Scale its depth by another source")
 STR(TipModsAuxClear, "No aux")
 STR(TipModsScale, "Amount: how much of its depth the modulation keeps")

@@ -376,8 +376,7 @@ std::vector<View::Assignment> View::assignments() const {
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(value(slotTargetIndex(s, slot)));
             if (target >= 0)
-                list.push_back({s, slot, target, value(slotAmountIndex(s, slot)), slotBypassed(s, slot),
-                                fmvibe::slotBipolar(value(slotPolarityIndex(s, slot)), bipolar),
+                list.push_back({s, slot, target, value(slotAmountIndex(s, slot)), slotBypassed(s, slot), bipolar,
                                 value(slotScaleIndex(s, slot)),
                                 slotAux([this](int index) { return value(index); }, s, slot)});
         }
@@ -398,52 +397,11 @@ std::vector<int> View::usedSlots(int source) const {
     return slots;
 }
 
-float View::slotEnd(int source) const {
-    return static_cast<float>(std::max(static_cast<int>(usedSlots(source).size()) - kVisibleSlots, 0));
-}
-
-float View::slotFirst(int source) const {
-    return std::clamp(slotGlide_[source], 0.0f, slotEnd(source));
-}
-
-void View::scrollSlots(int source, float first, bool glide) {
-    slotScroll_[source] = std::clamp(first, 0.0f, slotEnd(source));
-    if (!glide)
-        slotGlide_[source] = slotScroll_[source];
-}
-
-void View::revealSlot(int source, int slot) {
-    if (isStripSource(source)) // a macro or the note source has no list of its slots to scroll
-        return;
-    const std::vector<int> slots = usedSlots(source);
-    const float row = static_cast<float>(std::find(slots.begin(), slots.end(), slot) - slots.begin());
-    const float first = slotFirst(source);
-    scrollSlots(source, row < first ? row : (row + 1.0f > first + kVisibleSlots ? row + 1.0f - kVisibleSlots : first),
-                false);
-}
-
-bool View::glideSlots() {
-    // The shown place closes most of the way to where the wheel sent the list each poll, then settles.
-    bool moved = false;
-    for (int s = 0; s < kMaxSources; ++s) {
-        const float to = std::clamp(slotScroll_[s], 0.0f, slotEnd(s));
-        const float from = slotFirst(s);
-        if (std::abs(to - from) < 0.005f) {
-            moved = moved || slotGlide_[s] != to;
-            slotGlide_[s] = to;
-            continue;
-        }
-        slotGlide_[s] = from + (to - from) * 0.35f;
-        moved = true;
-    }
-    return moved;
-}
-
-Rect View::slotThumb(int source, float card) const {
-    const Rect track = slotScrollTrack(card);
-    const int rows = static_cast<int>(usedSlots(source).size());
-    const float h = track.h * kVisibleSlots / std::max(rows, kVisibleSlots);
-    return {track.x, track.y + (track.h - h) * slotFirst(source) / std::max(slotEnd(source), 1.0f), track.w, h};
+bool View::sourceUsed(int source) const {
+    if (!usedSlots(source).empty())
+        return true;
+    const std::vector<Assignment> all = assignments();
+    return std::any_of(all.begin(), all.end(), [&](const Assignment &m) { return m.aux == source; });
 }
 
 void View::assign(int source, int target) {
@@ -465,13 +423,10 @@ void View::assign(int source, int target) {
     const double amount = 0.3; // a moderate depth, always upward to begin with, swinging as its source does
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, free), slotTargetValue(target)},
                                                 {slotAmountIndex(source, free), amount},
-                                                {slotPolarityIndex(source, free), 0.0},
                                                 {slotScaleIndex(source, free), 1.0},
-                                                {slotAuxIndex(source, free), 0.0}};
-    if (!isStripSource(source))
-        changes.push_back({slotBypassIndex(source, free), 0.0});
+                                                {slotAuxIndex(source, free), 0.0},
+                                                {slotBypassIndex(source, free), 0.0}};
     editMany(changes);
-    revealSlot(source, free);
     // A modulated route opens and closes with the modulation, so its wire shows, even at 0 %.
     std::vector<int> &kept = controller_.layout().keptRoutes;
     if (isRouteParam(target) && std::find(kept.begin(), kept.end(), target) == kept.end()) {
@@ -481,46 +436,46 @@ void View::assign(int source, int target) {
 }
 
 void View::removeSlot(int source, int slot) {
+    if (const int row = emptyModOf(slot); row >= 0) {
+        removeEmptyMod(row);
+        return;
+    }
+    const UndoScope step(controller_); // with what goes along
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, slot), 0.0},
                                                 {slotAmountIndex(source, slot), 0.0},
-                                                {slotPolarityIndex(source, slot), 0.0},
                                                 {slotScaleIndex(source, slot), 1.0},
-                                                {slotAuxIndex(source, slot), 0.0}};
-    if (!isStripSource(source))
-        changes.push_back({slotBypassIndex(source, slot), 0.0});
+                                                {slotAuxIndex(source, slot), 0.0},
+                                                {slotBypassIndex(source, slot), 0.0}};
     editMany(changes);
+    // What modulated its depth goes too, rather than wait on the emptied slot to scale the next modulation there;
+    // and an empty modulation onto it loses its target. The slot is empty by now, so two modulations of each other's
+    // depths end.
+    const int depth = slotAmountIndex(source, slot);
+    for (const Assignment &m : assignments())
+        if (m.target == depth)
+            removeSlot(m.source, m.slot);
+    bool emptied = false;
+    for (auto &[from, onto] : controller_.layout().emptyMods)
+        if (onto == depth) {
+            onto = -1;
+            emptied = true;
+        }
+    if (emptied)
+        controller_.layoutChanged();
 }
 
-// A macro's or the note source's slots can't be bypassed.
 bool View::slotBypassed(int source, int slot) const {
-    return !isStripSource(source) && value(slotBypassIndex(source, slot)) >= 0.5;
+    return slot >= 0 && value(slotBypassIndex(source, slot)) >= 0.5;
 }
 
 void View::toggleBypass(int source, int slot) {
-    if (!isStripSource(source))
+    if (slot >= 0) // an empty modulation has nothing to bypass
         edit(slotBypassIndex(source, slot), slotBypassed(source, slot) ? 0.0 : 1.0);
 }
 
-bool View::slotBipolar(int source, int slot) const {
-    return fmvibe::slotBipolar([this](int index) { return value(index); }, source, slot);
-}
-
-void View::setSlotPolarity(int source, int slot, bool bipolar) {
-    edit(slotPolarityIndex(source, slot),
-         static_cast<double>(bipolar ? SlotPolarity::Bipolar : SlotPolarity::Unipolar));
-}
-
-// The source's own switch, and every one of its slots back to following it, as one step.
 void View::setSourcePolarity(int source, bool bipolar) {
     const Polarity polarity = polarityOf(source, sourceTypeOf(source));
-    const std::pair<int, double> own{polarity.index, bipolar ? polarity.bipolar : 1.0 - polarity.bipolar};
-    std::vector<std::pair<int, double>> changes;
-    if (value(own.first) != own.second)
-        changes.push_back(own);
-    for (int slot = 0; slot < kSlots; ++slot)
-        if (slotPolarity(value(slotPolarityIndex(source, slot))) != SlotPolarity::Source)
-            changes.push_back({slotPolarityIndex(source, slot), static_cast<double>(SlotPolarity::Source)});
-    editMany(changes);
+    edit(polarity.index, bipolar ? polarity.bipolar : 1.0 - polarity.bipolar);
 }
 
 float View::wireBend(int param) const {
@@ -914,14 +869,9 @@ std::string View::paramName(int index) const {
     if (index < 0 || index >= kParamCount)
         return std::string();
     if (const int owner = bypassSourceOf(index); owner >= 0) {
-        const int target = slotTarget(value(slotTargetIndex(owner, (index - kSlotBypassBase) % kSlots)));
+        const int target = slotTarget(value(slotTargetIndex(owner, bypassSlotOf(index))));
         return target >= 0 ? trf(Str::ParamNameBypassOn, {sourceName(owner), paramName(target)})
                            : trf(Str::ParamNameBypass, {sourceName(owner)});
-    }
-    if (const int owner = polaritySourceOf(index); owner >= 0) {
-        const int target = slotTarget(value(slotTargetIndex(owner, (index - kSlotPolarityBase) % kSlots)));
-        return target >= 0 ? trf(Str::ParamNamePolarityOn, {sourceName(owner), paramName(target)})
-                           : trf(Str::ParamNamePolarity, {sourceName(owner)});
     }
     const int source = sourceOf(index);
     const std::string &name = table_[index].name;
@@ -956,7 +906,7 @@ bool View::modFocused(const Assignment &m) const {
 }
 
 bool View::sourceLive(int source) const {
-    return isStripSource(source) ? !usedSlots(source).empty() : sourceOn(source);
+    return isStripSource(source) ? sourceUsed(source) : sourceOn(source);
 }
 
 float View::sourceScroll() const {
@@ -1026,7 +976,6 @@ void View::addSource(SourceType type, int copyOf) {
         take(shapeCountIndex(source) + f, shapeCountIndex(std::max(copyOf, 0)) + f);
     for (int slot = 0; slot < kSlots; ++slot) {
         take(slotBypassIndex(source, slot), slotBypassIndex(std::max(copyOf, 0), slot));
-        take(slotPolarityIndex(source, slot), slotPolarityIndex(std::max(copyOf, 0), slot));
         take(slotScaleIndex(source, slot), slotScaleIndex(std::max(copyOf, 0), slot));
         // A copy's aux is the original's, unless that is the original itself (which can't scale its copy's own).
         const double aux = copyOf >= 0 ? value(slotAuxIndex(copyOf, slot)) : 0.0;
@@ -1040,7 +989,6 @@ void View::addSource(SourceType type, int copyOf) {
     if (shapeEditor_ == source) // left open for a source the place held before
         shapeEditor_ = -1;
     editMany(changes);
-    slotScroll_[source] = slotGlide_[source] = copyOf >= 0 ? slotScroll_[copyOf] : 0.0f;
     if (controller_.layout().sourcesCollapsed) {
         controller_.layout().sourcesCollapsed = false;
         controller_.layoutChanged();
@@ -1058,6 +1006,16 @@ void View::removeSource(int source) {
         else if (m.aux == source)
             setAux(m.source, m.slot, -1);
     }
+    // Empty modulations from it lose their source, and those onto one of its knobs their target.
+    bool emptied = false;
+    for (auto &[from, target] : controller_.layout().emptyMods) {
+        const bool fromIt = from == source, ontoIt = target >= 0 && sourceOf(target) == source;
+        from = fromIt ? -1 : from;
+        target = ontoIt ? -1 : target;
+        emptied = emptied || fromIt || ontoIt;
+    }
+    if (emptied)
+        controller_.layoutChanged();
     if (shapeEditor_ == source)
         shapeEditor_ = -1;
     edit(paramIndex(source, SourceParam::Type), static_cast<double>(SourceType::None));
@@ -1175,8 +1133,6 @@ bool View::poll() {
         changed = true;
     if (edgeScroll())
         changed = true;
-    if (glideSlots())
-        changed = true;
     if (glideMods())
         changed = true;
     if (modList_ && !modListPillShown()) { // its pill went: fewer modulations, or what showed it changed
@@ -1193,11 +1149,13 @@ bool View::poll() {
 // --- Geometry.
 
 Point View::knobCenter(const Widget &w) {
+    if (smallKnob(w))
+        return {w.rect.x + 11.0f, w.rect.center().y};
     return w.compact ? Point{w.rect.x + 18.0f, w.rect.y + 20.0f} : Point{w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
 }
 
 float View::knobRadius(const Widget &w) {
-    return w.compact ? 17.0f : w.rect.w * 0.5f;
+    return smallKnob(w) ? 11.0f : w.compact ? 17.0f : w.rect.w * 0.5f;
 }
 
 // A knob's number shows under it, or beside it in the header.
@@ -1206,6 +1164,8 @@ bool View::onValue(const Widget &w, Point p) {
         return true;
     if (w.kind != Kind::Knob)
         return false;
+    if (smallKnob(w))
+        return p.x >= w.rect.x + kSmallKnobValue;
     return w.compact ? p.x >= w.rect.x + 38.0f : p.y >= w.rect.y + w.rect.w;
 }
 
@@ -1281,8 +1241,10 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
     add(Kind::Toggle, {kPlayX, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::Legato));
-    headerKnob(paramIndex(GlobalParam::Glide), kPlayX + 98.0f, kHeaderKnobW, tr(Str::LabelGlide));
-    add(Kind::Toggle, {kPlayX + 206.0f, 23.0f, 56.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
+    add(Kind::Knob, {kPlayX + 98.0f, 12.0f, 150.0f, 19.0f}, paramIndex(GlobalParam::Glide)); // as small as Poly | Mono
+    list.back().label = tr(Str::LabelGlide);
+    list.back().compact = true;
+    add(Kind::Toggle, {kPlayX + 98.0f, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
     headerKnob(paramIndex(GlobalParam::BendRange), 906.0f, 96.0f, tr(Str::LabelBend));
     headerKnob(paramIndex(GlobalParam::Voices), 1006.0f, kHeaderKnobW, tr(Str::LabelVoices));
 
@@ -1334,7 +1296,9 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::PartialArea, kPartialLevels, -1, partials, 0);
         add(Kind::PartialArea, kPartialPhases, -1, partials, 1);
     } else if (view == RoutingView::Mods) {
-        // A row per modulation, cut off at the list's ends while it scrolls. The first of a source's rows names it.
+        // A row per modulation, cut off at the list's ends while it scrolls, then one that adds an empty modulation.
+        // The first of a source's rows names it, with its polarity switch after the name (an empty modulation among
+        // them too); an empty modulation's row has only its source, its target and its remove.
         const std::vector<Assignment> rows = modsRows();
         const float first = modsFirst();
         const int top = static_cast<int>(std::floor(first));
@@ -1343,17 +1307,24 @@ std::vector<View::Widget> View::widgets() const {
         for (int row = top; row < end; ++row) {
             const Assignment &m = rows[row];
             const Rect r = modsRow(static_cast<float>(row) - first);
-            if (!isStripSource(m.source)) // the others' slots can't be bypassed: their dot is only drawn
+            const bool empty = m.slot < 0;
+            if (!empty)
                 add(Kind::SlotBypass, modsCell(r, kModsBypass), slotBypassIndex(m.source, m.slot), m.source, m.slot);
             add(Kind::ModsSource, modsCell(r, kModsSource), -1, m.source, m.slot);
-            list.back().compact = row == 0 || rows[row - 1].source != m.source;
+            const bool named = m.source < 0 || row == 0 || rows[row - 1].source != m.source;
+            list.back().compact = named;
+            if (named && m.source >= 0)
+                add(Kind::SourcePolarity, modsCell(r, kModsPolarity), -1, m.source, m.slot);
             add(Kind::ModsTarget, modsCell(r, kModsTarget), -1, m.source, m.slot);
+            if (empty) {
+                add(Kind::SlotRemove, modsCell(r, kModsRemove), -1, m.source, m.slot);
+                continue;
+            }
             const Rect depth = modsCell(r, kModsDepth);
             add(Kind::SlotBar, {depth.x, depth.y, depth.w - 46.0f, depth.h}, slotAmountIndex(m.source, m.slot),
                 m.source, m.slot);
             add(Kind::ValueText, {depth.right() - 44.0f, depth.y, 42.0f, depth.h}, slotAmountIndex(m.source, m.slot),
                 m.source, m.slot);
-            add(Kind::SlotPolarity, modsCell(r, kModsPolarity), -1, m.source, m.slot);
             const Rect scale = modsCell(r, kModsScale);
             add(Kind::ModsScale, {scale.x, scale.y, scale.w - 44.0f, scale.h}, slotScaleIndex(m.source, m.slot),
                 m.source, m.slot);
@@ -1365,6 +1336,10 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::ModsAux, {aux.x, aux.y + 3.0f, 64.0f, aux.h - 6.0f}, -1, m.source, m.slot);
             }
             add(Kind::SlotRemove, modsCell(r, kModsRemove), -1, m.source, m.slot);
+        }
+        if (const Rect r = modsRow(static_cast<float>(rows.size()) - first); r.y < kModsList.bottom()) {
+            const Rect cell = modsCell(r, kModsAdd);
+            add(Kind::ModsAdd, {cell.x, cell.y + 3.0f, cell.w, cell.h - 6.0f});
         }
         for (size_t i = rowsStart; i < list.size(); ++i)
             list[i].clip = kModsList;
@@ -1872,25 +1847,8 @@ std::vector<View::Widget> View::widgets() const {
             for (int i = 0; i < 5; ++i)
                 knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
         }
-        // The rows on screen, at least in part; cut off at the list's ends (their clip is set below).
-        const std::vector<int> slots = usedSlots(s);
-        const float first = slotFirst(s);
-        const int top = static_cast<int>(std::floor(first));
-        const size_t rowsStart = list.size();
-        for (int row = top; row < std::min(top + kVisibleSlots + 1, static_cast<int>(slots.size())); ++row) {
-            const Rect r = slotRow(card, static_cast<float>(row) - first);
-            add(Kind::SlotBypass, {r.x + 1.0f, r.y, 16.0f, r.h}, slotBypassIndex(s, slots[row]), s, slots[row]);
-            add(Kind::SlotPolarity, {r.x + 108.0f, r.y, 13.0f, r.h}, -1, s, slots[row]);
-            add(Kind::SlotBar, {r.x + 122.0f, r.y, 70.0f, r.h}, slotAmountIndex(s, slots[row]), s, slots[row]);
-            add(Kind::ValueText, {r.x + 194.0f, r.y, 38.0f, r.h}, slotAmountIndex(s, slots[row]), s, slots[row]);
-            add(Kind::SlotRemove, {r.right() - 20.0f, r.y, 20.0f, r.h}, -1, s, slots[row]);
-        }
-        for (size_t i = rowsStart; i < list.size(); ++i)
-            list[i].clip = slotClip(card, sourceCardClip());
-        if (slots.size() > static_cast<size_t>(kVisibleSlots)) {
-            const Rect track = slotScrollTrack(card);
-            add(Kind::SlotScroll, {track.x - 3.0f, track.y - 2.0f, track.w + 6.0f, track.h + 4.0f}, -1, s);
-        }
+        // Its modulations are listed in the MODS view, which the button under its display shows.
+        add(Kind::SourceMods, sourceModsButton(card), -1, s);
     }
     if (const float place = sourceOffset(cardSources, cardSources.size()) - sourceScroll();
         sourceShadow() && !collapsed && onScreen(place, kVisibleCards, kSourceShadowSpan)) {
@@ -1900,7 +1858,7 @@ std::vector<View::Widget> View::widgets() const {
             static_cast<int>(SourceType::Env));
     }
     for (size_t i = sourceCardsStart; i < list.size(); ++i)
-        if (list[i].clip.w <= 0.0f) // the slot rows have theirs
+        if (list[i].clip.w <= 0.0f)
             list[i].clip = sourceCardClip();
 
     // Depth handles in the gap under each modulated knob, and small ones in the top right corner of each
@@ -1947,9 +1905,13 @@ std::vector<View::Widget> View::widgets() const {
             }
             continue;
         }
-        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left.
-        const Point base = list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f} : Point{r.center().x, r.y + r.w - 1.0f};
-        const float width = list[i].compact ? 34.0f : r.w;
+        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left, and a small one's
+        // at its row's right end, past its number.
+        const bool oneRow = smallKnob(list[i]);
+        const Point base = oneRow            ? Point{r.right() - 20.0f, r.center().y}
+                           : list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f}
+                                             : Point{r.center().x, r.y + r.w - 1.0f};
+        const float width = oneRow ? 40.0f : list[i].compact ? 34.0f : r.w;
         const int fit = static_cast<int>((width - 7.0f) / 9.0f) + 1;
         int shown = n;
         float pillW = 0.0f;
@@ -2110,8 +2072,7 @@ std::vector<View::Widget> View::widgets() const {
                         static_cast<int>(k), static_cast<int>(i));
         }
     }
-    // A pill's open list, over everything: its rows' bypass dots, polarity switches, depth bars and removes work as on
-    // a source's card.
+    // A pill's open list, over everything: its rows' bypass dots, depth bars and removes work as in the MODS view.
     if (modList_) {
         std::vector<Assignment> rows;
         forEachMod(modList_->target, [&](const Assignment &m) { rows.push_back(m); });
@@ -2125,8 +2086,7 @@ std::vector<View::Widget> View::widgets() const {
                          kCardW - 24.0f, 20.0f};
             add(Kind::ModListRow, r, -1, s, slot);
             add(Kind::SlotBypass, {r.x + 1.0f, r.y, 16.0f, r.h}, slotBypassIndex(s, slot), s, slot);
-            add(Kind::SlotPolarity, {r.x + 108.0f, r.y, 13.0f, r.h}, -1, s, slot);
-            add(Kind::SlotBar, {r.x + 122.0f, r.y, 70.0f, r.h}, slotAmountIndex(s, slot), s, slot);
+            add(Kind::SlotBar, {r.x + 116.0f, r.y, 76.0f, r.h}, slotAmountIndex(s, slot), s, slot);
             add(Kind::ValueText, {r.x + 194.0f, r.y, 38.0f, r.h}, slotAmountIndex(s, slot), s, slot);
             add(Kind::SlotRemove, {r.right() - 20.0f, r.y, 20.0f, r.h}, -1, s, slot);
             for (size_t i = first; i < list.size(); ++i)
@@ -2316,6 +2276,8 @@ void View::paint(Canvas &c) {
     else if (hover_ && (hover_->kind == Kind::SourceHandle || hover_->kind == Kind::MacroHandle) &&
              drag_.kind == DragKind::None)
         paintSourceLinks(c, list, hover_->a);
+    else if (hover_ && hover_->kind == Kind::ModDot && drag_.kind == DragKind::None)
+        paintSourceLinks(c, list, hover_->a, hover_->b);
     paintHoverTags(c, list);
     if (cascade_ && modsWide())
         paintCascade(c);
@@ -2469,8 +2431,7 @@ void View::paintRouting(Canvas &c) {
     c.line({kRouting.x + 48.0f, kBusY}, {kRouting.right() - 20.0f, kBusY}, busTarget ? kAccent : kTrack, 3.0f);
     c.text({kRouting.x + 14.0f, kBusY - 9.0f, 30.0f, 18.0f}, tr(Str::BusOut), 10.5f, kDim, Align::Left, true);
 
-    // Modulated routes swell and thin with their modulation while notes play, and carry a thin core
-    // in the color of the source that modulates them.
+    // Modulated routes swell and thin with their modulation while notes play.
     const std::vector<int> on = enabledNodes();
     auto focused = [&](int param) {
         return (hover_ && hover_->param == param && drag_.kind == DragKind::None) ||
@@ -2485,8 +2446,6 @@ void View::paintRouting(Canvas &c) {
         const Color base = isBoxNode(node) ? nodeColor(node) : kText;
         const Color color = focused(param) ? kText : base.alpha(0.25f + 0.5f * out);
         c.line(w.start, w.end, color, 1.5f + 2.0f * out);
-        if (const auto core = modColor(param))
-            c.line(w.start, w.end, core->alpha(0.9f), 1.2f);
         arrowHead(c, w.end, {0.0f, 1.0f}, color);
     }
 
@@ -2496,20 +2455,15 @@ void View::paintRouting(Canvas &c) {
             if (param < 0 || !wired(param) || param == moving)
                 continue;
             const float amount = static_cast<float>(liveAmount(param));
-            const std::optional<Color> core = modColor(param);
             const Color base = routeColor(from, to);
             const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
             const float width = 1.2f + 3.0f * amount;
             if (from == to) {
                 c.strokeCircle(loopCenter(nodeCenter(from)), 9.0f, color, width);
-                if (core)
-                    c.strokeCircle(loopCenter(nodeCenter(from)), 9.0f, core->alpha(0.9f), 1.2f);
                 continue;
             }
             const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
             c.curve(w.start, w.control, w.end, color, width);
-            if (core)
-                c.curve(w.start, w.control, w.end, core->alpha(0.9f), 1.2f);
             arrowHead(c, w.end, w.tangent, color);
         }
     }
@@ -2519,15 +2473,6 @@ double View::liveAmount(int param) const {
     const ParamDef &def = table_[param];
     const double offset = liveOffset(param);
     return std::clamp((value(param) + offset - def.min) / (def.max - def.min), 0.0, 1.0);
-}
-
-std::optional<Color> View::modColor(int param) const {
-    std::optional<Color> color;
-    forEachMod(param, [&](const Assignment &m) {
-        if (!color && !m.bypassed && sourceOn(m.source))
-            color = kSourceColors[m.source];
-    });
-    return color;
 }
 
 // How far a modulation takes its target from the set value, down and up: bipolar, half its depth either way;
@@ -4407,32 +4352,7 @@ void View::paintSource(Canvas &c, float card, int s) {
                  s);
     else
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
-
-    const std::vector<int> slots = usedSlots(s);
-    if (slots.empty()) {
-        c.text({p.x + 16.0f, p.y + 174.0f, p.w - 32.0f, 18.0f}, tr(Str::HintNoTargets), 11.0f, kFaint);
-        c.text({p.x + 16.0f, p.y + 192.0f, p.w - 32.0f, 18.0f}, tr(Str::HintNoTargetsThen), 11.0f, kFaint);
-        return;
-    }
-    const int rows = static_cast<int>(slots.size());
-    const float first = slotFirst(s);
-    const int top = static_cast<int>(std::floor(first));
-    c.pushClip(slotClip(card, sourceCardClip()));
-    for (int row = top; row < std::min(top + kVisibleSlots + 1, rows); ++row) {
-        // The host can clear a target from the audio thread since usedSlots() looked: skip the row this frame.
-        const int target = slotTarget(value(slotTargetIndex(s, slots[row])));
-        if (target < 0)
-            continue;
-        const Rect r = slotRow(card, static_cast<float>(row) - first);
-        c.fillRect(r, kRaised, 5.0f);
-        // A bypassed row is dimmed; its dot (the bypass switch, a widget) is hollow. A long name is drawn smaller to
-        // fit (see slotNameSize()).
-        const std::string name = paramName(target);
-        c.text({r.x + 18.0f, r.y, kSlotNameW, r.h}, name, slotNameSize(c, name),
-               slotBypassed(s, slots[row]) ? kFaint : kText, Align::Left);
-    }
-    c.popClip();
-    // More rows than fit: the wheel over the list scrolls them, and so does the bar beside them (a widget).
+    // Under the display, the button that shows its modulations in the MODS view (a widget).
 }
 
 void View::paintNode(Canvas &c, const Widget &w) {
@@ -4467,9 +4387,10 @@ void View::paintNode(Canvas &c, const Widget &w) {
         heard = heard || (nodeOn(kOps + filter) && value(sendIndex(op, filter)) > 0.0);
     for (int shaper = 0; shaper < kShapers; ++shaper)
         heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
-    // It lights up while playing only if it ends up in the output.
-    const float level = std::min(telemetry_.opLevels[op], 1.0f);
-    if (level > 0.01f && reachesOut(op))
+    // Its halo lights up while playing only if it ends up in the output, as brightly as its envelope and the routes
+    // that take it there let it through, where modulation takes them now: one an LFO opens from 0 % lights up too.
+    const float level = std::min(telemetry_.opLevels[op], 1.0f) * static_cast<float>(std::sqrt(outLevel(op)));
+    if (level > 0.01f)
         c.fillCircle(center, kNodeRadius + 7.0f, kAccent.alpha(0.22f * level));
     if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
         // Unison: a stack of rings peeking out on both sides.
@@ -4792,16 +4713,25 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.line({center.x - 3.5f, center.y + 3.5f}, {center.x + 3.5f, center.y - 3.5f}, color, 1.5f);
         break;
     }
-    case Kind::SlotScroll: {
-        const float card = cardOf(w.a);
-        if (card == kOffScreen)
+    case Kind::SourceMods: {
+        // How many modulations the source has, and MODS with a chevron at the right; with none, an invitation to add
+        // one there.
+        const size_t count = usedSlots(w.a).size();
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
+        c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, 6.0f);
+        const Point m{w.rect.right() - 12.0f, w.rect.center().y};
+        const Point chevron[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.0f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
+        c.polyline(chevron, 3, hovered ? kText : kDim, 1.4f);
+        if (count == 0) {
+            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardNoModulations), 11.0f,
+                   hovered ? kText : kDim, Align::Left);
             break;
-        // Thinner away from the mouse, like the panels' scrollbars.
-        const float thin = hovered || active ? 0.0f : 0.5f;
-        const Rect track = slotScrollTrack(card), thumb = slotThumb(w.a, card);
-        c.fillRect({track.x + thin, track.y, track.w - 2.0f * thin, track.h}, kBorder, 1.5f - thin);
-        c.fillRect({thumb.x + thin, thumb.y, thumb.w - 2.0f * thin, thumb.h},
-                   kSourceColors[w.a].alpha(hovered || active ? 1.0f : 0.7f), 1.5f - thin);
+        }
+        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 80.0f, w.rect.h},
+               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), 11.0f, kText,
+               Align::Left);
+        c.text({w.rect.right() - 80.0f, w.rect.y, 58.0f, w.rect.h}, tr(Str::ViewMods), 10.5f, hovered ? kText : kDim,
+               Align::Right, true);
         break;
     }
     case Kind::ValueText:
@@ -5349,17 +5279,31 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::ModsSource: {
         // The first of a source's rows has its handle's look and its name, the others a line in its color; under the
-        // mouse, or while its menu is open, a chevron says it opens one.
-        const Color color = kSourceColors[w.a];
+        // mouse, or while its menu is open, a chevron says it opens one. An empty modulation without a source has a
+        // dashed handle and asks for one.
         const bool open = cascade_ && cascade_->kind == CascadeKind::Source && cascade_->source == w.a &&
                           cascade_->slot == w.b;
+        if (w.a < 0) {
+            const Point handle{w.rect.x + 7.0f, w.rect.center().y};
+            c.strokeCircle(handle, 6.5f, hovered || open ? kDim : kFaint, 1.2f);
+            const std::string ask = tr(Str::ModsPickSource);
+            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, ask, 11.5f, hovered || open ? kText : kDim,
+                   Align::Left);
+            const float x = w.rect.x + 24.0f + std::min(c.textWidth(ask, 11.5f), w.rect.w - 40.0f);
+            const Point m{x + 4.0f, w.rect.center().y};
+            const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
+            c.polyline(chevron, 3, kDim, 1.3f);
+            break;
+        }
+        const Color color = kSourceColors[w.a];
+        const bool bypassed = w.b >= 0 && slotBypassed(w.a, w.b);
         if (w.compact) {
             const Point handle{w.rect.x + 7.0f, w.rect.center().y};
             c.fillCircle(handle, 7.0f, color);
             c.fillCircle(handle, 2.5f, kPanel);
             const std::string name = sourceName(w.a);
-            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, name, 11.5f,
-                   slotBypassed(w.a, w.b) ? kDim : kText, Align::Left, true);
+            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, name, 11.5f, bypassed ? kDim : kText,
+                   Align::Left, true);
             if (hovered || open) {
                 const float x = w.rect.x + 24.0f + std::min(c.textWidth(name, 11.5f, true), w.rect.w - 40.0f);
                 const Point m{x + 4.0f, w.rect.center().y};
@@ -5376,15 +5320,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::ModsTarget: {
-        const int target = slotTarget(value(slotTargetIndex(w.a, w.b)));
+        // An empty modulation without a target asks for one.
+        const int target = modsRowTarget(w.a, w.b);
         const bool open = cascade_ && cascade_->kind == CascadeKind::Target && cascade_->source == w.a &&
                           cascade_->slot == w.b;
         if (hovered || open)
             c.fillRect(w.rect.inset(1.0f), kTrack, 4.0f);
-        const std::string name = target >= 0 ? paramName(target) : std::string();
+        const std::string name = target >= 0 ? paramName(target) : std::string(tr(Str::ModsPickTarget));
         c.text({w.rect.x + 6.0f, w.rect.y, w.rect.w - 24.0f, w.rect.h}, name, 11.5f,
-               slotBypassed(w.a, w.b) ? kDim : kText, Align::Left);
-        if (hovered || open) {
+               target < 0 || (w.b >= 0 && slotBypassed(w.a, w.b)) ? kDim : kText, Align::Left);
+        if (hovered || open || target < 0) {
             const Point m{w.rect.right() - 10.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
             c.polyline(chevron, 3, kDim, 1.3f);
@@ -5425,6 +5370,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                true);
         break;
     }
+    case Kind::ModsAdd: {
+        // A dashed button, as + Aux: lit under the mouse.
+        const float radius = w.rect.h * 0.5f;
+        c.strokeRect(w.rect, hovered ? kDim : kTrack, 1.0f, radius, true);
+        c.text(w.rect, tr(Str::ModsAddModulation), 10.5f, hovered ? kText : kDim);
+        break;
+    }
     case Kind::ModsAuxClear: {
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;
@@ -5454,13 +5406,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillCircle(center, 3.5f, color);
         break;
     }
-    case Kind::SlotPolarity: {
-        // How the row's modulation swings its target: a wave about its middle line for both ways, or humps up from
-        // its baseline for one way; dimmed with a bypassed row.
-        const Color color = slotBypassed(w.a, w.b) ? kFaint : (hovered ? kText : kDim);
+    case Kind::SourcePolarity: {
+        // How the row's source swings its targets: a wave about its middle line for both ways, or humps up from its
+        // baseline for one way.
         if (hovered)
             c.fillRect(w.rect.inset(1.0f), kTrack, 3.0f);
-        polarityIcon(c, w.rect.center(), slotBipolar(w.a, w.b), color);
+        polarityIcon(c, w.rect.center(), sourceBipolar(w.a), hovered ? kText : kDim);
         break;
     }
     }
@@ -5503,7 +5454,7 @@ std::string View::modRangeText(int source, int slot) const {
         const double set = value(target);
         const double reach =
             value(slotAmountIndex(source, slot)) * value(slotScaleIndex(source, slot)) * (def.max - def.min);
-        const bool both = slotBipolar(source, slot);
+        const bool both = sourceBipolar(source);
         const double start = both ? set - 0.5 * reach : set; // a negative depth runs the other way
         const double end = both ? set + 0.5 * reach : set + reach;
         char from[32], to[32];
@@ -5519,13 +5470,13 @@ std::string View::modRangeText(int source, int slot) const {
 void View::paintKnob(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool focused = isHovered(w) || isActive(w);
-    const Point center = w.compact ? Point{w.rect.x + 18.0f, w.rect.y + 20.0f}
-                                   : Point{w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
-    const float radius = w.compact ? 17.0f : w.rect.w * 0.5f;
+    const Point center = knobCenter(w);
+    const float radius = knobRadius(w);
+    const float k = smallKnob(w) ? radius / 17.0f : 1.0f; // a small knob's rings and pointer, scaled down with it
     const double n = norm(w.param);
     const float angle = knobAngle(n);
 
-    c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f);
+    c.arc(center, radius - 2.0f * k, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f * k);
     // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
     const int macro = macroOf(w.param);
     // An LFO's Phase is faint too while notes don't start the LFO there.
@@ -5534,7 +5485,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : kAccent).alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
-    c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
+    c.arc(center, radius - 2.0f * k, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f * k);
 
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
     // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
@@ -5548,31 +5499,37 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         }
         const auto [down, up] = modReach(m);
         const float alpha = (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
-        c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha), 2.5f);
+        c.arc(center, radius + 2.5f * k, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha),
+              2.5f * k);
     });
     for (const Assignment &f : focus) {
         const auto [down, up] = modReach(f);
         const float alpha = sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f;
-        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha), 4.0f);
+        c.arc(center, radius + 3.0f * k, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha),
+              4.0f * k);
     }
 
-    c.fillCircle(center, radius - 7.0f, kKnobBody);
-    c.strokeCircle(center, radius - 7.0f, kBorder, 1.0f);
-    c.line(Canvas::onCircle(center, (radius - 7.0f) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle),
-           kText, 2.0f);
+    c.fillCircle(center, radius - 7.0f * k, kKnobBody);
+    c.strokeCircle(center, radius - 7.0f * k, kBorder, 1.0f);
+    c.line(Canvas::onCircle(center, (radius - 7.0f * k) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f * k, angle),
+           kText, 2.0f * k);
 
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
     const float offset = liveOffset(w.param);
     if (offset != 0.0f)
-        c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))), 2.5f,
-                     kText);
+        c.fillCircle(Canvas::onCircle(center, radius - 2.0f * k, knobAngle(n + offset / (def.max - def.min))),
+                     2.5f * std::max(k, 0.8f), kText);
 
     char text[64];
     formatParam(w.param, value(w.param), text, sizeof(text));
     std::string shown = text;
     if (def.kind == ParamKind::Ratio)
         shown = "\xC3\x97" + shown;
-    if (w.compact) {
+    if (smallKnob(w)) { // the label and the number on its row
+        c.text({w.rect.x + 28.0f, w.rect.y, kSmallKnobValue - 30.0f, w.rect.h}, w.label, 10.5f, kDim, Align::Left);
+        c.text({w.rect.x + kSmallKnobValue, w.rect.y, w.rect.w - kSmallKnobValue, w.rect.h}, shown, 13.0f, kText,
+               Align::Left, true);
+    } else if (w.compact) {
         const float textWidth = w.rect.w - 42.0f;
         c.text({w.rect.x + 42.0f, w.rect.y + 3.0f, textWidth, 16.0f}, w.label, 10.5f, kDim, Align::Left);
         c.text({w.rect.x + 42.0f, w.rect.y + 18.0f, textWidth, 18.0f}, shown, 13.0f, kText, Align::Left, true);
@@ -5595,7 +5552,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::ShapeDone && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::ModPill &&
-         hover_->kind != Kind::SlotPolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
+         hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
          hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
          hover_->kind != Kind::ModsScale &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
@@ -5607,7 +5564,7 @@ void View::paintTooltip(Canvas &c) {
         return;
     // A source's handle tells how to use it only until it modulates something.
     const bool handle = hover_->kind == Kind::MacroHandle || hover_->kind == Kind::SourceHandle;
-    if (handle && !usedSlots(hover_->a).empty())
+    if (handle && sourceUsed(hover_->a))
         return;
     const int param = hover_->param;
     const FxParam field = fxFieldOf(param);
@@ -5665,14 +5622,14 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipSettings);
     else if (hover_->kind == Kind::SlotBypass)
         text = tr(slotBypassed(hover_->a, hover_->b) ? Str::TipBypassed : Str::TipBypass);
-    else if (hover_->kind == Kind::SlotPolarity)
-        text = tr(slotBipolar(hover_->a, hover_->b) ? Str::TipSlotBipolar : Str::TipSlotUnipolar);
+    else if (hover_->kind == Kind::SourcePolarity)
+        text = trf(sourceBipolar(hover_->a) ? Str::TipSourceBipolar : Str::TipSourceUnipolar, {sourceName(hover_->a)});
     else if (hover_->kind == Kind::Wire)
         text = tr(Str::TipWire);
-    else if (hover_->kind == Kind::ModsSource)
-        text = tr(Str::TipModsSource);
+    else if (hover_->kind == Kind::ModsSource) // an empty modulation's picks one
+        text = tr(hover_->b < 0 ? Str::TipModsPickSource : Str::TipModsSource);
     else if (hover_->kind == Kind::ModsTarget)
-        text = tr(Str::TipModsTarget);
+        text = tr(hover_->b < 0 ? Str::TipModsPickTarget : Str::TipModsTarget);
     else if (hover_->kind == Kind::ModsAux)
         text = tr(Str::TipModsAux);
     else if (hover_->kind == Kind::ModsAuxClear)
@@ -5814,7 +5771,7 @@ void View::paintModList(Canvas &c, const Widget &w) {
     c.text({title.right() - countW, title.y, countW, title.h}, count, 10.5f, kDim, Align::Right);
 }
 
-// A row: as on a source's card, with the source's name (dimmed while bypassed or off) in place of the target's.
+// A row: its bypass dot, the source's name (dimmed while bypassed or off), its depth bar and its remove.
 void View::paintModListRow(Canvas &c, const Widget &w) {
     const bool lit = hover_ && hover_->popup && hover_->a == w.a && hover_->b == w.b && drag_.kind == DragKind::None;
     c.fillRect(w.rect, lit ? kTrack : kRaised, 5.0f);
@@ -5856,7 +5813,7 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         }
         if (!droppable(w, source))
             continue;
-        // A target scrolled out of its card or slot list isn't outlined; one partly out is outlined as far as it
+        // A target scrolled out of its card or list isn't outlined; one partly out is outlined as far as it
         // shows, with room left round the clip for the ring drawn outside it.
         const bool clipped = w.clip.w > 0.0f;
         if (clipped && (w.rect.right() <= w.clip.x || w.rect.x >= w.clip.right() || w.rect.bottom() <= w.clip.y ||
@@ -5879,10 +5836,10 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
     c.fillCircle(drag_.now, 3.0f, color);
 }
 
-void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source) {
+void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source, int slot) {
     std::vector<int> targets, bypassed;
     for (const Assignment &m : assignments())
-        if (m.source == source)
+        if (m.source == source && (slot < 0 || m.slot == slot))
             (m.bypassed ? bypassed : targets).push_back(m.target);
     const auto handle = std::find_if(list.begin(), list.end(),
                                      [&](const Widget &w) {
@@ -5892,6 +5849,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
     if ((targets.empty() && bypassed.empty()) || handle == list.end())
         return;
     const Point from = handle->rect.center();
+    if (handle->clip.w > 0.0f && !handle->clip.contains(from)) // its card scrolled out of view
+        return;
     for (const Widget &w : list) {
         const bool target = w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel ||
                             w.kind == Kind::GridCell || w.kind == Kind::SlotBar; // the last: another source's depth
@@ -5903,7 +5862,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         // of a label, cell or depth bar. A param can show twice (an output's knob and its label on the bus), and
         // each has its dots, so the dot is the one on this widget.
         const auto dot = std::find_if(list.begin(), list.end(), [&](const Widget &d) {
-            return d.kind == Kind::ModDot && d.a == source && w.rect.inset(-2.0f).contains(d.rect.center()) &&
+            return d.kind == Kind::ModDot && d.a == source && (slot < 0 || d.b == slot) &&
+                   w.rect.inset(-2.0f).contains(d.rect.center()) &&
                    slotTarget(value(slotTargetIndex(source, d.b))) == w.param;
         });
         // A dot the widget had no room for is in its pill: the line ends there.
@@ -5933,6 +5893,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
 
 Rect View::typingField() const {
     const Widget &w = typing_->widget;
+    if (w.kind == Kind::Knob && smallKnob(w))
+        return {w.rect.x + kSmallKnobValue - 4.0f, w.rect.y, 70.0f, w.rect.h};
     if (w.kind == Kind::Knob && w.compact)
         return {w.rect.x + 38.0f, w.rect.y + 17.0f, w.rect.w - 36.0f, 20.0f};
     if (w.kind == Kind::Knob)
@@ -6160,17 +6122,6 @@ void View::applyDrag(Point p) {
         set(w.param, drag_.startValue - (rise < 0.0 ? -1.0 : 1.0) * (drag_.start.y - p.y) / 100.0);
         break;
     }
-    case DragKind::SlotScroll: {
-        // The rows follow the thumb, a whole row at a time.
-        const int rows = static_cast<int>(usedSlots(w.a).size());
-        const float card = cardOf(w.a);
-        if (card == kOffScreen || rows <= kVisibleSlots)
-            break;
-        const float room = slotScrollTrack(card).h - slotThumb(w.a, card).h;
-        scrollSlots(w.a, static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * (rows - kVisibleSlots),
-                    false); // the rows follow the thumb
-        break;
-    }
     case DragKind::Scroll: {
         // The cards follow the thumb.
         const auto area = static_cast<ScrollArea>(w.a);
@@ -6204,8 +6155,10 @@ void View::applyDrag(Point p) {
         const float span = std::max(std::hypot(b.x - a.x, b.y - a.y), 1.0f);
         const Point left = leftOf(a, b);
         const float moved = (p.x - drag_.start.x) * left.x + (p.y - drag_.start.y) * left.y;
-        const float bend = std::clamp(static_cast<float>(drag_.startValue) + 2.0f * moved / span, -kMaxWireBend,
-                                      kMaxWireBend);
+        // It stops where it would leave the panel.
+        const float bend = fitBend(w.a, a, w.b, b,
+                                   std::clamp(static_cast<float>(drag_.startValue) + 2.0f * moved / span,
+                                              -kMaxWireBend, kMaxWireBend));
         if (bend != wireBend(w.param))
             setWireBend(w.param, bend);
         break;
@@ -6334,6 +6287,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ModsAux:
         openCascade(CascadeKind::Aux, w.a, w.b, w.rect);
         break;
+    case Kind::ModsAdd:
+        addEmptyMod();
+        break;
     case Kind::ModsAuxClear:
         setAux(w.a, w.b, -1);
         break;
@@ -6368,7 +6324,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Wire:
         drag_.kind = DragKind::Bend;
-        drag_.startValue = wireBend(w.param);
+        drag_.startValue = fitBend(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param)); // as drawn
         drag_.step = true; // bending it is an undo step
         controller_.beginStep();
         break;
@@ -6484,12 +6440,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         layout.selectedNode = w.a;
         break;
     case Kind::ViewTab:
-        layout.view = static_cast<RoutingView>(w.a);
-        cascade_.reset();
-        shapeEditor_ = -1; // the tabs take the panels back from the shape and partial editors
-        partialEditor_ = -1;
-        fxMenuOpen_ = false;
-        listMenu_ = -1;
+        showView(static_cast<RoutingView>(w.a));
         break;
     case Kind::OpTab:
         layout.opTab = static_cast<InspectorTab>(w.a);
@@ -6530,8 +6481,6 @@ void View::mouseDown(Point p, Modifiers mods) {
             switchSymmetric(w.param);
         else if (fixedSwitchOp(w.param) >= 0)
             switchFixed(fixedSwitchOp(w.param));
-        else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // as the LFO's menu: for all of its targets
-            setSourcePolarity(sourceOf(w.param), value(w.param) >= 0.5);
         else
             edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         break;
@@ -6708,24 +6657,12 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SlotBypass:
         toggleBypass(w.a, w.b);
         break;
-    case Kind::SlotPolarity:
-        setSlotPolarity(w.a, w.b, !slotBipolar(w.a, w.b));
+    case Kind::SourcePolarity:
+        setSourcePolarity(w.a, !sourceBipolar(w.a));
         break;
-    case Kind::SlotScroll: {
-        // On the thumb, drag it; elsewhere on the track, the thumb jumps to center on the click and can be dragged on.
-        const float card = cardOf(w.a);
-        const int rows = static_cast<int>(usedSlots(w.a).size());
-        if (card == kOffScreen || rows <= kVisibleSlots)
-            break;
-        const Rect track = slotScrollTrack(card);
-        const Rect thumb = slotThumb(w.a, card);
-        if (p.y < thumb.y || p.y >= thumb.bottom()) {
-            scrollSlots(w.a, (p.y - thumb.h * 0.5f - track.y) / (track.h - thumb.h) * (rows - kVisibleSlots), false);
-        }
-        drag_.kind = DragKind::SlotScroll;
-        drag_.startValue = slotFirst(w.a);
+    case Kind::SourceMods:
+        showSourceMods(w.a);
         break;
-    }
     case Kind::ValueText:
         break; // double-click types a value
     case Kind::WaveMore:
@@ -6867,7 +6804,6 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::ModWheel:
     case DragKind::BendWheel:
     case DragKind::Scroll:
-    case DragKind::SlotScroll:
     case DragKind::TextSelect:
     case DragKind::Bend: // each move set it already
     case DragKind::ModsScroll:
@@ -6923,7 +6859,6 @@ void View::finishDrag() {
     case DragKind::FxMove:
     case DragKind::SourceMove:
     case DragKind::Scroll:
-    case DragKind::SlotScroll:
     case DragKind::TextSelect:
     case DragKind::None:
         break;
@@ -7082,19 +7017,6 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             stepShapeGrid(hit->a, whole);
         return;
     }
-    // Over a source's slot list (but not on a depth bar), a notch scrolls it a row, gliding there; a
-    // trackpad's smaller steps move it by parts of a row.
-    if ((!hit || hit->param < 0) && steps != 0.0f) {
-        for (int s : sources()) {
-            const float card = cardOf(s);
-            if (card == kOffScreen || sourceFolded(s) || !slotList(card).contains(p) || !sourceCardClip().contains(p) ||
-                usedSlots(s).size() <= static_cast<size_t>(kVisibleSlots))
-                continue;
-            // From where it is headed, clamped, so notches add up but scrolling past an end doesn't pile up.
-            scrollSlots(s, std::clamp(slotScroll_[s], 0.0f, slotEnd(s)) - steps, true);
-            return;
-        }
-    }
     if ((!hit || hit->param < 0) && modPanel(controller_.layout().sourcesCollapsed).contains(p) && steps != 0.0f) {
         setScroll(ScrollArea::Sources, sourceScroll() - steps * 0.4f);
         return;
@@ -7138,9 +7060,6 @@ constexpr int kBypassCommand = kClearCommand + kAllSources;
 constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
 constexpr int kResetBendCommand = 14;
-// A modulation made unipolar or bipolar, by source and slot.
-constexpr int kSlotUnipolarCommand = kBypassCommand + kMaxSources * kSlots;
-constexpr int kSlotBipolarCommand = kSlotUnipolarCommand + kAllSources * kSlots;
 
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
@@ -7163,9 +7082,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({7, tr(Str::MenuRemove)});
         return items;
     }
-    // Every source can swing all of its targets one way or both, from the menu of its card or handle (and a macro's
-    // knob, the mod wheel and the note source's or velocity's display): each is checked while every modulation it has
-    // goes that way, or with none, while the source does.
+    // Every source can swing its targets one way or both, from the menu of its card or handle (and a macro's knob, the
+    // mod wheel and the note source's or velocity's display), the one in force checked.
     const int polaritySource = hit->kind == Kind::SourceGrip || hit->kind == Kind::SourceHandle ||
                                        hit->kind == Kind::MacroHandle || hit->kind == Kind::NoteDisplay
                                    ? hit->a
@@ -7175,15 +7093,9 @@ std::vector<MenuItem> View::contextMenu(Point p) {
                                                                                      : -1;
     auto addPolarity = [&] {
         menuSource_ = polaritySource;
-        const std::vector<int> slots = usedSlots(polaritySource);
-        int bipolar = 0;
-        for (int slot : slots)
-            bipolar += slotBipolar(polaritySource, slot) ? 1 : 0;
-        const bool allBipolar =
-            slots.empty() ? sourceBipolar(polaritySource) : bipolar == static_cast<int>(slots.size());
-        const bool allUnipolar = slots.empty() ? !allBipolar : bipolar == 0;
-        items.push_back({kUnipolarCommand, tr(Str::MenuAllUnipolar), allUnipolar});
-        items.push_back({kBipolarCommand, tr(Str::MenuAllBipolar), allBipolar});
+        const bool bipolar = sourceBipolar(polaritySource);
+        items.push_back({kUnipolarCommand, tr(Str::MenuUnipolar), !bipolar});
+        items.push_back({kBipolarCommand, tr(Str::MenuBipolar), bipolar});
     };
     if (hit->kind == Kind::SourceGrip || hit->kind == Kind::SourceHandle) {
         if (!usedSlots(hit->a).empty())
@@ -7206,9 +7118,11 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         return items;
     }
     if (hit->kind == Kind::SlotBar || hit->kind == Kind::SlotRemove || hit->kind == Kind::ModDot ||
-        hit->kind == Kind::ValueText || hit->kind == Kind::SlotBypass || hit->kind == Kind::SlotPolarity ||
-        hit->kind == Kind::ModsSource || hit->kind == Kind::ModsTarget || hit->kind == Kind::ModsScale ||
+        hit->kind == Kind::ValueText || hit->kind == Kind::SlotBypass || hit->kind == Kind::ModsSource ||
+        hit->kind == Kind::ModsTarget || hit->kind == Kind::ModsScale ||
         hit->kind == Kind::ModsAux || hit->kind == Kind::ModsAuxClear) {
+        if (hit->b < 0) // an empty modulation: nothing to bypass, nor a depth to type
+            return items;
         // The depth types where it shows: beside its bar, or under a knob's dot.
         if (hit->kind == Kind::SlotBar || hit->kind == Kind::ModDot || hit->kind == Kind::ValueText) {
             menuValue_ = *hit;
@@ -7218,13 +7132,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
             }
             items.push_back({11, tr(Str::MenuEditDepth)});
         }
-        if (!isStripSource(hit->a)) // a macro's, the note source's or the mod wheel's can't be bypassed
-            items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
-        // This modulation alone one way or both, the one in force checked.
-        const bool bipolar = slotBipolar(hit->a, hit->b);
-        items.push_back({0, ""});
-        items.push_back({kSlotUnipolarCommand + hit->a * kSlots + hit->b, tr(Str::MenuUnipolar), !bipolar});
-        items.push_back({kSlotBipolarCommand + hit->a * kSlots + hit->b, tr(Str::MenuBipolar), bipolar});
+        items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
         items.push_back({0, ""});
         items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {sourceName(hit->a)})});
         return items;
@@ -7271,8 +7179,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     for (const Assignment &m : assignments()) {
         if (m.target != hit->param)
             continue;
-        if (!isStripSource(m.source))
-            bypasses.push_back({kBypassCommand + m.source * kSlots + m.slot, bypassLabel(m.source, m.slot)});
+        bypasses.push_back({kBypassCommand + m.source * kSlots + m.slot, bypassLabel(m.source, m.slot)});
         removals.push_back({100 + m.source * kSlots + m.slot, trf(Str::MenuRemoveModulation, {sourceName(m.source)})});
     }
     if (!removals.empty()) {
@@ -7341,12 +7248,8 @@ void View::menuCommand(int command) {
         const UndoScope step(controller_);
         for (int slot : usedSlots(command - kClearCommand))
             removeSlot(command - kClearCommand, slot);
-    } else if (command >= kBypassCommand && command < kBypassCommand + kMaxSources * kSlots) {
+    } else if (command >= kBypassCommand && command < kBypassCommand + kAllSources * kSlots) {
         toggleBypass((command - kBypassCommand) / kSlots, (command - kBypassCommand) % kSlots);
-    } else if (command >= kSlotUnipolarCommand && command < kSlotBipolarCommand + kAllSources * kSlots) {
-        const bool bipolar = command >= kSlotBipolarCommand;
-        const int slot = command - (bipolar ? kSlotBipolarCommand : kSlotUnipolarCommand);
-        setSlotPolarity(slot / kSlots, slot % kSlots, bipolar);
     }
 }
 

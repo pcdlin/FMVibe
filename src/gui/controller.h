@@ -66,7 +66,14 @@ struct UiLayout {
     // How far the graph's wires bow to their left, as a share of the distance each spans, by route (a param index):
     // those dragged away from kDefaultWireBend, which the others keep. Part of the patch, like the node places.
     std::vector<std::pair<int, float>> wireBends;
+    // Modulations added in the MODS view that have no source or no target yet, in the order they were added: each its
+    // source (-1 for none) and its target (a param index, -1 for none). They modulate nothing; once both are picked,
+    // the modulation takes a slot of its source and leaves this list. Part of the patch, like the node places.
+    std::vector<std::pair<int, int>> emptyMods;
 };
+
+// How many empty modulations the MODS view keeps at most.
+constexpr int kMaxEmptyMods = 32;
 
 // How far a wire bows to its left, as a share of the distance it spans, until it is dragged: enough that two wires
 // running opposite ways between two nodes don't overlap. Dragged, it goes from -kMaxWireBend to kMaxWireBend.

@@ -22,11 +22,11 @@ constexpr uint32_t kPresetMagic = 0x54535250;   // "PRST"
 constexpr size_t kMaxMacroName = 24; // bytes of a macro's name that are saved
 // The most of a layout chunk the loader reads, any more is skipped: plenty of room past the most this version
 // writes (see layoutFields()), which is its fixed fields, every route kept (a node's output and its route into
-// each node, at most), every macro's name at full length and every route's wire bent.
+// each node, at most), every macro's name at full length, every route's wire bent and every empty modulation.
 constexpr uint32_t kMaxLayoutFloats = 4096;
 constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
-                  kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes <=
+                  kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 // 2: Volume gives back the 12 dB the voices go into the effects with, so a version 1 Volume loads 12 dB lower.
@@ -158,6 +158,14 @@ struct LayoutWriter {
             out.push_back(value);
         }
     }
+    // Empty modulations, as their count and then each one's source + 1 and its target's id + 1 (0 for none).
+    void emptyMods(const std::vector<std::pair<int, int>> &mods) {
+        out.push_back(static_cast<float>(mods.size()));
+        for (const auto &[source, target] : mods) {
+            out.push_back(static_cast<float>(source + 1));
+            out.push_back(target < 0 ? 0.0f : static_cast<float>(idOfIndex(target)) + 1.0f);
+        }
+    }
 };
 
 // Takes each layout field back from the chunk, into a layout that starts with the defaults: a field the chunk
@@ -220,6 +228,17 @@ struct LayoutReader {
                 values.push_back({index, value});
         }
     }
+    // A source that isn't one, or a target that isn't a param modulation can move, reads as none.
+    void emptyMods(std::vector<std::pair<int, int>> &mods) {
+        mods.clear();
+        const int count = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(gui::kMaxEmptyMods))));
+        for (int k = 0; k < count && field < stored.size(); ++k) {
+            const int source = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(kAllSources)))) - 1;
+            const long id = std::lround(next(0.0f, 0.0f, 1.0e6f)) - 1;
+            const int target = id < 0 ? -1 : indexOfId(static_cast<clap_id>(id));
+            mods.push_back({source, isModTarget(target) ? target : -1});
+        }
+    }
 };
 
 // The layout chunk's fields, in order; later versions only append. Writing (LayoutWriter) and reading
@@ -253,6 +272,8 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.scopeCycles, 0.0f, 4.0f, rounded<int>, oneOf(gui::kScopeCycleChoices));
     // The wires dragged to bow other than they start, by route.
     io.paramValues(ui.wireBends, -gui::kMaxWireBend, gui::kMaxWireBend);
+    // The modulations added in the MODS view without a source or a target yet.
+    io.emptyMods(ui.emptyMods);
 }
 
 } // namespace

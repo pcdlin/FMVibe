@@ -10,7 +10,7 @@ namespace {
 bool samePatchLayout(const UiLayout &a, const UiLayout &b) {
     return a.nodeX == b.nodeX && a.nodeY == b.nodeY && a.boxX == b.boxX && a.boxY == b.boxY &&
            a.sourceOrder == b.sourceOrder && a.keptRoutes == b.keptRoutes && a.macroNames == b.macroNames &&
-           a.wireBends == b.wireBends;
+           a.wireBends == b.wireBends && a.emptyMods == b.emptyMods;
 }
 
 void restorePatchLayout(UiLayout &to, const UiLayout &from) {
@@ -22,6 +22,7 @@ void restorePatchLayout(UiLayout &to, const UiLayout &from) {
     to.keptRoutes = from.keptRoutes;
     to.macroNames = from.macroNames;
     to.wireBends = from.wireBends;
+    to.emptyMods = from.emptyMods;
 }
 
 } // namespace

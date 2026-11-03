@@ -482,38 +482,16 @@ int main(int argc, char **argv) {
     runBlock({&envBipolar.header});
     runBlocks(2);
     const float bipolarLevel = runBlocks(4);
-    // Each slot can be set one way or the other on its own, whatever its source is: set unipolar, the bipolar
-    // envelope's slot silences A again; set bipolar, with the envelope unipolar, it halves A as the bipolar envelope
-    // did; set back to follow its source (unipolar), it silences A.
-    auto slotPolarityEvent = [&](SlotPolarity polarity) {
-        return paramEvent(slotPolarityIndex(env1, 0), static_cast<double>(polarity));
-    };
-    const clap_event_param_value_t slotUnipolar = slotPolarityEvent(SlotPolarity::Unipolar);
-    runBlock({&slotUnipolar.header});
-    runBlocks(2);
-    const float slotUnipolarLevel = runBlocks(4);
     const clap_event_param_value_t envUnipolar = paramEvent(paramIndex(env1, SourceParam::EnvBipolar), 0.0);
-    const clap_event_param_value_t slotBipolar = slotPolarityEvent(SlotPolarity::Bipolar);
-    runBlock({&envUnipolar.header, &slotBipolar.header});
-    runBlocks(2);
-    const float slotBipolarLevel = runBlocks(4);
-    const clap_event_param_value_t slotAsSource = slotPolarityEvent(SlotPolarity::Source);
-    runBlock({&slotAsSource.header});
-    runBlocks(2);
-    const float asSourceLevel = runBlocks(4);
     const clap_event_param_value_t envAmountOff = paramEvent(slotAmountIndex(env1, 0), 0.0);
-    runBlock({&envAmountOff.header});
+    runBlock({&envUnipolar.header, &envAmountOff.header});
     runBlocks(2);
     const float full = runBlocks(4);
-    std::printf("      envelope on A's output at -100 %%, full sustain: peak %.3f bipolar, %.3f without it; its slot "
-                "unipolar %.3f, bipolar %.3f, as its source %.3f\n",
-                bipolarLevel, full, slotUnipolarLevel, slotBipolarLevel, asSourceLevel);
+    std::printf("      envelope on A's output at -100 %%, full sustain: peak %.3f bipolar, %.3f without it\n",
+                bipolarLevel, full);
     check(full > 0.05f, "clearing the slot amount brings the note back");
     check(bipolarLevel > 0.4f * full && bipolarLevel < 0.6f * full,
           "a bipolar envelope swings its target about its middle");
-    check(slotUnipolarLevel < 1e-4f && slotBipolarLevel > 0.4f * full && slotBipolarLevel < 0.6f * full &&
-              asSourceLevel < 1e-4f,
-          "a slot set unipolar or bipolar goes that way whatever its source, and follows its source again after");
     const clap_event_param_value_t envEmpty = paramEvent(paramIndex(env1, SourceParam::Type), 0.0);
     runBlock({&envEmpty.header, &chokeAll.header});
 
@@ -1487,8 +1465,8 @@ int main(int argc, char **argv) {
 
     // Velocity, through its curve: as it starts, a straight line, it takes A's output (at 0, modulated by 100 %) as far
     // as the note's velocity: a quarter of it at 0.25, half at 0.5, all of it at 1. Bipolar, it swings about the middle
-    // of what it puts out: nothing at 0.5, half at 1; and so does its slot set bipolar on its own. With its curve drawn
-    // the other way round, a soft note brings A out and a hard one doesn't.
+    // of what it puts out: nothing at 0.5, half at 1. With its curve drawn the other way round, a soft note brings A
+    // out and a hard one doesn't.
     {
         const int curve = paramIndex(VelocityParam::Curve);
         setParams({{paramIndex(0, OpParam::Out), 0.0},
@@ -1508,9 +1486,6 @@ int main(int argc, char **argv) {
         setParams({{paramIndex(VelocityParam::Bipolar), 1.0}});
         const float bipolarHalf = peakAt(0.5), bipolarWhole = peakAt(1.0);
         setParams({{paramIndex(VelocityParam::Bipolar), 0.0},
-                   {slotPolarityIndex(kVelocitySource, 0), static_cast<double>(SlotPolarity::Bipolar)}});
-        const float slotBipolarHalf = peakAt(0.5), slotBipolarWhole = peakAt(1.0);
-        setParams({{slotPolarityIndex(kVelocitySource, 0), static_cast<double>(SlotPolarity::Source)},
                    {shapeFieldIndex(curve, 0, PointField::Y), 1.0},
                    {shapeFieldIndex(curve, 1, PointField::Y), -1.0}});
         const float flippedSoft = peakAt(0.25), flippedHard = peakAt(1.0);
@@ -1521,14 +1496,12 @@ int main(int argc, char **argv) {
                    {slotTargetIndex(kVelocitySource, 0), 0.0},
                    {slotAmountIndex(kVelocitySource, 0), 0.0}});
         std::printf("      A's output by velocity: peak %.3f / %.3f / %.3f at 0.25 / 0.5 / 1; bipolar %.3f / %.3f at "
-                    "0.5 / 1, its slot bipolar %.3f / %.3f; curve flipped %.3f at 0.25, %.3f at 1\n",
-                    quarter, half, whole, bipolarHalf, bipolarWhole, slotBipolarHalf, slotBipolarWhole, flippedSoft,
-                    flippedHard);
+                    "0.5 / 1; curve flipped %.3f at 0.25, %.3f at 1\n",
+                    quarter, half, whole, bipolarHalf, bipolarWhole, flippedSoft, flippedHard);
         check(whole > 0.2f && std::abs(quarter / whole - 0.25f) < 0.03f && std::abs(half / whole - 0.5f) < 0.03f,
               "velocity takes its target as far as the note's velocity, in a straight line as it starts");
-        check(bipolarHalf < 0.005f && std::abs(bipolarWhole / whole - 0.5f) < 0.03f && slotBipolarHalf < 0.005f &&
-                  std::abs(slotBipolarWhole / whole - 0.5f) < 0.03f,
-              "bipolar velocity, or its slot set bipolar, swings about the middle of what it puts out");
+        check(bipolarHalf < 0.005f && std::abs(bipolarWhole / whole - 0.5f) < 0.03f,
+              "bipolar velocity swings about the middle of what it puts out");
         check(std::abs(flippedSoft / whole - 0.75f) < 0.03f && flippedHard < 0.005f,
               "velocity's curve shapes what it puts out");
     }
@@ -1536,7 +1509,9 @@ int main(int argc, char **argv) {
     // A slot's depth is scaled by its Amount and its aux: a macro turned up, at -100 % on A's output, silences A; at 50 %
     // Amount it takes A down by half. With velocity for its aux, which runs per voice, a note at full velocity is
     // silenced and one at half velocity halved, each in its own voice; with the mod wheel for its aux, the wheel down
-    // leaves A alone. A's own velocity scaling is off, so only the slot moves its level.
+    // leaves A alone. Bypassed, the macro's slot leaves A alone, with an aux running per voice or not, and so does
+    // velocity's, which at -100 % silences A at full velocity until it is bypassed. A's own velocity scaling is off,
+    // so only the slots move its level.
     {
         setParams({{paramIndex(0, OpParam::Velocity), 0.0},
                    {slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
@@ -1558,12 +1533,25 @@ int main(int argc, char **argv) {
         const float hard = peakAt(1.0), soft = peakAt(0.5);
         setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kWheelSource)}});
         const float wheelDown = peakAt(1.0);
-        setParams({{slotAuxIndex(kMaxSources, 0), 0.0},
+        setParams({{slotAuxIndex(kMaxSources, 0), 0.0}, {slotBypassIndex(kMaxSources, 0), 1.0}});
+        const float macroBypassed = peakAt(1.0);
+        setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kVelocitySource)}});
+        const float macroBypassedPerVoice = peakAt(1.0);
+        setParams({{slotBypassIndex(kMaxSources, 0), 0.0},
+                   {slotAuxIndex(kMaxSources, 0), 0.0},
                    {slotTargetIndex(kMaxSources, 0), 0.0},
                    {slotAmountIndex(kMaxSources, 0), 0.0},
                    {paramIndex(0, MacroParam::Value), 0.0}});
         const float full = peakAt(1.0);
-        setParams({{paramIndex(0, OpParam::Velocity), 0.5}}); // as it starts
+        setParams({{slotTargetIndex(kVelocitySource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kVelocitySource, 0), -1.0}});
+        const float velocityMuted = peakAt(1.0);
+        setParams({{slotBypassIndex(kVelocitySource, 0), 1.0}});
+        const float velocityBypassed = peakAt(1.0);
+        setParams({{slotTargetIndex(kVelocitySource, 0), 0.0},
+                   {slotAmountIndex(kVelocitySource, 0), 0.0},
+                   {slotBypassIndex(kVelocitySource, 0), 0.0},
+                   {paramIndex(0, OpParam::Velocity), 0.5}}); // as it starts
         std::printf("      macro at -100 %% on A's output: peak %.3f, at 50 %% Amount %.3f; velocity as aux %.3f at full, "
                     "%.3f at half; mod wheel (down) as aux %.3f; %.3f without it\n",
                     muted, halved, hard, soft, wheelDown, full);
@@ -1571,6 +1559,51 @@ int main(int argc, char **argv) {
         check(hard < 0.005f && std::abs(soft / full - 0.5f) < 0.03f,
               "an aux that runs per voice scales a macro's slot in each voice");
         check(std::abs(wheelDown - full) < 1e-3f, "an aux at 0 leaves its slot's target alone");
+        std::printf("      bypassed: macro %.3f, with velocity as aux %.3f; velocity at -100 %% %.3f, bypassed %.3f\n",
+                    macroBypassed, macroBypassedPerVoice, velocityMuted, velocityBypassed);
+        check(std::abs(macroBypassed - full) < 1e-3f && std::abs(macroBypassedPerVoice - full) < 1e-3f &&
+                  velocityMuted < 0.005f && std::abs(velocityBypassed - full) < 1e-3f,
+              "a macro's and velocity's bypassed slots leave their targets alone");
+    }
+
+    // An LFO's slot scaled by velocity or the note source modulates from a note's first block, as one with no aux
+    // does: a slow unipolar square, up at the start, at -100 % on A's output silences A from the start, scaled by a
+    // note at full velocity, or by the note source with its range below the note (where it puts out all of it). The
+    // first block's peak (A's attack and the level's ramp in it) matches the one without an aux, and is well below
+    // the unmodulated one.
+    {
+        const int lfo = 5;
+        setParams({{paramIndex(0, OpParam::Velocity), 0.0},
+                   {paramIndex(lfo, SourceParam::Type), static_cast<double>(SourceType::Lfo)},
+                   {paramIndex(lfo, SourceParam::Shape), static_cast<double>(LfoShape::Square)},
+                   {paramIndex(lfo, SourceParam::Rate), normFromRate(0.5)},
+                   {paramIndex(lfo, SourceParam::Unipolar), 1.0},
+                   {paramIndex(NoteParam::High), 1.0},
+                   {slotTargetIndex(lfo, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(lfo, 0), -1.0}});
+        auto firstBlock = [&] {
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 93, 69);
+            const float peak = runBlock({&on.header});
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const float plain = firstBlock();
+        setParams({{slotAuxIndex(lfo, 0), slotAuxValue(kVelocitySource)}});
+        const float byVelocity = firstBlock();
+        setParams({{slotAuxIndex(lfo, 0), slotAuxValue(kNoteSource)}});
+        const float byNote = firstBlock();
+        setParams({{slotAuxIndex(lfo, 0), 0.0}, {slotAmountIndex(lfo, 0), 0.0}});
+        const float open = firstBlock();
+        setParams({{slotTargetIndex(lfo, 0), 0.0},
+                   {paramIndex(lfo, SourceParam::Type), static_cast<double>(SourceType::None)},
+                   {paramIndex(NoteParam::High), kMaxNotePitch},
+                   {paramIndex(0, OpParam::Velocity), 0.5}}); // as they start
+        std::printf("      first block under an LFO at -100 %%: peak %.3f, scaled by velocity %.3f, by the note %.3f; "
+                    "%.3f unmodulated\n",
+                    plain, byVelocity, byNote, open);
+        check(open > 0.1f && plain < 0.5f * open && std::abs(byVelocity - plain) < 0.01f &&
+                  std::abs(byNote - plain) < 0.01f,
+              "velocity and the note source scale a slot as their aux from a note's first block");
     }
 
     // Effects, on the plain sine. Slot 0 holds a shaper, slot 1 a DJ EQ, slot 2
@@ -2260,8 +2293,8 @@ int main(int argc, char **argv) {
 
         uint32_t adjustedWidth = 900, adjustedHeight = 100;
         gui->adjust_size(plugin, &adjustedWidth, &adjustedHeight);
-        // The view is 1200 x 1038: three quarters of that, rounded.
-        check(adjustedWidth == 900 && adjustedHeight == 779 && gui->set_size(plugin, adjustedWidth, adjustedHeight),
+        // The view is 1200 x 974: three quarters of that, rounded.
+        check(adjustedWidth == 900 && adjustedHeight == 731 && gui->set_size(plugin, adjustedWidth, adjustedHeight),
               "resizing keeps the aspect ratio");
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (204, 32) in view units.
@@ -2459,9 +2492,9 @@ int main(int argc, char **argv) {
         check(loaded && sourcePage && unique, "every remote control page has an id of its own");
     }
 
-    // A layout as large as one gets (every route kept at 0 % and its wire bent, every macro's name at full length:
-    // past 256 floats) loads whole, and what follows it too: saved again, it comes back as it was, with the settings
-    // chunk's oversampling after it.
+    // A layout as large as one gets (every route kept at 0 % and its wire bent, every macro's name at full length, as
+    // many empty modulations as the editor keeps: past 256 floats) loads whole, and what follows it too: saved again,
+    // it comes back as it was, with the settings chunk's oversampling after it.
     {
         std::vector<float> layout;
         for (int node = 0; node < 2 * kOps + 2 * (kFilters + kShapers); ++node) // the node places
@@ -2510,6 +2543,12 @@ int main(int argc, char **argv) {
         for (size_t k = 0; k < routes.size(); ++k) {
             layout.push_back(static_cast<float>(idOfIndex(routes[k])));
             layout.push_back(k % 2 == 0 ? 0.5f : -0.25f);
+        }
+        const int emptyMods = 32; // as many empty modulations as the editor keeps (gui::kMaxEmptyMods)
+        layout.push_back(static_cast<float>(emptyMods));
+        for (int k = 0; k < emptyMods; ++k) {
+            layout.push_back(k % 3 == 0 ? 0.0f : static_cast<float>(k % kAllSources + 1)); // a source, or none
+            layout.push_back(k % 3 == 1 ? 0.0f : static_cast<float>(idOfIndex(paramIndex(k % kOps, OpParam::Fine))) + 1.0f);
         }
 
         MemoryStream big;

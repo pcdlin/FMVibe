@@ -90,15 +90,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
   has 16 slots, and a slot can
   target any continuous parameter: a knob, a matrix amount, an operator output, even another LFO's rate or a slot
-  depth. Depth is ±100 % of the target's range: how far a **unipolar** modulation takes the target one way, and
-  the whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
-  Each modulation is one or the other on its own, so one LFO can swing a pitch both ways and open a cutoff only
-  upward: it goes as its source does until it is set otherwise (from the switch on its row, or its depth handle's
-  menu; see the editor), and the source's own setting, picked from its right-click menu, sets all of its
-  modulations at once. LFOs start bipolar, and envelopes, macros, the note source, the mod wheel and velocity
-  unipolar. Bipolar, an envelope's modulation swings about its middle level (nothing at half of it, half the depth
-  down at rest and up at its peak), and a macro's, the mod wheel's, the note source's or velocity's about the middle
-  of what it puts out (a macro moves nothing with its knob at 50 %). LFOs and envelopes run
+  depth. Depth is ±100 % of the target's range: how far a **unipolar** source takes the target one way, and the
+  whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
+  Every source can be either, for all of its modulations, picked from its right-click menu or the switch after its
+  name in the MODS view (see the editor): LFOs start bipolar, and envelopes, macros, the note source, the mod wheel
+  and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of it, half the depth
+  down at rest and up at its peak), and a bipolar macro, mod wheel, note source or velocity about the middle of
+  what it puts out (a macro moves nothing with its knob at 50 %). LFOs and envelopes run
   per voice and restart
   with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later.
   Each modulation also has an **Amount** (0–100 %, all of it to begin with), which scales its depth, and can have an
@@ -106,7 +104,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
   editor); the aux also by dropping a source's handle on the modulation's depth handle. An aux that runs per voice
   (an LFO, an envelope, the note source, velocity) scales it in each voice by its own output there, as of the last
-  32-sample block (or this one, for a source that comes before it); a macro or the mod wheel scales it the same for
+  32-sample block (or this one, for a source that comes before it, and velocity, known from the note; on a note's
+  first block the note source's comes from the pitch the note starts at); a macro or the mod wheel scales it the same for
   all. A macro's or the mod wheel's modulation with an aux that runs per voice then runs per voice too, reaching the
   effects through the newest voice. A switched-off aux puts out nothing, so it scales its modulation to nothing; a
   source can't be its own modulations' aux. Once a key is
@@ -119,7 +118,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Mod Wheel**: a macro of its own, its knob the Mod Wheel param (the wheel in the keyboard strip), with 16
     slots like a macro's. It moves nothing until something is assigned to it.
   - **Note**: a source that follows the pitch each voice plays, pitch bend, glide (and legato slides), note
-    tuning and the global Pitch included. Like a macro it has 16 slots and no switch or bypasses, but it
+    tuning and the global Pitch included. Like a macro it has 16 slots and no switch, but it
     runs per voice, like the LFOs and envelopes, and reaches the effects through the newest voice. What it
     modulates follows the pitch within the same block, without lagging behind it.
     Its **range** and **curve** shape what it puts out: the notes from **Low** to **High** (any MIDI note, C-1
@@ -135,7 +134,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     semitones takes it to 494 Hz. The filters' Key Track adds its own tracking on top, so leave it at 0, where it
     starts, for an exact match.
   - **Velocity**: a source that puts out the velocity each voice's note came with (in mono, the velocity of the key
-    it plays now). Like the note source it has 16 slots and no switch or bypasses, runs per voice, reaches the
+    it plays now). Like the note source it has 16 slots and no switch, runs per voice, reaches the
     effects through the newest voice, and modulates from a note's first block on. Its **curve**, drawn like the
     note source's (up to 16 points, each segment bendable), runs across the velocities from 0 to 127 and sets what
     each puts out, from nothing to all of it. As it starts, the curve is a straight line, so it puts out the
@@ -153,10 +152,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
     is never free): for a sine, a triangle or a drawn shape that is where it started, while a saw holds at its top,
     a square low and a random one at the value it took.
-  - **Unipolar** makes all of an LFO's modulations swing from 0 to 1 instead of −1 to 1, so they only push their
-    targets one way, like an envelope's; off, they swing both ways. It is the same choice the LFO's right-click menu
-    offers: it sets every modulation the LFO has (each can then be set otherwise on its own), and the ones it gets
-    later, and its display shows the LFO's zero line at the bottom.
+  - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
+    envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
+    bottom.
   - **Random** takes a new value every cycle. **Chaos** sets how far it may move from the last one: up to a tenth
     of the range either way at 0 %, so it wanders, rising to anywhere at all at 100 % (the default), like sample
     and hold. **Smooth** glides to each new value instead of jumping: over that share of the cycle, easing in and
@@ -313,8 +311,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Routing panel**: the graph shows only what is switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their
-    type) and squarer boxes the shapers (with their curve). A colored outline means the node is heard, and it glows
-    while it sounds. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
+    type) and squarer boxes the shapers (with their curve). A colored outline means the node is heard, as its routes are set, and a
+    halo glows around it while it sounds: an operator's as brightly as its envelope and the routes taking it to the
+    output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
+    opens. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
     graph, and shows it in the inspector.
     - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
@@ -342,7 +342,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     - A wire between two nodes bows to its left as it starts, so two running opposite ways between the same nodes
       don't overlap. To keep wires apart where they would, drag one sideways anywhere along it (it lights up under
       the mouse, apart from its label and arrowhead): its middle follows the mouse, out to either side or straight,
-      its label and arrowhead going along. A double-click on it, or Reset Bend in its right-click menu, brings back
+      its label and arrowhead going along. A wire that would spill out of the routing panel bows only as far as
+      keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
+      once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
       the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
       an undo step; a wire that is removed or moved to another node starts bowing as a new one does.
     - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it.
@@ -426,31 +428,46 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
     in the order their cards show, then the macros, the note source, the mod wheel and velocity), the first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
-    Modulations at 0 % are listed too. Over the rows, the count (how many are bypassed and at 0 % with it); then
-    the columns' names. A row has, from its left:
-    - the bypass dot, as on a source's row (a macro's, the note source's, the mod wheel's and velocity's
-      modulations can't be bypassed, and their dot is only drawn);
-    - the **source** and the **target**: a click on either opens a cascading menu, the next level opening beside
+    Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the columns' names,
+    shown with no modulations too (with a hint under the button that adds one), and at the right of their row the
+    count (how many are bypassed, at 0 % and empty with it, as much of that as fits). A row has, from its left:
+    - the bypass dot, which switches the modulation off and on again, whatever its source;
+    - the **source** and the **target**, and between them, after the source's name on the first of its rows, the
+      source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
+      while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
+      right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
       an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Macros, and Keyboard:
       Note, Velocity and Mod Wheel); picking one moves the modulation there, into a free slot, with its depth,
-      polarity (as it swings now), Amount, aux and bypass, as one undo step. A source that modulates the target
-      already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists every
-      target by category: Global; Operators, each with its params under PITCH, LEVEL, ENVELOPE, UNISON and NOISE;
-      the Matrix, by the node a route comes from (into each node it can feed, and out); Filters; Shapers; Effects,
+      Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
+      follows it to its new slot, or, moved to a macro, the note source, the mod wheel or velocity (whose depths
+      can't be modulated), goes. A source that modulates the
+      target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
+      every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
+      its params under PITCH, LEVEL, ENVELOPE, UNISON and NOISE;
+      the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
       only those in the chain, in its order, each with the knobs of its type; and Modulation, each LFO's and
       envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
       rest. What the row has now is checked, and the categories it is in have a dot; a click elsewhere closes the
       menu, and so does a second click on what opened it;
     - the **depth**, a bar like a source row's, with its value (double-click or Ctrl+Click types one);
-    - the **polarity** switch, as on a source's row;
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
     - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on
       either opens the menu of sources, None first, the row's own source faint;
-    - the × that removes the modulation.
+    - the × that removes the modulation. Removing a modulation, here or anywhere else, removes whatever modulates
+      its depth with it, in the same undo step.
 
-    The right-click menu of any of a row's cells is its modulation's (Edit depth on the depth, Bypass, Unipolar /
-    Bipolar, Remove). With more rows than fit (about ten), a bar at the right (drag its thumb or click its track) or
-    the mouse wheel over the rows (not on a bar, which the wheel turns) scrolls them smoothly, a row a notch.
+    The right-click menu of any of a row's cells is its modulation's (Edit depth on the depth, Bypass, Remove).
+
+    **+ Add modulation**, a dashed button after the last row, adds an **empty modulation** there and opens its
+    source's menu. An empty modulation is a row with no source or no target yet ("Source…" and "Target…" in their
+    places, a hollow dot, and only its ×): it modulates nothing. Picking its source and its target from their menus,
+    in either order, makes it a modulation of that source, as its handle dropped on the target makes one (at +30 %),
+    which takes its place among the source's rows; until then its source's menu offers any source with a slot free,
+    and its target's every target. An empty modulation whose source already has rows goes right after them, as
+    soon as it has that source (added from it, or once it is picked), and the list jumps there, showing as many of
+    the source's rows above it as fit; so does the modulation it becomes. Each pick is an undo step, and empty modulations are saved with the patch (up to
+    32 of them). With more rows than fit (about ten), a bar at the right (drag its thumb or click its track) or the
+    mouse wheel over the rows (not on a bar, which the wheel turns) scrolls them smoothly, a row a notch.
   - **Partial editor**: picking Custom from an operator's **…** list opens its partials over the routing panel:
     the wave they make, one cycle, then a bar per partial for its level (in dB, from −60 just above the bottom
     to 0 at the top, marked every 12; the bottom itself is none) and, in another color, one for its phase (a full
@@ -493,8 +510,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster (Poly/Mono, Legato, Glide and its Always switch, each switch
-  explaining itself on hover); Bend; Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and
+  the global knobs; the play cluster (Poly/Mono over Legato, then a small Glide knob, its label and number beside it, over its
+  Always switch, each switch explaining itself on hover); Bend; Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and
   how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
@@ -576,10 +593,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   scrollbar) or the mouse wheel over the panel scrolls them smoothly. LFOs and envelopes are numbered by type in the order they show.
   - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its
-    settings and targets), clear its targets, make all of its modulations **Unipolar, All Targets** or **Bipolar,
-    All Targets** (checked while every one of them goes that way, or with none, while the source does; the ones it
-    gets later go that way too) or remove it; the × removes it too, together with its modulation and whatever
-    modulates its knobs. A bipolar envelope's display has a dashed line at
+    settings and targets), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
+    remove it; the × removes it too, together with its modulation and whatever modulates its knobs. A bipolar
+    envelope's display has a dashed line at
     its middle level and ± in its corner.
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings
     on knobs faint (the handle can still be dragged onto targets).
@@ -591,6 +607,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     view can be reached. Hovering the handle draws a dashed line to each of its targets on screen, ending at the
     small dot it has there (see below), with a ring round the dot; while the source has no targets, it shows a
     "Drag to assign" tooltip instead, as the macros', the note source's, the mod wheel's and velocity's handles do.
+  - A card doesn't list its modulations, and ends with a button under its display: it counts them, with **MODS ›**
+    at its right, and shows them in the MODS view, scrolled to the source's first row. While the source modulates
+    nothing, it reads **No modulations** and adds an empty modulation from the source there (see the MODS view),
+    with its target's menu open.
     A random
     LFO has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
     while notes play it shows the LFO's own last four cycles instead, swept across: each new cycle takes the next
@@ -599,9 +619,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     shaper's curve, its button and each entry showing the shape's icon before its name. Under the shape list, as
     wide as it, three small switches drawn as icons (named on hover): an infinity sign
     for **Free**, which stops notes from restarting it, a single cycle that ends in a dot for **One-Shot**, and
-    humps on a baseline for **Unipolar** (for all of its targets, as in its menu). Right of those two rows, centered
+    humps on a baseline for **Unipolar**. Right of those two rows, centered
     on them, are the Rate and Phase knobs,
-    over a random LFO's Smooth and Chaos, with the sync switch between the rows and Rate: a small square button
+    over a random LFO's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
     with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
     The Phase knob is faint while it does nothing (a free or random LFO), and otherwise a thin line on the display
     marks where notes start the LFO. A unipolar LFO's display has its zero line at the bottom.
@@ -609,8 +629,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     for the modulation range, plus a small dot of the same color under the
     knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click or
     right-click it to remove the modulation. While the dot is under the mouse or dragged, its range (the ring, or
-    the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap. A source can modulate another source's depth too (drop its handle on
-    a depth bar in that source's list): the bar then has the dot in its top right corner, a strip under it shows
+    the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,
+    and while its source's handle is on screen, a dashed line runs from the handle to the dot, as when the handle
+    is hovered. A source can modulate another source's depth too (drop its handle on
+    a depth bar in the MODS view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 30
     or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 4, a depth bar 11), in the order the
@@ -619,8 +641,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
     it, short of room below), in the accent color while it is open: the target's name and every modulation of it,
-    a row each as on a source's card, with the source's name in place of the target's (its bypass dot, polarity
-    switch, depth bar and remove; hovering a row draws its range wider). A click anywhere else closes it, but not
+    a row each: its bypass dot, the source's name, its depth bar and its remove (hovering a row draws its range
+    wider; a source's name too long for its row is drawn smaller to fit, down to about 9 px, and past that ends in
+    "…"). A click anywhere else closes it, but not
     on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a pill opens
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
@@ -630,27 +653,17 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color. A
     modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
     which an aux lets it go at most.
-  - **Bypass**: the dot at the start of each target's row in the source's list switches that modulation off and
-    on again, keeping its target and depth; so do **Bypass** / **Resume** in the right-click menus of the row, the
+  - **Bypass**: the dot at the start of a modulation's row in the MODS view or a pill's list switches that
+    modulation off and on again, keeping its target and depth, whatever its source (an LFO, an envelope, a macro, the
+    note source, the mod wheel or velocity); so do **Bypass** / **Resume** in the right-click
+    menus of the row, the
     knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed. Bypasses
     are saved with the patch (as hidden params, like the drawn shapes).
-  - **Polarity**: the small switch after each target's name, a wave about a middle line while that modulation is
-    bipolar and humps on a baseline while it is unipolar (the LFO's UNIPOLAR icon), flips it between the two, for
-    that modulation alone; so do **Unipolar** / **Bipolar** in the right-click menus of the row and of its depth
-    handle on the target (the one in force checked), which is how a macro's, the mod wheel's, the note source's or
-    velocity's modulation is set. Its ring on a knob, and the bar on a label, cell or depth bar, show the range it
-    swings through: both ways of the set value, or one way. A new modulation goes as its source does, and the
-    source's own menu (or an LFO's UNIPOLAR switch) sets every one of them at once. Polarities are saved with the
-    patch (as hidden params, like the bypasses).
-  - Each source lists its targets with their polarity switch, a depth slider and a remove button, four at a time;
-    with more, a thin
-    scrollbar beside them scrolls the list smoothly (drag its thumb or click its track), and so does the mouse
-    wheel over the names, gliding a row per notch (a trackpad moves it by parts of a row); the rows at the list's
-    ends are cut off on the way. A target's name too long for its row is drawn smaller to fit, down to about 9 px;
-    past that it ends in "…".
+  - A modulation's ring on a knob, and the bar on a label, cell or depth bar, show the range it swings through: both
+    ways of the set value while its source is bipolar, or one way while it is unipolar.
   - While notes play, a white dot on each modulated knob shows where the newest voice currently is; with no note
     playing, it shows where the macros and the mod wheel take it, as they apply with or without notes.
-  - A modulated route shows it too: its wire (or its line to OUT) has a thin core in the source's color and
+  - A modulated route shows it too: its wire (or its line to OUT), in its own color as any other,
     swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
     its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps; sliders such as the depth bars, the
@@ -676,24 +689,24 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs
   back to center on release; the **Mod** wheel is the Mod Wheel param, and the handle right of it drags onto what
   it should move (not the wheel itself), like a macro's (faint, like theirs, until it moves something). The wheel's and its handle's
-  right-click menus make all of its modulations unipolar or bipolar; bipolar, it fills from its middle, where it
-  moves nothing.
+  right-click menus make it unipolar or bipolar; bipolar, it fills from its middle, where it moves nothing.
 - **Macros** (in the keyboard strip, above the keys): eight knobs, each in a color of its own, with a handle
   beside it to drag onto anything a source can modulate, just like an LFO's, and its name under it: double-click
   the name to change it (Enter
   keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
   Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. Until a
-  macro modulates something, its handle, its knob's arc and its name are faint, and hovering the handle shows a
-  "Drag to assign" tooltip. The right-click menu of its knob,
-  handle or name makes all of its modulations **Unipolar** or **Bipolar** (and the handle's or name's clears its
-  targets); a bipolar macro's arc starts from the knob's middle, where it moves nothing, and a double-click on its
+  macro modulates something or scales a modulation as its aux, its handle, its knob's arc and its name are faint,
+  and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the mod wheel's and
+  velocity's). The right-click menu of its knob,
+  handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
+  macro's arc starts from the knob's middle, where it moves nothing, and a double-click on its
   knob (or Reset in the knob's menu) sets it back there, to 50 %, where a unipolar one's goes back to 0.
 - **Note** (in the keyboard strip, right of the macros): the note source's handle, level with the macros', to drag
   onto a target like a macro's (and like a macro's, faint until it modulates something), and beside it the note
   the newest voice plays, as the source follows it, its name under it: the note's name, and
   the cents it is off while bent or gliding (a dash while nothing plays), over a faint picture of its curve. A
-  click on it opens the curve's editor (see the shape editor). Its right-click menu, and its handle's, make all of
-  its modulations unipolar or bipolar (± in the display's corner while the source is bipolar).
+  click on it opens the curve's editor (see the shape editor). Its right-click menu, and its handle's, make it
+  unipolar or bipolar (± in the display's corner while it is bipolar).
 - **Velocity** (in the keyboard strip, at the right end, after the note source): the velocity source's handle, to
   drag onto a target like the note source's (faint until it modulates something), and beside it the velocity the
   newest voice came with, 0 to 127 as MIDI counts it (a dash while nothing plays), over a faint picture of its
@@ -701,8 +714,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   second click closes it): velocity across, marked at 32, 64 and 96, and what the source puts out up, from nothing
   at the bottom to all of it at the top, with the straight line it starts as dashed behind and, while notes play, a
   dot where the newest voice is; its points and bends edit like the note source's curve, and its reset button
-  brings back the straight line. Its right-click menu, and its handle's, make its modulations unipolar or bipolar,
-  as the note source's do.
+  brings back the straight line. Its right-click menu, and its handle's, make it unipolar or bipolar, as the note
+  source's do.
 - **Presets**: presets are `.fmv` files in `Documents\FMVibe\presets` and its subfolders. The first time the
   library is used (the browser, the arrows or a file dialog), FMVibe makes that folder with its factory presets in the
   `Factory` subfolder. Each name starts with two letters for its category, so the library lists them in groups:
