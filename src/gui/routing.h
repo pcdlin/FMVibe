@@ -157,7 +157,8 @@ inline int gridParam(int row, int col) {
     return row == col ? (row < kOps ? matrixIndex(row, row) : -1) : routeParam(row, col);
 }
 
-// A wire bows to one side, so A -> B and B -> A don't overlap.
+// A wire bows to its left by `bend` of the distance it spans (kDefaultWireBend until it is dragged), so A -> B and
+// B -> A don't overlap; dragged, it bows either way, or runs straight.
 struct Wire {
     Point start;
     Point control;
@@ -166,12 +167,18 @@ struct Wire {
     Point tangent;
 };
 
-inline Wire wireBetween(int fromNode, Point a, int toNode, Point b) {
+// Which way is left of the line from `a` to `b`, as a unit vector.
+inline Point leftOf(Point a, Point b) {
+    const Point u = normalize({b.x - a.x, b.y - a.y});
+    return {-u.y, u.x};
+}
+
+inline Wire wireBetween(int fromNode, Point a, int toNode, Point b, float bend) {
     const Point d{b.x - a.x, b.y - a.y};
-    const Point u = normalize(d);
-    const float bend = std::hypot(d.x, d.y) * 0.18f;
+    const Point left = leftOf(a, b);
+    const float reach = std::hypot(d.x, d.y) * bend;
     Wire w;
-    w.control = {(a.x + b.x) * 0.5f - u.y * bend, (a.y + b.y) * 0.5f + u.x * bend};
+    w.control = {(a.x + b.x) * 0.5f + left.x * reach, (a.y + b.y) * 0.5f + left.y * reach};
     const Point fromA = normalize({w.control.x - a.x, w.control.y - a.y});
     const Point fromB = normalize({w.control.x - b.x, w.control.y - b.y});
     const float startOffset = nodeExtent(fromNode, fromA);
@@ -183,6 +190,29 @@ inline Wire wireBetween(int fromNode, Point a, int toNode, Point b) {
     w.tangent = normalize({w.end.x - w.control.x, w.end.y - w.control.y});
     return w;
 }
+
+// How far `p` is from a wire, along its curve between the nodes (its arrowhead's base included).
+inline float distanceToWire(const Wire &w, Point p) {
+    constexpr int kSteps = 24;
+    float best = 1e9f;
+    Point last = w.start;
+    for (int i = 1; i <= kSteps; ++i) {
+        const float t = static_cast<float>(i) / kSteps, s = 1.0f - t;
+        const Point now{s * s * w.start.x + 2.0f * s * t * w.control.x + t * t * w.end.x,
+                        s * s * w.start.y + 2.0f * s * t * w.control.y + t * t * w.end.y};
+        const Point seg{now.x - last.x, now.y - last.y};
+        const float length2 = seg.x * seg.x + seg.y * seg.y;
+        const float along =
+            length2 > 1e-6f ? std::clamp(((p.x - last.x) * seg.x + (p.y - last.y) * seg.y) / length2, 0.0f, 1.0f)
+                            : 0.0f;
+        best = std::min(best, std::hypot(p.x - (last.x + along * seg.x), p.y - (last.y + along * seg.y)));
+        last = now;
+    }
+    return best;
+}
+
+// How close to a wire the mouse grabs it, to bend it.
+constexpr float kWireGrab = 5.0f;
 
 inline void arrowHead(Canvas &c, Point base, Point dir, Color color) {
     const Point side{-dir.y * 4.5f, dir.x * 4.5f};

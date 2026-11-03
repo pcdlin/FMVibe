@@ -48,6 +48,8 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope};
 static_assert(std::size(kSourceTypeNames) == static_cast<size_t>(SourceType::Count));
+constexpr Str kPolarityNames[] = {Str::PolaritySource, Str::PolarityUnipolar, Str::PolarityBipolar};
+static_assert(std::size(kPolarityNames) == static_cast<size_t>(SlotPolarity::Count));
 // A drawn shaper curve's points as it starts, (x, y, curve) each: an S, flat at the ends, steep through the middle.
 constexpr double kClipCurveDefaults[3][3] = {{0.0, -1.0, 0.35}, {0.5, 0.0, -0.35}, {1.0, 1.0, 0.0}};
 constexpr int kTwoWhole = 4; // "2/1"
@@ -112,7 +114,7 @@ void buildTable(ParamTable &t) {
         // it isn't automatable either. Freeform LFO points are drawn in the editor,
         // slots are bypassed there and the chain order is set by dragging; hosts don't show them.
         const bool shape = kind == ParamKind::ShapeCount || kind == ParamKind::ShapePoint ||
-                           kind == ParamKind::SlotBypass;
+                           kind == ParamKind::SlotBypass || kind == ParamKind::SlotPolarity;
         const bool wiring = kind == ParamKind::ModTarget || kind == ParamKind::FxType ||
                             kind == ParamKind::SourceType || kind == ParamKind::FxOrder;
         clap_param_info_flags flags = wiring || kind == ParamKind::VoiceCount || shape ? 0u : CLAP_PARAM_IS_AUTOMATABLE;
@@ -129,7 +131,7 @@ void buildTable(ParamTable &t) {
         if (kind == ParamKind::LfoShape || kind == ParamKind::OpWave || kind == ParamKind::FilterType ||
             kind == ParamKind::FilterSlope || kind == ParamKind::Toggle || kind == ParamKind::SyncDivision ||
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
-            kind == ParamKind::PeqType || kind == ParamKind::ReverbType)
+            kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::SlotPolarity)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -384,6 +386,48 @@ void buildTable(ParamTable &t) {
             add(shapeFieldIndex(base, point, PointField::Curve), n + " " + tr(Str::ParamCurve), note,
                 ParamKind::ShapePoint, -1.0, 1.0, 0.0);
         }
+    }
+
+    // The velocity source starts mapped to nothing, unipolar like the note source, its curve a straight line: it puts
+    // out the velocity as it came. The points it doesn't use wait at the last one.
+    {
+        const std::string velocity = tr(Str::ParamVelocitySource);
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const std::string n = std::to_string(slot + 1);
+            add(slotTargetIndex(kVelocitySource, slot), velocity + " " + trf(Str::ParamTarget, {n}), velocity,
+                ParamKind::ModTarget, 0.0, kMaxParamId + 1.0, 0.0);
+            add(slotAmountIndex(kVelocitySource, slot), velocity + " " + trf(Str::ParamAmount, {n}), velocity,
+                ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        }
+        const int base = paramIndex(VelocityParam::Curve);
+        const std::string curve = velocity + " " + tr(Str::ParamCurve);
+        add(base, curve + " " + tr(Str::ParamPoints), velocity, ParamKind::ShapeCount, 2.0, kMaxNotePoints, 2.0);
+        for (int point = 0; point < kMaxNotePoints; ++point) {
+            const std::string n = curve + " " + std::to_string(point + 1);
+            add(shapeFieldIndex(base, point, PointField::X), n + " X", velocity, ParamKind::ShapePoint, 0.0, 1.0,
+                point == 0 ? 0.0 : 1.0);
+            add(shapeFieldIndex(base, point, PointField::Y), n + " Y", velocity, ParamKind::ShapePoint, -1.0, 1.0,
+                point == 0 ? -1.0 : 1.0);
+            add(shapeFieldIndex(base, point, PointField::Curve), n + " " + tr(Str::ParamCurve), velocity,
+                ParamKind::ShapePoint, -1.0, 1.0, 0.0);
+        }
+        add(paramIndex(VelocityParam::Bipolar), velocity + " " + tr(Str::ParamBipolar), velocity, ParamKind::Toggle,
+            0.0, 1.0, 0.0);
+    }
+
+    // Every slot of every source starts swinging its target as its source does.
+    for (int source = 0; source < kAllSources; ++source) {
+        const std::string name = isVelocity(source) ? tr(Str::ParamVelocitySource)
+                                 : isWheel(source)  ? tr(Str::ParamModWheel)
+                                 : isNote(source)   ? tr(Str::ParamNote)
+                                 : isMacro(source)  ? trf(Str::ParamMacro, {std::to_string(source - kMaxSources + 1)})
+                                                    : trf(Str::ParamMod, {std::to_string(source + 1)});
+        const std::string module = isNoteBorne(source) || isWheel(source) ? name
+                                   : isMacro(source) ? tr(Str::ModuleMacros) + ("/" + name)
+                                                     : tr(Str::ModuleModulation) + ("/" + name);
+        for (int slot = 0; slot < kSlots; ++slot)
+            add(slotPolarityIndex(source, slot), name + " " + trf(Str::ParamPolarity, {std::to_string(slot + 1)}),
+                module, ParamKind::SlotPolarity, 0.0, static_cast<double>(SlotPolarity::Count) - 1.0, 0.0);
     }
 
     // The effects chain starts empty.
@@ -728,7 +772,7 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::SyncDivision || kind == ParamKind::ClipMode || kind == ParamKind::FxOrder ||
            kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
-           kind == ParamKind::ReverbType || kind == ParamKind::FixedMult;
+           kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotPolarity;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -836,6 +880,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::SourceType:
         std::snprintf(out, capacity, "%s", nameAt(kSourceTypeNames, value));
         break;
+    case ParamKind::SlotPolarity:
+        std::snprintf(out, capacity, "%s", nameAt(kPolarityNames, value));
+        break;
     case ParamKind::LfoShape:
         std::snprintf(out, capacity, "%s", nameAt(kLfoShapeNames, value));
         break;
@@ -940,6 +987,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::ClipMode     ? findName(kClipModeNames, text)
                       : def.kind == ParamKind::FxType       ? findName(kFxNames, text)
                       : def.kind == ParamKind::SourceType   ? findName(kSourceTypeNames, text)
+                      : def.kind == ParamKind::SlotPolarity ? findName(kPolarityNames, text)
                       : def.kind == ParamKind::FilterSlope  ? findName(kFilterSlopeNames, text)
                       : def.kind == ParamKind::PeqType      ? findName(kPeqTypeNames, text)
                       : def.kind == ParamKind::ReverbType   ? findName(kReverbTypeNames, text)
@@ -1118,6 +1166,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::FxOrder:
     case ParamKind::FxType:
     case ParamKind::SourceType:
+    case ParamKind::SlotPolarity:
     case ParamKind::ShapeCount:
         value = std::round(value);
         break;

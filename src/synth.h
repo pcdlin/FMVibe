@@ -82,6 +82,7 @@ struct Telemetry {
     std::array<float, kMaxSources> lfoFrom{};      // a Random LFO's glide this cycle: the value it leaves,
     std::array<float, kMaxSources> lfoTo{};        // and the one it heads for (-1..1, before Unipolar)
     float notePitch = 0.0f;                     // its pitch, what the note source follows: semitones, 69 is A4
+    float noteVelocity = 0.0f;                  // its velocity, what the velocity source follows: 0..1
     float fxPitch = 60.0f; // what the effects' key tracking follows: that pitch, kept once the voice has ended
     float age = 0.0f;                           // seconds since the audio thread took this snapshot
     std::array<float, kOps> opLevels{};         // operator envelope x amplitude
@@ -270,8 +271,8 @@ private:
         std::array<double, kMaxSources> sourceValues{};
         // Slot modulation of the latest block. Sources read their own params (rates,
         // times, amounts) with these applied, so LFO 1 can modulate LFO 2's rate
-        // one block later. The note source's come last.
-        std::array<SlotMod, (kMaxSources + 1) * kSlots> slotMods{};
+        // one block later. Velocity's come after the places', and the note source's last.
+        std::array<SlotMod, (kMaxSources + 2) * kSlots> slotMods{};
         int slotModCount = 0;
         std::array<double, kVoiceParamCount> mod{}; // per-voice host modulation
         // The params whose host modulation was set since the note started (to 0 too), each once: the others' is 0.
@@ -383,7 +384,7 @@ private:
     // The effect params as summed for this render() (see render()), from kFxBase on, and those the newest voice's
     // slots moved in the last control block.
     std::vector<double> fxBase_ = std::vector<double>(kShapeBase - kFxBase, 0.0);
-    std::array<int, (kMaxSources + 1) * kSlots> fxMoved_{};
+    std::array<int, (kMaxSources + 2) * kSlots> fxMoved_{};
     int fxMovedCount_ = 0;
     double fxPitch_ = 60.0;  // the newest voice's pitch, for the effects' key tracking; kept once it has ended
     double volumeGain_ = -1.0; // Volume's gain after the effects, gliding toward the knob (-1: not yet set)

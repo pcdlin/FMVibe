@@ -186,6 +186,22 @@ void lfoModeIcon(Canvas &c, Point m, SourceParam mode, Color color) {
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
+void polarityIcon(Canvas &c, Point m, bool bipolar, Color color) {
+    const std::vector<double> key{static_cast<double>(Curve::PolarityIcon), m.x, m.y, bipolar ? 1.0 : 0.0};
+    const std::vector<Point> points = icons.get(key, [&] {
+        std::vector<Point> points;
+        for (int i = 0; i <= 16; ++i) {
+            const float t = i / 16.0f;
+            points.push_back({m.x - 5.0f + 10.0f * t, bipolar ? m.y - 3.5f * std::sin(2.0f * kPi * t)
+                                                             : m.y + 3.5f - 3.5f * (1.0f - std::cos(2.0f * kPi * t))});
+        }
+        return points;
+    });
+    const float base = bipolar ? m.y : m.y + 3.5f;
+    c.line({m.x - 5.5f, base}, {m.x + 5.5f, base}, color.alpha(0.5f), 1.0f);
+    c.polyline(points.data(), points.size(), color, 1.3f);
+}
+
 // A small picture of each effect, for its card's title and the ADD EFFECT list.
 void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
     std::vector<Point> points;

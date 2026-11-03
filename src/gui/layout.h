@@ -190,7 +190,7 @@ inline Point randomKnob(float card, int knob) {
 // The used slots, kVisibleSlots rows at a time; `row` counts from the top of the list, fractions while it
 // scrolls and the rows at its ends are cut off.
 constexpr int kVisibleSlots = 4;
-constexpr float kSlotNameW = 96.0f; // the target's name, between the bypass dot and the depth bar
+constexpr float kSlotNameW = 90.0f; // the target's name, between the bypass dot and the polarity switch
 inline Rect slotRow(float card, float row) {
     const Rect p = sourceCard(card);
     return {p.x + 12.0f, p.y + 160.0f + row * 24.0f, p.w - 24.0f, 20.0f};
@@ -378,8 +378,8 @@ inline Rect peqTypeButton(Rect card, float y) {
 }
 
 // The keyboard strip under the modulation panel, `top` down: along its top the collapse toggle with the strip's
-// title, the macros and the note source, and under them the wheels on the left and six octaves of keys, the octave
-// shift under their right end. Collapsed, only the top row shows, the mod wheel's handle joining it.
+// title, the macros, the note source and velocity, and under them the wheels on the left and six octaves of keys,
+// the octave shift under their right end. Collapsed, only the top row shows, the mod wheel's handle joining it.
 constexpr float kKeyboardH = 192.0f;
 constexpr float kKeyboardBarH = 72.0f; // the top row, the names under it included: all that shows while collapsed
 constexpr Rect kKeys{130.0f, 76.0f, 1046.0f, 98.0f}; // relative to the strip's top
@@ -395,19 +395,29 @@ inline Rect keysToggle(float top) {
     const Rect sources = sourcesToggle();
     return {sources.x, top + sources.y - kModPanel.y, sources.w, sources.h};
 }
-// The macros in a row above the keys, as far as the note source: a knob each, its name under it (double-click
-// to rename), and left of it a handle to drag onto what it moves, as with a source's.
+// The macros in a row above the keys, close together from the keys' left end: a knob each, its name under it
+// (double-click to rename), and left of it a handle to drag onto what it moves, as with a source's.
+constexpr float kMacroCell = 96.0f;
 inline Point macroKnob(float keyboardTop, int macro) {
-    const float cell = (1032.0f - kKeys.x) / kMacros;
-    return {kKeys.x + (macro + 0.5f) * cell + 10.0f, keyboardTop + kStripRow};
+    return {kKeys.x + (macro + 0.5f) * kMacroCell + 10.0f, keyboardTop + kStripRow};
 }
-// The note source, at the row's right end: the note it follows, its name under it, and left of it its handle,
-// level with the macros'.
+// The note source and velocity, after the macros, velocity at the row's right end: each a display of what it
+// follows, its name under it, and left of it its handle, level with the macros'.
 inline Rect noteDisplay(float keyboardTop) {
-    return {1108.0f, keyboardTop + kStripRow - 12.0f, 68.0f, 24.0f};
+    return {992.0f, keyboardTop + kStripRow - 12.0f, 68.0f, 24.0f};
 }
 inline Rect noteHandle(float keyboardTop) {
+    return {966.0f, keyboardTop + kStripRow - 10.0f, 20.0f, 20.0f};
+}
+inline Rect velocityDisplay(float keyboardTop) {
+    return {1108.0f, keyboardTop + kStripRow - 12.0f, 68.0f, 24.0f};
+}
+inline Rect velocityHandle(float keyboardTop) {
     return {1082.0f, keyboardTop + kStripRow - 10.0f, 20.0f, 20.0f};
+}
+// The display of the note source or velocity, and its handle.
+inline Rect stripDisplay(float keyboardTop, bool velocity) {
+    return velocity ? velocityDisplay(keyboardTop) : noteDisplay(keyboardTop);
 }
 inline Rect bendWheel(float top) {
     return {34.0f, top + kKeys.y, 26.0f, 90.0f};
@@ -418,7 +428,7 @@ inline Rect modWheel(float top) {
 // The mod wheel's handle, right of it, to drag onto what it moves, as a macro's; collapsed, in the top row between
 // the macros and the note source, its name under it.
 inline Rect wheelHandle(float top, bool collapsed) {
-    return collapsed ? Rect{1034.0f, top + kStripRow - 10.0f, 20.0f, 20.0f}
+    return collapsed ? Rect{918.0f, top + kStripRow - 10.0f, 20.0f, 20.0f}
                      : Rect{104.0f, top + kKeys.y + 35.0f, 20.0f, 20.0f};
 }
 constexpr int kKeyCount = 73; // C to C, six octaves

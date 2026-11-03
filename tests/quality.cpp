@@ -401,9 +401,10 @@ void noteAndVoiceChecks() {
               "a lower voice limit cuts the voices past it at once, each note ending once");
     }
     {
-        // Host modulation for every voice, of a macro's knob, the mod wheel or the note source's depth, moves their
-        // targets as turning them does: each takes A's Out down by 100 %, so modulated all the way, A goes silent.
-        // The note source puts out all of it at C4, the top of its range here, its curve's end raised to the top.
+        // Host modulation for every voice, of a macro's knob, the mod wheel, the note source's depth or velocity's,
+        // moves their targets as turning them does: each takes A's Out down by 100 %, so modulated all the way, A goes
+        // silent. The note source puts out all of it at C4, the top of its range here, its curve's end raised to the
+        // top, and velocity all of it for a note at full velocity.
         auto peakWith = [](int source, int modulated, double amount, double mod) {
             Engine e(2);
             e.p[slotTargetIndex(source, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
@@ -423,11 +424,12 @@ void noteAndVoiceChecks() {
         const float macro = peakWith(kMaxSources, paramIndex(0, MacroParam::Value), -1.0, 1.0);
         const float wheel = peakWith(kWheelSource, paramIndex(GlobalParam::ModWheel), -1.0, 1.0);
         const float depth = peakWith(kNoteSource, note, 0.0, -1.0);
+        const float velocity = peakWith(kVelocitySource, slotAmountIndex(kVelocitySource, 0), 0.0, -1.0);
         const float still = peakWith(kMaxSources, paramIndex(0, MacroParam::Value), -1.0, 0.0);
         std::printf("      A's peak, modulated away by the host through a macro %.4f, the mod wheel %.4f, the note "
-                    "source %.4f; %.3f unmodulated\n", macro, wheel, depth, still);
-        check(macro < 1e-3f && wheel < 1e-3f && depth < 1e-3f && still > 0.5f,
-              "host modulation of a macro, the mod wheel and the note source's depth moves their targets");
+                    "source %.4f, velocity %.4f; %.3f unmodulated\n", macro, wheel, depth, velocity, still);
+        check(macro < 1e-3f && wheel < 1e-3f && depth < 1e-3f && velocity < 1e-3f && still > 0.5f,
+              "host modulation of a macro, the mod wheel, the note source's and velocity's depth moves their targets");
     }
     {
         // A comb whose delay lies a hair over a whole number of samples (at a cutoff of 1 kHz at 2x, say) reads only

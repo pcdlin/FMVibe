@@ -23,7 +23,8 @@ struct Palette {
     Color filter;    // filters and what feeds them
     Color fx;        // effects
     Color sourceAdd; // the buttons that add LFOs and envelopes
-    Color sources[kAllSources]; // one per source place, whichever type it holds, per macro, the note source's, the wheel's
+    // One per source place, whichever type it holds, per macro, the note source's, the wheel's and velocity's.
+    Color sources[kAllSources];
     Color card;      // effect and source cards
     Color display;   // the wells graphs are drawn in
     Color headerTop, headerBottom;
@@ -48,7 +49,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x67E8F9), Color::hex(0x86EFAC), Color::hex(0x60A5FA), Color::hex(0xFDBA74),
       Color::hex(0xFDA4AF), Color::hex(0xFDBA74), Color::hex(0xFDE68A), Color::hex(0xBEF264),
       Color::hex(0x6EE7B7), Color::hex(0x67E8F9), Color::hex(0xA5B4FC), Color::hex(0xF0ABFC),
-      Color::hex(0xE2E8F0), Color::hex(0xB8C4FF)},
+      Color::hex(0xE2E8F0), Color::hex(0xB8C4FF), Color::hex(0xFF9E7A)},
      Color::hex(0x1A1D25), Color::hex(0x101217), Color::hex(0x1A1E26), Color::hex(0x12151B),
      Color::hex(0xE4E7EE), Color::hex(0xCDD3DF), Color::hex(0x07090D), Color::hex(0x262C38), Color::hex(0x4A5162),
      {Color::hex(0xFB923C), Color::hex(0xF87171), Color::hex(0x60A5FA), Color::hex(0xFBBF24), Color::hex(0xFB923C),
@@ -65,7 +66,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xA5F3FC), Color::hex(0xBBF7D0), Color::hex(0x93C5FD), Color::hex(0xFED7AA),
       Color::hex(0xFECDD3), Color::hex(0xFED7AA), Color::hex(0xFEF3C7), Color::hex(0xD9F99D),
       Color::hex(0xA7F3D0), Color::hex(0xA5F3FC), Color::hex(0xC7D2FE), Color::hex(0xF5D0FE),
-      Color::hex(0xE5E7EB), Color::hex(0x99F6E4)},
+      Color::hex(0xE5E7EB), Color::hex(0x99F6E4), Color::hex(0xFFB59A)},
      Color::hex(0x1E1E1E), Color::hex(0x141414), Color::hex(0x202020), Color::hex(0x171717),
      Color::hex(0xE6E6E6), Color::hex(0xCFCFCF), Color::hex(0x0A0A0A), Color::hex(0x2C2C2C), Color::hex(0x575757),
      {Color::hex(0xFACC15), Color::hex(0xFCA5A5), Color::hex(0x93C5FD), Color::hex(0xFCD34D), Color::hex(0xFDBA74),
@@ -82,7 +83,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x0780A0), Color::hex(0x138A3F), Color::hex(0x1F5BE0), Color::hex(0xDD4F07),
       Color::hex(0xD0163F), Color::hex(0xDD4F07), Color::hex(0xA87103), Color::hex(0x4F8A0B),
       Color::hex(0x04805C), Color::hex(0x0780A0), Color::hex(0x4338CA), Color::hex(0xB01ECA),
-      Color::hex(0x3F4A5C), Color::hex(0x4F52E8)},
+      Color::hex(0x3F4A5C), Color::hex(0x4F52E8), Color::hex(0xC2410C)},
      Color::hex(0xFFFFFF), Color::hex(0xE8ECF2), Color::hex(0xFFFFFF), Color::hex(0xEDF0F5),
      Color::hex(0xFFFFFF), Color::hex(0xDDE3EC), Color::hex(0x1A1F29), Color::hex(0x3A4252), Color::hex(0x878FA0),
      {Color::hex(0xDD4F07), Color::hex(0xD11F1F), Color::hex(0x1F5BE0), Color::hex(0xC26505), Color::hex(0xDD4F07),
@@ -99,7 +100,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x235F7A), Color::hex(0x3E7D2C), Color::hex(0x2D55B0), Color::hex(0x9C4A1A),
       Color::hex(0xB82848), Color::hex(0xC0410F), Color::hex(0x9A7410), Color::hex(0x5A7A12),
       Color::hex(0x177A52), Color::hex(0x1A7287), Color::hex(0x4A3FB8), Color::hex(0x9B2AA0),
-      Color::hex(0x5E554A), Color::hex(0x6A3DB8)},
+      Color::hex(0x5E554A), Color::hex(0x6A3DB8), Color::hex(0xA0522D)},
      Color::hex(0xFFFCF6), Color::hex(0xEFE8DA), Color::hex(0xFCF8F0), Color::hex(0xF1EBDF),
      Color::hex(0xFFFDF8), Color::hex(0xEDE4D3), Color::hex(0x2E2722), Color::hex(0x4C433B), Color::hex(0xA19582),
      {Color::hex(0xC0410F), Color::hex(0xB8361B), Color::hex(0x2D55B0), Color::hex(0xB15A0A), Color::hex(0xC0410F),
@@ -107,6 +108,15 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x5A7A12), Color::hex(0x1A7287), Color::hex(0x5E554A), Color::hex(0x9B2AA0)}},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));
+// A source left out of a theme's list would be drawn black.
+constexpr bool everySourceColored() {
+    for (const Palette &theme : kThemes)
+        for (const Color &color : theme.sources)
+            if (color.r == 0.0f && color.g == 0.0f && color.b == 0.0f)
+                return false;
+    return true;
+}
+static_assert(everySourceColored(), "a color for each source in every theme");
 
 int themeIndex(const std::string &name);
 

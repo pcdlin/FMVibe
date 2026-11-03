@@ -178,11 +178,17 @@ enum class MacroParam { Value, Slots, Bipolar = Slots + 2 * kSlots, Count };
 constexpr int kMacroParamCount = static_cast<int>(MacroParam::Count);
 constexpr int kNoteSource = kMaxSources + kMacros; // the note source (see NoteParam)
 constexpr int kWheelSource = kNoteSource + 1;      // the mod wheel (see WheelParam)
-constexpr int kAllSources = kWheelSource + 1; // the places, the macros, the note source and the mod wheel
+constexpr int kVelocitySource = kWheelSource + 1;  // the velocity source (see VelocityParam)
+// The places, the macros, the note source, the mod wheel and velocity.
+constexpr int kAllSources = kVelocitySource + 1;
 constexpr bool isMacro(int source) { return source >= kMaxSources && source < kNoteSource; }
 constexpr bool isNote(int source) { return source == kNoteSource; }
 constexpr bool isWheel(int source) { return source == kWheelSource; }
-// The macros, the note source and the mod wheel, under the keyboard: no card, type, switch or bypasses.
+constexpr bool isVelocity(int source) { return source == kVelocitySource; }
+// The sources that run per voice from what the note brings, each with a curve of its own: the note source and
+// velocity.
+constexpr bool isNoteBorne(int source) { return isNote(source) || isVelocity(source); }
+// The macros, the note source, the mod wheel and velocity, under the keyboard: no card, type, switch or bypasses.
 constexpr bool isStripSource(int source) { return source >= kMaxSources; }
 enum class ShapeParam { PointCount, Points, Count = Points + 3 * kMaxShapePoints };
 enum class PointField { X, Y, Curve };
@@ -209,6 +215,17 @@ constexpr int kNoteParamCount = static_cast<int>(NoteParam::Count);
 // projects by number: only append.
 enum class WheelParam { Slots, Bipolar = Slots + 2 * kSlots, Count };
 constexpr int kWheelParamCount = static_cast<int>(WheelParam::Count);
+// The velocity source: kSlots (target, amount) pairs, like the note source's, then a curve drawn across the
+// velocities, laid out like the note source's (see velocitySourceValue()), and Bipolar like a macro's. Per voice, it
+// puts out the velocity its note came with (0..1) through the curve, 0..1. As it starts, the curve is a straight
+// line, so it puts out the velocity as it came. It counts as source kVelocitySource, after the mod wheel. Stored in
+// projects by number: only append.
+enum class VelocityParam { Slots, Curve = Slots + 2 * kSlots, Bipolar = Curve + kNoteCurveParamCount, Count };
+constexpr int kVelocityParamCount = static_cast<int>(VelocityParam::Count);
+// How a slot swings its target: as its source does (see sourceBipolar()), one way, or both ways (see slotBipolar()).
+// Every slot of every source has one, set in the editor and hidden from hosts. Stored in projects by number: only
+// append.
+enum class SlotPolarity { Source, Unipolar, Bipolar, Count };
 
 // Stored in projects by number: only append.
 enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
@@ -479,7 +496,12 @@ constexpr int kWheelBase = kShaperCurveBase + kShapers * kShapeParamCount;
 // How many partials each operator's Custom wave plays, then the partials past the first kFirstPartials.
 constexpr int kPartialCountBase = kWheelBase + kWheelParamCount;
 constexpr int kLaterPartialBase = kPartialCountBase + kOps;
-constexpr int kParamCount = kLaterPartialBase + kOps * 2 * (kPartials - kFirstPartials);
+// The velocity source (see VelocityParam).
+constexpr int kVelocityBase = kLaterPartialBase + kOps * 2 * (kPartials - kFirstPartials);
+// Each slot's polarity (see SlotPolarity): kSlots a source, for the places, the macros, the note source, the mod
+// wheel and velocity in turn.
+constexpr int kSlotPolarityBase = kVelocityBase + kVelocityParamCount;
+constexpr int kParamCount = kSlotPolarityBase + kAllSources * kSlots;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -681,6 +703,7 @@ constexpr int paramIndex(int macro, MacroParam p) {
 }
 constexpr int paramIndex(NoteParam p) { return kNoteBase + static_cast<int>(p); }
 constexpr int paramIndex(WheelParam p) { return kWheelBase + static_cast<int>(p); }
+constexpr int paramIndex(VelocityParam p) { return kVelocityBase + static_cast<int>(p); }
 // The knob whose value a macro (kMaxSources + macro) or the mod wheel puts out.
 constexpr int stripKnobIndex(int source) {
     return isWheel(source) ? paramIndex(GlobalParam::ModWheel) : paramIndex(source - kMaxSources, MacroParam::Value);
@@ -689,25 +712,34 @@ constexpr int stripKnobIndex(int source) {
 constexpr int macroOf(int index) {
     return index >= kMacroBase && index < kNoteBase ? (index - kMacroBase) / kMacroParamCount : -1;
 }
-// A source's slots, for kMaxSources + macro on a macro's, for kNoteSource the note source's and for kWheelSource
-// the mod wheel's.
+// A source's slots, for kMaxSources + macro on a macro's, for kNoteSource the note source's, for kWheelSource
+// the mod wheel's and for kVelocitySource the velocity source's.
 constexpr int slotTargetIndex(int source, int slot) {
-    return isWheel(source)   ? paramIndex(WheelParam::Slots) + 2 * slot
-           : isNote(source)  ? paramIndex(NoteParam::Slots) + 2 * slot
-           : isMacro(source) ? paramIndex(source - kMaxSources, MacroParam::Slots) + 2 * slot
-                             : paramIndex(source, SourceParam::Slots) + 2 * slot;
+    return isVelocity(source) ? paramIndex(VelocityParam::Slots) + 2 * slot
+           : isWheel(source)  ? paramIndex(WheelParam::Slots) + 2 * slot
+           : isNote(source)   ? paramIndex(NoteParam::Slots) + 2 * slot
+           : isMacro(source)  ? paramIndex(source - kMaxSources, MacroParam::Slots) + 2 * slot
+                              : paramIndex(source, SourceParam::Slots) + 2 * slot;
 }
 constexpr int slotAmountIndex(int source, int slot) { return slotTargetIndex(source, slot) + 1; }
+constexpr int slotPolarityIndex(int source, int slot) { return kSlotPolarityBase + source * kSlots + slot; }
+// The source and slot a polarity param belongs to; -1 for other params.
+constexpr int polaritySourceOf(int index) {
+    return index >= kSlotPolarityBase && index < kSlotPolarityBase + kAllSources * kSlots
+               ? (index - kSlotPolarityBase) / kSlots
+               : -1;
+}
 // The on/off switch of a source.
 constexpr int sourceEnabledIndex(int source) { return paramIndex(source, SourceParam::Enabled); }
 // The switch that makes a source bipolar, and its value when it does: an LFO's Unipolar off, the Bipolar of an
-// envelope (as of `type`), a macro, the note source or the mod wheel on.
+// envelope (as of `type`), a macro, the note source, the mod wheel or velocity on.
 struct Polarity {
     int index;
     double bipolar;
 };
 constexpr Polarity polarityOf(int source, SourceType type) {
-    return isWheel(source)            ? Polarity{paramIndex(WheelParam::Bipolar), 1.0}
+    return isVelocity(source)         ? Polarity{paramIndex(VelocityParam::Bipolar), 1.0}
+           : isWheel(source)          ? Polarity{paramIndex(WheelParam::Bipolar), 1.0}
            : isNote(source)           ? Polarity{paramIndex(NoteParam::Bipolar), 1.0}
            : isMacro(source)          ? Polarity{paramIndex(source - kMaxSources, MacroParam::Bipolar), 1.0}
            : type == SourceType::Lfo  ? Polarity{paramIndex(source, SourceParam::Unipolar), 0.0}
@@ -720,6 +752,22 @@ bool sourceBipolar(const Get &get, int source) {
     const SourceType type = isStripSource(source) ? SourceType::None : sourceType(get(paramIndex(source, SourceParam::Type)));
     const Polarity polarity = polarityOf(source, type);
     return (get(polarity.index) >= 0.5) == (polarity.bipolar >= 0.5);
+}
+inline SlotPolarity slotPolarity(double value) {
+    const long p = std::lround(value);
+    return p == static_cast<long>(SlotPolarity::Unipolar)  ? SlotPolarity::Unipolar
+           : p == static_cast<long>(SlotPolarity::Bipolar) ? SlotPolarity::Bipolar
+                                                            : SlotPolarity::Source;
+}
+// Whether a slot swings its target both ways: as set for it (its polarity param's `value`), or as its source does,
+// which says `sourceSays` (see sourceBipolar()).
+inline bool slotBipolar(double value, bool sourceSays) {
+    const SlotPolarity polarity = slotPolarity(value);
+    return polarity == SlotPolarity::Source ? sourceSays : polarity == SlotPolarity::Bipolar;
+}
+template <class Get>
+bool slotBipolar(const Get &get, int source, int slot) {
+    return slotBipolar(get(slotPolarityIndex(source, slot)), sourceBipolar(get, source));
 }
 
 namespace ids {
@@ -748,6 +796,9 @@ constexpr Section kSections[] = {
     {kWheelBase, 1, kWheelParamCount, 11500, 100},
     {kPartialCountBase, 1, kOps, 14000, 100},
     {kLaterPartialBase, kOps, 2 * (kPartials - kFirstPartials), 14100, 100},
+    {kVelocityBase, 1, kVelocityParamCount, 11600, 100},
+    // A block per source, in source order: sources added later take blocks after these.
+    {kSlotPolarityBase, kAllSources, kSlots, 24000, 20},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -955,6 +1006,17 @@ static_assert(idOfIndex(paramIndex(NoteParam::Slots)) == 11400 && idOfIndex(para
               "note source param ids moved");
 static_assert(idOfIndex(paramIndex(WheelParam::Slots)) == 11500 && idOfIndex(paramIndex(WheelParam::Bipolar)) == 11532,
               "mod wheel param ids moved");
+static_assert(idOfIndex(paramIndex(VelocityParam::Slots)) == 11600 &&
+                  idOfIndex(paramIndex(VelocityParam::Curve)) == 11632 &&
+                  idOfIndex(shapeFieldIndex(paramIndex(VelocityParam::Curve), kMaxNotePoints - 1, PointField::Curve)) ==
+                      11680 &&
+                  idOfIndex(paramIndex(VelocityParam::Bipolar)) == 11681,
+              "velocity source param ids moved");
+static_assert(idOfIndex(slotPolarityIndex(0, 0)) == 24000 && idOfIndex(slotPolarityIndex(kMaxSources, 0)) == 24320 &&
+                  idOfIndex(slotPolarityIndex(kNoteSource, 0)) == 24480 &&
+                  idOfIndex(slotPolarityIndex(kWheelSource, 0)) == 24500 &&
+                  idOfIndex(slotPolarityIndex(kVelocitySource, kSlots - 1)) == 24535,
+              "slot polarity param ids moved");
 static_assert(idOfIndex(shaperCurveCountIndex(0)) == 13000 &&
                   idOfIndex(shapeFieldIndex(shaperCurveCountIndex(kShapers - 1), 15, PointField::Curve)) == 13098 &&
                   idOfIndex(shapeFieldIndex(shaperCurveCountIndex(0), 16, PointField::X)) == 21000 &&
@@ -990,6 +1052,9 @@ static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxTy
               "FxType is stored by number: only append");
 static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Count}),
               "SourceType is stored by number: only append");
+static_assert(numberedInOrder({SlotPolarity::Source, SlotPolarity::Unipolar, SlotPolarity::Bipolar,
+                               SlotPolarity::Count}),
+              "SlotPolarity is stored by number: only append");
 static_assert(numberedInOrder({LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square, LfoShape::Random,
                                LfoShape::Custom, LfoShape::Count}),
               "LfoShape is stored by number: only append");
@@ -1250,6 +1315,14 @@ double noteSourceValue(const Get &get, double pitch) {
     return std::clamp(0.5 * (clipCurveValue(get, paramIndex(NoteParam::Curve), 2.0 * x - 1.0) + 1.0), 0.0, 1.0);
 }
 
+// The velocity source's output (0..1) for a note's velocity (0..1): the velocity through the drawn curve, whose
+// points run across the velocities and whose y (-1..1) is 0..1 of the output (see VelocityParam).
+template <class Get>
+double velocitySourceValue(const Get &get, double velocity) {
+    const double x = std::clamp(velocity, 0.0, 1.0);
+    return std::clamp(0.5 * (clipCurveValue(get, paramIndex(VelocityParam::Curve), 2.0 * x - 1.0) + 1.0), 0.0, 1.0);
+}
+
 // Envelope segment slopes. A curve (-1..1) sets how fast a segment moves at
 // first: 0 is a straight line, positive curves start fast and settle (like a
 // capacitor charging), negative ones start slow and rush at the end. Either
@@ -1360,6 +1433,7 @@ enum class ParamKind {
     NotePitch,   // semitones in MIDI numbering, shown as a note and its cents; continuous, but the editor sets whole ones
     FixedFreq,   // 0..1 on a log curve, shown in Hz; see fixedFreqFromNorm()
     FixedMult,   // stepped: one of kFixedMults, shown as x0.001 and so on
+    SlotPolarity, // stepped: a slot's SlotPolarity, set in the editor and hidden from hosts
 };
 
 struct ParamDef {
@@ -1405,16 +1479,18 @@ inline int slotTarget(double value) {
 template <class Get, class Add>
 void forEachMacroMod(const Get &get, const Add &add) {
     for (int source = kMaxSources; source < kAllSources; ++source) {
-        if (isNote(source))
+        if (isNoteBorne(source))
             continue;
-        // Bipolar, the knob's middle moves nothing, and its ends half the depth either way.
-        const double knob = get(stripKnobIndex(source)) - (sourceBipolar(get, source) ? 0.5 : 0.0);
+        // A bipolar slot moves nothing at the knob's middle, and at its ends half the depth either way.
+        const double knob = get(stripKnobIndex(source));
+        const bool bipolar = sourceBipolar(get, source);
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(get(slotTargetIndex(source, slot)));
             const double amount = get(slotAmountIndex(source, slot));
             if (target < 0 || target >= kModulatedCount || amount == 0.0)
                 continue;
-            add(target, knob * amount * (paramTable()[target].max - paramTable()[target].min));
+            const double swing = knob - (slotBipolar(get(slotPolarityIndex(source, slot)), bipolar) ? 0.5 : 0.0);
+            add(target, swing * amount * (paramTable()[target].max - paramTable()[target].min));
         }
     }
 }

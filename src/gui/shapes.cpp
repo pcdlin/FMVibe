@@ -15,7 +15,7 @@ using namespace detail;
 
 // The freeform shape editor: an LFO's fills the routing panel and the inspector, which it hides; a shaper's curve
 // takes a narrower panel in the middle of the effects' panel it opens from, so its plot is closer to square, the
-// inspector still covered; the note source's curve fills the routing panel.
+// inspector still covered; the note source's curve and velocity's fill the routing panel.
 constexpr float kClipEditorW = 520.0f;
 Rect View::shapePanel() const {
     const int shape = shapeEditing();
@@ -25,7 +25,7 @@ Rect View::shapePanel() const {
 }
 
 Rect View::shapeArea(int shape) const {
-    if (shape < -1 || shape > kNoteCurve)
+    if (shape < -1 || shape > kVelocityCurve)
         return shapeAreaNow(shape);
     std::optional<Rect> &kept = derived_.shapeAreas[shape + 1]; // only kept while a scope goes on
     if (!kept) {
@@ -91,7 +91,7 @@ double View::shapeYAt(int shape, Point p) const {
 int View::shapeEditing() const {
     if (shapeEditor_ < 0)
         return -1;
-    if (isNoteCurve(shapeEditor_)) // open until it is closed
+    if (isStripCurve(shapeEditor_)) // open until it is closed
         return shapeEditor_;
     if (isShaperCurve(shapeEditor_)) {
         const int shaper = shapeEditor_ - kMaxSources - kFxSlots;
@@ -111,13 +111,14 @@ int View::shapeEditing() const {
 }
 
 int View::shapeBase(int shape) {
-    return isNoteCurve(shape) ? paramIndex(NoteParam::Curve)
-           : isCurve(shape)   ? shaperParams(shape - kMaxSources).curve // an effect's or a voice shaper's
-                              : shapeCountIndex(shape);
+    return isNoteCurve(shape)       ? paramIndex(NoteParam::Curve)
+           : isVelocityCurve(shape) ? paramIndex(VelocityParam::Curve)
+           : isCurve(shape)         ? shaperParams(shape - kMaxSources).curve // an effect's or a voice shaper's
+                                    : shapeCountIndex(shape);
 }
 
 Color View::shapeColor(int shape) const {
-    return isNoteCurve(shape)                         ? kSourceColors[kNoteSource]
+    return isStripCurve(shape)                        ? kSourceColors[sourceOfCurve(shape)]
            : isClipCurve(shape) || isShaperCurve(shape) ? clipColor(shape - kMaxSources)
                                                         : kSourceColors[shape];
 }
@@ -325,7 +326,7 @@ void View::removeShapePoint(int shape, int point) {
     const int count = shapePointCount(shape);
     const bool end = isCurve(shape) && point + 1 == count;
     if (point == 0 || end || count <= 2) {
-        flash(tr(isNoteCurve(shape) && (point == 0 || end) ? Str::MsgNoteCurveEnds
+        flash(tr(isStripCurve(shape) && (point == 0 || end) ? Str::MsgNoteCurveEnds
                  : isCurve(shape) && (point == 0 || end)   ? Str::MsgCurveEnds
                  : point == 0                              ? Str::MsgFirstPoint
                                                            : Str::MsgTwoPoints));
