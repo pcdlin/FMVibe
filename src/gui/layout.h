@@ -116,8 +116,9 @@ constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between
 constexpr float kFxCardW = (kFxPanel.w - 32.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
 // The MODS view covers them too: a row per modulation under a title row and the columns' names, scrolling with a
-// bar at the right. Within a row, from its left: the bypass dot, the source, an arrow, the target, the depth bar with
-// its value, the polarity switch, the Amount bar with its value, the aux and the remove button.
+// bar at the right. Within a row, from its left: the bypass dot, the source and its polarity switch, an arrow, the
+// target, the depth bar with its value, the Amount bar with its value, the aux and the remove button. After the last
+// row, the button that adds an empty one.
 constexpr float kModsRowH = 28.0f;
 constexpr float kModsRowStep = 30.0f;
 constexpr Rect kModsList{kFxPanel.x + 12.0f, kFxPanel.y + 70.0f, kFxPanel.w - 24.0f - 14.0f, kFxPanel.h - 80.0f};
@@ -132,9 +133,9 @@ inline Rect modsScrollTrack() {
 struct ModsColumn {
     float x, w;
 };
-constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 156.0f}, kModsArrow{186.0f, 16.0f},
-    kModsTarget{206.0f, 232.0f}, kModsDepth{446.0f, 200.0f}, kModsPolarity{700.0f, 24.0f}, kModsScale{736.0f, 100.0f},
-    kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f};
+constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 130.0f}, kModsPolarity{158.0f, 24.0f},
+    kModsArrow{186.0f, 16.0f}, kModsTarget{206.0f, 232.0f}, kModsDepth{446.0f, 250.0f}, kModsScale{736.0f, 100.0f},
+    kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f}, kModsAdd{4.0f, 178.0f};
 inline Rect modsCell(Rect row, ModsColumn column) { return {row.x + column.x, row.y, column.w, row.h}; }
 // The cascading menus a row's source, target or aux opens: each level a column of entries, the next level beside the
 // entry it opens from.
@@ -218,7 +219,7 @@ inline Point randomKnob(float card, int knob) {
 // The used slots, kVisibleSlots rows at a time; `row` counts from the top of the list, fractions while it
 // scrolls and the rows at its ends are cut off.
 constexpr int kVisibleSlots = 4;
-constexpr float kSlotNameW = 90.0f; // the target's name, between the bypass dot and the polarity switch
+constexpr float kSlotNameW = 96.0f; // the target's name, between the bypass dot and the depth bar
 
 // The "+n" pill that takes the place of the depth handles a knob, label or cell has no room for: under a knob, and
 // smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation, laid out as

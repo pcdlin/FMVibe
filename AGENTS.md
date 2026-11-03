@@ -7,9 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, filter type, effect type, source type, slot polarity and fixed Mult lists, and the state
-  layout are stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when
-  touching them.
+- Parameter ids, the wave, filter type, effect type, source type and fixed Mult lists, and the state layout are
+  stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (smoke test, audio quality, UI snapshots). New editor interactions get a replay in
   `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`.
 - When a feature changes, update [docs/features.md](docs/features.md); keep `README.md` to its short
@@ -59,13 +58,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an LFO's Phase moving where notes start it (a one-shot running from there to its cycle's end), while a free
     one keeps its clock;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
-    the note source about the middle of what they put out; a slot set unipolar or bipolar goes that way whatever its
-    source is, and set back follows its source again;
+    the note source about the middle of what they put out;
   - the note source, its curve drawn along the cutoff knobs' as it starts, tunes a notch at 0 to an A4, and
     follows a pitch bend; bipolar, it does the same from the cutoff a filter starts with; its range and curve shape
     what it puts out;
-  - velocity taking its target as far as the note's velocity, in a straight line as it starts; bipolar, or its slot
-    set bipolar, about the middle of what it puts out; its curve drawn the other way round reversing it;
+  - velocity taking its target as far as the note's velocity, in a straight line as it starts; bipolar, about the
+    middle of what it puts out; its curve drawn the other way round reversing it;
   - a slot's Amount scaling its depth, and its aux: velocity scaling a macro's slot in each voice, the mod wheel down
     leaving its target alone;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
@@ -132,10 +130,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     which goes out in its place, and picking waves and filter types;
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
     removing one by letting its arrowhead go in empty space;
-  - the MODS tab: a row per modulation, its Amount bar, polarity switch and aux's × changing it; + Aux's, the
-    target's (three levels deep, into an operator's params) and the source's cascading menus picking an aux, a target
-    and a source, the modulation keeping its depth, Amount, aux and polarity as it moves, undoably; the wheel scrolling
-    the rows; and a source's handle dropped on a depth handle becoming that modulation's aux, ringed in its color;
+  - the MODS tab: a row per modulation, its Amount bar and aux's × changing it, and the switch after its source's
+    name the source's polarity; + Aux's, the target's (three levels deep, into an operator's params) and the source's
+    cascading menus picking an aux, a target and a source, the modulation keeping its depth, Amount and aux as it
+    moves, undoably; the wheel scrolling the rows; and a source's handle dropped on a depth handle becoming that
+    modulation's aux, ringed in its color;
+  - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
+    then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
+    its × removes it;
   - bending a wire by dragging it sideways (lit under the mouse, its label following its middle), either way,
     undoably, back to its first bow by a double-click or Reset Bend, and its bend going with it when it is
     disconnected;
@@ -152,9 +154,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - dragging the filter response handle, switching between the graph and matrix views (the tab shown opening its
     panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
-  - making sources' modulations unipolar and bipolar, all at once from their menus (an envelope's and an LFO's card,
-    a macro's knob and handle, the mod wheel and the note source's display) and the LFO's UNIPOLAR switch, and one
-    at a time from a row's polarity switch and a depth bar's menu, undoably;
+  - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
+    handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q;
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
     off the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
@@ -354,11 +355,11 @@ itself.
   velocity 11600+ (its slots, then its curve and Bipolar), the
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the voice shapers'
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
-  22000 + 40·source (a pair per slot), and every slot's polarity 24000 + 20·source (both by the sources' number:
-  the places, the macros, the note source, the mod wheel and velocity; a source added later takes the next block).
+  22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel
+  and velocity; a source added later takes the next block).
   Once released, new fields go at the end of their section's
-  enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, slot
-  polarity, slot aux field and fixed Mult lists, and the routing views,
+  enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, slot aux
+  field and fixed Mult lists, and the routing views,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`.
@@ -367,10 +368,9 @@ itself.
   can't follow the type; fields of the other type are hidden from them.
 - A slot's *target* param stores the target's id + 1 (0 = unused). Targets aren't offered for automation, since
   they are wiring, but they are saved like any other param. Their depths are normal automatable params. Each slot
-  also has a hidden polarity param (`SlotPolarity`: as its source, unipolar or bipolar); 0, the default, follows
-  the source's own switch, so states saved before slots had one load as they sounded. And an aux (the source + 1
-  that scales it, 0 = none; wiring, hidden) and an Amount (0–1, 1 to begin with, automatable), whose defaults leave
-  a slot as it was.
+  also has an aux (the source + 1 that scales it, 0 = none; wiring, hidden) and an Amount (0–1, 1 to begin with,
+  automatable), whose defaults leave a slot as it was. A slot swings its target one way or both as its source's
+  own switch says.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events. Hosts
   record automation and undo from these, and mark the project as changed. Loading a preset, or Init, sends them for
   each param whose value changed. The last of the queue they wait in is kept for the ends of gestures already begun,
@@ -383,7 +383,8 @@ itself.
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
-  scope's cycle count and the wires bent away from their first bow (by route). The host's state goes on with
+  scope's cycle count, the wires bent away from their first bow (by route) and the MODS view's empty modulations
+  (each its source + 1 and its target's id + 1, 0 for none). The host's state goes on with
   the settings chunk and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096

@@ -853,12 +853,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     auto collectSlots = [&](int source, double shown, double unipolar, double bipolar, bool bipolarSource) {
         v.sourceValues[source] = shown;
         v.auxOut[source] = unipolar;
+        const double swing = bipolarSource ? bipolar : unipolar;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(p[slotTargetIndex(source, s)]);
             const double amount = p[slotAmountIndex(source, s)];
             if (target >= 0 && amount != 0.0 && params[slotBypassIndex(source, s)] < 0.5) {
-                const double swing =
-                    slotBipolar(params[slotPolarityIndex(source, s)], bipolarSource) ? bipolar : unipolar;
                 v.slotMods[v.slotModCount++] = {
                     target, swing * amount * scaleOf(source, s) * (table_[target].max - table_[target].min)};
             }
@@ -923,14 +922,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     {
         const double out = velocitySourceValue(getParam, v.velocity);
         v.auxOut[kVelocitySource] = out;
-        const bool bipolarSource = params[paramIndex(VelocityParam::Bipolar)] >= 0.5;
+        const double swing = params[paramIndex(VelocityParam::Bipolar)] >= 0.5 ? out - 0.5 : out;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(params[slotTargetIndex(kVelocitySource, s)]);
             const double amount = hostValue(params, slotAmountIndex(kVelocitySource, s));
             if (target < 0 || amount == 0.0)
                 continue;
-            const double swing =
-                slotBipolar(params[slotPolarityIndex(kVelocitySource, s)], bipolarSource) ? out - 0.5 : out;
             v.slotMods[v.slotModCount++] = {
                 target, swing * amount * scaleOf(kVelocitySource, s) * (table_[target].max - table_[target].min)};
         }
@@ -942,8 +939,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         const double amount = hostValue(params, slotAmountIndex(source, s));
         if (target < 0 || amount == 0.0)
             continue;
-        const bool bipolar = slotBipolar(params[slotPolarityIndex(source, s)], sourceBipolar(getParam, source));
-        const double swing = hostValue(params, stripKnobIndex(source)) - (bipolar ? 0.5 : 0.0);
+        const double swing =
+            hostValue(params, stripKnobIndex(source)) - (sourceBipolar(getParam, source) ? 0.5 : 0.0);
         v.slotMods[v.slotModCount++] = {
             target, swing * amount * scaleOf(source, s) * (table_[target].max - table_[target].min)};
     }
@@ -987,17 +984,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // which they already hold; a target that moves the pitch itself moves it from here. Its range and slots take
     // only the host's modulation for every voice, no LFO's or envelope's.
     v.pitch = pitch;
-    // A bipolar slot swings about the middle of its output, like a macro's.
+    // Bipolar, it swings about the middle of its output, like a macro.
     const double note = noteSourceValue([&](int i) { return hostValue(params, i); }, pitch);
     v.auxOut[kNoteSource] = note;
-    const bool noteBipolar = params[paramIndex(NoteParam::Bipolar)] >= 0.5;
+    const double swing = note - (params[paramIndex(NoteParam::Bipolar)] >= 0.5 ? 0.5 : 0.0);
     const int noteModsStart = v.slotModCount;
     for (int s = 0; s < kSlots; ++s) {
         const int target = slotTarget(params[slotTargetIndex(kNoteSource, s)]);
         const double amount = hostValue(params, slotAmountIndex(kNoteSource, s));
         if (target >= 0 && amount != 0.0) {
-            const double swing =
-                note - (slotBipolar(params[slotPolarityIndex(kNoteSource, s)], noteBipolar) ? 0.5 : 0.0);
             v.slotMods[v.slotModCount++] = {
                 target, swing * amount * scaleOf(kNoteSource, s) * (table_[target].max - table_[target].min)};
         }

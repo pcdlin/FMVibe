@@ -44,11 +44,33 @@ bool View::modsWide() const {
 }
 
 std::vector<View::Assignment> View::modsRows() const {
-    return assignments();
+    std::vector<Assignment> rows = assignments();
+    for (int row = 0; row < static_cast<int>(controller_.layout().emptyMods.size()); ++row) {
+        const auto [source, target] = emptyMod(row);
+        rows.push_back({source, emptyModSlot(row), target, 0.0, false, source >= 0 && sourceBipolar(source), 1.0, -1});
+    }
+    return rows;
 }
 
+std::pair<int, int> View::emptyMod(int row) const {
+    const std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
+    if (row < 0 || row >= static_cast<int>(empty.size()))
+        return {-1, -1};
+    const auto [source, target] = empty[row];
+    const bool sourceThere = source >= 0 && source < kAllSources &&
+                             (isStripSource(source) || sourceTypeOf(source) != SourceType::None);
+    return {sourceThere ? source : -1, isModTarget(target) ? target : -1};
+}
+
+int View::modsRowTarget(int source, int slot) const {
+    if (const int row = emptyModOf(slot); row >= 0)
+        return emptyMod(row).second;
+    return source >= 0 && slot >= 0 ? slotTarget(value(slotTargetIndex(source, slot))) : -1;
+}
+
+// The rows and, after them, the one that adds an empty modulation.
 float View::modsEnd() const {
-    const float rows = static_cast<float>(modsRows().size());
+    const float rows = static_cast<float>(modsRows().size() + 1);
     return std::max((rows * kModsRowStep - (kModsRowStep - kModsRowH) - kModsList.h) / kModsRowStep, 0.0f);
 }
 
@@ -77,7 +99,7 @@ bool View::glideMods() {
 
 Rect View::modsThumb() const {
     const Rect track = modsScrollTrack();
-    const float rows = static_cast<float>(modsRows().size());
+    const float rows = static_cast<float>(modsRows().size() + 1);
     const float shown = kModsList.h / kModsRowStep;
     const float h = std::max(track.h * std::min(shown / std::max(rows, 1.0f), 1.0f), 16.0f);
     return {track.x, track.y + (track.h - h) * modsFirst() / std::max(modsEnd(), 0.001f), track.w, h};
@@ -105,14 +127,12 @@ void View::moveModulation(int source, int slot, int to) {
         flash(trf(Str::MsgSlotsFull, {sourceName(to), std::to_string(kSlots)}));
         return;
     }
-    // Its polarity as it swings now, whatever the new source's own is; an aux that would be the new source itself goes.
+    // It swings as its new source does; an aux that would be the new source itself goes.
     const int aux = slotAux([this](int index) { return value(index); }, source, slot);
     const UndoScope step(controller_);
     std::vector<std::pair<int, double>> changes{
         {slotTargetIndex(to, free), slotTargetValue(target)},
         {slotAmountIndex(to, free), value(slotAmountIndex(source, slot))},
-        {slotPolarityIndex(to, free),
-         static_cast<double>(slotBipolar(source, slot) ? SlotPolarity::Bipolar : SlotPolarity::Unipolar)},
         {slotScaleIndex(to, free), value(slotScaleIndex(source, slot))},
         {slotAuxIndex(to, free), slotAuxValue(aux == to ? -1 : aux)}};
     if (!isStripSource(to))
@@ -148,13 +168,74 @@ void View::setAux(int source, int slot, int aux) {
     edit(slotAuxIndex(source, slot), slotAuxValue(aux == source ? -1 : aux));
 }
 
+void View::addEmptyMod() {
+    std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
+    if (static_cast<int>(empty.size()) >= kMaxEmptyMods) {
+        flash(trf(Str::MsgEmptyModsFull, {std::to_string(kMaxEmptyMods)}));
+        return;
+    }
+    {
+        const UndoScope step(controller_);
+        empty.push_back({-1, -1});
+        controller_.layoutChanged();
+    }
+    const int row = static_cast<int>(empty.size()) - 1;
+    scrollMods(modsEnd(), false);
+    const float at = static_cast<float>(assignments().size() + row) - modsFirst();
+    openCascade(CascadeKind::Source, -1, emptyModSlot(row), modsCell(modsRow(at), kModsSource));
+}
+
+void View::fillEmptyMod(int row, int source, int target) {
+    std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
+    if (row < 0 || row >= static_cast<int>(empty.size()))
+        return;
+    auto [s, t] = emptyMod(row);
+    s = source >= 0 ? source : s;
+    t = target >= 0 ? target : t;
+    if (s < 0 || t < 0) {
+        const UndoScope step(controller_);
+        empty[row] = {s, t};
+        controller_.layoutChanged();
+        return;
+    }
+    if (!canModulate(s, t)) {
+        flash(trf(Str::MsgOwnKnob, {sourceName(s)}));
+        return;
+    }
+    auto modulates = [&] {
+        for (int slot = 0; slot < kSlots; ++slot)
+            if (slotTarget(value(slotTargetIndex(s, slot))) == t)
+                return true;
+        return false;
+    };
+    if (modulates()) {
+        flash(trf(Str::MsgAlreadyModulates, {sourceName(s), paramName(t)}));
+        return;
+    }
+    const UndoScope step(controller_);
+    assign(s, t); // refuses a source with no slot free, saying so
+    if (modulates()) {
+        empty.erase(empty.begin() + row);
+        controller_.layoutChanged();
+    }
+}
+
+void View::removeEmptyMod(int row) {
+    std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
+    if (row < 0 || row >= static_cast<int>(empty.size()))
+        return;
+    const UndoScope step(controller_);
+    empty.erase(empty.begin() + row);
+    controller_.layoutChanged();
+}
+
 View::MenuNode View::cascadeTree() const {
     MenuNode root;
     if (!cascade_)
         return root;
     const Cascade &menu = *cascade_;
     auto get = [this](int index) { return value(index); };
-    const int target = slotTarget(value(slotTargetIndex(menu.source, menu.slot)));
+    const int target = modsRowTarget(menu.source, menu.slot);
     const int current = menu.kind == CascadeKind::Target ? target
                         : menu.kind == CascadeKind::Aux  ? slotAux(get, menu.source, menu.slot)
                                                          : menu.source;
@@ -196,6 +277,7 @@ View::MenuNode View::cascadeTree() const {
 
     if (menu.kind != CascadeKind::Target) {
         // A source can't take a modulation it has already, nor one past its slots; an aux can't be the row's own source.
+        // An empty modulation without a target yet takes any source with a slot free.
         auto sourcePick = [&](int source) {
             MenuNode node = pick(sourceName(source), source, kSourceColors[source]);
             if (menu.kind == CascadeKind::Aux) {
@@ -208,10 +290,10 @@ View::MenuNode View::cascadeTree() const {
             if (source == menu.source)
                 return node;
             const std::vector<int> used = usedSlots(source);
-            if (!canModulate(source, target)) {
+            if (target >= 0 && !canModulate(source, target)) {
                 node.enabled = false;
                 node.note = tr(Str::CascadeOwnKnob);
-            } else if (std::any_of(used.begin(), used.end(), [&](int s) {
+            } else if (target >= 0 && std::any_of(used.begin(), used.end(), [&](int s) {
                            return slotTarget(value(slotTargetIndex(source, s))) == target;
                        })) {
                 node.enabled = false;
@@ -243,9 +325,10 @@ View::MenuNode View::cascadeTree() const {
 
     // Targets: what the row's source modulates already, through another slot, can't be picked.
     std::vector<int> taken;
-    for (int s : usedSlots(menu.source))
-        if (s != menu.slot)
-            taken.push_back(slotTarget(value(slotTargetIndex(menu.source, s))));
+    if (menu.source >= 0)
+        for (int s : usedSlots(menu.source))
+            if (s != menu.slot)
+                taken.push_back(slotTarget(value(slotTargetIndex(menu.source, s))));
     auto targetPick = [&](std::string label, int index, std::optional<Color> color = std::nullopt) {
         MenuNode node = pick(std::move(label), index, color);
         if (std::find(taken.begin(), taken.end(), index) != taken.end()) {
@@ -262,9 +345,11 @@ View::MenuNode View::cascadeTree() const {
             to.children.push_back(targetPick(afterPrefix(table_[index].name, prefix), index));
     };
 
+    // The mod wheel is played, not set: it isn't offered.
     MenuNode global = category(tr(Str::CascadeGlobal));
     for (int g = 0; g < kGlobalCount; ++g)
-        add(global, g, "");
+        if (g != paramIndex(GlobalParam::ModWheel))
+            add(global, g, "");
     keep(std::move(global));
 
     MenuNode operators = category(tr(Str::CascadeOperators));
@@ -456,12 +541,19 @@ void View::pickCascade(int level, int index) {
         return;
     const Cascade menu = *cascade_;
     cascade_.reset();
+    const int empty = emptyModOf(menu.slot);
     switch (menu.kind) {
     case CascadeKind::Source:
-        moveModulation(menu.source, menu.slot, item.pick);
+        if (empty >= 0)
+            fillEmptyMod(empty, item.pick, -1);
+        else
+            moveModulation(menu.source, menu.slot, item.pick);
         break;
     case CascadeKind::Target:
-        retarget(menu.source, menu.slot, item.pick);
+        if (empty >= 0)
+            fillEmptyMod(empty, -1, item.pick);
+        else
+            retarget(menu.source, menu.slot, item.pick);
         break;
     case CascadeKind::Aux:
         setAux(menu.source, menu.slot, item.pick);
@@ -525,26 +617,34 @@ void View::paintCascade(Canvas &c) {
 
 void View::paintMods(Canvas &c) {
     const std::vector<Assignment> rows = modsRows();
-    int bypassed = 0, zero = 0;
+    int modulations = 0, bypassed = 0, zero = 0, empty = 0;
     for (const Assignment &m : rows) {
+        if (m.slot < 0) {
+            ++empty;
+            continue;
+        }
+        ++modulations;
         bypassed += m.bypassed ? 1 : 0;
         zero += m.amount == 0.0 ? 1 : 0;
     }
-    std::string count = rows.size() == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(rows.size())});
+    std::string count =
+        modulations == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(modulations)});
     if (bypassed > 0)
         count += " \xC2\xB7 " + trf(Str::ModsBypassed, {std::to_string(bypassed)});
     if (zero > 0)
         count += " \xC2\xB7 " + trf(Str::ModsAtZero, {std::to_string(zero)});
+    if (empty > 0)
+        count += " \xC2\xB7 " + trf(Str::ModsEmpty, {std::to_string(empty)});
     c.text({kFxPanel.x + 16.0f, kFxPanel.y + 10.0f, 700.0f, 24.0f}, tr(Str::HintMods), 10.5f, kFaint, Align::Left);
     c.text({kFxPanel.right() - 316.0f, kFxPanel.y + 10.0f, 300.0f, 24.0f}, count, 11.0f, kDim, Align::Right);
-    if (rows.empty()) {
+    if (rows.empty()) { // only the button that adds one
         c.text({kFxPanel.x, kFxPanel.y + 120.0f, kFxPanel.w, 30.0f}, tr(Str::HintNoMods), 11.5f, kDim);
         return;
     }
     const Rect head{kModsList.x, kModsHeaderY, kModsList.w, 20.0f};
     const std::pair<ModsColumn, Str> columns[] = {
-        {kModsSource, Str::ModsHeadSource},     {kModsTarget, Str::ModsHeadTarget}, {kModsDepth, Str::ModsHeadDepth},
-        {kModsPolarity, Str::ModsHeadPolarity}, {kModsScale, Str::ModsHeadAmount},  {kModsAux, Str::ModsHeadAux}};
+        {kModsSource, Str::ModsHeadSource}, {kModsTarget, Str::ModsHeadTarget}, {kModsDepth, Str::ModsHeadDepth},
+        {kModsScale, Str::ModsHeadAmount},  {kModsAux, Str::ModsHeadAux}};
     for (const auto &[column, name] : columns)
         c.text({modsCell(head, column).x, head.y, column.w + 20.0f, head.h}, tr(name), 9.5f, kDim, Align::Left, true);
 
@@ -567,8 +667,10 @@ void View::paintMods(Canvas &c) {
         const Point tip{arrow.right() - 2.0f, arrow.center().y};
         const Point head2[] = {{tip.x - 4.0f, tip.y - 3.5f}, tip, {tip.x - 4.0f, tip.y + 3.5f}};
         c.polyline(head2, 3, faint, 1.3f);
-        if (isStripSource(m.source))
+        if (m.slot >= 0 && isStripSource(m.source))
             c.fillCircle(modsCell(r, kModsBypass).center(), 3.5f, kSourceColors[m.source]);
+        else if (m.slot < 0) // an empty modulation: a hollow dot, until it has a source and a target
+            c.strokeCircle(modsCell(r, kModsBypass).center(), 3.2f, kFaint, 1.2f);
     }
     c.popClip();
 }

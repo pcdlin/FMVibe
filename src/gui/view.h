@@ -139,9 +139,12 @@ private:
         SlotBar,      // param = slot amount, a = source, b = slot
         SlotRemove,   // a = source, b = slot
         SlotBypass,   // param = the slot's bypass, a = source, b = slot: the dot at the row's start
-        SlotPolarity, // a = source, b = slot: switches its modulation between unipolar and bipolar
+        SourcePolarity, // a = source: switches it between unipolar and bipolar, for every modulation it has (the
+                        // switch after a MODS row's source)
         ModsSource,   // a = source, b = slot: a MODS row's source; a click opens the menu that moves it to another
+                      // (an empty modulation's: a = its source or -1, b = emptyModSlot() of it)
         ModsTarget,   // a = source, b = slot: a MODS row's target; a click opens the menu of targets
+        ModsAdd,      // the row after the MODS view's last: adds an empty modulation
         ModsScale,    // param = the slot's Amount, a = source, b = slot: a MODS row's Amount bar, dragged across
         ModsAux,      // a = source, b = slot: a MODS row's aux, or + Aux; a click opens the menu of auxes
         ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
@@ -282,7 +285,7 @@ private:
         int target;
         double amount;
         bool bypassed; // kept, but modulating nothing for now
-        bool bipolar;  // swings its target both ways (see slotBipolar())
+        bool bipolar;  // swings its target both ways, as its source does (see sourceBipolar())
         double scale;  // its Amount, which scales the depth (see SlotAuxParam)
         int aux;       // the source that scales it too, or -1
     };
@@ -349,20 +352,26 @@ private:
     void removeSlot(int source, int slot);
     bool slotBypassed(int source, int slot) const;
     void toggleBypass(int source, int slot);
-    // Whether a slot swings its target both ways (see fmvibe::slotBipolar()): as set for it, or as its source does.
-    bool slotBipolar(int source, int slot) const;
-    // Sets it for that slot alone; for a source, sets the source's own polarity and puts all of its slots back to
-    // following it. Each is one undo step.
-    void setSlotPolarity(int source, int slot, bool bipolar);
+    // Makes a source swing every one of its targets both ways, or one way.
     void setSourcePolarity(int source, bool bipolar);
     // How far a route's wire bows to its left, as a share of the distance it spans: as dragged, or kDefaultWireBend.
     float wireBend(int param) const;
     void setWireBend(int param, float bend); // kDefaultWireBend forgets it
-    // The MODS view: every modulation as a row, the sources in the order of assignments(), over the routing panel and
-    // the inspector. Its rows scroll like a slot list: how many are scrolled past as shown (gliding), the most that
-    // can be, and scrolling them, gliding or at once; the thumb of its bar.
+    // The MODS view: every modulation as a row, the sources in the order of assignments(), then the empty ones
+    // (UiLayout::emptyMods) and a row that adds one, over the routing panel and the inspector. Its rows scroll like a
+    // slot list: how many are scrolled past as shown (gliding), the most that can be, and scrolling them, gliding or
+    // at once; the thumb of its bar.
     bool modsWide() const;
     std::vector<Assignment> modsRows() const;
+    // An empty modulation's row stands in for a slot as emptyModSlot(its place in the list), always below -1;
+    // emptyModOf() takes it back, -1 for a slot of a source.
+    static constexpr int emptyModSlot(int row) { return -2 - row; }
+    static constexpr int emptyModOf(int slot) { return slot <= -2 ? -2 - slot : -1; }
+    // An empty modulation's source and target, -1 for none: a source since removed, or a target no longer there,
+    // reads as none.
+    std::pair<int, int> emptyMod(int row) const;
+    // What a row modulates: its slot's target, or an empty modulation's.
+    int modsRowTarget(int source, int slot) const;
     float modsFirst() const;
     float modsEnd() const;
     void scrollMods(float first, bool glide);
@@ -376,6 +385,14 @@ private:
     void moveModulation(int source, int slot, int to);
     void retarget(int source, int slot, int target);
     void setAux(int source, int slot, int aux);
+    // Adds an empty modulation at the end of the list, scrolls to it and opens its source's menu; refused past
+    // kMaxEmptyMods.
+    void addEmptyMod();
+    // Picks an empty modulation's source, or its target (-1 leaves it as it is). With both, it becomes a modulation of
+    // that source as a handle dropped on the target makes one, and leaves the list; refused, as assign() refuses,
+    // the row stays as it was. One undo step.
+    void fillEmptyMod(int row, int source, int target);
+    void removeEmptyMod(int row);
     // The cascading menus of a MODS row: its sources by category (LFOs, envelopes, macros, the keyboard's), the same
     // with None for its aux, and every target by category, only the effects in the chain among them. Each entry is a
     // category (with entries of its own), a heading, or a pick: a source (-1 for None) or a target param.

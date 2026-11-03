@@ -692,7 +692,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(slotBypassed && renderer.save(view, dir / "17b-bypassed-slot.png"), "render a bypassed modulation");
     view.menuCommand(menuEntry(kFineKnob, trf(Str::MenuResume, {trf(Str::SourceNameLfo, {"1"})})));
     check(model.value(slotBypassIndex(0, 0)) == 0.0, "a row's dot bypasses its modulation, and the knob's menu resumes it");
-    // A long target's name is drawn smaller to fit before the polarity switch, where it would end in an ellipsis: three
+    // A long target's name is drawn smaller to fit before the depth bar, where it would end in an ellipsis: three
     // dots on the baseline with nothing above them (read off the rendered pixels; a name ending in L looks alike).
     model.set(slotTargetIndex(0, 1), slotTargetValue(paramIndex(1, OpParam::UnisonDetune)));
     model.set(slotTargetIndex(0, 2), slotTargetValue(paramIndex(0, FxParam::DelayFeedback)));
@@ -701,7 +701,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     auto lit = [&](float x, float y) { return (renderer.pixel({x, y}) >> 8 & 255) > 100; };
     auto endsInEllipsis = [&](float rowY) {
         float right = 0.0f; // the name's last lit column
-        for (float x = cardX(0) + 30.0f; x < cardX(0) + 119.0f; x += 1.0f) // up to the polarity switch
+        for (float x = cardX(0) + 30.0f; x < cardX(0) + 126.0f; x += 1.0f)
             for (float y = rowY - 8.0f; y <= rowY + 8.0f; y += 1.0f)
                 right = lit(x, y) ? x : right;
         int rows = 0; // lit in its last three columns, the last dot's
@@ -1494,19 +1494,19 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
                 }
             return checked;
         };
-        const bool macroWasUnipolar = polarity(macroKnob(0), tr(Str::MenuAllUnipolar));
-        polarity(macroKnob(0), tr(Str::MenuAllBipolar));
+        const bool macroWasUnipolar = polarity(macroKnob(0), tr(Str::MenuUnipolar));
+        polarity(macroKnob(0), tr(Str::MenuBipolar));
         const bool macroBipolar = model.value(paramIndex(0, MacroParam::Bipolar)) == 1.0;
-        const bool handleShowsIt = polarity({macroKnob(0).x - 32.0f, y}, tr(Str::MenuAllBipolar));
-        polarity({74.0f + 13.0f, view.height() - 87.0f}, tr(Str::MenuAllBipolar)); // the wheel itself
+        const bool handleShowsIt = polarity({macroKnob(0).x - 32.0f, y}, tr(Str::MenuBipolar));
+        polarity({74.0f + 13.0f, view.height() - 87.0f}, tr(Str::MenuBipolar)); // the wheel itself
         const bool wheelBipolar = model.value(paramIndex(WheelParam::Bipolar)) == 1.0;
-        polarity({1026.0f, y}, tr(Str::MenuAllBipolar)); // the note source's display
+        polarity({1026.0f, y}, tr(Str::MenuBipolar)); // the note source's display
         const bool noteBipolar = model.value(paramIndex(NoteParam::Bipolar)) == 1.0;
         view.mouseMove({600.0f, 300.0f}, {});
         const bool stripShot = renderer.save(view, dir / "26h-bipolar-strip.png");
-        polarity({114.0f, view.height() - 87.0f}, tr(Str::MenuAllUnipolar)); // the wheel's handle
-        polarity(macroKnob(0), tr(Str::MenuAllUnipolar));
-        polarity({1026.0f, y}, tr(Str::MenuAllUnipolar));
+        polarity({114.0f, view.height() - 87.0f}, tr(Str::MenuUnipolar)); // the wheel's handle
+        polarity(macroKnob(0), tr(Str::MenuUnipolar));
+        polarity({1026.0f, y}, tr(Str::MenuUnipolar));
         check(macroWasUnipolar && macroBipolar && handleShowsIt && wheelBipolar && noteBipolar && stripShot &&
                   model.value(paramIndex(0, MacroParam::Bipolar)) == 0.0 &&
                   model.value(paramIndex(WheelParam::Bipolar)) == 0.0 && model.value(paramIndex(NoteParam::Bipolar)) == 0.0,
@@ -1606,68 +1606,6 @@ void testSourceShadow(const std::filesystem::path &dir, Renderer &renderer) {
           "the square dashed cards after the sources add an LFO and an envelope");
 }
 
-// Each modulation swings its target one way or both on its own: the switch after its row's name flips it, its depth
-// handle's and row's menus pick either (the one in force checked), and the source's menu, or an LFO's UNIPOLAR switch,
-// sets it for all of the source's targets at once, each an undo step.
-void testSlotPolarity(const std::filesystem::path &dir, Renderer &renderer) {
-    FakeController model;
-    View view(model);
-    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
-    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
-    model.set(slotAmountIndex(0, 0), 0.4);
-    model.set(slotTargetIndex(0, 1), slotTargetValue(paramIndex(0, OpParam::Detune)));
-    model.set(slotAmountIndex(0, 1), 0.4);
-    view.poll();
-    auto polarity = [&](int slot) {
-        return static_cast<SlotPolarity>(std::lround(model.value(slotPolarityIndex(0, slot))));
-    };
-    auto pick = [&](Point at, const std::string &label) {
-        bool checked = false;
-        for (const MenuItem &item : view.contextMenu(at))
-            if (item.label == label) {
-                checked = item.checked;
-                view.menuCommand(item.command);
-            }
-        return checked;
-    };
-    // The LFO starts bipolar: the second row's switch makes that modulation alone unipolar, and undo takes it back.
-    const Point secondSwitch{cardX(0) + 12.0f + 108.0f + 6.5f, 730.0f};
-    click(view, secondSwitch);
-    const bool switched = polarity(1) == SlotPolarity::Unipolar && polarity(0) == SlotPolarity::Source;
-    view.undo();
-    const bool undone = polarity(1) == SlotPolarity::Source;
-    view.redo();
-    view.mouseMove(secondSwitch, {});
-    const bool shot = renderer.save(view, dir / "17g-slot-polarity.png");
-    check(switched && undone && shot && polarity(1) == SlotPolarity::Unipolar,
-          "a row's polarity switch sets its modulation alone one way or both, undoably");
-    // The first row's depth bar menu shows it bipolar, as its LFO, and makes it unipolar; the LFO's own menu, its two
-    // targets now going one way, checks Unipolar, All Targets.
-    const Point firstBar{cardX(0) + 160.0f, 706.0f};
-    const bool wasBipolar = pick(firstBar, tr(Str::MenuBipolar));
-    pick(firstBar, tr(Str::MenuUnipolar));
-    const bool firstUnipolar = polarity(0) == SlotPolarity::Unipolar;
-    const bool allUnipolarChecked = pick(sourceGrip(0), tr(Str::MenuAllUnipolar));
-    const bool lfoUnipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0 &&
-                             polarity(0) == SlotPolarity::Source && polarity(1) == SlotPolarity::Source;
-    check(wasBipolar && firstUnipolar && allUnipolarChecked && lfoUnipolar,
-          "a depth bar's menu picks its modulation's polarity, and the source's menu sets all of its targets");
-    // A target set bipolar on its own keeps the source's menu from checking either; the LFO's UNIPOLAR switch, as
-    // its menu, takes every target along, as one undo step.
-    pick(firstBar, tr(Str::MenuBipolar));
-    bool mixedChecked = false;
-    for (const MenuItem &item : view.contextMenu(sourceGrip(0)))
-        mixedChecked = mixedChecked || (item.checked && (item.label == tr(Str::MenuAllUnipolar) ||
-                                                         item.label == tr(Str::MenuAllBipolar)));
-    click(view, unipolarToggle(0)); // off: bipolar
-    const bool switchSetsAll = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0 &&
-                               polarity(0) == SlotPolarity::Source && polarity(1) == SlotPolarity::Source;
-    view.undo();
-    check(!mixedChecked && switchSetsAll && model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0 &&
-              polarity(0) == SlotPolarity::Bipolar,
-          "an LFO's UNIPOLAR switch sets all of its targets, undoably");
-}
-
 // Velocity, at the strip's right end after the note source: its handle maps it like the note source's (faint until
 // it does), its display shows the newest voice's velocity (0 to 127) and opens its curve over the routing panel,
 // where a double-click adds a point and the reset button brings back the straight line; its menu picks its polarity.
@@ -1699,11 +1637,11 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     // Its display's menu makes it bipolar, and back.
     bool bipolar = false;
     for (const MenuItem &item : view.contextMenu(display))
-        if (item.label == tr(Str::MenuAllBipolar))
+        if (item.label == tr(Str::MenuBipolar))
             view.menuCommand(item.command);
     bipolar = model.value(paramIndex(VelocityParam::Bipolar)) == 1.0;
     for (const MenuItem &item : view.contextMenu(display))
-        if (item.label == tr(Str::MenuAllUnipolar))
+        if (item.label == tr(Str::MenuUnipolar))
             view.menuCommand(item.command);
     check(bipolar && model.value(paramIndex(VelocityParam::Bipolar)) == 0.0,
           "velocity's display menu makes it unipolar or bipolar");
@@ -1805,8 +1743,9 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls
-// them). A row's Amount bar, polarity switch, aux and its menu, target and source change it from the table; the
-// menus cascade by category; and a source's handle dropped on a depth handle makes it that modulation's aux.
+// them). A row's Amount bar, aux and its menu, target and source change it from the table, and the switch after a
+// source's name its polarity; the menus cascade by category; and a source's handle dropped on a depth handle makes it
+// that modulation's aux.
 void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -1837,15 +1776,18 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     auto slotIs = [&](int source, int slot, int target) {
         return slotTarget(model.value(slotTargetIndex(source, slot))) == target;
     };
-    // Its Amount bar, 56 px wide from x 764, takes the click's place; its polarity switch flips LFO 1's bipolar
-    // modulation to unipolar alone; the aux's x takes Macro 2 away.
+    // Its Amount bar, 56 px wide from x 764, takes the click's place; the aux's x takes Macro 2 away; the switch after
+    // LFO 1's name, from x 186, makes the LFO unipolar, and again bipolar.
     click(view, {764.0f + 0.75f * 56.0f, y});
-    click(view, {740.0f, y});
     click(view, {1102.0f, y});
-    check(std::abs(model.value(slotScaleIndex(0, 0)) - 0.75) < 1e-6 &&
-              model.value(slotPolarityIndex(0, 0)) == static_cast<double>(SlotPolarity::Unipolar) &&
-              model.value(slotAuxIndex(0, 0)) == 0.0 && model.value(slotPolarityIndex(0, 1)) == 0.0,
-          "a MODS row's Amount bar, polarity switch and aux x change its modulation alone");
+    click(view, {198.0f, y});
+    const bool unipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0;
+    click(view, {198.0f, y});
+    check(std::abs(model.value(slotScaleIndex(0, 0)) - 0.75) < 1e-6 && model.value(slotAuxIndex(0, 0)) == 0.0 &&
+              model.value(slotScaleIndex(0, 1)) == 1.0 && unipolar &&
+              model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0,
+          "a MODS row's Amount bar and aux x change its modulation alone, and the switch after its source's name the "
+          "source's polarity");
     // + Aux opens None and the sources by category; over Envelopes (the third entry) Env 1 shows beside it, and
     // picking it makes it the aux.
     click(view, {950.0f, y});
@@ -1868,8 +1810,8 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(menuShot && retargeted && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
           "a row's target menu moves its modulation to another target, keeping the rest, undoably");
-    // Its source moves it to a free slot of another source, Macro 1 here, with its depth, Amount, aux and polarity as
-    // it swings now, in one undo step.
+    // Its source moves it to a free slot of another source, Macro 1 here, with its depth, Amount and aux, in one undo
+    // step.
     click(view, {90.0f, y});
     view.mouseMove({80.0f, 204.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {}); // Macros
     view.mouseMove({200.0f, 248.0f + 4.0f + 11.0f}, {});              // Macro 1
@@ -1879,8 +1821,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
                        slotIs(kMaxSources, 1, paramIndex(0, OpParam::Fine)) &&
                        std::abs(model.value(slotAmountIndex(kMaxSources, 1)) - 0.4) < 1e-9 &&
                        std::abs(model.value(slotScaleIndex(kMaxSources, 1)) - 0.75) < 1e-6 &&
-                       slotAuxSource(model.value(slotAuxIndex(kMaxSources, 1))) == 1 &&
-                       model.value(slotPolarityIndex(kMaxSources, 1)) == static_cast<double>(SlotPolarity::Unipolar);
+                       slotAuxSource(model.value(slotAuxIndex(kMaxSources, 1))) == 1;
     view.undo();
     check(sourceShot && moved && slotIs(0, 0, paramIndex(0, OpParam::Fine)) &&
               slotTarget(model.value(slotTargetIndex(kMaxSources, 1))) < 0,
@@ -1906,6 +1847,61 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     check(ringShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == kMaxSources + 1 &&
               slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0,
           "a source's handle dropped on a depth handle becomes that modulation's aux");
+}
+
+// Modulations added in the MODS view: the row after the last adds an empty one and opens its source's menu; picking
+// a source leaves it empty, waiting for a target, and picking a target then makes it a modulation of that source,
+// each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it.
+void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    view.poll();
+    click(view, {314.0f, 88.0f}); // the MODS tab
+    // Under LFO 1's row (its middle at y 188), the button adds a second: its source's menu opens under its source,
+    // at x 54 and y 234. Over Macros, the second entry, the macros show beside it; Macro 1 is picked.
+    const float y = 218.0f;
+    click(view, {100.0f, y});
+    const bool added = model.ui.emptyMods == std::vector<std::pair<int, int>>{{-1, -1}};
+    view.mouseMove({80.0f, 234.0f + 4.0f + 22.0f + 11.0f}, {}); // Macros
+    view.mouseMove({230.0f, 234.0f + 4.0f + 22.0f + 11.0f}, {}); // Macro 1, beside it
+    const bool menuShot = renderer.save(view, dir / "35f-mods-empty-source.png");
+    click(view, {230.0f, 234.0f + 4.0f + 22.0f + 11.0f});
+    const bool sourced = model.ui.emptyMods == std::vector<std::pair<int, int>>{{kMaxSources, -1}};
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool shot = renderer.save(view, dir / "35g-mods-empty.png");
+    check(added && menuShot && sourced && shot && slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0,
+          "the MODS view's last row adds an empty modulation, which takes a source and modulates nothing yet");
+    // Its target opens the targets under it, at x 234: Global, the first category, lists its params beside it from
+    // x 356, but not the mod wheel; where it would come after them, a click only closes the menu.
+    std::vector<int> globals;
+    for (int g = 0; g < kGlobalCount; ++g)
+        if (isModTarget(g) && g != paramIndex(GlobalParam::ModWheel))
+            globals.push_back(g);
+    auto openGlobal = [&] {
+        click(view, {300.0f, y});
+        view.mouseMove({250.0f, 234.0f + 4.0f + 11.0f}, {});
+    };
+    auto globalEntry = [&](size_t k) { return Point{400.0f, 234.0f + 4.0f + 22.0f * k + 11.0f}; };
+    openGlobal();
+    const bool globalShot = renderer.save(view, dir / "35h-mods-global-targets.png");
+    click(view, globalEntry(globals.size()));
+    const bool noWheel = model.ui.emptyMods == std::vector<std::pair<int, int>>{{kMaxSources, -1}};
+    openGlobal();
+    click(view, globalEntry(0));
+    const bool filled = model.ui.emptyMods.empty() && slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == globals[0];
+    view.undo();
+    const bool backEmpty = model.ui.emptyMods == std::vector<std::pair<int, int>>{{kMaxSources, -1}} &&
+                           slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0;
+    view.undo();
+    const bool backUnsourced = model.ui.emptyMods == std::vector<std::pair<int, int>>{{-1, -1}};
+    check(globalShot && noWheel && filled && backEmpty && backUnsourced,
+          "an empty modulation given a target becomes a modulation of its source, undoably; Global has no Mod Wheel");
+    // Its x, at the row's right end, removes it.
+    click(view, {1144.0f, y});
+    check(model.ui.emptyMods.empty(), "an empty modulation's x removes it");
 }
 
 // Eight LFOs on Op A's Fine: under the knob, two depth handles and a "+6" pill, nothing drawn outside the knob's
@@ -1953,7 +1949,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     const uint32_t open = renderer.pixel(row(5, 60.0f));
     click(view, row(7, 9.0f)); // LFO 8's bypass dot
     const bool bypassed = model.value(slotBypassIndex(7, 0)) == 1.0;
-    drag(view, row(0, 122.0f + 35.0f), row(0, 122.0f + 52.5f)); // LFO 1's depth bar, to half way right: +50 %
+    drag(view, row(0, 116.0f + 38.0f), row(0, 116.0f + 57.0f)); // LFO 1's depth bar, to half way right: +50 %
     const bool deep = std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6;
     click(view, row(6, 243.0f)); // LFO 7's remove
     const bool removed = slotTarget(model.value(slotTargetIndex(6, 0))) < 0;
@@ -2029,15 +2025,15 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     model.values[slotAmountIndex(1, 0)] = 0.5;
     view.poll();
     // With Shift a depth bar moves from where it is, a tenth as fast: half its width is 10 % then.
-    const Point bar{cardX(0) + 12.0f + 122.0f + 35.0f, 706.0f};
+    const Point bar{cardX(0) + 12.0f + 116.0f + 38.0f, 706.0f};
     view.mouseDown(bar, {true, false});
-    view.mouseMove({bar.x + 35.0f, bar.y}, {true, false});
-    view.mouseUp({bar.x + 35.0f, bar.y}, {true, false});
+    view.mouseMove({bar.x + 38.0f, bar.y}, {true, false});
+    view.mouseUp({bar.x + 38.0f, bar.y}, {true, false});
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6, "Shift drags a depth bar finely, from where it is");
     view.mouseMove(sourceHandle(1), {});
     const bool shot = renderer.save(view, dir / "18c-lfo-on-lfo.png");
     // Hovered, the dot says what the modulation takes its target through, in the target's units.
-    const Point dot{cardX(0) + 12.0f + 122.0f + 70.0f - 4.0f, 696.0f + 4.0f}; // on LFO 1's depth bar
+    const Point dot{cardX(0) + 12.0f + 116.0f + 76.0f - 4.0f, 696.0f + 4.0f}; // on LFO 1's depth bar
     view.mouseMove(dot, {});
     const bool popup = renderer.save(view, dir / "18d-depth-popup.png");
     view.mouseMove({600.0f, 300.0f}, {});
@@ -3287,13 +3283,13 @@ void run(const std::filesystem::path &dir, float scale) {
             }
         return checked;
     };
-    const bool envWasUnipolar = !polarity(sourceGrip(3), tr(Str::MenuAllBipolar));
+    const bool envWasUnipolar = !polarity(sourceGrip(3), tr(Str::MenuBipolar));
     const bool envBipolar = model.value(paramIndex(1, SourceParam::EnvBipolar)) == 1.0;
     view.mouseMove({600.0f, 300.0f}, {});
     const bool envShot = renderer.save(view, dir / "11f-bipolar-env.png");
-    const bool lfoWasUnipolar = !polarity(sourceGrip(0), tr(Str::MenuAllBipolar));
+    const bool lfoWasUnipolar = !polarity(sourceGrip(0), tr(Str::MenuBipolar));
     const bool lfoBipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0;
-    polarity(sourceGrip(0), tr(Str::MenuAllUnipolar));
+    polarity(sourceGrip(0), tr(Str::MenuUnipolar));
     check(envWasUnipolar && envBipolar && envShot && lfoWasUnipolar && lfoBipolar &&
               model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0,
           "a source's title menu makes it unipolar or bipolar");
@@ -3490,10 +3486,10 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
     renderExample(dir, renderer, "SQ Step Filter", "33-step-filter", 3);
     renderLfoOnLfo(dir, renderer);
-    testSlotPolarity(dir, renderer);
     testMacros(dir, renderer);
     testVelocity(dir, renderer);
     testWireBend(dir, renderer);
+    testModsEmpty(dir, renderer);
     testMods(dir, renderer);
     testMeter(dir, renderer);
     renderNewEffects(dir, renderer);
