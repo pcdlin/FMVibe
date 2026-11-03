@@ -671,59 +671,35 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     model.live = Telemetry{};
     view.poll();
 
-    // The slot list's number takes a typed depth; its scrollbar scrolls the list.
+    // A card lists no modulations: the button under its display counts them and shows them in the MODS view, where
+    // LFO 1's first row is the top one (its middle at y 188). There a row's number takes a typed depth, its depth
+    // bar's menu has Edit depth and its dot bypasses it; back in ROUTING, the modulated knob's menu resumes it.
     for (int k = 0; k < 6; ++k) {
         model.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(k, OpParam::Fine)));
         model.set(slotAmountIndex(0, k), 0.1 * (k + 1));
     }
-    const Point topNumber{cardX(0) + 225.0f, 706.0f};
+    view.poll();
+    const Point modsButton{cardX(0) + 60.0f, 739.0f};
+    view.mouseMove(modsButton, {});
+    const bool buttonShot = renderer.save(view, dir / "17b-card-mods-button.png");
+    click(view, modsButton);
+    check(buttonShot && model.ui.view == RoutingView::Mods, "a source card's button shows its modulations in MODS");
+    const Point topNumber{701.0f, 188.0f};
     doubleClick(view, topNumber);
     type(view, "-25");
     view.typeKey(View::Key::Enter);
     check(std::abs(model.value(slotAmountIndex(0, 0)) + 0.25) < 1e-9, "a slot's number takes a typed depth");
-    view.menuCommand(menuEntry({cardX(0) + 160.0f, 706.0f}, tr(Str::MenuEditDepth))); // on the depth bar
+    view.menuCommand(menuEntry({576.0f, 188.0f}, tr(Str::MenuEditDepth))); // on the depth bar
     type(view, "45");
     view.typeKey(View::Key::Enter);
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.45) < 1e-9, "a depth bar's menu has Edit depth");
-    // A row's dot bypasses its modulation; the modulated knob's menu lets it go again.
-    click(view, {cardX(0) + 21.0f, 706.0f});
+    click(view, {41.0f, 188.0f});
     const bool slotBypassed = model.value(slotBypassIndex(0, 0)) == 1.0;
-    view.mouseMove({400.0f, 300.0f}, {});
-    check(slotBypassed && renderer.save(view, dir / "17b-bypassed-slot.png"), "render a bypassed modulation");
+    view.mouseMove({400.0f, 440.0f}, {});
+    check(slotBypassed && renderer.save(view, dir / "17c-bypassed-slot.png"), "render a bypassed modulation");
+    click(view, kRoutingTab);
     view.menuCommand(menuEntry(kFineKnob, trf(Str::MenuResume, {trf(Str::SourceNameLfo, {"1"})})));
     check(model.value(slotBypassIndex(0, 0)) == 0.0, "a row's dot bypasses its modulation, and the knob's menu resumes it");
-    // A long target's name is drawn smaller to fit before the depth bar, where it would end in an ellipsis: three
-    // dots on the baseline with nothing above them (read off the rendered pixels; a name ending in L looks alike).
-    model.set(slotTargetIndex(0, 1), slotTargetValue(paramIndex(1, OpParam::UnisonDetune)));
-    model.set(slotTargetIndex(0, 2), slotTargetValue(paramIndex(0, FxParam::DelayFeedback)));
-    model.set(slotTargetIndex(0, 3), slotTargetValue(paramIndex(0, FxParam::McHighFreq))); // too long even so
-    view.poll();
-    auto lit = [&](float x, float y) { return (renderer.pixel({x, y}) >> 8 & 255) > 100; };
-    auto endsInEllipsis = [&](float rowY) {
-        float right = 0.0f; // the name's last lit column
-        for (float x = cardX(0) + 30.0f; x < cardX(0) + 126.0f; x += 1.0f)
-            for (float y = rowY - 8.0f; y <= rowY + 8.0f; y += 1.0f)
-                right = lit(x, y) ? x : right;
-        int rows = 0; // lit in its last three columns, the last dot's
-        for (float y = rowY - 8.0f; y <= rowY + 8.0f; y += 1.0f) {
-            bool any = false;
-            for (float x = right - 2.0f; x <= right; x += 1.0f)
-                any = any || lit(x, y);
-            rows += any;
-        }
-        return rows <= 2;
-    };
-    const bool longNames = renderer.save(view, dir / "17c-long-slot-names.png");
-    check(longNames && !endsInEllipsis(730.0f) && !endsInEllipsis(754.0f) && endsInEllipsis(778.0f),
-          "a long target's name is drawn smaller to fit its row, down to a smallest size");
-    for (int k = 1; k < 4; ++k)
-        model.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(k, OpParam::Fine)));
-    view.poll();
-    click(view, {cardX(0) + kCardW - 6.0f, 780.0f}); // the scrollbar's track, below its thumb
-    click(view, {cardX(0) + kCardW - 22.0f, 706.0f}); // the top row's x
-    check(slotTarget(model.value(slotTargetIndex(0, 2))) < 0 && slotTarget(model.value(slotTargetIndex(0, 0))) >= 0,
-          "clicking a slot list's scrollbar scrolls it to the end");
-    view.undo();
 
     // Until a source modulates something, hovering its handle shows a "Drag to assign" tooltip below it (read off
     // the rendered pixels, against the same view with the mouse away).
@@ -1839,14 +1815,34 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     check(scrolledShot && removed && slotIs(0, 2, paramIndex(0, fillers[1])),
           "the wheel scrolls the MODS view's rows, the scrolled-to row's controls under the mouse");
     // Macro 2's handle dropped on LFO 1's depth handle under Op A's Fine knob makes Macro 2 that modulation's aux.
+    // Modulating nothing itself, Macro 2 isn't faint as Macro 3 is, which does nothing (read off the rendered
+    // pixels, the macros' handles 96 px apart).
     click(view, {64.0f, 88.0f}); // back to ROUTING, with the inspector
     const float strip = view.height() - 179.0f;
     drag(view, {252.0f, strip}, {kFineKnob.x, 229.0f});
     view.mouseMove({600.0f, 300.0f}, {});
     const bool ringShot = renderer.save(view, dir / "35d-aux-ring.png");
+    const int auxRing = ringLevel(renderer, {252.0f + 6.0f, strip - 10.0f}, 20.0f);
+    const int idleRing = ringLevel(renderer, {348.0f + 6.0f, strip - 10.0f}, 20.0f);
     check(ringShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == kMaxSources + 1 &&
-              slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0,
-          "a source's handle dropped on a depth handle becomes that modulation's aux");
+              slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0 && auxRing > idleRing + 40,
+          "a source's handle dropped on a depth handle becomes that modulation's aux, and lights as one used");
+    // Hovering that depth handle draws the dashed line to it from LFO 1's handle, on screen on the first card: half
+    // way along the line, bowed to one side, the pixels change (read off the rendered pixels).
+    const Point from = sourceHandle(0), to{kFineKnob.x, 229.0f};
+    const Point d{to.x - from.x, to.y - from.y};
+    const Point middle{(from.x + to.x) * 0.5f + d.y * 0.075f, (from.y + to.y) * 0.5f - d.x * 0.075f};
+    auto aroundMiddle = [&] {
+        std::vector<uint32_t> pixels;
+        for (float dy = -4.0f; dy <= 4.0f; dy += 1.0f)
+            for (float dx = -4.0f; dx <= 4.0f; dx += 1.0f)
+                pixels.push_back(renderer.pixel({middle.x + dx, middle.y + dy}));
+        return pixels;
+    };
+    const std::vector<uint32_t> plain = aroundMiddle();
+    view.mouseMove(to, {});
+    const bool linkShot = renderer.save(view, dir / "35i-depth-handle-link.png");
+    check(linkShot && aroundMiddle() != plain, "a hovered depth handle draws the line from its source's handle");
 }
 
 // Modulations added in the MODS view: the row after the last adds an empty one and opens its source's menu; picking
@@ -1902,6 +1898,15 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     // Its x, at the row's right end, removes it.
     click(view, {1144.0f, y});
     check(model.ui.emptyMods.empty(), "an empty modulation's x removes it");
+    // A card's button, its source modulating nothing (Env 1, on the second card), adds an empty modulation from it.
+    model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
+    view.poll();
+    click(view, {cardX(1) + 60.0f, 771.0f});
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool cardShot = renderer.save(view, dir / "35j-mods-from-card.png");
+    check(cardShot && model.ui.view == RoutingView::Mods &&
+              model.ui.emptyMods == std::vector<std::pair<int, int>>{{1, -1}},
+          "a card's button, its source modulating nothing, adds an empty modulation from it in MODS");
 }
 
 // Eight LFOs on Op A's Fine: under the knob, two depth handles and a "+6" pill, nothing drawn outside the knob's
@@ -2013,7 +2018,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // LFO 2 modulating LFO 1's depth on operator A's Fine: hovering LFO 2's handle draws a dashed line to that
-// depth bar, which has a dot for the modulation, like a matrix cell's.
+// depth bar in the MODS view, which has a dot for the modulation, like a matrix cell's.
 void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -2024,16 +2029,18 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     model.values[slotTargetIndex(1, 0)] = slotTargetValue(slotAmountIndex(0, 0));
     model.values[slotAmountIndex(1, 0)] = 0.5;
     view.poll();
-    // With Shift a depth bar moves from where it is, a tenth as fast: half its width is 10 % then.
-    const Point bar{cardX(0) + 12.0f + 116.0f + 38.0f, 706.0f};
+    // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a tenth as fast; half
+    // its width (204 px from x 474) is 10 % then.
+    click(view, {314.0f, 88.0f});
+    const Point bar{474.0f + 102.0f, 188.0f};
     view.mouseDown(bar, {true, false});
-    view.mouseMove({bar.x + 38.0f, bar.y}, {true, false});
-    view.mouseUp({bar.x + 38.0f, bar.y}, {true, false});
+    view.mouseMove({bar.x + 102.0f, bar.y}, {true, false});
+    view.mouseUp({bar.x + 102.0f, bar.y}, {true, false});
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6, "Shift drags a depth bar finely, from where it is");
     view.mouseMove(sourceHandle(1), {});
     const bool shot = renderer.save(view, dir / "18c-lfo-on-lfo.png");
     // Hovered, the dot says what the modulation takes its target through, in the target's units.
-    const Point dot{cardX(0) + 12.0f + 116.0f + 76.0f - 4.0f, 696.0f + 4.0f}; // on LFO 1's depth bar
+    const Point dot{474.0f + 204.0f - 4.0f, 174.0f + 4.0f}; // on LFO 1's depth bar
     view.mouseMove(dot, {});
     const bool popup = renderer.save(view, dir / "18d-depth-popup.png");
     view.mouseMove({600.0f, 300.0f}, {});
@@ -3312,58 +3319,14 @@ void run(const std::filesystem::path &dir, float scale) {
     view.poll();
     check(renderer.save(view, dir / "11-sources.png"), "render six sources, scrolled");
 
-    // A source lists its used slots four rows at a time; the wheel over the list scrolls it a row.
+    // A source with modulations has the button that shows them in MODS, counting them, under its display.
     view.wheel(kSourcesToggle, 10.0f, {}); // the first card back in view
-    for (int k = 0; k < 6; ++k) {
+    for (int k = 0; k < 5; ++k) {
         model.set(slotTargetIndex(0, kSlots - 1 - k), slotTargetValue(paramIndex(k, OpParam::Fine)));
         model.set(slotAmountIndex(0, kSlots - 1 - k), 0.1 * (k + 1));
     }
-    auto usedOf = [&](int source) {
-        std::vector<int> used;
-        for (int slot = 0; slot < kSlots; ++slot)
-            if (slotTarget(model.value(slotTargetIndex(source, slot))) >= 0)
-                used.push_back(slot);
-        return used;
-    };
-    const std::vector<int> used = usedOf(0);
     view.mouseMove({400.0f, 300.0f}, {});
-    check(used.size() > 4u && renderer.save(view, dir / "11c-slot-list.png"), "render a slot list longer than its card");
-    // A notch glides the list a row along over a few polls, the rows at its ends cut off on the way.
-    const Point firstRow{cardX(0) + 60.0f, 706.0f};
-    view.wheel(firstRow, -1.0f, {});
-    view.poll();
-    view.poll();
-    const bool gliding = renderer.save(view, dir / "11d-slot-list-gliding.png");
-    for (int n = 0; n < 40; ++n)
-        view.poll();
-    click(view, {cardX(0) + kCardW - 22.0f, 706.0f}); // the top row's x
-    const std::vector<int> after = usedOf(0);
-    check(gliding && after.size() == used.size() - 1 && after[0] == used[0] && after[1] == used[2],
-          "the wheel glides a slot list a row along");
-    // Dragging the source's handle outlines the targets on screen, not its rows scrolled out of the list: the
-    // fifth row, under the list at its top, leaves the card's edge and what is below it as they were.
-    view.wheel(firstRow, 1.0f, {});
-    for (int n = 0; n < 40; ++n)
-        view.poll();
-    const Point away{400.0f, 300.0f};
-    auto hiddenRow = [&] {
-        std::vector<uint32_t> line;
-        for (float x = cardX(0) + 4.0f; x < cardX(0) + kCardW - 4.0f; x += 1.0f)
-            for (float y = 793.0f; y < 815.0f; y += 3.0f)
-                line.push_back(renderer.pixel({x, y}));
-        return line;
-    };
-    view.mouseMove(away, {});
-    const bool still = renderer.save(view, dir / "11e-slot-list-scrolled.png");
-    const std::vector<uint32_t> before = hiddenRow();
-    view.mouseDown(sourceHandle(0), {});
-    view.mouseMove(away, {});
-    const bool dragging = renderer.save(view, dir / "11f-slot-list-dragging.png");
-    const std::vector<uint32_t> during = hiddenRow();
-    view.mouseMove(sourceHandle(0), {});
-    view.mouseUp(sourceHandle(0), {});
-    check(still && dragging && before == during && usedOf(0) == after,
-          "a handle's drag doesn't outline the rows scrolled out of its slot list");
+    check(renderer.save(view, dir / "11c-card-mods.png"), "render a card counting its modulations");
 
     // Up to 16: then the add buttons go.
     for (int n = static_cast<int>(shown(model).size()); n < kMaxSources; ++n)

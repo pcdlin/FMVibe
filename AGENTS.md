@@ -133,11 +133,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the MODS tab: a row per modulation, its Amount bar and aux's × changing it, and the switch after its source's
     name the source's polarity; + Aux's, the target's (three levels deep, into an operator's params) and the source's
     cascading menus picking an aux, a target and a source, the modulation keeping its depth, Amount and aux as it
-    moves, undoably; the wheel scrolling the rows; and a source's handle dropped on a depth handle becoming that
-    modulation's aux, ringed in its color;
+    moves, undoably; the wheel scrolling the rows; a row's typed depth, Edit depth and bypass dot; and a source's
+    handle dropped on a depth handle becoming that modulation's aux, ringed in its color, the macro then no longer
+    faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
+    (read off the rendered pixels);
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
-    its × removes it;
+    its × removes it; a source card's button showing its modulations in MODS, or with none adding an empty one
+    from it;
   - bending a wire by dragging it sideways (lit under the mouse, its label following its middle), either way,
     undoably, back to its first bow by a double-click or Reset Bend, and its bend going with it when it is
     disconnected;
@@ -201,17 +204,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, and
     the LFO shape editor hiding the inspector;
   - an LFO's shape list, the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
-    pixels), the list of more waves (Organ among them), the slot list's scrollbar and its long names drawn smaller to
-    fit (read off the rendered pixels), the shape editor's grid, snapping and reset button, and scrolling the source cards by holding a
-    dragged handle at the panel's edge;
+    pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, and
+    scrolling the source cards by holding a dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
   - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
     nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
     bypassing, setting the depth of and removing its modulations and closing at a click elsewhere, opening under a
     macro's handle held over the pill and taking it as a row's aux, and a source's line ending at the pill holding
     its handle;
-  - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels), and a
-    dragged source handle outlining no rows scrolled out of a slot list (read off the rendered pixels);
+  - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
     pixels).
 

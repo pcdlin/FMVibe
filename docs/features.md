@@ -425,8 +425,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
     Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the count (how many
     are bypassed, at 0 % and empty with it); then the columns' names. A row has, from its left:
-    - the bypass dot, as on a source's row (a macro's, the note source's, the mod wheel's and velocity's
-      modulations can't be bypassed, and their dot is only drawn);
+    - the bypass dot, which switches the modulation off and on again (a macro's, the note source's, the mod wheel's
+      and velocity's modulations can't be bypassed, and their dot is only drawn);
     - the **source** and the **target**, and between them, after the source's name on the first of its rows, the
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
       while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
@@ -597,6 +597,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     view can be reached. Hovering the handle draws a dashed line to each of its targets on screen, ending at the
     small dot it has there (see below), with a ring round the dot; while the source has no targets, it shows a
     "Drag to assign" tooltip instead, as the macros', the note source's, the mod wheel's and velocity's handles do.
+  - A card doesn't list its modulations: under its display, a button counts them, with **MODS ›** at its right, and
+    shows them in the MODS view, scrolled to the source's first row. While the source modulates nothing, the card
+    says how to add a modulation instead, over the button **Add one in MODS**, which adds an empty modulation from
+    the source there (see the MODS view) with its target's menu open.
     A random
     LFO has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
     while notes play it shows the LFO's own last four cycles instead, swept across: each new cycle takes the next
@@ -615,8 +619,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     for the modulation range, plus a small dot of the same color under the
     knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click or
     right-click it to remove the modulation. While the dot is under the mouse or dragged, its range (the ring, or
-    the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap. A source can modulate another source's depth too (drop its handle on
-    a depth bar in that source's list): the bar then has the dot in its top right corner, a strip under it shows
+    the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,
+    and while its source's handle is on screen, a dashed line runs from the handle to the dot, as when the handle
+    is hovered. A source can modulate another source's depth too (drop its handle on
+    a depth bar in the MODS view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 30
     or 32 px knob 3, under a 34 px one 4; on a wire label 5, a matrix cell 4, a depth bar 11), in the order the
@@ -625,8 +631,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
     it, short of room below), in the accent color while it is open: the target's name and every modulation of it,
-    a row each as on a source's card, with the source's name in place of the target's (its bypass dot, depth bar
-    and remove; hovering a row draws its range wider). A click anywhere else closes it, but not
+    a row each: its bypass dot, the source's name, its depth bar and its remove (hovering a row draws its range
+    wider; a source's name too long for its row is drawn smaller to fit, down to about 9 px, and past that ends in
+    "…"). A click anywhere else closes it, but not
     on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a pill opens
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
@@ -636,17 +643,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color. A
     modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
     which an aux lets it go at most.
-  - **Bypass**: the dot at the start of each target's row in the source's list switches that modulation off and
-    on again, keeping its target and depth; so do **Bypass** / **Resume** in the right-click menus of the row, the
+  - **Bypass**: the dot at the start of a modulation's row in the MODS view or a pill's list switches that
+    modulation off and on again, keeping its target and depth; so do **Bypass** / **Resume** in the right-click
+    menus of the row, the
     knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed. Bypasses
     are saved with the patch (as hidden params, like the drawn shapes).
   - A modulation's ring on a knob, and the bar on a label, cell or depth bar, show the range it swings through: both
     ways of the set value while its source is bipolar, or one way while it is unipolar.
-  - Each source lists its targets with a depth slider and a remove button, four at a time; with more, a thin
-    scrollbar beside them scrolls the list smoothly (drag its thumb or click its track), and so does the mouse
-    wheel over the names, gliding a row per notch (a trackpad moves it by parts of a row); the rows at the list's
-    ends are cut off on the way. A target's name too long for its row is drawn smaller to fit, down to about 9 px;
-    past that it ends in "…".
   - While notes play, a white dot on each modulated knob shows where the newest voice currently is; with no note
     playing, it shows where the macros and the mod wheel take it, as they apply with or without notes.
   - A modulated route shows it too: its wire (or its line to OUT) has a thin core in the source's color and
@@ -681,8 +684,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   the name to change it (Enter
   keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
   Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. Until a
-  macro modulates something, its handle, its knob's arc and its name are faint, and hovering the handle shows a
-  "Drag to assign" tooltip. The right-click menu of its knob,
+  macro modulates something or scales a modulation as its aux, its handle, its knob's arc and its name are faint,
+  and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the mod wheel's and
+  velocity's). The right-click menu of its knob,
   handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
   macro's arc starts from the knob's middle, where it moves nothing, and a double-click on its
   knob (or Reset in the knob's menu) sets it back there, to 50 %, where a unipolar one's goes back to 0.

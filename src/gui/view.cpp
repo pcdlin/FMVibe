@@ -397,52 +397,11 @@ std::vector<int> View::usedSlots(int source) const {
     return slots;
 }
 
-float View::slotEnd(int source) const {
-    return static_cast<float>(std::max(static_cast<int>(usedSlots(source).size()) - kVisibleSlots, 0));
-}
-
-float View::slotFirst(int source) const {
-    return std::clamp(slotGlide_[source], 0.0f, slotEnd(source));
-}
-
-void View::scrollSlots(int source, float first, bool glide) {
-    slotScroll_[source] = std::clamp(first, 0.0f, slotEnd(source));
-    if (!glide)
-        slotGlide_[source] = slotScroll_[source];
-}
-
-void View::revealSlot(int source, int slot) {
-    if (isStripSource(source)) // a macro or the note source has no list of its slots to scroll
-        return;
-    const std::vector<int> slots = usedSlots(source);
-    const float row = static_cast<float>(std::find(slots.begin(), slots.end(), slot) - slots.begin());
-    const float first = slotFirst(source);
-    scrollSlots(source, row < first ? row : (row + 1.0f > first + kVisibleSlots ? row + 1.0f - kVisibleSlots : first),
-                false);
-}
-
-bool View::glideSlots() {
-    // The shown place closes most of the way to where the wheel sent the list each poll, then settles.
-    bool moved = false;
-    for (int s = 0; s < kMaxSources; ++s) {
-        const float to = std::clamp(slotScroll_[s], 0.0f, slotEnd(s));
-        const float from = slotFirst(s);
-        if (std::abs(to - from) < 0.005f) {
-            moved = moved || slotGlide_[s] != to;
-            slotGlide_[s] = to;
-            continue;
-        }
-        slotGlide_[s] = from + (to - from) * 0.35f;
-        moved = true;
-    }
-    return moved;
-}
-
-Rect View::slotThumb(int source, float card) const {
-    const Rect track = slotScrollTrack(card);
-    const int rows = static_cast<int>(usedSlots(source).size());
-    const float h = track.h * kVisibleSlots / std::max(rows, kVisibleSlots);
-    return {track.x, track.y + (track.h - h) * slotFirst(source) / std::max(slotEnd(source), 1.0f), track.w, h};
+bool View::sourceUsed(int source) const {
+    if (!usedSlots(source).empty())
+        return true;
+    const std::vector<Assignment> all = assignments();
+    return std::any_of(all.begin(), all.end(), [&](const Assignment &m) { return m.aux == source; });
 }
 
 void View::assign(int source, int target) {
@@ -469,7 +428,6 @@ void View::assign(int source, int target) {
     if (!isStripSource(source))
         changes.push_back({slotBypassIndex(source, free), 0.0});
     editMany(changes);
-    revealSlot(source, free);
     // A modulated route opens and closes with the modulation, so its wire shows, even at 0 %.
     std::vector<int> &kept = controller_.layout().keptRoutes;
     if (isRouteParam(target) && std::find(kept.begin(), kept.end(), target) == kept.end()) {
@@ -935,7 +893,7 @@ bool View::modFocused(const Assignment &m) const {
 }
 
 bool View::sourceLive(int source) const {
-    return isStripSource(source) ? !usedSlots(source).empty() : sourceOn(source);
+    return isStripSource(source) ? sourceUsed(source) : sourceOn(source);
 }
 
 float View::sourceScroll() const {
@@ -1018,7 +976,6 @@ void View::addSource(SourceType type, int copyOf) {
     if (shapeEditor_ == source) // left open for a source the place held before
         shapeEditor_ = -1;
     editMany(changes);
-    slotScroll_[source] = slotGlide_[source] = copyOf >= 0 ? slotScroll_[copyOf] : 0.0f;
     if (controller_.layout().sourcesCollapsed) {
         controller_.layout().sourcesCollapsed = false;
         controller_.layoutChanged();
@@ -1162,8 +1119,6 @@ bool View::poll() {
     if (flashTicks_ > 0 && --flashTicks_ == 0)
         changed = true;
     if (edgeScroll())
-        changed = true;
-    if (glideSlots())
         changed = true;
     if (glideMods())
         changed = true;
@@ -1873,24 +1828,8 @@ std::vector<View::Widget> View::widgets() const {
             for (int i = 0; i < 5; ++i)
                 knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
         }
-        // The rows on screen, at least in part; cut off at the list's ends (their clip is set below).
-        const std::vector<int> slots = usedSlots(s);
-        const float first = slotFirst(s);
-        const int top = static_cast<int>(std::floor(first));
-        const size_t rowsStart = list.size();
-        for (int row = top; row < std::min(top + kVisibleSlots + 1, static_cast<int>(slots.size())); ++row) {
-            const Rect r = slotRow(card, static_cast<float>(row) - first);
-            add(Kind::SlotBypass, {r.x + 1.0f, r.y, 16.0f, r.h}, slotBypassIndex(s, slots[row]), s, slots[row]);
-            add(Kind::SlotBar, {r.x + 116.0f, r.y, 76.0f, r.h}, slotAmountIndex(s, slots[row]), s, slots[row]);
-            add(Kind::ValueText, {r.x + 194.0f, r.y, 38.0f, r.h}, slotAmountIndex(s, slots[row]), s, slots[row]);
-            add(Kind::SlotRemove, {r.right() - 20.0f, r.y, 20.0f, r.h}, -1, s, slots[row]);
-        }
-        for (size_t i = rowsStart; i < list.size(); ++i)
-            list[i].clip = slotClip(card, sourceCardClip());
-        if (slots.size() > static_cast<size_t>(kVisibleSlots)) {
-            const Rect track = slotScrollTrack(card);
-            add(Kind::SlotScroll, {track.x - 3.0f, track.y - 2.0f, track.w + 6.0f, track.h + 4.0f}, -1, s);
-        }
+        // Its modulations are listed in the MODS view, which the button under its display shows.
+        add(Kind::SourceMods, sourceModsButton(card, !usedSlots(s).empty()), -1, s);
     }
     if (const float place = sourceOffset(cardSources, cardSources.size()) - sourceScroll();
         sourceShadow() && !collapsed && onScreen(place, kVisibleCards, kSourceShadowSpan)) {
@@ -1900,7 +1839,7 @@ std::vector<View::Widget> View::widgets() const {
             static_cast<int>(SourceType::Env));
     }
     for (size_t i = sourceCardsStart; i < list.size(); ++i)
-        if (list[i].clip.w <= 0.0f) // the slot rows have theirs
+        if (list[i].clip.w <= 0.0f)
             list[i].clip = sourceCardClip();
 
     // Depth handles in the gap under each modulated knob, and small ones in the top right corner of each
@@ -2110,7 +2049,7 @@ std::vector<View::Widget> View::widgets() const {
                         static_cast<int>(k), static_cast<int>(i));
         }
     }
-    // A pill's open list, over everything: its rows' bypass dots, depth bars and removes work as on a source's card.
+    // A pill's open list, over everything: its rows' bypass dots, depth bars and removes work as in the MODS view.
     if (modList_) {
         std::vector<Assignment> rows;
         forEachMod(modList_->target, [&](const Assignment &m) { rows.push_back(m); });
@@ -2314,6 +2253,8 @@ void View::paint(Canvas &c) {
     else if (hover_ && (hover_->kind == Kind::SourceHandle || hover_->kind == Kind::MacroHandle) &&
              drag_.kind == DragKind::None)
         paintSourceLinks(c, list, hover_->a);
+    else if (hover_ && hover_->kind == Kind::ModDot && drag_.kind == DragKind::None)
+        paintSourceLinks(c, list, hover_->a, hover_->b);
     paintHoverTags(c, list);
     if (cascade_ && modsWide())
         paintCascade(c);
@@ -4406,31 +4347,11 @@ void View::paintSource(Canvas &c, float card, int s) {
     else
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
 
-    const std::vector<int> slots = usedSlots(s);
-    if (slots.empty()) {
+    // With nothing modulated yet, how to modulate something, over the button (a widget) that shows its modulations.
+    if (usedSlots(s).empty()) {
         c.text({p.x + 16.0f, p.y + 174.0f, p.w - 32.0f, 18.0f}, tr(Str::HintNoTargets), 11.0f, kFaint);
         c.text({p.x + 16.0f, p.y + 192.0f, p.w - 32.0f, 18.0f}, tr(Str::HintNoTargetsThen), 11.0f, kFaint);
-        return;
     }
-    const int rows = static_cast<int>(slots.size());
-    const float first = slotFirst(s);
-    const int top = static_cast<int>(std::floor(first));
-    c.pushClip(slotClip(card, sourceCardClip()));
-    for (int row = top; row < std::min(top + kVisibleSlots + 1, rows); ++row) {
-        // The host can clear a target from the audio thread since usedSlots() looked: skip the row this frame.
-        const int target = slotTarget(value(slotTargetIndex(s, slots[row])));
-        if (target < 0)
-            continue;
-        const Rect r = slotRow(card, static_cast<float>(row) - first);
-        c.fillRect(r, kRaised, 5.0f);
-        // A bypassed row is dimmed; its dot (the bypass switch, a widget) is hollow. A long name is drawn smaller to
-        // fit (see slotNameSize()).
-        const std::string name = paramName(target);
-        c.text({r.x + 18.0f, r.y, kSlotNameW, r.h}, name, slotNameSize(c, name),
-               slotBypassed(s, slots[row]) ? kFaint : kText, Align::Left);
-    }
-    c.popClip();
-    // More rows than fit: the wheel over the list scrolls them, and so does the bar beside them (a widget).
 }
 
 void View::paintNode(Canvas &c, const Widget &w) {
@@ -4790,16 +4711,25 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.line({center.x - 3.5f, center.y + 3.5f}, {center.x + 3.5f, center.y - 3.5f}, color, 1.5f);
         break;
     }
-    case Kind::SlotScroll: {
-        const float card = cardOf(w.a);
-        if (card == kOffScreen)
+    case Kind::SourceMods: {
+        // How many modulations the source has, and MODS with a chevron at the right; with none, an invitation to add
+        // one there.
+        const size_t count = usedSlots(w.a).size();
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
+        c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, 6.0f);
+        const Point m{w.rect.right() - 12.0f, w.rect.center().y};
+        const Point chevron[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.0f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
+        c.polyline(chevron, 3, hovered ? kText : kDim, 1.4f);
+        if (count == 0) {
+            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardAddInMods), 11.0f,
+                   hovered ? kText : kDim, Align::Left);
             break;
-        // Thinner away from the mouse, like the panels' scrollbars.
-        const float thin = hovered || active ? 0.0f : 0.5f;
-        const Rect track = slotScrollTrack(card), thumb = slotThumb(w.a, card);
-        c.fillRect({track.x + thin, track.y, track.w - 2.0f * thin, track.h}, kBorder, 1.5f - thin);
-        c.fillRect({thumb.x + thin, thumb.y, thumb.w - 2.0f * thin, thumb.h},
-                   kSourceColors[w.a].alpha(hovered || active ? 1.0f : 0.7f), 1.5f - thin);
+        }
+        c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 80.0f, w.rect.h},
+               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), 11.0f, kText,
+               Align::Left);
+        c.text({w.rect.right() - 80.0f, w.rect.y, 58.0f, w.rect.h}, tr(Str::ViewMods), 10.5f, hovered ? kText : kDim,
+               Align::Right, true);
         break;
     }
     case Kind::ValueText:
@@ -5626,7 +5556,7 @@ void View::paintTooltip(Canvas &c) {
         return;
     // A source's handle tells how to use it only until it modulates something.
     const bool handle = hover_->kind == Kind::MacroHandle || hover_->kind == Kind::SourceHandle;
-    if (handle && !usedSlots(hover_->a).empty())
+    if (handle && sourceUsed(hover_->a))
         return;
     const int param = hover_->param;
     const FxParam field = fxFieldOf(param);
@@ -5833,7 +5763,7 @@ void View::paintModList(Canvas &c, const Widget &w) {
     c.text({title.right() - countW, title.y, countW, title.h}, count, 10.5f, kDim, Align::Right);
 }
 
-// A row: as on a source's card, with the source's name (dimmed while bypassed or off) in place of the target's.
+// A row: its bypass dot, the source's name (dimmed while bypassed or off), its depth bar and its remove.
 void View::paintModListRow(Canvas &c, const Widget &w) {
     const bool lit = hover_ && hover_->popup && hover_->a == w.a && hover_->b == w.b && drag_.kind == DragKind::None;
     c.fillRect(w.rect, lit ? kTrack : kRaised, 5.0f);
@@ -5875,7 +5805,7 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         }
         if (!droppable(w, source))
             continue;
-        // A target scrolled out of its card or slot list isn't outlined; one partly out is outlined as far as it
+        // A target scrolled out of its card or list isn't outlined; one partly out is outlined as far as it
         // shows, with room left round the clip for the ring drawn outside it.
         const bool clipped = w.clip.w > 0.0f;
         if (clipped && (w.rect.right() <= w.clip.x || w.rect.x >= w.clip.right() || w.rect.bottom() <= w.clip.y ||
@@ -5898,10 +5828,10 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
     c.fillCircle(drag_.now, 3.0f, color);
 }
 
-void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source) {
+void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source, int slot) {
     std::vector<int> targets, bypassed;
     for (const Assignment &m : assignments())
-        if (m.source == source)
+        if (m.source == source && (slot < 0 || m.slot == slot))
             (m.bypassed ? bypassed : targets).push_back(m.target);
     const auto handle = std::find_if(list.begin(), list.end(),
                                      [&](const Widget &w) {
@@ -5911,6 +5841,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
     if ((targets.empty() && bypassed.empty()) || handle == list.end())
         return;
     const Point from = handle->rect.center();
+    if (handle->clip.w > 0.0f && !handle->clip.contains(from)) // its card scrolled out of view
+        return;
     for (const Widget &w : list) {
         const bool target = w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel ||
                             w.kind == Kind::GridCell || w.kind == Kind::SlotBar; // the last: another source's depth
@@ -5922,7 +5854,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         // of a label, cell or depth bar. A param can show twice (an output's knob and its label on the bus), and
         // each has its dots, so the dot is the one on this widget.
         const auto dot = std::find_if(list.begin(), list.end(), [&](const Widget &d) {
-            return d.kind == Kind::ModDot && d.a == source && w.rect.inset(-2.0f).contains(d.rect.center()) &&
+            return d.kind == Kind::ModDot && d.a == source && (slot < 0 || d.b == slot) &&
+                   w.rect.inset(-2.0f).contains(d.rect.center()) &&
                    slotTarget(value(slotTargetIndex(source, d.b))) == w.param;
         });
         // A dot the widget had no room for is in its pill: the line ends there.
@@ -6177,17 +6110,6 @@ void View::applyDrag(Point p) {
         const int next = w.b + 1 == shapePointCount(shape) ? 0 : w.b + 1;
         const double rise = value(shapeIndex(shape, next, PointField::Y)) - value(shapeIndex(shape, w.b, PointField::Y));
         set(w.param, drag_.startValue - (rise < 0.0 ? -1.0 : 1.0) * (drag_.start.y - p.y) / 100.0);
-        break;
-    }
-    case DragKind::SlotScroll: {
-        // The rows follow the thumb, a whole row at a time.
-        const int rows = static_cast<int>(usedSlots(w.a).size());
-        const float card = cardOf(w.a);
-        if (card == kOffScreen || rows <= kVisibleSlots)
-            break;
-        const float room = slotScrollTrack(card).h - slotThumb(w.a, card).h;
-        scrollSlots(w.a, static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * (rows - kVisibleSlots),
-                    false); // the rows follow the thumb
         break;
     }
     case DragKind::Scroll: {
@@ -6506,12 +6428,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         layout.selectedNode = w.a;
         break;
     case Kind::ViewTab:
-        layout.view = static_cast<RoutingView>(w.a);
-        cascade_.reset();
-        shapeEditor_ = -1; // the tabs take the panels back from the shape and partial editors
-        partialEditor_ = -1;
-        fxMenuOpen_ = false;
-        listMenu_ = -1;
+        showView(static_cast<RoutingView>(w.a));
         break;
     case Kind::OpTab:
         layout.opTab = static_cast<InspectorTab>(w.a);
@@ -6731,21 +6648,9 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SourcePolarity:
         setSourcePolarity(w.a, !sourceBipolar(w.a));
         break;
-    case Kind::SlotScroll: {
-        // On the thumb, drag it; elsewhere on the track, the thumb jumps to center on the click and can be dragged on.
-        const float card = cardOf(w.a);
-        const int rows = static_cast<int>(usedSlots(w.a).size());
-        if (card == kOffScreen || rows <= kVisibleSlots)
-            break;
-        const Rect track = slotScrollTrack(card);
-        const Rect thumb = slotThumb(w.a, card);
-        if (p.y < thumb.y || p.y >= thumb.bottom()) {
-            scrollSlots(w.a, (p.y - thumb.h * 0.5f - track.y) / (track.h - thumb.h) * (rows - kVisibleSlots), false);
-        }
-        drag_.kind = DragKind::SlotScroll;
-        drag_.startValue = slotFirst(w.a);
+    case Kind::SourceMods:
+        showSourceMods(w.a);
         break;
-    }
     case Kind::ValueText:
         break; // double-click types a value
     case Kind::WaveMore:
@@ -6887,7 +6792,6 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::ModWheel:
     case DragKind::BendWheel:
     case DragKind::Scroll:
-    case DragKind::SlotScroll:
     case DragKind::TextSelect:
     case DragKind::Bend: // each move set it already
     case DragKind::ModsScroll:
@@ -6943,7 +6847,6 @@ void View::finishDrag() {
     case DragKind::FxMove:
     case DragKind::SourceMove:
     case DragKind::Scroll:
-    case DragKind::SlotScroll:
     case DragKind::TextSelect:
     case DragKind::None:
         break;
@@ -7101,19 +7004,6 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         if (whole != 0)
             stepShapeGrid(hit->a, whole);
         return;
-    }
-    // Over a source's slot list (but not on a depth bar), a notch scrolls it a row, gliding there; a
-    // trackpad's smaller steps move it by parts of a row.
-    if ((!hit || hit->param < 0) && steps != 0.0f) {
-        for (int s : sources()) {
-            const float card = cardOf(s);
-            if (card == kOffScreen || sourceFolded(s) || !slotList(card).contains(p) || !sourceCardClip().contains(p) ||
-                usedSlots(s).size() <= static_cast<size_t>(kVisibleSlots))
-                continue;
-            // From where it is headed, clamped, so notches add up but scrolling past an end doesn't pile up.
-            scrollSlots(s, std::clamp(slotScroll_[s], 0.0f, slotEnd(s)) - steps, true);
-            return;
-        }
     }
     if ((!hit || hit->param < 0) && modPanel(controller_.layout().sourcesCollapsed).contains(p) && steps != 0.0f) {
         setScroll(ScrollArea::Sources, sourceScroll() - steps * 0.4f);

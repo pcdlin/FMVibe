@@ -216,41 +216,23 @@ inline Point randomKnob(float card, int knob) {
     return {display.right() + 25.0f + knob * 50.0f, display.y + 15.0f};
 }
 
-// The used slots, kVisibleSlots rows at a time; `row` counts from the top of the list, fractions while it
-// scrolls and the rows at its ends are cut off.
-constexpr int kVisibleSlots = 4;
-constexpr float kSlotNameW = 96.0f; // the target's name, between the bypass dot and the depth bar
+// A row of a pill's list: the target's name, between the bypass dot and the depth bar.
+constexpr float kSlotNameW = 96.0f;
 
 // The "+n" pill that takes the place of the depth handles a knob, label or cell has no room for: under a knob, and
-// smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation, laid out as
-// a source card's rows are, the source's name in place of the target's.
+// smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation: its bypass
+// dot, the source's name, its depth bar with its value and its remove.
 constexpr float kModPill = 12.0f, kModPillWide = 15.0f, kModPillH = 9.0f;
 constexpr float kModPillCompact = 11.0f, kModPillWideCompact = 14.0f, kModPillCompactH = 8.0f;
 constexpr float kModListPad = 6.0f;
 constexpr float kModListTitleH = 24.0f;
-constexpr float kModListRowStep = 24.0f; // a row is 20 px high, as on a card
-inline Rect slotRow(float card, float row) {
+constexpr float kModListRowStep = 24.0f; // a row is 20 px high
+
+// Under a source's display, the button that shows its modulations in the MODS view: in the middle of the room under
+// the display while it has modulations, and under the hint on how to add one while it has none.
+inline Rect sourceModsButton(float card, bool any) {
     const Rect p = sourceCard(card);
-    return {p.x + 12.0f, p.y + 160.0f + row * 24.0f, p.w - 24.0f, 20.0f};
-}
-
-// Where the rows go, and the scrollbar beside them when there are more rows than fit.
-inline Rect slotList(float card) {
-    const Rect first = slotRow(card, 0);
-    return {first.x, first.y, first.w + 10.0f, slotRow(card, kVisibleSlots - 1).bottom() - first.y};
-}
-
-inline Rect slotScrollTrack(float card) {
-    const Rect list = slotList(card);
-    return {list.right() - 6.0f, list.y + 2.0f, 3.0f, list.h - 4.0f};
-}
-
-// Where the rows of the list show: within the list and within the row of cards.
-inline Rect slotClip(float card, Rect cards) {
-    const Rect list = slotList(card);
-    const float x = std::max(list.x - 2.0f, cards.x), y = std::max(list.y, cards.y);
-    const float right = std::min(list.right(), cards.right()), bottom = std::min(list.bottom(), cards.bottom());
-    return {x, y, std::max(right - x, 0.0f), std::max(bottom - y, 0.0f)};
+    return {p.x + 12.0f, p.y + (any ? 190.0f : 222.0f), p.w - 24.0f, 26.0f};
 }
 
 // Title row: handle and name (the row drags the card), then (LFOs) SYNC, the power switch and the remove cross at the right.

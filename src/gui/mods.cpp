@@ -168,7 +168,7 @@ void View::setAux(int source, int slot, int aux) {
     edit(slotAuxIndex(source, slot), slotAuxValue(aux == source ? -1 : aux));
 }
 
-void View::addEmptyMod() {
+void View::addEmptyMod(int source) {
     std::vector<std::pair<int, int>> &empty = controller_.layout().emptyMods;
     if (static_cast<int>(empty.size()) >= kMaxEmptyMods) {
         flash(trf(Str::MsgEmptyModsFull, {std::to_string(kMaxEmptyMods)}));
@@ -176,13 +176,36 @@ void View::addEmptyMod() {
     }
     {
         const UndoScope step(controller_);
-        empty.push_back({-1, -1});
+        empty.push_back({source, -1});
         controller_.layoutChanged();
     }
     const int row = static_cast<int>(empty.size()) - 1;
     scrollMods(modsEnd(), false);
-    const float at = static_cast<float>(assignments().size() + row) - modsFirst();
-    openCascade(CascadeKind::Source, -1, emptyModSlot(row), modsCell(modsRow(at), kModsSource));
+    const Rect r = modsRow(static_cast<float>(assignments().size() + row) - modsFirst());
+    if (source < 0)
+        openCascade(CascadeKind::Source, -1, emptyModSlot(row), modsCell(r, kModsSource));
+    else
+        openCascade(CascadeKind::Target, source, emptyModSlot(row), modsCell(r, kModsTarget));
+}
+
+void View::showView(RoutingView view) {
+    controller_.layout().view = view;
+    cascade_.reset();
+    shapeEditor_ = -1;
+    partialEditor_ = -1;
+    fxMenuOpen_ = false;
+    listMenu_ = -1;
+}
+
+void View::showSourceMods(int source) {
+    showView(RoutingView::Mods);
+    const std::vector<Assignment> rows = modsRows();
+    for (size_t row = 0; row < rows.size(); ++row)
+        if (rows[row].source == source) { // its first row at the top, as far as the rows go
+            scrollMods(static_cast<float>(row), false);
+            return;
+        }
+    addEmptyMod(source);
 }
 
 void View::fillEmptyMod(int row, int source, int target) {
