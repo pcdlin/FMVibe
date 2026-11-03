@@ -482,8 +482,6 @@ STR(HintVelocityCurve, "across: velocity  ·  up: output  ·  double-click: add 
                        "Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
 STR(HintPartials, "drag across the bars to draw  ·  double-click a bar for none")
 STR(HintNoSources, "No modulators yet.")
-STR(HintNoTargets, "Drag the handle onto any knob,") // on a source's card, over two lines
-STR(HintNoTargetsThen, "wire label or matrix cell")
 
 // The matrix's legend.
 STR(LegendFm, "Operator modulates operator (FM)")

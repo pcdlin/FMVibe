@@ -1829,7 +1829,7 @@ std::vector<View::Widget> View::widgets() const {
                 knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
         }
         // Its modulations are listed in the MODS view, which the button under its display shows.
-        add(Kind::SourceMods, sourceModsButton(card, !usedSlots(s).empty()), -1, s);
+        add(Kind::SourceMods, sourceModsButton(card), -1, s);
     }
     if (const float place = sourceOffset(cardSources, cardSources.size()) - sourceScroll();
         sourceShadow() && !collapsed && onScreen(place, kVisibleCards, kSourceShadowSpan)) {
@@ -4346,12 +4346,7 @@ void View::paintSource(Canvas &c, float card, int s) {
                  s);
     else
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
-
-    // With nothing modulated yet, how to modulate something, over the button (a widget) that shows its modulations.
-    if (usedSlots(s).empty()) {
-        c.text({p.x + 16.0f, p.y + 174.0f, p.w - 32.0f, 18.0f}, tr(Str::HintNoTargets), 11.0f, kFaint);
-        c.text({p.x + 16.0f, p.y + 192.0f, p.w - 32.0f, 18.0f}, tr(Str::HintNoTargetsThen), 11.0f, kFaint);
-    }
+    // Under the display, the button that shows its modulations in the MODS view (a widget).
 }
 
 void View::paintNode(Canvas &c, const Widget &w) {

@@ -158,8 +158,8 @@ constexpr Color kMeterRed = Color::hex(0xEF4444);
 // param to modulate it, click it to bring its card into view) and the buttons
 // that add sources, then the sources' cards, kVisibleCards at a time, in the
 // order they show (UiLayout::sourceOrder).
-// Open, tall enough for a card's four slot rows to end 8 px above its bottom.
-constexpr Rect kModPanel{16.0f, kPanelsTop + 372.0f + 16.0f, 1168.0f, 322.0f};
+// Open, tall enough for a card's button under its display to end 12 px above its bottom.
+constexpr Rect kModPanel{16.0f, kPanelsTop + 372.0f + 16.0f, 1168.0f, 258.0f};
 constexpr float kModBarH = 42.0f; // the title row: all that shows while collapsed
 constexpr int kVisibleCards = 4;
 constexpr float kCardGap = 12.0f;
@@ -228,11 +228,10 @@ constexpr float kModListPad = 6.0f;
 constexpr float kModListTitleH = 24.0f;
 constexpr float kModListRowStep = 24.0f; // a row is 20 px high
 
-// Under a source's display, the button that shows its modulations in the MODS view: in the middle of the room under
-// the display while it has modulations, and under the hint on how to add one while it has none.
-inline Rect sourceModsButton(float card, bool any) {
+// Under a source's display, at the card's foot, the button that shows its modulations in the MODS view.
+inline Rect sourceModsButton(float card) {
     const Rect p = sourceCard(card);
-    return {p.x + 12.0f, p.y + (any ? 190.0f : 222.0f), p.w - 24.0f, 26.0f};
+    return {p.x + 16.0f, p.y + 160.0f, p.w - 32.0f, 24.0f};
 }
 
 // Title row: handle and name (the row drags the card), then (LFOs) SYNC, the power switch and the remove cross at the right.

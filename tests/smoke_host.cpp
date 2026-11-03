@@ -2233,8 +2233,8 @@ int main(int argc, char **argv) {
 
         uint32_t adjustedWidth = 900, adjustedHeight = 100;
         gui->adjust_size(plugin, &adjustedWidth, &adjustedHeight);
-        // The view is 1200 x 1038: three quarters of that, rounded.
-        check(adjustedWidth == 900 && adjustedHeight == 779 && gui->set_size(plugin, adjustedWidth, adjustedHeight),
+        // The view is 1200 x 974: three quarters of that, rounded.
+        check(adjustedWidth == 900 && adjustedHeight == 731 && gui->set_size(plugin, adjustedWidth, adjustedHeight),
               "resizing keeps the aspect ratio");
 
         // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (204, 32) in view units.

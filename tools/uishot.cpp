@@ -228,9 +228,9 @@ constexpr Point kOpFTab{1037.0f, 124.0f};
 constexpr Point kSourcesToggle{60.0f, 513.0f};
 
 // The modulation panel: chips and add buttons in its title row, then four cards, 277 wide (and after them the
-// dashed cards that add sources, 125 wide), at screen places 0..3, fractions while scrolled.
+// dashed cards that add sources, 93 wide), at screen places 0..3, fractions while scrolled.
 constexpr float kCardW = 277.0f;
-constexpr float kSourceShadowSpan = (125.0f + 12.0f) / (kCardW + 12.0f);
+constexpr float kSourceShadowSpan = (93.0f + 12.0f) / (kCardW + 12.0f);
 float cardX(float card) {
     return 28.0f + card * (kCardW + 12.0f);
 }
@@ -679,7 +679,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(slotAmountIndex(0, k), 0.1 * (k + 1));
     }
     view.poll();
-    const Point modsButton{cardX(0) + 60.0f, 739.0f};
+    const Point modsButton{cardX(0) + 60.0f, 708.0f};
     view.mouseMove(modsButton, {});
     const bool buttonShot = renderer.save(view, dir / "17b-card-mods-button.png");
     click(view, modsButton);
@@ -1901,7 +1901,7 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     // A card's button, its source modulating nothing (Env 1, on the second card), adds an empty modulation from it.
     model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
     view.poll();
-    click(view, {cardX(1) + 60.0f, 771.0f});
+    click(view, {cardX(1) + 60.0f, 708.0f});
     view.mouseMove({600.0f, 440.0f}, {});
     const bool cardShot = renderer.save(view, dir / "35j-mods-from-card.png");
     check(cardShot && model.ui.view == RoutingView::Mods &&
@@ -3228,10 +3228,10 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // Four sources and the dashed cards, less than a card more than fit: dragged all the way, the scrollbar's thumb
     // reaches the track's right end (read off the rendered pixels).
-    drag(view, {485.0f, 805.0f}, {485.0f + 500.0f, 805.0f});
+    drag(view, {485.0f, 741.0f}, {485.0f + 500.0f, 741.0f});
     view.mouseMove({400.0f, 300.0f}, {});
     const bool endShot = renderer.save(view, dir / "11g-sources-scrolled-end.png");
-    check(endShot && renderer.pixel({1168.0f, 805.0f}) == renderer.pixel({700.0f, 805.0f}),
+    check(endShot && renderer.pixel({1168.0f, 741.0f}) == renderer.pixel({700.0f, 741.0f}),
           "the scrollbar's thumb reaches the end with the dashed cards less than a card past the row");
     view.wheel({60.0f, 513.0f}, 10.0f, {});
 
@@ -3240,13 +3240,13 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, sourcePower(3));
     check(shown(model) == std::vector<int>{0, 1, 2, 3, 4} && model.value(sourceEnabledIndex(4)) == 0.0,
           "a new source's card comes into view");
-    click(view, {40.0f, 805.0f}); // the scrollbar's track, left of its thumb
+    click(view, {40.0f, 741.0f}); // the scrollbar's track, left of its thumb
     click(view, sourcePower(0));
     check(model.value(sourceEnabledIndex(0)) == 0.0, "clicking the scrollbar's track scrolls the cards back");
     click(view, sourcePower(0));
     // Five cards and the dashed ones, four places on screen. Dragged all the way, the scrollbar's thumb shows
     // the fifth card, the dashed ones after it.
-    drag(view, {485.0f, 805.0f}, {485.0f + 500.0f, 805.0f});
+    drag(view, {485.0f, 741.0f}, {485.0f + 500.0f, 741.0f});
     click(view, sourcePower(3.0f - kSourceShadowSpan));
     view.mouseMove({cardX(4.0f - kSourceShadowSpan) + 61.0f, 600.0f}, {});
     check(model.value(sourceEnabledIndex(4)) == 1.0 && renderer.save(view, dir / "11e-source-shadow.png"),
@@ -3338,7 +3338,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // Collapsed, the modulation panel keeps its title row and the editor gets shorter.
     const float open = view.height();
     click(view, kSourcesToggle);
-    check(layout.sourcesCollapsed && view.height() == open - 280.0f, "the toggle collapses the modulation panel");
+    check(layout.sourcesCollapsed && view.height() == open - 216.0f, "the toggle collapses the modulation panel");
     view.mouseMove({400.0f, 300.0f}, {});
     check(renderer.save(view, dir / "13-collapsed.png"), "render the collapsed modulation panel");
     click(view, kSourcesToggle);
