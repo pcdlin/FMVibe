@@ -288,6 +288,9 @@ private:
         std::array<Memo<FilterSettings, 7>, kFilters> filterSettings{};
         std::array<Memo<ShaperSettings, 6>, kShapers> shaperSettings{};
         std::array<std::array<Filter, 2>, kFilters> filters{}; // [filter][channel]
+        // Samples (at the oversampled rate) a filter whose inputs have stopped runs on for, ringing out: a comb's
+        // line's length past the last time it put out more than kFilterRingFloor (see renderBlock()).
+        std::array<int, kFilters> filterRing{};
         std::array<double, kFilters> filterOut{};               // latest mono filter output (what operators hear)
         std::array<std::array<double, 2>, kFilters> filterLast{}; // latest filter output per channel (what shapers hear)
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]

@@ -72,6 +72,8 @@ public:
     }
 
     bool idle() const { return stage_ == Stage::Idle; }
+    // Still on its way up (attack or hold): it will be louder than it is now.
+    bool rising() const { return stage_ == Stage::Attack || stage_ == Stage::Hold; }
     double level() const { return level_; }
 
     double next(const EnvRates &r) {

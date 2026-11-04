@@ -118,6 +118,20 @@ public:
         guard_ = -guard_;
         in += guard_;
 #endif
+        // A stage (or the comb's line) that stood still while the type or slope left it out still holds the sound
+        // of then: it starts from silence when it is taken up again, rather than playing that back.
+        const unsigned uses = s.type == FilterType::Comb ? kUsesComb : s.slope >= 2 ? kUsesA | kUsesB : kUsesA;
+        if (const unsigned taken = uses & ~uses_; taken && uses_) {
+            if (taken & kUsesA)
+                a_ = {};
+            if (taken & kUsesB)
+                b_ = {};
+            if (taken & kUsesComb) {
+                std::fill_n(comb, combSize, 0.0f);
+                combPos_ = 0;
+            }
+        }
+        uses_ = uses;
         if (s.drive > 1.0) {
             // The saturator averaged over the last sample step (antiderivative
             // anti-aliasing), so the harmonics it adds alias far less.
@@ -190,8 +204,11 @@ private:
         }
     }
 
+    // What the type and slope ran last time (uses_, 0 before the first time): the stages, or the comb's line.
+    static constexpr unsigned kUsesA = 1, kUsesB = 2, kUsesComb = 4;
     Svf a_;
     Svf b_;
+    unsigned uses_ = 0;
     int combPos_ = 0;
     double lastDriven_ = 0.0; // the saturator's previous input
     double lastLogCosh_ = 0.0; // and logCosh() of it, when worked out already (lastKnown_)

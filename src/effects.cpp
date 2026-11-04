@@ -594,6 +594,11 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
                     io[c][s] = static_cast<float>(dry[c][s] + (io[c][s] - dry[c][s]) * fx.fade);
             }
         }
+        // Whatever still comes out keeps them going too: a DC blocker settling, an EQ's ring, which no check above
+        // covers. Stopping there would step the output to silence.
+        for (uint32_t s = 0; s < n && keep == 0; ++s)
+            if (std::abs(io[0][s]) > 1e-6f || std::abs(io[1][s]) > 1e-6f)
+                keep = static_cast<int64_t>(0.05 * sampleRate_);
         tail_ = std::max(tail_ - static_cast<int64_t>(n), keep);
     }
 }
@@ -848,6 +853,13 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const double glide = 1.0 - std::exp(-1.0 / (0.05 * sampleRate_)); // size and pre-delay changes glide
     const ReverbType type = reverbType(at(FxParam::ReverbType));
     const ReverbStyle style = reverbStyle(type);
+    for (int c = 0; c < 2; ++c)
+        for (int d = r.diffusersUsed; d < style.diffusers; ++d)
+            std::fill(r.diffusers[c][d].begin(), r.diffusers[c][d].end(), 0.0f);
+    r.diffusersUsed = style.diffusers;
+    if (style.shimmer && !r.shimmered)
+        r.shimmerLow = r.shimmerBass = {};
+    r.shimmered = style.shimmer;
     const double sizeTarget = reverbSpace(at(FxParam::ReverbSize), type); // a new algorithm's length glides too
     const double preTarget = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
     // A room's early reflections spread with its size, after the pre-delay; they stay inside the buffer.

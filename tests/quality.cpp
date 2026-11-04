@@ -294,6 +294,105 @@ void effectsChainChecks() {
                     20.0 * std::log10(worst + 1e-30));
         check(worst < 1e-4, "a drawn shaper curve passes a quiet, slow sine as drawn, without spikes");
     }
+    // Runs `fx` for `seconds` of a sine at `hz` and `level` (0 for silence); returns the loudest sample out.
+    auto run = [](Effects &fx, const ParamValues &p, double seconds, double hz, double level) {
+        std::vector<float> left(kBlock), right(kBlock);
+        float peak = 0.0f;
+        for (size_t t = 0; t < static_cast<size_t>(seconds * kSampleRate); t += kBlock) {
+            for (uint32_t s = 0; s < kBlock; ++s)
+                left[s] = right[s] = static_cast<float>(
+                    level * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(t + s) / kSampleRate));
+            fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+            for (uint32_t s = 0; s < kBlock; ++s)
+                peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+        }
+        return peak;
+    };
+    {
+        // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
+        // rather than playing back what it held then.
+        auto stale = [&](FilterType first, int firstSlope, FilterType second, int secondSlope) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
+            p[paramIndex(0, FxParam::FilterCutoff)] = normFromCutoff(80.0);
+            p[paramIndex(0, FxParam::FilterResonance)] = 0.9;
+            p[paramIndex(0, FxParam::FilterMix)] = 1.0;
+            p[paramIndex(0, FxParam::FilterType)] = static_cast<double>(first);
+            p[paramIndex(0, FxParam::FilterSlope)] = firstSlope;
+            run(fx, p, 0.5, 80.0, 0.5);
+            p[paramIndex(0, FxParam::FilterType)] = static_cast<double>(second);
+            p[paramIndex(0, FxParam::FilterSlope)] = secondSlope;
+            run(fx, p, 2.0, 0.0, 0.0);
+            p[paramIndex(0, FxParam::FilterType)] = static_cast<double>(first);
+            p[paramIndex(0, FxParam::FilterSlope)] = firstSlope;
+            return run(fx, p, 0.5, 0.0, 0.0);
+        };
+        const float comb = stale(FilterType::LowPass, 1, FilterType::Comb, 1);
+        const float slope = stale(FilterType::LowPass, 3, FilterType::LowPass, 1);
+        const float back = stale(FilterType::Comb, 1, FilterType::LowPass, 1);
+        std::printf("      filter effect back from another type: low-pass %.1g, 24 dB %.1g, comb %.1g\n", comb, slope,
+                    back);
+        check(comb < 1e-4f && slope < 1e-4f && back < 1e-4f,
+              "the filter effect switched to another type or slope and back plays nothing it held before");
+    }
+    {
+        // A plate (six diffusers a side) switched to a hall (four) and back, after the hall's tail: silence.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+        p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(0.2);
+        p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Plate);
+        run(fx, p, 0.5, 440.0, 0.5);
+        p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Hall);
+        run(fx, p, 3.0, 0.0, 0.0);
+        p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Plate);
+        const float back = run(fx, p, 0.5, 0.0, 0.0);
+        std::printf("      a plate back from a hall that rang out: %.1g\n", back);
+        check(back < 1e-4f, "a reverb switched back to its plate plays nothing its diffusers held before");
+    }
+    {
+        // An asymmetric shaper driven hard, then silence: the effects keep running while its DC blocker settles,
+        // and stop only once what comes out is too quiet to hear, rather than stepping to silence.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Asymmetric);
+        p[paramIndex(0, FxParam::ShaperDrive)] = 24.0;
+        run(fx, p, 0.5, 110.0, 0.5);
+        std::vector<float> left(kBlock, 0.0f), right(kBlock, 0.0f);
+        float last = 0.0f;
+        for (int b = 0; b < 1000 && fx.ringing(); ++b) {
+            std::fill(left.begin(), left.end(), 0.0f);
+            std::fill(right.begin(), right.end(), 0.0f);
+            fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+            last = std::max(std::abs(left.back()), std::abs(right.back()));
+        }
+        std::printf("      an asymmetric shaper's tail: %.1f dB when the effects stop\n", 20.0 * std::log10(last + 1e-30));
+        check(!fx.ringing() && last < 1e-5f, "the effects run on until a shaper's DC blocker has settled");
+    }
+    {
+        // A drawn curve made symmetric that doesn't pass through the middle puts out nothing for silence (the
+        // middle of its jump), rather than its level there; and an input that isn't a number reads inside its table.
+        std::vector<double> table(kClipTableSize);
+        for (int i = 0; i <= kClipTableSteps; ++i)
+            table[static_cast<size_t>(i)] = 0.5; // level all across
+        for (int i = 1; i <= kClipTableSteps; ++i)
+            table[static_cast<size_t>(kClipTableSteps + 1 + i)] = table[static_cast<size_t>(kClipTableSteps + i)] +
+                                                                 0.5 * kClipTableStep;
+        const ClipCurve curve{ClipMode::Custom, table.data(), true};
+        ClipState state;
+        double out = 0.0;
+        for (int s = 0; s < 1000; ++s)
+            out = state.run(curve, 0.0, 1.0, 1.0, 1.0, false, clipBlockerPole(kSampleRate));
+        const bool inside = std::isfinite(clipTableValue(table.data(), std::nan(""))) &&
+                            std::isfinite(clipTableIntegral(table.data(), std::nan("")));
+        check(out == 0.0 && inside, "a symmetric drawn curve puts out silence for silence, and reads NaN in its table");
+    }
 }
 
 // --- Notes, voices and their state: every note reports its end once, in mono, on a key struck again and when a
@@ -507,6 +606,114 @@ void noteAndVoiceChecks() {
         check(std::abs(changed.level() - along.level()) < 1e-6,
               "an envelope's curve bent again after a straight stretch carries on along it");
     }
+    {
+        // Every voice taken by notes that have played a while, then a chord: the chord takes the oldest voices, and
+        // each of its notes sounds, rather than each new note stealing the one started a moment before it (whose
+        // level is still unknown). A slow attack's notes count at the top of their attack, so a new note steals an
+        // old one rather than the newest.
+        Engine e(2, 4);
+        int ends[10] = {};
+        for (int k = 0; k < 4; ++k)
+            e.synth().noteOn({k, 0, 0, static_cast<int16_t>(48 + k)}, 1.0);
+        play(e, 20, ends);
+        e.synth().noteOn({4, 0, 0, 60}, 1.0);
+        e.synth().noteOn({5, 0, 0, 64}, 1.0);
+        e.synth().noteOn({6, 0, 0, 67}, 1.0);
+        play(e, 4, ends);
+        const bool chord = ends[4] == 0 && ends[5] == 0 && ends[6] == 0 && ends[0] == 1 && ends[1] == 1 &&
+                           ends[2] == 1 && ends[3] == 0;
+        Engine slow(2, 2);
+        slow.p[paramIndex(0, OpParam::Attack)] = normFromTime(2.0);
+        int slowEnds[10] = {};
+        slow.synth().noteOn({0, 0, 0, 48}, 1.0);
+        play(slow, 20, slowEnds);
+        slow.synth().noteOn({1, 0, 0, 52}, 1.0);
+        play(slow, 2, slowEnds);
+        slow.synth().noteOn({2, 0, 0, 55}, 1.0);
+        play(slow, 2, slowEnds);
+        std::printf("      a chord into full voices: %d of its 3 notes stolen; slow attacks: the oldest stolen %d time(s)\n",
+                    ends[4] + ends[5] + ends[6], slowEnds[0]);
+        check(chord && slowEnds[0] == 1 && slowEnds[1] == 0 && slowEnds[2] == 0,
+              "a chord into voices that have all played takes the oldest, and every note of it sounds");
+    }
+    {
+        // A note with an id ending while the same key, played without one (the editor's keyboard), sounds on: its
+        // end is still reported.
+        Engine e(2);
+        int ends[10] = {};
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.05);
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        e.synth().noteOn({-1, 0, 0, 60}, 1.0);
+        play(e, 4, ends);
+        e.synth().noteOff({1, 0, 0, 60});
+        play(e, 100, ends);
+        check(ends[1] == 1 && e.synth().isActive({-1, 0, 0, 60}),
+              "a note with an id reports its end while its key sounds on without one");
+    }
+    {
+        // Mono, two keys down, all notes off: the voice releases where it is, on the newer key, and each note ends
+        // once.
+        Engine e(2);
+        e.synth().setPlayMode(true, true, false);
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.3);
+        int ends[10] = {};
+        e.synth().noteOn({1, 0, 0, 57}, 1.0);
+        play(e, 4, ends);
+        e.synth().noteOn({2, 0, 0, 60}, 1.0);
+        play(e, 4, ends);
+        e.synth().noteOff({-1, -1, -1, -1});
+        play(e, 1, ends);
+        const bool stays = e.synth().isActive({2, 0, 0, 60}) && !e.synth().isActive({1, 0, 0, 57});
+        play(e, 400, ends);
+        check(stays && ends[1] == 1 && ends[2] == 1 && e.synth().activeVoiceCount() == 0,
+              "mono: all notes off releases the voice on the key it plays, and each note ends once");
+    }
+    {
+        // A reset (the host's, on a transport jump) ends the notes playing, and the next block reports them, a mono
+        // note a later one took over too.
+        Engine e(2);
+        e.synth().setPlayMode(true, true, false);
+        int ends[10] = {};
+        e.synth().noteOn({1, 0, 0, 57}, 1.0);
+        play(e, 4, ends);
+        e.synth().noteOn({2, 0, 0, 60}, 1.0);
+        play(e, 4, ends);
+        e.synth().reset();
+        play(e, 1, ends);
+        check(ends[1] == 1 && ends[2] == 1 && e.synth().activeVoiceCount() == 0,
+              "a reset reports the end of every note playing");
+    }
+    {
+        // One voice, and forty notes at once: each steals the one before, and every end is reported, however many
+        // more they are than the voices.
+        Engine e(2, 1);
+        for (int k = 0; k < 40; ++k)
+            e.synth().noteOn({k, 0, 0, static_cast<int16_t>(40 + k)}, 1.0);
+        e.render(kBlock);
+        const size_t ended = e.synth().endedNotes().size();
+        std::printf("      forty notes at once on one voice: %zu end(s) reported\n", ended);
+        check(ended == 39, "a burst of notes far past the voices reports every end");
+    }
+    {
+        // An operator into a resonant comb that goes out, its send then turned to 0: the comb rings on, rather than
+        // stopping at once.
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Out)] = 0.0;
+        e.p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Comb);
+        e.p[paramIndex(0, FilterParam::Resonance)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Out)] = 1.0;
+        e.p[sendIndex(0, 0)] = 1.0;
+        e.noteOn(57);
+        e.render(9600);
+        e.p[sendIndex(0, 0)] = 0.0;
+        const std::vector<float> after = e.render(9600);
+        float ring = 0.0f;
+        for (size_t s = 960; s < 2400; ++s)
+            ring = std::max(ring, std::abs(after[s]));
+        std::printf("      a comb whose send went to 0, 20-50 ms on: %.1f dB\n", 20.0 * std::log10(ring + 1e-30));
+        check(ring > 1e-3f, "a voice filter whose send goes to 0 rings out");
+    }
 }
 
 // --- The factory presets' contents: each one pinned by a checksum, so an edit can't change a preset unnoticed.
@@ -539,6 +746,7 @@ constexpr PinnedPreset kPresetChecksums[] = {
     {"LD Vowel Lead", 0x4dc3f58f5e05cd07ull},
     {"FX Laser Zap", 0x60b004d5de3dea84ull},
     {"FX Noise Riser", 0xa99dda334b9bd020ull},
+    {"SQ Clubbing", 0xffff7edc0d248b8aull},
 };
 
 // Whether every (id, value) pair a preset's file stores names a param and holds a value in its range, which loading
