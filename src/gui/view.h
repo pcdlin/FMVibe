@@ -153,6 +153,7 @@ private:
         ModsTarget,   // a = source, b = slot: a MODS row's target; a click opens the menu of targets
         ModsAdd,      // the row after the MODS view's last: adds an empty modulation
         ModsScale,    // param = the slot's Amount, a = source, b = slot: a MODS row's Amount bar, dragged across
+        ModsCurve,    // param = the slot's curve, a = source, b = slot: a MODS row's curve, dragged up or down
         ModsAux,      // a = source, b = slot: a MODS row's aux, or + Aux; a click opens the menu of auxes
         ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
         ModsScroll,   // the MODS view's scrollbar: drag the thumb, or click the track to jump there
