@@ -1,11 +1,11 @@
 ## New Features
 
-- More modulation source types (aftertouch, random per note, a MIDI CC, slew or remap modifiers)
-    - **In one line:** each a new `SourceType` (12 spare ids a place) or, per note like velocity, a source in the
-      keyboard strip after `kVelocitySource`.
-    - **Feasible.** A card source: a new `SourceType` appended to the list, its fields at the end of `SourceParam`, a
-      card body and a smoke check. A strip source, like velocity (see `VelocityParam`): its slots' polarities, auxes
-      and Amounts then take the next block of their sections, and it joins the MODS view's Keyboard category.
+- Remap modifiers for modulation sources
+    - **In one line:** Random and MIDI (a controller or aftertouch, with Slew) sources came as card types; what is
+      left is a modifier that bends another source's output through a drawn curve, or slews an LFO's or envelope's.
+    - **Feasible, medium.** A source type whose input is another source (picked like an aux) and whose output is that
+      source's through a curve laid out like the note source's; it runs after its input in the voice's source loop
+      (`Synth::renderBlock()`), so an input in a later place is a block late. 7 spare ids a place are left.
 
 
 ## Issues 

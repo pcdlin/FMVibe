@@ -482,6 +482,12 @@ void Plugin::handleEvent(const clap_event_header_t *ev) {
             synth_.noteOff(note);
         else if (status == 0xE0)
             synth_.pitchBend(((midi.data[2] << 7 | midi.data[1]) - 8192) / 8192.0);
+        else if (status == 0xB0)
+            synth_.controlChange(midi.data[1] & 0x7F, (midi.data[2] & 0x7F) / 127.0);
+        else if (status == 0xD0)
+            synth_.channelPressure((midi.data[1] & 0x7F) / 127.0);
+        else if (status == 0xA0)
+            synth_.polyPressure(note, (midi.data[2] & 0x7F) / 127.0);
         break;
     }
     }

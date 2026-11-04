@@ -147,6 +147,19 @@ public:
     void paramMod(int index, const NoteRef &match, double amount);
     // -1..1, scaled by the Bend Range param.
     void pitchBend(double amount) { bend_ = amount; }
+    // What the Midi sources follow, 0..1 (see SourceType): a MIDI controller's value, the channel's
+    // aftertouch, and the polyphonic aftertouch of the voices playing `match` (as CLAP's pressure expression).
+    void controlChange(int controller, double value) {
+        if (controller >= 0 && controller < 128 && std::isfinite(value))
+            cc_[controller] = std::clamp(value, 0.0, 1.0);
+    }
+    void channelPressure(double value) {
+        if (std::isfinite(value))
+            channelPressure_ = std::clamp(value, 0.0, 1.0);
+    }
+    void polyPressure(const NoteRef &match, double value) {
+        noteExpression(match, CLAP_NOTE_EXPRESSION_PRESSURE, value);
+    }
     // The editor's bend wheel, on top of the host's pitch bend. Audio thread.
     void setWheelBend(double amount) { wheelBend_ = amount; }
     // Host tempo in BPM, for synced LFOs and delay times.
@@ -245,6 +258,9 @@ private:
         double tuning = 0.0;    // note expressions
         double exprGain = 1.0;
         double exprPan = 0.0;
+        double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
+        bool newRandom = false; // (re)started: the Random sources take a new value in its next block
+        std::array<double, kMaxSources> follow{}; // what Random and Midi sources put out, 0..1
         double fmScale = 0.0;   // ramped, like the output gains and levels
         Levels levels{};
         double gainL = 0.0;
@@ -330,6 +346,8 @@ private:
     int capacity_ = 0;      // voices that may play; voices_ has a few more for stolen ones to fade out in
     double bend_ = 0.0;
     double wheelBend_ = 0.0;
+    std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
+    double channelPressure_ = 0.0;
     double tempo_ = 120.0;
     uint64_t noteCounter_ = 0;
     int limit_ = 1;

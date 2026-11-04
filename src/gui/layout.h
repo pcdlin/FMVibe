@@ -212,9 +212,20 @@ inline Rect sourceCard(float card, float span = 1.0f) {
 // unfolds it. An effect card folds much the same way: its icon, which switches it, then its cross and its name.
 // That strip is as wide as the icon's place at the title's left, so the icon stays put as the card folds.
 constexpr float kFoldedSource = 0.2f;
-// The dashed cards after the sources: an LFO's above an envelope's, a little apart, each of them square.
+// The dashed card after the sources, as tall as a card and narrower: it opens the list of source types.
 constexpr float kSourceShadowGap = 10.0f;
 constexpr float kSourceShadowW = (kCardH - kSourceShadowGap) * 0.5f;
+constexpr int kSourceTypes = static_cast<int>(SourceType::Count) - 1; // without None
+// That list, its top left given; an entry a type.
+inline Rect sourceMenu(Point at) { return {at.x, at.y, 150.0f, 8.0f + kSourceTypes * 26.0f}; }
+inline Rect sourceMenuItem(Point at, SourceType type) {
+    const Rect menu = sourceMenu(at);
+    return {menu.x + 4.0f, menu.y + 4.0f + (static_cast<int>(type) - 1) * 26.0f, menu.w - 8.0f, 24.0f};
+}
+// A MIDI card's input switch, CC or PRESSURE, under its title at the left; its CC and Slew knobs at the right.
+inline Rect midiInputButton(Rect card, MidiInput input) {
+    return {card.x + 16.0f + static_cast<float>(input) * 64.0f, card.y + 44.0f, 64.0f, 20.0f};
+}
 constexpr float kSourceShadowSpan = (kSourceShadowW + kCardGap) / (kCardW + kCardGap);
 constexpr float kFxIconX = 10.0f; // the icon's left edge, from the card's
 constexpr float kFxIconW = 18.0f;
@@ -225,9 +236,10 @@ inline Rect sourceCardClip() {
     return {kModPanel.x + 6.0f, kCardTop - 4.0f, kModPanel.w - 12.0f, kCardH + 8.0f};
 }
 
-// ADD LFO and ADD ENV, after the toggle; shaped like ADD EFFECT.
+// + LFO, + ENV, + RANDOM and + MIDI, after the toggle; shaped like ADD EFFECT.
 inline Rect sourceAddButton(SourceType type) {
-    return {kAddSourceX + (type == SourceType::Env ? 88.0f : 0.0f), kModPanel.y + 9.0f, 82.0f, 22.0f};
+    const int k = static_cast<int>(type) - static_cast<int>(SourceType::Lfo);
+    return {kAddSourceX + 88.0f * static_cast<float>(k), kModPanel.y + 9.0f, 82.0f, 22.0f};
 }
 
 // A random LFO's display makes room at its right for the Smooth and Chaos knobs.

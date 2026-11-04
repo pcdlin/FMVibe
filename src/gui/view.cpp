@@ -677,6 +677,20 @@ bool View::sourceShadow() const {
     return sources().size() < static_cast<size_t>(kMaxSources);
 }
 
+std::optional<Rect> View::sourceShadowCard() const {
+    const std::vector<int> shown = sourcesShown();
+    const float place = sourceOffset(shown, shown.size()) - sourceScroll();
+    if (!sourceShadow() || controller_.layout().sourcesCollapsed || !onScreen(place, kVisibleCards, kSourceShadowSpan))
+        return std::nullopt;
+    return sourceCard(place, kSourceShadowSpan);
+}
+
+Point View::sourceMenuAt(Rect card) {
+    const Rect panel = modPanel(false);
+    return {std::clamp(card.x + 8.0f, panel.x + 8.0f, panel.right() - 8.0f - sourceMenu({0.0f, 0.0f}).w),
+            card.y + 8.0f};
+}
+
 float View::scrollFirst(ScrollArea area) const {
     return area == ScrollArea::Fx ? fxScroll() : sourceScroll();
 }
@@ -1135,6 +1149,10 @@ bool View::poll() {
         changed = true;
     if (glideMods())
         changed = true;
+    if (sourceMenuOpen_ && !sourceShadowCard()) { // its card went: scrolled away, the panel shut, the places full
+        sourceMenuOpen_ = false;
+        changed = true;
+    }
     if (modList_ && !modListPillShown()) { // its pill went: fewer modulations, or what showed it changed
         modList_.reset();
         changed = true;
@@ -1796,8 +1814,8 @@ std::vector<View::Widget> View::widgets() const {
     // Modulation panel: the collapse toggle, the add buttons, the scrollbar, then the cards.
     add(Kind::SourcesToggle, sourcesToggle());
     if (cardSources.size() < static_cast<size_t>(kMaxSources))
-        for (SourceType type : {SourceType::Lfo, SourceType::Env})
-            add(Kind::SourceAdd, sourceAddButton(type), -1, static_cast<int>(type));
+        for (int type = static_cast<int>(SourceType::Lfo); type < static_cast<int>(SourceType::Count); ++type)
+            add(Kind::SourceAdd, sourceAddButton(static_cast<SourceType>(type)), -1, type);
     if (scrollLength(ScrollArea::Sources) > kVisibleCards + 0.01f && !collapsed)
         add(Kind::Scrollbar, sourceScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::Sources));
     const size_t sourceCardsStart = list.size();
@@ -1842,23 +1860,26 @@ std::vector<View::Widget> View::widgets() const {
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
                  lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
             knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
-        } else {
+        } else if (sourceTypeOf(s) == SourceType::Env) {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
             const float step = (p.w - 24.0f) / 5.0f;
             for (int i = 0; i < 5; ++i)
                 knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
+        } else if (sourceTypeOf(s) == SourceType::Midi) {
+            // Its input switch, and right of it the controller (while that is its input) and Slew; Random has none.
+            const int input = paramIndex(s, SourceParam::MidiInput);
+            for (MidiInput in : {MidiInput::Cc, MidiInput::Pressure})
+                add(Kind::Choice, midiInputButton(p, in), input, -1, static_cast<int>(in));
+            if (std::lround(value(input)) == static_cast<long>(MidiInput::Cc))
+                knob(paramIndex(s, SourceParam::CcNumber), {p.x + 172.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelCc));
+            knob(paramIndex(s, SourceParam::Slew), {p.x + 228.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelSlew));
         }
         // Its modulations are listed in the MODS view, which the button under its display shows.
         add(Kind::SourceMods, sourceModsButton(card), -1, s);
     }
-    if (const float place = sourceOffset(cardSources, cardSources.size()) - sourceScroll();
-        sourceShadow() && !collapsed && onScreen(place, kVisibleCards, kSourceShadowSpan)) {
-        const Rect p = sourceCard(place, kSourceShadowSpan);
-        add(Kind::SourceShadow, {p.x, p.y, p.w, kSourceShadowW}, -1, static_cast<int>(SourceType::Lfo));
-        add(Kind::SourceShadow, {p.x, p.bottom() - kSourceShadowW, p.w, kSourceShadowW}, -1,
-            static_cast<int>(SourceType::Env));
-    }
+    if (const auto shadow = sourceShadowCard())
+        add(Kind::SourceShadow, *shadow);
     for (size_t i = sourceCardsStart; i < list.size(); ++i)
         if (list[i].clip.w <= 0.0f)
             list[i].clip = sourceCardClip();
@@ -1983,6 +2004,14 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::PresetButton, toolbarButton(action), -1, action);
     add(Kind::SettingsButton, toolbarButton(3));
 
+    // The list of source types, over the dashed card it opened from, while the modulation panel is open.
+    if (const auto shadow = sourceShadowCard(); sourceMenuOpen_ && shadow) {
+        const Point at = sourceMenuAt(*shadow);
+        add(Kind::SourceMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
+        add(Kind::SourceMenu, sourceMenu(at), -1, 1);
+        for (int t = 1; t <= kSourceTypes; ++t)
+            add(Kind::SourceMenuItem, sourceMenuItem(at, static_cast<SourceType>(t)), -1, t);
+    }
     if (fxMenuOpen_ && fxWide()) {
         add(Kind::FxMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::FxMenu, fxMenu(fxMenuAt_), -1, 1);
@@ -2179,7 +2208,8 @@ void View::paint(Canvas &c) {
     // The open lists (of effects, curves, EQ shapes, waves) go over everything else, the dimmed cards included.
     auto paintWidgets = [&](bool lists) {
         for (const Widget &w : list) {
-            const bool open = w.kind == Kind::FxMenu || w.kind == Kind::FxAdd || w.kind == Kind::ListMenu ||
+            const bool open = w.kind == Kind::FxMenu || w.kind == Kind::FxAdd || w.kind == Kind::SourceMenu ||
+                              w.kind == Kind::SourceMenuItem || w.kind == Kind::ListMenu ||
                               w.kind == Kind::ListItem || w.kind == Kind::PeqTypeMenu ||
                               w.kind == Kind::PeqTypeItem || w.kind == Kind::WaveMenu ||
                               w.kind == Kind::WaveMenuItem || w.popup;
@@ -4353,12 +4383,36 @@ void View::paintSource(Canvas &c, float card, int s) {
     c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, sourceName(s), 11.5f, sourceOn(s) ? kText : kDim, Align::Left,
            true);
 
-    if (lfo)
+    if (lfo) {
         paintLfo(c, sourceDisplay(card, std::lround(value(paramIndex(s, SourceParam::Shape))) ==
                                              static_cast<long>(LfoShape::Random)),
                  s);
-    else
+    } else if (sourceTypeOf(s) == SourceType::Env) {
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
+    } else {
+        // Random and MIDI: what the newest voice gets from it, as a bar from the left (from the middle while
+        // it is bipolar, where its depths swing both ways), and in numbers; Random says what it does over its knobs'
+        // row, having none.
+        if (sourceTypeOf(s) == SourceType::Random)
+            c.text({p.x + 16.0f, p.y + 40.0f, p.w - 32.0f, 30.0f}, tr(Str::HintRandomSource), 10.5f, kDim);
+        const Rect d = sourceDisplay(card);
+        c.fillRect(d, kBackground, 6.0f);
+        const bool live = sourceOn(s) && telemetry_.voices > 0;
+        const double out = live ? std::clamp(static_cast<double>(telemetry_.sources[s]), 0.0, 1.0) : 0.0;
+        const Rect track{d.x + 12.0f, d.center().y - 3.0f, d.w - 24.0f, 6.0f};
+        c.fillRect(track, kTrack, 3.0f);
+        const bool bipolar = sourceBipolar(s);
+        const float from = bipolar ? track.center().x : track.x;
+        const float to = track.x + track.w * static_cast<float>(out);
+        if (live)
+            c.fillRect({std::min(from, to), track.y, std::abs(to - from), track.h}, color, 3.0f);
+        if (bipolar)
+            c.line({track.center().x, track.y - 4.0f}, {track.center().x, track.bottom() + 4.0f}, kFaint, 1.0f);
+        char text[16];
+        std::snprintf(text, sizeof(text), "%.0f%%", (bipolar ? out * 2.0 - 1.0 : out) * 100.0);
+        if (live)
+            c.text({d.x, d.y + 2.0f, d.w - 12.0f, 16.0f}, text, 10.0f, kDim, Align::Right);
+    }
     // Under the display, the button that shows its modulations in the MODS view (a widget).
 }
 
@@ -4474,6 +4528,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const char *text = power ? ""
                            : isPartialCount(w.param) ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
+                           : sourceFieldOf(w.param) == SourceParam::MidiInput
+                               ? tr(w.b == static_cast<int>(MidiInput::Cc) ? Str::SwitchCc : Str::SwitchPressure)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
@@ -4648,7 +4704,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Like ADD EFFECT, without its chevron: these add at once. The plus and the name are centered together.
         c.fillRect(w.rect, hovered ? kSourceAddColor.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, kSourceAddColor.alpha(hovered ? 0.9f : 0.45f), 1.0f, 5.0f);
-        const char *name = tr(static_cast<SourceType>(w.a) == SourceType::Lfo ? Str::ButtonLfo : Str::ButtonEnv);
+        const Str names[] = {Str::ButtonLfo, Str::ButtonLfo, Str::ButtonEnv, Str::ButtonRandom, Str::ButtonMidi};
+        static_assert(std::size(names) == static_cast<size_t>(SourceType::Count));
+        const char *name = tr(names[std::clamp(w.a, 0, static_cast<int>(SourceType::Count) - 1)]);
         const float width = c.textWidth(name, 10.5f, true);
         const float x = std::round(w.rect.center().x - (kAddPlusW + width) * 0.5f);
         const Color ink = hovered ? kText : kDim;
@@ -4920,14 +4978,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         if (hovered)
             c.fillRect(w.rect, color.alpha(0.07f), 8.0f);
         c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint, 1.2f, 8.0f, true);
-        const float arm = fx ? 12.0f : 9.0f;
+        const float arm = 12.0f;
         const Point m{w.rect.center().x, w.rect.center().y - arm};
         const Color ink = hovered ? kText : kDim;
         c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
         c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
-        const char *what = tr(fx ? Str::ButtonAddEffect
-                              : static_cast<SourceType>(w.a) == SourceType::Lfo ? Str::ButtonAddLfo
-                                                                               : Str::ButtonAddEnv);
+        const char *what = tr(fx ? Str::ButtonAddEffect : Str::ButtonAddSource);
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 16.0f}, what, 10.5f, ink, Align::Center, true);
         break;
     }
@@ -4939,6 +4995,38 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeRect(w.rect, kBorder, 1.0f, 7.0f);
         }
         break;
+    case Kind::SourceMenu:
+        if (w.a == 1) { // the list's panel
+            c.fillRect(w.rect, kRaised, 7.0f);
+            c.strokeRect(w.rect, kBorder, 1.0f, 7.0f);
+        }
+        break;
+    case Kind::SourceMenuItem: {
+        // A small picture of what the type puts out, then its name.
+        const auto type = static_cast<SourceType>(w.a);
+        if (hovered)
+            c.fillRect(w.rect, kSourceAddColor.alpha(0.18f), 5.0f);
+        const Color ink = hovered ? kText : kDim;
+        const Rect icon{w.rect.x + 9.0f, w.rect.y + 6.0f, 18.0f, 12.0f};
+        const float l = icon.x, r = icon.right(), t = icon.y, b = icon.bottom();
+        if (type == SourceType::Lfo) {
+            const std::vector<Point> wave = waveIcon(OpWave::Sine, icon);
+            c.polyline(wave.data(), wave.size(), ink, 1.4f);
+        } else if (type == SourceType::Env) {
+            const Point env[] = {{l, b}, {l + 4.0f, t}, {l + 9.0f, t + 6.0f}, {r - 4.0f, t + 6.0f}, {r, b}};
+            c.polyline(env, 5, ink, 1.4f);
+        } else if (type == SourceType::Random) {
+            const Point steps[] = {{l, t + 8.0f},  {l + 5.0f, t + 8.0f}, {l + 5.0f, t + 2.0f}, {l + 10.0f, t + 2.0f},
+                                   {l + 10.0f, b}, {l + 14.0f, b},        {l + 14.0f, t + 5.0f}, {r, t + 5.0f}};
+            c.polyline(steps, 8, ink, 1.4f);
+        } else { // a fader
+            c.line({l + 2.0f, (t + b) * 0.5f}, {r - 2.0f, (t + b) * 0.5f}, ink, 1.4f);
+            c.fillRect({l + 9.0f, t + 1.0f, 4.0f, b - t - 2.0f}, ink, 1.0f);
+        }
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, sourceTypeName(type), 11.0f, ink,
+               Align::Left);
+        break;
+    }
     case Kind::FxAdd:
         if (hovered)
             c.fillRect(w.rect, fxTypeColor(static_cast<FxType>(w.a)).alpha(0.18f), 5.0f);
@@ -5731,8 +5819,12 @@ void View::paintTooltip(Canvas &c) {
         text = filterTypeName(static_cast<FilterType>(hover_->b));
     else if (field == FxParam::ShaperMode)
         text = tr(hover_->b == 0 ? Str::TipClipHard : hover_->b == 1 ? Str::TipClipSoft : Str::TipClipAsym);
-    else
+    else if (sourceFieldOf(param) == SourceParam::MidiInput)
+        text = tr(hover_->b == static_cast<int>(MidiInput::Cc) ? Str::TipMidiCc : Str::TipMidiPressure);
+    else if (param == paramIndex(GlobalParam::GlideAlways))
         text = tr(Str::TipGlideAlways);
+    else
+        return; // a switch with nothing to say
     // As wide as its text, centered under the widget and kept inside the editor.
     const float width = std::min(std::ceil(c.textWidth(text, 11.0f)) + 24.0f, View::kWidth - 16.0f);
     const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
@@ -6434,7 +6526,16 @@ void View::mouseDown(Point p, Modifiers mods) {
         hover_.reset();
         break;
     }
-    case Kind::SourceShadow:
+    case Kind::SourceShadow: // the list over the card
+        sourceMenuOpen_ = true;
+        hover_.reset();
+        break;
+    case Kind::SourceMenu:
+        if (w.a == 0) // a click anywhere else closes the list
+            sourceMenuOpen_ = false;
+        break;
+    case Kind::SourceMenuItem:
+        sourceMenuOpen_ = false;
         addSource(static_cast<SourceType>(w.a));
         break;
     case Kind::FxMenu:
@@ -6954,9 +7055,10 @@ void View::middleDown(Point p) {
         // they were opened on may scroll away.
         if (const auto hit = hitTest(p)) {
             const Kind k = hit->kind;
-            if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd ||
+            if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd || k == Kind::SourceMenuItem ||
                 k == Kind::ListItem || k == Kind::PeqTypeItem || k == Kind::WaveMenuItem || k == Kind::CascadeItem ||
-                ((k == Kind::FxMenu || k == Kind::ListMenu || k == Kind::PeqTypeMenu || k == Kind::WaveMenu ||
+                ((k == Kind::FxMenu || k == Kind::SourceMenu || k == Kind::ListMenu || k == Kind::PeqTypeMenu ||
+                  k == Kind::WaveMenu ||
                   k == Kind::CascadeMenu) &&
                  hit->a != 0))
                 return;
@@ -6976,6 +7078,7 @@ void View::middleDown(Point p) {
         modList_.reset();
         cascade_.reset();
         fxMenuOpen_ = false;
+        sourceMenuOpen_ = false;
         fxInsertAt_ = -1;
         listMenu_ = -1;
         peqMenu_ = -1;

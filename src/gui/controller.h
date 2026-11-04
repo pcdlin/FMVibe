@@ -100,7 +100,7 @@ std::vector<int> shownSources(const UiLayout &layout, const Get &get) {
     return shown;
 }
 
-// What the editor and the host's remote pages call a source: "LFO 2" or "Env 1",
+// What the editor and the host's remote pages call a source: "LFO 2", "Env 1", "Random 1" or "MIDI 1",
 // numbered by type in the order the sources show, a macro's name, "Note" or "Mod Wheel".
 template <class Get>
 std::string sourceName(const UiLayout &layout, const Get &get, int source) {
@@ -119,7 +119,11 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
             break;
         number += sourceType(get(paramIndex(other, SourceParam::Type))) == type ? 1 : 0;
     }
-    return trf(type == SourceType::Env ? Str::SourceNameEnv : Str::SourceNameLfo, {std::to_string(number)});
+    const Str name = type == SourceType::Env        ? Str::SourceNameEnv
+                     : type == SourceType::Random   ? Str::SourceNameRandom
+                     : type == SourceType::Midi     ? Str::SourceNameMidi
+                                                    : Str::SourceNameLfo;
+    return trf(name, {std::to_string(number)});
 }
 
 // A preset in the library: a .fmv file in the preset folder, or in one of its subfolders.

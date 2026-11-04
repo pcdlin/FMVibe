@@ -182,12 +182,16 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
     auto get = [&values](int i) { return values[i]; };
     for (int source : gui::shownSources(layout, get)) {
         auto at = [source](SourceParam f) { return paramIndex(source, f); };
+        const SourceType type = sourceType(values[at(SourceParam::Type)]);
         std::vector<int> fields =
-            sourceType(values[at(SourceParam::Type)]) == SourceType::Lfo
-                ? std::vector<int>{at(SourceParam::Shape), at(SourceParam::Rate), at(SourceParam::Sync),
-                                   at(SourceParam::Division)}
-                : std::vector<int>{at(SourceParam::Attack), at(SourceParam::Decay), at(SourceParam::Sustain),
-                                   at(SourceParam::Release)};
+            type == SourceType::Lfo ? std::vector<int>{at(SourceParam::Shape), at(SourceParam::Rate),
+                                                       at(SourceParam::Sync), at(SourceParam::Division)}
+            : type == SourceType::Env
+                ? std::vector<int>{at(SourceParam::Attack), at(SourceParam::Decay), at(SourceParam::Sustain),
+                                   at(SourceParam::Release)}
+            : type == SourceType::Midi ? std::vector<int>{at(SourceParam::MidiInput), at(SourceParam::CcNumber),
+                                                         at(SourceParam::Slew)}
+                                       : std::vector<int>{};
         for (int slot = 0; slot < kSlots && fields.size() < CLAP_REMOTE_CONTROLS_COUNT; ++slot)
             fields.push_back(slotAmountIndex(source, slot));
         add(tr(Str::ModuleModulation), gui::sourceName(layout, get, source), fields,

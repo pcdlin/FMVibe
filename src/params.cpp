@@ -46,7 +46,10 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
                             Str::FxDisperser, Str::FxWidener};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
-constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope};
+constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
+                                    Str::SourceMidi};
+constexpr Str kMidiInputNames[] = {Str::MidiInputCc, Str::MidiInputPressure};
+static_assert(std::size(kMidiInputNames) == static_cast<size_t>(MidiInput::Count));
 static_assert(std::size(kSourceTypeNames) == static_cast<size_t>(SourceType::Count));
 // A drawn shaper curve's points as it starts, (x, y, curve) each: an S, flat at the ends, steep through the middle.
 constexpr double kClipCurveDefaults[3][3] = {{0.0, -1.0, 0.35}, {0.5, 0.0, -0.35}, {1.0, 1.0, 0.0}};
@@ -139,7 +142,7 @@ void buildTable(ParamTable &t) {
         if (kind == ParamKind::LfoShape || kind == ParamKind::OpWave || kind == ParamKind::FilterType ||
             kind == ParamKind::FilterSlope || kind == ParamKind::Toggle || kind == ParamKind::SyncDivision ||
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
-            kind == ParamKind::PeqType || kind == ParamKind::ReverbType)
+            kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -659,6 +662,12 @@ void buildTable(ParamTable &t) {
         field(SourceParam::EnvBipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0,
             0.0); // takes its targets one way
         field(SourceParam::Phase, tr(Str::ParamPhase), ParamKind::Percent, 0.0, 1.0, 0.0);
+        // Random's and Midi's: following what comes in at once, from the mod wheel's controller, one way.
+        field(SourceParam::Slew, tr(Str::ParamSlew), ParamKind::Time, 0.0, kMaxEnvNorm, 0.0);
+        field(SourceParam::CcNumber, tr(Str::ParamCc), ParamKind::Count, 0.0, 127.0, 1.0);
+        field(SourceParam::Bipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        field(SourceParam::MidiInput, tr(Str::ParamInput), ParamKind::MidiInput, 0.0,
+              static_cast<double>(MidiInput::Count) - 1.0, 0.0);
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.
@@ -769,6 +778,10 @@ const char *peqTypeName(PeqType type) {
     return nameAt(kPeqTypeNames, static_cast<double>(type));
 }
 
+const char *sourceTypeName(SourceType type) {
+    return nameAt(kSourceTypeNames, static_cast<double>(type));
+}
+
 const char *reverbTypeName(ReverbType type) {
     return nameAt(kReverbTypeNames, static_cast<double>(type));
 }
@@ -793,7 +806,8 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::SyncDivision || kind == ParamKind::ClipMode || kind == ParamKind::FxOrder ||
            kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
-           kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux;
+           kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
+           kind == ParamKind::MidiInput;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -936,6 +950,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::ReverbType:
         std::snprintf(out, capacity, "%s", nameAt(kReverbTypeNames, value));
         break;
+    case ParamKind::MidiInput:
+        std::snprintf(out, capacity, "%s", nameAt(kMidiInputNames, value));
+        break;
     case ParamKind::FxOrder:
         std::snprintf(out, capacity, "%s", fxOrderName(value).c_str());
         break;
@@ -1011,6 +1028,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::FilterSlope  ? findName(kFilterSlopeNames, text)
                       : def.kind == ParamKind::PeqType      ? findName(kPeqTypeNames, text)
                       : def.kind == ParamKind::ReverbType   ? findName(kReverbTypeNames, text)
+                      : def.kind == ParamKind::MidiInput    ? findName(kMidiInputNames, text)
                                                             : -1;
     if (named >= 0) {
         *out = named;
@@ -1191,6 +1209,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::ClipMode:
     case ParamKind::PeqType:
     case ParamKind::ReverbType:
+    case ParamKind::MidiInput:
     case ParamKind::FxOrder:
     case ParamKind::FxType:
     case ParamKind::SourceType:
