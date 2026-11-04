@@ -705,6 +705,33 @@ int main(int argc, char **argv) {
               "a fixed operator plays its Freq x Mult whatever the note, bend, Pitch and Detune");
     }
 
+    // Operator A's Ratio takes modulation in whole steps: a modulation of +1 plays an octave up (once it has glided
+    // there), and one of +0.4 rounds back to the ratio set.
+    {
+        auto playRatio = [&](double mod) {
+            const clap_event_param_mod_t ratioMod = paramModEvent(paramIndex(0, OpParam::Coarse), -1, mod);
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 22, 69);
+            runBlock({&ratioMod.header, &on.header});
+            runBlocks(8);
+            std::vector<float> signal;
+            for (int b = 0; b < 16; ++b) {
+                runBlock();
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            runBlock({&chokeAll.header});
+            return signal;
+        };
+        const auto up = playRatio(1.0);
+        const auto rounded = playRatio(0.4);
+        const double octave = magnitude(up, 880.0) / std::max(magnitude(up, 440.0), 1e-9);
+        const double same = magnitude(rounded, 440.0) / std::max(magnitude(rounded, 880.0), 1e-9);
+        std::printf("      A's Ratio modulated: +1 puts 880 Hz %.0fx over 440 Hz, +0.4 keeps 440 Hz %.0fx over 880 Hz\n",
+                    octave, same);
+        const clap_event_param_mod_t unmod = paramModEvent(paramIndex(0, OpParam::Coarse), -1, 0.0);
+        runBlock({&unmod.header});
+        check(octave > 30.0 && same > 30.0, "a modulated Ratio plays the nearest whole step");
+    }
+
     // The matrix does FM: B -> A puts the 2nd harmonic onto a pure-sine carrier.
     const double pure = secondHarmonicRatio({});
     const double fm = secondHarmonicRatio({.bToA = 0.4});

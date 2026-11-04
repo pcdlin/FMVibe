@@ -22,6 +22,7 @@ constexpr double kMaxFeedback = std::numbers::pi;
 constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in
 constexpr double kStealFade = 0.003; // seconds a stolen voice takes to fade out
 constexpr double kJoinFade = 0.005;  // seconds a note joining a held one in poly legato takes to fade in
+constexpr double kRatioGlide = 0.012;   // seconds a modulated operator Ratio takes to glide to a new step
 constexpr double kVolumeGlide = 0.005; // seconds Volume takes to glide most of the way to a new level
 // How loud each voice goes into the effects, -12 dB: Volume comes after them, so drive and thresholds don't
 // depend on it. Volume gives the 12 dB back, so at 0 dB a full-scale operator comes out at full scale.
@@ -1178,6 +1179,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // White noise is as loud in the audible band as when it runs at the host rate.
     const double whiteGain = noiseColor_.coefs(0.0).gain;
 
+    // How far a block moves the ratio toward its step: 99 % of the way in kRatioGlide seconds.
+    const double ratioGlide = 1.0 - std::pow(0.01, (kControlBlock * oversampling_ / rate_) / kRatioGlide);
+
     Levels target{};
     std::array<EnvRates, kOps> rates;
     std::array<double, kOps> ampStep;
@@ -1211,6 +1215,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // nothing (its targets stay at 0), so there is nothing more to work out for it.
             op.out = 0.0;
             op.prevOut = 0.0;
+            op.ratioKnown = false;
             v.levels.out[i] = 0.0;
             v.levels.send[i].fill(0.0);
             v.levels.shaperSend[i].fill(0.0);
@@ -1220,9 +1225,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // Fixed, it plays at its Freq x Mult: the note, bend, glide and tuning, its ratio, Pitch and Detune don't move
         // it; its unison copies still spread about it.
         double hz = fixedHz(p[paramIndex(i, OpParam::FixedFreq)], p[paramIndex(i, OpParam::FixedMult)]);
+        op.ratioKnown = false;
         if (p[paramIndex(i, OpParam::Fixed)] < 0.5) {
-            const double ratio =
-                coarseRatio(p[paramIndex(i, OpParam::Coarse)]) * (1.0 + p[paramIndex(i, OpParam::Fine)]);
+            // Ratio is modulated in whole steps, which the ratio glides between (in octaves, so it is even in
+            // pitch), rather than jumping: a strong modulation then sweeps through the harmonic ratios.
+            const double goal = std::log2(coarseRatio(p[paramIndex(i, OpParam::Coarse)]));
+            const double gap = goal - op.ratioLog;
+            if (starting || !op.ratioKnown || std::abs(gap) < 1e-4)
+                op.ratioLog = goal;
+            else
+                op.ratioLog += gap * ratioGlide;
+            op.ratioKnown = true;
+            const double ratio = std::exp2(op.ratioLog) * (1.0 + p[paramIndex(i, OpParam::Fine)]);
             const double cents = p[paramIndex(i, OpParam::Detune)];
             const double semitones = p[paramIndex(i, OpParam::Transpose)];
             hz = noteHz * ratio * std::exp2(semitones / 12.0 + cents / 1200.0);

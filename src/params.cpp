@@ -134,7 +134,7 @@ void buildTable(ParamTable &t) {
             flags |= CLAP_PARAM_IS_HIDDEN;
         if (isStepped(kind))
             flags |= CLAP_PARAM_IS_STEPPED;
-        else if (!shape)
+        if (!shape && (!isStepped(kind) || kind == ParamKind::Ratio))
             flags |= CLAP_PARAM_IS_MODULATABLE;
         // The effects, the macros, the note source's and the mod wheel's are shared by all voices.
         if ((flags & CLAP_PARAM_IS_MODULATABLE) && index < kVoiceParamCount)

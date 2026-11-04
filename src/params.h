@@ -1524,10 +1524,12 @@ inline bool snapsToSteps(ParamKind kind) {
 }
 // Displayed and modulated around the middle of the range rather than from the minimum.
 bool isBipolar(ParamKind kind);
-// Continuous params are the ones LFOs, envelopes and host modulators can drive.
+// Continuous params are the ones LFOs, envelopes and host modulators can drive, and the operators' Ratio, which
+// takes the modulated value to the nearest step and glides between steps.
 // Not the macros' own knobs: they are read as set.
 inline bool isModTarget(int index) {
-    return index >= 0 && index < kMacroBase && !isStepped(paramTable()[index].kind) &&
+    return index >= 0 && index < kMacroBase &&
+           (!isStepped(paramTable()[index].kind) || paramTable()[index].kind == ParamKind::Ratio) &&
            paramTable()[index].kind != ParamKind::ShapePoint;
 }
 // Value of a slot target param pointing at param `index`, and back (-1 = none or invalid).

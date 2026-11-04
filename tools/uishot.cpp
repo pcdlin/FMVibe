@@ -1983,11 +1983,11 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {1080.0f, 211.0f + 4.0f + 11.0f});
     check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
     // The target opens every target by category, under its search (30 px, the level 240 px wide from x 234):
-    // Operators, then B, then (under PITCH) Detune, three levels deep.
+    // Operators, then B, then (under PITCH, after Ratio, Fine and Pitch) Detune, three levels deep.
     click(view, {300.0f, y});
     view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
     view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {});       // B
-    const Point detune{650.0f, 244.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
+    const Point detune{650.0f, 244.0f + 4.0f + 20.0f + 3.0f * 22.0f + 11.0f};
     view.mouseMove(detune, {});
     const bool menuShot = renderer.save(view, dir / "35a-mods-target-menu.png");
     click(view, detune);
