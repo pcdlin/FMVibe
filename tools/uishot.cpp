@@ -1982,11 +1982,12 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     const bool auxShot = renderer.save(view, dir / "35e-mods-aux-menu.png");
     click(view, {1080.0f, 211.0f + 4.0f + 11.0f});
     check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
-    // The target opens every target by category: Operators, then B, then (under PITCH) Detune, three levels deep.
+    // The target opens every target by category, under its search (30 px, the level 240 px wide from x 234):
+    // Operators, then B, then (under PITCH) Detune, three levels deep.
     click(view, {300.0f, y});
-    view.mouseMove({250.0f, 170.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
-    view.mouseMove({380.0f, 192.0f + 4.0f + 22.0f + 11.0f}, {});       // B
-    const Point detune{520.0f, 214.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
+    view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
+    view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {});       // B
+    const Point detune{650.0f, 244.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
     view.mouseMove(detune, {});
     const bool menuShot = renderer.save(view, dir / "35a-mods-target-menu.png");
     click(view, detune);
@@ -2232,17 +2233,18 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shot = renderer.save(view, dir / "35g-mods-empty.png");
     check(added && menuShot && sourced && shot && slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0,
           "the MODS view's last row adds an empty modulation, which takes a source and modulates nothing yet");
-    // Its target opens the targets under it, at x 234: Global, the first category, lists its params beside it from
-    // x 356, but not the mod wheel; where it would come after them, a click only closes the menu.
+    // Its target opens the targets under it, at x 234, under the menu's search (30 px): Global, the first category,
+    // lists its params beside it from x 476, but not the mod wheel; where it would come after them, a click only
+    // closes the menu.
     std::vector<int> globals;
     for (int g = 0; g < kGlobalCount; ++g)
         if (isModTarget(g) && g != paramIndex(GlobalParam::ModWheel))
             globals.push_back(g);
     auto openGlobal = [&] {
         click(view, {300.0f, y});
-        view.mouseMove({250.0f, 200.0f + 4.0f + 11.0f}, {});
+        view.mouseMove({300.0f, 230.0f + 4.0f + 11.0f}, {});
     };
-    auto globalEntry = [&](size_t k) { return Point{400.0f, 200.0f + 4.0f + 22.0f * k + 11.0f}; };
+    auto globalEntry = [&](size_t k) { return Point{540.0f, 230.0f + 4.0f + 22.0f * k + 11.0f}; };
     openGlobal();
     const bool globalShot = renderer.save(view, dir / "35h-mods-global-targets.png");
     click(view, globalEntry(globals.size()));
@@ -2292,6 +2294,100 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
               slotTarget(model.value(slotTargetIndex(0, 1))) == globals[0] &&
               slotTarget(model.value(slotTargetIndex(1, 0))) == paramIndex(1, OpParam::Fine),
           "an empty modulation given a source with rows goes among them");
+}
+
+// The MODS view's filter and the target menu's search. LFO 1 modulates Op A's Fine and Detune, Env 1 FM Amount and
+// Macro 1 Filter 1's Resonance: four rows, their middles from y 154, 30 px apart, each one's x at x 1144. The filter's
+// magnifier is at the right end of the columns' names (x 1156, y 126); open, its x is at x 1155.
+void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotTargetIndex(0, 1), slotTargetValue(paramIndex(0, OpParam::Detune)));
+    model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount)));
+    model.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
+    for (auto [source, slot] : {std::pair{0, 0}, {0, 1}, {1, 0}, {kMaxSources, 0}})
+        model.set(slotAmountIndex(source, slot), 0.3);
+    view.poll();
+    click(view, {314.0f, 88.0f}); // the MODS tab
+    auto slotIs = [&](int source, int slot, int target) {
+        return slotTarget(model.value(slotTargetIndex(source, slot))) == target;
+    };
+    const Point magnifier{1156.0f, 126.0f}, firstX{1144.0f, 154.0f};
+    // The magnifier opens the filter, which takes the keyboard; "fm" leaves Env 1's row alone, first, and a click on
+    // its x takes the keyboard back, the filter keeping its words.
+    const bool idle = !view.typing();
+    click(view, magnifier);
+    const bool takesKeys = view.typing();
+    type(view, "fm");
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool filterShot = renderer.save(view, dir / "35q-mods-filter.png");
+    click(view, firstX);
+    const bool removedEnv = slotTarget(model.value(slotTargetIndex(1, 0))) < 0 && slotIs(0, 0, paramIndex(0, OpParam::Fine));
+    const bool letGo = !view.typing();
+    view.undo();
+    check(idle && takesKeys && filterShot && removedEnv && letGo && slotIs(1, 0, paramIndex(GlobalParam::FmAmount)),
+          "the MODS view's filter shows the rows whose source and target hold what is typed, and lets the keyboard "
+          "go at a click elsewhere");
+    // Every word counts, in any case: "LFO det" leaves LFO 1's Detune row alone. Its x empties it and keeps the
+    // keyboard; Escape then lets it go.
+    click(view, {1000.0f, 126.0f}); // in the open field, from x 968
+    view.typeKey(View::Key::SelectAll);
+    type(view, "LFO det");
+    click(view, firstX);
+    const bool removedDetune = slotTarget(model.value(slotTargetIndex(0, 1))) < 0 && slotIs(0, 0, paramIndex(0, OpParam::Fine));
+    view.undo();
+    click(view, {1155.0f, 126.0f}); // the filter's x
+    const bool emptied = view.typing() && view.copyText(false).empty();
+    view.typeKey(View::Key::Escape);
+    click(view, firstX); // the filter empty, the first row is LFO 1's Fine again
+    const bool all = slotTarget(model.value(slotTargetIndex(0, 0))) < 0;
+    view.undo();
+    check(removedDetune && emptied && !view.typing() && all && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+          "the MODS view's filter takes every word typed, its x empties it and Escape lets the keyboard go");
+    // An operator's targets show in two columns, 140 px each: under Operators, then B, ENVELOPE heads the second,
+    // its Attack beside Fine (the level from x 598, under the menu's 30 px search).
+    click(view, {300.0f, 154.0f});
+    view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {}); // Operators
+    view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {}); // B
+    const Point attack{800.0f, 244.0f + 4.0f + 20.0f + 11.0f};
+    view.mouseMove(attack, {});
+    const bool columnsShot = renderer.save(view, dir / "35s-mods-target-columns.png");
+    click(view, attack);
+    const bool attackPicked = slotIs(0, 0, paramIndex(1, OpParam::Attack));
+    view.undo();
+    check(columnsShot && attackPicked && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+          "an operator's targets show in two columns, the envelope's beside the pitch's");
+    // The target menu takes the keyboard into its search: "b det" lists Op B's Detune, with its path, and Enter
+    // picks it.
+    click(view, {300.0f, 154.0f});
+    const bool menuKeys = view.typing();
+    type(view, "b det");
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool searchShot = renderer.save(view, dir / "35r-mods-target-search.png");
+    view.typeKey(View::Key::Enter);
+    const bool found = slotIs(0, 0, paramIndex(1, OpParam::Detune)) && !view.typing();
+    view.undo();
+    // "a release" finds Op A's Release, then its Release Curve: Down picks the second. Escape empties the search,
+    // then closes the menu.
+    click(view, {300.0f, 154.0f});
+    type(view, "a release");
+    view.typeKey(View::Key::Down);
+    view.typeKey(View::Key::Enter);
+    const bool second = slotIs(0, 0, paramIndex(0, OpParam::ReleaseCurve));
+    view.undo();
+    click(view, {300.0f, 154.0f});
+    type(view, "zzz");
+    view.typeKey(View::Key::Enter); // nothing found, nothing picked
+    const bool nothing = view.typing() && slotIs(0, 0, paramIndex(0, OpParam::Fine));
+    view.typeKey(View::Key::Escape);
+    const bool stillOpen = view.typing();
+    view.typeKey(View::Key::Escape);
+    check(menuKeys && searchShot && found && second && nothing && stillOpen && !view.typing() &&
+              slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+          "the target menu's search lists the targets found with their path, Up and Down pick one and Enter takes it");
 }
 
 // Eight LFOs on Op A's Fine: under the knob, two depth handles and a "+6" pill, nothing drawn outside the knob's
@@ -2926,8 +3022,9 @@ void run(const std::filesystem::path &dir, float scale) {
               "the keyboard switch fixes an operator's pitch where its ratio was, its knobs becoming Freq and Mult");
     }
 
-    // Play switches: Mono on, Legato off and on again, Glide to 0.5 (100 px up), Always on.
+    // Play switches: Mono on, Legato on (it starts off), off and on again, Glide to 0.5 (100 px up), Always on.
     click(view, kMonoButton);
+    click(view, kLegatoToggle);
     click(view, kLegatoToggle);
     const bool legatoFlipped = model.value(paramIndex(GlobalParam::Legato)) == 0.0;
     click(view, kLegatoToggle);
@@ -3856,6 +3953,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testNewSources(dir, renderer);
     testMods(dir, renderer);
     testModsMoveDepth(dir, renderer);
+    testModsSearch(dir, renderer);
     testMeter(dir, renderer);
     renderNewEffects(dir, renderer);
     testShapers(dir, renderer);

@@ -148,11 +148,25 @@ constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 130.0f}, kMods
     kModsArrow{186.0f, 16.0f}, kModsTarget{206.0f, 232.0f}, kModsDepth{446.0f, 250.0f}, kModsScale{736.0f, 100.0f},
     kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f}, kModsAdd{4.0f, 178.0f};
 inline Rect modsCell(Rect row, ModsColumn column) { return {row.x + column.x, row.y, column.w, row.h}; }
+// A text field's x at its right end, which empties it, and where its text goes: after the magnifier, short of the x.
+inline Rect fieldClear(Rect field) { return {field.right() - 22.0f, field.y + 3.0f, 18.0f, 18.0f}; }
+inline Rect fieldTyped(Rect field) { return {field.x + 26.0f, field.y, field.w - 26.0f - 24.0f, field.h}; }
+// The MODS view's filter, at the right end of the columns' names: a magnifier, or open, a field over the count.
+constexpr float kModsFilterW = 200.0f;
+inline Rect modsFilter(bool open) {
+    const float w = open ? kModsFilterW : 24.0f;
+    return {kFxPanel.right() - 16.0f - w, kModsHeaderY - 2.0f, w, 24.0f};
+}
 // The cascading menus a row's source, target or aux opens: each level a column of entries, the next level beside the
 // entry it opens from.
 constexpr float kCascadeItemH = 22.0f;
 constexpr float kCascadeHeaderH = 20.0f;
 constexpr float kCascadePad = 4.0f;
+// The target menu's search, atop its first level, which is at least as wide as kCascadeSearchW; the most targets it
+// lists.
+constexpr float kCascadeSearchH = 30.0f;
+constexpr float kCascadeSearchW = 240.0f;
+constexpr int kCascadeMatches = 16;
 // Header: the output meter, the global knobs, the play cluster between two dividers, then Voices; all laid out from
 // kHeaderStart, which centers them between the name and PLAYING (as far from the name's end as Voices' is from
 // PLAYING's start, 113 px).
@@ -628,14 +642,7 @@ inline Rect browserFolder(Rect panel) {
 inline Rect browserSearch(Rect panel) {
     return {panel.right() - 46.0f - 180.0f, panel.y + 14.0f, 180.0f, 24.0f};
 }
-inline Rect browserClear(Rect panel) {
-    const Rect field = browserSearch(panel);
-    return {field.right() - 22.0f, field.y + 3.0f, 18.0f, 18.0f};
-}
-// Where its text goes: after the magnifier, short of the x.
-inline Rect browserTyped(Rect panel) {
-    const Rect field = browserSearch(panel);
-    return {field.x + 26.0f, field.y, field.w - 26.0f - 24.0f, field.h};
-}
+inline Rect browserClear(Rect panel) { return fieldClear(browserSearch(panel)); }
+inline Rect browserTyped(Rect panel) { return fieldTyped(browserSearch(panel)); }
 
 } // namespace fmvibe::gui::detail
