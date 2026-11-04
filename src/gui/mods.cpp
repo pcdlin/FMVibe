@@ -500,17 +500,19 @@ View::MenuNode View::cascadeCategories() const {
         node.note = nodeOn(op) ? waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))))
                                : tr(Str::CascadeOff);
         const std::string prefix = trf(Str::ParamOp, {kNodeNames[op]});
+        // In two columns, about as tall: the pitch, level, phase and unison, then the envelope and the noise.
         const std::pair<Str, std::vector<OpParam>> sections[] = {
             {Str::CascadePitch, {OpParam::Fine, OpParam::Transpose, OpParam::Detune, OpParam::FixedFreq}},
             {Str::CascadeLevel, {OpParam::Out}},
             {Str::CascadePhase, {OpParam::Phase}},
+            {Str::CascadeUnison, {OpParam::UnisonDetune, OpParam::UnisonSpread, OpParam::PhaseRandom}},
             {Str::CascadeEnvelope,
              {OpParam::Attack, OpParam::Hold, OpParam::Decay, OpParam::Sustain, OpParam::Release, OpParam::AttackCurve,
               OpParam::DecayCurve, OpParam::ReleaseCurve}},
-            {Str::CascadeUnison, {OpParam::UnisonDetune, OpParam::UnisonSpread, OpParam::PhaseRandom}},
             {Str::CascadeNoise, {OpParam::NoiseSlope}}};
         for (const auto &[title, fields] : sections) {
             node.children.push_back(heading(title));
+            node.children.back().newColumn = title == Str::CascadeEnvelope;
             for (OpParam field : fields)
                 add(node, paramIndex(op, field), prefix);
         }
@@ -626,16 +628,30 @@ Rect View::cascadeSearchRect(Rect level) const {
     return {level.x + kCascadePad + 2.0f, level.y + kCascadePad + 2.0f, level.w - 2.0f * kCascadePad - 4.0f, 24.0f};
 }
 
+int View::cascadeColumns(const MenuNode &level) {
+    return 1 + static_cast<int>(std::count_if(level.children.begin(), level.children.end(),
+                                              [](const MenuNode &item) { return item.newColumn; }));
+}
+
 Rect View::cascadeItemRect(const MenuNode &level, Rect at, int index, size_t depth) const {
-    float y = at.y + kCascadePad + (depth == 0 && cascadeSearches() ? kCascadeSearchH : 0.0f);
-    for (int i = 0; i < index; ++i)
-        y += level.children[i].heading ? kCascadeHeaderH : kCascadeItemH;
-    return {at.x + kCascadePad, y, at.w - 2.0f * kCascadePad,
+    const float top = at.y + kCascadePad + (depth == 0 && cascadeSearches() ? kCascadeSearchH : 0.0f);
+    const float columnW = (at.w - 2.0f * kCascadePad) / static_cast<float>(cascadeColumns(level));
+    float y = top;
+    int column = 0;
+    for (int i = 0; i <= index; ++i) {
+        if (level.children[i].newColumn) {
+            ++column;
+            y = top;
+        }
+        if (i < index)
+            y += level.children[i].heading ? kCascadeHeaderH : kCascadeItemH;
+    }
+    return {at.x + kCascadePad + columnW * static_cast<float>(column), y, columnW,
             level.children[index].heading ? kCascadeHeaderH : kCascadeItemH};
 }
 
-// Each level as wide as its longest entry, in steps, and as tall as its entries; the first under what opened the
-// menu, each next one beside the entry it opens from, all kept inside the editor.
+// Each level's columns as wide as its longest entry, in steps, and the level as tall as its tallest column; the first
+// under what opened the menu, each next one beside the entry it opens from, all kept inside the editor.
 std::vector<Rect> View::cascadeRects(const MenuNode &root) const {
     std::vector<Rect> rects;
     if (!cascade_)
@@ -646,12 +662,17 @@ std::vector<Rect> View::cascadeRects(const MenuNode &root) const {
         const MenuNode &level = *levels[k];
         size_t longest = 0;
         const bool search = k == 0 && cascadeSearches();
-        float h = 2.0f * kCascadePad + (search ? kCascadeSearchH : 0.0f);
+        float column = 0.0f, tallest = 0.0f;
         for (const MenuNode &item : level.children) {
             longest = std::max(longest, item.path.size() + item.label.size() + item.note.size() + (item.color ? 3 : 0));
-            h += item.heading ? kCascadeHeaderH : kCascadeItemH;
+            if (item.newColumn)
+                column = 0.0f;
+            column += item.heading ? kCascadeHeaderH : kCascadeItemH;
+            tallest = std::max(tallest, column);
         }
-        const float w = std::clamp(std::ceil((48.0f + 6.4f * static_cast<float>(longest)) / 10.0f) * 10.0f,
+        const float h = 2.0f * kCascadePad + (search ? kCascadeSearchH : 0.0f) + tallest;
+        const float w = static_cast<float>(cascadeColumns(level)) *
+                        std::clamp(std::ceil((48.0f + 6.4f * static_cast<float>(longest)) / 10.0f) * 10.0f,
                                    search ? kCascadeSearchW : 120.0f, search ? 400.0f : 320.0f);
         Rect r{cascade_->at.x, cascade_->at.y, w, h};
         if (k > 0) {

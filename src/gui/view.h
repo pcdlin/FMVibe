@@ -446,6 +446,7 @@ private:
         int pick = -2;         // a source or target; -2 for a category or heading
         std::string note;      // after the label, faint: why it can't be picked
         std::string path;      // before the label, dim: the categories a search found it in
+        bool newColumn = false; // starts a column of its own level beside the one before (an operator's ENVELOPE)
         std::vector<MenuNode> children;
     };
     struct Cascade {
@@ -466,8 +467,10 @@ private:
     // The open menu's levels, from the first: their entries, and where they show.
     std::vector<const MenuNode *> cascadeLevels(const MenuNode &root) const;
     std::vector<Rect> cascadeRects(const MenuNode &root) const;
-    // An entry of a level (`depth` of them from the first), in the level's place `at`.
+    // An entry of a level (`depth` of them from the first), in the level's place `at`: down its column, the level's
+    // columns side by side, each as wide.
     Rect cascadeItemRect(const MenuNode &level, Rect at, int index, size_t depth) const;
+    static int cascadeColumns(const MenuNode &level);
     void openCascade(CascadeKind kind, int source, int slot, Rect from);
     void pickCascade(int level, int index);
     // The keyboard in the target menu's search: Up and Down pick a match, Enter takes it, Escape empties the search,

@@ -456,7 +456,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
-      its params under PITCH, LEVEL, PHASE, ENVELOPE, UNISON and NOISE;
+      its params in two columns, under PITCH, LEVEL, PHASE and UNISON, and beside them ENVELOPE and NOISE;
       the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
       only those in the chain, in its order, each with the knobs of its type; and Modulation, each LFO's and
       envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the

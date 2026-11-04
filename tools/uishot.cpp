@@ -2257,6 +2257,19 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     check(removedDetune && emptied && !view.typing() && all && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
           "the MODS view's filter takes every word typed, its x empties it and Escape lets the keyboard go");
+    // An operator's targets show in two columns, 140 px each: under Operators, then B, ENVELOPE heads the second,
+    // its Attack beside Fine (the level from x 598, under the menu's 30 px search).
+    click(view, {300.0f, 154.0f});
+    view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {}); // Operators
+    view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {}); // B
+    const Point attack{800.0f, 244.0f + 4.0f + 20.0f + 11.0f};
+    view.mouseMove(attack, {});
+    const bool columnsShot = renderer.save(view, dir / "35s-mods-target-columns.png");
+    click(view, attack);
+    const bool attackPicked = slotIs(0, 0, paramIndex(1, OpParam::Attack));
+    view.undo();
+    check(columnsShot && attackPicked && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+          "an operator's targets show in two columns, the envelope's beside the pitch's");
     // The target menu takes the keyboard into its search: "b det" lists Op B's Detune, with its path, and Enter
     // picks it.
     click(view, {300.0f, 154.0f});

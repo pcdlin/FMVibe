@@ -144,7 +144,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the MODS view's filter: its magnifier opening it to take the keyboard, the words typed (every one, in any case)
     narrowing the rows, its × emptying it, Escape and a click elsewhere letting the keyboard go; and the target
     menu's search listing the targets found with their path, Up and Down picking one, Enter taking it, Escape
-    emptying it and then closing the menu;
+    emptying it and then closing the menu; an operator's targets in two columns, the envelope's beside the pitch's;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
