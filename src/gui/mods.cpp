@@ -434,7 +434,8 @@ View::MenuNode View::cascadeTree() const {
         const std::string prefix = trf(Str::ParamOp, {kNodeNames[op]});
         const std::pair<Str, std::vector<OpParam>> sections[] = {
             {Str::CascadePitch, {OpParam::Fine, OpParam::Transpose, OpParam::Detune, OpParam::FixedFreq}},
-            {Str::CascadeLevel, {OpParam::Out, OpParam::Velocity}},
+            {Str::CascadeLevel, {OpParam::Out}},
+            {Str::CascadePhase, {OpParam::Phase}},
             {Str::CascadeEnvelope,
              {OpParam::Attack, OpParam::Hold, OpParam::Decay, OpParam::Sustain, OpParam::Release, OpParam::AttackCurve,
               OpParam::DecayCurve, OpParam::ReleaseCurve}},

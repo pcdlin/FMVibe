@@ -125,8 +125,6 @@ public:
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
         p[paramIndex(GlobalParam::Volume)] = 0.0; // full level, rather than the 12 dB of room it starts with
-        for (int op = 0; op < kOps; ++op)
-            p[paramIndex(op, OpParam::Velocity)] = 0.0;
     }
 
     void noteOn(int key, int id = -1) { synth_.noteOn({id, 0, 0, static_cast<int16_t>(key)}, 1.0); }
@@ -517,28 +515,28 @@ struct PinnedPreset {
     uint64_t checksum;
 };
 constexpr PinnedPreset kPresetChecksums[] = {
-    {"KY Electric Piano", 0x4f25ed3795409f2dull},
-    {"BA FM Bass", 0xdb4512b0784f2a90ull},
+    {"KY Electric Piano", 0x8730f506dd3fb162ull},
+    {"BA FM Bass", 0x6c323f86c93a2a0eull},
     {"KY Glass Bell", 0x5cc3e4cfa5050874ull},
-    {"PD Warm Pad", 0xbd71a9521240edd8ull},
-    {"KY Drawbar Organ", 0x8816138584f08035ull},
-    {"PL Pluck Delay", 0x54bdfad9cabec732ull},
-    {"PD Crystal Motion", 0xd9dc08d9966b8b31ull},
-    {"BA Reese Bass", 0xcf6ca8ebd4d2c4ebull},
-    {"BA Wobble Bass", 0x052b5bd725de4ac5ull},
-    {"PD Shimmer Pad", 0x2941affb37adab8aull},
-    {"SQ Trance Gate", 0x2c09c3637889d5dcull},
-    {"LD FM Brass", 0x7e6f2b150bfa91d8ull},
-    {"FX Industrial Hit", 0xa1cd1a7b125f51d8ull},
-    {"LD Folded Lead", 0x8aea699d01cb8c70ull},
-    {"BA Fuzz Bass", 0x99895bc872e2c284ull},
-    {"PL Comb String", 0xf874f7955bb87133ull},
-    {"PL Chip Pluck", 0xb9eee4f2d44a116aull},
-    {"SQ Step Filter", 0xd511c60c618cd3b7ull},
-    {"SQ Glass Steps", 0x94a0df1834a25bceull},
-    {"LD Vowel Lead", 0x28b0b789d131828full},
-    {"FX Laser Zap", 0xb500242d44284008ull},
-    {"FX Noise Riser", 0x0e08d1adac580a1dull},
+    {"PD Warm Pad", 0x0794e780466d0e14ull},
+    {"KY Drawbar Organ", 0x5861d8b17c9f0deaull},
+    {"PL Pluck Delay", 0xe152c8ab3a580157ull},
+    {"PD Crystal Motion", 0xbb3f33bce04e41b6ull},
+    {"BA Reese Bass", 0xd63fd644bd8f5f35ull},
+    {"BA Wobble Bass", 0x9616a3ddf48153d3ull},
+    {"PD Shimmer Pad", 0xd1075109b1644533ull},
+    {"SQ Trance Gate", 0xc817bbda549936b0ull},
+    {"LD FM Brass", 0xb729e7aee9e1e6b2ull},
+    {"FX Industrial Hit", 0xb82b2cdb5cc78306ull},
+    {"LD Folded Lead", 0x952de5105a661759ull},
+    {"BA Fuzz Bass", 0x25112538f7622d54ull},
+    {"PL Comb String", 0xf5a90a00020939b6ull},
+    {"PL Chip Pluck", 0x6d7986d69bd273c1ull},
+    {"SQ Step Filter", 0xfec0c18da1d7740full},
+    {"SQ Glass Steps", 0x55048d5e1da0a987ull},
+    {"LD Vowel Lead", 0x27a6d34ebe87b8acull},
+    {"FX Laser Zap", 0x46e551bcdd26cd9aull},
+    {"FX Noise Riser", 0xf49996af1f5603f5ull},
 };
 
 // FNV-1a over the preset's name, the params it sets (by id, so params added later leave it alone, in id order, each

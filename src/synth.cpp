@@ -957,16 +957,19 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     }
     withSlotMods();
 
-    // A new note starts each operator copy at phase 0, moved by up to Phase
+    // A new note starts each operator copy at its Phase, moved on by up to Phase
     // Random of a cycle. Done here rather than at note-on, so host modulation
-    // sent with the note applies.
+    // sent with the note, and the sources' modulation as of the note's first block, apply.
     const bool starting = v.fresh;
     if (v.fresh) {
         v.fresh = false;
         for (int i = 0; i < kOps; ++i) {
+            const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];
-            for (int k = 0; k < kMaxUnison; ++k)
-                v.ops[i].phases[k] = amount * 0.5 * (nextRandom(v.rng) + 1.0);
+            for (int k = 0; k < kMaxUnison; ++k) {
+                const double phase = start + amount * 0.5 * (nextRandom(v.rng) + 1.0);
+                v.ops[i].phases[k] = phase - std::floor(phase);
+            }
         }
     }
 
@@ -1095,8 +1098,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             stepped(p[paramIndex(i, OpParam::Wave)], static_cast<int>(OpWave::Count) - 1));
         noise[i] = shape == OpWave::Noise;
 
-        const double velocityScale = 1.0 - p[paramIndex(i, OpParam::Velocity)] * (1.0 - v.velocity);
-        ampStep[i] = (velocityScale - op.amp) * ramp;
+        ampStep[i] = (1.0 - op.amp) * ramp;
         const std::array<double, 8> times{
             p[paramIndex(i, OpParam::Attack)],      p[paramIndex(i, OpParam::Hold)],
             p[paramIndex(i, OpParam::Decay)],       p[paramIndex(i, OpParam::Sustain)],

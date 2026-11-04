@@ -60,13 +60,13 @@ enum class OpParam {
     Decay,
     Sustain,
     Release,
-    Velocity,
+    RetiredVelocity, // was how much note velocity scaled the operator; does nothing, kept so the ids after it stay
     Wave,
     Unison,       // copies of the operator, 1 = off
     UnisonDetune, // cents of the outermost copies
     UnisonSpread, // stereo width of the copies; for Noise, how far left and right part
     Enabled,      // off: silent, skipped, and hidden from the routing views
-    PhaseRandom,  // 0: every note starts the waveform (each unison copy) at the same point; 1: anywhere
+    PhaseRandom,  // 0: every note starts the waveform (each unison copy) at Phase; 1: up to a cycle later, at random
     AttackCurve,  // envelope segment slopes, -1..1; see envCurve()
     DecayCurve,
     ReleaseCurve,
@@ -78,6 +78,7 @@ enum class OpParam {
     Fixed = ShaperSends + kShapers, // on: plays at FixedFreq x FixedMult whatever the note (see fixedHz())
     FixedFreq,                      // 0..1 on a log curve, see fixedFreqFromNorm()
     FixedMult,                      // one of kFixedMults, by number
+    Phase,                          // 0..1 of a cycle: where a note starts the waveform (see PhaseRandom)
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -961,7 +962,9 @@ static_assert(idOfIndex(paramIndex(0, OpParam::Coarse)) == 100 && idOfIndex(para
                   idOfIndex(sendIndex(0, 0)) == 121 && idOfIndex(shaperSendIndex(0, 0)) == 123 &&
                   idOfIndex(shaperSendIndex(kOps - 1, kShapers - 1)) == 374 &&
                   idOfIndex(paramIndex(0, OpParam::Fixed)) == 125 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::FixedMult)) == 377,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::FixedMult)) == 377 &&
+                  idOfIndex(paramIndex(0, OpParam::RetiredVelocity)) == 108 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::Phase)) == 378,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");

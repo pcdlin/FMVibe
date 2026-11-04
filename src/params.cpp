@@ -200,8 +200,12 @@ void buildTable(ParamTable &t) {
             kMaxEnvNorm, 0.0);
         add(paramIndex(op, OpParam::Transpose), name + " " + tr(Str::ParamPitch), module, ParamKind::Transpose, -48.0,
             48.0, 0.0);
-        add(paramIndex(op, OpParam::Velocity), name + " " + tr(Str::ParamVelocity), module, ParamKind::Percent, 0.0,
-            1.0, 0.5);
+        // What was the operator's velocity scaling: kept for its id, it does nothing and hosts don't see it.
+        add(paramIndex(op, OpParam::RetiredVelocity), name + " " + tr(Str::ParamRetired), module, ParamKind::Percent,
+            0.0, 1.0, 0.0);
+        t[paramIndex(op, OpParam::RetiredVelocity)].flags = CLAP_PARAM_IS_HIDDEN;
+        add(paramIndex(op, OpParam::Phase), name + " " + tr(Str::ParamPhase), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
         add(paramIndex(op, OpParam::Enabled), name + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0, 1.0,
             first ? 1.0 : 0.0);
         add(paramIndex(op, OpParam::Wave), name + " " + tr(Str::ParamWave), module, ParamKind::OpWave, 0.0,

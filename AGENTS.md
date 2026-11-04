@@ -118,6 +118,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     moving their targets; a comb never reading past its line; a voice's right channel coming back from mono where
     the left is;
     and an envelope's curve bent again after a straight stretch carrying on along it;
+  - an operator's Phase starting its wave that far into its cycle, set or modulated;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
     at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, and a high operator's
@@ -354,7 +355,8 @@ itself.
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
-  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq and Mult), matrix
+  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult and Phase; the
+  9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay), matrix
   400 + 10·from + to, filter modulation
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past

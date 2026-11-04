@@ -1227,7 +1227,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     mods.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     mods.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
     const OpParam targets[] = {OpParam::Fine,    OpParam::Detune,  OpParam::Transpose, OpParam::Out,
-                               OpParam::Velocity, OpParam::Attack, OpParam::Decay,     OpParam::Sustain,
+                               OpParam::Phase,    OpParam::Attack, OpParam::Decay,     OpParam::Sustain,
                                OpParam::Release, OpParam::Hold,    OpParam::UnisonDetune};
     for (int k = 0; k < 11; ++k) {
         mods.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(0, targets[k])));
@@ -1911,7 +1911,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
-    const OpParam fillers[] = {OpParam::Detune,  OpParam::Transpose, OpParam::Out,     OpParam::Velocity,
+    const OpParam fillers[] = {OpParam::Detune,  OpParam::Transpose, OpParam::Out,     OpParam::Phase,
                                OpParam::Attack,  OpParam::Decay,     OpParam::Sustain, OpParam::Release,
                                OpParam::Hold,    OpParam::UnisonDetune};
     model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
@@ -2017,7 +2017,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     // Macro 2's handle dropped on the aux cell of Macro 1's row (the last, + Aux in it) makes Macro 2 its aux; its
     // own row's aux refuses it, and undo takes it away.
     const float auxStrip = view.height() - 179.0f;
-    const Point auxCell{910.0f, macroDot.y};
+    const Point auxCell{950.0f, macroDot.y};
     drag(view, {252.0f, auxStrip}, auxCell);
     const bool macroAux = slotAuxSource(model.value(slotAuxIndex(kMaxSources, 0))) == kMaxSources + 1;
     view.undo();
