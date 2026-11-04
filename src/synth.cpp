@@ -1193,6 +1193,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // mono sum, scaled by 1/sqrt(copies), is what other operators hear.
     std::array<int, kOps> copies;
     std::array<double, kOps> monoGain;
+    std::array<std::array<double, kMaxUnison>, kOps> incStep; // per sample, toward the block's increments
     std::array<const UnisonCopies *, kOps> copy;
     // Switched-off operators and filters are skipped and route nothing.
     std::array<bool, kOps> opOn;
@@ -1211,6 +1212,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // nothing (its targets stay at 0), so there is nothing more to work out for it.
             op.out = 0.0;
             op.prevOut = 0.0;
+            op.incKnown = false;
             v.levels.out[i] = 0.0;
             v.levels.send[i].fill(0.0);
             v.levels.shaperSend[i].fill(0.0);
@@ -1285,6 +1287,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             return c;
         });
         stereo = stereo || ((copies[i] > 1 || noise[i]) && spread > 0.0 && heard > 0.0);
+        // The copies' increments move to this block's over its length rather than jumping at its start, so
+        // modulated pitch (Ratio most of all) doesn't step every control block.
+        if (starting || !op.incKnown || op.incCopies != copies[i])
+            for (int k = 0; k < copies[i]; ++k)
+                op.incNow[k] = copy[i]->inc[k];
+        op.incKnown = true;
+        op.incCopies = copies[i];
+        for (int k = 0; k < copies[i]; ++k)
+            incStep[i][k] = (copy[i]->inc[k] - op.incNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));
 
         // Squared amounts give finer control over the subtle low end.
         for (int to = 0; to < kOps; ++to) {
@@ -1539,7 +1550,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 // Silent (an envelope at rest, or held or released at nothing): what it puts out is 0 whatever the
                 // wave, so its copies only move on as they would have.
                 for (int k = 0; k < copies[i]; ++k) {
-                    op.phases[k] += copy[i]->inc[k];
+                    op.phases[k] += op.incNow[k];
+                    op.incNow[k] += incStep[i][k];
                     if (op.phases[k] >= 1.0)
                         op.phases[k] -= 1.0;
                 }
@@ -1549,7 +1561,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     mono += x;
                     l += x * copy[i]->gainL[k];
                     r += x * copy[i]->gainR[k];
-                    op.phases[k] += copy[i]->inc[k];
+                    op.phases[k] += op.incNow[k];
+                    op.incNow[k] += incStep[i][k];
                     if (op.phases[k] >= 1.0)
                         op.phases[k] -= 1.0;
                 }
@@ -1622,6 +1635,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         left[s] += mix[0] * v.gainL * v.fade;
         right[s] += mix[1] * v.gainR * v.fade;
     }
+    for (int i = 0; i < kOps; ++i)
+        if (opOn[i] && !noise[i])
+            for (int k = 0; k < copies[i]; ++k)
+                v.ops[i].incNow[k] = copy[i]->inc[k];
 
     // Once released, the voice ends when every operator that is heard (directly
     // or through a filter or shaper) has faded and the filters have rung out. A stolen

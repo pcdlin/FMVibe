@@ -20,7 +20,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     from mono to fully uncorrelated left and right;
   - Coarse ratio (0.5, 1…32), which modulation can drive too: its depth is a share of the 32 steps, and the ratio
     interpolates linearly between them (1.5 half way from 1 to 2), so a strong modulation sweeps smoothly through
-    the ratios; the knob itself sits on its steps. Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
+    the ratios; the knob itself sits on its steps. Each operator's pitch moves to a new control block's value over the block's length (not in a step at its start), for Ratio and every other pitch modulation alike. Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
     ratio; the knob moves in whole semitones, while LFOs, envelopes and host modulation glide through it), Detune
     (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release;
     its attack, hold, decay and release each go from 1 ms to 10 s);
