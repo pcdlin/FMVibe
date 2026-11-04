@@ -2124,9 +2124,10 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
 // each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it. With no
 // modulations at all, the columns' names show above the button.
 // The title row's last two buttons add a Random and a MIDI source, each a card of its own: Random with no knobs,
-// MIDI with its input switch (CC from x 16 of the card, PRESSURE from x 80, 64 px each, level with the knobs at y 590) and right
-// of it its controller (at x 172 of the card, turned up a notch by the wheel, while its input is a controller) and
-// Slew (at x 228). Each lists in the MODS view's source menu under Note & MIDI.
+// MIDI with its input's list button (where an LFO's shape is: from x 16 of the card, 122 px wide, at y 536 + 42) and
+// right of it its controller (at x 172 of the card, turned up a notch by the wheel, while its input is a controller)
+// and Slew (at x 228). The list opens under the button, an entry 22 px from y 604 + 4: CC, Pressure, Slide. Each
+// lists in the MODS view's source menu under Note & MIDI.
 void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -2137,32 +2138,52 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         return static_cast<SourceType>(std::lround(model.value(paramIndex(place, SourceParam::Type))));
     };
     const bool added = typeOf(0) == SourceType::Random && typeOf(1) == SourceType::Midi && typeOf(2) == SourceType::Midi;
-    const Point ccKnob{cardX(1) + 172.0f, 590.0f}, pressure{cardX(2) + 80.0f + 32.0f, 590.0f};
+    const Point ccKnob{cardX(1) + 172.0f, 590.0f}, inputButton{cardX(2) + 16.0f + 61.0f, 536.0f + 42.0f + 11.0f};
+    auto entry = [](float card, MidiInput input) {
+        return Point{cardX(card) + 60.0f, 604.0f + 4.0f + 22.0f * static_cast<float>(input) + 11.0f};
+    };
     view.wheel(ccKnob, 1.0f, {});
-    click(view, pressure);
-    const bool onPressure = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Pressure);
-    view.wheel({cardX(2) + 172.0f, 590.0f}, 1.0f, {}); // no CC knob there now
-    view.mouseMove({600.0f, 300.0f}, {});
-    const bool shot = renderer.save(view, dir / "11e-new-sources.png");
-    // Its switch's halves each show a tooltip of their own under them (read off the rendered pixels along y 618,
-    // against the same view with the mouse away); the wording is in the snapshots.
-    auto underSwitch = [&](const char *name) {
+    // The button's tooltip says what its input follows (read off the rendered pixels along y 618, under it, against
+    // the same view with the mouse away; the wording is in the snapshots).
+    auto underButton = [&](const char *name) {
         std::vector<uint32_t> pixels;
         if (renderer.save(view, dir / name))
-            for (float x = cardX(1); x <= cardX(1) + 200.0f; x += 2.0f)
+            for (float x = cardX(2); x <= cardX(2) + 240.0f; x += 2.0f)
                 pixels.push_back(renderer.pixel({x, 618.0f}));
         return pixels;
     };
-    const std::vector<uint32_t> away = underSwitch("11f-midi-switch-away.png");
-    view.mouseMove({cardX(1) + 16.0f + 32.0f, 590.0f}, {});
-    const std::vector<uint32_t> ccTip = underSwitch("11g-midi-cc-tooltip.png");
-    view.mouseMove({cardX(1) + 80.0f + 32.0f, 590.0f}, {});
-    const std::vector<uint32_t> pressureTip = underSwitch("11h-midi-pressure-tooltip.png");
+    view.mouseMove({600.0f, 300.0f}, {});
+    const std::vector<uint32_t> away = underButton("11f-midi-input-away.png");
+    view.mouseMove(inputButton, {});
+    const std::vector<uint32_t> ccTip = underButton("11g-midi-cc-tooltip.png");
+    click(view, inputButton);
+    view.mouseMove(entry(2, MidiInput::Slide), {});
+    const bool listShot = renderer.save(view, dir / "11i-midi-input-list.png");
+    click(view, entry(2, MidiInput::Pressure));
+    const bool onPressure = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Pressure);
+    view.mouseMove(inputButton, {});
+    const std::vector<uint32_t> pressureTip = underButton("11h-midi-pressure-tooltip.png");
+    view.wheel({cardX(2) + 172.0f, 590.0f}, 1.0f, {}); // no CC knob there now
+    click(view, inputButton);
+    click(view, entry(2, MidiInput::Slide));
+    const bool onSlide = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Slide);
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool shot = renderer.save(view, dir / "11e-new-sources.png");
     check(ccTip != away && pressureTip != away && ccTip != pressureTip,
-          "a MIDI card's input switch shows a tooltip for each of its halves");
-    check(added && shot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
-              model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
-          "the title row adds Random and MIDI sources, a MIDI card's switch picking aftertouch over its controller");
+          "a MIDI card's input button shows a tooltip saying what its input follows");
+    check(added && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
+              onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
+          "the title row adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
+    // MPE, beside Bend's label: a click switches it on, and its menu picks the member channels' bend range.
+    click(view, {990.0f, 22.0f});
+    const bool mpeOn = model.value(paramIndex(GlobalParam::Mpe)) == 1.0;
+    for (const MenuItem &item : view.contextMenu({990.0f, 22.0f}))
+        if (item.label == trf(Str::MenuMpeBendRange, {"24"}))
+            view.menuCommand(item.command);
+    view.mouseMove({990.0f, 22.0f}, {});
+    check(mpeOn && model.value(paramIndex(GlobalParam::MpeBendRange)) == 24.0 &&
+              renderer.save(view, dir / "3g-mpe-switch.png"),
+          "the MPE switch beside Bend's label switches MPE, and its menu picks the bend range");
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {

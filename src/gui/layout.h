@@ -158,6 +158,8 @@ constexpr float kHeaderKnobX = 186.0f;
 constexpr float kHeaderKnobW = 104.0f;
 constexpr float kPlayX = 636.0f;  // Poly | Mono over Legato, 24 px past the first divider
 constexpr float kGlideX = 748.0f; // the Glide knob 24 px past them, its Always switch ending 22 px before the second
+// The MPE switch, beside Bend's label at the end of Bend's place.
+constexpr Rect kMpeToggle{977.0f, 15.0f, 27.0f, 15.0f};
 constexpr float kGlideW = 126.0f;
 constexpr float kDividers[] = {612.0f, 896.0f};
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
@@ -208,10 +210,9 @@ inline Rect sourceMenuItem(Point at, SourceType type) {
     const Rect menu = sourceMenu(at);
     return {menu.x + 4.0f, menu.y + 4.0f + (static_cast<int>(type) - 1) * 26.0f, menu.w - 8.0f, 24.0f};
 }
-// A MIDI card's input switch, CC or PRESSURE, under its title at the left; its CC and Slew knobs at the right.
-inline Rect midiInputButton(Rect card, MidiInput input) {
-    return {card.x + 16.0f + static_cast<float>(input) * 64.0f, card.y + 44.0f, 64.0f, 20.0f};
-}
+// A MIDI card's input (CC, Pressure or Slide), a list button under its title at the left, where an LFO's shape is;
+// its CC and Slew knobs at the right.
+inline Rect midiInputButton(Rect card) { return {card.x + 16.0f, card.y + 42.0f, 122.0f, 22.0f}; }
 constexpr float kSourceShadowSpan = (kSourceShadowW + kCardGap) / (kCardW + kCardGap);
 constexpr float kFxIconX = 10.0f; // the icon's left edge, from the card's
 constexpr float kFxIconW = 18.0f;

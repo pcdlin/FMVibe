@@ -87,6 +87,7 @@ STR(SourceRandom, "Random") // a value taken at random as each note starts
 STR(SourceMidi, "MIDI") // a MIDI controller or aftertouch
 STR(MidiInputCc, "CC") // what a MIDI source follows: a controller
 STR(MidiInputPressure, "Pressure") // or aftertouch
+STR(MidiInputSlide, "Slide") // or a note's slide (MPE's CC 74, CLAP's brightness expression)
 
 // The noise wave's slope at its three named settings.
 STR(NoiseWhite, "White")
@@ -130,6 +131,8 @@ STR(ParamFxOrder, "FX Order")
 STR(ParamModWheel, "Mod Wheel")
 STR(ParamNote, "Note")
 STR(ParamVelocitySource, "Velocity") // the velocity source, as hosts name its fields
+STR(ParamMpe, "MPE")
+STR(ParamMpeBendRange, "MPE Bend Range")
 
 // What a parameter's name starts with; the field's name follows.
 STR(ParamOp, "Op {1}")
@@ -473,8 +476,6 @@ STR(ButtonEnv, "ENV")
 STR(ButtonRandom, "RANDOM")
 STR(ButtonMidi, "MIDI")
 STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
-STR(SwitchCc, "CC") // a MIDI card's input
-STR(SwitchPressure, "PRESSURE")
 STR(HintRandomSource, "A new value at random for each note")
 STR(ButtonEffect, "EFFECT")
 STR(ButtonOpenFolder, "OPEN FOLDER")
@@ -647,8 +648,12 @@ STR(TipClipHard, "Hard clipping")
 STR(TipClipSoft, "Soft clipping")
 STR(TipClipAsym, "Asymmetric clipping, tube-like")
 STR(TipGlideAlways, "Glide on every note, not just overlapping ones")
+STR(TipMpe, "MPE: one note per channel (2-16), each bent alone; right-click for the bend range")
+STR(MenuMpeBendRange, "MPE bend range: {1} st")
+STR(SwitchMpe, "MPE")
 STR(TipMidiCc, "Follow a MIDI controller, picked with the CC knob")
 STR(TipMidiPressure, "Follow aftertouch: each note's own, else the channel's")
+STR(TipMidiSlide, "Follow each note's slide (MPE's CC 74), resting in the middle")
 
 // --- The editor: right-click menus
 

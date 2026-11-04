@@ -116,11 +116,16 @@ void lfoShapeIcon(Canvas &c, Rect r, LfoShape shape, Color color) {
         customShapeDots(c, r, color);
 }
 
-// A choice that opens a list under its button (an LFO's shape, a shaper's curve, the reverb's algorithm, a filter's slope): which
-// values it has, and their names.
+bool isMidiInput(int param) {
+    return sourceFieldOf(param) == SourceParam::MidiInput;
+}
+
+// A choice that opens a list under its button (an LFO's shape, a MIDI source's input, a shaper's curve, the reverb's
+// algorithm, a filter's slope): which values it has, and their names.
 int listCount(int param) {
     return isFilterSlope(param)                       ? kFilterSlopes
            : isLfoShape(param)                        ? static_cast<int>(LfoShape::Count)
+           : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
                                                       : static_cast<int>(ClipMode::Count);
 }
@@ -129,6 +134,8 @@ std::string listItemName(int param, int value) {
         return std::to_string(slopeDb(value)) + " dB";
     if (isLfoShape(param))
         return lfoShapeName(static_cast<LfoShape>(value));
+    if (isMidiInput(param))
+        return midiInputName(static_cast<MidiInput>(value));
     return fxFieldOf(param) == FxParam::ReverbType ? reverbTypeName(static_cast<ReverbType>(value))
                                                     : clipModeName(static_cast<ClipMode>(value));
 }
@@ -506,7 +513,7 @@ Color View::fxColor(int slot) const {
 }
 
 Color View::listColor(int param) const {
-    if (isLfoShape(param))
+    if (isLfoShape(param) || isMidiInput(param))
         return kSourceColors[sourceOf(param)];
     return shaperOf(param) >= 0 ? kShaperColor : fxSlotOf(param) >= 0 ? fxColor(fxSlotOf(param)) : kFilterColor;
 }
@@ -1241,6 +1248,8 @@ std::vector<View::Widget> View::widgets() const {
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
     add(Kind::Toggle, {kGlideX + kGlideW - 52.0f, 15.0f, 52.0f, 15.0f}, paramIndex(GlobalParam::GlideAlways));
     headerKnob(paramIndex(GlobalParam::BendRange), 906.0f, 96.0f, tr(Str::LabelBend));
+    // MPE beside Bend's label, as Always beside Glide's; its menu picks the member channels' bend range.
+    add(Kind::Toggle, kMpeToggle, paramIndex(GlobalParam::Mpe));
     headerKnob(paramIndex(GlobalParam::Voices), 1006.0f, kHeaderKnobW, tr(Str::LabelVoices));
 
     // Routing panel, as a graph, as a matrix, or the effects chain; or the shape
@@ -1845,10 +1854,12 @@ std::vector<View::Widget> View::widgets() const {
             for (int i = 0; i < 5; ++i)
                 knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
         } else if (sourceTypeOf(s) == SourceType::Midi) {
-            // Its input switch, and right of it the controller (while that is its input) and Slew; Random has none.
+            // Its input's list button, where an LFO's shape is, and right of it the controller (while that is its
+            // input) and Slew; Random has none. Its list opens as an LFO's shapes do.
             const int input = paramIndex(s, SourceParam::MidiInput);
-            for (MidiInput in : {MidiInput::Cc, MidiInput::Pressure})
-                add(Kind::Choice, midiInputButton(p, in), input, -1, static_cast<int>(in));
+            add(Kind::ListButton, midiInputButton(p), input);
+            if (listMenu_ == input)
+                lfoList = midiInputButton(p);
             if (std::lround(value(input)) == static_cast<long>(MidiInput::Cc))
                 knob(paramIndex(s, SourceParam::CcNumber), {p.x + 172.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelCc));
             knob(paramIndex(s, SourceParam::Slew), {p.x + 228.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelSlew));
@@ -4502,9 +4513,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const char *text = power ? ""
                            : isPartialCount(w.param) ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
-                           : sourceFieldOf(w.param) == SourceParam::MidiInput
-                               ? tr(w.b == static_cast<int>(MidiInput::Cc) ? Str::SwitchCc : Str::SwitchPressure)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
+                           : w.param == paramIndex(GlobalParam::Mpe)    ? tr(Str::SwitchMpe)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
                            : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? tr(Str::SwitchStereo)
@@ -5635,7 +5645,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
          hover_->kind != Kind::McBand && hover_->kind != Kind::FxInsert &&
-         !(hover_->kind == Kind::ListButton && isFilterSlope(hover_->param)) &&
+         !(hover_->kind == Kind::ListButton && (isFilterSlope(hover_->param) || isMidiInput(hover_->param))) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
     // A source's handle tells how to use it only until it modulates something.
@@ -5776,10 +5786,16 @@ void View::paintTooltip(Canvas &c) {
         text = filterTypeName(static_cast<FilterType>(hover_->b));
     else if (field == FxParam::ShaperMode)
         text = tr(hover_->b == 0 ? Str::TipClipHard : hover_->b == 1 ? Str::TipClipSoft : Str::TipClipAsym);
-    else if (sourceFieldOf(param) == SourceParam::MidiInput)
-        text = tr(hover_->b == static_cast<int>(MidiInput::Cc) ? Str::TipMidiCc : Str::TipMidiPressure);
+    else if (isMidiInput(param)) { // what the input picked follows
+        const auto input = static_cast<MidiInput>(std::lround(value(param)));
+        text = tr(input == MidiInput::Cc         ? Str::TipMidiCc
+                  : input == MidiInput::Pressure ? Str::TipMidiPressure
+                                                 : Str::TipMidiSlide);
+    }
     else if (param == paramIndex(GlobalParam::GlideAlways))
         text = tr(Str::TipGlideAlways);
+    else if (param == paramIndex(GlobalParam::Mpe))
+        text = tr(Str::TipMpe);
     else
         return; // a switch with nothing to say
     // As wide as its text, centered under the widget and kept inside the editor.
@@ -7267,6 +7283,9 @@ constexpr int kBypassCommand = kClearCommand + kAllSources;
 constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
 constexpr int kResetBendCommand = 14;
+// The MPE switch's menu: the member channels' bend range, one of these semitones.
+constexpr int kMpeRangeCommand = 40;
+constexpr int kMpeRanges[] = {12, 24, 48, 96};
 
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
@@ -7280,6 +7299,13 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     const auto hit = hitTest(p);
     if (!hit)
         return items;
+    if (hit->kind == Kind::Toggle && hit->param == paramIndex(GlobalParam::Mpe)) {
+        const long range = std::lround(value(paramIndex(GlobalParam::MpeBendRange)));
+        for (int k = 0; k < static_cast<int>(std::size(kMpeRanges)); ++k)
+            items.push_back({kMpeRangeCommand + k, trf(Str::MenuMpeBendRange, {std::to_string(kMpeRanges[k])}),
+                             range == kMpeRanges[k]});
+        return items;
+    }
     if (hit->kind == Kind::FxGrip || hit->kind == Kind::FxPower) {
         menuFx_ = hit->a;
         if (fxChain().size() < static_cast<size_t>(kFxSlots))
@@ -7411,7 +7437,9 @@ std::string View::bypassLabel(int source, int slot) const {
 void View::menuCommand(int command) {
     if (!menuLive_) // what the menu was opened on may have changed or gone since
         return;
-    if (command == 1 && menuParam_ >= 0) {
+    if (command >= kMpeRangeCommand && command < kMpeRangeCommand + static_cast<int>(std::size(kMpeRanges))) {
+        edit(paramIndex(GlobalParam::MpeBendRange), kMpeRanges[command - kMpeRangeCommand]);
+    } else if (command == 1 && menuParam_ >= 0) {
         edit(menuParam_, resetValue(menuParam_));
     } else if (command == 2 && menuParam_ >= 0) {
         const UndoScope step(controller_);

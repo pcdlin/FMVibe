@@ -1401,7 +1401,8 @@ int main(int argc, char **argv) {
         check(std::abs(otherCc - resting) < 1e-3f && ccUp < 0.01f && ccHalf > 0.4f * resting && ccHalf < 0.6f * resting,
               "a MIDI source follows its controller");
 
-        // Aftertouch: the channel's, then a note's own over it.
+        // Aftertouch: the channel's, then a note's own over it (polyphonic aftertouch or CLAP's pressure expression,
+        // not another key's).
         const int input = paramIndex(0, SourceParam::MidiInput);
         setParams({{input, static_cast<double>(MidiInput::Pressure)}});
         send(midiEvent(0xD0, 127, 0));
@@ -1428,11 +1429,77 @@ int main(int argc, char **argv) {
         expression.value = 1.0;
         const float polyUp = pressed(polyPress.header), otherUp = pressed(otherKey.header),
                     expressionUp = pressed(expression.header);
-        std::printf("      MIDI on aftertouch on A's output at -100 %%: peak %.3f with the channel's up, %.3f with the note's, "
-                    "%.3f with another key's, %.3f with its pressure expression\n",
+        std::printf("      MIDI on pressure on A's output at -100 %%: peak %.3f with the channel's up, %.3f with the "
+                    "note's, %.3f with another key's, %.3f with its pressure expression\n",
                     channelUp, polyUp, otherUp, expressionUp);
         check(channelUp < 0.01f && polyUp < 0.01f && otherUp > 0.9f * resting && expressionUp < 0.01f,
-              "a MIDI source on aftertouch follows the channel's, and a note's own");
+              "a MIDI source on pressure follows a note's own, else the channel's");
+
+        // Slide, bipolar: at rest A is as it was; the note's brightness expression all the way up takes half of A away.
+        setParams({{input, static_cast<double>(MidiInput::Slide)}, {paramIndex(0, SourceParam::Bipolar), 1.0}});
+        const float slideResting = peakOf(play({}));
+        expression.expression_id = CLAP_NOTE_EXPRESSION_BRIGHTNESS;
+        const float slideUp = pressed(expression.header);
+        setParams({{input, static_cast<double>(MidiInput::Pressure)}, {paramIndex(0, SourceParam::Bipolar), 0.0}});
+        std::printf("      MIDI on slide on A's output at -100 %%: peak %.3f at rest, %.3f with its brightness up\n",
+                    slideResting, slideUp);
+        check(std::abs(slideResting - resting) < 1e-3f && slideUp > 0.4f * resting && slideUp < 0.6f * resting,
+              "a MIDI source on slide rests in the middle and follows a note's brightness");
+
+        // MPE over MIDI: two A3s, on member channels 2 and 3 (1 and 2 counting from 0), the bend range at 12. With
+        // MPE on, channel 3's bend takes its note an octave up and leaves the other; the master channel's takes both
+        // (by Bend Range, set to 12 too). Channel 2's pressure silences its note alone through the MIDI source on
+        // pressure, in place 1 on A's output.
+        // With MPE off, a bend on any channel takes both.
+        {
+            const double a3 = 220.0, a4 = 440.0;
+            auto onChannel = [](int16_t id, int16_t channel) {
+                clap_event_note_t ev = noteEvent(CLAP_EVENT_NOTE_ON, id, 57);
+                ev.channel = channel;
+                return ev;
+            };
+            auto listen = [&](uint8_t status, uint8_t first, uint8_t second) { // both notes, then the message
+                const clap_event_note_t one = onChannel(31, 1), two = onChannel(32, 2);
+                runBlock({&one.header, &two.header});
+                runBlocks(2);
+                const clap_event_midi_t message = midiEvent(status, first, second);
+                runBlock({&message.header});
+                runBlocks(4);
+                std::vector<float> signal;
+                for (int b = 0; b < 16; ++b) {
+                    runBlock();
+                    signal.insert(signal.end(), left.begin(), left.end());
+                }
+                runBlock({&chokeAll.header});
+                for (uint8_t channel = 0; channel < 3; ++channel) { // every bend back to the middle
+                    const clap_event_midi_t center = midiEvent(static_cast<uint8_t>(0xE0 | channel), 0, 0x40);
+                    runBlock({&center.header});
+                }
+                return std::pair{magnitude(signal, a3), magnitude(signal, a4)};
+            };
+            setParams({{paramIndex(GlobalParam::Mpe), 1.0}, {paramIndex(GlobalParam::MpeBendRange), 12.0},
+                       {paramIndex(GlobalParam::BendRange), 12.0}});
+            const auto memberBend = listen(0xE2, 0x7F, 0x7F); // channel 3 all the way up
+            const auto masterBend = listen(0xE0, 0x7F, 0x7F);
+            const auto memberPressure = listen(0xD1, 0x7F, 0); // channel 2's note pressed all the way
+            const clap_event_midi_t released = midiEvent(0xD1, 0, 0);
+            runBlock({&released.header});
+            setParams({{paramIndex(GlobalParam::Mpe), 0.0}});
+            const auto mpeOff = listen(0xE2, 0x7F, 0x7F);
+            setParams({{paramIndex(GlobalParam::BendRange), 2.0}});
+            std::printf("      MPE, A3 against A4: %.0f / %.0f with a member channel's bend, %.0f / %.0f with the "
+                        "master's, %.0f / %.0f with a member channel's pressure, %.0f / %.0f with MPE off\n",
+                        memberBend.first, memberBend.second, masterBend.first, masterBend.second, memberPressure.first,
+                        memberPressure.second, mpeOff.first, mpeOff.second);
+            check(memberBend.first > 0.3 * memberBend.second && memberBend.second > 0.3 * memberBend.first &&
+                      masterBend.second > 10.0 * masterBend.first && mpeOff.second > 10.0 * mpeOff.first,
+                  "with MPE on, a member channel's bend bends its note alone, the master channel's every note");
+            setParams({{paramIndex(GlobalParam::Mpe), 1.0}});
+            const double bothA3 = listen(0xD0, 0, 0).first; // neither pressed
+            setParams({{paramIndex(GlobalParam::Mpe), 0.0}});
+            check(memberPressure.first > 0.3 * bothA3 && memberPressure.first < 0.7 * bothA3,
+                  "with MPE on, a member channel's pressure is its note's alone");
+        }
 
         // Slew: a second, so a controller turned up mid-note has A still near where it was 50 ms on.
         setParams({{input, static_cast<double>(MidiInput::Cc)}, {paramIndex(0, SourceParam::Slew), normFromTime(1.0)}});

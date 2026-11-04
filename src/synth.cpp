@@ -173,6 +173,9 @@ void Synth::reset() {
     freeLfos_ = {};
     cc_ = {};
     channelPressure_ = 0.0;
+    channelBend_ = {};
+    channelPressures_ = {};
+    channelSlides_.fill(0.5);
     for (Decimator &d : decimators_)
         d.reset();
     for (int f = 0; f < kFilters; ++f) {
@@ -235,6 +238,10 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     v.fresh = true;
     v.newRandom = true;
     v.auxOut.fill(0.0); // a new note's sources have put out nothing yet
+    if (mpe_ && note.channel >= 1 && note.channel < 16) { // its channel's pressure and slide, as they came before it
+        v.pressure = channelPressures_[note.channel];
+        v.slide = channelSlides_[note.channel];
+    }
     for (Operator &op : v.ops)
         op.env.start();
     for (Envelope &env : v.modEnvs)
@@ -305,6 +312,7 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
     v.exprGain = 1.0;
     v.exprPan = 0.0;
     v.pressure = -1.0;
+    v.slide = 0.5;
     if (retrigger) {
         v.newRandom = true;
         // Envelopes restart from their current level, so there's no click.
@@ -366,8 +374,60 @@ void Synth::noteExpression(const NoteRef &match, int32_t expression, double valu
         case CLAP_NOTE_EXPRESSION_PRESSURE:
             v.pressure = std::clamp(value, 0.0, 1.0);
             break;
+        case CLAP_NOTE_EXPRESSION_BRIGHTNESS:
+            v.slide = std::clamp(value, 0.0, 1.0);
+            break;
         }
     }
+}
+
+namespace {
+bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
+} // namespace
+
+void Synth::setMpe(bool on, double bendRange) {
+    if (mpe_ && !on) {
+        channelBend_ = {};
+        channelPressures_ = {};
+        channelSlides_.fill(0.5);
+    }
+    mpe_ = on;
+    if (std::isfinite(bendRange))
+        mpeBendRange_ = std::clamp(bendRange, 0.0, 96.0);
+}
+
+void Synth::pitchBend(int channel, double amount) {
+    if (!std::isfinite(amount))
+        return;
+    (mpe_ && memberChannel(channel) ? channelBend_[channel] : bend_) = std::clamp(amount, -1.0, 1.0);
+}
+
+void Synth::controlChange(int channel, int controller, double value) {
+    if (controller < 0 || controller >= 128 || !std::isfinite(value))
+        return;
+    value = std::clamp(value, 0.0, 1.0);
+    if (mpe_ && memberChannel(channel) && controller == 74) { // the slide of the note on that channel
+        channelSlides_[channel] = value;
+        for (Voice &v : voices_)
+            if (live(v) && v.note.channel == channel)
+                v.slide = value;
+        return;
+    }
+    cc_[controller] = value;
+}
+
+void Synth::channelPressure(int channel, double value) {
+    if (!std::isfinite(value))
+        return;
+    value = std::clamp(value, 0.0, 1.0);
+    if (mpe_ && memberChannel(channel)) { // the pressure of the note on that channel
+        channelPressures_[channel] = value;
+        for (Voice &v : voices_)
+            if (live(v) && v.note.channel == channel)
+                v.pressure = value;
+        return;
+    }
+    channelPressure_ = value;
 }
 
 void Synth::paramMod(int index, const NoteRef &match, double amount) {
@@ -859,10 +919,14 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             scale *= runsPerVoice(aux) ? v.auxOut[aux] : hostValue(params, stripKnobIndex(aux));
         return scale;
     };
-    // The pitch the voice plays: its glide, tuning and the bend, with the params as `p` holds them when it is asked.
+    // The pitch the voice plays: its glide, tuning and the bend, with the params as `p` holds them when it is asked;
+    // with MPE on, a note on a member channel bends with its channel too.
     const double bend = std::clamp(bend_ + wheelBend_, -1.0, 1.0);
+    const double memberBend =
+        mpe_ && memberChannel(v.note.channel) ? channelBend_[v.note.channel] * mpeBendRange_ : 0.0;
     auto pitchNow = [&] {
-        return v.glide + v.tuning + bend * p[paramIndex(GlobalParam::BendRange)] + p[paramIndex(GlobalParam::Pitch)];
+        return v.glide + v.tuning + memberBend + bend * p[paramIndex(GlobalParam::BendRange)] +
+               p[paramIndex(GlobalParam::Pitch)];
     };
     // Velocity puts out what the note came with, known before the places run, so the slots it scales as their aux
     // take this block's value; on a note's first block, so do those the note source scales, from the pitch the note
@@ -924,18 +988,20 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             continue;
         }
         if (type != SourceType::Env) {
-            // Random holds a value of its own from the note's start; Midi follows its controller or aftertouch
-            // through Slew, from where it is as the note starts.
+            // Random holds a value of its own from the note's start; Midi follows its controller, or the note's
+            // pressure (else the channel's) or slide, through Slew, from where it is as the note starts.
             double &out = v.follow[s];
             if (type == SourceType::Random) {
                 if (v.newRandom)
                     out = 0.5 * (nextRandom(v.rng) + 1.0);
             } else {
-                const bool pressure = stepped(p[paramIndex(s, SourceParam::MidiInput)], 1) ==
-                                      static_cast<int>(MidiInput::Pressure);
+                const auto input = static_cast<MidiInput>(
+                    stepped(p[paramIndex(s, SourceParam::MidiInput)], static_cast<int>(MidiInput::Count) - 1));
                 const double in =
-                    pressure ? (v.pressure >= 0.0 ? v.pressure : channelPressure_)
-                             : cc_[static_cast<size_t>(stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))];
+                    input == MidiInput::Pressure ? (v.pressure >= 0.0 ? v.pressure : channelPressure_)
+                    : input == MidiInput::Slide  ? v.slide
+                                                 : cc_[static_cast<size_t>(
+                                                      stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))];
                 out = v.fresh ? in
                               : in + (out - in) * std::exp(-static_cast<double>(hostFrames) /
                                                            (timeFromNorm(p[paramIndex(s, SourceParam::Slew)]) *

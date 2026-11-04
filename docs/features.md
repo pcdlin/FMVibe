@@ -95,9 +95,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     legato) and held, 0–100 %: notes that each detune, brighten or pan a little differently.
   - **MIDI**: what its **Input** picks. **CC**, to begin with: a MIDI controller, **CC** 0–127 (1, the mod wheel's,
     to begin with), the same for every voice. **Pressure**: aftertouch, a voice following its own note's (MIDI
-    polyphonic aftertouch, or CLAP's pressure note expression, as MPE controllers send it) once some has come, and
-    the channel's (MIDI channel pressure) until then. It follows its input through **Slew**, a time constant from
-    1 ms (all but at once, to begin with) to 10 s, starting each note where its input is.
+    polyphonic aftertouch, CLAP's pressure note expression, or channel pressure on an MPE member channel) once some
+    has come, and the channel's (MIDI channel pressure) until then. **Slide**: a voice's own note's slide, the
+    finger's up and down movement an MPE controller sends (CLAP's brightness note expression, or CC 74 on an MPE
+    member channel), resting in the middle until some comes: bipolar, it moves nothing at rest. It follows its
+    input through **Slew**, a time constant from 1 ms (all but at once, to begin with) to 10 s, starting each note
+    where its input is.
   Both start unipolar. The browser demo takes no MIDI, so there a MIDI source stays at 0. A new
   instance has none; each one added starts
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
@@ -280,6 +283,16 @@ What the plugin does and how its editor works, in full. Building and installing 
   do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, Bend Range for
   MIDI pitch bend, **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
+- **MPE** (MIDI Polyphonic Expression), off to begin with: the switch beside Bend's label in the header. Hosts
+  that send CLAP note expressions (Bitwig) need nothing: each note's tuning, volume, pan, pressure and brightness
+  reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is the master channel, whose
+  pitch bend (by Bend Range), controllers and channel pressure apply to every voice, and channels 2 to 16 each carry
+  one note of their own: their pitch bend bends that note alone, by the **MPE bend range** (48 semitones to begin
+  with, as the MPE spec has it; 12, 24, 48 or 96 from the switch's right-click menu), and their channel pressure and
+  CC 74 are that note's pressure and slide, which a MIDI source follows on those inputs. A note that starts on a
+  member channel starts from what its channel last sent. With MPE off, every channel's bend, controllers and
+  pressure apply to every voice, as without MPE. The plugin offers hosts the MPE MIDI dialect alongside CLAP's and
+  plain MIDI.
 - **Play modes**:
   - **Mono** plays one voice that moves from note to note. When you let go of the sounding key while others are
     held, it returns to the most recent one.
@@ -295,7 +308,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   voice (not Volume, the mod wheel, the effects, the macros, the note source or velocity), so Bitwig's modulators
   (including per-note ones) can drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
-  clicking), and CLAP note expressions (tuning, volume, pan). Lowering the voice limit while more voices sound fades
+  clicking), and CLAP note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources).
+  Lowering the voice limit while more voices sound fades
   out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
@@ -608,8 +622,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Modulation**: the panel's title row has the **MODULATION** toggle, which collapses the panel to that row and
   opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ LFO**,
   **+ ENV**, **+ RANDOM** and **+ MIDI** (a drawn plus, like + EFFECT's) to add a source (which opens a collapsed
-  panel). A Random card says what it does where the others have knobs. A MIDI card has its input switch, **CC** or
-  **PRESSURE**, and right of it its CC knob (while its input is a controller) and Slew; under them, both cards'
+  panel). A Random card says what it does where the others have knobs. A MIDI card has its input's list (CC,
+  Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
+  (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
   card with a plus, **ADD SOURCE**, as tall as the cards, opens the list of source types over itself (LFO, Envelope,

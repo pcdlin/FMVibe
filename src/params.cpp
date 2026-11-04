@@ -48,7 +48,7 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
                                     Str::SourceMidi};
-constexpr Str kMidiInputNames[] = {Str::MidiInputCc, Str::MidiInputPressure};
+constexpr Str kMidiInputNames[] = {Str::MidiInputCc, Str::MidiInputPressure, Str::MidiInputSlide};
 static_assert(std::size(kMidiInputNames) == static_cast<size_t>(MidiInput::Count));
 static_assert(std::size(kSourceTypeNames) == static_cast<size_t>(SourceType::Count));
 // A drawn shaper curve's points as it starts, (x, y, curve) each: an S, flat at the ends, steep through the middle.
@@ -177,6 +177,10 @@ void buildTable(ParamTable &t) {
     add(paramIndex(GlobalParam::ModWheel), tr(Str::ParamModWheel), global, ParamKind::Percent, 0.0, 1.0, 0.0);
     t[paramIndex(GlobalParam::ModWheel)].flags &=
         ~static_cast<clap_param_info_flags>(CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY);
+    // MPE off to begin with; its member channels bend 48 semitones either way, as the MPE spec has it.
+    add(paramIndex(GlobalParam::Mpe), tr(Str::ParamMpe), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
+    add(paramIndex(GlobalParam::MpeBendRange), tr(Str::ParamMpeBendRange), global, ParamKind::Semitones, 1.0, 96.0,
+        48.0);
 
     // Default patch: operator A, a plain sine carrier; the others start switched
     // off, to be added from the routing panel. Every operator has the same settings otherwise.
@@ -780,6 +784,10 @@ const char *peqTypeName(PeqType type) {
 
 const char *reverbTypeName(ReverbType type) {
     return nameAt(kReverbTypeNames, static_cast<double>(type));
+}
+
+const char *midiInputName(MidiInput input) {
+    return nameAt(kMidiInputNames, static_cast<double>(input));
 }
 
 const char *fxName(FxType fx) {

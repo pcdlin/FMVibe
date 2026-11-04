@@ -144,21 +144,21 @@ public:
     // it, and those after the voices' (the effects, the macros, the note source's and the mod wheel's) only for
     // every voice.
     void paramMod(int index, const NoteRef &match, double amount);
-    // -1..1, scaled by the Bend Range param.
-    void pitchBend(double amount) { bend_ = amount; }
-    // What the Midi sources follow, 0..1 (see SourceType): a MIDI controller's value, the channel's
-    // aftertouch, and the polyphonic aftertouch of the voices playing `match` (as CLAP's pressure expression).
-    void controlChange(int controller, double value) {
-        if (controller >= 0 && controller < 128 && std::isfinite(value))
-            cc_[controller] = std::clamp(value, 0.0, 1.0);
-    }
-    void channelPressure(double value) {
-        if (std::isfinite(value))
-            channelPressure_ = std::clamp(value, 0.0, 1.0);
-    }
+    // MIDI that isn't notes, on `channel` (0..15). With MPE on (see setMpe()), what comes on a member channel (1..15)
+    // is the note's there alone: its pitch bend (-1..1 of the MPE bend range), its channel pressure and its CC 74
+    // (slide), each kept for the channel, so a note that starts there later starts from them. Otherwise, a pitch bend
+    // (-1..1, scaled by the Bend Range param) bends every voice, a controller's value is what the Midi sources follow
+    // and the channel's pressure what they fall back on while a note has none of its own (see SourceType).
+    // Polyphonic aftertouch is the pressure of the voices playing `match`, as CLAP's pressure expression is.
+    void pitchBend(int channel, double amount);
+    void controlChange(int channel, int controller, double value);
+    void channelPressure(int channel, double value);
     void polyPressure(const NoteRef &match, double value) {
         noteExpression(match, CLAP_NOTE_EXPRESSION_PRESSURE, value);
     }
+    // MPE over MIDI, and how far its member channels bend, in semitones (see GlobalParam::Mpe). Turned off, the member
+    // channels' bends are forgotten.
+    void setMpe(bool on, double bendRange);
     // The editor's bend wheel, on top of the host's pitch bend. Audio thread.
     void setWheelBend(double amount) { wheelBend_ = amount; }
     // Host tempo in BPM, for synced LFOs and delay times.
@@ -257,6 +257,7 @@ private:
         double exprGain = 1.0;
         double exprPan = 0.0;
         double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
+        double slide = 0.5;     // its note's slide, 0..1, resting in the middle
         bool newRandom = false; // (re)started: the Random sources take a new value in its next block
         std::array<double, kMaxSources> follow{}; // what Random and Midi sources put out, 0..1
         double fmScale = 0.0;   // ramped, like the output gains and levels
@@ -346,6 +347,13 @@ private:
     double wheelBend_ = 0.0;
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
     double channelPressure_ = 0.0;
+    // MPE (see setMpe()): whether it is on, its bend range, and each member channel's bend (-1..1), pressure and
+    // slide (0..1), by channel; channel 0, the master, is unused.
+    bool mpe_ = false;
+    double mpeBendRange_ = 48.0;
+    std::array<double, 16> channelBend_{};
+    std::array<double, 16> channelPressures_{};
+    std::array<double, 16> channelSlides_{};
     double tempo_ = 120.0;
     uint64_t noteCounter_ = 0;
     int limit_ = 1;
