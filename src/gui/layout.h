@@ -43,6 +43,17 @@ constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMa
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
 // An operator's Fixed switch, a keyboard on the summary line left of the power switch.
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
+// A Custom wave's edit button (a pencil, as big as the keyboard switch, left of it): opens its partial editor.
+constexpr Rect kPartialEditButton{kFixedSwitch.x - 4.0f - kFixedSwitch.w, kFixedSwitch.y, kFixedSwitch.w,
+                                  kFixedSwitch.h};
+// The edit buttons in a display's corner, a pencil each: a Custom LFO's top right, a drawn shaper curve's bottom right.
+constexpr float kEditButtonW = 24.0f, kEditButtonH = 16.0f;
+inline Rect lfoEditButton(Rect display) {
+    return {display.right() - 4.0f - kEditButtonW, display.y + 4.0f, kEditButtonW, kEditButtonH};
+}
+inline Rect clipEditButton(Rect display) {
+    return {display.right() - 6.0f - kEditButtonW, display.bottom() - 5.0f - kEditButtonH, kEditButtonW, kEditButtonH};
+}
 // An operator's page: under its knob row, tabs (one per InspectorTab) pick what the lower half shows.
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
@@ -145,8 +156,9 @@ constexpr float kCascadePad = 4.0f;
 // Header: global knobs, the play cluster between two dividers, then the voice controls.
 constexpr float kHeaderKnobX = 186.0f;
 constexpr float kHeaderKnobW = 104.0f;
-constexpr float kPlayX = 661.0f; // its switches' middle half way between the dividers
-constexpr float kSmallKnobValue = 64.0f; // where a small header knob's number starts, past its knob and label
+constexpr float kPlayX = 636.0f;  // Poly | Mono over Legato, 24 px past the first divider
+constexpr float kGlideX = 748.0f; // the Glide knob 24 px past them, its Always switch ending 22 px before the second
+constexpr float kGlideW = 126.0f;
 constexpr float kDividers[] = {612.0f, 896.0f};
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
 // past full scale.

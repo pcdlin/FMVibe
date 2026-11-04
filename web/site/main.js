@@ -249,9 +249,19 @@ function afterInput(changed = true) {
 // --- Mouse --------------------------------------------------------------------------------------------------
 
 let dragging = false; // the left button went down on the editor: it gets the moves and the release, wherever
+let panning = false;  // and the same for the middle button, which drags a panel that scrolls
 let lastPoint = [0, 0];
 
 canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 1) { // not the browser's own scrolling, nor a paste
+    e.preventDefault();
+    closeMenu();
+    panning = true;
+    const [x, y] = lastPoint = viewPoint(e);
+    ui._ui_middle_down(x, y);
+    afterInput();
+    return;
+  }
   if (e.button !== 0)
     return;
   e.preventDefault();
@@ -269,13 +279,22 @@ canvas.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
-  if (!dragging && e.target !== canvas)
+  if (!dragging && !panning && e.target !== canvas)
     return;
   const [x, y] = lastPoint = viewPoint(e);
   afterInput(ui._ui_mouse_move(x, y, e.shiftKey, ctrlOf(e)) !== 0);
 });
 
 window.addEventListener('mouseup', (e) => {
+  if (e.button === 1 && panning) {
+    panning = false;
+    const [x, y] = viewPoint(e);
+    ui._ui_middle_up(x, y);
+    if (e.target !== canvas && !dragging)
+      ui._ui_mouse_leave();
+    afterInput();
+    return;
+  }
   if (e.button !== 0 || !dragging)
     return;
   dragging = false;
@@ -287,7 +306,7 @@ window.addEventListener('mouseup', (e) => {
 });
 
 canvas.addEventListener('mouseleave', () => {
-  if (dragging)
+  if (dragging || panning)
     return;
   ui._ui_mouse_leave();
   afterInput();
@@ -475,8 +494,8 @@ window.addEventListener('blur', () => {
     ui._ui_end_typing(1);
     afterInput();
   }
-  if (dragging) { // the button may come up elsewhere: end the drag where it is, as WM_CAPTURECHANGED does
-    dragging = false;
+  if (dragging || panning) { // the button may come up elsewhere: end the drag where it is, as WM_CAPTURECHANGED does
+    dragging = panning = false;
     ui._ui_mouse_up(lastPoint[0], lastPoint[1], false, false);
     ui._ui_mouse_leave();
     afterInput();

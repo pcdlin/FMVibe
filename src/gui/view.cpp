@@ -1149,13 +1149,11 @@ bool View::poll() {
 // --- Geometry.
 
 Point View::knobCenter(const Widget &w) {
-    if (smallKnob(w))
-        return {w.rect.x + 11.0f, w.rect.center().y};
     return w.compact ? Point{w.rect.x + 18.0f, w.rect.y + 20.0f} : Point{w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
 }
 
 float View::knobRadius(const Widget &w) {
-    return smallKnob(w) ? 11.0f : w.compact ? 17.0f : w.rect.w * 0.5f;
+    return w.compact ? 17.0f : w.rect.w * 0.5f;
 }
 
 // A knob's number shows under it, or beside it in the header.
@@ -1164,8 +1162,6 @@ bool View::onValue(const Widget &w, Point p) {
         return true;
     if (w.kind != Kind::Knob)
         return false;
-    if (smallKnob(w))
-        return p.x >= w.rect.x + kSmallKnobValue;
     return w.compact ? p.x >= w.rect.x + 38.0f : p.y >= w.rect.y + w.rect.w;
 }
 
@@ -1201,7 +1197,7 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::Knob, knobRect(center, diameter), param);
         list.back().label = label;
     };
-    // A drawn shaper curve is edited right in its display, as in the big editor its EDIT button opens.
+    // A drawn shaper curve is edited right in its display, as in the big editor its edit button opens.
     auto drawnCurve = [&](int unit, Rect display) {
         const int shape = kMaxSources + unit;
         add(Kind::ShapeArea, display, -1, shape);
@@ -1221,8 +1217,8 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, shape, point);
             list.back().compact = true;
         }
-        // EDIT in the corner a curve leaves empty
-        add(Kind::ClipDisplay, {display.right() - 40.0f, display.bottom() - 20.0f, 34.0f, 15.0f}, -1, unit);
+        // The edit button in the corner a curve leaves empty
+        add(Kind::ClipDisplay, clipEditButton(display), -1, unit);
     };
 
     // Header.
@@ -1236,15 +1232,14 @@ std::vector<View::Widget> View::widgets() const {
     const Str globalLabels[] = {Str::LabelVolume, Str::LabelFmAmount, Str::LabelPitch, Str::LabelPan};
     for (int i = 0; i < 4; ++i)
         headerKnob(globals[i], kHeaderKnobX + i * kHeaderKnobW, kHeaderKnobW, tr(globalLabels[i]));
-    // Play cluster: Poly | Mono over Legato, then Glide with its Always switch.
+    // Play cluster: Poly | Mono over Legato, then the Glide knob with its Always switch beside its label (added after
+    // the knob, so it takes the clicks there).
     const int mono = paramIndex(GlobalParam::Mono);
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
     add(Kind::Toggle, {kPlayX, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::Legato));
-    add(Kind::Knob, {kPlayX + 98.0f, 12.0f, 128.0f, 19.0f}, paramIndex(GlobalParam::Glide)); // as small as Poly | Mono
-    list.back().label = tr(Str::LabelGlide);
-    list.back().compact = true;
-    add(Kind::Toggle, {kPlayX + 98.0f, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
+    headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
+    add(Kind::Toggle, {kGlideX + kGlideW - 52.0f, 15.0f, 52.0f, 15.0f}, paramIndex(GlobalParam::GlideAlways));
     headerKnob(paramIndex(GlobalParam::BendRange), 906.0f, 96.0f, tr(Str::LabelBend));
     headerKnob(paramIndex(GlobalParam::Voices), 1006.0f, kHeaderKnobW, tr(Str::LabelVoices));
 
@@ -1723,6 +1718,8 @@ std::vector<View::Widget> View::widgets() const {
             for (size_t i = row; i < list.size(); ++i)
                 list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
             add(Kind::Toggle, kFixedSwitch, paramIndex(op, OpParam::Fixed));
+            if (isCustomWave(op))
+                add(Kind::PartialEdit, kPartialEditButton, -1, op);
             const int unison[] = {paramIndex(op, OpParam::Unison), paramIndex(op, OpParam::UnisonDetune),
                                   paramIndex(op, OpParam::UnisonSpread), paramIndex(op, OpParam::PhaseRandom)};
             const Str unisonLabels[] = {Str::LabelUnison, Str::LabelUniDetune, Str::LabelUniSpread, Str::LabelRndPhase};
@@ -1906,13 +1903,9 @@ std::vector<View::Widget> View::widgets() const {
             }
             continue;
         }
-        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left, and a small one's
-        // at its row's right end, past its number.
-        const bool oneRow = smallKnob(list[i]);
-        const Point base = oneRow            ? Point{r.right() - 20.0f, r.center().y}
-                           : list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f}
-                                             : Point{r.center().x, r.y + r.w - 1.0f};
-        const float width = oneRow ? 40.0f : list[i].compact ? 34.0f : r.w;
+        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left.
+        const Point base = list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f} : Point{r.center().x, r.y + r.w - 1.0f};
+        const float width = list[i].compact ? 34.0f : r.w;
         const int fit = static_cast<int>((width - 7.0f) / 9.0f) + 1;
         int shown = n;
         float pillW = 0.0f;
@@ -2963,9 +2956,7 @@ void View::paintVelocityCurveEditor(Canvas &c) {
 int View::partialEditing() const {
     if (partialEditor_ < 0 || shapeEditing() >= 0)
         return -1;
-    return std::lround(value(paramIndex(partialEditor_, OpParam::Wave))) == static_cast<long>(OpWave::Custom)
-               ? partialEditor_
-               : -1;
+    return isCustomWave(partialEditor_) ? partialEditor_ : -1;
 }
 
 int View::partialsShown(int op) const {
@@ -3832,6 +3823,8 @@ void View::paintInspector(Canvas &c) {
                              (1.0 + value(paramIndex(op, OpParam::Fine)));
         std::string summary = std::string(kNodeNames[op]) + dot;
         summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
+        if (isCustomWave(op))
+            summaryRect.w -= kPartialEditButton.w + 4.0f; // and a Custom wave's edit button, left of that
         if (isNoise(op)) {
             char slope[32];
             const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
@@ -3941,6 +3934,10 @@ void View::paintUnison(Canvas &c, Rect r, int op) {
         c.line({dot.x, r.center().y}, dot, (copies > 1 ? kAccent : kDim).alpha(0.4f), 1.5f);
         c.fillCircle(dot, 4.0f, copies > 1 ? kAccent : kDim);
     }
+}
+
+bool View::isCustomWave(int op) const {
+    return std::lround(value(paramIndex(op, OpParam::Wave))) == static_cast<long>(OpWave::Custom);
 }
 
 bool View::isFixed(int op) const {
@@ -4425,6 +4422,17 @@ void View::paintNode(Canvas &c, const Widget &w) {
     }
     c.text({center.x - 22.0f, center.y + 5.0f, 44.0f, 14.0f}, ratio, 10.0f, kDim); // inside the ring
 }
+
+namespace {
+// An edit button, the same pencil wherever it opens an editor: lit in `color` under the mouse, and outlined in it
+// while what it opens is open.
+void editButton(Canvas &c, Rect r, Color color, bool hovered, bool open) {
+    c.fillRect(r, open ? color.alpha(0.22f) : hovered ? color.alpha(0.3f) : kRaised, 5.0f);
+    if (open)
+        c.strokeRect(r, color, 1.0f, 5.0f);
+    editIcon(c, r.center(), open || hovered ? kText : kDim);
+}
+} // namespace
 
 void View::paintWidget(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w);
@@ -4962,15 +4970,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::LfoDisplay:
         // A freeform LFO's display opens its editor.
-        if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom)) {
-            const Rect edit{w.rect.right() - 38.0f, w.rect.y + 4.0f, 34.0f, 15.0f};
-            c.fillRect(edit, hovered ? kSourceColors[w.a].alpha(0.3f) : kRaised, 4.0f);
-            c.text(edit, tr(Str::ButtonEdit), 10.5f, hovered ? kText : kDim, Align::Center, true);
-        }
+        if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom))
+            editButton(c, lfoEditButton(w.rect), kSourceColors[w.a], hovered, false);
         break;
-    case Kind::ClipDisplay: // the EDIT button on a drawn curve's display
-        c.fillRect(w.rect, hovered ? clipColor(w.a).alpha(0.3f) : kRaised, 4.0f);
-        c.text(w.rect, tr(Str::ButtonEdit), 10.5f, hovered ? kText : kDim, Align::Center, true);
+    case Kind::PartialEdit: // a Custom wave's, lit while its partial editor is open
+        editButton(c, w.rect, kAccent, hovered, partialEditing() == w.a);
+        break;
+    case Kind::ClipDisplay: // the edit button on a drawn curve's display
+        editButton(c, w.rect, clipColor(w.a), hovered, false);
         break;
     case Kind::ListButton: {
         // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.
@@ -5472,11 +5479,10 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const bool focused = isHovered(w) || isActive(w);
     const Point center = knobCenter(w);
     const float radius = knobRadius(w);
-    const float k = smallKnob(w) ? radius / 17.0f : 1.0f; // a small knob's rings and pointer, scaled down with it
     const double n = norm(w.param);
     const float angle = knobAngle(n);
 
-    c.arc(center, radius - 2.0f * k, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f * k);
+    c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f);
     // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
     const int macro = macroOf(w.param);
     // An LFO's Phase is faint too while notes don't start the LFO there.
@@ -5485,7 +5491,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : kAccent).alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
-    c.arc(center, radius - 2.0f * k, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f * k);
+    c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
 
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
     // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
@@ -5499,37 +5505,33 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         }
         const auto [down, up] = modReach(m);
         const float alpha = (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
-        c.arc(center, radius + 2.5f * k, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha),
-              2.5f * k);
+        c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha),
+              2.5f);
     });
     for (const Assignment &f : focus) {
         const auto [down, up] = modReach(f);
         const float alpha = sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f;
-        c.arc(center, radius + 3.0f * k, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha),
-              4.0f * k);
+        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha),
+              4.0f);
     }
 
-    c.fillCircle(center, radius - 7.0f * k, kKnobBody);
-    c.strokeCircle(center, radius - 7.0f * k, kBorder, 1.0f);
-    c.line(Canvas::onCircle(center, (radius - 7.0f * k) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f * k, angle),
-           kText, 2.0f * k);
+    c.fillCircle(center, radius - 7.0f, kKnobBody);
+    c.strokeCircle(center, radius - 7.0f, kBorder, 1.0f);
+    c.line(Canvas::onCircle(center, (radius - 7.0f) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle),
+           kText, 2.0f);
 
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
     const float offset = liveOffset(w.param);
     if (offset != 0.0f)
-        c.fillCircle(Canvas::onCircle(center, radius - 2.0f * k, knobAngle(n + offset / (def.max - def.min))),
-                     2.5f * std::max(k, 0.8f), kText);
+        c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))),
+                     2.5f, kText);
 
     char text[64];
     formatParam(w.param, value(w.param), text, sizeof(text));
     std::string shown = text;
     if (def.kind == ParamKind::Ratio)
         shown = "\xC3\x97" + shown;
-    if (smallKnob(w)) { // the label and the number on its row
-        c.text({w.rect.x + 28.0f, w.rect.y, kSmallKnobValue - 30.0f, w.rect.h}, w.label, 10.5f, kDim, Align::Left);
-        c.text({w.rect.x + kSmallKnobValue, w.rect.y, w.rect.w - kSmallKnobValue, w.rect.h}, shown, 13.0f, kText,
-               Align::Left, true);
-    } else if (w.compact) {
+    if (w.compact) {
         const float textWidth = w.rect.w - 42.0f;
         c.text({w.rect.x + 42.0f, w.rect.y + 3.0f, textWidth, 16.0f}, w.label, 10.5f, kDim, Align::Left);
         c.text({w.rect.x + 42.0f, w.rect.y + 18.0f, textWidth, 18.0f}, shown, 13.0f, kText, Align::Left, true);
@@ -5550,6 +5552,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
+         hover_->kind != Kind::PartialEdit && hover_->kind != Kind::ClipDisplay &&
          hover_->kind != Kind::ShapeDone && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
@@ -5645,6 +5648,10 @@ void View::paintTooltip(Canvas &c) {
                                                                        : Str::TipResetShape);
     else if (hover_->kind == Kind::PartialReset)
         text = tr(Str::TipResetPartials);
+    else if (hover_->kind == Kind::PartialEdit)
+        text = tr(partialEditing() == hover_->a ? Str::TipClosePartials : Str::TipEditPartials);
+    else if (hover_->kind == Kind::ClipDisplay)
+        text = tr(Str::TipEditCurve);
     else if (hover_->kind == Kind::ShapeDone)
         text = tr(Str::TipDone);
     else if (hover_->kind == Kind::ShapeGrid)
@@ -5811,6 +5818,13 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
                            over ? 2.0f : 1.0f);
             continue;
         }
+        if (w.kind == Kind::ModsAux && w.a != source) { // a MODS row's aux cell takes it as the aux too
+            if (w.clip.w > 0.0f && (w.rect.y < w.clip.y || w.rect.bottom() > w.clip.bottom()))
+                continue;
+            const bool over = target && target->same(w);
+            c.strokeRect(w.rect.inset(-2.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, 8.0f);
+            continue;
+        }
         if (!droppable(w, source))
             continue;
         // A target scrolled out of its card or list isn't outlined; one partly out is outlined as far as it
@@ -5893,8 +5907,6 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
 
 Rect View::typingField() const {
     const Widget &w = typing_->widget;
-    if (w.kind == Kind::Knob && smallKnob(w))
-        return {w.rect.x + kSmallKnobValue - 4.0f, w.rect.y, 70.0f, w.rect.h};
     if (w.kind == Kind::Knob && w.compact)
         return {w.rect.x + 38.0f, w.rect.y + 17.0f, w.rect.w - 36.0f, 20.0f};
     if (w.kind == Kind::Knob)
@@ -6143,6 +6155,9 @@ void View::applyDrag(Point p) {
             openModList(*at, true);
         break;
     }
+    case DragKind::Pan:
+        applyPan(p);
+        break;
     case DragKind::ModsScroll: { // the rows follow the thumb
         const float room = modsScrollTrack().h - modsThumb().h;
         if (room > 0.0f)
@@ -6497,6 +6512,10 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ClipDisplay:
         shapeEditor_ = kMaxSources + w.a;
         break;
+    case Kind::PartialEdit: // a second click closes it
+        partialEditor_ = partialEditing() == w.a ? -1 : w.a;
+        shapeEditor_ = -1;
+        break;
     case Kind::NoteDisplay:
         shapeEditor_ = shapeEditor_ == curveOf(w.a) ? -1 : curveOf(w.a); // a second click closes it
         hover_.reset();
@@ -6758,9 +6777,9 @@ void View::mouseUp(Point p, Modifiers) {
     }
     case DragKind::ModSource: {
         const auto target = hitTest(p);
-        // On a depth handle, or a row of a pill's list: it becomes that modulation's aux.
+        // On a depth handle, a row of a pill's list or a MODS row's aux cell: it becomes that modulation's aux.
         const bool row = target && target->popup && target->kind != Kind::ModList;
-        if (target && (target->kind == Kind::ModDot || row) && target->a != w.a)
+        if (target && (target->kind == Kind::ModDot || target->kind == Kind::ModsAux || row) && target->a != w.a)
             setAux(target->a, target->b, w.a);
         else if (target && droppable(*target, w.a)) // only where the overlay rings a target
             assign(w.a, target->param);
@@ -6808,6 +6827,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::TextSelect:
     case DragKind::Bend: // each move set it already
     case DragKind::ModsScroll:
+    case DragKind::Pan: // the left button let go of mid-pan ends it too
     case DragKind::None:
         break; // finishDrag() ends what they hold
     }
@@ -6860,6 +6880,7 @@ void View::finishDrag() {
     case DragKind::FxMove:
     case DragKind::SourceMove:
     case DragKind::Scroll:
+    case DragKind::Pan:
     case DragKind::TextSelect:
     case DragKind::None:
         break;
@@ -6872,6 +6893,100 @@ void View::finishDrag() {
 void View::mouseLeave() {
     if (drag_.kind == DragKind::None)
         hover_.reset();
+}
+
+void View::middleDown(Point p) {
+    if (drag_.kind != DragKind::None || settingsOpen_ || confirm_ >= 0) // a left-button drag, or a dialog, goes on
+        return;
+    std::optional<PanArea> area;
+    float first = 0.0f;
+    if (browserOpen_) { // only its list, over everything else
+        if (!browserList(browserPanel(height())).contains(p))
+            return;
+        const int most = std::max(static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height())), 0);
+        area = PanArea::Browser;
+        first = static_cast<float>(std::clamp(browserScroll_, 0, most));
+    } else {
+        // On an open list or menu, it does nothing; elsewhere they close as a click there closes them, since what
+        // they were opened on may scroll away.
+        if (const auto hit = hitTest(p)) {
+            const Kind k = hit->kind;
+            if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd ||
+                k == Kind::ListItem || k == Kind::PeqTypeItem || k == Kind::WaveMenuItem || k == Kind::CascadeItem ||
+                ((k == Kind::FxMenu || k == Kind::ListMenu || k == Kind::PeqTypeMenu || k == Kind::WaveMenu ||
+                  k == Kind::CascadeMenu) &&
+                 hit->a != 0))
+                return;
+        }
+        if (!controller_.layout().sourcesCollapsed && modPanel(false).contains(p)) {
+            area = PanArea::Sources;
+            first = sourceScroll();
+        } else if (modsWide() && kFxPanel.contains(p)) {
+            area = PanArea::Mods;
+            first = modsFirst();
+        } else if (fxWide() && kFxPanel.contains(p)) {
+            area = PanArea::Fx;
+            first = fxScroll();
+        }
+        if (!area)
+            return;
+        modList_.reset();
+        cascade_.reset();
+        fxMenuOpen_ = false;
+        fxInsertAt_ = -1;
+        listMenu_ = -1;
+        peqMenu_ = -1;
+        waveMenu_ = -1;
+    }
+    menuLive_ = false;
+    endTyping(true);
+    if (*area == PanArea::Mods)
+        scrollMods(first, false); // a glide the wheel started stops where it shows
+    drag_ = Drag{};
+    drag_.kind = DragKind::Pan;
+    drag_.widget.a = static_cast<int>(*area);
+    drag_.start = drag_.now = p;
+    drag_.startValue = first;
+}
+
+void View::middleUp(Point p) {
+    if (drag_.kind != DragKind::Pan)
+        return; // a left-button drag goes on
+    finishDrag();
+    hover_ = hitTest(p);
+}
+
+void View::applyPan(Point p) {
+    // What was under the mouse as the button went down stays under it. Past either end, the row stops there, and
+    // that end is where the mouse holds it from then on, so dragged back it follows at once.
+    const float first = static_cast<float>(drag_.startValue);
+    const float across = p.x - drag_.start.x, down = p.y - drag_.start.y;
+    auto hold = [&](float wanted, float most) {
+        const float to = std::clamp(wanted, 0.0f, std::max(most, 0.0f));
+        if (to != wanted) {
+            drag_.start = p;
+            drag_.startValue = to;
+        }
+        return to;
+    };
+    switch (static_cast<PanArea>(drag_.widget.a)) {
+    case PanArea::Fx:
+        setScroll(ScrollArea::Fx,
+                  hold(first - across / (kFxCardW + kFxGap), scrollLength(ScrollArea::Fx) - kVisibleFx));
+        break;
+    case PanArea::Sources:
+        setScroll(ScrollArea::Sources,
+                  hold(first - across / (kCardW + kCardGap), scrollLength(ScrollArea::Sources) - kVisibleCards));
+        break;
+    case PanArea::Mods:
+        scrollMods(hold(first - down / kModsRowStep, modsEnd()), false);
+        break;
+    case PanArea::Browser: { // in whole rows
+        const int rows = static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height()));
+        browserScroll_ = static_cast<int>(std::lround(hold(first - down / kBrowserRowH, static_cast<float>(rows))));
+        break;
+    }
+    }
 }
 
 void View::doubleClick(Point p, Modifiers mods) {
@@ -7416,6 +7531,8 @@ void View::endTyping(bool commit) {
 }
 
 CursorKind View::cursor() const {
+    if (drag_.kind == DragKind::Pan)
+        return CursorKind::Move;
     if (drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute || drag_.kind == DragKind::ModSource)
         return CursorKind::Hand;
     if (drag_.kind == DragKind::Value && drag_.widget.kind == Kind::PeqPoint) // Alt-dragged for its Q

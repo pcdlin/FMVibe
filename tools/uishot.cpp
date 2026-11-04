@@ -210,10 +210,10 @@ constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
 constexpr Point kFmAmountKnob{308.0f, 32.0f};
 constexpr Point kVoicesKnob{1024.0f, 32.0f};
-constexpr Point kMonoButton{727.0f, 21.0f};
-constexpr Point kLegatoToggle{705.0f, 44.0f};
-constexpr Point kGlideKnob{770.0f, 21.0f};
-constexpr Point kAlwaysToggle{803.0f, 44.0f};
+constexpr Point kMonoButton{702.0f, 21.0f};
+constexpr Point kLegatoToggle{680.0f, 44.0f};
+constexpr Point kGlideKnob{766.0f, 32.0f};
+constexpr Point kAlwaysToggle{848.0f, 22.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};
@@ -444,7 +444,8 @@ Point nodeTab(int node) {
 }
 
 // A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output, Mix and To Out knobs, the
-// list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with EDIT in the display's corner.
+// list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with its edit button in the display's
+// corner.
 constexpr Point kShaperList{1009.0f, 177.0f};
 constexpr Point kShaperSym{1096.0f, 177.0f};
 constexpr Point kShaperLink{1146.0f, 177.0f};
@@ -457,7 +458,7 @@ Point shaperListItem(ClipMode mode) {
 Point shaperCurveAt(double x, double y) {
     return {908.0f + static_cast<float>(x) * 252.0f, 310.0f - static_cast<float>(y) * 42.24f};
 }
-constexpr Point kShaperEdit{1145.0f, 353.5f};
+constexpr Point kShaperEdit{1150.0f, 353.0f};
 
 // A point on a node's edge, where a drag connects it: an operator's lower right, a filter's or shaper's right side.
 Point portOf(const UiLayout &layout, int node) {
@@ -783,6 +784,36 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
           "the partial editor shows 16, 32 or 64 partials, keeping those it hides");
     click(view, partialCount(1));
     click(view, kRoutingEditorDone);
+    // While the wave is Custom, a pencil on the summary line, left of the keyboard switch, opens the partial editor
+    // again, lit while it is open, and a second click closes it (read off the rendered pixels: the editor's title).
+    {
+        constexpr Point kPartialEdit{1095.0f, 150.0f};
+        auto partialsTitle = [&] {
+            std::vector<uint32_t> pixels;
+            for (float y = 114.0f; y < 134.0f; y += 2.0f)
+                for (float x = 34.0f; x < 150.0f; x += 3.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool closedShot = renderer.save(view, dir / "23d-partials-closed.png");
+        const std::vector<uint32_t> closed = partialsTitle();
+        click(view, kPartialEdit);
+        view.mouseMove({barX(5), halfway}, {});
+        const bool openShot = renderer.save(view, dir / "23e-partials-edit.png");
+        const bool opened = partialsTitle() != closed;
+        const double level = model.value(partialLevelIndex(0, 5));
+        drag(view, {barX(5), halfway}, {barX(5), halfway});
+        const bool draws = level != model.value(partialLevelIndex(0, 5)) &&
+                           std::abs(20.0 * std::log10(model.value(partialLevelIndex(0, 5))) + 30.0) < 1.5;
+        view.undo();
+        click(view, kPartialEdit);
+        view.mouseMove({600.0f, 300.0f}, {});
+        const bool shut = renderer.save(view, dir / "23f-partials-shut.png") && partialsTitle() == closed;
+        check(closedShot && openShot && opened && draws && shut &&
+                  model.value(partialLevelIndex(0, 5)) == level,
+              "a Custom wave's edit button opens its partial editor, and a second click closes it");
+    }
     // The list's newer waves: Alt Sine, Organ and Vowel, between Abs Sine and Custom.
     click(view, kMoreWavesButton);
     click(view, {1102.0f, 208.0f + 4.0f * 24.0f});
@@ -1127,6 +1158,123 @@ void testCardEdgeScroll(const std::filesystem::path &dir, Renderer &renderer) {
           "an LFO card held at either end of the row scrolls the row along, and lands at that end");
 }
 
+// The middle button held and dragged over a panel that scrolls drags what it shows along with the mouse, without
+// turning what it went down on: the effects and the source cards across, the MODS view's rows and the preset browser's
+// list up and down. Past either end the row stops there, and dragged back it follows again at once. While the left
+// button drags a knob, it does nothing.
+void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    for (FxType type : {FxType::Delay, FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::Compressor,
+                        FxType::Widener, FxType::Disperser, FxType::FreqShifter})
+        addFx(view, type);
+    view.wheel({600.0f, 125.0f}, 10.0f, {}); // back to the start
+    const std::vector<int> chain = fxChain(model);
+    // A card's icon, as `scrolled` places along, switches the effect at chain position `position` off and on again.
+    auto fxAt = [&](float scrolled, int position) {
+        fxScrolled = scrolled;
+        click(view, fxPower(model, position));
+        const bool off = model.value(paramIndex(chain[position], FxParam::Enabled)) == 0.0;
+        click(view, fxPower(model, position));
+        fxScrolled = 0.0f;
+        return off;
+    };
+    const ParamValues before = model.values;
+    const Point grab{700.0f, 300.0f}; // on a card's knob
+    view.middleDown(grab);
+    view.mouseMove({grab.x - kFxStep, grab.y + 10.0f}, {});
+    view.mouseMove({grab.x - 2.0f * kFxStep, grab.y + 10.0f}, {});
+    const bool fxShot = renderer.save(view, dir / "8d-fx-middle-drag.png");
+    const bool panCursor = view.cursor() == CursorKind::Move;
+    view.middleUp({grab.x - 2.0f * kFxStep, grab.y + 10.0f});
+    const bool untouched = model.values == before;
+    check(fxShot && panCursor && untouched && chain.size() == 8 && fxAt(2.0f, 2),
+          "the middle button drags the effects along with the mouse, leaving the knob it went down on");
+    // Eight cards and the dashed one, six places on screen: the row stops three along, and comes back at once.
+    view.middleDown(grab);
+    view.mouseMove({grab.x - 20.0f * kFxStep, grab.y}, {});
+    view.mouseMove({grab.x - 19.0f * kFxStep, grab.y}, {});
+    view.middleUp({grab.x - 19.0f * kFxStep, grab.y});
+    check(fxAt(2.0f, 2), "the middle button drags the effects no further than their end, and back from there at once");
+    // While the left button drags a knob, the middle one leaves the row where it is.
+    const double fm = model.value(paramIndex(GlobalParam::FmAmount));
+    view.mouseDown(kFmAmountKnob, {});
+    view.middleDown(grab);
+    view.mouseMove({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f}, {});
+    view.middleUp({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    view.mouseUp({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f}, {});
+    check(model.value(paramIndex(GlobalParam::FmAmount)) > fm && fxAt(2.0f, 2),
+          "the middle button does nothing while the left button drags a knob");
+
+    // The source cards, a card's width to the left: the second shown takes the first's place.
+    for (int n = 0; n < 5; ++n)
+        click(view, sourceAdd(SourceType::Lfo));
+    view.wheel({60.0f, 513.0f}, 10.0f, {}); // back to the first card
+    const std::vector<int> sources = shown(model);
+    view.middleDown({cardX(1.0f) + 120.0f, 650.0f});
+    view.mouseMove({cardX(0.0f) + 120.0f, 650.0f}, {});
+    view.middleUp({cardX(0.0f) + 120.0f, 650.0f});
+    click(view, sourcePower(0));
+    const bool cardOff = sources.size() >= 5 && model.value(sourceEnabledIndex(sources[1])) == 0.0;
+    click(view, sourcePower(0));
+    check(cardOff, "the middle button drags the source cards along with the mouse");
+
+    // The MODS view's thirteen rows (and the add row), two rows up: the top row's x is LFO 1's third modulation's.
+    // Dragged far down, back to the top, where the first row's x is LFO 1's first.
+    FakeController mods;
+    View modsView(mods);
+    mods.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    mods.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
+    const OpParam targets[] = {OpParam::Fine,    OpParam::Detune,  OpParam::Transpose, OpParam::Out,
+                               OpParam::Phase,    OpParam::Attack, OpParam::Decay,     OpParam::Sustain,
+                               OpParam::Release, OpParam::Hold,    OpParam::UnisonDetune};
+    for (int k = 0; k < 11; ++k) {
+        mods.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(0, targets[k])));
+        mods.set(slotAmountIndex(0, k), 0.2);
+    }
+    mods.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount)));
+    mods.set(slotAmountIndex(1, 0), 0.3);
+    mods.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
+    mods.set(slotAmountIndex(kMaxSources, 0), 0.35);
+    modsView.poll();
+    click(modsView, {314.0f, 88.0f}); // the MODS tab
+    auto removedOnly = [&](int slot) {
+        click(modsView, {1144.0f, 154.0f}); // the top row's x
+        bool ok = true;
+        for (int k = 0; k < 11; ++k)
+            ok = ok && (slotTarget(mods.value(slotTargetIndex(0, k))) < 0) == (k == slot);
+        modsView.undo();
+        return ok && slotTarget(mods.value(slotTargetIndex(0, slot))) == paramIndex(0, targets[slot]);
+    };
+    modsView.middleDown({600.0f, 300.0f});
+    modsView.mouseMove({610.0f, 300.0f - 60.0f}, {});
+    const bool modsShot = renderer.save(modsView, dir / "35p-mods-middle-drag.png");
+    modsView.middleUp({610.0f, 300.0f - 60.0f});
+    const bool scrolled = removedOnly(2);
+    modsView.middleDown({600.0f, 200.0f});
+    modsView.mouseMove({600.0f, 200.0f + 400.0f}, {});
+    modsView.middleUp({600.0f, 200.0f + 400.0f});
+    check(modsShot && scrolled && removedOnly(0), "the middle button drags the MODS view's rows up and down");
+
+    // The preset browser's list of forty, five rows up: the top row is the sixth preset's.
+    FakeController presets;
+    View presetView(presets);
+    presets.library.clear();
+    for (int n = 0; n < 40; ++n)
+        presets.library.push_back({"Preset " + std::to_string(n), ""});
+    presets.loadPresetAt(0); // unchanged since, so picking another doesn't ask first
+    click(presetView, {600.0f, 84.0f}); // the preset's name opens the browser
+    const float browserTop = std::round((presetView.height() - 560.0f) * 0.5f);
+    auto browserRow = [&](int row) { return Point{600.0f, browserTop + 58.0f + row * 24.0f + 11.0f}; };
+    presetView.middleDown(browserRow(10));
+    presetView.mouseMove({600.0f, browserRow(5).y}, {});
+    const bool browserShot = renderer.save(presetView, dir / "22i-preset-middle-drag.png");
+    presetView.middleUp({600.0f, browserRow(5).y});
+    click(presetView, browserRow(0));
+    check(browserShot && presets.presetIndex() == 5, "the middle button drags the preset browser's list up and down");
+}
+
 // A modulation's depth handle under the mouse draws its range over the others, and wider: LFO 1's and Env 1's
 // ranges on Op A's Fine (set to the middle) overlap above the knob, Env 1's on top, and hovering either handle
 // changes what shows there (read off the rendered pixels).
@@ -1256,7 +1404,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // A shaper's page: the curve list picks Hard, the link switch unlinks, Drive turns; picked from the list, Custom shows
-// its points in the display to drag, and EDIT opens the big editor over the routing panel, the page staying.
+// its points in the display to drag, and its pencil opens the big editor over the routing panel, the page staying.
 void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -1303,7 +1451,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     const bool editorShot = renderer.save(view, dir / "30b-shaper-editor.png");
     click(view, kRoutingEditorDone);
     check(added && pageStays && editorShot && model.layout().view == RoutingView::Graph,
-          "EDIT opens a shaper's curve over the routing panel, its page staying beside it");
+          "the pencil opens a shaper's curve over the routing panel, its page staying beside it");
 }
 
 // Folding cards: the chevron left of an effect card's cross folds it to a strip (38 px, its neighbours closing
@@ -1866,6 +2014,16 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, macroDot);
     check(macroBypassed && macroBypassShot && model.value(slotBypassIndex(kMaxSources, 0)) == 0.0,
           "a macro's modulation has a bypass dot in the MODS view, like a source's");
+    // Macro 2's handle dropped on the aux cell of Macro 1's row (the last, + Aux in it) makes Macro 2 its aux; its
+    // own row's aux refuses it, and undo takes it away.
+    const float auxStrip = view.height() - 179.0f;
+    const Point auxCell{950.0f, macroDot.y};
+    drag(view, {252.0f, auxStrip}, auxCell);
+    const bool macroAux = slotAuxSource(model.value(slotAuxIndex(kMaxSources, 0))) == kMaxSources + 1;
+    view.undo();
+    drag(view, {156.0f, auxStrip}, auxCell); // Macro 1's own handle, 96 px before Macro 2's
+    check(macroAux && slotAuxSource(model.value(slotAuxIndex(kMaxSources, 0))) < 0,
+          "a source's handle dropped on a MODS row's aux cell becomes that modulation's aux, undoably, never its own");
     // Macro 2's handle dropped on LFO 1's depth handle under Op A's Fine knob makes Macro 2 that modulation's aux.
     // Modulating nothing itself, Macro 2 isn't faint as Macro 3 is, which does nothing (read off the rendered
     // pixels, the macros' handles 96 px apart).
@@ -3083,12 +3241,12 @@ void run(const std::filesystem::path &dir, float scale) {
           "a point of the curve drags in the card");
     view.mouseMove(cardAt(0.8, 0.6), {});
     check(renderer.save(view, dir / "8d-clip-custom.png"), "render the curve being edited in the card");
-    // Its EDIT button opens the big editor, which edits the same curve.
-    click(view, {fxCardX(model, 0) + 134.0f, 152.0f + 190.0f - 12.0f}); // EDIT, at the display's bottom right
+    // Its edit button, a pencil, opens the big editor, which edits the same curve.
+    click(view, {fxCardX(model, 0) + 134.0f, 152.0f + 190.0f - 12.0f}); // the pencil, at the display's bottom right
     view.doubleClick(clipAt(0.3, -0.5), {});
     check(model.value(clipCurveCountIndex(0)) == 5.0 &&
               std::abs(model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X)) - 0.3) < 0.01,
-          "EDIT opens the big curve editor, which adds points too");
+          "the pencil opens the big curve editor, which adds points too");
     view.mouseMove(clipAt(0.3, -0.5), {});
     check(renderer.save(view, dir / "8c-clip-curve.png"), "render the shaper's big curve editor");
     {
@@ -3613,6 +3771,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testFolding(dir, renderer);
     testSourceShadow(dir, renderer);
     testCardEdgeScroll(dir, renderer);
+    testMiddleDrag(dir, renderer);
     testModFocus(dir, renderer);
     testModPill(dir, renderer);
 }

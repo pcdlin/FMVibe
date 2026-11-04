@@ -57,6 +57,22 @@ void doneIcon(Canvas &c, Point center, Color color) {
     c.polyline(check, std::size(check), color, 1.8f);
 }
 
+void editIcon(Canvas &c, Point center, Color color) {
+    // Along the pencil from its tip (lower left) to its end (upper right), and across it.
+    const Point along{0.7071f, -0.7071f}, across{0.7071f, 0.7071f};
+    auto at = [&](float s, float t) {
+        return Point{center.x + along.x * s + across.x * t, center.y + along.y * s + across.y * t};
+    };
+    constexpr float kTip = -6.0f, kWood = -2.5f, kBand = 3.5f, kEnd = 6.0f, kHalf = 2.0f;
+    const Point outline[] = {at(kTip, 0.0f), at(kWood, kHalf),  at(kEnd, kHalf),
+                             at(kEnd, -kHalf), at(kWood, -kHalf), at(kTip, 0.0f)};
+    c.polyline(outline, std::size(outline), color, 1.2f);
+    c.line(at(kWood, kHalf), at(kWood, -kHalf), color, 1.0f);
+    c.line(at(kBand, kHalf), at(kBand, -kHalf), color, 1.0f);
+    const Point lead[] = {at(kTip, 0.0f), at(kTip + 1.6f, 0.9f), at(kTip + 1.6f, -0.9f)};
+    c.fillPolygon(lead, std::size(lead), color);
+}
+
 // A filter type's response in a few strokes, for the type buttons: frequency across, level up.
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color) {
     std::vector<double> key = curveKey(Curve::FilterIcon, r);

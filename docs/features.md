@@ -20,7 +20,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     from mono to fully uncorrelated left and right;
   - Coarse ratio (0.5, 1…32), Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
     ratio; the knob moves in whole semitones, while LFOs, envelopes and host modulation glide through it), Detune
-    (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release);
+    (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release;
+    its attack, hold, decay and release each go from 1 ms to 10 s);
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
     global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
@@ -88,7 +89,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   a shaper's Mix below 100 %) grows loud but never without end. It
   runs only while something goes in and its output goes somewhere.
 - **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square, random or a freeform shape;
-  0.02–100 Hz) and mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release). A new
+  0.02–100 Hz) and mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
+  operator's envelope has them). A new
   instance has none; each one added starts
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
   has 16 slots, and a slot can
@@ -105,7 +107,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   Each modulation also has an **Amount** (0–100 %, all of it to begin with), which scales its depth, and can have an
   **aux**: another source whose output scales it too, as a unipolar source puts it out (0 to 1), so a macro can
   fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
-  editor); the aux also by dropping a source's handle on the modulation's depth handle. An aux that runs per voice
+  editor); the aux also by dropping a source's handle on the modulation's depth handle, or on its aux cell in the MODS view. An aux that runs per voice
   (an LFO, an envelope, the note source, velocity) scales it in each voice by its own output there, as of the last
   32-sample block (or this one, for a source that comes before it, and velocity, known from the note; on a note's
   first block the note source's comes from the pitch the note starts at); a macro or the mod wheel scales it the same for
@@ -369,7 +371,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     with its icon, which switches it on and off, an × to remove it and a live display:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
-      it faintly behind and the point under the mouse in numbers; its EDIT button opens the big editor;
+      it faintly behind and the point under the mouse in numbers; its edit button (a pencil) opens the big editor;
     - the delay's echoes on a timeline, left above the line and right below it;
     - the EQs' and the filter's responses; behind the Param EQ's curve, what it puts out, measured (a 2048-point
       FFT in 96 bands from 20 Hz to 20 kHz, 0 dB at the top, falling away at 55 dB a second), which it only
@@ -417,7 +419,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     card place at the chain's end while there is room for another effect. Six cards fit across, the Param EQ's
     taking one and a half places for a wider spectrum; with more,
     a scrollbar under them (drag its thumb or click its track; drawn thinner while the mouse is away from it) or the
-    mouse wheel over the panel scrolls the chain smoothly, cutting off the cards at the ends. Drag a card by its
+    mouse wheel over the panel scrolls the chain smoothly, cutting off the cards at the ends, and so does a drag with
+    the middle button held (see Everywhere). Drag a card by its
     title to move it along the chain (held at either end of the row, it scrolls the chain along that way),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings or
     remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
@@ -471,7 +474,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     soon as it has that source (added from it, or once it is picked), and the list jumps there, showing as many of
     the source's rows above it as fit; so does the modulation it becomes. Each pick is an undo step, and empty modulations are saved with the patch (up to
     32 of them). With more rows than fit (about ten), a bar at the right (drag its thumb or click its track) or the
-    mouse wheel over the rows (not on a bar, which the wheel turns) scrolls them smoothly, a row a notch.
+    mouse wheel over the rows (not on a bar, which the wheel turns) scrolls them smoothly, a row a notch; a drag
+    with the middle button held drags them up and down.
   - **Partial editor**: picking Custom from an operator's **…** list opens its partials over the routing panel:
     the wave they make, one cycle, then a bar per partial for its level (in dB, from −60 just above the bottom
     to 0 at the top, marked every 12; the bottom itself is none) and, in another color, one for its phase (a full
@@ -479,9 +483,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     a bar to take it to nothing; hovering shows a partial's numbers. **16 / 32 / 64**, after the title, pick how
     many partials the wave has, and so how many bars there are (numbered each, or of 64 the first and every
     fourth); the ones a lower count hides keep what was drawn. The reset button (a circular arrow) goes back to a
-    sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list opens it
-    again. A stroke is one undo step.
-  - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows EDIT) opens the
+    sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
+    edit button (a pencil) on the operator's summary line opens it again. A stroke is one undo step.
+  - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows an edit button, a
+    pencil) opens the
     shape over the routing panel and the inspector, which it hides while it is open; the done button (a check mark,
     top right) closes it, and the reset button (a circular arrow) beside it puts back the shape it started with.
     Drag points to move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
@@ -497,7 +502,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), with its − and +
     buttons or the mouse wheel; hold Ctrl to snap points to them. The grid belongs to the editor: it is saved with
     the project, and presets leave it alone. The first point always sits at the start of the cycle. A shaper
-    effect's Custom curve opens the same editor from the EDIT button on its card's display, in a panel in the middle of the
+    effect's Custom curve opens the same editor from the edit button (a pencil) on its card's display, in a panel in the middle of the
     effects' (the inspector stays hidden), its plot closer to square, with input across and output up; its first
     and last points stay at the ends. While the shaper is symmetric, only the curve's right half is edited, in
     the editor and in the card alike: the left half is drawn as its mirror (behind a veil in the editor) with faint
@@ -514,9 +519,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster (Poly/Mono over Legato, then a small Glide knob, its label and number beside it, over its
-  Always switch, each switch explaining itself on hover, centered between the dividers either side of it); Bend; Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and
-  how many voices are playing.
+  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, then a Glide knob like the global
+  ones, its Always switch beside its label, each switch explaining itself on hover); Bend; Voices (it drags on a log
+  scale, so 4 and 512 are both easy to reach); and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
   value, adding or removing an effect or source (with its modulation), moving nodes or cards, bending a wire, Init
@@ -543,7 +548,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq and Mult take the Ratio
     and Fine knobs' places, Pitch and Detune are dimmed and take no drags, wheel or typing (nor do their depth
     handles), and the summary line and the operator's circle in the graph show the frequency in Hz instead of the
-    ratio. Switched off, the ratio, Fine, Pitch and Detune count again as they were. Under the knobs, tabs pick what
+    ratio. Switched off, the ratio, Fine, Pitch and Detune count again as they were. While the wave is Custom,
+    an edit button (a pencil, the same as a Custom LFO's and a drawn shaper curve's), left of the keyboard, opens
+    the operator's partial editor (lit while it is open; a second click closes it). Under the knobs, tabs pick what
     the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
     as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
     handle over a tab opens it, so its knobs can take the drop:
@@ -574,7 +581,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     modulates, as a filter's has), its curve's list with the link switch beside it, and for a Custom curve the
     symmetric one between them (as on the shaper effect's card), the Drive, Output, Mix and To Out knobs,
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
-    EDIT button opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
+    edit button (a pencil) opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
     operators it modulates, as a shaper's has), type buttons, each a small picture of its response (named on
@@ -594,7 +601,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   **+ ENV** (a drawn plus, like + EFFECT's) to add a source (which opens a collapsed panel). Below, the sources' cards show four at a time, and
   after the last one, while there is room for more, two square dashed cards with a plus, ADD LFO above ADD ENV,
   add one too. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
-  scrollbar) or the mouse wheel over the panel scrolls them smoothly. LFOs and envelopes are numbered by type in the order they show.
+  scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
+  them along. LFOs and envelopes are numbered by type in the order they show.
   - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its
     settings and targets), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
@@ -652,7 +660,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
     modulation the pill holds is bypassed or its source switched off, the pill is hollow.
-  - **Aux**: a source's handle dropped on another source's depth handle, or on a row of a pill's list (while it
+  - **Aux**: a source's handle dropped on another source's depth handle, on a MODS row's aux cell, or on a row of a pill's list (while it
     is dragged, the depth handles and rows are ringed faintly, the one under it brightly) makes the dropped source
     that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color. A
     modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
@@ -674,7 +682,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   Mod wheel and the glow slider then move from where they are, a tenth as fast), double-click to reset, use the mouse
   wheel (a trackpad's smaller steps add up to whole notches on what moves in steps: a stepped knob, Voices, an
   operator's pitch, the shape grid and the preset browser's list; while something is being dragged the wheel does
-  nothing, a held key aside), or right-click for reset/remove options. A double-click whose first click closed the
+  nothing, a held key aside), or right-click for reset/remove options. Hold the middle button and drag over a
+  panel that scrolls (the effects chain, the source cards, the MODS view's rows, the preset browser's list) to drag
+  what it shows along with the mouse, whatever is under it; past either end the row stops, and dragged back it
+  follows at once. A middle press on an open list or menu does nothing, and one that starts a drag closes it;
+  while the left button drags something, the middle one does nothing. A double-click whose first click closed the
   preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a
@@ -782,7 +794,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   stronger and wider the halo.
   The editor shows it while it is dragged and keeps it when it is let go. Both are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
-  switch along. The dialog's bottom line shows the version (FMVibe 0.2) and that FMVibe is released under the MIT
+  switch along. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
   license.
 
 ### Remote-control pages (Bitwig)

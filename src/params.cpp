@@ -188,15 +188,16 @@ void buildTable(ParamTable &t) {
             0.0);
         add(paramIndex(op, OpParam::Out), name + " " + tr(Str::ParamOut), module, ParamKind::Percent, 0.0, 1.0,
             first ? 1.0 : 0.0);
-        add(paramIndex(op, OpParam::Attack), name + " " + tr(Str::ParamAttack), module, ParamKind::Time, 0.0, 1.0, 0.0);
-        add(paramIndex(op, OpParam::Decay), name + " " + tr(Str::ParamDecay), module, ParamKind::Time, 0.0, 1.0,
+        add(paramIndex(op, OpParam::Attack), name + " " + tr(Str::ParamAttack), module, ParamKind::Time, 0.0,
+            kMaxEnvNorm, 0.0);
+        add(paramIndex(op, OpParam::Decay), name + " " + tr(Str::ParamDecay), module, ParamKind::Time, 0.0, kMaxEnvNorm,
             normFromTime(1.5));
         add(paramIndex(op, OpParam::Sustain), name + " " + tr(Str::ParamSustain), module, ParamKind::Percent, 0.0,
             1.0, 1.0);
-        add(paramIndex(op, OpParam::Release), name + " " + tr(Str::ParamRelease), module, ParamKind::Time, 0.0, 1.0,
-            normFromTime(0.015));
-        add(paramIndex(op, OpParam::Hold), name + " " + tr(Str::ParamHold), module, ParamKind::TimeOrOff, 0.0, 1.0,
-            0.0);
+        add(paramIndex(op, OpParam::Release), name + " " + tr(Str::ParamRelease), module, ParamKind::Time, 0.0,
+            kMaxEnvNorm, normFromTime(0.015));
+        add(paramIndex(op, OpParam::Hold), name + " " + tr(Str::ParamHold), module, ParamKind::TimeOrOff, 0.0,
+            kMaxEnvNorm, 0.0);
         add(paramIndex(op, OpParam::Transpose), name + " " + tr(Str::ParamPitch), module, ParamKind::Transpose, -48.0,
             48.0, 0.0);
         // What was the operator's velocity scaling: kept for its id, it does nothing and hosts don't see it.
@@ -648,12 +649,12 @@ void buildTable(ParamTable &t) {
         field(SourceParam::RandomSmooth, tr(Str::ParamSmooth), ParamKind::Percent, 0.0, 1.0, 0.0);
         field(SourceParam::RandomChaos, tr(Str::ParamChaos), ParamKind::Percent, 0.0, 1.0, 1.0);
 
-        field(SourceParam::Attack, tr(Str::ParamAttack), ParamKind::Time, 0.0, 1.0, 0.0);
-        field(SourceParam::Decay, tr(Str::ParamDecay), ParamKind::Time, 0.0, 1.0, normFromTime(0.5));
+        field(SourceParam::Attack, tr(Str::ParamAttack), ParamKind::Time, 0.0, kMaxEnvNorm, 0.0);
+        field(SourceParam::Decay, tr(Str::ParamDecay), ParamKind::Time, 0.0, kMaxEnvNorm, normFromTime(0.5));
         field(SourceParam::Sustain, tr(Str::ParamSustain), ParamKind::Percent, 0.0, 1.0, 1.0);
         // The release an operator's envelope starts with.
-        field(SourceParam::Release, tr(Str::ParamRelease), ParamKind::Time, 0.0, 1.0, normFromTime(0.015));
-        field(SourceParam::Hold, tr(Str::ParamHold), ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
+        field(SourceParam::Release, tr(Str::ParamRelease), ParamKind::Time, 0.0, kMaxEnvNorm, normFromTime(0.015));
+        field(SourceParam::Hold, tr(Str::ParamHold), ParamKind::TimeOrOff, 0.0, kMaxEnvNorm, 0.0);
         addCurves(paramIndex(source, SourceParam::AttackCurve), name, module);
         field(SourceParam::EnvBipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0,
             0.0); // takes its targets one way

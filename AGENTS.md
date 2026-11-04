@@ -86,7 +86,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken. It saves/loads state
-  through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, a layout as large as one gets among them (and one of NaNs,
+  through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, envelope times
+  stored past 10 s loading as 10 s, a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: 16 voices × 6 operators take about a third of what they took
   before the engine's per-block route lists and shared params, which on the development machine was about 22 % of
@@ -207,12 +208,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
     its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
     double-click for a word), cutting and pasting;
-  - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, and
-    the LFO shape editor hiding the inspector;
+  - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, the
+    edit button (a pencil) by the keyboard switch opening the partial editor and closing it (read off the rendered
+    pixels), and the LFO shape editor hiding the inspector;
   - an LFO's shape list, the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
     pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, and
     scrolling the source cards by holding a dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
+  - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle
+    button held: over a knob without turning it, stopping at the row's end and following back from there at once,
+    and doing nothing while the left button drags a knob;
   - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
     nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
     bypassing, setting the depth of and removing its modulations and closing at a click elsewhere, opening under a
@@ -346,7 +351,7 @@ itself.
 ## Plugin facts
 
 - CLAP id `io.github.pcdlin.fmvibe`. Changing it makes hosts treat it as a different plugin.
-- The version (0.2) is set once, in `project()` at the top of `CMakeLists.txt`. It reaches the code as
+- The version number is set once, in `project()` at the top of `CMakeLists.txt`. It reaches the code as
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
@@ -401,7 +406,9 @@ itself.
   short keeps the floats that arrived whole, and a layout value that isn't a number keeps its default. States
   with a newer version are refused.
 - Times and LFO rates are stored as 0–1 on a log curve (1 ms–20 s, 0.02–100 Hz), so host knobs and modulation
-  have resolution where it matters. The value text shows ms/s/Hz.
+  have resolution where it matters. The value text shows ms/s/Hz. Envelopes' attacks, holds, decays and releases
+  stop at 10 s (`kMaxEnvTime`), their range ending short of the curve's top; a state or preset holding a longer one
+  loads it as 10 s, since loading holds every param within its range.
 - The plugin takes CLAP note events (preferred) and raw MIDI note on/off, and reports `NOTE_END` so hosts with
   polyphonic modulation (Bitwig) know when a voice has finished. In mono, a note that is taken over keeps its
   host voice while its key is down and reports `NOTE_END` when the key is let go. Per-note modulation follows the

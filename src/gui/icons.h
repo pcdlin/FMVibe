@@ -64,6 +64,8 @@ void powerIcon(Canvas &c, Point center, Color color);
 void keyboardIcon(Canvas &c, Point center, Color color, bool crossed);
 void resetIcon(Canvas &c, Point center, Color color);
 void doneIcon(Canvas &c, Point center, Color color);
+// A pencil, about 11 x 11, writing toward the lower left: the edit buttons'.
+void editIcon(Canvas &c, Point center, Color color);
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color);
 bool isFxIconSwitch(FxParam field);
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);

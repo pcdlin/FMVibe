@@ -77,6 +77,11 @@ public:
     void mouseLeave();
     void doubleClick(Point p, Modifiers mods);
     void wheel(Point p, float steps, Modifiers mods);
+    // The middle button held over a panel that scrolls (the effects, the source cards, the MODS view's rows, the
+    // preset browser's list) grabs what it shows: until it goes up, mouseMove() drags that along with the mouse.
+    // Elsewhere, or while the left button drags something, it does nothing.
+    void middleDown(Point p);
+    void middleUp(Point p);
     std::vector<MenuItem> contextMenu(Point p);
     void menuCommand(int command);
     CursorKind cursor() const;
@@ -174,7 +179,7 @@ private:
         McBand,       // a = effect slot, b = band: which band of a three-band compressor its card shows
         PeqPoint,     // param = the band's Q (for the wheel), a = effect slot, b = band: frequency and gain handle
         LfoDisplay,   // a = lfo: click opens the shape editor of a freeform LFO
-        ClipDisplay,  // a = effect slot: the EDIT button on a drawn curve's display, which opens the big editor
+        ClipDisplay,  // a = effect slot: the edit button on a drawn curve's display, which opens the big editor
         ListButton,   // param = a choice (an LFO's shape, the shaper's curve, the reverb's algorithm): opens its list
         ListMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
         ListItem,     // param, b = the value it picks: an entry of the list
@@ -186,6 +191,8 @@ private:
         ShapeCurve,   // param = curve, a = shape, b = point: bends the segment leaving the point
         PartialArea,  // a = operator, b = 0 for the levels, 1 for the phases: drag across to draw the partials
         PartialReset, // a = operator: back to a plain sine
+        PartialEdit,  // a = operator: the edit button left of a Custom wave's keyboard switch; opens its partial
+                      // editor, or closes it
         ShapeDone,    // closes the shape editor
         ShapeReset,   // a = shape: back to the shape it starts with
         ShapeGrid,    // a = axis (0 across, 1 up and down), b = -1 or 1 steps the grid, 0 is its count (wheel)
@@ -222,7 +229,7 @@ private:
         int a = -1;
         int b = -1;
         const char *label = nullptr;
-        bool compact = false; // header knob with its label beside it (one row high: see smallKnob())
+        bool compact = false; // header knob with its label and number beside it
         bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
         bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
@@ -254,6 +261,7 @@ private:
         TextSelect, // across the browser's search
         Bend,       // a wire, sideways: how far it bows
         ModsScroll, // the MODS view's thumb
+        Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
     };
 
     struct Drag {
@@ -331,6 +339,7 @@ private:
     bool isNoise(int op) const;
     // Plays at its Freq x Mult rather than following the note (see OpParam::Fixed).
     bool isFixed(int op) const;
+    bool isCustomWave(int op) const; // its wave is drawn from partials
     std::string fixedHzText(int op, bool compact) const;
     double norm(int index) const;
     void edit(int index, double value);
@@ -483,6 +492,9 @@ private:
     // The card rows that scroll: the effects chain and the modulation sources. How many
     // card places each has, how many fit, and its thumb.
     enum class ScrollArea { Fx, Sources };
+    // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
+    enum class PanArea { Fx, Sources, Mods, Browser };
+    void applyPan(Point p);
     float scrollLength(ScrollArea area) const;
     // While there is room for more, a dashed card after the last effect (a card place wide) and two after the last
     // source (LFO above ENV, square) add one.
@@ -615,8 +627,6 @@ private:
     Point nodePlace(int node, Point want) const;
     int nodeAt(Point p) const;
     Rect envRect(int env) const;
-    // A small header knob, one row high, has its label and number on that row beside it (the Glide knob).
-    static bool smallKnob(const Widget &w) { return w.compact && w.rect.h < 30.0f; }
     static Point knobCenter(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.

@@ -2459,6 +2459,57 @@ int main(int argc, char **argv) {
               "a version 1 state's Volume loads 12 dB lower, held at the bottom of its range");
     }
 
+    // Envelopes' attacks, holds, decays and releases go up to 10 s: one stored longer (up to 20 s, which they once
+    // went to) loads as 10 s, and a shorter one as it is, operators' and mod envelopes' alike. Hosts are told the
+    // 10 s top.
+    {
+        const int opAttack = paramIndex(0, OpParam::Attack), opHold = paramIndex(0, OpParam::Hold),
+                  opDecay = paramIndex(0, OpParam::Decay), opRelease = paramIndex(0, OpParam::Release),
+                  envAttack = paramIndex(0, SourceParam::Attack), envHold = paramIndex(0, SourceParam::Hold),
+                  envRelease = paramIndex(0, SourceParam::Release);
+        const std::pair<int, double> stored[] = {{opAttack, 1.0},
+                                                 {opHold, 1.0},
+                                                 {opDecay, normFromTime(15.0)},
+                                                 {opRelease, normFromTime(4.0)},
+                                                 {envAttack, normFromTime(12.0)},
+                                                 {envHold, normFromTime(3.0)},
+                                                 {envRelease, 1.0}};
+        MemoryStream old;
+        const uint32_t header[] = {0x38454C43, 2, static_cast<uint32_t>(std::size(stored))};
+        const auto *parts = reinterpret_cast<const uint8_t *>(header);
+        old.data.assign(parts, parts + sizeof(header));
+        for (const auto &[index, value] : stored) {
+            const uint32_t id = idOfIndex(index);
+            old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                            reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+            old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&value),
+                            reinterpret_cast<const uint8_t *>(&value) + sizeof(value));
+        }
+        const bool loaded = state->load(plugin, &old.in);
+        plugin->on_main_thread(plugin);
+        auto seconds = [&](int index) {
+            double value = -1.0;
+            params->get_value(plugin, idOfIndex(index), &value);
+            return timeFromNorm(value);
+        };
+        auto about = [](double a, double b) { return std::abs(a - b) < 1e-6 * b; };
+        bool tops = true;
+        for (const int index : {opAttack, opHold, opDecay, opRelease, envAttack, envHold, envRelease,
+                                paramIndex(0, SourceParam::Decay), paramIndex(5, OpParam::Release)}) {
+            clap_param_info_t info{};
+            params->get_info(plugin, static_cast<uint32_t>(index), &info);
+            tops = tops && about(timeFromNorm(info.max_value), 10.0);
+        }
+        std::printf("      envelope times from a 20 s top: attack %.2f s, hold %.2f s, decay %.2f s, release %.2f s; "
+                    "mod envelope attack %.2f s, hold %.2f s, release %.2f s\n",
+                    seconds(opAttack), seconds(opHold), seconds(opDecay), seconds(opRelease), seconds(envAttack),
+                    seconds(envHold), seconds(envRelease));
+        check(loaded && tops && about(seconds(opAttack), 10.0) && about(seconds(opHold), 10.0) &&
+                  about(seconds(opDecay), 10.0) && about(seconds(opRelease), 4.0) && about(seconds(envAttack), 10.0) &&
+                  about(seconds(envHold), 3.0) && about(seconds(envRelease), 10.0),
+              "envelope times stored past 10 s load as 10 s, and hosts are told the 10 s top");
+    }
+
     // Every remote control page has an id of its own, the macros' too, also with a source in place 0, whose page
     // goes by that place.
     {

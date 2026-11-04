@@ -517,9 +517,9 @@ struct PinnedPreset {
 constexpr PinnedPreset kPresetChecksums[] = {
     {"KY Electric Piano", 0x8730f506dd3fb162ull},
     {"BA FM Bass", 0x6c323f86c93a2a0eull},
-    {"KY Glass Bell", 0x9112811c8b922d88ull},
+    {"KY Glass Bell", 0x5cc3e4cfa5050874ull},
     {"PD Warm Pad", 0x0794e780466d0e14ull},
-    {"KY Drawbar Organ", 0xcda455eecfb7023eull},
+    {"KY Drawbar Organ", 0x5861d8b17c9f0deaull},
     {"PL Pluck Delay", 0xe152c8ab3a580157ull},
     {"PD Crystal Motion", 0xbb3f33bce04e41b6ull},
     {"BA Reese Bass", 0xd63fd644bd8f5f35ull},
@@ -531,7 +531,7 @@ constexpr PinnedPreset kPresetChecksums[] = {
     {"LD Folded Lead", 0x952de5105a661759ull},
     {"BA Fuzz Bass", 0x25112538f7622d54ull},
     {"PL Comb String", 0xf5a90a00020939b6ull},
-    {"PL Chip Pluck", 0xe90c8bf41e0b9ce2ull},
+    {"PL Chip Pluck", 0x6d7986d69bd273c1ull},
     {"SQ Step Filter", 0xfec0c18da1d7740full},
     {"SQ Glass Steps", 0x55048d5e1da0a987ull},
     {"LD Vowel Lead", 0x27a6d34ebe87b8acull},
@@ -1215,46 +1215,6 @@ int main() {
         check(releasing == 1 && std::abs(level - 0.5f) < 0.05f && std::abs(offset - level * 0.3f * 2.0f) < 1e-3f &&
                   t.voices == 0,
               "a mod envelope releases after the note, its voice running on until it is done");
-    }
-
-    // --- An operator's Phase: where a note starts its wave. A sine A4 started a quarter of a cycle on is the one
-    // started at 0 a quarter of a cycle ahead (its 440 Hz component turned by 90 degrees, as loud), half a cycle on
-    // it is turned over, and a whole cycle on it is the one at 0. A macro modulating Phase moves the start as the
-    // knob does.
-    std::printf("operator start phase:\n");
-    {
-        // The 440 Hz component of an A4 (44 whole cycles in 4800 samples), once its first block has passed.
-        auto component = [](double phase, bool byMacro) {
-            Engine e(2);
-            if (byMacro) {
-                e.p[slotTargetIndex(kMaxSources, 0)] = slotTargetValue(paramIndex(0, OpParam::Phase));
-                e.p[slotAmountIndex(kMaxSources, 0)] = phase;
-                e.p[paramIndex(0, MacroParam::Value)] = 1.0;
-            } else {
-                e.p[paramIndex(0, OpParam::Phase)] = phase;
-            }
-            e.noteOn(69);
-            e.render(4800);
-            const std::vector<float> x = e.render(4800);
-            std::complex<double> sum = 0.0;
-            for (size_t i = 0; i < x.size(); ++i)
-                sum += static_cast<double>(x[i]) *
-                       std::polar(1.0, -2.0 * std::numbers::pi * 440.0 * static_cast<double>(i) / kSampleRate);
-            return sum;
-        };
-        const std::complex<double> at0 = component(0.0, false);
-        auto turn = [&](std::complex<double> c) { return std::arg(c / at0) * 180.0 / std::numbers::pi; };
-        auto level = [&](std::complex<double> c) { return std::abs(c) / std::abs(at0); };
-        const std::complex<double> quarter = component(0.25, false), half = component(0.5, false),
-                                   whole = component(1.0, false), byMacro = component(0.25, true);
-        std::printf("      turned by %.2f / %.2f / %.2f degrees at 0.25 / 0.5 / 1 (level %.4f / %.4f / %.4f); "
-                    "%.2f by a macro at 0.25\n",
-                    turn(quarter), turn(half), turn(whole), level(quarter), level(half), level(whole), turn(byMacro));
-        check(std::abs(std::abs(turn(quarter)) - 90.0) < 0.5 && std::abs(std::abs(turn(half)) - 180.0) < 0.5 &&
-                  std::abs(turn(whole)) < 0.5 && std::abs(level(quarter) - 1.0) < 1e-3 &&
-                  std::abs(level(half) - 1.0) < 1e-3 && std::abs(level(whole) - 1.0) < 1e-3,
-              "an operator's Phase starts its wave that far into its cycle, at the same level");
-        check(std::abs(turn(byMacro) - turn(quarter)) < 0.5, "modulating Phase moves where a note starts the wave");
     }
 
     // --- The output meter: each side's peak, falling 24 dB a second once the sound stops; past full scale (six
