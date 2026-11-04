@@ -840,7 +840,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
   **Theme**: Midnight (the default), Graphite (neutral grays), Light (crisp: white cards and knob caps on a cool
   gray, with deep colors) or Paper (warm: cream on sand, with ink-brown text and earthy colors), each button
-  shown in its own colors. **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the
+  shown in its own colors. In every theme the panels stay flat while the controls stand up from them: buttons
+  are raised on an edge of their own, lighter at the top, and sit pressed into the panel, in their tint, while
+  selected, lit or open; knobs' caps are lit from above and cast a shadow; effect and source cards cast a soft
+  shadow too. **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the
   graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
   stronger and wider the halo.
   The editor shows it while it is dragged and keeps it when it is let go. Both are yours rather than the

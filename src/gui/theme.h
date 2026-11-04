@@ -146,4 +146,12 @@ extern float glowing; // how strongly graphs' curves glow, 0..1, which View::pai
 // A graph's curve, glowing as `glowing` says (see theme.cpp).
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width);
 
+// The controls stand up from the flat panels (see theme.cpp). A button's face in `fill`: raised on an edge of its
+// own, or, filled with a tint (a translucent `fill`: selected, lit or open), pressed into the panel.
+void buttonFace(Canvas &c, Rect r, Color fill, float radius);
+// A knob's cap, `radius` wide, lit from above and casting a shadow; its pointer is drawn over it.
+void knobCap(Canvas &c, Point center, float radius);
+// The soft shadow a card casts on its panel, drawn before the card.
+void cardShadow(Canvas &c, Rect r, float radius);
+
 } // namespace fmvibe::gui::detail

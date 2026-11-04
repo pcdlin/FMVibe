@@ -140,6 +140,16 @@ export function createCanvas2d(ctx) {
       ctx.arc(x, y, Math.max(0, radius), 0, 2 * Math.PI);
       ctx.fill();
     },
+    fillCircleGradient(x, y, radius, lx, ly, reach, inner, outer) {
+      const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, Math.max(0, reach));
+      g.addColorStop(0, css(inner));
+      g.addColorStop(1, css(outer));
+      ctx.fillStyle = g;
+      fill = null;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(0, radius), 0, 2 * Math.PI);
+      ctx.fill();
+    },
     strokeCircle(x, y, radius, rgba, width) {
       setStroke(rgba, width, false, true);
       ctx.beginPath();

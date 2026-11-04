@@ -95,6 +95,8 @@ public:
     void strokeRect(Rect r, Color c, float width = 1.0f, float radius = 0.0f, bool dashed = false);
     void fillGradient(Rect r, Color top, Color bottom, float radius = 0.0f);
     void fillCircle(Point center, float radius, Color c);
+    // A circle lit from `light`: `inner` there, turning to `outer` `reach` away from it.
+    void fillCircleGradient(Point center, float radius, Point light, float reach, Color inner, Color outer);
     void strokeCircle(Point center, float radius, Color c, float width = 1.0f);
     void line(Point a, Point b, Color c, float width = 1.0f, bool dashed = false);
     void arc(Point center, float radius, float from, float to, Color c, float width);

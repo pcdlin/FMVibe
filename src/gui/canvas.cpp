@@ -126,6 +126,17 @@ void Canvas::fillCircle(Point center, float radius, Color c) {
     target_->FillEllipse(D2D1::Ellipse(pt(center), radius, radius), brush(c));
 }
 
+void Canvas::fillCircleGradient(Point center, float radius, Point light, float reach, Color inner, Color outer) {
+    const D2D1_GRADIENT_STOP stops[] = {{0.0f, col(inner)}, {1.0f, col(outer)}};
+    ComPtr<ID2D1GradientStopCollection> collection;
+    target_->CreateGradientStopCollection(stops, 2, collection.GetAddressOf());
+    ComPtr<ID2D1RadialGradientBrush> gradient;
+    target_->CreateRadialGradientBrush(
+        D2D1::RadialGradientBrushProperties(pt(light), D2D1::Point2F(0.0f, 0.0f), reach, reach), collection.Get(),
+        gradient.GetAddressOf());
+    target_->FillEllipse(D2D1::Ellipse(pt(center), radius, radius), gradient.Get());
+}
+
 void Canvas::strokeCircle(Point center, float radius, Color c, float width) {
     target_->DrawEllipse(D2D1::Ellipse(pt(center), radius, radius), brush(c), width);
 }

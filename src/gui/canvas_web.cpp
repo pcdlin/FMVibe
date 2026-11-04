@@ -42,6 +42,9 @@ EM_JS(void, js_fill_gradient, (float x, float y, float w, float h, uint32_t top,
       { Module.fmv2d.fillGradient(x, y, w, h, top, bottom, radius); });
 EM_JS(void, js_fill_circle, (float x, float y, float radius, uint32_t color),
       { Module.fmv2d.fillCircle(x, y, radius, color); });
+EM_JS(void, js_fill_circle_gradient,
+      (float x, float y, float radius, float lx, float ly, float reach, uint32_t inner, uint32_t outer),
+      { Module.fmv2d.fillCircleGradient(x, y, radius, lx, ly, reach, inner, outer); });
 EM_JS(void, js_stroke_circle, (float x, float y, float radius, uint32_t color, float width),
       { Module.fmv2d.strokeCircle(x, y, radius, color, width); });
 EM_JS(void, js_line, (float x1, float y1, float x2, float y2, uint32_t color, float width, int dashed),
@@ -100,6 +103,10 @@ void Canvas::fillGradient(Rect r, Color top, Color bottom, float radius) {
 
 void Canvas::fillCircle(Point center, float radius, Color c) {
     js_fill_circle(center.x, center.y, radius, rgba(c));
+}
+
+void Canvas::fillCircleGradient(Point center, float radius, Point light, float reach, Color inner, Color outer) {
+    js_fill_circle_gradient(center.x, center.y, radius, light.x, light.y, reach, rgba(inner), rgba(outer));
 }
 
 void Canvas::strokeCircle(Point center, float radius, Color c, float width) {
