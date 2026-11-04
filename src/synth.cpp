@@ -260,6 +260,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
             v.ops[op].env = joined->ops[op];
         v.modEnvs = joined->modEnvs;
         v.lfos = joined->lfos;
+        v.keepLfos = true;
         v.fade = 0.0;
         return;
     }
@@ -923,7 +924,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const double chaos = p[paramIndex(s, SourceParam::RandomChaos)];
             if (free)
                 lfo = freeLfos_[s];
-            else if (v.fresh)
+            else if (v.fresh && !v.keepLfos) // a joined voice's Random carries on with the held one's step
                 lfo.held = randomStep(lfo.from, chaos, v.rng);
             const auto shape = static_cast<LfoShape>(stepped(p[paramIndex(s, SourceParam::Shape)],
                                                              static_cast<int>(LfoShape::Count) - 1));
@@ -993,6 +994,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const bool starting = v.fresh;
     if (v.fresh) {
         v.fresh = false;
+        v.keepLfos = false;
         for (int i = 0; i < kOps; ++i) {
             const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];

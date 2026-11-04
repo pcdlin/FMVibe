@@ -100,7 +100,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM, feedback and a driven filter;
   - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
-  - clicks when a voice is stolen, when a note joins a held one in poly legato, and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
+  - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
+    LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band) jumps while events split the block into single frames;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on

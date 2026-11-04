@@ -1145,6 +1145,53 @@ int main() {
         }
         std::printf("      %-30s %7.1fx\n", "poly legato join", worst / steady);
         check(worst < 4.0 * steady, "a note joining a held one in poly legato fades in instead of clicking");
+        // The fade itself: the joined voice alone (both notes less the held one alone, the same otherwise) stays
+        // under 40 % of its full level in its first millisecond, where its gain's ramp over its first block alone
+        // would have it all but there.
+        {
+            auto run = [](bool join) {
+                Engine e(2);
+                e.synth().setPlayMode(false, true, false);
+                e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Square);
+                e.p[paramIndex(0, OpParam::Sustain)] = 1.0;
+                e.noteOn(48);
+                e.render(4800);
+                if (join)
+                    e.noteOn(55);
+                return e.render(2400);
+            };
+            const std::vector<float> both = run(true), held = run(false);
+            double early = 0.0, later = 0.0;
+            for (size_t i = 0; i < both.size() && i < held.size(); ++i) {
+                const double joinedVoice = std::abs(static_cast<double>(both[i]) - held[i]);
+                if (i < kSampleRate / 1000)
+                    early = std::max(early, joinedVoice);
+                else if (i >= kSampleRate / 100 && i < kSampleRate / 50)
+                    later = std::max(later, joinedVoice);
+            }
+            std::printf("      %-30s %7.2f of its level in its first ms\n", "poly legato fade-in",
+                        later > 0.0 ? early / later : 1.0);
+            check(later > 0.0 && early < 0.4 * later, "a note joining a held one in poly legato fades in over 5 ms");
+        }
+        // A Random LFO in the joined voice carries on with the held voice's step: the newest voice's glide, just after
+        // the join, is the one the held voice was on.
+        {
+            Engine e(2);
+            e.synth().setPlayMode(false, true, false);
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+            e.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Random);
+            e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
+            e.p[paramIndex(0, SourceParam::Rate)] = normFromRate(0.05); // no new step meanwhile
+            e.noteOn(48);
+            e.render(4800);
+            Telemetry heldLfo, joinedLfo;
+            e.synth().telemetry(heldLfo);
+            e.noteOn(55);
+            e.render(kBlock);
+            e.synth().telemetry(joinedLfo);
+            check(joinedLfo.lfoFrom[0] == heldLfo.lfoFrom[0] && joinedLfo.lfoTo[0] == heldLfo.lfoTo[0],
+                  "a Random LFO in a voice joining a held one in poly legato carries on with the held one's step");
+        }
 
         // Volume jumps 12 dB: rendered in single frames, as when events split the
         // block, it should ramp as smoothly as in whole blocks.

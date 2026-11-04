@@ -237,6 +237,7 @@ private:
         bool tail = false;
         double fade = 1.0;
         bool fresh = false;     // just started: operator phases are set in its first block
+        bool keepLfos = false;  // joined a held note in poly legato: its LFOs carry on as copied, taking no first step
         NoteRef note{};
         double velocity = 0.0;
         uint64_t order = 0;     // note-on sequence number, for stealing the oldest
