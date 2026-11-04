@@ -403,6 +403,13 @@ private:
     std::vector<double> voiceClamped_ = std::vector<double>(kVoiceParamCount, 0.0);
     bool voiceBaseReady_ = false;
     void shareVoiceParams(const ParamValues &params);
+    // renderBlock()'s params for the voice it renders, voiceClamped_ but for those listed as changed: the voice's own
+    // host and slot modulation, which the next voice puts back. Each param is listed once for each time it was set: a
+    // voice sets those its host modulates once, and in each of two passes over its slots at most the params they
+    // moved the pass before and those they move now, then those the note source moves.
+    std::vector<double> voiceParams_ = std::vector<double>(kVoiceParamCount, 0.0);
+    std::vector<int> voiceParamsChanged_ = std::vector<int>(kVoiceParamCount + 4 * kAllSources * kSlots + kSlots, 0);
+    int voiceParamsChangedCount_ = 0;
     // The modulated params' ranges, apart from the rest of their table entries, so loops over them read only these.
     std::vector<double> paramMin_ = std::vector<double>(kModulatedCount, 0.0);
     std::vector<double> paramMax_ = std::vector<double>(kModulatedCount, 0.0);

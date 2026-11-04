@@ -32,8 +32,17 @@ public:
         top_ = std::numbers::pi * std::min(1.0, hostRate / sampleRate);
         for (int i = 0; i < kStages; ++i)
             poles_[i] = pole(kLowestHz * std::exp2(kSpacing * i));
+        // The frequencies meanPower() steps through, and their cosines, are the same for every slope: worked out once.
+        Steps steps;
+        const double lowest = 2.0 * std::numbers::pi * 0.1 / sampleRate_; // 0.1 Hz; flat below
+        steps.w[0] = lowest;
+        steps.cos[0] = std::cos(lowest);
+        for (int k = 1; k <= kSteps; ++k) {
+            steps.w[k] = lowest * std::pow(top_ / lowest, static_cast<double>(k) / kSteps);
+            steps.cos[k] = std::cos(steps.w[k]);
+        }
         for (int t = 0; t <= kTable; ++t)
-            gains_[t] = 1.0 / std::sqrt(meanPower(zerosFor(static_cast<double>(t) / kTable)));
+            gains_[t] = 1.0 / std::sqrt(meanPower(zerosFor(static_cast<double>(t) / kTable), steps));
     }
 
     // Once per block; slope is 0..1.
@@ -70,27 +79,27 @@ private:
         return zeros;
     }
 
+    // meanPower()'s steps: log-spaced, as brown noise's power sits at the bottom, from 0.1 Hz to the host's Nyquist.
+    static constexpr int kSteps = 2000;
+    struct Steps {
+        std::array<double, kSteps + 1> w, cos;
+    };
+
     // Mean of |H|^2 from 0 to Nyquist, counting only what lies below the host's
-    // Nyquist: the output power heard for white input of power 1. Log-spaced
-    // steps, as brown noise's power sits at the bottom.
-    double meanPower(const std::array<double, kStages> &zeros) const {
-        auto power = [&](double w) {
-            const double cos = std::cos(w);
+    // Nyquist: the output power heard for white input of power 1.
+    double meanPower(const std::array<double, kStages> &zeros, const Steps &steps) const {
+        auto power = [&](double cos) {
             double h = 1.0;
             for (int i = 0; i < kStages; ++i)
                 h *= (1.0 - 2.0 * zeros[i] * cos + zeros[i] * zeros[i]) /
                      (1.0 - 2.0 * poles_[i] * cos + poles_[i] * poles_[i]);
             return h;
         };
-        constexpr int kSteps = 2000;
-        const double lowest = 2.0 * std::numbers::pi * 0.1 / sampleRate_; // 0.1 Hz; flat below
-        double sum = power(0.0) * lowest;
-        double w = lowest, h = power(w);
+        double sum = power(1.0) * steps.w[0]; // flat below the lowest step, as at 0 Hz
+        double h = power(steps.cos[0]);
         for (int k = 1; k <= kSteps; ++k) {
-            const double next = lowest * std::pow(top_ / lowest, static_cast<double>(k) / kSteps);
-            const double hNext = power(next);
-            sum += 0.5 * (h + hNext) * (next - w);
-            w = next;
+            const double hNext = power(steps.cos[k]);
+            sum += 0.5 * (h + hNext) * (steps.w[k] - steps.w[k - 1]);
             h = hNext;
         }
         return sum / std::numbers::pi;

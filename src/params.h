@@ -1552,6 +1552,8 @@ inline bool isModTarget(int index) {
 // Value of a slot target param pointing at param `index`, and back (-1 = none or invalid).
 inline double slotTargetValue(int index) { return index < 0 ? 0.0 : idOfIndex(index) + 1.0; }
 inline int slotTarget(double value) {
+    if (value < 0.5) // rounds to 0, none: most slots, which the voices look over every block
+        return -1;
     const long id = std::lround(value) - 1;
     const int index = id < 0 ? -1 : indexOfId(static_cast<clap_id>(id));
     return isModTarget(index) ? index : -1;

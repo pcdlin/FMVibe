@@ -28,6 +28,7 @@ struct Analyzed {
 class Analyzer {
 public:
     static constexpr int kSize = 2048;
+    static_assert((kSize & (kSize - 1)) == 0); // a power of two, for the radix-2 transform and the masks
 
     // Allocates, also each signal's samples (prepare(signal)). Main thread.
     void prepare(double sampleRate);
@@ -49,6 +50,7 @@ private:
     std::vector<float> window_;
     std::vector<std::complex<float>> twiddles_; // e^(-2 pi i k / N)
     std::vector<std::complex<float>> fft_;      // the transform being worked on
+    std::vector<int> reversed_;                 // each index's bits in reverse order, for the transform's input
 };
 
 } // namespace fmvibe

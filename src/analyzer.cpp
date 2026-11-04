@@ -24,6 +24,14 @@ void Analyzer::prepare(double sampleRate) {
         window_[i] = static_cast<float>(0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * i / kSize));
     for (int k = 0; k < kSize / 2; ++k)
         twiddles_[k] = std::polar(1.0f, static_cast<float>(-2.0 * std::numbers::pi * k / kSize));
+    constexpr int kBits = std::countr_zero(static_cast<unsigned>(kSize));
+    reversed_.resize(kSize);
+    for (int i = 0; i < kSize; ++i) {
+        unsigned reversed = 0;
+        for (int b = 0; b < kBits; ++b)
+            reversed |= ((static_cast<unsigned>(i) >> b) & 1u) << (kBits - 1 - b);
+        reversed_[i] = static_cast<int>(reversed);
+    }
 }
 
 void Analyzer::prepare(Analyzed &signal) {
@@ -33,13 +41,8 @@ void Analyzer::prepare(Analyzed &signal) {
 
 void Analyzer::measure(Analyzed &signal) {
     // Windowed, oldest sample first, in bit-reversed order for the radix-2 transform.
-    constexpr int kBits = std::countr_zero(static_cast<unsigned>(kSize));
-    for (int i = 0; i < kSize; ++i) {
-        unsigned reversed = 0;
-        for (int b = 0; b < kBits; ++b)
-            reversed |= ((static_cast<unsigned>(i) >> b) & 1u) << (kBits - 1 - b);
-        fft_[reversed] = signal.samples[(signal.write + i) % kSize] * window_[i];
-    }
+    for (int i = 0; i < kSize; ++i)
+        fft_[reversed_[i]] = signal.samples[(signal.write + i) & (kSize - 1)] * window_[i];
     for (int size = 2; size <= kSize; size *= 2) {
         const int half = size / 2, stride = kSize / size;
         for (int start = 0; start < kSize; start += size)
