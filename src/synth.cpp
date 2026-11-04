@@ -20,6 +20,8 @@ constexpr uint32_t kControlBlock = 32;        // samples between modulation upda
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
 constexpr double kMaxFeedback = std::numbers::pi;
 constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in
+constexpr double kFilterRingFloor = 1e-6; // a voice filter quieter than this, its inputs stopped, has rung out
+constexpr size_t kMaxEndedNotes = 4096; // notes ending in one block that are reported (see reportEnded())
 constexpr double kStealFade = 0.003; // seconds a stolen voice takes to fade out
 constexpr double kJoinFade = 0.005;  // seconds a note joining a held one in poly legato takes to fade in
 constexpr double kVolumeGlide = 0.005; // seconds Volume takes to glide most of the way to a new level
@@ -162,7 +164,8 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     noiseColor_.prepare(rate_, sampleRate);
     volumeGlide_ = 1.0 - std::exp(-1.0 / (kVolumeGlide * sampleRate));
     ended_.clear();
-    ended_.reserve(voices_.size() * 2 + 16);
+    // Every note that ends in one block is reported at its end: room for a burst of them far past the voices.
+    ended_.reserve(std::max<size_t>(voices_.size() * 2 + 16, kMaxEndedNotes));
     held_.clear();
     held_.reserve(256);
     limit_ = capacity_;
@@ -170,9 +173,15 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
 }
 
 void Synth::reset() {
-    for (Voice &v : voices_)
+    // The notes still playing end here: the next block reports them, as the host waits for each one's end. (A
+    // fading voice's note was reported when it was stolen.)
+    for (Voice &v : voices_) {
+        if (live(v))
+            reportEnded(v.note);
         v.active = v.fading = false;
-    ended_.clear();
+    }
+    for (const HeldNote &held : held_) // a mono note a later one took over
+        reportEnded(held.note);
     held_.clear();
     lastKey_ = -1.0;
     freeLfos_ = {};
@@ -213,8 +222,12 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     // A velocity that isn't a number plays as 0, so the note still plays out and ends.
     const HeldNote played{note, std::isfinite(velocity) ? std::clamp(velocity, 0.0, 1.0) : 0.0};
     const bool overlapping = !held_.empty(); // another key is still down: played legato
-    if (held_.size() == held_.capacity())
-        held_.erase(held_.begin()); // forget the oldest key rather than allocate
+    if (held_.size() == held_.capacity()) { // forget the oldest key rather than allocate
+        const NoteRef forgotten = held_.front().note;
+        held_.erase(held_.begin());
+        if (!voiceHas(forgotten)) // a mono note a later one took over: no voice is left to report its end
+            reportEnded(forgotten);
+    }
     held_.push_back(played);
 
     // Glide starts wherever the newest voice is right now, or at the last note.
@@ -298,10 +311,13 @@ void Synth::noteOff(const NoteRef &match) {
                 reportEnded(note);
             continue;
         }
-        if (mono_ && !held_.empty()) {
-            // Back to the most recent key still down, as a legato move.
+        // Back to the most recent key still down, as a legato move: one this note-off doesn't let go of too (all
+        // notes off leaves none, and the voice releases where it is).
+        const auto down = std::find_if(held_.rbegin(), held_.rend(),
+                                       [&](const HeldNote &held) { return !matches(match, held.note); });
+        if (mono_ && down != held_.rend()) {
             reportEnded(note);
-            moveVoice(*v, held_.back(), !legato_, true);
+            moveVoice(*v, *down, !legato_, true);
         }
     }
     // Release what is left, including voices whose keys weren't tracked (e.g.
@@ -666,7 +682,7 @@ void Synth::analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues
 bool Synth::isActive(const NoteRef &note) const {
     return std::any_of(voices_.begin(), voices_.end(), [&](const Voice &v) {
         return live(v) && v.note.port == note.port && v.note.channel == note.channel && v.note.key == note.key &&
-               (note.noteId == -1 || v.note.noteId == -1 || v.note.noteId == note.noteId);
+               (note.noteId == -1 || v.note.noteId == note.noteId); // a note with an id is that note's alone
     });
 }
 
@@ -823,7 +839,11 @@ void Synth::setVoiceLimit(int limit) {
 }
 
 Synth::Voice *Synth::stealable() {
-    auto rank = [](const Voice &v) { return std::tuple(!v.released, v.peak, v.order); };
+    // A voice that hasn't played yet (one started by a note at the same moment, say) has no level to go by: it
+    // counts as loud, or each note of a chord would steal the one before it.
+    auto rank = [](const Voice &v) {
+        return std::tuple(!v.released, v.fresh ? std::numeric_limits<double>::infinity() : v.peak, v.order);
+    };
     Voice *victim = nullptr;
     for (Voice &v : voices_)
         if (live(v) && (!victim || rank(v) < rank(*victim)))
@@ -1429,6 +1449,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // loop too, so it takes a few passes for what runs to settle.
     std::array<bool, kShapers> shaperOn{};
     std::array<bool, kFilters> filterOn{};
+    for (int f = 0; f < kFilters; ++f) // still ringing after its inputs stopped
+        filterOn[f] = filterEnabled[f] && v.filterRing[f] > 0;
     for (int i = 0; i < kOps; ++i) {
         for (int f = 0; f < kFilters; ++f)
             filterOn[f] = filterOn[f] || (filterEnabled[f] && routed(target.send[i][f], current.send[i][f]));
@@ -1464,8 +1486,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     std::array<const FilterSettings *, kFilters> filter{};
     std::array<std::array<float *, 2>, kFilters> combs{};
     for (int f = 0; f < kFilters; ++f) {
-        if (!filterOn[f])
+        if (!filterOn[f]) { // when it runs again, it starts from silence
+            v.filters[f] = {};
+            v.combDirty[f] = {true, true};
+            v.filterRing[f] = 0;
             continue;
+        }
         combs[f] = {combLine(v, f, 0), combLine(v, f, 1)};
         const std::array<double, 7> inputs{
             p[paramIndex(f, FilterParam::Cutoff)], p[paramIndex(f, FilterParam::KeyTrack)], pitch,
@@ -1536,6 +1562,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
     Levels &level = v.levels;
     double blockPeak = 0.0;
+    std::array<double, kFilters> filterPeak{};
     const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
     for (uint32_t s = 0; s < frames; ++s) {
         v.fmScale += fmStep;
@@ -1658,6 +1685,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             if (!stereo)
                 y[1] = y[0];
             v.filterOut[f] = 0.5 * (y[0] + y[1]);
+            filterPeak[f] = std::max({filterPeak[f], std::abs(y[0]), std::abs(y[1])});
             v.filterLast[f] = {std::clamp(y[0], -kLoopLimit, kLoopLimit), std::clamp(y[1], -kLoopLimit, kLoopLimit)};
             if (taps[f])
                 taps[f][s] += v.filterOut[f] * v.fade;
@@ -1675,6 +1703,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (opOn[i] && !noise[i])
             for (int k = 0; k < copies[i]; ++k)
                 v.ops[i].incNow[k] = copy[i]->inc[k];
+    for (int f = 0; f < kFilters; ++f)
+        if (filterOn[f])
+            v.filterRing[f] = filterPeak[f] > kFilterRingFloor
+                                  ? combSize_
+                                  : std::max(0, v.filterRing[f] - static_cast<int>(frames));
 
     // Once released, the voice ends when every operator that is heard (directly
     // or through a filter or shaper) has faded and the filters have rung out. A stolen
@@ -1690,7 +1723,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (heard <= 0.0)
             continue;
         sounding = sounding || !v.ops[i].env.idle();
-        peak = std::max(peak, v.ops[i].env.level() * heard);
+        // An operator still rising counts at its attack's top, so a slow attack isn't stolen for being quiet yet.
+        peak = std::max(peak, (v.ops[i].env.rising() ? 1.0 : v.ops[i].env.level()) * heard);
     }
     v.peak = peak;
     v.tail = v.released && !sounding;

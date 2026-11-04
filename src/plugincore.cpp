@@ -260,6 +260,10 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         values_[i].store(loaded[i]);
     // Hosts re-read the values only when asked; any hidden flags follow in sectionsChanged().
     hostValuesChanged();
+    // The state's voice limit: more voices than are allocated take a restart (a lower limit the audio thread takes
+    // at its next block), and hosts read the voice info again.
+    voiceLimitChanged();
+    hostVoicesChanged();
 
     // The editor layout is optional; whatever is missing keeps its default.
     const gui::UiLayout layout = readLayout(stream);

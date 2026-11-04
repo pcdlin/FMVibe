@@ -375,6 +375,10 @@ void View::edit(int index, double v) {
     controller_.setValue(index, std::clamp(v, def.min, def.max));
     if (switchedOn >= 0)
         placeSwitchedOn(switchedOn);
+    // A route switched on is kept in the same undo step, which takes it out again with its value; kept only by the
+    // next poll, after the step, undo would leave its wire at 0 %.
+    if (value(index) > 0.0 && isRouteParam(index))
+        keepRoutes();
     controller_.endEdit(index);
 }
 
@@ -513,7 +517,8 @@ void View::setWireBend(int param, float bend) {
 
 bool View::droppable(const Widget &w, int source) const {
     const bool own = isStripSource(source) && !isNoteBorne(source) && w.param == stripKnobIndex(source);
-    return w.param >= 0 && isModTarget(w.param) && !own && !w.popup && // a list's row takes it as an aux instead
+    // A list's row takes it as an aux instead; a disabled widget, which the mouse passes by, takes nothing.
+    return w.param >= 0 && isModTarget(w.param) && !own && !w.popup && !w.disabled &&
            (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
             w.kind == Kind::SlotBar);
 }
@@ -1129,6 +1134,7 @@ bool View::poll() {
     }
     if (changed)
         keepRoutes(); // whatever turned a route on, the editor or the host
+    closeGoneLists(); // the host may have changed what a list belongs to
     // The audio thread captures the operator whose scope shows, and nothing while none does.
     const UiLayout &layout = controller_.layout();
     const bool scope = layout.selectedNode < kOps && !inspectorCovered() &&
@@ -4050,6 +4056,16 @@ std::string View::fixedHzText(int op, bool compact) const {
     return number(hz >= 100.0 ? "%.0f" : hz >= 10.0 ? "%.1f" : hz >= 0.1 ? "%.2f" : "%.3f", hz) + unit;
 }
 
+// A switch flips; the Fixed and symmetric switches with what goes along, as clicked or scrolled.
+void View::flipSwitch(int param) {
+    if (fxFieldOf(param) == FxParam::ShaperSymmetric || shaperFieldOf(param) == ShaperParam::Symmetric)
+        switchSymmetric(param);
+    else if (fixedSwitchOp(param) >= 0)
+        switchFixed(fixedSwitchOp(param));
+    else
+        edit(param, value(param) >= 0.5 ? 0.0 : 1.0);
+}
+
 // Switched to fixed, the operator plays where its ratio put it at A4: its Freq and Mult are set to that, with the
 // smallest Mult that keeps the Freq in its range, in the same undo step.
 void View::switchFixed(int op) {
@@ -5959,6 +5975,22 @@ void View::paintModPill(Canvas &c, const Widget &w, bool hovered) {
            open ? kBackground : (live ? kText : kDim), Align::Center, true);
 }
 
+// An open list closes once it no longer shows: its card scrolled out of view or folded, or its source or effect slot
+// holding another type. Left open, it would come back with the card, or with the next of its type in that place.
+void View::closeGoneLists() {
+    if (listMenu_ < 0 && peqMenu_ < 0)
+        return;
+    bool list = false, peq = false;
+    for (const Widget &w : widgets()) {
+        list = list || (w.kind == Kind::ListItem && w.param == listMenu_);
+        peq = peq || (w.kind == Kind::PeqTypeItem && w.param == peqMenu_);
+    }
+    if (!list)
+        listMenu_ = -1;
+    if (!peq)
+        peqMenu_ = -1;
+}
+
 void View::openModList(const Widget &pill, bool sprung) {
     modList_ = ModListOpen{pill.a, pill.rect, sprung};
     listMenu_ = -1; // one open list at a time
@@ -6024,6 +6056,8 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         return r.x < p.right() && r.right() > p.x && r.y < p.bottom() && r.bottom() > p.y;
     };
     for (const Widget &w : list) {
+        if (w.disabled) // the mouse passes it by (see hitTest()), so it takes nothing
+            continue;
         if (w.kind == Kind::ModListRow && w.a != source) { // so does a row of a pill's list
             const bool over = target && target->popup && target->a == w.a && target->b == w.b;
             c.strokeRect(w.rect.inset(-1.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, 6.0f);
@@ -6458,6 +6492,10 @@ bool View::mouseMove(Point p, Modifiers mods) {
     drag_.now = p;
     if (std::hypot(p.x - drag_.start.x, p.y - drag_.start.y) > 3.0f)
         drag_.moved = true;
+    // A value moves only once the mouse has: the jitter of a click, or between a double-click's presses, leaves it
+    // (and what a matrix cell joins) as it was.
+    if (drag_.kind == DragKind::Value && !drag_.moved)
+        return true;
     applyDrag(p);
     return true;
 }
@@ -6751,12 +6789,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         edit(w.param, w.b);
         break;
     case Kind::Toggle:
-        if (fxFieldOf(w.param) == FxParam::ShaperSymmetric || shaperFieldOf(w.param) == ShaperParam::Symmetric)
-            switchSymmetric(w.param);
-        else if (fixedSwitchOp(w.param) >= 0)
-            switchFixed(fixedSwitchOp(w.param));
-        else
-            edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
+        flipSwitch(w.param);
         break;
 
     case Kind::LfoDisplay:
@@ -7109,10 +7142,24 @@ void View::mouseUp(Point p, Modifiers) {
     hover_ = hitTest(p);
 }
 
+void View::cancelDrag() {
+    if (drag_.kind == DragKind::None)
+        return;
+    if (drag_.kind == DragKind::Node && drag_.moved) // it stays where it was taken, as an undo step
+        controller_.layoutChanged();
+    if (drag_.kind == DragKind::ModSource && modList_ && modList_->sprung) // opened under the handle, for it alone
+        modList_.reset();
+    finishDrag();
+    hover_.reset();
+}
+
 void View::finishDrag() {
     const Widget &w = drag_.widget;
     switch (drag_.kind) {
     case DragKind::Value:
+        keepRoutes(); // a route it switched on, in its undo step (see edit())
+        controller_.endEdit(w.param);
+        break;
     case DragKind::EnvCurve:
     case DragKind::ShapeCurve:
     case DragKind::ModWheel:
@@ -7384,7 +7431,9 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     menuLive_ = false;
     endTyping(true);
-    if (browserOpen_ && !settingsOpen_ && confirm_ < 0) { // three rows a notch
+    if (settingsOpen_ || confirm_ >= 0) // a dialog over everything: nothing behind it scrolls or turns
+        return;
+    if (browserOpen_) { // three rows a notch
         const int rows = static_cast<int>(browserRows().size());
         const int most = std::max(rows - browserVisibleRows(browserPanel(height())), 0);
         browserScroll_ = std::clamp(std::clamp(browserScroll_, 0, most) - wheelNotches(kWheelBrowser, steps * 3.0f), 0, most);
@@ -7405,6 +7454,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     if ((!hit || hit->param < 0) && modPanel(controller_.layout().sourcesCollapsed).contains(p) && steps != 0.0f) {
         setScroll(ScrollArea::Sources, sourceScroll() - steps * 0.4f);
+        closeGoneLists(); // an LFO's list scrolled out with its card
         return;
     }
     // Over the MODS view's rows (but not on a bar), a notch scrolls them a row, gliding there.
@@ -7414,6 +7464,7 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     if ((!hit || hit->param < 0) && fxWide() && kFxPanel.contains(p) && steps != 0.0f) {
         setScroll(ScrollArea::Fx, fxScroll() - steps * 0.4f);
+        closeGoneLists();
         return;
     }
     if (!hit || hit->param < 0)
@@ -7421,6 +7472,24 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     const ParamDef &def = table_[hit->param];
     if (snapsToSteps(def.kind) && whole == 0) // short of a notch so far
         return;
+    // A switch and the partial counts move as a click on them does: a switch on upward and off downward, with what
+    // the Fixed and symmetric switches bring along, and a count to the next one offered.
+    if (hit->kind == Kind::Toggle) {
+        if (whole != 0 && (whole > 0) != (value(hit->param) >= 0.5))
+            flipSwitch(hit->param);
+        return;
+    }
+    if (isPartialCount(hit->param)) {
+        const auto *first = std::begin(kPartialCounts), *last = std::end(kPartialCounts);
+        const int now = partialCount(value(hit->param));
+        const auto above = std::upper_bound(first, last, now) - first; // the first offered past it
+        const auto below = std::lower_bound(first, last, now) - first; // the first offered from it on
+        const int to = std::clamp(static_cast<int>(whole > 0 ? above - 1 + whole : below + whole), 0,
+                                  static_cast<int>(last - first) - 1);
+        if (whole != 0 && kPartialCounts[to] != now)
+            edit(hit->param, kPartialCounts[to]);
+        return;
+    }
     const UndoScope notches(controller_, true); // a run of notches on one knob undoes at once
     const double v = value(hit->param);
     if (def.kind == ParamKind::VoiceCount) { // about 20 % per notch, at least one voice
@@ -7641,7 +7710,9 @@ void View::menuCommand(int command) {
 
 void View::undo() {
     if (drag_.kind == DragKind::None && !typing_) {
-        cascade_.reset(); // what its menu was opened on may change
+        cascade_.reset(); // what its menu was opened on may change, or go
+        listMenu_ = -1;
+        peqMenu_ = -1;
         controller_.undo();
         menuLive_ = false;
     }
@@ -7649,7 +7720,9 @@ void View::undo() {
 
 void View::redo() {
     if (drag_.kind == DragKind::None && !typing_) {
-        cascade_.reset(); // what its menu was opened on may change
+        cascade_.reset(); // what its menu was opened on may change, or go
+        listMenu_ = -1;
+        peqMenu_ = -1;
         controller_.redo();
         menuLive_ = false;
     }
@@ -7712,6 +7785,22 @@ void View::typeKey(Key key, bool shift) {
     }
     Typing &t = *typing_;
     caretTicks_ = 0;
+    // The caret steps over whole characters: a value's text may hold one past ASCII in UTF-8, as Mult's ×.
+    auto continues = [&](size_t at) {
+        return at < t.text.size() && (static_cast<unsigned char>(t.text[at]) & 0xC0) == 0x80;
+    };
+    auto before = [&](size_t at) {
+        do
+            --at;
+        while (at > 0 && continues(at));
+        return at;
+    };
+    auto after = [&](size_t at) {
+        do
+            ++at;
+        while (continues(at));
+        return at;
+    };
     switch (key) {
     case Key::Enter:
         endTyping(true);
@@ -7729,16 +7818,18 @@ void View::typeKey(Key key, bool shift) {
             t.text.clear();
             t.caret = 0;
         } else if (key == Key::Backspace && t.caret > 0) {
-            t.text.erase(--t.caret, 1);
+            const size_t from = before(t.caret);
+            t.text.erase(from, t.caret - from);
+            t.caret = from;
         } else if (key == Key::Delete && t.caret < t.text.size()) {
-            t.text.erase(t.caret, 1);
+            t.text.erase(t.caret, after(t.caret) - t.caret);
         }
         break;
     case Key::Left: // from a selection, to its start
-        t.caret = t.selected || t.caret == 0 ? 0 : t.caret - 1;
+        t.caret = t.selected || t.caret == 0 ? 0 : before(t.caret);
         break;
     case Key::Right:
-        t.caret = t.selected ? t.text.size() : std::min(t.caret + 1, t.text.size());
+        t.caret = t.selected || t.caret >= t.text.size() ? t.text.size() : after(t.caret);
         break;
     case Key::Home:
         t.caret = 0;

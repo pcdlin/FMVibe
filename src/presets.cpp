@@ -34,7 +34,9 @@ void writeExamples(const std::filesystem::path &folder, size_t from) {
     for (size_t n = from; n < presets.size(); ++n) {
         const FactoryPreset &preset = presets[n];
         FILE *file = nullptr;
-        const std::wstring name(preset.name.begin(), preset.name.end()); // the examples' names are ASCII
+        const std::wstring name = widePath(preset.name); // UTF-8, as presets/factory.txt has it
+        if (name.empty())
+            continue;
         const std::filesystem::path path = folder / (name + L".fmv");
         std::error_code error;
         if (std::filesystem::exists(path, error) || _wfopen_s(&file, path.c_str(), L"wb") != 0 || !file)

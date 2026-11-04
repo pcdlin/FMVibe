@@ -75,6 +75,10 @@ public:
     bool mouseMove(Point p, Modifiers mods);
     void mouseDown(Point p, Modifiers mods);
     void mouseUp(Point p, Modifiers mods);
+    // The mouse taken away mid-drag (the window losing its capture, the page its focus): what the drag holds ends,
+    // its gestures and undo step closed, but nothing is dropped where the mouse is: no route moved or removed, no
+    // source assigned, no card moved.
+    void cancelDrag();
     void mouseLeave();
     void doubleClick(Point p, Modifiers mods);
     void wheel(Point p, float steps, Modifiers mods);
@@ -644,6 +648,7 @@ private:
     Point unmirrored(int shape, Point p) const;
     void switchSymmetric(int param);
     void switchFixed(int op);
+    void flipSwitch(int param); // as a click on its switch flips it
     // Draws a step into the shape as `before` holds it (its params from shapeBase() on), or as it is when that is
     // empty. False when there's no room for it.
     bool addShapeStep(int shape, Point p, bool snap, const std::vector<double> &before = {});
@@ -808,6 +813,7 @@ private:
     // Whether the pill the open list belongs to still shows; if not, the list closes.
     bool modListPillShown() const;
     void openModList(const Widget &pill, bool sprung);
+    void closeGoneLists();
     void paintModPill(Canvas &c, const Widget &w, bool hovered);
     void paintModList(Canvas &c, const Widget &w);
     void paintModListRow(Canvas &c, const Widget &w);

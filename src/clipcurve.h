@@ -51,6 +51,8 @@ void buildClipTable(const Get &get, int base, double *table) {
 }
 
 inline double clipTableValue(const double *table, double x) {
+    if (!(x == x)) // not a number: it would index anywhere
+        x = 0.0;
     const double pos = std::clamp((x + 1.0) / kClipTableStep, 0.0, static_cast<double>(kClipTableSteps));
     const int i = std::min(static_cast<int>(pos), kClipTableSteps - 1);
     return table[i] + (table[i + 1] - table[i]) * (pos - i);
@@ -59,6 +61,8 @@ inline double clipTableValue(const double *table, double x) {
 // Exact for the straight lines between the table's values; level past the ends.
 inline double clipTableIntegral(const double *table, double x) {
     const double *integral = table + kClipTableSteps + 1;
+    if (!(x == x)) // not a number: it would index anywhere
+        x = 0.0;
     if (x <= -1.0)
         return (x + 1.0) * table[0];
     if (x >= 1.0)
@@ -108,7 +112,13 @@ struct ClipCurve {
     bool symmetric = false;
     uint32_t version = 0; // the table's (see ClipTable): it is filled again in place when its points change
 
-    double shape(double x) const { return symmetric && x < 0.0 ? -plainShape(-x) : plainShape(x); }
+    // Symmetric, a curve that jumps at 0 is the middle of its jump there, 0, so silence stays silent rather than
+    // coming out at the curve's level there (a voice would never end).
+    double shape(double x) const {
+        if (!symmetric || x > 0.0)
+            return plainShape(x);
+        return x < 0.0 ? -plainShape(-x) : 0.0;
+    }
 
     // Whether this is the curve `other` is, its table as it was then: one whose integral() is the same everywhere.
     bool same(const ClipCurve &other) const {

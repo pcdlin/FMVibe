@@ -29,6 +29,9 @@ static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxR
                   kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
+// The most bytes of a preset chunk read and written: its flag and a preset file's path in UTF-8, past the longest a
+// Windows path's 32767 characters take for all but the rarest scripts.
+constexpr size_t kMaxPresetChunk = 65536;
 // 2: Volume gives back the 12 dB the voices go into the effects with, so a version 1 Volume loads 12 dB lower.
 // 3: Legato acts in poly too (it was on to begin with, doing nothing there), so an earlier state in poly loads it off.
 constexpr uint32_t kStateVersion = 3;
@@ -399,7 +402,8 @@ Settings readSettings(const clap_istream_t *stream) {
 }
 
 bool writePresetChunk(const clap_ostream_t *stream, bool edited, const std::string &file) {
-    const std::string preset = (edited ? '\1' : '\0') + file;
+    // A path longer than a reader takes is left out rather than cut, which would name another file.
+    const std::string preset = (edited ? '\1' : '\0') + (file.size() < kMaxPresetChunk ? file : std::string());
     const uint32_t presetChunk[] = {kPresetMagic, static_cast<uint32_t>(preset.size())};
     return writeAll(stream, presetChunk, sizeof(presetChunk)) && writeAll(stream, preset.data(), preset.size());
 }
@@ -408,7 +412,7 @@ bool readPresetChunk(const clap_istream_t *stream, std::string &file, bool &edit
     std::string preset;
     uint32_t presetChunk[2];
     if (readAll(stream, presetChunk, sizeof(presetChunk)) && presetChunk[0] == kPresetMagic &&
-        presetChunk[1] >= 1 && presetChunk[1] <= 4096) {
+        presetChunk[1] >= 1 && presetChunk[1] <= kMaxPresetChunk) {
         preset.resize(presetChunk[1]);
         if (!readAll(stream, preset.data(), preset.size()))
             preset.clear();

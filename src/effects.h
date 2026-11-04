@@ -214,6 +214,10 @@ private:
         int lineWrite = 0;
         int diffuserWrite = 0;
         int preWrite = 0;
+        // What the algorithm ran last: its diffusers, and whether it shimmered. Those it left out stood still, holding
+        // the sound of then, and are cleared when one taken up again (see runReverb()).
+        int diffusersUsed = kDiffusers;
+        bool shimmered = true;
         std::array<double, kReverbLines> damp{}; // the shelves' low-pass states
         // The lines' wavering: a sine each, as a turning phasor.
         std::array<double, kReverbLines> wanderCos{}, wanderSin{};

@@ -282,6 +282,11 @@ EMSCRIPTEN_KEEPALIVE void ui_mouse_up(float x, float y, int shift, int ctrl) {
     view->mouseUp({x, y}, mods(shift, ctrl));
 }
 
+// The page lost the mouse mid-drag: the drag ends without dropping anything (as WM_CAPTURECHANGED in the plugin).
+EMSCRIPTEN_KEEPALIVE void ui_cancel_drag() {
+    view->cancelDrag();
+}
+
 // The middle button, which drags a panel that scrolls along with the mouse.
 EMSCRIPTEN_KEEPALIVE void ui_middle_down(float x, float y) {
     view->middleDown({x, y});

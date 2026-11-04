@@ -1,6 +1,6 @@
 // What the editor's Canvas (src/gui/canvas_web.cpp) draws with: the page's 2D context, in the editor's logical
 // units (the caller sets the transform). It follows canvas.cpp's Direct2D drawing: round caps and joins on
-// lines and curves, a dash of twice the width, text centered in its box and cut with an ellipsis.
+// lines and curves, a dash of twice the width, text centered in its box, cut with an ellipsis and clipped to it.
 
 const FONT_FAMILY = '"Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
 const ELLIPSIS = '…';
@@ -198,11 +198,16 @@ export function createCanvas2d(ctx) {
       ctx.fill();
     },
     // One line, centered up and down in its box like DirectWrite's paragraph centering, and cut with an
-    // ellipsis when it is wider than the box (DirectWrite's character trimming).
+    // ellipsis when it is wider than the box (DirectWrite's character trimming). Nothing shows in an empty box, or
+    // one too narrow for the ellipsis itself, and nothing outside the box (D2D1_DRAW_TEXT_OPTIONS_CLIP).
     text(x, y, w, h, text, size, rgba, align, bold) {
+      if (!(w > 0 && h > 0))
+        return;
       setFont(size, bold);
       let shown = text;
       if (measure(text) > w) {
+        if (measure(ELLIPSIS) > w)
+          return;
         const chars = Array.from(text);
         let lo = 0, hi = chars.length - 1; // the most characters that fit before the ellipsis
         while (lo < hi) {
@@ -219,7 +224,18 @@ export function createCanvas2d(ctx) {
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = align === 0 ? 'left' : align === 2 ? 'right' : 'center';
       const tx = align === 0 ? x : align === 2 ? x + w : x + w / 2;
+      // Trimmed, it fits across; a line taller than the box is cut off at its top and bottom. The font and fill are
+      // set before save(), so restore() leaves them as they are known to be.
+      const clip = box.ascent + box.descent > h;
+      if (clip) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        ctx.clip();
+      }
       ctx.fillText(shown, tx, y + (h - box.ascent - box.descent) / 2 + box.ascent);
+      if (clip)
+        ctx.restore();
     },
     textWidth(text, size, bold) {
       setFont(size, bold);
