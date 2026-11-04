@@ -446,7 +446,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
     Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the columns' names,
     shown with no modulations too (with a hint under the button that adds one), and at the right of their row the
-    count (how many are bypassed, at 0 % and empty with it, as much of that as fits). A row has, from its left:
+    count (how many are bypassed, at 0 % and empty with it, as much of that as fits), then the **filter**'s
+    magnifier. A click on it opens the filter, a text field over the count that takes the keyboard: what is typed
+    narrows the rows to the modulations whose source's and target's names hold every word of it, whatever the case
+    (the empty modulations stay, having yet to get theirs), and it says at its right how many it shows of all.
+    Its × empties it, Escape empties it and then lets the keyboard go, as Enter and a click elsewhere do; while it
+    holds something it stays open. A source card's MODS button empties it, so the source's rows show. A row has,
+    from its left:
     - the bypass dot, which switches the modulation off and on again, whatever its source;
     - the **source** and the **target**, and between them, after the source's name on the first of its rows, the
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
@@ -459,12 +465,17 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
-      its params under PITCH, LEVEL, PHASE, ENVELOPE, UNISON and NOISE;
+      its params in two columns, under PITCH, LEVEL, PHASE and UNISON, and beside them ENVELOPE and NOISE;
       the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
       only those in the chain, in its order, each with the knobs of its type; and Modulation, each LFO's and
       envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
       rest. What the row has now is checked, and the categories it is in have a dot; a click elsewhere closes the
-      menu, and so does a second click on what opened it;
+      menu, and so does a second click on what opened it. Atop the target's menu, a **search** takes the keyboard
+      while the menu is open: as soon as something is typed, the menu's first level lists the targets whose path
+      (their categories, then their name, as in "Operators › B › Detune") holds every word of it, flat, each with its
+      path dimmed before its name, up to 16 of them, then how many more there are. The first one found is lit; Up and
+      Down light another, Enter or a click picks one. Escape, or the search's ×, empties it, and Escape with nothing
+      typed closes the menu. Both fields edit like the preset browser's search (see the preset bar);
     - the **depth**, a bar like a source row's, with its value (double-click or Ctrl+Click types one);
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
     - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on

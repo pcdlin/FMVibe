@@ -43,9 +43,25 @@ bool View::modsWide() const {
     return controller_.layout().view == RoutingView::Mods && shapeEditing() < 0 && partialEditing() < 0;
 }
 
-// An empty modulation from a source that has rows goes after them, the others at the end.
+// An empty modulation from a source that has rows goes after them, the others at the end. The filter leaves out the
+// modulations whose source and target names don't hold every word of it, but not the empty ones.
 std::vector<View::Assignment> View::modsRows() const {
+    if (derived_.modsRows) // only kept while a scope goes on
+        return *derived_.modsRows;
+    std::vector<Assignment> rows = modsRowsNow();
+    if (derivedDepth_ > 0)
+        derived_.modsRows = rows;
+    return rows;
+}
+
+std::vector<View::Assignment> View::modsRowsNow() const {
     std::vector<Assignment> rows = assignments();
+    if (const std::vector<std::string> words = modsFilter_.words(); !words.empty())
+        rows.erase(std::remove_if(rows.begin(), rows.end(),
+                                  [&](const Assignment &m) {
+                                      return !TextField::holds(sourceName(m.source) + " " + paramName(m.target), words);
+                                  }),
+                   rows.end());
     for (int row = 0; row < static_cast<int>(controller_.layout().emptyMods.size()); ++row) {
         const auto [source, target] = emptyMod(row);
         const Assignment empty{source, emptyModSlot(row), target, 0.0, false, source >= 0 && sourceBipolar(source),
@@ -231,9 +247,29 @@ void View::addEmptyMod(int source) {
         openCascade(CascadeKind::Target, source, emptyModSlot(row), modsCell(r, kModsTarget));
 }
 
+Rect View::modsFilterRect() const {
+    return modsFilter(modsFilterOpen());
+}
+
+std::string View::modsFilterCount() const {
+    const std::vector<Assignment> rows = modsRows();
+    const auto shown = std::count_if(rows.begin(), rows.end(), [](const Assignment &m) { return m.slot >= 0; });
+    return trf(Str::ModsMatching, {std::to_string(shown), std::to_string(assignments().size())});
+}
+
+void View::modsFilterKey(Key key) {
+    if (key == Key::Enter)
+        modsFiltering_ = false;
+    else if (key == Key::Escape && !modsFilter_.text.empty())
+        clearField(Field::ModsFilter);
+    else if (key == Key::Escape)
+        modsFiltering_ = false;
+}
+
 void View::showView(RoutingView view) {
     controller_.layout().view = view;
     cascade_.reset();
+    modsFiltering_ = false;
     shapeEditor_ = -1;
     partialEditor_ = -1;
     fxMenuOpen_ = false;
@@ -242,6 +278,7 @@ void View::showView(RoutingView view) {
 
 void View::showSourceMods(int source) {
     showView(RoutingView::Mods);
+    clearField(Field::ModsFilter); // all of its rows
     const std::vector<Assignment> rows = modsRows();
     for (size_t row = 0; row < rows.size(); ++row)
         if (rows[row].source == source) { // its first row at the top, as far as the rows go
@@ -303,7 +340,56 @@ void View::removeEmptyMod(int row) {
     controller_.layoutChanged();
 }
 
+// While the target menu's search holds something, its first level lists what it finds in the categories, flat, each
+// with its path.
 View::MenuNode View::cascadeTree() const {
+    if (derived_.cascade) // only kept while a scope goes on
+        return *derived_.cascade;
+    MenuNode tree = cascadeTreeNow();
+    if (derivedDepth_ > 0)
+        derived_.cascade = std::make_shared<const MenuNode>(tree);
+    return tree;
+}
+
+View::MenuNode View::cascadeTreeNow() const {
+    MenuNode root = cascadeCategories();
+    if (!cascadeSearches() || cascadeSearch_.text.empty())
+        return root;
+    const std::vector<std::string> words = cascadeSearch_.words();
+    MenuNode found;
+    int more = 0;
+    auto walk = [&](auto &self, const MenuNode &node, const std::string &path) -> void {
+        for (const MenuNode &child : node.children) {
+            if (!child.children.empty()) {
+                self(self, child, path + child.label + " \xE2\x80\xBA ");
+                continue;
+            }
+            if (child.heading || child.pick < 0 || !TextField::holds(path + child.label, words))
+                continue;
+            if (static_cast<int>(found.children.size()) >= kCascadeMatches) {
+                ++more;
+                continue;
+            }
+            MenuNode match = child;
+            match.path = path;
+            found.children.push_back(std::move(match));
+        }
+    };
+    walk(walk, root, "");
+    auto aside = [&](std::string label) { // can't be picked
+        MenuNode node;
+        node.label = std::move(label);
+        node.enabled = false;
+        found.children.push_back(std::move(node));
+    };
+    if (found.children.empty())
+        aside(tr(Str::CascadeNoMatch));
+    else if (more > 0)
+        aside(trf(Str::CascadeMore, {std::to_string(more)}));
+    return found;
+}
+
+View::MenuNode View::cascadeCategories() const {
     MenuNode root;
     if (!cascade_)
         return root;
@@ -432,17 +518,19 @@ View::MenuNode View::cascadeTree() const {
         node.note = nodeOn(op) ? waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))))
                                : tr(Str::CascadeOff);
         const std::string prefix = trf(Str::ParamOp, {kNodeNames[op]});
+        // In two columns, about as tall: the pitch, level, phase and unison, then the envelope and the noise.
         const std::pair<Str, std::vector<OpParam>> sections[] = {
             {Str::CascadePitch, {OpParam::Fine, OpParam::Transpose, OpParam::Detune, OpParam::FixedFreq}},
             {Str::CascadeLevel, {OpParam::Out}},
             {Str::CascadePhase, {OpParam::Phase}},
+            {Str::CascadeUnison, {OpParam::UnisonDetune, OpParam::UnisonSpread, OpParam::PhaseRandom}},
             {Str::CascadeEnvelope,
              {OpParam::Attack, OpParam::Hold, OpParam::Decay, OpParam::Sustain, OpParam::Release, OpParam::AttackCurve,
               OpParam::DecayCurve, OpParam::ReleaseCurve}},
-            {Str::CascadeUnison, {OpParam::UnisonDetune, OpParam::UnisonSpread, OpParam::PhaseRandom}},
             {Str::CascadeNoise, {OpParam::NoiseSlope}}};
         for (const auto &[title, fields] : sections) {
             node.children.push_back(heading(title));
+            node.children.back().newColumn = title == Str::CascadeEnvelope;
             for (OpParam field : fields)
                 add(node, paramIndex(op, field), prefix);
         }
@@ -554,16 +642,34 @@ std::vector<const View::MenuNode *> View::cascadeLevels(const MenuNode &root) co
     return levels;
 }
 
-Rect View::cascadeItemRect(const MenuNode &level, Rect at, int index) const {
-    float y = at.y + kCascadePad;
-    for (int i = 0; i < index; ++i)
-        y += level.children[i].heading ? kCascadeHeaderH : kCascadeItemH;
-    return {at.x + kCascadePad, y, at.w - 2.0f * kCascadePad,
+Rect View::cascadeSearchRect(Rect level) const {
+    return {level.x + kCascadePad + 2.0f, level.y + kCascadePad + 2.0f, level.w - 2.0f * kCascadePad - 4.0f, 24.0f};
+}
+
+int View::cascadeColumns(const MenuNode &level) {
+    return 1 + static_cast<int>(std::count_if(level.children.begin(), level.children.end(),
+                                              [](const MenuNode &item) { return item.newColumn; }));
+}
+
+Rect View::cascadeItemRect(const MenuNode &level, Rect at, int index, size_t depth) const {
+    const float top = at.y + kCascadePad + (depth == 0 && cascadeSearches() ? kCascadeSearchH : 0.0f);
+    const float columnW = (at.w - 2.0f * kCascadePad) / static_cast<float>(cascadeColumns(level));
+    float y = top;
+    int column = 0;
+    for (int i = 0; i <= index; ++i) {
+        if (level.children[i].newColumn) {
+            ++column;
+            y = top;
+        }
+        if (i < index)
+            y += level.children[i].heading ? kCascadeHeaderH : kCascadeItemH;
+    }
+    return {at.x + kCascadePad + columnW * static_cast<float>(column), y, columnW,
             level.children[index].heading ? kCascadeHeaderH : kCascadeItemH};
 }
 
-// Each level as wide as its longest entry, in steps, and as tall as its entries; the first under what opened the
-// menu, each next one beside the entry it opens from, all kept inside the editor.
+// Each level's columns as wide as its longest entry, in steps, and the level as tall as its tallest column; the first
+// under what opened the menu, each next one beside the entry it opens from, all kept inside the editor.
 std::vector<Rect> View::cascadeRects(const MenuNode &root) const {
     std::vector<Rect> rects;
     if (!cascade_)
@@ -573,16 +679,23 @@ std::vector<Rect> View::cascadeRects(const MenuNode &root) const {
     for (size_t k = 0; k < levels.size(); ++k) {
         const MenuNode &level = *levels[k];
         size_t longest = 0;
-        float h = 2.0f * kCascadePad;
+        const bool search = k == 0 && cascadeSearches();
+        float column = 0.0f, tallest = 0.0f;
         for (const MenuNode &item : level.children) {
-            longest = std::max(longest, item.label.size() + item.note.size() + (item.color ? 3 : 0));
-            h += item.heading ? kCascadeHeaderH : kCascadeItemH;
+            longest = std::max(longest, item.path.size() + item.label.size() + item.note.size() + (item.color ? 3 : 0));
+            if (item.newColumn)
+                column = 0.0f;
+            column += item.heading ? kCascadeHeaderH : kCascadeItemH;
+            tallest = std::max(tallest, column);
         }
-        const float w = std::clamp(std::ceil((48.0f + 6.4f * static_cast<float>(longest)) / 10.0f) * 10.0f, 120.0f, 320.0f);
+        const float h = 2.0f * kCascadePad + (search ? kCascadeSearchH : 0.0f) + tallest;
+        const float w = static_cast<float>(cascadeColumns(level)) *
+                        std::clamp(std::ceil((48.0f + 6.4f * static_cast<float>(longest)) / 10.0f) * 10.0f,
+                                   search ? kCascadeSearchW : 120.0f, search ? 400.0f : 320.0f);
         Rect r{cascade_->at.x, cascade_->at.y, w, h};
         if (k > 0) {
             const Rect before = rects.back();
-            const Rect from = cascadeItemRect(*levels[k - 1], before, cascade_->open[k - 1]);
+            const Rect from = cascadeItemRect(*levels[k - 1], before, cascade_->open[k - 1], k - 1);
             r.x = before.right() + 2.0f;
             if (r.right() > kWidth - 8.0f) // no room on the right: on the left of the level it opens from
                 r.x = before.x - 2.0f - w;
@@ -601,6 +714,34 @@ void View::openCascade(CascadeKind kind, int source, int slot, Rect from) {
         return;
     }
     cascade_ = Cascade{kind, source, slot, {from.x, from.bottom() + 2.0f}, {}};
+    cascadeSearch_.clear();
+}
+
+void View::cascadeKey(Key key) {
+    if (!cascade_)
+        return;
+    if (key == Key::Escape) {
+        if (cascadeSearch_.text.empty())
+            cascade_.reset();
+        else
+            clearField(Field::CascadeSearch);
+        return;
+    }
+    if (cascadeSearch_.text.empty() || (key != Key::Up && key != Key::Down && key != Key::Enter))
+        return;
+    const MenuNode root = cascadeTree();
+    std::vector<int> picks; // the matches that can be picked
+    for (size_t i = 0; i < root.children.size(); ++i)
+        if (root.children[i].enabled)
+            picks.push_back(static_cast<int>(i));
+    if (picks.empty())
+        return;
+    const auto at = std::find(picks.begin(), picks.end(), cascade_->picked);
+    const int place = at == picks.end() ? 0 : static_cast<int>(at - picks.begin());
+    if (key == Key::Enter)
+        pickCascade(0, picks[place]);
+    else
+        cascade_->picked = picks[std::clamp(place + (key == Key::Down ? 1 : -1), 0, static_cast<int>(picks.size()) - 1)];
 }
 
 void View::pickCascade(int level, int index) {
@@ -653,9 +794,24 @@ void View::paintCascade(Canvas &c) {
         c.fillRect({r.x + 2.0f, r.y + 4.0f, r.w, r.h}, kBackground.alpha(0.5f), 8.0f); // a shadow
         c.fillRect(r, kRaised, 8.0f);
         c.strokeRect(r, kBorder, 1.0f, 8.0f);
+        const bool searching = k == 0 && cascadeSearches();
+        if (searching) { // its search, and the x that empties it
+            const Rect search = cascadeSearchRect(r);
+            paintField(c, Field::CascadeSearch, search, fieldTyped(search), tr(Str::CascadeSearchHint));
+            if (!cascadeSearch_.text.empty()) {
+                const Rect x = fieldClear(search);
+                const bool on = hover_ && hover_->kind == Kind::SearchClear &&
+                                hover_->a == static_cast<int>(Field::CascadeSearch);
+                const Point m = x.center();
+                c.line({m.x - 3.5f, m.y - 3.5f}, {m.x + 3.5f, m.y + 3.5f}, on ? kText : kDim, 1.3f);
+                c.line({m.x - 3.5f, m.y + 3.5f}, {m.x + 3.5f, m.y - 3.5f}, on ? kText : kDim, 1.3f);
+            }
+        }
+        // While it finds targets, the match Up and Down picked is lit as the mouse lights one.
+        const int picked = searching && !cascadeSearch_.text.empty() ? cascade_->picked : -1;
         for (size_t i = 0; i < level.children.size(); ++i) {
             const MenuNode &item = level.children[i];
-            const Rect at = cascadeItemRect(level, r, static_cast<int>(i));
+            const Rect at = cascadeItemRect(level, r, static_cast<int>(i), k);
             if (item.heading) {
                 c.text({at.x + 8.0f, at.y + 2.0f, at.w - 16.0f, at.h}, item.label, 9.5f, kDim, Align::Left, true);
                 continue;
@@ -663,13 +819,18 @@ void View::paintCascade(Canvas &c) {
             const bool opened = k + 1 < levels.size() && cascade_->open[k] == static_cast<int>(i);
             const bool hovered = hover_ && hover_->kind == Kind::CascadeItem && hover_->a == static_cast<int>(k) &&
                                  hover_->b == static_cast<int>(i);
-            if (opened || (hovered && item.enabled))
+            if (opened || ((hovered || picked == static_cast<int>(i)) && item.enabled))
                 c.fillRect(at, kTrack, 4.0f);
             const Color ink = item.enabled ? kText : kFaint;
             float x = at.x + 8.0f;
             if (item.color) {
                 c.fillCircle({x + 4.0f, at.center().y}, 4.0f, item.color->alpha(item.enabled ? 1.0f : 0.4f));
                 x += 14.0f;
+            }
+            if (!item.path.empty()) { // dim, before the label
+                const float pathW = std::ceil(c.textWidth(item.path, 11.5f));
+                c.text({x, at.y, at.right() - x - 8.0f, at.h}, item.path, 11.5f, kDim, Align::Left);
+                x += pathW;
             }
             const float labelW = std::ceil(c.textWidth(item.label, 11.5f));
             c.text({x, at.y, at.right() - x - 8.0f, at.h}, item.label, 11.5f, ink, Align::Left);
@@ -723,8 +884,9 @@ void View::paintMods(Canvas &c) {
         parts.push_back(trf(Str::ModsAtZero, {std::to_string(zero)}));
     if (empty > 0)
         parts.push_back(trf(Str::ModsEmpty, {std::to_string(empty)}));
+    // Left of the filter's magnifier; while the filter is open, it says how many it shows instead.
     const float countX = modsCell(head, kModsAux).x + c.textWidth(tr(Str::ModsHeadAux), 9.5f, true) + 24.0f;
-    const float countW = kFxPanel.right() - 16.0f - countX;
+    const float countW = modsFilterRect().x - 10.0f - countX;
     std::string count;
     for (;;) {
         count = parts[0];
@@ -734,9 +896,12 @@ void View::paintMods(Canvas &c) {
             break;
         parts.pop_back();
     }
-    c.text({countX, head.y, countW, head.h}, count, 11.0f, kDim, Align::Right);
+    if (!modsFilterOpen())
+        c.text({countX, head.y, countW, head.h}, count, 11.0f, kDim, Align::Right);
     if (rows.empty()) { // only the button that adds one
-        c.text({kFxPanel.x, kModsList.y + 50.0f, kFxPanel.w, 30.0f}, tr(Str::HintNoMods), 11.5f, kDim);
+        const std::string hint =
+            modsFilter_.text.empty() ? std::string(tr(Str::HintNoMods)) : trf(Str::ModsNoMatch, {modsFilter_.text});
+        c.text({kFxPanel.x, kModsList.y + 50.0f, kFxPanel.w, 30.0f}, hint, 11.5f, kDim);
         return;
     }
 

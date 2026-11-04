@@ -7,11 +7,6 @@
       card body and a smoke check. A strip source, like velocity (see `VelocityParam`): its slots' polarities, auxes
       and Amounts then take the next block of their sections, and it joins the MODS view's Keyboard category.
 
-- MODS view: the filter field over the table, and a search in the target menu (both in the draft)
-    - **In one line:** a text field in the MODS view's title row narrowing the rows to those whose source and target
-      names hold every word typed, and one atop the target menu listing the matching targets flat, with their path.
-    - **Feasible, small:** the preset browser's search (`dialogs.cpp`) already edits text this way; the rows and the
-      menu's entries are built by name (`modsRows()`, `cascadeTree()` in `mods.cpp`).
 
 ## Issues 
 

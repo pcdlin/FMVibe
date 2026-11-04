@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <string>
@@ -89,16 +90,17 @@ public:
     void undo();
     void redo();
 
-    // Typing a value, after a double-click on the number a knob or slot shows, or a search while the preset browser
-    // is open. Meanwhile the window should send the keyboard here: typeChar() takes printable ASCII. Up and Down only
-    // move through the browser's list.
+    // Typing a value, after a double-click on the number a knob or slot shows, or into a text field: the preset
+    // browser's search while it is open, the MODS view's filter once clicked, and the search atop a MODS row's target
+    // menu while it is open. Meanwhile the window should send the keyboard here: typeChar() takes printable ASCII. Up
+    // and Down only move through the browser's list and the target menu's matches.
     enum class Key { Enter, Escape, Backspace, Delete, Left, Right, Home, End, SelectAll, Up, Down };
-    bool typing() const { return typing_.has_value() || browserOpen_; }
+    bool typing() const { return typing_.has_value() || fieldTyping().has_value(); }
     void typeChar(char32_t c);
-    // Shift with Left, Right, Home and End extends the browser search's selection.
+    // Shift with Left, Right, Home and End extends a text field's selection.
     void typeKey(Key key, bool shift = false);
-    // The clipboard, which the window keeps: what Ctrl+C (or with `cut`, Ctrl+X) takes from what is typed, the
-    // search's selection or a typed value's while all of it is selected, and what Ctrl+V puts in its place (line
+    // The clipboard, which the window keeps: what Ctrl+C (or with `cut`, Ctrl+X) takes from what is typed, a text
+    // field's selection or a typed value's while all of it is selected, and what Ctrl+V puts in its place (line
     // breaks and tabs as spaces, other characters past printable ASCII left out).
     std::string copyText(bool cut);
     void pasteText(std::string_view text);
@@ -206,8 +208,9 @@ private:
         BrowserRow,   // a = preset index: loads it
         BrowserClose,
         BrowserFolder, // opens the preset folder
-        BrowserSearch, // the search field: click to put the caret there, drag to select, double-click for a word
-        BrowserClear, // the x in the search field: empties it
+        SearchField,  // a = Field: a text field (the browser's search, the MODS view's filter, the target menu's
+                      // search): click to put the caret there, drag to select, double-click for a word
+        SearchClear,  // a = Field: the x in a text field: empties it
         SettingsButton, // the cog next to the preset buttons: opens the settings dialog
         ConfirmBackdrop, // a = 1 on the dialog asking before Init or Load, 0 around it (a click there cancels)
         ConfirmButton,  // a = 1 goes ahead, 0 cancels
@@ -258,7 +261,7 @@ private:
         ModWheel,
         BendWheel,
         Glow,
-        TextSelect, // across the browser's search
+        TextSelect, // across a text field (drag_.widget.a: its Field)
         Bend,       // a wire, sideways: how far it bows
         ModsScroll, // the MODS view's thumb
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
@@ -285,6 +288,36 @@ private:
         size_t caret = 0;
         bool selected = true; // all of it, as it starts: typing replaces it
     };
+
+    // A line of text being edited in a field: what is typed, the caret in it and where its selection starts (at the
+    // caret, nothing is selected), where each place between its characters was painted (across), and how far its text
+    // is scrolled left, so the caret shows.
+    struct TextField {
+        std::string text;
+        size_t caret = 0;
+        size_t anchor = 0;
+        std::vector<float> stops;
+        float shift = 0.0f;
+
+        // Its selection, from the anchor to the caret, either way round.
+        std::pair<size_t, size_t> selection() const { return std::minmax(caret, anchor); }
+        void erase(size_t from, size_t to);
+        // Over the selection; line breaks and tabs as spaces, the rest past printable ASCII left out, as much as
+        // fits. Whether the text changed.
+        bool insert(std::string_view typed);
+        void clear();
+        // The place between characters nearest `x`, by where they were painted; before they were, its end.
+        size_t stopAt(float x) const;
+        // Selects the word at `x`, up to the spaces either side.
+        void selectWord(float x);
+        // Backspace, Delete, the arrows, Home, End and Select All, Shift growing the selection: whether the text
+        // changed. Enter, Escape, Up and Down are the field owner's.
+        bool key(Key key, bool extend);
+        // Its words, in lower case, and whether `text` holds every one of them, whatever its case.
+        std::vector<std::string> words() const;
+        static bool holds(std::string_view text, const std::vector<std::string> &words);
+    };
+    enum class Field { Browser, ModsFilter, CascadeSearch };
 
     struct Assignment {
         int source;
@@ -317,8 +350,11 @@ private:
         std::vector<Assignment> all;
         std::vector<int> byTarget; // indices into `all`, by target and then in their order there
     };
+    struct MenuNode;
     struct Derived {
         std::optional<std::vector<int>> chain, chainShown, sources, sourcesShown;
+        std::optional<std::vector<Assignment>> modsRows;
+        std::shared_ptr<const MenuNode> cascade; // the open menu's entries (see cascadeTree())
         std::optional<float> fxLength, sourcesLength;
         std::array<std::optional<std::vector<int>>, kAllSources> slots{};
         std::array<std::optional<float>, kMaxSources> cards{};
@@ -362,6 +398,7 @@ private:
     // thumb of its bar.
     bool modsWide() const;
     std::vector<Assignment> modsRows() const;
+    std::vector<Assignment> modsRowsNow() const; // modsRows() worked out
     // An empty modulation's row stands in for a slot as emptyModSlot(its place in the list), always below -1;
     // emptyModOf() takes it back, -1 for a slot of a source.
     static constexpr int emptyModSlot(int row) { return -2 - row; }
@@ -413,6 +450,8 @@ private:
         bool holds = false;    // a category that has what the row has now somewhere in it
         int pick = -2;         // a source or target; -2 for a category or heading
         std::string note;      // after the label, faint: why it can't be picked
+        std::string path;      // before the label, dim: the categories a search found it in
+        bool newColumn = false; // starts a column of its own level beside the one before (an operator's ENVELOPE)
         std::vector<MenuNode> children;
     };
     struct Cascade {
@@ -420,14 +459,37 @@ private:
         int source = -1, slot = -1; // the row
         Point at;                   // the first level's top left
         std::vector<int> open;      // the entry opened at each level so far
+        int picked = 0;             // while its search finds targets: the match Up and Down picked, which Enter takes
     };
+    // A target menu has a search atop its first level: while something is typed in it, that level lists the targets
+    // whose path (categories, then name) holds every word of it, flat, each with its path, as many as
+    // kCascadeMatches, then how many more there are.
+    bool cascadeSearches() const { return cascade_ && cascade_->kind == CascadeKind::Target; }
+    // Where the search goes in the first level, and so where that level's entries start.
+    Rect cascadeSearchRect(Rect level) const;
     MenuNode cascadeTree() const;
+    MenuNode cascadeTreeNow() const; // cascadeTree() worked out
+    MenuNode cascadeCategories() const; // cascadeTree() before its search narrows it
     // The open menu's levels, from the first: their entries, and where they show.
     std::vector<const MenuNode *> cascadeLevels(const MenuNode &root) const;
     std::vector<Rect> cascadeRects(const MenuNode &root) const;
-    Rect cascadeItemRect(const MenuNode &level, Rect at, int index) const;
+    // An entry of a level (`depth` of them from the first), in the level's place `at`: down its column, the level's
+    // columns side by side, each as wide.
+    Rect cascadeItemRect(const MenuNode &level, Rect at, int index, size_t depth) const;
+    static int cascadeColumns(const MenuNode &level);
     void openCascade(CascadeKind kind, int source, int slot, Rect from);
     void pickCascade(int level, int index);
+    // The keyboard in the target menu's search: Up and Down pick a match, Enter takes it, Escape empties the search,
+    // or then closes the menu.
+    void cascadeKey(Key key);
+    // The MODS view's filter: in its title row, at the right, a magnifier until it is clicked or holds something.
+    // While it holds something, only the rows whose source and target names hold every word of it show (and the
+    // empty modulations, which have yet to get theirs). Escape empties it, or then lets the keyboard go, as Enter and
+    // a click elsewhere do.
+    Rect modsFilterRect() const;
+    bool modsFilterOpen() const { return modsFiltering_ || !modsFilter_.text.empty(); }
+    std::string modsFilterCount() const; // "3 of 13": the modulations it shows, of all
+    void modsFilterKey(Key key);
     void paintCascade(Canvas &c);
     // "Bypass LFO 1 modulation", or "Resume ..." for one that is bypassed.
     std::string bypassLabel(int source, int slot) const;
@@ -751,16 +813,15 @@ private:
     std::vector<std::pair<int, std::string>> browserRows() const;
     // The browser takes the keyboard while it is open: what is typed goes into its search, Up and Down pick a
     // preset from the list, Enter loads it, and Escape empties the search, or then closes the browser.
-    void browserChar(char32_t c);
-    void browserKey(Key key, bool shift);
-    void searchChanged();
-    // Editing the search: its selection (from the anchor to the caret, either way round), typing or pasting over it,
-    // and where a click at `x` puts the caret, by where each character starts as last painted.
-    std::pair<size_t, size_t> searchSelection() const;
-    void insertSearch(std::string_view text);
-    void eraseSearch(size_t from, size_t to);
-    void clearSearch();
-    size_t searchStopAt(float x) const;
+    void browserKey(Key key);
+    // The text fields: the one the keyboard goes to now, if any; each by its Field; what follows a change to what is
+    // typed in one; emptying one; and painting one into `box`: a magnifier, then in `typed` the text, its selection
+    // and, while it has the keyboard, the caret, or `hint` while it is empty, and `after` faint at its right end.
+    std::optional<Field> fieldTyping() const;
+    TextField &field(Field f);
+    void fieldChanged(Field f);
+    void clearField(Field f);
+    void paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view hint, std::string_view after = {});
     // Scrolls the list so the preset's row shows: about in the middle, or just inside the list.
     void revealBrowserRow(int preset, bool middle);
     // Loads a preset of the library, asking first if the patch changed since the last.
@@ -860,11 +921,10 @@ private:
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
     bool browserOpen_ = false;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping
-    std::string browserSearch_;              // what is typed in its search
-    size_t searchCaret_ = 0;                 // where the caret is in it
-    size_t searchAnchor_ = 0;                // where its selection starts: at the caret, nothing is selected
-    std::vector<float> searchStops_;         // where each place between its characters was painted, across
-    float searchShift_ = 0.0f;               // how far its text is scrolled left, so the caret shows
+    TextField browserSearch_;                // what is typed in its search
+    TextField modsFilter_;                   // the MODS view's filter
+    bool modsFiltering_ = false;             // and whether it has the keyboard
+    TextField cascadeSearch_;                // the search atop the open target menu
     int browserPick_ = -1;                   // the preset Up and Down picked, which Enter loads, or -1
     double bend_ = 0.0;                      // the bend wheel's position, -1..1
     std::string flash_;
