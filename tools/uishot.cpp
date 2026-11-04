@@ -2179,16 +2179,16 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     check(added && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
               onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "the title row adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
-    // MPE, beside Voices' label: a click switches it on, and its menu picks the member channels' bend range.
-    click(view, {997.0f, 22.0f});
+    // MPE, beside Legato under Poly | Mono: a click switches it on, and its menu picks the member channels' bend range.
+    click(view, {706.0f, 44.0f});
     const bool mpeOn = model.value(paramIndex(GlobalParam::Mpe)) == 1.0;
-    for (const MenuItem &item : view.contextMenu({997.0f, 22.0f}))
+    for (const MenuItem &item : view.contextMenu({706.0f, 44.0f}))
         if (item.label == trf(Str::MenuMpeBendRange, {"24"}))
             view.menuCommand(item.command);
-    view.mouseMove({997.0f, 22.0f}, {});
+    view.mouseMove({706.0f, 44.0f}, {});
     check(mpeOn && model.value(paramIndex(GlobalParam::MpeBendRange)) == 24.0 &&
               renderer.save(view, dir / "3g-mpe-switch.png"),
-          "the MPE switch beside Voices' label switches MPE, and its menu picks the bend range");
+          "the MPE switch beside Legato switches MPE, and its menu picks the bend range");
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {

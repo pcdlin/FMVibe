@@ -149,7 +149,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the MODS tab's columns' names with no modulations (read off the rendered pixels);
   - the modulation panel's title row adding Random and MIDI sources, each with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input; the MPE switch beside Voices' label, and its menu picking the bend range;
+    following its input; the MPE switch beside Legato, and its menu picking the bend range;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,

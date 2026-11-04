@@ -1244,13 +1244,13 @@ std::vector<View::Widget> View::widgets() const {
     const int mono = paramIndex(GlobalParam::Mono);
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
-    add(Kind::Toggle, {kPlayX, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::Legato));
+    // Under them Legato and MPE, whose menu picks the member channels' bend range.
+    add(Kind::Toggle, kLegatoSwitch, paramIndex(GlobalParam::Legato));
+    add(Kind::Toggle, kMpeToggle, paramIndex(GlobalParam::Mpe));
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
     add(Kind::Toggle, {kGlideX + kGlideW - 52.0f, 15.0f, 52.0f, 15.0f}, paramIndex(GlobalParam::GlideAlways));
-    // Voices, past the second divider, and MPE beside its label, as Always beside Glide's; its menu picks the member
-    // channels' bend range. (Bend's knob is over the bend wheel, in the keyboard strip.)
+    // Voices, past the second divider. (Bend's knob is over the bend wheel, in the keyboard strip.)
     headerKnob(paramIndex(GlobalParam::Voices), kVoicesX, kHeaderKnobW, tr(Str::LabelVoices));
-    add(Kind::Toggle, kMpeToggle, paramIndex(GlobalParam::Mpe));
 
     // Routing panel, as a graph, as a matrix, or the effects chain; or the shape
     // editor of a freeform LFO, in place of all three.
