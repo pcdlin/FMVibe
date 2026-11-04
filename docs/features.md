@@ -750,8 +750,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   - A modulated route shows it too: its wire (or its line to OUT), in its own color as any other,
     swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
     its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.
-- **Everywhere**: drag up/down to change values (hold Shift for fine steps; sliders such as the depth bars, the
-  Mod wheel and the glow slider then move from where they are, a tenth as fast), double-click to reset, use the mouse
+- **Everywhere**: drag up/down to change values (hold Shift for fine steps, a knob then moving a fiftieth as fast; sliders such as the depth bars, the
+  Mod wheel and the glow slider then move from where they are, a hundredth as fast), double-click to reset, use the mouse
   wheel (a trackpad's smaller steps add up to whole notches on what moves in steps: a stepped knob, Voices, an
   operator's pitch, the shape grid and the preset browser's list; while something is being dragged the wheel does
   nothing, a held key aside), or right-click for reset/remove options. Hold the middle button and drag over a

@@ -2620,14 +2620,14 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     model.values[slotTargetIndex(1, 0)] = slotTargetValue(slotAmountIndex(0, 0));
     model.values[slotAmountIndex(1, 0)] = 0.5;
     view.poll();
-    // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a tenth as fast; half
-    // its width (164 px from x 474) is 10 % then.
+    // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a hundredth as fast; half
+    // its width (164 px from x 474) is 1 % then.
     click(view, {314.0f, 88.0f});
     const Point bar{474.0f + 82.0f, 154.0f};
     view.mouseDown(bar, {true, false});
     view.mouseMove({bar.x + 82.0f, bar.y}, {true, false});
     view.mouseUp({bar.x + 82.0f, bar.y}, {true, false});
-    check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6, "Shift drags a depth bar finely, from where it is");
+    check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.41) < 1e-6, "Shift drags a depth bar finely, from where it is");
     view.mouseMove(sourceHandle(1), {});
     const bool shot = renderer.save(view, dir / "18c-lfo-on-lfo.png");
     // Hovered, the dot says what the modulation takes its target through, in the target's units.

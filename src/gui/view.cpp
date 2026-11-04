@@ -6215,9 +6215,9 @@ void View::applyDrag(Point p) {
         }
         break;
     }
-    // The sliders follow the mouse; with Shift, they move a tenth as fast from where they were.
+    // The sliders follow the mouse; with Shift, they move a hundredth as fast from where they were.
     case DragKind::ModWheel:
-        set(w.param, drag_.fine ? drag_.startValue + (drag_.start.y - p.y) / w.rect.h * 0.1
+        set(w.param, drag_.fine ? drag_.startValue + (drag_.start.y - p.y) / w.rect.h * 0.01
                                 : (w.rect.bottom() - p.y) / w.rect.h);
         break;
     case DragKind::TextSelect: {
@@ -6227,7 +6227,7 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::Glow:
-        glowDragged_ = std::clamp(drag_.fine ? static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / w.rect.w * 0.1f
+        glowDragged_ = std::clamp(drag_.fine ? static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / w.rect.w * 0.01f
                                              : (p.x - w.rect.x) / w.rect.w,
                                   0.0f, 1.0f);
         break;
@@ -6242,10 +6242,10 @@ void View::applyDrag(Point p) {
         if (w.kind == Kind::GridCell) // dragging a matrix cell switches on what it joins, in the same step
             switchOnRoute(w.a, w.b);
         if (w.kind == Kind::SlotBar)
-            set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / (w.rect.w * 0.5f) * 0.1
+            set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / (w.rect.w * 0.5f) * 0.01
                                     : (p.x - w.rect.center().x) / (w.rect.w * 0.5f));
         else if (w.kind == Kind::ModsScale) // 0 at its left end, all of it at its right
-            set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / w.rect.w * 0.1
+            set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / w.rect.w * 0.01
                                     : (p.x - w.rect.x) / w.rect.w);
         else if (def.kind == ParamKind::VoiceCount) // doubles every 40 px
             set(w.param, std::round(drag_.startValue * std::exp2((drag_.start.y - p.y) / 40.0)));
@@ -6254,7 +6254,7 @@ void View::applyDrag(Point p) {
             set(w.param, def.kind == ParamKind::NotePitch ? std::round(stepped) : stepped);
         }
         else
-            set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 1000.0 : 200.0) * (def.max - def.min));
+            set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 10000.0 : 200.0) * (def.max - def.min));
         break;
     }
     case DragKind::Node: {
