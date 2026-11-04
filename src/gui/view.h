@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <string>
@@ -349,8 +350,11 @@ private:
         std::vector<Assignment> all;
         std::vector<int> byTarget; // indices into `all`, by target and then in their order there
     };
+    struct MenuNode;
     struct Derived {
         std::optional<std::vector<int>> chain, chainShown, sources, sourcesShown;
+        std::optional<std::vector<Assignment>> modsRows;
+        std::shared_ptr<const MenuNode> cascade; // the open menu's entries (see cascadeTree())
         std::optional<float> fxLength, sourcesLength;
         std::array<std::optional<std::vector<int>>, kAllSources> slots{};
         std::array<std::optional<float>, kMaxSources> cards{};
@@ -394,6 +398,7 @@ private:
     // thumb of its bar.
     bool modsWide() const;
     std::vector<Assignment> modsRows() const;
+    std::vector<Assignment> modsRowsNow() const; // modsRows() worked out
     // An empty modulation's row stands in for a slot as emptyModSlot(its place in the list), always below -1;
     // emptyModOf() takes it back, -1 for a slot of a source.
     static constexpr int emptyModSlot(int row) { return -2 - row; }
@@ -463,6 +468,7 @@ private:
     // Where the search goes in the first level, and so where that level's entries start.
     Rect cascadeSearchRect(Rect level) const;
     MenuNode cascadeTree() const;
+    MenuNode cascadeTreeNow() const; // cascadeTree() worked out
     MenuNode cascadeCategories() const; // cascadeTree() before its search narrows it
     // The open menu's levels, from the first: their entries, and where they show.
     std::vector<const MenuNode *> cascadeLevels(const MenuNode &root) const;

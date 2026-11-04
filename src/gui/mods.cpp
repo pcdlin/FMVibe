@@ -46,6 +46,15 @@ bool View::modsWide() const {
 // An empty modulation from a source that has rows goes after them, the others at the end. The filter leaves out the
 // modulations whose source and target names don't hold every word of it, but not the empty ones.
 std::vector<View::Assignment> View::modsRows() const {
+    if (derived_.modsRows) // only kept while a scope goes on
+        return *derived_.modsRows;
+    std::vector<Assignment> rows = modsRowsNow();
+    if (derivedDepth_ > 0)
+        derived_.modsRows = rows;
+    return rows;
+}
+
+std::vector<View::Assignment> View::modsRowsNow() const {
     std::vector<Assignment> rows = assignments();
     if (const std::vector<std::string> words = modsFilter_.words(); !words.empty())
         rows.erase(std::remove_if(rows.begin(), rows.end(),
@@ -334,6 +343,15 @@ void View::removeEmptyMod(int row) {
 // While the target menu's search holds something, its first level lists what it finds in the categories, flat, each
 // with its path.
 View::MenuNode View::cascadeTree() const {
+    if (derived_.cascade) // only kept while a scope goes on
+        return *derived_.cascade;
+    MenuNode tree = cascadeTreeNow();
+    if (derivedDepth_ > 0)
+        derived_.cascade = std::make_shared<const MenuNode>(tree);
+    return tree;
+}
+
+View::MenuNode View::cascadeTreeNow() const {
     MenuNode root = cascadeCategories();
     if (!cascadeSearches() || cascadeSearch_.text.empty())
         return root;
