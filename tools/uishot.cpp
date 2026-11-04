@@ -2014,6 +2014,16 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, macroDot);
     check(macroBypassed && macroBypassShot && model.value(slotBypassIndex(kMaxSources, 0)) == 0.0,
           "a macro's modulation has a bypass dot in the MODS view, like a source's");
+    // Macro 2's handle dropped on the aux cell of Macro 1's row (the last, + Aux in it) makes Macro 2 its aux; its
+    // own row's aux refuses it, and undo takes it away.
+    const float auxStrip = view.height() - 179.0f;
+    const Point auxCell{910.0f, macroDot.y};
+    drag(view, {252.0f, auxStrip}, auxCell);
+    const bool macroAux = slotAuxSource(model.value(slotAuxIndex(kMaxSources, 0))) == kMaxSources + 1;
+    view.undo();
+    drag(view, {156.0f, auxStrip}, auxCell); // Macro 1's own handle, 96 px before Macro 2's
+    check(macroAux && slotAuxSource(model.value(slotAuxIndex(kMaxSources, 0))) < 0,
+          "a source's handle dropped on a MODS row's aux cell becomes that modulation's aux, undoably, never its own");
     // Macro 2's handle dropped on LFO 1's depth handle under Op A's Fine knob makes Macro 2 that modulation's aux.
     // Modulating nothing itself, Macro 2 isn't faint as Macro 3 is, which does nothing (read off the rendered
     // pixels, the macros' handles 96 px apart).

@@ -102,7 +102,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   Each modulation also has an **Amount** (0–100 %, all of it to begin with), which scales its depth, and can have an
   **aux**: another source whose output scales it too, as a unipolar source puts it out (0 to 1), so a macro can
   fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
-  editor); the aux also by dropping a source's handle on the modulation's depth handle. An aux that runs per voice
+  editor); the aux also by dropping a source's handle on the modulation's depth handle, or on its aux cell in the MODS view. An aux that runs per voice
   (an LFO, an envelope, the note source, velocity) scales it in each voice by its own output there, as of the last
   32-sample block (or this one, for a source that comes before it, and velocity, known from the note; on a note's
   first block the note source's comes from the pitch the note starts at); a macro or the mod wheel scales it the same for
@@ -655,7 +655,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
     modulation the pill holds is bypassed or its source switched off, the pill is hollow.
-  - **Aux**: a source's handle dropped on another source's depth handle, or on a row of a pill's list (while it
+  - **Aux**: a source's handle dropped on another source's depth handle, on a MODS row's aux cell, or on a row of a pill's list (while it
     is dragged, the depth handles and rows are ringed faintly, the one under it brightly) makes the dropped source
     that modulation's aux, in place of any it had; the depth handle then has a ring in the aux's color. A
     modulation's ring on its knob, and its range on a label or cell, show how far its depth and Amount take it,
