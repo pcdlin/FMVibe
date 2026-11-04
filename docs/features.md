@@ -510,9 +510,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       menu, and so does a second click on what opened it. Atop the target's menu, a **search** takes the keyboard
       while the menu is open: as soon as something is typed, the menu's first level lists the targets whose path
       (their categories, then their name, as in "Operators › B › Detune") holds every word of it, flat, each with its
-      path dimmed before its name, up to 16 of them, then how many more there are. The first one found is lit; Up and
-      Down light another, Enter or a click picks one. Escape, or the search's ×, empties it, and Escape with nothing
-      typed closes the menu. Both fields edit like the preset browser's search (see the preset bar);
+      path dimmed before its name, up to 16 of them, then how many more there are. The first one found that can be
+      picked is lit; Up and Down light another, Enter or a click picks one. Escape, or the search's ×, empties it,
+      and Escape with nothing typed closes the menu. Both fields edit like the preset browser's search (see the preset bar);
     - the **depth**, a bar like a source row's, with its value (double-click or Ctrl+Click types one);
     - the **curve**, drawn along the source's swing (from the middle out for a bipolar source), faint while it is
       straight and in the source's color once it is bent; dragged up or down it bends (100 px from straight to
@@ -751,10 +751,17 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
     its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps, a knob then moving a fiftieth as fast; sliders such as the depth bars, the
-  Mod wheel and the glow slider then move from where they are, a hundredth as fast), double-click to reset, use the mouse
+  Mod wheel and the glow slider then move from where they are, a hundredth as fast; a value moves only once the mouse
+  has moved more than 3 px, so a click, or a double-click's jitter, changes nothing), double-click to reset, use the mouse
   wheel (a trackpad's smaller steps add up to whole notches on what moves in steps: a stepped knob, Voices, an
-  operator's pitch, the shape grid and the preset browser's list; while something is being dragged the wheel does
-  nothing, a held key aside), or right-click for reset/remove options. Hold the middle button and drag over a
+  operator's pitch, the shape grid and the preset browser's list; over a switch, a notch up switches it on and one down
+  off, as a click would, the keyboard switch and the symmetric switches with what they bring along, and over the
+  partial counts it steps from one offered to the next; while something is being dragged, or a dialog is open, the
+  wheel does nothing, a held key aside), or right-click for reset/remove options. An open list (an LFO's shapes, a
+  MIDI source's inputs, an effect's or a band's choices) closes with undo and redo, and when its card scrolls out of
+  view or no longer holds that type. A drag the editor loses the mouse during (another window taking it, or the
+  browser demo's page its focus) ends where it is, its edit one undo step, but drops nothing: no route moves or goes,
+  no modulation is assigned, no card moves. Hold the middle button and drag over a
   panel that scrolls (the effects chain, the source cards, the MODS view's rows, the preset browser's list) to drag
   what it shows along with the mouse, whatever is under it; past either end the row stops, and dragged back it
   follows at once. A middle press on an open list or menu does nothing, and one that starts a drag closes it;
@@ -762,7 +769,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a
-  time is 300 ms, `1.2k` on a cutoff 1.2 kHz); Enter or a click elsewhere sets it, Escape drops it. The editor
+  time is 300 ms, `1.2k` on a cutoff 1.2 kHz; `Off` or `0` on a time that can be Off, while `1 ms` is the shortest
+  time, and `0` on a phaser's or flanger's Rate stands it still, while `0.02 Hz` is its slowest sweep); Enter or a click elsewhere sets it, Escape drops it. The editor
   takes the keyboard while you type and hands it back afterwards; the keys are taken straight off the window's
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
@@ -871,7 +879,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   stronger and wider the halo.
   The editor shows it while it is dragged and keeps it when it is let go. Both are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
-  switch along. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
+  switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
   license.
 
 ### Remote-control pages (Bitwig, CLAP)
@@ -907,7 +915,7 @@ What the VST3 plugin does its own way:
 - **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...). The fields of effects
   and sources a slot or place doesn't hold are hidden, as in the CLAP plugin, and the host is told to look again
   when they change. Parameters hosts don't show are read-only to them.
-- **Restarting**: raising the voice limit past the voices allocated, or changing the oversampling, asks the host to
-  deactivate and reactivate the plugin (through a latency change, which has hosts do that).
+- **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), or changing the
+  oversampling, asks the host to deactivate and reactivate the plugin (through a latency change, which has hosts do that).
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
   reports that per-voice modulation needs.

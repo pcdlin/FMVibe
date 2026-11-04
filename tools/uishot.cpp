@@ -631,12 +631,18 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // A random LFO shows Smooth and Chaos beside a preview of what they do.
     check(rateFromNorm(1.0) == 100.0, "LFOs run up to 100 Hz");
     click(view, sourceAdd(SourceType::Lfo));
+    // Undone with its shape list open, the LFO takes the list along: added again in its place, its button opens the
+    // list afresh (rather than the click closing one left open), which picks a shape.
+    click(view, shapeButton(0));
+    view.undo();
+    const bool lfoUndone = model.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::None);
+    click(view, sourceAdd(SourceType::Lfo));
     click(view, shapeButton(0));
     const bool shapeListShot = renderer.save(view, dir / "17-lfo-shape-list.png");
     click(view, shapeItem(0, LfoShape::Random));
-    check(shapeListShot &&
+    check(lfoUndone && shapeListShot &&
               std::lround(model.value(paramIndex(0, SourceParam::Shape))) == static_cast<long>(LfoShape::Random),
-          "an LFO's shape list picks its shape");
+          "an LFO's shape list picks its shape, and goes with the LFO when that is undone");
     drag(view, randomKnob(0, 0), {randomKnob(0, 0).x, randomKnob(0, 0).y - 120.0f});
     drag(view, randomKnob(0, 1), {randomKnob(0, 1).x, randomKnob(0, 1).y + 140.0f});
     check(std::abs(model.value(paramIndex(0, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
@@ -788,6 +794,16 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({barX(49, 64), halfway}, {});
     check(at64 && at16 && kept > 0.0 && model.value(fiftieth) == kept && renderer.save(view, dir / "23c-partials-64.png"),
           "the partial editor shows 16, 32 or 64 partials, keeping those it hides");
+    click(view, partialCount(1));
+    // The wheel over them steps from one count offered to the next, as clicks on them do: 32 up to 64, then down to 32
+    // and 16, and no further.
+    view.wheel(partialCount(1), 1.0f, {});
+    const bool wheeled64 = model.value(countParam) == 64.0;
+    view.wheel(partialCount(1), -1.0f, {});
+    const bool wheeled32 = model.value(countParam) == 32.0;
+    view.wheel(partialCount(1), -1.0f, {});
+    view.wheel(partialCount(1), -1.0f, {});
+    check(wheeled64 && wheeled32 && model.value(countParam) == 16.0, "the wheel steps through the partial counts offered");
     click(view, partialCount(1));
     click(view, kRoutingEditorDone);
     // While the wave is Custom, a pencil on the summary line, left of the keyboard switch, opens the partial editor
@@ -2498,6 +2514,22 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     check(menuKeys && searchShot && found && second && nothing && stillOpen && !view.typing() &&
               slotIs(0, 0, paramIndex(0, OpParam::Fine)),
           "the target menu's search lists the targets found with their path, Up and Down pick one and Enter takes it");
+    // "a det" finds Op A's Detune first, which LFO 1 modulates already through its second slot and so can't be
+    // picked: the match after it is lit instead (read off the rendered pixels at the matches' right ends, 22 px
+    // apart from y 215: the second's row lit, the third's not), and Enter takes that one.
+    click(view, {300.0f, 154.0f});
+    type(view, "a det");
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool skipShot = renderer.save(view, dir / "35t-mods-target-search-skip.png");
+    auto matchPixel = [&](int match) { return renderer.pixel({466.0f, 215.0f + 22.0f * static_cast<float>(match)}); };
+    const bool secondLit = matchPixel(1) != matchPixel(2);
+    view.typeKey(View::Key::Enter);
+    const int taken = slotTarget(model.value(slotTargetIndex(0, 0)));
+    const bool tookLit = !view.typing() && taken >= 0 && taken != paramIndex(0, OpParam::Fine) &&
+                         taken != paramIndex(0, OpParam::Detune);
+    view.undo();
+    check(skipShot && secondLit && tookLit && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+          "the target menu's search lights the first match that can be picked, which Enter takes");
 }
 
 // Eight LFOs on Op A's Fine: under the knob, two depth handles and a "+6" pill, nothing drawn outside the knob's
@@ -2934,6 +2966,39 @@ void run(const std::filesystem::path &dir, float scale) {
         view.undo();
         check(removingShot && removed && model.value(matrixIndex(1, 0)) == bToA && envTargets(matrixIndex(1, 0)),
               "an arrowhead let go of away from the nodes and the bus removes its route with its modulation, undoably");
+        // The mouse taken away mid-drag (the window losing its capture) drops nothing: the arrowhead held away from
+        // the nodes leaves its route be, LFO 1's handle held over A's Out knob assigns nothing (let go of there, it
+        // does), and a knob's turn ends where it got to, its gesture closed as one undo step.
+        {
+            auto used = [&](int source) {
+                int count = 0;
+                for (int slot = 0; slot < kSlots; ++slot)
+                    count += slotTarget(model.value(slotTargetIndex(source, slot))) >= 0 ? 1 : 0;
+                return count;
+            };
+            view.mouseDown(arrowOf(b, a), {});
+            view.mouseMove({400.0f, 270.0f}, {});
+            view.mouseMove({400.0f, 240.0f}, {});
+            view.cancelDrag();
+            const bool routeKept = model.value(matrixIndex(1, 0)) == bToA && envTargets(matrixIndex(1, 0));
+            const int lfoUsed = used(0);
+            view.mouseDown(sourceHandle(0), {});
+            view.mouseMove({sourceHandle(0).x + 40.0f, sourceHandle(0).y - 40.0f}, {});
+            view.mouseMove(kOutKnob, {});
+            view.cancelDrag();
+            const bool unassigned = used(0) == lfoUsed;
+            drag(view, sourceHandle(0), kOutKnob);
+            const bool assigns = used(0) == lfoUsed + 1;
+            view.undo();
+            const double fm = model.value(fmAmount);
+            view.mouseDown(kFmAmountKnob, {});
+            view.mouseMove({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f}, {});
+            view.cancelDrag();
+            const bool turned = model.value(fmAmount) > fm && model.openEdits == 0;
+            view.undo();
+            check(routeKept && unassigned && assigns && used(0) == lfoUsed && turned && model.value(fmAmount) == fm,
+                  "a drag called off when the mouse is taken away drops nothing, and ends its gesture");
+        }
         view.menuCommand(canDisconnect()); // B -> A goes, with Env 1's modulation, as before
         model.set(matrixIndex(1, 0), 0.3);
         view.poll();
@@ -3112,6 +3177,49 @@ void run(const std::filesystem::path &dir, float scale) {
         click(view, kFixedSwitch);
         const double fixedAt = fixedHz(model.value(freq), model.value(mult));
         const bool set = model.value(fixed) == 1.0 && model.value(mult) == 3.0 && std::abs(fixedAt - tracked) < 0.01;
+        // Mult reads "×1", its × two bytes in UTF-8: typed into, the caret steps over it whole, and Backspace and
+        // Delete take all of it, so "10" is left to read as a value either way.
+        {
+            const Point multNumber{kFineKnob.x, 238.0f};
+            doubleClick(view, multNumber);
+            for (View::Key key : {View::Key::End, View::Key::Left, View::Key::Backspace, View::Key::End})
+                view.typeKey(key);
+            type(view, "0");
+            view.typeKey(View::Key::Enter);
+            const bool backspaced = model.value(mult) == 4.0;
+            view.undo();
+            doubleClick(view, multNumber);
+            for (View::Key key : {View::Key::Home, View::Key::Delete, View::Key::End})
+                view.typeKey(key);
+            type(view, "0");
+            view.typeKey(View::Key::Enter);
+            const bool deleted = model.value(mult) == 4.0;
+            view.undo();
+            check(backspaced && deleted && model.value(mult) == 3.0,
+                  "typing into Mult steps over its × whole, Backspace and Delete taking all of it");
+        }
+        // A source's handle held meanwhile rings the knobs it can be dropped on, Freq among them, but not the dimmed
+        // Pitch, which takes no drop (read off the rendered pixels: a strip across the top of each ring, with the
+        // handle held and after the drag was called off).
+        {
+            const Point freqKnob{kFineKnob.x - 45.0f, kFineKnob.y};
+            auto strip = [&](Point knob) {
+                std::vector<uint32_t> pixels;
+                for (float y = knob.y - 34.0f; y <= knob.y - 14.0f; y += 1.0f)
+                    pixels.push_back(renderer.pixel({knob.x, y}));
+                return pixels;
+            };
+            view.mouseDown(sourceHandle(1), {});
+            view.mouseMove({sourceHandle(1).x + 40.0f, sourceHandle(1).y - 40.0f}, {});
+            view.mouseMove({600.0f, 300.0f}, {});
+            const bool heldShot = renderer.save(view, dir / "3f-fixed-drop-targets.png");
+            const std::vector<uint32_t> freqHeld = strip(freqKnob), pitchHeld = strip(kPitchKnob);
+            view.cancelDrag();
+            view.mouseMove({600.0f, 300.0f}, {});
+            const bool freeShot = renderer.save(view, dir / "3f-fixed-no-drag.png");
+            check(heldShot && freeShot && freqHeld != strip(freqKnob) && pitchHeld == strip(kPitchKnob),
+                  "a dimmed knob isn't ringed as a drop target");
+        }
         drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 10.0f}); // Mult, in Fine's place: x1 to x10
         const double pitch = model.value(paramIndex(0, OpParam::Transpose));
         drag(view, kPitchKnob, {kPitchKnob.x, kPitchKnob.y - 30.0f});
@@ -3130,6 +3238,19 @@ void run(const std::filesystem::path &dir, float scale) {
         check(trackingShot && fixedShot && set && stepped && still && multBack && model.value(fixed) == 0.0 &&
                   dim * 10 < lit * 7,
               "the keyboard switch fixes an operator's pitch where its ratio was, its knobs becoming Freq and Mult");
+        // The wheel over the switch does what a click does: up, it fixes the operator where its ratio was; up again,
+        // nothing more; down, it follows the keyboard again.
+        view.wheel(kFixedSwitch, 1.0f, {});
+        const bool wheeledOn = model.value(fixed) == 1.0 && model.value(mult) == 3.0 &&
+                               std::abs(fixedHz(model.value(freq), model.value(mult)) - tracked) < 0.01;
+        view.wheel(kFixedSwitch, 1.0f, {});
+        const bool stays = model.value(fixed) == 1.0;
+        view.wheel(kFixedSwitch, -1.0f, {});
+        const bool wheeledOff = model.value(fixed) == 0.0;
+        view.undo();
+        view.undo();
+        check(wheeledOn && stays && wheeledOff && model.value(fixed) == 0.0,
+              "the wheel over the keyboard switch fixes an operator as a click does");
     }
 
     // Play switches: Mono on, Legato on (it starts off), off and on again, Glide to 0.5 (100 px up), Always on.
@@ -3379,6 +3500,32 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(filterShaperIndex(1, 1)) == 1.0 && model.value(paramIndex(1, ShaperParam::Enabled)) == 1.0,
           "the matrix routes a filter into a shaper");
     view.undo();
+    // Undone, the route isn't kept at 0 % either, so no wire is left of it; nor when the wheel switched it on. A press
+    // on the empty cell that drifts a pixel before it goes up, as between a double-click's clicks, sets nothing, so
+    // the double-click after it still finds the cell empty and switches the route on.
+    {
+        const int route = filterShaperIndex(1, 1);
+        auto kept = [&] {
+            return std::find(model.ui.keptRoutes.begin(), model.ui.keptRoutes.end(), route) != model.ui.keptRoutes.end();
+        };
+        const bool undoneGone = model.value(route) == 0.0 && !kept();
+        const Point cell = gridCellCenter(kOps + 1, s2);
+        view.wheel(cell, 1.0f, {});
+        const bool wheeledOn = model.value(route) > 0.0 && kept();
+        view.undo();
+        const bool wheelUndone = model.value(route) == 0.0 && !kept();
+        view.mouseDown(cell, {});
+        view.mouseMove({cell.x, cell.y - 1.0f}, {});
+        view.mouseUp({cell.x, cell.y - 1.0f}, {});
+        const bool untouched =
+            model.value(route) == 0.0 && model.value(paramIndex(1, ShaperParam::Enabled)) == 0.0 && model.openEdits == 0;
+        view.doubleClick({cell.x, cell.y - 1.0f}, {});
+        view.mouseUp({cell.x, cell.y - 1.0f}, {});
+        const bool connected = model.value(route) == 1.0 && kept();
+        view.undo();
+        check(undoneGone && wheeledOn && wheelUndone && untouched && connected && model.value(route) == 0.0 && !kept(),
+              "undo takes a route switched on out of the routes kept at 0 %, and a press's jitter sets no route");
+    }
     model.set(paramIndex(5, OpParam::Enabled), 0.0);
     model.ui.selectedNode = selectedThen;
     click(view, kRoutingTab);
@@ -3878,6 +4025,13 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({400.0f, 300.0f}, {});
     check(renderer.save(view, dir / "11b-sources-between.png"), "render the source cards between places");
     view.wheel({60.0f, 513.0f}, 10.0f, {});
+    // While a dialog is open, the wheel scrolls nothing behind it: closed again, the first card is where it was.
+    click(view, kSettingsButton);
+    view.wheel({60.0f, 513.0f}, -10.0f, {});
+    click(view, {20.0f, 300.0f}); // around the dialog, which only closes it
+    click(view, sourcePower(0));
+    check(model.value(sourceEnabledIndex(0)) == 0.0, "the wheel scrolls nothing behind the settings dialog");
+    click(view, sourcePower(0));
 
     // Drag Env 1's card one place along.
     view.mouseDown(sourceGrip(1), {});

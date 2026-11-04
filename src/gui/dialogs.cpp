@@ -285,7 +285,7 @@ View::TextField &View::field(Field f) {
 }
 
 // After what is typed changes: the browser's list from its top, the first preset found picked; the MODS view's rows
-// from their top; the target menu's matches from the first, nothing opened beside them.
+// from their top; the target menu's matches from the first that can be picked, nothing opened beside them.
 void View::fieldChanged(Field f) {
     caretTicks_ = 0;
     switch (f) {
@@ -306,6 +306,14 @@ void View::fieldChanged(Field f) {
         if (cascade_) {
             cascade_->open.clear();
             cascade_->picked = 0;
+            // The first match that can be picked: one the row's source modulates already is passed over, as Up and
+            // Down pass it (see cascadeKey()). Worked out afresh, for the words typed now.
+            const MenuNode root = cascadeTreeNow();
+            for (size_t i = 0; i < root.children.size(); ++i)
+                if (root.children[i].enabled) {
+                    cascade_->picked = static_cast<int>(i);
+                    break;
+                }
         }
         break;
     }

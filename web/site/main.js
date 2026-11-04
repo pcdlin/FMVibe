@@ -35,6 +35,7 @@ let audio = null;      // {context, node} once the worklet runs
 let starting = false;  // the first click or key starts it
 let pending = [];      // edits (index, value, ...) not sent yet
 let flushQueued = false;
+let scopeAsked = null; // what the scope was last asked for: the editor asks once, maybe before the audio starts
 
 function send(message, transfer) {
   if (audio)
@@ -77,6 +78,8 @@ async function startAudio() {
     node.connect(context.destination);
     pending = []; // the values sent hold them already
     audio = {context, node};
+    if (scopeAsked)
+      send(scopeAsked);
     window.fmvibe = {context, node, ui}; // for poking around in the console
     if (context.state === 'suspended')
       await context.resume();
@@ -140,7 +143,8 @@ const host = {
     send({type: 'bend', amount});
   },
   scope(op, cycles) {
-    send({type: 'scope', op, cycles});
+    scopeAsked = {type: 'scope', op, cycles};
+    send(scopeAsked);
   },
   oversampling(factor) {
     flush();
@@ -170,6 +174,7 @@ let ui;
 let dirty = true;
 let viewWidth = 1;  // the editor's size in its own units; resize() asks it
 let viewHeight = 1;
+let paintQueued = false; // resize() has a paint coming
 try {
   ui = await createFMVibeUI({fmv2d: draw, fmvHost: host});
   ui._ui_init();
@@ -191,10 +196,24 @@ function resize() {
   const height = width * viewHeight / viewWidth;
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
+  // Setting the canvas's size clears it, even to the size it has: only when it changes (every layout change comes
+  // here, most keeping the editor's height), and then painted before the display shows it blank, which frame() may
+  // not do on a fast display. Once the editor is done with what it was doing: it may have asked for this mid-edit.
   const ratio = window.devicePixelRatio || 1;
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  draw.invalidate();
+  const pixelsWide = Math.round(width * ratio);
+  const pixelsHigh = Math.round(height * ratio);
+  if (canvas.width !== pixelsWide || canvas.height !== pixelsHigh) {
+    canvas.width = pixelsWide;
+    canvas.height = pixelsHigh;
+    draw.invalidate();
+    if (!paintQueued) {
+      paintQueued = true;
+      queueMicrotask(() => {
+        paintQueued = false;
+        paint();
+      });
+    }
+  }
   dirty = true;
 }
 
@@ -539,9 +558,10 @@ window.addEventListener('blur', () => {
     ui._ui_end_typing(1);
     afterInput();
   }
-  if (dragging || panning) { // the button may come up elsewhere: end the drag where it is, as WM_CAPTURECHANGED does
+  // The button may come up elsewhere: the drag ends where it is, dropping nothing, as on WM_CAPTURECHANGED.
+  if (dragging || panning) {
     dragging = panning = false;
-    ui._ui_mouse_up(lastPoint[0], lastPoint[1], false, false);
+    ui._ui_cancel_drag();
     ui._ui_mouse_leave();
     afterInput();
   }

@@ -35,10 +35,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
 `ctest` runs four programs:
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. It loads the `.clap` and checks the parameter
-  table, text round-trips, the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
+  table, text round-trips (at each end and just inside it too, the slowest sweep rate and the shortest time typed
+  neither still nor Off), the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:
   - sound comes out and `NOTE_END` arrives after the release;
-  - voice stealing and choke;
+  - voice stealing and choke, and a reset ending the notes playing, their ends reported in the next block;
   - per-voice host modulation, and a mod-envelope slot driving its target, and running its release out after
     the operators have faded (the voice reporting `NOTE_END` only then);
   - spectrum checks on an A4: the matrix produces FM sidebands; every wave sounds; a saw's 2nd harmonic sits at
@@ -97,7 +98,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     slides between
     overlapping notes and skips detached ones unless Always is on (checked by tracking the pitch);
   - a lower voice limit applies immediately, while a higher one requests a restart and is reported through
-    voice-info after reactivation.
+    voice-info after reactivation, and a state with a higher one, loaded while active, requests one too.
 
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
@@ -274,7 +275,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - playing: an A4 at 440 Hz, bent through the MIDI-mapped pitch bend, tuned an octave by a note expression on its id
     (and not by one on another id), its level set by a volume expression, automation landing at its place in a
     block, a param change coming before a note at the same place, notes let go (with ids and without) falling
-    silent, a flush without audio taken, the controller's copy of a value from the host left alone while
+    silent, more changes than a block sorts (a note's end past them still ending it, a param's last point
+    winning), a flush without audio taken, the controller's copy of a value from the host left alone while
     processing, and a voice limit past the voices allocated asking the host for a restart;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
@@ -447,8 +449,9 @@ itself.
   come the MIDI controllers' params (ids from `0x40000000`, `kMidiParamBase`: 130 per channel, CC 0-127, then
   channel pressure and pitch bend), which `IMidiMapping` hands hosts and the process loop turns back into MIDI;
   they are not stored. Param changes and events are sorted by their place in a block and applied there, param
-  changes first. While processing, the host's values reach the params through `process()` only: its copy for the
-  controller (`setParamNormalized()`) may come late, and is taken only while not processing.
+  changes first; past the first 4096 (`kMaxChanges`), the rest apply after them, in the host's order. While
+  processing, the host's values reach the params through `process()` only: its copy for the controller
+  (`setParamNormalized()`) may come late, and is taken only while not processing.
 - The version number is set once, in `project()` at the top of `CMakeLists.txt`. It reaches the code as
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
@@ -490,9 +493,9 @@ itself.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events (in
   VST3, `beginEdit()` / `performEdit()` / `endEdit()` on the main thread). Hosts
   record automation and undo from these, and mark the project as changed. Loading a preset, or Init, sends them for
-  each param whose value changed. The last of the queue they wait in is kept for the ends of gestures already begun,
-  so a host is never left inside one; an edit that doesn't fit has the host read every value again (a values
-  rescan) instead. For half a second after the plugin
+  each param whose value changed. The queue they wait in keeps room for the end of each gesture begun, so a host is
+  never left inside one (a gesture whose begin didn't fit goes without its end); edits that don't fit have the host
+  read every value again instead (one values rescan, from the main-thread callback). For half a second after the plugin
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
@@ -505,7 +508,7 @@ itself.
   scope's cycle count, the wires bent away from their first bow (by route) and the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none). The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
-  in UTF-8); preset files stop after the layout. Params and layout fields a
+  in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
   floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
   short keeps the floats that arrived whole, and a layout value that isn't a number keeps its default. States

@@ -7,6 +7,7 @@
 
 #include <bitset>
 #include <cstdint>
+#include <memory>
 
 namespace fmvibe::gui {
 
@@ -62,6 +63,8 @@ private:
     HWND keyboardFrom_ = nullptr;  // who had it before
     WPARAM shortcutKey_ = 0;       // the shortcut's key while it is down, to take its key-up as well
     std::bitset<256> typedKeys_;   // keys taken while typing, to take their key-ups as well
+    // False once the editor is gone, for code that ran a modal loop meanwhile (see ModalGuard in editor.cpp).
+    std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
 };
 
 } // namespace fmvibe::gui

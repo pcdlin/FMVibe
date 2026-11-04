@@ -134,6 +134,28 @@ Modifiers modifiers() {
     return {GetKeyState(VK_SHIFT) < 0, GetKeyState(VK_CONTROL) < 0, GetKeyState(VK_MENU) < 0};
 }
 
+// A modal loop (a file dialog, a message box, a menu) lets the host go on meanwhile, and it may close the editor, or
+// remove the plugin and unload this DLL, before the loop returns. While one runs, the DLL is held loaded; after it,
+// the code that ran it goes on only while the editor is still there. If the editor is gone, the DLL stays loaded for
+// good: letting it go there would unload the code still running.
+class ModalGuard {
+public:
+    explicit ModalGuard(std::shared_ptr<bool> alive) : alive_(std::move(alive)) {
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(&moduleHandle), &module_);
+    }
+    ~ModalGuard() {
+        if (*alive_ && module_) // the plugin is still there, so the host still holds the DLL too
+            FreeLibrary(module_);
+    }
+    ModalGuard(const ModalGuard &) = delete;
+    ModalGuard &operator=(const ModalGuard &) = delete;
+    bool alive() const { return *alive_; }
+
+private:
+    std::shared_ptr<bool> alive_;
+    HMODULE module_ = nullptr;
+};
+
 } // namespace
 
 Editor::Editor(Controller &controller) : controller_(controller), view_(controller) {
@@ -162,6 +184,7 @@ Editor::Editor(Controller &controller) : controller_(controller), view_(controll
 }
 
 Editor::~Editor() {
+    *alive_ = false;
     std::erase(hookedEditors, this);
     if (hookedEditors.empty() && keyboardHook) {
         UnhookWindowsHookEx(keyboardHook);
@@ -286,13 +309,9 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         invalidate();
         return 0;
     case WM_CAPTURECHANGED:
-        // Capture taken away mid-drag (alt-tab, host dialog): finish the gesture where it is.
-        {
-            POINT p;
-            GetCursorPos(&p);
-            ScreenToClient(hwnd_, &p);
-            view_.mouseUp(toView(p.x, p.y), modifiers());
-        }
+        // Capture taken away mid-drag (alt-tab, host dialog): the gesture ends where it is, but nothing is dropped
+        // where the mouse happens to be. After a button-up, which let the capture go, there is no drag left.
+        view_.cancelDrag();
         invalidate();
         return 0;
     case WM_LBUTTONDBLCLK:
@@ -319,10 +338,13 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         updateCursor();
         invalidate();
         return 0;
-    case WM_RBUTTONUP:
+    case WM_RBUTTONUP: {
+        const std::shared_ptr<bool> alive = alive_; // the menu's modal loop may outlast the editor
         contextMenu(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-        syncFocus();
+        if (*alive)
+            syncFocus();
         return 0;
+    }
     case WM_MOUSEWHEEL: {
         POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
         ScreenToClient(hwnd_, &p);
@@ -596,6 +618,7 @@ void Editor::choosePreset(bool save) {
 }
 
 void Editor::browsePreset(bool save) {
+    const ModalGuard guard(alive_); // the dialogs below run modal loops
     // Filter pairs are NUL-separated, and the list ends with a double NUL (the last one the string's own).
     const std::wstring filter = widen(tr(Str::DialogPresetFiles)) + L'\0' + L"*.fmv" + L'\0' +
                                 widen(tr(Str::DialogAllFiles)) + L'\0' + L"*.*" + L'\0';
@@ -620,19 +643,20 @@ void Editor::browsePreset(bool save) {
     if (save) {
         dialog.lpstrTitle = title.c_str();
         dialog.Flags |= OFN_OVERWRITEPROMPT;
-        if (!GetSaveFileNameW(&dialog))
+        if (!GetSaveFileNameW(&dialog) || !guard.alive())
             return;
         if (!controller_.savePreset(path))
             MessageBoxW(hwnd_, widen(tr(Str::DialogWriteFailed)).c_str(), L"FMVibe", MB_ICONWARNING);
     } else {
         dialog.lpstrTitle = title.c_str();
         dialog.Flags |= OFN_FILEMUSTEXIST;
-        if (!GetOpenFileNameW(&dialog))
+        if (!GetOpenFileNameW(&dialog) || !guard.alive())
             return;
         if (!controller_.loadPreset(path))
             MessageBoxW(hwnd_, widen(tr(Str::DialogNotPreset)).c_str(), L"FMVibe", MB_ICONWARNING);
     }
-    invalidate();
+    if (guard.alive())
+        invalidate();
 }
 
 void Editor::contextMenu(int x, int y) {
@@ -649,9 +673,12 @@ void Editor::contextMenu(int x, int y) {
     }
     POINT screen{x, y};
     ClientToScreen(hwnd_, &screen);
+    const ModalGuard guard(alive_); // the menu runs a modal loop
     const int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, screen.x, screen.y, 0,
                                        hwnd_, nullptr);
     DestroyMenu(menu);
+    if (!guard.alive())
+        return;
     if (command > 0)
         view_.menuCommand(command);
     invalidate();
