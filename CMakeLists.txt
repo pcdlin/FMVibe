@@ -153,9 +153,10 @@ set_target_properties(FMVibe-vst3 PROPERTIES
 fmvibe_options(FMVibe-vst3)
 
 # `cmake --install` puts the plugins into <prefix>/CLAP and <prefix>/VST3. The presets set the prefix to
-# %LOCALAPPDATA%/Programs/Common, which holds the per-user CLAP and VST3 folders.
-install(TARGETS FMVibe LIBRARY DESTINATION CLAP)
-install(TARGETS FMVibe-vst3 LIBRARY DESTINATION VST3/FMVibe.vst3/Contents/x86_64-win)
+# %LOCALAPPDATA%/Programs/Common, which holds the per-user CLAP and VST3 folders. Each is a component of its own, so
+# one can go alone: `cmake --install build\release --component clap` (or vst3).
+install(TARGETS FMVibe LIBRARY DESTINATION CLAP COMPONENT clap)
+install(TARGETS FMVibe-vst3 LIBRARY DESTINATION VST3/FMVibe.vst3/Contents/x86_64-win COMPONENT vst3)
 
 enable_testing()
 

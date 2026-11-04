@@ -43,6 +43,7 @@ You need:
 .\build.ps1 -Validate          # also run clap-validator and Steinberg's VST3 validator against the plugins
 .\build.ps1 -Install           # also copy the plugins to %LOCALAPPDATA%\Programs\Common\CLAP and ...\VST3
 .\build.ps1 -Install -SkipTests  # build only the plugins and install them, without the tests
+.\build.ps1 -Install -Format vst3 -SkipTests  # the same for the VST3 plugin alone (or -Format clap)
 ```
 
 The plugins end up at `build\<config>\FMVibe.clap` and `build\<config>\FMVibe.vst3` (a folder, as VST3 has it).

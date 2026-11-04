@@ -8,9 +8,14 @@ Configures, builds and tests FMVibe, the CLAP and the VST3 plugin, with the Visu
 .\build.ps1 -Validate           # also run clap-validator and Steinberg's VST3 validator on the plugins
 .\build.ps1 -Install            # also copy them to %LOCALAPPDATA%\Programs\Common\CLAP and ...\Common\VST3
 .\build.ps1 -Install -SkipTests # build and install without running the tests
+.\build.ps1 -Install -Format vst3 -SkipTests # only the VST3 plugin: built, (validated,) installed
+
+-Format (clap, vst3 or both, the default) picks the plugins -SkipTests builds, -Validate validates and -Install
+installs. The tests always build and test both.
 #>
 param(
     [ValidateSet('debug', 'release')] [string] $Config = 'release',
+    [ValidateSet('both', 'clap', 'vst3')] [string] $Format = 'both',
     [switch] $Validate,
     [switch] $Install,
     [switch] $SkipTests
@@ -37,12 +42,15 @@ function Invoke-Step([string] $What, [scriptblock] $Command) {
 Push-Location $PSScriptRoot
 try {
     Invoke-Step 'configure' { cmake --preset $Config }
-    # Without the tests, only the plugins themselves are built.
-    $targets = if ($SkipTests) { @('--target', 'FMVibe', 'FMVibe-vst3') } else { @() }
+    # Without the tests, only the plugins themselves are built: those -Format picks.
+    $plugins = @{ both = @('FMVibe', 'FMVibe-vst3'); clap = @('FMVibe'); vst3 = @('FMVibe-vst3') }[$Format]
+    $targets = if ($SkipTests) { @('--target') + $plugins } else { @() }
     Invoke-Step 'build' { cmake --build --preset $Config @targets }
     if (-not $SkipTests) { Invoke-Step 'tests' { ctest --preset $Config } }
-    if ($Validate) { Invoke-Step 'validators' { cmake --build --preset $Config --target validate } }
-    if ($Install) { Invoke-Step 'install' { cmake --install "build\$Config" } }
+    $validators = @{ both = 'validate'; clap = 'validate-clap'; vst3 = 'validate-vst3' }[$Format]
+    if ($Validate) { Invoke-Step 'validators' { cmake --build --preset $Config --target $validators } }
+    $component = if ($Format -eq 'both') { @() } else { @('--component', $Format) }
+    if ($Install) { Invoke-Step 'install' { cmake --install "build\$Config" @component } }
 }
 finally {
     Pop-Location

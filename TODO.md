@@ -63,50 +63,16 @@
         4. Port the smoke host (dlopen) and uishot (Cairo PNGs, so the UI checks can run in Linux CI too), and add a
            Linux job to release.yml.
 
-- VST3 version?
-    - **In one line:** use clap-wrapper, with four small fixes in FMVibe; per-voice host modulation, remote control
-      pages and dynamically hidden params don't carry over to VST3.
-    - **Feasible, medium (1–2 weeks, mostly host testing)**, through
-      [clap-wrapper](https://github.com/free-audio/clap-wrapper), as AGENTS.md's Next steps already say. The VST3
-      SDK has been MIT-licensed since 3.8. What follows was checked in clap-wrapper's source (main, October 2026).
-        1. Fetch clap-wrapper and the VST3 SDK, pinned by hash like the CLAP SDK; `make_clapfirst_plugins()`
-           builds `FMVibe.vst3` from the same code.
-        2. The four fixes in FMVibe, which help the CLAP build too:
-            - Add `clap.tail`. Without it the wrapper reports no tail, so hosts that suspend idle plugins could cut
-              reverb and delay tails off.
-            - Add the wrapper's `clap_plugin_as_vst3` extension, declaring the tuning, volume and pan note
-              expressions (VST3 hosts get none otherwise) and a single MIDI channel. That cuts the parameters the
-              wrapper adds for MIDI mapping from 2,080 (16 channels × 130) to 130.
-            - Stop flagging FxOrder as stepped (it's hidden anyway). Its 16! − 1 steps overflow VST3's 32-bit step
-              count (`detail/vst3/parameter.cpp:128` in the wrapper).
-            - Map MIDI CC1 to the Mod Wheel param. The hardware wheel arrives as CC1, which FMVibe ignores today in
-              both formats.
-        3. Test raising the voice limit in each host: the restart becomes an I/O-changed restart, which most hosts
-           answer by deactivating and reactivating the plugin.
-        4. Run Steinberg's validator in `build.ps1 -Validate`, put the `.vst3` in the release zip, and try it by hand
-           in VST3 hosts (Cubase, Ableton, FL, Reaper, Studio One).
-    - What VST3 can't carry, wrapped or native: per-voice and global host modulation (in Bitwig, its per-note
-      modulators and MPE through them; a VST3 gets one value per param for the whole plugin), `NOTE_END` and voice
-      info, and remote control pages. Bitwig users keep the CLAP version.
-    - **Native VST3 instead of the wrapper** (~4–6 weeks):
-        - Pros:
-            - Every automation point reaches the engine. The wrapper keeps only the last point of each param per
-              block (`detail/vst3/process.cpp`), so fast automation and pitch bend move once a block. FMVibe ramps
-              levels, sends and routing per sample, so this is mostly inaudible, but coarser at large buffers.
-            - Control over what hosts see. The wrapper shows all 10,660 params (hidden ones flagged hidden) plus
-              its MIDI-mapping ones. Natively, shape points, partials and wiring could stay in the state alone,
-              FMVibe's own undo covering them and `IComponentHandler2::setDirty()` marking the project changed.
-            - No dependence on the wrapper's quirks and releases (its 32-bit step count, its 20 ms main-thread
-              timer on Windows).
-        - Cons:
-            - The work: split `plugin.cpp` into a host-neutral core and two front ends (~1 week), a VST3 front end
-              of ~1,500–2,500 lines (~1.5–3 weeks), a VST3 test host and testing in hosts (~1–2 weeks).
-            - Every host-facing change made twice from then on, and the CLAP smoke tests no longer cover what VST3
-              hosts run.
-            - No gain where VST3 itself falls short (above), nor in sound: it is identical either way, and the
-              wrapper's own cost is microseconds a block.
-        - Verdict: use the wrapper. If per-block automation ever proves audible, passing every point is a small
-          patch to the wrapper (MIT) to send upstream.
+- VST3 version: built natively (no wrapper) beside the CLAP plugin; see "CLAP and VST3" in docs/features.md.
+    - **In one line:** it passes the tests and Steinberg's validator; what is left is trying it by hand in VST3 hosts.
+        1. Try it in Cubase, Ableton, FL, Reaper and Studio One: the editor and its resizing, automation, MIDI
+           controllers and MPE through the MIDI mapping and note expressions, and raising the voice limit, whose
+           restart goes through `kLatencyChanged` (hosts should deactivate and reactivate the plugin).
+        2. Check which hosts look in the per-user VST3 folder (`%LOCALAPPDATA%\Programs\Common\VST3`).
+        3. Maybe: a `moduleinfo.json` in the bundle, for hosts that scan with it; and the hardware mod wheel (CC1)
+           moving the Mod Wheel param, which FMVibe leaves alone in both formats.
+    - What VST3 can't carry: per-voice and global host modulation (Bitwig's per-note modulators), `NOTE_END` and
+      voice info, and remote control pages. Bitwig users keep the CLAP version.
 
 ## Organziational
 
