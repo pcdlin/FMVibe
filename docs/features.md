@@ -291,7 +291,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   one note of their own: their pitch bend bends that note alone, by the **MPE bend range** (48 semitones to begin
   with, as the MPE spec has it; 12, 24, 48 or 96 from the switch's right-click menu), and their channel pressure and
   CC 74 are that note's pressure and slide, which a MIDI source follows on those inputs. A note that starts on a
-  member channel starts from what its channel last sent. With MPE off, every channel's bend, controllers and
+  member channel, or takes a mono voice over there, starts from what its channel last sent, and follows the master
+  channel's pressure until its own channel sends some. With MPE off, every channel's bend, controllers and
   pressure apply to every voice, as without MPE. The plugin offers hosts the MPE MIDI dialect alongside CLAP's and
   plain MIDI.
 - **Play modes**:

@@ -1499,6 +1499,35 @@ int main(int argc, char **argv) {
             setParams({{paramIndex(GlobalParam::Mpe), 0.0}});
             check(memberPressure.first > 0.3 * bothA3 && memberPressure.first < 0.7 * bothA3,
                   "with MPE on, a member channel's pressure is its note's alone");
+
+            // Until a member channel sends pressure of its own, its note follows the master channel's: pressed all the
+            // way there, both notes go.
+            setParams({{paramIndex(GlobalParam::Mpe), 1.0}});
+            const double masterPressed = listen(0xD0, 0x7F, 0).first;
+            const clap_event_midi_t masterReleased = midiEvent(0xD0, 0, 0);
+            runBlock({&masterReleased.header});
+            std::printf("      MPE, A3 with the master channel's pressure all the way: %.0f (both notes: %.0f)\n",
+                        masterPressed, bothA3);
+            check(masterPressed < 0.1 * bothA3,
+                  "with MPE on, a member channel's note follows the master channel's pressure until it has its own");
+            // In mono, a note on another member channel taking the voice over starts from the slide its channel sent
+            // before it: all the way up, a MIDI source on slide (bipolar) takes half of A away.
+            setParams({{paramIndex(GlobalParam::Mono), 1.0}, {input, static_cast<double>(MidiInput::Slide)},
+                       {paramIndex(0, SourceParam::Bipolar), 1.0}});
+            const clap_event_note_t first = onChannel(41, 1), second = onChannel(42, 2);
+            const clap_event_midi_t slideUp = midiEvent(0xB2, 74, 127), slideBack = midiEvent(0xB2, 74, 64);
+            runBlock({&first.header});
+            runBlocks(4);
+            runBlock({&slideUp.header, &second.header});
+            runBlocks(4);
+            const float takenOver = runBlocks(8);
+            runBlock({&chokeAll.header, &slideBack.header});
+            setParams({{paramIndex(GlobalParam::Mono), 0.0}, {input, static_cast<double>(MidiInput::Pressure)},
+                       {paramIndex(0, SourceParam::Bipolar), 0.0}, {paramIndex(GlobalParam::Mpe), 0.0}});
+            std::printf("      MPE in mono, a note taking over with its channel's slide up: peak %.3f (%.3f resting)\n",
+                        takenOver, resting);
+            check(takenOver > 0.4f * resting && takenOver < 0.6f * resting,
+                  "with MPE on in mono, a note taking the voice over starts from its channel's slide");
         }
 
         // Slew: a second, so a controller turned up mid-note has A still near where it was 50 ms on.

@@ -12,6 +12,9 @@ namespace fmvibe {
 
 namespace {
 
+// MPE: channels 2 to 16, numbered from 0, each carry a note of their own (see Synth::setMpe()).
+bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
+
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
 constexpr double kMaxFeedback = std::numbers::pi;
@@ -174,7 +177,7 @@ void Synth::reset() {
     cc_ = {};
     channelPressure_ = 0.0;
     channelBend_ = {};
-    channelPressures_ = {};
+    channelPressures_.fill(-1.0);
     channelSlides_.fill(0.5);
     for (Decimator &d : decimators_)
         d.reset();
@@ -238,10 +241,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     v.fresh = true;
     v.newRandom = true;
     v.auxOut.fill(0.0); // a new note's sources have put out nothing yet
-    if (mpe_ && note.channel >= 1 && note.channel < 16) { // its channel's pressure and slide, as they came before it
-        v.pressure = channelPressures_[note.channel];
-        v.slide = channelSlides_[note.channel];
-    }
+    startFromChannel(v);
     for (Operator &op : v.ops)
         op.env.start();
     for (Envelope &env : v.modEnvs)
@@ -313,6 +313,7 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
     v.exprPan = 0.0;
     v.pressure = -1.0;
     v.slide = 0.5;
+    startFromChannel(v);
     if (retrigger) {
         v.newRandom = true;
         // Envelopes restart from their current level, so there's no click.
@@ -326,6 +327,15 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
             lfo.restart = true;
         }
     }
+}
+
+// The pressure and slide its channel sent before the note, as they came; pressure stays -1, the master channel's
+// standing in, until the channel sends some.
+void Synth::startFromChannel(Voice &v) const {
+    if (!mpe_ || !memberChannel(v.note.channel))
+        return;
+    v.pressure = channelPressures_[v.note.channel];
+    v.slide = channelSlides_[v.note.channel];
 }
 
 void Synth::releaseVoice(Voice &v) {
@@ -381,14 +391,10 @@ void Synth::noteExpression(const NoteRef &match, int32_t expression, double valu
     }
 }
 
-namespace {
-bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
-} // namespace
-
 void Synth::setMpe(bool on, double bendRange) {
     if (mpe_ && !on) {
         channelBend_ = {};
-        channelPressures_ = {};
+        channelPressures_.fill(-1.0);
         channelSlides_.fill(0.5);
     }
     mpe_ = on;

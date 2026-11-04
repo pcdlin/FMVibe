@@ -347,12 +347,14 @@ private:
     double wheelBend_ = 0.0;
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
     double channelPressure_ = 0.0;
-    // MPE (see setMpe()): whether it is on, its bend range, and each member channel's bend (-1..1), pressure and
-    // slide (0..1), by channel; channel 0, the master, is unused.
+    // MPE (see setMpe()): whether it is on, its bend range, and each member channel's bend (-1..1), pressure (0..1, or
+    // -1 while none came, the master channel's standing in) and slide (0..1), by channel; channel 0, the master, is
+    // unused.
+    void startFromChannel(Voice &v) const; // with MPE on, a note on a member channel takes its channel's
     bool mpe_ = false;
     double mpeBendRange_ = 48.0;
     std::array<double, 16> channelBend_{};
-    std::array<double, 16> channelPressures_{};
+    std::array<double, 16> channelPressures_{}; // filled with -1 by reset()
     std::array<double, 16> channelSlides_{};
     double tempo_ = 120.0;
     uint64_t noteCounter_ = 0;

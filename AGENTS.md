@@ -60,7 +60,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     following a note's brightness expression; Slew taking a controller turned up mid-note slowly, and a Random source
     giving each note a level of its own;
   - MPE over MIDI: with it on, a member channel's pitch bend bending its note alone and the master channel's every
-    note, and a member channel's pressure being its note's alone; with it off, any channel's bend bending every note;
+    note, and a member channel's pressure being its note's alone (the master channel's standing in until it sends
+    some), in mono too for a note taking the voice over; with it off, any channel's bend bending every note;
   - an LFO's Phase moving where notes start it (a one-shot running from there to its cycle's end), while a free
     one keeps its clock;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
