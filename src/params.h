@@ -47,6 +47,12 @@ enum class GlobalParam {
     GlideAlways,
     FxOrder,
     ModWheel,
+    // MPE over MIDI (MIDI Polyphonic Expression): while on, channel 1 is the master channel, whose bend, controllers
+    // and pressure apply to every voice, and channels 2 to 16 each carry a note of their own, whose pitch bend
+    // (across MpeBendRange semitones), channel pressure and CC 74 are that note's alone (see Synth::pitchBend()).
+    // Off, every channel's apply to every voice. CLAP's note expressions are per note either way.
+    Mpe,
+    MpeBendRange,
     Count
 };
 // Out goes straight to the output; the sends go into the filters (see sendIndex()) and the shapers
@@ -121,13 +127,15 @@ enum class ShaperParam {
 // fields of both; only those of its type are used (and shown to hosts). Stored
 // in projects by number: only append.
 // Random and Midi came later. Random puts out a value of its own for each note, taken at random as the note starts
-// and held. Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice, or
-// aftertouch, a voice's own note's (polyphonic, or CLAP's pressure expression) once some came, else the channel's.
+// and held. Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice; pressure,
+// a voice's own note's (MIDI polyphonic aftertouch, CLAP's pressure expression, or channel pressure on an MPE member
+// channel) once some came, else the channel's; or slide, a voice's own note's (CLAP's brightness expression, or
+// CC 74 on an MPE member channel), resting in the middle.
 // It follows that through Slew, a time constant (at its least, 1 ms, all but at once). Both are unipolar unless
 // their Bipolar is on, which swings their depths across the set value as a bipolar LFO's (see sourceBipolar()).
 enum class SourceType { None, Lfo, Env, Random, Midi, Count };
 // What a Midi source follows. Stored in projects by number: only append.
-enum class MidiInput { Cc, Pressure, Count };
+enum class MidiInput { Cc, Pressure, Slide, Count };
 // After Type and Enabled come kSlots (target, amount) pairs. A slot's target
 // param holds the id + 1 of the param it modulates (0 = unused); its amount is
 // -1..1 of that param's range. A synced LFO runs at a note value (Division) of
@@ -1058,6 +1066,8 @@ static_assert(idOfIndex(paramIndex(VelocityParam::Slots)) == 11600 &&
                       11680 &&
                   idOfIndex(paramIndex(VelocityParam::Bipolar)) == 11681,
               "velocity source param ids moved");
+static_assert(idOfIndex(paramIndex(GlobalParam::Mpe)) == 12 && idOfIndex(paramIndex(GlobalParam::MpeBendRange)) == 13,
+              "MPE's params keep their ids");
 static_assert(idOfIndex(slotAuxIndex(0, 0)) == 22000 && idOfIndex(slotScaleIndex(0, 0)) == 22001 &&
                   idOfIndex(slotScaleIndex(0, kSlots - 1)) == 22031 &&
                   idOfIndex(slotAuxIndex(kVelocitySource, 0)) == 23040 &&
@@ -1096,7 +1106,7 @@ static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxTy
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
                                FxType::Count}),
               "FxType is stored by number: only append");
-static_assert(numberedInOrder({MidiInput::Cc, MidiInput::Pressure, MidiInput::Count}),
+static_assert(numberedInOrder({MidiInput::Cc, MidiInput::Pressure, MidiInput::Slide, MidiInput::Count}),
               "MidiInput is stored by number: only append");
 static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Random,
                                SourceType::Midi, SourceType::Count}),
@@ -1595,6 +1605,7 @@ const char *divisionName(int division);
 const char *clipModeName(ClipMode mode);
 const char *peqTypeName(PeqType type);
 const char *reverbTypeName(ReverbType type);
+const char *midiInputName(MidiInput input);
 const char *sourceTypeName(SourceType type);
 const char *fxName(FxType fx);
 

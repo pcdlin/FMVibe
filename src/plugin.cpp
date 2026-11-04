@@ -317,6 +317,8 @@ int Plugin::voiceLimit() const {
 void Plugin::applyPlayMode() {
     auto on = [this](GlobalParam p) { return values_[paramIndex(p)].load(std::memory_order_relaxed) >= 0.5; };
     synth_.setPlayMode(on(GlobalParam::Mono), on(GlobalParam::Legato), on(GlobalParam::GlideAlways));
+    synth_.setMpe(on(GlobalParam::Mpe),
+                  values_[paramIndex(GlobalParam::MpeBendRange)].load(std::memory_order_relaxed));
 }
 
 // Thread-safe: request_restart may be called from any thread.
@@ -481,11 +483,11 @@ void Plugin::handleEvent(const clap_event_header_t *ev) {
         else if (status == 0x80 || status == 0x90)
             synth_.noteOff(note);
         else if (status == 0xE0)
-            synth_.pitchBend(((midi.data[2] << 7 | midi.data[1]) - 8192) / 8192.0);
+            synth_.pitchBend(note.channel, ((midi.data[2] << 7 | midi.data[1]) - 8192) / 8192.0);
         else if (status == 0xB0)
-            synth_.controlChange(midi.data[1] & 0x7F, (midi.data[2] & 0x7F) / 127.0);
+            synth_.controlChange(note.channel, midi.data[1] & 0x7F, (midi.data[2] & 0x7F) / 127.0);
         else if (status == 0xD0)
-            synth_.channelPressure((midi.data[1] & 0x7F) / 127.0);
+            synth_.channelPressure(note.channel, (midi.data[1] & 0x7F) / 127.0);
         else if (status == 0xA0)
             synth_.polyPressure(note, (midi.data[2] & 0x7F) / 127.0);
         break;
@@ -823,7 +825,7 @@ const clap_plugin_note_ports_t Plugin::kNotePorts = {
             return false;
         *info = {};
         info->id = 0;
-        info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
+        info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI | CLAP_NOTE_DIALECT_MIDI_MPE;
         info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
         std::snprintf(info->name, sizeof(info->name), "%s", tr(Str::PortNotes));
         return true;

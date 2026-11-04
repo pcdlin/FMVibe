@@ -95,9 +95,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     legato) and held, 0–100 %: notes that each detune, brighten or pan a little differently.
   - **MIDI**: what its **Input** picks. **CC**, to begin with: a MIDI controller, **CC** 0–127 (1, the mod wheel's,
     to begin with), the same for every voice. **Pressure**: aftertouch, a voice following its own note's (MIDI
-    polyphonic aftertouch, or CLAP's pressure note expression, as MPE controllers send it) once some has come, and
-    the channel's (MIDI channel pressure) until then. It follows its input through **Slew**, a time constant from
-    1 ms (all but at once, to begin with) to 10 s, starting each note where its input is.
+    polyphonic aftertouch, CLAP's pressure note expression, or channel pressure on an MPE member channel) once some
+    has come, and the channel's (MIDI channel pressure) until then. **Slide**: a voice's own note's slide, the
+    finger's up and down movement an MPE controller sends (CLAP's brightness note expression, or CC 74 on an MPE
+    member channel), resting in the middle until some comes: bipolar, it moves nothing at rest. It follows its
+    input through **Slew**, a time constant from 1 ms (all but at once, to begin with) to 10 s, starting each note
+    where its input is.
   Both start unipolar. The browser demo takes no MIDI, so there a MIDI source stays at 0. A new
   instance has none; each one added starts
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
@@ -277,9 +280,21 @@ What the plugin does and how its editor works, in full. Building and installing 
   effects at a level of their own, 12 dB down, so the effects' drive and thresholds don't depend on it, and Volume
   gives those 12 dB back. A project or preset saved by FMVibe 0.1, whose Volume didn't, loads it 12 dB lower, so
   it sounds as loud as it did. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
-  do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, Bend Range for
-  MIDI pitch bend, **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
+  do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
+  MIDI pitch bend (its knob over the bend wheel, in the keyboard strip), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
+- **MPE** (MIDI Polyphonic Expression), off to begin with: the switch beside Legato, under Poly | Mono in the header's
+  play cluster. Hosts
+  that send CLAP note expressions (Bitwig) need nothing: each note's tuning, volume, pan, pressure and brightness
+  reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is the master channel, whose
+  pitch bend (by Bend Range), controllers and channel pressure apply to every voice, and channels 2 to 16 each carry
+  one note of their own: their pitch bend bends that note alone, by the **MPE bend range** (48 semitones to begin
+  with, as the MPE spec has it; 12, 24, 48 or 96 from the switch's right-click menu), and their channel pressure and
+  CC 74 are that note's pressure and slide, which a MIDI source follows on those inputs. A note that starts on a
+  member channel, or takes a mono voice over there, starts from what its channel last sent, and follows the master
+  channel's pressure until its own channel sends some. With MPE off, every channel's bend, controllers and
+  pressure apply to every voice, as without MPE. The plugin offers hosts the MPE MIDI dialect alongside CLAP's and
+  plain MIDI.
 - **Play modes**:
   - **Mono** plays one voice that moves from note to note. When you let go of the sounding key while others are
     held, it returns to the most recent one.
@@ -304,7 +319,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   voice (not Volume, the mod wheel, the effects, the macros, the note source or velocity), so Bitwig's modulators
   (including per-note ones) can drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
-  clicking), and CLAP note expressions (tuning, volume, pan). Lowering the voice limit while more voices sound fades
+  clicking), and CLAP note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources).
+  Lowering the voice limit while more voices sound fades
   out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
 - **Oversampling**: the voices (operators, shapers, filters and their drive) run at 1, 2, 4 or 8 times the host rate, 2 by
@@ -548,8 +564,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, then a Glide
-  knob like the global ones, its Always switch beside its label, each switch explaining itself on hover); Bend;
+  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, and MPE, then
+  a Glide knob like the global ones, its Always switch beside its label, each switch explaining itself on hover);
   Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
@@ -628,8 +644,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Modulation**: the panel's title row has the **MODULATION** toggle, which collapses the panel to that row and
   opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ LFO**,
   **+ ENV**, **+ RANDOM** and **+ MIDI** (a drawn plus, like + EFFECT's) to add a source (which opens a collapsed
-  panel). A Random card says what it does where the others have knobs. A MIDI card has its input switch, **CC** or
-  **PRESSURE**, and right of it its CC knob (while its input is a controller) and Slew; under them, both cards'
+  panel). A Random card says what it does where the others have knobs. A MIDI card has its input's list (CC,
+  Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
+  (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
   card with a plus, **ADD SOURCE**, as tall as the cards, opens the list of source types over itself (LFO, Envelope,
@@ -732,9 +749,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   right end, velocity; under them the
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
   range between them, shift them by an octave). The mod wheel's handle sits in the top row between the macros and the
-  note source, its name under it. The toggle (a chevron and the title, like the modulation panel's,
+  note source, its name under it, and the Bend Range knob (header-style: its label and value beside it) under the
+  strip's title, over the bend wheel. The toggle (a chevron and the title, like the modulation panel's,
   as far from the strip's top) collapses the strip to its top row, taking the wheels, the keys and the octave
-  shift away; the mod wheel's handle stays, so the wheel can still be assigned. Whether it is collapsed is kept with the editor, like the modulation panel's, and loading a
+  shift away; the mod wheel's handle and the Bend Range knob stay, so the wheel can still be assigned and the range set. Whether it is collapsed is kept with the editor, like the modulation panel's, and loading a
   preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
   played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs
   back to center on release; the **Mod** wheel is the Mod Wheel param, and its handle in the top row drags onto what

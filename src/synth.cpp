@@ -13,6 +13,9 @@ namespace fmvibe {
 
 namespace {
 
+// MPE: channels 2 to 16, numbered from 0, each carry a note of their own (see Synth::setMpe()).
+bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
+
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
 constexpr double kMaxFeedback = std::numbers::pi;
@@ -175,6 +178,9 @@ void Synth::reset() {
     freeLfos_ = {};
     cc_ = {};
     channelPressure_ = 0.0;
+    channelBend_ = {};
+    channelPressures_.fill(-1.0);
+    channelSlides_.fill(0.5);
     for (Decimator &d : decimators_)
         d.reset();
     for (int f = 0; f < kFilters; ++f) {
@@ -258,6 +264,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     v.fresh = true;
     v.newRandom = true;
     v.auxOut.fill(0.0); // a new note's sources have put out nothing yet
+    startFromChannel(v);
     if (joined) { // fading in, since its envelopes may start well above nothing
         for (int op = 0; op < kOps; ++op)
             v.ops[op].env = joined->ops[op];
@@ -337,6 +344,8 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
     v.exprGain = 1.0;
     v.exprPan = 0.0;
     v.pressure = -1.0;
+    v.slide = 0.5;
+    startFromChannel(v);
     if (retrigger) {
         v.newRandom = true;
         // Envelopes restart from their current level, so there's no click.
@@ -350,6 +359,15 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
             lfo.restart = true;
         }
     }
+}
+
+// The pressure and slide its channel sent before the note, as they came; pressure stays -1, the master channel's
+// standing in, until the channel sends some.
+void Synth::startFromChannel(Voice &v) const {
+    if (!mpe_ || !memberChannel(v.note.channel))
+        return;
+    v.pressure = channelPressures_[v.note.channel];
+    v.slide = channelSlides_[v.note.channel];
 }
 
 void Synth::releaseVoice(Voice &v) {
@@ -398,8 +416,56 @@ void Synth::noteExpression(const NoteRef &match, int32_t expression, double valu
         case CLAP_NOTE_EXPRESSION_PRESSURE:
             v.pressure = std::clamp(value, 0.0, 1.0);
             break;
+        case CLAP_NOTE_EXPRESSION_BRIGHTNESS:
+            v.slide = std::clamp(value, 0.0, 1.0);
+            break;
         }
     }
+}
+
+void Synth::setMpe(bool on, double bendRange) {
+    if (mpe_ && !on) {
+        channelBend_ = {};
+        channelPressures_.fill(-1.0);
+        channelSlides_.fill(0.5);
+    }
+    mpe_ = on;
+    if (std::isfinite(bendRange))
+        mpeBendRange_ = std::clamp(bendRange, 0.0, 96.0);
+}
+
+void Synth::pitchBend(int channel, double amount) {
+    if (!std::isfinite(amount))
+        return;
+    (mpe_ && memberChannel(channel) ? channelBend_[channel] : bend_) = std::clamp(amount, -1.0, 1.0);
+}
+
+void Synth::controlChange(int channel, int controller, double value) {
+    if (controller < 0 || controller >= 128 || !std::isfinite(value))
+        return;
+    value = std::clamp(value, 0.0, 1.0);
+    if (mpe_ && memberChannel(channel) && controller == 74) { // the slide of the note on that channel
+        channelSlides_[channel] = value;
+        for (Voice &v : voices_)
+            if (live(v) && v.note.channel == channel)
+                v.slide = value;
+        return;
+    }
+    cc_[controller] = value;
+}
+
+void Synth::channelPressure(int channel, double value) {
+    if (!std::isfinite(value))
+        return;
+    value = std::clamp(value, 0.0, 1.0);
+    if (mpe_ && memberChannel(channel)) { // the pressure of the note on that channel
+        channelPressures_[channel] = value;
+        for (Voice &v : voices_)
+            if (live(v) && v.note.channel == channel)
+                v.pressure = value;
+        return;
+    }
+    channelPressure_ = value;
 }
 
 void Synth::paramMod(int index, const NoteRef &match, double amount) {
@@ -890,10 +956,14 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             scale *= runsPerVoice(aux) ? v.auxOut[aux] : hostValue(params, stripKnobIndex(aux));
         return scale;
     };
-    // The pitch the voice plays: its glide, tuning and the bend, with the params as `p` holds them when it is asked.
+    // The pitch the voice plays: its glide, tuning and the bend, with the params as `p` holds them when it is asked;
+    // with MPE on, a note on a member channel bends with its channel too.
     const double bend = std::clamp(bend_ + wheelBend_, -1.0, 1.0);
+    const double memberBend =
+        mpe_ && memberChannel(v.note.channel) ? channelBend_[v.note.channel] * mpeBendRange_ : 0.0;
     auto pitchNow = [&] {
-        return v.glide + v.tuning + bend * p[paramIndex(GlobalParam::BendRange)] + p[paramIndex(GlobalParam::Pitch)];
+        return v.glide + v.tuning + memberBend + bend * p[paramIndex(GlobalParam::BendRange)] +
+               p[paramIndex(GlobalParam::Pitch)];
     };
     // Velocity puts out what the note came with, known before the places run, so the slots it scales as their aux
     // take this block's value; on a note's first block, so do those the note source scales, from the pitch the note
@@ -955,18 +1025,20 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             continue;
         }
         if (type != SourceType::Env) {
-            // Random holds a value of its own from the note's start; Midi follows its controller or aftertouch
-            // through Slew, from where it is as the note starts.
+            // Random holds a value of its own from the note's start; Midi follows its controller, or the note's
+            // pressure (else the channel's) or slide, through Slew, from where it is as the note starts.
             double &out = v.follow[s];
             if (type == SourceType::Random) {
                 if (v.newRandom)
                     out = 0.5 * (nextRandom(v.rng) + 1.0);
             } else {
-                const bool pressure = stepped(p[paramIndex(s, SourceParam::MidiInput)], 1) ==
-                                      static_cast<int>(MidiInput::Pressure);
+                const auto input = static_cast<MidiInput>(
+                    stepped(p[paramIndex(s, SourceParam::MidiInput)], static_cast<int>(MidiInput::Count) - 1));
                 const double in =
-                    pressure ? (v.pressure >= 0.0 ? v.pressure : channelPressure_)
-                             : cc_[static_cast<size_t>(stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))];
+                    input == MidiInput::Pressure ? (v.pressure >= 0.0 ? v.pressure : channelPressure_)
+                    : input == MidiInput::Slide  ? v.slide
+                                                 : cc_[static_cast<size_t>(
+                                                      stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))];
                 out = v.fresh ? in
                               : in + (out - in) * std::exp(-static_cast<double>(hostFrames) /
                                                            (timeFromNorm(p[paramIndex(s, SourceParam::Slew)]) *

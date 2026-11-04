@@ -208,12 +208,12 @@ constexpr Point kDecayKnob{1034.0f, 426.0f};
 // An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
 constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
-constexpr Point kFmAmountKnob{308.0f, 32.0f};
-constexpr Point kVoicesKnob{1024.0f, 32.0f};
-constexpr Point kMonoButton{702.0f, 21.0f};
-constexpr Point kLegatoToggle{680.0f, 44.0f};
-constexpr Point kGlideKnob{766.0f, 32.0f};
-constexpr Point kAlwaysToggle{848.0f, 22.0f};
+constexpr Point kFmAmountKnob{359.0f, 32.0f};
+constexpr Point kVoicesKnob{975.0f, 32.0f}; // past the second divider, where Bend was
+constexpr Point kMonoButton{753.0f, 21.0f};
+constexpr Point kLegatoToggle{731.0f, 44.0f};
+constexpr Point kGlideKnob{817.0f, 32.0f};
+constexpr Point kAlwaysToggle{899.0f, 22.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};
@@ -571,21 +571,21 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(!view.typing() && std::abs(model.value(fine) - 0.5) < 1e-9, "a typed value sets the knob");
     view.undo();
     check(std::abs(model.value(fine) - 0.2) < 1e-6, "a typed value is an undo step");
-    doubleClick(view, {350.0f, 35.0f}); // FM Amount's number, beside it in the header
+    doubleClick(view, {401.0f, 35.0f}); // FM Amount's number, beside it in the header
     type(view, "150 %");
     view.typeKey(View::Key::Enter);
     const int fmAmount = paramIndex(GlobalParam::FmAmount);
     check(std::abs(model.value(fmAmount) - 1.5) < 1e-9, "a header knob takes a typed value too");
-    doubleClick(view, {350.0f, 35.0f});
+    doubleClick(view, {401.0f, 35.0f});
     type(view, "70");
     view.typeKey(View::Key::Escape);
-    doubleClick(view, {350.0f, 35.0f});
+    doubleClick(view, {401.0f, 35.0f});
     type(view, "lots");
     view.typeKey(View::Key::Enter);
-    doubleClick(view, {350.0f, 35.0f});
+    doubleClick(view, {401.0f, 35.0f});
     view.typeKey(View::Key::Enter); // as shown: no change, no step
     check(std::abs(model.value(fmAmount) - 1.5) < 1e-9, "Escape, text that isn't a value, or no change leave it");
-    doubleClick(view, {350.0f, 35.0f});
+    doubleClick(view, {401.0f, 35.0f});
     view.typeKey(View::Key::Backspace);
     type(view, "0");
     click(view, {600.0f, 300.0f}); // a click elsewhere takes the value
@@ -1670,7 +1670,8 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px
     // shorter: the keys, the wheels and the octave shift go, and the mod wheel's handle stays in the row between the
-    // macros and the note source, where it still maps the wheel, onto filter 1's cutoff here.
+    // macros and the note source, where it still maps the wheel, onto filter 1's cutoff here. Bend's knob, over the
+    // bend wheel (27 px below the row's middle, at x 46), stays in the row too, and the wheel turns it a semitone.
     {
         const Point toggle{35.0f, y - 8.0f}, title{80.0f, y - 8.0f};
         const float open = view.height();
@@ -1680,11 +1681,15 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         drag(view, wheelHandle, {918.0f, 214.0f});
         const bool wheelMapped =
             slotTarget(model.value(slotTargetIndex(kWheelSource, 1))) == paramIndex(0, FilterParam::Cutoff);
+        const double bendWas = model.value(paramIndex(GlobalParam::BendRange));
+        view.wheel({46.0f, y + 27.0f}, 1.0f, {});
+        const bool bendTurned = model.value(paramIndex(GlobalParam::BendRange)) == bendWas + 1.0;
         view.mouseMove(toggle, {});
         const bool shot = renderer.save(view, dir / "26j-keys-collapsed.png");
         click(view, title);
-        check(shorter && wheelMapped && shot && !model.ui.keysCollapsed && view.height() == open,
-              "the keyboard panel collapses to its top row, the mod wheel's handle staying in it, and opens again");
+        check(shorter && wheelMapped && bendTurned && shot && !model.ui.keysCollapsed && view.height() == open,
+              "the keyboard panel collapses to its top row, the mod wheel's handle and Bend's knob staying in it, "
+              "and opens again");
     }
 
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the
@@ -1717,13 +1722,13 @@ void testMeter(const std::filesystem::path &dir, Renderer &renderer) {
     model.live.outPeak = {0.5f, 0.125f}; // -6 and -18 dB
     view.poll();
     const bool shot = renderer.save(view, dir / "26d-meter.png");
-    const uint32_t left = renderer.pixel({160.5f, 27.0f}), right = renderer.pixel({169.5f, 27.0f}); // about -14 dB
-    const uint32_t dark = renderer.pixel({160.5f, 14.5f});
+    const uint32_t left = renderer.pixel({211.5f, 27.0f}), right = renderer.pixel({220.5f, 27.0f}); // about -14 dB
+    const uint32_t dark = renderer.pixel({211.5f, 14.5f});
     model.live.outPeak = {1.4f, 1.4f};
     model.live.clipHold = 1.0f;
     view.poll();
     const bool clipShot = renderer.save(view, dir / "26e-meter-clipping.png");
-    const uint32_t lit = renderer.pixel({160.5f, 14.5f});
+    const uint32_t lit = renderer.pixel({211.5f, 14.5f});
     check(shot && clipShot && (left & 255) > 200 && (right & 255) < 100 && (dark >> 16 & 255) < 120 &&
               (lit >> 16 & 255) > 200 && (lit >> 8 & 255) < 100,
           "the output meter shows each side's peak, and its clip light past full scale");
@@ -2134,9 +2139,10 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
 // each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it. With no
 // modulations at all, the columns' names show above the button.
 // The title row's last two buttons add a Random and a MIDI source, each a card of its own: Random with no knobs,
-// MIDI with its input switch (CC from x 16 of the card, PRESSURE from x 80, 64 px each, level with the knobs at y 590) and right
-// of it its controller (at x 172 of the card, turned up a notch by the wheel, while its input is a controller) and
-// Slew (at x 228). Each lists in the MODS view's source menu under Note & MIDI.
+// MIDI with its input's list button (where an LFO's shape is: from x 16 of the card, 122 px wide, at y 536 + 42) and
+// right of it its controller (at x 172 of the card, turned up a notch by the wheel, while its input is a controller)
+// and Slew (at x 228). The list opens under the button, an entry 22 px from y 604 + 4: CC, Pressure, Slide. Each
+// lists in the MODS view's source menu under Note & MIDI.
 void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -2147,32 +2153,52 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         return static_cast<SourceType>(std::lround(model.value(paramIndex(place, SourceParam::Type))));
     };
     const bool added = typeOf(0) == SourceType::Random && typeOf(1) == SourceType::Midi && typeOf(2) == SourceType::Midi;
-    const Point ccKnob{cardX(1) + 172.0f, 590.0f}, pressure{cardX(2) + 80.0f + 32.0f, 590.0f};
+    const Point ccKnob{cardX(1) + 172.0f, 590.0f}, inputButton{cardX(2) + 16.0f + 61.0f, 536.0f + 42.0f + 11.0f};
+    auto entry = [](float card, MidiInput input) {
+        return Point{cardX(card) + 60.0f, 604.0f + 4.0f + 22.0f * static_cast<float>(input) + 11.0f};
+    };
     view.wheel(ccKnob, 1.0f, {});
-    click(view, pressure);
-    const bool onPressure = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Pressure);
-    view.wheel({cardX(2) + 172.0f, 590.0f}, 1.0f, {}); // no CC knob there now
-    view.mouseMove({600.0f, 300.0f}, {});
-    const bool shot = renderer.save(view, dir / "11e-new-sources.png");
-    // Its switch's halves each show a tooltip of their own under them (read off the rendered pixels along y 618,
-    // against the same view with the mouse away); the wording is in the snapshots.
-    auto underSwitch = [&](const char *name) {
+    // The button's tooltip says what its input follows (read off the rendered pixels along y 618, under it, against
+    // the same view with the mouse away; the wording is in the snapshots).
+    auto underButton = [&](const char *name) {
         std::vector<uint32_t> pixels;
         if (renderer.save(view, dir / name))
-            for (float x = cardX(1); x <= cardX(1) + 200.0f; x += 2.0f)
+            for (float x = cardX(2); x <= cardX(2) + 240.0f; x += 2.0f)
                 pixels.push_back(renderer.pixel({x, 618.0f}));
         return pixels;
     };
-    const std::vector<uint32_t> away = underSwitch("11f-midi-switch-away.png");
-    view.mouseMove({cardX(1) + 16.0f + 32.0f, 590.0f}, {});
-    const std::vector<uint32_t> ccTip = underSwitch("11g-midi-cc-tooltip.png");
-    view.mouseMove({cardX(1) + 80.0f + 32.0f, 590.0f}, {});
-    const std::vector<uint32_t> pressureTip = underSwitch("11h-midi-pressure-tooltip.png");
+    view.mouseMove({600.0f, 300.0f}, {});
+    const std::vector<uint32_t> away = underButton("11f-midi-input-away.png");
+    view.mouseMove(inputButton, {});
+    const std::vector<uint32_t> ccTip = underButton("11g-midi-cc-tooltip.png");
+    click(view, inputButton);
+    view.mouseMove(entry(2, MidiInput::Slide), {});
+    const bool listShot = renderer.save(view, dir / "11i-midi-input-list.png");
+    click(view, entry(2, MidiInput::Pressure));
+    const bool onPressure = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Pressure);
+    view.mouseMove(inputButton, {});
+    const std::vector<uint32_t> pressureTip = underButton("11h-midi-pressure-tooltip.png");
+    view.wheel({cardX(2) + 172.0f, 590.0f}, 1.0f, {}); // no CC knob there now
+    click(view, inputButton);
+    click(view, entry(2, MidiInput::Slide));
+    const bool onSlide = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Slide);
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool shot = renderer.save(view, dir / "11e-new-sources.png");
     check(ccTip != away && pressureTip != away && ccTip != pressureTip,
-          "a MIDI card's input switch shows a tooltip for each of its halves");
-    check(added && shot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
-              model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
-          "the title row adds Random and MIDI sources, a MIDI card's switch picking aftertouch over its controller");
+          "a MIDI card's input button shows a tooltip saying what its input follows");
+    check(added && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
+              onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
+          "the title row adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
+    // MPE, beside Legato under Poly | Mono: a click switches it on, and its menu picks the member channels' bend range.
+    click(view, {757.0f, 44.0f});
+    const bool mpeOn = model.value(paramIndex(GlobalParam::Mpe)) == 1.0;
+    for (const MenuItem &item : view.contextMenu({757.0f, 44.0f}))
+        if (item.label == trf(Str::MenuMpeBendRange, {"24"}))
+            view.menuCommand(item.command);
+    view.mouseMove({757.0f, 44.0f}, {});
+    check(mpeOn && model.value(paramIndex(GlobalParam::MpeBendRange)) == 24.0 &&
+              renderer.save(view, dir / "3g-mpe-switch.png"),
+          "the MPE switch beside Legato switches MPE, and its menu picks the bend range");
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
