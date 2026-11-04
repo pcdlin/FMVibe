@@ -15,7 +15,7 @@ FetchContent_Declare(clap
 )
 FetchContent_MakeAvailable(clap)
 
-# The sound engine, independent of CLAP and Windows: the plugin and the browser demo share it.
+# The sound engine, independent of the plugin formats and Windows: the plugins and the browser demo share it.
 set(FMVIBE_ENGINE_SOURCES
     src/analyzer.cpp
     src/analyzer.h
@@ -64,9 +64,19 @@ if (NOT WIN32)
     message(FATAL_ERROR "FMVibe's editor is built on Win32 and Direct2D; only Windows is supported for now.")
 endif()
 
-# A .clap is a plain DLL with another extension. Link the CRT statically so
-# the plugin loads on machines without the VC++ redistributable.
+# A .clap is a plain DLL with another extension, and so is the DLL in a .vst3 bundle. Link the CRT statically so
+# the plugins load on machines without the VC++ redistributable.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+# The VST3 SDK's interfaces (MIT licensed), pinned by tag and hash: the VST3 plugin is written straight against them.
+# Their headers include each other as pluginterfaces/..., hence the folder they land in.
+FetchContent_Declare(vst3_pluginterfaces
+    URL https://github.com/steinbergmedia/vst3_pluginterfaces/archive/refs/tags/v3.8.1_build_84.tar.gz
+    URL_HASH SHA256=19e88e225b6ecb4a3c429d3ff2fd511be9c6c8b8b1c7e86b05949b45c0553e2d
+    SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/vst3sdk/pluginterfaces
+    EXCLUDE_FROM_ALL
+)
+FetchContent_MakeAvailable(vst3_pluginterfaces)
 
 function(fmvibe_options target)
     target_compile_features(${target} PRIVATE cxx_std_20)
@@ -109,10 +119,12 @@ target_include_directories(fmvibe-core PUBLIC src)
 target_link_libraries(fmvibe-core PUBLIC clap d2d1 dwrite)
 fmvibe_options(fmvibe-core)
 
-add_library(FMVibe MODULE
-    src/entry.cpp
-    src/plugin.cpp
-    src/plugin.h
+# What the CLAP and the VST3 plugin share beyond the engine and the view: the plugin core (params, state, the
+# editor's Controller), the preset library, the user's settings and the editor's window. Each plugin links its own
+# copy, so the editor's window class belongs to that plugin's DLL.
+add_library(fmvibe-plugin STATIC
+    src/plugincore.cpp
+    src/plugincore.h
     src/presets.cpp
     src/presets.h
     src/usersettings.cpp
@@ -120,13 +132,52 @@ add_library(FMVibe MODULE
     src/gui/editor.cpp
     src/gui/editor.h
 )
-target_link_libraries(FMVibe PRIVATE fmvibe-core)
+target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core)
+fmvibe_options(fmvibe-plugin)
+
+add_library(FMVibe MODULE
+    src/entry.cpp
+    src/plugin.cpp
+    src/plugin.h
+)
+target_link_libraries(FMVibe PRIVATE fmvibe-plugin)
 set_target_properties(FMVibe PROPERTIES PREFIX "" SUFFIX ".clap")
 fmvibe_options(FMVibe)
 
-# `cmake --install` puts the plugin into <prefix>/CLAP. The presets set the
-# prefix to %LOCALAPPDATA%/Programs/Common, the per-user CLAP folder.
-install(TARGETS FMVibe LIBRARY DESTINATION CLAP)
+# The VST3 interfaces' ids and FUID, which the plugin and its test host both need.
+add_library(vst3-interfaces STATIC
+    ${vst3_pluginterfaces_SOURCE_DIR}/base/coreiids.cpp
+    ${vst3_pluginterfaces_SOURCE_DIR}/base/funknown.cpp
+    src/vst3iids.cpp
+)
+target_include_directories(vst3-interfaces PUBLIC ${vst3_pluginterfaces_SOURCE_DIR}/..)
+target_compile_features(vst3-interfaces PUBLIC cxx_std_20)
+target_compile_definitions(vst3-interfaces PUBLIC NOMINMAX UNICODE _UNICODE)
+target_link_libraries(vst3-interfaces PUBLIC ole32)
+
+# The VST3 plugin: a bundle, FMVibe.vst3, holding the DLL (named like the bundle) for 64-bit Windows.
+set(FMVIBE_VST3_BUNDLE ${CMAKE_CURRENT_BINARY_DIR}/FMVibe.vst3)
+add_library(FMVibe-vst3 MODULE
+    src/vst3entry.cpp
+    src/vst3plugin.cpp
+    src/vst3plugin.h
+)
+target_link_libraries(FMVibe-vst3 PRIVATE fmvibe-plugin vst3-interfaces)
+set_target_properties(FMVibe-vst3 PROPERTIES
+    OUTPUT_NAME FMVibe
+    PREFIX ""
+    SUFFIX ".vst3"
+    LIBRARY_OUTPUT_DIRECTORY ${FMVIBE_VST3_BUNDLE}/Contents/x86_64-win
+    # Its import library stays out of the bundle, and clear of the CLAP plugin's of the same name.
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/vst3-implib
+)
+fmvibe_options(FMVibe-vst3)
+
+# `cmake --install` puts the plugins into <prefix>/CLAP and <prefix>/VST3. The presets set the prefix to
+# %LOCALAPPDATA%/Programs/Common, which holds the per-user CLAP and VST3 folders. Each is a component of its own, so
+# one can go alone: `cmake --install build\release --component clap` (or vst3).
+install(TARGETS FMVibe LIBRARY DESTINATION CLAP COMPONENT clap)
+install(TARGETS FMVibe-vst3 LIBRARY DESTINATION VST3/FMVibe.vst3/Contents/x86_64-win COMPONENT vst3)
 
 enable_testing()
 
@@ -139,6 +190,15 @@ target_include_directories(fmvibe-smoke PRIVATE src)
 fmvibe_options(fmvibe-smoke)
 add_dependencies(fmvibe-smoke FMVibe)
 add_test(NAME smoke COMMAND fmvibe-smoke $<TARGET_FILE:FMVibe>)
+
+# Headless VST3 host: loads the built FMVibe.vst3, checks what the VST3 side adds (factory, buses, params, MIDI
+# mapping, note expressions, state, editor) and plays notes through it.
+add_executable(fmvibe-vst3-smoke tests/vst3_host.cpp)
+# The core for param ids and to write a state of its own; everything else goes through VST3.
+target_link_libraries(fmvibe-vst3-smoke PRIVATE fmvibe-core vst3-interfaces)
+fmvibe_options(fmvibe-vst3-smoke)
+add_dependencies(fmvibe-vst3-smoke FMVibe-vst3)
+add_test(NAME vst3 COMMAND fmvibe-vst3-smoke $<TARGET_FILE:FMVibe-vst3>)
 
 # Measures aliasing, zipper noise, clicks and the cost of oversampling on the engine.
 add_executable(fmvibe-quality tests/quality.cpp)
@@ -164,8 +224,11 @@ add_executable(fmvibe-presettool tools/presettool.cpp)
 target_link_libraries(fmvibe-presettool PRIVATE fmvibe-core)
 fmvibe_options(fmvibe-presettool)
 
-# clap-validator (free-audio) runs the plugin through the spec conformance
-# tests: `cmake --build --preset release --target validate`.
+# The validators run the plugins through their formats' conformance tests:
+# `cmake --build --preset release --target validate` runs both.
+add_custom_target(validate)
+
+# clap-validator (free-audio), for the CLAP plugin: `--target validate-clap`.
 option(FMVIBE_FETCH_VALIDATOR "Download a prebuilt clap-validator" ON)
 if (FMVIBE_FETCH_VALIDATOR)
     FetchContent_Declare(clap_validator
@@ -176,9 +239,80 @@ if (FMVIBE_FETCH_VALIDATOR)
 endif()
 find_program(CLAP_VALIDATOR clap-validator HINTS ${clap_validator_SOURCE_DIR})
 if (CLAP_VALIDATOR)
-    add_custom_target(validate
+    add_custom_target(validate-clap
         COMMAND ${CLAP_VALIDATOR} validate $<TARGET_FILE:FMVibe>
         DEPENDS FMVibe
         USES_TERMINAL
     )
+    add_dependencies(validate validate-clap)
+endif()
+
+# Steinberg's validator, for the VST3 plugin: `--target validate-vst3`. It comes as source only, in the VST3 SDK's
+# base and public parts (MIT licensed too), built here with the SDK's own list of the validator's sources.
+option(FMVIBE_FETCH_VST3_VALIDATOR "Download the VST3 SDK's sources and build its validator" ON)
+if (FMVIBE_FETCH_VST3_VALIDATOR)
+    FetchContent_Declare(vst3_base
+        URL https://github.com/steinbergmedia/vst3_base/archive/refs/tags/v3.8.1_build_84.tar.gz
+        URL_HASH SHA256=3ac62b2e271b87863ce50399b40549c204fc21065134247f87d8b84381692ced
+        SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/vst3sdk/base
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_Declare(vst3_public_sdk
+        URL https://github.com/steinbergmedia/vst3_public_sdk/archive/refs/tags/v3.8.1_build_84.tar.gz
+        URL_HASH SHA256=f683db0c831dd6603a1bb8c7747a6e1dd223ac3423e288b08c5706cf30b76ae8
+        SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/vst3sdk/public.sdk
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(vst3_base vst3_public_sdk)
+
+    # What the validator's CMakeLists.txt expects of the SDK's build: its root, the hosting library and a few
+    # helpers, which do nothing here.
+    set(SDK_ROOT ${FETCHCONTENT_BASE_DIR}/vst3sdk)
+    set(SMTG_WIN ON)
+    function(smtg_target_codesign)
+    endfunction()
+    function(smtg_target_setup_universal_binary)
+    endfunction()
+    add_library(sdk_hosting STATIC EXCLUDE_FROM_ALL
+        ${SDK_ROOT}/base/source/baseiids.cpp
+        ${SDK_ROOT}/base/source/fbuffer.cpp
+        ${SDK_ROOT}/base/source/fdebug.cpp
+        ${SDK_ROOT}/base/source/fdynlib.cpp
+        ${SDK_ROOT}/base/source/fobject.cpp
+        ${SDK_ROOT}/base/source/fstreamer.cpp
+        ${SDK_ROOT}/base/source/fstring.cpp
+        ${SDK_ROOT}/base/source/timer.cpp
+        ${SDK_ROOT}/base/source/updatehandler.cpp
+        ${SDK_ROOT}/base/thread/source/fcondition.cpp
+        ${SDK_ROOT}/base/thread/source/flock.cpp
+        ${SDK_ROOT}/pluginterfaces/base/conststringtable.cpp
+        ${SDK_ROOT}/pluginterfaces/base/coreiids.cpp
+        ${SDK_ROOT}/pluginterfaces/base/funknown.cpp
+        ${SDK_ROOT}/pluginterfaces/base/ustring.cpp
+        ${SDK_ROOT}/public.sdk/source/common/commoniids.cpp
+        ${SDK_ROOT}/public.sdk/source/common/commonstringconvert.cpp
+        ${SDK_ROOT}/public.sdk/source/common/threadchecker_win32.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/hosting/connectionproxy.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/hosting/eventlist.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/hosting/hostclasses.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/hosting/module.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/hosting/parameterchanges.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/hosting/pluginterfacesupport.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/hosting/processdata.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/utility/stringconvert.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/vstinitiids.cpp
+        ${SDK_ROOT}/public.sdk/source/vst/vstpresetfile.cpp
+    )
+    target_include_directories(sdk_hosting PUBLIC ${SDK_ROOT})
+    target_compile_features(sdk_hosting PUBLIC cxx_std_17)
+    target_compile_definitions(sdk_hosting PUBLIC $<IF:$<CONFIG:Debug>,DEVELOPMENT=1,RELEASE=1> UNICODE _UNICODE)
+    target_link_libraries(sdk_hosting PUBLIC ole32 shell32)
+    add_subdirectory(${SDK_ROOT}/public.sdk/samples/vst-hosting/validator vst3-validator EXCLUDE_FROM_ALL)
+
+    add_custom_target(validate-vst3
+        COMMAND validator $<TARGET_FILE:FMVibe-vst3>
+        DEPENDS validator FMVibe-vst3
+        USES_TERMINAL
+    )
+    add_dependencies(validate validate-vst3)
 endif()
