@@ -55,6 +55,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     shaper squares it off too, and a filter and a shaper feeding each other in a loop still end with their note,
     and stay finite when the loop lifts itself past unity;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
+  - a MIDI CC source following its controller (and not another), a Pressure source the channel's aftertouch and a
+    note's own (polyphonic aftertouch or CLAP's pressure expression, not another key's), Slew taking a controller
+    turned up mid-note slowly, and a Random source giving each note a level of its own;
   - an LFO's Phase moving where notes start it (a one-shot running from there to its cycle's end), while a free
     one keeps its clock;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
@@ -141,6 +144,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);
   - the MODS tab's columns' names with no modulations (read off the rendered pixels);
+  - the modulation panel's title row adding Random, Pressure and MIDI CC sources, each with its card, the MIDI CC
+    card's knob picking its controller;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -377,9 +382,11 @@ itself.
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`.
-- Like an effect slot, each of the 16 source places has the fields of both an LFO and an envelope, and a Type param
-  (Empty, LFO or Envelope) that picks which are used. Hosts name the fields by place ("Mod 3 Rate"), since a name
-  can't follow the type; fields of the other type are hidden from them.
+- Like an effect slot, each of the 16 source places has the fields of every type (an LFO's, an envelope's, and
+  Slew, CC and Bipolar for Random, Pressure and MIDI CC), and a Type param (Empty, LFO, Envelope, Random, Pressure or
+  MIDI CC) that picks which are used (`sourceFieldUsedBy()`). Hosts name the fields by place ("Mod 3 Rate"), since a
+  name can't follow the type; fields of the other types are hidden from them. MIDI CC and Pressure take CLAP MIDI
+  events (controllers, channel and polyphonic aftertouch) and CLAP's pressure note expression.
 - A slot's *target* param stores the target's id + 1 (0 = unused). Targets aren't offered for automation, since
   they are wiring, but they are saved like any other param. Their depths are normal automatable params. Each slot
   also has an aux (the source + 1 that scales it, 0 = none; wiring, hidden) and an Amount (0–1, 1 to begin with,

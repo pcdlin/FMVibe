@@ -1792,8 +1792,8 @@ std::vector<View::Widget> View::widgets() const {
     // Modulation panel: the collapse toggle, the add buttons, the scrollbar, then the cards.
     add(Kind::SourcesToggle, sourcesToggle());
     if (cardSources.size() < static_cast<size_t>(kMaxSources))
-        for (SourceType type : {SourceType::Lfo, SourceType::Env})
-            add(Kind::SourceAdd, sourceAddButton(type), -1, static_cast<int>(type));
+        for (int type = static_cast<int>(SourceType::Lfo); type < static_cast<int>(SourceType::Count); ++type)
+            add(Kind::SourceAdd, sourceAddButton(static_cast<SourceType>(type)), -1, type);
     if (scrollLength(ScrollArea::Sources) > kVisibleCards + 0.01f && !collapsed)
         add(Kind::Scrollbar, sourceScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::Sources));
     const size_t sourceCardsStart = list.size();
@@ -1838,12 +1838,21 @@ std::vector<View::Widget> View::widgets() const {
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
                  lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
             knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
-        } else {
+        } else if (sourceTypeOf(s) == SourceType::Env) {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
             const float step = (p.w - 24.0f) / 5.0f;
             for (int i = 0; i < 5; ++i)
                 knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
+        } else { // Pressure's Slew, Cc's controller and Slew where the envelope's first knobs go; Random has none
+            const float step = (p.w - 24.0f) / 5.0f;
+            int i = 0;
+            if (sourceTypeOf(s) == SourceType::Cc)
+                knob(paramIndex(s, SourceParam::CcNumber), {p.x + 12.0f + step * (i++ + 0.5f), p.y + 54.0f}, 32.0f,
+                     tr(Str::LabelCc));
+            if (sourceTypeOf(s) != SourceType::Random)
+                knob(paramIndex(s, SourceParam::Slew), {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f,
+                     tr(Str::LabelSlew));
         }
         // Its modulations are listed in the MODS view, which the button under its display shows.
         add(Kind::SourceMods, sourceModsButton(card), -1, s);
@@ -4343,12 +4352,36 @@ void View::paintSource(Canvas &c, float card, int s) {
     c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, sourceName(s), 11.5f, sourceOn(s) ? kText : kDim, Align::Left,
            true);
 
-    if (lfo)
+    if (lfo) {
         paintLfo(c, sourceDisplay(card, std::lround(value(paramIndex(s, SourceParam::Shape))) ==
                                              static_cast<long>(LfoShape::Random)),
                  s);
-    else
+    } else if (sourceTypeOf(s) == SourceType::Env) {
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
+    } else {
+        // Random, Pressure and Cc: what the newest voice gets from it, as a bar from the left (from the middle while
+        // it is bipolar, where its depths swing both ways), and in numbers; Random says what it does over its knobs'
+        // row, having none.
+        if (sourceTypeOf(s) == SourceType::Random)
+            c.text({p.x + 16.0f, p.y + 40.0f, p.w - 32.0f, 30.0f}, tr(Str::HintRandomSource), 10.5f, kDim);
+        const Rect d = sourceDisplay(card);
+        c.fillRect(d, kBackground, 6.0f);
+        const bool live = sourceOn(s) && telemetry_.voices > 0;
+        const double out = live ? std::clamp(static_cast<double>(telemetry_.sources[s]), 0.0, 1.0) : 0.0;
+        const Rect track{d.x + 12.0f, d.center().y - 3.0f, d.w - 24.0f, 6.0f};
+        c.fillRect(track, kTrack, 3.0f);
+        const bool bipolar = sourceBipolar(s);
+        const float from = bipolar ? track.center().x : track.x;
+        const float to = track.x + track.w * static_cast<float>(out);
+        if (live)
+            c.fillRect({std::min(from, to), track.y, std::abs(to - from), track.h}, color, 3.0f);
+        if (bipolar)
+            c.line({track.center().x, track.y - 4.0f}, {track.center().x, track.bottom() + 4.0f}, kFaint, 1.0f);
+        char text[16];
+        std::snprintf(text, sizeof(text), "%.0f%%", (bipolar ? out * 2.0 - 1.0 : out) * 100.0);
+        if (live)
+            c.text({d.x, d.y + 2.0f, d.w - 12.0f, 16.0f}, text, 10.0f, kDim, Align::Right);
+    }
     // Under the display, the button that shows its modulations in the MODS view (a widget).
 }
 
@@ -4639,7 +4672,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Like ADD EFFECT, without its chevron: these add at once. The plus and the name are centered together.
         c.fillRect(w.rect, hovered ? kSourceAddColor.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, kSourceAddColor.alpha(hovered ? 0.9f : 0.45f), 1.0f, 5.0f);
-        const char *name = tr(static_cast<SourceType>(w.a) == SourceType::Lfo ? Str::ButtonLfo : Str::ButtonEnv);
+        const Str names[] = {Str::ButtonLfo, Str::ButtonLfo, Str::ButtonEnv, Str::ButtonRandom, Str::ButtonPressure,
+                             Str::ButtonCc};
+        static_assert(std::size(names) == static_cast<size_t>(SourceType::Count));
+        const char *name = tr(names[std::clamp(w.a, 0, static_cast<int>(SourceType::Count) - 1)]);
         const float width = c.textWidth(name, 10.5f, true);
         const float x = std::round(w.rect.center().x - (kAddPlusW + width) * 0.5f);
         const Color ink = hovered ? kText : kDim;

@@ -171,6 +171,8 @@ void Synth::reset() {
     held_.clear();
     lastKey_ = -1.0;
     freeLfos_ = {};
+    cc_ = {};
+    channelPressure_ = 0.0;
     for (Decimator &d : decimators_)
         d.reset();
     for (int f = 0; f < kFilters; ++f) {
@@ -231,6 +233,7 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     v.rng = static_cast<uint32_t>(v.order * 2654435761u) | 1u;
     v.glide = glide ? from : note.key;
     v.fresh = true;
+    v.newRandom = true;
     v.auxOut.fill(0.0); // a new note's sources have put out nothing yet
     for (Operator &op : v.ops)
         op.env.start();
@@ -301,7 +304,9 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
     v.tuning = 0.0;
     v.exprGain = 1.0;
     v.exprPan = 0.0;
+    v.pressure = -1.0;
     if (retrigger) {
+        v.newRandom = true;
         // Envelopes restart from their current level, so there's no click.
         for (Operator &op : v.ops)
             op.env.start();
@@ -357,6 +362,9 @@ void Synth::noteExpression(const NoteRef &match, int32_t expression, double valu
             break;
         case CLAP_NOTE_EXPRESSION_TUNING:
             v.tuning = std::clamp(value, -120.0, 120.0);
+            break;
+        case CLAP_NOTE_EXPRESSION_PRESSURE:
+            v.pressure = std::clamp(value, 0.0, 1.0);
             break;
         }
     }
@@ -915,6 +923,26 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 advanceLfo(lfo, lfoHz(get, s, tempo_), hostFrames, v.rng, oneShot, chaos);
             continue;
         }
+        if (type != SourceType::Env) {
+            // Random holds a value of its own from the note's start; Pressure and Cc follow what comes in through
+            // Slew, from where it is as the note starts.
+            double &out = v.follow[s];
+            if (type == SourceType::Random) {
+                if (v.newRandom)
+                    out = 0.5 * (nextRandom(v.rng) + 1.0);
+            } else {
+                const double in =
+                    type == SourceType::Cc
+                        ? cc_[static_cast<size_t>(stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))]
+                        : (v.pressure >= 0.0 ? v.pressure : channelPressure_);
+                out = v.fresh ? in
+                              : in + (out - in) * std::exp(-static_cast<double>(hostFrames) /
+                                                           (timeFromNorm(p[paramIndex(s, SourceParam::Slew)]) *
+                                                            sampleRate_));
+            }
+            collectSlots(s, out, out, out - 0.5, p[paramIndex(s, SourceParam::Bipolar)] >= 0.5);
+            continue;
+        }
         Envelope &env = v.modEnvs[s];
         collectSlots(s, env.level(), env.level(), env.level() - 0.5, p[paramIndex(s, SourceParam::EnvBipolar)] >= 0.5);
         const std::array<double, 8> times{
@@ -956,6 +984,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             target, swing * amount * scaleOf(source, s) * (table_[target].max - table_[target].min)};
     }
     withSlotMods();
+    v.newRandom = false;
 
     // A new note starts each operator copy at its Phase, moved on by up to Phase
     // Random of a cycle. Done here rather than at note-on, so host modulation

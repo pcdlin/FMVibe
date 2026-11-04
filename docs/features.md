@@ -89,8 +89,16 @@ What the plugin does and how its editor works, in full. Building and installing 
   a shaper's Mix below 100 %) grows loud but never without end. It
   runs only while something goes in and its output goes somewhere.
 - **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square, random or a freeform shape;
-  0.02–100 Hz) and mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
-  operator's envelope has them). A new
+  0.02–100 Hz), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
+  operator's envelope has them), and three that follow what a note or the controller brings:
+  - **Random**: a value of its own for each note, taken at random as the note starts (or restarts, in mono without
+    legato) and held, 0–100 %: notes that each detune, brighten or pan a little differently.
+  - **Pressure**: aftertouch. A voice follows its own note's (MIDI polyphonic aftertouch, or CLAP's pressure note
+    expression, as MPE controllers send it) once some has come, and the channel's (MIDI channel pressure) until then.
+  - **MIDI CC**: a MIDI controller, **CC** 0–127 (1, the mod wheel's, to begin with), the same for every voice.
+  Pressure and MIDI CC follow what comes in through **Slew**, a time constant from 1 ms (all but at once, to begin
+  with) to 10 s, starting each note where their input is. All three start unipolar. The browser demo takes no MIDI,
+  so there its Pressure and MIDI CC sources stay at 0. A new
   instance has none; each one added starts
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
   has 16 slots, and a slot can
@@ -443,7 +451,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
       while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
-      an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Macros, and Keyboard:
+      an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Note & MIDI for the Random, Pressure
+      and MIDI CC sources, Macros, and Keyboard:
       Note, Velocity and Mod Wheel); picking one moves the modulation there, into a free slot, with its depth,
       Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
       follows it to its new slot, or, moved to a macro, the note source, the mod wheel or velocity (whose depths
@@ -597,12 +606,16 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
     that is off shows none. Underneath are the send knobs of everything that feeds the filter.
 - **Modulation**: the panel's title row has the **MODULATION** toggle, which collapses the panel to that row and
-  opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ LFO** and
-  **+ ENV** (a drawn plus, like + EFFECT's) to add a source (which opens a collapsed panel). Below, the sources' cards show four at a time, and
+  opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ LFO**,
+  **+ ENV**, **+ RANDOM**, **+ PRESSURE** and **+ MIDI CC** (a drawn plus, like + EFFECT's) to add a source (which
+  opens a collapsed panel). A Random card says what it does where the others have knobs, a Pressure card has its
+  Slew knob and a MIDI CC card its CC and Slew knobs; under them, their display is a bar of what the newest voice
+  gets now (from the middle while the source is bipolar), with its value. Below, the sources' cards show four at a time, and
   after the last one, while there is room for more, two square dashed cards with a plus, ADD LFO above ADD ENV,
   add one too. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
   scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
-  them along. LFOs and envelopes are numbered by type in the order they show.
+  them along. Sources are numbered by type in the order they show ("LFO 2", "Env 1", "Random 1", "Pressure 1",
+  "CC 1").
   - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its
     settings and targets), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or

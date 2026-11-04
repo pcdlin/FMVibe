@@ -211,9 +211,10 @@ inline Rect sourceCardClip() {
     return {kModPanel.x + 6.0f, kCardTop - 4.0f, kModPanel.w - 12.0f, kCardH + 8.0f};
 }
 
-// ADD LFO and ADD ENV, after the toggle; shaped like ADD EFFECT.
+// + LFO, + ENV, + RANDOM, + PRESSURE and + MIDI CC, after the toggle; shaped like ADD EFFECT.
 inline Rect sourceAddButton(SourceType type) {
-    return {kAddSourceX + (type == SourceType::Env ? 88.0f : 0.0f), kModPanel.y + 9.0f, 82.0f, 22.0f};
+    const int k = static_cast<int>(type) - static_cast<int>(SourceType::Lfo);
+    return {kAddSourceX + 88.0f * static_cast<float>(k), kModPanel.y + 9.0f, 82.0f, 22.0f};
 }
 
 // A random LFO's display makes room at its right for the Smooth and Chaos knobs.

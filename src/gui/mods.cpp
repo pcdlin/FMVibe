@@ -380,11 +380,16 @@ View::MenuNode View::cascadeTree() const {
         };
         if (menu.kind == CascadeKind::Aux)
             root.children.push_back(pick(tr(Str::ValueNone), -1));
-        MenuNode lfos = category(tr(Str::CascadeLfos)), envs = category(tr(Str::CascadeEnvelopes));
+        MenuNode lfos = category(tr(Str::CascadeLfos)), envs = category(tr(Str::CascadeEnvelopes)),
+                 others = category(tr(Str::CascadeNoteMidi));
         for (int source : sources())
-            (sourceTypeOf(source) == SourceType::Lfo ? lfos : envs).children.push_back(sourcePick(source));
+            (sourceTypeOf(source) == SourceType::Lfo   ? lfos
+             : sourceTypeOf(source) == SourceType::Env ? envs
+                                                       : others)
+                .children.push_back(sourcePick(source));
         keep(std::move(lfos));
         keep(std::move(envs));
+        keep(std::move(others));
         MenuNode macros = category(tr(Str::CascadeMacros));
         for (int macro = 0; macro < kMacros; ++macro)
             macros.children.push_back(sourcePick(kMaxSources + macro));

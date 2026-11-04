@@ -236,8 +236,8 @@ float cardX(float card) {
 }
 
 // ADD LFO or ADD ENV, after the panel's toggle.
-Point sourceAdd(SourceType type) {
-    return {128.0f + (type == SourceType::Env ? 88.0f : 0.0f) + 41.0f, 513.0f};
+Point sourceAdd(SourceType type) { // + LFO, + ENV, + RANDOM, + PRESSURE, + MIDI CC, 88 px apart
+    return {128.0f + 88.0f * static_cast<float>(static_cast<int>(type) - 1) + 41.0f, 513.0f};
 }
 
 Point sourceGrip(float card) {
@@ -2110,6 +2110,27 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
 // a source leaves it empty, waiting for a target, and picking a target then makes it a modulation of that source,
 // each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it. With no
 // modulations at all, the columns' names show above the button.
+// The title row's last three buttons add a Random, a Pressure and a MIDI CC source, each a card of its own: Random
+// with no knobs, Pressure with Slew, MIDI CC with its controller and Slew (its first knob, at x 64 on the first card
+// place's row at y 590, turned up a notch by the wheel); each lists in the MODS view's source menu under Note & MIDI.
+void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, sourceAdd(SourceType::Random));
+    click(view, sourceAdd(SourceType::Pressure));
+    click(view, sourceAdd(SourceType::Cc));
+    auto typeOf = [&](int place) {
+        return static_cast<SourceType>(std::lround(model.value(paramIndex(place, SourceParam::Type))));
+    };
+    const bool added = typeOf(0) == SourceType::Random && typeOf(1) == SourceType::Pressure && typeOf(2) == SourceType::Cc;
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool shot = renderer.save(view, dir / "11e-new-sources.png");
+    const Point ccKnob{cardX(2) + 12.0f + (kCardW - 24.0f) / 10.0f, 590.0f};
+    view.wheel(ccKnob, 1.0f, {});
+    check(added && shot && model.value(paramIndex(2, SourceParam::CcNumber)) == 2.0,
+          "the title row adds Random, Pressure and MIDI CC sources, the MIDI CC card's knob picking its controller");
+}
+
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -3763,6 +3784,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testVelocity(dir, renderer);
     testWireBend(dir, renderer);
     testModsEmpty(dir, renderer);
+    testNewSources(dir, renderer);
     testMods(dir, renderer);
     testModsMoveDepth(dir, renderer);
     testMeter(dir, renderer);

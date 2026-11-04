@@ -132,6 +132,16 @@ clap_event_midi_t bendEvent(double amount) {
     return ev;
 }
 
+// A MIDI message of three bytes, on channel 1.
+clap_event_midi_t midiEvent(uint8_t status, uint8_t first, uint8_t second) {
+    clap_event_midi_t ev{};
+    ev.header = {sizeof(ev), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, 0};
+    ev.data[0] = status;
+    ev.data[1] = first;
+    ev.data[2] = second;
+    return ev;
+}
+
 clap_event_param_value_t paramEvent(int index, double value) {
     clap_event_param_value_t ev{};
     ev.header = {sizeof(ev), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
@@ -1364,6 +1374,89 @@ int main(int argc, char **argv) {
         std::printf("      bipolar mod wheel on A's output at -100 %%: peak %.3f down, %.3f up\n", bipolarDown, bipolarUp);
         check(std::abs(bipolarDown - resting) < 1e-3f && bipolarUp > 0.4f * resting && bipolarUp < 0.6f * resting,
               "a bipolar mod wheel swings its target both ways");
+    }
+
+    // The sources that follow what comes in, in place 1 on A's output at -100 %: a MIDI CC source silences A with its
+    // controller all the way up and halves it at the middle, and leaves it alone with another controller up; Pressure
+    // follows the channel's aftertouch, and a note's own (MIDI polyphonic aftertouch or CLAP's pressure expression)
+    // over it; with a Slew of a second, a controller turned up mid-note takes A down slowly; Random gives each note a
+    // level of its own.
+    {
+        const int type = paramIndex(0, SourceParam::Type);
+        const float resting = peakOf(play({}));
+        setParams({{slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Out))}, {slotAmountIndex(0, 0), -1.0},
+                   {type, static_cast<double>(SourceType::Cc)}, {paramIndex(0, SourceParam::CcNumber), 74.0}});
+        auto send = [&](const clap_event_midi_t &ev) { runBlock({&ev.header}); };
+        send(midiEvent(0xB0, 1, 127)); // another controller
+        const float otherCc = peakOf(play({}));
+        send(midiEvent(0xB0, 74, 127));
+        const float ccUp = peakOf(play({}));
+        send(midiEvent(0xB0, 74, 64));
+        const float ccHalf = peakOf(play({}));
+        send(midiEvent(0xB0, 74, 0));
+        send(midiEvent(0xB0, 1, 0));
+        std::printf("      MIDI CC 74 on A's output at -100 %%: peak %.3f resting, %.3f with CC 1 up, %.3f up, %.3f at "
+                    "64\n",
+                    resting, otherCc, ccUp, ccHalf);
+        check(std::abs(otherCc - resting) < 1e-3f && ccUp < 0.01f && ccHalf > 0.4f * resting && ccHalf < 0.6f * resting,
+              "a MIDI CC source follows its controller");
+
+        // Aftertouch: the channel's, then a note's own over it.
+        setParams({{type, static_cast<double>(SourceType::Pressure)}});
+        send(midiEvent(0xD0, 127, 0));
+        const float channelUp = peakOf(play({}));
+        send(midiEvent(0xD0, 0, 0));
+        auto pressed = [&](const clap_event_header_t &press) { // A4 held, then pressed: its peak after
+            const clap_event_note_t a4 = noteEvent(CLAP_EVENT_NOTE_ON, 21, 69);
+            runBlock({&a4.header});
+            runBlocks(4);
+            runBlock({&press});
+            runBlocks(2);
+            const float peak = runBlocks(8);
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const clap_event_midi_t polyPress = midiEvent(0xA0, 69, 127), otherKey = midiEvent(0xA0, 70, 127);
+        clap_event_note_expression_t expression{};
+        expression.header = {sizeof(expression), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_NOTE_EXPRESSION, 0};
+        expression.expression_id = CLAP_NOTE_EXPRESSION_PRESSURE;
+        expression.note_id = 21;
+        expression.port_index = 0;
+        expression.channel = 0;
+        expression.key = 69;
+        expression.value = 1.0;
+        const float polyUp = pressed(polyPress.header), otherUp = pressed(otherKey.header),
+                    expressionUp = pressed(expression.header);
+        std::printf("      Pressure on A's output at -100 %%: peak %.3f with the channel's up, %.3f with the note's, "
+                    "%.3f with another key's, %.3f with its pressure expression\n",
+                    channelUp, polyUp, otherUp, expressionUp);
+        check(channelUp < 0.01f && polyUp < 0.01f && otherUp > 0.9f * resting && expressionUp < 0.01f,
+              "a Pressure source follows the channel's aftertouch, and a note's own");
+
+        // Slew: a second, so a controller turned up mid-note has A still near where it was 50 ms on.
+        setParams({{type, static_cast<double>(SourceType::Cc)}, {paramIndex(0, SourceParam::Slew), normFromTime(1.0)}});
+        const clap_event_midi_t ccOn = midiEvent(0xB0, 74, 127), ccOff = midiEvent(0xB0, 74, 0);
+        const float slewed = pressed(ccOn.header);
+        runBlock({&ccOff.header});
+        setParams({{paramIndex(0, SourceParam::Slew), 0.0}});
+        const float unslewed = pressed(ccOn.header);
+        runBlock({&ccOff.header});
+        std::printf("      MIDI CC 74 turned up mid-note: peak %.3f with a 1 s slew, %.3f without\n", slewed, unslewed);
+        check(slewed > 0.8f * resting && unslewed < 0.01f, "a source's Slew follows its controller slowly");
+
+        // Random: a level of its own for each note, from none of A to all of it.
+        setParams({{type, static_cast<double>(SourceType::Random)}});
+        float lowest = resting, highest = 0.0f;
+        for (int n = 0; n < 8; ++n) {
+            const float peak = peakOf(play({}));
+            lowest = std::min(lowest, peak);
+            highest = std::max(highest, peak);
+        }
+        setParams({{type, static_cast<double>(SourceType::None)}, {slotTargetIndex(0, 0), 0.0},
+                   {slotAmountIndex(0, 0), 0.0}});
+        std::printf("      Random on A's output at -100 %%: peaks of eight notes from %.3f to %.3f\n", lowest, highest);
+        check(highest - lowest > 0.3f * resting && highest <= resting * 1.001f,
+              "a Random source gives each note a value of its own");
     }
 
     // As it starts, its curve drawn along the cutoff knobs' (nothing up to the pitch at 20 Hz, then straight up to

@@ -46,7 +46,8 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
                             Str::FxDisperser, Str::FxWidener};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
-constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope};
+constexpr Str kSourceTypeNames[] = {Str::SourceEmpty,  Str::SourceLfo,      Str::SourceEnvelope,
+                                    Str::SourceRandom, Str::SourcePressure, Str::SourceCc};
 static_assert(std::size(kSourceTypeNames) == static_cast<size_t>(SourceType::Count));
 // A drawn shaper curve's points as it starts, (x, y, curve) each: an S, flat at the ends, steep through the middle.
 constexpr double kClipCurveDefaults[3][3] = {{0.0, -1.0, 0.35}, {0.5, 0.0, -0.35}, {1.0, 1.0, 0.0}};
@@ -659,6 +660,10 @@ void buildTable(ParamTable &t) {
         field(SourceParam::EnvBipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0,
             0.0); // takes its targets one way
         field(SourceParam::Phase, tr(Str::ParamPhase), ParamKind::Percent, 0.0, 1.0, 0.0);
+        // Random's, Pressure's and Cc's: following what comes in at once, from the mod wheel's controller, one way.
+        field(SourceParam::Slew, tr(Str::ParamSlew), ParamKind::Time, 0.0, kMaxEnvNorm, 0.0);
+        field(SourceParam::CcNumber, tr(Str::ParamCc), ParamKind::Count, 0.0, 127.0, 1.0);
+        field(SourceParam::Bipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.

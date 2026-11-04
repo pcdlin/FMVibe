@@ -120,7 +120,12 @@ enum class ShaperParam {
 // the kMaxSources places holds a source of either type, or none, and has the
 // fields of both; only those of its type are used (and shown to hosts). Stored
 // in projects by number: only append.
-enum class SourceType { None, Lfo, Env, Count };
+// Random, Pressure and Cc came later. Random puts out a value of its own for each note, taken at random as the note
+// starts and held. Pressure follows the aftertouch of a voice's note (polyphonic, or CLAP's pressure expression),
+// else the channel's. Cc follows a MIDI controller, CcNumber, the same for every voice. Pressure and Cc follow
+// what comes in through Slew, a time constant (at its least, 1 ms, all but at once). The three are unipolar unless
+// their Bipolar is on, which swings their depths across the set value as a bipolar LFO's (see sourceBipolar()).
+enum class SourceType { None, Lfo, Env, Random, Pressure, Cc, Count };
 // After Type and Enabled come kSlots (target, amount) pairs. A slot's target
 // param holds the id + 1 of the param it modulates (0 = unused); its amount is
 // -1..1 of that param's range. A synced LFO runs at a note value (Division) of
@@ -161,6 +166,10 @@ enum class SourceParam {
     RandomChaos,
     EnvBipolar, // a mod envelope's field
     Phase,      // an LFO's
+    // Random's, Pressure's and Cc's (see SourceType).
+    Slew,     // Pressure's and Cc's
+    CcNumber, // Cc's: 0..127
+    Bipolar,  // all three's
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -544,15 +553,26 @@ constexpr int sourceOf(int index) {
 constexpr SourceParam sourceFieldOf(int index) {
     return sourceOf(index) < 0 ? SourceParam::Count : static_cast<SourceParam>((index - kSourceBase) % kSourceParamCount);
 }
-// The source type a field belongs to; None for the fields every source uses (Type, Enabled, slots).
-constexpr SourceType sourceTypeOfField(SourceParam f) {
-    return f == SourceParam::EnvBipolar ? SourceType::Env
-           : (f >= SourceParam::RandomSmooth && f <= SourceParam::RandomChaos) || f == SourceParam::Phase
-               ? SourceType::Lfo
-           : f < SourceParam::Shape ? SourceType::None
-           : f < SourceParam::Attack ? SourceType::Lfo
-           : f < SourceParam::Count  ? SourceType::Env
-                                     : SourceType::None;
+// Whether a source of type `t` uses field `f`: every source uses Type, Enabled and its slots.
+constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
+    if (f < SourceParam::Shape)
+        return true;
+    switch (f) {
+    case SourceParam::EnvBipolar:
+        return t == SourceType::Env;
+    case SourceParam::RandomSmooth:
+    case SourceParam::RandomChaos:
+    case SourceParam::Phase:
+        return t == SourceType::Lfo;
+    case SourceParam::Slew:
+        return t == SourceType::Pressure || t == SourceType::Cc;
+    case SourceParam::CcNumber:
+        return t == SourceType::Cc;
+    case SourceParam::Bipolar:
+        return t == SourceType::Random || t == SourceType::Pressure || t == SourceType::Cc;
+    default:
+        return f < SourceParam::Attack ? t == SourceType::Lfo : t == SourceType::Env;
+    }
 }
 inline SourceType sourceType(double value) {
     const long t = std::lround(value);
@@ -770,7 +790,8 @@ constexpr Polarity polarityOf(int source, SourceType type) {
            : isNote(source)           ? Polarity{paramIndex(NoteParam::Bipolar), 1.0}
            : isMacro(source)          ? Polarity{paramIndex(source - kMaxSources, MacroParam::Bipolar), 1.0}
            : type == SourceType::Lfo  ? Polarity{paramIndex(source, SourceParam::Unipolar), 0.0}
-                                      : Polarity{paramIndex(source, SourceParam::EnvBipolar), 1.0};
+           : type == SourceType::Env  ? Polarity{paramIndex(source, SourceParam::EnvBipolar), 1.0}
+                                      : Polarity{paramIndex(source, SourceParam::Bipolar), 1.0};
 }
 // Whether a source swings its slots' depths across the set value, half below and half above, rather than from it one
 // way: LFOs to begin with, the other sources once they are switched to it. `get(index)` returns a param value.
@@ -985,6 +1006,8 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::EnvBipolar)) == 3427 &&
                   idOfIndex(paramIndex(0, SourceParam::Phase)) == 2828 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Phase)) == 3428 &&
+                  idOfIndex(paramIndex(0, SourceParam::Slew)) == 2829 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Bipolar)) == 3431 &&
                   idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");
@@ -1070,7 +1093,8 @@ static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxTy
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
                                FxType::Count}),
               "FxType is stored by number: only append");
-static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Count}),
+static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Random,
+                               SourceType::Pressure, SourceType::Cc, SourceType::Count}),
               "SourceType is stored by number: only append");
 static_assert(numberedInOrder({SlotAuxParam::Aux, SlotAuxParam::Amount, SlotAuxParam::Count}),
               "SlotAuxParam is stored by number: only append");
@@ -1548,8 +1572,7 @@ bool fieldInUse(const Get &get, int index) {
         if (field == SourceParam::Type)
             return true;
         const SourceType type = sourceType(get(paramIndex(source, SourceParam::Type)));
-        const SourceType owner = sourceTypeOfField(field);
-        return type != SourceType::None && (owner == SourceType::None || owner == type);
+        return type != SourceType::None && sourceFieldUsedBy(field, type);
     }
     return true;
 }

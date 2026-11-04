@@ -83,6 +83,9 @@ STR(FxWidener, "Widener")
 STR(SourceEmpty, "Empty")
 STR(SourceLfo, "LFO")
 STR(SourceEnvelope, "Envelope")
+STR(SourceRandom, "Random") // a value taken at random as each note starts
+STR(SourcePressure, "Pressure") // aftertouch
+STR(SourceCc, "MIDI CC")
 
 // The noise wave's slope at its three named settings.
 STR(NoiseWhite, "White")
@@ -164,6 +167,8 @@ STR(ParamPartials, "Partials") // how many the Custom wave plays
 STR(ParamPartial, "Partial {1}")
 STR(ParamLevel, "Level")
 STR(ParamPhase, "Phase")
+STR(ParamSlew, "Slew")
+STR(ParamCc, "CC")
 STR(ParamOpFeedback, "{1} Feedback") // an operator into itself, in the matrix
 
 // Filters' and shapers' fields.
@@ -309,6 +314,9 @@ STR(PortNotes, "Notes")
 
 STR(SourceNameLfo, "LFO {1}") // numbered by type in the order the sources show
 STR(SourceNameEnv, "Env {1}")
+STR(SourceNameRandom, "Random {1}")
+STR(SourceNamePressure, "Pressure {1}")
+STR(SourceNameCc, "CC {1}")
 STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")
@@ -443,6 +451,8 @@ STR(LabelRndPhase, "Rnd Phase")
 STR(LabelSmooth, "Smooth")
 STR(LabelChaos, "Chaos")
 STR(LabelPhase, "Phase")
+STR(LabelSlew, "Slew")
+STR(LabelCc, "CC")
 
 // Switches and buttons.
 STR(SwitchPoly, "POLY")
@@ -461,6 +471,10 @@ STR(ButtonAddEnv, "ADD ENV")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
 STR(ButtonEnv, "ENV")
+STR(ButtonRandom, "RANDOM")
+STR(ButtonPressure, "PRESSURE")
+STR(ButtonCc, "MIDI CC")
+STR(HintRandomSource, "A new value at random for each note")
 STR(ButtonEffect, "EFFECT")
 STR(ButtonOpenFolder, "OPEN FOLDER")
 STR(ButtonCancel, "Cancel")
@@ -727,6 +741,7 @@ STR(TipModsAuxClear, "No aux")
 STR(TipModsScale, "Amount: how much of its depth the modulation keeps")
 STR(CascadeLfos, "LFOs")
 STR(CascadeEnvelopes, "Envelopes")
+STR(CascadeNoteMidi, "Note & MIDI") // Random, Pressure and MIDI CC sources
 STR(CascadeMacros, "Macros")
 STR(CascadeKeyboard, "Keyboard") // the note source, velocity and the mod wheel
 STR(CascadeGlobal, "Global")
