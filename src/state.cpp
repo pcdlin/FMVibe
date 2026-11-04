@@ -295,11 +295,37 @@ clap_ostream_t fileOut(FILE *file) {
             }};
 }
 
-bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const gui::UiLayout &ui) {
-    const uint32_t header[] = {kStateMagic, kStateVersion, static_cast<uint32_t>(kParamCount)};
+clap_istream_t memoryIn(MemoryReader &reader) {
+    return {&reader, [](const clap_istream_t *s, void *buffer, uint64_t size) -> int64_t {
+                MemoryReader &r = *static_cast<MemoryReader *>(s->ctx);
+                const size_t n = static_cast<size_t>(std::min<uint64_t>(size, r.size - r.at));
+                std::copy_n(r.data + r.at, n, static_cast<unsigned char *>(buffer));
+                r.at += n;
+                return static_cast<int64_t>(n);
+            }};
+}
+
+clap_ostream_t memoryOut(std::vector<unsigned char> &bytes) {
+    return {&bytes, [](const clap_ostream_t *s, const void *buffer, uint64_t size) -> int64_t {
+                auto &to = *static_cast<std::vector<unsigned char> *>(s->ctx);
+                const auto *from = static_cast<const unsigned char *>(buffer);
+                to.insert(to.end(), from, from + size);
+                return static_cast<int64_t>(size);
+            }};
+}
+
+bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const gui::UiLayout &ui, bool sparse) {
+    const ParamTable &table = paramTable();
+    auto written = [&](int i) { return !sparse || values[i] != table[i].def; };
+    uint32_t count = 0;
+    for (int i = 0; i < kParamCount; ++i)
+        count += written(i) ? 1 : 0;
+    const uint32_t header[] = {kStateMagic, kStateVersion, count};
     if (!writeAll(stream, header, sizeof(header)))
         return false;
     for (int i = 0; i < kParamCount; ++i) {
+        if (!written(i))
+            continue;
         const uint32_t id = idOfIndex(i);
         if (!writeAll(stream, &id, sizeof(id)) || !writeAll(stream, &values[i], sizeof(values[i])))
             return false;

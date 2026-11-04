@@ -685,7 +685,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     const bool buttonShot = renderer.save(view, dir / "17b-card-mods-button.png");
     click(view, modsButton);
     check(buttonShot && model.ui.view == RoutingView::Mods, "a source card's button shows its modulations in MODS");
-    const Point topNumber{701.0f, 154.0f};
+    const Point topNumber{661.0f, 154.0f};
     doubleClick(view, topNumber);
     type(view, "-25");
     view.typeKey(View::Key::Enter);
@@ -1315,16 +1315,13 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
                    const std::string &prefix, size_t effects) {
     FakeController model;
     View view(model);
-    const std::vector<FactoryPreset> presets = factoryPresets();
+    const std::vector<FactoryPreset> &presets = factoryPresets();
     const auto example =
         std::find_if(presets.begin(), presets.end(), [&](const FactoryPreset &p) { return p.name == name; });
-    if (example == presets.end()) {
+    if (example == presets.end() || !loadFactoryPreset(*example, model.values, model.ui)) {
         check(false, ("the examples include " + name).c_str());
         return;
     }
-    for (const auto &[index, value] : example->changes)
-        model.values[index] = value;
-    model.ui = exampleLayout(*example);
     model.library = {{name, "Factory"}}; // the preset bar shows its name
     model.setPreset(std::wstring(name.begin(), name.end()));
     view.poll();
@@ -1975,6 +1972,34 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0,
           "a MODS row's Amount bar and aux x change its modulation alone, and the switch after its source's name the "
           "source's polarity");
+    // The row's curve, 52 px wide from x 696: dragged up 50 px it bends to +50 %, in one undo step, drawn in its
+    // source's color (read off the rendered pixels); dragged down past the bottom it stops at -100 %; a double-click
+    // straightens it again.
+    {
+        const Point curve{722.0f, y};
+        const int index = slotCurveIndex(0, 0);
+        drag(view, curve, {curve.x, curve.y - 50.0f});
+        const double up = model.value(index);
+        view.mouseMove(curve, {});
+        const bool bentShot = renderer.save(view, dir / "35t-mods-curve.png");
+        bool colored = false; // LFO 1's blue somewhere along the bent line
+        for (float px = 702.0f; px < 742.0f && !colored; px += 1.0f)
+            for (float py = y - 9.0f; py <= y + 9.0f && !colored; py += 1.0f) {
+                const uint32_t c = renderer.pixel({px, py});
+                const int r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+                colored = b > 150 && b > r + 60 && g > r;
+            }
+        view.undo();
+        const double undone = model.value(index);
+        view.redo();
+        drag(view, curve, {curve.x, curve.y + 400.0f});
+        const double floor = model.value(index);
+        doubleClick(view, curve);
+        check(std::abs(up - 0.5) < 0.02 && undone == 0.0 && floor == -1.0 && model.value(index) == 0.0 && bentShot &&
+                  colored && model.value(slotCurveIndex(0, 1)) == 0.0,
+              "a MODS row's curve bends up and down by a drag, undoably, drawn in its source's color, and a "
+              "double-click straightens it");
+    }
     // + Aux opens None and the sources by category; over Envelopes (the third entry) Env 1 shows beside it, and
     // picking it makes it the aux.
     click(view, {950.0f, y});
@@ -1983,11 +2008,11 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {1080.0f, 211.0f + 4.0f + 11.0f});
     check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
     // The target opens every target by category, under its search (30 px, the level 240 px wide from x 234):
-    // Operators, then B, then (under PITCH) Detune, three levels deep.
+    // Operators, then B, then (under PITCH, after Ratio, Fine and Pitch) Detune, three levels deep.
     click(view, {300.0f, y});
     view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
     view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {});       // B
-    const Point detune{650.0f, 244.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
+    const Point detune{650.0f, 244.0f + 4.0f + 20.0f + 3.0f * 22.0f + 11.0f};
     view.mouseMove(detune, {});
     const bool menuShot = renderer.save(view, dir / "35a-mods-target-menu.png");
     click(view, detune);
@@ -2511,17 +2536,17 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     model.values[slotAmountIndex(1, 0)] = 0.5;
     view.poll();
     // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a tenth as fast; half
-    // its width (204 px from x 474) is 10 % then.
+    // its width (164 px from x 474) is 10 % then.
     click(view, {314.0f, 88.0f});
-    const Point bar{474.0f + 102.0f, 154.0f};
+    const Point bar{474.0f + 82.0f, 154.0f};
     view.mouseDown(bar, {true, false});
-    view.mouseMove({bar.x + 102.0f, bar.y}, {true, false});
-    view.mouseUp({bar.x + 102.0f, bar.y}, {true, false});
+    view.mouseMove({bar.x + 82.0f, bar.y}, {true, false});
+    view.mouseUp({bar.x + 82.0f, bar.y}, {true, false});
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6, "Shift drags a depth bar finely, from where it is");
     view.mouseMove(sourceHandle(1), {});
     const bool shot = renderer.save(view, dir / "18c-lfo-on-lfo.png");
     // Hovered, the dot says what the modulation takes its target through, in the target's units.
-    const Point dot{474.0f + 204.0f - 4.0f, 140.0f + 4.0f}; // on LFO 1's depth bar
+    const Point dot{474.0f + 164.0f - 4.0f, 140.0f + 4.0f}; // on LFO 1's depth bar
     view.mouseMove(dot, {});
     const bool popup = renderer.save(view, dir / "18d-depth-popup.png");
     view.mouseMove({600.0f, 300.0f}, {});

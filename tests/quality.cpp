@@ -4,6 +4,8 @@
 // against limits. Usage: fmvibe-quality
 
 #include "factory.h"
+#include "gui/controller.h"
+#include "state.h"
 #include "synth.h"
 
 #include <algorithm>
@@ -515,33 +517,53 @@ struct PinnedPreset {
     uint64_t checksum;
 };
 constexpr PinnedPreset kPresetChecksums[] = {
-    {"KY Electric Piano", 0x8730f506dd3fb162ull},
-    {"BA FM Bass", 0xfc939b471c9fd217ull},
-    {"KY Glass Bell", 0x5cc3e4cfa5050874ull},
-    {"PD Warm Pad", 0x0794e780466d0e14ull},
-    {"KY Drawbar Organ", 0x5861d8b17c9f0deaull},
-    {"PL Pluck Delay", 0xe152c8ab3a580157ull},
-    {"PD Crystal Motion", 0xbb3f33bce04e41b6ull},
-    {"BA Reese Bass", 0xadccf9cc25b0be32ull},
-    {"BA Wobble Bass", 0xc1d0aa59fc050ed6ull},
-    {"PD Shimmer Pad", 0xd1075109b1644533ull},
-    {"SQ Trance Gate", 0xc817bbda549936b0ull},
-    {"LD FM Brass", 0xb729e7aee9e1e6b2ull},
-    {"FX Industrial Hit", 0xb82b2cdb5cc78306ull},
-    {"LD Folded Lead", 0xecf1feb1cb01deeeull},
-    {"BA Fuzz Bass", 0x25112538f7622d54ull},
-    {"PL Comb String", 0xf5a90a00020939b6ull},
-    {"PL Chip Pluck", 0x6d7986d69bd273c1ull},
-    {"SQ Step Filter", 0xfec0c18da1d7740full},
-    {"SQ Glass Steps", 0x55048d5e1da0a987ull},
-    {"LD Vowel Lead", 0x827ad6e86c41f51full},
-    {"FX Laser Zap", 0x46e551bcdd26cd9aull},
-    {"FX Noise Riser", 0xf49996af1f5603f5ull},
+    {"KY Electric Piano", 0xebd4acbfee56ca20ull},
+    {"BA FM Bass", 0x9f7f4fdadc4a9704ull},
+    {"KY Glass Bell", 0xc8916b6810afab4dull},
+    {"PD Warm Pad", 0x1b312c9773f1bfdbull},
+    {"KY Drawbar Organ", 0x41d09d50dd2b59a7ull},
+    {"PL Pluck Delay", 0xdf1d1d5643b13447ull},
+    {"PD Crystal Motion", 0x90a628bc28291743ull},
+    {"BA Reese Bass", 0xec20bf8fc7677470ull},
+    {"BA Wobble Bass", 0xb8f6f8a535ccb1a1ull},
+    {"PD Shimmer Pad", 0x519b6d52c7f7f1beull},
+    {"SQ Trance Gate", 0xa75428bca23d513aull},
+    {"LD FM Brass", 0x61050f8a4efc20daull},
+    {"FX Industrial Hit", 0x3c9aa8e059e2c4a7ull},
+    {"LD Folded Lead", 0x65d640a4b33c58cdull},
+    {"BA Fuzz Bass", 0x3c6b479a6ce15794ull},
+    {"PL Comb String", 0xbe7b78595b569fc9ull},
+    {"PL Chip Pluck", 0x637f34439a028b68ull},
+    {"SQ Step Filter", 0x249e4054ad1557f0ull},
+    {"SQ Glass Steps", 0x1763bcd1672c2a96ull},
+    {"LD Vowel Lead", 0x4dc3f58f5e05cd07ull},
+    {"FX Laser Zap", 0x60b004d5de3dea84ull},
+    {"FX Noise Riser", 0xa99dda334b9bd020ull},
 };
 
-// FNV-1a over the preset's name, the params it sets (by id, so params added later leave it alone, in id order, each
-// with the value it ends up with), its nodes' places and its macros' names. Whole numbers go in exactly, other values
-// rounded to a float: a last bit that two C libraries' log() round apart doesn't count.
+// Whether every (id, value) pair a preset's file stores names a param and holds a value in its range, which loading
+// it would otherwise quietly clamp.
+bool storedInRange(const FactoryPreset &preset) {
+    MemoryReader reader{preset.data.data(), preset.data.size()};
+    const clap_istream_t stream = memoryIn(reader);
+    uint32_t header[3];
+    if (stream.read(&stream, header, sizeof header) != sizeof header)
+        return false;
+    for (uint32_t n = 0; n < header[2]; ++n) {
+        uint32_t id;
+        double value;
+        if (stream.read(&stream, &id, sizeof id) != sizeof id || stream.read(&stream, &value, sizeof value) != sizeof value)
+            return false;
+        const int index = indexOfId(id);
+        if (index < 0 || !(value >= paramTable()[index].min && value <= paramTable()[index].max))
+            return false;
+    }
+    return true;
+}
+
+// FNV-1a over the preset's name, the params it sets away from their defaults (by id, so params added later leave it
+// alone, in id order, each with its value), its nodes' places and its macros' names. Whole numbers go in exactly,
+// other values rounded to a float.
 uint64_t presetChecksum(const FactoryPreset &preset) {
     uint64_t hash = 14695981039346656037ull;
     auto add = [&](const void *data, size_t size) {
@@ -554,9 +576,14 @@ uint64_t presetChecksum(const FactoryPreset &preset) {
     };
     auto addText = [&](const std::string &text) { add(text.c_str(), text.size() + 1); };
     addText(preset.name);
-    std::map<clap_id, double> values; // a param set twice ends up with the later value
-    for (const auto &[index, value] : preset.changes)
-        values[idOfIndex(index)] = value;
+    ParamValues loaded;
+    gui::UiLayout layout;
+    if (!loadFactoryPreset(preset, loaded, layout))
+        return 0;
+    std::map<clap_id, double> values;
+    for (int i = 0; i < kParamCount; ++i)
+        if (loaded[i] != paramTable()[i].def)
+            values[idOfIndex(i)] = loaded[i];
     addCount(values.size());
     for (const auto &[id, value] : values) {
         add(&id, sizeof id);
@@ -568,28 +595,42 @@ uint64_t presetChecksum(const FactoryPreset &preset) {
             add(&rounded, sizeof rounded);
         }
     }
-    addCount(preset.nodes.size());
-    for (const auto &[x, y] : preset.nodes) {
-        add(&x, sizeof x);
-        add(&y, sizeof y);
-    }
-    addCount(preset.macros.size());
-    for (const std::string &macro : preset.macros)
+    add(layout.nodeX.data(), sizeof layout.nodeX);
+    add(layout.nodeY.data(), sizeof layout.nodeY);
+    add(layout.boxX.data(), sizeof layout.boxX);
+    add(layout.boxY.data(), sizeof layout.boxY);
+    for (const std::string &macro : layout.macroNames)
         addText(macro);
     return hash;
 }
 
+// Whether a preset's file is as the preset tool leaves it: sparse, and holding only what loading it gives.
+bool storedSparse(const FactoryPreset &preset) {
+    ParamValues values;
+    gui::UiLayout layout;
+    if (!loadFactoryPreset(preset, values, layout))
+        return false;
+    std::vector<unsigned char> bytes;
+    const clap_ostream_t stream = memoryOut(bytes);
+    return writePatch(&stream, values, layout, true) &&
+           std::equal(bytes.begin(), bytes.end(), preset.data.begin(), preset.data.end());
+}
+
 void presetContentChecks() {
     std::printf("factory preset contents:\n");
-    const std::vector<FactoryPreset> presets = factoryPresets();
-    bool same = true;
+    const std::vector<FactoryPreset> &presets = factoryPresets();
+    bool same = true, sparse = true;
     for (const FactoryPreset &preset : presets) {
+        if (!storedSparse(preset)) {
+            std::printf("      %-20s isn't sparse: run fmvibe-presettool on its file\n",preset.name.c_str());
+            sparse = false;
+        }
         const uint64_t checksum = presetChecksum(preset);
         const PinnedPreset *pinned = std::find_if(std::begin(kPresetChecksums), std::end(kPresetChecksums),
                                                   [&](const PinnedPreset &p) { return preset.name == p.name; });
         if (pinned != std::end(kPresetChecksums) && pinned->checksum == checksum)
             continue;
-        std::printf("      %-20s %s: its checksum is now 0x%016llxull\n", preset.name.c_str(),
+        std::printf("      %-20s %s: its checksum is now 0x%016llxull\n",preset.name.c_str(),
                     pinned == std::end(kPresetChecksums) ? "is new" : "changed",
                     static_cast<unsigned long long>(checksum));
         same = false;
@@ -597,10 +638,11 @@ void presetContentChecks() {
     for (const PinnedPreset &pinned : kPresetChecksums) {
         auto named = [&](const FactoryPreset &p) { return p.name == pinned.name; };
         if (std::none_of(presets.begin(), presets.end(), named)) {
-            std::printf("      %-20s is gone\n", pinned.name);
+            std::printf("      %-20s is gone\n",pinned.name);
             same = false;
         }
     }
+    check(sparse, "every factory preset's file is sparse, as fmvibe-presettool writes it");
     check(same, "every factory preset holds what its checksum pins (one changed on purpose: update kPresetChecksums)");
 }
 
@@ -1082,15 +1124,8 @@ int main() {
         bool sane = true;
         for (const FactoryPreset &preset : factoryPresets()) {
             Engine e(2);
-            for (int i = 0; i < kParamCount; ++i) // as the preset file has it: Init, then its changes
-                e.p[i] = paramTable()[i].def;
-            bool inRange = true;
-            for (const auto &[index, value] : preset.changes) {
-                inRange = inRange && index >= 0 && index < kParamCount && value >= paramTable()[index].min &&
-                          value <= paramTable()[index].max;
-                if (index >= 0 && index < kParamCount)
-                    e.p[index] = value;
-            }
+            gui::UiLayout layout;
+            const bool inRange = storedInRange(preset) && loadFactoryPreset(preset, e.p, layout);
             e.noteOn(60);
             const std::vector<float> out = e.render(static_cast<size_t>(kSampleRate / 2));
             float peak = 0.0f;

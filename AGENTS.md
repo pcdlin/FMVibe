@@ -75,6 +75,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     what it puts out;
   - velocity taking its target as far as the note's velocity, in a straight line as it starts; bipolar, about the
     middle of what it puts out; its curve drawn the other way round reversing it;
+  - a slot's curve bending what its source puts out both ways (a macro's, velocity's, and a macro's that its aux
+    runs per voice), a bipolar one keeping its middle still;
   - a slot's Amount scaling its depth, and its aux: velocity scaling a macro's slot in each voice, the mod wheel down
     leaving its target alone; a macro's and velocity's slots bypassed leaving theirs alone; velocity and the note
     source scaling an LFO's slot as its aux from a note's first block;
@@ -122,9 +124,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;
-  - each factory preset's content (the params it sets, by id, its node places and macro names) against its
-    checksum in `kPresetChecksums`, so an edit can't change a preset unnoticed; a preset changed on purpose, or a
-    new one, gets the checksum the check prints;
+  - each factory preset's file being sparse, and its content (the params it sets away from their defaults, by id,
+    its node places and macro names) against its checksum in `kPresetChecksums`, so an edit can't change a preset
+    unnoticed; a preset changed on purpose, or a new one, gets the checksum the check prints;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
@@ -149,7 +151,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
     removing one by letting its arrowhead go in empty space;
   - the MODS tab: a row per modulation, its Amount bar and aux's × changing it, and the switch after its source's
-    name the source's polarity; + Aux's, the target's (three levels deep, into an operator's params) and the source's
+    name the source's polarity; its curve bent up and down by a drag, undoably, drawn in its source's color (read
+    off the rendered pixels), and straightened by a double-click; + Aux's, the target's (three levels deep, into an operator's params) and the source's
     cascading menus picking an aux, a target and a source, the modulation keeping its depth, Amount and aux as it
     moves, undoably, and what modulates its depth following it (or, onto a macro or when it is removed, going); the wheel scrolling the rows; a row's typed depth, Edit depth and bypass dot (a macro's too); and a source's
     handle dropped on a depth handle becoming that modulation's aux, ringed in its color, the macro then no longer
@@ -285,6 +288,24 @@ More checks:
 - **In Bitwig Studio**: install the plugins as the [README](README.md#build) describes; Bitwig finds them
   in the per-user CLAP and VST3 folders.
 
+## Factory presets
+
+The factory presets are preset files, `presets/Factory/<name>.fmv`, which the build compiles in:
+`cmake/embed_presets.cmake` turns them into byte arrays (`factoryPresets()` in `src/factory.h`), for the plugin and
+the browser demo alike, again whenever one changes. The plugin writes their bytes as they are into a new preset folder.
+`presets/factory.txt` names them in the order they came, which counts: the settings file counts the examples a folder
+was given, so a new one goes at the end and none is reordered or taken out. The build fails on a file the list
+doesn't name, or a name without its file.
+
+They are stored sparse: only the params that differ from their defaults (which is what loading a preset gives the
+others), then the editor layout, a kilobyte or so where a preset the plugin saves holds every param (about 128 KB).
+To add or change one:
+
+1. Make it in the plugin and save it into `presets/Factory` (the preset bar's Save, then the file dialog).
+2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`.
+3. For a new one, add its name at the end of `presets/factory.txt`.
+4. Build and run `ctest`: the quality check prints the checksum to put in `kPresetChecksums` (`tests/quality.cpp`).
+
 ## Browser demo
 
 The engine and the editor also build for the browser with Emscripten, as a demo page that can be served from any
@@ -307,6 +328,8 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme and glow are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave.
+- The page stands in for a host's transport with a Tempo field under the editor (20–999 BPM, kept in the
+  browser's storage), which `dsp_tempo()` hands the synth as `Plugin::process()` does the host's tempo.
 - The page polls and paints at most about 60 times a second, whatever the display's rate, and, like the plugin
   window, repaints on a mouse move only when what the editor shows changes.
 - The page ships FMVibe's `LICENSE` (as `LICENSE.txt`) and `web/site/THIRD-PARTY-NOTICES.txt`, the licenses of the
@@ -389,7 +412,9 @@ breakpoints in `src/` then hit.
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
 | `src/gui/controller.h` | What the editor needs from the plugin (values, edits, telemetry, layout) |
 | `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
-| `src/factory.cpp` | The example presets written into the preset folder |
+| `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
+| `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
+| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored |
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
@@ -437,7 +462,8 @@ itself.
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the voice shapers'
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
   22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel
-  and velocity; a source added later takes the next block).
+  and velocity; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
+  sources' number likewise).
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, slot aux
   field and fixed Mult lists, and the routing views,
