@@ -145,7 +145,8 @@ struct ModsColumn {
     float x, w;
 };
 constexpr ModsColumn kModsBypass{4.0f, 18.0f}, kModsSource{26.0f, 130.0f}, kModsPolarity{158.0f, 24.0f},
-    kModsArrow{186.0f, 16.0f}, kModsTarget{206.0f, 232.0f}, kModsDepth{446.0f, 250.0f}, kModsScale{736.0f, 100.0f},
+    kModsArrow{186.0f, 16.0f}, kModsTarget{206.0f, 232.0f}, kModsDepth{446.0f, 210.0f}, kModsCurve{668.0f, 52.0f},
+    kModsScale{736.0f, 100.0f},
     kModsAux{890.0f, 196.0f}, kModsRemove{1104.0f, 24.0f}, kModsAdd{4.0f, 178.0f};
 inline Rect modsCell(Rect row, ModsColumn column) { return {row.x + column.x, row.y, column.w, row.h}; }
 // A text field's x at its right end, which empties it, and where its text goes: after the magnifier, short of the x.

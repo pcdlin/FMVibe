@@ -171,6 +171,7 @@ void View::moveModulation(int source, int slot, int to) {
         {slotTargetIndex(to, free), slotTargetValue(target)},
         {slotAmountIndex(to, free), value(slotAmountIndex(source, slot))},
         {slotScaleIndex(to, free), value(slotScaleIndex(source, slot))},
+        {slotCurveIndex(to, free), value(slotCurveIndex(source, slot))},
         {slotAuxIndex(to, free), slotAuxValue(aux == to ? -1 : aux)},
         {slotBypassIndex(to, free), slotBypassed(source, slot) ? 1.0 : 0.0}};
     editMany(changes);
@@ -876,7 +877,8 @@ void View::paintMods(Canvas &c) {
     const Rect head{kModsList.x, kModsHeaderY, kModsList.w, 20.0f};
     const std::pair<ModsColumn, Str> columns[] = {
         {kModsSource, Str::ModsHeadSource}, {kModsTarget, Str::ModsHeadTarget}, {kModsDepth, Str::ModsHeadDepth},
-        {kModsScale, Str::ModsHeadAmount},  {kModsAux, Str::ModsHeadAux}};
+        {kModsCurve, Str::ModsHeadCurve},   {kModsScale, Str::ModsHeadAmount},
+        {kModsAux, Str::ModsHeadAux}};
     for (const auto &[column, name] : columns)
         c.text({modsCell(head, column).x, head.y, column.w + 20.0f, head.h}, tr(name), 9.5f, kDim, Align::Left, true);
     // The count, at the right of the names' row after Aux's: what is bypassed, at 0 % and empty goes with it, as much

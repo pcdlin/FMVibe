@@ -956,6 +956,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             scale *= runsPerVoice(aux) ? v.auxOut[aux] : hostValue(params, stripKnobIndex(aux));
         return scale;
     };
+    // What slot `s` of `source` takes of the source's `swing`, through the slot's curve (see slotCurveValue()).
+    auto bent = [&](int source, int s, double swing, bool bipolar) {
+        return slotCurveValue(swing, hostValue(params, slotCurveIndex(source, s)), bipolar);
+    };
     // The pitch the voice plays: its glide, tuning and the bend, with the params as `p` holds them when it is asked;
     // with MPE on, a note on a member channel bends with its channel too.
     const double bend = std::clamp(bend_ + wheelBend_, -1.0, 1.0);
@@ -979,8 +983,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const int target = slotTarget(p[slotTargetIndex(source, s)]);
             const double amount = p[slotAmountIndex(source, s)];
             if (target >= 0 && amount != 0.0 && params[slotBypassIndex(source, s)] < 0.5) {
-                v.slotMods[v.slotModCount++] = {
-                    target, swing * amount * scaleOf(source, s) * (table_[target].max - table_[target].min)};
+                v.slotMods[v.slotModCount++] = {target, bent(source, s, swing, bipolarSource) * amount *
+                                                            scaleOf(source, s) * (table_[target].max - table_[target].min)};
             }
         }
     };
@@ -1065,14 +1069,16 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // host's modulation for every voice. It modulates from the note's first block, as the LFOs and envelopes do.
     {
         const double out = v.auxOut[kVelocitySource]; // worked out before the places
-        const double swing = params[paramIndex(VelocityParam::Bipolar)] >= 0.5 ? out - 0.5 : out;
+        const bool bipolar = params[paramIndex(VelocityParam::Bipolar)] >= 0.5;
+        const double swing = bipolar ? out - 0.5 : out;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(params[slotTargetIndex(kVelocitySource, s)]);
             const double amount = hostValue(params, slotAmountIndex(kVelocitySource, s));
             if (target < 0 || amount == 0.0 || params[slotBypassIndex(kVelocitySource, s)] >= 0.5)
                 continue;
-            v.slotMods[v.slotModCount++] = {
-                target, swing * amount * scaleOf(kVelocitySource, s) * (table_[target].max - table_[target].min)};
+            v.slotMods[v.slotModCount++] = {target, bent(kVelocitySource, s, swing, bipolar) * amount *
+                                                        scaleOf(kVelocitySource, s) *
+                                                        (table_[target].max - table_[target].min)};
         }
     }
     // The macros' and the mod wheel's slots that an aux of this voice scales (see applyMacros()).
@@ -1082,10 +1088,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         const double amount = hostValue(params, slotAmountIndex(source, s));
         if (target < 0 || amount == 0.0)
             continue;
-        const double swing =
-            hostValue(params, stripKnobIndex(source)) - (sourceBipolar(getParam, source) ? 0.5 : 0.0);
-        v.slotMods[v.slotModCount++] = {
-            target, swing * amount * scaleOf(source, s) * (table_[target].max - table_[target].min)};
+        const bool bipolar = sourceBipolar(getParam, source);
+        const double swing = hostValue(params, stripKnobIndex(source)) - (bipolar ? 0.5 : 0.0);
+        v.slotMods[v.slotModCount++] = {target, bent(source, s, swing, bipolar) * amount * scaleOf(source, s) *
+                                                    (table_[target].max - table_[target].min)};
     }
     withSlotMods();
     v.newRandom = false;
@@ -1131,14 +1137,16 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // Bipolar, it swings about the middle of its output, like a macro.
     const double note = noteSourceValue([&](int i) { return hostValue(params, i); }, pitch);
     v.auxOut[kNoteSource] = note;
-    const double swing = note - (params[paramIndex(NoteParam::Bipolar)] >= 0.5 ? 0.5 : 0.0);
+    const bool noteBipolar = params[paramIndex(NoteParam::Bipolar)] >= 0.5;
+    const double swing = note - (noteBipolar ? 0.5 : 0.0);
     const int noteModsStart = v.slotModCount;
     for (int s = 0; s < kSlots; ++s) {
         const int target = slotTarget(params[slotTargetIndex(kNoteSource, s)]);
         const double amount = hostValue(params, slotAmountIndex(kNoteSource, s));
         if (target >= 0 && amount != 0.0 && params[slotBypassIndex(kNoteSource, s)] < 0.5) {
-            v.slotMods[v.slotModCount++] = {
-                target, swing * amount * scaleOf(kNoteSource, s) * (table_[target].max - table_[target].min)};
+            v.slotMods[v.slotModCount++] = {target, bent(kNoteSource, s, swing, noteBipolar) * amount *
+                                                        scaleOf(kNoteSource, s) *
+                                                        (table_[target].max - table_[target].min)};
         }
     }
     for (int m = noteModsStart; m < v.slotModCount; ++m) {

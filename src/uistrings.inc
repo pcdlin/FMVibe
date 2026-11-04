@@ -197,6 +197,7 @@ STR(ParamBypass, "Bypass {1}")
 STR(ParamBipolar, "Bipolar")
 STR(ParamAux, "Aux {1}") // the source that scales a slot
 STR(ParamAuxAmount, "Amount {1}") // how much of its depth a slot keeps, 0 to 100 %
+STR(ParamSlotCurve, "Curve {1}") // how a slot bends what its source puts out, -100 to 100 %
 STR(ParamLow, "Low")
 STR(ParamHigh, "High")
 STR(ParamShape, "Shape")
@@ -729,6 +730,7 @@ STR(ModsHeadTarget, "TARGET")
 STR(ModsHeadDepth, "DEPTH")
 STR(ModsHeadAmount, "AMOUNT")
 STR(ModsHeadAux, "AUX")
+STR(ModsHeadCurve, "CURVE")
 STR(ModsAddAux, "+ Aux") // a row without an aux: opens the menu of auxes
 STR(ModsAddModulation, "+ Add modulation") // after the last row: adds an empty one
 STR(CardNoModulations, "No modulations") // a source card's button, while the source modulates nothing
@@ -751,6 +753,7 @@ STR(TipModsPickTarget, "Pick its target")
 STR(TipModsAux, "Scale its depth by another source")
 STR(TipModsAuxClear, "No aux")
 STR(TipModsScale, "Amount: how much of its depth the modulation keeps")
+STR(TipModsCurve, "Curve {1}: drag up or down to bend what the source puts out; double-click straightens it")
 STR(CascadeLfos, "LFOs")
 STR(CascadeEnvelopes, "Envelopes")
 STR(CascadeNoteMidi, "Note & MIDI") // Random and MIDI sources

@@ -117,6 +117,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   what it puts out (a macro moves nothing with its knob at 50 %). LFOs and envelopes run
   per voice and restart
   with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later.
+  Each modulation has a **curve** (-100 to +100 %, a straight line to begin with), which bends what its source puts
+  out before the depth takes it, as an envelope segment's curve bends the segment: above 0 it rises fast and
+  settles, below 0 it starts slow and rushes at the end, and the ends stay where they are. A bipolar modulation's
+  curve bends each half from the middle out alike, so the middle of the swing still leaves the target at its set
+  value. One source can so open a cutoff in a straight line and swell an operator's level slowly at once.
   Each modulation also has an **Amount** (0–100 %, all of it to begin with), which scales its depth, and can have an
   **aux**: another source whose output scales it too, as a unipolar source puts it out (0 to 1), so a macro can
   fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
@@ -315,7 +320,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
 - **Host modulation**: all continuous parameters accept CLAP modulation globally, the macros' knobs and depths, the
-  mod wheel, the note source's range and depths, velocity's depths and every modulation's Amount among them; those
+  mod wheel, the note source's range and depths, velocity's depths and every modulation's Amount and curve among them; those
   the voices read also per
   voice (not Volume, the mod wheel, the effects, the macros, the note source or velocity), so Bitwig's modulators
   (including per-note ones) can drive them directly.
@@ -486,7 +491,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Note & MIDI for the Random and MIDI
       sources, Macros, and Keyboard:
       Note, Velocity and Mod Wheel); picking one moves the modulation there, into a free slot, with its depth,
-      Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
+      curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
       follows it to its new slot, or, moved to a macro, the note source, the mod wheel or velocity (whose depths
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
@@ -503,6 +508,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       Down light another, Enter or a click picks one. Escape, or the search's ×, empties it, and Escape with nothing
       typed closes the menu. Both fields edit like the preset browser's search (see the preset bar);
     - the **depth**, a bar like a source row's, with its value (double-click or Ctrl+Click types one);
+    - the **curve**, drawn along the source's swing (from the middle out for a bipolar source), faint while it is
+      straight and in the source's color once it is bent; dragged up or down it bends (100 px from straight to
+      either end), and a double-click straightens it. Its tooltip gives its value;
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
     - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on
       either opens the menu of sources, None first, the row's own source faint;

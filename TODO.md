@@ -1,10 +1,11 @@
 ## New Features
 
 - Remap modifiers for modulation sources
-    - **In one line:** Random and MIDI (a controller or aftertouch, with Slew) sources came as card types; what is
-      left is a modifier that bends another source's output through a drawn curve, or slews an LFO's or envelope's.
+    - **In one line:** Random and MIDI (a controller or aftertouch, with Slew) sources came as card types, and each
+      modulation now has a curve of its own (an envelope segment's bend, in the MODS view); what is left is slewing
+      an LFO's or envelope's output, and a freely drawn curve shared between modulations.
     - **Feasible, medium.** A source type whose input is another source (picked like an aux) and whose output is that
-      source's through a curve laid out like the note source's; it runs after its input in the voice's source loop
+      source's slewed or through a drawn curve; it runs after its input in the voice's source loop
       (`Synth::renderBlock()`), so an input in a later place is a block late. 7 spare ids a place are left.
 
 

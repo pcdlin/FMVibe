@@ -1779,6 +1779,61 @@ int main(int argc, char **argv) {
               "a macro's and velocity's bypassed slots leave their targets alone");
     }
 
+    // A slot's curve bends what its source puts out as an envelope segment's curve does: a macro half way at -100 %
+    // on A's output takes it down by half straight, by envCurve(0.5, curve) bent, either way; so does velocity at half
+    // (which runs per voice), and the macro with velocity at full for its aux (which the voices add); and a bipolar
+    // macro at its middle still leaves A alone.
+    {
+        const int out = paramIndex(0, OpParam::Out);
+        auto peakAt = [&](double velocity) {
+            clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 94, 69);
+            on.velocity = velocity;
+            runBlock({&on.header});
+            runBlocks(4);
+            const float peak = runBlocks(8);
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const float full = peakAt(1.0);
+        setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(out)},
+                   {slotAmountIndex(kMaxSources, 0), -1.0},
+                   {paramIndex(0, MacroParam::Value), 0.5}});
+        const float straight = peakAt(1.0);
+        setParams({{slotCurveIndex(kMaxSources, 0), 0.25}});
+        const float fast = peakAt(1.0);
+        setParams({{slotCurveIndex(kMaxSources, 0), -0.25}});
+        const float slow = peakAt(1.0);
+        setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kVelocitySource)}});
+        const float slowPerVoice = peakAt(1.0);
+        setParams({{slotAuxIndex(kMaxSources, 0), 0.0},
+                   {paramIndex(0, MacroParam::Bipolar), 1.0},
+                   {slotCurveIndex(kMaxSources, 0), 0.6}});
+        const float bipolarMiddle = peakAt(1.0);
+        setParams({{slotTargetIndex(kMaxSources, 0), 0.0},
+                   {slotAmountIndex(kMaxSources, 0), 0.0},
+                   {slotCurveIndex(kMaxSources, 0), 0.0},
+                   {paramIndex(0, MacroParam::Bipolar), 0.0},
+                   {paramIndex(0, MacroParam::Value), 0.0},
+                   {slotTargetIndex(kVelocitySource, 0), slotTargetValue(out)},
+                   {slotAmountIndex(kVelocitySource, 0), -1.0},
+                   {slotCurveIndex(kVelocitySource, 0), 0.25}});
+        const float velocityFast = peakAt(0.5);
+        setParams({{slotTargetIndex(kVelocitySource, 0), 0.0},
+                   {slotAmountIndex(kVelocitySource, 0), 0.0},
+                   {slotCurveIndex(kVelocitySource, 0), 0.0}});
+        const double up = 1.0 - envCurve(0.5, 0.25), down = 1.0 - envCurve(0.5, -0.25);
+        std::printf("      a macro half way at -100 %% on A's output: %.3f of A straight, %.3f at a +25 %% curve "
+                    "(%.3f expected), %.3f at -25 %% (%.3f), %.3f with velocity as aux; bipolar at its middle %.3f; "
+                    "velocity at half, +25 %% %.3f\n",
+                    straight / full, fast / full, up, slow / full, down, slowPerVoice / full, bipolarMiddle / full,
+                    velocityFast / full);
+        check(full > 0.1f && std::abs(straight / full - 0.5f) < 0.03f && std::abs(fast / full - up) < 0.03f &&
+                  std::abs(slow / full - down) < 0.03f && std::abs(slowPerVoice / full - down) < 0.03f,
+              "a slot's curve bends what its source puts out, both ways");
+        check(std::abs(velocityFast / full - up) < 0.03f, "a per-voice source's slot takes its curve too");
+        check(std::abs(bipolarMiddle / full - 1.0f) < 0.01f, "a bipolar source's curve keeps its middle still");
+    }
+
     // An LFO's slot scaled by velocity or the note source modulates from a note's first block, as one with no aux
     // does: a slow unipolar square, up at the start, at -100 % on A's output silences A from the start, scaled by a
     // note at full velocity, or by the note source with its range below the note (where it puts out all of it). The
