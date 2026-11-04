@@ -122,7 +122,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after;
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
-    curve's table steps;
+    curve's table steps; a symmetric drawn curve that doesn't pass through the middle putting out silence for
+    silence, and an input that isn't a number reading inside its table;
+  - the filter effect switched to another type or slope and back, and a plate switched to a hall and back,
+    playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;
@@ -132,7 +135,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
-    struck again while it rings, and the voices a lower voice limit cuts; a velocity or note expression that isn't
+    struck again while it rings, the voices a lower voice limit cuts, a note with an id while its key sounds on
+    without one, mono's all notes off (releasing on the key it plays), a reset and forty notes at once on one voice;
+    a chord into voices that have all played taking the oldest, every note of it sounding (and a slow attack's new
+    note not stolen first); a voice filter whose send goes to 0 ringing out; a velocity or note expression that isn't
     a number staying finite; host modulation of a macro, the mod wheel, the note source's depth and velocity's
     moving their targets; a comb never reading past its line; a voice's right channel coming back from mono where
     the left is;
@@ -151,7 +157,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the bus, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
     which goes out in its place, and picking waves and filter types;
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
-    removing one by letting its arrowhead go in empty space;
+    removing one by letting its arrowhead go in empty space; a drag called off as the mouse is taken away dropping
+    nothing (an arrowhead held off the nodes, a source's handle over a knob) and ending a knob's gesture;
   - the MODS tab: a row per modulation, its Amount bar and aux's × changing it, and the switch after its source's
     name the source's polarity; its curve bent up and down by a drag, undoably, drawn in its source's color (read
     off the rendered pixels), and straightened by a double-click; + Aux's, the target's (three levels deep, into an operator's params) and the source's
@@ -167,8 +174,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     staying there;
   - the MODS view's filter: its magnifier opening it to take the keyboard, the words typed (every one, in any case)
     narrowing the rows, its × emptying it, Escape and a click elsewhere letting the keyboard go; and the target
-    menu's search listing the targets found with their path, Up and Down picking one, Enter taking it, Escape
-    emptying it and then closing the menu; an operator's targets in two columns, the envelope's beside the pitch's;
+    menu's search listing the targets found with their path, the first that can be picked lit (read off the rendered
+    pixels), Up and Down picking one, Enter taking it, Escape emptying it and then closing the menu; an operator's
+    targets in two columns, the envelope's beside the pitch's;
   - the modulation panel's title row adding Random and MIDI sources, each with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
     following its input;
@@ -193,7 +201,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     mirrored left half adding a point on the right, the middle point refusing to be deleted, and the switch
     undoing with its point;
   - dragging the filter response handle, switching between the graph and matrix views (the tab shown opening its
-    panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell;
+    panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell: undone, its
+    route (or one the wheel switched on) not kept at 0 %, and a press drifting a pixel setting nothing;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);
@@ -205,9 +214,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
     modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
-  - an operator's fixed pitch switched on by its keyboard, Freq and Mult set to where the ratio was in one undo
-    step and taking Ratio's and Fine's places, Mult stepping, and Pitch and Detune dimmed (read off the rendered
-    pixels) and not turning;
+  - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the
+    ratio was in one undo step and taking Ratio's and Fine's places, Mult stepping (and typed into, its × taken
+    whole), and Pitch and Detune dimmed (read off the rendered pixels), not turning and not ringed for a dragged
+    handle (read off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the play switches and the glide knob;
@@ -232,8 +242,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     over a switched-off card's dimming at the chain's right end, read off the rendered pixels; the sources' closing
     at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone) and the theme, and dragging the glow
-    slider, in the settings dialog (with the editor rendered in each theme, and glowing), and closing it with its x
-    or a click around it;
+    slider, in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
+    or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
@@ -241,10 +251,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
     its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
     double-click for a word), cutting and pasting;
-  - drawing a Custom wave's partials, at 16 and 64 of them too, the ones a lower count hides kept as they were, the
+  - drawing a Custom wave's partials, at 16 and 64 of them too (the wheel stepping through the counts), the ones a lower count hides kept as they were, the
     edit button (a pencil) by the keyboard switch opening the partial editor and closing it (read off the rendered
     pixels), and the LFO shape editor hiding the inspector;
-  - an LFO's shape list, the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
+  - an LFO's shape list (going with the LFO undone), the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
     pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, and
     scrolling the source cards by holding a dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;

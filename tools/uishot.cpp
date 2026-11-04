@@ -3209,6 +3209,7 @@ void run(const std::filesystem::path &dir, float scale) {
                     pixels.push_back(renderer.pixel({knob.x, y}));
                 return pixels;
             };
+            view.mouseMove({600.0f, 300.0f}, {}); // nothing under the mouse lit, held or not
             view.mouseDown(sourceHandle(1), {});
             view.mouseMove({sourceHandle(1).x + 40.0f, sourceHandle(1).y - 40.0f}, {});
             view.mouseMove({600.0f, 300.0f}, {});

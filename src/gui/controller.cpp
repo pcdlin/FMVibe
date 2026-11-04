@@ -92,14 +92,16 @@ void Controller::endStep() {
         return;
     edited_ = step.editedAfter;
 
-    // A wheel turn on the param the last one turned joins it, unless something was undone since.
+    // A wheel turn on the param the last one turned joins it, unless something was undone since. The first turn may
+    // have changed the layout (a route it switched on is kept); the turns after it join it as long as they don't.
     if (step.merges && redo_.empty() && !undo_.empty()) {
         UndoStep &last = undo_.back();
-        if (last.merges && !last.layoutChanged && !step.layoutChanged && last.changes.size() == 1 &&
-            step.changes.size() == 1 && last.changes[0].index == step.changes[0].index) {
+        if (last.merges && !step.layoutChanged && last.changes.size() == 1 && step.changes.size() == 1 &&
+            last.changes[0].index == step.changes[0].index) {
             last.changes[0].after = step.changes[0].after;
             last.editedAfter = step.editedAfter;
-            if (last.changes[0].after == last.changes[0].before) { // turned back to where it started
+            // Turned back to where it started: nothing left to undo, unless the layout changed with it.
+            if (last.changes[0].after == last.changes[0].before && !last.layoutChanged) {
                 edited_ = last.editedBefore;
                 undo_.pop_back();
             }

@@ -75,7 +75,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
   far the cutoff follows the note from C4 on, an octave per octave at 100 %; 0 to begin with, on every filter) and
   Drive (saturation before the filter, anti-aliased like the shapers). A voice only ends once its filters have
-  rung out.
+  rung out, and a filter whose sends go to 0 rings out too; when they come back, or its type or slope takes up a
+  stage it left out, that starts from silence.
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
   voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
   effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with) and Symmetric
@@ -202,7 +203,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     (about 8 dB at 12 dB of drive, 9 dB at the full 36). Louder sounds come out a little quieter, quieter ones a
     little louder. **Symmetric** (off to begin with), for a Custom curve, turns the curve's upper half over onto
     its lower one, so the input below 0 is shaped as the input above it, upside down: only the right half drawn
-    counts (a curve that doesn't pass through the middle jumps there). The switch shows only while the curve is
+    counts (a curve that doesn't pass through the middle jumps there, and is 0 right at the middle, so silence
+    stays silent). The switch shows only while the curve is
     Custom, and the other curves ignore it. The curves are anti-aliased (first-order antiderivative), so
     high drive stays clean without oversampling, though folding at the highest drives gets duller for it.
   - **Delay**: separate times for the left and right side (1 ms–2 s each) or, synced, a note value of the host
@@ -328,7 +330,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   voice (not Volume, the mod wheel, the effects, the macros, the note source or velocity), so Bitwig's modulators
   (including per-note ones) can drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
-  clicking), and note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources; see
+  clicking; a voice that hasn't played yet, and an operator still in its attack, count as loud, so a chord played
+  into full voices takes the oldest rather than its own notes), and note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources; see
   [CLAP and VST3](#clap-and-vst3) for the VST3 ones).
   Lowering the voice limit while more voices sound fades
   out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
