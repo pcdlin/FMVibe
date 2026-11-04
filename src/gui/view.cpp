@@ -4463,8 +4463,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::Choice:
     case Kind::Toggle: {
         const bool on = w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b : value(w.param) >= 0.5;
-        // Legato only matters in mono: show it as inactive otherwise.
-        bool relevant = w.param != paramIndex(GlobalParam::Legato) || value(paramIndex(GlobalParam::Mono)) >= 0.5;
+        bool relevant = true;
         if (isLfoFree(w.param)) // a one-shot restarts with every note
             relevant = value(paramIndex(sourceOf(w.param), SourceParam::OneShot)) < 0.5;
         const Str clipModes[] = {Str::SwitchHard, Str::SwitchSoft, Str::SwitchAsym};

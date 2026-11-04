@@ -2932,8 +2932,9 @@ void run(const std::filesystem::path &dir, float scale) {
               "the keyboard switch fixes an operator's pitch where its ratio was, its knobs becoming Freq and Mult");
     }
 
-    // Play switches: Mono on, Legato off and on again, Glide to 0.5 (100 px up), Always on.
+    // Play switches: Mono on, Legato on (it starts off), off and on again, Glide to 0.5 (100 px up), Always on.
     click(view, kMonoButton);
+    click(view, kLegatoToggle);
     click(view, kLegatoToggle);
     const bool legatoFlipped = model.value(paramIndex(GlobalParam::Legato)) == 0.0;
     click(view, kLegatoToggle);

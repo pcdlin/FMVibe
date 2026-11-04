@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <tuple>
 #include <type_traits>
@@ -17,6 +18,7 @@ constexpr double kMaxIndex = 8.0;             // radians of phase modulation at 
 constexpr double kMaxFeedback = std::numbers::pi;
 constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in
 constexpr double kStealFade = 0.003; // seconds a stolen voice takes to fade out
+constexpr double kJoinFade = 0.005;  // seconds a note joining a held one in poly legato takes to fade in
 constexpr double kVolumeGlide = 0.005; // seconds Volume takes to glide most of the way to a new level
 // How loud each voice goes into the effects, -12 dB: Volume comes after them, so drive and thresholds don't
 // depend on it. Volume gives the 12 dB back, so at 0 dB a full-scale operator comes out at full scale.
@@ -220,6 +222,27 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         return;
     }
 
+    // Poly legato: a note played while another key is down joins the voice of the newest key still down, as a mono
+    // voice moving to the note would carry on: its operators' and mod envelopes take up that voice's stage and level
+    // (at its sustain, they start at their sustain), and its LFOs that start with notes that voice's phase, so the
+    // chord swells and wavers together. Taken before a voice is stolen for it, which may be that one.
+    struct Joined {
+        std::array<Envelope, kOps> ops;
+        std::array<Envelope, kMaxSources> modEnvs;
+        std::array<Lfo, kMaxSources> lfos;
+    };
+    std::optional<Joined> joined;
+    if (legato_ && overlapping)
+        for (size_t i = held_.size() - 1; i-- > 0;) // the keys down before this one, newest first
+            if (const Voice *with = voicePlaying(held_[i].note)) {
+                joined.emplace();
+                for (int op = 0; op < kOps; ++op)
+                    joined->ops[op] = with->ops[op].env;
+                joined->modEnvs = with->modEnvs;
+                joined->lfos = with->lfos;
+                break;
+            }
+
     Voice &v = allocateVoice();
     v = Voice{};
     for (std::array<bool, 2> &dirty : v.combDirty) // cleared once a comb reads them (see renderBlock())
@@ -232,6 +255,15 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     v.glide = glide ? from : note.key;
     v.fresh = true;
     v.auxOut.fill(0.0); // a new note's sources have put out nothing yet
+    if (joined) { // fading in, since its envelopes may start well above nothing
+        for (int op = 0; op < kOps; ++op)
+            v.ops[op].env = joined->ops[op];
+        v.modEnvs = joined->modEnvs;
+        v.lfos = joined->lfos;
+        v.keepLfos = true;
+        v.fade = 0.0;
+        return;
+    }
     for (Operator &op : v.ops)
         op.env.start();
     for (Envelope &env : v.modEnvs)
@@ -742,8 +774,7 @@ void Synth::startFade(Voice &v) {
         return;
     endVoice(v); // the note is over, though the sound takes a moment to go
     v.active = true;
-    v.fading = true;
-    v.fade = 1.0;
+    v.fading = true; // from where it is: one still fading in (see noteOn()) fades out sooner
 }
 
 void Synth::endVoice(Voice &v) {
@@ -893,7 +924,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const double chaos = p[paramIndex(s, SourceParam::RandomChaos)];
             if (free)
                 lfo = freeLfos_[s];
-            else if (v.fresh)
+            else if (v.fresh && !v.keepLfos) // a joined voice's Random carries on with the held one's step
                 lfo.held = randomStep(lfo.from, chaos, v.rng);
             const auto shape = static_cast<LfoShape>(stepped(p[paramIndex(s, SourceParam::Shape)],
                                                              static_cast<int>(LfoShape::Count) - 1));
@@ -963,6 +994,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const bool starting = v.fresh;
     if (v.fresh) {
         v.fresh = false;
+        v.keepLfos = false;
         for (int i = 0; i < kOps; ++i) {
             const double start = p[paramIndex(i, OpParam::Phase)];
             const double amount = p[paramIndex(i, OpParam::PhaseRandom)];
@@ -1039,8 +1071,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const double fmStep = (fmTarget - v.fmScale) * ramp;
     const double gainLStep = (gain * std::numbers::sqrt2 * std::cos(angle) - v.gainL) * ramp;
     const double gainRStep = (gain * std::numbers::sqrt2 * std::sin(angle) - v.gainR) * ramp;
-    // A stolen voice fades out, then ends.
-    const double fadeStep = v.fading ? 1.0 / (kStealFade * rate_) : 0.0;
+    // A stolen voice fades out, then ends; one joining a held note in poly legato fades in.
+    const double fadeStep = v.fading ? -1.0 / (kStealFade * rate_) : v.fade < 1.0 ? 1.0 / (kJoinFade * rate_) : 0.0;
     // White noise is as loud in the audible band as when it runs at the host rate.
     const double whiteGain = noiseColor_.coefs(0.0).gain;
 
@@ -1359,7 +1391,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         v.fmScale += fmStep;
         v.gainL += gainLStep;
         v.gainR += gainRStep;
-        v.fade = std::max(v.fade - fadeStep, 0.0);
+        v.fade = std::clamp(v.fade + fadeStep, 0.0, 1.0);
         if (ramping) {
             const std::span<double> now = values(level), by = values(step);
             for (int m = 0; m < movingCount; ++m)
