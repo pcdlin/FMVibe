@@ -1224,6 +1224,11 @@ inline double coarseRatio(double coarse) {
     return c <= 0 ? 0.5 : static_cast<double>(c);
 }
 
+// The ratio a modulated Coarse plays: between two steps it is interpolated linearly, from 0.5 at 0 to 1 at 1.
+inline double coarseRatioSmooth(double coarse) {
+    return coarse <= 0.0 ? 0.5 : coarse < 1.0 ? 0.5 + 0.5 * coarse : coarse;
+}
+
 // Note values for tempo sync, from 4/1 dotted down to a 1/64 triplet, slowest
 // first. Stored in projects by number.
 constexpr int kDivisions = 27;
@@ -1525,7 +1530,7 @@ inline bool snapsToSteps(ParamKind kind) {
 // Displayed and modulated around the middle of the range rather than from the minimum.
 bool isBipolar(ParamKind kind);
 // Continuous params are the ones LFOs, envelopes and host modulators can drive, and the operators' Ratio, which
-// takes the modulated value to the nearest step and glides between steps.
+// interpolates between its steps when modulated.
 // Not the macros' own knobs: they are read as set.
 inline bool isModTarget(int index) {
     return index >= 0 && index < kMacroBase &&

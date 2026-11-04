@@ -705,8 +705,8 @@ int main(int argc, char **argv) {
               "a fixed operator plays its Freq x Mult whatever the note, bend, Pitch and Detune");
     }
 
-    // Operator A's Ratio takes modulation in whole steps: a modulation of +1 plays an octave up (once it has glided
-    // there), and one of +0.4 rounds back to the ratio set.
+    // Operator A's Ratio takes modulation continuously: +1 plays an octave up, and +0.5 the ratio half way between
+    // the steps (660 Hz), not either of them.
     {
         auto playRatio = [&](double mod) {
             const clap_event_param_mod_t ratioMod = paramModEvent(paramIndex(0, OpParam::Coarse), -1, mod);
@@ -722,10 +722,11 @@ int main(int argc, char **argv) {
             return signal;
         };
         const auto up = playRatio(1.0);
-        const auto rounded = playRatio(0.4);
+        const auto between = playRatio(0.5);
         const double octave = magnitude(up, 880.0) / std::max(magnitude(up, 440.0), 1e-9);
-        const double same = magnitude(rounded, 440.0) / std::max(magnitude(rounded, 880.0), 1e-9);
-        std::printf("      A's Ratio modulated: +1 puts 880 Hz %.0fx over 440 Hz, +0.4 keeps 440 Hz %.0fx over 880 Hz\n",
+        const double same = magnitude(between, 660.0) /
+                            std::max(std::max(magnitude(between, 440.0), magnitude(between, 880.0)), 1e-9);
+        std::printf("      A's Ratio modulated: +1 puts 880 Hz %.0fx over 440 Hz, +0.5 puts 660 Hz %.0fx over both\n",
                     octave, same);
         const clap_event_param_mod_t unmod = paramModEvent(paramIndex(0, OpParam::Coarse), -1, 0.0);
         runBlock({&unmod.header});

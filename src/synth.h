@@ -201,8 +201,6 @@ private:
         double amp = 0.0;     // ramps in from nothing over a new voice's first block
         double out = 0.0;     // latest mono output sample (what other operators hear)
         double prevOut = 0.0; // the one before, for feedback smoothing
-        double ratioLog = 0.0;     // log2 of the Ratio it plays at: glides to a new step rather than jumping
-        bool ratioKnown = false;   // ratioLog holds something; not for a new note, nor after being off or fixed
         Envelope env;
         Memo<EnvRates, 8> rates; // its envelope's, from its params
         Memo<UnisonCopies, 4> unison; // its copies, from its pitch and its unison params
