@@ -486,7 +486,7 @@ STR(ButtonEnv, "ENV")
 STR(ButtonRandom, "RANDOM")
 STR(ButtonMidi, "MIDI")
 STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
-STR(HintRandomSource, "A new value at random for each note")
+STR(HintRandomSource, "Random value per note")
 STR(ButtonEffect, "EFFECT")
 STR(ButtonOpenFolder, "OPEN FOLDER")
 STR(ButtonCancel, "Cancel")
@@ -496,25 +496,25 @@ STR(ButtonLoad, "Load")
 // --- The editor: hints and notes along the panels
 
 STR(HintRouting, "drag edges to connect")
-STR(HintMatrix, "rows feed columns  ·  drag a cell to adjust  ·  double-click toggles")
-STR(HintFx, "click an icon to toggle  ·  drag title to reorder")
+STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
+STR(HintFx, "click icon: toggle  ·  drag title: reorder")
 // An LFO's shape, a shaper's curve:
-STR(HintCurve, "double-click: add or delete  ·  Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
-STR(HintNoteCurve, "across: notes from Low to High  ·  up: output  ·  double-click: add or delete  ·  "
-                   "Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
-STR(HintVelocityCurve, "across: velocity  ·  up: output  ·  double-click: add or delete  ·  "
-                       "Shift+click: step  ·  small dots: bend  ·  Ctrl: snap")
-STR(HintPartials, "drag across the bars to draw  ·  double-click a bar for none")
+STR(HintCurve, "double-click: add/delete  ·  Shift+click: step  ·  dots: bend  ·  Ctrl: snap")
+STR(HintNoteCurve, "across: notes from Low to High  ·  up: output  ·  double-click: add/delete  ·  "
+                   "Shift+click: step  ·  dots: bend  ·  Ctrl: snap")
+STR(HintVelocityCurve, "across: velocity  ·  up: output  ·  double-click: add/delete  ·  "
+                       "Shift+click: step  ·  dots: bend  ·  Ctrl: snap")
+STR(HintPartials, "drag to draw  ·  double-click to silence")
 STR(HintNoSources, "No modulators yet.")
 
 // The matrix's legend.
-STR(LegendFm, "Operator modulates operator (FM)")
+STR(LegendFm, "FM between operators")
 STR(LegendFeedback, "Diagonal: operator feedback")
 STR(LegendFilter, "Filter input or output")
 STR(LegendShaper, "Shaper input or output")
 STR(LegendOut, "Straight to the output")
 STR(MatrixClick, "Click a name to open it in the inspector.")
-STR(MatrixClickThen, "Click it again to turn it on or off.")
+STR(MatrixClickThen, "Click again to toggle.")
 
 // The settings dialog.
 STR(SettingsTitle, "Settings")
@@ -525,12 +525,12 @@ STR(SettingsOversamplingSaved, "Not stored in presets.")
 STR(SettingsMpe, "MPE")
 STR(SettingsMpeBend, "BEND") // the member channels' bend range, beside its buttons
 STR(SettingsMpeRange, "{1} st") // a bend range in semitones, on its button
-STR(SettingsMpeWhat, "Enables MPE. Requires MPE in the host, except for")
-STR(SettingsMpeWhy, "hosts that send CLAP note expressions.")
+STR(SettingsMpeWhat, "Requires MPE in the host,")
+STR(SettingsMpeWhy, "unless it sends CLAP note expressions.")
 STR(SettingsMpeSaved, "Not stored in presets.")
 STR(SettingsLook, "LOOK")
 STR(SettingsGlow, "GLOW")
-STR(SettingsLookSaved, "Applies to all FMVibe instances.")
+STR(SettingsLookSaved, "Applies to all instances.")
 STR(SettingsVersion, "FMVibe {1}") // the version number, at the bottom
 STR(SettingsLicense, "Released under the MIT license")
 
@@ -545,7 +545,7 @@ STR(PresetsMatching, "{1} of {2} match") // presets that match the search, of al
 STR(PresetsNoMatch, "No presets match \"{1}\"")
 STR(ConfirmTitle, "Discard the current patch?")
 STR(ConfirmLoadPreset, "Loading {1} replaces every setting.")
-STR(ConfirmInit, "This resets all settings to their defaults.")
+STR(ConfirmInit, "Resets all settings to defaults.")
 STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 
 // Readouts in the displays, with the numbers filled in.
@@ -705,21 +705,21 @@ STR(RedoChanges, "Redo {1} changes")
 STR(MsgAlreadyModulates, "{1} already modulates {2}")
 STR(MsgSlotsFull, "{1}: all {2} slots are in use")
 STR(MsgOwnKnob, "{1} can't modulate its own knob")
-STR(MsgEmptyModsFull, "At most {1} empty modulations: pick a source and a target for one first")
-STR(MsgRouteExists, "There is a route from {1} to {2} already")
-STR(MsgRefuseShaper, "A shaper can't feed itself or another shaper")
+STR(MsgEmptyModsFull, "Up to {1} empty modulations allowed.")
+STR(MsgRouteExists, "{1} already routes to {2}")
+STR(MsgRefuseShaper, "A shaper can't feed a shaper")
 STR(MsgRefuseFilter, "A filter only feeds a later filter")
-STR(MsgChainFull, "The chain holds up to {1} effects")
-STR(MsgShapeFull, "A shape has at most {1} points")
-STR(MsgNoteCurveEnds, "The end points can't be deleted")
-STR(MsgCurveEnds, "The end points can't be deleted")
-STR(MsgCurveMiddle, "The middle point stays while the curve is symmetric")
-STR(MsgFirstPoint, "The first point can't be deleted")
+STR(MsgChainFull, "Only supports up to {1} effects in the chain")
+STR(MsgShapeFull, "Only supports up to {1} points per shape")
+STR(MsgNoteCurveEnds, "End points can't be deleted")
+STR(MsgCurveEnds, "End points can't be deleted")
+STR(MsgCurveMiddle, "Symmetric curves keep their middle point")
+STR(MsgFirstPoint, "First point can't be deleted")
 STR(MsgTwoPoints, "A shape needs two points")
-STR(MsgSourcesFull, "No room for more than {1} LFOs and envelopes")
-STR(MsgPresetUnreadable, "That preset could not be read")
-STR(MsgNoPresets, "No presets in the folder yet")
-STR(MsgBadValue, "\"{1}\" isn't a valid value for {2}")
+STR(MsgSourcesFull, "Only supports up to {1} sources")
+STR(MsgPresetUnreadable, "Preset could not be read")
+STR(MsgNoPresets, "Preset folder is empty")
+STR(MsgBadValue, "Invalid value for {2}: \"{1}\"")
 
 // --- The plugin's file dialogs
 
@@ -727,12 +727,12 @@ STR(DialogSavePreset, "Save preset")
 STR(DialogLoadPreset, "Load preset")
 STR(DialogPresetFiles, "FMVibe preset (*.fmv)")
 STR(DialogAllFiles, "All files (*.*)")
-STR(DialogWriteFailed, "The preset could not be written.")
-STR(DialogNotPreset, "That file is not an FMVibe preset.")
+STR(DialogWriteFailed, "Could not save the preset.")
+STR(DialogNotPreset, "Not an FMVibe preset.")
 
 // --- The browser demo, which has no files
 
-STR(DemoNoFiles, "Loading and saving files not supported. Click the preset name to browse the factory presets.")
+STR(DemoNoFiles, "No file access in the demo. Click the preset name for factory presets.")
 STR(DemoPresetFolder, "Built-in factory presets")
 
 // --- The MODS view: every modulation as a row, and the cascading menus of its rows
@@ -753,7 +753,7 @@ STR(ModsCountOne, "1 modulation")
 STR(ModsBypassed, "{1} bypassed")
 STR(ModsAtZero, "{1} at 0 %")
 STR(ModsEmpty, "{1} empty") // modulations without a source or a target yet
-STR(HintNoMods, "No modulations yet: drag a source's handle onto a knob, or add one here.")
+STR(HintNoMods, "No modulations yet. Drag a handle onto a knob to add one.")
 STR(ModsFilterHint, "Filter by source or target")
 STR(ModsMatching, "{1} of {2}") // the rows the filter shows, of all the modulations
 STR(ModsNoMatch, "No modulation matches \"{1}\"")
