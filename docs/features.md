@@ -366,7 +366,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     with its icon, which switches it on and off, an × to remove it and a live display:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
-      it faintly behind and the point under the mouse in numbers; its EDIT button opens the big editor;
+      it faintly behind and the point under the mouse in numbers; its edit button (a pencil) opens the big editor;
     - the delay's echoes on a timeline, left above the line and right below it;
     - the EQs' and the filter's responses; behind the Param EQ's curve, what it puts out, measured (a 2048-point
       FFT in 96 bands from 20 Hz to 20 kHz, 0 dB at the top, falling away at 55 dB a second), which it only
@@ -478,9 +478,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     a bar to take it to nothing; hovering shows a partial's numbers. **16 / 32 / 64**, after the title, pick how
     many partials the wave has, and so how many bars there are (numbered each, or of 64 the first and every
     fourth); the ones a lower count hides keep what was drawn. The reset button (a circular arrow) goes back to a
-    sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list opens it
-    again. A stroke is one undo step.
-  - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows EDIT) opens the
+    sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
+    edit button (a pencil) on the operator's summary line opens it again. A stroke is one undo step.
+  - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows an edit button, a
+    pencil) opens the
     shape over the routing panel and the inspector, which it hides while it is open; the done button (a check mark,
     top right) closes it, and the reset button (a circular arrow) beside it puts back the shape it started with.
     Drag points to move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
@@ -496,7 +497,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), with its − and +
     buttons or the mouse wheel; hold Ctrl to snap points to them. The grid belongs to the editor: it is saved with
     the project, and presets leave it alone. The first point always sits at the start of the cycle. A shaper
-    effect's Custom curve opens the same editor from the EDIT button on its card's display, in a panel in the middle of the
+    effect's Custom curve opens the same editor from the edit button (a pencil) on its card's display, in a panel in the middle of the
     effects' (the inspector stays hidden), its plot closer to square, with input across and output up; its first
     and last points stay at the ends. While the shaper is symmetric, only the curve's right half is edited, in
     the editor and in the card alike: the left half is drawn as its mirror (behind a veil in the editor) with faint
@@ -542,7 +543,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     that keeps Freq in its range), in the same undo step, so an A4 sounds as before; Freq and Mult take the Ratio
     and Fine knobs' places, Pitch and Detune are dimmed and take no drags, wheel or typing (nor do their depth
     handles), and the summary line and the operator's circle in the graph show the frequency in Hz instead of the
-    ratio. Switched off, the ratio, Fine, Pitch and Detune count again as they were. Under the knobs, tabs pick what
+    ratio. Switched off, the ratio, Fine, Pitch and Detune count again as they were. While the wave is Custom,
+    an edit button (a pencil, the same as a Custom LFO's and a drawn shaper curve's), left of the keyboard, opens
+    the operator's partial editor (lit while it is open; a second click closes it). Under the knobs, tabs pick what
     the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
     as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
     handle over a tab opens it, so its knobs can take the drop:
@@ -573,7 +576,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     modulates, as a filter's has), its curve's list with the link switch beside it, and for a Custom curve the
     symmetric one between them (as on the shaper effect's card), the Drive, Output, Mix and To Out knobs,
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
-    EDIT button opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
+    edit button (a pencil) opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
     operators it modulates, as a shaper's has), type buttons, each a small picture of its response (named on

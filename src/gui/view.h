@@ -179,7 +179,7 @@ private:
         McBand,       // a = effect slot, b = band: which band of a three-band compressor its card shows
         PeqPoint,     // param = the band's Q (for the wheel), a = effect slot, b = band: frequency and gain handle
         LfoDisplay,   // a = lfo: click opens the shape editor of a freeform LFO
-        ClipDisplay,  // a = effect slot: the EDIT button on a drawn curve's display, which opens the big editor
+        ClipDisplay,  // a = effect slot: the edit button on a drawn curve's display, which opens the big editor
         ListButton,   // param = a choice (an LFO's shape, the shaper's curve, the reverb's algorithm): opens its list
         ListMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
         ListItem,     // param, b = the value it picks: an entry of the list
@@ -191,6 +191,8 @@ private:
         ShapeCurve,   // param = curve, a = shape, b = point: bends the segment leaving the point
         PartialArea,  // a = operator, b = 0 for the levels, 1 for the phases: drag across to draw the partials
         PartialReset, // a = operator: back to a plain sine
+        PartialEdit,  // a = operator: the edit button left of a Custom wave's keyboard switch; opens its partial
+                      // editor, or closes it
         ShapeDone,    // closes the shape editor
         ShapeReset,   // a = shape: back to the shape it starts with
         ShapeGrid,    // a = axis (0 across, 1 up and down), b = -1 or 1 steps the grid, 0 is its count (wheel)
@@ -337,6 +339,7 @@ private:
     bool isNoise(int op) const;
     // Plays at its Freq x Mult rather than following the note (see OpParam::Fixed).
     bool isFixed(int op) const;
+    bool isCustomWave(int op) const; // its wave is drawn from partials
     std::string fixedHzText(int op, bool compact) const;
     double norm(int index) const;
     void edit(int index, double value);
