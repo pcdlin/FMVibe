@@ -219,6 +219,13 @@ if (MSVC)
 endif()
 add_test(NAME ui COMMAND fmvibe-uishot ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
 
+# A small CLAP host for trying the editor by hand: loads the built plugin, opens its editor in a window and plays it
+# through the default output device, with notes from MIDI inputs. Not a test: it waits for the window to close.
+add_executable(fmvibe-uihost tools/uihost.cpp)
+target_link_libraries(fmvibe-uihost PRIVATE clap ole32 winmm avrt)
+fmvibe_options(fmvibe-uihost)
+add_dependencies(fmvibe-uihost FMVibe)
+
 # Makes edited preset files sparse again before they are committed (see presets/factory.txt).
 add_executable(fmvibe-presettool tools/presettool.cpp)
 target_link_libraries(fmvibe-presettool PRIVATE fmvibe-core)

@@ -305,6 +305,15 @@ More checks:
   that come back slightly off from their rounded text and units with many params are expected.
 - **In Bitwig Studio**: install the plugins as the [README](README.md#build) describes; Bitwig finds them
   in the per-user CLAP and VST3 folders.
+- **Without a DAW**: `build\release\fmvibe-uihost.exe` (`tools/uihost.cpp`) is a small CLAP host for trying the
+  editor by hand. It loads the `FMVibe.clap` next to it (or the path it is given), opens the editor in a window of
+  its own, which keeps the editor's aspect ratio as it is resized and takes the sizes the editor asks for, and plays
+  it through the default output device (WASAPI, shared mode, at the device's rate). Notes come from the editor's
+  keyboard and from every MIDI input it can open, at a tempo of 120 BPM for synced LFOs and effects. With
+  `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and
+  the analyzers move; `--no-midi` leaves the MIDI inputs alone and `--tempo <bpm>` sets another tempo. It restarts
+  the plugin when a higher voice limit asks for it, and runs its main-thread callbacks. It isn't a test, and like a
+  DAW it is for a person to start: it waits for its window to be closed.
 
 ## Factory presets
 
@@ -436,6 +445,7 @@ breakpoints in `src/` then hit.
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
+| `tools/uihost.cpp` | `fmvibe-uihost`: a small CLAP host with a window and audio, for trying the editor by hand |
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `web/dsp.cpp`, `web/ui.cpp` | The browser demo's audio and editor modules |
 | `web/site/` | The demo page: the canvas and input (`main.js`), drawing (`canvas2d.js`), the AudioWorklet (`worklet.js`) |
