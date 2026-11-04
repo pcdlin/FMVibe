@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace fmvibe {
 
@@ -28,10 +29,20 @@ int validOversampling(long factor);
 // Streams over a file, for presets.
 clap_istream_t fileIn(FILE *file);
 clap_ostream_t fileOut(FILE *file);
+// Streams over memory: reading bytes held elsewhere (the factory presets built into the plugin), and writing into a
+// vector, which grows as written. Each stream keeps a pointer to its reader or vector.
+struct MemoryReader {
+    const unsigned char *data = nullptr;
+    size_t size = 0;
+    size_t at = 0;
+};
+clap_istream_t memoryIn(MemoryReader &reader);
+clap_ostream_t memoryOut(std::vector<unsigned char> &bytes);
 
 // The state's first part, which a preset file holds too: magic, version, param count, (id, value)
-// pairs, then the editor layout chunk.
-bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const gui::UiLayout &ui);
+// pairs, then the editor layout chunk. A sparse patch holds only the params whose values differ from their defaults,
+// which is what loading one gives the others: the factory presets are stored so.
+bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const gui::UiLayout &ui, bool sparse = false);
 // The patch's header and params: false for a stream that isn't FMVibe's state, is of a newer version or ends among
 // the params. Params missing from the state keep their defaults; unknown ids are skipped.
 bool readParams(const clap_istream_t *stream, ParamValues &values);

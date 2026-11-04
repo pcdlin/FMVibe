@@ -1315,16 +1315,13 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
                    const std::string &prefix, size_t effects) {
     FakeController model;
     View view(model);
-    const std::vector<FactoryPreset> presets = factoryPresets();
+    const std::vector<FactoryPreset> &presets = factoryPresets();
     const auto example =
         std::find_if(presets.begin(), presets.end(), [&](const FactoryPreset &p) { return p.name == name; });
-    if (example == presets.end()) {
+    if (example == presets.end() || !loadFactoryPreset(*example, model.values, model.ui)) {
         check(false, ("the examples include " + name).c_str());
         return;
     }
-    for (const auto &[index, value] : example->changes)
-        model.values[index] = value;
-    model.ui = exampleLayout(*example);
     model.library = {{name, "Factory"}}; // the preset bar shows its name
     model.setPreset(std::wstring(name.begin(), name.end()));
     view.poll();

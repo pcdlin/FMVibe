@@ -21,8 +21,6 @@ set(FMVIBE_ENGINE_SOURCES
     src/analyzer.h
     src/effects.cpp
     src/effects.h
-    src/factory.cpp
-    src/factory.h
     src/envelope.h
     src/filter.h
     src/noise.h
@@ -36,6 +34,25 @@ set(FMVIBE_ENGINE_SOURCES
     src/wavetable.cpp
     src/wavetable.h
 )
+
+# The factory presets, compiled in: fmvibe_factory_presets(out) sets `out` to a .cpp in the current binary folder that
+# defines factoryPresets() (src/factory.h) from presets/factory.txt and the files it names, rebuilt when one changes.
+# Each directory whose targets compile it calls this once, since a generated source's rule belongs to its directory.
+set(FMVIBE_PRESET_LIST ${PROJECT_SOURCE_DIR}/presets/factory.txt)
+file(GLOB FMVIBE_PRESET_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/presets/Factory/*.fmv)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${FMVIBE_PRESET_LIST})
+function(fmvibe_factory_presets out)
+    set(generated ${CMAKE_CURRENT_BINARY_DIR}/factory_presets.cpp)
+    add_custom_command(
+        OUTPUT ${generated}
+        COMMAND ${CMAKE_COMMAND} -DLIST=${FMVIBE_PRESET_LIST} -DDIR=${PROJECT_SOURCE_DIR}/presets/Factory
+                -DOUTPUT=${generated} -P ${PROJECT_SOURCE_DIR}/cmake/embed_presets.cmake
+        DEPENDS ${FMVIBE_PRESET_LIST} ${FMVIBE_PRESET_FILES} ${PROJECT_SOURCE_DIR}/cmake/embed_presets.cmake
+        COMMENT "Building the factory presets in"
+        VERBATIM
+    )
+    set(${out} ${generated} PARENT_SCOPE)
+endfunction()
 
 # The browser demo (web/), built with Emscripten: `.\build-web.ps1`.
 if (EMSCRIPTEN)
@@ -60,8 +77,12 @@ function(fmvibe_options target)
 endfunction()
 
 # Engine and editor view, shared by the plugin and the tools.
+fmvibe_factory_presets(factory_presets)
 add_library(fmvibe-core STATIC
     ${FMVIBE_ENGINE_SOURCES}
+    ${factory_presets}
+    src/factory.cpp
+    src/factory.h
     src/gui/canvas.cpp
     src/gui/canvas.h
     src/gui/controller.cpp
@@ -137,6 +158,11 @@ if (MSVC)
     target_link_options(fmvibe-uishot PRIVATE /STACK:8388608)
 endif()
 add_test(NAME ui COMMAND fmvibe-uishot ${CMAKE_CURRENT_BINARY_DIR}/ui-shots)
+
+# Makes edited preset files sparse again before they are committed (see presets/factory.txt).
+add_executable(fmvibe-presettool tools/presettool.cpp)
+target_link_libraries(fmvibe-presettool PRIVATE fmvibe-core)
+fmvibe_options(fmvibe-presettool)
 
 # clap-validator (free-audio) runs the plugin through the spec conformance
 # tests: `cmake --build --preset release --target validate`.

@@ -28,26 +28,18 @@ bool lessNoCase(const std::string &a, const std::string &b) {
     });
 }
 
-// Writes the example presets into a new preset folder.
-// Writes the examples from number `from` on into `folder`.
+// Writes the examples from number `from` on into `folder`, each its file's bytes as built in.
 void writeExamples(const std::filesystem::path &folder, size_t from) {
-    const ParamTable &table = paramTable();
-    const std::vector<FactoryPreset> presets = factoryPresets();
+    const std::vector<FactoryPreset> &presets = factoryPresets();
     for (size_t n = from; n < presets.size(); ++n) {
         const FactoryPreset &preset = presets[n];
-        ParamValues values;
-        for (int i = 0; i < kParamCount; ++i)
-            values[i] = table[i].def;
-        for (const auto &[index, value] : preset.changes)
-            values[index] = value;
         FILE *file = nullptr;
         const std::wstring name(preset.name.begin(), preset.name.end()); // the examples' names are ASCII
         const std::filesystem::path path = folder / (name + L".fmv");
         std::error_code error;
         if (std::filesystem::exists(path, error) || _wfopen_s(&file, path.c_str(), L"wb") != 0 || !file)
             continue; // never over a preset of the same name
-        const clap_ostream_t stream = fileOut(file);
-        writePatch(&stream, values, exampleLayout(preset));
+        std::fwrite(preset.data.data(), 1, preset.data.size(), file);
         std::fclose(file);
     }
 }

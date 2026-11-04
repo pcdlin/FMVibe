@@ -12,23 +12,6 @@
 
 ## Improvements 
 
-- Move factory presets out of the C++ code, into committed .FMV files. They should be compiled into the code on build.
-    - **In one line:** move the preset reading and writing into the core library, export today's presets once as
-      sparse `.fmv` files (only what differs from Init; a full one is ~128 KB), embed them with CMake as byte
-      arrays, and drop the ~700-line builder in `factory.cpp`.
-    - **Feasible, medium.**
-        1. Move the patch format (`writePatch()` and the reading half of `loadState()`) from `plugin.cpp` into
-           `fmvibe-core`, so the web demo, tests and tools can read a preset from memory.
-        2. A small tool writes today's examples out once as `presets/Factory/*.fmv`, holding only the params that
-           differ from Init (a full file is ~128 KB: 10,660 params × 12 bytes; missing params load as their
-           defaults, which is how the C++ list treats them today), plus an order list, since the examples-given
-           count in settings.txt depends on their order. Its `--normalize` makes an edited and saved preset sparse
-           again.
-        3. CMake reads the files (`file(READ … HEX)`) into a generated `.cpp` of byte arrays, for the plugin and the
-           web build alike, regenerated when a file changes.
-        4. `factoryPresets()` decodes those, and `writeExamples()` copies the bytes as they are; the builder in
-           `factory.cpp` (~700 lines) goes. quality.cpp's preset checks and uishot keep using `factoryPresets()`.
-
 - The shimmer reverb does not sound good
     - **In one line:** move the pitch shifter out of the reverb's delay lines into a feedback path after it, with
       jittered windows and diffusion after it, judged by listening to WAV renders.

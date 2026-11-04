@@ -1,0 +1,25 @@
+# The factory presets, in the order they came: the preset library gives a folder the ones after those it was
+# given before (the settings file counts them), so a new preset goes at the end and none is ever reordered. Each
+# is presets/Factory/<name>.fmv; CMake builds them into the plugin (cmake/embed_presets.cmake).
+KY Electric Piano
+BA FM Bass
+KY Glass Bell
+PD Warm Pad
+KY Drawbar Organ
+PL Pluck Delay
+PD Crystal Motion
+BA Reese Bass
+BA Wobble Bass
+PD Shimmer Pad
+SQ Trance Gate
+LD FM Brass
+FX Industrial Hit
+LD Folded Lead
+BA Fuzz Bass
+PL Comb String
+PL Chip Pluck
+SQ Step Filter
+SQ Glass Steps
+LD Vowel Lead
+FX Laser Zap
+FX Noise Riser

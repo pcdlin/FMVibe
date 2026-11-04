@@ -811,7 +811,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   shaper crushing it; its Speed and Grit macros); and FX Noise Riser (wide noise through a high-pass and a climbing
   sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
-  given, so deleted ones stay gone.
+  given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
+  they hold only the params that differ from Init, so their files are small, and load like any other.
   - The **preset bar** in the middle of the tabs' row shows the preset loaded or saved last, or **- Init -** (as
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
     preset in the folder, round from the last to the first. Clicking the name opens the **browser**: the presets
