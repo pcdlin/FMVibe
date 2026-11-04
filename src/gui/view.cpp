@@ -1141,7 +1141,7 @@ bool View::poll() {
     }
     if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_) // picked in another editor
         changed = true;
-    if ((typing_ || browserOpen_) && ++caretTicks_ % 32 == 0)
+    if ((typing_ || fieldTyping()) && ++caretTicks_ % 32 == 0)
         changed = true; // the caret blinks
     return changed;
 }
@@ -1340,6 +1340,10 @@ std::vector<View::Widget> View::widgets() const {
             list[i].clip = kModsList;
         if (modsEnd() > 0.0f)
             add(Kind::ModsScroll, modsScrollTrack().inset(-3.0f));
+        const Rect filter = modsFilterRect();
+        add(Kind::SearchField, filter, -1, static_cast<int>(Field::ModsFilter));
+        if (!modsFilter_.text.empty())
+            add(Kind::SearchClear, fieldClear(filter), -1, static_cast<int>(Field::ModsFilter));
     } else if (view == RoutingView::Fx) {
         const std::vector<int> chain = fxChainShown();
         add(Kind::FxMenuButton, fxMenuButton());
@@ -2062,8 +2066,14 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::CascadeMenu, rects[k], -1, 1, static_cast<int>(k));
             for (size_t i = 0; i < levels[k]->children.size(); ++i)
                 if (!levels[k]->children[i].heading)
-                    add(Kind::CascadeItem, cascadeItemRect(*levels[k], rects[k], static_cast<int>(i)), -1,
+                    add(Kind::CascadeItem, cascadeItemRect(*levels[k], rects[k], static_cast<int>(i), k), -1,
                         static_cast<int>(k), static_cast<int>(i));
+            if (k == 0 && cascadeSearches()) { // the search atop the first level
+                const Rect search = cascadeSearchRect(rects[k]);
+                add(Kind::SearchField, search, -1, static_cast<int>(Field::CascadeSearch));
+                if (!cascadeSearch_.text.empty())
+                    add(Kind::SearchClear, fieldClear(search), -1, static_cast<int>(Field::CascadeSearch));
+            }
         }
     }
     // A pill's open list, over everything: its rows' bypass dots, depth bars and removes work as in the MODS view.
@@ -5181,7 +5191,20 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::ConfirmBackdrop:
     case Kind::BrowserBackdrop:
-    case Kind::BrowserSearch: // drawn with the browser
+        break;
+    case Kind::SearchField: // the browser's and the target menu's drawn with them
+        if (w.a == static_cast<int>(Field::ModsFilter)) {
+            if (modsFilterOpen()) {
+                paintField(c, Field::ModsFilter, w.rect, fieldTyped(w.rect), tr(Str::ModsFilterHint),
+                           modsFilter_.text.empty() ? std::string() : modsFilterCount());
+            } else { // a magnifier, to open it
+                if (hovered)
+                    c.fillRect(w.rect, kTrack, 5.0f);
+                const Point lens{w.rect.center().x - 1.5f, w.rect.center().y - 1.5f};
+                c.strokeCircle(lens, 4.5f, hovered ? kText : kDim, 1.3f);
+                c.line({lens.x + 3.3f, lens.y + 3.3f}, {lens.x + 7.0f, lens.y + 7.0f}, hovered ? kText : kDim, 1.5f);
+            }
+        }
         break;
     case Kind::PresetNameBox: {
         // The preset's name, a dot while it has changed since it was loaded, and a chevron for the browser.
@@ -5222,7 +5245,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                    current || hovered || picked ? kText : kDim, Align::Left, current);
         break;
     }
-    case Kind::BrowserClear: {
+    case Kind::SearchClear: {
+        if (w.a == static_cast<int>(Field::CascadeSearch))
+            break; // drawn with its menu
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;
         c.line({m.x - 3.5f, m.y - 3.5f}, {m.x + 3.5f, m.y + 3.5f}, color, 1.3f);
@@ -5557,7 +5582,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
          hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
-         hover_->kind != Kind::ModsScale &&
+         hover_->kind != Kind::ModsScale && hover_->kind != Kind::SearchField &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
@@ -5572,7 +5597,11 @@ void View::paintTooltip(Canvas &c) {
     const int param = hover_->param;
     const FxParam field = fxFieldOf(param);
     std::string text;
-    if (hover_->kind == Kind::MacroName) {
+    if (hover_->kind == Kind::SearchField) {
+        if (hover_->a != static_cast<int>(Field::ModsFilter) || modsFilterOpen())
+            return; // a field says what it is for in its hint
+        text = tr(Str::TipModsFilter);
+    } else if (hover_->kind == Kind::MacroName) {
         text = tr(Str::TipRenameMacro);
     } else if (hover_->kind == Kind::ModPill) {
         if (modListOn(*hover_))
@@ -5997,10 +6026,12 @@ void View::applyDrag(Point p) {
         set(w.param, drag_.fine ? drag_.startValue + (drag_.start.y - p.y) / w.rect.h * 0.1
                                 : (w.rect.bottom() - p.y) / w.rect.h);
         break;
-    case DragKind::TextSelect:
-        searchCaret_ = searchStopAt(p.x);
+    case DragKind::TextSelect: {
+        TextField &t = field(static_cast<Field>(w.a));
+        t.caret = t.stopAt(p.x);
         caretTicks_ = 0;
         break;
+    }
     case DragKind::Glow:
         glowDragged_ = std::clamp(drag_.fine ? static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / w.rect.w * 0.1f
                                              : (p.x - w.rect.x) / w.rect.w,
@@ -6246,6 +6277,10 @@ void View::mouseDown(Point p, Modifiers mods) {
     // state load may have replaced the layout since it last ran.
     keepRoutes();
     const auto hit = hitTest(p);
+    // The MODS view's filter lets the keyboard go at a click anywhere else.
+    if (!(hit && (hit->kind == Kind::SearchField || hit->kind == Kind::SearchClear) &&
+          hit->a == static_cast<int>(Field::ModsFilter)))
+        modsFiltering_ = false;
     // A pill's open list closes at a click anywhere else, which does nothing more; but not at a source's handle,
     // which can then be dragged onto one of its rows.
     if (modList_ && !(hit && (hit->popup || hit->kind == Kind::ModPill || hit->kind == Kind::SourceHandle ||
@@ -6571,8 +6606,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::PresetNameBox: {
         controller_.rescanPresets();
         browserOpen_ = true;
-        clearSearch();
-        caretTicks_ = 0;
+        clearField(Field::Browser);
         revealBrowserRow(controller_.presetIndex(), true); // the current preset about in the middle
         hover_.reset();
         break;
@@ -6591,18 +6625,28 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::BrowserFolder:
         controller_.openPresetFolder();
         break;
-    case Kind::BrowserClear:
-        clearSearch();
-        revealBrowserRow(controller_.presetIndex(), true);
+    case Kind::SearchClear: // the MODS view's filter keeps the keyboard, for what is typed next
+        clearField(static_cast<Field>(w.a));
+        if (w.a == static_cast<int>(Field::Browser))
+            revealBrowserRow(controller_.presetIndex(), true);
+        modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
         hover_.reset();
         break;
-    case Kind::BrowserSearch: // the caret where it is clicked, and a drag selects; with Shift, from where it was
-        searchCaret_ = searchStopAt(p.x);
-        if (!mods.shift)
-            searchAnchor_ = searchCaret_;
+    case Kind::SearchField: { // the caret where it is clicked, and a drag selects; with Shift, from where it was
+        TextField &t = field(static_cast<Field>(w.a));
         caretTicks_ = 0;
+        if (w.a == static_cast<int>(Field::ModsFilter) && !modsFilterOpen()) { // the magnifier opens it
+            modsFiltering_ = true;
+            t.caret = t.anchor = t.text.size();
+            break;
+        }
+        modsFiltering_ = w.a == static_cast<int>(Field::ModsFilter);
+        t.caret = t.stopAt(p.x);
+        if (!mods.shift)
+            t.anchor = t.caret;
         drag_.kind = DragKind::TextSelect;
         break;
+    }
     case Kind::ConfirmBackdrop:
         if (w.a == 0) { // a click around the dialog cancels it
             confirm_ = -1;
@@ -7022,15 +7066,8 @@ void View::doubleClick(Point p, Modifiers mods) {
         setWireBend(hit->param, kDefaultWireBend);
         return;
     }
-    if (hit && hit->kind == Kind::BrowserSearch) { // the word there, up to the spaces either side
-        const size_t at = searchStopAt(p.x);
-        size_t from = at, to = at;
-        while (from > 0 && browserSearch_[from - 1] != ' ')
-            --from;
-        while (to < browserSearch_.size() && browserSearch_[to] != ' ')
-            ++to;
-        searchAnchor_ = from;
-        searchCaret_ = to;
+    if (hit && hit->kind == Kind::SearchField) { // the word there, up to the spaces either side
+        field(static_cast<Field>(hit->a)).selectWord(p.x);
         caretTicks_ = 0;
         return;
     }
@@ -7399,9 +7436,14 @@ void View::startTyping(const Widget &w) {
 }
 
 void View::typeChar(char32_t c) {
-    if (!typing_ && browserOpen_)
-        browserChar(c);
-    if (!typing_ || c < 0x20 || c > 0x7E)
+    if (!typing_) { // into the text field that has the keyboard, if any
+        const auto f = fieldTyping();
+        if (f && !(*f == Field::Browser && confirm_ >= 0) && c >= 0x20 && c <= 0x7E &&
+            field(*f).insert(std::string(1, static_cast<char>(c))))
+            fieldChanged(*f);
+        return;
+    }
+    if (c < 0x20 || c > 0x7E)
         return;
     Typing &t = *typing_;
     if (t.selected) {
@@ -7415,10 +7457,26 @@ void View::typeChar(char32_t c) {
 }
 
 void View::typeKey(Key key, bool shift) {
-    if (!typing_ && browserOpen_)
-        browserKey(key, shift);
-    if (!typing_)
+    if (!typing_) { // the text field that has the keyboard edits its text, and its owner takes the rest
+        const auto f = fieldTyping();
+        if (!f || (*f == Field::Browser && confirm_ >= 0))
+            return;
+        caretTicks_ = 0;
+        if (field(*f).key(key, shift))
+            fieldChanged(*f);
+        switch (*f) {
+        case Field::Browser:
+            browserKey(key);
+            break;
+        case Field::ModsFilter:
+            modsFilterKey(key);
+            break;
+        case Field::CascadeSearch:
+            cascadeKey(key);
+            break;
+        }
         return;
+    }
     Typing &t = *typing_;
     caretTicks_ = 0;
     switch (key) {
@@ -7475,13 +7533,15 @@ std::string View::copyText(bool cut) {
         }
         return text;
     }
-    if (!browserOpen_ || confirm_ >= 0)
+    const auto f = fieldTyping();
+    if (!f || (*f == Field::Browser && confirm_ >= 0))
         return {};
-    const auto [from, to] = searchSelection();
-    std::string text = browserSearch_.substr(from, to - from);
+    TextField &t = field(*f);
+    const auto [from, to] = t.selection();
+    std::string text = t.text.substr(from, to - from);
     if (cut && from != to) {
-        eraseSearch(from, to);
-        searchChanged();
+        t.erase(from, to);
+        fieldChanged(*f);
     }
     return text;
 }
@@ -7490,8 +7550,9 @@ void View::pasteText(std::string_view text) {
     if (typing_) {
         for (char ch : text)
             typeChar(ch == '\n' || ch == '\r' || ch == '\t' ? U' ' : static_cast<char32_t>(static_cast<unsigned char>(ch)));
-    } else if (browserOpen_ && confirm_ < 0) {
-        insertSearch(text);
+    } else if (const auto f = fieldTyping(); f && !(*f == Field::Browser && confirm_ >= 0)) {
+        if (field(*f).insert(text))
+            fieldChanged(*f);
     }
 }
 
@@ -7554,8 +7615,9 @@ CursorKind View::cursor() const {
     case Kind::ConfirmBackdrop:
     case Kind::BrowserBackdrop:
         return CursorKind::Arrow;
-    case Kind::BrowserSearch:
-        return CursorKind::Text;
+    case Kind::SearchField: // the MODS view's filter a button until it opens
+        return w->a == static_cast<int>(Field::ModsFilter) && !modsFilterOpen() ? CursorKind::Hand
+                                                                                       : CursorKind::Text;
     case Kind::SlotBar:
     case Kind::ModsScale:
         return CursorKind::Horizontal;

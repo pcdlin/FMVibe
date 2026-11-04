@@ -141,6 +141,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);
   - the MODS tab's columns' names with no modulations (read off the rendered pixels);
+  - the MODS view's filter: its magnifier opening it to take the keyboard, the words typed (every one, in any case)
+    narrowing the rows, its × emptying it, Escape and a click elsewhere letting the keyboard go; and the target
+    menu's search listing the targets found with their path, Up and Down picking one, Enter taking it, Escape
+    emptying it and then closing the menu; an operator's targets in two columns, the envelope's beside the pitch's;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -327,8 +331,8 @@ hit.
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
 | `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
-| `src/gui/mods.cpp` | The MODS view: every modulation as a row, and the cascading menus that move it, retarget it and pick its aux |
-| `src/gui/dialogs.cpp` | The settings and confirm dialogs and the preset browser with its search |
+| `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
+| `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
