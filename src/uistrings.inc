@@ -623,7 +623,7 @@ STR(TipNodePower, "Turn off")
 STR(TipSourcePower, "Turn off")
 STR(TipPoly, "Every note gets its own voice")
 STR(TipMono, "One voice at a time")
-STR(TipLegato, "Don't retrigger envelopes on overlapping notes (mono only)")
+STR(TipLegato, "Don't retrigger envelopes on overlapping notes: in poly, a new note joins the held one's envelopes")
 STR(TipFxOn, "Click to turn off, drag to move")
 STR(TipFxOff, "Off. Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to host tempo")
@@ -735,6 +735,10 @@ STR(ModsBypassed, "{1} bypassed")
 STR(ModsAtZero, "{1} at 0 %")
 STR(ModsEmpty, "{1} empty") // modulations without a source or a target yet
 STR(HintNoMods, "No modulations yet: drag a source's handle onto a knob, or add one here.")
+STR(ModsFilterHint, "Filter by source or target")
+STR(ModsMatching, "{1} of {2}") // the rows the filter shows, of all the modulations
+STR(ModsNoMatch, "No modulation matches \"{1}\"")
+STR(TipModsFilter, "Filter the modulations")
 STR(TipModsSource, "Move to another source")
 STR(TipModsTarget, "Move to another target")
 STR(TipModsPickSource, "Pick its source") // an empty modulation's
@@ -768,3 +772,6 @@ STR(CascadeSlotsFull, "no slot free")
 STR(CascadeItself, "itself") // a row's own source, which can't be its aux
 STR(CascadeOwnKnob, "its own knob")
 STR(CascadeOff, "off") // a switched-off operator
+STR(CascadeSearchHint, "Search targets")
+STR(CascadeNoMatch, "No target matches") // the target menu's search found nothing
+STR(CascadeMore, "{1} more: type more to narrow") // matches past those the target menu lists

@@ -283,9 +283,18 @@ What the plugin does and how its editor works, in full. Building and installing 
 - **Play modes**:
   - **Mono** plays one voice that moves from note to note. When you let go of the sounding key while others are
     held, it returns to the most recent one.
-  - **Legato** (on by default, mono only): a note played while another key is down only changes the pitch, and the
-    envelopes and LFOs keep running. Without it, every note restarts them from their current level, so there's no
-    click.
+  - **Legato** (off by default): a note played while another key is down doesn't start its envelopes over.
+    - In mono it only changes the pitch, and the envelopes and LFOs keep running. Without it, every note restarts
+      them from their current level, so there's no click.
+    - In poly the new note gets a voice of its own, which joins the voice of the newest key still down: its
+      operators' envelopes and mod envelopes take up that voice's stage and level, and its LFOs that start with
+      notes that voice's phase. A note played over a held one at its sustain starts at the sustain level rather than
+      from the attack, and one played while the held note still swells swells along with it, so a chord played
+      across held keys swells and wavers together instead of attacking note by note. (Over a held note whose
+      envelope has decayed to a sustain of 0, the new note is silent, as in mono.) The new voice fades in over 5 ms,
+      since its envelopes may start well above nothing. A key played with no other key down attacks as usual.
+    - Patches saved before Legato acted in poly (state version 2 and earlier) load it off in poly, where it did
+      nothing, so they play as they did; in mono they keep it.
   - **Glide** (0 = off, 1 ms–20 s) slides the pitch from the previous note, in mono and poly alike. By default it
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
@@ -445,7 +454,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
     Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the columns' names,
     shown with no modulations too (with a hint under the button that adds one), and at the right of their row the
-    count (how many are bypassed, at 0 % and empty with it, as much of that as fits). A row has, from its left:
+    count (how many are bypassed, at 0 % and empty with it, as much of that as fits), then the **filter**'s
+    magnifier. A click on it opens the filter, a text field over the count that takes the keyboard: what is typed
+    narrows the rows to the modulations whose source's and target's names hold every word of it, whatever the case
+    (the empty modulations stay, having yet to get theirs), and it says at its right how many it shows of all.
+    Its × empties it, Escape empties it and then lets the keyboard go, as Enter and a click elsewhere do; while it
+    holds something it stays open. A source card's MODS button empties it, so the source's rows show. A row has,
+    from its left:
     - the bypass dot, which switches the modulation off and on again, whatever its source;
     - the **source** and the **target**, and between them, after the source's name on the first of its rows, the
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
@@ -459,12 +474,17 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
-      its params under PITCH, LEVEL, PHASE, ENVELOPE, UNISON and NOISE;
+      its params in two columns, under PITCH, LEVEL, PHASE and UNISON, and beside them ENVELOPE and NOISE;
       the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
       only those in the chain, in its order, each with the knobs of its type; and Modulation, each LFO's and
       envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
       rest. What the row has now is checked, and the categories it is in have a dot; a click elsewhere closes the
-      menu, and so does a second click on what opened it;
+      menu, and so does a second click on what opened it. Atop the target's menu, a **search** takes the keyboard
+      while the menu is open: as soon as something is typed, the menu's first level lists the targets whose path
+      (their categories, then their name, as in "Operators › B › Detune") holds every word of it, flat, each with its
+      path dimmed before its name, up to 16 of them, then how many more there are. The first one found is lit; Up and
+      Down light another, Enter or a click picks one. Escape, or the search's ×, empties it, and Escape with nothing
+      typed closes the menu. Both fields edit like the preset browser's search (see the preset bar);
     - the **depth**, a bar like a source row's, with its value (double-click or Ctrl+Click types one);
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
     - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on
@@ -528,9 +548,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, then a Glide knob like the global
-  ones, its Always switch beside its label, each switch explaining itself on hover); Bend; Voices (it drags on a log
-  scale, so 4 and 512 are both easy to reach); and how many voices are playing.
+  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, then a Glide
+  knob like the global ones, its Always switch beside its label, each switch explaining itself on hover); Bend;
+  Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
   value, adding or removing an effect or source (with its modulation), moving nodes or cards, bending a wire, Init

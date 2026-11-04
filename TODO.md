@@ -7,20 +7,6 @@
       source's through a curve laid out like the note source's; it runs after its input in the voice's source loop
       (`Synth::renderBlock()`), so an input in a later place is a block late. 7 spare ids a place are left.
 
-- MODS view: the filter field over the table, and a search in the target menu (both in the draft)
-    - **In one line:** a text field in the MODS view's title row narrowing the rows to those whose source and target
-      names hold every word typed, and one atop the target menu listing the matching targets flat, with their path.
-    - **Feasible, small:** the preset browser's search (`dialogs.cpp`) already edits text this way; the rows and the
-      menu's entries are built by name (`modsRows()`, `cascadeTree()` in `mods.cpp`).
-
-- Poly legato
-    - **In one line:** with Legato on in poly, a note played while another key is down starts its envelopes at their
-      sustain level instead of from the attack, so overlapping chords swell together instead of re-attacking.
-    - **Feasible, small–medium.** Today Legato only acts in mono, where a new note takes over the sounding voice
-      (`Synth::noteOn()` in `synth.cpp`); in poly every note gets a fresh voice, so there's nothing to keep running.
-      To decide: whether the operators' envelopes and the mod envelopes both skip to sustain, and whether LFOs that
-      restart with notes keep the held voice's phase. The Legato switch stops greying out in poly
-      (`view.cpp`, the play switches), with a smoke check and features.md's Play modes.
 
 ## Issues 
 

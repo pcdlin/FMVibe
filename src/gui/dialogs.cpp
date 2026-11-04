@@ -119,7 +119,7 @@ std::vector<View::Widget> View::confirmWidgets() const {
 }
 
 namespace {
-constexpr size_t kSearchLength = 40; // the most a search holds
+constexpr size_t kSearchLength = 40; // the most a text field holds
 // ASCII letters in lower case, for a search that doesn't mind case.
 std::string lowered(std::string_view text) {
     std::string out(text);
@@ -130,22 +130,225 @@ std::string lowered(std::string_view text) {
 }
 } // namespace
 
-std::vector<std::pair<int, std::string>> View::browserRows() const {
+void View::TextField::erase(size_t from, size_t to) {
+    text.erase(from, to - from);
+    caret = anchor = from;
+}
+
+bool View::TextField::insert(std::string_view typed) {
+    std::string clean;
+    for (char ch : typed)
+        if (ch == '\n' || ch == '\r' || ch == '\t')
+            clean += ' ';
+        else if (ch >= 0x20 && ch <= 0x7E)
+            clean += ch;
+    const auto [from, to] = selection();
+    if (clean.empty() && from == to)
+        return false;
+    erase(from, to);
+    clean.resize(std::min(clean.size(), kSearchLength - std::min(text.size(), kSearchLength)));
+    text.insert(from, clean);
+    caret = anchor = from + clean.size();
+    return true;
+}
+
+void View::TextField::clear() {
+    text.clear();
+    caret = anchor = 0;
+    shift = 0.0f;
+}
+
+size_t View::TextField::stopAt(float x) const {
+    if (stops.size() != text.size() + 1)
+        return text.size();
+    size_t best = 0;
+    for (size_t i = 1; i < stops.size(); ++i)
+        if (std::abs(stops[i] - x) < std::abs(stops[best] - x))
+            best = i;
+    return best;
+}
+
+void View::TextField::selectWord(float x) {
+    const size_t at = stopAt(x);
+    size_t from = at, to = at;
+    while (from > 0 && text[from - 1] != ' ')
+        --from;
+    while (to < text.size() && text[to] != ' ')
+        ++to;
+    anchor = from;
+    caret = to;
+}
+
+bool View::TextField::key(Key key, bool extend) {
+    const auto [from, to] = selection();
+    // The caret to `at`; extending (Shift held), the selection grows or shrinks with it, else there is none.
+    auto moveTo = [&](size_t at) {
+        caret = at;
+        if (!extend)
+            anchor = at;
+    };
+    switch (key) {
+    case Key::Backspace: // the selection, or the character before the caret
+    case Key::Delete:    // or after it
+        if (from != to)
+            erase(from, to);
+        else if (key == Key::Backspace && caret > 0)
+            erase(caret - 1, caret);
+        else if (key == Key::Delete && caret < text.size())
+            erase(caret, caret + 1);
+        else
+            return false;
+        return true;
+    case Key::Left: // without Shift, from a selection to its start
+        moveTo(from != to && !extend ? from : (caret > 0 ? caret - 1 : 0));
+        break;
+    case Key::Right:
+        moveTo(from != to && !extend ? to : std::min(caret + 1, text.size()));
+        break;
+    case Key::Home:
+        moveTo(0);
+        break;
+    case Key::End:
+        moveTo(text.size());
+        break;
+    case Key::SelectAll:
+        anchor = 0;
+        caret = text.size();
+        break;
+    case Key::Enter:
+    case Key::Escape:
+    case Key::Up:
+    case Key::Down:
+        break;
+    }
+    return false;
+}
+
+std::vector<std::string> View::TextField::words() const {
     std::vector<std::string> words;
-    const std::string search = lowered(browserSearch_);
+    const std::string search = lowered(text);
     for (size_t at = 0; at < search.size();) {
         const size_t end = std::min(search.find(' ', at), search.size());
         if (end > at)
             words.push_back(search.substr(at, end - at));
         at = end + 1;
     }
+    return words;
+}
+
+bool View::TextField::holds(std::string_view text, const std::vector<std::string> &words) {
+    const std::string in = lowered(text);
+    return std::all_of(words.begin(), words.end(),
+                       [&](const std::string &word) { return in.find(word) != std::string::npos; });
+}
+
+std::optional<View::Field> View::fieldTyping() const {
+    if (browserOpen_)
+        return confirm_ < 0 ? std::optional(Field::Browser) : std::nullopt;
+    if (settingsOpen_ || confirm_ >= 0)
+        return std::nullopt;
+    if (cascadeSearches() && modsWide())
+        return Field::CascadeSearch;
+    if (modsFiltering_ && modsWide())
+        return Field::ModsFilter;
+    return std::nullopt;
+}
+
+View::TextField &View::field(Field f) {
+    switch (f) {
+    case Field::ModsFilter:
+        return modsFilter_;
+    case Field::CascadeSearch:
+        return cascadeSearch_;
+    case Field::Browser:
+        break;
+    }
+    return browserSearch_;
+}
+
+// After what is typed changes: the browser's list from its top, the first preset found picked; the MODS view's rows
+// from their top; the target menu's matches from the first, nothing opened beside them.
+void View::fieldChanged(Field f) {
+    caretTicks_ = 0;
+    switch (f) {
+    case Field::Browser:
+        browserPick_ = -1;
+        if (!browserSearch_.text.empty())
+            for (const auto &row : browserRows())
+                if (row.first >= 0) {
+                    browserPick_ = row.first;
+                    break;
+                }
+        browserScroll_ = 0;
+        break;
+    case Field::ModsFilter:
+        scrollMods(0.0f, false);
+        break;
+    case Field::CascadeSearch:
+        if (cascade_) {
+            cascade_->open.clear();
+            cascade_->picked = 0;
+        }
+        break;
+    }
+}
+
+void View::clearField(Field f) {
+    field(f).clear();
+    fieldChanged(f);
+}
+
+void View::paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view hint, std::string_view after) {
+    TextField &t = field(f);
+    const bool focused = fieldTyping() == f;
+    c.fillRect(box, kBackground, 5.0f);
+    c.strokeRect(box, focused || !t.text.empty() ? kAccent : kBorder, 1.0f, 5.0f);
+    const Point lens{box.x + 13.0f, box.center().y - 1.0f};
+    c.strokeCircle(lens, 4.0f, kDim, 1.3f);
+    c.line({lens.x + 3.0f, lens.y + 3.0f}, {lens.x + 6.5f, lens.y + 6.5f}, kDim, 1.5f);
+    if (!after.empty()) { // faint at the right end, the text short of it
+        const float w = std::ceil(c.textWidth(after, 10.0f));
+        c.text({typed.right() - w, typed.y, w, typed.h}, after, 10.0f, kFaint, Align::Right);
+        typed.w = std::max(typed.w - w - 8.0f, 20.0f);
+    }
+    // Text too long for it scrolls, so the caret stays in sight; where each place between its characters lands is
+    // kept for the mouse.
+    constexpr float kSize = 11.0f;
+    std::vector<float> stops;
+    for (size_t i = 0; i <= t.text.size(); ++i)
+        stops.push_back(c.textWidth(std::string_view(t.text).substr(0, i), kSize));
+    t.caret = std::min(t.caret, t.text.size());
+    t.anchor = std::min(t.anchor, t.text.size());
+    const float fits = typed.w - 2.0f, caretAt = stops[t.caret];
+    if (caretAt - t.shift > fits)
+        t.shift = caretAt - fits;
+    t.shift = std::clamp(std::min(t.shift, caretAt), 0.0f, std::max(stops.back() - fits, 0.0f));
+    for (float &stop : stops)
+        stop += typed.x - t.shift;
+    t.stops = stops;
+    const auto [from, to] = t.selection();
+    if (t.text.empty()) {
+        c.text(typed, hint, 10.5f, kFaint, Align::Left);
+    } else {
+        c.pushClip(typed);
+        if (from != to)
+            c.fillRect({stops[from], box.y + 5.0f, stops[to] - stops[from], box.h - 10.0f}, kAccent.alpha(0.35f), 2.0f);
+        c.text({stops[0], typed.y, stops.back() - stops[0] + 20.0f, typed.h}, t.text, kSize, kText, Align::Left);
+        c.popClip();
+    }
+    if (focused && from == to && caretTicks_ / 32 % 2 == 0) {
+        const float caret = std::min(stops[t.caret] + 0.5f, typed.right());
+        c.line({caret, box.y + 5.0f}, {caret, box.bottom() - 5.0f}, kText, 1.0f);
+    }
+}
+
+std::vector<std::pair<int, std::string>> View::browserRows() const {
+    const std::vector<std::string> words = browserSearch_.words();
     std::vector<std::pair<int, std::string>> rows;
     const std::vector<PresetEntry> &presets = controller_.presets();
     const PresetEntry *last = nullptr; // the last one listed
     for (size_t i = 0; i < presets.size(); ++i) {
-        const std::string text = lowered(presets[i].category + " " + presets[i].name);
-        if (!std::all_of(words.begin(), words.end(),
-                         [&](const std::string &word) { return text.find(word) != std::string::npos; }))
+        if (!TextField::holds(presets[i].category + " " + presets[i].name, words))
             continue;
         if (!presets[i].category.empty() && (!last || presets[i].category != last->category))
             rows.push_back({-1, presets[i].category});
@@ -175,122 +378,20 @@ void View::revealBrowserRow(int preset, bool middle) {
     browserScroll_ = std::clamp(browserScroll_, 0, most);
 }
 
-// After the search changes: the list from its top, the first preset found picked.
-void View::searchChanged() {
-    browserPick_ = -1;
-    if (!browserSearch_.empty())
-        for (const auto &row : browserRows())
-            if (row.first >= 0) {
-                browserPick_ = row.first;
-                break;
-            }
-    browserScroll_ = 0;
-}
-
-std::pair<size_t, size_t> View::searchSelection() const {
-    return std::minmax(searchCaret_, searchAnchor_);
-}
-
-void View::eraseSearch(size_t from, size_t to) {
-    browserSearch_.erase(from, to - from);
-    searchCaret_ = searchAnchor_ = from;
-}
-
-// Over the selection; line breaks and tabs as spaces, the rest past printable ASCII left out, as much as fits.
-void View::insertSearch(std::string_view text) {
-    std::string clean;
-    for (char ch : text)
-        if (ch == '\n' || ch == '\r' || ch == '\t')
-            clean += ' ';
-        else if (ch >= 0x20 && ch <= 0x7E)
-            clean += ch;
-    const auto [from, to] = searchSelection();
-    if (clean.empty() && from == to)
-        return;
-    eraseSearch(from, to);
-    clean.resize(std::min(clean.size(), kSearchLength - std::min(browserSearch_.size(), kSearchLength)));
-    browserSearch_.insert(from, clean);
-    searchCaret_ = searchAnchor_ = from + clean.size();
-    caretTicks_ = 0;
-    searchChanged();
-}
-
-void View::clearSearch() {
-    browserSearch_.clear();
-    searchCaret_ = searchAnchor_ = 0;
-    searchShift_ = 0.0f;
-    searchChanged();
-}
-
-// The place between characters nearest `x`; before the search was painted with its text, its end.
-size_t View::searchStopAt(float x) const {
-    if (searchStops_.size() != browserSearch_.size() + 1)
-        return browserSearch_.size();
-    size_t best = 0;
-    for (size_t i = 1; i < searchStops_.size(); ++i)
-        if (std::abs(searchStops_[i] - x) < std::abs(searchStops_[best] - x))
-            best = i;
-    return best;
-}
-
-void View::browserChar(char32_t c) {
-    if (confirm_ < 0 && c >= 0x20 && c <= 0x7E)
-        insertSearch(std::string(1, static_cast<char>(c)));
-}
-
-void View::browserKey(Key key, bool shift) {
-    if (confirm_ >= 0)
-        return;
-    caretTicks_ = 0;
-    const auto [from, to] = searchSelection();
-    // The caret to `at`; with Shift the selection grows or shrinks with it, without it there is none.
-    auto moveTo = [&](size_t at) {
-        searchCaret_ = at;
-        if (!shift)
-            searchAnchor_ = at;
-    };
+void View::browserKey(Key key) {
     switch (key) {
     case Key::Enter:
         if (browserPick_ >= 0)
             openPreset(browserPick_);
         break;
     case Key::Escape:
-        if (browserSearch_.empty()) {
+        if (browserSearch_.text.empty()) {
             browserOpen_ = false;
             hover_.reset();
         } else {
-            clearSearch();
+            clearField(Field::Browser);
             revealBrowserRow(controller_.presetIndex(), true);
         }
-        break;
-    case Key::Backspace: // the selection, or the character before the caret
-    case Key::Delete:    // or after it
-        if (from != to) {
-            eraseSearch(from, to);
-            searchChanged();
-        } else if (key == Key::Backspace && searchCaret_ > 0) {
-            eraseSearch(searchCaret_ - 1, searchCaret_);
-            searchChanged();
-        } else if (key == Key::Delete && searchCaret_ < browserSearch_.size()) {
-            eraseSearch(searchCaret_, searchCaret_ + 1);
-            searchChanged();
-        }
-        break;
-    case Key::Left: // without Shift, from a selection to its start
-        moveTo(from != to && !shift ? from : (searchCaret_ > 0 ? searchCaret_ - 1 : 0));
-        break;
-    case Key::Right:
-        moveTo(from != to && !shift ? to : std::min(searchCaret_ + 1, browserSearch_.size()));
-        break;
-    case Key::Home:
-        moveTo(0);
-        break;
-    case Key::End:
-        moveTo(browserSearch_.size());
-        break;
-    case Key::SelectAll:
-        searchAnchor_ = 0;
-        searchCaret_ = browserSearch_.size();
         break;
     case Key::Up:
     case Key::Down: { // from the one picked, or the preset loaded, to the next one listed that way
@@ -310,6 +411,8 @@ void View::browserKey(Key key, bool shift) {
         revealBrowserRow(browserPick_, false);
         break;
     }
+    default:
+        break;
     }
 }
 
@@ -335,9 +438,9 @@ std::vector<View::Widget> View::browserWidgets() const {
                 rows[row].first);
     add(Kind::BrowserClose, browserClose(panel));
     add(Kind::BrowserFolder, browserFolder(panel));
-    add(Kind::BrowserSearch, browserSearch(panel));
-    if (!browserSearch_.empty())
-        add(Kind::BrowserClear, browserClear(panel));
+    add(Kind::SearchField, browserSearch(panel), static_cast<int>(Field::Browser));
+    if (!browserSearch_.text.empty())
+        add(Kind::SearchClear, browserClear(panel), static_cast<int>(Field::Browser));
     return list;
 }
 
@@ -352,55 +455,19 @@ void View::paintBrowser(Canvas &c) {
     const Rect search = browserSearch(panel);
     std::string counted =
         count == 1 ? std::string(tr(Str::PresetsCountOne)) : trf(Str::PresetsCount, {std::to_string(count)});
-    if (!browserSearch_.empty()) {
+    if (!browserSearch_.text.empty()) {
         const auto found = std::count_if(rows.begin(), rows.end(), [](const auto &row) { return row.first >= 0; });
         counted = trf(Str::PresetsMatching, {std::to_string(found), std::to_string(count)});
     }
     c.text({panel.x + 104.0f, panel.y + 16.0f, search.x - 8.0f - panel.x - 104.0f, 20.0f}, counted, 10.5f, kFaint,
            Align::Left);
-    // The search field: a magnifier, then what is typed, its selection behind it and the caret in it, or how to
-    // search. Text too long for it scrolls, so the caret stays in sight; where each place between its characters
-    // lands is kept for the mouse.
-    c.fillRect(search, kBackground, 5.0f);
-    c.strokeRect(search, browserSearch_.empty() ? kBorder : kAccent, 1.0f, 5.0f);
-    const Point lens{search.x + 13.0f, search.center().y - 1.0f};
-    c.strokeCircle(lens, 4.0f, kDim, 1.3f);
-    c.line({lens.x + 3.0f, lens.y + 3.0f}, {lens.x + 6.5f, lens.y + 6.5f}, kDim, 1.5f);
-    const Rect typed = browserTyped(panel);
-    constexpr float kSearchSize = 11.0f;
-    std::vector<float> stops;
-    for (size_t i = 0; i <= browserSearch_.size(); ++i)
-        stops.push_back(c.textWidth(std::string_view(browserSearch_).substr(0, i), kSearchSize));
-    searchCaret_ = std::min(searchCaret_, browserSearch_.size());
-    searchAnchor_ = std::min(searchAnchor_, browserSearch_.size());
-    const float fits = typed.w - 2.0f, caretAt = stops[searchCaret_];
-    if (caretAt - searchShift_ > fits)
-        searchShift_ = caretAt - fits;
-    searchShift_ = std::clamp(std::min(searchShift_, caretAt), 0.0f, std::max(stops.back() - fits, 0.0f));
-    for (float &stop : stops)
-        stop += typed.x - searchShift_;
-    searchStops_ = stops;
-    const auto [from, to] = searchSelection();
-    if (browserSearch_.empty()) {
-        c.text(typed, tr(Str::PresetsSearchHint), 10.5f, kFaint, Align::Left);
-    } else {
-        c.pushClip(typed);
-        if (from != to)
-            c.fillRect({stops[from], search.y + 5.0f, stops[to] - stops[from], search.h - 10.0f}, kAccent.alpha(0.35f),
-                       2.0f);
-        c.text({stops[0], typed.y, stops.back() - stops[0] + 20.0f, typed.h}, browserSearch_, kSearchSize, kText,
-               Align::Left);
-        c.popClip();
-    }
-    if (confirm_ < 0 && from == to && caretTicks_ / 32 % 2 == 0) {
-        const float caret = std::min(stops[searchCaret_] + 0.5f, typed.right());
-        c.line({caret, search.y + 5.0f}, {caret, search.bottom() - 5.0f}, kText, 1.0f);
-    }
+    // The search field: a magnifier, then what is typed, or how to search.
+    paintField(c, Field::Browser, search, browserTyped(panel), tr(Str::PresetsSearchHint));
     c.line({panel.x + 1.0f, panel.y + 50.5f}, {panel.right() - 1.0f, panel.y + 50.5f}, kBorder, 1.0f);
 
     const Rect area = browserList(panel);
-    if (rows.empty() && !browserSearch_.empty()) {
-        c.text({area.x, area.center().y - 10.0f, area.w, 18.0f}, trf(Str::PresetsNoMatch, {browserSearch_}), 12.0f,
+    if (rows.empty() && !browserSearch_.text.empty()) {
+        c.text({area.x, area.center().y - 10.0f, area.w, 18.0f}, trf(Str::PresetsNoMatch, {browserSearch_.text}), 12.0f,
                kDim);
     } else if (rows.empty()) {
         c.text({area.x, area.center().y - 20.0f, area.w, 18.0f}, tr(Str::PresetsNone), 12.0f, kDim);
