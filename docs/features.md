@@ -284,16 +284,16 @@ What the plugin does and how its editor works, in full. Building and installing 
   MIDI pitch bend (its knob over the bend wheel, in the keyboard strip), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
 - **MPE** (MIDI Polyphonic Expression), off to begin with: the switch beside the Pan knob's label in the header. Hosts
-  that send CLAP note expressions (Bitwig) need nothing: each note's tuning, volume, pan, pressure and brightness
-  reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is the master channel, whose
-  pitch bend (by Bend Range), controllers and channel pressure apply to every voice, and channels 2 to 16 each carry
-  one note of their own: their pitch bend bends that note alone, by the **MPE bend range** (48 semitones to begin
-  with, as the MPE spec has it; 12, 24, 48 or 96 from the switch's right-click menu), and their channel pressure and
-  CC 74 are that note's pressure and slide, which a MIDI source follows on those inputs. A note that starts on a
-  member channel, or takes a mono voice over there, starts from what its channel last sent, and follows the master
-  channel's pressure until its own channel sends some. With MPE off, every channel's bend, controllers and
-  pressure apply to every voice, as without MPE. The plugin offers hosts the MPE MIDI dialect alongside CLAP's and
-  plain MIDI.
+  that send note expressions (Bitwig to CLAP plugins, Cubase to VST3 ones) need nothing: each note's tuning, volume,
+  pan, pressure and brightness reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is
+  the master channel, whose pitch bend (by Bend Range), controllers and channel pressure apply to every voice, and
+  channels 2 to 16 each carry one note of their own: their pitch bend bends that note alone, by the **MPE bend
+  range** (48 semitones to begin with, as the MPE spec has it; 12, 24, 48 or 96 from the switch's right-click menu),
+  and their channel pressure and CC 74 are that note's pressure and slide, which a MIDI source follows on those
+  inputs. A note that starts on a member channel, or takes a mono voice over there, starts from what its channel
+  last sent, and follows the master channel's pressure until its own channel sends some. With MPE off, every
+  channel's bend, controllers and pressure apply to every voice, as without MPE. The plugin offers hosts the MPE
+  MIDI dialect alongside CLAP's and plain MIDI.
 - **Play modes**:
   - **Mono** plays one voice that moves from note to note. When you let go of the sounding key while others are
     held, it returns to the most recent one.
@@ -312,13 +312,15 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Glide** (0 = off, 1 ms–20 s) slides the pitch from the previous note, in mono and poly alike. By default it
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
-- **Host modulation**: all continuous parameters accept CLAP modulation globally, the macros' knobs and depths, the
+- **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
+  parameters accept CLAP modulation globally, the macros' knobs and depths, the
   mod wheel, the note source's range and depths, velocity's depths and every modulation's Amount among them; those
   the voices read also per
   voice (not Volume, the mod wheel, the effects, the macros, the note source or velocity), so Bitwig's modulators
   (including per-note ones) can drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
-  clicking), and CLAP note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources).
+  clicking), and note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources; see
+  [CLAP and VST3](#clap-and-vst3) for the VST3 ones).
   Lowering the voice limit while more voices sound fades
   out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
@@ -848,7 +850,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   switch along. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
   license.
 
-### Remote-control pages (Bitwig)
+### Remote-control pages (Bitwig, CLAP)
 
 | Section | Pages |
 | --- | --- |
@@ -859,3 +861,29 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 | FX | One page per effect in the chain, named after its place and type, with that effect's knobs (a shimmer reverb's Pitch and Shimmer in place of its Pre-Delay and Width) |
 | Matrix | "A modulates" … "F modulates": what that operator modulates; "Into F1", "Into F2": each operator's send into that filter; "F1 modulates", "F2 modulates": the operators each filter modulates; "Into S1", "S1 modulates" and the same for S2: each operator's and filter's send into that shaper, and the operators it modulates |
 | Modulation | One page per source, in the editor's order: an LFO's shape, rate, sync and division, or an envelope's attack, decay, sustain and release, then its 4 slot depths |
+
+## CLAP and VST3
+
+FMVibe comes as a CLAP plugin (`FMVibe.clap`) and a VST3 plugin (the `FMVibe.vst3` folder), built from the same code:
+the same engine, editor, parameters (with the same ids), presets and settings. The VST3 plugin is written straight
+against the VST3 interfaces, with no wrapper in between, as one object that is both its processor and its edit
+controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
+as two different plugins, though, so a project made with one doesn't switch to the other by itself.
+
+What the VST3 plugin does its own way:
+
+- **MIDI**: VST3 hands plugins notes, but no controllers. FMVibe asks hosts to map every controller, channel pressure
+  and pitch bend, on each of the 16 MIDI channels, to hidden parameters of its own, and takes them as MIDI from
+  there: pitch bend (by Bend Range), the MIDI sources' controllers and pressure, and MPE over MIDI work as in the
+  CLAP plugin. Polyphonic pressure comes as its own event, a note's pressure.
+- **Note expressions**: Volume, Pan, Tuning (ten octaves either way) and Brightness (a note's slide), as VST3 names
+  them, and Pressure, one of FMVibe's own. For touch surfaces and MPE controllers, FMVibe tells hosts to send a
+  finger's sideways movement as Tuning, its movement along the key as Brightness and how hard it presses as
+  Pressure. A note-on's tuning (in cents) tunes the note from its start.
+- **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...). The fields of effects
+  and sources a slot or place doesn't hold are hidden, as in the CLAP plugin, and the host is told to look again
+  when they change. Parameters hosts don't show are read-only to them.
+- **Restarting**: raising the voice limit past the voices allocated, or changing the oversampling, asks the host to
+  deactivate and reactivate the plugin (through a latency change, which has hosts do that).
+- **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
+  reports that per-voice modulation needs.

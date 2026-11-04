@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-Configures, builds and smoke-tests FMVibe with the Visual Studio C++ toolchain.
+Configures, builds and tests FMVibe, the CLAP and the VST3 plugin, with the Visual Studio C++ toolchain.
 
 .EXAMPLE
-.\build.ps1                     # release build + smoke test -> build\release\FMVibe.clap
+.\build.ps1                     # release build + tests -> build\release\FMVibe.clap and build\release\FMVibe.vst3
 .\build.ps1 -Config debug
-.\build.ps1 -Validate           # also run clap-validator on the plugin
-.\build.ps1 -Install            # also copy it to %LOCALAPPDATA%\Programs\Common\CLAP
+.\build.ps1 -Validate           # also run clap-validator and Steinberg's VST3 validator on the plugins
+.\build.ps1 -Install            # also copy them to %LOCALAPPDATA%\Programs\Common\CLAP and ...\Common\VST3
 .\build.ps1 -Install -SkipTests # build and install without running the tests
 #>
 param(
@@ -37,11 +37,11 @@ function Invoke-Step([string] $What, [scriptblock] $Command) {
 Push-Location $PSScriptRoot
 try {
     Invoke-Step 'configure' { cmake --preset $Config }
-    # Without the tests, only the plugin itself is built.
-    $targets = if ($SkipTests) { @('--target', 'FMVibe') } else { @() }
+    # Without the tests, only the plugins themselves are built.
+    $targets = if ($SkipTests) { @('--target', 'FMVibe', 'FMVibe-vst3') } else { @() }
     Invoke-Step 'build' { cmake --build --preset $Config @targets }
-    if (-not $SkipTests) { Invoke-Step 'smoke test' { ctest --preset $Config } }
-    if ($Validate) { Invoke-Step 'clap-validator' { cmake --build --preset $Config --target validate } }
+    if (-not $SkipTests) { Invoke-Step 'tests' { ctest --preset $Config } }
+    if ($Validate) { Invoke-Step 'validators' { cmake --build --preset $Config --target validate } }
     if ($Install) { Invoke-Step 'install' { cmake --install "build\$Config" } }
 }
 finally {

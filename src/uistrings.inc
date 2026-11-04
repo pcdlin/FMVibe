@@ -315,6 +315,17 @@ STR(PageInto, "Into {1}")
 STR(PortOutput, "Output")
 STR(PortNotes, "Notes")
 
+// --- VST3 hosts: the params MIDI controllers come in as, and the note expressions a note takes
+
+STR(MidiCcParam, "MIDI CC {1} Ch {2}") // a controller's number, then its channel (1..16)
+STR(MidiAftertouchParam, "MIDI Aftertouch Ch {1}")
+STR(MidiPitchBendParam, "MIDI Pitch Bend Ch {1}")
+STR(ExprVolume, "Volume")
+STR(ExprPan, "Pan")
+STR(ExprTuning, "Tuning")
+STR(ExprBrightness, "Brightness")
+STR(ExprPressure, "Pressure")
+
 // --- Sources, presets and themes by name
 
 STR(SourceNameLfo, "LFO {1}") // numbered by type in the order the sources show

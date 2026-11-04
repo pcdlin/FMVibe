@@ -7,12 +7,16 @@
 namespace fmvibe {
 
 // Every piece of text the plugin shows, by name; uistrings.inc holds their wording.
+// The VST3 SDK's headers have an STR macro of their own, kept around this one.
+#pragma push_macro("STR")
+#undef STR
 enum class Str {
 #define STR(id, text) id,
 #include "uistrings.inc"
 #undef STR
     Count
 };
+#pragma pop_macro("STR")
 
 // The wording of `id`.
 const char *tr(Str id);

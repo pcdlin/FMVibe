@@ -1,7 +1,7 @@
 # AGENTS.md
 
-Notes for anyone (human or agent) working on FMVibe, a six-operator FM synthesizer as a CLAP instrument plugin
-for Windows. The README introduces the plugin and says how to build and install it. What the plugin does and how
+Notes for anyone (human or agent) working on FMVibe, a six-operator FM synthesizer as a CLAP and a VST3 instrument
+plugin for Windows. The README introduces the plugin and says how to build and install it. What the plugin does and how
 its editor works, in full, is in [docs/features.md](docs/features.md): read the parts you need before changing a
 feature.
 
@@ -9,8 +9,12 @@ feature.
 
 - Parameter ids, the wave, filter type, effect type, source type and fixed Mult lists, and the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
-- Keep `ctest` green (smoke test, audio quality, UI snapshots). New editor interactions get a replay in
-  `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`.
+- Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
+  replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
+  what only the VST3 plugin does a check in `tests/vst3_host.cpp`.
+- Both plugins sit on one core, `PluginCore` (`src/plugincore.cpp`): the params, the state, the editor's
+  `Controller`, presets and the editor window. What one format does goes in its own file (`src/plugin.cpp` for CLAP,
+  `src/vst3plugin.cpp` for VST3), and what both do in the core, which tells each host through its `host...()` hooks.
 - When a feature changes, update [docs/features.md](docs/features.md); keep `README.md` to its short
   description and the build and install instructions.
 - Don't start Bitwig or another host yourself: the plugin is tried in the host by hand.
@@ -23,12 +27,12 @@ feature.
 
 ## Build
 
-What you need, `build.ps1` (which runs the tests below with every build, unless `-SkipTests` builds only the plugin),
+What you need, `build.ps1` (which runs the tests below with every build, unless `-SkipTests` builds only the plugins),
 the plain CMake commands and installing into a host are in the [README](README.md#build).
 
 ## Testing
 
-`ctest` runs three programs:
+`ctest` runs four programs:
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. It loads the `.clap` and checks the parameter
   table, text round-trips, the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
@@ -247,12 +251,39 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels).
 
   Pass a scale to render larger: `build\release\fmvibe-uishot.exe out 2`.
+- **VST3 smoke test** (`tests/vst3_host.cpp`): a small headless VST3 host. It loads `FMVibe.vst3` and checks what the
+  VST3 side adds to the engine the tests above check:
+  - the module's exports and its factory: one class, an Instrument|Synth at the project's version, which a host can't
+    ask for an interface it doesn't have; the component being its own controller, with MIDI mapping, note
+    expressions, units and its process context needs;
+  - the buses (a stereo output, refusing mono, and a 16-channel note input) and 32-bit processing only;
+  - the params: every one, with the CLAP plugin's ids, all different, each in a unit the plugin lists, going to
+    normalized and back unchanged (a stepped one exactly), their defaults, a value's text and back, Voices stepped
+    and not automatable, the MIDI controllers' params hidden, and an effect's fields showing once its slot holds it,
+    with the host told; the MIDI mapping (per channel, on the note input only), the note expressions and the
+    physical UI mapping;
+  - playing: an A4 at 440 Hz, bent through the MIDI-mapped pitch bend, tuned an octave by a note expression on its id
+    (and not by one on another id), its level set by a volume expression, automation landing at its place in a
+    block, a param change coming before a note at the same place, notes let go (with ids and without) falling
+    silent, a flush without audio taken, the controller's copy of a value from the host left alone while
+    processing, and a voice limit past the voices allocated asking the host for a restart;
+  - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
+    empty, a value from the host taken while not processing, loading bringing the saved value back and having the
+    host read the values again, and a foreign blob refused;
+  - the editor in a hidden host window: one at a time, resized keeping its aspect ratio, the Volume knob dragged
+    (beginEdit, performEdit, endEdit, and an older value the host hands back right after not taken), a state with
+    the modulation panel collapsed asking the host for a shorter window, its window gone once it is removed, and
+    opening again after.
 
 More checks:
 
-- **clap-validator**: the free-audio conformance test suite, run with `.\build.ps1 -Validate`.
-- **In Bitwig Studio**: install the plugin as the [README](README.md#build) describes; Bitwig finds it
-  in the per-user CLAP folder.
+- **Validators**: `.\build.ps1 -Validate` runs clap-validator (free-audio's conformance tests, a prebuilt binary)
+  on the CLAP plugin and Steinberg's validator (the VST3 SDK's, built here from the SDK's MIT-licensed sources with
+  the SDK's own list of them) on the VST3 one. They are the `validate-clap` and `validate-vst3` targets, both under
+  `validate`. Steinberg's validator lists notes ("Info") beyond its tests: param titles alike within a unit, values
+  that come back slightly off from their rounded text and units with many params are expected.
+- **In Bitwig Studio**: install the plugins as the [README](README.md#build) describes; Bitwig finds them
+  in the per-user CLAP and VST3 folders.
 
 ## Browser demo
 
@@ -287,9 +318,10 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 
 ## Releasing
 
-A version tag publishes a release. `.github/workflows/release.yml` builds the plugin on Windows (Visual Studio
-2026) with `build.ps1 -Validate`, so every test and clap-validator have to pass. It puts `FMVibe.clap`, `LICENSE`
-and the CLAP SDK's license (`LICENSE-CLAP`) into `FMVibe-<tag>-windows-x64.zip`, and creates a GitHub release
+A version tag publishes a release. `.github/workflows/release.yml` builds the plugins on Windows (Visual Studio
+2026) with `build.ps1 -Validate`, so every test and both validators have to pass. It puts `FMVibe.clap`, the
+`FMVibe.vst3` folder, `LICENSE` and the CLAP and VST3 SDKs' licenses (`LICENSE-CLAP`, `LICENSE-VST3`) into
+`FMVibe-<tag>-windows-x64.zip`, and creates a GitHub release
 for the tag with that zip and notes generated from the commits since the previous tag. Meanwhile it builds the
 browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
 (`https://pcdlin.github.io/FMVibe/`). Neither goes out unless both build.
@@ -316,16 +348,20 @@ On GitHub's free plan, Pages needs the repository to be public.
 
 ## Debugging in a host
 
-Install the debug build (`.\build.ps1 -Config debug -Install`). Bitwig runs plugins in a separate process, so in
-Visual Studio use *Debug > Attach to Process* and pick `BitwigPluginHost-X64-AVX2.exe`; breakpoints in `src/` then
-hit.
+Install the debug build (`.\build.ps1 -Config debug -Install`), which installs both plugins. Bitwig runs plugins in
+a separate process, so in Visual Studio use *Debug > Attach to Process* and pick `BitwigPluginHost-X64-AVX2.exe`;
+breakpoints in `src/` then hit.
 
 ## Layout
 
 | Path | What |
 | --- | --- |
-| `src/entry.cpp` | Exported `clap_entry` and the plugin factory |
-| `src/plugin.cpp` | The CLAP plugin: the Plugin class and its extension tables (process loop, events, ports, params, state, remote controls, voice info, gui) |
+| `src/plugincore.cpp` | What both plugins are: `PluginCore`, the engine and its param values, the editor's `Controller` (presets, settings), the state and the editor window, telling each host through its hooks |
+| `src/entry.cpp` | The CLAP plugin's exported `clap_entry` and factory |
+| `src/plugin.cpp` | The CLAP plugin: the core with its process loop, events and extension tables (ports, params, state, remote controls, voice info, gui) |
+| `src/vst3entry.cpp` | The VST3 plugin's exported `GetPluginFactory` (and `InitDll`, `ExitDll`) and factory |
+| `src/vst3plugin.cpp` | The VST3 plugin: the core as one object that is component, processor and edit controller (buses, process loop, params in units, MIDI mapping, note expressions, state), and its editor view |
+| `src/vst3iids.cpp` | The ids of the VST3 interfaces the plugin and its test host use |
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
@@ -334,7 +370,7 @@ hit.
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
 | `src/uistrings.inc` | The wording of every piece of text the plugin shows, by name; `src/uistrings.h` looks it up |
-| `src/synth.cpp` | FM voices, matrix, filter routing, LFOs and mod envelopes, telemetry; independent of CLAP |
+| `src/synth.cpp` | FM voices, matrix, filter routing, LFOs and mod envelopes, telemetry; independent of the plugin formats |
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
@@ -354,22 +390,34 @@ hit.
 | `src/gui/controller.h` | What the editor needs from the plugin (values, edits, telemetry, layout) |
 | `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
 | `src/factory.cpp` | The example presets written into the preset folder |
-| `tests/smoke_host.cpp` | Headless test host |
+| `tests/smoke_host.cpp` | Headless CLAP test host |
+| `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `web/dsp.cpp`, `web/ui.cpp` | The browser demo's audio and editor modules |
 | `web/site/` | The demo page: the canvas and input (`main.js`), drawing (`canvas2d.js`), the AudioWorklet (`worklet.js`) |
 | `build-web.ps1` | Builds the browser demo with Emscripten, and serves it |
-| `.github/workflows/release.yml` | On a version tag: a GitHub release with the plugin, and the browser demo on GitHub Pages |
+| `.github/workflows/release.yml` | On a version tag: a GitHub release with the plugins, and the browser demo on GitHub Pages |
 
-Everything except `entry.cpp`, `plugin.cpp`, `presets.cpp`, `usersettings.cpp` and `editor.cpp` builds into the
-`fmvibe-core` static library, which
-the plugin and the tools share. The browser demo builds the engine (`FMVIBE_ENGINE_SOURCES`) into its modules
+Everything except the plugins' own files builds into the `fmvibe-core` static library, which the plugins and the
+tools share. `plugincore.cpp`, `presets.cpp`, `usersettings.cpp` and `editor.cpp` build into `fmvibe-plugin` on top
+of it, which each plugin links a copy of (so the editor's window class belongs to that plugin's DLL). The VST3 SDK's
+interfaces and their ids build into `vst3-interfaces`, for the VST3 plugin and its test host. The browser demo builds the engine (`FMVIBE_ENGINE_SOURCES`) into its modules
 itself.
 
 ## Plugin facts
 
-- CLAP id `io.github.pcdlin.fmvibe`. Changing it makes hosts treat it as a different plugin.
+- CLAP id `io.github.pcdlin.fmvibe`, VST3 class id `9BCBBCB9-166D49F6-A9C2271D-5009BDD5` (`kClassId` in
+  `src/vst3plugin.h`). Changing either makes hosts treat it as a different plugin.
+- The VST3 plugin is a single component: one object is its component, processor and edit controller, so
+  `getControllerClassId()` has none to name, and the controller's own state is empty (the component's is the whole
+  state). Its params are FMVibe's, by the same ids, normalized over each one's range (a stepped one's steps spread
+  as VST3 has them; the chain order has more orders than a step count holds, and passes as continuous). After them
+  come the MIDI controllers' params (ids from `0x40000000`, `kMidiParamBase`: 130 per channel, CC 0-127, then
+  channel pressure and pitch bend), which `IMidiMapping` hands hosts and the process loop turns back into MIDI;
+  they are not stored. Param changes and events are sorted by their place in a block and applied there, param
+  changes first. While processing, the host's values reach the params through `process()` only: its copy for the
+  controller (`setParamNormalized()`) may come late, and is taken only while not processing.
 - The version number is set once, in `project()` at the top of `CMakeLists.txt`. It reaches the code as
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
@@ -407,13 +455,15 @@ itself.
   also has an aux (the source + 1 that scales it, 0 = none; wiring, hidden) and an Amount (0–1, 1 to begin with,
   automatable), whose defaults leave a slot as it was. A slot swings its target one way or both as its source's
   own switch says.
-- Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events. Hosts
+- Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events (in
+  VST3, `beginEdit()` / `performEdit()` / `endEdit()` on the main thread). Hosts
   record automation and undo from these, and mark the project as changed. Loading a preset, or Init, sends them for
   each param whose value changed. The last of the queue they wait in is kept for the ends of gestures already begun,
   so a host is never left inside one; an edit that doesn't fit has the host read every value again (a values
   rescan) instead. For half a second after the plugin
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
-  little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment.
+  little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
+  hand every edit back to the processor, which the same moment keeps out.
 - The state blob holds `(id, value)` pairs with a version number (currently 3: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now), followed by the editor layout:
@@ -440,20 +490,27 @@ itself.
   note that is sounding.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
   allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
-  `host->request_restart()`, and the host then deactivates and reactivates the plugin. Each voice takes about
+  `host->request_restart()` (in VST3, `restartComponent(kLatencyChanged)`, on the main thread), and the host then
+  deactivates and reactivates the plugin. What VST3 only allows on the main thread, and the audio thread may ask for,
+  goes through a message-only window there. Each voice takes about
   66 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 105 KB, so 512 voices use about 54 MB. Voices isn't automatable for the same reason.
-- The CRT is linked statically. The `.clap` depends only on Windows system DLLs (kernel32, user32, Direct2D,
-  DirectWrite), not on the VC++ redistributable.
+- The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
+  user32, Direct2D, DirectWrite, and ole32 for the VST3 one), not on the VC++ redistributable. The `.vst3` is a
+  bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`.
 
-## Updating the CLAP SDK
+## Updating the CLAP and VST3 SDKs
 
 Change the tag in the `FetchContent_Declare(clap ...)` URL in `CMakeLists.txt` and replace the hash with the new
-archive's SHA-256 (`Get-FileHash <file> -Algorithm SHA256`).
+archive's SHA-256 (`Get-FileHash <file> -Algorithm SHA256`). The VST3 SDK comes as three archives of the same tag:
+`vst3_pluginterfaces`, which the plugin is built against, and `vst3_base` and `vst3_public_sdk`, which only the
+validator is built from; update the three together. Its interfaces' version also goes into the class info hosts
+see.
 
 ## Next steps
 
 - Presets: the `clap.preset-load` extension and preset discovery, so hosts can browse FMVibe's presets too.
 - Sound: fixed-frequency operators, key scaling, oversampling for high-index patches.
-- VST3, AU and standalone builds: [clap-wrapper](https://github.com/free-audio/clap-wrapper) builds these from the
-  same CLAP code. The plugin's editor is Windows-only for now (the browser demo has its own drawing backend).
+- AU and standalone builds: [clap-wrapper](https://github.com/free-audio/clap-wrapper) builds these from the
+  CLAP plugin. The plugins' editor is Windows-only for now (the browser demo has its own drawing backend).
+- VST3: a `moduleinfo.json` in the bundle, for hosts that scan with it.
