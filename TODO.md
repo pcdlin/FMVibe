@@ -26,15 +26,6 @@
 
 ## Improvements 
 
-- A source dropped on a depth bar sets that slot's aux, in place of modulating that depth
-    - **In one line:** decided: a source no longer modulates another source's depth; dropped on a depth bar in a
-      source's list, it becomes that modulation's aux, as on its depth handle.
-    - **Feasible, small.** `droppable()` stops taking a `SlotBar` (the drop goes to `setAux()` instead), and
-      `slotTarget()` stops taking a slot's depth, so a patch with a source modulating another's depth loads
-      without it (no factory preset has one). The bar shows its aux as the one dot in its top right corner, where
-      the depth modulation's dots were. Host modulation of the depths stays. uishot's `renderLfoOnLfo` becomes the
-      aux drop on a depth bar; features.md's Modulation section.
-
 - Move factory presets out of the C++ code, into committed .FMV files. They should be compiled into the code on build.
     - **In one line:** move the preset reading and writing into the core library, export today's presets once as
       sparse `.fmv` files (only what differs from Init; a full one is ~128 KB), embed them with CMake as byte
@@ -145,7 +136,5 @@
       small dots.
 
 ## TBD
-
-- Check shaper behavior. A hard clipper without link should output at max 0dBfs.
 
 - Filter drive sounds strange, investigate
