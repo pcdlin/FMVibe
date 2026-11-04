@@ -5776,8 +5776,12 @@ void View::paintTooltip(Canvas &c) {
         text = filterTypeName(static_cast<FilterType>(hover_->b));
     else if (field == FxParam::ShaperMode)
         text = tr(hover_->b == 0 ? Str::TipClipHard : hover_->b == 1 ? Str::TipClipSoft : Str::TipClipAsym);
-    else
+    else if (sourceFieldOf(param) == SourceParam::MidiInput)
+        text = tr(hover_->b == static_cast<int>(MidiInput::Cc) ? Str::TipMidiCc : Str::TipMidiPressure);
+    else if (param == paramIndex(GlobalParam::GlideAlways))
         text = tr(Str::TipGlideAlways);
+    else
+        return; // a switch with nothing to say
     // As wide as its text, centered under the widget and kept inside the editor.
     const float width = std::min(std::ceil(c.textWidth(text, 11.0f)) + 24.0f, View::kWidth - 16.0f);
     const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);

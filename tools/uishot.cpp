@@ -2144,6 +2144,22 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     view.wheel({cardX(2) + 172.0f, 590.0f}, 1.0f, {}); // no CC knob there now
     view.mouseMove({600.0f, 300.0f}, {});
     const bool shot = renderer.save(view, dir / "11e-new-sources.png");
+    // Its switch's halves each show a tooltip of their own under them (read off the rendered pixels along y 618,
+    // against the same view with the mouse away); the wording is in the snapshots.
+    auto underSwitch = [&](const char *name) {
+        std::vector<uint32_t> pixels;
+        if (renderer.save(view, dir / name))
+            for (float x = cardX(1); x <= cardX(1) + 200.0f; x += 2.0f)
+                pixels.push_back(renderer.pixel({x, 618.0f}));
+        return pixels;
+    };
+    const std::vector<uint32_t> away = underSwitch("11f-midi-switch-away.png");
+    view.mouseMove({cardX(1) + 16.0f + 32.0f, 590.0f}, {});
+    const std::vector<uint32_t> ccTip = underSwitch("11g-midi-cc-tooltip.png");
+    view.mouseMove({cardX(1) + 80.0f + 32.0f, 590.0f}, {});
+    const std::vector<uint32_t> pressureTip = underSwitch("11h-midi-pressure-tooltip.png");
+    check(ccTip != away && pressureTip != away && ccTip != pressureTip,
+          "a MIDI card's input switch shows a tooltip for each of its halves");
     check(added && shot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
               model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "the title row adds Random and MIDI sources, a MIDI card's switch picking aftertouch over its controller");

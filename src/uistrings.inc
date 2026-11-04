@@ -647,6 +647,8 @@ STR(TipClipHard, "Hard clipping")
 STR(TipClipSoft, "Soft clipping")
 STR(TipClipAsym, "Asymmetric clipping, tube-like")
 STR(TipGlideAlways, "Glide on every note, not just overlapping ones")
+STR(TipMidiCc, "Follow a MIDI controller, picked with the CC knob")
+STR(TipMidiPressure, "Follow aftertouch: each note's own, else the channel's")
 
 // --- The editor: right-click menus
 
