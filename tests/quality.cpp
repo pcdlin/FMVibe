@@ -516,25 +516,25 @@ struct PinnedPreset {
 };
 constexpr PinnedPreset kPresetChecksums[] = {
     {"KY Electric Piano", 0x8730f506dd3fb162ull},
-    {"BA FM Bass", 0x6c323f86c93a2a0eull},
+    {"BA FM Bass", 0xfc939b471c9fd217ull},
     {"KY Glass Bell", 0x5cc3e4cfa5050874ull},
     {"PD Warm Pad", 0x0794e780466d0e14ull},
     {"KY Drawbar Organ", 0x5861d8b17c9f0deaull},
     {"PL Pluck Delay", 0xe152c8ab3a580157ull},
     {"PD Crystal Motion", 0xbb3f33bce04e41b6ull},
-    {"BA Reese Bass", 0xd63fd644bd8f5f35ull},
-    {"BA Wobble Bass", 0x9616a3ddf48153d3ull},
+    {"BA Reese Bass", 0xadccf9cc25b0be32ull},
+    {"BA Wobble Bass", 0xc1d0aa59fc050ed6ull},
     {"PD Shimmer Pad", 0xd1075109b1644533ull},
     {"SQ Trance Gate", 0xc817bbda549936b0ull},
     {"LD FM Brass", 0xb729e7aee9e1e6b2ull},
     {"FX Industrial Hit", 0xb82b2cdb5cc78306ull},
-    {"LD Folded Lead", 0x952de5105a661759ull},
+    {"LD Folded Lead", 0xecf1feb1cb01deeeull},
     {"BA Fuzz Bass", 0x25112538f7622d54ull},
     {"PL Comb String", 0xf5a90a00020939b6ull},
     {"PL Chip Pluck", 0x6d7986d69bd273c1ull},
     {"SQ Step Filter", 0xfec0c18da1d7740full},
     {"SQ Glass Steps", 0x55048d5e1da0a987ull},
-    {"LD Vowel Lead", 0x27a6d34ebe87b8acull},
+    {"LD Vowel Lead", 0x827ad6e86c41f51full},
     {"FX Laser Zap", 0x46e551bcdd26cd9aull},
     {"FX Noise Riser", 0xf49996af1f5603f5ull},
 };
@@ -1127,6 +1127,24 @@ int main() {
         }
         std::printf("      %-30s %7.1fx\n", "stolen voice", worst / steady);
         check(worst < 4.0 * steady, "a stolen voice fades out instead of clicking");
+
+        // Poly legato: a note played over a held one at its sustain joins it there, a square starting at full level;
+        // it doesn't step in (it fades in over 5 ms, its gain ramping in over its first block besides).
+        worst = steady = 0.0;
+        for (int trial = 0; trial < 8; ++trial) {
+            Engine e(2);
+            e.synth().setPlayMode(false, true, false);
+            e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Square);
+            e.p[paramIndex(0, OpParam::Sustain)] = 1.0;
+            e.noteOn(48);
+            const std::vector<float> before = e.render(4800 + 37 * trial);
+            e.noteOn(55);
+            const std::vector<float> both = joined(before, e.render(2400));
+            steady = std::max(steady, roughness(both, 2400, before.size()));
+            worst = std::max(worst, roughness(both, before.size() - 2, both.size()));
+        }
+        std::printf("      %-30s %7.1fx\n", "poly legato join", worst / steady);
+        check(worst < 4.0 * steady, "a note joining a held one in poly legato fades in instead of clicking");
 
         // Volume jumps 12 dB: rendered in single frames, as when events split the
         // block, it should ramp as smoothly as in whole blocks.

@@ -78,7 +78,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - unison copies spread across the stereo field (and match when centered);
   - mono: a new key takes the voice over, letting go returns to the held key, and every note reports `NOTE_END`
     exactly once;
-  - legato keeps the envelope at its sustain level while retrigger restarts the attack; glide slides between
+  - legato keeps the envelope at its sustain level while retrigger restarts the attack, in mono and in poly, where
+    a note played over a held one joins that one's envelopes (at its sustain, or swelling along with it); glide
+    slides between
     overlapping notes and skips detached ones unless Always is on (checked by tracking the pitch);
   - a lower voice limit applies immediately, while a higher one requests a restart and is reported through
     voice-info after reactivation.
@@ -86,7 +88,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken. It saves/loads state
-  through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, envelope times
+  through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, a version 2
+  state's Legato loading off in poly (and as it was in mono), envelope times
   stored past 10 s loading as 10 s, a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: 16 voices × 6 operators take about a third of what they took
@@ -97,7 +100,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM, feedback and a driven filter;
   - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
-  - clicks when a voice is stolen, and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
+  - clicks when a voice is stolen, when a note joins a held one in poly legato, and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band) jumps while events split the block into single frames;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
@@ -392,8 +395,9 @@ itself.
   rescan) instead. For half a second after the plugin
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment.
-- The state blob holds `(id, value)` pairs with a version number (currently 2: version 1's Volume loads 12 dB
-  lower, since Volume now gives back the 12 dB the voices go into the effects with), followed by the editor layout:
+- The state blob holds `(id, value)` pairs with a version number (currently 3: version 1's Volume loads 12 dB
+  lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
+  poly loads Legato off, since it did nothing there then and acts there now), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

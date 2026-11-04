@@ -125,9 +125,10 @@ public:
     // How many of the allocated voices may sound at once. Lowered, it takes effect at once: the voices past it fade
     // out as stolen ones do.
     void setVoiceLimit(int limit);
-    // Mono plays one voice that moves from note to note; legato (mono only) keeps
-    // its envelopes running between overlapping notes. Glide happens on every note
-    // with glideAlways, otherwise only between overlapping ones; its time is a param.
+    // Mono plays one voice that moves from note to note; legato keeps its envelopes
+    // running between overlapping notes (in poly, a new note joins the envelopes of the
+    // newest key held; see noteOn()). Glide happens on every note with glideAlways,
+    // otherwise only between overlapping ones; its time is a param.
     void setPlayMode(bool mono, bool legato, bool glideAlways) {
         mono_ = mono;
         legato_ = legato;

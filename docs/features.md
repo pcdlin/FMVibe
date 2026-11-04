@@ -275,9 +275,18 @@ What the plugin does and how its editor works, in full. Building and installing 
 - **Play modes**:
   - **Mono** plays one voice that moves from note to note. When you let go of the sounding key while others are
     held, it returns to the most recent one.
-  - **Legato** (on by default, mono only): a note played while another key is down only changes the pitch, and the
-    envelopes and LFOs keep running. Without it, every note restarts them from their current level, so there's no
-    click.
+  - **Legato** (off by default): a note played while another key is down doesn't start its envelopes over.
+    - In mono it only changes the pitch, and the envelopes and LFOs keep running. Without it, every note restarts
+      them from their current level, so there's no click.
+    - In poly the new note gets a voice of its own, which joins the voice of the newest key still down: its
+      operators' envelopes and mod envelopes take up that voice's stage and level, and its LFOs that start with
+      notes that voice's phase. A note played over a held one at its sustain starts at the sustain level rather than
+      from the attack, and one played while the held note still swells swells along with it, so a chord played
+      across held keys swells and wavers together instead of attacking note by note. (Over a held note whose
+      envelope has decayed to a sustain of 0, the new note is silent, as in mono.) The new voice fades in over 5 ms,
+      since its envelopes may start well above nothing. A key played with no other key down attacks as usual.
+    - Patches saved before Legato acted in poly (state version 2 and earlier) load it off in poly, where it did
+      nothing, so they play as they did; in mono they keep it.
   - **Glide** (0 = off, 1 ms–20 s) slides the pitch from the previous note, in mono and poly alike. By default it
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
@@ -519,9 +528,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, then a Glide knob like the global
-  ones, its Always switch beside its label, each switch explaining itself on hover); Bend; Voices (it drags on a log
-  scale, so 4 and 512 are both easy to reach); and how many voices are playing.
+  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, then a Glide
+  knob like the global ones, its Always switch beside its label, each switch explaining itself on hover); Bend;
+  Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
   value, adding or removing an effect or source (with its modulation), moving nodes or cards, bending a wire, Init

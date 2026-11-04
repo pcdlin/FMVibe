@@ -13,15 +13,6 @@
     - **Feasible, small:** the preset browser's search (`dialogs.cpp`) already edits text this way; the rows and the
       menu's entries are built by name (`modsRows()`, `cascadeTree()` in `mods.cpp`).
 
-- Poly legato
-    - **In one line:** with Legato on in poly, a note played while another key is down starts its envelopes at their
-      sustain level instead of from the attack, so overlapping chords swell together instead of re-attacking.
-    - **Feasible, small–medium.** Today Legato only acts in mono, where a new note takes over the sounding voice
-      (`Synth::noteOn()` in `synth.cpp`); in poly every note gets a fresh voice, so there's nothing to keep running.
-      To decide: whether the operators' envelopes and the mod envelopes both skip to sustain, and whether LFOs that
-      restart with notes keep the held voice's phase. The Legato switch stops greying out in poly
-      (`view.cpp`, the play switches), with a smoke check and features.md's Play modes.
-
 ## Issues 
 
 ## Improvements 

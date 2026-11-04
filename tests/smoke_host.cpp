@@ -2171,8 +2171,36 @@ int main(int argc, char **argv) {
         check(std::abs(jumped - e4) < 0.03 * e4 && alwaysGliding < 310.0,
               "glide skips detached notes unless Always is on");
 
+        // Poly legato: a note played while another key is down joins its voice. At its sustain, the new note starts
+        // there rather than attacking (the overlap's peak about twice the held note's, not six times); while the held
+        // note still swells (a 1 s attack, half way), the new one swells along at its level rather than from nothing.
+        setParams({{mono, 0.0}, {glide, 0.0}, {always, 0.0}});
+        const float polyLegatoPeak = overlapPeak(1.0);
+        const float polyRetriggerPeak = overlapPeak(0.0);
+        const int attack = paramIndex(0, OpParam::Attack);
+        double attackWas = 0.0;
+        params->get_value(plugin, idOfIndex(attack), &attackWas);
+        auto swellRatio = [&](double legatoOn) { // E4's level against C4's, just after E4 starts
+            setParams({{legato, legatoOn}, {attack, normFromTime(1.0)}, {sustain, 1.0}});
+            note(CLAP_EVENT_NOTE_ON, 76, 60);
+            runBlocks(blocksPerSecond / 2);
+            note(CLAP_EVENT_NOTE_ON, 77, 64);
+            runBlocks(2);
+            const std::vector<float> both = capture(8);
+            runBlock({&chokeAll.header});
+            return magnitude(both, e4) / magnitude(both, c4);
+        };
+        const double joinedSwell = swellRatio(1.0), freshSwell = swellRatio(0.0);
+        std::printf("      poly overlapping note peak: %.3f legato, %.3f retriggered; mid-swell E4/C4: %.2f legato, "
+                    "%.2f retriggered\n",
+                    polyLegatoPeak, polyRetriggerPeak, joinedSwell, freshSwell);
+        check(polyRetriggerPeak > 2.0f * polyLegatoPeak && joinedSwell > 0.75 && joinedSwell < 1.33 &&
+                  freshSwell < 0.5,
+              "poly legato starts a note played over a held one where that one's envelopes are");
+
         // Back to the defaults for the rest of the tests.
-        setParams({{mono, 0.0}, {glide, 0.0}, {always, 0.0}, {sustain, 0.6}});
+        setParams({{mono, 0.0}, {legato, 0.0}, {glide, 0.0}, {always, 0.0}, {sustain, 0.6},
+                   {attack, attackWas}});
     }
 
     // Voice limit: lowering it applies at once.
@@ -2394,7 +2422,7 @@ int main(int argc, char **argv) {
 
         MemoryStream newer;
         newer.data = patch.data;
-        newer.data[4] = 3; // a state version from the future
+        newer.data[4] = 4; // a state version from the future
         check(!state->load(plugin, &newer.in), "load rejects a newer state version");
 
         // Hosts see a slot's fields for the effect it holds, and not the others.
@@ -2457,6 +2485,33 @@ int main(int argc, char **argv) {
                     fromOne, fromOneLow, fromTwo);
         check(fromOne == -12.0 && fromOneLow == -60.0 && fromTwo == 0.0,
               "a version 1 state's Volume loads 12 dB lower, held at the bottom of its range");
+    }
+
+    // Legato acts in poly too since version 3: an earlier state with Legato on (as it was to begin with) loads it
+    // off in poly, where it did nothing, and keeps it in mono.
+    {
+        auto legatoFrom = [&](uint32_t version, double mono) {
+            MemoryStream old;
+            const uint32_t header[] = {0x38454C43, version, 2};
+            old.data.assign(reinterpret_cast<const uint8_t *>(header),
+                            reinterpret_cast<const uint8_t *>(header) + sizeof(header));
+            for (auto [index, stored] : {std::pair{paramIndex(GlobalParam::Mono), mono},
+                                         std::pair{paramIndex(GlobalParam::Legato), 1.0}}) {
+                const uint32_t id = idOfIndex(index);
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                                reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&stored),
+                                reinterpret_cast<const uint8_t *>(&stored) + sizeof(stored));
+            }
+            const bool loaded = state->load(plugin, &old.in);
+            plugin->on_main_thread(plugin);
+            double value = 99.0;
+            if (loaded)
+                params->get_value(plugin, idOfIndex(paramIndex(GlobalParam::Legato)), &value);
+            return value;
+        };
+        check(legatoFrom(2, 0.0) == 0.0 && legatoFrom(2, 1.0) == 1.0 && legatoFrom(3, 0.0) == 1.0,
+              "an earlier state's Legato loads off in poly and as it was in mono");
     }
 
     // Envelopes' attacks, holds, decays and releases go up to 10 s: one stored longer (up to 20 s, which they once
