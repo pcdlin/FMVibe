@@ -6,7 +6,9 @@
 #include "uistrings.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -36,9 +38,6 @@ struct EditEvent {
     double value;
 };
 
-// How much of the edit queue only gestures' ends may take.
-constexpr size_t kEndRoom = 256;
-
 } // namespace
 
 const clap_plugin_descriptor_t kDescriptor = {
@@ -62,9 +61,11 @@ public:
     const clap_plugin_t *clapPlugin() const { return &plugin_; }
 
 protected:
-    void hostBeginEdit(int index) override { queueEdit({EditEvent::Type::Begin, idOfIndex(index), 0.0}); }
-    void hostEdit(int index, double value) override { queueEdit({EditEvent::Type::Value, idOfIndex(index), value}); }
-    void hostEndEdit(int index) override { queueEdit({EditEvent::Type::End, idOfIndex(index), 0.0}); }
+    void hostBeginEdit(int index) override { queueEdit(index, {EditEvent::Type::Begin, idOfIndex(index), 0.0}); }
+    void hostEdit(int index, double value) override {
+        queueEdit(index, {EditEvent::Type::Value, idOfIndex(index), value});
+    }
+    void hostEndEdit(int index) override { queueEdit(index, {EditEvent::Type::End, idOfIndex(index), 0.0}); }
     void hostValuesChanged() override {
         if (hostParams_)
             hostParams_->rescan(host_, CLAP_PARAM_RESCAN_VALUES);
@@ -103,7 +104,9 @@ private:
     void handleEvent(const clap_event_header_t *ev);
     void applyTransport(const clap_event_transport_t &transport);
     void setParam(const clap_event_param_value_t &ev) { setHostValue(indexOfId(ev.param_id), ev.value, true); }
-    void queueEdit(const EditEvent &ev);
+    void queueEdit(int index, const EditEvent &ev);
+    // What the host's main-thread callback does: the values rescan queueEdit() put off, then onMainThread().
+    void mainThread();
     void sendEdits(const clap_output_events_t *out);
     void reportEndedNotes(const clap_output_events_t *out, uint32_t frames);
 
@@ -126,6 +129,12 @@ private:
     std::vector<clap_remote_controls_page_t> remotePages_;
     // Presets set every param at once, about three events each.
     SpscQueue<EditEvent, 3 * kParamCount + 1024> edits_;
+    // Main thread: how many of each param's gestures went out begun, whose ends the queue keeps room for, and how
+    // many in all (see queueEdit()).
+    std::array<uint16_t, kParamCount> begun_{};
+    size_t openGestures_ = 0;
+    // Main thread: an edit didn't fit in the queue, and the host is to read every value again.
+    bool rescanValues_ = false;
 };
 
 Plugin::Plugin(const clap_host_t *host) : host_(host) {
@@ -135,7 +144,11 @@ Plugin::Plugin(const clap_host_t *host) : host_(host) {
         &kDescriptor,
         this,
         [](const clap_plugin_t *p) { return self(p).init(); },
-        [](const clap_plugin_t *p) { delete &self(p); },
+        [](const clap_plugin_t *p) {
+            // The editor goes first, while this is still a Plugin: closing it may end a gesture (hostEndEdit()).
+            self(p).closeEditor();
+            delete &self(p);
+        },
         [](const clap_plugin_t *p, double sampleRate, uint32_t, uint32_t) {
             self(p).activate(sampleRate);
             return true;
@@ -146,7 +159,7 @@ Plugin::Plugin(const clap_host_t *host) : host_(host) {
         [](const clap_plugin_t *p) { self(p).resetVoices(); },
         [](const clap_plugin_t *p, const clap_process_t *process) { return self(p).process(process); },
         [](const clap_plugin_t *, const char *id) { return extension(id); },
-        [](const clap_plugin_t *p) { self(p).onMainThread(); }, // see setHostValue(), loadState()
+        [](const clap_plugin_t *p) { self(p).mainThread(); }, // see setHostValue(), loadState(), queueEdit()
     };
 }
 
@@ -277,17 +290,50 @@ void Plugin::handleEvent(const clap_event_header_t *ev) {
     }
 }
 
-void Plugin::queueEdit(const EditEvent &ev) {
-    // The value itself is already stored; the event tells the host about it. The last of the queue is kept for
-    // the ends of gestures already begun, so the host is never left inside one; an edit that doesn't fit has the
-    // host read every value again instead.
-    const bool queued =
-        ev.type == EditEvent::Type::End ? edits_.push(ev) : edits_.room() > kEndRoom && edits_.push(ev);
-    if (!hostParams_)
+// Main thread.
+void Plugin::queueEdit(int index, const EditEvent &ev) {
+    // The value itself is already stored; the event tells the host about it. The queue keeps room for the end of
+    // each gesture begun, so the host is never left inside one, and a gesture whose begin didn't fit goes without
+    // its end. An edit that doesn't fit has the host read every value again instead, once for all of them, when it
+    // calls back (a large undo may not fit by thousands).
+    bool queued = false;
+    switch (ev.type) {
+    case EditEvent::Type::Begin: // room for itself, and for its end with the others'
+        queued = begun_[index] < UINT16_MAX && edits_.room() >= openGestures_ + 2 && edits_.push(ev);
+        if (queued) {
+            ++begun_[index];
+            ++openGestures_;
+        }
+        break;
+    case EditEvent::Type::Value:
+        queued = edits_.room() >= openGestures_ + 1 && edits_.push(ev);
+        break;
+    case EditEvent::Type::End:
+        if (begun_[index] == 0)
+            return; // its begin didn't go out
+        --begun_[index];
+        --openGestures_;
+        queued = edits_.push(ev); // the room kept for it
+        break;
+    }
+    if (!queued) {
+        if (!rescanValues_) {
+            rescanValues_ = true;
+            hostRequestCallback();
+        }
         return;
-    if (!queued)
-        hostParams_->rescan(host_, CLAP_PARAM_RESCAN_VALUES);
-    hostParams_->request_flush(host_);
+    }
+    if (hostParams_)
+        hostParams_->request_flush(host_);
+}
+
+void Plugin::mainThread() {
+    if (rescanValues_) {
+        rescanValues_ = false;
+        if (hostParams_)
+            hostParams_->rescan(host_, CLAP_PARAM_RESCAN_VALUES);
+    }
+    onMainThread();
 }
 
 // Audio thread, or flush() which never runs alongside it.
@@ -407,13 +453,14 @@ const clap_plugin_params_t Plugin::kParamsExt = {
     // the editor's edits on their way out to the host.
     [](const clap_plugin_t *p, const clap_input_events_t *in, const clap_output_events_t *out) {
         Plugin &plugin = self(p);
+        // The editor's edits first, as in process(): the host's values that follow are then checked against them.
+        plugin.sendEdits(out);
         const uint32_t count = in->size(in);
         for (uint32_t i = 0; i < count; ++i) {
             const clap_event_header_t *ev = in->get(in, i);
             if (ev->space_id == CLAP_CORE_EVENT_SPACE_ID && ev->type == CLAP_EVENT_PARAM_VALUE)
                 plugin.setParam(*reinterpret_cast<const clap_event_param_value_t *>(ev));
         }
-        plugin.sendEdits(out);
     },
 };
 

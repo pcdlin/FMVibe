@@ -217,7 +217,7 @@ HINSTANCE moduleHandle() {
     return module;
 }
 
-// How many param changes and events a block sorts by time; any beyond apply at its start.
+// How many param changes and events a block sorts by time; any beyond apply after them, as the host gave them.
 constexpr size_t kMaxChanges = 4096;
 
 } // namespace
@@ -410,7 +410,12 @@ private:
     void woken();
     static LRESULT CALLBACK wakeProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 
-    void collect(ProcessData &data);
+    // Hands each of the block's param changes and events to `take`, in the host's order (see Change::order).
+    template <class Take>
+    void forEachChange(ProcessData &data, Take &&take);
+    // Returns whether there were more than kMaxChanges, which applyOverflow() applies.
+    bool collect(ProcessData &data);
+    void applyOverflow(ProcessData &data);
     void apply(const Change &change, ProcessData &data);
     void applyMidi(ParamID id, double value);
     void applyEvent(const Event &ev);
@@ -686,7 +691,7 @@ tresult PLUGIN_API Plugin::process(ProcessData &data) {
     if (data.processContext && (data.processContext->state & ProcessContext::kTempoValid))
         synth().setTempo(data.processContext->tempo);
     beginBlock();
-    collect(data);
+    const bool overflow = collect(data);
 
     // Without a stereo output to render into (a host flushing params), the changes are only taken.
     const int32 frames = std::max(data.numSamples, 0);
@@ -708,6 +713,8 @@ tresult PLUGIN_API Plugin::process(ProcessData &data) {
         }
         apply(change, data);
     }
+    if (overflow)
+        applyOverflow(data);
     if (rendering && frames > cursor)
         render(left + cursor, right + cursor, static_cast<uint32_t>(frames - cursor));
     if (rendering)
@@ -717,9 +724,8 @@ tresult PLUGIN_API Plugin::process(ProcessData &data) {
     return kResultOk;
 }
 
-// The block's param changes and events, by their place in it. Those past what was reserved apply at its start.
-void Plugin::collect(ProcessData &data) {
-    changes_.clear();
+template <class Take>
+void Plugin::forEachChange(ProcessData &data, Take &&take) {
     int32 order = 0;
     if (IParameterChanges *params = data.inputParameterChanges) {
         const int32 count = params->getParameterCount();
@@ -734,11 +740,7 @@ void Plugin::collect(ProcessData &data) {
                 ParamValue value = 0.0;
                 if (queue->getPoint(p, offset, value) != kResultOk)
                     continue;
-                const Change change{offset, order++, id, value, false};
-                if (changes_.size() < kMaxChanges)
-                    changes_.push_back(change);
-                else
-                    apply(change, data);
+                take(Change{offset, order++, id, value, false});
             }
         }
     }
@@ -748,16 +750,34 @@ void Plugin::collect(ProcessData &data) {
             Event ev{};
             if (events->getEvent(e, ev) != kResultOk)
                 continue;
-            const Change change{ev.sampleOffset, order++, 0, static_cast<double>(e), true};
-            if (changes_.size() < kMaxChanges)
-                changes_.push_back(change);
-            else
-                apply(change, data);
+            take(Change{ev.sampleOffset, order++, 0, static_cast<double>(e), true});
         }
     }
+}
+
+// The block's param changes and events, by their place in it, as many as were reserved for.
+bool Plugin::collect(ProcessData &data) {
+    changes_.clear();
+    bool overflow = false;
+    forEachChange(data, [&](const Change &change) {
+        if (changes_.size() < kMaxChanges)
+            changes_.push_back(change);
+        else
+            overflow = true;
+    });
     // Param changes come before the notes at the same place, so a note hears the values it starts with.
     std::sort(changes_.begin(), changes_.end(), [](const Change &a, const Change &b) {
         return a.offset != b.offset ? a.offset < b.offset : a.order < b.order;
+    });
+    return overflow;
+}
+
+// Those past what was reserved, after the others and in the host's order: each param's later points after its
+// earlier ones, and events after the ones before them in the list, so a note's end follows its start.
+void Plugin::applyOverflow(ProcessData &data) {
+    forEachChange(data, [&](const Change &change) {
+        if (change.order >= static_cast<int32>(kMaxChanges))
+            apply(change, data);
     });
 }
 

@@ -241,7 +241,10 @@ bool paramTextRoundTrips(const clap_plugin_t *plugin, const clap_plugin_params_t
         if (!params->get_info(plugin, i, &info))
             return false;
         const double mid = (info.min_value + info.max_value) / 2.0;
-        for (double value : {info.min_value, info.default_value, mid, info.max_value}) {
+        // Just inside each end too: the shortest time that isn't Off, the slowest sweep that isn't still.
+        const double nearEnd = (info.max_value - info.min_value) * 1e-4;
+        for (double value : {info.min_value, info.min_value + nearEnd, info.default_value, mid,
+                             info.max_value - nearEnd, info.max_value}) {
             char text[64] = {}, again[64] = {};
             double parsed = 0.0;
             const bool roundTrip = params->value_to_text(plugin, info.id, value, text, sizeof(text)) &&
@@ -305,6 +308,18 @@ int main(int argc, char **argv) {
           "param infos: unique ids, names, defaults within range");
     check(paramTextRoundTrips(plugin, params), "param text conversions read back what they write");
     check(paramTextsAreWholeUtf8(plugin, params), "param names and texts are whole UTF-8, even in small buffers");
+    {
+        // The slowest sweep and the shortest time typed are those, not still or Off; 0 is.
+        auto parsed = [&](int index, const char *text) {
+            double value = -1.0;
+            return params->text_to_value(plugin, idOfIndex(index), text, &value) ? value : -1.0;
+        };
+        const int rate = paramIndex(0, FxParam::PhaserRate), glide = paramIndex(GlobalParam::Glide);
+        check(parsed(rate, "0.02 Hz") > 0.0 && parsed(rate, "0 Hz") == 0.0 && parsed(rate, "0") == 0.0 &&
+                  parsed(glide, "1 ms") > 0.0 && parsed(glide, "1.0 ms") > 0.0 && parsed(glide, "Off") == 0.0 &&
+                  parsed(glide, "0") == 0.0,
+              "a sweep typed at its slowest rate moves and a time at its shortest isn't Off; 0 is still and Off");
+    }
     {
         bool rangeOk = true;
         for (int index : {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)}) {
@@ -451,6 +466,23 @@ int main(int argc, char **argv) {
     out.noteEnds.clear();
     check(runBlock({&chokeAll.header}) == 0.0f && out.noteEnds.size() == 16,
           "choke with wildcards silences every voice");
+
+    // A reset ends the notes playing, and the next block reports their ends.
+    {
+        const clap_event_note_t onA = noteEvent(CLAP_EVENT_NOTE_ON, 50, 60);
+        const clap_event_note_t onB = noteEvent(CLAP_EVENT_NOTE_ON, 51, 64);
+        runBlock({&onA.header, &onB.header});
+        out.noteEnds.clear();
+        plugin->reset(plugin);
+        runBlock();
+        auto ended = [&](int32_t id) {
+            return std::count_if(out.noteEnds.begin(), out.noteEnds.end(),
+                                 [&](const clap_event_note_t &n) { return n.note_id == id; }) == 1;
+        };
+        check(out.noteEnds.size() == 2 && ended(50) && ended(51),
+              "a reset ends the notes playing, and the next block reports them");
+        out.noteEnds.clear();
+    }
 
     // Per-voice host modulation (what Bitwig's modulators send): pull one note's carrier all the way down.
     const int carrierOut = paramIndex(0, OpParam::Out);
@@ -2550,6 +2582,31 @@ int main(int argc, char **argv) {
               "50 notes on 40 voices steal the 10 oldest");
         out.noteEnds.clear();
         check(runBlock({&chokeAll.header}) == 0.0f && out.noteEnds.size() == 40, "choke ends all 40 voices");
+    }
+
+    // So does loading a state with more voices than are allocated, while active.
+    {
+        const clap_event_param_value_t sixty = paramEvent(paramIndex(GlobalParam::Voices), 60.0);
+        const clap_event_param_value_t forty = paramEvent(paramIndex(GlobalParam::Voices), 40.0);
+        auto reactivate = [&] {
+            plugin->stop_processing(plugin);
+            plugin->deactivate(plugin);
+            plugin->activate(plugin, kSampleRate, 1, kBlock);
+            plugin->start_processing(plugin);
+        };
+        runBlock({&sixty.header});
+        MemoryStream more;
+        const bool saved = state->save(plugin, &more.out);
+        runBlock({&forty.header});
+        reactivate(); // 40 voices, and no restart asked for
+        restartRequests = 0;
+        const bool loaded = state->load(plugin, &more.in);
+        double voices = 0.0;
+        params->get_value(plugin, idOfIndex(paramIndex(GlobalParam::Voices)), &voices);
+        check(saved && loaded && voices == 60.0 && restartRequests == 1,
+              "loading a state with a voice limit past the allocated voices requests a restart");
+        runBlock({&forty.header}); // back to 40 for the rest of the tests
+        reactivate();
     }
 
     // CPU: 16 voices with all six operators routed into one another.

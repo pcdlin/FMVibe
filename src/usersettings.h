@@ -14,6 +14,8 @@ struct UserSettings {
 extern UserSettings userSettings; // as the settings file has them; editors only run on the main thread
 
 void readUserSettings();
+// Writes what this process changed since it last read them into the file as it is now, where another process may
+// have changed the others (and the examples count only goes up); userSettings then holds what was written.
 void writeUserSettings();
 
 } // namespace fmvibe
