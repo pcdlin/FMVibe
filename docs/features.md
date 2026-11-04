@@ -414,7 +414,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     card place at the chain's end while there is room for another effect. Six cards fit across, the Param EQ's
     taking one and a half places for a wider spectrum; with more,
     a scrollbar under them (drag its thumb or click its track; drawn thinner while the mouse is away from it) or the
-    mouse wheel over the panel scrolls the chain smoothly, cutting off the cards at the ends. Drag a card by its
+    mouse wheel over the panel scrolls the chain smoothly, cutting off the cards at the ends, and so does a drag with
+    the middle button held (see Everywhere). Drag a card by its
     title to move it along the chain (held at either end of the row, it scrolls the chain along that way),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings or
     remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
@@ -468,7 +469,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     soon as it has that source (added from it, or once it is picked), and the list jumps there, showing as many of
     the source's rows above it as fit; so does the modulation it becomes. Each pick is an undo step, and empty modulations are saved with the patch (up to
     32 of them). With more rows than fit (about ten), a bar at the right (drag its thumb or click its track) or the
-    mouse wheel over the rows (not on a bar, which the wheel turns) scrolls them smoothly, a row a notch.
+    mouse wheel over the rows (not on a bar, which the wheel turns) scrolls them smoothly, a row a notch; a drag
+    with the middle button held drags them up and down.
   - **Partial editor**: picking Custom from an operator's **…** list opens its partials over the routing panel:
     the wave they make, one cycle, then a bar per partial for its level (in dB, from −60 just above the bottom
     to 0 at the top, marked every 12; the bottom itself is none) and, in another color, one for its phase (a full
@@ -591,7 +593,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   **+ ENV** (a drawn plus, like + EFFECT's) to add a source (which opens a collapsed panel). Below, the sources' cards show four at a time, and
   after the last one, while there is room for more, two square dashed cards with a plus, ADD LFO above ADD ENV,
   add one too. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
-  scrollbar) or the mouse wheel over the panel scrolls them smoothly. LFOs and envelopes are numbered by type in the order they show.
+  scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
+  them along. LFOs and envelopes are numbered by type in the order they show.
   - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its
     settings and targets), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
@@ -671,7 +674,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   Mod wheel and the glow slider then move from where they are, a tenth as fast), double-click to reset, use the mouse
   wheel (a trackpad's smaller steps add up to whole notches on what moves in steps: a stepped knob, Voices, an
   operator's pitch, the shape grid and the preset browser's list; while something is being dragged the wheel does
-  nothing, a held key aside), or right-click for reset/remove options. A double-click whose first click closed the
+  nothing, a held key aside), or right-click for reset/remove options. Hold the middle button and drag over a
+  panel that scrolls (the effects chain, the source cards, the MODS view's rows, the preset browser's list) to drag
+  what it shows along with the mouse, whatever is under it; past either end the row stops, and dragged back it
+  follows at once. A middle press on an open list or menu does nothing, and one that starts a drag closes it;
+  while the left button drags something, the middle one does nothing. A double-click whose first click closed the
   preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a

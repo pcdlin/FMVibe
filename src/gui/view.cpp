@@ -6126,6 +6126,9 @@ void View::applyDrag(Point p) {
             openModList(*at, true);
         break;
     }
+    case DragKind::Pan:
+        applyPan(p);
+        break;
     case DragKind::ModsScroll: { // the rows follow the thumb
         const float room = modsScrollTrack().h - modsThumb().h;
         if (room > 0.0f)
@@ -6791,6 +6794,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::TextSelect:
     case DragKind::Bend: // each move set it already
     case DragKind::ModsScroll:
+    case DragKind::Pan: // the left button let go of mid-pan ends it too
     case DragKind::None:
         break; // finishDrag() ends what they hold
     }
@@ -6843,6 +6847,7 @@ void View::finishDrag() {
     case DragKind::FxMove:
     case DragKind::SourceMove:
     case DragKind::Scroll:
+    case DragKind::Pan:
     case DragKind::TextSelect:
     case DragKind::None:
         break;
@@ -6855,6 +6860,100 @@ void View::finishDrag() {
 void View::mouseLeave() {
     if (drag_.kind == DragKind::None)
         hover_.reset();
+}
+
+void View::middleDown(Point p) {
+    if (drag_.kind != DragKind::None || settingsOpen_ || confirm_ >= 0) // a left-button drag, or a dialog, goes on
+        return;
+    std::optional<PanArea> area;
+    float first = 0.0f;
+    if (browserOpen_) { // only its list, over everything else
+        if (!browserList(browserPanel(height())).contains(p))
+            return;
+        const int most = std::max(static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height())), 0);
+        area = PanArea::Browser;
+        first = static_cast<float>(std::clamp(browserScroll_, 0, most));
+    } else {
+        // On an open list or menu, it does nothing; elsewhere they close as a click there closes them, since what
+        // they were opened on may scroll away.
+        if (const auto hit = hitTest(p)) {
+            const Kind k = hit->kind;
+            if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd ||
+                k == Kind::ListItem || k == Kind::PeqTypeItem || k == Kind::WaveMenuItem || k == Kind::CascadeItem ||
+                ((k == Kind::FxMenu || k == Kind::ListMenu || k == Kind::PeqTypeMenu || k == Kind::WaveMenu ||
+                  k == Kind::CascadeMenu) &&
+                 hit->a != 0))
+                return;
+        }
+        if (!controller_.layout().sourcesCollapsed && modPanel(false).contains(p)) {
+            area = PanArea::Sources;
+            first = sourceScroll();
+        } else if (modsWide() && kFxPanel.contains(p)) {
+            area = PanArea::Mods;
+            first = modsFirst();
+        } else if (fxWide() && kFxPanel.contains(p)) {
+            area = PanArea::Fx;
+            first = fxScroll();
+        }
+        if (!area)
+            return;
+        modList_.reset();
+        cascade_.reset();
+        fxMenuOpen_ = false;
+        fxInsertAt_ = -1;
+        listMenu_ = -1;
+        peqMenu_ = -1;
+        waveMenu_ = -1;
+    }
+    menuLive_ = false;
+    endTyping(true);
+    if (*area == PanArea::Mods)
+        scrollMods(first, false); // a glide the wheel started stops where it shows
+    drag_ = Drag{};
+    drag_.kind = DragKind::Pan;
+    drag_.widget.a = static_cast<int>(*area);
+    drag_.start = drag_.now = p;
+    drag_.startValue = first;
+}
+
+void View::middleUp(Point p) {
+    if (drag_.kind != DragKind::Pan)
+        return; // a left-button drag goes on
+    finishDrag();
+    hover_ = hitTest(p);
+}
+
+void View::applyPan(Point p) {
+    // What was under the mouse as the button went down stays under it. Past either end, the row stops there, and
+    // that end is where the mouse holds it from then on, so dragged back it follows at once.
+    const float first = static_cast<float>(drag_.startValue);
+    const float across = p.x - drag_.start.x, down = p.y - drag_.start.y;
+    auto hold = [&](float wanted, float most) {
+        const float to = std::clamp(wanted, 0.0f, std::max(most, 0.0f));
+        if (to != wanted) {
+            drag_.start = p;
+            drag_.startValue = to;
+        }
+        return to;
+    };
+    switch (static_cast<PanArea>(drag_.widget.a)) {
+    case PanArea::Fx:
+        setScroll(ScrollArea::Fx,
+                  hold(first - across / (kFxCardW + kFxGap), scrollLength(ScrollArea::Fx) - kVisibleFx));
+        break;
+    case PanArea::Sources:
+        setScroll(ScrollArea::Sources,
+                  hold(first - across / (kCardW + kCardGap), scrollLength(ScrollArea::Sources) - kVisibleCards));
+        break;
+    case PanArea::Mods:
+        scrollMods(hold(first - down / kModsRowStep, modsEnd()), false);
+        break;
+    case PanArea::Browser: { // in whole rows
+        const int rows = static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height()));
+        browserScroll_ = static_cast<int>(std::lround(hold(first - down / kBrowserRowH, static_cast<float>(rows))));
+        break;
+    }
+    }
 }
 
 void View::doubleClick(Point p, Modifiers mods) {
@@ -7399,6 +7498,8 @@ void View::endTyping(bool commit) {
 }
 
 CursorKind View::cursor() const {
+    if (drag_.kind == DragKind::Pan)
+        return CursorKind::Move;
     if (drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute || drag_.kind == DragKind::ModSource)
         return CursorKind::Hand;
     if (drag_.kind == DragKind::Value && drag_.widget.kind == Kind::PeqPoint) // Alt-dragged for its Q

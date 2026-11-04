@@ -304,6 +304,21 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         updateCursor();
         invalidate();
         return 0;
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONDBLCLK: // a quick second press is a press too
+        SetCapture(hwnd_); // the drag goes on outside the window
+        view_.middleDown(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)));
+        syncFocus();
+        updateCursor();
+        invalidate();
+        return 0;
+    case WM_MBUTTONUP:
+        view_.middleUp(toView(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)));
+        if (GetCapture() == hwnd_ && !(wParam & MK_LBUTTON)) // not from under a drag of the left button
+            ReleaseCapture();
+        updateCursor();
+        invalidate();
+        return 0;
     case WM_RBUTTONUP:
         contextMenu(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         syncFocus();

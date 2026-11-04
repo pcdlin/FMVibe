@@ -1127,6 +1127,123 @@ void testCardEdgeScroll(const std::filesystem::path &dir, Renderer &renderer) {
           "an LFO card held at either end of the row scrolls the row along, and lands at that end");
 }
 
+// The middle button held and dragged over a panel that scrolls drags what it shows along with the mouse, without
+// turning what it went down on: the effects and the source cards across, the MODS view's rows and the preset browser's
+// list up and down. Past either end the row stops there, and dragged back it follows again at once. While the left
+// button drags a knob, it does nothing.
+void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    for (FxType type : {FxType::Delay, FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::Compressor,
+                        FxType::Widener, FxType::Disperser, FxType::FreqShifter})
+        addFx(view, type);
+    view.wheel({600.0f, 125.0f}, 10.0f, {}); // back to the start
+    const std::vector<int> chain = fxChain(model);
+    // A card's icon, as `scrolled` places along, switches the effect at chain position `position` off and on again.
+    auto fxAt = [&](float scrolled, int position) {
+        fxScrolled = scrolled;
+        click(view, fxPower(model, position));
+        const bool off = model.value(paramIndex(chain[position], FxParam::Enabled)) == 0.0;
+        click(view, fxPower(model, position));
+        fxScrolled = 0.0f;
+        return off;
+    };
+    const ParamValues before = model.values;
+    const Point grab{700.0f, 300.0f}; // on a card's knob
+    view.middleDown(grab);
+    view.mouseMove({grab.x - kFxStep, grab.y + 10.0f}, {});
+    view.mouseMove({grab.x - 2.0f * kFxStep, grab.y + 10.0f}, {});
+    const bool fxShot = renderer.save(view, dir / "8d-fx-middle-drag.png");
+    const bool panCursor = view.cursor() == CursorKind::Move;
+    view.middleUp({grab.x - 2.0f * kFxStep, grab.y + 10.0f});
+    const bool untouched = model.values == before;
+    check(fxShot && panCursor && untouched && chain.size() == 8 && fxAt(2.0f, 2),
+          "the middle button drags the effects along with the mouse, leaving the knob it went down on");
+    // Eight cards and the dashed one, six places on screen: the row stops three along, and comes back at once.
+    view.middleDown(grab);
+    view.mouseMove({grab.x - 20.0f * kFxStep, grab.y}, {});
+    view.mouseMove({grab.x - 19.0f * kFxStep, grab.y}, {});
+    view.middleUp({grab.x - 19.0f * kFxStep, grab.y});
+    check(fxAt(2.0f, 2), "the middle button drags the effects no further than their end, and back from there at once");
+    // While the left button drags a knob, the middle one leaves the row where it is.
+    const double fm = model.value(paramIndex(GlobalParam::FmAmount));
+    view.mouseDown(kFmAmountKnob, {});
+    view.middleDown(grab);
+    view.mouseMove({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f}, {});
+    view.middleUp({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    view.mouseUp({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f}, {});
+    check(model.value(paramIndex(GlobalParam::FmAmount)) > fm && fxAt(2.0f, 2),
+          "the middle button does nothing while the left button drags a knob");
+
+    // The source cards, a card's width to the left: the second shown takes the first's place.
+    for (int n = 0; n < 5; ++n)
+        click(view, sourceAdd(SourceType::Lfo));
+    view.wheel({60.0f, 513.0f}, 10.0f, {}); // back to the first card
+    const std::vector<int> sources = shown(model);
+    view.middleDown({cardX(1.0f) + 120.0f, 650.0f});
+    view.mouseMove({cardX(0.0f) + 120.0f, 650.0f}, {});
+    view.middleUp({cardX(0.0f) + 120.0f, 650.0f});
+    click(view, sourcePower(0));
+    const bool cardOff = sources.size() >= 5 && model.value(sourceEnabledIndex(sources[1])) == 0.0;
+    click(view, sourcePower(0));
+    check(cardOff, "the middle button drags the source cards along with the mouse");
+
+    // The MODS view's thirteen rows (and the add row), two rows up: the top row's x is LFO 1's third modulation's.
+    // Dragged far down, back to the top, where the first row's x is LFO 1's first.
+    FakeController mods;
+    View modsView(mods);
+    mods.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    mods.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
+    const OpParam targets[] = {OpParam::Fine,    OpParam::Detune,  OpParam::Transpose, OpParam::Out,
+                               OpParam::Velocity, OpParam::Attack, OpParam::Decay,     OpParam::Sustain,
+                               OpParam::Release, OpParam::Hold,    OpParam::UnisonDetune};
+    for (int k = 0; k < 11; ++k) {
+        mods.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(0, targets[k])));
+        mods.set(slotAmountIndex(0, k), 0.2);
+    }
+    mods.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount)));
+    mods.set(slotAmountIndex(1, 0), 0.3);
+    mods.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
+    mods.set(slotAmountIndex(kMaxSources, 0), 0.35);
+    modsView.poll();
+    click(modsView, {314.0f, 88.0f}); // the MODS tab
+    auto removedOnly = [&](int slot) {
+        click(modsView, {1144.0f, 154.0f}); // the top row's x
+        bool ok = true;
+        for (int k = 0; k < 11; ++k)
+            ok = ok && (slotTarget(mods.value(slotTargetIndex(0, k))) < 0) == (k == slot);
+        modsView.undo();
+        return ok && slotTarget(mods.value(slotTargetIndex(0, slot))) == paramIndex(0, targets[slot]);
+    };
+    modsView.middleDown({600.0f, 300.0f});
+    modsView.mouseMove({610.0f, 300.0f - 60.0f}, {});
+    const bool modsShot = renderer.save(modsView, dir / "35p-mods-middle-drag.png");
+    modsView.middleUp({610.0f, 300.0f - 60.0f});
+    const bool scrolled = removedOnly(2);
+    modsView.middleDown({600.0f, 200.0f});
+    modsView.mouseMove({600.0f, 200.0f + 400.0f}, {});
+    modsView.middleUp({600.0f, 200.0f + 400.0f});
+    check(modsShot && scrolled && removedOnly(0), "the middle button drags the MODS view's rows up and down");
+
+    // The preset browser's list of forty, five rows up: the top row is the sixth preset's.
+    FakeController presets;
+    View presetView(presets);
+    presets.library.clear();
+    for (int n = 0; n < 40; ++n)
+        presets.library.push_back({"Preset " + std::to_string(n), ""});
+    presets.loadPresetAt(0); // unchanged since, so picking another doesn't ask first
+    click(presetView, {600.0f, 84.0f}); // the preset's name opens the browser
+    const float browserTop = std::round((presetView.height() - 560.0f) * 0.5f);
+    auto browserRow = [&](int row) { return Point{600.0f, browserTop + 58.0f + row * 24.0f + 11.0f}; };
+    presetView.middleDown(browserRow(10));
+    presetView.mouseMove({600.0f, browserRow(5).y}, {});
+    const bool browserShot = renderer.save(presetView, dir / "22i-preset-middle-drag.png");
+    presetView.middleUp({600.0f, browserRow(5).y});
+    click(presetView, browserRow(0));
+    check(browserShot && presets.presetIndex() == 5, "the middle button drags the preset browser's list up and down");
+}
+
 // A modulation's depth handle under the mouse draws its range over the others, and wider: LFO 1's and Env 1's
 // ranges on Op A's Fine (set to the middle) overlap above the knob, Env 1's on top, and hovering either handle
 // changes what shows there (read off the rendered pixels).
@@ -3613,6 +3730,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testFolding(dir, renderer);
     testSourceShadow(dir, renderer);
     testCardEdgeScroll(dir, renderer);
+    testMiddleDrag(dir, renderer);
     testModFocus(dir, renderer);
     testModPill(dir, renderer);
 }
