@@ -63,17 +63,6 @@
         4. Port the smoke host (dlopen) and uishot (Cairo PNGs, so the UI checks can run in Linux CI too), and add a
            Linux job to release.yml.
 
-- VST3 version: built natively (no wrapper) beside the CLAP plugin; see "CLAP and VST3" in docs/features.md.
-    - **In one line:** it passes the tests and Steinberg's validator; what is left is trying it by hand in VST3 hosts.
-        1. Try it in Cubase, Ableton, FL, Reaper and Studio One: the editor and its resizing, automation, MIDI
-           controllers and MPE through the MIDI mapping and note expressions, and raising the voice limit, whose
-           restart goes through `kLatencyChanged` (hosts should deactivate and reactivate the plugin).
-        2. Check which hosts look in the per-user VST3 folder (`%LOCALAPPDATA%\Programs\Common\VST3`).
-        3. Maybe: a `moduleinfo.json` in the bundle, for hosts that scan with it; and the hardware mod wheel (CC1)
-           moving the Mod Wheel param, which FMVibe leaves alone in both formats.
-    - What VST3 can't carry: per-voice and global host modulation (Bitwig's per-note modulators), `NOTE_END` and
-      voice info, and remote control pages. Bitwig users keep the CLAP version.
-
 ## Organziational
 
 - Decide on names for the major UI elements to put into documentation
