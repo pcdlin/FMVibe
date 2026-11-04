@@ -208,12 +208,12 @@ constexpr Point kDecayKnob{1034.0f, 426.0f};
 // An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
 constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
-constexpr Point kFmAmountKnob{308.0f, 32.0f};
-constexpr Point kVoicesKnob{924.0f, 32.0f}; // past the second divider, where Bend was
-constexpr Point kMonoButton{702.0f, 21.0f};
-constexpr Point kLegatoToggle{680.0f, 44.0f};
-constexpr Point kGlideKnob{766.0f, 32.0f};
-constexpr Point kAlwaysToggle{848.0f, 22.0f};
+constexpr Point kFmAmountKnob{359.0f, 32.0f};
+constexpr Point kVoicesKnob{975.0f, 32.0f}; // past the second divider, where Bend was
+constexpr Point kMonoButton{753.0f, 21.0f};
+constexpr Point kLegatoToggle{731.0f, 44.0f};
+constexpr Point kGlideKnob{817.0f, 32.0f};
+constexpr Point kAlwaysToggle{899.0f, 22.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};
@@ -571,21 +571,21 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(!view.typing() && std::abs(model.value(fine) - 0.5) < 1e-9, "a typed value sets the knob");
     view.undo();
     check(std::abs(model.value(fine) - 0.2) < 1e-6, "a typed value is an undo step");
-    doubleClick(view, {350.0f, 35.0f}); // FM Amount's number, beside it in the header
+    doubleClick(view, {401.0f, 35.0f}); // FM Amount's number, beside it in the header
     type(view, "150 %");
     view.typeKey(View::Key::Enter);
     const int fmAmount = paramIndex(GlobalParam::FmAmount);
     check(std::abs(model.value(fmAmount) - 1.5) < 1e-9, "a header knob takes a typed value too");
-    doubleClick(view, {350.0f, 35.0f});
+    doubleClick(view, {401.0f, 35.0f});
     type(view, "70");
     view.typeKey(View::Key::Escape);
-    doubleClick(view, {350.0f, 35.0f});
+    doubleClick(view, {401.0f, 35.0f});
     type(view, "lots");
     view.typeKey(View::Key::Enter);
-    doubleClick(view, {350.0f, 35.0f});
+    doubleClick(view, {401.0f, 35.0f});
     view.typeKey(View::Key::Enter); // as shown: no change, no step
     check(std::abs(model.value(fmAmount) - 1.5) < 1e-9, "Escape, text that isn't a value, or no change leave it");
-    doubleClick(view, {350.0f, 35.0f});
+    doubleClick(view, {401.0f, 35.0f});
     view.typeKey(View::Key::Backspace);
     type(view, "0");
     click(view, {600.0f, 300.0f}); // a click elsewhere takes the value
@@ -1722,13 +1722,13 @@ void testMeter(const std::filesystem::path &dir, Renderer &renderer) {
     model.live.outPeak = {0.5f, 0.125f}; // -6 and -18 dB
     view.poll();
     const bool shot = renderer.save(view, dir / "26d-meter.png");
-    const uint32_t left = renderer.pixel({160.5f, 27.0f}), right = renderer.pixel({169.5f, 27.0f}); // about -14 dB
-    const uint32_t dark = renderer.pixel({160.5f, 14.5f});
+    const uint32_t left = renderer.pixel({211.5f, 27.0f}), right = renderer.pixel({220.5f, 27.0f}); // about -14 dB
+    const uint32_t dark = renderer.pixel({211.5f, 14.5f});
     model.live.outPeak = {1.4f, 1.4f};
     model.live.clipHold = 1.0f;
     view.poll();
     const bool clipShot = renderer.save(view, dir / "26e-meter-clipping.png");
-    const uint32_t lit = renderer.pixel({160.5f, 14.5f});
+    const uint32_t lit = renderer.pixel({211.5f, 14.5f});
     check(shot && clipShot && (left & 255) > 200 && (right & 255) < 100 && (dark >> 16 & 255) < 120 &&
               (lit >> 16 & 255) > 200 && (lit >> 8 & 255) < 100,
           "the output meter shows each side's peak, and its clip light past full scale");
@@ -2180,12 +2180,12 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
               onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "the title row adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
     // MPE, beside Legato under Poly | Mono: a click switches it on, and its menu picks the member channels' bend range.
-    click(view, {706.0f, 44.0f});
+    click(view, {757.0f, 44.0f});
     const bool mpeOn = model.value(paramIndex(GlobalParam::Mpe)) == 1.0;
-    for (const MenuItem &item : view.contextMenu({706.0f, 44.0f}))
+    for (const MenuItem &item : view.contextMenu({757.0f, 44.0f}))
         if (item.label == trf(Str::MenuMpeBendRange, {"24"}))
             view.menuCommand(item.command);
-    view.mouseMove({706.0f, 44.0f}, {});
+    view.mouseMove({757.0f, 44.0f}, {});
     check(mpeOn && model.value(paramIndex(GlobalParam::MpeBendRange)) == 24.0 &&
               renderer.save(view, dir / "3g-mpe-switch.png"),
           "the MPE switch beside Legato switches MPE, and its menu picks the bend range");

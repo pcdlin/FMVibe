@@ -154,20 +154,20 @@ constexpr float kCascadeItemH = 22.0f;
 constexpr float kCascadeHeaderH = 20.0f;
 constexpr float kCascadePad = 4.0f;
 // Header: global knobs, the play cluster between two dividers, then the voice controls.
-constexpr float kHeaderKnobX = 186.0f;
+constexpr float kHeaderKnobX = 237.0f;
 constexpr float kHeaderKnobW = 104.0f;
-constexpr float kPlayX = 636.0f;  // Poly | Mono over Legato | MPE, 24 px past the first divider
-constexpr float kGlideX = 748.0f; // the Glide knob 24 px past them, its Always switch ending 22 px before the second
+constexpr float kPlayX = 687.0f;  // Poly | Mono over Legato | MPE, 24 px past the first divider
+constexpr float kGlideX = 799.0f; // the Glide knob 24 px past them, its Always switch ending 22 px before the second
 // Voices, past the second divider.
-constexpr float kVoicesX = 906.0f;
+constexpr float kVoicesX = 957.0f;
 // The play cluster's second row, under Poly | Mono: Legato, then MPE, how the notes that come in are read.
 constexpr Rect kLegatoSwitch{kPlayX, 35.0f, 52.0f, 19.0f};
 constexpr Rect kMpeToggle{kPlayX + 52.0f, 35.0f, 36.0f, 19.0f};
 constexpr float kGlideW = 126.0f;
-constexpr float kDividers[] = {612.0f, 896.0f};
+constexpr float kDividers[] = {663.0f, 947.0f};
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
 // past full scale.
-constexpr Rect kMeter{158.0f, 13.0f, 14.0f, 38.0f};
+constexpr Rect kMeter{209.0f, 13.0f, 14.0f, 38.0f};
 constexpr double kMeterFloorDb = -48.0;
 constexpr double kMeterTopDb = 6.0;
 constexpr Color kMeterRed = Color::hex(0xEF4444);
