@@ -6,7 +6,7 @@ const TELEMETRY_SECONDS = 0.016; // about once per frame of the editor
 class FMVibeProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
-    const {wasm, values, oversampling} = options.processorOptions;
+    const {wasm, values, oversampling, tempo} = options.processorOptions;
     // Compiling here, off the main thread, may be synchronous. The module expects nothing it needs from
     // outside; whatever it imports (a note that memory grew) gets a function that does nothing.
     const module = new WebAssembly.Module(wasm);
@@ -19,6 +19,7 @@ class FMVibeProcessor extends AudioWorkletProcessor {
     this.paramCount = this.dsp.dsp_param_count();
     this.valuesView().set(values);
     this.dsp.dsp_init(sampleRate, oversampling);
+    this.dsp.dsp_tempo(tempo);
 
     this.telemetrySize = this.dsp.dsp_telemetry_size();
     this.spare = [new ArrayBuffer(this.telemetrySize), new ArrayBuffer(this.telemetrySize)]; // main.js hands them back
@@ -50,6 +51,9 @@ class FMVibeProcessor extends AudioWorkletProcessor {
         break;
       case 'bend':
         this.dsp.dsp_bend(message.amount);
+        break;
+      case 'tempo':
+        this.dsp.dsp_tempo(message.bpm);
         break;
       case 'oversampling':
         this.dsp.dsp_set_oversampling(message.factor);
