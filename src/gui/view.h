@@ -502,6 +502,10 @@ private:
     // source (LFO above ENV, square) add one.
     bool fxShadow() const;
     bool sourceShadow() const;
+    // That dashed card while it is on screen, and the open list of source types' top left over it, kept inside the
+    // panel: the list goes with the card, and shuts once the card isn't on screen (see poll()).
+    std::optional<Rect> sourceShadowCard() const;
+    static Point sourceMenuAt(Rect card);
     float scrollFirst(ScrollArea area) const;
     void setScroll(ScrollArea area, float first);
     Rect scrollThumb(ScrollArea area) const;
@@ -816,7 +820,7 @@ private:
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
-    Point sourceMenuAt_{-1.0f, -1.0f};       // the open list of source types' top left; x < 0 while it is shut
+    bool sourceMenuOpen_ = false;            // the list of source types, over the dashed card after the sources
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it

@@ -1595,6 +1595,7 @@ const char *divisionName(int division);
 const char *clipModeName(ClipMode mode);
 const char *peqTypeName(PeqType type);
 const char *reverbTypeName(ReverbType type);
+const char *sourceTypeName(SourceType type);
 const char *fxName(FxType fx);
 
 } // namespace fmvibe
