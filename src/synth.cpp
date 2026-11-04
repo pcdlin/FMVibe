@@ -898,6 +898,8 @@ void Synth::shareVoiceParams(const ParamValues &params) {
         // As a voice without host modulation of its own has it: with its modulation of 0 added (see renderBlock()).
         voiceClamped_[i] = std::clamp(voiceBase_[i] + 0.0, paramMin_[i], paramMax_[i]);
     }
+    std::copy(voiceClamped_.begin(), voiceClamped_.end(), voiceParams_.begin());
+    voiceParamsChangedCount_ = 0;
     voiceBaseReady_ = true;
 }
 
@@ -913,17 +915,24 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
     // Then each param in its range, with the voice's slot modulation added to the params it moves, in the order it
     // comes. `p` starts as the shared values in their ranges with the voice's host modulation; withSlotMods() sets
-    // the params the slots move, and puts back first those the slots of its last call moved.
-    using Values = std::array<double, kVoiceParamCount>;
-    Values p;
-    std::copy(voiceClamped_.begin(), voiceClamped_.end(), p.begin());
+    // the params the slots move, and puts back first those the slots of its last call moved. It is voiceParams_,
+    // which holds the shared values but where the voice before changed them: those go back first, rather than every
+    // voice copying all of them each block.
+    for (int k = 0; k < voiceParamsChangedCount_; ++k)
+        voiceParams_[voiceParamsChanged_[k]] = voiceClamped_[voiceParamsChanged_[k]];
+    voiceParamsChangedCount_ = 0;
+    double *const p = voiceParams_.data();
+    auto set = [&](int i, double value) {
+        p[i] = value;
+        voiceParamsChanged_[voiceParamsChangedCount_++] = i;
+    };
     for (int k = 0; k < v.moddedCount; ++k)
-        p[v.modded[k]] = inRange(v.modded[k], raw(v.modded[k]));
+        set(v.modded[k], inRange(v.modded[k], raw(v.modded[k])));
     std::array<int, kAllSources * kSlots> moved;
     int movedCount = 0;
     auto withSlotMods = [&] {
         for (int k = 0; k < movedCount; ++k)
-            p[moved[k]] = inRange(moved[k], raw(moved[k]));
+            set(moved[k], inRange(moved[k], raw(moved[k])));
         movedCount = 0;
         if (++slotPass_ == 0) { // the pass numbers wrapped around: forget the old ones
             std::fill(slotPassOf_.begin(), slotPassOf_.end(), 0u);
@@ -941,7 +950,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             slotSum_[i] += v.slotMods[m].offset;
         }
         for (int k = 0; k < movedCount; ++k)
-            p[moved[k]] = inRange(moved[k], slotSum_[moved[k]]);
+            set(moved[k], inRange(moved[k], slotSum_[moved[k]]));
     };
 
     // Modulation sources, read once per block at the host rate. They see the
@@ -1069,8 +1078,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             return envRates(times[0], times[1], times[2], times[3], times[4], times[5], times[6], times[7],
                             sampleRate_);
         });
-        for (uint32_t i = 0; i < hostFrames; ++i)
-            env.next(rates);
+        std::array<double, kControlBlock> levels; // as the block goes; the sources take its last
+        env.run(rates, levels.data(), static_cast<int>(hostFrames));
     }
     // Velocity, through its curve, from what the note came with: like the note source's, its depths take only the
     // host's modulation for every voice. It modulates from the note's first block, as the LFOs and envelopes do.
@@ -1167,7 +1176,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         double modulated = raw(target);
         for (int k = 0; k < v.slotModCount; ++k)
             modulated += v.slotMods[k].index == target ? v.slotMods[k].offset : 0.0;
-        p[target] = inRange(target, modulated);
+        set(target, inRange(target, modulated));
     }
     if (v.slotModCount > noteModsStart)
         pitch = pitchNow();
@@ -1451,11 +1460,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         }
     }
     const double pole = clipBlockerPole(rate_); // the shapers' DC blockers
-    // The settings of the filters that run.
+    // The settings of the filters that run, and their comb lines.
     std::array<const FilterSettings *, kFilters> filter{};
+    std::array<std::array<float *, 2>, kFilters> combs{};
     for (int f = 0; f < kFilters; ++f) {
         if (!filterOn[f])
             continue;
+        combs[f] = {combLine(v, f, 0), combLine(v, f, 1)};
         const std::array<double, 7> inputs{
             p[paramIndex(f, FilterParam::Cutoff)], p[paramIndex(f, FilterParam::KeyTrack)], pitch,
             p[paramIndex(f, FilterParam::Type)],   p[paramIndex(f, FilterParam::Slope)],
@@ -1468,7 +1479,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (filter[f]->type == FilterType::Comb) // its lines start silent
             for (int c = 0; c < channels; ++c)
                 if (v.combDirty[f][c]) {
-                    std::fill_n(combLine(v, f, c), combSize_, 0.0f);
+                    std::fill_n(combs[f][c], combSize_, 0.0f);
                     v.combDirty[f][c] = false;
                 }
     }
@@ -1517,6 +1528,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         }
     }
 
+    // The operators' envelopes for the whole block, ahead of it: nothing in it moves them but their own steps.
+    std::array<std::array<double, kControlBlock * Decimator::kMaxFactor>, kOps> envLevels;
+    for (int i = 0; i < kOps; ++i)
+        if (opOn[i])
+            v.ops[i].env.run(rates[i], envLevels[i].data(), static_cast<int>(frames));
+
     Levels &level = v.levels;
     double blockPeak = 0.0;
     const int scopeOp = &v == scopeVoice_ ? scope_.op : -1;
@@ -1552,7 +1569,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const double offset = pm * v.fmScale;
 
             op.amp += ampStep[i];
-            const double envLevel = op.env.next(rates[i]) * op.amp;
+            const double envLevel = envLevels[i][s] * op.amp;
             const double scopePhase = i == scopeOp ? op.phases[0] : 0.0; // where this sample is read
             double mono = 0.0, l = 0.0, r = 0.0;
             if (noise[i]) {
@@ -1637,7 +1654,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             std::array<double, 2> y{};
             for (int c = 0; c < channels; ++c)
-                y[c] = v.filters[f][c].process(toFilter[f][c], *filter[f], combLine(v, f, c), combSize_);
+                y[c] = v.filters[f][c].process(toFilter[f][c], *filter[f], combs[f][c], combSize_);
             if (!stereo)
                 y[1] = y[0];
             v.filterOut[f] = 0.5 * (y[0] + y[1]);

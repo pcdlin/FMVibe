@@ -8,6 +8,7 @@ namespace fmvibe {
 namespace {
 
 constexpr int kWaves = static_cast<int>(OpWave::Count);
+constexpr int kMask = WaveTables::kSize - 1;
 
 struct Harmonic {
     double cosine;
@@ -87,10 +88,9 @@ WaveTables::WaveTables() : data_(static_cast<size_t>(kWaves) * kLevels * (kSize 
                 const Harmonic h = harmonic(wave, n);
                 if (h.cosine == 0.0 && h.sine == 0.0)
                     continue;
-                for (int i = 0; i < kSize; ++i) {
-                    const int k = (n * i) % kSize;
-                    sum[i] += h.sine * sine[k] + h.cosine * sine[(k + kSize / 4) % kSize];
-                }
+                // kSize is a power of two: masking with it takes the indices round as % does.
+                for (int i = 0, k = 0; i < kSize; ++i, k = (k + n) & kMask)
+                    sum[i] += h.sine * sine[k] + h.cosine * sine[(k + kSize / 4) & kMask];
             }
             done = top;
             float *table = &data_[offset(w, level)];
@@ -144,8 +144,10 @@ bool CustomWave::update(const double *partials) {
             if (amount <= 0.0)
                 continue;
             const int shift = static_cast<int>(std::lround(partials[2 * (n - 1) + 1] * kSize)) % kSize;
-            for (int i = 0; i < kSize; ++i)
-                sum[i] += amount * sine[(n * i + shift) % kSize];
+            // From `shift`, n steps a sample round the table, which a mask with its size wraps as % did (the
+            // audio thread builds this whenever the partials move).
+            for (int i = 0, k = shift & kMask; i < kSize; ++i, k = (k + n) & kMask)
+                sum[i] += amount * sine[k];
         }
         done = top;
         float *table = &data_[static_cast<size_t>(level) * (kSize + 1)];

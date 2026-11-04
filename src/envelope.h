@@ -82,6 +82,37 @@ public:
         return nextStage(r);
     }
 
+    // `n` levels in a row into `out`, as n calls of next() give them, for a voice's block. Each stage runs as a loop
+    // of its own: the sustain, where a held note spends most of its time, and the decay and release, which take
+    // most of the rest; the sustain and idle stages last until release() or start(), which no block calls.
+    void run(const EnvRates &r, double *out, int n) {
+        int s = 0;
+        while (s < n) {
+            switch (stage_) {
+            case Stage::Sustain:
+                for (; s < n; ++s)
+                    out[s] = level_ = r.sustain + (level_ - r.sustain) * r.followCoef;
+                break;
+            case Stage::Idle: // at 0
+                for (; s < n; ++s)
+                    out[s] = level_;
+                break;
+            case Stage::Decay:
+                while (s < n && stage_ == Stage::Decay)
+                    out[s++] = decayStep(r);
+                break;
+            case Stage::Release:
+                while (s < n && stage_ == Stage::Release)
+                    out[s++] = releaseStep(r);
+                break;
+            case Stage::Attack:
+            case Stage::Hold:
+                out[s++] = nextStage(r);
+                break;
+            }
+        }
+    }
+
 private:
     enum class Stage { Idle, Attack, Hold, Decay, Sustain, Release };
 
@@ -106,19 +137,27 @@ private:
             }
             break;
         case Stage::Decay:
-            level_ = r.sustain + (1.0 - r.sustain) * (1.0 - advance(r.decay));
-            if (t_ >= 1.0)
-                stage_ = Stage::Sustain;
-            break;
+            return decayStep(r);
         case Stage::Release:
-            level_ = from_ * (1.0 - advance(r.release));
-            if (t_ >= 1.0)
-                stop();
-            break;
+            return releaseStep(r);
         case Stage::Sustain: // see next()
         case Stage::Idle:
             break;
         }
+        return level_;
+    }
+
+    double decayStep(const EnvRates &r) {
+        level_ = r.sustain + (1.0 - r.sustain) * (1.0 - advance(r.decay));
+        if (t_ >= 1.0)
+            stage_ = Stage::Sustain;
+        return level_;
+    }
+
+    double releaseStep(const EnvRates &r) {
+        level_ = from_ * (1.0 - advance(r.release));
+        if (t_ >= 1.0)
+            stop();
         return level_;
     }
 
