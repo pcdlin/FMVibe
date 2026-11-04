@@ -2507,6 +2507,40 @@ int main(int argc, char **argv) {
     std::printf("      16 voices x 6 operators x 8 unison: 1 s of audio in %.1f ms (%.1f %% of one core)\n", unisonMs,
                 unisonMs / 10.0);
     check(std::isfinite(unisonPeak), "full unison stays finite");
+
+    // The same, with every operator's Ratio moved on every block (what a fast LFO on it asks of the voices).
+    auto timeModulated = [&](const char *what) {
+        double ms = 0.0;
+        float peak = 0.0f;
+        const auto began = std::chrono::steady_clock::now();
+        for (int b = 0; b < blocksPerSecond; ++b) {
+            std::vector<clap_event_param_mod_t> mods;
+            for (int op = 0; op < kOps; ++op)
+                mods.push_back(paramModEvent(paramIndex(op, OpParam::Coarse), -1, 0.5 + 0.5 * std::sin(b * 0.37 + op)));
+            std::vector<const clap_event_header_t *> evs;
+            for (const auto &m : mods)
+                evs.push_back(&m.header);
+            peak = std::max(peak, runBlock(evs));
+        }
+        ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
+        std::printf("      %s, Ratio modulated every block: 1 s of audio in %.1f ms (%.1f %% of one core)\n", what, ms,
+                    ms / 10.0);
+        check(std::isfinite(peak), "modulated Ratio stays finite");
+    };
+    timeModulated("16 voices x 6 operators x 8 unison");
+    runBlock({&chokeAll.header});
+    {
+        std::vector<clap_event_param_value_t> one;
+        for (int op = 0; op < kOps; ++op)
+            one.push_back(paramEvent(paramIndex(op, OpParam::Unison), 1.0));
+        std::vector<const clap_event_header_t *> oneEvents;
+        for (const auto &ev : one)
+            oneEvents.push_back(&ev.header);
+        for (int i = 0; i < 16; ++i)
+            oneEvents.push_back(&burst[i].header);
+        runBlock(oneEvents);
+        timeModulated("16 voices x 6 operators");
+    }
     runBlock({&chokeAll.header});
 
     plugin->stop_processing(plugin);
