@@ -283,8 +283,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
   MIDI pitch bend (its knob over the bend wheel, in the keyboard strip), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
-- **MPE** (MIDI Polyphonic Expression), off to begin with: the switch beside Legato, under Poly | Mono in the header's
-  play cluster. Hosts
+- **MPE** (MIDI Polyphonic Expression), off to begin with: the switch beside the Pan knob's label in the header. Hosts
   that send CLAP note expressions (Bitwig) need nothing: each note's tuning, volume, pan, pressure and brightness
   reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is the master channel, whose
   pitch bend (by Bend Range), controllers and channel pressure apply to every voice, and channels 2 to 16 each carry
@@ -564,7 +563,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, and MPE, then
+  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, and MPE beside Pan, then
   a Glide knob like the global ones, its Always switch beside its label, each switch explaining itself on hover);
   Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's

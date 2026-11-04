@@ -235,6 +235,7 @@ private:
         int b = -1;
         const char *label = nullptr;
         bool compact = false; // header knob with its label and number beside it
+        bool shrunk = false;  // a compact knob drawn smaller (the bend range, in the keyboard strip's top row)
         bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
         bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
@@ -696,6 +697,7 @@ private:
     int nodeAt(Point p) const;
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
+    static float compactTextX(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.
     static bool onValue(const Widget &w, Point p);

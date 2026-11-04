@@ -177,15 +177,17 @@ constexpr Rect kMeter{kHeaderStart, 13.0f, 14.0f, 38.0f};
 constexpr float kHeaderKnobX = kHeaderStart + 28.0f;
 constexpr float kHeaderKnobW = 104.0f;
 constexpr float kDividers[] = {kHeaderStart + 454.0f, kHeaderStart + 738.0f};
-constexpr float kPlayX = kDividers[0] + 24.0f; // Poly | Mono over Legato | MPE, 24 px past the first divider
+constexpr float kPlayX = kDividers[0] + 24.0f; // Poly | Mono over Legato, 24 px past the first divider
 // The Glide knob 24 px past them, its Always switch ending 22 px before the second divider.
 constexpr float kGlideX = kPlayX + 112.0f;
 constexpr float kGlideW = 126.0f;
 // Voices, past the second divider.
 constexpr float kVoicesX = kDividers[1] + 10.0f;
-// The play cluster's second row, under Poly | Mono: Legato, then MPE, how the notes that come in are read.
-constexpr Rect kLegatoSwitch{kPlayX, 35.0f, 52.0f, 19.0f};
-constexpr Rect kMpeToggle{kPlayX + 52.0f, 35.0f, 36.0f, 19.0f};
+// Legato under Poly | Mono, as wide as the two of them, how the notes that come in are read.
+constexpr Rect kLegatoSwitch{kPlayX, 35.0f, 88.0f, 19.0f};
+// MPE beside the Pan knob's label, 72 px into the knob's slot (the knob's rect is 104 wide), centered on the knob's
+// middle (its rect starts at y 12 and its center is 20 px down).
+constexpr Rect kMpeToggle{kHeaderKnobX + 3 * kHeaderKnobW + 72.0f, 12.0f + 20.0f - 9.5f, 36.0f, 19.0f};
 constexpr double kMeterFloorDb = -48.0;
 constexpr double kMeterTopDb = 6.0;
 constexpr Color kMeterRed = Color::hex(0xEF4444);
@@ -487,8 +489,9 @@ inline Rect stripDisplay(float keyboardTop, bool velocity) {
     return velocity ? velocityDisplay(keyboardTop) : noteDisplay(keyboardTop);
 }
 // The bend range's knob, header-style (the knob, its label and value beside it), over the bend wheel, below the
-// strip's title: within its top row.
-inline Rect bendKnob(float top) { return {28.0f, top + 36.0f, 82.0f, 40.0f}; }
+// strip's title: within its top row, drawn smaller than the header knobs (see Widget::shrunk). Its knob's center, 16 px
+// into the rect, lies over the bend wheel's middle.
+inline Rect bendKnob(float top) { return {31.0f, top + 36.0f, 82.0f, 34.0f}; }
 inline Rect bendWheel(float top) {
     return {34.0f, top + kKeys.y, 26.0f, 90.0f};
 }

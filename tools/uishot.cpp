@@ -213,7 +213,7 @@ constexpr Point kVoicesKnob{975.0f, 32.0f}; // past the second divider, where Be
 constexpr Point kMonoButton{753.0f, 21.0f};
 constexpr Point kLegatoToggle{731.0f, 44.0f};
 constexpr Point kGlideKnob{817.0f, 32.0f};
-constexpr Point kAlwaysToggle{899.0f, 22.0f};
+constexpr Point kAlwaysToggle{899.0f, 32.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};
@@ -2189,16 +2189,16 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     check(added && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
               onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "the title row adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
-    // MPE, beside Legato under Poly | Mono: a click switches it on, and its menu picks the member channels' bend range.
-    click(view, {757.0f, 44.0f});
+    // MPE, beside the Pan knob: a click switches it on, and its menu picks the member channels' bend range.
+    click(view, {639.0f, 32.0f});
     const bool mpeOn = model.value(paramIndex(GlobalParam::Mpe)) == 1.0;
-    for (const MenuItem &item : view.contextMenu({757.0f, 44.0f}))
+    for (const MenuItem &item : view.contextMenu({639.0f, 32.0f}))
         if (item.label == trf(Str::MenuMpeBendRange, {"24"}))
             view.menuCommand(item.command);
-    view.mouseMove({757.0f, 44.0f}, {});
+    view.mouseMove({639.0f, 32.0f}, {});
     check(mpeOn && model.value(paramIndex(GlobalParam::MpeBendRange)) == 24.0 &&
               renderer.save(view, dir / "3g-mpe-switch.png"),
-          "the MPE switch beside Legato switches MPE, and its menu picks the bend range");
+          "the MPE switch beside the Pan knob switches MPE, and its menu picks the bend range");
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {

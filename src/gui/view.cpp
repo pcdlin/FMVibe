@@ -1174,11 +1174,20 @@ bool View::poll() {
 // --- Geometry.
 
 Point View::knobCenter(const Widget &w) {
-    return w.compact ? Point{w.rect.x + 18.0f, w.rect.y + 20.0f} : Point{w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
+    if (!w.compact)
+        return {w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
+    return w.shrunk ? Point{w.rect.x + 16.0f, w.rect.y + 16.0f} : Point{w.rect.x + 18.0f, w.rect.y + 20.0f};
 }
 
 float View::knobRadius(const Widget &w) {
-    return w.compact ? 17.0f : w.rect.w * 0.5f;
+    if (!w.compact)
+        return w.rect.w * 0.5f;
+    return w.shrunk ? 14.0f : 17.0f;
+}
+
+// Where a compact knob's label and number start, right of its rect's left edge.
+float View::compactTextX(const Widget &w) {
+    return w.shrunk ? 37.0f : 42.0f;
 }
 
 // A knob's number shows under it, or beside it in the header.
@@ -1187,7 +1196,7 @@ bool View::onValue(const Widget &w, Point p) {
         return true;
     if (w.kind != Kind::Knob)
         return false;
-    return w.compact ? p.x >= w.rect.x + 38.0f : p.y >= w.rect.y + w.rect.w;
+    return w.compact ? p.x >= w.rect.x + compactTextX(w) - 4.0f : p.y >= w.rect.y + w.rect.w;
 }
 
 Rect View::envRect(int env) const {
@@ -1262,11 +1271,12 @@ std::vector<View::Widget> View::widgets() const {
     const int mono = paramIndex(GlobalParam::Mono);
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
-    // Under them Legato and MPE, whose menu picks the member channels' bend range.
+    // Under them Legato, and MPE beside the Pan knob, whose menu picks the member channels' bend range.
     add(Kind::Toggle, kLegatoSwitch, paramIndex(GlobalParam::Legato));
     add(Kind::Toggle, kMpeToggle, paramIndex(GlobalParam::Mpe));
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
-    add(Kind::Toggle, {kGlideX + kGlideW - 52.0f, 15.0f, 52.0f, 15.0f}, paramIndex(GlobalParam::GlideAlways));
+    // Centered on the Glide knob's middle (its rect starts at y 12 and its center is 20 px down).
+    add(Kind::Toggle, {kGlideX + kGlideW - 52.0f, 12.0f + 20.0f - 7.5f, 52.0f, 15.0f}, paramIndex(GlobalParam::GlideAlways));
     // Voices, past the second divider. (Bend's knob is over the bend wheel, in the keyboard strip.)
     headerKnob(paramIndex(GlobalParam::Voices), kVoicesX, kHeaderKnobW, tr(Str::LabelVoices));
 
@@ -1992,6 +2002,7 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::Knob, bendKnob(keys), paramIndex(GlobalParam::BendRange));
     list.back().label = tr(Str::LabelBend);
     list.back().compact = true;
+    list.back().shrunk = true;
     if (!keysCollapsed) {
         add(Kind::BendWheel, bendWheel(keys));
         add(Kind::ModWheel, modWheel(keys), paramIndex(GlobalParam::ModWheel));
@@ -5658,9 +5669,11 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     if (def.kind == ParamKind::Ratio)
         shown = "\xC3\x97" + shown;
     if (w.compact) {
-        const float textWidth = w.rect.w - 42.0f;
-        c.text({w.rect.x + 42.0f, w.rect.y + 3.0f, textWidth, 16.0f}, w.label, 10.5f, kDim, Align::Left);
-        c.text({w.rect.x + 42.0f, w.rect.y + 18.0f, textWidth, 18.0f}, shown, 13.0f, kText, Align::Left, true);
+        const float textX = compactTextX(w);
+        const float textWidth = w.rect.w - textX;
+        const float labelY = w.shrunk ? 2.0f : 3.0f, valueY = w.shrunk ? 15.0f : 18.0f;
+        c.text({w.rect.x + textX, w.rect.y + labelY, textWidth, 16.0f}, w.label, 10.5f, kDim, Align::Left);
+        c.text({w.rect.x + textX, w.rect.y + valueY, textWidth, 18.0f}, shown, 13.0f, kText, Align::Left, true);
     } else {
         const Rect label{w.rect.x - 14.0f, w.rect.y + w.rect.w + 2.0f, w.rect.w + 28.0f, 16.0f};
         c.text(label, focused || !w.label ? shown : std::string(w.label), 10.5f,
@@ -6048,7 +6061,7 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
 Rect View::typingField() const {
     const Widget &w = typing_->widget;
     if (w.kind == Kind::Knob && w.compact)
-        return {w.rect.x + 38.0f, w.rect.y + 17.0f, w.rect.w - 36.0f, 20.0f};
+        return {w.rect.x + compactTextX(w) - 4.0f, w.rect.y + (w.shrunk ? 14.0f : 17.0f), w.rect.w + 2.0f - (compactTextX(w) - 4.0f), 20.0f};
     if (w.kind == Kind::Knob)
         return {w.rect.center().x - 40.0f, w.rect.y + w.rect.w + 1.0f, 80.0f, 18.0f};
     if (w.kind == Kind::ModDot) // under the small dot
@@ -6337,7 +6350,7 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // where along them the mouse is: its caption names the partial under it.
         std::optional<Widget> hit = hitTest(p);
         auto same = [](const Widget &a, const Widget &b) {
-            return a.same(b) && a.label == b.label && a.compact == b.compact &&
+            return a.same(b) && a.label == b.label && a.compact == b.compact && a.shrunk == b.shrunk &&
                    std::memcmp(&a.rect, &b.rect, sizeof(Rect)) == 0 && std::memcmp(&a.clip, &b.clip, sizeof(Rect)) == 0;
         };
         bool changed = hit.has_value() != hover_.has_value() || (hit && !same(*hit, *hover_)) ||
