@@ -1376,16 +1376,16 @@ int main(int argc, char **argv) {
               "a bipolar mod wheel swings its target both ways");
     }
 
-    // The sources that follow what comes in, in place 1 on A's output at -100 %: a MIDI CC source silences A with its
-    // controller all the way up and halves it at the middle, and leaves it alone with another controller up; Pressure
-    // follows the channel's aftertouch, and a note's own (MIDI polyphonic aftertouch or CLAP's pressure expression)
-    // over it; with a Slew of a second, a controller turned up mid-note takes A down slowly; Random gives each note a
-    // level of its own.
+    // The sources that follow what comes in, in place 1 on A's output at -100 %: a MIDI source on a controller
+    // silences A with it all the way up and halves it at the middle, and leaves it alone with another controller up;
+    // on aftertouch, it follows the channel's, and a note's own (MIDI polyphonic aftertouch or CLAP's pressure
+    // expression) over it; with a Slew of a second, a controller turned up mid-note takes A down slowly; Random gives
+    // each note a level of its own.
     {
         const int type = paramIndex(0, SourceParam::Type);
         const float resting = peakOf(play({}));
         setParams({{slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Out))}, {slotAmountIndex(0, 0), -1.0},
-                   {type, static_cast<double>(SourceType::Cc)}, {paramIndex(0, SourceParam::CcNumber), 74.0}});
+                   {type, static_cast<double>(SourceType::Midi)}, {paramIndex(0, SourceParam::CcNumber), 74.0}});
         auto send = [&](const clap_event_midi_t &ev) { runBlock({&ev.header}); };
         send(midiEvent(0xB0, 1, 127)); // another controller
         const float otherCc = peakOf(play({}));
@@ -1399,10 +1399,11 @@ int main(int argc, char **argv) {
                     "64\n",
                     resting, otherCc, ccUp, ccHalf);
         check(std::abs(otherCc - resting) < 1e-3f && ccUp < 0.01f && ccHalf > 0.4f * resting && ccHalf < 0.6f * resting,
-              "a MIDI CC source follows its controller");
+              "a MIDI source follows its controller");
 
         // Aftertouch: the channel's, then a note's own over it.
-        setParams({{type, static_cast<double>(SourceType::Pressure)}});
+        const int input = paramIndex(0, SourceParam::MidiInput);
+        setParams({{input, static_cast<double>(MidiInput::Pressure)}});
         send(midiEvent(0xD0, 127, 0));
         const float channelUp = peakOf(play({}));
         send(midiEvent(0xD0, 0, 0));
@@ -1427,14 +1428,14 @@ int main(int argc, char **argv) {
         expression.value = 1.0;
         const float polyUp = pressed(polyPress.header), otherUp = pressed(otherKey.header),
                     expressionUp = pressed(expression.header);
-        std::printf("      Pressure on A's output at -100 %%: peak %.3f with the channel's up, %.3f with the note's, "
+        std::printf("      MIDI on aftertouch on A's output at -100 %%: peak %.3f with the channel's up, %.3f with the note's, "
                     "%.3f with another key's, %.3f with its pressure expression\n",
                     channelUp, polyUp, otherUp, expressionUp);
         check(channelUp < 0.01f && polyUp < 0.01f && otherUp > 0.9f * resting && expressionUp < 0.01f,
-              "a Pressure source follows the channel's aftertouch, and a note's own");
+              "a MIDI source on aftertouch follows the channel's, and a note's own");
 
         // Slew: a second, so a controller turned up mid-note has A still near where it was 50 ms on.
-        setParams({{type, static_cast<double>(SourceType::Cc)}, {paramIndex(0, SourceParam::Slew), normFromTime(1.0)}});
+        setParams({{input, static_cast<double>(MidiInput::Cc)}, {paramIndex(0, SourceParam::Slew), normFromTime(1.0)}});
         const clap_event_midi_t ccOn = midiEvent(0xB0, 74, 127), ccOff = midiEvent(0xB0, 74, 0);
         const float slewed = pressed(ccOn.header);
         runBlock({&ccOff.header});

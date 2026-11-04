@@ -84,8 +84,9 @@ STR(SourceEmpty, "Empty")
 STR(SourceLfo, "LFO")
 STR(SourceEnvelope, "Envelope")
 STR(SourceRandom, "Random") // a value taken at random as each note starts
-STR(SourcePressure, "Pressure") // aftertouch
-STR(SourceCc, "MIDI CC")
+STR(SourceMidi, "MIDI") // a MIDI controller or aftertouch
+STR(MidiInputCc, "CC") // what a MIDI source follows: a controller
+STR(MidiInputPressure, "Pressure") // or aftertouch
 
 // The noise wave's slope at its three named settings.
 STR(NoiseWhite, "White")
@@ -169,6 +170,7 @@ STR(ParamLevel, "Level")
 STR(ParamPhase, "Phase")
 STR(ParamSlew, "Slew")
 STR(ParamCc, "CC")
+STR(ParamInput, "Input")
 STR(ParamOpFeedback, "{1} Feedback") // an operator into itself, in the matrix
 
 // Filters' and shapers' fields.
@@ -315,8 +317,7 @@ STR(PortNotes, "Notes")
 STR(SourceNameLfo, "LFO {1}") // numbered by type in the order the sources show
 STR(SourceNameEnv, "Env {1}")
 STR(SourceNameRandom, "Random {1}")
-STR(SourceNamePressure, "Pressure {1}")
-STR(SourceNameCc, "CC {1}")
+STR(SourceNameMidi, "MIDI {1}")
 STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")
@@ -466,14 +467,14 @@ STR(SwitchAsym, "ASYM")
 STR(BandButtonLow, "LOW") // the three-band compressor's readout, and the DJ EQ's display
 STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
-STR(ButtonAddLfo, "ADD LFO")
-STR(ButtonAddEnv, "ADD ENV")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
 STR(ButtonEnv, "ENV")
 STR(ButtonRandom, "RANDOM")
-STR(ButtonPressure, "PRESSURE")
-STR(ButtonCc, "MIDI CC")
+STR(ButtonMidi, "MIDI")
+STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
+STR(SwitchCc, "CC") // a MIDI card's input
+STR(SwitchPressure, "PRESSURE")
 STR(HintRandomSource, "A new value at random for each note")
 STR(ButtonEffect, "EFFECT")
 STR(ButtonOpenFolder, "OPEN FOLDER")
@@ -741,7 +742,7 @@ STR(TipModsAuxClear, "No aux")
 STR(TipModsScale, "Amount: how much of its depth the modulation keeps")
 STR(CascadeLfos, "LFOs")
 STR(CascadeEnvelopes, "Envelopes")
-STR(CascadeNoteMidi, "Note & MIDI") // Random, Pressure and MIDI CC sources
+STR(CascadeNoteMidi, "Note & MIDI") // Random and MIDI sources
 STR(CascadeMacros, "Macros")
 STR(CascadeKeyboard, "Keyboard") // the note source, velocity and the mod wheel
 STR(CascadeGlobal, "Global")

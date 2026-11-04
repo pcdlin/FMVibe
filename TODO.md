@@ -1,11 +1,11 @@
 ## New Features
 
 - Remap modifiers for modulation sources
-    - **In one line:** Random, Pressure and MIDI CC sources came as card types (with Slew on the last two); what is
+    - **In one line:** Random and MIDI (a controller or aftertouch, with Slew) sources came as card types; what is
       left is a modifier that bends another source's output through a drawn curve, or slews an LFO's or envelope's.
     - **Feasible, medium.** A source type whose input is another source (picked like an aux) and whose output is that
       source's through a curve laid out like the note source's; it runs after its input in the voice's source loop
-      (`Synth::renderBlock()`), so an input in a later place is a block late. 8 spare ids a place are left.
+      (`Synth::renderBlock()`), so an input in a later place is a block late. 7 spare ids a place are left.
 
 - MODS view: the filter field over the table, and a search in the target menu (both in the draft)
     - **In one line:** a text field in the MODS view's title row narrowing the rows to those whose source and target

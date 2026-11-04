@@ -171,7 +171,9 @@ private:
         FxMenuButton, // ADD EFFECT: opens the list of effect types
         FxShadow,     // the dashed card after the effects: opens the list of effect types over itself
         FxInsert,     // a = place in the chain: the arrow between two cards; opens the list to add an effect there
-        SourceShadow, // a = SourceType: the dashed cards after the sources, LFO above ENV: adds one
+        SourceShadow, // the dashed card after the sources: opens the list of source types over itself
+        SourceMenu,   // a = 1 on the open list of source types, 0 around it (a click there closes it)
+        SourceMenuItem, // a = SourceType: an entry of the list, adds a source of that type
         FxMenu,       // a = 1 on the open list, 0 around it (a click there closes it)
         FxAdd,        // a = FxType: an entry of the list, puts that effect at the end of the chain
         FxRemove,     // a = effect slot
@@ -814,6 +816,7 @@ private:
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
+    Point sourceMenuAt_{-1.0f, -1.0f};       // the open list of source types' top left; x < 0 while it is shut
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it

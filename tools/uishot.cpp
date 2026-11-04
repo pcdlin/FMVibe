@@ -236,7 +236,7 @@ float cardX(float card) {
 }
 
 // ADD LFO or ADD ENV, after the panel's toggle.
-Point sourceAdd(SourceType type) { // + LFO, + ENV, + RANDOM, + PRESSURE, + MIDI CC, 88 px apart
+Point sourceAdd(SourceType type) { // + LFO, + ENV, + RANDOM, + MIDI, 88 px apart
     return {128.0f + 88.0f * static_cast<float>(static_cast<int>(type) - 1) + 41.0f, 513.0f};
 }
 
@@ -1730,18 +1730,31 @@ void testMeter(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // The dashed cards after the sources: an LFO's above an envelope's, each adding one.
+// The dashed card after the sources (with none yet, in the first place) opens the list of source types over itself,
+// from 8 px in: an entry 26 px a type, from y 536 + 12. LFO adds an LFO; after it, a click around the list closes it
+// adding nothing, and Envelope adds an envelope.
 void testSourceShadow(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    click(view, {cardX(0) + 61.0f, 600.0f}); // with none yet, in the first place
+    auto entry = [](float card, SourceType type) {
+        return Point{cardX(card) + 70.0f, 536.0f + 12.0f + 26.0f * (static_cast<float>(type) - 1.0f) + 12.0f};
+    };
+    click(view, {cardX(0) + 46.0f, 600.0f});
+    view.mouseMove(entry(0, SourceType::Midi), {});
+    const bool menuShot = renderer.save(view, dir / "29b-source-menu.png");
+    click(view, entry(0, SourceType::Lfo));
     const bool lfo = shown(model) == std::vector<int>{0} &&
                      model.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::Lfo);
-    click(view, {cardX(1) + 61.0f, 730.0f}); // after it, the lower one
+    click(view, {cardX(1) + 46.0f, 600.0f}); // after it
+    click(view, {600.0f, 300.0f});           // around the list
+    const bool closed = shown(model) == std::vector<int>{0};
+    click(view, {cardX(1) + 46.0f, 600.0f});
+    click(view, entry(1, SourceType::Env));
     const bool env = shown(model) == std::vector<int>{0, 1} &&
                      model.value(paramIndex(1, SourceParam::Type)) == static_cast<double>(SourceType::Env);
-    view.mouseMove({cardX(2) + 61.0f, 600.0f}, {});
-    check(lfo && env && renderer.save(view, dir / "29-source-shadow.png"),
-          "the square dashed cards after the sources add an LFO and an envelope");
+    view.mouseMove({cardX(2) + 46.0f, 600.0f}, {});
+    check(menuShot && lfo && closed && env && renderer.save(view, dir / "29-source-shadow.png"),
+          "the dashed card after the sources opens the list of source types, which adds the one picked");
 }
 
 // Velocity, at the strip's right end after the note source: its handle maps it like the note source's (faint until
@@ -2110,25 +2123,30 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
 // a source leaves it empty, waiting for a target, and picking a target then makes it a modulation of that source,
 // each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it. With no
 // modulations at all, the columns' names show above the button.
-// The title row's last three buttons add a Random, a Pressure and a MIDI CC source, each a card of its own: Random
-// with no knobs, Pressure with Slew, MIDI CC with its controller and Slew (its first knob, at x 64 on the first card
-// place's row at y 590, turned up a notch by the wheel); each lists in the MODS view's source menu under Note & MIDI.
+// The title row's last two buttons add a Random and a MIDI source, each a card of its own: Random with no knobs,
+// MIDI with its input switch (CC from x 16 of the card, PRESSURE from x 80, 64 px each, level with the knobs at y 590) and right
+// of it its controller (at x 172 of the card, turned up a notch by the wheel, while its input is a controller) and
+// Slew (at x 228). Each lists in the MODS view's source menu under Note & MIDI.
 void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
     click(view, sourceAdd(SourceType::Random));
-    click(view, sourceAdd(SourceType::Pressure));
-    click(view, sourceAdd(SourceType::Cc));
+    click(view, sourceAdd(SourceType::Midi));
+    click(view, sourceAdd(SourceType::Midi));
     auto typeOf = [&](int place) {
         return static_cast<SourceType>(std::lround(model.value(paramIndex(place, SourceParam::Type))));
     };
-    const bool added = typeOf(0) == SourceType::Random && typeOf(1) == SourceType::Pressure && typeOf(2) == SourceType::Cc;
+    const bool added = typeOf(0) == SourceType::Random && typeOf(1) == SourceType::Midi && typeOf(2) == SourceType::Midi;
+    const Point ccKnob{cardX(1) + 172.0f, 590.0f}, pressure{cardX(2) + 80.0f + 32.0f, 590.0f};
+    view.wheel(ccKnob, 1.0f, {});
+    click(view, pressure);
+    const bool onPressure = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Pressure);
+    view.wheel({cardX(2) + 172.0f, 590.0f}, 1.0f, {}); // no CC knob there now
     view.mouseMove({600.0f, 300.0f}, {});
     const bool shot = renderer.save(view, dir / "11e-new-sources.png");
-    const Point ccKnob{cardX(2) + 12.0f + (kCardW - 24.0f) / 10.0f, 590.0f};
-    view.wheel(ccKnob, 1.0f, {});
-    check(added && shot && model.value(paramIndex(2, SourceParam::CcNumber)) == 2.0,
-          "the title row adds Random, Pressure and MIDI CC sources, the MIDI CC card's knob picking its controller");
+    check(added && shot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
+              model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
+          "the title row adds Random and MIDI sources, a MIDI card's switch picking aftertouch over its controller");
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {

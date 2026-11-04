@@ -120,12 +120,14 @@ enum class ShaperParam {
 // the kMaxSources places holds a source of either type, or none, and has the
 // fields of both; only those of its type are used (and shown to hosts). Stored
 // in projects by number: only append.
-// Random, Pressure and Cc came later. Random puts out a value of its own for each note, taken at random as the note
-// starts and held. Pressure follows the aftertouch of a voice's note (polyphonic, or CLAP's pressure expression),
-// else the channel's. Cc follows a MIDI controller, CcNumber, the same for every voice. Pressure and Cc follow
-// what comes in through Slew, a time constant (at its least, 1 ms, all but at once). The three are unipolar unless
+// Random and Midi came later. Random puts out a value of its own for each note, taken at random as the note starts
+// and held. Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice, or
+// aftertouch, a voice's own note's (polyphonic, or CLAP's pressure expression) once some came, else the channel's.
+// It follows that through Slew, a time constant (at its least, 1 ms, all but at once). Both are unipolar unless
 // their Bipolar is on, which swings their depths across the set value as a bipolar LFO's (see sourceBipolar()).
-enum class SourceType { None, Lfo, Env, Random, Pressure, Cc, Count };
+enum class SourceType { None, Lfo, Env, Random, Midi, Count };
+// What a Midi source follows. Stored in projects by number: only append.
+enum class MidiInput { Cc, Pressure, Count };
 // After Type and Enabled come kSlots (target, amount) pairs. A slot's target
 // param holds the id + 1 of the param it modulates (0 = unused); its amount is
 // -1..1 of that param's range. A synced LFO runs at a note value (Division) of
@@ -166,10 +168,11 @@ enum class SourceParam {
     RandomChaos,
     EnvBipolar, // a mod envelope's field
     Phase,      // an LFO's
-    // Random's, Pressure's and Cc's (see SourceType).
-    Slew,     // Pressure's and Cc's
-    CcNumber, // Cc's: 0..127
-    Bipolar,  // all three's
+    // Random's and Midi's (see SourceType).
+    Slew,      // Midi's
+    CcNumber,  // Midi's: 0..127, while its input is a controller
+    Bipolar,   // both's
+    MidiInput, // Midi's (see MidiInput)
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -565,11 +568,11 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     case SourceParam::Phase:
         return t == SourceType::Lfo;
     case SourceParam::Slew:
-        return t == SourceType::Pressure || t == SourceType::Cc;
     case SourceParam::CcNumber:
-        return t == SourceType::Cc;
+    case SourceParam::MidiInput:
+        return t == SourceType::Midi;
     case SourceParam::Bipolar:
-        return t == SourceType::Random || t == SourceType::Pressure || t == SourceType::Cc;
+        return t == SourceType::Random || t == SourceType::Midi;
     default:
         return f < SourceParam::Attack ? t == SourceType::Lfo : t == SourceType::Env;
     }
@@ -1007,7 +1010,7 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(paramIndex(0, SourceParam::Phase)) == 2828 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Phase)) == 3428 &&
                   idOfIndex(paramIndex(0, SourceParam::Slew)) == 2829 &&
-                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Bipolar)) == 3431 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::MidiInput)) == 3432 &&
                   idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");
@@ -1093,8 +1096,10 @@ static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxTy
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
                                FxType::Count}),
               "FxType is stored by number: only append");
+static_assert(numberedInOrder({MidiInput::Cc, MidiInput::Pressure, MidiInput::Count}),
+              "MidiInput is stored by number: only append");
 static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Random,
-                               SourceType::Pressure, SourceType::Cc, SourceType::Count}),
+                               SourceType::Midi, SourceType::Count}),
               "SourceType is stored by number: only append");
 static_assert(numberedInOrder({SlotAuxParam::Aux, SlotAuxParam::Amount, SlotAuxParam::Count}),
               "SlotAuxParam is stored by number: only append");
@@ -1478,6 +1483,7 @@ enum class ParamKind {
     SlotBypass,  // stepped Off / On, set in the editor and hidden from hosts
     PeqType,     // a parametric EQ band's shape
     ReverbType,  // the reverb's algorithm
+    MidiInput,   // what a Midi source follows
     SweepRate,   // like Rate, but its lowest setting is 0 Hz: a sweep held still (see sweepRateHz())
     NotePitch,   // semitones in MIDI numbering, shown as a note and its cents; continuous, but the editor sets whole ones
     FixedFreq,   // 0..1 on a log curve, shown in Hz; see fixedFreqFromNorm()

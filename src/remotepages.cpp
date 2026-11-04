@@ -189,9 +189,9 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
             : type == SourceType::Env
                 ? std::vector<int>{at(SourceParam::Attack), at(SourceParam::Decay), at(SourceParam::Sustain),
                                    at(SourceParam::Release)}
-            : type == SourceType::Cc       ? std::vector<int>{at(SourceParam::CcNumber), at(SourceParam::Slew)}
-            : type == SourceType::Pressure ? std::vector<int>{at(SourceParam::Slew)}
-                                           : std::vector<int>{};
+            : type == SourceType::Midi ? std::vector<int>{at(SourceParam::MidiInput), at(SourceParam::CcNumber),
+                                                         at(SourceParam::Slew)}
+                                       : std::vector<int>{};
         for (int slot = 0; slot < kSlots && fields.size() < CLAP_REMOTE_CONTROLS_COUNT; ++slot)
             fields.push_back(slotAmountIndex(source, slot));
         add(tr(Str::ModuleModulation), gui::sourceName(layout, get, source), fields,

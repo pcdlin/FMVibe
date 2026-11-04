@@ -146,7 +146,7 @@ public:
     void paramMod(int index, const NoteRef &match, double amount);
     // -1..1, scaled by the Bend Range param.
     void pitchBend(double amount) { bend_ = amount; }
-    // What the Pressure and Cc sources follow, 0..1 (see SourceType): a MIDI controller's value, the channel's
+    // What the Midi sources follow, 0..1 (see SourceType): a MIDI controller's value, the channel's
     // aftertouch, and the polyphonic aftertouch of the voices playing `match` (as CLAP's pressure expression).
     void controlChange(int controller, double value) {
         if (controller >= 0 && controller < 128 && std::isfinite(value))
@@ -258,7 +258,7 @@ private:
         double exprPan = 0.0;
         double pressure = -1.0; // its note's aftertouch, 0..1, or -1 while none came: the channel's stands in
         bool newRandom = false; // (re)started: the Random sources take a new value in its next block
-        std::array<double, kMaxSources> follow{}; // what Random, Pressure and Cc sources put out, 0..1
+        std::array<double, kMaxSources> follow{}; // what Random and Midi sources put out, 0..1
         double fmScale = 0.0;   // ramped, like the output gains and levels
         Levels levels{};
         double gainL = 0.0;

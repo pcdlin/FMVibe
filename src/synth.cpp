@@ -924,17 +924,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             continue;
         }
         if (type != SourceType::Env) {
-            // Random holds a value of its own from the note's start; Pressure and Cc follow what comes in through
-            // Slew, from where it is as the note starts.
+            // Random holds a value of its own from the note's start; Midi follows its controller or aftertouch
+            // through Slew, from where it is as the note starts.
             double &out = v.follow[s];
             if (type == SourceType::Random) {
                 if (v.newRandom)
                     out = 0.5 * (nextRandom(v.rng) + 1.0);
             } else {
+                const bool pressure = stepped(p[paramIndex(s, SourceParam::MidiInput)], 1) ==
+                                      static_cast<int>(MidiInput::Pressure);
                 const double in =
-                    type == SourceType::Cc
-                        ? cc_[static_cast<size_t>(stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))]
-                        : (v.pressure >= 0.0 ? v.pressure : channelPressure_);
+                    pressure ? (v.pressure >= 0.0 ? v.pressure : channelPressure_)
+                             : cc_[static_cast<size_t>(stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))];
                 out = v.fresh ? in
                               : in + (out - in) * std::exp(-static_cast<double>(hostFrames) /
                                                            (timeFromNorm(p[paramIndex(s, SourceParam::Slew)]) *
