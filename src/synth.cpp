@@ -488,7 +488,7 @@ void Synth::applyMacros(const ParamValues &params) {
         macroMod_[macroTargets_[i]] = 0.0;
     macroTargetCount_ = 0;
     auto get = [this, &params](int i) { return hostValue(params, i); };
-    forEachMacroMod(get, [this](int target, double offset) {
+    forEachMacroMod(get, [this](int target, double offset, int, int) {
         macroMod_[target] += offset;
         macroTargets_[macroTargetCount_++] = target;
     });
@@ -789,8 +789,13 @@ void Synth::telemetry(Telemetry &out) const {
     }
     if (!newest)
         return;
-    for (int m = 0; m < newest->slotModCount; ++m)
-        out.modOffset[newest->slotMods[m].index] += static_cast<float>(newest->slotMods[m].offset);
+    for (int m = 0; m < newest->slotModCount; ++m) {
+        const SlotMod &mod = newest->slotMods[m];
+        out.modOffset[mod.index] += static_cast<float>(mod.offset);
+        if (mod.slot >= 0)
+            out.slotOffset[mod.slot] =
+                static_cast<float>(mod.offset / (table_[mod.index].max - table_[mod.index].min));
+    }
     for (int i = 0; i < macroTargetCount_; ++i) // what the macros add, once for each target they share
         if (std::find(macroTargets_.begin(), macroTargets_.begin() + i, macroTargets_[i]) == macroTargets_.begin() + i)
             out.modOffset[macroTargets_[i]] += static_cast<float>(macroMod_[macroTargets_[i]]);
@@ -983,8 +988,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const int target = slotTarget(p[slotTargetIndex(source, s)]);
             const double amount = p[slotAmountIndex(source, s)];
             if (target >= 0 && amount != 0.0 && params[slotBypassIndex(source, s)] < 0.5) {
-                v.slotMods[v.slotModCount++] = {target, bent(source, s, swing, bipolarSource) * amount *
-                                                            scaleOf(source, s) * (table_[target].max - table_[target].min)};
+                v.slotMods[v.slotModCount++] = {target,
+                                                bent(source, s, swing, bipolarSource) * amount * scaleOf(source, s) *
+                                                    (table_[target].max - table_[target].min),
+                                                source * kSlots + s};
             }
         }
     };
@@ -1076,9 +1083,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const double amount = hostValue(params, slotAmountIndex(kVelocitySource, s));
             if (target < 0 || amount == 0.0 || params[slotBypassIndex(kVelocitySource, s)] >= 0.5)
                 continue;
-            v.slotMods[v.slotModCount++] = {target, bent(kVelocitySource, s, swing, bipolar) * amount *
-                                                        scaleOf(kVelocitySource, s) *
-                                                        (table_[target].max - table_[target].min)};
+            v.slotMods[v.slotModCount++] = {target,
+                                            bent(kVelocitySource, s, swing, bipolar) * amount *
+                                                scaleOf(kVelocitySource, s) * (table_[target].max - table_[target].min),
+                                            kVelocitySource * kSlots + s};
         }
     }
     // The macros' and the mod wheel's slots that an aux of this voice scales (see applyMacros()).
@@ -1090,8 +1098,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             continue;
         const bool bipolar = sourceBipolar(getParam, source);
         const double swing = hostValue(params, stripKnobIndex(source)) - (bipolar ? 0.5 : 0.0);
-        v.slotMods[v.slotModCount++] = {target, bent(source, s, swing, bipolar) * amount * scaleOf(source, s) *
-                                                    (table_[target].max - table_[target].min)};
+        v.slotMods[v.slotModCount++] = {target,
+                                        bent(source, s, swing, bipolar) * amount * scaleOf(source, s) *
+                                            (table_[target].max - table_[target].min),
+                                        source * kSlots + s};
     }
     withSlotMods();
     v.newRandom = false;
@@ -1144,9 +1154,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         const int target = slotTarget(params[slotTargetIndex(kNoteSource, s)]);
         const double amount = hostValue(params, slotAmountIndex(kNoteSource, s));
         if (target >= 0 && amount != 0.0 && params[slotBypassIndex(kNoteSource, s)] < 0.5) {
-            v.slotMods[v.slotModCount++] = {target, bent(kNoteSource, s, swing, noteBipolar) * amount *
-                                                        scaleOf(kNoteSource, s) *
-                                                        (table_[target].max - table_[target].min)};
+            v.slotMods[v.slotModCount++] = {target,
+                                            bent(kNoteSource, s, swing, noteBipolar) * amount *
+                                                scaleOf(kNoteSource, s) * (table_[target].max - table_[target].min),
+                                            kNoteSource * kSlots + s};
         }
     }
     for (int m = noteModsStart; m < v.slotModCount; ++m) {

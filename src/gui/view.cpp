@@ -366,7 +366,15 @@ void View::edit(int index, double v) {
         return;
     const ParamDef &def = table_[index];
     controller_.beginEdit(index);
+    // A node switched on comes back into the graph clear of the others, in the same undo step.
+    int switchedOn = -1;
+    if (v >= 0.5 && value(index) < 0.5)
+        for (int node = 0; node < kNodes; ++node)
+            if (enabledParam(node) == index)
+                switchedOn = node;
     controller_.setValue(index, std::clamp(v, def.min, def.max));
+    if (switchedOn >= 0)
+        placeSwitchedOn(switchedOn);
     controller_.endEdit(index);
 }
 
@@ -2203,8 +2211,12 @@ void View::paint(Canvas &c) {
     const DerivedScope scope(*this);
     const std::vector<Widget> &list = scopedWidgets();
     std::fill(macroOffsets_.begin(), macroOffsets_.end(), 0.0f);
-    forEachMacroMod([this](int i) { return value(i); },
-                    [this](int target, double offset) { macroOffsets_[target] += static_cast<float>(offset); });
+    macroSlotOffsets_.fill(0.0f);
+    forEachMacroMod([this](int i) { return value(i); }, [this](int target, double offset, int source, int slot) {
+        macroOffsets_[target] += static_cast<float>(offset);
+        macroSlotOffsets_[source * kSlots + slot] =
+            static_cast<float>(offset / (table_[target].max - table_[target].min));
+    });
 
     theme_ = themeIndex(controller_.theme());
     look = kThemes[theme_];
@@ -2531,6 +2543,20 @@ void View::paintRouting(Canvas &c) {
             arrowHead(c, w.end, w.tangent, color);
         }
     }
+}
+
+// What slot `slot` of `source` adds to its target now, as a share of the target's range: a macro's or the mod wheel's
+// from its knob, notes playing or not; another source's in the newest voice, while one plays. None while it modulates
+// nothing: bypassed, or its source switched off.
+std::optional<double> View::liveSlotOffset(int source, int slot) const {
+    if (source < 0 || slot < 0 || slotBypassed(source, slot) || !sourceOn(source))
+        return std::nullopt;
+    const int aux = slotAux([this](int i) { return value(i); }, source, slot);
+    if (!runsPerVoice(source) && (aux < 0 || !runsPerVoice(aux)))
+        return macroSlotOffsets_[source * kSlots + slot];
+    if (telemetry_.voices <= 0)
+        return std::nullopt;
+    return telemetry_.slotOffset[source * kSlots + slot];
 }
 
 double View::liveAmount(int param) const {
@@ -4803,6 +4829,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillRect({std::min(mid, x), cy - 2.0f, std::abs(x - mid), 4.0f}, color, 2.0f);
         c.line({mid, cy - 4.0f}, {mid, cy + 4.0f}, kFaint, 1.0f);
         c.fillCircle({x, cy}, hovered || active ? 5.0f : 4.0f, color);
+        // Where the modulation takes its target now, on the bar's scale: a tick that swings with its source.
+        if (const std::optional<double> now = liveSlotOffset(w.a, w.b)) {
+            const float at = mid + static_cast<float>(std::clamp(*now, -1.0, 1.0)) * w.rect.w * 0.5f;
+            c.line({at, cy - 5.5f}, {at, cy + 5.5f}, kBackground, 4.0f);
+            c.line({at, cy - 5.0f}, {at, cy + 5.0f}, kText, 2.0f);
+        }
         // Another source modulating this depth shows how far it takes it, under the bar.
         paintModRange(c, {w.rect.x, cy + 6.0f, w.rect.w, 1.5f}, w.param);
         char text[16];

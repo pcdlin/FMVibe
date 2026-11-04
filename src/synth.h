@@ -76,6 +76,10 @@ constexpr double kScopeSlowSpan = 0.2;
 
 struct Telemetry {
     std::array<float, kModulatedCount> modOffset{}; // LFO/envelope modulation, in plain units
+    // What each slot (source * kSlots + slot) adds to its target in the newest voice, as a share of the target's
+    // range (what its depth bar shows); 0 for the slots no voice runs: the macros' and the mod wheel's, which the
+    // editor works out itself.
+    std::array<float, kAllSources * kSlots> slotOffset{};
     std::array<float, kMaxSources> sources{};      // LFO outputs (-1..1), envelope levels (0..1)
     std::array<float, kMaxSources> lfoPhases{};    // 0..1
     std::array<float, kMaxSources> lfoRates{};     // cycles per second, to move the phases on between snapshots
@@ -225,6 +229,7 @@ private:
     struct SlotMod {
         int index;
         double offset;
+        int slot = -1; // whose: source * kSlots + slot
     };
 
     // What renderBlock() ramps sample by sample toward each block's values.

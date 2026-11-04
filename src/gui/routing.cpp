@@ -220,8 +220,10 @@ Point View::nodeCenter(int node) const {
 // Where a node dragged to `want` goes: there, unless it would cover another node shown, when it is pushed out of
 // that one's way to kNodeGap past its outline, and kept inside the graph. A node and the one it is pushed from each
 // take a rounded box, their outlines' sum: a circle's is a point grown by its radius, a filter's or a shaper's its box.
-// Pushed into a third one with no room left, it stays where it was.
-Point View::nodePlace(int node, Point want) const {
+// Pushed into a third one with no room left, it stays where it was (and `found`, when given, is false).
+Point View::nodePlace(int node, Point want, bool *found) const {
+    if (found)
+        *found = true;
     constexpr float kNodeGap = 10.0f; // the edges' bands, kEdgeOut each, just meet
     auto half = [](int n) { return isBoxNode(n) ? Point{kFilterHalfW, kFilterHalfH} : Point{0.0f, 0.0f}; };
     auto radius = [](int n) { return isBoxNode(n) ? 0.0f : kNodeRadius; };
@@ -257,7 +259,45 @@ Point View::nodePlace(int node, Point want) const {
         if (clear)
             return at;
     }
+    if (found)
+        *found = false;
     return nodeCenter(node);
+}
+
+// A node just switched on goes where it was, unless that covers a node shown: then out of its way, or, with no room
+// there, to the free place nearest it on a grid over the graph. With none free anywhere, it stays.
+void View::placeSwitchedOn(int node) {
+    const Point was = nodeCenter(node);
+    bool found = false;
+    Point at = nodePlace(node, was, &found);
+    if (found && at.x == was.x && at.y == was.y)
+        return; // clear where it is: left exactly so
+    if (!found) {
+        constexpr int kSteps = 16;
+        std::vector<Point> spots;
+        for (int i = 0; i <= kSteps; ++i)
+            for (int j = 0; j <= kSteps; ++j)
+                spots.push_back({kGraph.x + kGraph.w * i / kSteps, kGraph.y + kGraph.h * j / kSteps});
+        auto dist = [&](Point p) { return std::hypot(p.x - was.x, p.y - was.y); };
+        std::stable_sort(spots.begin(), spots.end(), [&](Point a, Point b) { return dist(a) < dist(b); });
+        for (Point spot : spots) {
+            at = nodePlace(node, spot, &found);
+            if (found)
+                break;
+        }
+        if (!found)
+            return;
+    }
+    UiLayout &layout = controller_.layout();
+    const float x = std::clamp((at.x - kGraph.x) / kGraph.w, 0.0f, 1.0f);
+    const float y = std::clamp((at.y - kGraph.y) / kGraph.h, 0.0f, 1.0f);
+    if (isBoxNode(node)) {
+        layout.boxX[node - kOps] = x;
+        layout.boxY[node - kOps] = y;
+    } else {
+        layout.nodeX[node] = x;
+        layout.nodeY[node] = y;
+    }
 }
 
 int View::nodeAt(Point p) const {

@@ -2118,6 +2118,95 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
 // modulated by LFO 2, moved to Env 1 leaves LFO 2 modulating Env 1's depth; moved to Macro 1, whose depths can't be
 // modulated, it takes LFO 2's modulation away with it. The menus open as in testMods(): the first row's source at
 // x 90, y 154, its menu's categories 22 px apart from y 174 (LFOs, Envelopes, Macros), each opening beside it from x 176.
+// A MODS row's depth bar marks where its modulation takes its target now, on the bar's scale: an LFO's from the
+// newest voice while a note plays (and nowhere with none), a macro's from its knob, notes or not (read off the
+// rendered pixels). The first row's bar runs 164 px from x 474, its middle at x 556, the next row 30 px down.
+void testModsLive(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount)));
+    model.set(slotAmountIndex(0, 0), 0.5);
+    model.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
+    model.set(slotAmountIndex(kMaxSources, 0), 0.6);
+    model.set(paramIndex(0, MacroParam::Bipolar), 0.0);
+    model.set(paramIndex(0, MacroParam::Value), 0.0);
+    view.poll();
+    click(view, {314.0f, 88.0f}); // the MODS tab
+    auto shoot = [&](const char *name, float y) {
+        view.poll();
+        view.mouseMove({600.0f, 440.0f}, {});
+        renderer.save(view, dir / name);
+        std::vector<uint32_t> pixels; // just above the bar, where only the tick reaches
+        for (float x = 476.0f; x < 636.0f; x += 1.0f)
+            pixels.push_back(renderer.pixel({x, y - 4.0f}));
+        return pixels;
+    };
+    auto tickAt = [](const std::vector<uint32_t> &with, const std::vector<uint32_t> &without, float x) {
+        const size_t i = static_cast<size_t>(x - 476.0f);
+        return with[i] != without[i];
+    };
+    const float lfoRow = 154.0f, macroRow = 184.0f;
+    model.live.voices = 0;
+    model.live.slotOffset[0] = 0.25f;
+    const std::vector<uint32_t> silent = shoot("35z-mods-live-none.png", lfoRow);
+    model.live.voices = 1;
+    const std::vector<uint32_t> up = shoot("35z-mods-live.png", lfoRow);
+    model.live.slotOffset[0] = -0.25f;
+    const std::vector<uint32_t> down = shoot("35z-mods-live-down.png", lfoRow);
+    model.live.voices = 0;
+    check(tickAt(up, silent, 556.0f + 20.5f) && tickAt(down, silent, 556.0f - 20.5f) &&
+              !tickAt(up, silent, 556.0f - 20.5f) && !tickAt(down, silent, 556.0f + 20.5f),
+          "a MODS row's depth bar marks where a playing note's LFO takes its target, and nothing with no note");
+    // Macro 1 at 0 sits in the middle; at 0.5 its tick is 0.3 of the way, 24.6 px right.
+    const std::vector<uint32_t> rest = shoot("35z-mods-live-macro0.png", macroRow);
+    model.set(paramIndex(0, MacroParam::Value), 0.5);
+    const std::vector<uint32_t> turned = shoot("35z-mods-live-macro.png", macroRow);
+    check(tickAt(turned, rest, 556.0f + 24.6f) && tickAt(turned, rest, 556.0f),
+          "a MODS row's depth bar marks where a macro takes its target, with no note playing");
+}
+
+// A node switched on where another one shown sits comes back clear of it, in the same undo step as the switch; one
+// whose place is free stays there. B was left on top of A; a filter in the middle of A, B and E too.
+void testNodeSwitchOnPlace(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    layout.nodeX[1] = layout.nodeX[0];
+    layout.nodeY[1] = layout.nodeY[0];
+    const Point a = nodeCenter(layout, 0);
+    view.poll();
+    click(view, nodeTab(1));
+    const Point b = nodeCenter(layout, 1);
+    const float apart = std::hypot(b.x - a.x, b.y - a.y);
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool shot = renderer.save(view, dir / "1f-op-on-clear.png");
+    view.undo();
+    const bool undone = model.value(paramIndex(1, OpParam::Enabled)) == 0.0 &&
+                        layout.nodeX[1] == layout.nodeX[0] && layout.nodeY[1] == layout.nodeY[0];
+    view.redo();
+    std::printf("      B switched on over A lands %.1f px from it\n", apart);
+    check(shot && model.value(paramIndex(1, OpParam::Enabled)) == 1.0 && apart >= 2.0f * 24.0f + 9.0f && undone,
+          "an operator switched on over another one shown comes back clear of it, undoably");
+    // E's place is free: it stays where it was.
+    const float ex = layout.nodeX[4], ey = layout.nodeY[4];
+    click(view, nodeTab(4));
+    check(model.value(paramIndex(4, OpParam::Enabled)) == 1.0 && layout.nodeX[4] == ex && layout.nodeY[4] == ey,
+          "a node switched on where nothing else is stays where it was");
+    // Filter 1 put on A, switched on with its tab, goes clear of A, B and E.
+    layout.boxX[0] = layout.nodeX[0];
+    layout.boxY[0] = layout.nodeY[0];
+    click(view, nodeTab(kOps));
+    const Point f = nodeCenter(layout, kOps);
+    bool clear = model.value(paramIndex(0, FilterParam::Enabled)) == 1.0;
+    for (int op : {0, 1, 4}) { // a circle against the filter's box, 33 px by 17 px from its middle
+        const Point c = nodeCenter(layout, op);
+        const float dx = std::max(0.0f, std::abs(c.x - f.x) - 33.0f), dy = std::max(0.0f, std::abs(c.y - f.y) - 17.0f);
+        clear = clear && std::hypot(dx, dy) >= 24.0f;
+    }
+    check(clear, "a filter switched on over operators comes back clear of them");
+}
+
 void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -4006,6 +4095,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testNewSources(dir, renderer);
     testMods(dir, renderer);
     testModsMoveDepth(dir, renderer);
+    testModsLive(dir, renderer);
+    testNodeSwitchOnPlace(dir, renderer);
     testModsSearch(dir, renderer);
     testMeter(dir, renderer);
     renderNewEffects(dir, renderer);

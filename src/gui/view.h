@@ -700,7 +700,8 @@ private:
     std::vector<Widget> widgets() const;
     std::optional<Widget> hitTest(Point p) const;
     Point nodeCenter(int node) const;
-    Point nodePlace(int node, Point want) const;
+    Point nodePlace(int node, Point want, bool *found = nullptr) const;
+    void placeSwitchedOn(int node); // moves a node just switched on off the others shown, as part of the edit
     int nodeAt(Point p) const;
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
@@ -920,6 +921,8 @@ private:
     // What the macros and the mod wheel add to each param, worked out from their settings at each paint, so it shows
     // with no note playing too, while the host may have let the plugin sleep.
     std::vector<float> macroOffsets_ = std::vector<float>(kModulatedCount, 0.0f);
+    std::array<float, kAllSources * kSlots> macroSlotOffsets_{}; // their slots', as a share of each target's range
+    std::optional<double> liveSlotOffset(int source, int slot) const;
     // Where modulation takes param `index` for the newest voice, against its set value, or with no note playing
     // where the macros take it; nothing for the params that can't be modulated, such as the macros' own knobs.
     float liveOffset(int index) const {

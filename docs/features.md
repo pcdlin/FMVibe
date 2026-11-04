@@ -364,7 +364,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
     opens. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
-    graph, and shows it in the inspector.
+    graph, and shows it in the inspector. However it is switched on (its ghost, its tab, the matrix), a node whose
+    place another node shown now covers comes back clear of it: pushed out of the way, or, with no room there, at
+    the free place nearest it (in the same undo step as the switch).
     - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
       onto an operator to modulate it, back onto itself for feedback, onto a filter or shaper to send it there, or
       onto the **OUT** bus; from further inside, a drag moves the node, and a click on the edge only picks the node.
@@ -741,6 +743,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     ways of the set value while its source is bipolar, or one way while it is unipolar.
   - While notes play, a white dot on each modulated knob shows where the newest voice currently is; with no note
     playing, it shows where the macros and the mod wheel take it, as they apply with or without notes.
+  - Each depth bar (in the MODS view and a pill's list) has a white tick where its modulation takes its target now,
+    on the bar's own scale, so a unipolar one at the top of its swing reaches the depth's handle: the newest voice's
+    while notes play, and a macro's or the mod wheel's from its knob, notes or not. A modulation another source
+    must run per voice shows none with no note playing, nor does a bypassed one or one whose source is off.
   - A modulated route shows it too: its wire (or its line to OUT), in its own color as any other,
     swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
     its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.

@@ -1565,7 +1565,7 @@ int slotAux(const Get &get, int source, int slot) {
 }
 
 // What the macros and the mod wheel add to their targets, the same for every voice and the effects, notes playing or
-// not: calls `add(target, offset)` for each slot in use, the offset in plain units. `get(index)` returns a param
+// not: calls `add(target, offset, source, slot)` for each slot in use, the offset in plain units. `get(index)` returns a param
 // value. A slot whose aux runs per voice (an LFO, say) is left to the voices, which add it with their aux's value
 // (see Synth::renderBlock()); one scaled by a macro or the mod wheel takes that knob's value here.
 template <class Get, class Add>
@@ -1585,8 +1585,10 @@ void forEachMacroMod(const Get &get, const Add &add) {
             if (aux >= 0 && runsPerVoice(aux))
                 continue;
             const double scale = get(slotScaleIndex(source, slot)) * (aux >= 0 ? get(stripKnobIndex(aux)) : 1.0);
-            add(target, slotCurveValue(knob, get(slotCurveIndex(source, slot)), bipolar) * amount * scale *
-                            (paramTable()[target].max - paramTable()[target].min));
+            add(target,
+                slotCurveValue(knob, get(slotCurveIndex(source, slot)), bipolar) * amount * scale *
+                    (paramTable()[target].max - paramTable()[target].min),
+                source, slot);
         }
     }
 }

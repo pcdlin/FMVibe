@@ -11,6 +11,8 @@
 
 ## Issues 
 
+- Check: An envelope with 1ms for Attack, decay and release might last for longer than 3ms total
+
 ## Improvements 
 
 - The shimmer reverb does not sound good

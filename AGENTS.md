@@ -160,6 +160,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     faint (read off the rendered pixels), and the depth handle hovered drawing the line from its source's handle
     (read off the rendered pixels);
   - the MODS tab's columns' names with no modulations (read off the rendered pixels);
+  - a MODS row's depth bar ticking where its modulation is now: an LFO's under a playing note (none with no note),
+    a macro's from its knob (read off the rendered pixels);
+  - a node switched on where another one shown sits coming back clear of it, undoably, and one whose place is free
+    staying there;
   - the MODS view's filter: its magnifier opening it to take the keyboard, the words typed (every one, in any case)
     narrowing the rows, its × emptying it, Escape and a click elsewhere letting the keyboard go; and the target
     menu's search listing the targets found with their path, Up and Down picking one, Enter taking it, Escape
