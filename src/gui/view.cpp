@@ -1275,8 +1275,8 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::Toggle, kLegatoSwitch, paramIndex(GlobalParam::Legato));
     add(Kind::Toggle, kMpeToggle, paramIndex(GlobalParam::Mpe));
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
-    // Centered on the Glide knob's middle (its rect starts at y 12 and its center is 20 px down).
-    add(Kind::Toggle, {kGlideX + kGlideW - 52.0f, 12.0f + 20.0f - 7.5f, 52.0f, 15.0f}, paramIndex(GlobalParam::GlideAlways));
+    // On the label's row, level with Poly | Mono, clear of the value under it.
+    add(Kind::Toggle, {kGlideX + kGlideW - 42.0f, 12.0f, 52.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
     // Voices, past the second divider. (Bend's knob is over the bend wheel, in the keyboard strip.)
     headerKnob(paramIndex(GlobalParam::Voices), kVoicesX, kHeaderKnobW, tr(Str::LabelVoices));
 

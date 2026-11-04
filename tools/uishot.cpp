@@ -213,7 +213,7 @@ constexpr Point kVoicesKnob{975.0f, 32.0f}; // past the second divider, where Be
 constexpr Point kMonoButton{753.0f, 21.0f};
 constexpr Point kLegatoToggle{731.0f, 44.0f};
 constexpr Point kGlideKnob{817.0f, 32.0f};
-constexpr Point kAlwaysToggle{899.0f, 32.0f};
+constexpr Point kAlwaysToggle{909.0f, 21.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};

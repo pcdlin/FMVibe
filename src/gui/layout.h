@@ -178,7 +178,7 @@ constexpr float kHeaderKnobX = kHeaderStart + 28.0f;
 constexpr float kHeaderKnobW = 104.0f;
 constexpr float kDividers[] = {kHeaderStart + 454.0f, kHeaderStart + 738.0f};
 constexpr float kPlayX = kDividers[0] + 24.0f; // Poly | Mono over Legato, 24 px past the first divider
-// The Glide knob 24 px past them, its Always switch ending 22 px before the second divider.
+// The Glide knob 24 px past them, its Always switch (on its label's row) ending 12 px before the second divider.
 constexpr float kGlideX = kPlayX + 112.0f;
 constexpr float kGlideW = 126.0f;
 // Voices, past the second divider.
