@@ -118,9 +118,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;
-  - each factory preset's content (the params it sets, by id, its node places and macro names) against its
-    checksum in `kPresetChecksums`, so an edit can't change a preset unnoticed; a preset changed on purpose, or a
-    new one, gets the checksum the check prints;
+  - each factory preset's file being sparse, and its content (the params it sets away from their defaults, by id,
+    its node places and macro names) against its checksum in `kPresetChecksums`, so an edit can't change a preset
+    unnoticed; a preset changed on purpose, or a new one, gets the checksum the check prints;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
@@ -254,6 +254,24 @@ More checks:
 - **In Bitwig Studio**: install the plugin as the [README](README.md#build) describes; Bitwig finds it
   in the per-user CLAP folder.
 
+## Factory presets
+
+The factory presets are preset files, `presets/Factory/<name>.fmv`, which the build compiles in:
+`cmake/embed_presets.cmake` turns them into byte arrays (`factoryPresets()` in `src/factory.h`), for the plugin and
+the browser demo alike, again whenever one changes. The plugin writes their bytes as they are into a new preset folder.
+`presets/factory.txt` names them in the order they came, which counts: the settings file counts the examples a folder
+was given, so a new one goes at the end and none is reordered or taken out. The build fails on a file the list
+doesn't name, or a name without its file.
+
+They are stored sparse: only the params that differ from their defaults (which is what loading a preset gives the
+others), then the editor layout, a kilobyte or so where a preset the plugin saves holds every param (about 128 KB).
+To add or change one:
+
+1. Make it in the plugin and save it into `presets/Factory` (the preset bar's Save, then the file dialog).
+2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`.
+3. For a new one, add its name at the end of `presets/factory.txt`.
+4. Build and run `ctest`: the quality check prints the checksum to put in `kPresetChecksums` (`tests/quality.cpp`).
+
 ## Browser demo
 
 The engine and the editor also build for the browser with Emscripten, as a demo page that can be served from any
@@ -353,7 +371,9 @@ hit.
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
 | `src/gui/controller.h` | What the editor needs from the plugin (values, edits, telemetry, layout) |
 | `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
-| `src/factory.cpp` | The example presets written into the preset folder |
+| `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
+| `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
+| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored |
 | `tests/smoke_host.cpp` | Headless test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
 | `build.ps1` | One-shot configure/build/test/validate/install |

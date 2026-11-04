@@ -21,10 +21,15 @@ fmvibe_web_options(fmvibe-dsp)
 target_link_options(fmvibe-dsp PRIVATE -sSTANDALONE_WASM --no-entry)
 set_target_properties(fmvibe-dsp PROPERTIES SUFFIX ".wasm")
 
-# The editor: the plugin's View, drawing on the page's canvas through src/gui/canvas_web.cpp.
+# The editor: the plugin's View, drawing on the page's canvas through src/gui/canvas_web.cpp, with the factory
+# presets.
+fmvibe_factory_presets(factory_presets)
 add_executable(fmvibe-ui
     ui.cpp
     ${engine}
+    ${factory_presets}
+    ${PROJECT_SOURCE_DIR}/src/factory.cpp
+    ${PROJECT_SOURCE_DIR}/src/state.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/canvas_web.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/controller.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/dialogs.cpp
