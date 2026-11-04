@@ -18,7 +18,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     peak; the synth builds its tables again whenever the partials change. Noise has no pitch or unison: instead a **Slope** moves it from white through pink (−3 dB per
     octave) to brown (−6 dB per octave) at about the same loudness, and **Spread** (the Uni Spread param) widens it
     from mono to fully uncorrelated left and right;
-  - Coarse ratio (0.5, 1…32), Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
+  - Coarse ratio (0.5, 1…32), which modulation can drive too: its depth is a share of the 32 steps, and the ratio
+    interpolates linearly between them (1.5 half way from 1 to 2), so a strong modulation sweeps smoothly through
+    the ratios; the knob itself sits on its steps. Each operator's pitch moves to a new control block's value over the block's length (not in a step at its start), for Ratio and every other pitch modulation alike. Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
     ratio; the knob moves in whole semitones, while LFOs, envelopes and host modulation glide through it), Detune
     (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release;
     its attack, hold, decay and release each go from 1 ms to 10 s);
@@ -115,6 +117,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   what it puts out (a macro moves nothing with its knob at 50 %). LFOs and envelopes run
   per voice and restart
   with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later.
+  Each modulation has a **curve** (-100 to +100 %, a straight line to begin with), which bends what its source puts
+  out before the depth takes it, as an envelope segment's curve bends the segment: above 0 it rises fast and
+  settles, below 0 it starts slow and rushes at the end, and the ends stay where they are. A bipolar modulation's
+  curve bends each half from the middle out alike, so the middle of the swing still leaves the target at its set
+  value. One source can so open a cutoff in a straight line and swell an operator's level slowly at once.
   Each modulation also has an **Amount** (0–100 %, all of it to begin with), which scales its depth, and can have an
   **aux**: another source whose output scales it too, as a unipolar source puts it out (0 to 1), so a macro can
   fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
@@ -163,8 +170,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     its peak, and 100 % is the cycle's start again. A free LFO keeps its shared clock and a random one its steps,
     so neither uses it. A one-shot runs from there to the cycle's end, so at 50 % it plays only the second half.
   - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
-    dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. A new LFO starts synced, in
-    quarter notes.
+    dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. The browser demo has no
+    host: its page has a **Tempo** field under the editor instead (20–999 BPM, 120 to begin with, remembered by the
+    browser), which every synced LFO, delay and sweep follows. A new LFO starts synced, in quarter notes.
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
     is never free): for a sine, a triangle or a drawn shape that is where it started, while a saw holds at its top,
     a square low and a random one at the value it took.
@@ -284,9 +292,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   MIDI pitch bend (its knob over the bend wheel, in the keyboard strip), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
 - **MPE** (MIDI Polyphonic Expression), off to begin with: a setting of the instance, in the settings dialog (see
-  Settings), saved with the project but not with presets, so browsing presets leaves it as it is. Hosts
-  that send CLAP note expressions (Bitwig) need nothing: each note's tuning, volume, pan, pressure and brightness
-  reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is the master channel, whose
+  Settings), saved with the project but not with presets, so browsing presets leaves it as it is. Hosts that
+  send note expressions (Bitwig to CLAP plugins, Cubase to VST3 ones) need nothing: each note's tuning, volume,
+  pan, pressure and brightness reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is the master channel, whose
   pitch bend (by Bend Range), controllers and channel pressure apply to every voice, and channels 2 to 16 each carry
   one note of their own: their pitch bend bends that note alone, by the **MPE bend range** (48 semitones to begin
   with, as the MPE spec has it; 12, 24, 48 or 96, beside the switch), and their channel pressure and
@@ -313,13 +321,15 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Glide** (0 = off, 1 ms–20 s) slides the pitch from the previous note, in mono and poly alike. By default it
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
     covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
-- **Host modulation**: all continuous parameters accept CLAP modulation globally, the macros' knobs and depths, the
-  mod wheel, the note source's range and depths, velocity's depths and every modulation's Amount among them; those
+- **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
+  parameters accept CLAP modulation globally, the macros' knobs and depths, the
+  mod wheel, the note source's range and depths, velocity's depths and every modulation's Amount and curve among them; those
   the voices read also per
   voice (not Volume, the mod wheel, the effects, the macros, the note source or velocity), so Bitwig's modulators
   (including per-note ones) can drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
-  clicking), and CLAP note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources).
+  clicking), and note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources; see
+  [CLAP and VST3](#clap-and-vst3) for the VST3 ones).
   Lowering the voice limit while more voices sound fades
   out the ones past it at once, as stealing does. Voices are stereo all the way through the filters.
   Voices without any unison spread run their filters once, so they cost no more than mono voices.
@@ -485,7 +495,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Note & MIDI for the Random and MIDI
       sources, Macros, and Keyboard:
       Note, Velocity and Mod Wheel); picking one moves the modulation there, into a free slot, with its depth,
-      Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
+      curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
       follows it to its new slot, or, moved to a macro, the note source, the mod wheel or velocity (whose depths
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
@@ -502,6 +512,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       Down light another, Enter or a click picks one. Escape, or the search's ×, empties it, and Escape with nothing
       typed closes the menu. Both fields edit like the preset browser's search (see the preset bar);
     - the **depth**, a bar like a source row's, with its value (double-click or Ctrl+Click types one);
+    - the **curve**, drawn along the source's swing (from the middle out for a bipolar source), faint while it is
+      straight and in the source's color once it is bent; dragged up or down it bends (100 px from straight to
+      either end), and a double-click straightens it. Its tooltip gives its value;
     - the **Amount**, a bar from none at its left to all of it at its right, dragged or clicked, with its value;
     - the **aux**: a chip in its color with its name and an × that takes it away, or a dashed **+ Aux**; a click on
       either opens the menu of sources, None first, the row's own source faint;
@@ -811,7 +824,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   shaper crushing it; its Speed and Grit macros); and FX Noise Riser (wide noise through a high-pass and a climbing
   sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
-  given, so deleted ones stay gone.
+  given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
+  they hold only the params that differ from Init, so their files are small, and load like any other.
   - The **preset bar** in the middle of the tabs' row shows the preset loaded or saved last, or **- Init -** (as
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
     preset in the folder, round from the last to the first. Clicking the name opens the **browser**: the presets
@@ -852,7 +866,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   switch along. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
   license.
 
-### Remote-control pages (Bitwig)
+### Remote-control pages (Bitwig, CLAP)
 
 | Section | Pages |
 | --- | --- |
@@ -863,3 +877,29 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 | FX | One page per effect in the chain, named after its place and type, with that effect's knobs (a shimmer reverb's Pitch and Shimmer in place of its Pre-Delay and Width) |
 | Matrix | "A modulates" … "F modulates": what that operator modulates; "Into F1", "Into F2": each operator's send into that filter; "F1 modulates", "F2 modulates": the operators each filter modulates; "Into S1", "S1 modulates" and the same for S2: each operator's and filter's send into that shaper, and the operators it modulates |
 | Modulation | One page per source, in the editor's order: an LFO's shape, rate, sync and division, or an envelope's attack, decay, sustain and release, then its 4 slot depths |
+
+## CLAP and VST3
+
+FMVibe comes as a CLAP plugin (`FMVibe.clap`) and a VST3 plugin (the `FMVibe.vst3` folder), built from the same code:
+the same engine, editor, parameters (with the same ids), presets and settings. The VST3 plugin is written straight
+against the VST3 interfaces, with no wrapper in between, as one object that is both its processor and its edit
+controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
+as two different plugins, though, so a project made with one doesn't switch to the other by itself.
+
+What the VST3 plugin does its own way:
+
+- **MIDI**: VST3 hands plugins notes, but no controllers. FMVibe asks hosts to map every controller, channel pressure
+  and pitch bend, on each of the 16 MIDI channels, to hidden parameters of its own, and takes them as MIDI from
+  there: pitch bend (by Bend Range), the MIDI sources' controllers and pressure, and MPE over MIDI work as in the
+  CLAP plugin. Polyphonic pressure comes as its own event, a note's pressure.
+- **Note expressions**: Volume, Pan, Tuning (ten octaves either way) and Brightness (a note's slide), as VST3 names
+  them, and Pressure, one of FMVibe's own. For touch surfaces and MPE controllers, FMVibe tells hosts to send a
+  finger's sideways movement as Tuning, its movement along the key as Brightness and how hard it presses as
+  Pressure. A note-on's tuning (in cents) tunes the note from its start.
+- **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...). The fields of effects
+  and sources a slot or place doesn't hold are hidden, as in the CLAP plugin, and the host is told to look again
+  when they change. Parameters hosts don't show are read-only to them.
+- **Restarting**: raising the voice limit past the voices allocated, or changing the oversampling, asks the host to
+  deactivate and reactivate the plugin (through a latency change, which has hosts do that).
+- **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
+  reports that per-voice modulation needs.

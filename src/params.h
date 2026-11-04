@@ -521,7 +521,10 @@ constexpr int kSlotAuxBase = kVelocityBase + kVelocityParamCount;
 // The bypasses of the slots of the sources under the keyboard (the macros, the note source, the mod wheel and
 // velocity in turn), like the places' (see kSlotBypassBase).
 constexpr int kStripBypassBase = kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields;
-constexpr int kParamCount = kStripBypassBase + (kAllSources - kMaxSources) * kSlots;
+// Each slot's curve (-1..1, 0 a straight line), which bends what its source puts out before the depth takes it, as
+// an envelope segment's curve bends the segment (see slotCurveValue()): kSlots a source, for every source in turn.
+constexpr int kSlotCurveBase = kStripBypassBase + (kAllSources - kMaxSources) * kSlots;
+constexpr int kParamCount = kSlotCurveBase + kAllSources * kSlots;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -714,8 +717,8 @@ constexpr int partialCountIndex(int op) { return kPartialCountBase + op; }
 inline int partialCount(double value) { return static_cast<int>(std::clamp(std::lround(value), 1L, long{kPartials})); }
 constexpr int bypassSourceOf(int index) {
     return index >= kSlotBypassBase && index < kPartialBase ? (index - kSlotBypassBase) / kSlots
-           : index >= kStripBypassBase && index < kParamCount ? kMaxSources + (index - kStripBypassBase) / kSlots
-                                                              : -1;
+           : index >= kStripBypassBase && index < kSlotCurveBase ? kMaxSources + (index - kStripBypassBase) / kSlots
+                                                                 : -1;
 }
 // The slot a bypass param belongs to, for bypassSourceOf()'s source.
 constexpr int bypassSlotOf(int index) {
@@ -766,6 +769,7 @@ constexpr int slotAuxIndex(int source, int slot) {
 constexpr int slotScaleIndex(int source, int slot) {
     return kSlotAuxBase + (source * kSlots + slot) * kSlotAuxFields + static_cast<int>(SlotAuxParam::Amount);
 }
+constexpr int slotCurveIndex(int source, int slot) { return kSlotCurveBase + source * kSlots + slot; }
 // The source an aux or Amount param belongs to; -1 for other params.
 constexpr int auxSourceOf(int index) {
     return index >= kSlotAuxBase && index < kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields
@@ -838,6 +842,8 @@ constexpr Section kSections[] = {
     {kSlotAuxBase, kAllSources, kSlots * kSlotAuxFields, 22000, 40},
     // A block per source under the keyboard, in source order, after the places' bypasses.
     {kStripBypassBase, kAllSources - kMaxSources, kSlots, 9320, 20},
+    // A block per source, in source order, as the auxes'.
+    {kSlotCurveBase, kAllSources, kSlots, 24000, 20},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1065,6 +1071,9 @@ static_assert(idOfIndex(slotAuxIndex(0, 0)) == 22000 && idOfIndex(slotScaleIndex
                   idOfIndex(slotAuxIndex(kVelocitySource, 0)) == 23040 &&
                   idOfIndex(slotScaleIndex(kVelocitySource, kSlots - 1)) == 23071,
               "slot aux param ids moved");
+static_assert(idOfIndex(slotCurveIndex(0, 0)) == 24000 && idOfIndex(slotCurveIndex(0, kSlots - 1)) == 24015 &&
+                  idOfIndex(slotCurveIndex(kVelocitySource, kSlots - 1)) == 24535,
+              "slot curve param ids moved");
 static_assert(idOfIndex(shaperCurveCountIndex(0)) == 13000 &&
                   idOfIndex(shapeFieldIndex(shaperCurveCountIndex(kShapers - 1), 15, PointField::Curve)) == 13098 &&
                   idOfIndex(shapeFieldIndex(shaperCurveCountIndex(0), 16, PointField::X)) == 21000 &&
@@ -1214,6 +1223,11 @@ inline int fixedSwitchOp(int index) {
 inline double coarseRatio(double coarse) {
     const long c = std::lround(coarse);
     return c <= 0 ? 0.5 : static_cast<double>(c);
+}
+
+// The ratio a modulated Coarse plays: between two steps it is interpolated linearly, from 0.5 at 0 to 1 at 1.
+inline double coarseRatioSmooth(double coarse) {
+    return coarse <= 0.0 ? 0.5 : coarse < 1.0 ? 0.5 + 0.5 * coarse : coarse;
 }
 
 // Note values for tempo sync, from 4/1 dotted down to a 1/64 triplet, slowest
@@ -1405,6 +1419,17 @@ inline double envProgressTime(double progress, double k) {
 inline double envCurve(double t, double curve) {
     return envProgress(t, curve * kCurveSteepness);
 }
+// What a slot takes from its source, bent by the slot's curve (-1..1) as an envelope segment is: unipolar, its 0..1
+// along envCurve(); bipolar (-0.5..0.5 about the set value), each half of it from the middle out, so that the middle
+// stays where it is and the two ends swing alike. 0 leaves it as it is.
+inline double slotCurveValue(double value, double curve, bool bipolar) {
+    if (std::abs(curve * kCurveSteepness) < kLinearSteepness)
+        return value;
+    if (!bipolar)
+        return envCurve(std::clamp(value, 0.0, 1.0), curve);
+    const double half = 0.5 * envCurve(std::clamp(2.0 * std::abs(value), 0.0, 1.0), curve);
+    return value < 0.0 ? -half : half;
+}
 
 // A compressor's static curve: the output level (dB) for an input level (dB).
 // Above the threshold, levels rise 1/ratio as fast; within the knee, centered
@@ -1516,10 +1541,12 @@ inline bool snapsToSteps(ParamKind kind) {
 }
 // Displayed and modulated around the middle of the range rather than from the minimum.
 bool isBipolar(ParamKind kind);
-// Continuous params are the ones LFOs, envelopes and host modulators can drive.
+// Continuous params are the ones LFOs, envelopes and host modulators can drive, and the operators' Ratio, which
+// interpolates between its steps when modulated.
 // Not the macros' own knobs: they are read as set.
 inline bool isModTarget(int index) {
-    return index >= 0 && index < kMacroBase && !isStepped(paramTable()[index].kind) &&
+    return index >= 0 && index < kMacroBase &&
+           (!isStepped(paramTable()[index].kind) || paramTable()[index].kind == ParamKind::Ratio) &&
            paramTable()[index].kind != ParamKind::ShapePoint;
 }
 // Value of a slot target param pointing at param `index`, and back (-1 = none or invalid).
@@ -1547,7 +1574,8 @@ void forEachMacroMod(const Get &get, const Add &add) {
         if (isNoteBorne(source))
             continue;
         // Bipolar, the knob's middle moves nothing, and its ends half the depth either way.
-        const double knob = get(stripKnobIndex(source)) - (sourceBipolar(get, source) ? 0.5 : 0.0);
+        const bool bipolar = sourceBipolar(get, source);
+        const double knob = get(stripKnobIndex(source)) - (bipolar ? 0.5 : 0.0);
         for (int slot = 0; slot < kSlots; ++slot) {
             const int target = slotTarget(get(slotTargetIndex(source, slot)));
             const double amount = get(slotAmountIndex(source, slot));
@@ -1557,7 +1585,8 @@ void forEachMacroMod(const Get &get, const Add &add) {
             if (aux >= 0 && runsPerVoice(aux))
                 continue;
             const double scale = get(slotScaleIndex(source, slot)) * (aux >= 0 ? get(stripKnobIndex(aux)) : 1.0);
-            add(target, knob * amount * scale * (paramTable()[target].max - paramTable()[target].min));
+            add(target, slotCurveValue(knob, get(slotCurveIndex(source, slot)), bipolar) * amount * scale *
+                            (paramTable()[target].max - paramTable()[target].min));
         }
     }
 }

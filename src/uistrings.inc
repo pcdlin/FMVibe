@@ -195,6 +195,7 @@ STR(ParamBypass, "Bypass {1}")
 STR(ParamBipolar, "Bipolar")
 STR(ParamAux, "Aux {1}") // the source that scales a slot
 STR(ParamAuxAmount, "Amount {1}") // how much of its depth a slot keeps, 0 to 100 %
+STR(ParamSlotCurve, "Curve {1}") // how a slot bends what its source puts out, -100 to 100 %
 STR(ParamLow, "Low")
 STR(ParamHigh, "High")
 STR(ParamShape, "Shape")
@@ -312,6 +313,17 @@ STR(PageModulates, "{1} modulates")
 STR(PageInto, "Into {1}")
 STR(PortOutput, "Output")
 STR(PortNotes, "Notes")
+
+// --- VST3 hosts: the params MIDI controllers come in as, and the note expressions a note takes
+
+STR(MidiCcParam, "MIDI CC {1} Ch {2}") // a controller's number, then its channel (1..16)
+STR(MidiAftertouchParam, "MIDI Aftertouch Ch {1}")
+STR(MidiPitchBendParam, "MIDI Pitch Bend Ch {1}")
+STR(ExprVolume, "Volume")
+STR(ExprPan, "Pan")
+STR(ExprTuning, "Tuning")
+STR(ExprBrightness, "Brightness")
+STR(ExprPressure, "Pressure")
 
 // --- Sources, presets and themes by name
 
@@ -730,6 +742,7 @@ STR(ModsHeadTarget, "TARGET")
 STR(ModsHeadDepth, "DEPTH")
 STR(ModsHeadAmount, "AMOUNT")
 STR(ModsHeadAux, "AUX")
+STR(ModsHeadCurve, "CURVE")
 STR(ModsAddAux, "+ Aux") // a row without an aux: opens the menu of auxes
 STR(ModsAddModulation, "+ Add modulation") // after the last row: adds an empty one
 STR(CardNoModulations, "No modulations") // a source card's button, while the source modulates nothing
@@ -752,6 +765,7 @@ STR(TipModsPickTarget, "Pick its target")
 STR(TipModsAux, "Scale its depth by another source")
 STR(TipModsAuxClear, "No aux")
 STR(TipModsScale, "Amount: how much of its depth the modulation keeps")
+STR(TipModsCurve, "Curve {1}: drag up or down to bend what the source puts out; double-click straightens it")
 STR(CascadeLfos, "LFOs")
 STR(CascadeEnvelopes, "Envelopes")
 STR(CascadeNoteMidi, "Note & MIDI") // Random and MIDI sources

@@ -73,6 +73,11 @@ EMSCRIPTEN_KEEPALIVE void dsp_bend(double amount) {
     wheelBend = amount;
 }
 
+// The page's tempo (BPM), standing in for a host's transport: synced LFOs, delays and sweeps follow it.
+EMSCRIPTEN_KEEPALIVE void dsp_tempo(double bpm) {
+    synth.setTempo(bpm);
+}
+
 EMSCRIPTEN_KEEPALIVE void dsp_scope(int op, int cycles) {
     synth.setScope(op, cycles);
 }

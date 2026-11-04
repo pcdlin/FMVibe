@@ -1,33 +1,17 @@
 ## New Features
 
 - Remap modifiers for modulation sources
-    - **In one line:** Random and MIDI (a controller or aftertouch, with Slew) sources came as card types; what is
-      left is a modifier that bends another source's output through a drawn curve, or slews an LFO's or envelope's.
+    - **In one line:** Random and MIDI (a controller or aftertouch, with Slew) sources came as card types, and each
+      modulation now has a curve of its own (an envelope segment's bend, in the MODS view); what is left is slewing
+      an LFO's or envelope's output, and a freely drawn curve shared between modulations.
     - **Feasible, medium.** A source type whose input is another source (picked like an aux) and whose output is that
-      source's through a curve laid out like the note source's; it runs after its input in the voice's source loop
+      source's slewed or through a drawn curve; it runs after its input in the voice's source loop
       (`Synth::renderBlock()`), so an input in a later place is a block late. 7 spare ids a place are left.
 
 
 ## Issues 
 
 ## Improvements 
-
-- Move factory presets out of the C++ code, into committed .FMV files. They should be compiled into the code on build.
-    - **In one line:** move the preset reading and writing into the core library, export today's presets once as
-      sparse `.fmv` files (only what differs from Init; a full one is ~128 KB), embed them with CMake as byte
-      arrays, and drop the ~700-line builder in `factory.cpp`.
-    - **Feasible, medium.**
-        1. Move the patch format (`writePatch()` and the reading half of `loadState()`) from `plugin.cpp` into
-           `fmvibe-core`, so the web demo, tests and tools can read a preset from memory.
-        2. A small tool writes today's examples out once as `presets/Factory/*.fmv`, holding only the params that
-           differ from Init (a full file is ~128 KB: 10,660 params × 12 bytes; missing params load as their
-           defaults, which is how the C++ list treats them today), plus an order list, since the examples-given
-           count in settings.txt depends on their order. Its `--normalize` makes an edited and saved preset sparse
-           again.
-        3. CMake reads the files (`file(READ … HEX)`) into a generated `.cpp` of byte arrays, for the plugin and the
-           web build alike, regenerated when a file changes.
-        4. `factoryPresets()` decodes those, and `writeExamples()` copies the bytes as they are; the builder in
-           `factory.cpp` (~700 lines) goes. quality.cpp's preset checks and uishot keep using `factoryPresets()`.
 
 - The shimmer reverb does not sound good
     - **In one line:** move the pitch shifter out of the reverb's delay lines into a feedback path after it, with
@@ -62,51 +46,6 @@
            for the clipboard.
         4. Port the smoke host (dlopen) and uishot (Cairo PNGs, so the UI checks can run in Linux CI too), and add a
            Linux job to release.yml.
-
-- VST3 version?
-    - **In one line:** use clap-wrapper, with four small fixes in FMVibe; per-voice host modulation, remote control
-      pages and dynamically hidden params don't carry over to VST3.
-    - **Feasible, medium (1–2 weeks, mostly host testing)**, through
-      [clap-wrapper](https://github.com/free-audio/clap-wrapper), as AGENTS.md's Next steps already say. The VST3
-      SDK has been MIT-licensed since 3.8. What follows was checked in clap-wrapper's source (main, October 2026).
-        1. Fetch clap-wrapper and the VST3 SDK, pinned by hash like the CLAP SDK; `make_clapfirst_plugins()`
-           builds `FMVibe.vst3` from the same code.
-        2. The four fixes in FMVibe, which help the CLAP build too:
-            - Add `clap.tail`. Without it the wrapper reports no tail, so hosts that suspend idle plugins could cut
-              reverb and delay tails off.
-            - Add the wrapper's `clap_plugin_as_vst3` extension, declaring the tuning, volume and pan note
-              expressions (VST3 hosts get none otherwise) and a single MIDI channel. That cuts the parameters the
-              wrapper adds for MIDI mapping from 2,080 (16 channels × 130) to 130.
-            - Stop flagging FxOrder as stepped (it's hidden anyway). Its 16! − 1 steps overflow VST3's 32-bit step
-              count (`detail/vst3/parameter.cpp:128` in the wrapper).
-            - Map MIDI CC1 to the Mod Wheel param. The hardware wheel arrives as CC1, which FMVibe ignores today in
-              both formats.
-        3. Test raising the voice limit in each host: the restart becomes an I/O-changed restart, which most hosts
-           answer by deactivating and reactivating the plugin.
-        4. Run Steinberg's validator in `build.ps1 -Validate`, put the `.vst3` in the release zip, and try it by hand
-           in VST3 hosts (Cubase, Ableton, FL, Reaper, Studio One).
-    - What VST3 can't carry, wrapped or native: per-voice and global host modulation (in Bitwig, its per-note
-      modulators and MPE through them; a VST3 gets one value per param for the whole plugin), `NOTE_END` and voice
-      info, and remote control pages. Bitwig users keep the CLAP version.
-    - **Native VST3 instead of the wrapper** (~4–6 weeks):
-        - Pros:
-            - Every automation point reaches the engine. The wrapper keeps only the last point of each param per
-              block (`detail/vst3/process.cpp`), so fast automation and pitch bend move once a block. FMVibe ramps
-              levels, sends and routing per sample, so this is mostly inaudible, but coarser at large buffers.
-            - Control over what hosts see. The wrapper shows all 10,660 params (hidden ones flagged hidden) plus
-              its MIDI-mapping ones. Natively, shape points, partials and wiring could stay in the state alone,
-              FMVibe's own undo covering them and `IComponentHandler2::setDirty()` marking the project changed.
-            - No dependence on the wrapper's quirks and releases (its 32-bit step count, its 20 ms main-thread
-              timer on Windows).
-        - Cons:
-            - The work: split `plugin.cpp` into a host-neutral core and two front ends (~1 week), a VST3 front end
-              of ~1,500–2,500 lines (~1.5–3 weeks), a VST3 test host and testing in hosts (~1–2 weeks).
-            - Every host-facing change made twice from then on, and the CLAP smoke tests no longer cover what VST3
-              hosts run.
-            - No gain where VST3 itself falls short (above), nor in sound: it is identical either way, and the
-              wrapper's own cost is microseconds a block.
-        - Verdict: use the wrapper. If per-block automation ever proves audible, passing every point is a small
-          patch to the wrapper (MIT) to send upstream.
 
 ## Organziational
 

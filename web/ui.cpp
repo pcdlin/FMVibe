@@ -140,15 +140,14 @@ public:
     bool loadPresetAt(int index) override {
         if (index < 0 || index >= static_cast<int>(examples_.size()))
             return false;
-        const FactoryPreset &preset = examples_[index];
+        ParamValues values;
+        UiLayout layout;
+        if (!loadFactoryPreset(examples_[index], values, layout))
+            return false;
         UndoScope step(*this);
         recordAll();
-        const ParamTable &table = paramTable();
-        for (int i = 0; i < kParamCount; ++i)
-            values_[i] = table[i].def;
-        for (const auto &[param, value] : preset.changes)
-            values_[param] = std::clamp(value, table[param].min, table[param].max);
-        replaceLayout(exampleLayout(preset));
+        values_ = values;
+        replaceLayout(layout);
         js_all_params(values_.data(), kParamCount);
         layoutChanged();
         setPreset(fileOf(index)); // in the step, so undoing it brings back the preset before

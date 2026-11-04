@@ -204,6 +204,9 @@ private:
         double amp = 0.0;     // ramps in from nothing over a new voice's first block
         double out = 0.0;     // latest mono output sample (what other operators hear)
         double prevOut = 0.0; // the one before, for feedback smoothing
+        std::array<double, kMaxUnison> incNow{}; // the copies' phase increments, moving to each block's
+        int incCopies = 0;     // how many copies incNow holds
+        bool incKnown = false; // incNow holds the last block's, not stale: false for a new note and after being off
         Envelope env;
         Memo<EnvRates, 8> rates; // its envelope's, from its params
         Memo<UnisonCopies, 4> unison; // its copies, from its pitch and its unison params

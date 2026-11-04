@@ -705,6 +705,34 @@ int main(int argc, char **argv) {
               "a fixed operator plays its Freq x Mult whatever the note, bend, Pitch and Detune");
     }
 
+    // Operator A's Ratio takes modulation continuously: +1 plays an octave up, and +0.5 the ratio half way between
+    // the steps (660 Hz), not either of them.
+    {
+        auto playRatio = [&](double mod) {
+            const clap_event_param_mod_t ratioMod = paramModEvent(paramIndex(0, OpParam::Coarse), -1, mod);
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 22, 69);
+            runBlock({&ratioMod.header, &on.header});
+            runBlocks(8);
+            std::vector<float> signal;
+            for (int b = 0; b < 16; ++b) {
+                runBlock();
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            runBlock({&chokeAll.header});
+            return signal;
+        };
+        const auto up = playRatio(1.0);
+        const auto between = playRatio(0.5);
+        const double octave = magnitude(up, 880.0) / std::max(magnitude(up, 440.0), 1e-9);
+        const double same = magnitude(between, 660.0) /
+                            std::max(std::max(magnitude(between, 440.0), magnitude(between, 880.0)), 1e-9);
+        std::printf("      A's Ratio modulated: +1 puts 880 Hz %.0fx over 440 Hz, +0.5 puts 660 Hz %.0fx over both\n",
+                    octave, same);
+        const clap_event_param_mod_t unmod = paramModEvent(paramIndex(0, OpParam::Coarse), -1, 0.0);
+        runBlock({&unmod.header});
+        check(octave > 30.0 && same > 30.0, "a modulated Ratio plays the nearest whole step");
+    }
+
     // The matrix does FM: B -> A puts the 2nd harmonic onto a pure-sine carrier.
     const double pure = secondHarmonicRatio({});
     const double fm = secondHarmonicRatio({.bToA = 0.4});
@@ -1781,6 +1809,61 @@ int main(int argc, char **argv) {
               "a macro's and velocity's bypassed slots leave their targets alone");
     }
 
+    // A slot's curve bends what its source puts out as an envelope segment's curve does: a macro half way at -100 %
+    // on A's output takes it down by half straight, by envCurve(0.5, curve) bent, either way; so does velocity at half
+    // (which runs per voice), and the macro with velocity at full for its aux (which the voices add); and a bipolar
+    // macro at its middle still leaves A alone.
+    {
+        const int out = paramIndex(0, OpParam::Out);
+        auto peakAt = [&](double velocity) {
+            clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 94, 69);
+            on.velocity = velocity;
+            runBlock({&on.header});
+            runBlocks(4);
+            const float peak = runBlocks(8);
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const float full = peakAt(1.0);
+        setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(out)},
+                   {slotAmountIndex(kMaxSources, 0), -1.0},
+                   {paramIndex(0, MacroParam::Value), 0.5}});
+        const float straight = peakAt(1.0);
+        setParams({{slotCurveIndex(kMaxSources, 0), 0.25}});
+        const float fast = peakAt(1.0);
+        setParams({{slotCurveIndex(kMaxSources, 0), -0.25}});
+        const float slow = peakAt(1.0);
+        setParams({{slotAuxIndex(kMaxSources, 0), slotAuxValue(kVelocitySource)}});
+        const float slowPerVoice = peakAt(1.0);
+        setParams({{slotAuxIndex(kMaxSources, 0), 0.0},
+                   {paramIndex(0, MacroParam::Bipolar), 1.0},
+                   {slotCurveIndex(kMaxSources, 0), 0.6}});
+        const float bipolarMiddle = peakAt(1.0);
+        setParams({{slotTargetIndex(kMaxSources, 0), 0.0},
+                   {slotAmountIndex(kMaxSources, 0), 0.0},
+                   {slotCurveIndex(kMaxSources, 0), 0.0},
+                   {paramIndex(0, MacroParam::Bipolar), 0.0},
+                   {paramIndex(0, MacroParam::Value), 0.0},
+                   {slotTargetIndex(kVelocitySource, 0), slotTargetValue(out)},
+                   {slotAmountIndex(kVelocitySource, 0), -1.0},
+                   {slotCurveIndex(kVelocitySource, 0), 0.25}});
+        const float velocityFast = peakAt(0.5);
+        setParams({{slotTargetIndex(kVelocitySource, 0), 0.0},
+                   {slotAmountIndex(kVelocitySource, 0), 0.0},
+                   {slotCurveIndex(kVelocitySource, 0), 0.0}});
+        const double up = 1.0 - envCurve(0.5, 0.25), down = 1.0 - envCurve(0.5, -0.25);
+        std::printf("      a macro half way at -100 %% on A's output: %.3f of A straight, %.3f at a +25 %% curve "
+                    "(%.3f expected), %.3f at -25 %% (%.3f), %.3f with velocity as aux; bipolar at its middle %.3f; "
+                    "velocity at half, +25 %% %.3f\n",
+                    straight / full, fast / full, up, slow / full, down, slowPerVoice / full, bipolarMiddle / full,
+                    velocityFast / full);
+        check(full > 0.1f && std::abs(straight / full - 0.5f) < 0.03f && std::abs(fast / full - up) < 0.03f &&
+                  std::abs(slow / full - down) < 0.03f && std::abs(slowPerVoice / full - down) < 0.03f,
+              "a slot's curve bends what its source puts out, both ways");
+        check(std::abs(velocityFast / full - up) < 0.03f, "a per-voice source's slot takes its curve too");
+        check(std::abs(bipolarMiddle / full - 1.0f) < 0.01f, "a bipolar source's curve keeps its middle still");
+    }
+
     // An LFO's slot scaled by velocity or the note source modulates from a note's first block, as one with no aux
     // does: a slow unipolar square, up at the start, at -100 % on A's output silences A from the start, scaled by a
     // note at full velocity, or by the note source with its range below the note (where it puts out all of it). The
@@ -2509,6 +2592,40 @@ int main(int argc, char **argv) {
     std::printf("      16 voices x 6 operators x 8 unison: 1 s of audio in %.1f ms (%.1f %% of one core)\n", unisonMs,
                 unisonMs / 10.0);
     check(std::isfinite(unisonPeak), "full unison stays finite");
+
+    // The same, with every operator's Ratio moved on every block (what a fast LFO on it asks of the voices).
+    auto timeModulated = [&](const char *what) {
+        double ms = 0.0;
+        float peak = 0.0f;
+        const auto began = std::chrono::steady_clock::now();
+        for (int b = 0; b < blocksPerSecond; ++b) {
+            std::vector<clap_event_param_mod_t> mods;
+            for (int op = 0; op < kOps; ++op)
+                mods.push_back(paramModEvent(paramIndex(op, OpParam::Coarse), -1, 0.5 + 0.5 * std::sin(b * 0.37 + op)));
+            std::vector<const clap_event_header_t *> evs;
+            for (const auto &m : mods)
+                evs.push_back(&m.header);
+            peak = std::max(peak, runBlock(evs));
+        }
+        ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - began).count();
+        std::printf("      %s, Ratio modulated every block: 1 s of audio in %.1f ms (%.1f %% of one core)\n", what, ms,
+                    ms / 10.0);
+        check(std::isfinite(peak), "modulated Ratio stays finite");
+    };
+    timeModulated("16 voices x 6 operators x 8 unison");
+    runBlock({&chokeAll.header});
+    {
+        std::vector<clap_event_param_value_t> one;
+        for (int op = 0; op < kOps; ++op)
+            one.push_back(paramEvent(paramIndex(op, OpParam::Unison), 1.0));
+        std::vector<const clap_event_header_t *> oneEvents;
+        for (const auto &ev : one)
+            oneEvents.push_back(&ev.header);
+        for (int i = 0; i < 16; ++i)
+            oneEvents.push_back(&burst[i].header);
+        runBlock(oneEvents);
+        timeModulated("16 voices x 6 operators");
+    }
     runBlock({&chokeAll.header});
 
     plugin->stop_processing(plugin);

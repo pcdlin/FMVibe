@@ -1,6 +1,6 @@
-# Builds a release whenever a version tag (v0.1, v1.2.3, ...) is pushed: the plugin, built and tested on Windows and
-# run through clap-validator, goes into a GitHub release as a zip, and the browser demo (web/, see AGENTS.md) goes on
-# GitHub Pages. Nothing is published unless both build. Needs Pages set to deploy from GitHub Actions, and the
+# Builds a release whenever a version tag (v0.1, v1.2.3, ...) is pushed: the plugins, CLAP and VST3, built and tested
+# on Windows and run through clap-validator and Steinberg's VST3 validator, go into a GitHub release as a zip, and the
+# browser demo (web/, see AGENTS.md) goes on GitHub Pages. Nothing is published unless both build. Needs Pages set to deploy from GitHub Actions, and the
 # github-pages environment to allow v* tags (see "Releasing" in AGENTS.md).
 name: Release
 
@@ -35,12 +35,14 @@ jobs:
       - name: Build, test and validate
         run: .\build.ps1 -Validate
 
-      # The MIT licenses of FMVibe and of the CLAP SDK (whose headers are compiled in) go with every copy.
+      # The MIT licenses of FMVibe and of the CLAP and VST3 SDKs (whose code is compiled in) go with every copy.
       - name: Package
         run: |
           New-Item -ItemType Directory dist | Out-Null
           Copy-Item build\release\FMVibe.clap, LICENSE dist
+          Copy-Item -Recurse build\release\FMVibe.vst3 dist
           Copy-Item build\release\_deps\clap-src\LICENSE dist\LICENSE-CLAP
+          Copy-Item build\release\_deps\vst3sdk\pluginterfaces\LICENSE.txt dist\LICENSE-VST3
           Compress-Archive dist\* "FMVibe-$env:GITHUB_REF_NAME-windows-x64.zip"
 
       - uses: actions/upload-artifact@v4

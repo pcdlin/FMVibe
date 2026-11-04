@@ -431,6 +431,7 @@ void View::assign(int source, int target) {
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, free), slotTargetValue(target)},
                                                 {slotAmountIndex(source, free), amount},
                                                 {slotScaleIndex(source, free), 1.0},
+                                                {slotCurveIndex(source, free), 0.0},
                                                 {slotAuxIndex(source, free), 0.0},
                                                 {slotBypassIndex(source, free), 0.0}};
     editMany(changes);
@@ -451,6 +452,7 @@ void View::removeSlot(int source, int slot) {
     std::vector<std::pair<int, double>> changes{{slotTargetIndex(source, slot), 0.0},
                                                 {slotAmountIndex(source, slot), 0.0},
                                                 {slotScaleIndex(source, slot), 1.0},
+                                                {slotCurveIndex(source, slot), 0.0},
                                                 {slotAuxIndex(source, slot), 0.0},
                                                 {slotBypassIndex(source, slot), 0.0}};
     editMany(changes);
@@ -998,6 +1000,7 @@ void View::addSource(SourceType type, int copyOf) {
     for (int slot = 0; slot < kSlots; ++slot) {
         take(slotBypassIndex(source, slot), slotBypassIndex(std::max(copyOf, 0), slot));
         take(slotScaleIndex(source, slot), slotScaleIndex(std::max(copyOf, 0), slot));
+        take(slotCurveIndex(source, slot), slotCurveIndex(std::max(copyOf, 0), slot));
         // A copy's aux is the original's, unless that is the original itself (which can't scale its copy's own).
         const double aux = copyOf >= 0 ? value(slotAuxIndex(copyOf, slot)) : 0.0;
         changes.push_back({slotAuxIndex(source, slot), slotAuxSource(aux) == source ? 0.0 : aux});
@@ -1355,6 +1358,9 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::SlotBar, {depth.x, depth.y, depth.w - 46.0f, depth.h}, slotAmountIndex(m.source, m.slot),
                 m.source, m.slot);
             add(Kind::ValueText, {depth.right() - 44.0f, depth.y, 42.0f, depth.h}, slotAmountIndex(m.source, m.slot),
+                m.source, m.slot);
+            const Rect curve = modsCell(r, kModsCurve);
+            add(Kind::ModsCurve, {curve.x, curve.y + 3.0f, curve.w, curve.h - 6.0f}, slotCurveIndex(m.source, m.slot),
                 m.source, m.slot);
             const Rect scale = modsCell(r, kModsScale);
             add(Kind::ModsScale, {scale.x, scale.y, scale.w - 44.0f, scale.h}, slotScaleIndex(m.source, m.slot),
@@ -5503,6 +5509,27 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text({w.rect.right() + 4.0f, w.rect.y, 38.0f, w.rect.h}, text, 10.5f, kDim, Align::Right);
         break;
     }
+    case Kind::ModsCurve: {
+        // What the modulation takes from its source, along the source's swing (from the middle out for a bipolar
+        // one): a straight line, faint, until the curve bends it.
+        const double curve = value(w.param);
+        const bool bipolar = sourceBipolar(w.a);
+        const bool lit = hovered || active;
+        c.fillRect(w.rect, lit ? kTrack : kRaised, 4.0f);
+        const Rect box = w.rect.inset(5.0f);
+        constexpr int kPoints = 24;
+        Point points[kPoints];
+        for (int k = 0; k < kPoints; ++k) {
+            const double t = static_cast<double>(k) / (kPoints - 1);
+            const double y = bipolar ? slotCurveValue(t - 0.5, curve, true) + 0.5 : slotCurveValue(t, curve, false);
+            points[k] = {box.x + static_cast<float>(t) * box.w, box.bottom() - static_cast<float>(y) * box.h};
+        }
+        const Color color = slotBypassed(w.a, w.b) ? kFaint
+                            : curve == 0.0       ? (lit ? kDim : kFaint)
+                                                 : kSourceColors[w.a];
+        c.polyline(points, kPoints, color, 1.4f);
+        break;
+    }
     case Kind::ModsAux: {
         // A chip in the aux's color, or a dashed one to add an aux.
         const int aux = slotAux([this](int index) { return value(index); }, w.a, w.b);
@@ -5704,7 +5731,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
          hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
-         hover_->kind != Kind::ModsScale && hover_->kind != Kind::SearchField &&
+         hover_->kind != Kind::ModsScale && hover_->kind != Kind::ModsCurve && hover_->kind != Kind::SearchField &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
@@ -5790,6 +5817,11 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipModsAuxClear);
     else if (hover_->kind == Kind::ModsScale)
         text = tr(Str::TipModsScale);
+    else if (hover_->kind == Kind::ModsCurve) {
+        char amount[32];
+        formatParam(hover_->param, value(hover_->param), amount, sizeof(amount));
+        text = trf(Str::TipModsCurve, {amount});
+    }
     else if (hover_->kind == Kind::UndoButton)
         text = undoText(hover_->a == 1);
     else if (hover_->kind == Kind::ShapeReset)
@@ -6444,6 +6476,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ModDot:
     case Kind::SlotBar:
     case Kind::ModsScale:
+    case Kind::ModsCurve:
         drag_.kind = DragKind::Value;
         drag_.startValue = value(w.param);
         controller_.beginEdit(w.param);
@@ -7231,7 +7264,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         removeShapePoint(hit->a, hit->b);
         return;
     }
-    if (hit && (hit->kind == Kind::ShapeCurve || hit->kind == Kind::EnvCurve)) {
+    if (hit && (hit->kind == Kind::ShapeCurve || hit->kind == Kind::EnvCurve || hit->kind == Kind::ModsCurve)) {
         edit(hit->param, 0.0); // straight again: 0 %, whatever the segment started as
         return;
     }
@@ -7419,7 +7452,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     }
     if (hit->kind == Kind::SlotBar || hit->kind == Kind::SlotRemove || hit->kind == Kind::ModDot ||
         hit->kind == Kind::ValueText || hit->kind == Kind::SlotBypass || hit->kind == Kind::ModsSource ||
-        hit->kind == Kind::ModsTarget || hit->kind == Kind::ModsScale ||
+        hit->kind == Kind::ModsTarget || hit->kind == Kind::ModsScale || hit->kind == Kind::ModsCurve ||
         hit->kind == Kind::ModsAux || hit->kind == Kind::ModsAuxClear) {
         if (hit->b < 0) // an empty modulation: nothing to bypass, nor a depth to type
             return items;
@@ -7768,6 +7801,8 @@ CursorKind View::cursor() const {
     case Kind::SlotBar:
     case Kind::ModsScale:
         return CursorKind::Horizontal;
+    case Kind::ModsCurve:
+        return CursorKind::Vertical;
     case Kind::Node:
     case Kind::EnvPoint:
     case Kind::FilterPoint:
