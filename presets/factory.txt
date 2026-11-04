@@ -23,3 +23,4 @@ SQ Glass Steps
 LD Vowel Lead
 FX Laser Zap
 FX Noise Riser
+SQ Clubbing
