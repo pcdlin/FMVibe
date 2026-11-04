@@ -553,7 +553,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
     height to the grid too). The points between those lines go; a step beside another starts where that one ends,
     at the same place, so the shape jumps straight up or down there, and a step in the first column takes the
-    first point. Shift+click a step again to redraw it at another height. An LFO's shape and a shaper's curve
+    first point. Held, the step follows the mouse: up and down to another height, and across to another column,
+    the one it left going back to how it was, until the button is let go (one undo step). Shift+click a step
+    again to redraw it at another height. An LFO's shape and a shaper's curve
     hold 64 points, so every column can hold a step even on the finest grid, 32 across; the note source's curve
     and velocity's hold 16. The small dots halfway along each segment bend it (a jump has none): drag them up or down,
     double-click to straighten. **GRID**, under the

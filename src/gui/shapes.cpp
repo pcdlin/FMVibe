@@ -235,7 +235,13 @@ void View::switchSymmetric(int param) {
 // A step, as in a step sequencer: a level line from the grid line left of p to the one right of it, at p's height,
 // with a point at each end. The points between the two lines go; a point already on a line stays, for the step
 // next to this one, the new one beside it at the same place so the shape jumps straight up or down there.
-void View::addShapeStep(int shape, Point p, bool snap) {
+bool View::addShapeStep(int shape, Point p, bool snap, const std::vector<double> &before) {
+    const int base = shapeBase(shape);
+    std::vector<double> target = before; // every param of the shape, as it is to be
+    if (target.empty())
+        for (int f = 0; f < shapeParamCount(shape); ++f)
+            target.push_back(value(base + f));
+    auto was = [&](int index) { return target[static_cast<size_t>(index - base)]; };
     const UiLayout &layout = controller_.layout();
     const int lines = layout.shapeGridX;
     const int column = std::clamp(static_cast<int>(std::floor(shapeXAt(shape, p) * lines)), 0, lines - 1);
@@ -249,24 +255,26 @@ void View::addShapeStep(int shape, Point p, bool snap) {
     struct Pt {
         double x, y, curve;
     };
-    const int count = shapePointCount(shape);
-    auto at = [&](int point) {
-        return Pt{shapePointX(shape, point), value(shapeIndex(shape, point, PointField::Y)),
-                  value(shapeIndex(shape, point, PointField::Curve))};
+    const int count = fmvibe::shapePointCount(was(base), shapeMaxPoints(shape));
+    auto at = [&](int point) { // as shapePointX() places them
+        const double x = point == 0                                        ? 0.0
+                         : isCurve(shape) && point + 1 == count ? 1.0
+                                                                           : was(shapeIndex(shape, point, PointField::X));
+        return Pt{x, was(shapeIndex(shape, point, PointField::Y)), was(shapeIndex(shape, point, PointField::Curve))};
     };
-    std::vector<Pt> before, left, right, after; // left and right: on the step's lines; the ones between go
+    std::vector<Pt> earlier, left, right, after; // left and right: on the step's lines; the ones between go
     double middle = -1.0; // but a symmetric curve's middle point stays (see removeShapePoint()), at the step's level
     for (int point = 0; point < count; ++point) {
         const Pt pt = at(point);
         if (pt.x < x0 - kOnLine)
-            before.push_back(pt);
+            earlier.push_back(pt);
         else if (pt.x < x0 + kOnLine)
             left.push_back(pt);
         else if (pt.x > x1 + kOnLine)
             after.push_back(pt);
         else if (pt.x > x1 - kOnLine)
             right.push_back(pt);
-        else if (middlePoint(shape, point))
+        else if (curveSymmetric(shape) && std::abs(pt.x - 0.5) < kOnMiddle) // middlePoint(), as it was
             middle = pt.x;
     }
     // Of the points on a line, the one facing the step goes and the others stay: on the left line the last, on the
@@ -275,7 +283,7 @@ void View::addShapeStep(int shape, Point p, bool snap) {
     auto stepBetween = [&](const Pt &a, const Pt &b) {
         return std::abs(b.x - a.x - (x1 - x0)) < kOnLine && std::abs(b.y - a.y) < 1e-6;
     };
-    const bool leftStep = left.size() == 1 && !before.empty() && stepBetween(before.back(), left[0]);
+    const bool leftStep = left.size() == 1 && !earlier.empty() && stepBetween(earlier.back(), left[0]);
     if (x0 <= 0.0 || (left.size() == 1 && !leftStep))
         left.clear();
     else if (left.size() > 1)
@@ -285,7 +293,7 @@ void View::addShapeStep(int shape, Point p, bool snap) {
         right.clear();
     else if (right.size() > 1)
         right.erase(right.begin());
-    std::vector<Pt> points = before;
+    std::vector<Pt> points = earlier;
     points.insert(points.end(), left.begin(), left.end());
     points.push_back({x0, y, 0.0});
     if (middle >= 0.0)
@@ -293,23 +301,23 @@ void View::addShapeStep(int shape, Point p, bool snap) {
     points.push_back({x1, y, 0.0});
     points.insert(points.end(), right.begin(), right.end());
     points.insert(points.end(), after.begin(), after.end());
-    if (static_cast<int>(points.size()) > shapeMaxPoints(shape)) {
-        flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(shape))}));
-        return;
-    }
-    std::vector<std::pair<int, double>> changes;
-    auto change = [&](int index, double v) {
-        if (v != value(index))
-            changes.push_back({index, v});
-    };
+    if (static_cast<int>(points.size()) > shapeMaxPoints(shape))
+        return false;
+    auto put = [&](int index, double v) { target[static_cast<size_t>(index - base)] = v; };
     for (size_t point = 0; point < points.size(); ++point) {
         if (point > 0) // the first point's place is the start, whatever its X says
-            change(shapeIndex(shape, static_cast<int>(point), PointField::X), points[point].x);
-        change(shapeIndex(shape, static_cast<int>(point), PointField::Y), points[point].y);
-        change(shapeIndex(shape, static_cast<int>(point), PointField::Curve), points[point].curve);
+            put(shapeIndex(shape, static_cast<int>(point), PointField::X), points[point].x);
+        put(shapeIndex(shape, static_cast<int>(point), PointField::Y), points[point].y);
+        put(shapeIndex(shape, static_cast<int>(point), PointField::Curve), points[point].curve);
     }
-    change(shapeBase(shape), static_cast<double>(points.size()));
-    editMany(changes);
+    put(base, static_cast<double>(points.size()));
+    std::vector<std::pair<int, double>> changes;
+    for (size_t f = 0; f < target.size(); ++f)
+        if (target[f] != value(base + static_cast<int>(f)))
+            changes.push_back({base + static_cast<int>(f), target[f]});
+    if (!changes.empty())
+        editMany(changes);
+    return true;
 }
 
 // Shift+click anywhere in the big editor, over its points and bends too, draws a step.

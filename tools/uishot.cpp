@@ -3730,6 +3730,22 @@ void run(const std::filesystem::path &dir, float scale) {
         for (int step = 0; step < 4; ++step)
             view.undo();
         check(model.value(count) == 2.0 && roughly(pointValue(1, PointField::X), 0.4), "steps undo one at a time");
+        // Held, a step drawn follows the mouse: up and down to its level, and on to the last column, leaving the
+        // first as it was; the whole stroke one undo step.
+        {
+            const int lines = model.layout().shapeGridX;
+            view.mouseDown(shapeAt(2.5 * column, 0.25), {true, false});
+            view.mouseMove(shapeAt(2.5 * column, -0.5), {true, false});
+            const bool level = model.value(count) == 4.0 && pointIs(1, 2.0 * column, -0.5) &&
+                               pointIs(2, 3.0 * column, -0.5) && model.openEdits == 0;
+            view.mouseMove(shapeAt(1.0 - 0.5 * column, 0.5), {});
+            view.mouseUp(shapeAt(1.0 - 0.5 * column, 0.5), {});
+            const bool moved = model.value(count) == 4.0 && roughly(pointValue(1, PointField::X), 0.4) &&
+                               pointIs(2, (lines - 1) * column, 0.5) && pointIs(3, 1.0, 0.5) && model.openEdits == 0;
+            view.undo();
+            check(level && moved && model.value(count) == 2.0 && roughly(pointValue(1, PointField::X), 0.4),
+                  "a step held follows the mouse, in one undo step");
+        }
         // An LFO's shape holds 64 points: a step in every column of the finest grid, 32 across.
         const int grid = model.layout().shapeGridX;
         model.layout().shapeGridX = 32;

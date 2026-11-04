@@ -6300,6 +6300,9 @@ void View::applyDrag(Point p) {
         set(shapeIndex(shape, point, PointField::Y), y);
         break;
     }
+    case DragKind::ShapeStep: // drawn again into the shape as it was, where the mouse is; where it doesn't fit, it stays
+        addShapeStep(w.a, unmirrored(w.a, p), drag_.snap, drag_.shapeBefore);
+        break;
     case DragKind::Partials: {
         // A quick sweep sets every bar it passed, along a line (in bar heights) from where the last move was.
         const int op = w.a;
@@ -6460,7 +6463,23 @@ void View::mouseDown(Point p, Modifiers mods) {
         return;
     }
     if (drawsStep(w, mods)) {
-        addShapeStep(w.a, unmirrored(w.a, p), mods.ctrl);
+        // Held, the step follows the mouse, up and down and from column to column, as one undo step.
+        const int shape = w.a;
+        std::vector<double> before;
+        for (int f = 0; f < shapeParamCount(shape); ++f)
+            before.push_back(value(shapeBase(shape) + f));
+        controller_.beginStep();
+        if (!addShapeStep(shape, unmirrored(shape, p), mods.ctrl, before)) {
+            controller_.endStep();
+            flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(shape))}));
+            return;
+        }
+        drag_.kind = DragKind::ShapeStep;
+        drag_.widget = w;
+        drag_.start = drag_.now = p;
+        drag_.snap = mods.ctrl;
+        drag_.step = true;
+        drag_.shapeBefore = std::move(before);
         return;
     }
     drag_.widget = w;
@@ -7041,6 +7060,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::PeqPoint:
     case DragKind::ShapePoint:
     case DragKind::ShapeCurve:
+    case DragKind::ShapeStep:
     case DragKind::Partials:
     case DragKind::Key:
     case DragKind::ModWheel:
@@ -7093,6 +7113,7 @@ void View::finishDrag() {
         glowDragged_ = -1.0f;
         break;
     case DragKind::Partials: // its undo step closes below
+    case DragKind::ShapeStep:
     case DragKind::Node:
     case DragKind::Bend:
     case DragKind::ModsScroll:

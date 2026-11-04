@@ -262,6 +262,7 @@ private:
         Scroll,
         ShapePoint,
         ShapeCurve,
+        ShapeStep, // a step just drawn, following the mouse (drag_.shapeBefore: the shape before it)
         Partials,
         Key,
         ModWheel,
@@ -286,6 +287,7 @@ private:
         bool step = false; // an undo step is open until the drag ends (moving nodes or cards)
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
+        std::vector<double> shapeBefore; // drawing a step: the shape's params before it
     };
 
     struct Typing {
@@ -642,7 +644,9 @@ private:
     Point unmirrored(int shape, Point p) const;
     void switchSymmetric(int param);
     void switchFixed(int op);
-    void addShapeStep(int shape, Point p, bool snap);
+    // Draws a step into the shape as `before` holds it (its params from shapeBase() on), or as it is when that is
+    // empty. False when there's no room for it.
+    bool addShapeStep(int shape, Point p, bool snap, const std::vector<double> &before = {});
     bool drawsStep(const Widget &w, Modifiers mods) const;
     void removeShapePoint(int shape, int point);
     void resetShape(int shape);
