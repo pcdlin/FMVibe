@@ -651,6 +651,31 @@ int main(int argc, char **argv) {
         check(on > 0.05 && peak(off, off.size() - 4800) < 1e-4, "notes without ids end by their key");
     }
 
+    // More param changes and events than a block sorts by their place (4096): those past them apply after them, in
+    // the host's order, so a note's end past them still follows its start, and a param's last point wins.
+    {
+        Events events;
+        Changes changes;
+        const double volumeDefault = plugin.controller->plainParamToNormalized(volumeId, paramTable()[volume].def);
+        const double volumeLow = plugin.controller->plainParamToNormalized(volumeId, -20.0);
+        for (int32 p = 0; p < 4095; ++p)
+            changes.add(volumeId, p * kBlock / 4096, volumeDefault);
+        events.events = {noteOn(0, 60, 7), noteOff(kBlock / 2, 60, 7)}; // the note on is the 4096th, its end after
+        plugin.process(events, changes);
+        const std::vector<float> after = plugin.render(4.0);
+        check(peak(after, after.size() - 4800) < 1e-4, "a note's end past the changes a block sorts still ends it");
+        changes.queues.clear();
+        events.events.clear();
+        for (int32 p = 0; p < 4100; ++p)
+            changes.add(volumeId, p * kBlock / 4100, p + 1 < 4100 ? volumeDefault : volumeLow);
+        plugin.process(events, changes);
+        const bool lastWins = std::abs(plugin.normalized(volume) - volumeLow) < 1e-12;
+        changes.queues.clear();
+        changes.add(volumeId, 0, volumeDefault);
+        plugin.process(events, changes);
+        check(lastWins, "and the last of a param's points past them wins");
+    }
+
     // A block with no audio to render (a host flushing params) still takes the changes.
     {
         Events events;

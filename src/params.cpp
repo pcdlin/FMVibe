@@ -709,6 +709,10 @@ void dropPartialCharacter(char *text) {
         text[start - 1] = '\0';
 }
 
+// The norm a typed time or rate at the shortest or slowest shown is kept at: above 0, which is Off or still, and
+// shown as that shortest time or slowest rate.
+constexpr double kLeastNorm = 1e-6;
+
 void formatHz(double hz, char *out, uint32_t capacity) {
     hz = std::round(hz);
     if (hz < 1000.0)
@@ -983,15 +987,17 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     }
     case ParamKind::EqGain: {
         const double gain = eqGain(value);
+        const double db = 20.0 * std::log10(gain);
         if (gain < 1e-4)
             std::snprintf(out, capacity, "%s", tr(Str::ValueKill));
         else
-            std::snprintf(out, capacity, "%+.1f dB", 20.0 * std::log10(gain));
+            std::snprintf(out, capacity, "%+.1f dB", std::abs(db) < 0.05 ? 0.0 : db); // never "-0.0"
         break;
     }
-    case ParamKind::NotePitch: { // "C4", or "C4 +12" between notes
-        const long note = std::lround(value);
-        const long cents = std::lround((value - note) * 100.0);
+    case ParamKind::NotePitch: { // "C4", or "C4 +12" between notes, from -49 to +50 cents
+        const long total = std::lround(value * 100.0);
+        const long note = (total + 49 >= 0 ? total + 49 : total + 49 - 99) / 100;
+        const long cents = total - note * 100;
         const char *const names[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
         const long octave = (note < 0 ? note - 11 : note) / 12 - 1;
         const char *name = names[((note % 12) + 12) % 12];
@@ -1005,9 +1011,10 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::ShiftRange: {
         const double hz = paramTable()[index].kind == ParamKind::FixedFreq ? fixedFreqFromNorm(value)
                                                                             : shiftRangeFromNorm(value);
-        if (hz < 10.0)
+        // By what it rounds to, so 99.97 Hz shows as 100 Hz, as typing that gives.
+        if (hz < 9.995)
             std::snprintf(out, capacity, "%.2f Hz", hz);
-        else if (hz < 100.0)
+        else if (hz < 99.95)
             std::snprintf(out, capacity, "%.1f Hz", hz);
         else
             formatHz(hz, out, capacity);
@@ -1079,7 +1086,8 @@ bool parseParam(int index, const char *text, double *out) {
             if (hz <= 0.0)
                 return false;
             const double norm = normFromCutoff(std::max(hz, kMinCutoff));
-            *out = kind == 'L' ? std::clamp((norm - 1.0) * 1.5, -1.0, 0.0) : std::clamp(norm / 0.77, 0.0, 1.0);
+            // A filter typed is at least the 1 % shown as one, not Open.
+            *out = kind == 'L' ? std::clamp((norm - 1.0) * 1.5, -1.0, -0.01) : std::clamp(norm / 0.77, 0.01, 1.0);
             return true;
         }
     }
@@ -1177,7 +1185,10 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::TimeOrOff: {
         // "s" means seconds, anything else (including a bare number) milliseconds.
         const double seconds = *end == 's' || *end == 'S' ? value : value / 1000.0;
-        value = normFromTime(std::max(seconds, kMinTime));
+        if (def.kind == ParamKind::Time)
+            value = normFromTime(std::max(seconds, kMinTime));
+        else // below the shortest time, off; the shortest is above 0, which is Off
+            value = seconds < kMinTime ? 0.0 : std::max(normFromTime(seconds), kLeastNorm);
         break;
     }
     case ParamKind::Toggle:
@@ -1187,8 +1198,8 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::Rate:
         value = normFromRate(std::max(value, kMinRate));
         break;
-    case ParamKind::SweepRate: // below the slowest LFO rate, still
-        value = value < kMinRate ? 0.0 : normFromRate(value);
+    case ParamKind::SweepRate: // below the slowest LFO rate, still; the slowest is above 0, which is still
+        value = value < kMinRate ? 0.0 : std::max(normFromRate(value), kLeastNorm);
         break;
     case ParamKind::Cutoff: {
         const double hz = *end == 'k' || *end == 'K' ? value * 1000.0 : value;

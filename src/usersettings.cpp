@@ -22,39 +22,56 @@ std::filesystem::path userSettingsFile() {
     return file;
 }
 
-} // namespace
-
-UserSettings userSettings;
-
-void readUserSettings() {
-    userSettings = {};
-    const std::filesystem::path file = userSettingsFile();
-    if (file.empty())
-        return;
+UserSettings readFile(const std::filesystem::path &file) {
+    UserSettings settings;
     std::ifstream in(file);
     std::string line;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r')
             line.pop_back();
         if (line.starts_with("theme="))
-            userSettings.theme = line.substr(6);
+            settings.theme = line.substr(6);
         else if (line.starts_with("glowLevel=")) // a plain "glow=" came before the 50 % default: left alone
-            userSettings.glow = std::clamp(std::atof(line.c_str() + 10), 0.0, 1.0);
+            settings.glow = std::clamp(std::atof(line.c_str() + 10), 0.0, 1.0);
         else if (line.starts_with("examples="))
-            userSettings.examples = std::max(std::atoi(line.c_str() + 9), 0);
+            settings.examples = std::max(std::atoi(line.c_str() + 9), 0);
     }
+    return settings;
+}
+
+// The settings as this process last read or wrote them, which tells what it changed since.
+UserSettings asRead;
+
+} // namespace
+
+UserSettings userSettings;
+
+void readUserSettings() {
+    const std::filesystem::path file = userSettingsFile();
+    userSettings = file.empty() ? UserSettings{} : readFile(file);
+    asRead = userSettings;
 }
 
 void writeUserSettings() {
     const std::filesystem::path file = userSettingsFile();
     if (file.empty())
         return;
+    // Another process may have written the file since this one read it: what this one didn't change since keeps
+    // the file's value, and the examples given never count down, or deleted ones would come back.
+    UserSettings merged = readFile(file);
+    if (userSettings.theme != asRead.theme)
+        merged.theme = userSettings.theme;
+    if (userSettings.glow != asRead.glow)
+        merged.glow = userSettings.glow;
+    merged.examples = std::max(merged.examples, userSettings.examples);
+    userSettings = asRead = merged;
+
     std::error_code error;
     std::filesystem::create_directories(file.parent_path(), error);
     std::ofstream out(file);
-    out << "theme=" << userSettings.theme << "\nglowLevel=" << userSettings.glow << '\n';
-    if (userSettings.examples >= 0)
-        out << "examples=" << userSettings.examples << '\n';
+    out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << '\n';
+    if (merged.examples >= 0)
+        out << "examples=" << merged.examples << '\n';
 }
 
 } // namespace fmvibe
