@@ -209,7 +209,7 @@ constexpr Point kDecayKnob{1034.0f, 426.0f};
 constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
 constexpr Point kFmAmountKnob{308.0f, 32.0f};
-constexpr Point kVoicesKnob{1024.0f, 32.0f};
+constexpr Point kVoicesKnob{924.0f, 32.0f}; // past the second divider, where Bend was
 constexpr Point kMonoButton{702.0f, 21.0f};
 constexpr Point kLegatoToggle{680.0f, 44.0f};
 constexpr Point kGlideKnob{766.0f, 32.0f};
@@ -1670,7 +1670,8 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px
     // shorter: the keys, the wheels and the octave shift go, and the mod wheel's handle stays in the row between the
-    // macros and the note source, where it still maps the wheel, onto filter 1's cutoff here.
+    // macros and the note source, where it still maps the wheel, onto filter 1's cutoff here. Bend's knob, over the
+    // bend wheel (27 px below the row's middle, at x 46), stays in the row too, and the wheel turns it a semitone.
     {
         const Point toggle{35.0f, y - 8.0f}, title{80.0f, y - 8.0f};
         const float open = view.height();
@@ -1680,11 +1681,15 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         drag(view, wheelHandle, {918.0f, 214.0f});
         const bool wheelMapped =
             slotTarget(model.value(slotTargetIndex(kWheelSource, 1))) == paramIndex(0, FilterParam::Cutoff);
+        const double bendWas = model.value(paramIndex(GlobalParam::BendRange));
+        view.wheel({46.0f, y + 27.0f}, 1.0f, {});
+        const bool bendTurned = model.value(paramIndex(GlobalParam::BendRange)) == bendWas + 1.0;
         view.mouseMove(toggle, {});
         const bool shot = renderer.save(view, dir / "26j-keys-collapsed.png");
         click(view, title);
-        check(shorter && wheelMapped && shot && !model.ui.keysCollapsed && view.height() == open,
-              "the keyboard panel collapses to its top row, the mod wheel's handle staying in it, and opens again");
+        check(shorter && wheelMapped && bendTurned && shot && !model.ui.keysCollapsed && view.height() == open,
+              "the keyboard panel collapses to its top row, the mod wheel's handle and Bend's knob staying in it, "
+              "and opens again");
     }
 
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the
@@ -2174,16 +2179,16 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     check(added && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
               onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "the title row adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
-    // MPE, beside Bend's label: a click switches it on, and its menu picks the member channels' bend range.
-    click(view, {990.0f, 22.0f});
+    // MPE, beside Voices' label: a click switches it on, and its menu picks the member channels' bend range.
+    click(view, {997.0f, 22.0f});
     const bool mpeOn = model.value(paramIndex(GlobalParam::Mpe)) == 1.0;
-    for (const MenuItem &item : view.contextMenu({990.0f, 22.0f}))
+    for (const MenuItem &item : view.contextMenu({997.0f, 22.0f}))
         if (item.label == trf(Str::MenuMpeBendRange, {"24"}))
             view.menuCommand(item.command);
-    view.mouseMove({990.0f, 22.0f}, {});
+    view.mouseMove({997.0f, 22.0f}, {});
     check(mpeOn && model.value(paramIndex(GlobalParam::MpeBendRange)) == 24.0 &&
               renderer.save(view, dir / "3g-mpe-switch.png"),
-          "the MPE switch beside Bend's label switches MPE, and its menu picks the bend range");
+          "the MPE switch beside Voices' label switches MPE, and its menu picks the bend range");
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {

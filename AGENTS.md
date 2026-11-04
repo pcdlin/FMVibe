@@ -149,7 +149,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the MODS tab's columns' names with no modulations (read off the rendered pixels);
   - the modulation panel's title row adding Random and MIDI sources, each with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input; the MPE switch beside Bend's label, and its menu picking the bend range;
+    following its input; the MPE switch beside Voices' label, and its menu picking the bend range;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -204,7 +204,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     off the rendered pixels), and the mod wheel's
     handle (new modulation starting upward); with no note playing, a knob's dot showing where a macro takes it
     (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard strip
-    to its top row by its chevron or title, the mod wheel's handle moving into it and still mapping the wheel;
+    to its top row by its chevron or title, the mod wheel's handle moving into it and still mapping the wheel, and
+    Bend's knob, over the bend wheel, staying in it and turning;
   - the dashed cards that add effects and sources (opening the list of types over themselves, the effects' staying
     over a switched-off card's dimming at the chain's right end, read off the rendered pixels; the sources' closing
     at a click around it), and the arrow between two effects adding one there;

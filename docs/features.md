@@ -280,10 +280,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   effects at a level of their own, 12 dB down, so the effects' drive and thresholds don't depend on it, and Volume
   gives those 12 dB back. A project or preset saved by FMVibe 0.1, whose Volume didn't, loads it 12 dB lower, so
   it sounds as loud as it did. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
-  do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, Bend Range for
-  MIDI pitch bend, **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
+  do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
+  MIDI pitch bend (its knob over the bend wheel, in the keyboard strip), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
-- **MPE** (MIDI Polyphonic Expression), off to begin with: the switch beside Bend's label in the header. Hosts
+- **MPE** (MIDI Polyphonic Expression), off to begin with: the switch beside Voices' label in the header. Hosts
   that send CLAP note expressions (Bitwig) need nothing: each note's tuning, volume, pan, pressure and brightness
   reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is the master channel, whose
   pitch bend (by Bend Range), controllers and channel pressure apply to every voice, and channels 2 to 16 each carry
@@ -543,8 +543,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
   the global knobs; the play cluster between two dividers (Poly/Mono over Legato, then a Glide knob like the global
-  ones, its Always switch beside its label, each switch explaining itself on hover); Bend; Voices (it drags on a log
-  scale, so 4 and 512 are both easy to reach); and how many voices are playing.
+  ones, its Always switch beside its label, each switch explaining itself on hover); Voices (it drags on a log scale, so
+  4 and 512 are both easy to reach), the MPE switch beside its label; and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
   value, adding or removing an effect or source (with its modulation), moving nodes or cards, bending a wire, Init
@@ -727,9 +727,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   right end, velocity; under them the
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
   range between them, shift them by an octave). The mod wheel's handle sits in the top row between the macros and the
-  note source, its name under it. The toggle (a chevron and the title, like the modulation panel's,
+  note source, its name under it, and the Bend Range knob (header-style: its label and value beside it) under the
+  strip's title, over the bend wheel. The toggle (a chevron and the title, like the modulation panel's,
   as far from the strip's top) collapses the strip to its top row, taking the wheels, the keys and the octave
-  shift away; the mod wheel's handle stays, so the wheel can still be assigned. Whether it is collapsed is kept with the editor, like the modulation panel's, and loading a
+  shift away; the mod wheel's handle and the Bend Range knob stay, so the wheel can still be assigned and the range set. Whether it is collapsed is kept with the editor, like the modulation panel's, and loading a
   preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
   played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs
   back to center on release; the **Mod** wheel is the Mod Wheel param, and its handle in the top row drags onto what

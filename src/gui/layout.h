@@ -158,8 +158,9 @@ constexpr float kHeaderKnobX = 186.0f;
 constexpr float kHeaderKnobW = 104.0f;
 constexpr float kPlayX = 636.0f;  // Poly | Mono over Legato, 24 px past the first divider
 constexpr float kGlideX = 748.0f; // the Glide knob 24 px past them, its Always switch ending 22 px before the second
-// The MPE switch, beside Bend's label at the end of Bend's place.
-constexpr Rect kMpeToggle{977.0f, 15.0f, 27.0f, 15.0f};
+// Voices, past the second divider, and the MPE switch beside its label at the end of its place.
+constexpr float kVoicesX = 906.0f;
+constexpr Rect kMpeToggle{984.0f, 15.0f, 26.0f, 15.0f};
 constexpr float kGlideW = 126.0f;
 constexpr float kDividers[] = {612.0f, 896.0f};
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
@@ -465,6 +466,9 @@ inline Rect velocityHandle(float keyboardTop) {
 inline Rect stripDisplay(float keyboardTop, bool velocity) {
     return velocity ? velocityDisplay(keyboardTop) : noteDisplay(keyboardTop);
 }
+// The bend range's knob, header-style (the knob, its label and value beside it), over the bend wheel, below the
+// strip's title: within its top row.
+inline Rect bendKnob(float top) { return {28.0f, top + 36.0f, 82.0f, 40.0f}; }
 inline Rect bendWheel(float top) {
     return {34.0f, top + kKeys.y, 26.0f, 90.0f};
 }

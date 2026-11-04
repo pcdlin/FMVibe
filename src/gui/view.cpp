@@ -1247,10 +1247,10 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::Toggle, {kPlayX, 35.0f, 88.0f, 19.0f}, paramIndex(GlobalParam::Legato));
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
     add(Kind::Toggle, {kGlideX + kGlideW - 52.0f, 15.0f, 52.0f, 15.0f}, paramIndex(GlobalParam::GlideAlways));
-    headerKnob(paramIndex(GlobalParam::BendRange), 906.0f, 96.0f, tr(Str::LabelBend));
-    // MPE beside Bend's label, as Always beside Glide's; its menu picks the member channels' bend range.
+    // Voices, past the second divider, and MPE beside its label, as Always beside Glide's; its menu picks the member
+    // channels' bend range. (Bend's knob is over the bend wheel, in the keyboard strip.)
+    headerKnob(paramIndex(GlobalParam::Voices), kVoicesX, kHeaderKnobW, tr(Str::LabelVoices));
     add(Kind::Toggle, kMpeToggle, paramIndex(GlobalParam::Mpe));
-    headerKnob(paramIndex(GlobalParam::Voices), 1006.0f, kHeaderKnobW, tr(Str::LabelVoices));
 
     // Routing panel, as a graph, as a matrix, or the effects chain; or the shape
     // editor of a freeform LFO, in place of all three.
@@ -1968,6 +1968,10 @@ std::vector<View::Widget> View::widgets() const {
     const bool keysCollapsed = controller_.layout().keysCollapsed;
     add(Kind::KeysToggle, keysToggle(keys));
     add(Kind::MacroHandle, wheelHandle(keys), -1, kWheelSource);
+    // The bend range, over the bend wheel, as a header knob: within the top row, so it stays while the keys are folded.
+    add(Kind::Knob, bendKnob(keys), paramIndex(GlobalParam::BendRange));
+    list.back().label = tr(Str::LabelBend);
+    list.back().compact = true;
     if (!keysCollapsed) {
         add(Kind::BendWheel, bendWheel(keys));
         add(Kind::ModWheel, modWheel(keys), paramIndex(GlobalParam::ModWheel));
