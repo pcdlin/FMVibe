@@ -1451,7 +1451,37 @@ int main(int argc, char **argv) {
         // (by Bend Range, set to 12 too). Channel 2's pressure silences its note alone through the MIDI source on
         // pressure, in place 1 on A's output.
         // With MPE off, a bend on any channel takes both.
+        // MPE and its bend range are settings, not params: they go in through the state's settings chunk.
         {
+            const auto settingsChunk = [&](MemoryStream &saved) -> float * { // its floats, past the params and layout
+                size_t at = 12 + static_cast<size_t>(kParamCount) * 12;
+                uint32_t chunk[2] = {};
+                if (at + 8 > saved.data.size())
+                    return nullptr;
+                std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
+                at += 8 + chunk[1] * sizeof(float);
+                if (at + 8 + 3 * sizeof(float) > saved.data.size())
+                    return nullptr;
+                std::memcpy(chunk, saved.data.data() + at, sizeof(chunk));
+                return chunk[0] == 0x47544553 && chunk[1] >= 3 ? reinterpret_cast<float *>(saved.data.data() + at + 8)
+                                                               : nullptr;
+            };
+            auto setMpe = [&](bool on, float range = 12.0f) {
+                MemoryStream saved;
+                state->save(plugin, &saved.out);
+                float *settings = settingsChunk(saved);
+                if (!settings)
+                    return false;
+                const float stored[] = {on ? 1.0f : 0.0f, range};
+                std::memcpy(settings + 1, stored, sizeof(stored));
+                return state->load(plugin, &saved.in);
+            };
+            check(setMpe(true), "a state's settings chunk switches MPE on and sets its bend range");
+            MemoryStream kept;
+            state->save(plugin, &kept.out);
+            const float *settings = settingsChunk(kept);
+            check(settings && settings[1] == 1.0f && settings[2] == 12.0f,
+                  "the state saves MPE and its bend range in its settings chunk");
             const double a3 = 220.0, a4 = 440.0;
             auto onChannel = [](int16_t id, int16_t channel) {
                 clap_event_note_t ev = noteEvent(CLAP_EVENT_NOTE_ON, id, 57);
@@ -1477,14 +1507,13 @@ int main(int argc, char **argv) {
                 }
                 return std::pair{magnitude(signal, a3), magnitude(signal, a4)};
             };
-            setParams({{paramIndex(GlobalParam::Mpe), 1.0}, {paramIndex(GlobalParam::MpeBendRange), 12.0},
-                       {paramIndex(GlobalParam::BendRange), 12.0}});
+            setParams({{paramIndex(GlobalParam::BendRange), 12.0}});
             const auto memberBend = listen(0xE2, 0x7F, 0x7F); // channel 3 all the way up
             const auto masterBend = listen(0xE0, 0x7F, 0x7F);
             const auto memberPressure = listen(0xD1, 0x7F, 0); // channel 2's note pressed all the way
             const clap_event_midi_t released = midiEvent(0xD1, 0, 0);
             runBlock({&released.header});
-            setParams({{paramIndex(GlobalParam::Mpe), 0.0}});
+            setMpe(false);
             const auto mpeOff = listen(0xE2, 0x7F, 0x7F);
             setParams({{paramIndex(GlobalParam::BendRange), 2.0}});
             std::printf("      MPE, A3 against A4: %.0f / %.0f with a member channel's bend, %.0f / %.0f with the "
@@ -1494,15 +1523,15 @@ int main(int argc, char **argv) {
             check(memberBend.first > 0.3 * memberBend.second && memberBend.second > 0.3 * memberBend.first &&
                       masterBend.second > 10.0 * masterBend.first && mpeOff.second > 10.0 * mpeOff.first,
                   "with MPE on, a member channel's bend bends its note alone, the master channel's every note");
-            setParams({{paramIndex(GlobalParam::Mpe), 1.0}});
+            setMpe(true);
             const double bothA3 = listen(0xD0, 0, 0).first; // neither pressed
-            setParams({{paramIndex(GlobalParam::Mpe), 0.0}});
+            setMpe(false);
             check(memberPressure.first > 0.3 * bothA3 && memberPressure.first < 0.7 * bothA3,
                   "with MPE on, a member channel's pressure is its note's alone");
 
             // Until a member channel sends pressure of its own, its note follows the master channel's: pressed all the
             // way there, both notes go.
-            setParams({{paramIndex(GlobalParam::Mpe), 1.0}});
+            setMpe(true);
             const double masterPressed = listen(0xD0, 0x7F, 0).first;
             const clap_event_midi_t masterReleased = midiEvent(0xD0, 0, 0);
             runBlock({&masterReleased.header});
@@ -1523,7 +1552,8 @@ int main(int argc, char **argv) {
             const float takenOver = runBlocks(8);
             runBlock({&chokeAll.header, &slideBack.header});
             setParams({{paramIndex(GlobalParam::Mono), 0.0}, {input, static_cast<double>(MidiInput::Pressure)},
-                       {paramIndex(0, SourceParam::Bipolar), 0.0}, {paramIndex(GlobalParam::Mpe), 0.0}});
+                       {paramIndex(0, SourceParam::Bipolar), 0.0}});
+            setMpe(false, 48.0f);
             std::printf("      MPE in mono, a note taking over with its channel's slide up: peak %.3f (%.3f resting)\n",
                         takenOver, resting);
             check(takenOver > 0.4f * resting && takenOver < 0.6f * resting,

@@ -59,7 +59,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (polyphonic aftertouch or CLAP's pressure expression, not another key's), and on slide resting in the middle and
     following a note's brightness expression; Slew taking a controller turned up mid-note slowly, and a Random source
     giving each note a level of its own;
-  - MPE over MIDI: with it on, a member channel's pitch bend bending its note alone and the master channel's every
+  - MPE over MIDI, switched through the state's settings chunk (which saves it): with it on, a member channel's
+    pitch bend bending its note alone and the master channel's every
     note, and a member channel's pressure being its note's alone (the master channel's standing in until it sends
     some), in mono too for a note taking the voice over; with it off, any channel's bend bending every note;
   - an LFO's Phase moving where notes start it (a one-shot running from there to its cycle's end), while a free
@@ -158,7 +159,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     emptying it and then closing the menu; an operator's targets in two columns, the envelope's beside the pitch's;
   - the modulation panel's title row adding Random and MIDI sources, each with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input; the MPE switch beside the Pan knob, and its menu picking the bend range;
+    following its input;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -218,8 +219,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the dashed cards that add effects and sources (opening the list of types over themselves, the effects' staying
     over a switched-off card's dimming at the chain's right end, read off the rendered pixels; the sources' closing
     at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
-  - picking the oversampling and the theme, and dragging the glow slider, in the settings dialog (with the editor
-    rendered in each theme, and glowing), and closing it with its x or a click around it;
+  - picking the oversampling, MPE and its bend range (leaving the patch alone) and the theme, and dragging the glow
+    slider, in the settings dialog (with the editor rendered in each theme, and glowing), and closing it with its x
+    or a click around it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
@@ -422,7 +424,7 @@ itself.
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route) and the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none). The host's state goes on with
-  the settings chunk and a preset chunk (whether the patch changed since its preset, then the preset file's path
+  the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
   floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
@@ -432,8 +434,9 @@ itself.
   have resolution where it matters. The value text shows ms/s/Hz. Envelopes' attacks, holds, decays and releases
   stop at 10 s (`kMaxEnvTime`), their range ending short of the curve's top; a state or preset holding a longer one
   loads it as 10 s, since loading holds every param within its range.
-- The plugin takes CLAP note events (preferred), raw MIDI and MPE MIDI (see the MPE switch, `GlobalParam::Mpe`:
-  with it on, channels 2 to 16 bend, press and slide their own notes, kept per channel in the synth), and reports
+- The plugin takes CLAP note events (preferred), raw MIDI and MPE MIDI (see `Synth::setMpe()`; MPE is a setting
+  in the settings dialog, not a param, so presets leave it alone: with it on, channels 2 to 16 bend, press and slide
+  their own notes, kept per channel in the synth), and reports
   `NOTE_END` so hosts with
   polyphonic modulation (Bitwig) know when a voice has finished. In mono, a note that is taken over keeps its
   host voice while its key is down and reports `NOTE_END` when the key is let go. Per-note modulation follows the

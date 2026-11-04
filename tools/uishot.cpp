@@ -87,6 +87,10 @@ public:
     int folderOpens = 0;
     int oversampling() const override { return oversamplingFactor; }
     void setOversampling(int factor) override { oversamplingFactor = factor; }
+    bool mpe() const override { return mpeOn; }
+    void setMpe(bool on) override { mpeOn = on; }
+    int mpeBendRange() const override { return mpeRange; }
+    void setMpeBendRange(int semitones) override { mpeRange = semitones; }
     std::string theme() const override { return themeName; }
     void setTheme(const std::string &name) override { themeName = name; }
     double glow() const override { return glowLevel; }
@@ -106,6 +110,8 @@ public:
 
     ParamValues values{};
     int oversamplingFactor = 2;
+    bool mpeOn = false;
+    int mpeRange = 48;
     std::string themeName;
     double glowLevel = 0.0;
     Telemetry live{};
@@ -210,10 +216,10 @@ constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
 constexpr Point kFmAmountKnob{359.0f, 32.0f};
 constexpr Point kVoicesKnob{975.0f, 32.0f}; // past the second divider, where Bend was
-constexpr Point kMonoButton{753.0f, 21.0f};
-constexpr Point kLegatoToggle{731.0f, 44.0f};
-constexpr Point kGlideKnob{817.0f, 32.0f};
-constexpr Point kAlwaysToggle{909.0f, 21.0f};
+constexpr Point kMonoButton{741.0f, 21.0f};
+constexpr Point kLegatoToggle{719.0f, 44.0f};
+constexpr Point kGlideKnob{805.0f, 32.0f};
+constexpr Point kAlwaysToggle{897.0f, 21.0f};
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};
@@ -2189,16 +2195,6 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     check(added && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
               onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "the title row adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
-    // MPE, beside the Pan knob: a click switches it on, and its menu picks the member channels' bend range.
-    click(view, {639.0f, 32.0f});
-    const bool mpeOn = model.value(paramIndex(GlobalParam::Mpe)) == 1.0;
-    for (const MenuItem &item : view.contextMenu({639.0f, 32.0f}))
-        if (item.label == trf(Str::MenuMpeBendRange, {"24"}))
-            view.menuCommand(item.command);
-    view.mouseMove({639.0f, 32.0f}, {});
-    check(mpeOn && model.value(paramIndex(GlobalParam::MpeBendRange)) == 24.0 &&
-              renderer.save(view, dir / "3g-mpe-switch.png"),
-          "the MPE switch beside the Pan knob switches MPE, and its menu picks the bend range");
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
@@ -3873,16 +3869,32 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;
-    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 364.0f) * 0.5f), 380.0f, 364.0f};
+    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 492.0f) * 0.5f), 380.0f, 492.0f};
     auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
+    auto mpeSwitch = [&](int on) { return Point{dialog.x + 24.0f + on * 56.0f + 26.0f, dialog.y + 228.0f}; };
+    auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
     auto theme = [&](int i) {
         const float w = (dialog.w - 48.0f + 6.0f) / View::themeCount();
-        return Point{dialog.x + 24.0f + i * w + (w - 6.0f) * 0.5f, dialog.y + 229.0f};
+        return Point{dialog.x + 24.0f + i * w + (w - 6.0f) * 0.5f, dialog.y + 357.0f};
     };
     const Point closeDialog{dialog.right() - 26.0f, dialog.y + 26.0f};
     click(view, cog);
+    view.mouseMove(mpeRange(1), {});
+    check(renderer.save(view, dir / "14g-settings-mpe-off.png"), "render the settings dialog with MPE off");
     click(view, option(2));
     check(model.oversamplingFactor == 4, "the settings dialog picks the oversampling");
+    // MPE: On and Off switch it, and the bend range's buttons pick how far its member channels bend, none of it
+    // touching the patch.
+    const ParamValues patchBefore = model.values;
+    click(view, mpeSwitch(1));
+    const bool mpeOn = model.mpeOn;
+    click(view, mpeRange(1));
+    const bool ranged = model.mpeRange == 24;
+    click(view, mpeSwitch(0));
+    const bool mpeOff = !model.mpeOn && model.mpeRange == 24;
+    click(view, mpeSwitch(1));
+    check(mpeOn && ranged && mpeOff && model.mpeOn && model.values == patchBefore,
+          "the settings dialog switches MPE and picks its bend range, leaving the patch alone");
     view.mouseMove(option(3), {});
     check(renderer.save(view, dir / "14-settings.png"), "render the settings dialog");
     // Its theme buttons repaint the whole editor in another theme.
@@ -3908,7 +3920,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, theme(0));
     check(themed && model.themeName == View::themeName(0), "the settings dialog picks the theme");
     // The GLOW slider sets how strongly the graphs' curves glow, on both pages, once it is let go.
-    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 269.0f}; };
+    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 397.0f}; };
     view.mouseDown(glowAt(0.2f), {});
     view.mouseMove(glowAt(0.75f), {});
     const bool kept = model.glowLevel == 0.0; // only once it is let go

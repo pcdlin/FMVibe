@@ -165,6 +165,11 @@ public:
         oversampling_ = factor >= 8 ? 8 : factor >= 4 ? 4 : factor >= 2 ? 2 : 1;
         js_oversampling(oversampling_);
     }
+    // The demo takes no MIDI, so MPE has nothing to act on; the dialog keeps what is picked for as long as the page.
+    bool mpe() const override { return mpe_; }
+    void setMpe(bool on) override { mpe_ = on; }
+    int mpeBendRange() const override { return mpeBendRange_; }
+    void setMpeBendRange(int semitones) override { mpeBendRange_ = std::clamp(semitones, 1, 96); }
     std::string theme() const override { return theme_; }
     void setTheme(const std::string &name) override {
         theme_ = name;
@@ -221,6 +226,8 @@ private:
     double stampMs_ = 0.0;
     bool heard_ = false;
     int oversampling_ = kDefaultOversampling;
+    bool mpe_ = false;
+    int mpeBendRange_ = 48;
     std::string theme_;
     double glow_ = 0.5;
 };

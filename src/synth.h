@@ -157,8 +157,11 @@ public:
     void polyPressure(const NoteRef &match, double value) {
         noteExpression(match, CLAP_NOTE_EXPRESSION_PRESSURE, value);
     }
-    // MPE over MIDI, and how far its member channels bend, in semitones (see GlobalParam::Mpe). Turned off, the member
-    // channels' bends are forgotten.
+    // MPE over MIDI (MIDI Polyphonic Expression), a setting of the instance rather than of the patch (see Settings in
+    // state.h): while on, channel 1 is the master channel, whose bend, controllers and pressure apply to every voice,
+    // and channels 2 to 16 each carry a note of their own, whose pitch bend (across `bendRange` semitones), channel
+    // pressure and CC 74 are that note's alone (see pitchBend()). Off, every channel's apply to every voice, and the
+    // member channels' bends are forgotten. CLAP's note expressions are per note either way.
     void setMpe(bool on, double bendRange);
     // The editor's bend wheel, on top of the host's pitch bend. Audio thread.
     void setWheelBend(double amount) { wheelBend_ = amount; }

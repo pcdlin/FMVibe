@@ -218,6 +218,8 @@ private:
         ConfirmButton,  // a = 1 goes ahead, 0 cancels
         SettingsBackdrop, // a = 1 on the dialog itself, 0 around it (a click there closes it)
         SettingsOption, // b = the oversampling factor it picks
+        SettingsMpe,    // b = 1 switches MPE on, 0 off
+        SettingsMpeRange, // b = the MPE bend range it picks, in semitones
         SettingsTheme,  // b = the theme it picks
         SettingsGlow,   // the slider for how strongly the graphs' curves glow
         SettingsClose,

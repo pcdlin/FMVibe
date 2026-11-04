@@ -27,6 +27,10 @@ std::vector<View::Widget> View::settingsWidgets() const {
     add(Kind::SettingsBackdrop, panel, 1);
     for (int i = 0; i < static_cast<int>(std::size(kOversamplingFactors)); ++i)
         add(Kind::SettingsOption, settingsOption(panel, i), -1, kOversamplingFactors[i]);
+    for (int on = 0; on < 2; ++on)
+        add(Kind::SettingsMpe, settingsMpe(panel, on), -1, on);
+    for (int i = 0; i < static_cast<int>(std::size(kMpeBendRanges)); ++i)
+        add(Kind::SettingsMpeRange, settingsMpeRange(panel, i), -1, kMpeBendRanges[i]);
     for (int i = 0; i < kThemeCount; ++i)
         add(Kind::SettingsTheme, settingsTheme(panel, i), -1, i);
     add(Kind::SettingsGlow, settingsGlow(panel));
@@ -49,8 +53,22 @@ void View::paintSettings(Canvas &c) {
            tr(Str::SettingsOversamplingWhy), 10.0f, kDim, Align::Left);
     c.text({panel.x + 24.0f, panel.y + 158.0f, panel.w - 48.0f, 16.0f},
            tr(Str::SettingsOversamplingSaved), 10.5f, kFaint, Align::Left);
-    c.line({panel.x + 24.0f, panel.y + 184.5f}, {panel.right() - 24.0f, panel.y + 184.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, panel.y + 192.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), 10.5f, kFaint, Align::Left, true);
+    // MPE: Off | On, then BEND and its ranges, and what it does under them.
+    const float mpeY = panel.y + kSettingsMpeY;
+    c.line({panel.x + 24.0f, mpeY + 0.5f}, {panel.right() - 24.0f, mpeY + 0.5f}, kBorder, 1.0f);
+    c.text({panel.x + 24.0f, mpeY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsMpe), 10.5f, kFaint, Align::Left, true);
+    c.text(settingsMpeBendLabel(panel), tr(Str::SettingsMpeBend), 10.5f, controller_.mpe() ? kDim : kFaint,
+           Align::Left, true);
+    c.text({panel.x + 24.0f, mpeY + 66.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhat), 10.0f, kDim,
+           Align::Left);
+    c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhy), 10.0f, kDim,
+           Align::Left);
+    c.text({panel.x + 24.0f, mpeY + 102.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), 10.5f, kFaint,
+           Align::Left);
+    // LOOK: the themes and the glow.
+    const float lookY = panel.y + kSettingsLookY;
+    c.line({panel.x + 24.0f, lookY + 0.5f}, {panel.right() - 24.0f, lookY + 0.5f}, kBorder, 1.0f);
+    c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), 10.5f, kFaint, Align::Left, true);
     const Rect glow = settingsGlow(panel);
     c.text({panel.x + 24.0f, glow.y, 48.0f, glow.h}, tr(Str::SettingsGlow), 10.5f, kDim, Align::Left, true);
     const float amount = shownGlow();
@@ -58,11 +76,11 @@ void View::paintSettings(Canvas &c) {
     std::snprintf(text, sizeof(text), "%.0f %%", amount * 100.0f);
     c.text({glow.right() + 14.0f, glow.y, panel.right() - 24.0f - glow.right() - 14.0f, glow.h},
            amount > 0.0f ? text : tr(Str::ValueOff), 10.5f, amount > 0.0f ? kText : kDim, Align::Left);
-    c.text({panel.x + 24.0f, panel.y + 294.0f, panel.w - 48.0f, 16.0f},
-           tr(Str::SettingsLookSaved), 10.5f, kFaint, Align::Left);
+    c.text({panel.x + 24.0f, lookY + 110.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), 10.5f, kFaint,
+           Align::Left);
     // The version and the license, at the bottom.
-    c.line({panel.x + 24.0f, panel.y + 320.5f}, {panel.right() - 24.0f, panel.y + 320.5f}, kBorder, 1.0f);
-    const Rect about{panel.x + 24.0f, panel.y + 328.0f, panel.w - 48.0f, 16.0f};
+    c.line({panel.x + 24.0f, lookY + 136.5f}, {panel.right() - 24.0f, lookY + 136.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, lookY + 144.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), 10.5f, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), 10.5f, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())

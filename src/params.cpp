@@ -177,10 +177,6 @@ void buildTable(ParamTable &t) {
     add(paramIndex(GlobalParam::ModWheel), tr(Str::ParamModWheel), global, ParamKind::Percent, 0.0, 1.0, 0.0);
     t[paramIndex(GlobalParam::ModWheel)].flags &=
         ~static_cast<clap_param_info_flags>(CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY);
-    // MPE off to begin with; its member channels bend 48 semitones either way, as the MPE spec has it.
-    add(paramIndex(GlobalParam::Mpe), tr(Str::ParamMpe), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
-    add(paramIndex(GlobalParam::MpeBendRange), tr(Str::ParamMpeBendRange), global, ParamKind::Semitones, 1.0, 96.0,
-        48.0);
 
     // Default patch: operator A, a plain sine carrier; the others start switched
     // off, to be added from the routing panel. Every operator has the same settings otherwise.

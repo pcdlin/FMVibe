@@ -283,17 +283,18 @@ What the plugin does and how its editor works, in full. Building and installing 
   do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
   MIDI pitch bend (its knob over the bend wheel, in the keyboard strip), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
-- **MPE** (MIDI Polyphonic Expression), off to begin with: the switch beside the Pan knob's label in the header. Hosts
+- **MPE** (MIDI Polyphonic Expression), off to begin with: a setting of the instance, in the settings dialog (see
+  Settings), saved with the project but not with presets, so browsing presets leaves it as it is. Hosts
   that send CLAP note expressions (Bitwig) need nothing: each note's tuning, volume, pan, pressure and brightness
   reach its own voice whether it is on or off. Over raw MIDI, with MPE on, channel 1 is the master channel, whose
   pitch bend (by Bend Range), controllers and channel pressure apply to every voice, and channels 2 to 16 each carry
   one note of their own: their pitch bend bends that note alone, by the **MPE bend range** (48 semitones to begin
-  with, as the MPE spec has it; 12, 24, 48 or 96 from the switch's right-click menu), and their channel pressure and
+  with, as the MPE spec has it; 12, 24, 48 or 96, beside the switch), and their channel pressure and
   CC 74 are that note's pressure and slide, which a MIDI source follows on those inputs. A note that starts on a
   member channel, or takes a mono voice over there, starts from what its channel last sent, and follows the master
   channel's pressure until its own channel sends some. With MPE off, every channel's bend, controllers and
   pressure apply to every voice, as without MPE. The plugin offers hosts the MPE MIDI dialect alongside CLAP's and
-  plain MIDI.
+  plain MIDI. The browser demo takes no MIDI, so there MPE has nothing to act on.
 - **Play modes**:
   - **Mono** plays one voice that moves from note to note. When you let go of the sounding key while others are
     held, it returns to the most recent one.
@@ -563,7 +564,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, and MPE beside Pan, then
+  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, then
   a Glide knob like the global ones, its Always switch beside its label, each switch explaining itself on hover);
   Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
@@ -838,6 +839,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the same forward. The project remembers which preset it was and whether it changed.
 - **Settings** (the cog after Save): **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
+  **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
+  faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,
+  and aren't undo steps.
   **Theme**: Midnight (the default), Graphite (neutral grays), Light (crisp: white cards and knob caps on a cool
   gray, with deep colors) or Paper (warm: cream on sand, with ink-brown text and earthy colors), each button
   shown in its own colors. **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the

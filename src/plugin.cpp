@@ -154,6 +154,10 @@ public:
     void openPresetFolder() override;
     int oversampling() const override { return oversampling_.load(); }
     void setOversampling(int factor) override;
+    bool mpe() const override { return mpe_.load(); }
+    void setMpe(bool on) override;
+    int mpeBendRange() const override { return mpeBendRange_.load(); }
+    void setMpeBendRange(int semitones) override;
     std::string theme() const override { return userSettings.theme; }
     void setTheme(const std::string &name) override {
         userSettings.theme = name;
@@ -244,6 +248,9 @@ private:
     // factor, needs a deactivate/activate.
     std::atomic<bool> restartRequested_{false};
     std::atomic<int> oversampling_{kDefaultOversampling};
+    // MPE over MIDI and its member channels' bend range: settings, set on the main thread, read by the audio thread.
+    std::atomic<bool> mpe_{false};
+    std::atomic<int> mpeBendRange_{kDefaultMpeBendRange};
     // Written by the audio thread (param events) and the main thread (editor,
     // state load), read by both, hence atomics. The audio thread works from a
     // copy taken at the start of each block, which the block's param events update.
@@ -317,8 +324,7 @@ int Plugin::voiceLimit() const {
 void Plugin::applyPlayMode() {
     auto on = [this](GlobalParam p) { return values_[paramIndex(p)].load(std::memory_order_relaxed) >= 0.5; };
     synth_.setPlayMode(on(GlobalParam::Mono), on(GlobalParam::Legato), on(GlobalParam::GlideAlways));
-    synth_.setMpe(on(GlobalParam::Mpe),
-                  values_[paramIndex(GlobalParam::MpeBendRange)].load(std::memory_order_relaxed));
+    synth_.setMpe(mpe_.load(std::memory_order_relaxed), mpeBendRange_.load(std::memory_order_relaxed));
 }
 
 // Thread-safe: request_restart may be called from any thread.
@@ -340,6 +346,18 @@ void Plugin::setOversampling(int factor) {
         return;
     restartIfNeeded();
     if (hostState_)
+        hostState_->mark_dirty(host_);
+}
+
+// Main thread, from the settings dialog: the audio thread takes them up at its next block.
+void Plugin::setMpe(bool on) {
+    if (mpe_.exchange(on) != on && hostState_)
+        hostState_->mark_dirty(host_);
+}
+
+void Plugin::setMpeBendRange(int semitones) {
+    semitones = std::clamp(semitones, 1, kMaxMpeBendRange);
+    if (mpeBendRange_.exchange(semitones) != semitones && hostState_)
         hostState_->mark_dirty(host_);
 }
 
@@ -644,7 +662,7 @@ bool Plugin::saveState(const clap_ostream_t *stream, bool settings) const {
         return false;
     if (!settings)
         return true;
-    if (!writeSettings(stream, oversampling_.load()))
+    if (!writeSettings(stream, {oversampling_.load(), mpe_.load(), mpeBendRange_.load()}))
         return false;
     // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
     return writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile())));
@@ -671,7 +689,10 @@ bool Plugin::loadState(const clap_istream_t *stream, bool settings) {
 
     // The settings are optional too: a project saved before them gets the defaults.
     if (settings) {
-        oversampling_.store(readSettings(stream));
+        const Settings stored = readSettings(stream);
+        oversampling_.store(stored.oversampling);
+        mpe_.store(stored.mpe);
+        mpeBendRange_.store(stored.mpeBendRange);
         restartIfNeeded();
 
         // Which preset it was. Without that, it shows Init, changed unless it is Init.

@@ -25,6 +25,17 @@ constexpr int kDefaultOversampling = 2;
 // The oversampling factor nearest below `factor`: 1, 2, 4 or 8.
 int validOversampling(long factor);
 
+// MPE's bend range for its member channels, in semitones: 48 to begin with, as the MPE spec has it.
+constexpr int kDefaultMpeBendRange = 48;
+constexpr int kMaxMpeBendRange = 96;
+
+// The settings of an instance, which presets leave alone: saved with the host's project, in the settings chunk.
+struct Settings {
+    int oversampling = kDefaultOversampling; // 1, 2, 4 or 8
+    bool mpe = false;                        // MPE over MIDI (see Synth::setMpe())
+    int mpeBendRange = kDefaultMpeBendRange; // 1 to kMaxMpeBendRange semitones
+};
+
 // Streams over a file, for presets.
 clap_istream_t fileIn(FILE *file);
 clap_ostream_t fileOut(FILE *file);
@@ -39,9 +50,9 @@ bool readParams(const clap_istream_t *stream, ParamValues &values);
 gui::UiLayout readLayout(const clap_istream_t *stream);
 
 // The settings chunk, in the host's state only: this instance's settings, which presets leave alone.
-bool writeSettings(const clap_ostream_t *stream, int oversampling);
-// The oversampling factor it holds; a project saved before the settings came gets the default.
-int readSettings(const clap_istream_t *stream);
+bool writeSettings(const clap_ostream_t *stream, const Settings &settings);
+// The settings it holds; those a project saved before them doesn't have, or that aren't numbers, keep their defaults.
+Settings readSettings(const clap_istream_t *stream);
 
 // The preset chunk, after the settings: the preset the patch came from, whether it changed since, then its file's
 // path in UTF-8 ("" for Init).

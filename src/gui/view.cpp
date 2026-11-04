@@ -1271,9 +1271,8 @@ std::vector<View::Widget> View::widgets() const {
     const int mono = paramIndex(GlobalParam::Mono);
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
-    // Under them Legato, and MPE beside the Pan knob, whose menu picks the member channels' bend range.
+    // Under them Legato.
     add(Kind::Toggle, kLegatoSwitch, paramIndex(GlobalParam::Legato));
-    add(Kind::Toggle, kMpeToggle, paramIndex(GlobalParam::Mpe));
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
     // On the label's row, level with Poly | Mono, clear of the value under it.
     add(Kind::Toggle, {kGlideX + kGlideW - 42.0f, 12.0f, 52.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
@@ -4555,7 +4554,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : isPartialCount(w.param) ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
-                           : w.param == paramIndex(GlobalParam::Mpe)    ? tr(Str::SwitchMpe)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
                            : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? tr(Str::SwitchStereo)
@@ -5270,13 +5268,23 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::SettingsBackdrop:
         break;
-    case Kind::SettingsOption: {
-        const bool on = controller_.oversampling() == w.b;
-        c.fillRect(w.rect, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
-        c.strokeRect(w.rect, on ? kAccent : kBorder, 1.0f, 5.0f);
-        char text[8];
-        std::snprintf(text, sizeof(text), "%dx", w.b);
-        c.text(w.rect, text, 11.0f, on ? kText : kDim, Align::Center, on);
+    case Kind::SettingsOption:
+    case Kind::SettingsMpe:
+    case Kind::SettingsMpeRange: {
+        // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, though they still take clicks.
+        const bool on = w.kind == Kind::SettingsOption ? controller_.oversampling() == w.b
+                        : w.kind == Kind::SettingsMpe  ? controller_.mpe() == (w.b != 0)
+                                                       : controller_.mpeBendRange() == w.b;
+        const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
+        const Color accent = faint ? kDim : kAccent;
+        c.fillRect(w.rect, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
+        c.strokeRect(w.rect, on ? accent : kBorder, 1.0f, 5.0f);
+        char factor[16];
+        std::snprintf(factor, sizeof(factor), "%dx", w.b);
+        const std::string label = w.kind == Kind::SettingsOption ? std::string(factor)
+                                  : w.kind == Kind::SettingsMpe  ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
+                                                                 : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
+        c.text(w.rect, label, 11.0f, on && !faint ? kText : kDim, Align::Center, on);
         break;
     }
     case Kind::SettingsGlow: {
@@ -5854,8 +5862,6 @@ void View::paintTooltip(Canvas &c) {
     }
     else if (param == paramIndex(GlobalParam::GlideAlways))
         text = tr(Str::TipGlideAlways);
-    else if (param == paramIndex(GlobalParam::Mpe))
-        text = tr(Str::TipMpe);
     else
         return; // a switch with nothing to say
     // As wide as its text, centered under the widget and kept inside the editor.
@@ -6806,6 +6812,12 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SettingsOption:
         controller_.setOversampling(w.b);
         break;
+    case Kind::SettingsMpe:
+        controller_.setMpe(w.b != 0);
+        break;
+    case Kind::SettingsMpeRange:
+        controller_.setMpeBendRange(w.b);
+        break;
     case Kind::SettingsTheme:
         controller_.setTheme(kThemes[w.b].name);
         break;
@@ -7348,9 +7360,6 @@ constexpr int kBypassCommand = kClearCommand + kAllSources;
 constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
 constexpr int kResetBendCommand = 14;
-// The MPE switch's menu: the member channels' bend range, one of these semitones.
-constexpr int kMpeRangeCommand = 40;
-constexpr int kMpeRanges[] = {12, 24, 48, 96};
 
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
@@ -7364,13 +7373,6 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     const auto hit = hitTest(p);
     if (!hit)
         return items;
-    if (hit->kind == Kind::Toggle && hit->param == paramIndex(GlobalParam::Mpe)) {
-        const long range = std::lround(value(paramIndex(GlobalParam::MpeBendRange)));
-        for (int k = 0; k < static_cast<int>(std::size(kMpeRanges)); ++k)
-            items.push_back({kMpeRangeCommand + k, trf(Str::MenuMpeBendRange, {std::to_string(kMpeRanges[k])}),
-                             range == kMpeRanges[k]});
-        return items;
-    }
     if (hit->kind == Kind::FxGrip || hit->kind == Kind::FxPower) {
         menuFx_ = hit->a;
         if (fxChain().size() < static_cast<size_t>(kFxSlots))
@@ -7502,9 +7504,7 @@ std::string View::bypassLabel(int source, int slot) const {
 void View::menuCommand(int command) {
     if (!menuLive_) // what the menu was opened on may have changed or gone since
         return;
-    if (command >= kMpeRangeCommand && command < kMpeRangeCommand + static_cast<int>(std::size(kMpeRanges))) {
-        edit(paramIndex(GlobalParam::MpeBendRange), kMpeRanges[command - kMpeRangeCommand]);
-    } else if (command == 1 && menuParam_ >= 0) {
+    if (command == 1 && menuParam_ >= 0) {
         edit(menuParam_, resetValue(menuParam_));
     } else if (command == 2 && menuParam_ >= 0) {
         const UndoScope step(controller_);

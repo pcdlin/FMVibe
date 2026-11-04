@@ -176,18 +176,17 @@ constexpr float kHeaderStart = 209.0f;
 constexpr Rect kMeter{kHeaderStart, 13.0f, 14.0f, 38.0f};
 constexpr float kHeaderKnobX = kHeaderStart + 28.0f;
 constexpr float kHeaderKnobW = 104.0f;
-constexpr float kDividers[] = {kHeaderStart + 454.0f, kHeaderStart + 738.0f};
+// The play cluster, its two dividers with it, sits centered between the Pan knob's widest value ("100 L", ending
+// 418 px in) and the Voices knob's left edge (749 px in): about 24 px from each to its divider.
+constexpr float kDividers[] = {kHeaderStart + 442.0f, kHeaderStart + 726.0f};
 constexpr float kPlayX = kDividers[0] + 24.0f; // Poly | Mono over Legato, 24 px past the first divider
 // The Glide knob 24 px past them, its Always switch (on its label's row) ending 12 px before the second divider.
 constexpr float kGlideX = kPlayX + 112.0f;
 constexpr float kGlideW = 126.0f;
 // Voices, past the second divider.
-constexpr float kVoicesX = kDividers[1] + 10.0f;
+constexpr float kVoicesX = kHeaderStart + 748.0f;
 // Legato under Poly | Mono, as wide as the two of them, how the notes that come in are read.
 constexpr Rect kLegatoSwitch{kPlayX, 35.0f, 88.0f, 19.0f};
-// MPE beside the Pan knob's label, 72 px into the knob's slot (the knob's rect is 104 wide), centered on the knob's
-// middle (its rect starts at y 12 and its center is 20 px down).
-constexpr Rect kMpeToggle{kHeaderKnobX + 3 * kHeaderKnobW + 72.0f, 12.0f + 20.0f - 9.5f, 36.0f, 19.0f};
 constexpr double kMeterFloorDb = -48.0;
 constexpr double kMeterTopDb = 6.0;
 constexpr Color kMeterRed = Color::hex(0xEF4444);
@@ -586,23 +585,37 @@ inline double partialBarFromLevel(double level) {
     return level <= 0.0 ? 0.0 : std::clamp(1.0 - 20.0 * std::log10(level) / kPartialFloorDb, 0.0, 1.0);
 }
 
-// The settings dialog, centered over the editor.
+// The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
+// (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 364.0f;
+constexpr float kSettingsH = 492.0f;
+constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
+constexpr float kSettingsLookY = 312.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
+constexpr int kMpeBendRanges[] = {12, 24, 48, 96}; // semitones
 inline Rect settingsPanel(float viewHeight) {
     return {(View::kWidth - kSettingsW) * 0.5f, std::round((viewHeight - kSettingsH) * 0.5f), kSettingsW, kSettingsH};
 }
 inline Rect settingsOption(Rect panel, int i) {
     return {panel.x + 24.0f + i * 64.0f, panel.y + 82.0f, 58.0f, 28.0f};
 }
+// MPE's Off (0) and On (1), then BEND and its ranges on the same row.
+inline Rect settingsMpe(Rect panel, int on) {
+    return {panel.x + 24.0f + on * 56.0f, panel.y + kSettingsMpeY + 30.0f, 52.0f, 28.0f};
+}
+inline Rect settingsMpeBendLabel(Rect panel) {
+    return {panel.x + 146.0f, panel.y + kSettingsMpeY + 30.0f, 44.0f, 28.0f};
+}
+inline Rect settingsMpeRange(Rect panel, int i) {
+    return {panel.x + 190.0f + i * 42.0f, panel.y + kSettingsMpeY + 30.0f, 38.0f, 28.0f};
+}
 inline Rect settingsTheme(Rect panel, int i) {
     const float w = (panel.w - 48.0f + 6.0f) / kThemeCount;
-    return {panel.x + 24.0f + i * w, panel.y + 214.0f, w - 6.0f, 30.0f};
+    return {panel.x + 24.0f + i * w, panel.y + kSettingsLookY + 30.0f, w - 6.0f, 30.0f};
 }
 // The glow slider's track, with room above and below to grab it; GLOW before it, its amount after.
 inline Rect settingsGlow(Rect panel) {
-    return {panel.x + 76.0f, panel.y + 256.0f, 200.0f, 26.0f};
+    return {panel.x + 76.0f, panel.y + kSettingsLookY + 72.0f, 200.0f, 26.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

@@ -47,12 +47,6 @@ enum class GlobalParam {
     GlideAlways,
     FxOrder,
     ModWheel,
-    // MPE over MIDI (MIDI Polyphonic Expression): while on, channel 1 is the master channel, whose bend, controllers
-    // and pressure apply to every voice, and channels 2 to 16 each carry a note of their own, whose pitch bend
-    // (across MpeBendRange semitones), channel pressure and CC 74 are that note's alone (see Synth::pitchBend()).
-    // Off, every channel's apply to every voice. CLAP's note expressions are per note either way.
-    Mpe,
-    MpeBendRange,
     Count
 };
 // Out goes straight to the output; the sends go into the filters (see sendIndex()) and the shapers
@@ -1066,8 +1060,6 @@ static_assert(idOfIndex(paramIndex(VelocityParam::Slots)) == 11600 &&
                       11680 &&
                   idOfIndex(paramIndex(VelocityParam::Bipolar)) == 11681,
               "velocity source param ids moved");
-static_assert(idOfIndex(paramIndex(GlobalParam::Mpe)) == 12 && idOfIndex(paramIndex(GlobalParam::MpeBendRange)) == 13,
-              "MPE's params keep their ids");
 static_assert(idOfIndex(slotAuxIndex(0, 0)) == 22000 && idOfIndex(slotScaleIndex(0, 0)) == 22001 &&
                   idOfIndex(slotScaleIndex(0, kSlots - 1)) == 22031 &&
                   idOfIndex(slotAuxIndex(kVelocitySource, 0)) == 23040 &&

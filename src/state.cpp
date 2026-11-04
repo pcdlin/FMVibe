@@ -350,18 +350,26 @@ gui::UiLayout readLayout(const clap_istream_t *stream) {
     return layout;
 }
 
-bool writeSettings(const clap_ostream_t *stream, int oversampling) {
+bool writeSettings(const clap_ostream_t *stream, const Settings &settings) {
     // Settings chunk fields, in order; later versions only append.
-    const float stored[] = {static_cast<float>(oversampling)};
+    const float stored[] = {static_cast<float>(settings.oversampling), settings.mpe ? 1.0f : 0.0f,
+                            static_cast<float>(settings.mpeBendRange)};
     const uint32_t settingsChunk[] = {kSettingsMagic, static_cast<uint32_t>(std::size(stored))};
     return writeAll(stream, settingsChunk, sizeof(settingsChunk)) && writeAll(stream, stored, sizeof(stored));
 }
 
-int readSettings(const clap_istream_t *stream) {
+Settings readSettings(const clap_istream_t *stream) {
     std::vector<float> values;
     readChunk(stream, kSettingsMagic, kMaxSettingsFloats, values);
-    const float factor = values.empty() || !std::isfinite(values[0]) ? kDefaultOversampling : values[0];
-    return validOversampling(std::lround(factor));
+    auto field = [&values](size_t i, float fallback) {
+        return i < values.size() && std::isfinite(values[i]) ? values[i] : fallback;
+    };
+    Settings settings;
+    settings.oversampling = validOversampling(std::lround(field(0, kDefaultOversampling)));
+    settings.mpe = field(1, 0.0f) >= 0.5f;
+    settings.mpeBendRange =
+        std::clamp(static_cast<int>(std::lround(field(2, kDefaultMpeBendRange))), 1, kMaxMpeBendRange);
+    return settings;
 }
 
 bool writePresetChunk(const clap_ostream_t *stream, bool edited, const std::string &file) {

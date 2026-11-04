@@ -215,6 +215,11 @@ public:
     // alone by presets. Oversampling is 1, 2, 4 or 8.
     virtual int oversampling() const = 0;
     virtual void setOversampling(int factor) = 0;
+    // MPE over MIDI (see Synth::setMpe()), and how far its member channels bend, in semitones (1 to 96).
+    virtual bool mpe() const = 0;
+    virtual void setMpe(bool on) = 0;
+    virtual int mpeBendRange() const = 0;
+    virtual void setMpeBendRange(int semitones) = 0;
     // The editor's color theme, by name (see View::themeName(); any other means the default). Unlike the
     // settings above it is the user's: every FMVibe editor uses it, whichever project it is in.
     virtual std::string theme() const = 0;

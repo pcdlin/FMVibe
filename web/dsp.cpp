@@ -34,7 +34,6 @@ int voiceLimit() {
 void applyPlayMode() {
     auto on = [](GlobalParam p) { return values[paramIndex(p)] >= 0.5; };
     synth.setPlayMode(on(GlobalParam::Mono), on(GlobalParam::Legato), on(GlobalParam::GlideAlways));
-    synth.setMpe(on(GlobalParam::Mpe), values[paramIndex(GlobalParam::MpeBendRange)]);
 }
 
 } // namespace
