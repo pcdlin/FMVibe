@@ -208,7 +208,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Bend's knob, over the bend wheel, staying in it and turning;
   - the dashed cards that add effects and sources (opening the list of types over themselves, the effects' staying
     over a switched-off card's dimming at the chain's right end, read off the rendered pixels; the sources' closing
-    at a click around it), and the arrow between two effects adding one there;
+    at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
   - picking the oversampling and the theme, and dragging the glow slider, in the settings dialog (with the editor
     rendered in each theme, and glowing), and closing it with its x or a click around it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;

@@ -684,6 +684,20 @@ bool View::sourceShadow() const {
     return sources().size() < static_cast<size_t>(kMaxSources);
 }
 
+std::optional<Rect> View::sourceShadowCard() const {
+    const std::vector<int> shown = sourcesShown();
+    const float place = sourceOffset(shown, shown.size()) - sourceScroll();
+    if (!sourceShadow() || controller_.layout().sourcesCollapsed || !onScreen(place, kVisibleCards, kSourceShadowSpan))
+        return std::nullopt;
+    return sourceCard(place, kSourceShadowSpan);
+}
+
+Point View::sourceMenuAt(Rect card) {
+    const Rect panel = modPanel(false);
+    return {std::clamp(card.x + 8.0f, panel.x + 8.0f, panel.right() - 8.0f - sourceMenu({0.0f, 0.0f}).w),
+            card.y + 8.0f};
+}
+
 float View::scrollFirst(ScrollArea area) const {
     return area == ScrollArea::Fx ? fxScroll() : sourceScroll();
 }
@@ -1142,6 +1156,10 @@ bool View::poll() {
         changed = true;
     if (glideMods())
         changed = true;
+    if (sourceMenuOpen_ && !sourceShadowCard()) { // its card went: scrolled away, the panel shut, the places full
+        sourceMenuOpen_ = false;
+        changed = true;
+    }
     if (modList_ && !modListPillShown()) { // its pill went: fewer modulations, or what showed it changed
         modList_.reset();
         changed = true;
@@ -1867,10 +1885,8 @@ std::vector<View::Widget> View::widgets() const {
         // Its modulations are listed in the MODS view, which the button under its display shows.
         add(Kind::SourceMods, sourceModsButton(card), -1, s);
     }
-    if (const float place = sourceOffset(cardSources, cardSources.size()) - sourceScroll();
-        sourceShadow() && !collapsed && onScreen(place, kVisibleCards, kSourceShadowSpan)) {
-        add(Kind::SourceShadow, sourceCard(place, kSourceShadowSpan));
-    }
+    if (const auto shadow = sourceShadowCard())
+        add(Kind::SourceShadow, *shadow);
     for (size_t i = sourceCardsStart; i < list.size(); ++i)
         if (list[i].clip.w <= 0.0f)
             list[i].clip = sourceCardClip();
@@ -2000,11 +2016,12 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::SettingsButton, toolbarButton(3));
 
     // The list of source types, over the dashed card it opened from, while the modulation panel is open.
-    if (sourceMenuAt_.x >= 0.0f && !controller_.layout().sourcesCollapsed) {
+    if (const auto shadow = sourceShadowCard(); sourceMenuOpen_ && shadow) {
+        const Point at = sourceMenuAt(*shadow);
         add(Kind::SourceMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
-        add(Kind::SourceMenu, sourceMenu(sourceMenuAt_), -1, 1);
+        add(Kind::SourceMenu, sourceMenu(at), -1, 1);
         for (int t = 1; t <= kSourceTypes; ++t)
-            add(Kind::SourceMenuItem, sourceMenuItem(sourceMenuAt_, static_cast<SourceType>(t)), -1, t);
+            add(Kind::SourceMenuItem, sourceMenuItem(at, static_cast<SourceType>(t)), -1, t);
     }
     if (fxMenuOpen_ && fxWide()) {
         add(Kind::FxMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
@@ -5011,10 +5028,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.line({l + 2.0f, (t + b) * 0.5f}, {r - 2.0f, (t + b) * 0.5f}, ink, 1.4f);
             c.fillRect({l + 9.0f, t + 1.0f, 4.0f, b - t - 2.0f}, ink, 1.0f);
         }
-        const Str names[] = {Str::SourceLfo, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom, Str::SourceMidi};
-        static_assert(std::size(names) == static_cast<size_t>(SourceType::Count));
-        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h},
-               tr(names[std::clamp(w.a, 0, static_cast<int>(SourceType::Count) - 1)]), 11.0f, ink, Align::Left);
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, sourceTypeName(type), 11.0f, ink,
+               Align::Left);
         break;
     }
     case Kind::FxAdd:
@@ -6497,19 +6512,16 @@ void View::mouseDown(Point p, Modifiers mods) {
         hover_.reset();
         break;
     }
-    case Kind::SourceShadow: { // the list over the card, kept inside the panel
-        const Rect panel = modPanel(false);
-        const float width = sourceMenu({0.0f, 0.0f}).w;
-        sourceMenuAt_ = {std::clamp(w.rect.x + 8.0f, panel.x + 8.0f, panel.right() - 8.0f - width), w.rect.y + 8.0f};
+    case Kind::SourceShadow: // the list over the card
+        sourceMenuOpen_ = true;
         hover_.reset();
         break;
-    }
     case Kind::SourceMenu:
         if (w.a == 0) // a click anywhere else closes the list
-            sourceMenuAt_ = {-1.0f, -1.0f};
+            sourceMenuOpen_ = false;
         break;
     case Kind::SourceMenuItem:
-        sourceMenuAt_ = {-1.0f, -1.0f};
+        sourceMenuOpen_ = false;
         addSource(static_cast<SourceType>(w.a));
         break;
     case Kind::FxMenu:
@@ -7043,7 +7055,7 @@ void View::middleDown(Point p) {
         modList_.reset();
         cascade_.reset();
         fxMenuOpen_ = false;
-        sourceMenuAt_ = {-1.0f, -1.0f};
+        sourceMenuOpen_ = false;
         fxInsertAt_ = -1;
         listMenu_ = -1;
         peqMenu_ = -1;

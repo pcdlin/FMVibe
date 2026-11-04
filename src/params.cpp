@@ -782,6 +782,10 @@ const char *peqTypeName(PeqType type) {
     return nameAt(kPeqTypeNames, static_cast<double>(type));
 }
 
+const char *sourceTypeName(SourceType type) {
+    return nameAt(kSourceTypeNames, static_cast<double>(type));
+}
+
 const char *reverbTypeName(ReverbType type) {
     return nameAt(kReverbTypeNames, static_cast<double>(type));
 }

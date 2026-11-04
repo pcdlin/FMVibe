@@ -1760,6 +1760,15 @@ void testSourceShadow(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({cardX(2) + 46.0f, 600.0f}, {});
     check(menuShot && lfo && closed && env && renderer.save(view, dir / "29-source-shadow.png"),
           "the dashed card after the sources opens the list of source types, which adds the one picked");
+    // Left open while the panel collapses (as a state load or another editor can do), the list shuts with it, and
+    // doesn't come back when the panel opens again: a click where its LFO entry was opens it afresh instead.
+    click(view, {cardX(2) + 46.0f, 600.0f});
+    model.ui.sourcesCollapsed = true;
+    view.poll();
+    model.ui.sourcesCollapsed = false;
+    view.poll();
+    click(view, entry(2, SourceType::Lfo));
+    check(shown(model) == std::vector<int>{0, 1}, "the list of source types shuts when its dashed card goes");
 }
 
 // Velocity, at the strip's right end after the note source: its handle maps it like the note source's (faint until
