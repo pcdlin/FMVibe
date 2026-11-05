@@ -346,8 +346,9 @@ struct App {
     Audio *audio = nullptr;
     double sampleRate = kFallbackRate;
     HWND window = nullptr;
-    std::string title;          // the window's, before the computer keyboard's octave
+    std::string title;          // the window's, before the computer keyboard's octave and velocity
     int octave = 0;             // the computer keyboard's, from middle C
+    int velocity = 5;           // the computer keyboard's, in kKeyVelocities
     std::array<int, 256> held;  // by scan code: the note the key plays, or -1
     bool active = false;        // activated, and not deactivated since
     bool editorCreated = false; // gui->create() went through, and gui->destroy() hasn't followed
@@ -434,9 +435,10 @@ void restartPlugin() {
 }
 
 // --- The computer keyboard's piano, as the browser demo has it: A is middle C, W the C# above it, and so on to
-// the semicolon; Z and X shift the octave. By scan code, so it plays by key position on any layout.
+// the semicolon; Z and X shift the octave, C and V step the velocity. By scan code, so it plays by key position on
+// any layout.
 
-constexpr int kKeyVelocity = 100; // as the plugin's own keyboard
+constexpr std::array<int, 8> kKeyVelocities = {1, 20, 40, 60, 80, 100, 120, 127}; // 100 as the plugin's own keyboard
 
 int pianoKey(uint32_t scanCode) {
     switch (scanCode) {
@@ -462,9 +464,12 @@ int pianoKey(uint32_t scanCode) {
 }
 constexpr uint32_t kOctaveDown = 0x2C; // Z
 constexpr uint32_t kOctaveUp = 0x2D;   // X
+constexpr uint32_t kVelocityDown = 0x2E; // C
+constexpr uint32_t kVelocityUp = 0x2F;   // V
 
-void showOctave() {
-    const std::string title = app.title + " - keys from C" + std::to_string(4 + app.octave);
+void showKeys() {
+    const std::string title = app.title + " - keys from C" + std::to_string(4 + app.octave) + ", velocity " +
+                              std::to_string(kKeyVelocities[app.velocity]);
     SetWindowTextA(app.window, title.c_str());
 }
 
@@ -504,13 +509,21 @@ bool playKey(const MSG &msg) {
         if (note > 127)
             return true;
         app.held[scanCode] = note;
-        app.audio->pushMidi(0x90, static_cast<uint8_t>(note), kKeyVelocity);
+        app.audio->pushMidi(0x90, static_cast<uint8_t>(note), static_cast<uint8_t>(kKeyVelocities[app.velocity]));
         return true;
     }
     if (scanCode == kOctaveDown || scanCode == kOctaveUp) {
         if (!repeat) {
             app.octave = std::clamp(app.octave + (scanCode == kOctaveUp ? 1 : -1), -4, 4);
-            showOctave();
+            showKeys();
+        }
+        return true;
+    }
+    if (scanCode == kVelocityDown || scanCode == kVelocityUp) {
+        if (!repeat) {
+            app.velocity = std::clamp(app.velocity + (scanCode == kVelocityUp ? 1 : -1), 0,
+                                      static_cast<int>(kKeyVelocities.size()) - 1);
+            showKeys();
         }
         return true;
     }
@@ -592,7 +605,8 @@ void usage() {
                 "  --silent   run the plugin without an audio device (the meters and scope still move)\n"
                 "  --no-midi  leave the MIDI inputs alone\n"
                 "  --tempo    the tempo synced LFOs and effects follow (default 120 BPM)\n"
-                "  The computer keyboard plays notes: A W S E D ... from middle C, Z and X shift the octave.\n");
+                "  The computer keyboard plays notes: A W S E D ... from middle C, Z and X shift the octave,\n"
+                "  C and V step the velocity (1, 20, 40 ... 127).\n");
 }
 
 } // namespace
@@ -666,7 +680,7 @@ int wmain(int argc, wchar_t **argv) {
     std::printf("%s %s, from %s\n", descriptor->name, descriptor->version, pathUtf8.c_str());
     app.title = std::string(descriptor->name) + " " + descriptor->version + " (fmvibe-uihost)";
     app.held.fill(-1);
-    showOctave();
+    showKeys();
 
     Audio audio(app.plugin, silent, tempo);
     app.audio = &audio;

@@ -13,6 +13,7 @@ const failedBanner = document.getElementById('failed');
 const menu = document.getElementById('menu');
 const toast = document.getElementById('toast');
 const octaveLabel = document.getElementById('octave');
+const velocityLabel = document.getElementById('velocity');
 const tempoInput = document.getElementById('tempo');
 const ctx = canvas.getContext('2d');
 const draw = createCanvas2d(ctx);
@@ -135,9 +136,9 @@ const host = {
     pending = []; // all of them, as they are now
     send({type: 'all', values}, [values.buffer]);
   },
-  note(key, on) {
+  note(key, on, velocity = 100) { // the editor's keyboard plays at 100, as the plugin's does
     flush(); // after the edits made before it
-    send({type: 'note', key, on});
+    send({type: 'note', key, on, velocity});
   },
   bend(amount) {
     send({type: 'bend', amount});
@@ -450,9 +451,12 @@ const PIANO = {
 };
 const held = new Map(); // key code -> the note it plays
 let octave = 0;         // from middle C
+const VELOCITIES = [1, 20, 40, 60, 80, 100, 120, 127]; // C and V step through them
+let velocity = 5;       // in VELOCITIES
 
-function showOctave() {
+function showKeys() {
   octaveLabel.textContent = `C${4 + octave}`;
+  velocityLabel.textContent = `${VELOCITIES[velocity]}`;
 }
 
 function releaseAll() {
@@ -508,13 +512,20 @@ window.addEventListener('keydown', (e) => {
       return;
     const note = 60 + 12 * octave + PIANO[e.code];
     held.set(e.code, note);
-    host.note(note, true);
+    host.note(note, true, VELOCITIES[velocity]);
   } else if (e.code === 'KeyZ' || e.code === 'KeyX') {
     e.preventDefault();
     startAudio();
     if (!e.repeat) {
       octave = Math.max(-4, Math.min(4, octave + (e.code === 'KeyX' ? 1 : -1)));
-      showOctave();
+      showKeys();
+    }
+  } else if (e.code === 'KeyC' || e.code === 'KeyV') {
+    e.preventDefault();
+    startAudio();
+    if (!e.repeat) {
+      velocity = Math.max(0, Math.min(VELOCITIES.length - 1, velocity + (e.code === 'KeyV' ? 1 : -1)));
+      showKeys();
     }
   }
 });
@@ -580,6 +591,6 @@ function watchDensity() {
   }, {once: true});
 }
 watchDensity();
-showOctave();
+showKeys();
 resize();
 requestAnimationFrame(frame);

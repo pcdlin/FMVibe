@@ -318,7 +318,8 @@ More checks:
   its own, which keeps the editor's aspect ratio as it is resized and takes the sizes the editor asks for, and plays
   it through the default output device (WASAPI, shared mode, at the device's rate). Notes come from the editor's
   keyboard, from the computer keyboard as in the browser demo (A W S E D … from middle C by key position, Z and X
-  shifting the octave, which the window's title shows; keys the editor takes for typing stay its own) and from every
+  shifting the octave and C and V stepping the velocity through 1, 20, 40 … 100, 120 and 127, both of which the
+  window's title shows; keys the editor takes for typing stay its own) and from every
   MIDI input it can open, at a tempo of 120 BPM for synced LFOs and effects. With
   `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and
   the analyzers move; `--no-midi` leaves the MIDI inputs alone and `--tempo <bpm>` sets another tempo. It restarts
@@ -365,7 +366,8 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   bytes cross unchanged.
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme and glow are kept in the browser's storage.
-- The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave.
+- The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
+  the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
 - The page stands in for a host's transport with a Tempo field under the editor (20–999 BPM, kept in the
   browser's storage), which `dsp_tempo()` hands the synth as `Plugin::process()` does the host's tempo.
 - The page polls and paints at most about 60 times a second, whatever the display's rate, and, like the plugin
