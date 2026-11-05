@@ -23,7 +23,14 @@ What the plugin does and how its editor works, in full. Building and installing 
     the ratios; the knob itself sits on its steps. Each operator's pitch moves to a new control block's value over the block's length (not in a step at its start), for Ratio and every other pitch modulation alike. Fine (adds up to +100 % to the ratio), **Pitch** (±48 semitones on top of the
     ratio; the knob moves in whole semitones, while LFOs, envelopes and host modulation glide through it), Detune
     (±50 cents) and an AHDSR envelope (by default an organ-like gate: no hold, full sustain and a 15 ms release;
-    its attack, hold, decay and release each go from 1 ms to 10 s);
+    its attack, decay and release go from 0 ms to 10 s, through fractions of a millisecond (0.1 ms, 0.2 ms …) below
+    1 ms, its hold from 1 ms, and the hold can be Off; at 0 ms a segment takes a single sample, so a 0 ms attack starts a note at
+    full level at once, nothing else ramping a new voice in (in the envelope's display, an
+    attack's segment shrinks away below 1 ms, so a 0 ms attack is a vertical line, and a decay's or release's to half
+    its shortest width), and after a 0 ms decay a changing sustain is still followed over 1 ms, so it doesn't step.
+    The knob's stretch from 0 to 1 ms lies below where it used to stop, so patches saved before it (state version 3
+    and earlier) keep their times, and their modulation depths on these times load scaled to swing them as far as
+    before);
   - **Fixed** pitch (off by default): the operator plays at **Freq** (1 Hz–2 kHz on a log curve) times **Mult**
     (×0.001, ×0.01, ×0.1, ×1 or ×10), so 1 mHz to 20 kHz, whatever the note. The note, pitch bend, glide, the
     global Pitch and the note's tuning don't move it, nor do its ratio, Pitch and Detune, or modulation on them;
@@ -793,7 +800,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a
   time is 300 ms, `1.2k` on a cutoff 1.2 kHz; `Off` or `0` on a time that can be Off, while `1 ms` is the shortest
-  time, and `0` on a phaser's or flanger's Rate stands it still, while `0.02 Hz` is its slowest sweep); Enter or a click elsewhere sets it, Escape drops it. The editor
+  time; on an envelope's attack, decay or release `0` is 0 ms and `0.5` half a millisecond, and `0` on a phaser's or flanger's Rate stands it still, while `0.02 Hz` is its slowest sweep); Enter or a click elsewhere sets it, Escape drops it. The editor
   takes the keyboard while you type and hands it back afterwards; the keys are taken straight off the window's
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.

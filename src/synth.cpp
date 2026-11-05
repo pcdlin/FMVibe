@@ -825,7 +825,7 @@ void Synth::telemetry(Telemetry &out) const {
         out.envPos[s] = static_cast<float>(newest->modEnvs[s].position(newest->modEnvRates[s].last()));
     }
     for (int i = 0; i < kOps; ++i) {
-        out.opLevels[i] = static_cast<float>(newest->ops[i].env.level() * newest->ops[i].amp);
+        out.opLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
         out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
     }
@@ -1223,6 +1223,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // Equal-power pan, unity at the center.
     const double pan = std::clamp(p[paramIndex(GlobalParam::Pan)] + v.exprPan, -1.0, 1.0);
     const double angle = (pan + 1.0) * std::numbers::pi / 4.0;
+    // A new voice starts at its gains and FM amount, as at its levels (below): its envelopes alone shape its start,
+    // so a 0 ms attack starts at full level at once.
+    if (starting) {
+        v.fmScale = fmTarget;
+        v.gainL = gain * std::numbers::sqrt2 * std::cos(angle);
+        v.gainR = gain * std::numbers::sqrt2 * std::sin(angle);
+    }
     const double fmStep = (fmTarget - v.fmScale) * ramp;
     const double gainLStep = (gain * std::numbers::sqrt2 * std::cos(angle) - v.gainL) * ramp;
     const double gainRStep = (gain * std::numbers::sqrt2 * std::sin(angle) - v.gainR) * ramp;
@@ -1233,7 +1240,6 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
 
     Levels target{};
     std::array<EnvRates, kOps> rates;
-    std::array<double, kOps> ampStep;
     std::array<const float *, kOps> wave;
     std::array<bool, kOps> noise;
     // Noise has no pitch and no unison copies. Its color comes from a filter, and
@@ -1288,7 +1294,6 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             stepped(p[paramIndex(i, OpParam::Wave)], static_cast<int>(OpWave::Count) - 1));
         noise[i] = shape == OpWave::Noise;
 
-        ampStep[i] = (1.0 - op.amp) * ramp;
         const std::array<double, 8> times{
             p[paramIndex(i, OpParam::Attack)],      p[paramIndex(i, OpParam::Hold)],
             p[paramIndex(i, OpParam::Decay)],       p[paramIndex(i, OpParam::Sustain)],
@@ -1629,8 +1634,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 pm += level.shaperIndex[route.shapers[k]][i] * v.shaperOut[route.shapers[k]];
             const double offset = pm * v.fmScale;
 
-            op.amp += ampStep[i];
-            const double envLevel = envLevels[i][s] * op.amp;
+            const double envLevel = envLevels[i][s];
             const double scopePhase = i == scopeOp ? op.phases[0] : 0.0; // where this sample is read
             double mono = 0.0, l = 0.0, r = 0.0;
             if (noise[i]) {

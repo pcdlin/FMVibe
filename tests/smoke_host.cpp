@@ -2964,7 +2964,7 @@ int main(int argc, char **argv) {
 
         MemoryStream newer;
         newer.data = patch.data;
-        newer.data[4] = 4; // a state version from the future
+        newer.data[4] = 5; // a state version from the future
         check(!state->load(plugin, &newer.in), "load rejects a newer state version");
 
         // Hosts see a slot's fields for the effect it holds, and not the others.
@@ -3054,6 +3054,68 @@ int main(int argc, char **argv) {
         };
         check(legatoFrom(2, 0.0) == 0.0 && legatoFrom(2, 1.0) == 1.0 && legatoFrom(3, 0.0) == 1.0,
               "an earlier state's Legato loads off in poly and as it was in mono");
+    }
+
+    // An envelope's attack, decay and release go on below 1 ms to 0 ms since version 4, below norm 0, which stays
+    // 1 ms: typed, 0 is 0 ms and 0.1 ms, 0.5 ms and 1 ms are as typed. A stored 0 loads as 1 ms whatever the version,
+    // operators' and mod envelopes' alike, while a depth on an operator's attack from an earlier state loads smaller
+    // by as much as the range grew, swinging it as far as before; a version 4 state's as it is.
+    {
+        const int times[] = {paramIndex(0, OpParam::Attack), paramIndex(0, OpParam::Decay),
+                             paramIndex(0, OpParam::Release), paramIndex(0, SourceParam::Attack),
+                             paramIndex(0, SourceParam::Decay), paramIndex(0, SourceParam::Release)};
+        const int attack = times[0], depth = slotAmountIndex(1, 0);
+        std::string typed;
+        for (const char *text : {"0", "0.1", "0.5", "1", "300"}) {
+            double value = -1.0;
+            char shown[64] = {};
+            if (params->text_to_value(plugin, idOfIndex(attack), text, &value))
+                params->value_to_text(plugin, idOfIndex(attack), value, shown, sizeof(shown));
+            typed += typed.empty() ? shown : std::string(", ") + shown;
+        }
+        auto loadFrom = [&](uint32_t version, double &depthLoaded) {
+            std::vector<std::pair<int, double>> stored;
+            for (const int index : times)
+                stored.push_back({index, 0.0});
+            stored.push_back({slotTargetIndex(1, 0), slotTargetValue(attack)});
+            stored.push_back({depth, 0.5});
+            MemoryStream old;
+            const uint32_t header[] = {0x38454C43, version, static_cast<uint32_t>(stored.size())};
+            old.data.assign(reinterpret_cast<const uint8_t *>(header),
+                            reinterpret_cast<const uint8_t *>(header) + sizeof(header));
+            for (const auto &[index, value] : stored) {
+                const uint32_t id = idOfIndex(index);
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                                reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&value),
+                                reinterpret_cast<const uint8_t *>(&value) + sizeof(value));
+            }
+            const bool loaded = state->load(plugin, &old.in);
+            plugin->on_main_thread(plugin);
+            std::string shown;
+            for (const int index : times) {
+                double value = -1.0;
+                char text[64] = {};
+                if (loaded && params->get_value(plugin, idOfIndex(index), &value))
+                    params->value_to_text(plugin, idOfIndex(index), value, text, sizeof(text));
+                shown += shown.empty() ? text : std::string(", ") + text;
+            }
+            depthLoaded = -1.0;
+            if (loaded)
+                params->get_value(plugin, idOfIndex(depth), &depthLoaded);
+            return shown;
+        };
+        double depthThree = -1.0, depthFour = -1.0;
+        const std::string fromThree = loadFrom(3, depthThree), fromFour = loadFrom(4, depthFour);
+        const double expected = 0.5 * kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm);
+        std::printf("      envelope times typed: %s; stored at 0 from a version 3 state: %s; from version 4: %s; a "
+                    "depth of 0.5 on an attack from version 3: %.4f, from version 4: %.4f\n",
+                    typed.c_str(), fromThree.c_str(), fromFour.c_str(), depthThree, depthFour);
+        const std::string ones = "1.0 ms, 1.0 ms, 1.0 ms, 1.0 ms, 1.0 ms, 1.0 ms";
+        check(typed == "0.0 ms, 0.1 ms, 0.5 ms, 1.0 ms, 300.0 ms" && fromThree == ones && fromFour == ones &&
+                  std::abs(depthThree - expected) < 1e-9 && depthFour == 0.5,
+              "envelope times go down to 0 ms through fractions of a millisecond, a stored 0 stays 1 ms, and an "
+              "earlier state's depths on them swing them as far as before");
     }
 
     // Envelopes' attacks, holds, decays and releases go up to 10 s: one stored longer (up to 20 s, which they once

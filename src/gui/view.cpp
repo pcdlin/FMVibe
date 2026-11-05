@@ -208,7 +208,32 @@ constexpr Str kEnvSegmentNames[] = {Str::LabelAttack, Str::LabelDecay, Str::Labe
 // (log-scaled) time; the release starts where the decay ends, at the sustain
 // level, since the sustain has no length of its own. The scale is picked to
 // fill the display (see envFitScale()), so short envelopes are zoomed in.
+// Below 1 ms (an envelope time under 0, see kMinEnvNorm) a segment's own pixels shrink: an attack's all the way, so
+// a 0 ms one goes straight up, a decay's and a release's to half, keeping their handles apart.
 constexpr float kEnvMinSegment = 10.0f;
+
+// What's left at 0 ms of a segment's kEnvMinSegment pixels.
+float envLeastShare(bool attack) {
+    return attack ? 0.0f : 0.5f;
+}
+
+// The pixels a segment's time `value` of param `param` takes.
+float envSpan(int param, double value, float scale, bool attack = false) {
+    const double min = paramTable()[param].min;
+    if (value >= 0.0 || min >= 0.0)
+        return kEnvMinSegment + static_cast<float>(std::max(value, 0.0)) * scale;
+    const float share = envLeastShare(attack);
+    return kEnvMinSegment * (share + (1.0f - share) * static_cast<float>(1.0 - value / min));
+}
+
+// The time of param `param` whose segment takes `span` pixels: envSpan() the other way round.
+double envSpanTime(int param, float span, float scale, bool attack = false) {
+    const double min = paramTable()[param].min;
+    if (span >= kEnvMinSegment || min >= 0.0) // a hold to the left of its shortest place: none
+        return (span - kEnvMinSegment) / scale;
+    const float share = envLeastShare(attack);
+    return min * (1.0 - std::clamp((span / kEnvMinSegment - share) / (1.0f - share), 0.0f, 1.0f));
+}
 
 struct EnvShape {
     Point p0, p1, ph, p2, p4; // start, peak, end of the hold, sustain level (where the release starts), end
@@ -220,13 +245,13 @@ struct EnvShape {
 template <class Get>
 EnvShape envShape(Rect r, const EnvIndices &e, const Get &get, float scale) {
     const float left = r.x + 10.0f;
-    auto span = [&](int param) { return kEnvMinSegment + static_cast<float>(get(param)) * scale; };
+    auto span = [&](int param, bool attack = false) { return envSpan(param, get(param), scale, attack); };
     EnvShape s;
     s.scale = scale;
     s.top = r.y + 12.0f;
     s.bottom = r.bottom() - 10.0f;
     s.p0 = {left, s.bottom};
-    s.p1 = {left + span(e.attack), s.top};
+    s.p1 = {left + span(e.attack, true), s.top};
     s.ph = {s.p1.x + span(e.hold), s.top};
     s.p2 = {s.ph.x + span(e.decay), s.bottom - static_cast<float>(get(e.sustain)) * (s.bottom - s.top)};
     s.p4 = {s.p2.x + span(e.release), s.bottom};
@@ -238,7 +263,9 @@ EnvShape envShape(Rect r, const EnvIndices &e, const Get &get, float scale) {
 template <class Get>
 float envFitScale(Rect r, const EnvIndices &e, const Get &get) {
     const float room = r.w - 20.0f - 4.0f * kEnvMinSegment;
-    const double total = get(e.attack) + get(e.hold) + get(e.decay) + get(e.release);
+    double total = 0.0;
+    for (const int param : {e.attack, e.hold, e.decay, e.release})
+        total += std::max(get(param), 0.0); // times under 1 ms take only their share of kEnvMinSegment
     return room / static_cast<float>(std::max(total, 0.15));
 }
 
@@ -6322,16 +6349,18 @@ void View::applyDrag(Point p) {
         // display's end, it goes on lengthening its segment while the display zooms out (see envScale()).
         const EnvIndices e = envIndices(w.a);
         const EnvShape s = envShape(envRect(w.a), e, [this](int index) { return value(index); }, drag_.envScale);
-        auto time = [&](float from) { return (p.x - from - kEnvMinSegment) / s.scale; };
+        auto time = [&](int param, float from, bool attack = false) {
+            return envSpanTime(param, p.x - from, s.scale, attack);
+        };
         if (w.b == 0) {
-            set(e.attack, time(s.p0.x));
+            set(e.attack, time(e.attack, s.p0.x, true));
         } else if (w.b == 1) {
-            set(e.hold, time(s.p1.x)); // to the left of its shortest place: none
+            set(e.hold, time(e.hold, s.p1.x)); // to the left of its shortest place: none
         } else if (w.b == 2) {
-            set(e.decay, time(s.ph.x));
+            set(e.decay, time(e.decay, s.ph.x));
             set(e.sustain, (s.bottom - p.y) / (s.bottom - s.top));
         } else {
-            set(e.release, time(s.p2.x));
+            set(e.release, time(e.release, s.p2.x));
         }
         break;
     }

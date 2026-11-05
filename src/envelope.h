@@ -27,26 +27,30 @@ struct EnvRates {
     double followCoef; // after the decay, how the level follows sustain changes
 };
 
-inline EnvSegment envSegment(double time, double curve, double sampleRate) {
-    const double dt = 1.0 / (timeFromNorm(time) * sampleRate);
+// A segment of no time (0 ms) takes one sample.
+inline EnvSegment envSegment(double seconds, double curve, double sampleRate) {
+    const double dt = seconds > 0.0 ? 1.0 / (seconds * sampleRate) : 1.0;
     const double k = curve * kCurveSteepness;
     const bool straight = std::abs(k) < kLinearSteepness;
     return {dt, k, std::exp(-k * dt), straight ? 1.0 : -1.0 / std::expm1(-k)};
 }
 
 // Attack, hold, decay and release are normalized time params (see
-// timeFromNorm), and each segment arrives in its time; a hold of 0 is none.
-// Curves are -1..1 (see envCurve).
+// timeFromNorm; the attack, decay and release may be 0 ms, see envTimeFromNorm), and each segment arrives in its
+// time; a hold of 0 is none. Curves are -1..1 (see envCurve). After the decay, the level follows sustain changes at
+// the decay's pace, but over 1 ms at least: the sustain moves once a control block, and a 0 ms decay would step
+// along with it.
 inline EnvRates envRates(double attack, double hold, double decay, double sustain, double release,
                          double attackCurve, double decayCurve, double releaseCurve, double sampleRate) {
     constexpr double kLn1000 = 6.907755278982137;
+    const double decaySeconds = envTimeFromNorm(decay);
     return {
-        envSegment(attack, attackCurve, sampleRate),
+        envSegment(envTimeFromNorm(attack), attackCurve, sampleRate),
         hold > 0.0 ? timeFromNorm(hold) * sampleRate : 0.0,
-        envSegment(decay, decayCurve, sampleRate),
-        envSegment(release, releaseCurve, sampleRate),
+        envSegment(decaySeconds, decayCurve, sampleRate),
+        envSegment(envTimeFromNorm(release), releaseCurve, sampleRate),
         sustain,
-        std::exp(-kLn1000 / (timeFromNorm(decay) * sampleRate)),
+        std::exp(-kLn1000 / (std::max(decaySeconds, kMinTime) * sampleRate)),
     };
 }
 

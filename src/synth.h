@@ -210,7 +210,6 @@ private:
 
     struct Operator {
         std::array<double, kMaxUnison> phases{}; // in cycles, one per unison copy
-        double amp = 0.0;     // ramps in from nothing over a new voice's first block
         double out = 0.0;     // latest mono output sample (what other operators hear)
         double prevOut = 0.0; // the one before, for feedback smoothing
         std::array<double, kMaxUnison> incNow{}; // the copies' phase increments, moving to each block's

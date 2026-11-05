@@ -1176,6 +1176,19 @@ inline double timeFromNorm(double x) { return kMinTime * std::pow(kMaxTime / kMi
 inline double normFromTime(double seconds) { return std::log(seconds / kMinTime) / std::log(kMaxTime / kMinTime); }
 // Where kMaxEnvTime sits on that curve: the top of the envelopes' attack, hold, decay and release.
 inline const double kMaxEnvNorm = normFromTime(kMaxEnvTime);
+// The norm a typed time or rate at the shortest or slowest shown is kept at: above 0, which is Off or still, and
+// shown as that shortest time or slowest rate.
+constexpr double kLeastNorm = 1e-6;
+// An envelope's attack, decay and release go down to 0 ms, below the 1 ms the Time curve starts at: on a straight
+// line from 0 ms at kMinEnvNorm to 1 ms at 0, as steep as the curve where it starts, so the knob turns through it
+// evenly. Norms from 0 up keep their meaning on the Time curve (0 is 1 ms, as it always was).
+inline const double kMinEnvNorm = -1.0 / std::log(kMaxTime / kMinTime);
+inline double envTimeFromNorm(double x) {
+    return x >= 0.0 ? timeFromNorm(x) : kMinTime * std::max(1.0 - x / kMinEnvNorm, 0.0);
+}
+inline double normFromEnvTime(double seconds) {
+    return seconds >= kMinTime ? normFromTime(seconds) : (1.0 - std::max(seconds, 0.0) / kMinTime) * kMinEnvNorm;
+}
 inline double rateFromNorm(double x) { return kMinRate * std::pow(kMaxRate / kMinRate, x); }
 inline double normFromRate(double hz) { return std::log(hz / kMinRate) / std::log(kMaxRate / kMinRate); }
 // The phaser's and flanger's rates: an LFO's curve, but at its bottom the sweep stands still.
@@ -1525,6 +1538,7 @@ enum class ParamKind {
     VoiceCount,     // stepped, shown and dragged on a log scale
     Toggle,         // stepped Off / On
     TimeOrOff,      // like Time, but 0 is Off
+    EnvTime,        // like Time, but on down to 0 ms below it (an envelope's attack, decay and release)
     Pan,
     Cutoff, // 0..1 on a log curve, shown in Hz
     LfoShape,

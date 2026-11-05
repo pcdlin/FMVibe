@@ -34,7 +34,10 @@ constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 constexpr size_t kMaxPresetChunk = 65536;
 // 2: Volume gives back the 12 dB the voices go into the effects with, so a version 1 Volume loads 12 dB lower.
 // 3: Legato acts in poly too (it was on to begin with, doing nothing there), so an earlier state in poly loads it off.
-constexpr uint32_t kStateVersion = 3;
+// 4: An envelope's attack, decay and release go on below 1 ms to 0 ms, their range reaching below 0 (see
+//    kMinEnvNorm). Their values keep their meaning, but a modulation's depth is a share of its target's range, so an
+//    earlier state's depths on them load smaller, to swing them as far as they did.
+constexpr uint32_t kStateVersion = 4;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -367,6 +370,13 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     }
     if (header[1] < 3 && loaded[paramIndex(GlobalParam::Mono)] < 0.5) // as it played
         loaded[paramIndex(GlobalParam::Legato)] = 0.0;
+    if (header[1] < 4) // as far as they swung their envelope times: their range was 0 to kMaxEnvNorm then
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
+                if (target >= 0 && table[target].kind == ParamKind::EnvTime)
+                    loaded[slotAmountIndex(source, slot)] *= kMaxEnvNorm / (table[target].max - table[target].min);
+            }
     return true;
 }
 

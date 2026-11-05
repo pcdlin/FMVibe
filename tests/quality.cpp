@@ -607,6 +607,64 @@ void noteAndVoiceChecks() {
               "an envelope's curve bent again after a straight stretch carries on along it");
     }
     {
+        // An envelope's attack, decay and release at 0 ms take a sample each, bent or straight, and times between 0
+        // and 1 ms (below norm 0, which stays 1 ms) as long as they say; after a 0 ms decay a sustain change is still
+        // followed over a millisecond, not in a step, and a release from there ends at once.
+        auto rates = [](double time, double sustain, double curve) {
+            return envRates(time, 0.0, time, sustain, time, curve, curve, curve, kSampleRate);
+        };
+        bool instant = true;
+        for (const double curve : {0.0, 1.0, -1.0}) {
+            const EnvRates zero = rates(kMinEnvNorm, 0.5, curve);
+            Envelope env;
+            env.start();
+            const double attack = env.next(zero);
+            for (int i = 0; i < 2; ++i) // the hold's one sample and the decay's
+                env.next(zero);
+            const double decayed = env.level();
+            env.release();
+            const double released = env.next(zero);
+            instant = instant && attack == 1.0 && std::abs(decayed - 0.5) < 1e-9 && released == 0.0 && env.idle();
+        }
+        // Half way through a straight attack of 0.5 ms and of 1 ms: 12 and 24 samples in.
+        auto halfway = [&](double norm, int samples) {
+            Envelope env;
+            env.start();
+            const EnvRates r = rates(norm, 0.5, 0.0);
+            for (int i = 0; i < samples; ++i)
+                env.next(r);
+            return env.level();
+        };
+        const double half = halfway(normFromEnvTime(0.0005), 12), one = halfway(0.0, 24);
+        Envelope held;
+        held.start();
+        for (int i = 0; i < 4; ++i)
+            held.next(rates(kMinEnvNorm, 0.5, 0.0));
+        const EnvRates raised = rates(kMinEnvNorm, 1.0, 0.0);
+        const double step = held.next(raised);
+        for (int i = 1; i < 96; ++i) // 2 ms
+            held.next(raised);
+        std::printf("      0 ms envelope segments: %s; half way through a 0.5 ms attack %.3f, a 1 ms one %.3f; a sustain "
+                    "raised from 0.5 to 1 after a 0 ms decay: %.3f a sample later, %.4f 2 ms later\n",
+                    instant ? "a sample each" : "longer", half, one, step, held.level());
+        check(instant && std::abs(half - 0.5) < 0.05 && std::abs(one - 0.5) < 0.05 && step > 0.5 && step < 0.7 &&
+                  held.level() > 0.999,
+              "a 0 ms attack, decay and release take a sample each, a 0.5 ms and a 1 ms one their time, and a sustain "
+              "change after a 0 ms decay is still smoothed");
+    }
+    {
+        // A voice with a 0 ms attack, its sine started at its peak (Phase 25 %), plays at full level from its first
+        // sample: nothing but its envelopes shapes a new voice's start, its gains and FM amount starting where they
+        // are set rather than ramping in over its first block.
+        Engine e(1);
+        e.p[paramIndex(0, OpParam::Attack)] = kMinEnvNorm;
+        e.p[paramIndex(0, OpParam::Phase)] = 0.25;
+        e.noteOn(45);
+        const std::vector<float> out = e.render(48);
+        std::printf("      a 0 ms attack at Phase 25 %%: its first samples %.3f %.3f %.3f\n", out[0], out[1], out[2]);
+        check(out[0] > 0.99f && out[1] > 0.99f, "a 0 ms attack starts at full level from the first sample");
+    }
+    {
         // Every voice taken by notes that have played a while, then a chord: the chord takes the oldest voices, and
         // each of its notes sounds, rather than each new note stealing the one started a moment before it (whose
         // level is still unknown). A slow attack's notes count at the top of their attack, so a new note steals an
@@ -887,7 +945,6 @@ void scopeChecks() {
 
 int main() {
     const int factors[] = {1, 2, 4, 8};
-
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
     std::printf("decimator (dB):\n");
     for (int factor : {2, 4, 8}) {

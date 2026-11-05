@@ -108,7 +108,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken. It saves/loads state
   through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, a version 2
-  state's Legato loading off in poly (and as it was in mono), envelope times
+  state's Legato loading off in poly (and as it was in mono), envelope attacks, decays and releases typed down
+  to 0 ms through fractions of a millisecond, a stored 0 loading as 1 ms and a version 3 state's depths on them
+  loading scaled by as much as their range grew, envelope times
   stored past 10 s loading as 10 s, a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: 16 voices × 6 operators take about a third of what they took
@@ -145,7 +147,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     a number staying finite; host modulation of a macro, the mod wheel, the note source's depth and velocity's
     moving their targets; a comb never reading past its line; a voice's right channel coming back from mono where
     the left is;
-    and an envelope's curve bent again after a straight stretch carrying on along it;
+    an envelope's curve bent again after a straight stretch carrying on along it; and a 0 ms attack, decay and
+    release taking a sample each, a 0.5 ms and a 1 ms attack their time, a sustain change after a 0 ms decay still
+    smoothed, and a voice with a 0 ms attack at full level from its first sample;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
@@ -213,7 +217,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q;
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
-    off the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
+    off the rendered pixels), and the attack's below 1 ms, to 0.5 ms and to 0 ms, drawn as a vertical line (read off
+    the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
     over the curve (read off the rendered pixels);
   - an operator page's ENVELOPE, UNISON and SCOPE tabs: a line across the envelope at the newest voice's level,
     and a dot on the curve along the attack, decay and release (one releasing from above the sustain too), as on a
@@ -536,9 +541,11 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 3: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 4: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
-  poly loads Legato off, since it did nothing there then and acts there now), followed by the editor layout:
+  poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
+  envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
+  range now reaches below 0 down to 0 ms and a depth is a share of its target's range), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
@@ -553,7 +560,9 @@ itself.
 - Times and LFO rates are stored as 0–1 on a log curve (1 ms–20 s, 0.02–100 Hz), so host knobs and modulation
   have resolution where it matters. The value text shows ms/s/Hz. Envelopes' attacks, holds, decays and releases
   stop at 10 s (`kMaxEnvTime`), their range ending short of the curve's top; a state or preset holding a longer one
-  loads it as 10 s, since loading holds every param within its range.
+  loads it as 10 s, since loading holds every param within its range. Their attacks, decays and releases also
+  reach below 0, down to `kMinEnvNorm`: a straight line from 1 ms at 0 down to 0 ms (`envTimeFromNorm()`), so
+  stored values from 0 up keep their meaning.
 - The plugin takes CLAP note events (preferred), raw MIDI and MPE MIDI (see `Synth::setMpe()`; MPE is a setting
   in the settings dialog, not a param, so presets leave it alone: with it on, channels 2 to 16 bend, press and slide
   their own notes, kept per channel in the synth), and reports

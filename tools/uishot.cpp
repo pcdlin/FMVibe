@@ -2748,6 +2748,37 @@ void run(const std::filesystem::path &dir, float scale) {
         check(shot && inside && longer && model.value(release) == before,
               "an envelope handle dragged past its display lengthens its segment, the envelope staying inside");
     }
+    // Below 1 ms the attack's segment shrinks away: A's attack handle (1 ms, at the end of its 10 pixels from the
+    // envelope's start at 910) dragged half way there sets 0.5 ms, and on past the start 0 ms, which draws the attack
+    // as a vertical line up from the start (read off the rendered pixels: its column changes nearly from top to
+    // bottom, where the 1 ms attack's steep slant crossed it only near the bottom).
+    {
+        const int attack = paramIndex(0, OpParam::Attack);
+        auto column = [&] {
+            std::vector<uint32_t> pixels;
+            for (float y = kOpEnvTop + 14.0f; y < kOpEnvBottom - 14.0f; y += 1.0f)
+                pixels.push_back(renderer.pixel({910.0f, y}));
+            return pixels;
+        };
+        const bool before = renderer.save(view, dir / "4d-envelope-attack.png");
+        const std::vector<uint32_t> slant = column();
+        drag(view, {920.0f, kOpEnvTop + 12.0f}, {915.0f, kOpEnvTop + 12.0f});
+        const double half = envTimeFromNorm(model.value(attack));
+        drag(view, {915.0f, kOpEnvTop + 12.0f}, {900.0f, kOpEnvTop + 12.0f});
+        const double zero = envTimeFromNorm(model.value(attack));
+        const bool after = renderer.save(view, dir / "4d-envelope-attack-0ms.png");
+        const std::vector<uint32_t> vertical = column();
+        size_t changed = 0;
+        for (size_t i = 0; i < slant.size(); ++i)
+            changed += slant[i] != vertical[i] ? 1 : 0;
+        view.undo();
+        view.undo();
+        std::printf("      attack dragged to %.2f ms, then %.2f ms; its column changed in %zu of %zu rows\n",
+                    half * 1000.0, zero * 1000.0, changed, slant.size());
+        check(before && after && std::abs(half - 0.0005) < 5e-5 && zero == 0.0 && changed * 10 >= slant.size() * 9 &&
+                  model.value(attack) == 0.0,
+              "an attack dragged below 1 ms takes fractions of a millisecond, and at 0 ms draws as a vertical line");
+    }
     // A double-click on a segment's bend handle straightens it to 0 %, whatever it started as: the decay's, halfway
     // along the flat top of A's envelope (full sustain) and found there by its cursor, starts at +50 %. Hovered, its
     // readout goes at the display's top right, over the flat top, whose line doesn't show through it (read off the

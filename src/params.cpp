@@ -191,14 +191,14 @@ void buildTable(ParamTable &t) {
             0.0);
         add(paramIndex(op, OpParam::Out), name + " " + tr(Str::ParamOut), module, ParamKind::Percent, 0.0, 1.0,
             first ? 1.0 : 0.0);
-        add(paramIndex(op, OpParam::Attack), name + " " + tr(Str::ParamAttack), module, ParamKind::Time, 0.0,
-            kMaxEnvNorm, 0.0);
-        add(paramIndex(op, OpParam::Decay), name + " " + tr(Str::ParamDecay), module, ParamKind::Time, 0.0, kMaxEnvNorm,
-            normFromTime(1.5));
+        add(paramIndex(op, OpParam::Attack), name + " " + tr(Str::ParamAttack), module, ParamKind::EnvTime,
+            kMinEnvNorm, kMaxEnvNorm, 0.0);
+        add(paramIndex(op, OpParam::Decay), name + " " + tr(Str::ParamDecay), module, ParamKind::EnvTime, kMinEnvNorm,
+            kMaxEnvNorm, normFromTime(1.5));
         add(paramIndex(op, OpParam::Sustain), name + " " + tr(Str::ParamSustain), module, ParamKind::Percent, 0.0,
             1.0, 1.0);
-        add(paramIndex(op, OpParam::Release), name + " " + tr(Str::ParamRelease), module, ParamKind::Time, 0.0,
-            kMaxEnvNorm, normFromTime(0.015));
+        add(paramIndex(op, OpParam::Release), name + " " + tr(Str::ParamRelease), module, ParamKind::EnvTime,
+            kMinEnvNorm, kMaxEnvNorm, normFromTime(0.015));
         add(paramIndex(op, OpParam::Hold), name + " " + tr(Str::ParamHold), module, ParamKind::TimeOrOff, 0.0,
             kMaxEnvNorm, 0.0);
         add(paramIndex(op, OpParam::Transpose), name + " " + tr(Str::ParamPitch), module, ParamKind::Transpose, -48.0,
@@ -661,11 +661,13 @@ void buildTable(ParamTable &t) {
         field(SourceParam::RandomSmooth, tr(Str::ParamSmooth), ParamKind::Percent, 0.0, 1.0, 0.0);
         field(SourceParam::RandomChaos, tr(Str::ParamChaos), ParamKind::Percent, 0.0, 1.0, 1.0);
 
-        field(SourceParam::Attack, tr(Str::ParamAttack), ParamKind::Time, 0.0, kMaxEnvNorm, 0.0);
-        field(SourceParam::Decay, tr(Str::ParamDecay), ParamKind::Time, 0.0, kMaxEnvNorm, normFromTime(0.5));
+        field(SourceParam::Attack, tr(Str::ParamAttack), ParamKind::EnvTime, kMinEnvNorm, kMaxEnvNorm, 0.0);
+        field(SourceParam::Decay, tr(Str::ParamDecay), ParamKind::EnvTime, kMinEnvNorm, kMaxEnvNorm,
+              normFromTime(0.5));
         field(SourceParam::Sustain, tr(Str::ParamSustain), ParamKind::Percent, 0.0, 1.0, 1.0);
         // The release an operator's envelope starts with.
-        field(SourceParam::Release, tr(Str::ParamRelease), ParamKind::Time, 0.0, kMaxEnvNorm, normFromTime(0.015));
+        field(SourceParam::Release, tr(Str::ParamRelease), ParamKind::EnvTime, kMinEnvNorm, kMaxEnvNorm,
+              normFromTime(0.015));
         field(SourceParam::Hold, tr(Str::ParamHold), ParamKind::TimeOrOff, 0.0, kMaxEnvNorm, 0.0);
         addCurves(paramIndex(source, SourceParam::AttackCurve), name, module);
         field(SourceParam::EnvBipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0,
@@ -715,10 +717,6 @@ void dropPartialCharacter(char *text) {
     if (length - (start - 1) < size)
         text[start - 1] = '\0';
 }
-
-// The norm a typed time or rate at the shortest or slowest shown is kept at: above 0, which is Off or still, and
-// shown as that shortest time or slowest rate.
-constexpr double kLeastNorm = 1e-6;
 
 void formatHz(double hz, char *out, uint32_t capacity) {
     hz = std::round(hz);
@@ -851,8 +849,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
             break;
         }
         [[fallthrough]];
-    case ParamKind::Time: {
-        const double seconds = timeFromNorm(value);
+    case ParamKind::Time:
+    case ParamKind::EnvTime: {
+        const double seconds = paramTable()[index].kind == ParamKind::EnvTime ? envTimeFromNorm(value) : timeFromNorm(value);
         const double ms = std::round(seconds * 10000.0) / 10.0;
         if (ms < 1000.0)
             std::snprintf(out, capacity, "%.1f ms", ms);
@@ -1189,11 +1188,14 @@ bool parseParam(int index, const char *text, double *out) {
         value = normFromQ(std::max(value, kMinQ));
         break;
     case ParamKind::Time:
-    case ParamKind::TimeOrOff: {
+    case ParamKind::TimeOrOff:
+    case ParamKind::EnvTime: {
         // "s" means seconds, anything else (including a bare number) milliseconds.
         const double seconds = *end == 's' || *end == 'S' ? value : value / 1000.0;
         if (def.kind == ParamKind::Time)
             value = normFromTime(std::max(seconds, kMinTime));
+        else if (def.kind == ParamKind::EnvTime) // on down to 0 ms
+            value = normFromEnvTime(seconds);
         else // below the shortest time, off; the shortest is above 0, which is Off
             value = seconds < kMinTime ? 0.0 : std::max(normFromTime(seconds), kLeastNorm);
         break;
