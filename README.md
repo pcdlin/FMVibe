@@ -47,6 +47,8 @@ You need:
 ```
 
 The plugins end up at `build\<config>\FMVibe.clap` and `build\<config>\FMVibe.vst3` (a folder, as VST3 has it).
+To try the plugin without a DAW, run `build\<config>\fmvibe-uihost.exe`: it opens the editor in a window and plays
+it through the default output device, with notes from the editor's keyboard and any MIDI input.
 `build.ps1` loads the Visual Studio developer environment itself, so it works from any PowerShell window. Once it
 has run in a session, the plain CMake commands work too:
 
