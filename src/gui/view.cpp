@@ -2174,22 +2174,32 @@ std::vector<View::Widget> View::widgets() const {
             }
         }
     }
-    // A pill's open list, over everything: its rows' bypass dots, depth bars and removes work as in the MODS view.
+    // A pill's open list, over everything: its rows' bypass dots, depth bars, aux's x and removes work as in the MODS
+    // view.
     if (modList_) {
         std::vector<Assignment> rows;
         forEachMod(modList_->target, [&](const Assignment &m) { rows.push_back(m); });
-        const Rect panel = modListPanel(modList_->anchor, static_cast<int>(rows.size()));
+        auto auxOf = [this](const Assignment &m) {
+            return slotAux([this](int index) { return value(index); }, m.source, m.slot);
+        };
+        const bool auxes = std::any_of(rows.begin(), rows.end(), [&](const Assignment &m) { return auxOf(m) >= 0; });
+        const Rect panel = modListPanel(modList_->anchor, static_cast<int>(rows.size()), auxes);
+        const float shift = auxes ? kModListAuxW : 0.0f; // the depth bar on, past the aux column
         add(Kind::ModList, panel, -1, modList_->target);
         list.back().popup = true;
         for (size_t k = 0; k < rows.size(); ++k) {
             const int s = rows[k].source, slot = rows[k].slot;
             const size_t first = list.size();
             const Rect r{panel.x + kModListPad, panel.y + kModListTitleH + static_cast<float>(k) * kModListRowStep,
-                         kCardW - 24.0f, 20.0f};
+                         kCardW - 24.0f + shift, 20.0f};
             add(Kind::ModListRow, r, -1, s, slot);
             add(Kind::SlotBypass, {r.x + 1.0f, r.y, 16.0f, r.h}, slotBypassIndex(s, slot), s, slot);
-            add(Kind::SlotBar, {r.x + 116.0f, r.y, 76.0f, r.h}, slotAmountIndex(s, slot), s, slot);
-            add(Kind::ValueText, {r.x + 194.0f, r.y, 38.0f, r.h}, slotAmountIndex(s, slot), s, slot);
+            if (auxOf(rows[k]) >= 0) { // the x at the end of its chip (see paintModListRow())
+                const Rect chip = modListAuxChip(r);
+                add(Kind::ModsAuxClear, {chip.right() - 20.0f, chip.y + 2.0f, 18.0f, chip.h - 4.0f}, -1, s, slot);
+            }
+            add(Kind::SlotBar, {r.x + 116.0f + shift, r.y, 76.0f, r.h}, slotAmountIndex(s, slot), s, slot);
+            add(Kind::ValueText, {r.x + 194.0f + shift, r.y, 38.0f, r.h}, slotAmountIndex(s, slot), s, slot);
             add(Kind::SlotRemove, {r.right() - 20.0f, r.y, 20.0f, r.h}, -1, s, slot);
             for (size_t i = first; i < list.size(); ++i)
                 list[i].popup = true;
@@ -6047,8 +6057,8 @@ bool View::modListOn(const Widget &pill) const {
            modList_->anchor.y == pill.rect.y;
 }
 
-Rect View::modListPanel(Rect anchor, int rows) const {
-    const float w = kCardW - 24.0f + 2.0f * kModListPad;
+Rect View::modListPanel(Rect anchor, int rows, bool aux) const {
+    const float w = kCardW - 24.0f + (aux ? kModListAuxW : 0.0f) + 2.0f * kModListPad;
     const float h = kModListTitleH + static_cast<float>(rows) * kModListRowStep + kModListPad - 4.0f;
     const float x = std::clamp(anchor.center().x - w * 0.5f, 4.0f, View::kWidth - 4.0f - w);
     float y = anchor.bottom() + 6.0f; // under the pill; over it when there is no room below
@@ -6072,7 +6082,8 @@ void View::paintModList(Canvas &c, const Widget &w) {
     c.text({title.right() - countW, title.y, countW, title.h}, count, 10.5f, kDim, Align::Right);
 }
 
-// A row: its bypass dot, the source's name (dimmed while bypassed or off), its depth bar and its remove.
+// A row: its bypass dot, the source's name (dimmed while bypassed or off), its aux's chip as in the MODS view, its
+// depth bar and its remove.
 void View::paintModListRow(Canvas &c, const Widget &w) {
     const bool lit = hover_ && hover_->popup && hover_->a == w.a && hover_->b == w.b && drag_.kind == DragKind::None;
     c.fillRect(w.rect, lit ? kTrack : kRaised, 5.0f);
@@ -6080,6 +6091,14 @@ void View::paintModListRow(Canvas &c, const Widget &w) {
     const std::string name = sourceName(w.a);
     c.text({w.rect.x + 18.0f, w.rect.y, kSlotNameW, w.rect.h}, name, slotNameSize(c, name), off ? kFaint : kText,
            Align::Left);
+    if (const int aux = slotAux([this](int index) { return value(index); }, w.a, w.b); aux >= 0) {
+        const Rect chip = modListAuxChip(w.rect);
+        const float radius = chip.h * 0.5f;
+        c.fillRect(chip, kPanel, radius);
+        c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
+        c.fillCircle({chip.x + 10.0f, chip.center().y}, 3.5f, kSourceColors[aux]);
+        c.text({chip.x + 18.0f, chip.y, chip.w - 40.0f, chip.h}, sourceName(aux), 10.5f, kText, Align::Left, true);
+    }
 }
 
 void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
@@ -7555,6 +7574,8 @@ void View::wheel(Point p, float steps, Modifiers mods) {
 constexpr int kClearCommand = 100 + kAllSources * kSlots; // the removals first, the macros' and the note's too
 // And from here on, each bypasses a slot or lets it go again.
 constexpr int kBypassCommand = kClearCommand + kAllSources;
+// And from here on, each takes a slot's aux away.
+constexpr int kAuxClearCommand = kBypassCommand + kAllSources * kSlots;
 // A source's polarity, in the menus of its card, its handle, and a macro's knob and name.
 constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
@@ -7619,7 +7640,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     if (hit->kind == Kind::SlotBar || hit->kind == Kind::SlotRemove || hit->kind == Kind::ModDot ||
         hit->kind == Kind::ValueText || hit->kind == Kind::SlotBypass || hit->kind == Kind::ModsSource ||
         hit->kind == Kind::ModsTarget || hit->kind == Kind::ModsScale || hit->kind == Kind::ModsCurve ||
-        hit->kind == Kind::ModsAux || hit->kind == Kind::ModsAuxClear) {
+        hit->kind == Kind::ModsAux || hit->kind == Kind::ModsAuxClear || hit->kind == Kind::ModListRow) {
         if (hit->b < 0) // an empty modulation: nothing to bypass, nor a depth to type
             return items;
         // The depth types where it shows: beside its bar, or under a knob's dot.
@@ -7632,6 +7653,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
             items.push_back({11, tr(Str::MenuEditDepth)});
         }
         items.push_back({kBypassCommand + hit->a * kSlots + hit->b, bypassLabel(hit->a, hit->b)});
+        if (const int aux = slotAux([this](int index) { return value(index); }, hit->a, hit->b); aux >= 0)
+            items.push_back({kAuxClearCommand + hit->a * kSlots + hit->b, trf(Str::MenuRemoveAux, {sourceName(aux)})});
         items.push_back({0, ""});
         items.push_back({100 + hit->a * kSlots + hit->b, trf(Str::MenuRemoveModulation, {sourceName(hit->a)})});
         return items;
@@ -7749,6 +7772,8 @@ void View::menuCommand(int command) {
             removeSlot(command - kClearCommand, slot);
     } else if (command >= kBypassCommand && command < kBypassCommand + kAllSources * kSlots) {
         toggleBypass((command - kBypassCommand) / kSlots, (command - kBypassCommand) % kSlots);
+    } else if (command >= kAuxClearCommand && command < kAuxClearCommand + kAllSources * kSlots) {
+        setAux((command - kAuxClearCommand) / kSlots, (command - kAuxClearCommand) % kSlots, -1);
     }
 }
 

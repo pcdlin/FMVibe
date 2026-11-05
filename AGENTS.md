@@ -277,8 +277,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
     nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
     bypassing, setting the depth of and removing its modulations and closing at a click elsewhere, opening under a
-    macro's handle held over the pill and taking it as a row's aux, and a source's line ending at the pill holding
-    its handle;
+    macro's handle held over the pill and taking it as a row's aux, widening for an aux column whose chip (read off
+    the rendered pixels) and its × take the aux away, and a source's line ending at the pill holding its handle;
+  - a depth handle's right-click menu removing its aux, undoably, offered only while it has one;
   - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
     pixels).

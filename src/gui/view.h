@@ -809,7 +809,7 @@ private:
         bool sprung = false; // opened under a dragged handle
     };
     bool modListOn(const Widget &pill) const;
-    Rect modListPanel(Rect anchor, int rows) const;
+    Rect modListPanel(Rect anchor, int rows, bool aux) const;
     // Whether the pill the open list belongs to still shows; if not, the list closes.
     bool modListPillShown() const;
     void openModList(const Widget &pill, bool sprung);

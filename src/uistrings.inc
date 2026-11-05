@@ -682,6 +682,7 @@ STR(MenuEditDepth, "Edit depth…")
 STR(MenuBypass, "Bypass {1} modulation")
 STR(MenuResume, "Resume {1} modulation")
 STR(MenuRemoveModulation, "Remove {1} modulation")
+STR(MenuRemoveAux, "Remove {1} aux") // the source scaling a modulation's depth
 STR(MenuRemoveAll, "Remove all modulation")
 STR(MenuDeletePoint, "Delete point")
 STR(MenuStraighten, "Straighten")

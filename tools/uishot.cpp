@@ -2110,6 +2110,15 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     // pixels, the macros' handles 96 px apart).
     click(view, {64.0f, 88.0f}); // back to ROUTING, with the inspector
     const float strip = view.height() - 179.0f;
+    // The depth handle's menu offers to remove an aux only once it has one.
+    const std::string removeAux = trf(Str::MenuRemoveAux, {nameOf(model, kMaxSources + 1)});
+    auto auxEntry = [&] {
+        for (const MenuItem &item : view.contextMenu({kFineKnob.x, 229.0f}))
+            if (item.label == removeAux)
+                return item.command;
+        return 0;
+    };
+    const bool noAuxEntry = auxEntry() == 0;
     drag(view, {252.0f, strip}, {kFineKnob.x, 229.0f});
     view.mouseMove({600.0f, 300.0f}, {});
     const bool ringShot = renderer.save(view, dir / "35d-aux-ring.png");
@@ -2118,6 +2127,16 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     check(ringShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == kMaxSources + 1 &&
               slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0 && auxRing > idleRing + 40,
           "a source's handle dropped on a depth handle becomes that modulation's aux, and lights as one used");
+    // Right-clicked, the depth handle's menu takes the aux away, undoably.
+    const int auxCommand = auxEntry();
+    if (auxCommand != 0)
+        view.menuCommand(auxCommand);
+    const bool auxGone = slotAuxSource(model.value(slotAuxIndex(0, 0))) < 0;
+    view.undo();
+    check(noAuxEntry && auxCommand != 0 && auxGone &&
+              slotAuxSource(model.value(slotAuxIndex(0, 0))) == kMaxSources + 1,
+          "a depth handle's menu removes its aux, undoably, and offers it only with one");
+    view.mouseMove({600.0f, 300.0f}, {});
     // Hovering that depth handle draws the dashed line to it from LFO 1's handle, on screen on the first card: half
     // way along the line, bowed to one side, the pixels change (read off the rendered pixels).
     const Point from = sourceHandle(0), to{kFineKnob.x, 229.0f};
@@ -2617,6 +2636,24 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     check(dropShot && aux && stays && renderer.pixel(row(5, 60.0f)) == closed &&
               slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0,
           "a handle held over a pill opens its list, a row takes it as an aux, and elsewhere the list closes");
+
+    // With LFO 4's aux, the list opens 96 px wider, an aux column after the names: LFO 4's row shows Macro 2's chip
+    // (its dot read off the rendered pixels, where LFO 3's row has none), and the chip's x takes the aux away, the
+    // list narrowing again.
+    click(view, pill);
+    view.mouseMove({600.0f, 300.0f}, {});
+    const float wideX = pill.x - 180.5f + 6.0f;
+    auto wideRow = [&](int k, float x) { return Point{wideX + x, rowsY + k * 24.0f + 10.0f}; };
+    const bool chipShot = renderer.save(view, dir / "40g2-pill-aux-chip.png");
+    const bool chip = renderer.pixel(wideRow(3, 126.0f)) != renderer.pixel(wideRow(2, 126.0f));
+    click(view, wideRow(3, 201.0f)); // the chip's x
+    const bool auxCleared = slotAuxSource(model.value(slotAuxIndex(3, 0))) < 0;
+    view.mouseMove({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "40g3-pill-aux-cleared.png");
+    const bool narrow = renderer.pixel(wideRow(3, 126.0f)) == renderer.pixel(wideRow(2, 126.0f));
+    click(view, {600.0f, 300.0f});
+    check(chipShot && chip && auxCleared && narrow,
+          "a pill's list shows its modulations' auxes in a column of their own, and their x removes them");
 
     // LFO 3's handle hovered: its depth handle is in the pill, where its dashed line ends.
     view.mouseMove(sourceHandle(2), {});

@@ -276,12 +276,19 @@ constexpr float kSlotNameW = 96.0f;
 
 // The "+n" pill that takes the place of the depth handles a knob, label or cell has no room for: under a knob, and
 // smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation: its bypass
-// dot, the source's name, its depth bar with its value and its remove.
+// dot, the source's name, its aux (a column only while one of the rows has one), its depth bar with its value and its
+// remove.
 constexpr float kModPill = 12.0f, kModPillWide = 15.0f, kModPillH = 9.0f;
 constexpr float kModPillCompact = 11.0f, kModPillWideCompact = 14.0f, kModPillCompactH = 8.0f;
 constexpr float kModListPad = 6.0f;
 constexpr float kModListTitleH = 24.0f;
 constexpr float kModListRowStep = 24.0f; // a row is 20 px high
+constexpr float kModListAuxW = 96.0f;    // the aux column: its chip and a gap
+
+// A row's aux chip, after its source's name, its x at its right end.
+inline Rect modListAuxChip(Rect row) {
+    return {row.x + 116.0f, row.y + 1.0f, kModListAuxW - 4.0f, row.h - 2.0f};
+}
 
 // Under a source's display, at the card's foot, the button that shows its modulations in the MODS view.
 inline Rect sourceModsButton(float card) {

@@ -737,8 +737,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     marks where notes start the LFO. A unipolar LFO's display has its zero line at the bottom.
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
-    knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click or
-    right-click it to remove the modulation. While the dot is under the mouse or dragged, its range (the ring, or
+    knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click it
+    to remove the modulation, or right-click it for a menu that types its depth, bypasses it, removes its aux (when
+    it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,
     and while its source's handle is on screen, a dashed line runs from the handle to the dot, as when the handle
     is hovered. A source can modulate another source's depth too (drop its handle on
@@ -751,7 +752,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     modulations it holds wider, and says how many there are; a hovered source whose depth handle the pill holds
     draws its dashed line to the pill, ringed in the source's color. A click opens the pill's list, under it (over
     it, short of room below), in the accent color while it is open: the target's name and every modulation of it,
-    a row each: its bypass dot, the source's name, its depth bar and its remove (hovering a row draws its range
+    a row each: its bypass dot, the source's name, its aux (while one of the rows has one, the list is wider by a
+    column for them: a chip in the aux's color with its name and an × that takes it away), its depth bar and its
+    remove (right-clicking a row gives the depth handle's menu; hovering a row draws its range
     wider; a source's name too long for its row is drawn smaller to fit, down to about 9 px, and past that ends in
     "…"). A click anywhere else closes it, but not
     on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a pill opens
