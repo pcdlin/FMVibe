@@ -1129,8 +1129,8 @@ int main() {
     }
 
     // --- A freeform LFO's points sharing a time: a spike up at 0.5 and a drop at the cycle's end. Either side of a
-    // line straight up or down the shape runs on as drawn; at its time the topmost point counts, at the start the
-    // points at the end too. Its outline passes through every point of a spike.
+    // line straight up or down the shape runs on as drawn; at its time the last point in order counts, not the
+    // topmost. Its outline passes through every point of a spike.
     {
         ParamValues p;
         for (int i = 0; i < kParamCount; ++i)
@@ -1150,11 +1150,11 @@ int main() {
         auto get = [&](int index) { return p[index]; };
         auto near = [](double a, double b) { return std::abs(a - b) < 1e-9; };
         const bool sides = near(shapeValue(get, 0, 0.25), -0.5) && near(shapeValue(get, 0, 0.75), -0.25);
-        const bool top = near(shapeValue(get, 0, 0.5), 0.75) && near(shapeValue(get, 0, 0.0), 0.25);
+        const bool last = near(shapeValue(get, 0, 0.5), -0.25) && near(shapeValue(get, 0, 0.0), -0.5);
         bool spike = false;
         shapeOutline(get, 0, 100, [&](double x, double y) { spike = spike || (near(x, 0.5) && near(y, 0.75)); });
         std::printf("freeform LFO: %.2f at a spike, %.2f at the start\n", shapeValue(get, 0, 0.5), shapeValue(get, 0, 0.0));
-        check(sides && top && spike, "a freeform LFO's points at one time make a vertical line, its topmost counting");
+        check(sides && last && spike, "a freeform LFO's points at one time make a vertical line, its last counting");
     }
 
     // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ

@@ -1344,8 +1344,8 @@ inline int shapePointCount(double value, int most = kMaxShapePoints) { // the no
 }
 // The shape's value (-1..1) at `phase` (0..1). `get(index)` returns a param
 // value, so the DSP and the editor read points the same way. Points may share
-// a time, a line straight up or down: at that time the topmost counts (at the
-// start, the points at the cycle's end too).
+// a time, a line straight up or down: at that time the last of them counts,
+// the one the shape goes on from.
 constexpr double kShapeSameTime = 1e-9;
 template <class Get>
 double shapeValue(const Get &get, int source, double phase) {
@@ -1356,14 +1356,6 @@ double shapeValue(const Get &get, int source, double phase) {
         ++from;
     const double x0 = x(from);
     const double y0 = get(shapePointIndex(source, from, PointField::Y));
-    if (phase - x0 < kShapeSameTime) {
-        double top = y0;
-        for (int point = from - 1; point >= 0 && phase - x(point) < kShapeSameTime; --point)
-            top = std::max(top, get(shapePointIndex(source, point, PointField::Y)));
-        for (int point = count - 1; phase < kShapeSameTime && point > from && x(point) > 1.0 - kShapeSameTime; --point)
-            top = std::max(top, get(shapePointIndex(source, point, PointField::Y)));
-        return top;
-    }
     const bool wraps = from + 1 == count;
     const double x1 = wraps ? 1.0 : x(from + 1);
     const double y1 = get(shapePointIndex(source, wraps ? 0 : from + 1, PointField::Y));
