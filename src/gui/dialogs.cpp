@@ -34,6 +34,8 @@ std::vector<View::Widget> View::settingsWidgets() const {
     for (int i = 0; i < kThemeCount; ++i)
         add(Kind::SettingsTheme, settingsTheme(panel, i), -1, i);
     add(Kind::SettingsGlow, settingsGlow(panel));
+    for (int size = 0; size < kModHandleSizeCount; ++size)
+        add(Kind::SettingsHandles, settingsHandles(panel, size), -1, size);
     add(Kind::SettingsClose, settingsClose(panel));
     return list;
 }
@@ -76,11 +78,13 @@ void View::paintSettings(Canvas &c) {
     std::snprintf(text, sizeof(text), "%.0f %%", amount * 100.0f);
     c.text({glow.right() + 14.0f, glow.y, panel.right() - 24.0f - glow.right() - 14.0f, glow.h},
            amount > 0.0f ? text : tr(Str::ValueOff), 10.5f, amount > 0.0f ? kText : kDim, Align::Left);
-    c.text({panel.x + 24.0f, lookY + 110.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), 10.5f, kFaint,
+    const Rect handles = settingsHandles(panel, 0);
+    c.text({panel.x + 24.0f, handles.y, 52.0f, handles.h}, tr(Str::SettingsHandles), 10.5f, kDim, Align::Left, true);
+    c.text({panel.x + 24.0f, lookY + 148.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), 10.5f, kFaint,
            Align::Left);
     // The version and the license, at the bottom.
-    c.line({panel.x + 24.0f, lookY + 136.5f}, {panel.right() - 24.0f, lookY + 136.5f}, kBorder, 1.0f);
-    const Rect about{panel.x + 24.0f, lookY + 144.0f, panel.w - 48.0f, 16.0f};
+    c.line({panel.x + 24.0f, lookY + 174.5f}, {panel.right() - 24.0f, lookY + 174.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, lookY + 182.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), 10.5f, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), 10.5f, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())

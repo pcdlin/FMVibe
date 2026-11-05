@@ -226,6 +226,7 @@ private:
         SettingsMpe,    // b = 1 switches MPE on, 0 off
         SettingsMpeRange, // b = the MPE bend range it picks, in semitones
         SettingsTheme,  // b = the theme it picks
+        SettingsHandles, // b = the depth handles' size it picks
         SettingsGlow,   // the slider for how strongly the graphs' curves glow
         SettingsClose,
         ModWheel,     // param = mod wheel: drag or scroll

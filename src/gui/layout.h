@@ -278,8 +278,23 @@ constexpr float kSlotNameW = 96.0f;
 // smaller in a label's or cell's corner; wider from +10 on. Its list: a title, then a row per modulation: its bypass
 // dot, the source's name, its aux (a column only while one of the rows has one), its depth bar with its value and its
 // remove.
-constexpr float kModPill = 12.0f, kModPillWide = 15.0f, kModPillH = 9.0f;
-constexpr float kModPillCompact = 11.0f, kModPillWideCompact = 14.0f, kModPillCompactH = 8.0f;
+// Both come in three sizes, a setting of the user's (Controller::handleSize()), the smallest first; they stay as far
+// apart at each.
+struct ModHandleSize {
+    float dot, dotHover;                 // a depth handle's radius under a knob, and hovered or dragged
+    float dotCompact, dotCompactHover;   // on a label, cell or depth bar
+    float pill, pillWide, pillH, pillText; // under a knob
+    float pillCompact, pillWideCompact, pillCompactH, pillCompactText;
+};
+constexpr ModHandleSize kModHandleSizes[] = {
+    {3.5f, 5.0f, 2.75f, 4.0f, 12.0f, 15.0f, 9.0f, 7.5f, 11.0f, 14.0f, 8.0f, 6.5f},
+    {4.0f, 5.5f, 3.25f, 4.5f, 13.0f, 16.0f, 10.0f, 8.0f, 12.0f, 15.0f, 9.0f, 7.0f},
+    {4.5f, 6.0f, 3.75f, 5.0f, 14.0f, 17.0f, 11.0f, 8.5f, 13.0f, 16.0f, 10.0f, 7.5f},
+};
+constexpr int kModHandleSizeCount = static_cast<int>(std::size(kModHandleSizes));
+inline const ModHandleSize &modHandleSize(int size) {
+    return kModHandleSizes[std::clamp(size, 0, kModHandleSizeCount - 1)];
+}
 constexpr float kModListPad = 6.0f;
 constexpr float kModListTitleH = 24.0f;
 constexpr float kModListRowStep = 24.0f; // a row is 20 px high
@@ -602,7 +617,7 @@ inline double partialBarFromLevel(double level) {
 // The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
 // (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 492.0f;
+constexpr float kSettingsH = 530.0f;
 constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
 constexpr float kSettingsLookY = 312.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
@@ -630,6 +645,10 @@ inline Rect settingsTheme(Rect panel, int i) {
 // The glow slider's track, with room above and below to grab it; GLOW before it, its amount after.
 inline Rect settingsGlow(Rect panel) {
     return {panel.x + 76.0f, panel.y + kSettingsLookY + 72.0f, 200.0f, 26.0f};
+}
+// Under it, HANDLES and the depth handles' sizes: small, medium and large.
+inline Rect settingsHandles(Rect panel, int size) {
+    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 106.0f, 64.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

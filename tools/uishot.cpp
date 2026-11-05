@@ -95,6 +95,8 @@ public:
     void setTheme(const std::string &name) override { themeName = name; }
     double glow() const override { return glowLevel; }
     void setGlow(double amount) override { glowLevel = amount; }
+    int handleSize() const override { return handles; }
+    void setHandleSize(int size) override { handles = size; }
 
 protected:
     void performBeginEdit(int) override { ++openEdits; }
@@ -112,6 +114,7 @@ public:
     int oversamplingFactor = 2;
     bool mpeOn = false;
     int mpeRange = 48;
+    int handles = 0;
     std::string themeName;
     double glowLevel = 0.0;
     Telemetry live{};
@@ -2681,6 +2684,28 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     const bool cellShot = renderer.save(view, dir / "40j-cell-pill.png");
     check(cellShot && corner() == plain, "six modulations on a matrix cell show two handles and a pill, none in the next cell");
+
+    // At the larger handle sizes, the cell's handles and pill are drawn bigger, in the same places (read off the
+    // rendered pixels round them), and Small draws them as before.
+    auto handles = [&] {
+        std::vector<uint32_t> pixels;
+        for (float y = cell.y - 22.0f; y < cell.y - 4.0f; y += 1.0f)
+            for (float x = cell.x - 16.0f; x < cell.x + 20.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    const std::vector<uint32_t> smallHandles = handles();
+    model.handles = 1;
+    const bool mediumShot = renderer.save(view, dir / "40k-cell-pill-medium.png");
+    const std::vector<uint32_t> mediumHandles = handles();
+    model.handles = 2;
+    const bool largeShot = renderer.save(view, dir / "40l-cell-pill-large.png");
+    const std::vector<uint32_t> largeHandles = handles();
+    model.handles = 0;
+    renderer.save(view, dir / "40m-cell-pill-small.png");
+    check(mediumShot && largeShot && mediumHandles != smallHandles && largeHandles != mediumHandles &&
+              handles() == smallHandles,
+          "the depth handles and pills are drawn in the size picked, Small as before");
 }
 
 // LFO 2 modulating LFO 1's depth on operator A's Fine: hovering LFO 2's handle draws a dashed line to that
@@ -4407,7 +4432,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;
-    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 492.0f) * 0.5f), 380.0f, 492.0f};
+    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 530.0f) * 0.5f), 380.0f, 530.0f};
     auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
     auto mpeSwitch = [&](int on) { return Point{dialog.x + 24.0f + on * 56.0f + 26.0f, dialog.y + 228.0f}; };
     auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
@@ -4479,6 +4504,19 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({glowAt(0.0f).x - 40.0f, glowAt(0.0f).y}, {});
     view.mouseUp({glowAt(0.0f).x - 40.0f, glowAt(0.0f).y}, {});
     check(model.glowLevel == 0.0, "the GLOW slider's left end turns it off");
+    // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
+    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 120.0f}; };
+    const ParamValues handlesBefore = model.values;
+    const bool startsSmall = model.handles == 0;
+    click(view, handlesButton(2));
+    const bool picksLarge = model.handles == 2;
+    view.mouseMove(handlesButton(1), {});
+    const bool handlesShot = renderer.save(view, dir / "14h-settings-handles.png");
+    click(view, handlesButton(1));
+    const bool picksMedium = model.handles == 1;
+    click(view, handlesButton(0));
+    check(startsSmall && picksLarge && picksMedium && model.handles == 0 && handlesShot && model.values == handlesBefore,
+          "the settings dialog's HANDLES picks the depth handles' size");
     click(view, closeDialog);
     view.mouseMove(cog, {});
     check(renderer.save(view, dir / "14b-settings-closed.png"), "render the cog after the dialog closed");

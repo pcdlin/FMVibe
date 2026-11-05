@@ -916,7 +916,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   shown in its own colors. **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the
   graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
   stronger and wider the halo.
-  The editor shows it while it is dragged and keeps it when it is let go. Both are yours rather than the
+  The editor shows it while it is dragged and keeps it when it is let go. **Handles**, Small (to begin with),
+  Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
+  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All three
+  are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
   license.
