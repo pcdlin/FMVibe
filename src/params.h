@@ -1372,8 +1372,8 @@ double shapeValue(const Get &get, int source, double phase) {
     const bool wraps = from + 1 == count;
     const double x1 = wraps ? 1.0 : x(from + 1);
     const double y1 = get(shapePointIndex(source, wraps ? 0 : from + 1, PointField::Y));
-    if (x1 - x0 < 1e-9)
-        return y1;
+    if (x1 - x0 < 1e-9) // a last point at the cycle's end, where a one-shot stays: it counts, not the first
+        return y0;
     const double t = std::clamp((phase - x0) / (x1 - x0), 0.0, 1.0);
     return y0 + (y1 - y0) * shapeBend(t, get(shapePointIndex(source, from, PointField::Curve)));
 }

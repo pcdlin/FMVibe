@@ -1118,6 +1118,16 @@ int main() {
         shapeOutline(get, 0, 100, [&](double x, double y) { spike = spike || (near(x, 0.5) && near(y, 0.75)); });
         std::printf("freeform LFO: %.2f at a spike, %.2f at the start\n", shapeValue(get, 0, 0.5), shapeValue(get, 0, 0.0));
         check(sides && last && spike, "a freeform LFO's points at one time make a vertical line, its last counting");
+        // A ramp from 0 at the start to 1 at the cycle's end: where a one-shot stays (a phase of 1), the last point
+        // counts, not the first one the cycle would wrap round to.
+        p[shapeCountIndex(0)] = 2.0;
+        set(0, 0.0, 0.0);
+        set(1, 1.0, 1.0);
+        std::printf("      a ramp to its cycle's end: %.2f at the start, %.2f at the end\n", shapeValue(get, 0, 0.0),
+                    shapeValue(get, 0, 1.0));
+        check(near(shapeValue(get, 0, 0.0), 0.0) && near(shapeValue(get, 0, 0.5), 0.5) &&
+                  near(shapeValue(get, 0, 1.0), 1.0),
+              "a freeform LFO ending on a point at the cycle's end stays there, as a one-shot does");
     }
 
     // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ

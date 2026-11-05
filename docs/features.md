@@ -190,7 +190,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     browser), which every synced LFO, delay and sweep follows. A new LFO starts synced, in quarter notes.
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
     is never free): for a sine, a triangle or a drawn shape that is where it started, while a saw holds at its top,
-    a square low and a random one at the value it took.
+    a square low and a random one at the value it took. A drawn shape with a point at the cycle's end (100 %) holds
+    at that point's level instead, so a ramp from 0 up to 1 there stays at 1.
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
     bottom.

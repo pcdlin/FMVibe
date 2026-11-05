@@ -133,7 +133,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the filter effect switched to another type or slope and back, and a plate switched to a hall and back,
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the random LFO's steps and glides, a freeform LFO's points at one time (a vertical line, its last
-    counting), the phaser's and flanger's sweeps synced to the host tempo, the parametric
+    counting, and a point at the cycle's end holding a one-shot there), the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
