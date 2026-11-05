@@ -205,13 +205,13 @@ constexpr Str kEnvSegmentNames[] = {Str::LabelAttack, Str::LabelDecay, Str::Labe
 
 // Attack, hold, decay and release each get kEnvMinSegment pixels, so short
 // ones keep their handles apart, plus `scale` pixels per unit of their
-// (log-scaled) time; the sustain hold has a fixed share. The scale is picked to
+// (log-scaled) time; the release starts where the decay ends, at the sustain
+// level, since the sustain has no length of its own. The scale is picked to
 // fill the display (see envFitScale()), so short envelopes are zoomed in.
 constexpr float kEnvMinSegment = 10.0f;
-constexpr float kEnvSustainShare = 0.16f;
 
 struct EnvShape {
-    Point p0, p1, ph, p2, p3, p4; // start, peak, end of the hold, sustain level, end of the sustain hold, end
+    Point p0, p1, ph, p2, p4; // start, peak, end of the hold, sustain level (where the release starts), end
     float scale;
     float top;
     float bottom;
@@ -220,7 +220,6 @@ struct EnvShape {
 template <class Get>
 EnvShape envShape(Rect r, const EnvIndices &e, const Get &get, float scale) {
     const float left = r.x + 10.0f;
-    const float width = r.w - 20.0f;
     auto span = [&](int param) { return kEnvMinSegment + static_cast<float>(get(param)) * scale; };
     EnvShape s;
     s.scale = scale;
@@ -230,8 +229,7 @@ EnvShape envShape(Rect r, const EnvIndices &e, const Get &get, float scale) {
     s.p1 = {left + span(e.attack), s.top};
     s.ph = {s.p1.x + span(e.hold), s.top};
     s.p2 = {s.ph.x + span(e.decay), s.bottom - static_cast<float>(get(e.sustain)) * (s.bottom - s.top)};
-    s.p3 = {s.p2.x + width * kEnvSustainShare, s.p2.y};
-    s.p4 = {s.p3.x + span(e.release), s.bottom};
+    s.p4 = {s.p2.x + span(e.release), s.bottom};
     return s;
 }
 
@@ -239,17 +237,17 @@ EnvShape envShape(Rect r, const EnvIndices &e, const Get &get, float scale) {
 // 0.15 of normalized time (all four under about 4 ms), it stops zooming.
 template <class Get>
 float envFitScale(Rect r, const EnvIndices &e, const Get &get) {
-    const float room = (r.w - 20.0f) * (1.0f - kEnvSustainShare) - 4.0f * kEnvMinSegment;
+    const float room = r.w - 20.0f - 4.0f * kEnvMinSegment;
     const double total = get(e.attack) + get(e.hold) + get(e.decay) + get(e.release);
     return room / static_cast<float>(std::max(total, 0.15));
 }
 
 // A point on segment 0 (attack, p0 to p1), 1 (decay, ph to p2) or 2 (release,
-// p3 to p4), at time t (0..1) along it, bent by its curve as the DSP bends it.
+// p2 to p4), at time t (0..1) along it, bent by its curve as the DSP bends it.
 Point envSegmentPoint(const EnvShape &s, int segment, double t, double curve, double sustain) {
     const double f = envCurve(t, curve);
     const double level = segment == 0 ? f : segment == 1 ? sustain + (1.0 - sustain) * (1.0 - f) : sustain * (1.0 - f);
-    const Point from = segment == 0 ? s.p0 : segment == 1 ? s.ph : s.p3;
+    const Point from = segment == 0 ? s.p0 : segment == 1 ? s.ph : s.p2;
     const Point to = segment == 0 ? s.p1 : segment == 1 ? s.p2 : s.p4;
     return {from.x + static_cast<float>(t) * (to.x - from.x), s.bottom - static_cast<float>(level) * (s.bottom - s.top)};
 }
@@ -4266,8 +4264,6 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
         for (int segment = 0; segment < 3; ++segment) {
             if (segment == 1)
                 points.push_back(s.ph); // the end of the hold
-            if (segment == 2)
-                points.push_back(s.p3); // the end of the sustain hold
             for (int i = 1; i <= 24; ++i)
                 points.push_back(envSegmentPoint(s, segment, i / 24.0, value(e.curve(segment)), sustain));
         }
@@ -4279,23 +4275,28 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
-    // An operator's shows where the newest voice's envelope is: a line down through its place along the stages (the
-    // sustain waiting at its start until the note is let go) and a dot at its level.
-    const float position = env < kOps ? telemetry_.opEnvPos[env] : -1.0f;
-    if (live && env < kOps && telemetry_.voices > 0 && nodeOn(env) && position >= 0.0f) {
-        const int stage = std::min(static_cast<int>(position), 4);
-        const float along = std::clamp(position - static_cast<float>(stage), 0.0f, 1.0f);
-        const Point from[] = {s.p0, s.p1, s.ph, s.p2, s.p3}, to[] = {s.p1, s.ph, s.p2, s.p2, s.p4};
-        const float x = from[stage].x + along * (to[stage].x - from[stage].x);
-        const float y = s.bottom - std::clamp(telemetry_.opEnvLevels[env], 0.0f, 1.0f) * height;
-        c.line({x, s.top}, {x, s.bottom}, color.alpha(0.35f), 1.0f, true);
-        c.fillCircle({x, y}, 7.0f, color.alpha(0.25f));
-        c.fillCircle({x, y}, 3.5f, kText);
-    }
-    if (live && env >= kOps && telemetry_.voices > 0 && sourceOn(env - kOps)) {
-        const float level = telemetry_.sources[env - kOps];
+    // While notes play, a line across at the newest voice's level: an operator's envelope's, or a mod envelope's.
+    if (live && telemetry_.voices > 0 && (env < kOps ? nodeOn(env) : sourceOn(env - kOps))) {
+        const float level = std::clamp(env < kOps ? telemetry_.opEnvLevels[env] : telemetry_.sources[env - kOps], 0.0f, 1.0f);
         const float y = s.bottom - level * height;
         c.line({r.x + 8.0f, y}, {r.right() - 8.0f, y}, color.alpha(0.35f), 1.0f, true);
+        // And a dot on the curve, as far along the stage the envelope is in as it has come: along the attack, decay
+        // or release by its bend, across the hold, and at the sustain level's point through the sustain. Where the
+        // envelope follows its knobs, that is where the line meets the curve. Where it doesn't (a note let go during
+        // the decay releases from above the sustain; modulation moves its sustain), the dot keeps to the curve, and
+        // the line shows the level.
+        const float position = env < kOps ? telemetry_.opEnvPos[env] : telemetry_.envPos[env - kOps];
+        if (position >= 0.0f) {
+            const int stage = std::min(static_cast<int>(position), 4);
+            const double along = std::clamp(static_cast<double>(position) - stage, 0.0, 1.0);
+            Point dot = s.p2; // the sustain
+            if (stage == 1)
+                dot = {s.p1.x + static_cast<float>(along) * (s.ph.x - s.p1.x), s.top};
+            else if (stage != 3)
+                dot = envSegmentPoint(s, stage / 2, along, value(e.curve(stage / 2)), sustain);
+            c.fillCircle(dot, 7.0f, color.alpha(0.25f));
+            c.fillCircle(dot, 3.5f, kText);
+        }
     }
     // A bipolar envelope swings its targets about its middle level: a line there, and a sign in the corner.
     if (env >= kOps && sourceBipolar(env - kOps)) {
@@ -6330,7 +6331,7 @@ void View::applyDrag(Point p) {
             set(e.decay, time(s.ph.x));
             set(e.sustain, (s.bottom - p.y) / (s.bottom - s.top));
         } else {
-            set(e.release, time(s.p3.x));
+            set(e.release, time(s.p2.x));
         }
         break;
     }

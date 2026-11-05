@@ -631,9 +631,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
     as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
     handle over a tab opens it, so its knobs can take the drop:
-    - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line and a
-      dot show where the newest voice's envelope is: the line moves along the attack, hold, decay and release, the
-      dot at the envelope's level. Through the sustain they wait where the sustain starts, until the note is let go.
+    - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line across
+      it shows the newest voice's envelope level, with a dot where it meets the curve, as a mod envelope's card
+      does.
     - **UNISON**: the unison knobs and Rnd Phase, and a display of where the copies sit (left/right by spread,
       up/down by detune).
     - **SCOPE**: the operator's output in the newest voice as it plays, with its unison copies together and
@@ -650,7 +650,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     **SPECTRUM**, its spectrum against white, pink and brown, and it has no scope (picked, it shows its envelope).
     Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end
-    (release). The small dot halfway along the attack, decay and release bends that segment (drag up or down,
+    (release). The release starts at the sustain level's point: the sustain has no length of its own, lasting as
+    long as the key is held, so the display gives it none. The small dot halfway along the attack, decay and release bends that segment (drag up or down,
     double-click to straighten it, to 0 %). A hovered or dragged handle's values show at the display's top right,
     over the curve. The display always zooms to fit the whole envelope across its width, so the handles of
     short segments stay apart; the zoom holds still while a handle is dragged, so it stays under the mouse, until
@@ -693,7 +694,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     settings and targets), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
     remove it; the × removes it too, together with its modulation and whatever modulates its knobs. A bipolar
     envelope's display has a dashed line at
-    its middle level and ± in its corner.
+    its middle level and ± in its corner. While notes play, an envelope's display has a dashed line across at the
+    newest voice's level, and a dot on the curve as far along the stage the envelope is in as it has come: along
+    the attack, decay or release, across the hold, and at the sustain level's point through the sustain. While the
+    envelope follows its knobs, the dot sits where the line meets the curve. Where it doesn't (a note let go
+    during the decay releases from above the sustain; modulation moves the sustain), the dot keeps to the curve
+    and the line shows the level.
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings
     on knobs faint (the handle can still be dragged onto targets).
   - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip

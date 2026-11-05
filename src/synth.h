@@ -92,7 +92,9 @@ struct Telemetry {
     float age = 0.0f;                           // seconds since the audio thread took this snapshot
     std::array<float, kOps> opLevels{};         // operator envelope x amplitude
     std::array<float, kOps> opEnvLevels{};      // operator envelope alone (0..1)
-    std::array<float, kOps> opEnvPos{};         // where it is, see Envelope::position(); -1 idle
+    // Where each operator's and mod envelope is, see Envelope::position(); -1 idle (or not an envelope).
+    std::array<float, kOps> opEnvPos{};
+    std::array<float, kMaxSources> envPos{};
     std::array<std::array<float, kMcBands>, kFxSlots> fxReduction{}; // compressor gain reduction, dB
     // Parametric EQs', filters' and phase dispersers' output, see Effects::spectrum().
     std::array<Spectrum, kFxSlots> fxSpectrum{};

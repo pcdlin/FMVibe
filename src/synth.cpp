@@ -822,12 +822,12 @@ void Synth::telemetry(Telemetry &out) const {
         out.lfoRates[s] = static_cast<float>(newest->lfos[s].hz);
         out.lfoFrom[s] = static_cast<float>(newest->lfos[s].from);
         out.lfoTo[s] = static_cast<float>(newest->lfos[s].held);
+        out.envPos[s] = static_cast<float>(newest->modEnvs[s].position(newest->modEnvRates[s].last()));
     }
     for (int i = 0; i < kOps; ++i) {
-        const auto &op = newest->ops[i];
-        out.opLevels[i] = static_cast<float>(op.env.level() * op.amp);
-        out.opEnvLevels[i] = static_cast<float>(op.env.level());
-        out.opEnvPos[i] = static_cast<float>(op.env.position(op.rates.last()));
+        out.opLevels[i] = static_cast<float>(newest->ops[i].env.level() * newest->ops[i].amp);
+        out.opEnvLevels[i] = static_cast<float>(newest->ops[i].env.level());
+        out.opEnvPos[i] = static_cast<float>(newest->ops[i].env.position(newest->ops[i].rates.last()));
     }
     out.notePitch = static_cast<float>(newest->pitch);
     out.noteVelocity = static_cast<float>(newest->velocity);

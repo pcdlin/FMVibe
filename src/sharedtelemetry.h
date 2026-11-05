@@ -25,6 +25,7 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kOps> opLevels{};
     std::array<std::atomic<float>, kOps> opEnvLevels{};
     std::array<std::atomic<float>, kOps> opEnvPos{};
+    std::array<std::atomic<float>, kMaxSources> envPos{};
     std::atomic<float> notePitch{0.0f};
     std::atomic<float> noteVelocity{0.0f};
     std::atomic<float> fxPitch{60.0f};
@@ -55,6 +56,7 @@ struct SharedTelemetry {
             lfoRates[i].store(t.lfoRates[i], std::memory_order_relaxed);
             lfoFrom[i].store(t.lfoFrom[i], std::memory_order_relaxed);
             lfoTo[i].store(t.lfoTo[i], std::memory_order_relaxed);
+            envPos[i].store(t.envPos[i], std::memory_order_relaxed);
         }
         for (int i = 0; i < kOps; ++i) {
             opLevels[i].store(t.opLevels[i], std::memory_order_relaxed);
@@ -97,6 +99,7 @@ struct SharedTelemetry {
             t.lfoRates[i] = lfoRates[i].load(std::memory_order_relaxed);
             t.lfoFrom[i] = lfoFrom[i].load(std::memory_order_relaxed);
             t.lfoTo[i] = lfoTo[i].load(std::memory_order_relaxed);
+            t.envPos[i] = envPos[i].load(std::memory_order_relaxed);
         }
         for (int i = 0; i < kOps; ++i) {
             t.opLevels[i] = opLevels[i].load(std::memory_order_relaxed);

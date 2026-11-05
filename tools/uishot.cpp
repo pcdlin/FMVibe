@@ -2719,7 +2719,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // dragging it 20 % of the zoomed scale along gives a hold of 0.2.
     {
         const double total = normFromTime(1.5) + normFromTime(0.015); // A's decay and release
-        const float zoom = static_cast<float>((248.0f * 0.84f - 40.0f) / total);
+        const float zoom = static_cast<float>((248.0f - 40.0f) / total);
         drag(view, {930.0f, kOpEnvTop + 12.0f}, {930.0f + 0.2f * zoom, kOpEnvTop + 12.0f});
         check(std::abs(model.value(paramIndex(0, OpParam::Hold)) - 0.2) < 1e-3 && model.openEdits == 0,
               "dragging the hold handle sets the hold, at the zoom the drag started with");
@@ -3167,42 +3167,142 @@ void run(const std::filesystem::path &dir, float scale) {
         check(layout.opTab == InspectorTab::Envelope && layout.scopeCycles == 2, "the ENVELOPE tab is back");
     }
 
-    // The ENVELOPE tab shows where the newest voice's envelope is: a white dot at its level, along its stages. Read
-    // off the rendered pixels across the row at half the display's height (a level of 0.5): the whitest pixel, by its
-    // weakest channel, is none with no note, then the dot, further right in the release than in the attack.
+    // While notes play, the ENVELOPE tab draws a line across at the newest voice's envelope level, as a mod
+    // envelope's card does. Read off the rendered pixels: across the sustain's stretch, the row at a level of 0.5
+    // lights up and the row at 0.25 doesn't.
     {
         const Telemetry before = model.live;
-        const int attackTime = paramIndex(0, OpParam::Attack);
-        const double attackWas = model.value(attackTime);
-        model.set(attackTime, 0.5); // long enough for the dot to sit clear of the attack's line
-        const float row = (kOpEnvTop + 12.0f + kOpEnvBottom - 10.0f) * 0.5f;
-        auto whitest = [&](const char *name) {
+        const float top = kOpEnvTop + 12.0f, bottom = kOpEnvBottom - 10.0f; // the envelope's full and empty levels
+        auto rowAt = [&](float level) { // the brightest pixel along that row, by its strongest channel
+            const float y = std::round(bottom - level * (bottom - top));
+            int most = 0;
+            for (float x = 1000.0f; x <= 1100.0f; x += 1.0f) {
+                const uint32_t color = renderer.pixel({x, y});
+                most = std::max({most, static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                                 static_cast<int>(color & 255)});
+            }
+            return most;
+        };
+        auto shot = [&](int voices, const char *name) {
+            model.live.voices = voices;
+            model.live.opEnvLevels[0] = 0.5f;
             view.poll();
             view.mouseMove({600.0f, 300.0f}, {});
             renderer.save(view, dir / name);
-            std::pair<int, float> best{0, 0.0f}; // its weakest channel, and where
-            for (float x = 900.0f; x <= 1170.0f; x += 1.0f) {
-                const uint32_t color = renderer.pixel({x, row});
-                const int white = std::min({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
-                                            static_cast<int>(color & 255)});
-                if (white > best.first)
-                    best = {white, x};
-            }
-            return best;
+            return std::pair{rowAt(0.5f), rowAt(0.25f)};
         };
+        const auto [idleHalf, idleQuarter] = shot(0, "3f-env-level-idle.png");
+        const auto [half, quarter] = shot(1, "3f-env-level.png");
+        std::printf("      envelope's level line: %d -> %d at 0.5, %d -> %d at 0.25\n", idleHalf, half, idleQuarter,
+                    quarter);
+        check(half > idleHalf + 25 && std::abs(quarter - idleQuarter) < 6,
+              "an operator's envelope shows the newest voice's level as a line across");
+        model.live = before;
+        view.poll();
+    }
+
+    // And a dot on the curve, as far along the stage the envelope is in as it has come: on A's ENVELOPE tab and on
+    // Env 1's card. Read off the rendered pixels: where a region turned whitest (by its weakest channel) since a
+    // render with no note is the dot, and the curve, rendered with no note, passes within 3 px of it. A note let go
+    // during the decay releases from above the sustain, where the curve doesn't go: its dot keeps to the curve,
+    // below the line at its level.
+    {
+        const Telemetry before = model.live;
+        const int attackTime = paramIndex(0, OpParam::Attack), sustainLevel = paramIndex(0, OpParam::Sustain);
+        const double attackWas = model.value(attackTime), sustainWas = model.value(sustainLevel);
+        model.set(attackTime, 0.5); // a slope the dot can be seen on, and a decay that falls
+        model.set(sustainLevel, 0.3);
+        struct Region {
+            int left, top, w, h;
+        };
+        auto capture = [&](Region g, const char *name) {
+            view.poll();
+            view.mouseMove({600.0f, 300.0f}, {});
+            renderer.save(view, dir / name);
+            std::vector<uint32_t> pixels(static_cast<size_t>(g.w) * g.h);
+            for (int y = 0; y < g.h; ++y)
+                for (int x = 0; x < g.w; ++x)
+                    pixels[y * g.w + x] =
+                        renderer.pixel({static_cast<float>(g.left + x), static_cast<float>(g.top + y)});
+            return pixels;
+        };
+        auto white = [](uint32_t color) {
+            return std::min({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                             static_cast<int>(color & 255)});
+        };
+        auto bright = [](uint32_t color) {
+            return std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                             static_cast<int>(color & 255)});
+        };
+        struct Dot {
+            int x = 0, y = 0, gain = 0;
+            bool onCurve = false;
+        };
+        auto find = [&](Region g, const std::vector<uint32_t> &idle, const std::vector<uint32_t> &shown) {
+            Dot dot; // its middle: the middle of the pixels that turned at least half as white as the most
+            for (int i = 0; i < g.w * g.h; ++i)
+                dot.gain = std::max(dot.gain, white(shown[i]) - white(idle[i]));
+            double sumX = 0.0, sumY = 0.0;
+            int count = 0;
+            for (int i = 0; i < g.w * g.h; ++i)
+                if (2 * (white(shown[i]) - white(idle[i])) >= dot.gain) {
+                    sumX += i % g.w;
+                    sumY += i / g.w;
+                    ++count;
+                }
+            if (count > 0) {
+                dot.x = static_cast<int>(std::lround(sumX / count));
+                dot.y = static_cast<int>(std::lround(sumY / count));
+            }
+            for (int dy = -3; dy <= 3; ++dy)
+                for (int dx = -3; dx <= 3; ++dx) {
+                    const int x = dot.x + dx, y = dot.y + dy;
+                    if (x >= 0 && x < g.w && y >= 0 && y < g.h && bright(idle[y * g.w + x]) > 120)
+                        dot.onCurve = true;
+                }
+            dot.x += g.left;
+            dot.y += g.top;
+            return dot;
+        };
+        // A: half way along its attack, decay and release; then just into a release from 0.8, above its sustain of
+        // 0.3.
+        const Region op{896, static_cast<int>(kOpEnvTop), 276, static_cast<int>(kOpEnvBottom - kOpEnvTop)};
+        const float top = kOpEnvTop + 12.0f, bottom = kOpEnvBottom - 10.0f;
         model.live.voices = 0;
-        const auto idle = whitest("3f-env-progress-idle.png");
+        const std::vector<uint32_t> opIdle = capture(op, "3f-env-dot-idle.png");
+        auto opDot = [&](float position, float level, const char *name) {
+            model.live.voices = 1;
+            model.live.opEnvPos[0] = position;
+            model.live.opEnvLevels[0] = level;
+            return find(op, opIdle, capture(op, name));
+        };
+        const Dot attack = opDot(0.5f, 0.5f, "3f-env-dot-attack.png");
+        const Dot decay = opDot(2.5f, 0.4f, "3f-env-dot-decay.png");
+        const Dot release = opDot(4.5f, 0.1f, "3f-env-dot.png");
+        const Dot early = opDot(4.05f, 0.8f, "3f-env-dot-early-release.png");
+        const float lineY = bottom - 0.8f * (bottom - top);
+        std::printf("      envelope's dot: (%d, %d) in the attack, (%d, %d) in the decay, (%d, %d) in the release, "
+                    "(%d, %d) releasing from above the sustain (its line at %.0f), lighter by %d, %d, %d, %d\n",
+                    attack.x, attack.y, decay.x, decay.y, release.x, release.y, early.x, early.y, lineY, attack.gain,
+                    decay.gain, release.gain, early.gain);
+        check(attack.gain > 60 && decay.gain > 60 && release.gain > 60 && attack.onCurve && decay.onCurve &&
+                  release.onCurve && attack.x + 20 < decay.x && decay.x + 20 < release.x,
+              "an operator's envelope shows a dot on its curve, along the stage it is in");
+        check(early.gain > 60 && early.onCurve && early.y > lineY + 20.0f,
+              "a release from above the sustain keeps its dot on the curve");
+        // Env 1's card, half way up its attack.
+        const Region card{318, 600, 276, 100};
+        model.live = before;
+        model.live.voices = 0;
+        const std::vector<uint32_t> cardIdle = capture(card, "3f-env-card-dot-idle.png");
         model.live.voices = 1;
-        model.live.opEnvLevels[0] = 0.5f;
-        model.live.opEnvPos[0] = 0.5f; // half way up the attack
-        const auto attack = whitest("3f-env-progress-attack.png");
-        model.live.opEnvPos[0] = 4.5f; // half way down the release
-        const auto release = whitest("3f-env-progress.png");
-        std::printf("      envelope's dot: %d with no note, %d at x %.0f in the attack, %d at x %.0f in the release\n",
-                    idle.first, attack.first, attack.second, release.first, release.second);
-        check(attack.first > idle.first + 60 && release.first > idle.first + 60 && release.second > attack.second + 60,
-              "an operator's envelope shows where the newest voice's envelope is");
+        model.live.sources[1] = 0.5f;
+        model.live.envPos[1] = 0.5f;
+        const Dot cardDot = find(card, cardIdle, capture(card, "3f-env-card-dot.png"));
+        std::printf("      Env 1's dot: (%d, %d), lighter by %d\n", cardDot.x, cardDot.y, cardDot.gain);
+        check(cardDot.gain > 60 && cardDot.onCurve, "a mod envelope's card shows a dot on its curve");
         model.set(attackTime, attackWas);
+        model.set(sustainLevel, sustainWas);
         model.live = before;
         view.poll();
     }
