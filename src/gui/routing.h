@@ -75,12 +75,13 @@ inline Point outlineToward(int node, Point center, Point to) {
     return {center.x + dir.x * extent, center.y + dir.y * extent};
 }
 
-inline Point loopCenter(Point node) {
-    return {node.x, node.y - kNodeRadius - 9.0f};
+// Where a node's loop into itself is drawn, a circle on its top edge: an operator's feedback, a shaper's.
+inline Point loopCenter(int node, Point center) {
+    return {center.x, center.y - (isBoxNode(node) ? kFilterHalfH : kNodeRadius) - 9.0f};
 }
 
-// The param that sets how much `from` feeds `to`, or -1 if they can't connect. Every node modulates operators and
-// feeds filters and shapers, but a filter only feeds later filters, and a shaper no shaper.
+// The param that sets how much `from` feeds `to`: every node modulates operators and feeds filters and shapers,
+// itself too (feedback).
 inline int routeParam(int from, int to) {
     if (from < kOps)
         return to < kOps            ? matrixIndex(from, to)
@@ -89,9 +90,9 @@ inline int routeParam(int from, int to) {
     if (isShaperNode(from))
         return to < kOps            ? shaperModIndex(shaperOfNode(from), to)
                : isFilterNode(to) ? shaperFilterIndex(shaperOfNode(from), to - kOps)
-                                  : -1;
+                                  : shaperShaperIndex(shaperOfNode(from), shaperOfNode(to));
     return to < kOps            ? filterModIndex(from - kOps, to)
-           : isFilterNode(to) ? filterLinkIndex(from - kOps, to - kOps) // only into later filters
+           : isFilterNode(to) ? filterLinkIndex(from - kOps, to - kOps)
                               : filterShaperIndex(from - kOps, shaperOfNode(to));
 }
 
@@ -105,11 +106,6 @@ inline int outParam(int node) {
 // The route from `from` into `to`, kNodes standing for the output.
 inline int routeTo(int from, int to) {
     return to == kNodes ? outParam(from) : routeParam(from, to);
-}
-
-// Why `from` can't go into a node: only a filter into itself or an earlier filter, or a shaper into a shaper, can't.
-inline const char *routeRefusal(int from) {
-    return tr(isShaperNode(from) ? Str::MsgRefuseShaper : Str::MsgRefuseFilter);
 }
 
 // Whether a port or arrowhead let go at `p` lands on the OUT bus.
@@ -150,11 +146,10 @@ inline std::string nodeTitle(int node) {
 
 constexpr float kHintX = kRouting.x + 330.0f; // the routing graph's hint, in its title row
 
-// Matrix cell: rows are nodes, columns the operators, the filters, then the output.
+// Matrix cell: rows are nodes, columns the operators, the filters, the shapers, then the output. The diagonal is
+// each node's feedback.
 inline int gridParam(int row, int col) {
-    if (col == kGridCols - 1)
-        return outParam(row);
-    return row == col ? (row < kOps ? matrixIndex(row, row) : -1) : routeParam(row, col);
+    return col == kGridCols - 1 ? outParam(row) : routeParam(row, col);
 }
 
 // A wire bows to its left by `bend` of the distance it spans (kDefaultWireBend until it is dragged), so A -> B and

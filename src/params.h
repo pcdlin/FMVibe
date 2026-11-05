@@ -18,8 +18,9 @@ constexpr int kMaxSources = 16; // places for LFOs and mod envelopes; see Source
 constexpr int kSlots = 16;  // target slots per source
 constexpr int kFirstSlots = 4; // the slots sources had at first; see idOfIndex()
 constexpr int kFilters = 2;
-// Each filter can feed every later one (see filterLinkIndex()).
-constexpr int kFilterLinks = kFilters * (kFilters - 1) / 2;
+// Each filter can feed every filter, itself too (see filterLinkIndex()). The links into later filters came first.
+constexpr int kForwardFilterLinks = kFilters * (kFilters - 1) / 2;
+constexpr int kFilterLinks = kFilters * kFilters;
 constexpr int kShapers = 2; // per-voice waveshapers, which feed and are fed by the filters and modulate operators
 constexpr int kFxSlots = 16; // places in the effects chain; their order is a param
 constexpr int kMaxShapePoints = 64; // per freeform LFO or shaper curve, enough for a step a column on a grid of 32
@@ -102,6 +103,7 @@ enum class FilterParam {
 // filter), modulates operators like an
 // operator does (Mods, one per operator) and goes straight to the output by Out, like an operator (Output is
 // its level after the curve). Symmetric mirrors a Custom curve's upper half onto its lower one (see ClipCurve).
+// Shapers, one per shaper, feed the shapers, itself among them (see shaperShaperIndex()).
 // Stored in projects by number: only append.
 enum class ShaperParam {
     Enabled,
@@ -114,7 +116,8 @@ enum class ShaperParam {
     Mods = Filters + kFilters,
     Out = Mods + kOps,
     Symmetric,
-    Count
+    Shapers,
+    Count = Shapers + kShapers
 };
 // Modulation sources: LFOs and mod envelopes. Like the effect slots, each of
 // the kMaxSources places holds a source of either type, or none, and has the
@@ -547,11 +550,12 @@ constexpr int paramIndex(int slot, FxParam p) { return kFxBase + slot * kFxParam
 constexpr int paramIndex(int shaper, ShaperParam p) {
     return kShaperBase + shaper * kShaperParamCount + static_cast<int>(p);
 }
-// How much of operator `op` goes into `shaper`, of `shaper` into `filter` and of `filter` into `shaper`, and how
-// strongly `shaper` modulates operator `to`.
+// How much of operator `op` goes into `shaper`, of `shaper` into `filter`, of `filter` into `shaper` and of `from`
+// into shaper `to` (from == to feeding itself back), and how strongly `shaper` modulates operator `to`.
 constexpr int shaperSendIndex(int op, int shaper) { return paramIndex(op, OpParam::ShaperSends) + shaper; }
 constexpr int shaperFilterIndex(int shaper, int filter) { return paramIndex(shaper, ShaperParam::Filters) + filter; }
 constexpr int filterShaperIndex(int filter, int shaper) { return paramIndex(filter, FilterParam::Shapers) + shaper; }
+constexpr int shaperShaperIndex(int from, int to) { return paramIndex(from, ShaperParam::Shapers) + to; }
 constexpr int shaperModIndex(int shaper, int to) { return paramIndex(shaper, ShaperParam::Mods) + to; }
 constexpr int shaperCurveCountIndex(int shaper) { return kShaperCurveBase + shaper * kShapeParamCount; }
 // The source a param belongs to, and which of its fields it is; -1 / Count for other params.
@@ -726,11 +730,14 @@ constexpr int bypassSlotOf(int index) {
 }
 // How much of operator `op` goes into `filter`.
 constexpr int sendIndex(int op, int filter) { return paramIndex(op, OpParam::Sends) + filter; }
-// How much of filter `from`'s output feeds the later filter `to`; -1 unless from < to.
+// How much of filter `from`'s output feeds filter `to`, from == to feeding it back into itself. The links into later
+// filters keep the places they had when they were the only ones; those into the filter itself or an earlier one
+// follow them.
 constexpr int filterLinkIndex(int from, int to) {
-    int link = 0;
+    int forward = 0, back = kForwardFilterLinks;
     for (int f = 0; f < kFilters; ++f) {
-        for (int t = f + 1; t < kFilters; ++t) {
+        for (int t = 0; t < kFilters; ++t) {
+            int &link = t > f ? forward : back;
             if (f == from && t == to)
                 return kFilterLinkBase + link;
             ++link;
@@ -738,7 +745,8 @@ constexpr int filterLinkIndex(int from, int to) {
     }
     return -1;
 }
-static_assert(filterLinkIndex(kFilters - 2, kFilters - 1) == kFilterLinkBase + kFilterLinks - 1);
+static_assert(filterLinkIndex(kFilters - 2, kFilters - 1) == kFilterLinkBase + kForwardFilterLinks - 1 &&
+              filterLinkIndex(kFilters - 1, kFilters - 1) == kFilterLinkBase + kFilterLinks - 1);
 constexpr int paramIndex(int macro, MacroParam p) {
     return kMacroBase + macro * kMacroParamCount + static_cast<int>(p);
 }
@@ -1006,10 +1014,14 @@ static_assert(idOfIndex(paramIndex(0, FilterParam::Type)) == 800 &&
                   idOfIndex(paramIndex(0, FilterParam::Slope)) == 807 && idOfIndex(filterShaperIndex(0, 0)) == 808 &&
                   idOfIndex(filterShaperIndex(kFilters - 1, kShapers - 1)) == 829,
               "filter param ids moved");
-static_assert(kFilterLinks == 1 && idOfIndex(filterLinkIndex(0, 1)) == 900, "filter link param ids moved");
+static_assert(kFilterLinks == 4 && idOfIndex(filterLinkIndex(0, 1)) == 900 && idOfIndex(filterLinkIndex(0, 0)) == 901 &&
+                  idOfIndex(filterLinkIndex(1, 0)) == 902 && idOfIndex(filterLinkIndex(1, 1)) == 903,
+              "filter link param ids moved");
 static_assert(idOfIndex(paramIndex(0, ShaperParam::Enabled)) == 600 && idOfIndex(shaperFilterIndex(0, 0)) == 606 &&
                   idOfIndex(shaperModIndex(0, 0)) == 608 && idOfIndex(paramIndex(0, ShaperParam::Out)) == 614 &&
-                  idOfIndex(paramIndex(kShapers - 1, ShaperParam::Symmetric)) == 665,
+                  idOfIndex(paramIndex(kShapers - 1, ShaperParam::Symmetric)) == 665 &&
+                  idOfIndex(shaperShaperIndex(0, 0)) == 616 &&
+                  idOfIndex(shaperShaperIndex(kShapers - 1, kShapers - 1)) == 667,
               "shaper param ids moved");
 static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kFirstSlots - 1)) == 3409 &&

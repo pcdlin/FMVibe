@@ -1043,6 +1043,154 @@ int main(int argc, char **argv) {
         for (const clap_event_param_value_t &ev : restore)
             events.push_back(&ev.header);
         runBlock(events);
+
+        // Shapers feed shapers: A into S1, hard and driven, which only feeds S2, soft and undriven, which goes out:
+        // the sine comes out squared off, so S1 runs though nothing but S2 hears it; with S1 feeding S2 nothing,
+        // nothing is heard.
+        const int s2On = paramIndex(1, ShaperParam::Enabled);
+        const std::vector<float> chained = playShaped({{paramIndex(0, OpParam::Out), 0.0},
+                                                       {shaperOn, 1.0},
+                                                       {s2On, 1.0},
+                                                       {shaperSendIndex(0, 0), 1.0},
+                                                       {paramIndex(0, ShaperParam::Mode), mode},
+                                                       {paramIndex(0, ShaperParam::Drive), 24.0},
+                                                       {paramIndex(0, ShaperParam::Link), 0.0},
+                                                       {paramIndex(0, ShaperParam::Output), -6.0},
+                                                       {shaperShaperIndex(0, 1), 1.0},
+                                                       {paramIndex(1, ShaperParam::Drive), 0.0},
+                                                       {paramIndex(1, ShaperParam::Link), 0.0},
+                                                       {paramIndex(1, ShaperParam::Out), 1.0}});
+        const float chainAlone = peakOf(playShaped({{shaperShaperIndex(0, 1), 0.0}}));
+        const double chainedThird = magnitude(chained, 1320.0) / magnitude(chained, 440.0);
+        // A shaper feeding itself back: A a little into S1, soft and undriven, nearly a sine; fed back at 90 %, its
+        // own output drives it into its curve.
+        const std::vector<float> plain = playShaped({{s2On, 0.0},
+                                                     {shaperSendIndex(0, 0), 0.25},
+                                                     {paramIndex(0, ShaperParam::Mode), static_cast<double>(ClipMode::Soft)},
+                                                     {paramIndex(0, ShaperParam::Drive), 0.0},
+                                                     {paramIndex(0, ShaperParam::Output), 0.0},
+                                                     {paramIndex(0, ShaperParam::Out), 1.0}});
+        const std::vector<float> fedBack = playShaped({{shaperShaperIndex(0, 0), 0.9}});
+        const double plainThird = magnitude(plain, 1320.0) / magnitude(plain, 440.0);
+        const double fedBackThird = magnitude(fedBack, 1320.0) / magnitude(fedBack, 440.0);
+        std::printf("      A through a hard S1 into S2, 1320/440 Hz: %.3f; S1 feeding S2 nothing: peak %.4f; S1 fed "
+                    "back at 90 %%, 1320/440 Hz: %.3f (%.4f without)\n",
+                    chainedThird, chainAlone, fedBackThird, plainThird);
+        check(chainedThird > 0.15 && chainAlone == 0.0f, "a shaper feeds another shaper, which goes out");
+        check(fedBackThird > 0.1 && plainThird < 0.05, "a shaper fed back into itself drives itself into its curve");
+        // S1 and S2 feeding themselves and each other at 100 %, their input going through unshaped (Mix 0), so the
+        // loop lifts itself past unity, and both modulating A: they stay finite, and the note still ends.
+        {
+            playShaped({{s2On, 1.0},
+                        {shaperShaperIndex(0, 0), 1.0},
+                        {shaperShaperIndex(0, 1), 1.0},
+                        {shaperShaperIndex(1, 0), 1.0},
+                        {shaperShaperIndex(1, 1), 1.0},
+                        {paramIndex(0, ShaperParam::Mix), 0.0},
+                        {paramIndex(1, ShaperParam::Mix), 0.0},
+                        {shaperModIndex(0, 0), 1.0},
+                        {shaperModIndex(1, 0), 1.0},
+                        {paramIndex(0, OpParam::Out), 1.0}});
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 33, 57);
+            const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 33, 57);
+            out.noteEnds.clear();
+            bool finite = std::isfinite(runBlock({&on.header}));
+            for (uint32_t b = 0; b < blocksPerSecond; ++b)
+                finite = std::isfinite(runBlock()) && finite;
+            finite = std::isfinite(runBlock({&off.header})) && finite;
+            for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+                finite = std::isfinite(runBlock()) && finite;
+            check(finite && out.noteEnds.size() == 1 && runBlock() == 0.0f,
+                  "shapers feeding themselves and each other past unity stay finite and end with their note");
+        }
+        std::vector<std::pair<int, double>> defaults{{paramIndex(0, OpParam::Out), 1.0},
+                                                     {shaperSendIndex(0, 0), 0.0}};
+        const std::pair<ShaperParam, double> shaperDefaults[] = {
+            {ShaperParam::Enabled, 0.0}, {ShaperParam::Mode, static_cast<double>(ClipMode::Soft)},
+            {ShaperParam::Drive, 6.0},   {ShaperParam::Output, 0.0},
+            {ShaperParam::Mix, 1.0},     {ShaperParam::Link, 1.0},
+            {ShaperParam::Out, 0.0}};
+        for (int sh = 0; sh < kShapers; ++sh) {
+            for (const auto &[field, value] : shaperDefaults)
+                defaults.push_back({paramIndex(sh, field), value});
+            defaults.push_back({shaperModIndex(sh, 0), 0.0});
+            for (int to = 0; to < kShapers; ++to)
+                defaults.push_back({shaperShaperIndex(sh, to), 0.0});
+        }
+        std::vector<clap_event_param_value_t> back;
+        for (const auto &[index, value] : defaults)
+            back.push_back(paramEvent(index, value));
+        events.clear();
+        for (const clap_event_param_value_t &ev : back)
+            events.push_back(&ev.header);
+        runBlock(events);
+
+        // Filters feed earlier filters and themselves. A only into F2, both low-passes wide open, F2 feeding F1 back,
+        // which goes out: A is heard, and with F2 feeding F1 nothing, nothing is. F1 fed back into itself at 90 %
+        // grows louder.
+        std::vector<std::pair<int, double>> filterWas;
+        for (int f = 0; f < kFilters; ++f)
+            for (FilterParam field : {FilterParam::Type, FilterParam::Cutoff, FilterParam::Resonance}) {
+                double value = 0.0;
+                params->get_value(plugin, idOfIndex(paramIndex(f, field)), &value);
+                filterWas.push_back({paramIndex(f, field), value});
+            }
+        std::vector<std::pair<int, double>> open{{paramIndex(0, OpParam::Out), 0.0},     {sendIndex(0, 0), 0.0},
+                                                 {sendIndex(0, 1), 1.0},                 {filterLinkIndex(1, 0), 1.0},
+                                                 {paramIndex(0, FilterParam::Out), 1.0}, {paramIndex(1, FilterParam::Out), 0.0}};
+        for (int f = 0; f < kFilters; ++f)
+            open.insert(open.end(), {{paramIndex(f, FilterParam::Enabled), 1.0},
+                                     {paramIndex(f, FilterParam::Type), 0.0},
+                                     {paramIndex(f, FilterParam::Cutoff), 1.0},
+                                     {paramIndex(f, FilterParam::Resonance), 0.0}});
+        const float backward = peakOf(playShaped(open));
+        const float backAlone = peakOf(playShaped({{filterLinkIndex(1, 0), 0.0}}));
+        const float plainFilter = peakOf(playShaped({{sendIndex(0, 1), 0.0}, {sendIndex(0, 0), 1.0}}));
+        const float fedBackFilter = peakOf(playShaped({{filterLinkIndex(0, 0), 0.9}}));
+        std::printf("      A through F2 into F1: peak %.4f (%.4f with F2 feeding F1 nothing); F1 fed back at 90 %%: "
+                    "peak %.4f (%.4f without)\n",
+                    backward, backAlone, fedBackFilter, plainFilter);
+        check(backward > 0.05f && backAlone == 0.0f, "a filter feeds an earlier filter, which goes out");
+        check(fedBackFilter > 2.0f * plainFilter, "a filter fed back into itself grows louder");
+        // Both filters feeding themselves and each other at 100 %, F1 a resonant comb tuned as high as it goes and
+        // modulating A: they stay finite, and the note still ends.
+        {
+            playShaped({{filterLinkIndex(0, 0), 1.0},
+                        {filterLinkIndex(0, 1), 1.0},
+                        {filterLinkIndex(1, 0), 1.0},
+                        {filterLinkIndex(1, 1), 1.0},
+                        {paramIndex(0, FilterParam::Type), static_cast<double>(FilterType::Comb)},
+                        {paramIndex(0, FilterParam::Resonance), 0.9},
+                        {filterModIndex(0, 0), 1.0},
+                        {paramIndex(0, OpParam::Out), 1.0}});
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 34, 57);
+            const clap_event_note_t off = noteEvent(CLAP_EVENT_NOTE_OFF, 34, 57);
+            out.noteEnds.clear();
+            bool finite = std::isfinite(runBlock({&on.header}));
+            for (uint32_t b = 0; b < blocksPerSecond; ++b)
+                finite = std::isfinite(runBlock()) && finite;
+            finite = std::isfinite(runBlock({&off.header})) && finite;
+            for (uint32_t b = 0; b < 2 * blocksPerSecond && out.noteEnds.empty(); ++b)
+                finite = std::isfinite(runBlock()) && finite;
+            check(finite && out.noteEnds.size() == 1 && runBlock() == 0.0f,
+                  "filters feeding themselves and each other past unity stay finite and end with their note");
+        }
+        std::vector<std::pair<int, double>> filtersBack = filterWas;
+        filtersBack.insert(filtersBack.end(), {{paramIndex(0, OpParam::Out), 1.0}, {sendIndex(0, 0), 0.0},
+                                               {sendIndex(0, 1), 0.0}, {filterModIndex(0, 0), 0.0}});
+        for (int f = 0; f < kFilters; ++f) {
+            filtersBack.insert(filtersBack.end(), {{paramIndex(f, FilterParam::Enabled), 0.0},
+                                                   {paramIndex(f, FilterParam::Out), 0.0}});
+            for (int to = 0; to < kFilters; ++to)
+                filtersBack.push_back({filterLinkIndex(f, to), 0.0});
+        }
+        back.clear();
+        for (const auto &[index, value] : filtersBack)
+            back.push_back(paramEvent(index, value));
+        events.clear();
+        for (const clap_event_param_value_t &ev : back)
+            events.push_back(&ev.header);
+        runBlock(events);
     }
 
     // A voice ringing through a resonant comb still ends after its release.
@@ -3009,7 +3157,7 @@ int main(int argc, char **argv) {
         for (int filter = 0; filter < kFilters; ++filter) {
             for (int to = 0; to < kOps; ++to)
                 routes.push_back(filterModIndex(filter, to));
-            for (int to = filter + 1; to < kFilters; ++to)
+            for (int to = 0; to < kFilters; ++to)
                 routes.push_back(filterLinkIndex(filter, to));
         }
         for (int shaper = 0; shaper < kShapers; ++shaper) {
@@ -3019,6 +3167,8 @@ int main(int argc, char **argv) {
                 routes.push_back(shaperModIndex(shaper, to));
             for (int filter = 0; filter < kFilters; ++filter)
                 routes.push_back(shaperFilterIndex(shaper, filter));
+            for (int to = 0; to < kShapers; ++to)
+                routes.push_back(shaperShaperIndex(shaper, to));
         }
         layout.push_back(static_cast<float>(routes.size()));
         for (int route : routes)

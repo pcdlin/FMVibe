@@ -133,8 +133,8 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
         add(tr(Str::ModuleFilters), trf(Str::ParamFilter, {std::to_string(filter + 1)}), fields);
     }
     std::vector<int> links;
-    for (int from = 0; from < kFilters; ++from)
-        for (int to = from + 1; to < kFilters; ++to)
+    for (int from = 0; from < kFilters; ++from) // each into each, itself among them
+        for (int to = 0; to < kFilters; ++to)
             links.push_back(filterLinkIndex(from, to));
     add(tr(Str::ModuleFilters), tr(Str::PageFilterLinks), links);
     // A shaper's page: its switch, curve and knobs, then what it feeds into the filters.
@@ -176,6 +176,12 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
         add(tr(Str::ModuleMatrix), trf(Str::PageInto, {"S" + std::to_string(shaper + 1)}), into);
         add(tr(Str::ModuleMatrix), trf(Str::PageModulates, {"S" + std::to_string(shaper + 1)}), mods);
     }
+    // The shapers into each other and themselves, which don't fit on their pages above.
+    std::vector<int> shaperLoops;
+    for (int from = 0; from < kShapers; ++from)
+        for (int to = 0; to < kShapers; ++to)
+            shaperLoops.push_back(shaperShaperIndex(from, to));
+    add(tr(Str::ModuleMatrix), tr(Str::PageShaperLoops), shaperLoops);
 
     // Sources with their slot depths; the targets themselves are set in the editor.
     // Pages keep their place's id, like the effects'.

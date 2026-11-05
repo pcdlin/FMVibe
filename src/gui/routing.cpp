@@ -15,13 +15,9 @@ using namespace detail;
 void View::connect(int from, int to) {
     const UndoScope step(controller_); // the output a filter or shaper takes over goes in the same step
     const int param = routeParam(from, to);
-    if (param < 0) {
-        flash(routeRefusal(from));
-        return;
-    }
     if (value(param) > 0.0)
         return;
-    if (isBoxNode(to)) {
+    if (isBoxNode(to) && from != to) {
         // A node that already goes to the output is moved through the filter or shaper, which goes out in its place
         // unless its sound gets there already.
         const int out = outParam(from);
@@ -43,7 +39,7 @@ void View::connect(int from, int to) {
                 edit(outParam(to), 1.0);
         }
     } else {
-        edit(param, from == to ? 0.25 : 0.3); // modulation starts lower
+        edit(param, from == to ? 0.25 : 0.3); // modulation and feedback start lower
     }
     keepRoutes();
 }
@@ -52,10 +48,6 @@ void View::reroute(int from, int to, int into) {
     const int param = routeTo(from, to), next = routeTo(from, into);
     if (next == param)
         return;
-    if (next < 0) {
-        flash(routeRefusal(from));
-        return;
-    }
     if (wired(next)) {
         flash(trf(Str::MsgRouteExists, {nodeTitle(from), into == kNodes ? tr(Str::BusOut) : nodeTitle(into)}));
         return;
@@ -90,11 +82,9 @@ bool View::boxGoesOut(int node) const {
         seen[box] = true;
         if (value(outParam(box)) > 0.0)
             return true;
-        for (int to = kOps; to < kNodes; ++to) {
-            const int param = to == box ? -1 : routeParam(box, to);
-            if (param >= 0 && value(param) > 0.0 && nodeOn(to) && self(self, to))
+        for (int to = kOps; to < kNodes; ++to)
+            if (to != box && value(routeParam(box, to)) > 0.0 && nodeOn(to) && self(self, to))
                 return true;
-        }
         return false;
     };
     return out(out, node);
@@ -110,8 +100,7 @@ bool View::soundsOut(int node) const {
 
 // Operators, filters and shapers alike, whether anything goes into them or not.
 bool View::goesOut(int node) const {
-    const int param = outParam(node);
-    return param >= 0 && wired(param);
+    return wired(outParam(node));
 }
 
 bool View::wired(int param) const {
@@ -122,7 +111,7 @@ bool View::wired(int param) const {
 void View::keepRoutes() {
     std::vector<int> &kept = controller_.layout().keptRoutes;
     auto keep = [&](int param) {
-        if (param >= 0 && value(param) > 0.0 && std::find(kept.begin(), kept.end(), param) == kept.end())
+        if (value(param) > 0.0 && std::find(kept.begin(), kept.end(), param) == kept.end())
             kept.push_back(param);
     };
     for (int from = 0; from < kNodes; ++from) {
@@ -169,11 +158,9 @@ bool View::boxHasInput(int node) const {
         if (seen[box] || !nodeOn(box))
             return false;
         seen[box] = true;
-        for (int from = 0; from < kNodes; ++from) {
-            const int param = from == box ? -1 : routeParam(from, box);
-            if (param >= 0 && value(param) > 0.0 && nodeOn(from) && (from < kOps || self(self, from)))
+        for (int from = 0; from < kNodes; ++from)
+            if (from != box && value(routeParam(from, box)) > 0.0 && nodeOn(from) && (from < kOps || self(self, from)))
                 return true;
-        }
         return false;
     };
     return fed(fed, node);
@@ -186,13 +173,11 @@ bool View::reachesOut(int node) const {
         if (visited[from] || !nodeOn(from))
             return false;
         visited[from] = true;
-        if (const int out = outParam(from); out >= 0 && liveAmount(out) > 0.0)
+        if (liveAmount(outParam(from)) > 0.0)
             return true;
-        for (int to = 0; to < kNodes; ++to) {
-            const int param = to == from ? -1 : routeParam(from, to);
-            if (param >= 0 && liveAmount(param) > 0.0 && self(self, to))
+        for (int to = 0; to < kNodes; ++to)
+            if (to != from && liveAmount(routeParam(from, to)) > 0.0 && self(self, to))
                 return true;
-        }
         return false;
     };
     return reaches(reaches, node);
@@ -202,11 +187,9 @@ double View::outLevel(int node) const {
     if (!nodeOn(node))
         return 0.0;
     double level = liveAmount(outParam(node));
-    for (int to = 0; to < kNodes; ++to) {
-        const int param = to == node ? -1 : routeParam(node, to);
-        if (param >= 0 && liveAmount(param) > level && reachesOut(to))
-            level = liveAmount(param);
-    }
+    for (int to = 0; to < kNodes; ++to)
+        if (to != node && liveAmount(routeParam(node, to)) > level && reachesOut(to))
+            level = liveAmount(routeParam(node, to));
     return level;
 }
 

@@ -244,6 +244,7 @@ private:
         std::array<std::array<double, kOps>, kShapers> shaperIndex{};     // [shaper][to], like index
         std::array<std::array<double, kFilters>, kShapers> shaperLink{};  // [shaper][filter]
         std::array<std::array<double, kShapers>, kFilters> filterShaper{}; // [filter][shaper]
+        std::array<std::array<double, kShapers>, kShapers> shaperShaper{}; // [from][to], from == to into itself
         std::array<double, kShapers> shaperDirect{}; // straight to the output
         std::array<double, kShapers> shaperDrive{};  // gains
         std::array<double, kShapers> shaperOutput{};
@@ -256,8 +257,9 @@ private:
         bool fading = false;    // stolen: fades out over a few milliseconds, then ends; its note has ended
         // Released, and its sound is over, but a mod envelope still releases: it runs its modulation only.
         bool silent = false;
-        // Released, and its operators have faded: what the shapers get from the filters ramps away, so a loop of
-        // filters and shapers feeding each other can't ring on for ever.
+        // Released, and its operators have faded: what the shapers get from the filters and the shapers, and the
+        // filters from themselves and later filters, ramps away, so no loop of filters and shapers feeding each other
+        // (or one feeding itself) can ring on for ever.
         bool tail = false;
         double fade = 1.0;
         bool fresh = false;     // just started: operator phases are set in its first block
@@ -292,9 +294,10 @@ private:
         // line's length past the last time it put out more than kFilterRingFloor (see renderBlock()).
         std::array<int, kFilters> filterRing{};
         std::array<double, kFilters> filterOut{};               // latest mono filter output (what operators hear)
-        std::array<std::array<double, 2>, kFilters> filterLast{}; // latest filter output per channel (what shapers hear)
+        std::array<std::array<double, 2>, kFilters> filterLast{}; // latest filter output per channel (what shapers and loops hear)
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]
         std::array<double, kShapers> shaperOut{};               // latest mono shaper output (what operators hear)
+        std::array<std::array<double, 2>, kShapers> shaperLast{}; // latest shaper output per channel (what shapers hear)
         // Channel 1 of the filters and shapers stood still through a block without stereo spread: it takes channel 0's
         // state before it runs again, rather than carrying on from where it stopped (a comb would ring again).
         bool rightStale = false;

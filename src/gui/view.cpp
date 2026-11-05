@@ -1610,9 +1610,7 @@ std::vector<View::Widget> View::widgets() const {
         // nodes' tabs.
         for (int row = 0; row < kNodes; ++row) {
             for (int col = 0; col < kGridCols; ++col) {
-                const int param = gridParam(row, col);
-                if (param >= 0)
-                    add(Kind::GridCell, gridCell(row, col), param, row, col);
+                add(Kind::GridCell, gridCell(row, col), gridParam(row, col), row, col);
             }
         }
         for (int node = 0; node < kNodes; ++node) {
@@ -1627,7 +1625,7 @@ std::vector<View::Widget> View::widgets() const {
         for (int from : on) {
             for (int to : on) {
                 const int param = routeParam(from, to);
-                if (param < 0 || from == to || !wired(param) || param == rerouted)
+                if (from == to || !wired(param) || param == rerouted)
                     continue;
                 const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
                 const float left = std::min({w.start.x, w.control.x, w.end.x});
@@ -1649,10 +1647,10 @@ std::vector<View::Widget> View::widgets() const {
         for (int from : on) {
             for (int to : on) {
                 const int param = routeParam(from, to);
-                if (param < 0 || !wired(param) || param == moving)
+                if (!wired(param) || param == moving)
                     continue;
                 if (from == to) {
-                    const Point loop = loopCenter(nodeCenter(from));
+                    const Point loop = loopCenter(from, nodeCenter(from));
                     add(Kind::WireLabel, chip({loop.x + 32.0f, loop.y}, 44.0f), param, from, to);
                 } else {
                     const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
@@ -1667,7 +1665,7 @@ std::vector<View::Widget> View::widgets() const {
         for (int from : on) {
             for (int to : on) {
                 const int param = routeParam(from, to);
-                if (param < 0 || from == to || !wired(param) || param == moving)
+                if (from == to || !wired(param) || param == moving)
                     continue;
                 const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
                 add(Kind::WireEnd, arrowGrip(w.end, w.tangent), param, from, to);
@@ -1709,11 +1707,11 @@ std::vector<View::Widget> View::widgets() const {
                 knob(params[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 110.0f}, 32.0f, labels[i]);
     };
     const Str envLabels[] = {Str::LabelAttack, Str::LabelHold, Str::LabelDecay, Str::LabelSustain, Str::LabelRelease};
-    // What feeds a filter or shaper, from the operators (and filter 1, or the shapers, into a filter) that are on.
+    // What feeds a filter or shaper, from the other nodes that are on.
     auto inputKnobs = [&](int into) {
         std::vector<int> sources;
         for (int from = 0; from < kNodes; ++from)
-            if (from != into && nodeOn(from) && routeParam(from, into) >= 0)
+            if (from != into && nodeOn(from))
                 sources.push_back(from);
         const float spacing = (kInspector.w - 32.0f) / std::max<size_t>(sources.size(), 6);
         for (size_t i = 0; i < sources.size(); ++i)
@@ -2341,10 +2339,9 @@ void View::paint(Canvas &c) {
         const int target = nodeAt(drag_.now);
         if (target >= 0) {
             const Point center = nodeCenter(target);
-            // A route that can't be, or that a moving one would find there already, rings faintly.
+            // A route a moving one would find there already rings faintly.
             const int param = routeParam(from, target);
-            const bool fits =
-                param >= 0 && (drag_.kind == DragKind::Connect || param == drag_.widget.param || !wired(param));
+            const bool fits = drag_.kind == DragKind::Connect || param == drag_.widget.param || !wired(param);
             const Color ring = fits ? color : kFaint;
             if (isBoxNode(target))
                 c.strokeRect({center.x - kFilterHalfW - 5.0f, center.y - kFilterHalfH - 5.0f,
@@ -2534,14 +2531,14 @@ void View::paintRouting(Canvas &c) {
     for (int from : on) {
         for (int to : on) {
             const int param = routeParam(from, to);
-            if (param < 0 || !wired(param) || param == moving)
+            if (!wired(param) || param == moving)
                 continue;
             const float amount = static_cast<float>(liveAmount(param));
             const Color base = routeColor(from, to);
             const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
             const float width = 1.2f + 3.0f * amount;
             if (from == to) {
-                c.strokeCircle(loopCenter(nodeCenter(from)), 9.0f, color, width);
+                c.strokeCircle(loopCenter(from, nodeCenter(from)), 9.0f, color, width);
                 continue;
             }
             const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
@@ -2648,9 +2645,6 @@ void View::paintMatrixLabels(Canvas &c) {
     for (int row = 0; row < kNodes; ++row) {
         const Rect cell = gridCell(row, 0);
         c.text({cell.x - 32.0f, cell.y, 28.0f, cell.h}, kNodeNames[row], 12.5f, nameColor(row), Align::Center, true);
-        for (int col = 0; col < kGridCols; ++col)
-            if (gridParam(row, col) < 0)
-                c.fillRect(gridCell(row, col), kRaised.alpha(0.35f), 5.0f); // no such route
     }
     c.text({kLegendX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kLegendX, 22.0f},
            tr(Str::HintMatrix), 10.5f, kFaint, Align::Right);
@@ -3995,9 +3989,9 @@ std::string View::boxRoutes(int node) const {
     for (int other = 0; other < kNodes; ++other) {
         if (other == node || !nodeOn(other))
             continue;
-        if (const int in = routeParam(other, node); in >= 0 && value(in) > 0.0)
+        if (value(routeParam(other, node)) > 0.0)
             name(from, kNodeNames[other]);
-        if (const int out = routeParam(node, other); out >= 0 && value(out) > 0.0)
+        if (value(routeParam(node, other)) > 0.0)
             name(other < kOps ? mods : to, kNodeNames[other]);
     }
     if (value(outParam(node)) > 0.0)
@@ -4760,7 +4754,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const float dim = off ? 0.35f : 1.0f;
         c.fillRect(w.rect, (amount > 0.0 ? fill : kRaised).alpha(dim), 5.0f);
         if (w.a == w.b)
-            c.strokeRect(w.rect, kAccent.alpha(0.35f * dim), 1.0f, 5.0f); // feedback diagonal
+            c.strokeRect(w.rect, nodeColor(w.a).alpha(0.35f * dim), 1.0f, 5.0f); // feedback diagonal
         if (hovered || active)
             c.strokeRect(w.rect, kText, 1.5f, 5.0f);
         char text[8];
@@ -7392,7 +7386,7 @@ void View::doubleClick(Point p, Modifiers mods) {
     case Kind::WireLabel: {
         // Toggle: off, or on at a typical amount for that kind of route.
         const int to = hit->b;
-        const bool full = to >= kOps; // into a filter or the output; modulation starts lower
+        const bool full = to >= kOps && hit->a != to; // into a filter, a shaper or the output; modulation starts lower
         const double on = full ? 1.0 : (hit->a == to ? 0.25 : 0.3);
         if (wired(hit->param)) {
             disconnect(hit->param);

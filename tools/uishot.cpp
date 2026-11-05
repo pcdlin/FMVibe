@@ -3444,7 +3444,8 @@ void run(const std::filesystem::path &dir, float scale) {
     model.ui.selectedNode = selectedBefore;
 
     // Shaper 1: switch it on with its tab, send A into it by dragging A's port, then run it onto B, into F1 and onto
-    // the OUT bus, as any node goes out. F1 feeds it back, round in a loop, but F2 can't feed the lower F1.
+    // the OUT bus, as any node goes out. F1 feeds it back, round in a loop. F2 feeds the earlier F1, and F1 itself
+    // by its edge dragged back onto it, at 25 % as an operator's feedback starts (each undone again).
     check(kNodes == kOps + 4, "the graph has six operators, two filters and two shapers");
     const int s1 = kOps + kFilters;
     click(view, nodeTab(s1));
@@ -3461,11 +3462,22 @@ void run(const std::filesystem::path &dir, float scale) {
           "dragging S1's port onto B makes it modulate B, and onto F1 feeds it into filter 1");
     drag(view, portOf(layout, kOps), nodeCenter(layout, s1));
     drag(view, portOf(layout, kOps + 1), nodeCenter(layout, kOps));
+    const bool backward = model.value(filterLinkIndex(1, 0)) > 0.0;
+    view.undo();
+    drag(view, portOf(layout, kOps), nodeCenter(layout, kOps));
+    const bool itself = model.value(filterLinkIndex(0, 0)) == 0.25;
+    view.undo();
+    check(backward && itself && model.value(filterLinkIndex(1, 0)) == 0.0 && model.value(filterLinkIndex(0, 0)) == 0.0,
+          "a filter's edge dragged onto an earlier filter feeds it, and onto itself feeds it back");
     drag(view, portOf(layout, s1), {nodeCenter(layout, s1).x + 120.0f, kBusY}); // onto the OUT bus
     check(model.value(filterLinkIndex(0, 1)) == 0.5 && model.value(shaperModIndex(0, 1)) == 0.3 &&
               model.value(shaperFilterIndex(0, 0)) == 1.0 && model.value(shaperSendIndex(0, 0)) == 1.0 &&
               model.value(filterShaperIndex(0, 0)) > 0.0 && model.value(paramIndex(0, ShaperParam::Out)) == 1.0,
-          "a filter feeds a shaper, though not a lower filter, and a shaper goes out onto the bus");
+          "a filter feeds a shaper, and a shaper goes out onto the bus");
+    // Dragged from its edge back onto itself, S1 feeds itself back, at 25 % as an operator does, still going out.
+    drag(view, portOf(layout, s1), nodeCenter(layout, s1));
+    check(model.value(shaperShaperIndex(0, 0)) == 0.25 && model.value(paramIndex(0, ShaperParam::Out)) == 1.0,
+          "a shaper's edge dragged onto itself feeds it back into itself");
     view.mouseMove({400.0f, 300.0f}, {});
     check(renderer.save(view, dir / "7b-shapers.png"), "render a shaper in the graph, and its page");
     // Fed by A and going out, S1's tab (still selected) has the dot, dark on its red.
@@ -3473,6 +3485,8 @@ void run(const std::filesystem::path &dir, float scale) {
           "a shaper's tab shows a dot while it sounds out");
     click(view, kMatrixTab);
     check(renderer.save(view, dir / "7c-shapers-matrix.png"), "render the matrix with F switched off");
+    model.set(shaperShaperIndex(0, 0), 0.0);
+    std::erase(model.ui.keptRoutes, shaperShaperIndex(0, 0));
     // There a name works like its node's tab: on a node that is off, it switches it on and selects it; on the
     // selected one, it switches it off and on again; on another that is on, it only selects that one.
     const int selectedThen = layout.selectedNode;
@@ -3526,6 +3540,20 @@ void run(const std::filesystem::path &dir, float scale) {
         view.undo();
         check(undoneGone && wheeledOn && wheelUndone && untouched && connected && model.value(route) == 0.0 && !kept(),
               "undo takes a route switched on out of the routes kept at 0 %, and a press's jitter sets no route");
+    }
+    // A shaper's row has the shapers' cells too: double-clicking S1 -> S2 switches it on at 100 %, and S2 with it, and
+    // S1's own cell, on the diagonal, feeds it back into itself at 25 %.
+    {
+        doubleClick(view, gridCellCenter(s1, s2));
+        const bool chained = model.value(shaperShaperIndex(0, 1)) == 1.0 &&
+                             model.value(paramIndex(1, ShaperParam::Enabled)) == 1.0;
+        view.undo();
+        doubleClick(view, gridCellCenter(s1, s1));
+        const bool itself = model.value(shaperShaperIndex(0, 0)) == 0.25;
+        view.undo();
+        check(chained && itself && model.value(shaperShaperIndex(0, 0)) == 0.0 &&
+                  model.value(shaperShaperIndex(0, 1)) == 0.0 && model.value(paramIndex(1, ShaperParam::Enabled)) == 0.0,
+              "the matrix routes a shaper into another shaper and into itself");
     }
     model.set(paramIndex(5, OpParam::Enabled), 0.0);
     model.ui.selectedNode = selectedThen;

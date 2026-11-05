@@ -58,7 +58,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a shaper's output modulates an operator (and one that is off doesn't), a hard shaper into a filter squares a
     sine off, and a shaper routed nowhere isn't heard but goes straight out by its To Out; a filter into a hard
     shaper squares it off too, and a filter and a shaper feeding each other in a loop still end with their note,
-    and stay finite when the loop lifts itself past unity;
+    and stay finite when the loop lifts itself past unity; a hard shaper feeding only another shaper squares a sine
+    off through it, a shaper fed back into itself drives itself into its curve, and shapers feeding themselves and
+    each other past unity stay finite and end with their note; a filter feeds an earlier filter, one fed back into
+    itself grows louder, and filters feeding themselves and each other past unity stay finite and end with their
+    note;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
   - a MIDI source following its controller (and not another), on pressure the channel's and a note's own
     (polyphonic aftertouch or CLAP's pressure expression, not another key's), and on slide resting in the middle and
@@ -153,7 +157,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   way it replays drags and clicks:
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
   - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
-    there only picks the node and a drag from further inside moves it; a filter going out by its edge dragged onto
+    there only picks the node and a drag from further inside moves it; a filter's edge dragged onto an earlier
+    filter feeding it, and a filter's and a shaper's dragged back onto itself feeding it back; a filter going out by its edge dragged onto
     the bus, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
     which goes out in its place, and picking waves and filter types;
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
@@ -202,7 +207,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undoing with its point;
   - dragging the filter response handle, switching between the graph and matrix views (the tab shown opening its
     panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell: undone, its
-    route (or one the wheel switched on) not kept at 0 %, and a press drifting a pixel setting nothing;
+    route (or one the wheel switched on) not kept at 0 %, and a press drifting a pixel setting nothing; a shaper's
+    row routing it into the other shaper and, on the diagonal, into itself;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);

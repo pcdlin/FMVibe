@@ -293,10 +293,13 @@ void buildTable(ParamTable &t) {
         add(paramIndex(filter, FilterParam::Enabled), name + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0,
             1.0, 0.0);
     }
-    for (int from = 0; from < kFilters; ++from)
-        for (int to = from + 1; to < kFilters; ++to)
-            add(filterLinkIndex(from, to), "F" + std::to_string(from + 1) + " → F" + std::to_string(to + 1),
+    for (int from = 0; from < kFilters; ++from) {
+        const std::string tag = "F" + std::to_string(from + 1);
+        for (int to = 0; to < kFilters; ++to)
+            add(filterLinkIndex(from, to),
+                to == from ? trf(Str::ParamOpFeedback, {tag}) : tag + " → F" + std::to_string(to + 1),
                 tr(Str::ModuleFilters), ParamKind::Percent, 0.0, 1.0, 0.0);
+    }
     for (int filter = 0; filter < kFilters; ++filter)
         for (int shaper = 0; shaper < kShapers; ++shaper)
             add(filterShaperIndex(filter, shaper), "F" + std::to_string(filter + 1) + " → S" + std::to_string(shaper + 1),
@@ -330,6 +333,10 @@ void buildTable(ParamTable &t) {
             1.0, 0.0);
         add(paramIndex(shaper, ShaperParam::Symmetric), name + " " + tr(Str::ParamSymmetric), module,
             ParamKind::Toggle, 0.0, 1.0, 0.0);
+        for (int to = 0; to < kShapers; ++to)
+            add(shaperShaperIndex(shaper, to),
+                to == shaper ? trf(Str::ParamOpFeedback, {tag}) : tag + " → S" + std::to_string(to + 1),
+                tr(Str::ModuleMatrix), ParamKind::Percent, 0.0, 1.0, 0.0);
         const int base = shaperCurveCountIndex(shaper);
         add(base, name + " " + tr(Str::ParamCurve) + " " + tr(Str::ParamPoints), module, ParamKind::ShapeCount, 2.0,
             kMaxShapePoints, 3.0);

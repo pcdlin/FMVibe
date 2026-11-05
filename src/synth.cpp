@@ -28,9 +28,10 @@ constexpr double kVolumeGlide = 0.005; // seconds Volume takes to glide most of 
 // How loud each voice goes into the effects, -12 dB: Volume comes after them, so drive and thresholds don't
 // depend on it. Volume gives the 12 dB back, so at 0 dB a full-scale operator comes out at full scale.
 constexpr double kVoiceLevel = 0.25118864315095801;
-// How far the shapers hear a filter's output go, +18 dB. A filter and a shaper feeding each other grow without end
-// when part of the shaper's input goes through unshaped (Mix below 100 %) and a resonant filter lifts it past
-// unity; held here, the loop stays finite.
+// How far the shapers hear a filter's or a shaper's output go, and a filter itself or a later one, +18 dB. A filter and a shaper feeding each other grow
+// without end when part of the shaper's input goes through unshaped (Mix below 100 %) and a resonant filter lifts it
+// past unity, and so do shapers feeding each other or themselves with little of their Mix; held here, the loop stays
+// finite.
 constexpr double kLoopLimit = 8.0;
 
 class SineTable {
@@ -1352,11 +1353,15 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         }
     }
 
-    // A filter can feed any later one: link[from][to]. Filters modulate operators like operators do, and feed the
-    // shapers, from the previous sample's output; in a voice's tail, no longer the shapers (see Voice::tail).
+    // A filter can feed any filter, itself too: link[from][to]. A later filter hears an earlier one as it is this
+    // sample; a filter hears itself and the filters after it from the previous sample, and in a voice's tail no longer
+    // (see Voice::tail). Filters modulate operators like operators do, and feed the shapers, from the previous sample's
+    // output; in a voice's tail, no longer the shapers.
     for (int from = 0; from < kFilters; ++from)
-        for (int to = from + 1; to < kFilters; ++to)
-            target.link[from][to] = filterEnabled[from] && filterEnabled[to] ? p[filterLinkIndex(from, to)] : 0.0;
+        for (int to = 0; to < kFilters; ++to)
+            target.link[from][to] = filterEnabled[from] && filterEnabled[to] && (to > from || !v.tail)
+                                        ? p[filterLinkIndex(from, to)]
+                                        : 0.0;
     for (int f = 0; f < kFilters; ++f) {
         for (int to = 0; to < kOps; ++to) {
             const double amount = filterEnabled[f] ? p[filterModIndex(f, to)] : 0.0;
@@ -1367,11 +1372,16 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 filterEnabled[f] && shaperEnabled[sh] && !v.tail ? p[filterShaperIndex(f, sh)] : 0.0;
         target.filterOut[f] = p[paramIndex(f, FilterParam::Out)];
     }
-    // A shaper clips what the operators and filters send it, like the shaper effect, and from there feeds the
-    // filters, modulates operators and goes out, like a filter does.
+    // A shaper clips what the operators, filters and shapers send it, like the shaper effect, and from there feeds
+    // the filters and shapers, modulates operators and goes out, like a filter does. Shapers hear the shapers
+    // before them as they are this sample, themselves and those after them from the previous one; in a voice's tail,
+    // no longer (see Voice::tail).
     std::array<ClipCurve, kShapers> curve;
     std::array<bool, kShapers> block;
     for (int sh = 0; sh < kShapers; ++sh) {
+        for (int to = 0; to < kShapers; ++to)
+            target.shaperShaper[sh][to] =
+                shaperEnabled[sh] && shaperEnabled[to] && !v.tail ? p[shaperShaperIndex(sh, to)] : 0.0;
         for (int to = 0; to < kOps; ++to) {
             const double amount = shaperEnabled[sh] ? p[shaperModIndex(sh, to)] : 0.0;
             target.shaperIndex[sh][to] = amount * amount * kMaxIndex / (2.0 * std::numbers::pi);
@@ -1445,6 +1455,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         shaperUsed[sh] =
             shaperEnabled[sh] && (shaperUsed[sh] || routed(target.shaperDirect[sh], current.shaperDirect[sh]));
     }
+    // A shaper feeding another one that is used is used too; one feeding only itself isn't.
+    for (int pass = 0; pass < kShapers; ++pass)
+        for (int sh = 0; sh < kShapers; ++sh)
+            for (int to = 0; to < kShapers; ++to)
+                shaperUsed[sh] = shaperUsed[sh] || (shaperEnabled[sh] && to != sh && shaperUsed[to] &&
+                                                    routed(target.shaperShaper[sh][to], current.shaperShaper[sh][to]));
     // What the operators feed, then what that feeds in turn: filters and shapers can feed each other, round in a
     // loop too, so it takes a few passes for what runs to settle.
     std::array<bool, kShapers> shaperOn{};
@@ -1460,39 +1476,53 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     }
     for (int pass = 0; pass < kFilters + kShapers; ++pass) {
         for (int f = 0; f < kFilters; ++f) {
-            for (int from = 0; from < f; ++from)
-                filterOn[f] = filterOn[f] || (filterEnabled[f] && filterOn[from] &&
+            for (int from = 0; from < kFilters; ++from)
+                filterOn[f] = filterOn[f] || (from != f && filterEnabled[f] && filterOn[from] &&
                                               routed(target.link[from][f], current.link[from][f]));
             for (int sh = 0; sh < kShapers; ++sh)
                 filterOn[f] = filterOn[f] || (filterEnabled[f] && shaperOn[sh] &&
                                               routed(target.shaperLink[sh][f], current.shaperLink[sh][f]));
         }
-        for (int sh = 0; sh < kShapers; ++sh)
+        for (int sh = 0; sh < kShapers; ++sh) {
             for (int f = 0; f < kFilters; ++f) {
                 const bool shapes =
                     shaperUsed[sh] && filterOn[f] && routed(target.filterShaper[f][sh], current.filterShaper[f][sh]);
                 shaperOn[sh] = shaperOn[sh] || shapes;
                 filterShapes = filterShapes || shapes;
             }
+            for (int from = 0; from < kShapers; ++from)
+                shaperOn[sh] = shaperOn[sh] || (from != sh && shaperUsed[sh] && shaperOn[from] &&
+                                                routed(target.shaperShaper[from][sh], current.shaperShaper[from][sh]));
+        }
     }
+    bool shaperShapes = false; // whether any shaper that runs hears one (itself among them)
     for (int sh = 0; sh < kShapers; ++sh) {
         if (!shaperOn[sh]) {
             v.shapers[sh] = {};
             v.shaperOut[sh] = 0.0;
+            v.shaperLast[sh] = {};
+            continue;
         }
+        for (int from = 0; from < kShapers; ++from)
+            shaperShapes = shaperShapes ||
+                           (shaperOn[from] && routed(target.shaperShaper[from][sh], current.shaperShaper[from][sh]));
     }
     const double pole = clipBlockerPole(rate_); // the shapers' DC blockers
     // The settings of the filters that run, and their comb lines.
     std::array<const FilterSettings *, kFilters> filter{};
     std::array<std::array<float *, 2>, kFilters> combs{};
+    bool filterBack = false; // whether any filter that runs hears itself or a later one
     for (int f = 0; f < kFilters; ++f) {
         if (!filterOn[f]) { // when it runs again, it starts from silence
             v.filters[f] = {};
             v.combDirty[f] = {true, true};
             v.filterRing[f] = 0;
+            v.filterLast[f] = {};
             continue;
         }
         combs[f] = {combLine(v, f, 0), combLine(v, f, 1)};
+        for (int from = f; from < kFilters; ++from)
+            filterBack = filterBack || (filterOn[from] && routed(target.link[from][f], current.link[from][f]));
         const std::array<double, 7> inputs{
             p[paramIndex(f, FilterParam::Cutoff)], p[paramIndex(f, FilterParam::KeyTrack)], pitch,
             p[paramIndex(f, FilterParam::Type)],   p[paramIndex(f, FilterParam::Slope)],
@@ -1659,6 +1689,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 for (int f = 0; f < kFilters; ++f)
                     for (int c = 0; c < 2; ++c)
                         toShaper[sh][c] += v.filterLast[f][c] * level.filterShaper[f][sh];
+            if (shaperShapes) // the shapers before it from this sample, itself and those after it from the previous
+                for (int from = 0; from < kShapers; ++from)
+                    for (int c = 0; c < 2; ++c)
+                        toShaper[sh][c] += v.shaperLast[from][c] * level.shaperShaper[from][sh];
             std::array<double, 2> y{};
             for (int c = 0; c < channels; ++c) // as the shaper effect runs (see Effects::runShaper())
                 y[c] = v.shapers[sh][c].run(curve[sh], toShaper[sh][c], level.shaperDrive[sh], level.shaperOutput[sh],
@@ -1666,6 +1700,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             if (!stereo)
                 y[1] = y[0];
             v.shaperOut[sh] = 0.5 * (y[0] + y[1]);
+            v.shaperLast[sh] = {std::clamp(y[0], -kLoopLimit, kLoopLimit), std::clamp(y[1], -kLoopLimit, kLoopLimit)};
             for (int c = 0; c < 2; ++c) {
                 mix[c] += y[c] * level.shaperDirect[sh];
                 for (int f = 0; f < kFilters; ++f)
@@ -1679,6 +1714,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 v.filterLast[f] = {};
                 continue;
             }
+            if (filterBack) // itself and the filters after it, from the previous sample
+                for (int from = f; from < kFilters; ++from)
+                    for (int c = 0; c < 2; ++c)
+                        toFilter[f][c] += v.filterLast[from][c] * level.link[from][f];
             std::array<double, 2> y{};
             for (int c = 0; c < channels; ++c)
                 y[c] = v.filters[f][c].process(toFilter[f][c], *filter[f], combs[f][c], combSize_);

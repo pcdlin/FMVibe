@@ -55,12 +55,16 @@ What the plugin does and how its editor works, in full. Building and installing 
   current output and later ones their previous output; feedback is smoothed over two samples. Amounts are squared
   internally, so the low end is fine-grained. **FM Amount** scales the whole matrix.
 - **Filters F1 and F2**, per voice, each switchable on and off (a new instance starts with both off). Any
-  operator or shaper can be sent into either filter, filter 1 can feed filter 2 (`F1 → F2`), for a series
-  chain, and either can feed the shapers (`F1 → S1`, see below); each filter has its own output level, its **Out**, which, like a shaper's or operators B–F's, is 0 to
+  operator or shaper can be sent into either filter, and each filter can feed the other one (`F1 → F2` for a
+  series chain, `F2 → F1`) and itself (`F1 Feedback`), and either can feed the shapers (`F1 → S1`, see below); each filter has its own output level, its **Out**, which, like a shaper's or operators B–F's, is 0 to
   begin with, so a filter is heard only once it is routed out (see the routing panel). A filter's
   output can also modulate operators, the same way an operator does (`F1 → A` and so on, scaled by FM Amount):
   noise through a band-pass, for example, gives a carrier a narrow band of grit. Operators hear the filter's
-  previous output sample. A filter that only modulates can leave its output level at 0. Types:
+  previous output sample. Filter 2 hears filter 1 as it is that sample; filter 1 hears filter 2, and each filter
+  itself, a sample late, so filters can feed each other and themselves round in a loop. Once a released note's
+  operators have faded, those loops fade away, so they can't ring on, and what a filter hears from itself or a later
+  filter is held within +18 dB, so a loop that lifts itself past unity grows loud but never without end. A filter
+  that only modulates can leave its output level at 0. Types:
   - Low-pass, High-pass, Band-pass and Notch: a state-variable filter that stays smooth under fast modulation.
     **Slope** picks 6, 12 (the default), 18 or 24 dB per octave. At 6 dB the filter is a one-pole, taken from the
     state-variable filter so resonance still adds a peak at the cutoff (as high as at 12 dB) while the slope past it
@@ -80,17 +84,20 @@ What the plugin does and how its editor works, in full. Building and installing 
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
   voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
   effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with) and Symmetric
-  (off), and run by the same code: anti-aliased the same way, with the same DC blocker after the uneven curves. Any operator or filter
-  can be sent into a shaper (`A → S1`, `F1 → S1`), and a shaper's output feeds the filters (`S1 → F1`), for
+  (off), and run by the same code: anti-aliased the same way, with the same DC blocker after the uneven curves. Any operator,
+  filter or shaper can be sent into a shaper (`A → S1`, `F1 → S1`, `S1 → S2`), a shaper into itself too (`S1
+  Feedback`), and a shaper's output feeds the filters (`S1 → F1`), for
   distortion into a filter or a filter's sound distorted, and modulates operators the way an operator does
   (`S1 → A`, scaled by FM Amount), so a modulator can be folded or squared off before it reaches its carrier. Its
   **To Out** sends it straight to the output, like an operator's Out (0 to begin with, so a new shaper is heard only
   once it is routed out, or through what it feeds or modulates). Operators hear its previous output sample, and it
-  hears a filter's previous one, so a filter and a shaper can feed each other round in a loop; once a released
-  note's operators have faded, what the shapers get from the filters fades away, so such a loop can't ring on. What
-  a shaper hears from a filter is held within +18 dB, so a loop that lifts itself past unity (a resonant filter and
-  a shaper's Mix below 100 %) grows loud but never without end. It
-  runs only while something goes in and its output goes somewhere.
+  hears a filter's previous one, so a filter and a shaper can feed each other round in a loop. S2 hears S1 as it is
+  that sample, and S1 hears S2, and each shaper itself, a sample late, so shapers can feed each other and themselves
+  round in a loop too. Once a released note's operators have faded, what the shapers get from the filters and the
+  shapers fades away, so such a loop can't ring on. What a shaper hears from a filter or a shaper is held within
+  +18 dB, so a loop that lifts itself past unity (a resonant filter, or shapers feeding back, with a shaper's Mix
+  below 100 %) grows loud but never without end. It runs only while something goes in and its output goes
+  somewhere (a shaper feeding only itself goes nowhere; one feeding a shaper that goes somewhere does).
 - **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square, random or a freeform shape;
   0.02–100 Hz), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
   operator's envelope has them), and two that follow what a note or the controller brings:
@@ -373,8 +380,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
       onto an operator to modulate it, back onto itself for feedback, onto a filter or shaper to send it there, or
       onto the **OUT** bus; from further inside, a drag moves the node, and a click on the edge only picks the node.
-      A filter's edge works the same way: onto an operator to modulate it, onto filter 2 from filter 1, onto a
-      shaper, or onto the bus, and so does a shaper's, onto an operator, a filter or the bus. Operators, filters and
+      Filters' and shapers' edges work the same way: onto an operator to modulate it, onto a filter or a shaper,
+      back onto itself for feedback (starting at 25 %, its loop drawn on its top edge), or onto the bus. Every node
+      can feed every other one, and itself. Operators, filters and
       shapers go out alike: each has its line to OUT while it is routed there, whether anything goes into it or not.
       A node that already goes out is moved through a filter or shaper it is connected to rather than doubled, its
       output's modulation going along onto the send, and that goes out in its place unless its sound gets there already (through filter 2, say); so does a filter or
@@ -386,7 +394,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       instead; the line to OUT's onto a node the same way. The route keeps its amount and its modulation, and
       follows the mouse until it is let go; it can't go where its node has a route already, or where a node's edge
       couldn't take it. Let go of off the nodes and the bus (where it turns faint), the route goes, with its
-      modulation, as its right-click menu's Disconnect does. The feedback loop above an operator has no arrowhead.
+      modulation, as its right-click menu's Disconnect does. The feedback loop above an operator or a shaper has no
+      arrowhead.
     - Drag a wire's percentage label up or down to set the depth; double-click it to remove the wire, and
       Ctrl+Click it (or pick Edit value… from its right-click menu) to type a depth. A wire, or
       a node's line to OUT, turned down to 0 % stays, so modulation can still be dropped on it; only removing it
@@ -404,9 +413,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       stops short of it, held 10 px off its outline and sliding round it, and goes on once the mouse is past.
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
-    panel's height, as far from its top as from its bottom; the routes that can't be (a shaper into a shaper, or a
-    filter into itself or the filter before it) are blank; the row and
-    column of a node that is off are greyed out, its routes kept as they are. The diagonal is feedback. Drag cells
+    panel's height, as far from its top as from its bottom; every cell is a route; the row and
+    column of a node that is off are greyed out, its routes kept as they are. The diagonal is each node's feedback,
+    outlined in its color; toggled on, it starts at 25 %. Drag cells
     vertically; double-click toggles a cell on or off; Ctrl+Click types an amount. Dragging a cell, or toggling it
     on, switches on the nodes it joins. A row's or column's name works like the node's tab in the
     inspector: clicking it shows that node there, switching it on if it is off, and the names of the node shown
@@ -891,10 +900,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 | --- | --- |
 | Mix | Macros (the eight knobs, the page shown first), Global (Volume, FM Amount, Pitch, Pan), Play (Mono, Legato, Glide, Glide Always, Bend Range, Voices), Outputs (A–F, then S1 and S2 To Out) |
 | Operators | Op A … Op F: Wave, Coarse, Fine (Fixed Freq and Fixed Mult while the operator is fixed), Detune, Attack, Decay, Sustain, Release |
-| Filters | Filter 1 and 2: Type, Cutoff, Resonance, Key Track, Drive, Out, On, Slope; Filter links: F1 → F2 |
+| Filters | Filter 1 and 2: Type, Cutoff, Resonance, Key Track, Drive, Out, On, Slope; Filter links: F1 Feedback, F1 → F2, F2 → F1, F2 Feedback |
 | Shapers | Shaper 1 and 2: On, Curve, Drive, Output, Mix, Link, then what it feeds into F1 and F2 |
 | FX | One page per effect in the chain, named after its place and type, with that effect's knobs (a shimmer reverb's Pitch and Shimmer in place of its Pre-Delay and Width) |
-| Matrix | "A modulates" … "F modulates": what that operator modulates; "Into F1", "Into F2": each operator's send into that filter; "F1 modulates", "F2 modulates": the operators each filter modulates; "Into S1", "S1 modulates" and the same for S2: each operator's and filter's send into that shaper, and the operators it modulates |
+| Matrix | "A modulates" … "F modulates": what that operator modulates; "Into F1", "Into F2": each operator's send into that filter; "F1 modulates", "F2 modulates": the operators each filter modulates; "Into S1", "S1 modulates" and the same for S2: each operator's and filter's send into that shaper, and the operators it modulates; "Shapers into shapers": S1 Feedback, S1 → S2, S2 → S1, S2 Feedback |
 | Modulation | One page per source, in the editor's order: an LFO's shape, rate, sync and division, or an envelope's attack, decay, sustain and release, then its 4 slot depths |
 
 ## CLAP and VST3

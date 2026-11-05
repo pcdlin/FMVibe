@@ -555,7 +555,7 @@ View::MenuNode View::cascadeCategories() const {
         order.push_back(from);
         for (int to : order) {
             const int param = routeTo(from, to);
-            if (param < 0 || !isModTarget(param))
+            if (!isModTarget(param))
                 continue;
             const std::string label = to == from    ? std::string(tr(Str::CascadeFeedback))
                                       : to == kNodes ? "\xE2\x86\x92 " + std::string(tr(Str::BusOut))
