@@ -78,10 +78,10 @@ void PresetLibrary::rescan() {
     namespace fs = std::filesystem;
     entries_.clear();
     files_.clear();
-    const std::wstring name = folderPath();
-    if (name.empty())
+    const std::wstring folderName = folderPath();
+    if (folderName.empty())
         return;
-    const fs::path folder(name);
+    const fs::path folder(folderName);
     std::error_code error;
     const bool fresh = !fs::exists(folder, error) && !error;
     readUserSettings();

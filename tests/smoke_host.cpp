@@ -1752,10 +1752,10 @@ int main(int argc, char **argv) {
             setParams({{paramIndex(GlobalParam::Mono), 1.0}, {input, static_cast<double>(MidiInput::Slide)},
                        {paramIndex(0, SourceParam::Bipolar), 1.0}});
             const clap_event_note_t first = onChannel(41, 1), second = onChannel(42, 2);
-            const clap_event_midi_t slideUp = midiEvent(0xB2, 74, 127), slideBack = midiEvent(0xB2, 74, 64);
+            const clap_event_midi_t slideAllUp = midiEvent(0xB2, 74, 127), slideBack = midiEvent(0xB2, 74, 64);
             runBlock({&first.header});
             runBlocks(4);
-            runBlock({&slideUp.header, &second.header});
+            runBlock({&slideAllUp.header, &second.header});
             runBlocks(4);
             const float takenOver = runBlocks(8);
             runBlock({&chokeAll.header, &slideBack.header});
@@ -1808,10 +1808,10 @@ int main(int argc, char **argv) {
         const double onNote = magnitude(play(notch), 440.0) / open;
         clap_param_info_t cutoffInfo;
         params->get_info(plugin, static_cast<uint32_t>(paramIndex(0, FilterParam::Cutoff)), &cutoffInfo);
-        Patch centered = notch;
-        centered.cutoffHz = cutoffFromNorm(cutoffInfo.default_value);
+        Patch fromMiddle = notch;
+        fromMiddle.cutoffHz = cutoffFromNorm(cutoffInfo.default_value);
         setParams({{paramIndex(NoteParam::Bipolar), 1.0}});
-        const double bipolarOnNote = magnitude(play(centered), 440.0) / open;
+        const double bipolarOnNote = magnitude(play(fromMiddle), 440.0) / open;
         setParams({{paramIndex(NoteParam::Bipolar), 0.0}});
         const clap_event_midi_t bendUp = bendEvent(1.0), center = bendEvent(0.0);
         runBlock({&bendUp.header});
@@ -1825,7 +1825,7 @@ int main(int argc, char **argv) {
         setParams({{slotTargetIndex(kNoteSource, 0), 0.0}, {slotAmountIndex(kNoteSource, 0), 0.0}});
         const double offNote = magnitude(play(notch), 440.0) / open;
         std::printf("      A4 saw through a notch the note source tunes: fundamental x%.4f, bent x%.4f, untuned x%.3f; "
-                    "bipolar from %.0f Hz x%.4f\n", onNote, onBent, offNote, centered.cutoffHz, bipolarOnNote);
+                    "bipolar from %.0f Hz x%.4f\n", onNote, onBent, offNote, fromMiddle.cutoffHz, bipolarOnNote);
         check(onNote < 0.03 && onBent < 0.03 && offNote > 0.8,
               "the note source puts a cutoff on the note's pitch, pitch bend included");
         check(bipolarOnNote < 0.03,
@@ -1966,7 +1966,7 @@ int main(int argc, char **argv) {
                    {slotTargetIndex(kMaxSources, 0), 0.0},
                    {slotAmountIndex(kMaxSources, 0), 0.0},
                    {paramIndex(0, MacroParam::Value), 0.0}});
-        const float full = peakAt(1.0);
+        const float unscaled = peakAt(1.0);
         setParams({{slotTargetIndex(kVelocitySource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
                    {slotAmountIndex(kVelocitySource, 0), -1.0}});
         const float velocityMuted = peakAt(1.0);
@@ -1977,15 +1977,15 @@ int main(int argc, char **argv) {
                    {slotBypassIndex(kVelocitySource, 0), 0.0}});
         std::printf("      macro at -100 %% on A's output: peak %.3f, at 50 %% Amount %.3f; velocity as aux %.3f at full, "
                     "%.3f at half; mod wheel (down) as aux %.3f; %.3f without it\n",
-                    muted, halved, hard, soft, wheelDown, full);
-        check(muted < 0.005f && std::abs(halved / full - 0.5f) < 0.03f, "a slot's Amount scales its depth");
-        check(hard < 0.005f && std::abs(soft / full - 0.5f) < 0.03f,
+                    muted, halved, hard, soft, wheelDown, unscaled);
+        check(muted < 0.005f && std::abs(halved / unscaled - 0.5f) < 0.03f, "a slot's Amount scales its depth");
+        check(hard < 0.005f && std::abs(soft / unscaled - 0.5f) < 0.03f,
               "an aux that runs per voice scales a macro's slot in each voice");
-        check(std::abs(wheelDown - full) < 1e-3f, "an aux at 0 leaves its slot's target alone");
+        check(std::abs(wheelDown - unscaled) < 1e-3f, "an aux at 0 leaves its slot's target alone");
         std::printf("      bypassed: macro %.3f, with velocity as aux %.3f; velocity at -100 %% %.3f, bypassed %.3f\n",
                     macroBypassed, macroBypassedPerVoice, velocityMuted, velocityBypassed);
-        check(std::abs(macroBypassed - full) < 1e-3f && std::abs(macroBypassedPerVoice - full) < 1e-3f &&
-                  velocityMuted < 0.005f && std::abs(velocityBypassed - full) < 1e-3f,
+        check(std::abs(macroBypassed - unscaled) < 1e-3f && std::abs(macroBypassedPerVoice - unscaled) < 1e-3f &&
+                  velocityMuted < 0.005f && std::abs(velocityBypassed - unscaled) < 1e-3f,
               "a macro's and velocity's bypassed slots leave their targets alone");
     }
 
@@ -1994,7 +1994,7 @@ int main(int argc, char **argv) {
     // (which runs per voice), and the macro with velocity at full for its aux (which the voices add); and a bipolar
     // macro at its middle still leaves A alone.
     {
-        const int out = paramIndex(0, OpParam::Out);
+        const int aOut = paramIndex(0, OpParam::Out);
         auto peakAt = [&](double velocity) {
             clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 94, 69);
             on.velocity = velocity;
@@ -2004,8 +2004,8 @@ int main(int argc, char **argv) {
             runBlock({&chokeAll.header});
             return peak;
         };
-        const float full = peakAt(1.0);
-        setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(out)},
+        const float unbent = peakAt(1.0);
+        setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(aOut)},
                    {slotAmountIndex(kMaxSources, 0), -1.0},
                    {paramIndex(0, MacroParam::Value), 0.5}});
         const float straight = peakAt(1.0);
@@ -2024,7 +2024,7 @@ int main(int argc, char **argv) {
                    {slotCurveIndex(kMaxSources, 0), 0.0},
                    {paramIndex(0, MacroParam::Bipolar), 0.0},
                    {paramIndex(0, MacroParam::Value), 0.0},
-                   {slotTargetIndex(kVelocitySource, 0), slotTargetValue(out)},
+                   {slotTargetIndex(kVelocitySource, 0), slotTargetValue(aOut)},
                    {slotAmountIndex(kVelocitySource, 0), -1.0},
                    {slotCurveIndex(kVelocitySource, 0), 0.25}});
         const float velocityFast = peakAt(0.5);
@@ -2035,13 +2035,13 @@ int main(int argc, char **argv) {
         std::printf("      a macro half way at -100 %% on A's output: %.3f of A straight, %.3f at a +25 %% curve "
                     "(%.3f expected), %.3f at -25 %% (%.3f), %.3f with velocity as aux; bipolar at its middle %.3f; "
                     "velocity at half, +25 %% %.3f\n",
-                    straight / full, fast / full, up, slow / full, down, slowPerVoice / full, bipolarMiddle / full,
-                    velocityFast / full);
-        check(full > 0.1f && std::abs(straight / full - 0.5f) < 0.03f && std::abs(fast / full - up) < 0.03f &&
-                  std::abs(slow / full - down) < 0.03f && std::abs(slowPerVoice / full - down) < 0.03f,
+                    straight / unbent, fast / unbent, up, slow / unbent, down, slowPerVoice / unbent,
+                    bipolarMiddle / unbent, velocityFast / unbent);
+        check(unbent > 0.1f && std::abs(straight / unbent - 0.5f) < 0.03f && std::abs(fast / unbent - up) < 0.03f &&
+                  std::abs(slow / unbent - down) < 0.03f && std::abs(slowPerVoice / unbent - down) < 0.03f,
               "a slot's curve bends what its source puts out, both ways");
-        check(std::abs(velocityFast / full - up) < 0.03f, "a per-voice source's slot takes its curve too");
-        check(std::abs(bipolarMiddle / full - 1.0f) < 0.01f, "a bipolar source's curve keeps its middle still");
+        check(std::abs(velocityFast / unbent - up) < 0.03f, "a per-voice source's slot takes its curve too");
+        check(std::abs(bipolarMiddle / unbent - 1.0f) < 0.01f, "a bipolar source's curve keeps its middle still");
     }
 
     // An LFO's slot scaled by velocity or the note source modulates from a note's first block, as one with no aux

@@ -1680,10 +1680,10 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, firstC);
         const int shifted = model.lastNote;
         view.mouseMove(up, {});
-        const bool shot = renderer.save(view, dir / "26i-octave-up.png");
+        const bool upShot = renderer.save(view, dir / "26i-octave-up.png");
         click(view, down);
         click(view, firstC);
-        check(before == 24 && shifted == 36 && model.lastNote == 24 && shot,
+        check(before == 24 && shifted == 36 && model.lastNote == 24 && upShot,
               "the octave shift's buttons under the keys move them an octave up and back");
     }
 
@@ -1704,9 +1704,9 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         view.wheel({46.0f, y + 27.0f}, 1.0f, {});
         const bool bendTurned = model.value(paramIndex(GlobalParam::BendRange)) == bendWas + 1.0;
         view.mouseMove(toggle, {});
-        const bool shot = renderer.save(view, dir / "26j-keys-collapsed.png");
+        const bool collapsedShot = renderer.save(view, dir / "26j-keys-collapsed.png");
         click(view, title);
-        check(shorter && wheelMapped && bendTurned && shot && !model.ui.keysCollapsed && view.height() == open,
+        check(shorter && wheelMapped && bendTurned && collapsedShot && !model.ui.keysCollapsed && view.height() == open,
               "the keyboard panel collapses to its top row, the mod wheel's handle and Bend's knob staying in it, "
               "and opens again");
     }
@@ -3549,9 +3549,9 @@ void run(const std::filesystem::path &dir, float scale) {
                              model.value(paramIndex(1, ShaperParam::Enabled)) == 1.0;
         view.undo();
         doubleClick(view, gridCellCenter(s1, s1));
-        const bool itself = model.value(shaperShaperIndex(0, 0)) == 0.25;
+        const bool fedBack = model.value(shaperShaperIndex(0, 0)) == 0.25;
         view.undo();
-        check(chained && itself && model.value(shaperShaperIndex(0, 0)) == 0.0 &&
+        check(chained && fedBack && model.value(shaperShaperIndex(0, 0)) == 0.0 &&
                   model.value(shaperShaperIndex(0, 1)) == 0.0 && model.value(paramIndex(1, ShaperParam::Enabled)) == 0.0,
               "the matrix routes a shaper into another shaper and into itself");
     }

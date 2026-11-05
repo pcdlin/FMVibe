@@ -246,7 +246,7 @@ struct ClipState {
         const double driven = x * drive;
         const double dx = driven - last;
         double y;
-        if (std::abs(dx) < 1e-6) {
+        if (dx > -1e-6 && dx < 1e-6) { // as |dx| < 1e-6, which MSVC can't see guards the division below
             y = curve.shape(0.5 * (driven + last));
             integralKnown = false;
         } else {
