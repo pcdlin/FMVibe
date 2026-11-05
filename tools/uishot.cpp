@@ -97,6 +97,8 @@ public:
     void setGlow(double amount) override { glowLevel = amount; }
     int handleSize() const override { return handles; }
     void setHandleSize(int size) override { handles = size; }
+    double linkIntensity() const override { return links; }
+    void setLinkIntensity(double amount) override { links = amount; }
 
 protected:
     void performBeginEdit(int) override { ++openEdits; }
@@ -115,6 +117,7 @@ public:
     bool mpeOn = false;
     int mpeRange = 48;
     int handles = 0;
+    double links = 0.75;
     std::string themeName;
     double glowLevel = 0.0;
     Telemetry live{};
@@ -2155,7 +2158,17 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     const std::vector<uint32_t> plain = aroundMiddle();
     view.mouseMove(to, {});
     const bool linkShot = renderer.save(view, dir / "35i-depth-handle-link.png");
-    check(linkShot && aroundMiddle() != plain, "a hovered depth handle draws the line from its source's handle");
+    const std::vector<uint32_t> shown = aroundMiddle();
+    check(linkShot && shown != plain, "a hovered depth handle draws the line from its source's handle");
+    // The settings' LINES draws it as strongly as it says: more at 100 %, and not at all when off.
+    model.links = 1.0;
+    const bool strongShot = renderer.save(view, dir / "35j-link-strong.png");
+    const bool strong = aroundMiddle() != shown && aroundMiddle() != plain;
+    model.links = 0.0;
+    const bool offShot = renderer.save(view, dir / "35k-link-off.png");
+    check(strongShot && offShot && strong && aroundMiddle() == plain,
+          "a source's dashed line is drawn as strongly as LINES says, and not at all when off");
+    model.links = 0.75;
 }
 
 // A modulation moved to another source takes what modulates its depth along: LFO 1's on Op A's Fine, its depth
@@ -4432,7 +4445,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;
-    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 530.0f) * 0.5f), 380.0f, 530.0f};
+    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 562.0f) * 0.5f), 380.0f, 562.0f};
     auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
     auto mpeSwitch = [&](int on) { return Point{dialog.x + 24.0f + on * 56.0f + 26.0f, dialog.y + 228.0f}; };
     auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
@@ -4505,7 +4518,23 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseUp({glowAt(0.0f).x - 40.0f, glowAt(0.0f).y}, {});
     check(model.glowLevel == 0.0, "the GLOW slider's left end turns it off");
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
-    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 120.0f}; };
+    // LINES, under GLOW, sets how strongly a source's dashed lines are drawn, 75 % to begin with, once it is let go.
+    auto linesAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 117.0f}; };
+    const bool linesStart = model.links == 0.75;
+    view.mouseDown(linesAt(0.75f), {});
+    view.mouseMove(linesAt(0.4f), {});
+    const bool linesKept = model.links == 0.75; // only once it is let go
+    const bool linesShot = renderer.save(view, dir / "14i-settings-lines.png");
+    view.mouseUp(linesAt(0.4f), {});
+    const bool linesSet = std::abs(model.links - 0.4) < 1e-3;
+    view.mouseDown(linesAt(0.4f), {});
+    view.mouseMove({linesAt(1.0f).x + 40.0f, linesAt(1.0f).y}, {});
+    view.mouseUp({linesAt(1.0f).x + 40.0f, linesAt(1.0f).y}, {});
+    check(linesStart && linesKept && linesShot && linesSet && model.links == 1.0 && model.glowLevel == 0.0,
+          "the settings dialog's LINES slider sets how strongly the sources' lines are drawn, and only that");
+    model.links = 0.75;
+    // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
+    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 152.0f}; };
     const ParamValues handlesBefore = model.values;
     const bool startsSmall = model.handles == 0;
     click(view, handlesButton(2));

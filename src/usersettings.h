@@ -12,6 +12,7 @@ struct UserSettings {
     std::string theme;
     double glow = 0.5;
     int handleSize = 0; // the depth handles' and pills' size, 0 to kMaxHandleSize
+    double links = 0.75; // how strongly the dashed lines from a source to its targets are drawn
     int examples = -1; // how many examples the preset folder has been given, or -1 if not known
 };
 extern UserSettings userSettings; // as the settings file has them; editors only run on the main thread

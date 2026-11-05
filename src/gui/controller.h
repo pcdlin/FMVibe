@@ -231,6 +231,10 @@ public:
     // too.
     virtual int handleSize() const = 0;
     virtual void setHandleSize(int size) = 0;
+    // How strongly the dashed lines from a source's handle to what it modulates are drawn: 0 (not at all) to 1
+    // (opaque), 0.75 to begin with; the user's too.
+    virtual double linkIntensity() const = 0;
+    virtual void setLinkIntensity(double amount) = 0;
 
 protected:
     // What beginEdit(), setValue() and endEdit() do besides keeping the history: undo and redo

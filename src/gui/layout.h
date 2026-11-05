@@ -617,7 +617,7 @@ inline double partialBarFromLevel(double level) {
 // The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
 // (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 530.0f;
+constexpr float kSettingsH = 562.0f;
 constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
 constexpr float kSettingsLookY = 312.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
@@ -646,9 +646,13 @@ inline Rect settingsTheme(Rect panel, int i) {
 inline Rect settingsGlow(Rect panel) {
     return {panel.x + 76.0f, panel.y + kSettingsLookY + 72.0f, 200.0f, 26.0f};
 }
-// Under it, HANDLES and the depth handles' sizes: small, medium and large.
+// Under it, the LINES slider, like it: how strongly a source's dashed lines are drawn.
+inline Rect settingsLinks(Rect panel) {
+    return {panel.x + 76.0f, panel.y + kSettingsLookY + 104.0f, 200.0f, 26.0f};
+}
+// Under that, HANDLES and the depth handles' sizes: small, medium and large.
 inline Rect settingsHandles(Rect panel, int size) {
-    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 106.0f, 64.0f, 28.0f};
+    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 138.0f, 64.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

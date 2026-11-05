@@ -531,6 +531,7 @@ STR(SettingsMpeWhy, "unless it sends CLAP note expressions.")
 STR(SettingsMpeSaved, "Not stored in presets.")
 STR(SettingsLook, "LOOK")
 STR(SettingsGlow, "GLOW")
+STR(SettingsLinks, "LINES") // how strongly a source's dashed lines to its targets are drawn, beside its slider
 STR(SettingsHandles, "HANDLES") // the depth handles' size, beside its buttons
 STR(SettingsHandlesSmall, "Small")
 STR(SettingsHandlesMedium, "Medium")

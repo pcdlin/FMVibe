@@ -35,6 +35,8 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.glow = std::clamp(std::atof(line.c_str() + 10), 0.0, 1.0);
         else if (line.starts_with("handleSize="))
             settings.handleSize = std::clamp(std::atoi(line.c_str() + 11), 0, kMaxHandleSize);
+        else if (line.starts_with("linkIntensity="))
+            settings.links = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
         else if (line.starts_with("examples="))
             settings.examples = std::max(std::atoi(line.c_str() + 9), 0);
     }
@@ -67,13 +69,16 @@ void writeUserSettings() {
         merged.glow = userSettings.glow;
     if (userSettings.handleSize != asRead.handleSize)
         merged.handleSize = userSettings.handleSize;
+    if (userSettings.links != asRead.links)
+        merged.links = userSettings.links;
     merged.examples = std::max(merged.examples, userSettings.examples);
     userSettings = asRead = merged;
 
     std::error_code error;
     std::filesystem::create_directories(file.parent_path(), error);
     std::ofstream out(file);
-    out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize << '\n';
+    out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize
+        << "\nlinkIntensity=" << merged.links << '\n';
     if (merged.examples >= 0)
         out << "examples=" << merged.examples << '\n';
 }

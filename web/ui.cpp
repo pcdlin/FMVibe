@@ -79,6 +79,8 @@ public:
         const std::string glow = setting("glow");
         glow_ = glow.empty() ? 0.5 : std::clamp(std::atof(glow.c_str()), 0.0, 1.0);
         handleSize_ = std::clamp(std::atoi(setting("handleSize").c_str()), 0, 2);
+        const std::string links = setting("linkIntensity");
+        links_ = links.empty() ? 0.75 : std::clamp(std::atof(links.c_str()), 0.0, 1.0);
     }
 
     const ParamValues &values() const { return values_; }
@@ -185,6 +187,11 @@ public:
         handleSize_ = std::clamp(size, 0, 2);
         js_set_setting("handleSize", std::to_string(handleSize_).c_str());
     }
+    double linkIntensity() const override { return links_; }
+    void setLinkIntensity(double amount) override {
+        links_ = std::clamp(amount, 0.0, 1.0);
+        js_set_setting("linkIntensity", std::to_string(links_).c_str());
+    }
 
     // Opens on an example rather than Init, so the first note sounds like something; nothing to undo yet.
     void start() {
@@ -236,6 +243,7 @@ private:
     std::string theme_;
     double glow_ = 0.5;
     int handleSize_ = 0;
+    double links_ = 0.75;
 };
 
 std::unique_ptr<WebController> controller;

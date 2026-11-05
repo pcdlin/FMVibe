@@ -1206,7 +1206,8 @@ bool View::poll() {
         modList_.reset();
         changed = true;
     }
-    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_) // picked in another editor
+    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_ || shownLinks() != links_ ||
+        controller_.handleSize() != handles_) // picked in another editor
         changed = true;
     if ((typing_ || fieldTyping()) && ++caretTicks_ % 32 == 0)
         changed = true; // the caret blinks
@@ -2263,6 +2264,8 @@ void View::paint(Canvas &c) {
     theme_ = themeIndex(controller_.theme());
     look = kThemes[theme_];
     glow_ = glowing = shownGlow();
+    links_ = shownLinks();
+    handles_ = controller_.handleSize();
     c.clear(kBackground);
     paintPanels(c);
     paintHeader(c);
@@ -5399,9 +5402,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text(w.rect, label, 11.0f, on && !faint ? kText : kDim, Align::Center, on);
         break;
     }
-    case Kind::SettingsGlow: {
+    case Kind::SettingsGlow:
+    case Kind::SettingsLinks: {
         // A track filled up to the amount, and a knob to drag along it.
-        const float x = w.rect.x + shownGlow() * w.rect.w, y = w.rect.center().y;
+        const float amount = w.kind == Kind::SettingsLinks ? shownLinks() : shownGlow();
+        const float x = w.rect.x + amount * w.rect.w, y = w.rect.center().y;
         c.fillRect({w.rect.x, y - 2.0f, w.rect.w, 4.0f}, kTrack, 2.0f);
         c.fillRect({w.rect.x, y - 2.0f, x - w.rect.x, 4.0f}, kAccent, 2.0f);
         c.fillCircle({x, y}, 7.0f, hovered || active ? kText : kDim);
@@ -6173,7 +6178,8 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         if (clipped)
             c.popClip();
     }
-    c.line(drag_.start, drag_.now, color.alpha(0.6f), 1.5f, true);
+    if (links_ > 0.0f) // 0.6 at the 0.75 LINES begins with
+        c.line(drag_.start, drag_.now, color.alpha(0.8f * links_), 1.5f, true);
     c.fillCircle(drag_.now, 7.0f, color.alpha(0.5f));
     c.fillCircle(drag_.now, 3.0f, color);
 }
@@ -6221,7 +6227,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         // Bowed to one side, so lines to targets in a row fan out rather than run over each other.
         const Point d{to.x - from.x, to.y - from.y};
         const Point control{(from.x + to.x) * 0.5f + d.y * 0.15f, (from.y + to.y) * 0.5f - d.x * 0.15f};
-        c.curve(from, control, to, color.alpha(0.75f), 1.5f, true);
+        if (links_ > 0.0f) // as strongly as the settings' LINES say
+            c.curve(from, control, to, color.alpha(links_), 1.5f, true);
         if (dot != list.end()) // a ring round the dot the line points at
             c.strokeCircle(to, dot->compact ? 5.5f : 7.5f, color, 1.5f);
         else if (pill != list.end()) // or round the pill
@@ -6332,9 +6339,9 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::Glow:
-        glowDragged_ = std::clamp(drag_.fine ? static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / w.rect.w * 0.01f
-                                             : (p.x - w.rect.x) / w.rect.w,
-                                  0.0f, 1.0f);
+        sliderDragged() = std::clamp(drag_.fine ? static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / w.rect.w * 0.01f
+                                                : (p.x - w.rect.x) / w.rect.w,
+                                     0.0f, 1.0f);
         break;
     case DragKind::BendWheel: {
         const double mid = w.rect.y + w.rect.h * 0.5;
@@ -6561,7 +6568,7 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // Switching to/from fine mode re-anchors the drag so the value doesn't jump.
         drag_.fine = mods.shift;
         drag_.start = p;
-        drag_.startValue = drag_.kind == DragKind::Glow ? glowDragged_ : value(drag_.widget.param);
+        drag_.startValue = drag_.kind == DragKind::Glow ? sliderDragged() : value(drag_.widget.param);
     }
     drag_.snap = mods.ctrl;
     drag_.now = p;
@@ -7017,8 +7024,9 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.setHandleSize(w.b);
         break;
     case Kind::SettingsGlow: // dragged; the amount is kept when it is let go
+    case Kind::SettingsLinks:
         drag_.kind = DragKind::Glow;
-        drag_.startValue = glowDragged_ = shownGlow();
+        drag_.startValue = sliderDragged() = w.kind == Kind::SettingsLinks ? shownLinks() : shownGlow();
         if (!drag_.fine)
             applyDrag(p);
         break;
@@ -7178,7 +7186,10 @@ void View::mouseUp(Point p, Modifiers) {
         break;
     }
     case DragKind::Glow:
-        controller_.setGlow(glowDragged_);
+        if (w.kind == Kind::SettingsLinks)
+            controller_.setLinkIntensity(linksDragged_);
+        else
+            controller_.setGlow(glowDragged_);
         break;
     case DragKind::FxMove: {
         drag_.now = p;
@@ -7268,7 +7279,7 @@ void View::finishDrag() {
         controller_.pitchWheel(0.0);
         break;
     case DragKind::Glow: // the amount it was dragged to is kept only once it is let go (see mouseUp())
-        glowDragged_ = -1.0f;
+        glowDragged_ = linksDragged_ = -1.0f;
         break;
     case DragKind::Partials: // its undo step closes below
     case DragKind::ShapeStep:
