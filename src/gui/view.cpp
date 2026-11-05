@@ -6984,7 +6984,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         showSourceMods(w.a);
         break;
     case Kind::ValueText:
-        break; // double-click types a value
+    case Kind::MacroName:
+        break; // double-click types a value, or renames the macro
     case Kind::WaveMore:
         waveMenu_ = waveMenu_ == w.a ? -1 : w.a;
         break;

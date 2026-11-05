@@ -31,12 +31,6 @@ bool canModulate(int source, int target) {
     return isModTarget(target) && !(isStripSource(source) && !isNoteBorne(source) && target == stripKnobIndex(source));
 }
 
-std::string percentText(double value) {
-    char text[16];
-    std::snprintf(text, sizeof(text), "%.0f%%", value * 100.0);
-    return text;
-}
-
 } // namespace
 
 bool View::modsWide() const {
