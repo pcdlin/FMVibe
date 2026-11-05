@@ -1,6 +1,6 @@
 // fmvibe-uihost: a small CLAP host for trying the editor by hand, without a DAW. It loads the built plugin, opens
 // its editor in a window of its own and plays it through the default output device (WASAPI, shared mode), with
-// notes from the editor's keyboard and from every MIDI input it can open. Without a device (or with --silent) it
+// notes from the editor's keyboard, the computer's (as in the browser demo) and every MIDI input it can open. Without a device (or with --silent) it
 // still runs the plugin in real time into silence, so the meters, the scope and the analyzers move.
 // Usage: fmvibe-uihost [path\to\FMVibe.clap] [--silent] [--no-midi] [--tempo <bpm>]
 
@@ -17,6 +17,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -345,6 +346,9 @@ struct App {
     Audio *audio = nullptr;
     double sampleRate = kFallbackRate;
     HWND window = nullptr;
+    std::string title;          // the window's, before the computer keyboard's octave
+    int octave = 0;             // the computer keyboard's, from middle C
+    std::array<int, 256> held;  // by scan code: the note the key plays, or -1
     bool active = false;        // activated, and not deactivated since
     bool editorCreated = false; // gui->create() went through, and gui->destroy() hasn't followed
     bool editorOpen = false;    // and it is in the window
@@ -429,8 +433,96 @@ void restartPlugin() {
     std::printf("%s\n", app.active ? "Restarted the plugin, as it asked." : "The plugin didn't activate again.");
 }
 
+// --- The computer keyboard's piano, as the browser demo has it: A is middle C, W the C# above it, and so on to
+// the semicolon; Z and X shift the octave. By scan code, so it plays by key position on any layout.
+
+constexpr int kKeyVelocity = 100; // as the plugin's own keyboard
+
+int pianoKey(uint32_t scanCode) {
+    switch (scanCode) {
+    case 0x1E: return 0;  // A
+    case 0x11: return 1;  // W
+    case 0x1F: return 2;  // S
+    case 0x12: return 3;  // E
+    case 0x20: return 4;  // D
+    case 0x21: return 5;  // F
+    case 0x14: return 6;  // T
+    case 0x22: return 7;  // G
+    case 0x15: return 8;  // Y
+    case 0x23: return 9;  // H
+    case 0x16: return 10; // U
+    case 0x24: return 11; // J
+    case 0x25: return 12; // K
+    case 0x18: return 13; // O
+    case 0x26: return 14; // L
+    case 0x19: return 15; // P
+    case 0x27: return 16; // semicolon
+    default: return -1;
+    }
+}
+constexpr uint32_t kOctaveDown = 0x2C; // Z
+constexpr uint32_t kOctaveUp = 0x2D;   // X
+
+void showOctave() {
+    const std::string title = app.title + " - keys from C" + std::to_string(4 + app.octave);
+    SetWindowTextA(app.window, title.c_str());
+}
+
+void releaseKeys() {
+    for (int &note : app.held)
+        if (note >= 0) {
+            app.audio->pushMidi(0x80, static_cast<uint8_t>(note), 0);
+            note = -1;
+        }
+}
+
+// The host's loop, before a key reaches the window that has the keyboard: true when the piano took it. Keys the
+// editor takes while a value is typed never come here (its hook empties them), nor Ctrl+Z over the editor.
+bool playKey(const MSG &msg) {
+    if ((msg.message != WM_KEYDOWN && msg.message != WM_KEYUP) || !msg.hwnd ||
+        GetAncestor(msg.hwnd, GA_ROOT) != app.window)
+        return false;
+    const auto flags = static_cast<uint32_t>(msg.lParam);
+    if (flags & (1u << 24)) // an extended key: the arrows, the keypad's Enter and the like
+        return false;
+    const uint32_t scanCode = (flags >> 16) & 0xFF;
+    if (msg.message == WM_KEYUP) { // let go, even with Ctrl down since
+        const int note = app.held[scanCode];
+        if (note < 0)
+            return false;
+        app.held[scanCode] = -1;
+        app.audio->pushMidi(0x80, static_cast<uint8_t>(note), 0);
+        return true;
+    }
+    if (GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_MENU) < 0)
+        return false;
+    const bool repeat = (flags & (1u << 30)) != 0;
+    if (const int key = pianoKey(scanCode); key >= 0) {
+        if (repeat || app.held[scanCode] >= 0)
+            return true;
+        const int note = 60 + 12 * app.octave + key;
+        if (note > 127)
+            return true;
+        app.held[scanCode] = note;
+        app.audio->pushMidi(0x90, static_cast<uint8_t>(note), kKeyVelocity);
+        return true;
+    }
+    if (scanCode == kOctaveDown || scanCode == kOctaveUp) {
+        if (!repeat) {
+            app.octave = std::clamp(app.octave + (scanCode == kOctaveUp ? 1 : -1), -4, 4);
+            showOctave();
+        }
+        return true;
+    }
+    return false;
+}
+
 LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
+    case WM_ACTIVATE: // no key may hang once the window loses the keyboard
+        if (LOWORD(wParam) == WA_INACTIVE)
+            releaseKeys();
+        break;
     case kMsgCallback:
         app.callbackPosted = false;
         app.plugin->on_main_thread(app.plugin);
@@ -499,7 +591,8 @@ void usage() {
                 "  The plugin defaults to FMVibe.clap next to this program.\n"
                 "  --silent   run the plugin without an audio device (the meters and scope still move)\n"
                 "  --no-midi  leave the MIDI inputs alone\n"
-                "  --tempo    the tempo synced LFOs and effects follow (default 120 BPM)\n");
+                "  --tempo    the tempo synced LFOs and effects follow (default 120 BPM)\n"
+                "  The computer keyboard plays notes: A W S E D ... from middle C, Z and X shift the octave.\n");
 }
 
 } // namespace
@@ -571,8 +664,9 @@ int wmain(int argc, wchar_t **argv) {
         return 1;
     }
     std::printf("%s %s, from %s\n", descriptor->name, descriptor->version, pathUtf8.c_str());
-    const std::string title = std::string(descriptor->name) + " " + descriptor->version + " (fmvibe-uihost)";
-    SetWindowTextA(app.window, title.c_str());
+    app.title = std::string(descriptor->name) + " " + descriptor->version + " (fmvibe-uihost)";
+    app.held.fill(-1);
+    showOctave();
 
     Audio audio(app.plugin, silent, tempo);
     app.audio = &audio;
@@ -600,6 +694,8 @@ int wmain(int argc, wchar_t **argv) {
 
         MSG message;
         while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+            if (playKey(message))
+                continue;
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }

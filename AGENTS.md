@@ -317,11 +317,14 @@ More checks:
   editor by hand. It loads the `FMVibe.clap` next to it (or the path it is given), opens the editor in a window of
   its own, which keeps the editor's aspect ratio as it is resized and takes the sizes the editor asks for, and plays
   it through the default output device (WASAPI, shared mode, at the device's rate). Notes come from the editor's
-  keyboard and from every MIDI input it can open, at a tempo of 120 BPM for synced LFOs and effects. With
+  keyboard, from the computer keyboard as in the browser demo (A W S E D … from middle C by key position, Z and X
+  shifting the octave, which the window's title shows; keys the editor takes for typing stay its own) and from every
+  MIDI input it can open, at a tempo of 120 BPM for synced LFOs and effects. With
   `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and
   the analyzers move; `--no-midi` leaves the MIDI inputs alone and `--tempo <bpm>` sets another tempo. It restarts
   the plugin when a higher voice limit asks for it, and runs its main-thread callbacks. It isn't a test, and like a
-  DAW it is for a person to start: it waits for its window to be closed.
+  DAW it is for a person to start: it waits for its window to be closed. `.\build.ps1 -Run` builds it and starts it
+  after the other steps.
 
 ## Factory presets
 
