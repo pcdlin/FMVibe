@@ -9,16 +9,19 @@ Configures, builds and tests FMVibe, the CLAP and the VST3 plugin, with the Visu
 .\build.ps1 -Install            # also copy them to %LOCALAPPDATA%\Programs\Common\CLAP and ...\Common\VST3
 .\build.ps1 -Install -SkipTests # build and install without running the tests
 .\build.ps1 -Install -Format vst3 -SkipTests # only the VST3 plugin: built, (validated,) installed
+.\build.ps1 -Run -SkipTests     # build the CLAP plugin and play it in fmvibe-uihost, a small host with a window
 
 -Format (clap, vst3 or both, the default) picks the plugins -SkipTests builds, -Validate validates and -Install
-installs. The tests always build and test both.
+installs. The tests always build and test both. -Run starts the CLAP plugin in fmvibe-uihost once everything else
+is done, and returns when its window is closed.
 #>
 param(
     [ValidateSet('debug', 'release')] [string] $Config = 'release',
     [ValidateSet('both', 'clap', 'vst3')] [string] $Format = 'both',
     [switch] $Validate,
     [switch] $Install,
-    [switch] $SkipTests
+    [switch] $SkipTests,
+    [switch] $Run
 )
 $ErrorActionPreference = 'Stop'
 
@@ -44,6 +47,7 @@ try {
     Invoke-Step 'configure' { cmake --preset $Config }
     # Without the tests, only the plugins themselves are built: those -Format picks.
     $plugins = @{ both = @('FMVibe', 'FMVibe-vst3'); clap = @('FMVibe'); vst3 = @('FMVibe-vst3') }[$Format]
+    if ($Run) { $plugins += 'fmvibe-uihost' } # which builds the CLAP plugin too
     $targets = if ($SkipTests) { @('--target') + $plugins } else { @() }
     Invoke-Step 'build' { cmake --build --preset $Config @targets }
     if (-not $SkipTests) { Invoke-Step 'tests' { ctest --preset $Config } }
@@ -51,6 +55,7 @@ try {
     if ($Validate) { Invoke-Step 'validators' { cmake --build --preset $Config --target $validators } }
     $component = if ($Format -eq 'both') { @() } else { @('--component', $Format) }
     if ($Install) { Invoke-Step 'install' { cmake --install "build\$Config" @component } }
+    if ($Run) { Invoke-Step 'run' { & "build\$Config\fmvibe-uihost.exe" } }
 }
 finally {
     Pop-Location
