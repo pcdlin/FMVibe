@@ -29,3 +29,6 @@ DR Hat 1
 DR Kick 1
 DR Snare 1
 PL Deep Sea
+KY Temple Gong
+LD Feedback Lead
+PD Six-Op Cascade

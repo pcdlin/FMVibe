@@ -867,8 +867,14 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   held bite and breath noise modulating it through a band-pass, gliding into every note, a bipolar envelope scooping
   into pitch and the mod wheel bringing in vibrato, a frequency shifter detuning the sides); FX Laser Zap (a
   one-shot LFO throwing the pitch down four octaves in a quarter second, a phase disperser and a staircase-curve
-  shaper crushing it; its Speed and Grit macros); and FX Noise Riser (wide noise through a high-pass and a climbing
-  sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster). A folder made
+  shaper crushing it; its Speed and Grit macros); FX Noise Riser (wide noise through a high-pass and a climbing
+  sine, swept evenly over eight seconds by an envelope, turning a frequency shifter's spiral faster); KY Temple Gong
+  (three pairs at inharmonic ratios, one of them modulated by a fixed 137 Hz operator, so each key grinds
+  differently, the modulators dying before their carriers and velocity driving every index); LD Feedback Lead (a
+  mono lead whose oscillator is a self-modulating operator, the mod wheel opening its feedback and index from flute
+  to buzzing reed, a mod envelope's bite on each note and a vibrato that a second envelope, as its aux, fades in); and
+  PD Six-Op Cascade (all six operators in one chain, F down to A, four slow LFOs breathing its links at rates that
+  never line up, and an Index macro deepening them all). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
   they hold only the params that differ from Init, so their files are small, and load like any other.
