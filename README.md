@@ -2,8 +2,7 @@
 
 A six-operator FM synthesizer as a [CLAP](https://github.com/free-audio/clap) and a
 [VST3](https://github.com/steinbergmedia/vst3sdk) instrument plugin for Windows. It works in the spirit of other
-popular FM synths. Both are built from the same code; the VST3 one is written straight against the VST3 interfaces,
-without a wrapper.
+popular FM synths.
 
 In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMVibe/)
 
