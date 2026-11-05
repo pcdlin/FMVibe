@@ -631,7 +631,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
     as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
     handle over a tab opens it, so its knobs can take the drop:
-    - **ENVELOPE** (to begin with): the operator's envelope, and its knobs.
+    - **ENVELOPE** (to begin with): the operator's envelope, and its knobs. While notes play, a dashed line and a
+      dot show where the newest voice's envelope is: the line moves along the attack, hold, decay and release, the
+      dot at the envelope's level. Through the sustain they wait where the sustain starts, until the note is let go.
     - **UNISON**: the unison knobs and Rnd Phase, and a display of where the copies sit (left/right by spread,
       up/down by detune).
     - **SCOPE**: the operator's output in the newest voice as it plays, with its unison copies together and

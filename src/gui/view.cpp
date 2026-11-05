@@ -3952,7 +3952,7 @@ void View::paintInspector(Canvas &c) {
                 paintUnison(c, kUnisonRect, op);
             break;
         case InspectorTab::Envelope:
-            paintEnvelope(c, kOpEnvRect, op, kAccent, false);
+            paintEnvelope(c, kOpEnvRect, op, kAccent, true);
             break;
         case InspectorTab::Scope:
             paintScope(c, kScopeRect, op);
@@ -4279,7 +4279,20 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
-    if (live && telemetry_.voices > 0 && sourceOn(env - kOps)) {
+    // An operator's shows where the newest voice's envelope is: a line down through its place along the stages (the
+    // sustain waiting at its start until the note is let go) and a dot at its level.
+    const float position = env < kOps ? telemetry_.opEnvPos[env] : -1.0f;
+    if (live && env < kOps && telemetry_.voices > 0 && nodeOn(env) && position >= 0.0f) {
+        const int stage = std::min(static_cast<int>(position), 4);
+        const float along = std::clamp(position - static_cast<float>(stage), 0.0f, 1.0f);
+        const Point from[] = {s.p0, s.p1, s.ph, s.p2, s.p3}, to[] = {s.p1, s.ph, s.p2, s.p2, s.p4};
+        const float x = from[stage].x + along * (to[stage].x - from[stage].x);
+        const float y = s.bottom - std::clamp(telemetry_.opEnvLevels[env], 0.0f, 1.0f) * height;
+        c.line({x, s.top}, {x, s.bottom}, color.alpha(0.35f), 1.0f, true);
+        c.fillCircle({x, y}, 7.0f, color.alpha(0.25f));
+        c.fillCircle({x, y}, 3.5f, kText);
+    }
+    if (live && env >= kOps && telemetry_.voices > 0 && sourceOn(env - kOps)) {
         const float level = telemetry_.sources[env - kOps];
         const float y = s.bottom - level * height;
         c.line({r.x + 8.0f, y}, {r.right() - 8.0f, y}, color.alpha(0.35f), 1.0f, true);

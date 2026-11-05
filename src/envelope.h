@@ -75,6 +75,25 @@ public:
     // Still on its way up (attack or hold): it will be louder than it is now.
     bool rising() const { return stage_ == Stage::Attack || stage_ == Stage::Hold; }
     double level() const { return level_; }
+    // Where it is, for the editor: its stage (0 attack, 1 hold, 2 decay, 3 sustain, 4 release) plus how far
+    // along that stage (0..1; the sustain, which has no end, at 0); -1 when idle.
+    double position(const EnvRates &r) const {
+        switch (stage_) {
+        case Stage::Attack:
+            return std::clamp(t_, 0.0, 1.0);
+        case Stage::Hold:
+            return 1.0 + (r.hold > 0.0 ? std::min(held_ / r.hold, 1.0) : 1.0);
+        case Stage::Decay:
+            return 2.0 + std::clamp(t_, 0.0, 1.0);
+        case Stage::Sustain:
+            return 3.0;
+        case Stage::Release:
+            return 4.0 + std::clamp(t_, 0.0, 1.0);
+        case Stage::Idle:
+            break;
+        }
+        return -1.0;
+    }
 
     double next(const EnvRates &r) {
         if (stage_ == Stage::Sustain) { // where a held note spends most of its time: short, so it can be inlined

@@ -217,7 +217,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
     off the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
     over the curve (read off the rendered pixels);
-  - an operator page's ENVELOPE, UNISON and SCOPE tabs: the unison knobs on theirs, the scope asking for its
+  - an operator page's ENVELOPE, UNISON and SCOPE tabs: the envelope's dot showing where the newest voice's
+    envelope is, further right in the release than in the attack (read off the rendered pixels), the unison knobs on theirs, the scope asking for its
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
     modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;

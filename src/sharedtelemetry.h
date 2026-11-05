@@ -23,6 +23,8 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kMaxSources> lfoFrom{};
     std::array<std::atomic<float>, kMaxSources> lfoTo{};
     std::array<std::atomic<float>, kOps> opLevels{};
+    std::array<std::atomic<float>, kOps> opEnvLevels{};
+    std::array<std::atomic<float>, kOps> opEnvPos{};
     std::atomic<float> notePitch{0.0f};
     std::atomic<float> noteVelocity{0.0f};
     std::atomic<float> fxPitch{60.0f};
@@ -54,8 +56,11 @@ struct SharedTelemetry {
             lfoFrom[i].store(t.lfoFrom[i], std::memory_order_relaxed);
             lfoTo[i].store(t.lfoTo[i], std::memory_order_relaxed);
         }
-        for (int i = 0; i < kOps; ++i)
+        for (int i = 0; i < kOps; ++i) {
             opLevels[i].store(t.opLevels[i], std::memory_order_relaxed);
+            opEnvLevels[i].store(t.opEnvLevels[i], std::memory_order_relaxed);
+            opEnvPos[i].store(t.opEnvPos[i], std::memory_order_relaxed);
+        }
         notePitch.store(t.notePitch, std::memory_order_relaxed);
         noteVelocity.store(t.noteVelocity, std::memory_order_relaxed);
         fxPitch.store(t.fxPitch, std::memory_order_relaxed);
@@ -93,8 +98,11 @@ struct SharedTelemetry {
             t.lfoFrom[i] = lfoFrom[i].load(std::memory_order_relaxed);
             t.lfoTo[i] = lfoTo[i].load(std::memory_order_relaxed);
         }
-        for (int i = 0; i < kOps; ++i)
+        for (int i = 0; i < kOps; ++i) {
             t.opLevels[i] = opLevels[i].load(std::memory_order_relaxed);
+            t.opEnvLevels[i] = opEnvLevels[i].load(std::memory_order_relaxed);
+            t.opEnvPos[i] = opEnvPos[i].load(std::memory_order_relaxed);
+        }
         t.notePitch = notePitch.load(std::memory_order_relaxed);
         t.noteVelocity = noteVelocity.load(std::memory_order_relaxed);
         t.fxPitch = fxPitch.load(std::memory_order_relaxed);

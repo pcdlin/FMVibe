@@ -3167,6 +3167,46 @@ void run(const std::filesystem::path &dir, float scale) {
         check(layout.opTab == InspectorTab::Envelope && layout.scopeCycles == 2, "the ENVELOPE tab is back");
     }
 
+    // The ENVELOPE tab shows where the newest voice's envelope is: a white dot at its level, along its stages. Read
+    // off the rendered pixels across the row at half the display's height (a level of 0.5): the whitest pixel, by its
+    // weakest channel, is none with no note, then the dot, further right in the release than in the attack.
+    {
+        const Telemetry before = model.live;
+        const int attackTime = paramIndex(0, OpParam::Attack);
+        const double attackWas = model.value(attackTime);
+        model.set(attackTime, 0.5); // long enough for the dot to sit clear of the attack's line
+        const float row = (kOpEnvTop + 12.0f + kOpEnvBottom - 10.0f) * 0.5f;
+        auto whitest = [&](const char *name) {
+            view.poll();
+            view.mouseMove({600.0f, 300.0f}, {});
+            renderer.save(view, dir / name);
+            std::pair<int, float> best{0, 0.0f}; // its weakest channel, and where
+            for (float x = 900.0f; x <= 1170.0f; x += 1.0f) {
+                const uint32_t color = renderer.pixel({x, row});
+                const int white = std::min({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                                            static_cast<int>(color & 255)});
+                if (white > best.first)
+                    best = {white, x};
+            }
+            return best;
+        };
+        model.live.voices = 0;
+        const auto idle = whitest("3f-env-progress-idle.png");
+        model.live.voices = 1;
+        model.live.opEnvLevels[0] = 0.5f;
+        model.live.opEnvPos[0] = 0.5f; // half way up the attack
+        const auto attack = whitest("3f-env-progress-attack.png");
+        model.live.opEnvPos[0] = 4.5f; // half way down the release
+        const auto release = whitest("3f-env-progress.png");
+        std::printf("      envelope's dot: %d with no note, %d at x %.0f in the attack, %d at x %.0f in the release\n",
+                    idle.first, attack.first, attack.second, release.first, release.second);
+        check(attack.first > idle.first + 60 && release.first > idle.first + 60 && release.second > attack.second + 60,
+              "an operator's envelope shows where the newest voice's envelope is");
+        model.set(attackTime, attackWas);
+        model.live = before;
+        view.poll();
+    }
+
     // Fixed pitch: the keyboard on A's summary line switches it, setting Freq and Mult to where the ratio put A4 in
     // one undo step. Freq and Mult take Ratio's and Fine's places (Mult stepping, 10 px up a step), and Pitch and
     // Detune, dimmed, don't turn (read off the rendered pixels: the Pitch knob's column darkens).

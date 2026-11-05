@@ -32,6 +32,7 @@ public:
         }
         return value_;
     }
+    const T &last() const { return value_; } // what the last get() gave
 
 private:
     std::array<double, N> inputs_ = [] { // none yet: params hold numbers, so the first get() makes it
@@ -90,6 +91,8 @@ struct Telemetry {
     float fxPitch = 60.0f; // what the effects' key tracking follows: that pitch, kept once the voice has ended
     float age = 0.0f;                           // seconds since the audio thread took this snapshot
     std::array<float, kOps> opLevels{};         // operator envelope x amplitude
+    std::array<float, kOps> opEnvLevels{};      // operator envelope alone (0..1)
+    std::array<float, kOps> opEnvPos{};         // where it is, see Envelope::position(); -1 idle
     std::array<std::array<float, kMcBands>, kFxSlots> fxReduction{}; // compressor gain reduction, dB
     // Parametric EQs', filters' and phase dispersers' output, see Effects::spectrum().
     std::array<Spectrum, kFxSlots> fxSpectrum{};
