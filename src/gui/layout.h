@@ -245,6 +245,12 @@ constexpr float kFoldedFx = (2.0f * kFxIconX + kFxIconW + kFxGap) / (kFxCardW + 
 inline Rect sourceCardClip() {
     return {kModPanel.x + 6.0f, kCardTop - 4.0f, kModPanel.w - 12.0f, kCardH + 8.0f};
 }
+// A list a card's button opens is cut off at the row's ends like its card, but may reach past the card's bottom,
+// down to the panel's.
+inline Rect sourceListClip() {
+    const Rect cards = sourceCardClip();
+    return {cards.x, cards.y, cards.w, kModPanel.bottom() - cards.y};
+}
 
 // + LFO, + ENV, + RANDOM and + MIDI, after the toggle; shaped like ADD EFFECT.
 inline Rect sourceAddButton(SourceType type) {

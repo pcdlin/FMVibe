@@ -639,6 +639,12 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, sourceAdd(SourceType::Lfo));
     click(view, shapeButton(0));
     const bool shapeListShot = renderer.save(view, dir / "17-lfo-shape-list.png");
+    // The list reaches past the card's bottom, and shows whole there: its bottom padding, under Custom, is drawn
+    // like its top's (read off the rendered pixels).
+    const Point listTop{shapeButton(0).x, shapeItem(0, LfoShape::Sine).y - 13.0f};
+    const Point listBottom{listTop.x, shapeItem(0, LfoShape::Custom).y + 12.0f};
+    check(renderer.pixel(listTop) == renderer.pixel(listBottom),
+          "an LFO's shape list shows whole, past its card's bottom");
     click(view, shapeItem(0, LfoShape::Random));
     check(lfoUndone && shapeListShot &&
               std::lround(model.value(paramIndex(0, SourceParam::Shape))) == static_cast<long>(LfoShape::Random),

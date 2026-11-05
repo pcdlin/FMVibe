@@ -2081,15 +2081,16 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
         }
     }
-    // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card.
+    // An LFO's list of shapes, under its button on its card, cut off at the row's ends like the card, though
+    // reaching past its bottom.
     if (lfoList.w > 0.0f) {
         const int items = listCount(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(lfoList, items), -1, 1);
-        list.back().clip = sourceCardClip();
+        list.back().clip = sourceListClip();
         for (int item = 0; item < items; ++item) {
             add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1, item);
-            list.back().clip = sourceCardClip();
+            list.back().clip = sourceListClip();
         }
     }
     // A shaper's list of curves or a filter's slopes, under its button on its page.
