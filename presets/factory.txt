@@ -24,3 +24,8 @@ LD Vowel Lead
 FX Laser Zap
 FX Noise Riser
 SQ Clubbing
+BA Computer Core
+DR Hat 1
+DR Kick 1
+DR Snare 1
+PL Deep Sea

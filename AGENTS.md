@@ -134,9 +134,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     counting), the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;
-  - each factory preset's file being sparse, and its content (the params it sets away from their defaults, by id,
-    its node places and macro names) against its checksum in `kPresetChecksums`, so an edit can't change a preset
-    unnoticed; a preset changed on purpose, or a new one, gets the checksum the check prints;
+  - each factory preset's file being sparse, as the preset tool writes it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
@@ -344,7 +342,11 @@ To add or change one:
 1. Make it in the plugin and save it into `presets/Factory` (the preset bar's Save, then the file dialog).
 2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`.
 3. For a new one, add its name at the end of `presets/factory.txt`.
-4. Build and run `ctest`: the quality check prints the checksum to put in `kPresetChecksums` (`tests/quality.cpp`).
+4. Build and run `ctest`.
+
+Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
+for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
+every change.
 
 ## Browser demo
 

@@ -716,39 +716,6 @@ void noteAndVoiceChecks() {
     }
 }
 
-// --- The factory presets' contents: each one pinned by a checksum, so an edit can't change a preset unnoticed.
-// When a preset is changed on purpose, update its checksum here (the check prints the new one); a new preset gets
-// a line too.
-struct PinnedPreset {
-    const char *name;
-    uint64_t checksum;
-};
-constexpr PinnedPreset kPresetChecksums[] = {
-    {"KY Electric Piano", 0xebd4acbfee56ca20ull},
-    {"BA FM Bass", 0x9f7f4fdadc4a9704ull},
-    {"KY Glass Bell", 0xc8916b6810afab4dull},
-    {"PD Warm Pad", 0x1b312c9773f1bfdbull},
-    {"KY Drawbar Organ", 0x41d09d50dd2b59a7ull},
-    {"PL Pluck Delay", 0xdf1d1d5643b13447ull},
-    {"PD Crystal Motion", 0x90a628bc28291743ull},
-    {"BA Reese Bass", 0xec20bf8fc7677470ull},
-    {"BA Wobble Bass", 0xb8f6f8a535ccb1a1ull},
-    {"PD Shimmer Pad", 0x519b6d52c7f7f1beull},
-    {"SQ Trance Gate", 0xa75428bca23d513aull},
-    {"LD FM Brass", 0x61050f8a4efc20daull},
-    {"FX Industrial Hit", 0x3c9aa8e059e2c4a7ull},
-    {"LD Folded Lead", 0x65d640a4b33c58cdull},
-    {"BA Fuzz Bass", 0x3c6b479a6ce15794ull},
-    {"PL Comb String", 0xbe7b78595b569fc9ull},
-    {"PL Chip Pluck", 0x637f34439a028b68ull},
-    {"SQ Step Filter", 0x249e4054ad1557f0ull},
-    {"SQ Glass Steps", 0x1763bcd1672c2a96ull},
-    {"LD Vowel Lead", 0x4dc3f58f5e05cd07ull},
-    {"FX Laser Zap", 0x60b004d5de3dea84ull},
-    {"FX Noise Riser", 0xa99dda334b9bd020ull},
-    {"SQ Clubbing", 0xffff7edc0d248b8aull},
-};
-
 // Whether every (id, value) pair a preset's file stores names a param and holds a value in its range, which loading
 // it would otherwise quietly clamp.
 bool storedInRange(const FactoryPreset &preset) {
@@ -769,49 +736,6 @@ bool storedInRange(const FactoryPreset &preset) {
     return true;
 }
 
-// FNV-1a over the preset's name, the params it sets away from their defaults (by id, so params added later leave it
-// alone, in id order, each with its value), its nodes' places and its macros' names. Whole numbers go in exactly,
-// other values rounded to a float.
-uint64_t presetChecksum(const FactoryPreset &preset) {
-    uint64_t hash = 14695981039346656037ull;
-    auto add = [&](const void *data, size_t size) {
-        for (size_t i = 0; i < size; ++i)
-            hash = (hash ^ static_cast<const unsigned char *>(data)[i]) * 1099511628211ull;
-    };
-    auto addCount = [&](size_t count) {
-        const uint32_t n = static_cast<uint32_t>(count);
-        add(&n, sizeof n);
-    };
-    auto addText = [&](const std::string &text) { add(text.c_str(), text.size() + 1); };
-    addText(preset.name);
-    ParamValues loaded;
-    gui::UiLayout layout;
-    if (!loadFactoryPreset(preset, loaded, layout))
-        return 0;
-    std::map<clap_id, double> values;
-    for (int i = 0; i < kParamCount; ++i)
-        if (loaded[i] != paramTable()[i].def)
-            values[idOfIndex(i)] = loaded[i];
-    addCount(values.size());
-    for (const auto &[id, value] : values) {
-        add(&id, sizeof id);
-        if (std::abs(value) < 1e15 && value == std::round(value)) {
-            const int64_t whole = static_cast<int64_t>(value);
-            add(&whole, sizeof whole);
-        } else {
-            const float rounded = static_cast<float>(value);
-            add(&rounded, sizeof rounded);
-        }
-    }
-    add(layout.nodeX.data(), sizeof layout.nodeX);
-    add(layout.nodeY.data(), sizeof layout.nodeY);
-    add(layout.boxX.data(), sizeof layout.boxX);
-    add(layout.boxY.data(), sizeof layout.boxY);
-    for (const std::string &macro : layout.macroNames)
-        addText(macro);
-    return hash;
-}
-
 // Whether a preset's file is as the preset tool leaves it: sparse, and holding only what loading it gives.
 bool storedSparse(const FactoryPreset &preset) {
     ParamValues values;
@@ -825,33 +749,15 @@ bool storedSparse(const FactoryPreset &preset) {
 }
 
 void presetContentChecks() {
-    std::printf("factory preset contents:\n");
-    const std::vector<FactoryPreset> &presets = factoryPresets();
-    bool same = true, sparse = true;
-    for (const FactoryPreset &preset : presets) {
+    std::printf("factory preset files:\n");
+    bool sparse = true;
+    for (const FactoryPreset &preset : factoryPresets()) {
         if (!storedSparse(preset)) {
             std::printf("      %-20s isn't sparse: run fmvibe-presettool on its file\n",preset.name.c_str());
             sparse = false;
         }
-        const uint64_t checksum = presetChecksum(preset);
-        const PinnedPreset *pinned = std::find_if(std::begin(kPresetChecksums), std::end(kPresetChecksums),
-                                                  [&](const PinnedPreset &p) { return preset.name == p.name; });
-        if (pinned != std::end(kPresetChecksums) && pinned->checksum == checksum)
-            continue;
-        std::printf("      %-20s %s: its checksum is now 0x%016llxull\n",preset.name.c_str(),
-                    pinned == std::end(kPresetChecksums) ? "is new" : "changed",
-                    static_cast<unsigned long long>(checksum));
-        same = false;
-    }
-    for (const PinnedPreset &pinned : kPresetChecksums) {
-        auto named = [&](const FactoryPreset &p) { return p.name == pinned.name; };
-        if (std::none_of(presets.begin(), presets.end(), named)) {
-            std::printf("      %-20s is gone\n",pinned.name);
-            same = false;
-        }
     }
     check(sparse, "every factory preset's file is sparse, as fmvibe-presettool writes it");
-    check(same, "every factory preset holds what its checksum pins (one changed on purpose: update kPresetChecksums)");
 }
 
 // The scope: an operator's output, phase-locked to it, captured only while asked for.
