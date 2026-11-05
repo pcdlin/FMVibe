@@ -2155,7 +2155,7 @@ void testModsLive(const std::filesystem::path &dir, Renderer &renderer) {
         renderer.save(view, dir / name);
         std::vector<uint32_t> pixels; // just above the bar, where only the tick reaches
         for (float x = 476.0f; x < 636.0f; x += 1.0f)
-            pixels.push_back(renderer.pixel({x, y - 4.0f}));
+            pixels.push_back(renderer.pixel({x, y - 3.0f}));
         return pixels;
     };
     auto tickAt = [](const std::vector<uint32_t> &with, const std::vector<uint32_t> &without, float x) {

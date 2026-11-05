@@ -4842,8 +4842,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Where the modulation takes its target now, on the bar's scale: a tick that swings with its source.
         if (const std::optional<double> now = liveSlotOffset(w.a, w.b)) {
             const float at = mid + static_cast<float>(std::clamp(*now, -1.0, 1.0)) * w.rect.w * 0.5f;
-            c.line({at, cy - 5.5f}, {at, cy + 5.5f}, kBackground, 4.0f);
-            c.line({at, cy - 5.0f}, {at, cy + 5.0f}, kText, 2.0f);
+            c.line({at, cy - 4.5f}, {at, cy + 4.5f}, kBackground, 3.0f);
+            c.line({at, cy - 4.0f}, {at, cy + 4.0f}, kText, 1.5f);
         }
         // Another source modulating this depth shows how far it takes it, under the bar.
         paintModRange(c, {w.rect.x, cy + 6.0f, w.rect.w, 1.5f}, w.param);
