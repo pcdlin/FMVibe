@@ -44,7 +44,11 @@ EM_JS(void, js_fill_circle, (float x, float y, float radius, uint32_t color),
       { Module.fmv2d.fillCircle(x, y, radius, color); });
 EM_JS(void, js_stroke_circle, (float x, float y, float radius, uint32_t color, float width),
       { Module.fmv2d.strokeCircle(x, y, radius, color, width); });
-EM_JS(void, js_line, (float x1, float y1, float x2, float y2, uint32_t color, float width, int dashed),
+EM_JS(void, js_stroke_circle_dotted, (float x, float y, float radius, uint32_t color, float width),
+      { Module.fmv2d.strokeCircleDotted(x, y, radius, color, width); });
+EM_JS(void, js_curve_dotted, (float x1, float y1, float cx, float cy, float x2, float y2, uint32_t color, float width),
+      { Module.fmv2d.curveDotted(x1, y1, cx, cy, x2, y2, color, width); });
+EM_JS(void, js_line,(float x1, float y1, float x2, float y2, uint32_t color, float width, int dashed),
       { Module.fmv2d.line(x1, y1, x2, y2, color, width, dashed != 0); });
 EM_JS(void, js_arc, (float x, float y, float radius, float from, float to, uint32_t color, float width),
       { Module.fmv2d.arc(x, y, radius, from, to, color, width); });
@@ -104,6 +108,14 @@ void Canvas::fillCircle(Point center, float radius, Color c) {
 
 void Canvas::strokeCircle(Point center, float radius, Color c, float width) {
     js_stroke_circle(center.x, center.y, radius, rgba(c), width);
+}
+
+void Canvas::strokeCircleDotted(Point center, float radius, Color c, float width) {
+    js_stroke_circle_dotted(center.x, center.y, radius, rgba(c), width);
+}
+
+void Canvas::curveDotted(Point a, Point control, Point b, Color c, float width) {
+    js_curve_dotted(a.x, a.y, control.x, control.y, b.x, b.y, rgba(c), width);
 }
 
 void Canvas::line(Point a, Point b, Color c, float width, bool dashed) {

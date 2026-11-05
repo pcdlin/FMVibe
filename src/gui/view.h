@@ -820,6 +820,9 @@ private:
     // Lines from a hovered source handle to whatever it modulates that is on screen; with a `slot`, from the handle
     // (when it is on screen) to that modulation's alone, as when its depth handle is hovered.
     void paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int source, int slot = -1);
+    // Dotted lines from a source's handle to the depth handles it is the aux of (on screen), each ringed with dots;
+    // with `ofSource` and `ofSlot`, only to that modulation's (as when it is hovered, from its aux's handle).
+    void paintAuxLinks(Canvas &c, const std::vector<Widget> &list, int aux, int ofSource = -1, int ofSlot = -1);
     void paintTyping(Canvas &c);
     std::string undoText(bool redo) const;
     void paintTooltip(Canvas &c);

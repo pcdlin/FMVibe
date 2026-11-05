@@ -43,6 +43,11 @@ Resources::Resources() {
     D2D1_STROKE_STYLE_PROPERTIES dashed = round;
     dashed.dashStyle = D2D1_DASH_STYLE_DASH;
     factory_->CreateStrokeStyle(dashed, nullptr, 0, dashed_.GetAddressOf());
+    // Dots: a dash a hair long, which the round caps make a dot, then a gap (both in widths of the stroke).
+    D2D1_STROKE_STYLE_PROPERTIES dotted = round;
+    dotted.dashStyle = D2D1_DASH_STYLE_CUSTOM;
+    const float dots[] = {0.01f, 2.5f};
+    factory_->CreateStrokeStyle(dotted, dots, 2, dotted_.GetAddressOf());
 }
 
 IDWriteTextFormat *Resources::textFormat(float size, bool bold, Align align) {
@@ -128,6 +133,22 @@ void Canvas::fillCircle(Point center, float radius, Color c) {
 
 void Canvas::strokeCircle(Point center, float radius, Color c, float width) {
     target_->DrawEllipse(D2D1::Ellipse(pt(center), radius, radius), brush(c), width);
+}
+
+void Canvas::strokeCircleDotted(Point center, float radius, Color c, float width) {
+    target_->DrawEllipse(D2D1::Ellipse(pt(center), radius, radius), brush(c), width, resources_.dottedStroke());
+}
+
+void Canvas::curveDotted(Point a, Point control, Point b, Color c, float width) {
+    ComPtr<ID2D1PathGeometry> path;
+    resources_.factory()->CreatePathGeometry(path.GetAddressOf());
+    ComPtr<ID2D1GeometrySink> sink;
+    path->Open(sink.GetAddressOf());
+    sink->BeginFigure(pt(a), D2D1_FIGURE_BEGIN_HOLLOW);
+    sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(pt(control), pt(b)));
+    sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    sink->Close();
+    target_->DrawGeometry(path.Get(), brush(c), width, resources_.dottedStroke());
 }
 
 void Canvas::line(Point a, Point b, Color c, float width, bool dashed) {

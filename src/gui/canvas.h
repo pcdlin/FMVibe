@@ -65,6 +65,7 @@ public:
     ID2D1Factory *factory() const { return factory_.Get(); }
     ID2D1StrokeStyle *roundStroke() const { return round_.Get(); }
     ID2D1StrokeStyle *dashedStroke() const { return dashed_.Get(); }
+    ID2D1StrokeStyle *dottedStroke() const { return dotted_.Get(); }
     IDWriteFactory *writeFactory() const { return write_.Get(); }
     IDWriteTextFormat *textFormat(float size, bool bold, Align align);
     // The widths Canvas::textWidth() measured, by text format and text (see there): measuring one lays the text out.
@@ -75,6 +76,7 @@ private:
     ComPtr<IDWriteFactory> write_;
     ComPtr<ID2D1StrokeStyle> round_;
     ComPtr<ID2D1StrokeStyle> dashed_;
+    ComPtr<ID2D1StrokeStyle> dotted_;
     std::map<std::tuple<int, bool, Align>, ComPtr<IDWriteTextFormat>> formats_;
     std::unordered_map<std::string, float> widths_;
 #endif
@@ -99,6 +101,9 @@ public:
     void line(Point a, Point b, Color c, float width = 1.0f, bool dashed = false);
     void arc(Point center, float radius, float from, float to, Color c, float width);
     void curve(Point a, Point control, Point b, Color c, float width, bool dashed = false); // quadratic
+    // Dotted rather than dashed (round dots a few widths apart): a quadratic curve, and a circle.
+    void curveDotted(Point a, Point control, Point b, Color c, float width);
+    void strokeCircleDotted(Point center, float radius, Color c, float width);
     void polyline(const Point *points, size_t count, Color c, float width, bool dashed = false);
     // The same polyline stroked `strokes` times over, in colors[i] at widths[i] in turn, as that many polyline()
     // calls would draw it; its path is built once.

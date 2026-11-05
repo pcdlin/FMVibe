@@ -2390,10 +2390,14 @@ void View::paint(Canvas &c) {
     if (drag_.kind == DragKind::ModSource)
         paintModOverlay(c, list);
     else if (hover_ && (hover_->kind == Kind::SourceHandle || hover_->kind == Kind::MacroHandle) &&
-             drag_.kind == DragKind::None)
+             drag_.kind == DragKind::None) {
         paintSourceLinks(c, list, hover_->a);
-    else if (hover_ && hover_->kind == Kind::ModDot && drag_.kind == DragKind::None)
+        paintAuxLinks(c, list, hover_->a);
+    } else if (hover_ && hover_->kind == Kind::ModDot && drag_.kind == DragKind::None) {
         paintSourceLinks(c, list, hover_->a, hover_->b);
+        if (const int aux = slotAux([this](int index) { return value(index); }, hover_->a, hover_->b); aux >= 0)
+            paintAuxLinks(c, list, aux, hover_->a, hover_->b);
+    }
     paintHoverTags(c, list);
     if (cascade_ && modsWide())
         paintCascade(c);
@@ -6217,6 +6221,32 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             c.strokeCircle(knobCenter(w), knobRadius(w) + 5.0f, color.alpha(0.5f), 1.0f);
         else
             c.strokeRect(w.rect.inset(w.kind == Kind::GridCell ? -1.0f : -3.0f), color.alpha(0.5f), 1.0f, 6.0f);
+    }
+}
+
+void View::paintAuxLinks(Canvas &c, const std::vector<Widget> &list, int aux, int ofSource, int ofSlot) {
+    const auto handle = std::find_if(list.begin(), list.end(), [&](const Widget &w) {
+        return (w.kind == Kind::SourceHandle || w.kind == Kind::MacroHandle) && w.a == aux;
+    });
+    if (handle == list.end())
+        return;
+    const Point from = handle->rect.center();
+    if (handle->clip.w > 0.0f && !handle->clip.contains(from)) // its card scrolled out of view
+        return;
+    const Color color = kSourceColors[aux].alpha(sourceOn(aux) ? 1.0f : 0.4f);
+    for (const Widget &d : list) {
+        if (d.kind != Kind::ModDot || (ofSource >= 0 && (d.a != ofSource || d.b != ofSlot)))
+            continue;
+        if (slotAux([this](int index) { return value(index); }, d.a, d.b) != aux)
+            continue;
+        const Point to = d.rect.center();
+        if (d.clip.w > 0.0f && !d.clip.contains(to))
+            continue;
+        // Bowed to the other side from the modulation lines, so the two don't run over each other.
+        const Point delta{to.x - from.x, to.y - from.y};
+        const Point control{(from.x + to.x) * 0.5f - delta.y * 0.15f, (from.y + to.y) * 0.5f + delta.x * 0.15f};
+        c.curveDotted(from, control, to, color.alpha(0.85f), 1.5f);
+        c.strokeCircleDotted(to, d.compact ? 7.5f : 9.5f, color, 1.5f);
     }
 }
 

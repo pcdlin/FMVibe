@@ -2151,6 +2151,29 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(to, {});
     const bool linkShot = renderer.save(view, dir / "35i-depth-handle-link.png");
     check(linkShot && aroundMiddle() != plain, "a hovered depth handle draws the line from its source's handle");
+    // Macro 2 is that modulation's aux: hovering its handle draws a dotted line to the depth handle, bowed the other
+    // way from the dashed ones, and hovering the depth handle draws it from the aux's handle too.
+    const Point auxFrom{252.0f, strip};
+    const Point ad{to.x - auxFrom.x, to.y - auxFrom.y};
+    const Point auxMiddle{(auxFrom.x + to.x) * 0.5f - ad.y * 0.075f, (auxFrom.y + to.y) * 0.5f + ad.x * 0.075f};
+    auto aroundAux = [&] {
+        std::vector<uint32_t> pixels;
+        for (float dy = -4.0f; dy <= 4.0f; dy += 1.0f)
+            for (float dx = -4.0f; dx <= 4.0f; dx += 1.0f)
+                pixels.push_back(renderer.pixel({auxMiddle.x + dx, auxMiddle.y + dy}));
+        return pixels;
+    };
+    view.mouseMove({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "35j0-aux-plain.png"); // the last render had the depth handle hovered
+    const std::vector<uint32_t> auxPlain = aroundAux();
+    view.mouseMove(auxFrom, {});
+    const bool auxLinkShot = renderer.save(view, dir / "35j-aux-link.png");
+    const bool fromHandle = aroundAux() != auxPlain;
+    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove(to, {});
+    renderer.save(view, dir / "35k-aux-link-from-depth-handle.png");
+    check(auxLinkShot && fromHandle && aroundAux() != auxPlain,
+          "an aux's handle hovered draws a dotted line to the depth handle it scales, and that handle hovered to it");
 }
 
 // A modulation moved to another source takes what modulates its depth along: LFO 1's on Op A's Fine, its depth

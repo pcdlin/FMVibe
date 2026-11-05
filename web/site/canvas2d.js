@@ -49,9 +49,10 @@ export function createCanvas2d(ctx) {
       ctx.lineJoin = square ? 'miter' : 'round';
       lineCap = cap;
     }
-    const pattern = dashed ? 2 * width : 'solid';
+    // `dashed` can be 'dotted': round dots 2.5 widths apart, as canvas.cpp's dottedStroke().
+    const pattern = dashed === 'dotted' ? 'dotted' + width : dashed ? 2 * width : 'solid';
     if (dash !== pattern) {
-      ctx.setLineDash(dashed ? [pattern, pattern] : []);
+      ctx.setLineDash(dashed === 'dotted' ? [0.01, 2.5 * width] : dashed ? [2 * width, 2 * width] : []);
       dash = pattern;
     }
   }
@@ -144,6 +145,19 @@ export function createCanvas2d(ctx) {
       setStroke(rgba, width, false, true);
       ctx.beginPath();
       ctx.arc(x, y, Math.max(0, radius), 0, 2 * Math.PI);
+      ctx.stroke();
+    },
+    strokeCircleDotted(x, y, radius, rgba, width) {
+      setStroke(rgba, width, 'dotted');
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(0, radius), 0, 2 * Math.PI);
+      ctx.stroke();
+    },
+    curveDotted(x1, y1, cx, cy, x2, y2, rgba, width) {
+      setStroke(rgba, width, 'dotted');
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.quadraticCurveTo(cx, cy, x2, y2);
       ctx.stroke();
     },
     line(x1, y1, x2, y2, rgba, width, dashed) {

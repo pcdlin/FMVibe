@@ -717,6 +717,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     view can be reached. Hovering the handle draws a dashed line to each of its targets on screen, ending at the
     small dot it has there (see below), with a ring round the dot; while the source has no targets, it shows a
     "Drag to assign" tooltip instead, as the macros', the note source's, the mod wheel's and velocity's handles do.
+    A source that is another modulation's aux (see below) also gets a dotted line, in its color and bowed the
+    other way, to that modulation's depth handle on screen, which is ringed with dots.
   - A card doesn't list its modulations, and ends with a button under its display: it counts them, with **MODS ›**
     at its right, and shows them in the MODS view, scrolled to the source's first row. While the source modulates
     nothing, it reads **No modulations** and adds an empty modulation from the source there (see the MODS view),
@@ -742,7 +744,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,
     and while its source's handle is on screen, a dashed line runs from the handle to the dot, as when the handle
-    is hovered. A source can modulate another source's depth too (drop its handle on
+    is hovered; with an aux, a dotted line runs from the aux's handle too. A source can modulate another source's depth too (drop its handle on
     a depth bar in the MODS view): the bar then has the dot in its top right corner, a strip under it shows
     how far the depth swings, and hovering the handle draws a dashed line to it like to any other target.
   - **More than fit**: a knob, label, cell or depth bar shows as many depth handles as its width holds (under a 30
