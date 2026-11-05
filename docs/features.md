@@ -562,7 +562,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     shape over the routing panel and the inspector, which it hides while it is open; the done button (a check mark,
     top right) closes it, and the reset button (a circular arrow) beside it puts back the shape it started with.
     Drag points to move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
-    unipolar one). Double-click empty space to add a point and a point to delete it (or right-click it).
+    unipolar one). A point stays between its neighbors, but can reach a neighbor's time: points at one time make a
+    line straight up or down (a spike, say), and at that moment the LFO takes the topmost of them (at the start,
+    the points at the cycle's end too). Double-click empty space to add a point and a point to delete it (or right-click it).
     Shift+click (over a point or a bend dot too) draws a step, as in a step sequencer: a level line at the
     click's height from the grid line left of it to the one right of it, with a point at each end (Ctrl snaps its
     height to the grid too). The points between those lines go; a step beside another starts where that one ends,

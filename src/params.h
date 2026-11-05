@@ -1343,7 +1343,10 @@ inline int shapePointCount(double value, int most = kMaxShapePoints) { // the no
     return static_cast<int>(n < 2 ? 2 : (n > most ? most : n));
 }
 // The shape's value (-1..1) at `phase` (0..1). `get(index)` returns a param
-// value, so the DSP and the editor read points the same way.
+// value, so the DSP and the editor read points the same way. Points may share
+// a time, a line straight up or down: at that time the topmost counts (at the
+// start, the points at the cycle's end too).
+constexpr double kShapeSameTime = 1e-9;
 template <class Get>
 double shapeValue(const Get &get, int source, double phase) {
     const int count = shapePointCount(get(shapeCountIndex(source)));
@@ -1353,6 +1356,14 @@ double shapeValue(const Get &get, int source, double phase) {
         ++from;
     const double x0 = x(from);
     const double y0 = get(shapePointIndex(source, from, PointField::Y));
+    if (phase - x0 < kShapeSameTime) {
+        double top = y0;
+        for (int point = from - 1; point >= 0 && phase - x(point) < kShapeSameTime; --point)
+            top = std::max(top, get(shapePointIndex(source, point, PointField::Y)));
+        for (int point = count - 1; phase < kShapeSameTime && point > from && x(point) > 1.0 - kShapeSameTime; --point)
+            top = std::max(top, get(shapePointIndex(source, point, PointField::Y)));
+        return top;
+    }
     const bool wraps = from + 1 == count;
     const double x1 = wraps ? 1.0 : x(from + 1);
     const double y1 = get(shapePointIndex(source, wraps ? 0 : from + 1, PointField::Y));
@@ -1360,6 +1371,29 @@ double shapeValue(const Get &get, int source, double phase) {
         return y1;
     const double t = std::clamp((phase - x0) / (x1 - x0), 0.0, 1.0);
     return y0 + (y1 - y0) * shapeBend(t, get(shapePointIndex(source, from, PointField::Curve)));
+}
+
+// The shape's outline, for drawing it: `put(x, y)` along each segment, about `steps` across the cycle, and every
+// point of a line straight up or down, so a spike shows however narrow. It ends at the cycle's end, back at the
+// first point's level.
+template <class Get, class Put>
+void shapeOutline(const Get &get, int source, int steps, const Put &put) {
+    const int count = shapePointCount(get(shapeCountIndex(source)));
+    auto x = [&](int point) { return point == 0 ? 0.0 : get(shapePointIndex(source, point, PointField::X)); };
+    auto y = [&](int point) { return get(shapePointIndex(source, point, PointField::Y)); };
+    for (int point = 0; point < count; ++point) {
+        const bool wraps = point + 1 == count;
+        const double x0 = x(point), x1 = wraps ? 1.0 : x(point + 1);
+        const double y0 = y(point), y1 = y(wraps ? 0 : point + 1);
+        const double curve = get(shapePointIndex(source, point, PointField::Curve));
+        put(x0, y0);
+        const int n = x1 - x0 < kShapeSameTime ? 0 : std::max(1, static_cast<int>(std::ceil((x1 - x0) * steps)));
+        for (int i = 1; i < n; ++i) {
+            const double t = static_cast<double>(i) / n;
+            put(x0 + (x1 - x0) * t, y0 + (y1 - y0) * shapeBend(t, curve));
+        }
+    }
+    put(1.0, y(0));
 }
 
 // A shaper's drawn curve: the output (-1..1) for input `x`. The points run

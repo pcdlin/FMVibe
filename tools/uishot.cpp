@@ -3963,6 +3963,17 @@ void run(const std::filesystem::path &dir, float scale) {
     view.doubleClick(shapeAt(0.75, -0.4), {});
     check(model.value(count) == 2.0 && std::abs(pointValue(1, PointField::X) - 0.4) < 0.01,
           "double-clicking a point deletes it");
+    // A point dragged past its neighbor stops at its time: a line straight up or down, drawn through both.
+    view.doubleClick(shapeAt(0.75, -0.4), {});
+    drag(view, shapeAt(0.75, -0.4), shapeAt(0.3, -0.6));
+    check(model.value(count) == 3.0 && pointValue(2, PointField::X) == pointValue(1, PointField::X) &&
+              std::abs(pointValue(2, PointField::Y) + 0.6) < 0.01 &&
+              renderer.save(view, dir / "10c-lfo-vertical.png"),
+          "a point dragged onto its neighbor's time makes a vertical line");
+    view.undo();
+    view.undo();
+    check(model.value(count) == 2.0 && std::abs(pointValue(1, PointField::X) - 0.4) < 0.01,
+          "the vertical line undoes");
     // Shift+click draws a step between the grid lines either side, a point at each end. The next column's step
     // starts beside the first one's end, the shape jumping there. Redrawing the first keeps the next one's start,
     // and a quick second Shift+click there (a double-click) leaves it as it is, adding no point.

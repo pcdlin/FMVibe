@@ -130,7 +130,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     silence, and an input that isn't a number reading inside its table;
   - the filter effect switched to another type or slope and back, and a plate switched to a hall and back,
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
-  - the random LFO's steps and glides, the phaser's and flanger's sweeps synced to the host tempo, the parametric
+  - the random LFO's steps and glides, a freeform LFO's points at one time (a vertical line, its topmost
+    counting), the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, and its content (the params it sets away from their defaults, by id,
@@ -261,7 +262,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     edit button (a pencil) by the keyboard switch opening the partial editor and closing it (read off the rendered
     pixels), and the LFO shape editor hiding the inspector;
   - an LFO's shape list (going with the LFO undone), the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
-    pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, and
+    pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, a point dragged
+    onto its neighbor's time, and
     scrolling the source cards by holding a dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
   - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle

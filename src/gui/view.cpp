@@ -2834,10 +2834,7 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     keyShape(key, shapeCountIndex(lfo));
     const std::vector<Point> points = curves_.get(key, [&] {
         std::vector<Point> points;
-        for (int i = 0; i <= 400; ++i) {
-            const double x = i / 400.0;
-            points.push_back(shapeAt(x, shapeValue(get, lfo, x)));
-        }
+        shapeOutline(get, lfo, 400, [&](double x, double y) { points.push_back(shapeAt(x, y)); });
         return points;
     });
     std::vector<Point> area = points;
@@ -4348,8 +4345,7 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
         points = curves_.get(key, [&] {
             if (shape == LfoShape::Custom) {
                 auto get = [this](int index) { return value(index); };
-                for (int i = 0; i <= 96; ++i)
-                    at(i / 96.0, shapeValue(get, lfo, i / 96.0));
+                shapeOutline(get, lfo, 96, at);
             } else if (shape == LfoShape::Random) {
                 // Four cycles of a made-up run with this LFO's chaos and smoothing, until it runs.
                 const double smooth = value(paramIndex(lfo, SourceParam::RandomSmooth));
@@ -6339,7 +6335,8 @@ void View::applyDrag(Point p) {
     }
     case DragKind::ShapePoint: {
         // Points keep their order: each stays between its neighbors. The first one stays at the
-        // start, and a curve's last one at the end.
+        // start, and a curve's last one at the end. An LFO's may reach a neighbor's time, a line straight up or
+        // down (see shapeValue()); a curve's keep a little apart.
         const int shape = w.a;
         const int point = w.b;
         double x = shapeXAt(shape, p);
@@ -6355,7 +6352,8 @@ void View::applyDrag(Point p) {
         if (point > 0 && !(isCurve(shape) && point + 1 == count) && !middlePoint(shape, point)) {
             const double low = std::max(shapePointX(shape, point - 1), curveSymmetric(shape) ? 0.5 : 0.0);
             const double high = point + 1 < count ? shapePointX(shape, point + 1) : 1.0;
-            set(shapeIndex(shape, point, PointField::X), std::max(low + 0.002, std::min(x, high - 0.002)));
+            const double apart = isCurve(shape) ? 0.002 : 0.0;
+            set(shapeIndex(shape, point, PointField::X), std::max(low + apart, std::min(x, high - apart)));
         }
         set(shapeIndex(shape, point, PointField::Y), y);
         break;

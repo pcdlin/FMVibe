@@ -1128,6 +1128,35 @@ int main() {
               "a smoothed random LFO on an operator's level stays finite");
     }
 
+    // --- A freeform LFO's points sharing a time: a spike up at 0.5 and a drop at the cycle's end. Either side of a
+    // line straight up or down the shape runs on as drawn; at its time the topmost point counts, at the start the
+    // points at the end too. Its outline passes through every point of a spike.
+    {
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        auto set = [&](int point, double x, double y) {
+            p[shapePointIndex(0, point, PointField::X)] = x;
+            p[shapePointIndex(0, point, PointField::Y)] = y;
+            p[shapePointIndex(0, point, PointField::Curve)] = 0.0;
+        };
+        p[shapeCountIndex(0)] = 6.0;
+        set(0, 0.0, -0.5);
+        set(1, 0.5, -0.5);
+        set(2, 0.5, 0.75);
+        set(3, 0.5, -0.25);
+        set(4, 1.0, -0.25);
+        set(5, 1.0, 0.25);
+        auto get = [&](int index) { return p[index]; };
+        auto near = [](double a, double b) { return std::abs(a - b) < 1e-9; };
+        const bool sides = near(shapeValue(get, 0, 0.25), -0.5) && near(shapeValue(get, 0, 0.75), -0.25);
+        const bool top = near(shapeValue(get, 0, 0.5), 0.75) && near(shapeValue(get, 0, 0.0), 0.25);
+        bool spike = false;
+        shapeOutline(get, 0, 100, [&](double x, double y) { spike = spike || (near(x, 0.5) && near(y, 0.75)); });
+        std::printf("freeform LFO: %.2f at a spike, %.2f at the start\n", shapeValue(get, 0, 0.5), shapeValue(get, 0, 0.0));
+        check(sides && top && spike, "a freeform LFO's points at one time make a vertical line, its topmost counting");
+    }
+
     // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ
     // passes it as it is, and so does a disperser all wet, an all-pass).
     std::printf("parametric EQ and phase disperser analyzers:\n");
