@@ -4179,14 +4179,21 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
                                const Spectrum *spectrum) {
     c.fillRect(r, kDisplayColor, 6.0f);
     const Rect inner{r.x + 10.0f, r.y + 10.0f, r.w - 20.0f, r.h - 20.0f};
-    if (spectrum) // what the filter puts out, behind its response
-        paintSpectrum(c, inner, *spectrum);
     auto yOfDb = [&](float db) {
         const float t = (std::clamp(db, kResponseMinDb, kResponseMaxDb) - kResponseMinDb) /
                         (kResponseMaxDb - kResponseMinDb);
         return inner.bottom() - t * inner.h;
     };
-    c.line({inner.x, yOfDb(0.0f)}, {inner.right(), yOfDb(0.0f)}, kBorder, 1.0f); // 0 dB
+    // A grid as the Param EQ's: every 12 dB, 0 dB the strongest, and a line at 100 Hz, 1 kHz and 10 kHz.
+    for (float db : {-24.0f, -12.0f, 0.0f, 12.0f})
+        c.line({inner.x, yOfDb(db)}, {inner.right(), yOfDb(db)}, kBorder.alpha(db == 0.0f ? 1.0f : 0.5f), 1.0f,
+               db != 0.0f);
+    for (double hz : {100.0, 1000.0, 10000.0}) {
+        const float x = inner.x + static_cast<float>(normFromCutoff(hz)) * inner.w;
+        c.line({x, inner.y}, {x, inner.bottom()}, kBorder.alpha(0.5f), 1.0f, true);
+    }
+    if (spectrum) // what the filter puts out, behind its response
+        paintSpectrum(c, inner, *spectrum);
 
     const auto type = static_cast<FilterType>(std::lround(value(typeParam)));
     const double cutoff = value(cutoffParam);

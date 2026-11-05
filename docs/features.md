@@ -432,7 +432,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     - the delay's echoes on a timeline, left above the line and right below it;
     - the EQs' and the filter's responses; behind the Param EQ's curve, what it puts out, measured (a 2048-point
       FFT in 96 bands from 20 Hz to 20 kHz, 0 dB at the top, falling away at 55 dB a second), which it only
-      measures while the editor is open;
+      measures while the editor is open; the Param EQ's and the filter's sit on a grid, dashed every 12 dB with
+      0 dB solid, and dashed at 100 Hz, 1 kHz and 10 kHz;
     - the compressors' curves (input level across, output up) with a gain reduction meter; the 3-band card's
       band buttons, each an icon of its slice of the spectrum (low, mid and high) named on hover, pick which
       band's curve is on top and which band its first row of knobs sets (a thin line divides those from the
@@ -668,7 +669,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     show how far the modulation takes it either way, and while notes play the curve follows where the newest
     voice is (the handle stays at the set values, the cutoff a C4 has). Key tracking moves all of it with that
     voice's note, an octave per octave at 100 %. The filter effect's display does the same, its key tracking
-    staying where the last note left it, as the effect's does. Behind the curve,
+    staying where the last note left it, as the effect's does. It sits on the filter effect's grid. Behind the curve,
     like the filter effect's, is what the filter puts out, all voices together, measured before its output level
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
     that is off shows none. Underneath are the send knobs of everything that feeds the filter.
