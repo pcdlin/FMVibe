@@ -3,6 +3,9 @@
 # the files, <name>.fmv each. Run as a script: cmake -DLIST=... -DDIR=... -DOUTPUT=... -P embed_presets.cmake
 # The output is only rewritten when it changes, so a build that changed no preset compiles nothing.
 
+# A script run with -P sets no policies of its own: without this, CMake 3 reads IN_LIST below as an unknown argument.
+cmake_minimum_required(VERSION 3.25)
+
 file(STRINGS "${LIST}" lines ENCODING UTF-8)
 set(names "")
 foreach(line IN LISTS lines)
