@@ -327,23 +327,20 @@ void PluginCore::keepEditorLayout(const gui::UiLayout &from) {
     layout_.scopeCycles = from.scopeCycles;
 }
 
-// Init and loading a preset are undo steps like any edit in the editor; afterwards the patch is
-// the preset, unchanged.
+// Init and loading a preset start the undo history over: undo never brings back the patch before.
+// Afterwards the patch is the preset, unchanged.
 void PluginCore::resetPreset() {
-    {
-        gui::UndoScope step(*this);
-        recordAll();
-        const auto told = std::make_unique<ParamValues>(valuesNow());
-        const ParamTable &table = paramTable();
-        for (int i = 0; i < kParamCount; ++i)
-            values_[i].store(table[i].def);
-        const gui::UiLayout before = layout_;
-        layout_ = gui::UiLayout{};
-        keepEditorLayout(before);
-        notifyParams(*told);
-        layoutChanged();
-        setPreset(L"");
-    }
+    const auto told = std::make_unique<ParamValues>(valuesNow());
+    const ParamTable &table = paramTable();
+    for (int i = 0; i < kParamCount; ++i)
+        values_[i].store(table[i].def);
+    const gui::UiLayout before = layout_;
+    layout_ = gui::UiLayout{};
+    keepEditorLayout(before);
+    notifyParams(*told);
+    layoutChanged();
+    setPreset(L"");
+    clearHistory();
 }
 
 // A preset file holds the same bytes as the host's state.
@@ -352,17 +349,13 @@ bool PluginCore::loadPreset(const std::wstring &path) {
     if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
         return false;
     const clap_istream_t stream = fileIn(file);
-    bool loaded = false;
-    {
-        gui::UndoScope step(*this);
-        recordAll();
-        const auto told = std::make_unique<ParamValues>(valuesNow());
-        loaded = loadState(&stream, false);
-        if (loaded) {
-            notifyParams(*told);
-            layoutChanged();
-            setPreset(path); // in the step, so undoing it brings back the preset before
-        }
+    const auto told = std::make_unique<ParamValues>(valuesNow());
+    const bool loaded = loadState(&stream, false);
+    if (loaded) {
+        notifyParams(*told);
+        layoutChanged();
+        setPreset(path);
+        clearHistory();
     }
     std::fclose(file);
     return loaded;

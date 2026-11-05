@@ -110,10 +110,8 @@ public:
         js_scope(op, cycles);
     }
 
-    // Init and loading an example are undo steps like any edit in the editor, as in the plugin.
+    // Init and loading an example start the undo history over, as in the plugin.
     void resetPreset() override {
-        UndoScope step(*this);
-        recordAll();
         const ParamTable &table = paramTable();
         for (int i = 0; i < kParamCount; ++i)
             values_[i] = table[i].def;
@@ -121,6 +119,7 @@ public:
         js_all_params(values_.data(), kParamCount);
         layoutChanged();
         setPreset(L"");
+        clearHistory();
     }
     bool loadPreset(const std::wstring &) override { return false; }
     bool savePreset(const std::wstring &) override { return false; }
@@ -144,13 +143,12 @@ public:
         UiLayout layout;
         if (!loadFactoryPreset(examples_[index], values, layout))
             return false;
-        UndoScope step(*this);
-        recordAll();
         values_ = values;
         replaceLayout(layout);
         js_all_params(values_.data(), kParamCount);
         layoutChanged();
-        setPreset(fileOf(index)); // in the step, so undoing it brings back the preset before
+        setPreset(fileOf(index));
+        clearHistory();
         return true;
     }
     std::wstring presetFolder() const override {
@@ -184,8 +182,7 @@ public:
     void start() {
         for (size_t i = 0; i < examples_.size(); ++i)
             if (examples_[i].name == kFirstPreset)
-                loadPresetAt(static_cast<int>(i));
-        clearHistory();
+                loadPresetAt(static_cast<int>(i)); // which leaves nothing to undo
     }
 
 protected:

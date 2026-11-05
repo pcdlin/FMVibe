@@ -62,8 +62,8 @@ public:
     // A small library: one preset at the top, two in a subfolder.
     void rescanPresets() override {}
     const std::vector<PresetEntry> &presets() const override { return library; }
-    // As the plugin does: a preset's file is its name here, and loading one is an undo step that sets every
-    // param (each preset with its own volume) and lands on the preset, unchanged.
+    // As the plugin does: a preset's file is its name here, and loading one sets every param (each preset with its
+    // own volume), lands on the preset, unchanged, and starts the undo history over.
     int presetIndex() const override {
         for (size_t i = 0; i < library.size(); ++i)
             if (presetFile() == std::wstring(library[i].name.begin(), library[i].name.end()))
@@ -75,10 +75,9 @@ public:
     }
     using Controller::setPreset;
     bool loadPresetAt(int index) override {
-        const UndoScope step(*this);
-        recordAll();
         values[paramIndex(GlobalParam::Volume)] = -20.0 + 2.0 * index;
         setPreset(std::wstring(library[index].name.begin(), library[index].name.end()));
+        clearHistory();
         return true;
     }
     std::wstring presetFolder() const override { return L"C:\\Users\\Someone\\Documents\\FMVibe\\presets"; }
@@ -1031,14 +1030,13 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     const bool closed = renderer.pixel(headerGap) == clear && clear != dimmed;
     check(model.presetIndex() == 1 && model.folderOpens == 1 && closed,
           "the browser opens the folder, and loading a preset from it closes it");
-    // Undo and redo bring back which preset it was, and whether it had changed since.
+    // A preset loaded starts the undo history over: undo doesn't bring back the preset before, or an edit made to it.
+    drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
     model.loadPresetAt(2);
     view.undo();
-    const bool backToBell = model.presetName() == "Bell" && !model.patchEdited() &&
-                            model.value(paramIndex(GlobalParam::Volume)) == -18.0;
-    view.redo();
-    check(backToBell && model.presetName() == "Pad" && !model.patchEdited(),
-          "undo and redo across a preset load bring back the preset it was");
+    check(model.presetName() == "Pad" && !model.patchEdited() &&
+              model.value(paramIndex(GlobalParam::Volume)) == -16.0,
+          "undo after a preset load leaves the preset loaded");
     drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
     const bool changedPad = model.presetName() == "Pad" && model.patchEdited();
     view.undo();

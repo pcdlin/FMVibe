@@ -608,10 +608,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
-  value, adding or removing an effect or source (with its modulation), moving nodes or cards, bending a wire, Init
-  and loading a
-  preset are each one step. The history lives in the plugin, so it outlasts closing the editor, and goes when the
-  host loads a saved state. **Ctrl+Z** undoes, and **Ctrl+Y** or **Ctrl+Shift+Z** redoes, while the mouse is over
+  value, adding or removing an effect or source (with its modulation), moving nodes or cards and bending a wire are
+  each one step. The history lives in the plugin, so it outlasts closing the editor, and goes when the host loads a
+  saved state, at Init and when a preset loads: undo never brings back the patch a preset replaced. **Ctrl+Z** undoes, and **Ctrl+Y** or **Ctrl+Shift+Z** redoes, while the mouse is over
   the editor and its window is the active one: a keyboard hook catches them before the host does, so the host's
   own shortcuts keep working everywhere else.
 - **Inspector** (right): tabs A–F, F1 and F2, and S1 and S2 pick what it shows; tabs of switched-off nodes are
@@ -903,9 +902,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     Save suggests the current preset's name. The file holds the same data as the host's saved state, apart from
     the settings.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
-    host brought a patch that isn't a preset; undo brings a replaced patch back, with the preset bar's name and
-    its changed dot as they were (undoing every edit since a preset loaded leaves it unchanged again), and redo
-    the same forward. The project remembers which preset it was and whether it changed.
+    host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
+    since a preset loaded leaves it unchanged again). The project remembers which preset it was and whether it changed.
 - **Settings** (the cog after Save): **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
