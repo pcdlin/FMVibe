@@ -96,6 +96,12 @@ inline int routeParam(int from, int to) {
                               : filterShaperIndex(from - kOps, shaperOfNode(to));
 }
 
+// The param that sets how the route from `from` into `to` acts on it (see RouteMode): only routes into an operator
+// have one, its feedback aside, which is always Phase. -1 for the others.
+inline int routeModeParam(int from, int to) {
+    return from >= 0 && from < kNodes && to >= 0 && to < kOps && from != to ? routeModeIndex(from, to) : -1;
+}
+
 // What a node puts straight out to the output.
 inline int outParam(int node) {
     return isShaperNode(node)   ? paramIndex(shaperOfNode(node), ShaperParam::Out)
@@ -123,6 +129,15 @@ inline bool isRouteParam(int param) {
                 return true;
     }
     return false;
+}
+
+// The mode param of a route's amount param, or -1 for one without (see routeModeParam()).
+inline int routeModeOfRoute(int param) {
+    for (int from = 0; from < kNodes; ++from)
+        for (int to = 0; to < kOps; ++to)
+            if (routeParam(from, to) == param)
+                return routeModeParam(from, to);
+    return -1;
 }
 
 inline int enabledParam(int node) {

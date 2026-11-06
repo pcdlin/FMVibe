@@ -63,6 +63,12 @@ STR(ReverbRoom, "Room")
 STR(ReverbPlate, "Plate")
 STR(ReverbShimmer, "Shimmer")
 
+// How a route acts on the operator it goes into, in its lists, menus and the host.
+STR(RoutePhase, "Phase")
+STR(RouteLinearFm, "Linear FM")
+STR(RouteExpFm, "Exp FM")
+STR(RouteRing, "Ring")
+
 // The effects, in the list that adds them and on the host's pages.
 STR(FxEmpty, "Empty")
 STR(FxShaper, "Shaper")
@@ -173,6 +179,7 @@ STR(ParamPhase, "Phase")
 STR(ParamSlew, "Slew")
 STR(ParamCc, "CC")
 STR(ParamInput, "Input")
+STR(ParamRouteMode, "{1} Mode") // a route into an operator ("B → A"), how it acts on it
 STR(ParamOpFeedback, "{1} Feedback") // a node (an operator, a filter, a shaper) into itself, in the matrix
 
 // Filters' and shapers' fields.
@@ -375,6 +382,7 @@ STR(TabUnison, "UNISON") // an operator's page: what its lower half shows
 STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
 STR(TabEnvelope, "ENVELOPE")
 STR(TabScope, "SCOPE")
+STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -636,6 +644,12 @@ STR(TipNoteDisplay, "Edit note curve")
 STR(TipVelocityDisplay, "Edit velocity curve")
 STR(TipWireEnd, "Drag to reroute")
 STR(TipWire, "Drag to bend, double-click resets")
+STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
+STR(TipRemoveRoute, "Remove route") // the x at the right of a wire or OUT label's pill
+STR(TipRoutePhase, "Phase: adds to where the wave is read")
+STR(TipRouteLinearFm, "Linear FM: adds to the frequency, through zero")
+STR(TipRouteExpFm, "Exp FM: moves the pitch by octaves")
+STR(TipRouteRing, "Ring: multiplies the output, 50 % is AM")
 STR(TipPort, "Drag to a node or OUT to connect")
 STR(TipFxInsert, "Add an effect here") // the arrow between two effect cards
 STR(TipWheelHandle, "Drag to assign mod wheel")
@@ -658,6 +672,8 @@ STR(TipLoad, "Load preset")
 STR(TipSave, "Save preset")
 STR(TipSettings, "Settings")
 STR(TipBypassed, "Bypassed. Click to resume")
+STR(InputsNone, "Nothing modulates {1} yet.") // an operator's INPUTS tab with no route into it
+STR(InputsFeedback, "{1} feedback  ·  phase only")
 STR(TipBypass, "Bypass modulation")
 STR(TipSourceUnipolar, "Unipolar: one way. Click for bipolar") // a MODS row's switch
 STR(TipSourceBipolar, "Bipolar: both ways. Click for unipolar")

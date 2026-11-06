@@ -42,7 +42,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - voice stealing and choke, and a reset ending the notes playing, their ends reported in the next block;
   - per-voice host modulation, and a mod-envelope slot driving its target, and running its release out after
     the operators have faded (the voice reporting `NOTE_END` only then);
-  - spectrum checks on an A4: the matrix produces FM sidebands; every wave sounds; a saw's 2nd harmonic sits at
+  - spectrum checks on an A4: the matrix produces FM sidebands; a Ring route at 100 % leaves only the sum and
+    difference and at 50 % is AM, Linear FM keeps the mean pitch (through zero too) where Exp FM lifts it by its
+    octaves, and feedback stays Phase whatever its mode param says; every wave sounds; a saw's 2nd harmonic sits at
     half the fundamental, and Alt Sine's, Organ's and Vowel's where their series put them; a Custom wave plays its
     partials, only as many as its count (the 40th silent at 32, heard at 64); a low-pass at 300 Hz and a high-pass
     at 2 kHz move that ratio the right way, each slope from 6 to 24 dB harder than the one before (the 6 dB
@@ -125,7 +127,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   and 25 %; the smoke test prints the figures).
 - **Audio quality** (`tests/quality.cpp`): drives the engine directly and measures, at every oversampling factor:
   - the decimator's passband ripple and alias rejection;
-  - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM, feedback and a driven filter;
+  - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
+    feedback and a driven filter;
   - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
   - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
     LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
@@ -211,11 +214,20 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
     lighting none of them (read off the rendered pixels); a source card's button showing its modulations in MODS, or with none adding an empty one
     from it;
+  - a wire label under the mouse opening into a pill (read off the rendered pixels): its mode part's list picking
+    the route's mode and the wheel stepping it, undoably, its × removing the route (and an OUT label's its node's
+    output); resting, a label showing a mode other than Phase (read off the rendered pixels); the mode also picked
+    from its label's and its matrix cell's
+    right-click menus (the cell's corner showing the glyph, read off the rendered pixels) and from the operator
+    page's INPUTS tab, whose label sets the depth, each an undo step; a route moved onto another operator keeping
+    its mode, and one disconnected starting as Phase again;
   - bending a wire by dragging it sideways (lit under the mouse, its label following its middle), either way,
     undoably, back to its first bow by a double-click or Reset Bend, its bend going with it when it is
     disconnected, and one along the panel's top bowing only as far as keeps it and its label inside (read off the
     rendered pixels);
   - an operator lighting up while modulation opens its route from 0 % (read off the rendered pixels);
+  - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
+    one's ghost filled while it is shown (read off the rendered pixels);
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something
     (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, and the output meter and its clip light (read off
@@ -556,14 +568,16 @@ itself.
   velocity's, 9320 + 20 a source by the sources' number), Custom waves' first 32 partials 10000 + 100·op, macros
   11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod wheel's slots 11500+,
   velocity 11600+ (its slots, then its curve and Bipolar), the
-  Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the voice shapers'
+  Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the routes' modes
+  700 + 10·from + to (from by the routing graph's node order: the operators, the filters, the shapers; to an
+  operator; an operator's own field, its feedback, hidden and always Phase), the voice shapers'
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
   22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel
   and velocity; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
   sources' number likewise).
   Once released, new fields go at the end of their section's
-  enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, slot aux
-  field and fixed Mult lists, and the routing views,
+  enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
+  mode, slot aux field and fixed Mult lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the

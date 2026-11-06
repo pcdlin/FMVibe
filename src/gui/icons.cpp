@@ -301,6 +301,42 @@ void polarityIcon(Canvas &c, Point m, bool bipolar, Color color) {
     c.polyline(points.data(), points.size(), color, 1.3f);
 }
 
+void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale) {
+    auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
+    const float width = scale < 0.9f ? 1.1f : 1.4f;
+    switch (mode) {
+    case RouteMode::LinearFm:
+        c.line(at(-4.5f, 4.0f), at(4.5f, -4.0f), color, width);
+        c.line(at(-5.0f, 4.5f), at(5.0f, 4.5f), color.alpha(0.5f), 1.0f);
+        break;
+    case RouteMode::ExpFm: {
+        const std::vector<double> key{static_cast<double>(Curve::RouteIcon), m.x, m.y, scale};
+        const std::vector<Point> points = icons.get(key, [&] {
+            std::vector<Point> points;
+            for (int i = 0; i <= 12; ++i) {
+                const float t = i / 12.0f;
+                points.push_back(at(-4.5f + 9.0f * t, 4.0f - 8.0f * (std::exp2(4.0f * t) - 1.0f) / 15.0f));
+            }
+            return points;
+        });
+        c.line(at(-5.0f, 4.5f), at(5.0f, 4.5f), color.alpha(0.5f), 1.0f);
+        c.polyline(points.data(), points.size(), color, width);
+        break;
+    }
+    case RouteMode::Ring: {
+        c.strokeCircle(m, 4.5f * scale, color, width - 0.1f);
+        const float d = 4.5f * 0.7071f;
+        c.line(at(-d, -d), at(d, d), color, width - 0.2f);
+        c.line(at(-d, d), at(d, -d), color, width - 0.2f);
+        break;
+    }
+    default: // Phase
+        c.strokeCircle(m, 3.2f * scale, color, width - 0.1f);
+        c.line(at(0.0f, -5.5f), at(0.0f, 5.5f), color, width - 0.1f);
+        break;
+    }
+}
+
 // A small picture of each effect, for its card's title and the ADD EFFECT list.
 void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
     std::vector<Point> points;

@@ -1230,6 +1230,23 @@ int main() {
              p[matrixIndex(1, 0)] = 0.8;
          },
          -80.0},
+        // Linear FM by a harmonic modulator is harmonic too (its mean frequency stays), as is Ring; Exp FM's isn't.
+        {"linear FM B(x4) -> A 60% at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(1, OpParam::Enabled)] = 1.0;
+             p[paramIndex(1, OpParam::Ratio)] = normFromRatio(4.0);
+             p[matrixIndex(1, 0)] = 0.6;
+             p[routeModeIndex(1, 0)] = static_cast<double>(RouteMode::LinearFm);
+         },
+         -80.0},
+        {"ring B(x4) -> A 100% at C6", 84,
+         [](ParamValues &p) {
+             p[paramIndex(1, OpParam::Enabled)] = 1.0;
+             p[paramIndex(1, OpParam::Ratio)] = normFromRatio(4.0);
+             p[matrixIndex(1, 0)] = 1.0;
+             p[routeModeIndex(1, 0)] = static_cast<double>(RouteMode::Ring);
+         },
+         -80.0},
         {"feedback A 70% at C5", 72, [](ParamValues &p) { p[matrixIndex(0, 0)] = 0.7; }, -70.0},
         // At full feedback the operator is close to chaos, so oversampling helps less.
         {"feedback A 100% at C5", 72, [](ParamValues &p) { p[matrixIndex(0, 0)] = 1.0; }, -25.0},

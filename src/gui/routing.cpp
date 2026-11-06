@@ -55,6 +55,13 @@ void View::reroute(int from, int to, int into) {
     const UndoScope step(controller_); // with the routes it keeps
     const ParamDef &def = table_[next];
     std::vector<std::pair<int, double>> changes{{next, def.min + norm(param) * (def.max - def.min)}, {param, 0.0}};
+    // Its mode goes along onto another operator; elsewhere a route has none, and the one it leaves is Phase again.
+    const int mode = routeModeOfRoute(param), nextMode = routeModeOfRoute(next);
+    if (mode >= 0 && value(mode) != 0.0) {
+        if (nextMode >= 0)
+            changes.push_back({nextMode, value(mode)});
+        changes.push_back({mode, 0.0});
+    }
     for (const Assignment &m : assignments())
         if (m.target == param)
             changes.push_back({slotTargetIndex(m.source, m.slot), slotTargetValue(next)});
@@ -128,6 +135,8 @@ void View::disconnect(int param) {
         if (m.target == param)
             removeSlot(m.source, m.slot);
     edit(param, 0.0);
+    if (const int mode = routeModeOfRoute(param); mode >= 0 && value(mode) != 0.0) // a new route starts as Phase
+        edit(mode, 0.0);
     std::erase(controller_.layout().keptRoutes, param);
     std::erase_if(controller_.layout().wireBends, [&](const auto &bend) { return bend.first == param; });
 }

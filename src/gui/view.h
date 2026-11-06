@@ -140,6 +140,10 @@ private:
         OutLabel,     // param = output level, a = node
         WireEnd,      // param = the route, a = from node, b = to node (kNodes: the output): its arrowhead, to drag elsewhere
         Wire,         // param = the route, a = from node, b = to node: along its curve; drag to bend it
+        LabelMode,    // param = the route's mode, a = from node, b = to operator: the left part of a wire label's pill
+                      // (see labelPill()), its mode's glyph; a click opens the list of modes, the wheel steps them
+        LabelRemove,  // param = the route, a = from node, b = to node (kNodes: the output): the x at the right of a
+                      // wire or OUT label's pill; a click removes the route with its modulation
         GridCell,     // param, a = row node, b = column
         SourceHandle, // a = source: drag onto a param to modulate it
         SourceGrip,   // a = source, b = its position among the sources: drag to reorder
@@ -268,6 +272,7 @@ private:
         // one's part of it reaches (halfway across the gaps to its neighbors). group.w is 0 for a button on its own.
         Rect group{};
         float partLeft = 0.0f, partRight = 0.0f;
+        bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };
@@ -853,6 +858,19 @@ private:
     void paintScope(Canvas &c, Rect r, int op);
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
     InspectorTab opTabShown(int op) const;
+    // A route's label in the graph, from its place as it rests (`idle`): while it or its parts are under the mouse,
+    // its list of modes is open or it is dragged, a pill, the mode's part on its left (`mode`, a route into an
+    // operator only, its feedback aside) and the x on its right; otherwise the label alone, widened for its mode's
+    // glyph when that isn't Phase. `whole` is all of it.
+    struct LabelPill {
+        Rect depth, mode, remove, whole;
+        bool open = false;
+        bool glyph = false;
+    };
+    LabelPill labelPill(int param, int mode, Rect idle) const;
+    // The nodes whose routes into operator `op` its INPUTS tab lists, in the graph's order, and that tab's picture.
+    std::vector<int> inputsOf(int op) const;
+    void paintInputs(Canvas &c, int op);
     bool opTabModulated(int op, InspectorTab tab) const;
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintLfo(Canvas &c, Rect r, int lfo);
