@@ -205,6 +205,7 @@ STR(ParamDivision, "Division")
 STR(ParamFree, "Free")
 STR(ParamUnipolar, "Unipolar")
 STR(ParamOneShot, "One-Shot")
+STR(ParamAnchor, "Anchor") // an LFO's: tied to the host's transport
 STR(ParamSmooth, "Smooth")
 STR(ParamChaos, "Chaos")
 
@@ -646,8 +647,10 @@ STR(TipFxOff, "Click to turn on, drag to move")
 STR(TipLfoSync, "Sync rate to tempo")
 STR(TipSlope, "Filter slope")
 STR(TipSlopeBand, "Filter slope")
+STR(TipRetrigger, "Restart with each note") // an LFO's clock modes
 STR(TipFree, "Free")
 STR(TipOneShot, "One shot")
+STR(TipAnchor, "Anchor to song position") // an LFO's switch: its phase follows the host's transport
 STR(TipUnipolar, "Unipolar")
 STR(TipDelaySync, "Sync times to tempo")
 STR(TipSweepSync, "Sync sweep to tempo")

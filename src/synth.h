@@ -179,6 +179,18 @@ public:
         if (std::isfinite(bpm) && bpm > 0.0)
             tempo_ = std::clamp(bpm, 10.0, 999.0);
     }
+    double tempo() const { return tempo_; }
+    // The host's transport as the next render() starts: whether it plays, and where, in beats (quarter notes) and in
+    // seconds from the song's start. Anchored LFOs stand where that puts them (see SourceParam); render() moves the
+    // position on through its frames while the transport plays, so a block split by events keeps it. Without a call,
+    // or while stopped, they run on as free ones. A position that isn't a number counts as stopped.
+    void setTransport(bool playing, double beats, double seconds) {
+        playing_ = playing && std::isfinite(beats) && std::isfinite(seconds);
+        if (playing_) {
+            songBeats_ = beats;
+            songSeconds_ = seconds;
+        }
+    }
 
     void render(float *left, float *right, uint32_t frames, const ParamValues &params);
 
@@ -227,6 +239,7 @@ private:
         double held = 0.0; // the Random shape's value for this cycle
         double from = 0.0; // and for the last one, which it glides from
         bool restart = false; // a note (re)started it: its next block moves it to its Phase
+        double cycle = 0.0;   // an anchored one's cycle since the song's start, whole: Random steps as it changes
     };
 
     // One LFO/envelope slot's contribution to a param, in plain units.
@@ -353,6 +366,10 @@ private:
     void analyzeFilters(uint32_t hostFrames, bool sounding, const ParamValues &params);
     // One-shot, it stops at the end of the cycle instead of starting the next. Chaos is the Random shape's.
     void advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos) const;
+    // Moves the free and anchored LFOs' shared clocks on by `frames`, which end `end` frames into this render(); with
+    // no frames, only the anchored ones go to where the transport stands `end` frames in. Their params are what is
+    // set with the host's, the macros' and the newest voice's modulation.
+    void runSharedLfos(const ParamValues &params, const Voice *newest, uint32_t frames, uint32_t end);
     void startFade(Voice &v);
     float *combLine(const Voice &v, int filter, int channel);
 
@@ -380,6 +397,9 @@ private:
     std::array<double, 16> channelPressures_{}; // filled with -1 by reset()
     std::array<double, 16> channelSlides_{};
     double tempo_ = 120.0;
+    bool playing_ = false;     // the host's transport, as of the start of the next render() (see setTransport())
+    double songBeats_ = 0.0;   // where, in beats
+    double songSeconds_ = 0.0; // and in seconds
     uint64_t noteCounter_ = 0;
     int limit_ = 1;
     bool mono_ = false;

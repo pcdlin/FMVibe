@@ -202,6 +202,8 @@ clap_process_status Plugin::process(const clap_process_t *process) {
     sendEdits(process->out_events);
     if (process->transport)
         applyTransport(*process->transport);
+    else // a host without a transport: anchored LFOs run free
+        synth().setTransport(false, 0.0, 0.0);
     beginBlock();
 
     clap_audio_buffer_t &output = process->audio_outputs[0];
@@ -233,6 +235,14 @@ clap_process_status Plugin::process(const clap_process_t *process) {
 void Plugin::applyTransport(const clap_event_transport_t &transport) {
     if (transport.flags & CLAP_TRANSPORT_HAS_TEMPO)
         synth().setTempo(transport.tempo);
+    // Where it plays, for anchored LFOs: a timeline the host doesn't give is worked out from the other at the tempo.
+    const bool beats = (transport.flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) != 0;
+    const bool seconds = (transport.flags & CLAP_TRANSPORT_HAS_SECONDS_TIMELINE) != 0;
+    const double tempo = synth().tempo();
+    const double inBeats = static_cast<double>(transport.song_pos_beats) / CLAP_BEATTIME_FACTOR;
+    const double inSeconds = static_cast<double>(transport.song_pos_seconds) / CLAP_SECTIME_FACTOR;
+    synth().setTransport((transport.flags & CLAP_TRANSPORT_IS_PLAYING) != 0 && (beats || seconds),
+                         beats ? inBeats : inSeconds * tempo / 60.0, seconds ? inSeconds : inBeats * 60.0 / tempo);
 }
 
 void Plugin::handleEvent(const clap_event_header_t *ev) {

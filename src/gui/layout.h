@@ -332,30 +332,37 @@ inline Rect sourcePower(float card) {
     return {p.right() - 30.0f - 26.0f, p.y + 8.0f, 26.0f, 19.0f};
 }
 
-// An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its free,
-// one-shot and unipolar switches (0..2, as icons), the two rows as wide.
+// An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes
+// (retrigger, free, anchor and one-shot, as icons), side by side as Poly | Mono are, the two rows as wide.
+constexpr int kLfoModes = static_cast<int>(LfoClock::Count);
 inline Rect lfoModeSwitch(float card, int mode) {
     const Rect p = sourceCard(card);
-    return {p.x + 16.0f + mode * 42.0f, p.y + 72.0f, 38.0f, 16.0f};
+    return {p.x + 16.0f + mode * 30.5f, p.y + 72.0f, 30.5f, 16.0f};
 }
 
 inline Rect lfoShapeButton(float card) {
     const Rect p = sourceCard(card);
-    return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, 2).right() - p.x - 16.0f, 22.0f};
+    return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, kLfoModes - 1).right() - p.x - 16.0f, 22.0f};
 }
 
 // Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, centered on them, each over a random
 // LFO's Smooth and Chaos; Rate's sync switch, a small square, sits between the shape list and the knob, level with
 // the list.
 inline Point lfoKnob(float card, int knob) {
-    const Rect top = lfoShapeButton(card), bottom = lfoModeSwitch(card, 2);
+    const Rect top = lfoShapeButton(card), bottom = lfoModeSwitch(card, kLfoModes - 1);
     return {randomKnob(card, knob).x, (top.y + bottom.bottom()) * 0.5f - 9.0f}; // the label takes 18 px under the knob
 }
 
 inline Rect sourceSync(float card) {
     const Point rate = lfoKnob(card, 0);
-    const float x = (lfoModeSwitch(card, 2).right() + rate.x - 15.0f) * 0.5f;
+    const float x = (lfoModeSwitch(card, kLfoModes - 1).right() + rate.x - 15.0f) * 0.5f;
     return {x - 10.0f, lfoShapeButton(card).center().y - 10.0f, 20.0f, 20.0f};
+}
+
+// Under it, level with the clock modes, the Unipolar switch.
+inline Rect lfoUnipolarSwitch(float card) {
+    const Rect sync = sourceSync(card);
+    return {sync.x, lfoModeSwitch(card, 0).y, sync.w, lfoModeSwitch(card, 0).h};
 }
 
 // ADD EFFECT at the top left, and the list it opens under it: one row per type,

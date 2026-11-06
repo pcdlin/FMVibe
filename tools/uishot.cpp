@@ -11,6 +11,7 @@
 #include <wincodec.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -279,17 +280,25 @@ Point shapeItem(float card, LfoShape shape) {
     return {shapeButton(card).x, 619.0f + static_cast<int>(shape) * 22.0f};
 }
 
-// An LFO card's switches under its shape list.
+// An LFO card's clock modes under its shape list, and its Unipolar switch under the sync switch.
+Point retriggerToggle(float card) {
+    return {cardX(card) + 31.25f, 616.0f};
+}
+
 Point freeToggle(float card) {
-    return {cardX(card) + 35.0f, 616.0f};
+    return {cardX(card) + 61.75f, 616.0f};
+}
+
+Point anchorToggle(float card) {
+    return {cardX(card) + 92.25f, 616.0f};
 }
 
 Point oneShotToggle(float card) {
-    return {cardX(card) + 77.0f, 616.0f};
+    return {cardX(card) + 122.75f, 616.0f};
 }
 
 Point unipolarToggle(float card) {
-    return {cardX(card) + 119.0f, 616.0f};
+    return {cardX(card) + 155.0f, 616.0f};
 }
 
 // Its Rate and Phase knobs, over a random LFO's Smooth and Chaos.
@@ -3033,13 +3042,37 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(0, OpParam::Transpose)) == 4.0, "the pitch knob transposes in whole semitones");
     model.set(paramIndex(0, OpParam::Transpose), 0.0);
     check(isModTarget(paramIndex(0, OpParam::Transpose)), "an operator's pitch can be modulated");
-    click(view, oneShotToggle(0));
-    click(view, unipolarToggle(0));
-    const bool modesOn = model.value(paramIndex(0, SourceParam::OneShot)) == 1.0 &&
-                         model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0;
-    click(view, oneShotToggle(0));
-    check(modesOn && model.value(paramIndex(0, SourceParam::OneShot)) == 0.0,
-          "an LFO's switches make it one-shot and unipolar");
+    // An LFO's clock modes: one at a time, as Poly | Mono, each setting Free, Anchor and One-Shot for it in one undo
+    // step; a click on the one lit leaves it, and the wheel steps along them. Unipolar is a switch of its own.
+    {
+        const int free = paramIndex(0, SourceParam::Free), anchor = paramIndex(0, SourceParam::Anchor),
+                  oneShot = paramIndex(0, SourceParam::OneShot);
+        auto modes = [&] {
+            return std::array{model.value(free), model.value(anchor), model.value(oneShot)};
+        };
+        using Modes = std::array<double, 3>;
+        click(view, oneShotToggle(0));
+        click(view, unipolarToggle(0));
+        const bool oneShotOn =
+            modes() == Modes{0.0, 0.0, 1.0} && model.value(paramIndex(0, SourceParam::Unipolar)) == 1.0;
+        click(view, anchorToggle(0));
+        const bool anchored = modes() == Modes{0.0, 1.0, 0.0};
+        click(view, anchorToggle(0));
+        const bool stays = modes() == Modes{0.0, 1.0, 0.0};
+        click(view, freeToggle(0));
+        const bool freed = modes() == Modes{1.0, 0.0, 0.0};
+        view.undo();
+        const bool undone = modes() == Modes{0.0, 1.0, 0.0};
+        click(view, retriggerToggle(0));
+        const bool retriggered = modes() == Modes{0.0, 0.0, 0.0};
+        view.wheel(retriggerToggle(0), 1.0f, {});
+        const bool wheeled = modes() == Modes{1.0, 0.0, 0.0};
+        click(view, retriggerToggle(0));
+        click(view, unipolarToggle(0));
+        check(oneShotOn && anchored && stays && freed && undone && retriggered && wheeled && modes() == Modes{} &&
+                  model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0,
+              "an LFO's clock modes go one at a time, undoably, and its Unipolar switch stands apart");
+    }
 
     // Drag LFO 1's handle onto the selected operator's Phase knob.
     view.mouseDown(sourceHandle(0), {});
@@ -3959,10 +3992,24 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({400.0f, 300.0f}, {});
     const bool freeShot = renderer.save(view, dir / "4d-lfo-phase-free.png");
     const bool faint = brightness(tick) < tickThen && brightness(arc) < arcThen;
-    click(view, freeToggle(0));
+    click(view, retriggerToggle(0));
     check(std::abs(model.value(phase) - 0.25) < 1e-6 && phaseShot && freeShot && faint &&
               model.value(paramIndex(0, SourceParam::Free)) == 0.0,
           "an LFO's Phase knob sets its start, marked on its display, and goes faint while the LFO is free");
+    // Anchored to the host's transport, its Phase is where it stood at the song's start: the knob and the tick stay
+    // as they were (read off the rendered pixels).
+    const int anchor = paramIndex(0, SourceParam::Anchor);
+    click(view, anchorToggle(0));
+    view.mouseMove({400.0f, 300.0f}, {});
+    const bool anchorShot = renderer.save(view, dir / "4e-lfo-anchor.png");
+    const uint32_t tickNow = brightness(tick), arcNow = brightness(arc);
+    std::printf("      anchored: Phase tick %u (was %u), arc %u (was %u)\n", tickNow, tickThen, arcNow, arcThen);
+    view.mouseMove(anchorToggle(0), {});
+    const bool tipShot = renderer.save(view, dir / "4f-lfo-anchor-tip.png");
+    const bool anchored = model.value(anchor) == 1.0;
+    click(view, retriggerToggle(0));
+    check(anchorShot && tipShot && anchored && tickNow == tickThen && arcNow == arcThen && model.value(anchor) == 0.0,
+          "an anchored LFO keeps its Phase in use");
     model.set(phase, 0.0);
 
     // The FX chain starts empty and covers the routing panel and the inspector.

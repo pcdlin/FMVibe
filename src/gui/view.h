@@ -700,6 +700,13 @@ private:
     double lfoValueNow(int lfo) const;
     // Whether notes start an LFO at its Phase: not while it is free (and not a one-shot), nor Random.
     bool lfoPhaseUsed(int lfo) const;
+    // An LFO's clock mode, as its Free, Anchor and One-Shot make it, and setting them for one.
+    LfoClock lfoClockOf(int lfo) const;
+    void setLfoClock(int lfo, LfoClock clock);
+    // Whether a widget is one of an LFO's clock modes (a Choice on its Free, a = the LFO, b = the mode).
+    static bool isLfoClockChoice(const Widget &w) {
+        return w.kind == Kind::Choice && sourceFieldOf(w.param) == SourceParam::Free;
+    }
 
     // Geometry.
     std::vector<Widget> widgets() const;

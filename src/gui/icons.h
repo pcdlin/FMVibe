@@ -70,7 +70,7 @@ void filterIcon(Canvas &c, Rect r, FilterType type, Color color);
 bool isFxIconSwitch(FxParam field);
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);
 void mcBandIcon(Canvas &c, Rect r, int band, Color color);
-void lfoModeIcon(Canvas &c, Point m, SourceParam mode, Color color);
+void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color);
