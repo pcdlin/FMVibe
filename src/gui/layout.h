@@ -22,7 +22,13 @@ constexpr float kKnobSweep = 1.5f * kPi;
 // The routing panel shows either the graph or the matrix; both edit the same params.
 // Tabs above the panels pick what they show: the routing graph or matrix next
 // to the inspector, or the effects across both.
-constexpr float kPanelsTop = 104.0f;
+// Over them the header: a title bar (the name, the preset bar and the toolbar), a faint line under it, then the global
+// strip (the output scope and meter, the global knobs, the play cluster and Voices), a line under the two.
+constexpr float kTitleBarH = 36.0f;
+constexpr float kTitleRowY = 6.0f; // the preset bar's and the toolbar's top
+constexpr float kHeaderH = 92.0f;
+constexpr float kStripY = 32.0f; // how far the global strip's content sits below where it stood alone (13 to 51 px)
+constexpr float kPanelsTop = 132.0f;
 constexpr float kPanelRadius = 10.0f; // the panels' corners
 constexpr Rect kRouting{16.0f, kPanelsTop, 852.0f, 372.0f};
 constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
@@ -146,10 +152,9 @@ inline Rect waveMenuItem(int item) {
 inline bool isMoreWave(OpWave wave) {
     return std::find(std::begin(kMoreWaves), std::end(kMoreWaves), wave) != std::end(kMoreWaves);
 }
-// The row between the header and the panels: the view tabs at its left, the preset bar in its middle, the toolbar
-// at its right.
-constexpr float kTopRowY = 72.0f;
-constexpr float kTopRowH = 24.0f;
+// The row between the header and the panels: the view tabs at its left.
+constexpr float kTopRowY = kHeaderH + 8.0f;
+constexpr float kTopRowH = 24.0f; // the preset bar's and the toolbar's height, in the title bar
 // Tabs of the routing panel, one per RoutingView: folder tabs from the row's top down onto the panels' top edge,
 // the first one's left side over the panel's left edge, which it runs on into while it is shown.
 constexpr float kViewTabH = kPanelsTop - kTopRowY;
@@ -208,16 +213,15 @@ constexpr float kCascadePad = 4.0f;
 constexpr float kCascadeSearchH = 30.0f;
 constexpr float kCascadeSearchW = 240.0f;
 constexpr int kCascadeMatches = 16;
-// Header: the output scope and meter, the global knobs, the play cluster between two dividers, then Voices; all laid
-// out from kHeaderStart (the meter's left edge), which centers them between the name and PLAYING: the scope as far
-// from the name's end as Voices' is from PLAYING's start, 61 px. Without the scope, the meter stood at 209 px, 113 px
-// from the name's end, so it moved right by half the scope and its gap.
+// The global strip, under the title bar: the output scope and meter, the global knobs, the play cluster between two
+// dividers, then Voices, with PLAYING at the right end: spread across the editor as the title bar is, from the scope
+// under the name's left edge to PLAYING over the panels' right one. Laid out from kHeaderStart, the meter's left edge.
 constexpr float kOutScopeW = 96.0f;
 constexpr float kOutScopeGap = 8.0f; // between the scope and the meter
-constexpr float kHeaderStart = 209.0f + (kOutScopeW + kOutScopeGap) * 0.5f;
+constexpr float kHeaderStart = 24.0f + kOutScopeW + kOutScopeGap;
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
 // past full scale.
-constexpr Rect kMeter{kHeaderStart, 13.0f, 14.0f, 38.0f};
+constexpr Rect kMeter{kHeaderStart, kStripY + 13.0f, 14.0f, 38.0f};
 // The output scope, left of the meter and as tall: two periods of the newest note at a time (see kOutScopeBins).
 constexpr Rect kOutScope{kMeter.x - kOutScopeGap - kOutScopeW, kMeter.y, kOutScopeW, kMeter.h};
 // A span whose peak is below this draws nothing, and spans that small changing paint nothing again: the browser demo's
@@ -238,19 +242,26 @@ inline bool followScopeLevel(float &level, float peak) {
     level = peak >= level ? peak : std::max(peak, level * kScopeLevelFall);
     return std::abs(level - before) > 0.01f * before;
 }
-constexpr float kHeaderKnobX = kHeaderStart + 28.0f;
-constexpr float kHeaderKnobW = 104.0f;
-// The play cluster, its two dividers with it, sits centered between the Pan knob's widest value ("100 L", ending
-// 418 px in) and the Voices knob's left edge (749 px in): about 24 px from each to its divider.
-constexpr float kDividers[] = {kHeaderStart + 442.0f, kHeaderStart + 726.0f};
-constexpr float kPlayX = kDividers[0] + 24.0f; // Poly | Mono over Legato, 24 px past the first divider
-// The Glide knob 24 px past them, its Always switch (on its label's row) ending 12 px before the second divider.
+// The first divider, before the play cluster.
+constexpr float kDivider0 = kHeaderStart + 535.0f;
+// The global knobs, 120 px apart, centered between the meter and the first divider: from the first one's arc (2 px
+// into its place) to the Pan knob's widest value ("100 L", 78 px into its place), 43 px from each.
+constexpr float kHeaderKnobW = 120.0f;
+constexpr float kHeaderKnobX = kHeaderStart + 55.0f;
+static_assert(kHeaderKnobX + 2.0f - (kHeaderStart + 14.0f) == 43.0f &&
+              kDivider0 - (kHeaderKnobX + 3.0f * kHeaderKnobW + 78.0f) == 42.0f);
+constexpr float kPlayX = kDivider0 + 44.0f; // Poly | Mono over Legato, 44 px past the first divider
+// The Glide knob 24 px past them, its Always switch (on its label's row) ending 32 px before the second divider.
 constexpr float kGlideX = kPlayX + 112.0f;
 constexpr float kGlideW = 126.0f;
-// Voices, past the second divider.
-constexpr float kVoicesX = kHeaderStart + 748.0f;
+constexpr float kDividers[] = {kDivider0, kGlideX + kGlideW + 10.0f + 32.0f};
+// Voices, 53 px past the second divider, right beside PLAYING (whose word starts at about 1134 px): its own place
+// narrower than the global knobs', so it stops short of the count.
+constexpr float kVoicesX = kDividers[1] + 53.0f;
+constexpr float kVoicesW = 80.0f;
+static_assert(kVoicesX == 1040.0f && kVoicesX + kVoicesW <= 1120.0f);
 // Legato under Poly | Mono, as wide as the two of them, how the notes that come in are read.
-constexpr Rect kLegatoSwitch{kPlayX, 35.0f, 88.0f, 19.0f};
+constexpr Rect kLegatoSwitch{kPlayX, kStripY + 35.0f, 88.0f, 19.0f};
 constexpr double kMeterFloorDb = -48.0;
 constexpr double kMeterTopDb = 6.0;
 constexpr Color kMeterRed = Color::hex(0xEF4444);
@@ -717,18 +728,18 @@ constexpr float kWhiteW = kKeys.w / kWhiteKeys;
 constexpr float kBlackW = kWhiteW * 0.6f;
 constexpr float kBlackH = kKeys.h * 0.6f;
 constexpr int kBaseNote = 24; // C1, where the keyboard starts before any octave shift
-// Init, Load, Save and the settings cog: icons at the right end of the view tabs' row.
+// Init, Load, Save and the settings cog: icons at the right end of the title bar.
 inline Rect toolbarButton(int i) {
     constexpr float kW = 28.0f, kGap = 6.0f;
-    return {kInspector.right() - (4 - i) * (kW + kGap) + kGap, kTopRowY, kW, kTopRowH};
+    return {kInspector.right() - (4 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
 }
 // Undo and redo, a little apart to their left.
 inline Rect undoButton(int redo) {
     const Rect init = toolbarButton(0);
     return {init.x - 14.0f - (2 - redo) * 34.0f, init.y, 28.0f, init.h};
 }
-// The preset bar, in the middle of the view tabs' row: back, the preset's name, forward.
-constexpr Rect kPresetName{430.0f, kTopRowY, 340.0f, kTopRowH};
+// The preset bar, in the middle of the title bar: back, the preset's name, forward.
+constexpr Rect kPresetName{430.0f, kTitleRowY, 340.0f, kTopRowH};
 inline Rect presetStep(int direction) {
     return {direction < 0 ? kPresetName.x - 30.0f : kPresetName.right() + 4.0f, kPresetName.y, 26.0f, kPresetName.h};
 }

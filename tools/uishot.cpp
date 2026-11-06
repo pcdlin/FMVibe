@@ -209,43 +209,44 @@ private:
 };
 
 // Screen positions of a few controls in the default layout (mirrors src/gui/layout.h).
-constexpr Point kOpPhaseKnob{1101.0f, 214.0f}; // an operator's Phase, a plain knob
-constexpr Point kMultKnob{967.0f, 214.0f};     // a fixed operator's Mult, in the Ratio readout's right half
-constexpr Point kRatioTens{917.0f, 214.0f}, kRatioOnes{933.0f, 214.0f}, kRatioTenths{956.0f, 214.0f},
-                kRatioHundredths{972.0f, 214.0f}; // the Ratio readout's digits
-constexpr Point kRatioDot{944.7f, 229.0f}; // the first depth handle along the Ratio readout's bottom edge
-constexpr Point kOutKnob{1146.0f, 214.0f};
-constexpr float kBusY = 446.0f; // the routing graph's OUT line
-constexpr Point kPitchKnob{1012.0f, 214.0f};
-constexpr Point kUnisonKnob{934.0f, 310.0f}; // on the UNISON tab
-constexpr Point kPhaseKnob{1134.0f, 310.0f};
-constexpr Point kSlopeKnob{922.0f, 214.0f};
-constexpr Point kDecayKnob{1034.0f, 426.0f};
+constexpr Point kOpPhaseKnob{1101.0f, 242.0f}; // an operator's Phase, a plain knob
+constexpr Point kMultKnob{967.0f, 242.0f};     // a fixed operator's Mult, in the Ratio readout's right half
+constexpr Point kRatioTens{917.0f, 242.0f}, kRatioOnes{933.0f, 242.0f}, kRatioTenths{956.0f, 242.0f},
+                kRatioHundredths{972.0f, 242.0f}; // the Ratio readout's digits
+constexpr Point kRatioDot{944.7f, 257.0f}; // the first depth handle along the Ratio readout's bottom edge
+constexpr Point kOutKnob{1146.0f, 242.0f};
+constexpr float kBusY = 474.0f; // the routing graph's OUT line
+constexpr Point kPitchKnob{1012.0f, 242.0f};
+constexpr Point kUnisonKnob{934.0f, 338.0f}; // on the UNISON tab
+constexpr Point kPhaseKnob{1134.0f, 338.0f};
+constexpr Point kSlopeKnob{922.0f, 242.0f};
+constexpr Point kDecayKnob{1034.0f, 454.0f};
 // An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
-constexpr float kOpEnvTop = 288.0f;
-constexpr float kOpEnvBottom = 398.0f;
-// The header, from the meter's left edge (kHeaderStart) on; the output scope left of the meter (kOutScope).
-constexpr float kHeaderStart = 261.0f;
-constexpr Point kFmAmountKnob{kHeaderStart + 150.0f, 32.0f};
-constexpr Point kFmAmountNumber{kHeaderStart + 192.0f, 35.0f}; // beside its knob
-constexpr Point kVoicesKnob{kHeaderStart + 766.0f, 32.0f}; // past the second divider, where Bend was
-constexpr Point kMonoButton{kHeaderStart + 532.0f, 21.0f};
-constexpr Point kLegatoToggle{kHeaderStart + 510.0f, 44.0f};
-constexpr Point kGlideKnob{kHeaderStart + 596.0f, 32.0f};
-constexpr Point kAlwaysToggle{kHeaderStart + 688.0f, 21.0f};
-constexpr float kOutScopeX = kHeaderStart - 104.0f, kOutScopeY = 13.0f, kOutScopeW = 96.0f, kOutScopeH = 38.0f;
+constexpr float kOpEnvTop = 316.0f;
+constexpr float kOpEnvBottom = 426.0f;
+// The global strip, under the title bar: from the meter's left edge (kHeaderStart) on, the output scope left of the
+// meter (kOutScope).
+constexpr float kHeaderStart = 128.0f;
+constexpr Point kFmAmountKnob{321.0f, 64.0f};
+constexpr Point kFmAmountNumber{363.0f, 67.0f}; // beside its knob
+constexpr Point kVoicesKnob{1058.0f, 64.0f}; // past the second divider, beside the count
+constexpr Point kMonoButton{773.0f, 53.0f};
+constexpr Point kLegatoToggle{751.0f, 76.0f};
+constexpr Point kGlideKnob{837.0f, 64.0f};
+constexpr Point kAlwaysToggle{929.0f, 53.0f};
+constexpr float kOutScopeX = kHeaderStart - 104.0f, kOutScopeY = 45.0f, kOutScopeW = 96.0f, kOutScopeH = 38.0f;
 // The view tabs sit above the panels.
-constexpr Point kRoutingTab{64.0f, 88.0f};
-constexpr Point kMatrixTab{160.0f, 88.0f};
-constexpr Point kFxTab{240.0f, 88.0f};
-constexpr Point kF1Tab{1068.0f, 124.0f};
-// Init, Load, Save and the settings cog at the right end of the view tabs' row.
-constexpr Point kInitButton{1068.0f, 84.0f};
-constexpr Point kLoadButton{1102.0f, 84.0f};
-constexpr Point kSaveButton{1136.0f, 84.0f};
-constexpr Point kSettingsButton{1170.0f, 84.0f};
-constexpr Point kOpFTab{1037.0f, 124.0f};
-constexpr Point kSourcesToggle{60.0f, 513.0f};
+constexpr Point kRoutingTab{64.0f, 116.0f};
+constexpr Point kMatrixTab{160.0f, 116.0f};
+constexpr Point kFxTab{240.0f, 116.0f};
+constexpr Point kF1Tab{1068.0f, 152.0f};
+// Init, Load, Save and the settings cog at the right end of the title bar.
+constexpr Point kInitButton{1068.0f, 18.0f};
+constexpr Point kLoadButton{1102.0f, 18.0f};
+constexpr Point kSaveButton{1136.0f, 18.0f};
+constexpr Point kSettingsButton{1170.0f, 18.0f};
+constexpr Point kOpFTab{1037.0f, 152.0f};
+constexpr Point kSourcesToggle{60.0f, 541.0f};
 
 // The modulation panel: chips and add buttons in its title row, then four cards, 277 wide (and after them the
 // dashed cards that add sources, 93 wide), at screen places 0..3, fractions while scrolled.
@@ -257,67 +258,67 @@ float cardX(float card) {
 
 // ADD LFO or ADD ENV, after the panel's toggle.
 Point sourceAdd(SourceType type) { // + LFO, + ENV, + RANDOM, + MIDI, 88 px apart
-    return {128.0f + 88.0f * static_cast<float>(static_cast<int>(type) - 1) + 41.0f, 513.0f};
+    return {128.0f + 88.0f * static_cast<float>(static_cast<int>(type) - 1) + 41.0f, 541.0f};
 }
 
 Point sourceGrip(float card) {
-    return {cardX(card) + 90.0f, 544.0f}; // over its name
+    return {cardX(card) + 90.0f, 572.0f}; // over its name
 }
 
 Point sourceHandle(float card) {
-    return {cardX(card) + 24.0f, 543.0f};
+    return {cardX(card) + 24.0f, 571.0f};
 }
 
 // An LFO's sync switch, a square left of its Rate knob.
 Point sourceSync(float card) {
-    return {cardX(card) + 155.0f, 592.0f};
+    return {cardX(card) + 155.0f, 620.0f};
 }
 
 Point sourcePower(float card) {
-    return {cardX(card) + kCardW - 50.0f, 545.0f};
+    return {cardX(card) + kCardW - 50.0f, 573.0f};
 }
 
 Point sourceRemove(float card) {
-    return {cardX(card) + kCardW - 17.0f, 545.0f};
+    return {cardX(card) + kCardW - 17.0f, 573.0f};
 }
 
 // An LFO card's shape list: its button, and a shape in the list it opens.
 Point shapeButton(float card) {
-    return {cardX(card) + 80.0f, 589.0f};
+    return {cardX(card) + 80.0f, 617.0f};
 }
 
 Point shapeItem(float card, LfoShape shape) {
-    return {shapeButton(card).x, 619.0f + static_cast<int>(shape) * 22.0f};
+    return {shapeButton(card).x, 647.0f + static_cast<int>(shape) * 22.0f};
 }
 
 // An LFO card's clock modes under its shape list, and its Unipolar switch under the sync switch.
 Point retriggerToggle(float card) {
-    return {cardX(card) + 31.25f, 616.0f};
+    return {cardX(card) + 31.25f, 644.0f};
 }
 
 Point freeToggle(float card) {
-    return {cardX(card) + 61.75f, 616.0f};
+    return {cardX(card) + 61.75f, 644.0f};
 }
 
 Point anchorToggle(float card) {
-    return {cardX(card) + 92.25f, 616.0f};
+    return {cardX(card) + 92.25f, 644.0f};
 }
 
 Point oneShotToggle(float card) {
-    return {cardX(card) + 122.75f, 616.0f};
+    return {cardX(card) + 122.75f, 644.0f};
 }
 
 Point unipolarToggle(float card) {
-    return {cardX(card) + 155.0f, 616.0f};
+    return {cardX(card) + 155.0f, 644.0f};
 }
 
 // Its Rate and Phase knobs, over a random LFO's Smooth and Chaos.
 Point rateKnob(float card) {
-    return {cardX(card) + 186.0f, 592.0f};
+    return {cardX(card) + 186.0f, 620.0f};
 }
 
 Point phaseKnob(float card) {
-    return {cardX(card) + 236.0f, 592.0f};
+    return {cardX(card) + 236.0f, 620.0f};
 }
 
 // The places holding a source, in the order they show, and what the editor calls one.
@@ -366,32 +367,32 @@ float fxCardW(const FakeController &model, int position) {
 }
 
 Point fxGrip(const FakeController &model, int position) {
-    return {fxCardX(model, position) + 40.0f, 169.0f};
+    return {fxCardX(model, position) + 40.0f, 197.0f};
 }
 
 // The effect's icon at its title's left, which switches it, on a folded card too.
 Point fxPower(const FakeController &model, int position) {
-    return {fxCardX(model, position) + 19.0f, 169.0f};
+    return {fxCardX(model, position) + 19.0f, 197.0f};
 }
 
 Point fxRemove(const FakeController &model, int position) {
-    return {fxCardX(model, position) + fxCardW(model, position) - 17.0f, 170.0f};
+    return {fxCardX(model, position) + fxCardW(model, position) - 17.0f, 198.0f};
 }
 
 // Knob `index` of `count` across a card, in the row at `y` within it.
 Point fxKnob(const FakeController &model, int position, int index, int count, float y = 240.0f) {
-    return {fxCardX(model, position) + fxCardW(model, position) / count * (index + 0.5f), 152.0f + y};
+    return {fxCardX(model, position) + fxCardW(model, position) / count * (index + 0.5f), 180.0f + y};
 }
 
 // ADD EFFECT at the FX panel's top left, and the entry for `type` in the list it opens: 23 px a type, from y 139 + 4,
 // in their order but for the three-band dynamics, which takes the retired three-band compressor's place.
-constexpr Point kFxMenuButton{90.0f, 124.0f};
+constexpr Point kFxMenuButton{90.0f, 152.0f};
 constexpr float kFxMenuPitch = 23.0f;
 int fxMenuPlace(FxType type) {
     return (type == FxType::MultiDyn ? static_cast<int>(FxType::MultiComp) : static_cast<int>(type)) - 1;
 }
 Point fxMenuItem(FxType type) {
-    return {122.0f, 153.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
+    return {122.0f, 181.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
 }
 
 // A list a dashed card opens: its top left where the card was clicked, moved back inside the editor (4 px in) where
@@ -416,55 +417,55 @@ Point sourceListItem(const View &view, Point click, SourceType type) {
 // The freeform shape editor: x 0..1 across, y -1..1 up. An LFO's spans the routing panel and the inspector, its
 // plot 1088 wide; the note source's curve, like the partial editor, fills the routing panel only, 772 wide.
 Point shapeAt(double x, double y, float width = 1088.0f) {
-    return {56.0f + static_cast<float>(x) * width, 302.0f - static_cast<float>(y) * 126.0f};
+    return {56.0f + static_cast<float>(x) * width, 330.0f - static_cast<float>(y) * 126.0f};
 }
 Point noteCurveAt(double x, double y) {
     return shapeAt(x, y, 772.0f);
 }
-constexpr Point kShapeDone{1154.0f, 124.0f};
-constexpr Point kRoutingEditorDone{838.0f, 124.0f}; // the note curve's and the partial editor's
+constexpr Point kShapeDone{1154.0f, 152.0f};
+constexpr Point kRoutingEditorDone{838.0f, 152.0f}; // the note curve's and the partial editor's
 // A shaper's big curve editor is a 520 px panel in the middle of the effects' panel, its plot 440 wide.
 Point clipAt(double x, double y) {
-    return {380.0f + static_cast<float>(x) * 440.0f, 302.0f - static_cast<float>(y) * 126.0f};
+    return {380.0f + static_cast<float>(x) * 440.0f, 330.0f - static_cast<float>(y) * 126.0f};
 }
-constexpr Point kClipDone{830.0f, 124.0f};
+constexpr Point kClipDone{830.0f, 152.0f};
 
 // The common waves' buttons (Sine, Triangle, Saw, Square, Noise), then "..." with the others.
 Point waveButton(int button) {
     constexpr float kStep = (300.0f - 32.0f + 4.0f) / 6.0f;
-    return {900.0f + button * kStep + (kStep - 4.0f) * 0.5f, 177.0f};
+    return {900.0f + button * kStep + (kStep - 4.0f) * 0.5f, 205.0f};
 }
 const Point kNoiseButton = waveButton(4);
 // An operator page's tabs, ENVELOPE, UNISON, INPUTS and SCOPE (by InspectorTab), and the scope's buttons for 1, 2
 // and 4 cycles in its display's top right corner.
 Point opTabPoint(InspectorTab tab) {
     constexpr float kX[] = {1009.0f, 937.0f, 1127.0f, 1070.0f};
-    return {kX[static_cast<int>(tab)], 270.0f};
+    return {kX[static_cast<int>(tab)], 298.0f};
 }
 Point scopeCycleButton(int choice) {
-    return {1112.0f + choice * 20.0f, 302.0f};
+    return {1112.0f + choice * 20.0f, 330.0f};
 }
 const Point kMoreWavesButton = waveButton(5);
 
 Point typeButton(int type) {
-    return {900.0f + type * 36.0f + 16.0f, 177.0f};
+    return {900.0f + type * 36.0f + 16.0f, 205.0f};
 }
 
 // The slope's list button at the end of the type buttons' row, and its entries, 6 to 24 dB, which open under it.
-constexpr Point kSlopeButton{1137.0f, 177.0f};
+constexpr Point kSlopeButton{1137.0f, 205.0f};
 Point slopeItem(int slope) {
-    return {1137.0f, 207.0f + slope * 22.0f};
+    return {1137.0f, 235.0f + slope * 22.0f};
 }
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
 Point gridCellCenter(int row, int col) {
-    return {72.0f + col * 32.6f + 14.3f, 140.0f + row * 32.6f + 14.3f};
+    return {72.0f + col * 32.6f + 14.3f, 168.0f + row * 32.6f + 14.3f};
 }
 
 Point nodeCenter(const UiLayout &layout, int node) {
     if (node >= kOps)
-        return {56.0f + layout.boxX[node - kOps] * 772.0f, 174.0f + layout.boxY[node - kOps] * 226.0f};
-    return {56.0f + layout.nodeX[node] * 772.0f, 174.0f + layout.nodeY[node] * 226.0f};
+        return {56.0f + layout.boxX[node - kOps] * 772.0f, 202.0f + layout.boxY[node - kOps] * 226.0f};
+    return {56.0f + layout.nodeX[node] * 772.0f, 202.0f + layout.nodeY[node] * 226.0f};
 }
 
 // A node's label on its line to OUT: halfway between its outline and the arrowhead over the bus, or left of the
@@ -492,25 +493,25 @@ Point arrowOf(Point a, Point b) {
 
 // The inspector's tabs: A..F, then a little gap and F1 and F2, another and S1 and S2.
 Point nodeTab(int node) {
-    return {912.0f + node * 25.0f + (node >= kOps ? 6.0f : 0.0f) + (node >= kOps + kFilters ? 6.0f : 0.0f), 124.0f};
+    return {912.0f + node * 25.0f + (node >= kOps ? 6.0f : 0.0f) + (node >= kOps + kFilters ? 6.0f : 0.0f), 152.0f};
 }
 
 // A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output, Mix and To Out knobs, the
 // list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with its edit button in the display's
 // corner.
-constexpr Point kShaperList{1009.0f, 177.0f};
-constexpr Point kShaperSym{1096.0f, 177.0f};
-constexpr Point kShaperLink{1146.0f, 177.0f};
+constexpr Point kShaperList{1009.0f, 205.0f};
+constexpr Point kShaperSym{1096.0f, 205.0f};
+constexpr Point kShaperLink{1146.0f, 205.0f};
 Point shaperKnob(int knob) {
-    return {900.0f + 268.0f / 4.0f * (knob + 0.5f), 214.0f}; // Drive, Output, Mix, To Out
+    return {900.0f + 268.0f / 4.0f * (knob + 0.5f), 242.0f}; // Drive, Output, Mix, To Out
 }
 Point shaperListItem(ClipMode mode) {
-    return {1009.0f, 192.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f};
+    return {1009.0f, 220.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f};
 }
 Point shaperCurveAt(double x, double y) {
-    return {908.0f + static_cast<float>(x) * 252.0f, 310.0f - static_cast<float>(y) * 42.24f};
+    return {908.0f + static_cast<float>(x) * 252.0f, 338.0f - static_cast<float>(y) * 42.24f};
 }
-constexpr Point kShaperEdit{1150.0f, 353.0f};
+constexpr Point kShaperEdit{1150.0f, 381.0f};
 
 // A point on a node's edge, where a drag connects it: an operator's lower right, a filter's or shaper's right side.
 Point portOf(const UiLayout &layout, int node) {
@@ -534,7 +535,7 @@ int ringLevel(const Renderer &renderer, Point from, float span) {
 
 // The color of the dot in the top right corner of a node's tab in the inspector, in what was saved last.
 uint32_t tabDot(const Renderer &renderer, int node) {
-    return renderer.pixel({nodeTab(node).x + 7.0f, 118.0f});
+    return renderer.pixel({nodeTab(node).x + 7.0f, 146.0f});
 }
 
 void click(View &view, Point p, Modifiers mods = {}) {
@@ -556,16 +557,16 @@ void drag(View &view, Point from, Point to) {
 }
 
 // Undo and redo at the left of the toolbar.
-constexpr Point kUndoButton{986.0f, 84.0f};
-constexpr Point kRedoButton{1020.0f, 84.0f};
+constexpr Point kUndoButton{986.0f, 18.0f};
+constexpr Point kRedoButton{1020.0f, 18.0f};
 // The LFO shape editor's reset button (the note curve's further left), and its grid's buttons: per axis (0 across)
 // a step down (part 0), the count, a step up.
-constexpr Point kShapeReset{1120.0f, 124.0f};
-constexpr Point kNoteCurveReset{804.0f, 124.0f};
+constexpr Point kShapeReset{1120.0f, 152.0f};
+constexpr Point kNoteCurveReset{804.0f, 152.0f};
 Point shapeGrid(int axis, int part) {
     constexpr float kParts[] = {18.0f, 28.0f, 18.0f};
     const float x = 1144.0f - (axis == 0 ? 148.0f : 64.0f) + (part > 0 ? 18.0f : 0.0f) + (part > 1 ? 28.0f : 0.0f);
-    return {x + kParts[part] * 0.5f, 458.0f};
+    return {x + kParts[part] * 0.5f, 486.0f};
 }
 // A Custom LFO's display, a click on which widens its card to two card places. The widened card's title row buttons:
 // back to a normal card (0), the shape's reset (1) and the full-size editor (2), left to right the reset, back to a
@@ -574,28 +575,28 @@ Point shapeGrid(int axis, int part) {
 // 264 x 102 from 281 px into the card, 44 under its top; and the grid's steppers under it, per axis (0 across) a
 // step down (part 0), the count and a step up.
 Point lfoDisplay(float card) {
-    return {cardX(card) + 138.0f, 660.0f};
+    return {cardX(card) + 138.0f, 688.0f};
 }
 Point wideButton(float card, int button) {
     constexpr float kFromRight[] = {1.0f, 2.0f, 0.0f};
-    return {cardX(card) + 2.0f * kCardW + 12.0f - 106.0f - kFromRight[button] * 34.0f, 554.0f};
+    return {cardX(card) + 2.0f * kCardW + 12.0f - 106.0f - kFromRight[button] * 34.0f, 582.0f};
 }
 Point lfoTool(float card, int tool) {
-    return {cardX(card) + 16.0f + tool * 41.5f + 18.75f, 645.0f};
+    return {cardX(card) + 16.0f + tool * 41.5f + 18.75f, 673.0f};
 }
 Point lfoMode(float card, int mode) {
-    return {cardX(card) + 16.0f + (mode < 2 ? mode * 75.0f + 37.5f : 156.0f + 44.5f), 673.0f};
+    return {cardX(card) + 16.0f + (mode < 2 ? mode * 75.0f + 37.5f : 156.0f + 44.5f), 701.0f};
 }
 Point cardShapeAt(float card, double x, double y) {
-    return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 631.0f - static_cast<float>(y) * 44.88f};
+    return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 659.0f - static_cast<float>(y) * 44.88f};
 }
 Point cardGrid(float card, int axis, int part) {
     constexpr float kX[] = {14.0f, 32.0f, 54.0f}, kW[] = {18.0f, 22.0f, 18.0f};
-    return {cardX(card) + 273.0f + 128.0f + axis * 76.0f + kX[part] + kW[part] * 0.5f, 709.0f};
+    return {cardX(card) + 273.0f + 128.0f + axis * 76.0f + kX[part] + kW[part] * 0.5f, 737.0f};
 }
 // A random LFO's Smooth (0) and Chaos (1) knobs, right of its narrowed display.
 Point randomKnob(float card, int knob) {
-    return {cardX(card) + 186.0f + knob * 50.0f, 649.0f};
+    return {cardX(card) + 186.0f + knob * 50.0f, 677.0f};
 }
 
 void doubleClick(View &view, Point p) {
@@ -640,10 +641,10 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
 
     // Typing values: a double-click on a knob's number opens a field, Enter sets what it reads as.
-    doubleClick(view, {kOpPhaseKnob.x, 238.0f});
+    doubleClick(view, {kOpPhaseKnob.x, 266.0f});
     const bool typingOn = view.typing();
     type(view, "50");
-    view.mouseMove({kOpPhaseKnob.x, 238.0f}, {});
+    view.mouseMove({kOpPhaseKnob.x, 266.0f}, {});
     check(typingOn && renderer.save(view, dir / "16-typing.png"), "render a value being typed");
     view.typeKey(View::Key::Enter);
     check(!view.typing() && std::abs(model.value(opPhase) - 0.5) < 1e-9, "a typed value sets the knob");
@@ -666,7 +667,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     doubleClick(view, kFmAmountNumber);
     view.typeKey(View::Key::Backspace);
     type(view, "0");
-    click(view, {600.0f, 300.0f}); // a click elsewhere takes the value
+    click(view, {600.0f, 328.0f}); // a click elsewhere takes the value
     check(std::abs(model.value(fmAmount)) < 1e-9 && !view.typing(), "a click elsewhere takes the value typed");
     doubleClick(view, kOpPhaseKnob);
     check(!view.typing() && model.value(opPhase) == 0.0, "a double-click on the knob itself still resets it");
@@ -687,7 +688,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     const Point aOut = outLabelOf(model.layout(), 0);
     view.mouseDown(aOut, {false, true});
     type(view, "50");
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     check(view.typing() && renderer.save(view, dir / "16b-typing-route.png"), "render a route's value being typed");
     view.typeKey(View::Key::Enter);
     const int aOutParam = paramIndex(0, OpParam::Out);
@@ -726,7 +727,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(std::abs(model.value(paramIndex(0, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(0, SourceParam::RandomChaos)) - 0.3) < 1e-6,
           "a random LFO's Smooth and Chaos knobs set them");
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed random LFO");
     // Running, it shows its own last cycles instead, swept across: six cycles in, the newest is in the second
     // quarter, where the live dot rides it.
@@ -743,7 +744,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // Between snapshots the dot moves on at the LFO's rate; run past the end of the cycle before a snapshot brings
     // the next one, it waits there rather than jump back to the start of the same quarter, and so it does when a
     // snapshot's phase has wrapped round ahead of its glide.
-    const Point held{cardX(0) + 26.0f + 0.5f * 125.0f, 660.0f - 0.7f * 18.0f}; // the end of the second quarter
+    const Point held{cardX(0) + 26.0f + 0.5f * 125.0f, 688.0f - 0.7f * 18.0f}; // the end of the second quarter
     auto dotAt = [&](Point p) {
         const uint32_t color = renderer.pixel(p);
         return (color >> 16 & 255) > 190 && (color >> 8 & 255) > 190 && (color & 255) > 190;
@@ -770,23 +771,23 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(slotAmountIndex(0, k), 0.1 * (k + 1));
     }
     view.poll();
-    const Point modsButton{cardX(0) + 60.0f, 708.0f};
+    const Point modsButton{cardX(0) + 60.0f, 736.0f};
     view.mouseMove(modsButton, {});
     const bool buttonShot = renderer.save(view, dir / "17b-card-mods-button.png");
     click(view, modsButton);
     check(buttonShot && model.ui.view == RoutingView::Mods, "a source card's button shows its modulations in MODS");
-    const Point topNumber{661.0f, 154.0f};
+    const Point topNumber{661.0f, 182.0f};
     doubleClick(view, topNumber);
     type(view, "-25");
     view.typeKey(View::Key::Enter);
     check(std::abs(model.value(slotAmountIndex(0, 0)) + 0.25) < 1e-9, "a slot's number takes a typed depth");
-    view.menuCommand(menuEntry({576.0f, 154.0f}, tr(Str::MenuEditDepth))); // on the depth bar
+    view.menuCommand(menuEntry({576.0f, 182.0f}, tr(Str::MenuEditDepth))); // on the depth bar
     type(view, "45");
     view.typeKey(View::Key::Enter);
     check(std::abs(model.value(slotAmountIndex(0, 0)) - 0.45) < 1e-9, "a depth bar's menu has Edit depth");
-    click(view, {41.0f, 154.0f});
+    click(view, {41.0f, 182.0f});
     const bool slotBypassed = model.value(slotBypassIndex(0, 0)) == 1.0;
-    view.mouseMove({400.0f, 440.0f}, {});
+    view.mouseMove({400.0f, 468.0f}, {});
     check(slotBypassed && renderer.save(view, dir / "17c-bypassed-slot.png"), "render a bypassed modulation");
     click(view, kRoutingTab);
     view.menuCommand(menuEntry(kOpPhaseKnob, trf(Str::MenuResume, {trf(Str::SourceNameLfo, {"1"})})));
@@ -798,7 +799,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         std::vector<uint32_t> pixels;
         if (renderer.save(view, dir / name))
             for (float x = sourceHandle(0).x - 40.0f; x <= sourceHandle(0).x + 40.0f; x += 2.0f)
-                pixels.push_back(renderer.pixel({x, 572.0f}));
+                pixels.push_back(renderer.pixel({x, 600.0f}));
         return pixels;
     };
     std::vector<double> targetsBefore;
@@ -807,7 +808,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         model.set(slotTargetIndex(0, slot), 0.0);
     }
     view.poll();
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const std::vector<uint32_t> away = belowHandle("18a-handle-away.png");
     view.mouseMove(sourceHandle(0), {});
     const bool tipped = belowHandle("18b-handle-tooltip.png") != away;
@@ -817,7 +818,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Hovering a source's handle draws lines to what it modulates, and no tooltip.
     drag(view, sourceHandle(0), kFmAmountKnob);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const std::vector<uint32_t> linkedAway = belowHandle("18-source-links.png");
     view.mouseMove(sourceHandle(0), {});
     check(tipped && belowHandle("18-source-links.png") == linkedAway,
@@ -825,17 +826,17 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The uncommon waves sit in a list behind "...".
     click(view, kMoreWavesButton);
-    view.mouseMove({1102.0f, 232.0f}, {});
+    view.mouseMove({1102.0f, 260.0f}, {});
     check(renderer.save(view, dir / "19-more-waves.png"), "render the list of more waves");
-    click(view, {1102.0f, 208.0f}); // its first entry, Pulse
-    view.mouseMove({600.0f, 300.0f}, {});
+    click(view, {1102.0f, 236.0f}); // its first entry, Pulse
+    view.mouseMove({600.0f, 328.0f}, {});
     check(model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Pulse) &&
               renderer.save(view, dir / "19b-pulse.png"),
           "the list behind ... picks an uncommon wave");
     // Custom, at the end of that list, opens the partial editor: a stroke across the level bars draws them
     // (half way up the bars, which run from -60 dB to 0 dB, is -30 dB), and a double-click takes a bar to nothing.
     click(view, kMoreWavesButton);
-    click(view, {1102.0f, 208.0f + 6.0f * 24.0f});
+    click(view, {1102.0f, 236.0f + 6.0f * 24.0f});
     const bool customPicked = model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Custom);
     // Picked after the 25 % pulse, the partials start as the pulse's: the first loudest, the fourth silent.
     const bool fromPulse = std::abs(model.value(partialLevelIndex(0, 0)) - 1.0) < 1e-9 &&
@@ -843,20 +844,20 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
                            model.value(partialLevelIndex(0, 3)) == 0.0;
     check(fromPulse, "picking Custom starts its partials from the wave it was");
     auto barX = [](int partial, int count = kDefaultPartials) { return 56.0f + (partial + 0.5f) * 772.0f / count; };
-    const float halfway = 286.0f + 84.0f * 0.5f;
+    const float halfway = 314.0f + 84.0f * 0.5f;
     drag(view, {barX(1), halfway}, {barX(3), halfway});
     doubleClick(view, {barX(0), halfway});
     bool drawn = model.value(partialLevelIndex(0, 0)) == 0.0;
     for (int partial = 1; partial <= 3; ++partial)
         drawn = drawn && std::abs(20.0 * std::log10(model.value(partialLevelIndex(0, partial))) + 30.0) < 1.5;
-    drag(view, {barX(2), 402.0f + 48.0f * 0.75f}, {barX(2), 402.0f + 48.0f * 0.75f});
+    drag(view, {barX(2), 430.0f + 48.0f * 0.75f}, {barX(2), 430.0f + 48.0f * 0.75f});
     view.mouseMove({barX(2), halfway}, {});
     check(customPicked && drawn && std::abs(model.value(partialPhaseIndex(0, 2)) - 0.25) < 0.03 &&
               renderer.save(view, dir / "23-partials.png"),
           "picking Custom opens the partial editor, which draws levels and phases");
     // Its resolution, 16, 32 or 64 partials, in the title row: at 64, the 50th can be drawn; at 16, the bars widen
     // to the first 16 and the 50th, unheard, keeps its level, there again at 64.
-    auto partialCount = [](int choice) { return Point{177.0f + choice * 36.0f, 124.0f}; };
+    auto partialCount = [](int choice) { return Point{177.0f + choice * 36.0f, 152.0f}; };
     const int countParam = partialCountIndex(0), fiftieth = partialLevelIndex(0, 49);
     click(view, partialCount(2));
     drag(view, {barX(49, 64), halfway}, {barX(49, 64), halfway});
@@ -887,15 +888,15 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // While the wave is Custom, a pencil on the summary line, left of the keyboard switch, opens the partial editor
     // again, lit while it is open, and a second click closes it (read off the rendered pixels: the editor's title).
     {
-        constexpr Point kPartialEdit{1095.0f, 150.0f};
+        constexpr Point kPartialEdit{1095.0f, 178.0f};
         auto partialsTitle = [&] {
             std::vector<uint32_t> pixels;
-            for (float y = 114.0f; y < 134.0f; y += 2.0f)
+            for (float y = 142.0f; y < 162.0f; y += 2.0f)
                 for (float x = 34.0f; x < 150.0f; x += 3.0f)
                     pixels.push_back(renderer.pixel({x, y}));
             return pixels;
         };
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool closedShot = renderer.save(view, dir / "23d-partials-closed.png");
         const std::vector<uint32_t> closed = partialsTitle();
         click(view, kPartialEdit);
@@ -908,7 +909,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
                            std::abs(20.0 * std::log10(model.value(partialLevelIndex(0, 5))) + 30.0) < 1.5;
         view.undo();
         click(view, kPartialEdit);
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool shut = renderer.save(view, dir / "23f-partials-shut.png") && partialsTitle() == closed;
         check(closedShot && openShot && opened && draws && shut &&
                   model.value(partialLevelIndex(0, 5)) == level,
@@ -916,7 +917,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     }
     // The list's newer waves: Alt Sine, Organ and Vowel, between Abs Sine and Custom.
     click(view, kMoreWavesButton);
-    click(view, {1102.0f, 208.0f + 4.0f * 24.0f});
+    click(view, {1102.0f, 236.0f + 4.0f * 24.0f});
     check(model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Organ), "the list picks Organ");
     view.undo();
 
@@ -966,7 +967,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kFxMenuButton);
     view.mouseMove(fxMenuItem(FxType::Phaser), {});
     check(renderer.save(view, dir / "21-fx-menu.png"), "render the ADD EFFECT list with its icons");
-    click(view, {600.0f, 400.0f});
+    click(view, {600.0f, 428.0f});
     for (FxType type : {FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::FreqShifter})
         addFx(view, type);
     bool added = fxChain(model) == std::vector<int>{0, 1, 2, 3, 4};
@@ -982,17 +983,17 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(2, FxParam::PhaserFeedback), 0.8);
     model.set(paramIndex(3, FxParam::FlangerFeedback), -0.6);
     model.set(paramIndex(4, FxParam::ShiftSpread), 0.8);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     check(renderer.save(view, dir / "21b-new-fx.png"), "render the reverb, phaser, flanger and frequency shifter");
     // The reverb's algorithm comes from a list under its button; its display follows the Size and the algorithm.
-    click(view, {fxCardX(model, 1) + 40.0f, 152.0f + 44.0f + 11.0f});
-    view.mouseMove({fxCardX(model, 1) + 40.0f, 237.0f + 3.0f * 22.0f}, {});
+    click(view, {fxCardX(model, 1) + 40.0f, 180.0f + 44.0f + 11.0f});
+    view.mouseMove({fxCardX(model, 1) + 40.0f, 265.0f + 3.0f * 22.0f}, {});
     const bool listed = renderer.save(view, dir / "21c-reverb-list.png");
-    click(view, {fxCardX(model, 1) + 40.0f, 237.0f + 22.0f}); // Room
+    click(view, {fxCardX(model, 1) + 40.0f, 265.0f + 22.0f}); // Room
     check(listed && model.value(paramIndex(1, FxParam::ReverbType)) == static_cast<double>(ReverbType::Room),
           "the reverb's list picks its algorithm");
     model.set(paramIndex(1, FxParam::ReverbSize), 0.1);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool smallRoom = renderer.save(view, dir / "21d-reverb-small-room.png");
     model.set(paramIndex(1, FxParam::ReverbType), static_cast<double>(ReverbType::Shimmer));
     model.set(paramIndex(1, FxParam::ReverbSize), 1.0);
@@ -1018,7 +1019,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     model.live.voices = 1;
     model.live.modOffset[matrixIndex(1, 0)] = 0.2f;
     view.poll();
-    view.mouseMove({600.0f, 200.0f}, {});
+    view.mouseMove({600.0f, 228.0f}, {});
     check(routeModulated && renderer.save(view, dir / "18b-modulated-route.png"),
           "render a modulated route, its wire swelling and its label showing the range");
     // That route turned down to 0 %: B, sounding, lights up only while its modulation opens the route again, just
@@ -1048,7 +1049,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         model.live.notePitch = pitch;
         view.poll();
         renderer.save(view, dir / "18e-filter-key-track.png");
-        return static_cast<int>(renderer.pixel({910.0f + 0.75f * 248.0f, 301.0f}) >> 16 & 255);
+        return static_cast<int>(renderer.pixel({910.0f + 0.75f * 248.0f, 329.0f}) >> 16 & 255);
     };
     const int fillC4 = fillAt(60.0f), fillC7 = fillAt(96.0f);
     check(fillC7 > fillC4 + 10, "a filter's response moves with the note its key tracking follows");
@@ -1057,24 +1058,24 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
 
     // A modulated filter: its response shows how far the modulation reaches, and follows it while notes play.
-    drag(view, sourceHandle(0), {918.0f, 214.0f}); // onto its Cutoff knob
+    drag(view, sourceHandle(0), {918.0f, 242.0f}); // onto its Cutoff knob
     bool cutoffModulated = false;
     for (int slot = 0; slot < kSlots; ++slot)
         cutoffModulated = cutoffModulated || slotTarget(model.value(slotTargetIndex(0, slot))) == paramIndex(0, FilterParam::Cutoff);
     model.live.voices = 1;
     model.live.modOffset[paramIndex(0, FilterParam::Cutoff)] = 0.18f;
     view.poll();
-    view.mouseMove({600.0f, 200.0f}, {});
+    view.mouseMove({600.0f, 228.0f}, {});
     check(cutoffModulated && renderer.save(view, dir / "18c-modulated-filter.png"),
           "render a modulated filter's response, its reach and where it is now");
     model.live = Telemetry{};
     view.poll();
-    click(view, {912.0f, 124.0f}); // back to operator A
+    click(view, {912.0f, 152.0f}); // back to operator A
 
     // Presets: the bar shows Init; the arrows step through the library, asking first while the patch has
     // changed since it was loaded; the browser lists them by subfolder.
     check(model.presetName() == tr(Str::PresetInit) && model.patchEdited(), "a changed patch shows Init, changed");
-    const Point nextPreset{787.0f, 84.0f}, previousPreset{413.0f, 84.0f}, presetBox{600.0f, 84.0f};
+    const Point nextPreset{787.0f, 18.0f}, previousPreset{413.0f, 18.0f}, presetBox{600.0f, 18.0f};
     click(view, nextPreset);
     const Rect confirmPanel{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
     view.mouseMove({confirmPanel.right() - 64.0f, confirmPanel.bottom() - 38.0f}, {});
@@ -1088,7 +1089,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(stepped && model.presetIndex() == 2, "the arrows step through the presets, round from the first to the last");
     // The browser: OPEN FOLDER shows the folder, and a preset picked loads and closes it. While it is open, its
     // backdrop dims the header around it (read off the rendered pixels).
-    const Point headerGap{300.0f, 4.0f}; // above the header's knobs
+    const Point headerGap{300.0f, 4.0f}; // in the title bar, clear of its buttons
     view.mouseMove(presetBox, {});
     renderer.save(view, dir / "22a-preset-stepped.png");
     const uint32_t clear = renderer.pixel(headerGap);
@@ -1200,9 +1201,9 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     for (int n = 0; n < 4; ++n)
         click(view, sourceAdd(SourceType::Lfo));
     model.set(paramIndex(4, SourceParam::Sync), 0.0); // the fifth free, its knob a rate rather than a note value
-    view.wheel({60.0f, 513.0f}, 10.0f, {}); // back to the first card
+    view.wheel({60.0f, 541.0f}, 10.0f, {}); // back to the first card
     view.mouseDown(sourceHandle(0), {});
-    view.mouseMove({1180.0f, 650.0f}, {});
+    view.mouseMove({1180.0f, 678.0f}, {});
     for (int n = 0; n < 40; ++n)
         view.poll();
     // Scrolled to the end: the fifth card, the dashed ones after it.
@@ -1223,38 +1224,38 @@ void testCardEdgeScroll(const std::filesystem::path &dir, Renderer &renderer) {
     for (FxType type : {FxType::Delay, FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::Compressor,
                         FxType::Eq, FxType::Widener, FxType::Disperser})
         addFx(view, type);
-    view.wheel({600.0f, 125.0f}, 10.0f, {}); // back to the start
+    view.wheel({600.0f, 153.0f}, 10.0f, {}); // back to the start
     fxScrolled = 0.0f;
     const int firstFx = fxChain(model).front();
     view.mouseDown(fxGrip(model, 0), {});
-    view.mouseMove({fxGrip(model, 0).x + 300.0f, 169.0f}, {});
-    view.mouseMove({1180.0f, 169.0f}, {}); // at the panel's right end
+    view.mouseMove({fxGrip(model, 0).x + 300.0f, 197.0f}, {});
+    view.mouseMove({1180.0f, 197.0f}, {}); // at the panel's right end
     for (int n = 0; n < 80; ++n)
         view.poll();
     const bool fxShot = renderer.save(view, dir / "8c-fx-edge-scroll.png");
-    view.mouseUp({1180.0f, 169.0f}, {});
+    view.mouseUp({1180.0f, 197.0f}, {});
     check(fxShot && fxChain(model).size() == 8 && fxChain(model).back() == firstFx,
           "an effect card held at the row's right end scrolls the row along, and lands at the end");
 
     for (int n = 0; n < 5; ++n)
         click(view, sourceAdd(SourceType::Lfo));
-    view.wheel({60.0f, 513.0f}, 10.0f, {}); // back to the first card
+    view.wheel({60.0f, 541.0f}, 10.0f, {}); // back to the first card
     view.mouseDown(sourceGrip(0), {});
-    view.mouseMove({sourceGrip(0).x + 200.0f, 544.0f}, {});
-    view.mouseMove({1180.0f, 544.0f}, {});
+    view.mouseMove({sourceGrip(0).x + 200.0f, 572.0f}, {});
+    view.mouseMove({1180.0f, 572.0f}, {});
     for (int n = 0; n < 80; ++n)
         view.poll();
-    view.mouseUp({1180.0f, 544.0f}, {});
+    view.mouseUp({1180.0f, 572.0f}, {});
     const bool last = shown(model) == std::vector<int>{1, 2, 3, 4, 0};
     // Scrolled to the end, it shows in the fifth place, before the dashed cards.
     const Point grip = sourceGrip(3.0f - kSourceShadowSpan);
     view.mouseDown(grip, {});
-    view.mouseMove({grip.x - 200.0f, 544.0f}, {});
-    view.mouseMove({20.0f, 544.0f}, {}); // at the panel's left end
+    view.mouseMove({grip.x - 200.0f, 572.0f}, {});
+    view.mouseMove({20.0f, 572.0f}, {}); // at the panel's left end
     for (int n = 0; n < 80; ++n)
         view.poll();
     const bool sourceShot = renderer.save(view, dir / "11f-source-edge-scroll.png");
-    view.mouseUp({20.0f, 544.0f}, {});
+    view.mouseUp({20.0f, 572.0f}, {});
     check(last && sourceShot && shown(model) == std::vector<int>{0, 1, 2, 3, 4},
           "an LFO card held at either end of the row scrolls the row along, and lands at that end");
 }
@@ -1270,7 +1271,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     for (FxType type : {FxType::Delay, FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::Compressor,
                         FxType::Widener, FxType::Disperser, FxType::FreqShifter})
         addFx(view, type);
-    view.wheel({600.0f, 125.0f}, 10.0f, {}); // back to the start
+    view.wheel({600.0f, 153.0f}, 10.0f, {}); // back to the start
     const std::vector<int> chain = fxChain(model);
     // A card's icon, as `scrolled` places along, switches the effect at chain position `position` off and on again.
     auto fxAt = [&](float scrolled, int position) {
@@ -1282,7 +1283,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
         return off;
     };
     const ParamValues before = model.values;
-    const Point grab{700.0f, 300.0f}; // on a card's knob
+    const Point grab{700.0f, 328.0f}; // on a card's knob
     view.middleDown(grab);
     view.mouseMove({grab.x - kFxStep, grab.y + 10.0f}, {});
     view.mouseMove({grab.x - 2.0f * kFxStep, grab.y + 10.0f}, {});
@@ -1311,11 +1312,11 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     // The source cards, a card's width to the left: the second shown takes the first's place.
     for (int n = 0; n < 5; ++n)
         click(view, sourceAdd(SourceType::Lfo));
-    view.wheel({60.0f, 513.0f}, 10.0f, {}); // back to the first card
+    view.wheel({60.0f, 541.0f}, 10.0f, {}); // back to the first card
     const std::vector<int> sources = shown(model);
-    view.middleDown({cardX(1.0f) + 120.0f, 650.0f});
-    view.mouseMove({cardX(0.0f) + 120.0f, 650.0f}, {});
-    view.middleUp({cardX(0.0f) + 120.0f, 650.0f});
+    view.middleDown({cardX(1.0f) + 120.0f, 678.0f});
+    view.mouseMove({cardX(0.0f) + 120.0f, 678.0f}, {});
+    view.middleUp({cardX(0.0f) + 120.0f, 678.0f});
     click(view, sourcePower(0));
     const bool cardOff = sources.size() >= 5 && model.value(sourceEnabledIndex(sources[1])) == 0.0;
     click(view, sourcePower(0));
@@ -1339,23 +1340,23 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     mods.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
     mods.set(slotAmountIndex(kMaxSources, 0), 0.35);
     modsView.poll();
-    click(modsView, {314.0f, 88.0f}); // the MODS tab
+    click(modsView, {314.0f, 116.0f}); // the MODS tab
     auto removedOnly = [&](int slot) {
-        click(modsView, {1144.0f, 154.0f}); // the top row's x
+        click(modsView, {1144.0f, 182.0f}); // the top row's x
         bool ok = true;
         for (int k = 0; k < 11; ++k)
             ok = ok && (slotTarget(mods.value(slotTargetIndex(0, k))) < 0) == (k == slot);
         modsView.undo();
         return ok && slotTarget(mods.value(slotTargetIndex(0, slot))) == paramIndex(0, targets[slot]);
     };
-    modsView.middleDown({600.0f, 300.0f});
-    modsView.mouseMove({610.0f, 300.0f - 60.0f}, {});
+    modsView.middleDown({600.0f, 328.0f});
+    modsView.mouseMove({610.0f, 328.0f - 60.0f}, {});
     const bool modsShot = renderer.save(modsView, dir / "35p-mods-middle-drag.png");
-    modsView.middleUp({610.0f, 300.0f - 60.0f});
+    modsView.middleUp({610.0f, 328.0f - 60.0f});
     const bool scrolled = removedOnly(2);
-    modsView.middleDown({600.0f, 200.0f});
-    modsView.mouseMove({600.0f, 200.0f + 400.0f}, {});
-    modsView.middleUp({600.0f, 200.0f + 400.0f});
+    modsView.middleDown({600.0f, 228.0f});
+    modsView.mouseMove({600.0f, 228.0f + 400.0f}, {});
+    modsView.middleUp({600.0f, 228.0f + 400.0f});
     check(modsShot && scrolled && removedOnly(0), "the middle button drags the MODS view's rows up and down");
 
     // The preset browser's list of forty, five rows up: the top row is the sixth preset's.
@@ -1365,7 +1366,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     for (int n = 0; n < 40; ++n)
         presets.library.push_back({"Preset " + std::to_string(n), ""});
     presets.loadPresetAt(0); // unchanged since, so picking another doesn't ask first
-    click(presetView, {600.0f, 84.0f}); // the preset's name opens the browser
+    click(presetView, {600.0f, 18.0f}); // the preset's name opens the browser
     const float browserTop = std::round((presetView.height() - 560.0f) * 0.5f);
     auto browserRow = [&](int row) { return Point{600.0f, browserTop + 58.0f + row * 24.0f + 11.0f}; };
     presetView.middleDown(browserRow(10));
@@ -1389,18 +1390,18 @@ void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, sourceHandle(1), kOpPhaseKnob);
     auto ring = [&] { // above the knob, where both ranges run
         std::vector<uint32_t> pixels;
-        for (float y = 192.0f; y < 207.0f; y += 1.0f)
+        for (float y = 220.0f; y < 235.0f; y += 1.0f)
             for (float x = kOpPhaseKnob.x - 20.0f; x < kOpPhaseKnob.x + 21.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
     };
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool plainShot = renderer.save(view, dir / "17c-mod-ranges.png");
     const std::vector<uint32_t> plain = ring();
-    view.mouseMove({kOpPhaseKnob.x - 5.0f, 229.0f}, {}); // LFO 1's handle, the first under the knob
+    view.mouseMove({kOpPhaseKnob.x - 5.0f, 257.0f}, {}); // LFO 1's handle, the first under the knob
     const bool lfoShot = renderer.save(view, dir / "17d-mod-range-hovered.png");
     const std::vector<uint32_t> lfo = ring();
-    view.mouseMove({kOpPhaseKnob.x + 5.0f, 229.0f}, {}); // Env 1's, the second
+    view.mouseMove({kOpPhaseKnob.x + 5.0f, 257.0f}, {}); // Env 1's, the second
     renderer.save(view, dir / "17e-mod-range-hovered.png");
     const std::vector<uint32_t> env = ring();
     check(model.value(slotTargetIndex(0, 0)) == slotTargetValue(paramIndex(0, OpParam::Phase)) &&
@@ -1427,7 +1428,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     const bool carried = shown() == 205;
     drag(view, kRatioTens, {kRatioTens.x, kRatioTens.y - 600.0f}); // far past the top
     const bool top = shown() == 6400;
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool topShot = renderer.save(view, dir / "3g-ratio-top.png");
     view.undo();
     std::printf("      Ratio dragged: 1.00 to %.2f, 3.05, %.2f (carried), 64.00 at the top; undone %.2f\n",
@@ -1447,7 +1448,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The digit under the mouse is lit behind: a pixel in its corner, clear of its segments.
     const Point corner{kRatioTenths.x + 5.5f, kRatioTenths.y - 9.0f};
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "3g-ratio.png");
     const uint32_t idle = renderer.pixel(corner);
     view.mouseMove(kRatioTenths, {});
@@ -1460,19 +1461,19 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseDown(kRatioOnes, {false, true}); // Ctrl+Click types a value, a fraction too
     const bool typing = view.typing();
     type(view, "7/2");
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool typingShot = renderer.save(view, dir / "3g-ratio-typing.png");
     view.typeKey(View::Key::Enter);
     check(typing && typingShot && shown() == 350, "a fraction typed into the Ratio readout sets it");
 
     // A source's handle dropped on the readout modulates it, its reach drawn in its color along the track.
     click(view, sourceAdd(SourceType::Lfo));
-    const Point track{911.0f, 199.0f}; // on the track over the digits (from x 910), a little below 3.50 (at x 913)
-    view.mouseMove({600.0f, 300.0f}, {});
+    const Point track{911.0f, 227.0f}; // on the track over the digits (from x 910), a little below 3.50 (at x 913)
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "3g-ratio-plain.png");
     const uint32_t bare = renderer.pixel(track);
     drag(view, sourceHandle(0), kRatioOnes);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool modShot = renderer.save(view, dir / "3g-ratio-modulated.png");
     check(slotTarget(model.value(slotTargetIndex(0, 0))) == ratio && model.value(slotAmountIndex(0, 0)) != 0.0 &&
               modShot && renderer.pixel(track) != bare,
@@ -1480,11 +1481,11 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The track is a straight line to 64: set there, the ratio's tick is at its right end (x 979), and the modulation
     // going on past 64 has an arrow after it (x 980 to 984) (read off the rendered pixels).
-    const Point end{978.5f, 197.0f}, arrow{981.5f, 199.0f};
+    const Point end{978.5f, 225.0f}, arrow{981.5f, 227.0f};
     const uint32_t endBefore = renderer.pixel(end), arrowBefore = renderer.pixel(arrow);
     model.set(ratio, 1.0);
     view.poll();
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool topModShot = renderer.save(view, dir / "3g-ratio-past-64.png");
     check(topModShot && shown() == 6400 && renderer.pixel(end) != endBefore && renderer.pixel(arrow) != arrowBefore,
           "the Ratio track ends at 64, where its tick then sits, with an arrow for modulation going on past it");
@@ -1503,7 +1504,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     // Its depth handles, 9 px apart along its bottom edge from x 913, hold eight before a pill: the eighth at x 976,
     // and with a ninth, six handles and the pill (x 966 to 978), which opens their list under it (read off the
     // rendered pixels).
-    const Point eighth{976.0f, 229.0f}, pill{971.7f, 229.0f}, under{960.0f, 280.0f};
+    const Point eighth{976.0f, 257.0f}, pill{971.7f, 257.0f}, under{960.0f, 308.0f};
     const uint32_t noEighth = renderer.pixel(eighth);
     for (int place = 1; place < 9; ++place) {
         model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));
@@ -1513,20 +1514,20 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
         }
     }
     view.poll();
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool eightShot = renderer.save(view, dir / "3g-ratio-eight.png");
     const bool eightFit = renderer.pixel(eighth) != noEighth;
     model.set(slotTargetIndex(8, 0), slotTargetValue(ratio));
     model.set(slotAmountIndex(8, 0), 0.05);
     view.poll();
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool nineShot = renderer.save(view, dir / "3g-ratio-nine.png");
     const uint32_t closedList = renderer.pixel(under);
     click(view, pill);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool listShot = renderer.save(view, dir / "3g-ratio-pill-list.png");
     const bool opened = renderer.pixel(under) != closedList;
-    click(view, {600.0f, 300.0f});
+    click(view, {600.0f, 328.0f});
     check(eightShot && nineShot && listShot && eightFit && opened,
           "the Ratio readout holds eight depth handles, and a ninth puts them in a pill");
 }
@@ -1548,13 +1549,13 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     model.library = {{name, "Factory"}}; // the preset bar shows its name
     model.setPreset(std::wstring(name.begin(), name.end()));
     view.poll();
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     bool shots = renderer.save(view, dir / (prefix + "-routing.png"));
     click(view, kMatrixTab);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     shots = shots && renderer.save(view, dir / (prefix + "-matrix.png"));
     click(view, kFxTab);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     shots = shots && renderer.save(view, dir / (prefix + "-fx.png"));
     check(shots && fxChain(model).size() == effects,
           ("render " + name + "'s routing, matrix and " + std::to_string(effects) + " effects").c_str());
@@ -1587,7 +1588,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     const bool turned = model.value(highPass) > before;
     // The phaser's SYNC, the delay's metronome at the left under its display, turns its Rate knob into a note
     // value's.
-    click(view, {fxCardX(model, 0) + 31.0f, 152.0f + 171.0f});
+    click(view, {fxCardX(model, 0) + 31.0f, 180.0f + 171.0f});
     const int division = paramIndex(0, FxParam::PhaserDivision), rate = paramIndex(0, FxParam::PhaserRate);
     const double divisionBefore = model.value(division), rateBefore = model.value(rate);
     drag(view, fxKnob(model, 0, 0, 3, 206.0f), {fxKnob(model, 0, 0, 3, 206.0f).x, fxKnob(model, 0, 0, 3, 206.0f).y - 20.0f});
@@ -1596,7 +1597,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
           "the phaser's SYNC turns its Rate knob into a note value");
     // The flanger's STEREO, in the middle under its display like the phaser's, is on to begin with.
     const int flangerStereo = paramIndex(1, FxParam::FlangerStereo);
-    const Point stereo{fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 152.0f + 171.0f};
+    const Point stereo{fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 180.0f + 171.0f};
     click(view, stereo);
     const bool flangerMono = model.value(flangerStereo) == 0.0;
     click(view, stereo);
@@ -1605,7 +1606,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     const int keyTrack = paramIndex(3, FxParam::FilterKeyTrack);
     drag(view, fxKnob(model, 3, 2, 3, 206.0f), {fxKnob(model, 3, 2, 3, 206.0f).x, fxKnob(model, 3, 2, 3, 206.0f).y - 20.0f});
     check(model.value(keyTrack) > 0.0, "the filter effect's Key Track knob turns");
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     check(turned && renderer.save(view, dir / "27-new-effects.png") && fxChain(model).size() == 5,
           "render a synced stereo phaser and a flanger mid-sweep, a phase disperser, a filter's spectrum and an widener");
     // Its response follows the note its key tracking does, like a voice filter's: at 100 %, a C7 takes a 2 kHz
@@ -1616,7 +1617,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
         model.live.fxPitch = pitch;
         view.poll();
         renderer.save(view, dir / "27a-fx-filter-key-track.png");
-        const uint32_t px = renderer.pixel({fxCardX(model, 3) + 24.0f + 0.85f * (fxCardW(model, 3) - 48.0f), 272.0f});
+        const uint32_t px = renderer.pixel({fxCardX(model, 3) + 24.0f + 0.85f * (fxCardW(model, 3) - 48.0f), 300.0f});
         return static_cast<int>((px >> 16 & 255) + (px >> 8 & 255) + (px & 255));
     };
     const int fillC4 = fillAt(60.0f), fillC7 = fillAt(96.0f);
@@ -1646,7 +1647,7 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(shaperSendIndex(1, shaper), 0.5);
     model.set(shaperModIndex(shaper, 2), 0.4);
     model.set(paramIndex(2, OpParam::Enabled), 1.0);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool pageShot = renderer.save(view, dir / "30-shaper-page.png");
     click(view, kShaperList);
     click(view, shaperListItem(ClipMode::Custom));
@@ -1696,7 +1697,7 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const int count = shapeCountIndex(0);
     // The power switch of the card at a place, and whose it is: LFO 2's card one place along while LFO 1's is wide.
     auto powerAt = [&](float place, float span) {
-        return Point{cardX(place) + span * (kCardW + 12.0f) - 12.0f - 43.0f, 545.0f};
+        return Point{cardX(place) + span * (kCardW + 12.0f) - 12.0f - 43.0f, 573.0f};
     };
     auto switches = [&](Point at, int lfo) {
         click(view, at);
@@ -1713,9 +1714,9 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const bool again = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
     // Its normal card's widen button, left of the fold button, widens it too.
     click(view, wideButton(0, 0));
-    view.mouseMove({cardX(0) + kCardW - 96.0f, 546.0f}, {});
+    view.mouseMove({cardX(0) + kCardW - 96.0f, 574.0f}, {});
     const bool button = renderer.save(view, dir / "10d0-lfo-card-widen-button.png") && switches(sourcePower(1), 1);
-    click(view, {cardX(0) + kCardW - 96.0f, 546.0f});
+    click(view, {cardX(0) + kCardW - 96.0f, 574.0f});
     const bool byButton = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
     check(widened && normal && again && button && byButton &&
               model.value(paramIndex(0, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom),
@@ -1826,7 +1827,7 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const double firstLevel = pointValue(2, 0, PointField::Y);
     click(view, lfoTool(wideCard, 0));
     const bool greyed = pointValue(2, 0, PointField::Y) == firstLevel;
-    view.mouseMove({400.0f, 700.0f}, {});
+    view.mouseMove({400.0f, 728.0f}, {});
     const bool bigShot = renderer.save(view, dir / "10g-lfo-full-size.png");
     click(view, kShapeDone);
     const bool back = switches(powerAt(2, 2.0f), 2);
@@ -1867,7 +1868,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     model.values[paramIndex(1, SourceParam::Type)] = static_cast<double>(SourceType::Env);
     view.poll();
     click(view, kFxTab);
-    const float cardTop = 151.5f; // an effect card's
+    const float cardTop = 179.5f; // an effect card's
     auto fxFold = [&](int position) {
         return Point{fxCardX(model, position) + fxCardW(model, position) - 39.0f, cardTop + 18.5f};
     };
@@ -1879,16 +1880,16 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shot = renderer.save(view, dir / "28a-folded-icon.png");
     click(view, icon); // the folded card's icon, where it was before, switches it
     const bool switched = model.value(paramIndex(1, FxParam::Enabled)) < 0.5;
-    click(view, {fxCardX(model, 2) + 40.0f, 400.0f}); // the next card, closed up: its own field, no change
+    click(view, {fxCardX(model, 2) + 40.0f, 428.0f}); // the next card, closed up: its own field, no change
     const bool closedUp = model.ui.fxFolded == 1u << 1 &&
                           std::abs(fxCardX(model, 2) - (32.0f + (1.0f + kFoldedSpan) * kFxStep)) < 0.1f;
-    click(view, {strip, 300.0f}); // the strip's name unfolds it
+    click(view, {strip, 328.0f}); // the strip's name unfolds it
     const bool fxUnfolded = model.ui.fxFolded == 0;
     click(view, fxFold(1));
     click(view, fxRemove(model, 0)); // removing another effect leaves the fold alone
     const bool kept = model.ui.fxFolded == 1u << 1 && fxChain(model).size() == 2;
 
-    const float sourceTop = 536.0f; // a source card's
+    const float sourceTop = 564.0f; // a source card's
     click(view, {cardX(0) + kCardW - 69.0f, sourceTop + 17.5f}); // the LFO's chevron, left of its switch
     const bool sourceFolded = model.ui.sourcesFolded == 1u << 0;
     const float envX = cardX(0) + 0.2f * (kCardW + 12.0f); // the envelope's card, closed up
@@ -1897,7 +1898,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     const float lfoStrip = cardX(0) + 0.5f * (0.2f * (kCardW + 12.0f) - 12.0f);
     drag(view, {lfoStrip, sourceTop + 38.0f}, {lfoStrip + 300.0f, sourceTop + 38.0f}); // its grip, past the envelope
     const bool moved = shown(model) == std::vector<int>{1, 0} && model.ui.sourcesFolded == 1u << 0;
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     check(fxFolded && shot && switched && closedUp && fxUnfolded && kept && sourceFolded && envClosedUp && moved &&
               renderer.save(view, dir / "28-folded.png"),
           "effect and LFO cards fold to strips that still switch, move and unfold, the effect's icon staying put");
@@ -1914,7 +1915,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     // Until a macro modulates something, its handle, arc and name are faint, and so is the note source's handle
     // (read off the rendered pixels).
     const Point macroRing{macroKnob(0).x - 26.0f, y - 10.0f}, noteRing{982.0f, y - 10.0f};
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool idleShot = renderer.save(view, dir / "26a-macros-idle.png");
     const int macroIdle = ringLevel(renderer, macroRing, 20.0f), noteIdle = ringLevel(renderer, noteRing, 20.0f);
     drag(view, macroKnob(0), {macroKnob(0).x, y - 40.0f});
@@ -1922,7 +1923,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, {macroKnob(0).x - 32.0f, y}, kFmAmountKnob); // its handle onto FM Amount
     const bool mapped =
         slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(GlobalParam::FmAmount);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "26a2-macro-mapped.png");
     const int macroLive = ringLevel(renderer, macroRing, 20.0f);
     // With no note playing, FM Amount's knob shows where the macro takes it, a dot on its arc, which goes with the
@@ -1975,7 +1976,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     // cutoff here, and while a note plays its display names it (an A4 bent 30 cents up).
     const Point noteHandle{976.0f, y};
     click(view, kF1Tab);
-    drag(view, noteHandle, {918.0f, 214.0f});
+    drag(view, noteHandle, {918.0f, 242.0f});
     const bool noteMapped =
         slotTarget(model.value(slotTargetIndex(kNoteSource, 0))) == paramIndex(0, FilterParam::Cutoff);
     model.live.voices = 1;
@@ -1989,7 +1990,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     check(idleShot && macroIdle * 18 < macroLive * 10 && noteIdle * 18 < noteLive * 10,
           "a macro's and the note source's handles are faint until they modulate something");
     std::string removal;
-    for (const MenuItem &item : view.contextMenu({918.0f, 214.0f}))
+    for (const MenuItem &item : view.contextMenu({918.0f, 242.0f}))
         if (item.label.find(tr(Str::SourceNameNote)) != std::string::npos)
             removal = item.label;
     check(noteMapped && shot && removal == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameNote)}),
@@ -1999,14 +2000,14 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     // does), onto FM Amount here, where it starts upward, as every new modulation does.
     {
         const Point wheelHandle{928.0f, y}, wheelRing{934.0f, y - 10.0f};
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "26f-wheel-idle.png");
         const int idle = ringLevel(renderer, wheelRing, 20.0f);
         drag(view, wheelHandle, kFmAmountKnob);
         const bool wheelMapped =
             slotTarget(model.value(slotTargetIndex(kWheelSource, 0))) == paramIndex(GlobalParam::FmAmount) &&
             model.value(slotAmountIndex(kWheelSource, 0)) == 0.3;
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool wheelShot = renderer.save(view, dir / "26g-wheel-mapped.png");
         const int live = ringLevel(renderer, wheelRing, 20.0f);
         std::string wheelRemoval;
@@ -2039,7 +2040,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const bool wheelBipolar = model.value(paramIndex(WheelParam::Bipolar)) == 1.0;
         polarity({1026.0f, y}, tr(Str::MenuBipolar)); // the note source's display
         const bool noteBipolar = model.value(paramIndex(NoteParam::Bipolar)) == 1.0;
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool stripShot = renderer.save(view, dir / "26h-bipolar-strip.png");
         polarity({928.0f, y}, tr(Str::MenuUnipolar)); // the wheel's handle
         polarity(macroKnob(0), tr(Str::MenuUnipolar));
@@ -2077,7 +2078,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, toggle);
         const bool shorter = model.ui.keysCollapsed && view.height() == open - 120.0f;
         const Point wheelHandle{928.0f, y};
-        drag(view, wheelHandle, {918.0f, 214.0f});
+        drag(view, wheelHandle, {918.0f, 242.0f});
         const bool wheelMapped =
             slotTarget(model.value(slotTargetIndex(kWheelSource, 1))) == paramIndex(0, FilterParam::Cutoff);
         const double bendWas = model.value(paramIndex(GlobalParam::BendRange));
@@ -2097,16 +2098,16 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {1026.0f, y});
     const int low = paramIndex(NoteParam::Low), high = paramIndex(NoteParam::High);
     const double lowFrom = model.value(low);
-    drag(view, {182.0f, 124.0f}, {182.0f, 24.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
+    drag(view, {182.0f, 152.0f}, {182.0f, 52.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
     const bool raised = model.value(low) == std::round(lowFrom) + 10.0;
     view.doubleClick(noteCurveAt(0.5, 0.6), {});
     const bool pointAdded = model.value(paramIndex(NoteParam::Curve)) == 4.0;
     // Steps, under the plot left of the grid's controls, has a plain click draw a step here too; Points goes back.
-    click(view, {514.0f, 458.0f});
+    click(view, {514.0f, 486.0f});
     click(view, noteCurveAt(0.2, -0.5));
     const bool stepped = model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) > 4.0;
     view.undo();
-    click(view, {446.0f, 458.0f});
+    click(view, {446.0f, 486.0f});
     click(view, noteCurveAt(0.2, -0.5));
     const bool modes = stepped && !model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) == 4.0;
     model.live.notePitch = 72.0f;
@@ -2130,13 +2131,13 @@ void testMeter(const std::filesystem::path &dir, Renderer &renderer) {
     model.live.outPeak = {0.5f, 0.125f}; // -6 and -18 dB
     view.poll();
     const bool shot = renderer.save(view, dir / "26d-meter.png");
-    const uint32_t left = renderer.pixel({kHeaderStart + 2.5f, 27.0f}), right = renderer.pixel({kHeaderStart + 11.5f, 27.0f}); // about -14 dB
-    const uint32_t dark = renderer.pixel({kHeaderStart + 2.5f, 14.5f});
+    const uint32_t left = renderer.pixel({kHeaderStart + 2.5f, 59.0f}), right = renderer.pixel({kHeaderStart + 11.5f, 59.0f}); // about -14 dB
+    const uint32_t dark = renderer.pixel({kHeaderStart + 2.5f, 46.5f});
     model.live.outPeak = {1.4f, 1.4f};
     model.live.clipHold = 1.0f;
     view.poll();
     const bool clipShot = renderer.save(view, dir / "26e-meter-clipping.png");
-    const uint32_t lit = renderer.pixel({kHeaderStart + 2.5f, 14.5f});
+    const uint32_t lit = renderer.pixel({kHeaderStart + 2.5f, 46.5f});
     check(shot && clipShot && (left & 255) > 200 && (right & 255) < 100 && (dark >> 16 & 255) < 120 &&
               (lit >> 16 & 255) > 200 && (lit >> 8 & 255) < 100,
           "the output meter shows each side's peak, and its clip light past full scale");
@@ -2207,7 +2208,7 @@ void testOutScope(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // The three-band dynamics, alone in the chain: a card one and a half places wide (x 32 to 299.5) whose display (from
-// y 194) has a bar a band, the high band on top (y 201, 218 and 235, 12 tall), levels across from -60 dB at x 84 to
+// y 222) has a bar a band, the high band on top (y 229, 246 and 263, 12 tall), levels across from -60 dB at x 84 to
 // 0 dB at x 245.5. A band's row picks the band its knobs set; its threshold lines, on every band, drag across (each
 // stopping at the other), picking their band, Alt-dragged up they turn its ratio, and a double-click puts the
 // threshold back. LINK makes the knobs and every band's lines set the low band; RMS switches the detector to peaks.
@@ -2221,7 +2222,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     check(model.value(paramIndex(0, FxParam::Type)) == static_cast<double>(FxType::MultiDyn),
           "the list of effects adds a three-band dynamics");
     auto x = [](double db) { return 84.0f + static_cast<float>((db + 60.0) / 60.0) * 161.5f; };
-    constexpr float kHighBar = 201.0f, kMidBar = 218.0f;
+    constexpr float kHighBar = 229.0f, kMidBar = 246.0f;
     const float mid = kMidBar + 6.0f, high = kHighBar + 6.0f; // down the middle of their bars
     click(view, {60.0f, mid});
     const Point above = fxKnob(model, 0, 2, 5, 142.0f);
@@ -2251,7 +2252,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
           "Alt-dragging a threshold line turns its ratio, and a double-click puts the threshold back");
     // The ratio's lines, moving with their threshold: at 3:1, what goes in 6 dB over Above (-14 dB) comes out at
     // -18 dB, so a line stands there, and none between it and the next (-16 dB). At 1:1 the line moves on to -14 dB.
-    view.mouseMove({600.0f, 600.0f}, {});
+    view.mouseMove({600.0f, 628.0f}, {});
     model.set(mdDownIndex(0, 1), normFromDynRatio(3.0));
     const bool linesShot = renderer.save(view, dir / "9e1-3band-dynamics-ratio-lines.png");
     const bool line = renderer.pixel({x(-18.0), mid}) != renderer.pixel({x(-17.1), mid});
@@ -2285,7 +2286,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     check(dragged && model.value(mdAboveIndex(0, 2)) > -24.0 && model.value(mdAboveIndex(0, 1)) == -20.0,
           "dragging a three-band dynamics' line on another band picks that band");
     // Hovered, the Above knob says what it is under its label (its value now).
-    view.mouseMove({600.0f, 600.0f}, {});
+    view.mouseMove({600.0f, 628.0f}, {});
     const bool shot = renderer.save(view, dir / "9e-3band-dynamics.png");
     const uint32_t bare = renderer.pixel({above.x, above.y + 48.0f});
     view.mouseMove(above, {});
@@ -2294,7 +2295,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
           "a three-band dynamics' Above knob shows its tooltip under its label");
     // The mid band at -20 dB pulled down 6 dB: its meter, down the bar's middle, fills up to -26 dB in teal, then
     // amber up to -20 dB.
-    view.mouseMove({600.0f, 600.0f}, {});
+    view.mouseMove({600.0f, 628.0f}, {});
     const uint32_t empty = renderer.pixel({x(-45.0), mid});
     model.live.fxBandLevel[0] = {0.0f, 0.1f, 0.0f};
     model.live.fxBandGain[0] = {0.0f, -6.0f, 0.0f};
@@ -2307,7 +2308,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
           "a three-band dynamics' bar shows its band's level and gain");
     // LINK: an edit of one band, by its line or its knob, sets every band's same field, as one undo step; RMS off
     // follows peaks.
-    click(view, {230.5f, 170.0f});
+    click(view, {230.5f, 198.0f});
     drag(view, {x(-40.0), mid}, {x(-45.0), mid});
     bool linkedLine = true;
     for (int band = 0; band < kMcBands; ++band)
@@ -2320,8 +2321,8 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     bool undone = true;
     for (int band = 0; band < kMcBands; ++band)
         undone = undone && model.value(mdAboveIndex(0, band)) < raised;
-    click(view, {194.5f, 170.0f});
-    view.mouseMove({600.0f, 600.0f}, {});
+    click(view, {194.5f, 198.0f});
+    view.mouseMove({600.0f, 628.0f}, {});
     check(linkedLine && linked && undone && model.value(paramIndex(0, FxParam::MdRms)) == 0.0 &&
               renderer.save(view, dir / "9h-3band-dynamics-linked.png"),
           "a three-band dynamics' LINK makes an edit of one band set every band's, undoably, and RMS switches to peaks");
@@ -2367,7 +2368,7 @@ void testSourceShadow(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
     // The list opens where the card is clicked: its entries from there, not from the card's corner.
-    const Point first{cardX(0) + 46.0f, 600.0f};
+    const Point first{cardX(0) + 46.0f, 628.0f};
     auto entry = [&](Point click, SourceType type) { return sourceListItem(view, click, type); };
     click(view, first);
     view.mouseMove(entry(first, SourceType::Midi), {});
@@ -2375,20 +2376,20 @@ void testSourceShadow(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, entry(first, SourceType::Lfo));
     const bool lfo = shown(model) == std::vector<int>{0} &&
                      model.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::Lfo);
-    const Point second{cardX(1) + 30.0f, 560.0f}; // after it, higher up
+    const Point second{cardX(1) + 30.0f, 588.0f}; // after it, higher up
     click(view, second);
-    click(view, {600.0f, 300.0f}); // around the list
+    click(view, {600.0f, 328.0f}); // around the list
     const bool closed = shown(model) == std::vector<int>{0};
     click(view, second);
     click(view, entry(second, SourceType::Env));
     const bool env = shown(model) == std::vector<int>{0, 1} &&
                      model.value(paramIndex(1, SourceParam::Type)) == static_cast<double>(SourceType::Env);
-    view.mouseMove({cardX(2) + 46.0f, 600.0f}, {});
+    view.mouseMove({cardX(2) + 46.0f, 628.0f}, {});
     check(menuShot && lfo && closed && env && renderer.save(view, dir / "29-source-shadow.png"),
           "the dashed card after the sources opens the list of source types at the mouse, which adds the one picked");
     // Left open while the panel collapses (as a state load or another editor can do), the list shuts with it, and
     // doesn't come back when the panel opens again: a click where its LFO entry was opens it afresh instead.
-    const Point third{cardX(2) + 46.0f, 600.0f};
+    const Point third{cardX(2) + 46.0f, 628.0f};
     click(view, third);
     model.ui.sourcesCollapsed = true;
     view.poll();
@@ -2406,7 +2407,7 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     const float y = view.height() - 179.0f;
     const Point handle{1092.0f, y}, ring{1098.0f, y - 10.0f}, display{1142.0f, y};
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "26k-velocity-idle.png");
     const int idle = ringLevel(renderer, ring, 20.0f);
     drag(view, handle, kOpPhaseKnob);
@@ -2415,7 +2416,7 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     model.live.voices = 1;
     model.live.noteVelocity = 100.0f / 127.0f;
     view.poll();
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool shot = renderer.save(view, dir / "26l-velocity.png");
     const int live = ringLevel(renderer, ring, 20.0f);
     std::string removal;
@@ -2448,7 +2449,7 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kNoteCurveReset);
     const bool reset = model.value(curve) == 2.0 && model.value(shapeFieldIndex(curve, 1, PointField::Y)) == 1.0;
     click(view, display); // a second click closes it
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     check(pointAdded && curveShot && reset && renderer.save(view, dir / "26n-velocity-closed.png"),
           "velocity's display opens its curve, where a point is added, and the reset button straightens it");
 }
@@ -2494,7 +2495,7 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
         return kDefaultWireBend;
     };
     const float bent = bendOf();
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool shot = renderer.save(view, dir / "2h-wire-bent.png");
     std::printf("      B -> A's wire dragged 30 px left: bend %.3f, from %.2f\n", bent, kDefaultWireBend);
     // Its label, at the curve's middle, went along: dragging it now changes the route's amount.
@@ -2542,7 +2543,7 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     auto aboveGraph = [&] {
         std::vector<uint32_t> pixels;
-        for (float y = 66.0f; y < 104.0f; y += 2.0f)
+        for (float y = 94.0f; y < 132.0f; y += 2.0f)
             for (float x = 150.0f; x < 750.0f; x += 3.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
@@ -2598,7 +2599,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
         return pixels;
     };
     auto glyphPixels = [&] { return pixelsAround(glyph); };
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool plainShot = renderer.save(view, dir / "2k-route-phase.png");
     const std::vector<uint32_t> phaseAway = glyphPixels(), removeAway = pixelsAround(removePart);
     // Under the mouse, the label opens into its pill (read off the rendered pixels); a click on its mode part opens
@@ -2613,7 +2614,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     const bool listShot = renderer.save(view, dir / "2l-route-mode-list.png");
     click(view, ringItem);
     const bool ring = model.value(mode) == static_cast<double>(RouteMode::Ring);
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool ringShot = renderer.save(view, dir / "2m-route-ring.png");
     const bool shows = glyphPixels() != phaseAway;
     view.undo();
@@ -2658,7 +2659,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
     };
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool matrixShot = renderer.save(view, dir / "6b-matrix-route-mode.png");
     const std::vector<uint32_t> expCorner = cornerPixels();
     for (const MenuItem &item : view.contextMenu(cell))
@@ -2678,7 +2679,7 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, opTabPoint(InspectorTab::Inputs));
     const bool tab = layout.opTab == InspectorTab::Inputs;
-    const float row = 104.0f + 186.0f + 9.0f;
+    const float row = 132.0f + 186.0f + 9.0f;
     auto modeButton = [&](RouteMode m) { return Point{884.0f + 48.0f + 13.0f + static_cast<int>(m) * 26.0f, row}; };
     click(view, modeButton(RouteMode::Ring));
     const bool ringPicked = model.value(mode) == static_cast<double>(RouteMode::Ring);
@@ -2731,7 +2732,7 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     model.ui.selectedNode = 0;
     view.poll();
     const UiLayout &layout = model.layout();
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     // Inside a circle, left of its letter, and on its left 5 px out, where the ring goes.
     auto inside = [&](int node) {
         const Point c = nodeCenter(layout, node);
@@ -2744,20 +2745,20 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shotA = renderer.save(view, dir / "1g-selected-node.png");
     const uint32_t aIn = inside(0), bIn = inside(1), aRing = ring(0), bRing = ring(1);
     click(view, nodeTab(1));
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool shotB = renderer.save(view, dir / "1h-selected-node-b.png");
     const bool moved = inside(1) == aIn && inside(0) == bIn && ring(1) == aRing && ring(0) == bRing;
     check(shotA && shotB && aIn != bIn && aRing != bRing && moved,
           "the node the inspector shows is filled and ringed in the graph, and picking another moves both (read off the "
           "rendered pixels)");
     // C and D are off, the first two ghosts in the graph's top left: C's filled while it is the one shown.
-    auto ghost = [&](int k) { return renderer.pixel({32.0f + k * 30.0f + 5.0f, 104.0f + 10.0f + 12.0f}); };
+    auto ghost = [&](int k) { return renderer.pixel({32.0f + k * 30.0f + 5.0f, 132.0f + 10.0f + 12.0f}); };
     const bool plainShot = renderer.save(view, dir / "1i-ghosts.png");
     const uint32_t cPlain = ghost(0), dPlain = ghost(1);
     click(view, nodeTab(2));
     model.set(paramIndex(2, OpParam::Enabled), 0.0); // the tab switches it on; off again, it is a ghost still shown
     view.poll();
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool ghostShot = renderer.save(view, dir / "1j-selected-ghost.png");
     check(plainShot && ghostShot && layout.selectedNode == 2 && ghost(0) != cPlain && ghost(1) == dPlain,
           "a switched-off node's ghost is filled while the inspector shows it (read off the rendered pixels)");
@@ -2789,11 +2790,11 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotAmountIndex(kMaxSources, 0), 0.35);
     view.poll();
     // The tab, after FX; the first row's middle at y 154, its cells across from x 28 (see layout.h's kMods...).
-    click(view, {314.0f, 88.0f});
-    view.mouseMove({600.0f, 440.0f}, {});
+    click(view, {314.0f, 116.0f});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool shot = renderer.save(view, dir / "35-mods.png");
     check(model.ui.view == RoutingView::Mods && shot, "the MODS tab shows every modulation as a row");
-    const float y = 154.0f;
+    const float y = 182.0f;
     auto slotIs = [&](int source, int slot, int target) {
         return slotTarget(model.value(slotTargetIndex(source, slot))) == target;
     };
@@ -2840,16 +2841,16 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     // + Aux opens None and the sources by category; over Envelopes (the third entry) Env 1 shows beside it, and
     // picking it makes it the aux.
     click(view, {950.0f, y});
-    view.mouseMove({940.0f, 167.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {});
+    view.mouseMove({940.0f, 195.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {});
     const bool auxShot = renderer.save(view, dir / "35e-mods-aux-menu.png");
-    click(view, {1080.0f, 211.0f + 4.0f + 11.0f});
+    click(view, {1080.0f, 239.0f + 4.0f + 11.0f});
     check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
     // The target opens every target by category, under its search (30 px, the level 240 px wide from x 234):
     // Operators, then B, then (under PITCH, after Ratio and Pitch) Detune, three levels deep.
     click(view, {300.0f, y});
-    view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
-    view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {});       // B
-    const Point detune{650.0f, 244.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
+    view.mouseMove({300.0f, 228.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
+    view.mouseMove({530.0f, 250.0f + 4.0f + 22.0f + 11.0f}, {});       // B
+    const Point detune{650.0f, 272.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
     view.mouseMove(detune, {});
     const bool menuShot = renderer.save(view, dir / "35a-mods-target-menu.png");
     click(view, detune);
@@ -2863,10 +2864,10 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     // Its source moves it to a free slot of another source, Macro 1 here, with its depth, Amount and aux, in one undo
     // step.
     click(view, {90.0f, y});
-    view.mouseMove({80.0f, 170.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {}); // Macros
-    view.mouseMove({200.0f, 214.0f + 4.0f + 11.0f}, {});              // Macro 1
+    view.mouseMove({80.0f, 198.0f + 4.0f + 2.0f * 22.0f + 11.0f}, {}); // Macros
+    view.mouseMove({200.0f, 242.0f + 4.0f + 11.0f}, {});              // Macro 1
     const bool sourceShot = renderer.save(view, dir / "35b-mods-source-menu.png");
-    click(view, {200.0f, 214.0f + 4.0f + 11.0f});
+    click(view, {200.0f, 242.0f + 4.0f + 11.0f});
     const bool moved = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
                        slotIs(kMaxSources, 1, paramIndex(0, OpParam::Ratio)) &&
                        std::abs(model.value(slotAmountIndex(kMaxSources, 1)) - 0.4) < 1e-9 &&
@@ -2878,10 +2879,10 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
           "a row's source menu moves its modulation to another source with its settings, undoably");
     // Thirteen rows: the wheel over them (not on a bar, which it turns) scrolls them, gliding a row a notch; two
     // notches down, the top row's x is LFO 1's third modulation's.
-    view.wheel({300.0f, 300.0f}, -2.0f, {});
+    view.wheel({300.0f, 328.0f}, -2.0f, {});
     for (int i = 0; i < 30; ++i)
         view.poll();
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool scrolledShot = renderer.save(view, dir / "35c-mods-scrolled.png");
     click(view, {1144.0f, y});
     const bool removed = slotTarget(model.value(slotTargetIndex(0, 2))) < 0 && slotIs(0, 1, paramIndex(0, fillers[0]));
@@ -2890,15 +2891,15 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
           "the wheel scrolls the MODS view's rows, the scrolled-to row's controls under the mouse");
     // Scrolled to the end, Macro 1's row (the last of the thirteen, the add row after it) has a bypass dot like the
     // others: a click bypasses its modulation, and another lets it go again.
-    view.wheel({300.0f, 300.0f}, -10.0f, {});
+    view.wheel({300.0f, 328.0f}, -10.0f, {});
     for (int i = 0; i < 40; ++i)
         view.poll();
     // The rows are 30 px apart, 28 high, in a list 326 high whose first row's middle is at y 154: the fourteen (the
     // add row too) scroll as far as the first shown is row 3.1 (see View::modsEnd()).
     const float lastFirst = (14.0f * 30.0f - 2.0f - 326.0f) / 30.0f;
-    const Point macroDot{41.0f, 154.0f + (12.0f - lastFirst) * 30.0f};
+    const Point macroDot{41.0f, 182.0f + (12.0f - lastFirst) * 30.0f};
     click(view, macroDot);
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool macroBypassed = model.value(slotBypassIndex(kMaxSources, 0)) == 1.0;
     const bool macroBypassShot = renderer.save(view, dir / "35l-mods-macro-bypassed.png");
     click(view, macroDot);
@@ -2917,7 +2918,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     // Macro 2's handle dropped on LFO 1's depth handle along Op A's Ratio readout makes Macro 2 that modulation's aux.
     // Modulating nothing itself, Macro 2 isn't faint as Macro 3 is, which does nothing (read off the rendered
     // pixels, the macros' handles 96 px apart).
-    click(view, {64.0f, 88.0f}); // back to ROUTING, with the inspector
+    click(view, {64.0f, 116.0f}); // back to ROUTING, with the inspector
     const float strip = view.height() - 179.0f;
     // The depth handle's menu offers to remove an aux only once it has one.
     const std::string removeAux = trf(Str::MenuRemoveAux, {nameOf(model, kMaxSources + 1)});
@@ -2929,7 +2930,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     };
     const bool noAuxEntry = auxEntry() == 0;
     drag(view, {252.0f, strip}, kRatioDot);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool ringShot = renderer.save(view, dir / "35d-aux-ring.png");
     const int auxRing = ringLevel(renderer, {252.0f + 6.0f, strip - 10.0f}, 20.0f);
     const int idleRing = ringLevel(renderer, {348.0f + 6.0f, strip - 10.0f}, 20.0f);
@@ -2945,7 +2946,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     check(noAuxEntry && auxCommand != 0 && auxGone &&
               slotAuxSource(model.value(slotAuxIndex(0, 0))) == kMaxSources + 1,
           "a depth handle's menu removes its aux, undoably, and offers it only with one");
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     // Hovering that depth handle draws the dashed line to it from LFO 1's handle, on screen on the first card: half
     // way along the line, bowed to one side, the pixels change (read off the rendered pixels).
     const Point from = sourceHandle(0), to = kRatioDot;
@@ -2984,13 +2985,13 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
                 pixels.push_back(renderer.pixel({auxMiddle.x + dx, auxMiddle.y + dy}));
         return pixels;
     };
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "35j0-aux-plain.png"); // the last render had the depth handle hovered
     const std::vector<uint32_t> auxPlain = aroundAux();
     view.mouseMove(auxFrom, {});
     const bool auxLinkShot = renderer.save(view, dir / "35j-aux-link.png");
     const bool fromHandle = aroundAux() != auxPlain;
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     view.mouseMove(to, {});
     renderer.save(view, dir / "35k-aux-link-from-depth-handle.png");
     check(auxLinkShot && fromHandle && aroundAux() != auxPlain,
@@ -3015,10 +3016,10 @@ void testModsLive(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, MacroParam::Bipolar), 0.0);
     model.set(paramIndex(0, MacroParam::Value), 0.0);
     view.poll();
-    click(view, {314.0f, 88.0f}); // the MODS tab
+    click(view, {314.0f, 116.0f}); // the MODS tab
     auto shoot = [&](const char *name, float y) {
         view.poll();
-        view.mouseMove({600.0f, 440.0f}, {});
+        view.mouseMove({600.0f, 468.0f}, {});
         renderer.save(view, dir / name);
         std::vector<uint32_t> pixels; // just above the bar, where only the tick reaches
         for (float x = 476.0f; x < 636.0f; x += 1.0f)
@@ -3029,7 +3030,7 @@ void testModsLive(const std::filesystem::path &dir, Renderer &renderer) {
         const size_t i = static_cast<size_t>(x - 476.0f);
         return with[i] != without[i];
     };
-    const float lfoRow = 154.0f, macroRow = 184.0f;
+    const float lfoRow = 182.0f, macroRow = 212.0f;
     model.live.voices = 0;
     model.live.slotOffset[0] = 0.25f;
     const std::vector<uint32_t> silent = shoot("35z-mods-live-none.png", lfoRow);
@@ -3062,7 +3063,7 @@ void testNodeSwitchOnPlace(const std::filesystem::path &dir, Renderer &renderer)
     click(view, nodeTab(1));
     const Point b = nodeCenter(layout, 1);
     const float apart = std::hypot(b.x - a.x, b.y - a.y);
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool shot = renderer.save(view, dir / "1f-op-on-clear.png");
     view.undo();
     const bool undone = model.value(paramIndex(1, OpParam::Enabled)) == 0.0 &&
@@ -3101,10 +3102,10 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(slotTargetIndex(1, 0), slotTargetValue(slotAmountIndex(0, 0)));
     model.set(slotAmountIndex(1, 0), 0.25);
     view.poll();
-    click(view, {314.0f, 88.0f}); // MODS
+    click(view, {314.0f, 116.0f}); // MODS
     auto moveTo = [&](int category) {
-        const float y = 174.0f + 22.0f * static_cast<float>(category) + 11.0f;
-        click(view, {90.0f, 154.0f});
+        const float y = 202.0f + 22.0f * static_cast<float>(category) + 11.0f;
+        click(view, {90.0f, 182.0f});
         view.mouseMove({80.0f, y}, {});
         view.mouseMove({200.0f, y}, {}); // the category's first source
         click(view, {200.0f, y});
@@ -3114,7 +3115,7 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
                           slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
                           slotTarget(model.value(slotTargetIndex(1, 0))) == slotAmountIndex(2, 0) &&
                           std::abs(model.value(slotAmountIndex(1, 0)) - 0.25) < 1e-9;
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool shot = renderer.save(view, dir / "35m-mods-moved-with-depth.png");
     view.undo();
     const bool back = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Ratio) &&
@@ -3128,7 +3129,7 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
           "a modulation moved to a macro takes away what modulated its depth");
     // Removed by its row's x (at x 1144), it takes what modulated its depth with it, in one undo step.
     view.undo();
-    click(view, {1144.0f, 154.0f});
+    click(view, {1144.0f, 182.0f});
     const bool removed = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
                          slotTarget(model.value(slotTargetIndex(1, 0))) < 0;
     view.undo();
@@ -3156,9 +3157,9 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         return static_cast<SourceType>(std::lround(model.value(paramIndex(place, SourceParam::Type))));
     };
     const bool added = typeOf(0) == SourceType::Random && typeOf(1) == SourceType::Midi && typeOf(2) == SourceType::Midi;
-    const Point ccKnob{cardX(1) + 172.0f, 590.0f}, inputButton{cardX(2) + 16.0f + 61.0f, 536.0f + 42.0f + 11.0f};
+    const Point ccKnob{cardX(1) + 172.0f, 618.0f}, inputButton{cardX(2) + 16.0f + 61.0f, 564.0f + 42.0f + 11.0f};
     auto entry = [](float card, MidiInput input) {
-        return Point{cardX(card) + 60.0f, 604.0f + 4.0f + 22.0f * static_cast<float>(input) + 11.0f};
+        return Point{cardX(card) + 60.0f, 632.0f + 4.0f + 22.0f * static_cast<float>(input) + 11.0f};
     };
     view.wheel(ccKnob, 1.0f, {});
     // The button's tooltip says what its input follows (read off the rendered pixels along y 618, under it, against
@@ -3167,10 +3168,10 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
         std::vector<uint32_t> pixels;
         if (renderer.save(view, dir / name))
             for (float x = cardX(2); x <= cardX(2) + 240.0f; x += 2.0f)
-                pixels.push_back(renderer.pixel({x, 618.0f}));
+                pixels.push_back(renderer.pixel({x, 646.0f}));
         return pixels;
     };
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const std::vector<uint32_t> away = underButton("11f-midi-input-away.png");
     view.mouseMove(inputButton, {});
     const std::vector<uint32_t> ccTip = underButton("11g-midi-cc-tooltip.png");
@@ -3181,11 +3182,11 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     const bool onPressure = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Pressure);
     view.mouseMove(inputButton, {});
     const std::vector<uint32_t> pressureTip = underButton("11h-midi-pressure-tooltip.png");
-    view.wheel({cardX(2) + 172.0f, 590.0f}, 1.0f, {}); // no CC knob there now
+    view.wheel({cardX(2) + 172.0f, 618.0f}, 1.0f, {}); // no CC knob there now
     click(view, inputButton);
     click(view, entry(2, MidiInput::Slide));
     const bool onSlide = model.value(paramIndex(2, SourceParam::MidiInput)) == static_cast<double>(MidiInput::Slide);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool shot = renderer.save(view, dir / "11e-new-sources.png");
     check(ccTip != away && pressureTip != away && ccTip != pressureTip,
           "a MIDI card's input button shows a tooltip saying what its input follows");
@@ -3199,30 +3200,30 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     // The columns' names, their middle at y 126: along it, under SOURCE (from x 54), the text's pixels differ from
     // the panel's (read off the rendered pixels).
-    click(view, {314.0f, 88.0f}); // the MODS tab
-    view.mouseMove({600.0f, 440.0f}, {});
+    click(view, {314.0f, 116.0f}); // the MODS tab
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool noneShot = renderer.save(view, dir / "35e2-mods-none.png");
     bool headed = false;
     for (float x = 54.0f; x < 110.0f && !headed; x += 1.0f)
-        headed = renderer.pixel({x, 126.0f}) != renderer.pixel({48.0f, 126.0f});
+        headed = renderer.pixel({x, 154.0f}) != renderer.pixel({48.0f, 154.0f});
     check(noneShot && headed, "the MODS view shows its columns' names with no modulations");
     click(view, kRoutingTab);
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
     model.set(slotAmountIndex(0, 0), 0.4);
     view.poll();
-    click(view, {314.0f, 88.0f}); // the MODS tab
+    click(view, {314.0f, 116.0f}); // the MODS tab
     // Under LFO 1's row (its middle at y 154), the button adds a second: its source's menu opens under its source,
     // at x 54 and y 200. Over Macros, the second entry, the macros show beside it; Macro 1 is picked.
-    const float y = 184.0f;
+    const float y = 212.0f;
     click(view, {100.0f, y});
     const bool added = model.ui.emptyMods == std::vector<std::pair<int, int>>{{-1, -1}};
-    view.mouseMove({80.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {}); // Macros
-    view.mouseMove({230.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {}); // Macro 1, beside it
+    view.mouseMove({80.0f, 228.0f + 4.0f + 22.0f + 11.0f}, {}); // Macros
+    view.mouseMove({230.0f, 228.0f + 4.0f + 22.0f + 11.0f}, {}); // Macro 1, beside it
     const bool menuShot = renderer.save(view, dir / "35f-mods-empty-source.png");
-    click(view, {230.0f, 200.0f + 4.0f + 22.0f + 11.0f});
+    click(view, {230.0f, 228.0f + 4.0f + 22.0f + 11.0f});
     const bool sourced = model.ui.emptyMods == std::vector<std::pair<int, int>>{{kMaxSources, -1}};
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool shot = renderer.save(view, dir / "35g-mods-empty.png");
     check(added && menuShot && sourced && shot && slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0,
           "the MODS view's last row adds an empty modulation, which takes a source and modulates nothing yet");
@@ -3235,9 +3236,9 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
             globals.push_back(g);
     auto openGlobal = [&] {
         click(view, {300.0f, y});
-        view.mouseMove({300.0f, 230.0f + 4.0f + 11.0f}, {});
+        view.mouseMove({300.0f, 258.0f + 4.0f + 11.0f}, {});
     };
-    auto globalEntry = [&](size_t k) { return Point{540.0f, 230.0f + 4.0f + 22.0f * k + 11.0f}; };
+    auto globalEntry = [&](size_t k) { return Point{540.0f, 258.0f + 4.0f + 22.0f * k + 11.0f}; };
     openGlobal();
     const bool globalShot = renderer.save(view, dir / "35h-mods-global-targets.png");
     click(view, globalEntry(globals.size()));
@@ -3258,28 +3259,28 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     // A card's button, its source modulating nothing (Env 1, on the second card), adds an empty modulation from it.
     model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
     view.poll();
-    click(view, {cardX(1) + 60.0f, 708.0f});
-    view.mouseMove({600.0f, 440.0f}, {});
+    click(view, {cardX(1) + 60.0f, 736.0f});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool cardShot = renderer.save(view, dir / "35j-mods-from-card.png");
     check(cardShot && model.ui.view == RoutingView::Mods &&
               model.ui.emptyMods == std::vector<std::pair<int, int>>{{1, -1}},
           "a card's button, its source modulating nothing, adds an empty modulation from it in MODS");
     // With LFO 1's row and then Env 1's, a new empty modulation given LFO 1 moves up among LFO 1's rows: its target,
     // picked in the second row (its middle at y 184), makes it LFO 1's, Env 1's left as it was.
-    click(view, {600.0f, 440.0f}); // closes the target menu the card's button opened
+    click(view, {600.0f, 468.0f}); // closes the target menu the card's button opened
     model.ui.emptyMods.clear();
     model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(1, OpParam::Ratio)));
     view.poll();
-    click(view, {100.0f, 214.0f}); // the button, under Env 1's row, opens the source menu at y 230
-    view.mouseMove({80.0f, 230.0f + 4.0f + 11.0f}, {}); // LFOs
+    click(view, {100.0f, 242.0f}); // the button, under Env 1's row, opens the source menu at y 230
+    view.mouseMove({80.0f, 258.0f + 4.0f + 11.0f}, {}); // LFOs
     // The menu's first entry under the mouse leaves LFO 1's row (its source's and slot's numbers the entry's) unlit:
     // it matches Env 1's between its aux and its x (read off the rendered pixels).
     const bool overRowsShot = renderer.save(view, dir / "35n-mods-menu-over-rows.png");
-    const bool rowUnlit = renderer.pixel({1110.0f, 154.0f}) == renderer.pixel({1110.0f, 184.0f});
+    const bool rowUnlit = renderer.pixel({1110.0f, 182.0f}) == renderer.pixel({1110.0f, 212.0f});
     check(overRowsShot && rowUnlit, "an open menu's entry under the mouse lights no MODS row");
-    click(view, {230.0f, 230.0f + 4.0f + 11.0f});     // LFO 1, beside it
+    click(view, {230.0f, 258.0f + 4.0f + 11.0f});     // LFO 1, beside it
     const bool lfoSourced = model.ui.emptyMods == std::vector<std::pair<int, int>>{{0, -1}};
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool sortedShot = renderer.save(view, dir / "35k-mods-empty-sorted.png");
     openGlobal();
     click(view, globalEntry(0));
@@ -3304,18 +3305,18 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     for (auto [source, slot] : {std::pair{0, 0}, {0, 1}, {1, 0}, {kMaxSources, 0}})
         model.set(slotAmountIndex(source, slot), 0.3);
     view.poll();
-    click(view, {314.0f, 88.0f}); // the MODS tab
+    click(view, {314.0f, 116.0f}); // the MODS tab
     auto slotIs = [&](int source, int slot, int target) {
         return slotTarget(model.value(slotTargetIndex(source, slot))) == target;
     };
-    const Point magnifier{1156.0f, 126.0f}, firstX{1144.0f, 154.0f};
+    const Point magnifier{1156.0f, 154.0f}, firstX{1144.0f, 182.0f};
     // The magnifier opens the filter, which takes the keyboard; "fm" leaves Env 1's row alone, first, and a click on
     // its x takes the keyboard back, the filter keeping its words.
     const bool idle = !view.typing();
     click(view, magnifier);
     const bool takesKeys = view.typing();
     type(view, "fm");
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool filterShot = renderer.save(view, dir / "35q-mods-filter.png");
     click(view, firstX);
     const bool removedEnv = slotTarget(model.value(slotTargetIndex(1, 0))) < 0 && slotIs(0, 0, paramIndex(0, OpParam::Ratio));
@@ -3326,13 +3327,13 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
           "go at a click elsewhere");
     // Every word counts, in any case: "LFO det" leaves LFO 1's Detune row alone. Its x empties it and keeps the
     // keyboard; Escape then lets it go.
-    click(view, {1000.0f, 126.0f}); // in the open field, from x 968
+    click(view, {1000.0f, 154.0f}); // in the open field, from x 968
     view.typeKey(View::Key::SelectAll);
     type(view, "LFO det");
     click(view, firstX);
     const bool removedDetune = slotTarget(model.value(slotTargetIndex(0, 1))) < 0 && slotIs(0, 0, paramIndex(0, OpParam::Ratio));
     view.undo();
-    click(view, {1155.0f, 126.0f}); // the filter's x
+    click(view, {1155.0f, 154.0f}); // the filter's x
     const bool emptied = view.typing() && view.copyText(false).empty();
     view.typeKey(View::Key::Escape);
     click(view, firstX); // the filter empty, the first row is LFO 1's Ratio again
@@ -3342,10 +3343,10 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
           "the MODS view's filter takes every word typed, its x empties it and Escape lets the keyboard go");
     // An operator's targets show in two columns, 140 px each: under Operators, then B, ENVELOPE heads the second,
     // its Attack beside the pitch's (the level from x 598, under the menu's 30 px search).
-    click(view, {300.0f, 154.0f});
-    view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {}); // Operators
-    view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {}); // B
-    const Point attack{800.0f, 244.0f + 4.0f + 20.0f + 11.0f};
+    click(view, {300.0f, 182.0f});
+    view.mouseMove({300.0f, 228.0f + 4.0f + 22.0f + 11.0f}, {}); // Operators
+    view.mouseMove({530.0f, 250.0f + 4.0f + 22.0f + 11.0f}, {}); // B
+    const Point attack{800.0f, 272.0f + 4.0f + 20.0f + 11.0f};
     view.mouseMove(attack, {});
     const bool columnsShot = renderer.save(view, dir / "35s-mods-target-columns.png");
     click(view, attack);
@@ -3355,23 +3356,23 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
           "an operator's targets show in two columns, the envelope's beside the pitch's");
     // The target menu takes the keyboard into its search: "b det" lists Op B's Detune, with its path, and Enter
     // picks it.
-    click(view, {300.0f, 154.0f});
+    click(view, {300.0f, 182.0f});
     const bool menuKeys = view.typing();
     type(view, "b det");
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool searchShot = renderer.save(view, dir / "35r-mods-target-search.png");
     view.typeKey(View::Key::Enter);
     const bool found = slotIs(0, 0, paramIndex(1, OpParam::Detune)) && !view.typing();
     view.undo();
     // "a release" finds Op A's Release, then its Release Curve: Down picks the second. Escape empties the search,
     // then closes the menu.
-    click(view, {300.0f, 154.0f});
+    click(view, {300.0f, 182.0f});
     type(view, "a release");
     view.typeKey(View::Key::Down);
     view.typeKey(View::Key::Enter);
     const bool second = slotIs(0, 0, paramIndex(0, OpParam::ReleaseCurve));
     view.undo();
-    click(view, {300.0f, 154.0f});
+    click(view, {300.0f, 182.0f});
     type(view, "zzz");
     view.typeKey(View::Key::Enter); // nothing found, nothing picked
     const bool nothing = view.typing() && slotIs(0, 0, paramIndex(0, OpParam::Ratio));
@@ -3384,11 +3385,11 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     // "a det" finds Op A's Detune first, which LFO 1 modulates already through its second slot and so can't be
     // picked: the match after it is lit instead (read off the rendered pixels at the matches' right ends, 22 px
     // apart from y 215: the second's row lit, the third's not), and Enter takes that one.
-    click(view, {300.0f, 154.0f});
+    click(view, {300.0f, 182.0f});
     type(view, "a det");
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     const bool skipShot = renderer.save(view, dir / "35t-mods-target-search-skip.png");
-    auto matchPixel = [&](int match) { return renderer.pixel({466.0f, 215.0f + 22.0f * static_cast<float>(match)}); };
+    auto matchPixel = [&](int match) { return renderer.pixel({466.0f, 243.0f + 22.0f * static_cast<float>(match)}); };
     const bool secondLit = matchPixel(1) != matchPixel(2);
     view.typeKey(View::Key::Enter);
     const int taken = slotTarget(model.value(slotTargetIndex(0, 0)));
@@ -3411,14 +3412,14 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // Beside the knob, between its column and the next ones' (the Ratio readout's and Detune's), at the depth handles' height.
     auto beside = [&] {
         std::vector<uint32_t> pixels;
-        for (float y = 224.0f; y < 235.0f; y += 1.0f)
+        for (float y = 252.0f; y < 263.0f; y += 1.0f)
             for (float x = 17.0f; x < 27.0f; x += 1.0f) {
                 pixels.push_back(renderer.pixel({kPitchKnob.x - x, y}));
                 pixels.push_back(renderer.pixel({kPitchKnob.x + x, y}));
             }
         return pixels;
     };
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40-pill-none.png");
     const std::vector<uint32_t> none = beside();
     const int pitch = paramIndex(0, OpParam::Transpose);
@@ -3434,7 +3435,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // The pill sits right of the two handles: 30 px across, centered under the knob, its middle 9 px right of the
     // knob's. Its list, 265 px wide, centered under it: the rows 24 px apart from 24 px down, as on a card.
     // From the knob's exact middle, as the inspector's knob row places it (kPitchKnob rounds it).
-    const Point pill{884.0f + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.0f, 229.0f};
+    const Point pill{884.0f + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.0f, 257.0f};
     const float listX = pill.x - 132.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
     auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
     view.mouseMove(pill, {});
@@ -3449,8 +3450,8 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     const bool deep = std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6;
     click(view, row(6, 243.0f)); // LFO 7's remove
     const bool removed = slotTarget(model.value(slotTargetIndex(6, 0))) < 0;
-    click(view, {600.0f, 300.0f}); // elsewhere: the list closes
-    view.mouseMove({600.0f, 300.0f}, {});
+    click(view, {600.0f, 328.0f}); // elsewhere: the list closes
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40d-pill-closed.png");
     const uint32_t closed = renderer.pixel(row(5, 60.0f));
     check(hoverShot && listShot && bypassed && deep && removed && open != closed,
@@ -3466,15 +3467,15 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseUp(row(3, 60.0f), {});
     const bool aux = slotAuxSource(model.value(slotAuxIndex(3, 0))) == kMaxSources + 1 &&
                      slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0;
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40f-pill-aux.png");
     const bool stays = renderer.pixel(row(5, 60.0f)) == open;
-    click(view, {600.0f, 300.0f});
+    click(view, {600.0f, 328.0f});
     // Held over the pill and let go of elsewhere, the list closes again and nothing changes.
     view.mouseDown({252.0f, strip}, {});
     view.mouseMove(pill, {});
-    view.mouseMove({600.0f, 300.0f}, {});
-    view.mouseUp({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
+    view.mouseUp({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40g-pill-sprung.png");
     check(dropShot && aux && stays && renderer.pixel(row(5, 60.0f)) == closed &&
               slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0,
@@ -3484,17 +3485,17 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // (its dot read off the rendered pixels, where LFO 3's row has none), and the chip's x takes the aux away, the
     // list narrowing again.
     click(view, pill);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const float wideX = std::min(pill.x - 180.5f, 1200.0f - 4.0f - 361.0f) + 6.0f; // held inside the window
     auto wideRow = [&](int k, float x) { return Point{wideX + x, rowsY + k * 24.0f + 10.0f}; };
     const bool chipShot = renderer.save(view, dir / "40g2-pill-aux-chip.png");
     const bool chip = renderer.pixel(wideRow(3, 126.0f)) != renderer.pixel(wideRow(2, 126.0f));
     click(view, wideRow(3, 201.0f)); // the chip's x
     const bool auxCleared = slotAuxSource(model.value(slotAuxIndex(3, 0))) < 0;
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40g3-pill-aux-cleared.png");
     const bool narrow = renderer.pixel(wideRow(3, 126.0f)) == renderer.pixel(wideRow(2, 126.0f));
-    click(view, {600.0f, 300.0f});
+    click(view, {600.0f, 328.0f});
     check(chipShot && chip && auxCleared && narrow,
           "a pill's list shows its modulations' auxes in a column of their own, and their x removes them");
 
@@ -3503,7 +3504,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     check(renderer.save(view, dir / "40h-pill-link.png"), "render a source's line ending at the pill holding its handle");
 
     // Six on the matrix's B -> C cell: two handles in its corner and a pill, none in the corner of B -> B left of it.
-    click(view, {160.0f, 88.0f}); // MATRIX
+    click(view, {160.0f, 116.0f}); // MATRIX
     const Point cell = gridCellCenter(1, 2), left = gridCellCenter(1, 1);
     auto corner = [&] {
         std::vector<uint32_t> pixels;
@@ -3512,7 +3513,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
     };
-    view.mouseMove({600.0f, 440.0f}, {});
+    view.mouseMove({600.0f, 468.0f}, {});
     renderer.save(view, dir / "40i-cell-none.png");
     const std::vector<uint32_t> plain = corner();
     const int route = matrixIndex(1, 2);
@@ -3562,8 +3563,8 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     // In the MODS view, LFO 1's row the top one: with Shift a depth bar moves from where it is, a hundredth as fast; half
     // its width (164 px from x 474) is 1 % then.
-    click(view, {314.0f, 88.0f});
-    const Point bar{474.0f + 82.0f, 154.0f};
+    click(view, {314.0f, 116.0f});
+    const Point bar{474.0f + 82.0f, 182.0f};
     view.mouseDown(bar, {true, false});
     view.mouseMove({bar.x + 82.0f, bar.y}, {true, false});
     view.mouseUp({bar.x + 82.0f, bar.y}, {true, false});
@@ -3571,10 +3572,10 @@ void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(sourceHandle(1), {});
     const bool shot = renderer.save(view, dir / "18c-lfo-on-lfo.png");
     // Hovered, the dot says what the modulation takes its target through, in the target's units.
-    const Point dot{474.0f + 164.0f - 4.0f, 140.0f + 4.0f}; // on LFO 1's depth bar
+    const Point dot{474.0f + 164.0f - 4.0f, 168.0f + 4.0f}; // on LFO 1's depth bar
     view.mouseMove(dot, {});
     const bool popup = renderer.save(view, dir / "18d-depth-popup.png");
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     doubleClick(view, dot);
     check(shot && popup && slotTarget(model.value(slotTargetIndex(1, 0))) < 0,
           "a depth another LFO modulates has a dashed link and a dot, which double-clicked removes it");
@@ -3604,11 +3605,11 @@ void run(const std::filesystem::path &dir, float scale) {
     // A switched-off source's handle is faint, like its card (read off the rendered pixels: its ring darkens).
     {
         const Point ring{sourceHandle(0).x + 6.0f, sourceHandle(0).y};
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool onShot = renderer.save(view, dir / "1b-source-on.png");
         const int on = ringLevel(renderer, ring, 20.0f);
         click(view, sourcePower(0));
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool offShot = renderer.save(view, dir / "1c-source-off.png");
         const int off = ringLevel(renderer, ring, 20.0f);
         click(view, sourcePower(0));
@@ -3696,7 +3697,7 @@ void run(const std::filesystem::path &dir, float scale) {
                     pixels.push_back(renderer.pixel({1040.0f + column, kOpEnvTop + row}));
             return pixels;
         };
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "4d-envelope-readout.png");
         const std::vector<uint32_t> plain = corner();
         Point bend{0.0f, 0.0f};
@@ -3785,7 +3786,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // Drag LFO 1's handle onto the selected operator's Phase knob.
     view.mouseDown(sourceHandle(0), {});
-    view.mouseMove({500.0f, 300.0f}, {});
+    view.mouseMove({500.0f, 328.0f}, {});
     view.mouseMove(kOpPhaseKnob, {});
     renderer.save(view, dir / "2-dragging-lfo.png");
     view.mouseUp(kOpPhaseKnob, {});
@@ -3807,12 +3808,12 @@ void run(const std::filesystem::path &dir, float scale) {
           "a switched-off operator's tab switches it on and selects it");
     // While it is off, its page is dimmed (read off the rendered pixels: the envelope's line darkens).
     const Point envColumn{1034.0f, kOpEnvTop};
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool pageOnShot = renderer.save(view, dir / "1d-op-on.png");
     const int pageOn = ringLevel(renderer, envColumn, kOpEnvBottom - kOpEnvTop);
     click(view, nodeTab(4));
     const bool tabOff = model.value(paramIndex(4, OpParam::Enabled)) == 0.0 && layout.selectedNode == 4;
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool pageOffShot = renderer.save(view, dir / "1e-op-off.png");
     const int pageOff = ringLevel(renderer, envColumn, kOpEnvBottom - kOpEnvTop);
     click(view, nodeTab(4));
@@ -3849,7 +3850,7 @@ void run(const std::filesystem::path &dir, float scale) {
     };
     drag(view, label, {label.x, label.y + 200.0f});
     check(model.value(matrixIndex(1, 0)) == 0.0 && canDisconnect() >= 0, "a wire turned down to 0 % stays connected");
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "2b-wire-at-zero.png"), "render a wire kept at 0 %");
     view.menuCommand(canDisconnect());
     check(canDisconnect() < 0, "Disconnect removes a wire kept at 0 %");
@@ -3881,7 +3882,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(slotTarget(model.value(slotTargetIndex(0, 1))) == paramIndex(1, OpParam::Out) &&
               model.value(paramIndex(1, OpParam::Out)) == 0.0 && outDisconnect(bOut) >= 0,
           "modulating an operator's Out knob shows its wire to OUT");
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "2c-modulated-out.png"), "render a modulated output at 0 %");
     view.menuCommand(outDisconnect(bOut));
     check(outDisconnect(bOut) < 0 && slotTarget(model.value(slotTargetIndex(0, 1))) < 0,
@@ -3908,7 +3909,7 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseUp(cNode, {});
         const bool moved = model.value(matrixIndex(1, 0)) == 0.0 && model.value(matrixIndex(1, 2)) == bToA &&
                            envTargets(matrixIndex(1, 2)) && !envTargets(matrixIndex(1, 0));
-        view.mouseMove({400.0f, 300.0f}, {});
+        view.mouseMove({400.0f, 328.0f}, {});
         const bool movedShot = renderer.save(view, dir / "2e-rerouted.png");
         view.undo();
         check(shot && movedShot && moved && model.value(matrixIndex(1, 2)) == 0.0 &&
@@ -3921,10 +3922,10 @@ void run(const std::filesystem::path &dir, float scale) {
         check(outMoved && model.value(aOutParam) == 1.0 && model.value(matrixIndex(0, 2)) == 0.0,
               "an arrow to OUT moves onto a node, and a wire's arrow onto the OUT bus");
         view.mouseDown(arrowOf(b, a), {});
-        view.mouseMove({400.0f, 270.0f}, {});
-        view.mouseMove({400.0f, 240.0f}, {});
+        view.mouseMove({400.0f, 298.0f}, {});
+        view.mouseMove({400.0f, 268.0f}, {});
         const bool removingShot = renderer.save(view, dir / "2f-removing.png");
-        view.mouseUp({400.0f, 240.0f}, {});
+        view.mouseUp({400.0f, 268.0f}, {});
         const bool removed = model.value(matrixIndex(1, 0)) == 0.0 && !envTargets(matrixIndex(1, 0)) &&
                              canDisconnect() < 0;
         view.undo();
@@ -3941,8 +3942,8 @@ void run(const std::filesystem::path &dir, float scale) {
                 return count;
             };
             view.mouseDown(arrowOf(b, a), {});
-            view.mouseMove({400.0f, 270.0f}, {});
-            view.mouseMove({400.0f, 240.0f}, {});
+            view.mouseMove({400.0f, 298.0f}, {});
+            view.mouseMove({400.0f, 268.0f}, {});
             view.cancelDrag();
             const bool routeKept = model.value(matrixIndex(1, 0)) == bToA && envTargets(matrixIndex(1, 0));
             const int lfoUsed = used(0);
@@ -4060,7 +4061,7 @@ void run(const std::filesystem::path &dir, float scale) {
               "the SCOPE tab asks for its operator's output");
         auto peakAt = [&](int cycles) { // the first peak: 8 px across the inner display, 67 px from the middle up
             const float x = 908.0f + 252.0f * (0.25f / cycles);
-            return ringLevel(renderer, {x, 383.0f - 0.8f * 67.0f - 4.0f}, 8.0f);
+            return ringLevel(renderer, {x, 411.0f - 0.8f * 67.0f - 4.0f}, 8.0f);
         };
         auto frame = [&](int cycles, float cursor) {
             model.live.voices = 1;
@@ -4074,7 +4075,7 @@ void run(const std::filesystem::path &dir, float scale) {
         model.live.voices = 0;
         model.live.scopeBins = 0;
         view.poll();
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool idleShot = renderer.save(view, dir / "3e-scope-idle.png");
         const int idle = peakAt(2);
         frame(2, -1.0f);
@@ -4096,8 +4097,8 @@ void run(const std::filesystem::path &dir, float scale) {
         check(model.scopeOp == -1, "a noise operator's page asks for no scope");
         model.set(paramIndex(0, OpParam::Wave), 0.0);
         // A hidden tab with a modulated knob shows a dot: LFO 1 on A's decay, on the ENVELOPE tab.
-        const Point dot{971.0f, 263.0f};
-        view.mouseMove({600.0f, 300.0f}, {});
+        const Point dot{971.0f, 291.0f};
+        view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "3e-scope-tab-dot.png");
         const int plain = ringLevel(renderer, dot, 4.0f);
         model.set(slotTargetIndex(0, 7), slotTargetValue(paramIndex(0, OpParam::Decay)));
@@ -4114,7 +4115,7 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove({sourceHandle(0).x + 40.0f, sourceHandle(0).y - 40.0f}, {});
         view.mouseMove(opTabPoint(InspectorTab::Unison), {});
         const bool opened = layout.opTab == InspectorTab::Unison;
-        view.mouseUp({600.0f, 300.0f}, {});
+        view.mouseUp({600.0f, 328.0f}, {});
         view.poll();
         check(opened && model.scopeOp == -1, "a dragged handle opens the tab it is held over, and the scope stops");
         model.live = before;
@@ -4145,7 +4146,7 @@ void run(const std::filesystem::path &dir, float scale) {
             model.live.voices = voices;
             model.live.opEnvLevels[0] = 0.5f;
             view.poll();
-            view.mouseMove({600.0f, 300.0f}, {});
+            view.mouseMove({600.0f, 328.0f}, {});
             renderer.save(view, dir / name);
             return std::pair{rowAt(0.5f), rowAt(0.25f)};
         };
@@ -4175,7 +4176,7 @@ void run(const std::filesystem::path &dir, float scale) {
         };
         auto capture = [&](Region g, const char *name) {
             view.poll();
-            view.mouseMove({600.0f, 300.0f}, {});
+            view.mouseMove({600.0f, 328.0f}, {});
             renderer.save(view, dir / name);
             std::vector<uint32_t> pixels(static_cast<size_t>(g.w) * g.h);
             for (int y = 0; y < g.h; ++y)
@@ -4269,12 +4270,12 @@ void run(const std::filesystem::path &dir, float scale) {
     // one undo step. Freq and Mult take the Ratio readout's place (Mult stepping, 10 px up a step), and Pitch and
     // Detune, dimmed, don't turn (read off the rendered pixels: the Pitch knob's column darkens).
     {
-        constexpr Point kFixedSwitch{1125.0f, 150.0f};
-        const Point pitchColumn{kPitchKnob.x, 198.0f};
+        constexpr Point kFixedSwitch{1125.0f, 178.0f};
+        const Point pitchColumn{kPitchKnob.x, 226.0f};
         const int fixed = paramIndex(0, OpParam::Fixed), freq = paramIndex(0, OpParam::FixedFreq),
                   mult = paramIndex(0, OpParam::FixedMult);
         const double tracked = 440.0 * ratioFromNorm(model.value(paramIndex(0, OpParam::Ratio)));
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool trackingShot = renderer.save(view, dir / "3f-tracking.png");
         const int lit = ringLevel(renderer, pitchColumn, 32.0f);
         click(view, kFixedSwitch);
@@ -4283,7 +4284,7 @@ void run(const std::filesystem::path &dir, float scale) {
         // Mult reads "×1", its × two bytes in UTF-8: typed into, the caret steps over it whole, and Backspace and
         // Delete take all of it, so "10" is left to read as a value either way.
         {
-            const Point multNumber{kMultKnob.x, 238.0f};
+            const Point multNumber{kMultKnob.x, 266.0f};
             doubleClick(view, multNumber);
             for (View::Key key : {View::Key::End, View::Key::Left, View::Key::Backspace, View::Key::End})
                 view.typeKey(key);
@@ -4312,14 +4313,14 @@ void run(const std::filesystem::path &dir, float scale) {
                     pixels.push_back(renderer.pixel({knob.x, y}));
                 return pixels;
             };
-            view.mouseMove({600.0f, 300.0f}, {}); // nothing under the mouse lit, held or not
+            view.mouseMove({600.0f, 328.0f}, {}); // nothing under the mouse lit, held or not
             view.mouseDown(sourceHandle(1), {});
             view.mouseMove({sourceHandle(1).x + 40.0f, sourceHandle(1).y - 40.0f}, {});
-            view.mouseMove({600.0f, 300.0f}, {});
+            view.mouseMove({600.0f, 328.0f}, {});
             const bool heldShot = renderer.save(view, dir / "3f-fixed-drop-targets.png");
             const std::vector<uint32_t> freqHeld = strip(freqKnob), pitchHeld = strip(kPitchKnob);
             view.cancelDrag();
-            view.mouseMove({600.0f, 300.0f}, {});
+            view.mouseMove({600.0f, 328.0f}, {});
             const bool freeShot = renderer.save(view, dir / "3f-fixed-no-drag.png");
             check(heldShot && freeShot && freqHeld != strip(freqKnob) && pitchHeld == strip(kPitchKnob),
                   "a dimmed knob isn't ringed as a drop target");
@@ -4327,7 +4328,7 @@ void run(const std::filesystem::path &dir, float scale) {
         drag(view, kMultKnob, {kMultKnob.x, kMultKnob.y - 10.0f}); // Mult, in the readout's right half: x1 to x10
         const double pitch = model.value(paramIndex(0, OpParam::Transpose));
         drag(view, kPitchKnob, {kPitchKnob.x, kPitchKnob.y - 30.0f});
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         const bool fixedShot = renderer.save(view, dir / "3f-fixed.png");
         const int dim = ringLevel(renderer, pitchColumn, 32.0f);
         view.mouseMove(kFixedSwitch, {});
@@ -4377,7 +4378,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // Switch filter 1 on and route A through it: A's output moves into the filter.
     click(view, nodeTab(kOps));
     click(view, nodeCenter(layout, 0)); // A selected again, so the F1 tab below selects rather than switches
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     renderer.save(view, dir / "3d-filter-unfed.png");
     const uint32_t unfed = tabDot(renderer, kOps);
     // Like an operator or a shaper, it starts routed nowhere; its edge dragged onto the bus sends it out, with its
@@ -4385,13 +4386,13 @@ void run(const std::filesystem::path &dir, float scale) {
     const int f1Out = paramIndex(0, FilterParam::Out);
     const bool startsNowhere = model.value(f1Out) == 0.0;
     drag(view, portOf(layout, kOps), {nodeCenter(layout, kOps).x + 120.0f, kBusY});
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     const bool routedOut = model.value(f1Out) == 1.0 && renderer.save(view, dir / "3d-filter-out.png");
     drag(view, outArrowOf(layout, kOps), {nodeCenter(layout, kOps).x + 120.0f, kBusY - 60.0f});
     check(startsNowhere && routedOut && model.value(f1Out) == 0.0,
           "a filter goes out by its edge dragged onto the bus, and stops by its arrowhead dragged away");
     drag(view, portOf(layout, 0), nodeCenter(layout, kOps));
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     renderer.save(view, dir / "3e-filter-fed.png");
     const uint32_t fed = tabDot(renderer, kOps);
     check(model.value(sendIndex(0, 0)) == 1.0 && model.value(paramIndex(0, OpParam::Out)) == 0.0 &&
@@ -4440,7 +4441,7 @@ void run(const std::filesystem::path &dir, float scale) {
     const int cutoff = paramIndex(0, FilterParam::Cutoff);
     const double cutoffBefore = model.value(cutoff);
     const Point handle{910.0f + static_cast<float>(cutoffBefore) * 248.0f,
-                       356.0f - static_cast<float>(model.value(paramIndex(0, FilterParam::Resonance))) * 92.0f};
+                       384.0f - static_cast<float>(model.value(paramIndex(0, FilterParam::Resonance))) * 92.0f};
     drag(view, handle, {handle.x - 50.0f, handle.y - 20.0f});
     check(model.value(cutoff) < cutoffBefore - 0.15, "dragging the response handle moves the cutoff");
     model.set(paramIndex(0, FilterParam::Resonance), 0.55);
@@ -4452,7 +4453,7 @@ void run(const std::filesystem::path &dir, float scale) {
         model.live.filterSpectrum[0][band] = hz < 200.0 ? 1e-3f : static_cast<float>(0.5 * 220.0 / hz / (1.0 + over * over));
     }
     view.poll();
-    view.mouseMove({1000.0f, 120.0f}, {});
+    view.mouseMove({1000.0f, 148.0f}, {});
     check(renderer.save(view, dir / "4-filter.png"), "render the filter inspector, with what it puts out behind");
     model.live.filterSpectrum = {};
     view.poll();
@@ -4499,7 +4500,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "5a-unheard.png"), "render an operator that isn't heard");
     model.set(matrixIndex(5, 4), 0.45);
     // The Routing tab shown runs on down the panel's left edge, its corner square; the matrix's is round.
-    auto cornerSquare = [&] { return renderer.pixel({18.0f, 106.0f}) == renderer.pixel({18.0f, 140.0f}); };
+    auto cornerSquare = [&] { return renderer.pixel({18.0f, 134.0f}) == renderer.pixel({18.0f, 168.0f}); };
     const bool routingCorner = cornerSquare();
 
     // The same routing as a matrix: double-click toggles C -> F2 off.
@@ -4509,13 +4510,13 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "6-matrix.png"), "render the matrix view");
     // The tab shown opens the panel's top edge under it, the edge running on under the others; one under the mouse
     // shows a tab's shape.
-    auto edgeOpen = [&](Point tab) { return renderer.pixel({tab.x, 104.0f}) == renderer.pixel({tab.x, 112.0f}); };
+    auto edgeOpen = [&](Point tab) { return renderer.pixel({tab.x, 132.0f}) == renderer.pixel({tab.x, 140.0f}); };
     const bool tabJoined = edgeOpen(kMatrixTab) && !edgeOpen(kRoutingTab) && !edgeOpen(kFxTab);
     check(routingCorner && !cornerSquare(), "the Routing tab shown runs on down its panel's left edge");
-    const uint32_t fxTabAlone = renderer.pixel({kFxTab.x, 76.0f});
+    const uint32_t fxTabAlone = renderer.pixel({kFxTab.x, 104.0f});
     view.mouseMove(kFxTab, {});
     check(tabJoined && renderer.save(view, dir / "6a-view-tab-hovered.png") &&
-              renderer.pixel({kFxTab.x, 76.0f}) != fxTabAlone,
+              renderer.pixel({kFxTab.x, 104.0f}) != fxTabAlone,
           "the tab shown opens its panel's edge, and a hovered one shows a tab's shape");
     view.doubleClick({gridCellCenter(1, 0).x + 10.0f, gridCellCenter(1, 0).y - 10.0f}, {}); // Env 1's dot on B -> A
     check(slotTarget(model.value(slotTargetIndex(1, 1))) < 0 &&
@@ -4532,7 +4533,7 @@ void run(const std::filesystem::path &dir, float scale) {
         view.menuCommand(nodeMenu.front().command);
     check(model.value(paramIndex(5, OpParam::Enabled)) == 0.0, "an operator's menu switches it off");
     // F and the shapers, which are off, wait in the graph's top left as dashed ghosts (F hovered here).
-    const Point ghostF{44.0f, 126.0f};
+    const Point ghostF{44.0f, 154.0f};
     view.mouseMove(ghostF, {});
     check(renderer.save(view, dir / "7-switched-off.png"), "render after switching F off");
     const int selectedBefore = layout.selectedNode;
@@ -4553,7 +4554,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(kNodes == kOps + 4, "the graph has six operators, two filters and two shapers");
     const int s1 = kOps + kFilters;
     click(view, nodeTab(s1));
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     renderer.save(view, dir / "7a-shaper-on.png");
     const uint32_t shaperAlone = tabDot(renderer, s1); // its tab, selected, red
     check(model.value(paramIndex(0, ShaperParam::Enabled)) == 1.0 && layout.selectedNode == s1,
@@ -4582,7 +4583,7 @@ void run(const std::filesystem::path &dir, float scale) {
     drag(view, portOf(layout, s1), nodeCenter(layout, s1));
     check(model.value(shaperShaperIndex(0, 0)) == 0.25 && model.value(paramIndex(0, ShaperParam::Out)) == 1.0,
           "a shaper's edge dragged onto itself feeds it back into itself");
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "7b-shapers.png"), "render a shaper in the graph, and its page");
     // Fed by A and going out, S1's tab (still selected) has the dot, dark on its red.
     check((shaperAlone >> 16 & 255) > 150 && (tabDot(renderer, s1) >> 16 & 255) < 80,
@@ -4689,8 +4690,8 @@ void run(const std::filesystem::path &dir, float scale) {
     // tick away (read off the rendered pixels: the tick under the curve's peak at 25 %, the knob's arc).
     const int phase = paramIndex(0, SourceParam::Phase);
     drag(view, phaseKnob(0), {phaseKnob(0).x, phaseKnob(0).y - 50.0f});
-    view.mouseMove({400.0f, 300.0f}, {});
-    const Point tick{cardX(0) + 26.0f + 0.25f * (kCardW - 52.0f), 678.0f};
+    view.mouseMove({400.0f, 328.0f}, {});
+    const Point tick{cardX(0) + 26.0f + 0.25f * (kCardW - 52.0f), 706.0f};
     const Point arc{phaseKnob(0).x - 12.4f, phaseKnob(0).y + 4.0f}; // on the arc, near its start at the lower left
     auto brightness = [&](Point p) {
         const uint32_t color = renderer.pixel(p);
@@ -4699,7 +4700,7 @@ void run(const std::filesystem::path &dir, float scale) {
     const bool phaseShot = renderer.save(view, dir / "4c-lfo-phase.png");
     const uint32_t tickThen = brightness(tick), arcThen = brightness(arc);
     click(view, freeToggle(0));
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     const bool freeShot = renderer.save(view, dir / "4d-lfo-phase-free.png");
     const bool faint = brightness(tick) < tickThen && brightness(arc) < arcThen;
     click(view, retriggerToggle(0));
@@ -4710,7 +4711,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // as they were (read off the rendered pixels).
     const int anchor = paramIndex(0, SourceParam::Anchor);
     click(view, anchorToggle(0));
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     const bool anchorShot = renderer.save(view, dir / "4e-lfo-anchor.png");
     const uint32_t tickNow = brightness(tick), arcNow = brightness(arc);
     std::printf("      anchored: Phase tick %u (was %u), arc %u (was %u)\n", tickNow, tickThen, arcNow, arcThen);
@@ -4728,10 +4729,10 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kFxMenuButton);
     view.mouseMove(fxMenuItem(FxType::Delay), {});
     check(renderer.save(view, dir / "8a-fx-empty.png"), "render the empty FX chain with the ADD EFFECT list open");
-    click(view, {600.0f, 400.0f}); // anywhere else closes the list
+    click(view, {600.0f, 428.0f}); // anywhere else closes the list
     check(fxChain(model).empty(), "a click outside the ADD EFFECT list closes it");
     // The dashed card at the chain's end (its first place, while it is empty) opens the list where it is clicked.
-    const Point shadowClick{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 240.0f};
+    const Point shadowClick{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 268.0f};
     click(view, shadowClick);
     view.mouseMove(fxListItem(view, shadowClick, FxType::Shaper), {});
     check(renderer.save(view, dir / "8a2-fx-shadow-list.png"), "render the list of effects at the mouse");
@@ -4754,10 +4755,10 @@ void run(const std::filesystem::path &dir, float scale) {
     // editor, over the card before it, and a switched-off card's dimming stays under the list (read off the rendered
     // pixels: the list looks the same over it either way).
     {
-        const Point rightClick{std::min(fxCardX(model, 5) + fxCardW(model, 5), 32.0f + 1136.0f) - 6.0f, 300.0f};
+        const Point rightClick{std::min(fxCardX(model, 5) + fxCardW(model, 5), 32.0f + 1136.0f) - 6.0f, 328.0f};
         const Point at = fxListAt(view, rightClick);
         click(view, rightClick);
-        const Point inList{at.x + 8.0f, 330.0f}; // over the second delay's card
+        const Point inList{at.x + 8.0f, 358.0f}; // over the second delay's card
         std::printf("      list at %.0f (clicked at %.0f), the second delay's card %.0f to %.0f\n", at.x, rightClick.x,
                     fxCardX(model, 4), fxCardX(model, 4) + fxCardW(model, 4));
         const bool moved = at.x + 8.0f < rightClick.x && inList.x > fxCardX(model, 4) &&
@@ -4768,19 +4769,19 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool shot = renderer.save(view, dir / "8a4-fx-list-over-off.png");
         const uint32_t overOff = renderer.pixel(inList);
         model.set(paramIndex(4, FxParam::Enabled), 1.0);
-        click(view, {600.0f, 140.0f}); // anywhere else closes it
+        click(view, {600.0f, 168.0f}); // anywhere else closes it
         check(moved && shot && overOn == overOff && fxChain(model).size() == 5,
               "the list of effects stays inside the editor, and over a switched-off card's dimming");
     }
 
     // The filter card's type buttons, in a row: Comb is the fifth.
-    click(view, {fxCardX(model, 3) + 14.0f + 4.0f * 29.4f + 13.0f, 152.0f + 44.0f + 10.0f});
+    click(view, {fxCardX(model, 3) + 14.0f + 4.0f * 29.4f + 13.0f, 180.0f + 44.0f + 10.0f});
     check(std::lround(model.value(paramIndex(3, FxParam::FilterType))) == static_cast<long>(FilterType::Comb),
           "the filter card's buttons pick the filter type");
 
     // The parametric EQ's first band: dragging its handle 30 px up is +10 dB.
     const float peqW = fxCardW(model, 2) - 44.0f; // its display's plot, inside the wider card
-    const Point band{fxCardX(model, 2) + 22.0f + static_cast<float>(model.value(peqFreqIndex(2, 0))) * peqW, 264.0f};
+    const Point band{fxCardX(model, 2) + 22.0f + static_cast<float>(model.value(peqFreqIndex(2, 0))) * peqW, 292.0f};
     drag(view, band, {band.x + 20.0f, band.y - 30.0f});
     check(std::abs(model.value(peqGainIndex(2, 0)) - 10.0) < 0.01 && model.value(peqFreqIndex(2, 0)) > 0.4 &&
               model.openEdits == 0,
@@ -4798,11 +4799,11 @@ void run(const std::filesystem::path &dir, float scale) {
               "Alt-dragging a band handle up and down sets its Q");
     }
     // The second band's shape comes from a list that opens above its button: a high cut.
-    const Point peqType2{fxCardX(model, 2) + fxCardW(model, 2) * 0.125f, 418.0f};
+    const Point peqType2{fxCardX(model, 2) + fxCardW(model, 2) * 0.125f, 446.0f};
     click(view, peqType2);
-    view.mouseMove({peqType2.x + 38.0f, 297.0f + 4.0f * 22.0f}, {});
+    view.mouseMove({peqType2.x + 38.0f, 325.0f + 4.0f * 22.0f}, {});
     check(renderer.save(view, dir / "8e-peq-shapes.png"), "render the list of EQ band shapes");
-    click(view, {peqType2.x + 38.0f, 297.0f + 4.0f * 22.0f});
+    click(view, {peqType2.x + 38.0f, 325.0f + 4.0f * 22.0f});
     check(model.value(peqTypeIndex(2, 1)) == static_cast<double>(PeqType::HighCut),
           "the band's list picks its shape");
     model.set(peqGainIndex(2, 1), -6.0);
@@ -4811,9 +4812,9 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(paramIndex(3, FxParam::FilterResonance), 0.6);
     model.set(paramIndex(0, FxParam::ShaperDrive), 18.0);
     // The shaper's curve comes from a list under its button.
-    const Point clipButton{fxCardX(model, 0) + 60.0f, 152.0f + 44.0f + 11.0f};
+    const Point clipButton{fxCardX(model, 0) + 60.0f, 180.0f + 44.0f + 11.0f};
     auto clipItem = [&](ClipMode mode) {
-        return Point{fxCardX(model, 0) + 40.0f, 152.0f + 44.0f + 22.0f + 4.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f};
+        return Point{fxCardX(model, 0) + 40.0f, 180.0f + 44.0f + 22.0f + 4.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f};
     };
     click(view, clipButton);
     view.mouseMove(clipItem(ClipMode::SineFold), {});
@@ -4827,7 +4828,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, clipItem(ClipMode::Custom));
     auto cardAt = [&](double x, double y) {
         return Point{fxCardX(model, 0) + 22.0f + static_cast<float>(x) * 127.0f,
-                     284.0f - static_cast<float>(y) * (50.0f - 6.0f)};
+                     312.0f - static_cast<float>(y) * (50.0f - 6.0f)};
     };
     view.doubleClick(cardAt(0.8, 0.4), {}); // under the bend handle of the curve's upper half
     const int curveX2 = shapeFieldIndex(clipCurveCountIndex(0), 2, PointField::X);
@@ -4840,7 +4841,7 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove(cardAt(0.8, 0.6), {});
     check(renderer.save(view, dir / "8d-clip-custom.png"), "render the curve being edited in the card");
     // Its edit button, a pencil, opens the big editor, which edits the same curve.
-    click(view, {fxCardX(model, 0) + 134.0f, 152.0f + 190.0f - 12.0f}); // the pencil, at the display's bottom right
+    click(view, {fxCardX(model, 0) + 134.0f, 180.0f + 190.0f - 12.0f}); // the pencil, at the display's bottom right
     view.doubleClick(clipAt(0.3, -0.5), {});
     check(model.value(clipCurveCountIndex(0)) == 5.0 &&
               std::abs(model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X)) - 0.3) < 0.01,
@@ -4849,13 +4850,13 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "8c-clip-curve.png"), "render the shaper's big curve editor");
     {
         // Snap, in its title row, snaps a dragged point to the grid without Ctrl.
-        click(view, {742.0f, 124.0f});
+        click(view, {742.0f, 152.0f});
         drag(view, clipAt(0.3, -0.5), clipAt(0.33, -0.45));
         const double x = model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X));
         const double y = model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::Y));
         const bool snapped = model.layout().shapeSnap && std::abs(x - 5.0 / 16.0) < 1e-9 && std::abs(y + 0.5) < 1e-9;
         view.undo();
-        click(view, {742.0f, 124.0f});
+        click(view, {742.0f, 152.0f});
         check(snapped && !model.layout().shapeSnap, "Snap snaps a shaper curve's points in its big editor");
     }
     {
@@ -4873,7 +4874,7 @@ void run(const std::filesystem::path &dir, float scale) {
         check(model.value(clipCurveCountIndex(0)) == 5.0, "and its steps undo");
     }
     click(view, kClipDone);
-    view.mouseMove({600.0f, 400.0f}, {});
+    view.mouseMove({600.0f, 428.0f}, {});
     check(layout.view == RoutingView::Fx, "the done button goes back to the chain");
     model.set(paramIndex(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Asymmetric));
     model.set(paramIndex(1, FxParam::DelayPingPong), 1.0);
@@ -4881,11 +4882,11 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(paramIndex(4, FxParam::DelaySync), 0.0);
     model.set(paramIndex(4, FxParam::DelayWidth), 0.3);
     // The first delay's LINK switch, the middle of three across the card under its display.
-    click(view, {fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 152.0f + 171.0f});
+    click(view, {fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 180.0f + 171.0f});
     check(model.value(paramIndex(1, FxParam::DelayLink)) == 1.0, "the delay's LINK switch links its sides");
     // The shaper's LINK, its chain under the display in the card's middle (with no SYM beside it, but for a Custom
     // curve), starts on; a click unlinks it, another links it again.
-    const Point clipLink{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 152.0f + 194.0f + 10.0f};
+    const Point clipLink{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 180.0f + 194.0f + 10.0f};
     const bool linkedFirst = model.value(paramIndex(0, FxParam::ShaperLink)) == 1.0;
     click(view, clipLink);
     const bool unlinked = model.value(paramIndex(0, FxParam::ShaperLink)) == 0.0;
@@ -4928,7 +4929,7 @@ void run(const std::filesystem::path &dir, float scale) {
     bool greyIcon = renderer.save(view, dir / "8f-fx-off-icon.png");
     uint32_t brightest = 0; // across its first bar
     for (float dx = 10.5f; dx <= 13.5f; dx += 0.5f) {
-        const uint32_t color = renderer.pixel({fxCardX(model, 4) + dx, 169.0f});
+        const uint32_t color = renderer.pixel({fxCardX(model, 4) + dx, 197.0f});
         brightest = (color >> 16 & 255) > (brightest >> 16 & 255) ? color : brightest;
     }
     const int red = static_cast<int>(brightest >> 16 & 255), blue = static_cast<int>(brightest & 255);
@@ -4949,17 +4950,17 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // Drag the shaper's card two places along.
     view.mouseDown(fxGrip(model, 0), {});
-    view.mouseMove({fxGrip(model, 0).x + 200.0f, 184.0f}, {});
-    view.mouseMove({fxGrip(model, 0).x + 390.0f, 184.0f}, {});
+    view.mouseMove({fxGrip(model, 0).x + 200.0f, 212.0f}, {});
+    view.mouseMove({fxGrip(model, 0).x + 390.0f, 212.0f}, {});
     check(renderer.save(view, dir / "9-fx-reorder.png"), "render a card being dragged");
-    view.mouseUp({fxGrip(model, 0).x + 390.0f, 184.0f}, {});
+    view.mouseUp({fxGrip(model, 0).x + 390.0f, 212.0f}, {});
     check(fxChain(model) == std::vector<int>{1, 2, 0, 3, 4}, "dragging a card's title moves that effect along the chain");
     // Dragged by its icon, a card moves just the same, and stays switched as it was; undo puts it back.
     const Point shaperIcon = fxPower(model, 2);
     view.mouseDown(shaperIcon, {});
-    view.mouseMove({shaperIcon.x - 160.0f, 184.0f}, {});
-    view.mouseMove({shaperIcon.x - 320.0f, 184.0f}, {});
-    view.mouseUp({shaperIcon.x - 320.0f, 184.0f}, {});
+    view.mouseMove({shaperIcon.x - 160.0f, 212.0f}, {});
+    view.mouseMove({shaperIcon.x - 320.0f, 212.0f}, {});
+    view.mouseUp({shaperIcon.x - 320.0f, 212.0f}, {});
     const bool iconMoved = fxChain(model) == std::vector<int>{1, 0, 2, 3, 4} &&
                            model.value(paramIndex(0, FxParam::Enabled)) == 1.0;
     view.undo();
@@ -4995,12 +4996,12 @@ void run(const std::filesystem::path &dir, float scale) {
     // opens over the cards, its middle at the arrow, and Delay, picked from it, goes in second. (The row was left
     // half a place along; the wheel over the panel's title row takes it back to the start.)
     {
-        view.wheel({600.0f, 125.0f}, 10.0f, {});
-        const Point arrow{fxCardX(model, 1) - (kFxStep - kFxCardW) * 0.5f, 304.0f};
+        view.wheel({600.0f, 153.0f}, 10.0f, {});
+        const Point arrow{fxCardX(model, 1) - (kFxStep - kFxCardW) * 0.5f, 332.0f};
         view.mouseMove(arrow, {});
         const bool hoverShot = renderer.save(view, dir / "8d-fx-insert.png");
         click(view, arrow);
-        const Point delay{arrow.x, 160.0f + 4.0f + kFxMenuPitch + 10.5f}; // the list's second entry
+        const Point delay{arrow.x, 188.0f + 4.0f + kFxMenuPitch + 10.5f}; // the list's second entry
         view.mouseMove(delay, {});
         const bool insertListShot = renderer.save(view, dir / "8e-fx-insert-list.png");
         click(view, delay);
@@ -5025,31 +5026,31 @@ void run(const std::filesystem::path &dir, float scale) {
     model.live.fxReduction[5] = {4.5f, 0.0f, 0.0f};
     model.live.fxReduction[6] = {2.0f, 0.0f, 0.0f};
     view.poll();
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     check(renderer.save(view, dir / "9b-compressors.png"), "render the compressors in a scrolled chain");
     // The scrollbar under the cards: eight and a half places with the dashed card at the end, six on screen,
     // scrolled one and a half along. Its thumb is six of those parts of the 1136 px track, with 334 px to move
     // in; dragging it a third of that back leaves the cards between places, and all the way back shows the
     // first card again.
-    view.mouseDown({681.0f, 465.0f}, {});
-    view.mouseMove({681.0f - 111.0f, 465.0f}, {});
+    view.mouseDown({681.0f, 493.0f}, {});
+    view.mouseMove({681.0f - 111.0f, 493.0f}, {});
     check(renderer.save(view, dir / "9c-fx-half-scrolled.png"), "render the chain scrolled half a card");
-    view.mouseMove({681.0f - 300.0f, 465.0f}, {});
-    view.mouseUp({681.0f - 300.0f, 465.0f}, {});
+    view.mouseMove({681.0f - 300.0f, 493.0f}, {});
+    view.mouseUp({681.0f - 300.0f, 493.0f}, {});
     fxScrolled = 0.0f;
     click(view, fxPower(model, 0));
     const bool scrolledBack = model.value(paramIndex(1, FxParam::Enabled)) == 0.0;
     click(view, fxPower(model, 0));
     // Back to the end to take the compressors out: the chain gets shorter, and its scroll with it; the wheel
     // over the panel's title row takes it back to the start.
-    view.mouseDown({681.0f, 465.0f}, {});
-    view.mouseMove({681.0f + 600.0f, 465.0f}, {});
-    view.mouseUp({681.0f + 600.0f, 465.0f}, {});
+    view.mouseDown({681.0f, 493.0f}, {});
+    view.mouseMove({681.0f + 600.0f, 493.0f}, {});
+    view.mouseUp({681.0f + 600.0f, 493.0f}, {});
     fxScrolled = 2.5f;
     click(view, fxRemove(model, 6));
     fxScrolled = 1.5f;
     click(view, fxRemove(model, 5));
-    view.wheel({600.0f, 125.0f}, 10.0f, {});
+    view.wheel({600.0f, 153.0f}, 10.0f, {});
     fxScrolled = 0.0f;
     check(scrolledBack && fxChain(model) == std::vector<int>{1, 2, 0, 3, 4},
           "dragging the scrollbar scrolls the chain back");
@@ -5163,47 +5164,47 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // Four sources and the dashed cards, less than a card more than fit: dragged all the way, the scrollbar's thumb
     // reaches the track's right end (read off the rendered pixels).
-    drag(view, {485.0f, 741.0f}, {485.0f + 500.0f, 741.0f});
-    view.mouseMove({400.0f, 300.0f}, {});
+    drag(view, {485.0f, 769.0f}, {485.0f + 500.0f, 769.0f});
+    view.mouseMove({400.0f, 328.0f}, {});
     const bool endShot = renderer.save(view, dir / "11g-sources-scrolled-end.png");
-    check(endShot && renderer.pixel({1168.0f, 741.0f}) == renderer.pixel({700.0f, 741.0f}),
+    check(endShot && renderer.pixel({1168.0f, 769.0f}) == renderer.pixel({700.0f, 769.0f}),
           "the scrollbar's thumb reaches the end with the dashed cards less than a card past the row");
-    view.wheel({60.0f, 513.0f}, 10.0f, {});
+    view.wheel({60.0f, 541.0f}, 10.0f, {});
 
     // A fifth source scrolls the cards along to show it; the wheel over the panel scrolls back.
     click(view, sourceAdd(SourceType::Lfo));
     click(view, sourcePower(3));
     check(shown(model) == std::vector<int>{0, 1, 2, 3, 4} && model.value(sourceEnabledIndex(4)) == 0.0,
           "a new source's card comes into view");
-    click(view, {40.0f, 741.0f}); // the scrollbar's track, left of its thumb
+    click(view, {40.0f, 769.0f}); // the scrollbar's track, left of its thumb
     click(view, sourcePower(0));
     check(model.value(sourceEnabledIndex(0)) == 0.0, "clicking the scrollbar's track scrolls the cards back");
     click(view, sourcePower(0));
     // Five cards and the dashed ones, four places on screen. Dragged all the way, the scrollbar's thumb shows
     // the fifth card, the dashed ones after it.
-    drag(view, {485.0f, 741.0f}, {485.0f + 500.0f, 741.0f});
+    drag(view, {485.0f, 769.0f}, {485.0f + 500.0f, 769.0f});
     click(view, sourcePower(3.0f - kSourceShadowSpan));
-    view.mouseMove({cardX(4.0f - kSourceShadowSpan) + 61.0f, 600.0f}, {});
+    view.mouseMove({cardX(4.0f - kSourceShadowSpan) + 61.0f, 628.0f}, {});
     check(model.value(sourceEnabledIndex(4)) == 1.0 && renderer.save(view, dir / "11e-source-shadow.png"),
           "dragging the scrollbar's thumb scrolls the cards, the dashed ones last");
-    view.wheel({60.0f, 513.0f}, 1.0f, {}); // two fifths of a card a notch
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.wheel({60.0f, 541.0f}, 1.0f, {}); // two fifths of a card a notch
+    view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "11b-sources-between.png"), "render the source cards between places");
-    view.wheel({60.0f, 513.0f}, 10.0f, {});
+    view.wheel({60.0f, 541.0f}, 10.0f, {});
     // While a dialog is open, the wheel scrolls nothing behind it: closed again, the first card is where it was.
     click(view, kSettingsButton);
-    view.wheel({60.0f, 513.0f}, -10.0f, {});
-    click(view, {20.0f, 300.0f}); // around the dialog, which only closes it
+    view.wheel({60.0f, 541.0f}, -10.0f, {});
+    click(view, {20.0f, 328.0f}); // around the dialog, which only closes it
     click(view, sourcePower(0));
     check(model.value(sourceEnabledIndex(0)) == 0.0, "the wheel scrolls nothing behind the settings dialog");
     click(view, sourcePower(0));
 
     // Drag Env 1's card one place along.
     view.mouseDown(sourceGrip(1), {});
-    view.mouseMove({sourceGrip(1).x + 150.0f, 560.0f}, {});
-    view.mouseMove({sourceGrip(1).x + 280.0f, 560.0f}, {});
+    view.mouseMove({sourceGrip(1).x + 150.0f, 588.0f}, {});
+    view.mouseMove({sourceGrip(1).x + 280.0f, 588.0f}, {});
     check(renderer.save(view, dir / "11a-source-reorder.png"), "render a source card being dragged");
-    view.mouseUp({sourceGrip(1).x + 280.0f, 560.0f}, {});
+    view.mouseUp({sourceGrip(1).x + 280.0f, 588.0f}, {});
     check(shown(model) == std::vector<int>{0, 2, 1, 3, 4} && nameOf(model, 2) == trf(Str::SourceNameLfo, {"2"}),
           "dragging a card's title moves that source along");
 
@@ -5234,7 +5235,7 @@ void run(const std::filesystem::path &dir, float scale) {
     };
     const bool envWasUnipolar = !polarity(sourceGrip(3), tr(Str::MenuBipolar));
     const bool envBipolar = model.value(paramIndex(1, SourceParam::EnvBipolar)) == 1.0;
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool envShot = renderer.save(view, dir / "11f-bipolar-env.png");
     const bool lfoWasUnipolar = !polarity(sourceGrip(0), tr(Str::MenuBipolar));
     const bool lfoBipolar = model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0;
@@ -5257,7 +5258,7 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(paramIndex(4, SourceParam::Shape), static_cast<double>(LfoShape::Saw));
     model.live.sources = {0.4f, 0.3f, -0.6f, 0.5f, 0.8f, -0.2f};
     model.live.lfoPhases = {0.1f, 0.0f, 0.62f, 0.0f, 0.35f, 0.62f};
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     view.poll();
     check(renderer.save(view, dir / "11-sources.png"), "render six sources, scrolled");
 
@@ -5267,21 +5268,21 @@ void run(const std::filesystem::path &dir, float scale) {
         model.set(slotTargetIndex(0, kSlots - 1 - k), slotTargetValue(paramIndex(k, OpParam::Phase)));
         model.set(slotAmountIndex(0, kSlots - 1 - k), 0.1 * (k + 1));
     }
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "11c-card-mods.png"), "render a card counting its modulations");
 
     // Up to 16: then the add buttons go.
     for (int n = static_cast<int>(shown(model).size()); n < kMaxSources; ++n)
         click(view, sourceAdd(n % 2 ? SourceType::Env : SourceType::Lfo));
     check(shown(model).size() == static_cast<size_t>(kMaxSources), "the panel holds 16 sources");
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "12-sources-full.png"), "render 16 sources");
 
     // Collapsed, the modulation panel keeps its title row and the editor gets shorter.
     const float open = view.height();
     click(view, kSourcesToggle);
     check(layout.sourcesCollapsed && view.height() == open - 216.0f, "the toggle collapses the modulation panel");
-    view.mouseMove({400.0f, 300.0f}, {});
+    view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "13-collapsed.png"), "render the collapsed modulation panel");
     click(view, kSourcesToggle);
     check(!layout.sourcesCollapsed && view.height() == open, "the toggle opens the panel again");
@@ -5354,13 +5355,13 @@ void run(const std::filesystem::path &dir, float scale) {
         if (i == View::themeCount() - 1)
             themed = themed && renderer.save(view, dir / "14c-settings-light.png");
         click(view, closeDialog);
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         std::string file = std::string("14d-theme-") + View::themeName(i) + ".png";
         std::transform(file.begin(), file.end(), file.begin(),
                        [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
         themed = themed && renderer.save(view, dir / file);
         click(view, kRoutingTab);
-        view.mouseMove({600.0f, 300.0f}, {});
+        view.mouseMove({600.0f, 328.0f}, {});
         file.insert(file.size() - 4, "-routing");
         themed = themed && renderer.save(view, dir / file);
         click(view, kFxTab);
@@ -5378,10 +5379,10 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove(glowAt(0.75f), {});
     const bool sliderShot = renderer.save(view, dir / "14f-glow-slider.png");
     click(view, closeDialog);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     const bool glowShots = sliderShot && renderer.save(view, dir / "14e-glow.png");
     click(view, kRoutingTab);
-    view.mouseMove({600.0f, 300.0f}, {});
+    view.mouseMove({600.0f, 328.0f}, {});
     check(glowing && glowShots && renderer.save(view, dir / "14e-glow-routing.png"),
           "the settings dialog's GLOW slider sets how strongly the curves glow");
     click(view, kFxTab);

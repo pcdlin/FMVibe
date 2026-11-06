@@ -3160,11 +3160,11 @@ int main(int argc, char **argv) {
 
         uint32_t adjustedWidth = 900, adjustedHeight = 100;
         gui->adjust_size(plugin, &adjustedWidth, &adjustedHeight);
-        // The view is 1200 x 974: three quarters of that, rounded.
-        check(adjustedWidth == 900 && adjustedHeight == 731 && gui->set_size(plugin, adjustedWidth, adjustedHeight),
+        // The view is 1200 x 1002: three quarters of that, rounded.
+        check(adjustedWidth == 900 && adjustedHeight == 752 && gui->set_size(plugin, adjustedWidth, adjustedHeight),
               "resizing keeps the aspect ratio");
 
-        // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (307, 32) in view units.
+        // At 900 px wide the view is drawn at 0.75 scale; the Volume knob sits at (201, 64) in view units.
         HWND editor = GetWindow(parent, GW_CHILD);
         double volumeBefore = 0.0, volumeAfter = 0.0;
         params->get_value(plugin, idOfIndex(volume), &volumeBefore);
@@ -3172,10 +3172,10 @@ int main(int argc, char **argv) {
         if (editor) {
             SendMessageW(editor, WM_PAINT, 0, 0);
             pumpMessages(100);
-            SendMessageW(editor, WM_MOUSEMOVE, 0, MAKELPARAM(230, 24));
-            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(230, 24));
-            SendMessageW(editor, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(230, 4));
-            SendMessageW(editor, WM_LBUTTONUP, 0, MAKELPARAM(230, 4));
+            SendMessageW(editor, WM_MOUSEMOVE, 0, MAKELPARAM(151, 48));
+            SendMessageW(editor, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(151, 48));
+            SendMessageW(editor, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(151, 28));
+            SendMessageW(editor, WM_LBUTTONUP, 0, MAKELPARAM(151, 28));
             SendMessageW(editor, WM_PAINT, 0, 0);
             pumpMessages(100);
         }
