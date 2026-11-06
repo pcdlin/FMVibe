@@ -524,7 +524,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band dynamics' (in
     its title row), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
     rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
-    has that metronome: the phaser and flanger at the left under their displays (their STEREO beside it),
+    has that metronome: the phaser and flanger at the left under their displays (in one pill with their STEREO),
     over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
     do. The filter's slope is a list under its display, like a voice filter's (see the inspector). The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
@@ -907,6 +907,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   takes the keyboard while you type and hands it back afterwards; the keys are taken straight off the window's
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
+- **Button rows**: buttons that pick one of a few (Poly | Mono, an operator's waves, a voice filter's and the filter
+  effect's types, an LFO's clock modes, the partial counts, Points | Steps) and switches that sit side by side (the
+  delay's Sync, Link and Ping-Pong, the phaser's and flanger's Sync and STEREO, the shaper's Symmetric and Link, the
+  3-band dynamics' RMS and LINK) are drawn merged into one pill: one outline, rounded at its ends, with a thin line
+  between its parts, each part lit on its own. A switch with no neighbor (Legato, Always, the power switches) stays a
+  button of its own.
 - **Keyboard strip**: along its top the **KEYBOARD** toggle, the macros close together, the note source and, at the
   right end, velocity; under them the
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the

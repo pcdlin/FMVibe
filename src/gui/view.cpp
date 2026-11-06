@@ -1328,6 +1328,19 @@ float View::envScale(int env) const {
     return fit;
 }
 
+void View::mergeButtons(std::vector<Widget> &list, size_t from) {
+    if (list.size() < from + 2)
+        return;
+    Rect group = list[from].rect;
+    group.w = list.back().rect.right() - group.x;
+    for (size_t i = from; i < list.size(); ++i) {
+        Widget &w = list[i];
+        w.group = group;
+        w.partLeft = i == from ? group.x : (list[i - 1].rect.right() + w.rect.x) * 0.5f;
+        w.partRight = i + 1 == list.size() ? group.right() : (w.rect.right() + list[i + 1].rect.x) * 0.5f;
+    }
+}
+
 std::vector<View::Widget> View::widgets() const {
     const DerivedScope scope(*this);
     std::vector<Widget> list;
@@ -1341,6 +1354,7 @@ std::vector<View::Widget> View::widgets() const {
         w.b = b;
         list.push_back(w);
     };
+    auto merge = [&list](size_t from) { mergeButtons(list, from); };
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
         list.back().label = label;
@@ -1383,8 +1397,10 @@ std::vector<View::Widget> View::widgets() const {
     // Play cluster: Poly | Mono over Legato, then the Glide knob with its Always switch beside its label (added after
     // the knob, so it takes the clicks there).
     const int mono = paramIndex(GlobalParam::Mono);
+    const size_t play = list.size();
     add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
     add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
+    merge(play);
     // Under them Legato.
     add(Kind::Toggle, kLegatoSwitch, paramIndex(GlobalParam::Legato));
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
@@ -1409,8 +1425,11 @@ std::vector<View::Widget> View::widgets() const {
             for (int part = 0; part < 3; ++part)
                 add(Kind::ShapeGrid, shapeGridButton(axis, part), -1, axis, part - 1);
         add(Kind::ShapeArea, shapeArea().inset(-8.0f), -1, editing);
-        for (int mode = 0; mode < 3; ++mode) // Points | Steps and Snap, as in a widened LFO card
+        for (int mode = 0; mode < 3; ++mode) { // Points | Steps in one pill, and Snap, as in a widened LFO card
             add(Kind::ShapeMode, shapeModeButton(mode), -1, editing, mode);
+            if (mode == 1)
+                merge(list.size() - 2);
+        }
         if (isNoteCurve(editing)) { // the range across, in the title row, after the title, close together
             const char *const labels[] = {tr(Str::LabelLow), tr(Str::LabelHigh)};
             const int range[] = {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)};
@@ -1438,8 +1457,10 @@ std::vector<View::Widget> View::widgets() const {
     } else if (partials >= 0) {
         add(Kind::ShapeDone, shapeDone());
         add(Kind::PartialReset, shapeReset(), -1, partials);
+        const size_t counts = list.size();
         for (int choice = 0; choice < static_cast<int>(std::size(kPartialCounts)); ++choice)
             add(Kind::Choice, partialCountButton(choice), partialCountIndex(partials), -1, kPartialCounts[choice]);
+        merge(counts);
         add(Kind::PartialArea, kPartialLevels, -1, partials, 0);
         add(Kind::PartialArea, kPartialPhases, -1, partials, 1);
     } else if (view == RoutingView::Mods) {
@@ -1540,9 +1561,11 @@ std::vector<View::Widget> View::widgets() const {
             case FxType::Shaper: {
                 add(Kind::ListButton, clipModeButton(card), at(FxParam::ShaperMode));
                 const bool custom = clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Custom;
+                const size_t switches = list.size();
                 if (custom)
                     add(Kind::Toggle, clipSymButton(card), at(FxParam::ShaperSymmetric));
                 add(Kind::Toggle, clipLinkButton(card, custom), at(FxParam::ShaperLink));
+                merge(switches);
                 if (custom)
                     drawnCurve(slot, fxDisplay(screen, type));
                 knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
@@ -1554,8 +1577,10 @@ std::vector<View::Widget> View::widgets() const {
                 const FxParam switches[] = {FxParam::DelaySync, FxParam::DelayLink, FxParam::DelayPingPong};
                 const float w = (card.w - 28.0f + 4.0f) / 3.0f;
                 const float under = fxDisplay(screen, type).bottom() + 4.0f;
+                const size_t first = list.size();
                 for (int i = 0; i < 3; ++i)
                     add(Kind::Toggle, {card.x + 14.0f + i * w, under, w - 4.0f, 18.0f}, at(switches[i]));
+                merge(first);
                 // Synced, the time knobs pick note values and show them as their labels. Linked, the
                 // left one sets both sides.
                 const bool synced = value(at(FxParam::DelaySync)) >= 0.5;
@@ -1595,8 +1620,10 @@ std::vector<View::Widget> View::widgets() const {
                 // The filter types in a row of icons, and the slope's list under the response.
                 constexpr int kTypes = static_cast<int>(FilterType::Count);
                 const float w = (card.w - 28.0f + 4.0f) / kTypes;
+                const size_t types = list.size();
                 for (int t = 0; t < kTypes; ++t)
                     add(Kind::Choice, {card.x + 14.0f + t * w, row, w - 4.0f, 20.0f}, at(FxParam::FilterType), -1, t);
+                merge(types);
                 add(Kind::ListButton, fxSlopeButton(card, fxDisplay(screen, type)), at(FxParam::FilterSlope));
                 knobs({at(FxParam::FilterCutoff), at(FxParam::FilterResonance), at(FxParam::FilterKeyTrack)},
                       {tr(Str::LabelCutoff), tr(Str::LabelReso), tr(Str::LabelKeyTrack)}, 206.0f);
@@ -1615,8 +1642,10 @@ std::vector<View::Widget> View::widgets() const {
                 // RMS and LINK in the title row. Each band's row picks the band its knobs set, its threshold lines
                 // drag across and its zones up and down, for their ratios. Linked, an edit of one band sets every
                 // band's (see Controller::linkedBands()).
+                const size_t switches = list.size();
                 add(Kind::Toggle, mdRmsButton(card), at(FxParam::MdRms));
                 add(Kind::Toggle, mdLinkButton(card), at(FxParam::MdLink));
+                merge(switches);
                 const Rect display = fxDisplay(screen, type);
                 for (int band = 0; band < kMcBands; ++band)
                     add(Kind::DynBand, mdBandRow(display, band), -1, slot, band);
@@ -1673,14 +1702,16 @@ std::vector<View::Widget> View::widgets() const {
                 break;
             case FxType::Phaser:
             case FxType::Flanger: {
-                // Under the display, SYNC (the delay's metronome) at the left, over the Rate knob, and STEREO in the
-                // middle. Synced, the Rate knob picks a note value and shows it as its label.
+                // Under the display at the left, over the Rate knob, SYNC (the delay's metronome) and STEREO in one
+                // pill. Synced, the Rate knob picks a note value and shows it as its label.
                 const bool phaser = type == FxType::Phaser;
                 const int sync = at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync);
                 const float under = fxDisplay(screen, type).bottom() + 4.0f;
+                const size_t switches = list.size();
                 add(Kind::Toggle, {card.x + 14.0f, under, 34.0f, 18.0f}, sync);
-                add(Kind::Toggle, {card.center().x - 36.0f, under, 72.0f, 18.0f},
+                add(Kind::Toggle, {card.x + 48.0f, under, 72.0f, 18.0f},
                     at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo));
+                merge(switches);
                 const bool synced = value(sync) >= 0.5;
                 const int rate = synced ? at(phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision)
                                         : at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate);
@@ -1850,9 +1881,11 @@ std::vector<View::Widget> View::widgets() const {
         const int shaper = shaperOfNode(node);
         const bool custom = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom;
         add(Kind::ListButton, shaperModeButton(custom), paramIndex(shaper, ShaperParam::Mode));
+        const size_t switches = list.size();
         if (custom)
             add(Kind::Toggle, kShaperSymButton, paramIndex(shaper, ShaperParam::Symmetric));
         add(Kind::Toggle, kShaperLinkButton, paramIndex(shaper, ShaperParam::Link));
+        merge(switches);
         const int params[] = {paramIndex(shaper, ShaperParam::Drive), paramIndex(shaper, ShaperParam::Output),
                               paramIndex(shaper, ShaperParam::Mix), paramIndex(shaper, ShaperParam::Out)};
         const Str labels[] = {Str::LabelDrive, Str::LabelOutput, Str::LabelMix, Str::LabelToOut};
@@ -1865,9 +1898,11 @@ std::vector<View::Widget> View::widgets() const {
         inputKnobs(node);
     } else if (node < kOps) {
         const int op = node;
+        const size_t waves = list.size();
         for (int b = 0; b + 1 < kWaveButtons; ++b)
             add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
         add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
+        merge(waves);
         // The tabs, a noise operator's without the scope, then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
         for (int t = 0; t < 3; ++t)
@@ -1929,9 +1964,11 @@ std::vector<View::Widget> View::widgets() const {
         }
     } else {
         const int filter = node - kOps;
+        const size_t types = list.size();
         for (int t = 0; t < static_cast<int>(FilterType::Count); ++t)
             add(Kind::TypeButton, {kInspector.x + 16.0f + t * 36.0f, kInspector.y + 62.0f, 32.0f, 22.0f}, -1, filter,
                 t);
+        merge(types);
         add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
         const int params[] = {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance),
                               paramIndex(filter, FilterParam::KeyTrack), paramIndex(filter, FilterParam::Drive),
@@ -2027,8 +2064,11 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::ShapeExpand, lfoCardButton(card, 2), -1, s);
             for (int tool = 0; tool < kShapeTools; ++tool)
                 add(Kind::ShapeTool, lfoToolButton(card, tool), -1, s, tool);
-            for (int mode = 0; mode < 3; ++mode)
+            for (int mode = 0; mode < 3; ++mode) {
                 add(Kind::ShapeMode, lfoModeButton(card, mode), -1, s, mode);
+                if (mode == 1) // Points | Steps in one pill
+                    merge(list.size() - 2);
+            }
             for (int axis = 0; axis < 2; ++axis)
                 for (int part = 0; part < 3; ++part)
                     add(Kind::ShapeGrid, lfoCardGridButton(card, axis, part), -1, axis, part - 1);
@@ -2069,8 +2109,10 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
             // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
             // One-Shot for it (see setLfoClock()), and stands for them all. Unipolar under the sync switch.
+            const size_t modes = list.size();
             for (int i = 0; i < kLfoModes; ++i)
                 add(Kind::Choice, lfoModeSwitch(card, i), paramIndex(s, SourceParam::Free), s, i);
+            merge(modes);
             add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
@@ -4937,6 +4979,37 @@ void editButton(Canvas &c, Rect r, Color color, bool hovered, bool open) {
 }
 } // namespace
 
+void View::paintButtonFace(Canvas &c, const Widget &w, Color fill, bool lit, Color color, float radius) {
+    if (w.group.w <= 0.0f) {
+        c.fillRect(w.rect, fill, radius);
+        if (lit)
+            c.strokeRect(w.rect, color, 1.0f, radius);
+        return;
+    }
+    // Its part of the pill: the pill painted within it, so only the pill's outer corners are rounded. The outline is
+    // drawn inside the pill, and the lines between parts (round-capped) stop half a pixel short of its top and bottom,
+    // so nothing reaches past it.
+    const bool first = w.partLeft <= w.group.x, last = w.partRight >= w.group.right();
+    if (first)
+        lastPartLit_ = false;
+    c.pushClip({w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
+    const float top = w.group.y + 0.5f, bottom = w.group.bottom() - 0.5f;
+    if (fill.a < 1.0f) // a lit part's tint goes over the pill's own fill
+        c.fillRect(w.group, kRaised, radius);
+    c.fillRect(w.group, fill, radius);
+    c.strokeRect(w.group, lit ? color : kTrack, 1.0f, radius);
+    if (lit) {
+        if (!first)
+            c.line({w.partLeft + 0.5f, top}, {w.partLeft + 0.5f, bottom}, color, 1.0f);
+        if (!last)
+            c.line({w.partRight - 0.5f, top}, {w.partRight - 0.5f, bottom}, color, 1.0f);
+    } else if (!first && !lastPartLit_) {
+        c.line({w.partLeft, top + 1.0f}, {w.partLeft, bottom - 1.0f}, kTrack, 1.0f);
+    }
+    c.popClip();
+    lastPartLit_ = lit;
+}
+
 void View::paintWidget(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w);
     const bool active = isActive(w);
@@ -4984,9 +5057,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             color = fxColor(fxSlotOf(w.param));
         if (shaperOf(w.param) >= 0)
             color = kShaperColor;
-        c.fillRect(w.rect, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
-        if (on)
-            c.strokeRect(w.rect, color, 1.0f, 5.0f);
+        paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, 5.0f);
         if (field == FxParam::FilterType) // the filter types show as icons, named in their tooltips
             filterIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 5.0f, 20.0f, w.rect.h - 10.0f},
                        static_cast<FilterType>(w.b), on ? color : kDim);
@@ -5074,18 +5145,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveButton: {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
-        c.fillRect(w.rect, selected ? kAccent.alpha(0.18f) : (hovered ? kTrack : kRaised), 6.0f);
-        if (selected)
-            c.strokeRect(w.rect, kAccent, 1.0f, 6.0f);
+        paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kAccent, 6.0f);
         const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
         c.polyline(points.data(), points.size(), selected ? kAccent : kDim, 1.5f);
         break;
     }
     case Kind::TypeButton: {
         const bool selected = std::lround(value(paramIndex(w.a, FilterParam::Type))) == w.b;
-        c.fillRect(w.rect, selected ? kFilterColor.alpha(0.18f) : (hovered ? kTrack : kRaised), 6.0f);
-        if (selected)
-            c.strokeRect(w.rect, kFilterColor, 1.0f, 6.0f);
+        paintButtonFace(c, w, selected ? kFilterColor.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kFilterColor,
+                        6.0f);
         filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? kFilterColor : kDim);
         break;
     }
@@ -5266,9 +5334,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(w.a, OpParam::Wave))));
         const bool selected = isMoreWave(wave);
         const bool lit = hovered || waveMenu_ == w.a;
-        c.fillRect(w.rect, selected ? kAccent.alpha(0.18f) : (lit ? kTrack : kRaised), 6.0f);
+        paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (lit ? kTrack : kRaised), selected, kAccent, 6.0f);
         if (selected) {
-            c.strokeRect(w.rect, kAccent, 1.0f, 6.0f);
             const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
             c.polyline(points.data(), points.size(), kAccent, 1.5f);
@@ -5644,9 +5711,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const UiLayout &layout = controller_.layout();
         const bool on = w.b == 2 ? layout.shapeSnap : layout.shapeSteps == (w.b == 1);
         const Color color = shapeColor(w.a);
-        c.fillRect(w.rect, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
-        if (on)
-            c.strokeRect(w.rect, color, 1.0f, 5.0f);
+        paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, 5.0f);
         const Color ink = on ? kText : (hovered ? kText : kDim);
         const Str names[] = {Str::SwitchPoints, Str::SwitchSteps, Str::SwitchSnap};
         const char *name = tr(names[w.b]);
@@ -5745,8 +5810,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                                           : controller_.mpeBendRange() == w.b;
         const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
         const Color accent = faint ? kDim : kAccent;
-        c.fillRect(w.rect, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
-        c.strokeRect(w.rect, on ? accent : kBorder, 1.0f, 5.0f);
+        if (w.group.w > 0.0f) // in its row's pill
+            paintButtonFace(c, w, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, accent, 5.0f);
+        else {
+            c.fillRect(w.rect, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
+            c.strokeRect(w.rect, on ? accent : kBorder, 1.0f, 5.0f);
+        }
         char factor[16];
         std::snprintf(factor, sizeof(factor), "%dx", w.b);
         static constexpr Str kHandleSizes[] = {Str::SettingsHandlesSmall, Str::SettingsHandlesMedium,

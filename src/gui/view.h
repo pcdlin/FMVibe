@@ -264,6 +264,10 @@ private:
         bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
         bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
+        // One of a row of buttons drawn merged into one pill, as Poly | Mono: the pill, and from where to where this
+        // one's part of it reaches (halfway across the gaps to its neighbors). group.w is 0 for a button on its own.
+        Rect group{};
+        float partLeft = 0.0f, partRight = 0.0f;
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };
@@ -853,6 +857,12 @@ private:
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintLfo(Canvas &c, Rect r, int lfo);
     void paintWidget(Canvas &c, const Widget &w);
+    // Merges the buttons added to `list` since `from` into one pill, as Poly | Mono, each its part of it.
+    static void mergeButtons(std::vector<Widget> &list, size_t from);
+    // A button's face: on its own a rounded box, outlined in `color` while lit; merged into a row's pill, its part of
+    // the pill (see Widget::group), with a line between it and the next part unless one of them is lit.
+    void paintButtonFace(Canvas &c, const Widget &w, Color fill, bool lit, Color color, float radius);
+    bool lastPartLit_ = false; // whether the part of a pill painted last was lit, for the line after it
     void paintNode(Canvas &c, const Widget &w);
     void paintKnob(Canvas &c, const Widget &w);
     void paintRatio(Canvas &c, const Widget &w);

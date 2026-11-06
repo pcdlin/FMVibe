@@ -25,18 +25,27 @@ std::vector<View::Widget> View::settingsWidgets() const {
     };
     add(Kind::SettingsBackdrop, {0.0f, 0.0f, View::kWidth, height()}, 0);
     add(Kind::SettingsBackdrop, panel, 1);
+    // Each row of buttons in one pill, as Poly | Mono.
+    size_t row = list.size();
     for (int i = 0; i < static_cast<int>(std::size(kOversamplingFactors)); ++i)
         add(Kind::SettingsOption, settingsOption(panel, i), -1, kOversamplingFactors[i]);
+    mergeButtons(list, row);
+    row = list.size();
     for (int on = 0; on < 2; ++on)
         add(Kind::SettingsMpe, settingsMpe(panel, on), -1, on);
+    mergeButtons(list, row);
+    row = list.size();
     for (int i = 0; i < static_cast<int>(std::size(kMpeBendRanges)); ++i)
         add(Kind::SettingsMpeRange, settingsMpeRange(panel, i), -1, kMpeBendRanges[i]);
+    mergeButtons(list, row);
     for (int i = 0; i < kThemeCount; ++i)
         add(Kind::SettingsTheme, settingsTheme(panel, i), -1, i);
     add(Kind::SettingsGlow, settingsGlow(panel));
     add(Kind::SettingsLinks, settingsLinks(panel));
+    row = list.size();
     for (int size = 0; size < kModHandleSizeCount; ++size)
         add(Kind::SettingsHandles, settingsHandles(panel, size), -1, size);
+    mergeButtons(list, row);
     add(Kind::SettingsClose, settingsClose(panel));
     return list;
 }
