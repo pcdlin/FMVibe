@@ -467,11 +467,14 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       couldn't take it. Let go of off the nodes and the bus (where it turns faint), the route goes, with its
       modulation, as its right-click menu's Disconnect does. The feedback loop above an operator or a shaper has no
       arrowhead.
-    - A route into an operator has its mode's glyph left of its label (φ for Phase, a straight line for Linear FM,
-      a steepening curve for Exp FM, a ringed cross for Ring): shown while the label is under the mouse, and for
-      good once the mode isn't Phase. A click on it opens the list of modes; the right-click menus of the wire, its
-      label and its arrowhead list them too, the one in force checked. A route moved onto another operator keeps
-      its mode; moved elsewhere or removed, it is Phase again when it comes back.
+    - Under the mouse, a wire's or OUT label opens into a pill, its depth staying where it was: on its right an ×
+      that removes the route with its modulation (one undo step, as Disconnect), and on its left, for a route into
+      an operator (its feedback aside), its mode's glyph (φ for Phase, a straight line for Linear FM, a steepening
+      curve for Exp FM, a ringed cross for Ring) and a chevron. A click there opens the list of modes, and the wheel
+      steps through them. The pill stays open while the mouse is on it, its list is open or its depth is dragged.
+      Resting, a label shows a mode other than Phase inside it, at its left. The right-click menus of the wire, its
+      label and its arrowhead list the modes too, the one in force checked. A route moved onto another operator
+      keeps its mode; moved elsewhere or removed, it is Phase again when it comes back.
     - Drag a wire's percentage label up or down to set the depth; double-click it to remove the wire, and
       Ctrl+Click it (or pick Edit value… from its right-click menu) to type a depth. A wire, or
       a node's line to OUT, turned down to 0 % stays, so modulation can still be dropped on it; only removing it

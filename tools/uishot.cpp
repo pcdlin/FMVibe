@@ -2468,10 +2468,12 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
           "a wire bowed out of the panel bows only as far as stays inside");
 }
 
-// How a route acts on its operator (RouteMode): picked from the list under the glyph beside its wire label (the
-// glyph showing while the label is under the mouse, and for good once it isn't Phase), from the right-click menus of
-// its label and its matrix cell (whose corner shows the glyph), and from the operator page's INPUTS tab; each pick an
-// undo step. Moved onto another operator by its arrowhead, a route keeps its mode; disconnected, it starts as Phase.
+// How a route acts on its operator (RouteMode): a wire label under the mouse opens into a pill, its mode's part on
+// the left (a click opens the list of modes, the wheel steps them) and an x on the right that removes the route, as an
+// OUT label's does; resting, a label shows a mode other than Phase inside it. The mode is also picked from the
+// right-click menus of its label and its matrix cell (whose corner shows the glyph), and from the operator page's
+// INPUTS tab; each pick an undo step. Moved onto another operator by its arrowhead, a route keeps its mode;
+// disconnected, it starts as Phase.
 void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -2496,22 +2498,29 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     const Point start = toward(b, 24.0f), end = toward(a, 32.0f);
     const Point label{0.25f * start.x + 0.5f * control.x + 0.25f * end.x,
                       0.25f * start.y + 0.5f * control.y + 0.25f * end.y};
-    const Point glyph{label.x - 30.0f, label.y};
-    auto glyphPixels = [&] {
+    // The pill's mode part, left of the label (38 px across) and 28 px across; its x, 20 px across, right of it; and
+    // where a resting label shows a mode other than Phase, at its left.
+    const Point modePart{label.x - 19.0f - 14.0f, label.y}, removePart{label.x + 19.0f + 10.0f, label.y};
+    const Point glyph{label.x - 24.0f, label.y};
+    auto pixelsAround = [&](Point at) {
         std::vector<uint32_t> pixels;
-        for (float y = glyph.y - 5.0f; y <= glyph.y + 5.0f; y += 1.0f)
-            for (float x = glyph.x - 5.0f; x <= glyph.x + 5.0f; x += 1.0f)
+        for (float y = at.y - 5.0f; y <= at.y + 5.0f; y += 1.0f)
+            for (float x = at.x - 5.0f; x <= at.x + 5.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
     };
+    auto glyphPixels = [&] { return pixelsAround(glyph); };
     view.mouseMove({600.0f, 440.0f}, {});
     const bool plainShot = renderer.save(view, dir / "2k-route-phase.png");
-    const std::vector<uint32_t> phaseAway = glyphPixels();
-    // Under the mouse, the label shows the glyph; a click on it opens the list of modes, Ring its last.
+    const std::vector<uint32_t> phaseAway = glyphPixels(), removeAway = pixelsAround(removePart);
+    // Under the mouse, the label opens into its pill (read off the rendered pixels); a click on its mode part opens
+    // the list of modes, Ring its last.
     view.mouseMove(label, {});
-    view.mouseMove(glyph, {});
-    click(view, glyph);
-    const Point ringItem{glyph.x + 47.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f};
+    const bool pillShot = renderer.save(view, dir / "2k2-route-pill.png");
+    const bool opens = pixelsAround(removePart) != removeAway;
+    view.mouseMove(modePart, {});
+    click(view, modePart);
+    const Point ringItem{modePart.x - 14.0f + 56.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f};
     view.mouseMove(ringItem, {});
     const bool listShot = renderer.save(view, dir / "2l-route-mode-list.png");
     click(view, ringItem);
@@ -2522,9 +2531,21 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const bool undone = model.value(mode) == 0.0;
     view.redo();
-    check(plainShot && listShot && ring && ringShot && shows && undone && model.value(mode) == 3.0,
-          "a wire label's glyph opens the list of its route's modes, and shows a mode other than Phase (read off the "
-          "rendered pixels)");
+    check(plainShot && pillShot && opens && listShot && ring && ringShot && shows && undone && model.value(mode) == 3.0,
+          "a wire label under the mouse opens into a pill whose mode part lists its route's modes, and resting shows a "
+          "mode other than Phase (read off the rendered pixels)");
+    // The wheel over the mode part steps the modes, a run of notches one undo step, and stops at the ends.
+    view.mouseMove(label, {});
+    view.mouseMove(modePart, {});
+    view.wheel(modePart, -1.0f, {});
+    const bool stepped = model.value(mode) == static_cast<double>(RouteMode::ExpFm);
+    view.wheel(modePart, -1.0f, {});
+    view.wheel(modePart, -1.0f, {});
+    view.wheel(modePart, -1.0f, {});
+    const bool bottom = model.value(mode) == 0.0;
+    view.undo();
+    check(stepped && bottom && model.value(mode) == static_cast<double>(RouteMode::Ring),
+          "the wheel over a label's mode part steps its route's modes, undoably");
 
     // The label's right-click menu lists the modes, the one in force checked; picking Exp FM sets it.
     bool checked = false;
@@ -2591,16 +2612,26 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, arrowOf(b, a), nodeCenter(layout, 2));
     const bool moved = model.value(matrixIndex(1, 2)) == 0.5 && model.value(routeModeIndex(1, 2)) == 3.0 &&
                        model.value(mode) == 0.0 && model.value(matrixIndex(1, 0)) == 0.0;
-    // Disconnected, a route starts as Phase again.
+    // Removed by its pill's x, a route goes, undoably, and comes back as Phase; an OUT label's x takes its node's
+    // output away.
     model.set(matrixIndex(1, 0), 0.5);
     model.set(mode, 2.0);
     model.ui.keptRoutes.push_back(matrixIndex(1, 0));
     view.poll();
-    for (const MenuItem &item : view.contextMenu(label))
-        if (item.label == tr(Str::MenuDisconnect))
-            view.menuCommand(item.command);
-    check(moved && model.value(matrixIndex(1, 0)) == 0.0 && model.value(mode) == 0.0,
-          "a route moved onto another operator keeps its mode, and one disconnected starts as Phase again");
+    view.mouseMove(label, {});
+    view.mouseMove(removePart, {});
+    const bool removeShot = renderer.save(view, dir / "2n-route-remove.png");
+    click(view, removePart);
+    const bool removed = model.value(matrixIndex(1, 0)) == 0.0 && model.value(mode) == 0.0;
+    view.undo();
+    const bool back = model.value(matrixIndex(1, 0)) == 0.5 && model.value(mode) == 2.0;
+    const Point out = outLabelOf(layout, 0);
+    view.mouseMove(out, {});
+    view.mouseMove({out.x + 30.0f, out.y}, {});
+    click(view, {out.x + 30.0f, out.y});
+    check(moved && removeShot && removed && back && model.value(paramIndex(0, OpParam::Out)) == 0.0,
+          "a route moved onto another operator keeps its mode; a label's x removes its route (back as Phase) and an "
+          "OUT label's its node's output");
 }
 
 // The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls

@@ -644,7 +644,8 @@ STR(TipNoteDisplay, "Edit note curve")
 STR(TipVelocityDisplay, "Edit velocity curve")
 STR(TipWireEnd, "Drag to reroute")
 STR(TipWire, "Drag to bend, double-click resets")
-STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode glyph and chevron on a wire label
+STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
+STR(TipRemoveRoute, "Remove route") // the x at the right of a wire or OUT label's pill
 STR(TipRoutePhase, "Phase: adds to where the wave is read")
 STR(TipRouteLinearFm, "Linear FM: adds to the frequency, through zero")
 STR(TipRouteExpFm, "Exp FM: moves the pitch by octaves")

@@ -1360,6 +1360,22 @@ std::vector<View::Widget> View::widgets() const {
         list.push_back(w);
     };
     auto merge = [&list](size_t from) { mergeButtons(list, from); };
+    // A wire's or OUT label in the graph: the label, then, while it is a pill (see labelPill()), its mode's part and its
+    // x, all three drawn as one.
+    auto labelWidgets = [&](Kind kind, int param, int mode, Rect idle, int from, int to) {
+        const LabelPill pill = labelPill(param, mode, idle);
+        add(kind, pill.depth, param, from, kind == Kind::OutLabel ? -1 : to);
+        list.back().modeGlyph = pill.glyph;
+        if (!pill.open)
+            return;
+        list.back().group = pill.whole;
+        if (mode >= 0) {
+            add(Kind::LabelMode, pill.mode, mode, from, to);
+            list.back().group = pill.whole;
+        }
+        add(Kind::LabelRemove, pill.remove, param, from, to);
+        list.back().group = pill.whole;
+    };
     auto knob = [&](int param, Point center, float diameter, const char *label) {
         add(Kind::Knob, knobRect(center, diameter), param);
         list.back().label = label;
@@ -1811,28 +1827,21 @@ std::vector<View::Widget> View::widgets() const {
                 const int param = routeParam(from, to);
                 if (!wired(param) || param == moving)
                     continue;
+                Rect idle;
                 if (from == to) {
                     const Point loop = loopCenter(from, nodeCenter(from));
-                    add(Kind::WireLabel, chip({loop.x + 32.0f, loop.y}, 44.0f), param, from, to);
+                    idle = chip({loop.x + 32.0f, loop.y}, 44.0f);
                 } else {
                     const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
-                    const Rect label = chip(w.label);
-                    add(Kind::WireLabel, label, param, from, to);
-                    // Its mode's glyph, beside it, takes the mouse only while it shows (see Kind::RouteModeButton), so
-                    // the wire under it bends as before.
-                    const int mode = routeModeParam(from, to);
-                    const bool glyph =
-                        mode >= 0 && (value(mode) != 0.0 || listMenu_ == mode ||
-                                      (hover_ && ((hover_->kind == Kind::WireLabel && hover_->param == param) ||
-                                                  (hover_->kind == Kind::RouteModeButton && hover_->param == mode))));
-                    if (glyph)
-                        add(Kind::RouteModeButton, {label.x - 20.0f, label.y, 18.0f, label.h}, mode, from, to);
+                    idle = chip(w.label);
                 }
+                labelWidgets(Kind::WireLabel, param, routeModeParam(from, to), idle, from, to);
             }
         }
         for (int node : on)
             if (goesOut(node) && outParam(node) != moving)
-                add(Kind::OutLabel, chip(outWireOf(node, nodeCenter(node)).label, 40.0f), outParam(node), node);
+                labelWidgets(Kind::OutLabel, outParam(node), -1, chip(outWireOf(node, nodeCenter(node)).label, 40.0f),
+                             node, kNodes);
         // The arrowheads, over the labels: dragged onto another node or the bus, they move their routes there.
         for (int from : on) {
             for (int to : on) {
@@ -2369,13 +2378,13 @@ std::vector<View::Widget> View::widgets() const {
         for (int item = 0; item < items; ++item)
             add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
     }
-    // A route's list of modes, under the glyph beside its wire label, while the graph shows that route.
+    // A route's list of modes, under the mode's part of its label's pill, while the graph shows that route.
     if (const int from = routeModeFrom(listMenu_), to = routeModeTo(listMenu_);
         from >= 0 && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0 &&
         nodeOn(from) && nodeOn(to) && wired(routeParam(from, to)) && rerouting() != routeParam(from, to)) {
         const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(routeParam(from, to)));
-        const Rect label = chip(w.label);
-        const Rect button{label.x - 20.0f, label.y, 112.0f, label.h};
+        const Rect part = labelPill(routeParam(from, to), listMenu_, chip(w.label)).mode;
+        const Rect button{part.x, part.y, 112.0f, part.h};
         const int items = listCount(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::ListMenu, listMenu(button, items), -1, 1);
@@ -4465,6 +4474,34 @@ void View::switchFixed(int op) {
     editMany(changes);
 }
 
+View::LabelPill View::labelPill(int param, int mode, Rect idle) const {
+    auto mine = [&](const Widget &w) {
+        return ((w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::LabelRemove) &&
+                w.param == param) ||
+               (w.kind == Kind::LabelMode && mode >= 0 && w.param == mode);
+    };
+    LabelPill pill;
+    pill.open = (hover_ && mine(*hover_)) || (mode >= 0 && listMenu_ == mode) ||
+                (drag_.kind != DragKind::None && mine(drag_.widget));
+    if (!pill.open) {
+        // A mode other than Phase shows inside it, at its left, the label widening that way.
+        pill.glyph = mode >= 0 && routeMode(value(mode)) != RouteMode::Phase;
+        pill.depth = pill.glyph ? Rect{idle.x - 18.0f, idle.y, idle.w + 18.0f, idle.h} : idle;
+        pill.whole = pill.depth;
+        return pill;
+    }
+    // The depth stays where it rests, so the mouse on it stays on it as it opens; the mode's part goes on its left,
+    // over where a glyph shows while it rests, and the x on its right.
+    constexpr float kModeW = 28.0f, kRemoveW = 20.0f;
+    pill.depth = idle;
+    if (mode >= 0)
+        pill.mode = {idle.x - kModeW, idle.y, kModeW, idle.h};
+    pill.remove = {idle.right(), idle.y, kRemoveW, idle.h};
+    const float left = mode >= 0 ? pill.mode.x : idle.x;
+    pill.whole = {left, idle.y, pill.remove.right() - left, idle.h};
+    return pill;
+}
+
 std::vector<int> View::inputsOf(int op) const {
     std::vector<int> inputs;
     for (int from = 0; from < kNodes; ++from)
@@ -5273,26 +5310,58 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool focused = hovered || active;
         const bool boxes = isBoxNode(w.a) || isBoxNode(w.b);
         const Color tint = w.kind == Kind::OutLabel ? kText.alpha(0.3f) : routeColor(w.a, w.b).alpha(boxes ? 0.6f : 0.5f);
-        c.fillRect(w.rect, kRaised, 9.0f);
-        c.strokeRect(w.rect, focused ? kText : tint, 1.0f, 9.0f);
+        // As a pill, it draws all of it, its parts' lines and its own lit part; its parts draw what is on them.
+        const bool pill = w.group.w > 0.0f;
+        const Rect body = pill ? w.group : w.rect;
+        c.fillRect(body, kRaised, 9.0f);
+        if (pill && focused)
+            c.fillRect(w.rect, kText.alpha(0.06f));
+        c.strokeRect(body, focused || pill ? kText : tint, 1.0f, 9.0f);
+        if (pill) {
+            if (w.group.x < w.rect.x)
+                c.line({w.rect.x, w.rect.y + 3.0f}, {w.rect.x, w.rect.bottom() - 3.0f}, kTrack, 1.0f);
+            c.line({w.rect.right(), w.rect.y + 3.0f}, {w.rect.right(), w.rect.bottom() - 3.0f}, kTrack, 1.0f);
+        }
         std::string text = percent(amount);
         if (w.kind == Kind::WireLabel && w.a == w.b)
             text = trf(Str::CaptionFeedback, {text});
-        c.text({w.rect.x, w.rect.y - 2.0f, w.rect.w, w.rect.h}, text, 10.5f, focused ? kText : kDim);
+        Rect textRect{w.rect.x, w.rect.y - 2.0f, w.rect.w, w.rect.h};
+        if (w.modeGlyph) { // its mode, other than Phase, at its left
+            const auto mode = routeMode(value(routeModeParam(w.a, w.b)));
+            routeModeIcon(c, {w.rect.x + 13.0f, w.rect.center().y}, mode, routeColor(w.a, w.b), 0.85f);
+            textRect = {w.rect.x + 18.0f, w.rect.y - 2.0f, w.rect.w - 22.0f, w.rect.h};
+        }
+        c.text(textRect, text, 10.5f, focused ? kText : kDim);
         paintModRange(c, {w.rect.x + 7.0f, w.rect.bottom() - 4.0f, w.rect.w - 14.0f, 1.5f}, w.param);
         break;
     }
-    case Kind::RouteModeButton: {
-        // Shown while it isn't Phase, under the mouse, or while its label is; its list open lights it.
-        const auto mode = routeMode(value(w.param));
-        const bool labelHovered = hover_ && hover_->kind == Kind::WireLabel && hover_->a == w.a && hover_->b == w.b;
+    case Kind::LabelMode: {
+        // Its mode's glyph and a chevron, pointing up while its list is open; lit under the mouse and while open.
         const bool open = listMenu_ == w.param;
-        if (mode == RouteMode::Phase && !hovered && !labelHovered && !open)
-            break;
         const Color tint = routeColor(w.a, w.b);
-        c.fillRect(w.rect, open || hovered ? tint.alpha(0.22f) : kRaised, 9.0f);
-        c.strokeRect(w.rect, hovered || open ? kText : tint.alpha(0.5f), 1.0f, 9.0f);
-        routeModeIcon(c, w.rect.center(), mode, mode == RouteMode::Phase && !hovered ? kDim : tint);
+        if (hovered || open) {
+            c.pushClip(w.rect);
+            c.fillRect(w.group.inset(1.0f), tint.alpha(open ? 0.3f : 0.2f), 8.0f);
+            c.popClip();
+        }
+        const Point m{w.rect.x + 11.0f, w.rect.center().y};
+        routeModeIcon(c, m, routeMode(value(w.param)), hovered || open ? kText : tint, 0.85f);
+        const Point v{w.rect.right() - 7.0f, w.rect.center().y};
+        const float dir = open ? -1.0f : 1.0f;
+        const Point chevron[] = {{v.x - 2.5f, v.y - 1.2f * dir}, {v.x, v.y + 1.5f * dir}, {v.x + 2.5f, v.y - 1.2f * dir}};
+        c.polyline(chevron, 3, hovered || open ? kText : kDim, 1.2f);
+        break;
+    }
+    case Kind::LabelRemove: {
+        if (hovered) {
+            c.pushClip(w.rect);
+            c.fillRect(w.group.inset(1.0f), kText.alpha(0.1f), 8.0f);
+            c.popClip();
+        }
+        const Point m = w.rect.center();
+        const Color ink = hovered ? kText : kDim;
+        c.line({m.x - 3.0f, m.y - 3.0f}, {m.x + 3.0f, m.y + 3.0f}, ink, 1.3f);
+        c.line({m.x - 3.0f, m.y + 3.0f}, {m.x + 3.0f, m.y - 3.0f}, ink, 1.3f);
         break;
     }
     case Kind::GridCell: {
@@ -6498,7 +6567,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
-         !(hover_->kind == Kind::RouteModeButton && listMenu_ != hover_->param) &&
+         !(hover_->kind == Kind::LabelMode && listMenu_ != hover_->param) && hover_->kind != Kind::LabelRemove &&
          hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
          hover_->kind != Kind::ModsScale && hover_->kind != Kind::ModsCurve && hover_->kind != Kind::SearchField &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
@@ -6564,8 +6633,10 @@ void View::paintTooltip(Canvas &c) {
                    : trf(on ? Str::TipSwitchNodeOff : Str::TipSwitchNodeOn, {title});
     } else if (hover_->kind == Kind::NodeGhost) {
         text = trf(Str::TipNodeGhost, {nodeTitle(hover_->a)});
-    } else if (hover_->kind == Kind::RouteModeButton) {
+    } else if (hover_->kind == Kind::LabelMode) {
         text = trf(Str::TipRouteMode, {routeModeName(routeMode(value(param)))});
+    } else if (hover_->kind == Kind::LabelRemove) {
+        text = tr(Str::TipRemoveRoute);
     } else if (routeModeFrom(param) >= 0) { // an INPUTS row's buttons
         const Str tips[] = {Str::TipRoutePhase, Str::TipRouteLinearFm, Str::TipRouteExpFm, Str::TipRouteRing};
         static_assert(std::size(tips) == static_cast<size_t>(RouteMode::Count));
@@ -7694,8 +7765,13 @@ void View::mouseDown(Point p, Modifiers mods) {
             break; // a comb has no slope: its list stays shut
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
-    case Kind::RouteModeButton:
+    case Kind::LabelMode:
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
+        break;
+    case Kind::LabelRemove:
+        listMenu_ = -1;
+        disconnect(w.param);
+        hover_.reset();
         break;
     case Kind::ListMenu:
         if (w.a == 0) // a click anywhere else closes the list
@@ -8407,6 +8483,15 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             setLfoClock(hit->a, static_cast<LfoClock>(to));
         return;
     }
+    if (hit->kind == Kind::LabelMode) { // to the next mode along, as the wheel turns, a run of notches one undo step
+        const int to = std::clamp(static_cast<int>(routeMode(value(hit->param))) + whole, 0,
+                                  static_cast<int>(RouteMode::Count) - 1);
+        if (whole != 0 && to != static_cast<int>(routeMode(value(hit->param)))) {
+            const UndoScope notches(controller_, true);
+            edit(hit->param, to);
+        }
+        return;
+    }
     if (isPartialCount(hit->param)) {
         const auto *first = std::begin(kPartialCounts), *last = std::end(kPartialCounts);
         const int now = partialCount(value(hit->param));
@@ -8593,8 +8678,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
             items.push_back({kRouteModeCommand + m, routeModeName(static_cast<RouteMode>(m)), static_cast<int>(now) == m});
         items.push_back({0, ""});
     };
-    if (hit->kind == Kind::RouteModeButton) {
-        menuParam_ = routeParam(hit->a, hit->b);
+    if (hit->kind == Kind::LabelMode || hit->kind == Kind::LabelRemove) {
+        menuParam_ = hit->kind == Kind::LabelMode ? routeParam(hit->a, hit->b) : hit->param;
         addRouteModes(menuParam_);
         items.push_back({3, tr(Str::MenuDisconnect)});
         return items;

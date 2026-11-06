@@ -214,8 +214,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
     lighting none of them (read off the rendered pixels); a source card's button showing its modulations in MODS, or with none adding an empty one
     from it;
-  - a route's mode picked from the list under the glyph beside its wire label (the glyph showing under the mouse,
-    and for good once it isn't Phase, read off the rendered pixels), from its label's and its matrix cell's
+  - a wire label under the mouse opening into a pill (read off the rendered pixels): its mode part's list picking
+    the route's mode and the wheel stepping it, undoably, its × removing the route (and an OUT label's its node's
+    output); resting, a label showing a mode other than Phase (read off the rendered pixels); the mode also picked
+    from its label's and its matrix cell's
     right-click menus (the cell's corner showing the glyph, read off the rendered pixels) and from the operator
     page's INPUTS tab, whose label sets the depth, each an undo step; a route moved onto another operator keeping
     its mode, and one disconnected starting as Phase again;
