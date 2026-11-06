@@ -240,10 +240,27 @@ What the plugin does and how its editor works, in full. Building and installing 
     the last one left it. Like the Param EQ, its display shows what it puts out behind its response.
   - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB), Ratio (1:1–20:1), a soft Knee
     (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Makeup (0–24 dB) and Mix for parallel compression.
-  - **3-Band Comp**: Linkwitz-Riley crossovers (Low X, High X) split the mix into three bands, each compressed on
-    its own with its Threshold, Ratio and Gain after it (a 6 dB knee); Attack, Release and Mix are shared, and
-    Output sets the level after the mix. At 0 % mix the bands just sum back up, so nothing combs. **Link** makes
-    all three bands use the low band's Threshold, Ratio and Gain; each band keeps its own for when it is unlinked.
+  - **3-Band Dynamics**: upward and downward compression in three bands, which Linkwitz-Riley crossovers (Low X,
+    High X) split the mix into; at 0 % mix the bands just sum back up, so nothing combs. Each band is pulled down above its **Above** threshold by its **Down** ratio, as a compressor does, and
+    lifted below its **Below** threshold by its **Up** ratio: the gap under the threshold shrinks by the ratio, so
+    a level 6 dB under Below at 2:1 comes out 3 dB under it. **Range** (0–36 dB, 12 to begin with) caps the lift,
+    so silence and the noise floor aren't raised without end; a ratio of 1:1 leaves its side alone. The ratios run
+    from 1:1 to ∞:1, which holds the level at the threshold (a limiter above, and below a lift right up to Below, as
+    far as Range lets it); their knobs turn them up by how much of a level's distance from the threshold they take
+    away, so 2:1 sits in the middle and 4:1 three quarters of the way. Then comes the
+    band's **Gain**. The detector follows each band's RMS level (**RMS**, on to begin with: a 10 ms average) or its
+    peaks (held between them, falling back with a 20 ms time constant, so a wave's zero crossings don't read as
+    silence); the gain follows it at the Attack pace while it falls and the Release pace while it rises. Knee
+    (both thresholds' soft knees), Attack, Release, Range, Mix and Output are shared. To begin with, each band is
+    pulled down 3:1 above −20 dB and lifted 2:1 below −40 dB. **Link** edits the bands together: while it
+    is on, changing one band's threshold, ratio or gain in the editor (a knob, a line, a zone, a typed value)
+    sets every band's to the same value, as one undo step. Each band always plays its own settings, so turning Link
+    on changes nothing until the next edit, and a host's automation of one band's param moves that band alone. It
+    replaces the 3-Band Comp,
+    which the list of effects no longer offers: a project or preset saved with one before then loads it as a 3-Band Dynamics
+    doing what it did, its crossovers, thresholds (as Above), ratios (as Down), gains, Attack, Release, Mix,
+    Output and Link carried over (and the modulation aimed at them), Up at 1:1, a 6 dB knee and the detector on
+    peaks; a linked one, whose bands all took the low band's threshold, ratio and gain, gives every band those.
   - **Reverb**: a feedback delay network of sixteen lines (29 to 89 ms at full size, spread evenly on a log
     scale), mixed through a Hadamard matrix, which spreads each line's sound evenly over all of them every time
     round, so the echoes thicken fast. Each line's length wavers slowly (a fraction of a millisecond, each at its
@@ -431,8 +448,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 
   - **FX**: takes the place of both the routing panel and the inspector. It shows a card per effect, left to right
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter
-    purple, compressor green, 3-band teal, reverb indigo, phaser pink, flanger lime, frequency shifter cyan,
-    phase disperser slate, widener fuchsia) and
+    purple, compressor green, 3-band dynamics teal, reverb indigo, phaser pink, flanger lime, frequency shifter
+    cyan, phase disperser slate, widener fuchsia) and
     with its icon, which switches it on and off, an × to remove it and a live display:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
@@ -442,10 +459,30 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       FFT in 96 bands from 20 Hz to 20 kHz, 0 dB at the top, falling away at 55 dB a second), which it only
       measures while the editor is open; the Param EQ's and the filter's sit on a grid, dashed every 12 dB with
       0 dB solid, and dashed at 100 Hz, 1 kHz and 10 kHz;
-    - the compressors' curves (input level across, output up) with a gain reduction meter; the 3-band card's
-      band buttons, each an icon of its slice of the spectrum (low, mid and high) named on hover, pick which
-      band's curve is on top and which band its first row of knobs sets (a thin line divides those from the
-      shared knobs), and Link beside them, the shaper's chain links, gives the bands one curve;
+    - the compressor's curve (input level across, output up) with a gain reduction meter;
+    - the 3-band dynamics' levels: a bar a band, the high band on top, from −60 dB at the left to 0 dB at the
+      right, with the band's name at its left and its gain at its right. Down the bar's middle runs a meter half
+      its height: in the card's color up to what comes out, then the gain, amber where the band takes some off
+      (up to what went in) and in the accent where it adds some; a white tick across the bar marks what goes in.
+      Left of the Below threshold, where the band lifts, and right of the Above one, where it pulls down, the bar
+      is faintly tinted (more under the mouse), and thin lines
+      (the text color, at half strength) show the ratio: one for every 6 dB that goes in past the threshold, drawn
+      where the ratio takes it (Range and the knee left out), seven at most, as far as the bar's end. At 1:1 they
+      stand 6 dB apart; they close up evenly toward the threshold as the ratio turns up, and from about 15:1 on stay
+      0.4 dB apart. They move with their threshold: toward the bar's end it pushes them out past it, and moving back
+      brings more in. A band's row picks the band its first row of knobs (Above, Down, Below, Up and Gain)
+      sets, the band's name on a plate; the line under those knobs is named after it (ALL BANDS while linked),
+      and the shared knobs come in two rows under it, Low X, High X, Attack and Release above Knee, Range, Mix and
+      Output. Each bar's threshold lines drag (lit under the mouse): across, a line moves its threshold (Above
+      stops at Below, and Below at Above), showing it where the gain was; Alt-dragged up and down, or turned with
+      the wheel, it sets that side's ratio; a double-click puts its threshold back. The zones beyond the lines
+      drag up and down for their side's ratio, the way the band moves the level: the upward one (left of Below)
+      up for more, the downward one (right of Above) down for more (the wheel turns them too, and a double-click
+      puts them back), showing it where the gain was. Pressing a line or a zone on another band picks that band. Linked, dragging any
+      band's line or zone moves every band's the same way, and every band's readout shows the value. RMS and
+      Link sit in the card's title row. The
+      card is one and a half places wide, like the Param EQ's. The Above, Down, Below and Up knobs, and Range,
+      say in a tooltip which way they work ("Downward threshold", "Upward ratio").
     - the reverb's tail: after the pre-delay it builds up (slower in a bigger space, with its early reflections
       spread wider) and falls to nothing at the decay time, its texture sparser the bigger the space; a room's
       early reflections stand out, a plate is dense from the start, and a shimmer's shifted tail sparkles above it
@@ -465,8 +502,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 
     The delay's switches under its display are icons across the card, named on hover: a metronome for Sync, two
     chain links for Link (the right side follows the left) and a ball between two paddles for Ping-Pong. The
-    shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band card's,
-    centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
+    shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band dynamics' (in
+    its title row), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
     rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (their STEREO beside it),
     over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs

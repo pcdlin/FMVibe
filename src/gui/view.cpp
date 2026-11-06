@@ -31,7 +31,7 @@ namespace {
 constexpr Str kFxTitles[] = {Str::FxTitleShaper, Str::FxTitleDelay, Str::FxTitleDjEq, Str::FxTitleParamEq,
                              Str::FxTitleFilter, Str::FxTitleCompressor, Str::FxTitleMultiComp, Str::FxTitleReverb,
                              Str::FxTitlePhaser, Str::FxTitleFlanger, Str::FxTitleFreqShifter, Str::FxTitleDisperser,
-                             Str::FxTitleWidener};
+                             Str::FxTitleWidener, Str::FxTitleMultiDyn};
 static_assert(std::size(kFxTitles) == static_cast<size_t>(FxType::Count) - 1);
 const char *fxTitle(FxType type) {
     return type == FxType::None ? "" : tr(kFxTitles[static_cast<int>(type) - 1]);
@@ -68,6 +68,26 @@ std::vector<Point> viewTabOutline(Rect r, float flare) {
     else
         points.push_back({right, bottom});
     return points;
+}
+
+// The tooltip of a three-band dynamics' knob that needs one, saying which way its threshold or ratio works; Count for
+// other knobs.
+Str dynKnobTip(int param) {
+    const int slot = fxSlotOf(param);
+    if (slot < 0 || param < mdAboveIndex(slot, 0) || param > mdGainIndex(slot, kMcBands - 1))
+        return fxFieldOf(param) == FxParam::MdRange ? Str::TipUpRange : Str::Count;
+    switch ((param - mdAboveIndex(slot, 0)) % 5) {
+    case 0:
+        return Str::TipDownThreshold;
+    case 1:
+        return Str::TipDownRatio;
+    case 2:
+        return Str::TipUpThreshold;
+    case 3:
+        return Str::TipUpRatio;
+    default:
+        return Str::Count; // the band's Gain says what it is
+    }
 }
 
 // `value` as `format` prints it, for the numbers a wording takes.
@@ -818,6 +838,16 @@ Rect View::peqArea(int slot) const {
     return fxDisplay(fxScreen(chain, static_cast<size_t>(pos)), FxType::ParamEq).inset(8.0f);
 }
 
+Rect View::mdDisplay(int slot) const {
+    const std::vector<int> chain = fxChainShown();
+    const auto pos = std::find(chain.begin(), chain.end(), slot) - chain.begin();
+    return fxDisplay(fxScreen(chain, static_cast<size_t>(pos)), FxType::MultiDyn);
+}
+
+int View::mdThreshold(int slot, int line) const {
+    return line % 2 == 1 ? mdBelowIndex(slot, line / 2) : mdAboveIndex(slot, line / 2);
+}
+
 void View::editMany(const std::vector<std::pair<int, double>> &changes) {
     for (const auto &[index, v] : changes)
         controller_.beginEdit(index);
@@ -1176,6 +1206,14 @@ bool View::poll() {
     if (metering || metering_)
         changed = true;
     metering_ = metering;
+    // A three-band dynamics' bars move with its bands' levels and gains, until they settle.
+    for (int slot : fxChain())
+        if (fxSlotType(slot) == FxType::MultiDyn)
+            for (int band = 0; band < kMcBands; ++band)
+                if (std::abs(t.fxBandLevel[slot][band] - telemetry_.fxBandLevel[slot][band]) >
+                        0.01f * std::max(t.fxBandLevel[slot][band], 1e-5f) ||
+                    std::abs(t.fxBandGain[slot][band] - telemetry_.fxBandGain[slot][band]) > 0.05f)
+                    changed = true;
     // Phasers, flangers and wideners sweep while the audio runs.
     if (t.age < 0.5f)
         for (int slot : fxChain())
@@ -1537,20 +1575,46 @@ std::vector<View::Widget> View::widgets() const {
                        at(FxParam::CompMix)},
                       {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelMakeup), tr(Str::LabelMix)}, 266.0f);
                 break;
-            case FxType::MultiComp: {
-                // Band buttons pick which band's knobs show, then LINK; the crossovers and timing are shared.
-                // Linked, the knobs set the low band, which every band follows.
-                const float w = (card.w - 28.0f + 6.0f) / (kMcBands + 1);
+            case FxType::MultiDyn: {
+                // RMS and LINK in the title row. Each band's row picks the band its knobs set, its threshold lines
+                // drag across and its zones up and down, for their ratios. Linked, an edit of one band sets every
+                // band's (see Controller::linkedBands()).
+                add(Kind::Toggle, mdRmsButton(card), at(FxParam::MdRms));
+                add(Kind::Toggle, mdLinkButton(card), at(FxParam::MdLink));
+                const Rect display = fxDisplay(screen, type);
                 for (int band = 0; band < kMcBands; ++band)
-                    add(Kind::McBand, {card.x + 14.0f + band * w, row, w - 6.0f, 22.0f}, -1, slot, band);
-                add(Kind::Toggle, {card.x + 14.0f + kMcBands * w, row, w - 6.0f, 22.0f}, at(FxParam::McLink));
-                const int band = value(at(FxParam::McLink)) >= 0.5 ? 0 : fxBand_[slot];
-                knobs({mcThresholdIndex(slot, band), mcRatioIndex(slot, band), mcGainIndex(slot, band)},
-                      {tr(Str::LabelThreshold), tr(Str::LabelRatio), tr(Str::LabelGain)}, 160.0f);
-                knobs({at(FxParam::McLowFreq), at(FxParam::McHighFreq), at(FxParam::McMix)},
-                      {tr(Str::LabelLowX), tr(Str::LabelHighX), tr(Str::LabelMix)}, 216.0f);
-                knobs({at(FxParam::McAttack), at(FxParam::McRelease), at(FxParam::McOutput)},
-                      {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelOutput)}, 268.0f);
+                    add(Kind::DynBand, mdBandRow(display, band), -1, slot, band);
+                for (int band = 0; band < kMcBands; ++band) {
+                    const Rect bar = mdBar(display, band);
+                    const double below = value(mdBelowIndex(slot, band)), above = value(mdAboveIndex(slot, band));
+                    for (const bool lower : {false, true})
+                        if (const Rect zone = mdZone(bar, std::min(below, above), above, lower); zone.w > 0.0f)
+                            add(Kind::DynZone, zone, lower ? mdUpIndex(slot, band) : mdDownIndex(slot, band), slot,
+                                2 * band + (lower ? 1 : 0));
+                    add(Kind::DynGrip, mdLineGrip(bar, std::min(below, above), above, true), mdUpIndex(slot, band),
+                        slot, 2 * band + 1);
+                    add(Kind::DynGrip, mdLineGrip(bar, std::min(below, above), above, false), mdDownIndex(slot, band),
+                        slot, 2 * band);
+                }
+                const int band = fxBand_[slot];
+                auto row = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels, float y,
+                               float diameter) {
+                    const float step = card.w / static_cast<float>(params.size());
+                    for (size_t i = 0; i < params.size(); ++i)
+                        knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
+                             labels.begin()[i]);
+                };
+                row({mdAboveIndex(slot, band), mdDownIndex(slot, band), mdBelowIndex(slot, band), mdUpIndex(slot, band),
+                     mdGainIndex(slot, band)},
+                    {tr(Str::LabelAbove), tr(Str::LabelDown), tr(Str::LabelBelow), tr(Str::LabelUp),
+                     tr(Str::LabelGain)},
+                    kMdBandKnobsY, 30.0f);
+                row({at(FxParam::MdLowFreq), at(FxParam::MdHighFreq), at(FxParam::MdAttack), at(FxParam::MdRelease)},
+                    {tr(Str::LabelLowX), tr(Str::LabelHighX), tr(Str::LabelAttack), tr(Str::LabelRelease)},
+                    kMdSharedY1, 28.0f);
+                row({at(FxParam::MdKnee), at(FxParam::MdRange), at(FxParam::MdMix), at(FxParam::MdOutput)},
+                    {tr(Str::LabelKnee), tr(Str::LabelRange), tr(Str::LabelMix), tr(Str::LabelOutput)}, kMdSharedY2,
+                    28.0f);
                 break;
             }
             case FxType::Reverb:
@@ -1614,6 +1678,7 @@ std::vector<View::Widget> View::widgets() const {
                        at(FxParam::WidenerMix)},
                       {tr(Str::LabelSize), tr(Str::LabelWidth), tr(Str::LabelHighPass), tr(Str::LabelMix)});
                 break;
+            case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
             case FxType::None:
             case FxType::Count:
                 break;
@@ -2083,8 +2148,8 @@ std::vector<View::Widget> View::widgets() const {
     if (fxMenuOpen_ && fxWide()) {
         add(Kind::FxMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::FxMenu, fxMenu(fxMenuAt_), -1, 1);
-        for (int t = 1; t <= kFxTypes; ++t)
-            add(Kind::FxAdd, fxMenuItem(fxMenuAt_, static_cast<FxType>(t)), -1, t);
+        for (FxType type : kFxOffered)
+            add(Kind::FxAdd, fxMenuItem(fxMenuAt_, type), -1, static_cast<int>(type));
     }
     // The open list of an effect's choice (the shaper's curve, the reverb's algorithm), under its button,
     // while that card is on screen and still holds that effect.
@@ -2768,7 +2833,9 @@ void View::paintFx(Canvas &c) {
         }
 
         // Title row: the effect's icon (a widget of its own, which switches it) and its name.
-        const Rect titleRect{card.x + 34.0f, card.y + 8.0f, card.w - 82.0f, 20.0f};
+        // The three-band dynamics' switches sit in the title row too.
+        const Rect titleRect{card.x + 34.0f, card.y + 8.0f, card.w - (type == FxType::MultiDyn ? 160.0f : 82.0f),
+                             20.0f};
         const char *title = fxTitle(type);
         float titleSize = 11.0f; // smaller for a long name, so it fits beside the icon
         while (titleSize > 9.0f && c.textWidth(title, titleSize, true) > titleRect.w)
@@ -2799,8 +2866,8 @@ void View::paintFx(Canvas &c) {
         case FxType::Compressor:
             paintCompressor(c, display, slot);
             break;
-        case FxType::MultiComp:
-            paintMultiComp(c, display, slot);
+        case FxType::MultiDyn:
+            paintMultiDyn(c, display, slot);
             break;
         case FxType::Reverb:
             paintReverb(c, display, slot);
@@ -2818,12 +2885,19 @@ void View::paintFx(Canvas &c) {
         case FxType::Widener:
             paintWidener(c, display, slot);
             break;
+        case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
         case FxType::None:
         case FxType::Count:
             break;
         }
-        if (type == FxType::MultiComp) // the band's own knobs above, the shared ones below
-            c.line({card.x + 14.0f, card.y + 197.5f}, {card.right() - 14.0f, card.y + 197.5f}, kBorder, 1.0f);
+        if (type == FxType::MultiDyn) { // the band's own knobs above, the shared ones below, under a line named after it
+            const bool linked = value(paramIndex(slot, FxParam::MdLink)) >= 0.5;
+            const std::string name =
+                linked ? std::string(tr(Str::CaptionAllBands)) : trf(Str::CaptionBandKnobs, {tr(kMcBandNames[fxBand_[slot]])});
+            const float y = card.y + kMdLineY, width = std::ceil(c.textWidth(name, 9.0f, true)) + 8.0f;
+            c.line({card.x + 14.0f + width, y}, {card.right() - 14.0f, y}, kBorder, 1.0f);
+            c.text({card.x + 14.0f, y - 7.0f, width, 14.0f}, name, 9.0f, on ? fx : kDim, Align::Left, true);
+        }
         if (!on)
             c.fillRect(display, kPanel.alpha(0.55f), 6.0f); // dimmed while switched off
         if (i + 1 < chain.size())
@@ -3565,33 +3639,109 @@ void View::paintCompressor(Canvas &c, Rect r, int slot) {
            10.5f, reduction > 0.05f ? kText : kFaint, Align::Left);
 }
 
-void View::paintMultiComp(Canvas &c, Rect r, int slot) {
+// The three-band dynamics: a bar a band, the high band on top, levels across. Left of the Below threshold, where the
+// band lifts, and right of the Above one, where it pulls down, the bar is tinted (more under the mouse, as it drags
+// for the ratio), and lines show the ratio: one for every 6 dB that goes in, where it comes out. Down the bar's middle
+// runs a meter, half its height: up to what comes out in the card's color, then the gain, amber where the band takes
+// some off (up to what went in) and in the accent where it adds some, with a tick across the bar where the input is.
+// Its name is on the left (on a plate for the band its knobs set), and on the right its gain, or the threshold or
+// ratio a line or zone sets while it is under the mouse or dragged.
+void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
-    const Rect plot{r.x + 8.0f, r.y + 6.0f, r.w - 50.0f, r.h - 12.0f};
-    c.line({plot.x, plot.bottom()}, {plot.right(), plot.y}, kBorder, 1.0f, true);
-    // Linked, the bands share one curve; the meters still show each band's reduction.
-    const bool linked = value(paramIndex(slot, FxParam::McLink)) >= 0.5;
-    const int shown = linked ? 0 : fxBand_[slot];
-    for (int pass = 0; pass < 2; ++pass) { // the other bands first, faint, then the one shown
-        for (int band = 0; band < kMcBands; ++band) {
-            if ((band == shown) != (pass == 1) || (linked && band != shown))
-                continue;
-            compressorPlot(c, plot, value(mcThresholdIndex(slot, band)), value(mcRatioIndex(slot, band)), kMcKnee,
-                           band == shown ? fx : fx.alpha(0.3f), band == shown ? 2.0f : 1.0f);
-        }
-    }
-    float most = 0.0f;
+    const bool linked = value(paramIndex(slot, FxParam::MdLink)) >= 0.5;
+    const int shown = fxBand_[slot];
+    // The threshold line or zone under the mouse or held, which shows its threshold or ratio in its band's readout
+    // (linked, in every band's, since the edit sets them all).
+    const Widget *grip = drag_.kind != DragKind::None ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
+    if (grip && ((grip->kind != Kind::DynGrip && grip->kind != Kind::DynZone) || grip->a != slot))
+        grip = nullptr;
+    const Color taken = fxTypeColor(FxType::Eq), added = kAccent; // the DJ EQ's amber, in every theme
     for (int band = 0; band < kMcBands; ++band) {
-        const Rect meter{r.right() - 36.0f + band * 10.0f, plot.y, 7.0f, plot.h};
-        const float reduction = telemetry_.fxReduction[slot][band];
-        most = std::max(most, reduction);
-        reductionMeter(c, meter, reduction, band == shown || linked ? fx : fx.alpha(0.45f));
+        const bool set = linked || band == shown; // the band the knobs set; linked, every band, which edits go to
+        const Rect bar = mdBar(r, band);
+        const Rect row = mdBandRow(r, band);
+        const bool rowHovered = hover_ && hover_->kind == Kind::DynBand && hover_->a == slot && hover_->b == band &&
+                                drag_.kind == DragKind::None;
+        const Rect name{row.x + 1.0f, bar.y - 1.0f, bar.x - row.x - 6.0f, bar.h + 2.0f};
+        if (band == shown)
+            c.fillRect(name, kRaised, 4.0f);
+        c.text(name, tr(kMcBandNames[band]), 9.0f, set || rowHovered ? kText : kDim, Align::Center, true);
+
+        const float alpha = set ? 1.0f : 0.5f;
+        c.fillRect(bar, kCardColor, 2.0f);
+        const double above = value(mdAboveIndex(slot, band)), below = std::min(value(mdBelowIndex(slot, band)), above);
+        const float xBelow = mdBarX(bar, below), xAbove = mdBarX(bar, above);
+        // The zones, faintly, the one under the mouse or dragged more.
+        auto zoneLit = [&](bool lower) {
+            return grip && grip->kind == Kind::DynZone && grip->b == 2 * band + (lower ? 1 : 0);
+        };
+        c.fillRect({bar.x, bar.y, xBelow - bar.x, bar.h}, fx.alpha((zoneLit(true) ? 0.2f : 0.08f) * alpha), 0.0f);
+        c.fillRect({xAbove, bar.y, bar.right() - xAbove, bar.h}, fx.alpha((zoneLit(false) ? 0.2f : 0.08f) * alpha),
+                   0.0f);
+        // The meter, once the band has heard something.
+        const float level = telemetry_.fxBandLevel[slot][band];
+        double change = 0.0;
+        float xIn = -1.0f;
+        if (level > 1e-6f) {
+            const double inDb = 20.0 * std::log10(level);
+            change = telemetry_.fxBandGain[slot][band] + value(mdGainIndex(slot, band));
+            xIn = mdBarX(bar, inDb);
+            const float xOut = mdBarX(bar, inDb + change), y = bar.center().y - 0.5f * kMdMeterH;
+            const float lo = std::min(xIn, xOut), hi = std::max(xIn, xOut);
+            c.fillRect({bar.x, y, lo - bar.x, kMdMeterH}, fx.alpha(alpha), 0.0f);
+            if (hi > lo)
+                c.fillRect({lo, y, hi - lo, kMdMeterH}, (xOut < xIn ? taken : added).alpha(0.9f * alpha), 0.0f);
+        }
+        // In the zones, lines that move with their threshold, out to the bar's end: one for every 6 dB that goes in
+        // past the threshold, drawn where the ratio takes it, so 6 dB apart at 1:1 and closing up evenly toward the
+        // threshold as the ratio turns up (its stored value is the share of the distance it takes away). As a
+        // threshold moves toward the bar's end, its lines go out past it; moving back, more come in, kMdRatioLines at
+        // most. Past about 15:1 they stay 0.4 dB apart, up to infinity. The ratio alone: Range and the knee are left
+        // out.
+        auto ratioLines = [&](double threshold, double norm, double toward) {
+            const double step = std::max(6.0 * (1.0 - norm), 0.4);
+            for (int n = 1; n <= kMdRatioLines; ++n) {
+                const double db = threshold + toward * step * n;
+                if (toward > 0.0 ? db > 0.0 : db < -kMdRangeDb)
+                    break;
+                const float x = mdBarX(bar, db);
+                c.line({x, bar.y}, {x, bar.bottom()}, kText.alpha(0.5f * alpha), 0.8f);
+            }
+        };
+        ratioLines(above, value(mdDownIndex(slot, band)), 1.0);
+        ratioLines(below, value(mdUpIndex(slot, band)), -1.0);
+        if (xIn >= 0.0f) // where the input is, across the bar
+            c.line({xIn, bar.y - 1.5f}, {xIn, bar.bottom() + 1.5f}, kText.alpha(alpha), 1.0f);
+        for (float x : {xBelow, xAbove})
+            c.line({x, bar.y - 2.0f}, {x, bar.bottom() + 2.0f}, fx.alpha(alpha), 1.2f);
+
+        // The readout: the band's gain, or the threshold or ratio its line or zone sets.
+        const Rect readout{bar.right() + 2.0f, bar.y - 1.0f, row.right() - bar.right() - 4.0f, bar.h + 2.0f};
+        std::string text;
+        Color ink = set ? kText : kDim;
+        if (grip && (linked || grip->b / 2 == band)) { // linked, every band's, which the edit sets too
+            const bool ratio = grip->kind == Kind::DynZone || drag_.kind == DragKind::Value; // a zone, or a line Alt-dragged
+            const bool lower = grip->b % 2 == 1; // the Below threshold's line or the upward zone, with the Up ratio
+            const int ratioParam = lower ? mdUpIndex(slot, band) : mdDownIndex(slot, band);
+            char ratioText[32];
+            formatParam(ratioParam, value(ratioParam), ratioText, sizeof(ratioText));
+            const int threshold = mdThreshold(slot, 2 * band + (lower ? 1 : 0));
+            text = ratio ? std::string(ratioText) : number("%.0f dB", value(threshold));
+            ink = fx;
+        } else {
+            text = std::abs(change) < 0.05 ? "0.0" : number("%+.1f", change);
+        }
+        c.text(readout, text, 9.5f, ink, Align::Right, set);
     }
-    const std::string text =
-        linked ? trf(Str::CaptionLinkedReduction, {number("%.1f", most)})
-               : trf(Str::CaptionBandReduction,
-                     {tr(kMcBandNames[shown]), number("%.1f", telemetry_.fxReduction[slot][shown])});
-    c.text({plot.x + 4.0f, plot.y + 1.0f, plot.w, 14.0f}, text, 10.5f, kDim, Align::Left);
+    // The scale under the bars.
+    const Rect bar = mdBar(r, 0);
+    const float y = r.bottom() - 11.5f;
+    for (int db = -60; db <= 0; db += 20) {
+        const float x = mdBarX(bar, db);
+        const Align align = db == -60 ? Align::Left : (db == 0 ? Align::Right : Align::Center);
+        const float left = align == Align::Left ? x : (align == Align::Right ? x - 24.0f : x - 12.0f);
+        c.text({left, y, 24.0f, 11.0f}, std::to_string(db), 9.0f, kDim, align);
+    }
 }
 
 // The tail's level in dB across the height, so it falls in a straight line to nothing at the decay
@@ -4658,6 +4808,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
                            : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? tr(Str::SwitchStereo)
+                           : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;
@@ -4851,17 +5002,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::SourceGrip:
         break; // drawn with its card
-    case Kind::McBand: {
-        // Linked, the band buttons stand aside: every band takes the low band's settings.
-        const bool linked = value(paramIndex(w.a, FxParam::McLink)) >= 0.5;
-        const bool selected = fxBand_[w.a] == w.b && !linked;
-        c.fillRect(w.rect, selected ? fxColor(w.a).alpha(0.22f) : (hovered && !linked ? kTrack : kRaised), 5.0f);
-        if (selected)
-            c.strokeRect(w.rect, fxColor(w.a), 1.0f, 5.0f);
-        mcBandIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 6.0f, 20.0f, w.rect.h - 12.0f}, w.b,
-                   linked ? kFaint : (selected ? fxColor(w.a) : (hovered ? kText : kDim)));
+    case Kind::DynBand:
+        break; // drawn with its display
+    case Kind::DynZone:
+        break; // drawn with its display
+    case Kind::DynGrip: // its line, drawn with its display, lit while under the mouse or dragged
+        if (hovered || active) {
+            const Rect bar = mdBar(mdDisplay(w.a), w.b / 2);
+            const float x = mdBarX(bar, value(mdThreshold(w.a, w.b)));
+            c.line({x, bar.y - 2.5f}, {x, bar.bottom() + 2.5f}, kText, 2.0f);
+        }
         break;
-    }
     case Kind::SourcesToggle:
     case Kind::KeysToggle: {
         // A chevron pointing down while open, right while collapsed, and the panel's title beside it.
@@ -5160,7 +5311,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxAdd:
         if (hovered)
             c.fillRect(w.rect, fxTypeColor(static_cast<FxType>(w.a)).alpha(0.18f), 5.0f);
-        fxIcon(c, {w.rect.x + 9.0f, w.rect.y + 5.0f, 18.0f, 14.0f}, static_cast<FxType>(w.a),
+        fxIcon(c, {w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f}, static_cast<FxType>(w.a),
                hovered ? fxTypeColor(static_cast<FxType>(w.a)) : kDim);
         c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, fxName(static_cast<FxType>(w.a)), 11.0f,
                hovered ? kText : kDim, Align::Left);
@@ -5836,7 +5987,8 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
-         hover_->kind != Kind::McBand && hover_->kind != Kind::FxInsert &&
+         hover_->kind != Kind::FxInsert && hover_->kind != Kind::DynBand &&
+         hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
          !(hover_->kind == Kind::ListButton && (isFilterSlope(hover_->param) || isMidiInput(hover_->param))) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
@@ -5867,10 +6019,16 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipPort);
     } else if (hover_->kind == Kind::FxInsert) {
         text = tr(Str::TipFxInsert);
-    } else if (hover_->kind == Kind::McBand) {
+    } else if (hover_->kind == Kind::DynBand) {
         const Str bands[] = {Str::BandLow, Str::BandMid, Str::BandHigh};
-        text = value(paramIndex(hover_->a, FxParam::McLink)) >= 0.5 ? std::string(tr(Str::TipMcBandLinked))
-                                                                     : trf(Str::TipMcBand, {tr(bands[hover_->b])});
+        text = trf(value(paramIndex(hover_->a, FxParam::MdLink)) >= 0.5 ? Str::TipMcBandLinked : Str::TipMcBand,
+                   {tr(bands[hover_->b])});
+    } else if (hover_->kind == Kind::DynGrip) {
+        text = tr(hover_->b % 2 == 1 ? Str::TipUpGrip : Str::TipDownGrip);
+    } else if (hover_->kind == Kind::DynZone) {
+        text = tr(hover_->b % 2 == 1 ? Str::TipUpZone : Str::TipDownZone);
+    } else if (hover_->kind == Kind::Knob) {
+        text = tr(dynKnobTip(param));
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
         text = tr(Str::TipWheelHandle);
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
@@ -5975,8 +6133,10 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipPingPong);
     else if (field == FxParam::DelayLink)
         text = tr(Str::TipDelayLink);
-    else if (field == FxParam::McLink)
+    else if (field == FxParam::MdLink)
         text = tr(Str::TipBandLink);
+    else if (field == FxParam::MdRms)
+        text = tr(Str::TipRms);
     else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo)
         text = tr(Str::TipStereo);
     else if (field == FxParam::ShaperLink || shaperFieldOf(param) == ShaperParam::Link)
@@ -6000,7 +6160,7 @@ void View::paintTooltip(Canvas &c) {
     // As wide as its text, centered under the widget and kept inside the editor.
     const float width = std::min(std::ceil(c.textWidth(text, 11.0f)) + 24.0f, View::kWidth - 16.0f);
     const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
-    const Rect tip{x, hover_->rect.bottom() + 6.0f, width, 22.0f};
+    const Rect tip{x, hover_->rect.bottom() + 6.0f, width, 22.0f}; // a knob's rect takes in its label
     c.fillRect(tip, kRaised, 6.0f);
     c.strokeRect(tip, kBorder, 1.0f, 6.0f);
     c.text(tip, text, 11.0f, kText);
@@ -6375,8 +6535,12 @@ void View::applyDrag(Point p) {
             const double stepped = drag_.startValue + std::round((drag_.start.y - p.y) / 10.0f);
             set(w.param, def.kind == ParamKind::NotePitch ? std::round(stepped) : stepped);
         }
-        else
-            set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 10000.0 : 200.0) * (def.max - def.min));
+        else {
+            // Up turns it up; a three-band dynamics' downward zone, which presses its band down, turns its ratio up
+            // as it is dragged down.
+            const double up = w.kind == Kind::DynZone && w.b % 2 == 0 ? p.y - drag_.start.y : drag_.start.y - p.y;
+            set(w.param, drag_.startValue + up / (drag_.fine ? 10000.0 : 200.0) * (def.max - def.min));
+        }
         break;
     }
     case DragKind::Node: {
@@ -6421,6 +6585,17 @@ void View::applyDrag(Point p) {
         const Rect r = kFilterDisplay;
         set(paramIndex(w.a, FilterParam::Cutoff), (p.x - r.x - 10.0f) / (r.w - 20.0f));
         set(paramIndex(w.a, FilterParam::Resonance), (r.bottom() - 10.0f - p.y) / (r.h - 20.0f));
+        break;
+    }
+    case DragKind::DynGrip: {
+        // Across the bar for the threshold; Below stays at or under Above, and Above at or over Below.
+        const Rect bar = mdBar(mdDisplay(w.a), w.b / 2);
+        const double db = (p.x - bar.x) / bar.w * kMdRangeDb - kMdRangeDb;
+        const int below = mdThreshold(w.a, (w.b / 2) * 2 + 1), above = mdThreshold(w.a, (w.b / 2) * 2);
+        if (w.b % 2 == 1)
+            set(below, std::min(db, value(above)));
+        else
+            set(above, std::max(db, value(below)));
         break;
     }
     case DragKind::PeqPoint: {
@@ -6744,6 +6919,23 @@ void View::mouseDown(Point p, Modifiers mods) {
         for (int index : filterPointParams(w.a))
             controller_.beginEdit(index);
         break;
+    case Kind::DynZone: // up and down for its ratio, as on a knob; its band's knobs show
+        fxBand_[w.a] = w.b / 2;
+        drag_.kind = DragKind::Value;
+        drag_.startValue = value(w.param);
+        controller_.beginEdit(w.param);
+        break;
+    case Kind::DynGrip:
+        fxBand_[w.a] = w.b / 2; // its band's knobs show
+        if (mods.alt) { // up and down for its ratio, as on a knob; the line stays where it is
+            drag_.kind = DragKind::Value;
+            drag_.startValue = value(w.param);
+            controller_.beginEdit(w.param);
+            break;
+        }
+        drag_.kind = DragKind::DynGrip;
+        controller_.beginEdit(mdThreshold(w.a, w.b));
+        break;
     case Kind::PeqPoint:
         if (mods.alt) { // up and down for its Q, as on a knob; the handle stays where it is
             drag_.kind = DragKind::Value;
@@ -6818,7 +7010,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.startValue = scrollFirst(area);
         break;
     }
-    case Kind::McBand:
+    case Kind::DynBand:
         fxBand_[w.a] = w.b;
         break;
     case Kind::SourcesToggle:
@@ -7216,6 +7408,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::EnvCurve:
     case DragKind::FilterPoint:
     case DragKind::PeqPoint:
+    case DragKind::DynGrip:
     case DragKind::ShapePoint:
     case DragKind::ShapeCurve:
     case DragKind::ShapeStep:
@@ -7261,6 +7454,9 @@ void View::finishDrag() {
     case DragKind::PeqPoint:
         for (int index : peqPointParams(w.a, w.b))
             controller_.endEdit(index);
+        break;
+    case DragKind::DynGrip:
+        controller_.endEdit(mdThreshold(w.a, w.b));
         break;
     case DragKind::EnvPoint:
         for (int index : envPointParams(w.a, w.b))
@@ -7459,6 +7655,15 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && (hit->kind == Kind::ShapeCurve || hit->kind == Kind::EnvCurve || hit->kind == Kind::ModsCurve)) {
         edit(hit->param, 0.0); // straight again: 0 %, whatever the segment started as
+        return;
+    }
+    if (hit && hit->kind == Kind::DynZone) { // its ratio back to where it starts
+        edit(hit->param, resetValue(hit->param));
+        return;
+    }
+    if (hit && hit->kind == Kind::DynGrip) { // its threshold back to where it starts
+        const int threshold = mdThreshold(hit->a, hit->b);
+        edit(threshold, resetValue(threshold));
         return;
     }
     if (hit && hit->kind == Kind::PeqPoint) {
@@ -8019,12 +8224,14 @@ CursorKind View::cursor() const {
         return CursorKind::Move;
     if (drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute || drag_.kind == DragKind::ModSource)
         return CursorKind::Hand;
-    if (drag_.kind == DragKind::Value && drag_.widget.kind == Kind::PeqPoint) // Alt-dragged for its Q
+    if (drag_.kind == DragKind::Value &&
+        (drag_.widget.kind == Kind::PeqPoint || drag_.widget.kind == Kind::DynGrip)) // Alt-dragged for Q or ratio
         return CursorKind::Vertical;
     const Widget *w = drag_.kind != DragKind::None ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
     if (!w)
         return CursorKind::Arrow;
     switch (w->kind) {
+    case Kind::DynZone:
     case Kind::Knob:
     case Kind::WireLabel:
     case Kind::OutLabel:
@@ -8043,6 +8250,7 @@ CursorKind View::cursor() const {
                                                                                        : CursorKind::Text;
     case Kind::SlotBar:
     case Kind::ModsScale:
+    case Kind::DynGrip:
         return CursorKind::Horizontal;
     case Kind::ModsCurve:
         return CursorKind::Vertical;

@@ -96,6 +96,10 @@ struct Telemetry {
     std::array<float, kOps> opEnvPos{};
     std::array<float, kMaxSources> envPos{};
     std::array<std::array<float, kMcBands>, kFxSlots> fxReduction{}; // compressor gain reduction, dB
+    // Three-band dynamics' bands: their detectors' levels (1 is full scale) and their gains (dB), see
+    // Effects::bandLevel().
+    std::array<std::array<float, kMcBands>, kFxSlots> fxBandLevel{};
+    std::array<std::array<float, kMcBands>, kFxSlots> fxBandGain{};
     // Parametric EQs', filters' and phase dispersers' output, see Effects::spectrum().
     std::array<Spectrum, kFxSlots> fxSpectrum{};
     std::array<Spectrum, kFilters> filterSpectrum{}; // each voice filter's output, all voices together

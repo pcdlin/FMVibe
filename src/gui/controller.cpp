@@ -27,12 +27,33 @@ void restorePatchLayout(UiLayout &to, const UiLayout &from) {
 
 } // namespace
 
+std::array<int, kMcBands> Controller::linkedBands(int index) const {
+    std::array<int, kMcBands> fields{index, -1, -1};
+    const int slot = fxSlotOf(index);
+    if (slot < 0 || fxType(value(paramIndex(slot, FxParam::Type))) != FxType::MultiDyn ||
+        value(paramIndex(slot, FxParam::MdLink)) < 0.5)
+        return fields;
+    const int offset = index - mdAboveIndex(slot, 0); // the bands' fields run Above, Down, Below, Up, Gain
+    constexpr int kBandFields = mdAboveIndex(0, 1) - mdAboveIndex(0, 0);
+    if (offset < 0 || offset >= kMcBands * kBandFields)
+        return fields;
+    int next = 1;
+    for (int band = 0; band < kMcBands; ++band)
+        if (band != offset / kBandFields)
+            fields[next++] = mdAboveIndex(slot, band) + offset % kBandFields;
+    return fields;
+}
+
 void Controller::beginEdit(int index) {
+    const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
     if (!applying_) {
         beginStep();
-        record(index);
+        for (int field : fields)
+            record(field);
     }
-    performBeginEdit(index);
+    for (int field : fields)
+        if (field >= 0)
+            performBeginEdit(field);
 }
 
 void Controller::setValue(int index, double value) {
@@ -41,14 +62,21 @@ void Controller::setValue(int index, double value) {
         return;
     }
     // An edit outside a gesture is a step of its own.
+    const auto fields = linkedBands(index);
     beginStep();
-    record(index);
-    performSetValue(index, value);
+    for (int field : fields)
+        record(field);
+    for (int field : fields)
+        if (field >= 0)
+            performSetValue(field, value);
     endStep();
 }
 
 void Controller::endEdit(int index) {
-    performEndEdit(index);
+    const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
+    for (int field : fields)
+        if (field >= 0)
+            performEndEdit(field);
     if (!applying_)
         endStep();
 }

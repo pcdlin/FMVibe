@@ -123,7 +123,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
   - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
     LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
-    reverb's Mix, a DJ EQ band) jumps while events split the block into single frames;
+    reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames;
+  - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
+    thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
+    followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
+    reading back), and linked bands still playing their own settings (Link being the editor's); and a
+    version 4 state's retired three-band compressor loading as a three-band dynamics doing what it did, its
+    modulation along (a linked one's bands taking the low band's settings), while a version 5 state loads one back
+    as saved;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after;
@@ -235,6 +242,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free (read off the rendered pixels);
+  - the three-band dynamics' card: a band's row picking the band its knobs set, its threshold lines dragged
+    across (Above stopping at Below) undoably, Alt-dragged for the ratio and double-clicked back, a line on another
+    band picking that band, its zones dragged for their ratios (the upward one up for more, the downward one down, undoably, picking their
+    band), its
+    ratio drawn as up to seven lines moving with the threshold and closing up toward it (6 dB apart at 1:1), the Above knob's tooltip under its label
+    and the bars' meters showing the telemetry's levels and gains, in teal, then amber for what is taken off (read
+    off the rendered pixels), and LINK (an edit of one band, by its line or knob, then setting every band's, undoably) and RMS;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
     flanger's STEREO, the filter's Key Track and the shaper's and delay's LINK too) and the list of effects with
     their icons;
@@ -506,7 +520,7 @@ itself.
   400 + 10·from + to, filter modulation
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past
-  the 80th 12000 + 20·slot), source places
+  the 80th 12000 + 20·slot, and past the 100th 25000 + 40·slot), source places
   2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
   17000 + 200·slot), slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's and
@@ -523,7 +537,11 @@ itself.
   field and fixed Mult lists, and the routing views,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
-  `FxParam` also needs its effect type in `kFxFieldRuns`.
+  `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
+  three-band compressor (`FxType::MultiComp`) is no longer offered, and `readParams()` loads a slot holding one in a
+  state from before version 5 as a three-band dynamics set from its fields, moving the modulation aimed at them
+  along. A host can still set the retired type (the Type param's range takes it in): such a slot does nothing, and a
+  state keeps it as it is.
 - Like an effect slot, each of the 16 source places has the fields of every type (an LFO's, an envelope's, and
   Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random or MIDI) that
   picks which are used (`sourceFieldUsedBy()`). Hosts name the fields by place ("Mod 3 Rate"), since a name can't
@@ -544,11 +562,13 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 4: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 5: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
-  range now reaches below 0 down to 0 ms and a depth is a share of its target's range), followed by the editor layout:
+  range now reaches below 0 down to 0 ms and a depth is a share of its target's range; before version 5, a slot holding
+  the retired three-band compressor loads as a three-band dynamics, while a later state loads one back as saved, so
+  a state always loads what was saved), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

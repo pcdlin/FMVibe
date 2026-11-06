@@ -30,6 +30,8 @@ struct SharedTelemetry {
     std::atomic<float> noteVelocity{0.0f};
     std::atomic<float> fxPitch{60.0f};
     std::array<std::atomic<float>, kFxSlots * kMcBands> fxReduction{};
+    std::array<std::atomic<float>, kFxSlots * kMcBands> fxBandLevel{};
+    std::array<std::atomic<float>, kFxSlots * kMcBands> fxBandGain{};
     std::array<std::atomic<float>, kFxSlots * kSpectrumBands> fxSpectrum{};
     std::array<std::atomic<float>, kFilters * kSpectrumBands> filterSpectrum{};
     std::array<std::atomic<float>, kFxSlots> fxPhases{};
@@ -66,8 +68,11 @@ struct SharedTelemetry {
         notePitch.store(t.notePitch, std::memory_order_relaxed);
         noteVelocity.store(t.noteVelocity, std::memory_order_relaxed);
         fxPitch.store(t.fxPitch, std::memory_order_relaxed);
-        for (int i = 0; i < kFxSlots * kMcBands; ++i)
+        for (int i = 0; i < kFxSlots * kMcBands; ++i) {
             fxReduction[i].store(t.fxReduction[i / kMcBands][i % kMcBands], std::memory_order_relaxed);
+            fxBandLevel[i].store(t.fxBandLevel[i / kMcBands][i % kMcBands], std::memory_order_relaxed);
+            fxBandGain[i].store(t.fxBandGain[i / kMcBands][i % kMcBands], std::memory_order_relaxed);
+        }
         for (int i = 0; i < kFxSlots * kSpectrumBands; ++i)
             fxSpectrum[i].store(t.fxSpectrum[i / kSpectrumBands][i % kSpectrumBands], std::memory_order_relaxed);
         for (int i = 0; i < kFilters * kSpectrumBands; ++i)
@@ -109,8 +114,11 @@ struct SharedTelemetry {
         t.notePitch = notePitch.load(std::memory_order_relaxed);
         t.noteVelocity = noteVelocity.load(std::memory_order_relaxed);
         t.fxPitch = fxPitch.load(std::memory_order_relaxed);
-        for (int i = 0; i < kFxSlots * kMcBands; ++i)
+        for (int i = 0; i < kFxSlots * kMcBands; ++i) {
             t.fxReduction[i / kMcBands][i % kMcBands] = fxReduction[i].load(std::memory_order_relaxed);
+            t.fxBandLevel[i / kMcBands][i % kMcBands] = fxBandLevel[i].load(std::memory_order_relaxed);
+            t.fxBandGain[i / kMcBands][i % kMcBands] = fxBandGain[i].load(std::memory_order_relaxed);
+        }
         for (int i = 0; i < kFxSlots * kSpectrumBands; ++i)
             t.fxSpectrum[i / kSpectrumBands][i % kSpectrumBands] = fxSpectrum[i].load(std::memory_order_relaxed);
         for (int i = 0; i < kFilters * kSpectrumBands; ++i)

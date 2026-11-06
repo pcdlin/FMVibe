@@ -2183,22 +2183,27 @@ int main(int argc, char **argv) {
                   std::abs(parallel - 1.0) < 0.02,
               "the compressor turns the sine down by its ratio");
 
-        // Three bands: 440 Hz sits in the mid band. Only the mid band's settings reach it.
-        setParams({{type(6), static_cast<double>(FxType::MultiComp)},
-                   {mcThresholdIndex(6, 0), -60.0},
-                   {mcThresholdIndex(6, 1), 0.0},
-                   {mcThresholdIndex(6, 2), -60.0},
-                   {fx(6, FxParam::McAttack), 0.0}});
+        // Three-band dynamics, downward only (Up at 1:1, peaks, as a state's three-band compressor loads): 440 Hz sits
+        // in the mid band. Only the mid band's settings reach it.
+        setParams({{type(6), static_cast<double>(FxType::MultiDyn)},
+                   {mdAboveIndex(6, 0), -60.0},
+                   {mdAboveIndex(6, 1), 0.0},
+                   {mdAboveIndex(6, 2), -60.0},
+                   {mdUpIndex(6, 0), normFromDynRatio(1.0)},
+                   {mdUpIndex(6, 1), normFromDynRatio(1.0)},
+                   {mdUpIndex(6, 2), normFromDynRatio(1.0)},
+                   {fx(6, FxParam::MdRms), 0.0},
+                   {fx(6, FxParam::MdAttack), 0.0}});
         const double untouched = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-        setParams({{mcThresholdIndex(6, 1), -30.0}, {mcRatioIndex(6, 1), 4.0}});
+        setParams({{mdAboveIndex(6, 1), -30.0}, {mdDownIndex(6, 1), normFromDynRatio(4.0)}});
         const double midSqueezed = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-        setParams({{mcGainIndex(6, 1), 6.0}});
+        setParams({{mdGainIndex(6, 1), 6.0}});
         const double midLifted = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-        std::printf("      3-band compressor at 440 Hz: x%.3f with the mid band idle, x%.3f at 4:1, x%.3f with +6 dB\n",
+        std::printf("      3-band dynamics at 440 Hz: x%.3f with the mid band idle, x%.3f at 4:1, x%.3f with +6 dB\n",
                     untouched, midSqueezed, midLifted);
         check(std::abs(untouched - 1.0) < 0.05 && midSqueezed > 0.15 && midSqueezed < 0.3 &&
                   std::abs(midLifted / midSqueezed - 2.0) < 0.1,
-              "the three-band compressor works on each band on its own");
+              "the three-band dynamics works on each band on its own");
         setParams({{type(6), static_cast<double>(FxType::None)}});
 
         // Parametric EQ: a +12 dB bell on 440 Hz, then a second instance of the same on top.
@@ -2964,7 +2969,7 @@ int main(int argc, char **argv) {
 
         MemoryStream newer;
         newer.data = patch.data;
-        newer.data[4] = 5; // a state version from the future
+        newer.data[4] = static_cast<uint8_t>(saved.data[4] + 1); // a state version from the future: one past the plugin's
         check(!state->load(plugin, &newer.in), "load rejects a newer state version");
 
         // Hosts see a slot's fields for the effect it holds, and not the others.

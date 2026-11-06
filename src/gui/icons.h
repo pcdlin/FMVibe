@@ -54,7 +54,7 @@ namespace fmvibe::gui::detail {
 // What tells the curves apart in a PointCache key: its first value, then where the curve goes.
 enum class Curve {
     Filter = 1, ParamEq, Sweep, Driven, Drawn, Shaper, LfoEditor, ClipEditor, NoteEditor, NoteExact, Partials, Lfo,
-    Envelope, Eq, LfoIcon, WaveIcon, ModeIcon, FilterIcon, PeqIcon, BandIcon, PolarityIcon, VelocityEditor,
+    Envelope, Eq, LfoIcon, WaveIcon, ModeIcon, FilterIcon, PeqIcon, PolarityIcon, VelocityEditor,
 };
 inline std::vector<double> curveKey(Curve curve, Rect r) {
     return {static_cast<double>(curve), r.x, r.y, r.w, r.h};
@@ -69,7 +69,6 @@ void editIcon(Canvas &c, Point center, Color color);
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color);
 bool isFxIconSwitch(FxParam field);
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);
-void mcBandIcon(Canvas &c, Rect r, int band, Color color);
 void lfoModeIcon(Canvas &c, Point m, SourceParam mode, Color color);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.
