@@ -176,6 +176,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
     at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, and a high operator's
     (a cycle of 4.5 samples) for little more than the voice costs;
+  - the header's output scope capturing nothing until the synth analyzes for the editor, then two periods of the
+    note, standing still from one span to the next: a sine, a wave crossing 0 many times a period, one repeating
+    every other period and a high note's over more periods; falling silent with the output, and nothing once
+    switched off;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
@@ -230,8 +234,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     one's ghost filled while it is shown (read off the rendered pixels);
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something
     (read off the rendered pixels);
-  - the dot on a filter's and a shaper's tab while it sounds out, and the output meter and its clip light (read off
-    the rendered pixels);
+  - the dot on a filter's and a shaper's tab while it sounds out, the output meter and its clip light, and the
+    output scope beside it, empty with nothing captured and drawing a span at its peak (read off the rendered
+    pixels), its height easing down to a quieter span, and its spans too small to draw painting nothing again;
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs, its Custom curve drawn on the page and in the big editor;

@@ -1032,6 +1032,10 @@ private:
         return telemetry_.voices > 0 ? telemetry_.modOffset[index] : macroOffsets_[index];
     }
     bool metering_ = false;                  // the output meter showed something when last polled
+    // The scopes' levels, following their spans' peaks (see followScopeLevel()): the output scope's, which its trace is
+    // drawn to, and the operator scope's, which its dB readout shows.
+    float outScopeLevel_ = 0.0f;
+    float opScopeLevel_ = 0.0f;
     float glow_ = 0.0f;                      // how strongly the curves glowed when painted last
     float glowDragged_ = -1.0f;              // the glow slider's amount while it is dragged, else -1
     float shownGlow() const {

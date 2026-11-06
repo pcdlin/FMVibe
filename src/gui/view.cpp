@@ -1232,6 +1232,25 @@ bool View::poll() {
     if (metering || metering_)
         changed = true;
     metering_ = metering;
+    // The output scope took another span, which draws or replaces one that drew; or the level it is drawn to moved.
+    const bool outDrawn = outScopePeak(t) > kOutScopeFloor;
+    if ((outDrawn || outScopePeak(telemetry_) > kOutScopeFloor) && t.outScope != telemetry_.outScope)
+        changed = true;
+    if (followScopeLevel(outScopeLevel_, outScopePeak(t)) && outDrawn)
+        changed = true;
+    // The operator scope's level, of the part of its span filled so far; none while it captures nothing.
+    float opPeak = 0.0f;
+    if (t.voices > 0 && t.scopeBins > 0) {
+        const int bins = std::min(t.scopeBins, kScopeBins);
+        const int filled =
+            t.scopeCursor < 0.0f ? bins : std::clamp(static_cast<int>(t.scopeCursor * bins), 0, bins);
+        for (int bin = 0; bin < filled; ++bin)
+            opPeak = std::max(opPeak, std::abs(t.scope[bin]));
+    } else {
+        opScopeLevel_ = 0.0f;
+    }
+    if (followScopeLevel(opScopeLevel_, opPeak) && opScopeLevel_ > 1e-4f)
+        changed = true;
     // A three-band dynamics' bars move with its bands' levels and gains, until they settle.
     for (int slot : fxChain())
         if (fxSlotType(slot) == FxType::MultiDyn)
@@ -2729,6 +2748,23 @@ void View::paintHeader(Canvas &c) {
             c.fillRect({bar.x, std::max(top, zero), bar.w, bar.bottom() - std::max(top, zero)}, kAccent, 1.5f);
         if (top < zero - 1.0f)
             c.fillRect({bar.x, top, bar.w, zero - 1.0f - top}, kMeterRed, 1.5f);
+    }
+
+    // The output scope: the last span the audio thread took (see kOutScopeBins), its level (see followScopeLevel()) at
+    // the display's edges (but lifted by no more than 24 dB, so a fading tail shrinks away), over a faint middle line.
+    c.fillRect(kOutScope, kDisplayColor, 5.0f);
+    c.strokeRect(kOutScope, kBorder, 1.0f, 5.0f);
+    const Rect inner{kOutScope.x + 5.0f, kOutScope.y + 4.0f, kOutScope.w - 10.0f, kOutScope.h - 8.0f};
+    const float middle = inner.center().y;
+    c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
+    if (outScopePeak(telemetry_) > kOutScopeFloor) {
+        const float level = std::max(outScopeLevel_, outScopePeak(telemetry_));
+        const float gain = 0.5f * inner.h / std::max(level, 1.0f / 16.0f);
+        std::array<Point, kOutScopeBins> points;
+        for (int bin = 0; bin < kOutScopeBins; ++bin)
+            points[bin] = {inner.x + inner.w * bin / (kOutScopeBins - 1),
+                           middle - std::clamp(telemetry_.outScope[bin], -level, level) * gain};
+        plotLine(c, points.data(), points.size(), kAccent, 1.5f);
     }
 
     for (float x : kDividers)
@@ -4567,7 +4603,7 @@ bool View::opTabModulated(int op, InspectorTab tab) const {
 }
 
 // The operator's output in the newest voice, a point per bin across the display: the cycles the switch in the corner
-// picks, at their real level between dashed lines at full scale. A slow operator's span is drawn as it fills, up to
+// picks, at their real level between dashed lines at full scale, the level its peaks follow in the corner. A slow operator's span is drawn as it fills, up to
 // its cursor, the last one's rest faintly after it. With nothing captured, the wave's plain shape is drawn faintly.
 void View::paintScope(Canvas &c, Rect r, int op) {
     c.fillRect(r, kDisplayColor, 6.0f);
@@ -4603,12 +4639,8 @@ void View::paintScope(Canvas &c, Rect r, int op) {
                            ? bins
                            : std::clamp(static_cast<int>(telemetry_.scopeCursor * bins), 0, bins);
     std::vector<Point> fresh, stale;
-    float peak = 0.0f;
-    for (int bin = 0; bin < bins; bin += step) {
+    for (int bin = 0; bin < bins; bin += step)
         (bin < cursor ? fresh : stale).push_back(at(bin));
-        if (bin < cursor)
-            peak = std::max(peak, std::abs(telemetry_.scope[bin]));
-    }
     if (!stale.empty() && !fresh.empty())
         stale.insert(stale.begin(), fresh.back());
     if (stale.size() > 1)
@@ -4619,9 +4651,9 @@ void View::paintScope(Canvas &c, Rect r, int op) {
         const float x = inner.x + inner.w * cursor / bins;
         c.line({x, inner.y - 6.0f}, {x, inner.bottom() + 6.0f}, kDim, 1.0f);
     }
-    if (peak > 1e-4f)
-        c.text({r.x + 8.0f, r.y + 6.0f, 100.0f, 16.0f}, number("%.1f dB", 20.0 * std::log10(peak)), 10.5f, kFaint,
-               Align::Left);
+    if (opScopeLevel_ > 1e-4f) // its level, steadier than each span's peak (see followScopeLevel())
+        c.text({r.x + 8.0f, r.y + 6.0f, 100.0f, 16.0f}, number("%.1f dB", 20.0 * std::log10(opScopeLevel_)), 10.5f,
+               kFaint, Align::Left);
 }
 
 // The noise's spectrum from 20 Hz to 20 kHz, over faint white, pink and brown slopes.

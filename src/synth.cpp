@@ -224,6 +224,7 @@ void Synth::reset() {
     volumeGain_ = -1.0; // set at once, the first time round
     outPeak_ = {};
     clipHold_ = 0.0;
+    outScope_ = {};
 }
 
 void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos) const {
@@ -661,6 +662,8 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         }
     }
     meterOutput(left, right, frames);
+    if (analyzing_)
+        captureOutput(left, right, frames);
     if (playing_) {
         songSeconds_ += frames / sampleRate_;
         songBeats_ += frames / sampleRate_ * tempo_ / 60.0;
@@ -722,6 +725,81 @@ void Synth::meterOutput(const float *left, const float *right, uint32_t frames) 
         outPeak_[c] = std::max(static_cast<double>(peak), outPeak_[c] * fall);
         if (peak > 1.0f)
             clipHold_ = kClipHold;
+    }
+}
+
+namespace {
+
+// The output scope's interpolation (see Synth::OutScopeCapture): for a place `row / kRows` of the way from one sample
+// to the next, each of the samples around it weighed by a Hann-windowed sinc, the weights summing to 1. Built as the
+// library loads.
+constexpr int kOutScopeRows = 256;
+constexpr int Taps = kOutScopeTaps;
+using OutScopeKernel = std::array<std::array<float, Taps>, kOutScopeRows + 1>;
+OutScopeKernel outScopeKernel() {
+    OutScopeKernel kernel{};
+    constexpr double half = Taps / 2;
+    for (int row = 0; row <= kOutScopeRows; ++row) {
+        const double at = static_cast<double>(row) / kOutScopeRows;
+        double sum = 0.0;
+        std::array<double, Taps> weights{};
+        for (int k = 0; k < Taps; ++k) {
+            const double u = half - 1.0 + at - k; // from the place to sample k, oldest first
+            const double sinc = u == 0.0 ? 1.0 : std::sin(std::numbers::pi * u) / (std::numbers::pi * u);
+            const double window = std::abs(u) < half ? 0.5 * (1.0 + std::cos(std::numbers::pi * u / half)) : 0.0;
+            weights[k] = sinc * window;
+            sum += weights[k];
+        }
+        for (int k = 0; k < Taps; ++k)
+            kernel[row][k] = static_cast<float>(weights[k] / sum);
+    }
+    return kernel;
+}
+const OutScopeKernel kOutScopeKernel = outScopeKernel();
+
+} // namespace
+
+void Synth::captureOutput(const float *left, const float *right, uint32_t frames) {
+    OutScopeCapture &s = outScope_;
+    // A new note starts the spans over as it starts (this render() is its first), so a wave that starts at 0 shows
+    // from about its start, but for the decimators' delay.
+    if (const Voice *newest = newestVoice(); newest && newest->order != s.order) {
+        s.order = newest->order;
+        s.phase = 0.0;
+        s.next = 0;
+    }
+    const double hz = std::clamp(440.0 * std::pow(2.0, (fxPitch_ - 69.0) / 12.0), 1.0, 0.5 * sampleRate_);
+    const double periods = kOutScopePeriods * std::ceil(std::max(kOutScopeMinSpan * hz / kOutScopePeriods, 1.0));
+    const double inc = hz / (periods * sampleRate_); // of a span, a sample
+    auto place = [](int point) { return static_cast<double>(point) / (kOutScopeBins - 1); }; // 0..1 through the span
+    for (uint32_t i = 0; i < frames; ++i) {
+        double x = 0.5 * (static_cast<double>(left[i]) + right[i]);
+        if (!std::isfinite(x))
+            x = 0.0;
+        s.newest = (s.newest + 1) % kOutScopeTaps;
+        s.history[s.newest] = static_cast<float>(x);
+        // The points the phase passes from the sample before to this one, in between them (taken kOutScopeTaps / 2 - 1
+        // samples back). The last point is the span's end, where the next one starts: its first point, at the same
+        // place.
+        double from = s.phase, to = from + inc;
+        for (;;) {
+            while (s.next < kOutScopeBins && place(s.next) <= to) {
+                const double at = std::clamp((place(s.next) - from) / inc, 0.0, 1.0);
+                const auto &weights = kOutScopeKernel[static_cast<int>(std::lround(at * kOutScopeRows))];
+                float value = 0.0f;
+                for (int k = 0; k < kOutScopeTaps; ++k) // oldest first
+                    value += weights[k] * s.history[(s.newest + 1 + k) % kOutScopeTaps];
+                s.filling[s.next++] = value;
+            }
+            if (to < 1.0)
+                break;
+            if (s.next == kOutScopeBins) // whole: published
+                s.frame = s.filling;
+            s.next = 0;
+            from -= 1.0;
+            to -= 1.0;
+        }
+        s.phase = to;
     }
 }
 
@@ -849,6 +927,8 @@ void Synth::telemetry(Telemetry &out) const {
     out.fxPitch = static_cast<float>(fxPitch_);
     out.outPeak = {static_cast<float>(outPeak_[0]), static_cast<float>(outPeak_[1])};
     out.clipHold = static_cast<float>(clipHold_);
+    if (analyzing_)
+        out.outScope = outScope_.frame;
     for (const HeldNote &held : held_)
         out.keys[held.note.key / 32] |= 1u << (held.note.key % 32);
     for (int slot = 0; slot < kFxSlots; ++slot) { // effects keep working on echoes after the voices end

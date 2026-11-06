@@ -208,13 +208,36 @@ constexpr float kCascadePad = 4.0f;
 constexpr float kCascadeSearchH = 30.0f;
 constexpr float kCascadeSearchW = 240.0f;
 constexpr int kCascadeMatches = 16;
-// Header: the output meter, the global knobs, the play cluster between two dividers, then Voices; all laid out from
-// kHeaderStart, which centers them between the name and PLAYING (as far from the name's end as Voices' is from
-// PLAYING's start, 113 px).
-constexpr float kHeaderStart = 209.0f;
+// Header: the output scope and meter, the global knobs, the play cluster between two dividers, then Voices; all laid
+// out from kHeaderStart (the meter's left edge), which centers them between the name and PLAYING: the scope as far
+// from the name's end as Voices' is from PLAYING's start, 61 px. Without the scope, the meter stood at 209 px, 113 px
+// from the name's end, so it moved right by half the scope and its gap.
+constexpr float kOutScopeW = 96.0f;
+constexpr float kOutScopeGap = 8.0f; // between the scope and the meter
+constexpr float kHeaderStart = 209.0f + (kOutScopeW + kOutScopeGap) * 0.5f;
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
 // past full scale.
 constexpr Rect kMeter{kHeaderStart, 13.0f, 14.0f, 38.0f};
+// The output scope, left of the meter and as tall: two periods of the newest note at a time (see kOutScopeBins).
+constexpr Rect kOutScope{kMeter.x - kOutScopeGap - kOutScopeW, kMeter.y, kOutScopeW, kMeter.h};
+// A span whose peak is below this draws nothing, and spans that small changing paint nothing again: the browser demo's
+// output never quite reaches 0 (see Effects::process()).
+constexpr float kOutScopeFloor = 1e-5f;
+inline float outScopePeak(const Telemetry &t) {
+    float peak = 0.0f;
+    for (float v : t.outScope)
+        peak = std::max(peak, std::abs(v));
+    return peak;
+}
+// A scope's level follows its spans' peaks, up at once and down by this much a poll (about 60 a second: down to a
+// third in about 300 ms), so a level that moves from span to span doesn't jolt what the scope shows. Returns whether
+// it moved by more than a hundredth.
+constexpr float kScopeLevelFall = 0.946f;
+inline bool followScopeLevel(float &level, float peak) {
+    const float before = level;
+    level = peak >= level ? peak : std::max(peak, level * kScopeLevelFall);
+    return std::abs(level - before) > 0.01f * before;
+}
 constexpr float kHeaderKnobX = kHeaderStart + 28.0f;
 constexpr float kHeaderKnobW = 104.0f;
 // The play cluster, its two dividers with it, sits centered between the Pan knob's widest value ("100 L", ending

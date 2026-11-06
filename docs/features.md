@@ -721,7 +721,17 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     notes (or typed, as `C4`, `F#2 -20` or a MIDI note number); its ends stay at the ends too, and the reset button
     brings back every MIDI note and the curve along the dashed line. Velocity's curve opens over the routing panel
     the same way, from its display (see Velocity, under the keyboard strip).
-- **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
+- **Header**: everything between the name and the voice count is centered between them. First the output scope:
+  the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has
+  ended, as the effects' key tracking keeps it; a high note's span holds a whole multiple of two periods, at least half
+  a millisecond). Its spans follow one another at that pitch, so a sound that repeats with the note stands still
+  whatever its wave, and a new note starts them over from where it starts; silence shows as a flat line. Its points
+  fall between samples, and are taken band-limited from the 16 samples around them, so a wave dense with high
+  partials looks the same wherever the samples fall in it. The trace is
+  drawn to a level that follows its peaks, up at once and down to a third in about 300 ms, so a level moving from
+  span to span doesn't make it jump; that level sits at the display's edges, lifted by no more than 24 dB, so the
+  shape shows at any volume while a fading tail shrinks away. The audio thread captures only while the editor is open. Then the output meter, left of Volume:
+  a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
   the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, then
@@ -784,7 +794,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       reaches the filters, shapers or the output. It is caught at the operator's own phase, so a span starts where a
       cycle does and stands still even under heavy FM. The buttons in its corner show 1, 2 or 4 cycles across
       (2 to begin with): real cycles, so a modulator at a ratio of 0.5 or detuned copies make them differ. The trace
-      is drawn at its level, between dashed lines at full scale, its peak in dB in the top left corner. A slow
+      is drawn at its level, between dashed lines at full scale, its level in dB in the top left corner: following
+      its peaks as the header's output scope does, up at once and down slowly, so it doesn't flicker. A slow
       operator, whose cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left
       of the last span faint after it. With no note playing, the wave's plain shape shows faintly. The audio thread
       captures only while the tab is shown.

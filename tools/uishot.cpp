@@ -224,12 +224,16 @@ constexpr Point kDecayKnob{1034.0f, 426.0f};
 // An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
 constexpr float kOpEnvTop = 288.0f;
 constexpr float kOpEnvBottom = 398.0f;
-constexpr Point kFmAmountKnob{359.0f, 32.0f};
-constexpr Point kVoicesKnob{975.0f, 32.0f}; // past the second divider, where Bend was
-constexpr Point kMonoButton{741.0f, 21.0f};
-constexpr Point kLegatoToggle{719.0f, 44.0f};
-constexpr Point kGlideKnob{805.0f, 32.0f};
-constexpr Point kAlwaysToggle{897.0f, 21.0f};
+// The header, from the meter's left edge (kHeaderStart) on; the output scope left of the meter (kOutScope).
+constexpr float kHeaderStart = 261.0f;
+constexpr Point kFmAmountKnob{kHeaderStart + 150.0f, 32.0f};
+constexpr Point kFmAmountNumber{kHeaderStart + 192.0f, 35.0f}; // beside its knob
+constexpr Point kVoicesKnob{kHeaderStart + 766.0f, 32.0f}; // past the second divider, where Bend was
+constexpr Point kMonoButton{kHeaderStart + 532.0f, 21.0f};
+constexpr Point kLegatoToggle{kHeaderStart + 510.0f, 44.0f};
+constexpr Point kGlideKnob{kHeaderStart + 596.0f, 32.0f};
+constexpr Point kAlwaysToggle{kHeaderStart + 688.0f, 21.0f};
+constexpr float kOutScopeX = kHeaderStart - 104.0f, kOutScopeY = 13.0f, kOutScopeW = 96.0f, kOutScopeH = 38.0f;
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 88.0f};
 constexpr Point kMatrixTab{160.0f, 88.0f};
@@ -627,21 +631,21 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(!view.typing() && std::abs(model.value(opPhase) - 0.5) < 1e-9, "a typed value sets the knob");
     view.undo();
     check(std::abs(model.value(opPhase) - 0.2) < 1e-6, "a typed value is an undo step");
-    doubleClick(view, {401.0f, 35.0f}); // FM Amount's number, beside it in the header
+    doubleClick(view, kFmAmountNumber); // FM Amount's number, beside it in the header
     type(view, "150 %");
     view.typeKey(View::Key::Enter);
     const int fmAmount = paramIndex(GlobalParam::FmAmount);
     check(std::abs(model.value(fmAmount) - 1.5) < 1e-9, "a header knob takes a typed value too");
-    doubleClick(view, {401.0f, 35.0f});
+    doubleClick(view, kFmAmountNumber);
     type(view, "70");
     view.typeKey(View::Key::Escape);
-    doubleClick(view, {401.0f, 35.0f});
+    doubleClick(view, kFmAmountNumber);
     type(view, "lots");
     view.typeKey(View::Key::Enter);
-    doubleClick(view, {401.0f, 35.0f});
+    doubleClick(view, kFmAmountNumber);
     view.typeKey(View::Key::Enter); // as shown: no change, no step
     check(std::abs(model.value(fmAmount) - 1.5) < 1e-9, "Escape, text that isn't a value, or no change leave it");
-    doubleClick(view, {401.0f, 35.0f});
+    doubleClick(view, kFmAmountNumber);
     view.typeKey(View::Key::Backspace);
     type(view, "0");
     click(view, {600.0f, 300.0f}); // a click elsewhere takes the value
@@ -2108,16 +2112,80 @@ void testMeter(const std::filesystem::path &dir, Renderer &renderer) {
     model.live.outPeak = {0.5f, 0.125f}; // -6 and -18 dB
     view.poll();
     const bool shot = renderer.save(view, dir / "26d-meter.png");
-    const uint32_t left = renderer.pixel({211.5f, 27.0f}), right = renderer.pixel({220.5f, 27.0f}); // about -14 dB
-    const uint32_t dark = renderer.pixel({211.5f, 14.5f});
+    const uint32_t left = renderer.pixel({kHeaderStart + 2.5f, 27.0f}), right = renderer.pixel({kHeaderStart + 11.5f, 27.0f}); // about -14 dB
+    const uint32_t dark = renderer.pixel({kHeaderStart + 2.5f, 14.5f});
     model.live.outPeak = {1.4f, 1.4f};
     model.live.clipHold = 1.0f;
     view.poll();
     const bool clipShot = renderer.save(view, dir / "26e-meter-clipping.png");
-    const uint32_t lit = renderer.pixel({211.5f, 14.5f});
+    const uint32_t lit = renderer.pixel({kHeaderStart + 2.5f, 14.5f});
     check(shot && clipShot && (left & 255) > 200 && (right & 255) < 100 && (dark >> 16 & 255) < 120 &&
               (lit >> 16 & 255) > 200 && (lit >> 8 & 255) < 100,
           "the output meter shows each side's peak, and its clip light past full scale");
+}
+
+// The output scope left of the meter: with nothing captured, its display empty; then the telemetry's span, two
+// periods of a quiet sine, drawn across it at its peak, the first crest at the display's top and the second trough at
+// its bottom (read off the rendered pixels).
+void testOutScope(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    view.poll();
+    const float innerX = kOutScopeX + 5.0f, innerW = kOutScopeW - 10.0f;
+    const float top = kOutScopeY + 4.0f, bottom = kOutScopeY + kOutScopeH - 4.0f;
+    auto binX = [&](double bin) { return innerX + innerW * static_cast<float>(bin / (kOutScopeBins - 1)); };
+    const Point crest{binX((kOutScopeBins - 1) / 8.0), top}, trough{binX(7.0 * (kOutScopeBins - 1) / 8.0), bottom};
+    const bool idleShot = renderer.save(view, dir / "26f-out-scope-idle.png");
+    const uint32_t idleCrest = renderer.pixel(crest), idleTrough = renderer.pixel(trough);
+    for (int bin = 0; bin < kOutScopeBins; ++bin)
+        model.live.outScope[bin] =
+            0.2f * static_cast<float>(std::sin(2.0 * std::numbers::pi * 2.0 * bin / (kOutScopeBins - 1)));
+    view.poll();
+    const bool shot = renderer.save(view, dir / "26g-out-scope.png");
+    const uint32_t litCrest = renderer.pixel(crest), litTrough = renderer.pixel(trough);
+    std::printf("output scope: crest %06x -> %06x, trough %06x -> %06x\n", idleCrest, litCrest, idleTrough, litTrough);
+    check(idleShot && shot && (idleCrest & 255) < 100 && (idleTrough & 255) < 100 && (litCrest & 255) > 140 &&
+              (litTrough & 255) > 140,
+          "the output scope is empty with nothing captured, and draws the captured span at its peak");
+
+    // A span 8 dB quieter (still above the 24 dB the scope lifts at most) is drawn to the level it eases down from, not
+    // at once to its own peak: smaller at first, its crest at the top again some polls later.
+    for (int bin = 0; bin < kOutScopeBins; ++bin)
+        model.live.outScope[bin] =
+            0.08f * static_cast<float>(std::sin(2.0 * std::numbers::pi * 2.0 * bin / (kOutScopeBins - 1)));
+    const bool easing = view.poll();
+    renderer.save(view, dir / "26h-out-scope-easing.png");
+    const uint32_t easingCrest = renderer.pixel(crest);
+    int polls = 0;
+    while (view.poll() && polls < 600)
+        ++polls;
+    renderer.save(view, dir / "26i-out-scope-eased.png");
+    const uint32_t easedCrest = renderer.pixel(crest);
+    std::printf("output scope easing: crest %06x, after %d polls %06x\n", easingCrest, polls, easedCrest);
+    check(easing && (easingCrest & 255) < 100 && polls > 10 && polls < 100 && (easedCrest & 255) > 140,
+          "the output scope's height eases down to a quieter span, repainting until it gets there");
+
+    // Spans too small to draw (the browser demo's output never quite reaches 0) paint nothing again as they change;
+    // one that draws does, and so does the next one replacing it, even too small to draw.
+    auto fill = [&](float level) {
+        for (int bin = 0; bin < kOutScopeBins; ++bin)
+            model.live.outScope[bin] = level * static_cast<float>(((bin * 7 + 3) % 11) - 5);
+    };
+    fill(0.0f);
+    view.poll();
+    const bool settled = !view.poll();
+    fill(1e-12f);
+    const bool tinyFirst = view.poll();
+    fill(-2e-12f);
+    const bool tinySecond = view.poll();
+    fill(0.01f);
+    const bool drawing = view.poll();
+    fill(1e-12f);
+    const bool replaced = view.poll();
+    std::printf("output scope repaints: settled %d, tiny %d %d, drawing %d, replaced %d\n", settled, tinyFirst,
+                tinySecond, drawing, replaced);
+    check(settled && !tinyFirst && !tinySecond && drawing && replaced,
+          "the output scope's spans too small to draw paint nothing again, and one that draws does");
 }
 
 // The three-band dynamics, alone in the chain: a card one and a half places wide (x 32 to 299.5) whose display (from
@@ -5356,6 +5424,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testNodeSwitchOnPlace(dir, renderer);
     testModsSearch(dir, renderer);
     testMeter(dir, renderer);
+    testOutScope(dir, renderer);
     renderNewEffects(dir, renderer);
     testShapers(dir, renderer);
     testWideLfoCard(dir, renderer);

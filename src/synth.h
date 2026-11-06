@@ -74,6 +74,14 @@ constexpr int kScopeMaxCycles = 4;
 constexpr int kScopeBins = kScopeBinsPerCycle * kScopeMaxCycles;
 // A span of cycles that lasts longer than this, in seconds, shows as it fills, up to a cursor.
 constexpr double kScopeSlowSpan = 0.2;
+// The header's output scope: the output (the mean of its two sides, after Volume) over kOutScopePeriods periods of
+// the newest note's pitch (what the effects' key tracking follows), kOutScopeBins points across. Its spans follow one
+// another at that pitch, so whatever the wave, a sound that repeats with the note stands still; a new note starts
+// them over. A high note's span holds a whole multiple of kOutScopePeriods, lasting at least kOutScopeMinSpan seconds.
+constexpr int kOutScopeBins = 128;
+constexpr int kOutScopePeriods = 2;
+constexpr double kOutScopeMinSpan = 0.0005;
+constexpr int kOutScopeTaps = 16; // the samples each point is interpolated from (see Synth::OutScopeCapture)
 
 struct Telemetry {
     std::array<float, kModulatedCount> modOffset{}; // LFO/envelope modulation, in plain units
@@ -115,6 +123,9 @@ struct Telemetry {
     std::array<float, kScopeBins> scope{};
     int scopeBins = 0;
     float scopeCursor = -1.0f;
+    // The output scope's last whole span (see kOutScopeBins), as the output's level: all 0 while the synth doesn't
+    // analyze (see Synth::setAnalyzing()).
+    std::array<float, kOutScopeBins> outScope{};
 
     bool keyDown(int key) const { return key >= 0 && key < 128 && (keys[key / 32] >> (key % 32) & 1u) != 0; }
 };
@@ -204,8 +215,11 @@ public:
     int activeVoiceCount() const;
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_.ringing(); }
-    // Whether the voice filters, parametric EQs and filter effects measure their output for the editor.
+    // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, and the output
+    // scope captures the output (see kOutScopeBins). Switched off, the scope forgets what it took.
     void setAnalyzing(bool on) {
+        if (analyzing_ && !on)
+            outScope_ = {};
         analyzing_ = on;
         effects_.setAnalyzing(on);
     }
@@ -511,6 +525,22 @@ private:
     const Voice *scopeVoice_ = nullptr; // the voice whose operator the scope takes, this control block
     void scopeTake(double phase, double value);
     void scopeRestart();
+    // The output scope (see kOutScopeBins): a phase runs through each span at the note's pitch, and each point is
+    // taken as it passes the point's place, between two samples: band-limited, from the kOutScopeTaps samples around
+    // that place (kOutScopeTaps / 2 - 1 samples back, so the ones after it have come), so a wave dense with high
+    // partials looks the same wherever the samples fall in it. A span is published whole once it is full, and the
+    // next one starts at once, where it ended.
+    struct OutScopeCapture {
+        uint64_t order = 0;  // the newest voice, by its note-on number, when the spans last started over
+        double phase = 0.0;  // through the span being filled, 0..1
+        int next = 0;        // the next point to fill
+        std::array<float, kOutScopeTaps> history{}; // the last samples, the newest at newest
+        int newest = 0;
+        std::array<float, kOutScopeBins> filling{};
+        std::array<float, kOutScopeBins> frame{};
+    };
+    OutScopeCapture outScope_;
+    void captureOutput(const float *left, const float *right, uint32_t frames);
     std::vector<NoteRef> ended_; // reserved in prepare(), never grows on the audio thread
 };
 
