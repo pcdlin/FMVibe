@@ -734,6 +734,7 @@ STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
 
 STR(MenuDuplicate, "Duplicate")
 STR(MenuResetSettings, "Reset settings")
+STR(MenuOtt, "OTT") // a 3-band dynamics' settings set to those of Ableton's OTT preset
 STR(MenuRemove, "Remove")
 STR(MenuUnipolar, "Unipolar") // a source's, in the menus of its card, handle or knob
 STR(MenuBipolar, "Bipolar")

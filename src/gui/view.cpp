@@ -8318,6 +8318,42 @@ constexpr int kAuxClearCommand = kBypassCommand + kAllSources * kSlots;
 constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
 constexpr int kResetBendCommand = 14;
+constexpr int kOttCommand = 15;
+
+// The three-band dynamics' fields set as Ableton's OTT preset for its Multiband Dynamics has them: crossovers at
+// 88.3 Hz and 2.5 kHz, every band pulled down hard above its Above threshold and lifted 4.17:1 below its Below one,
+// then made up. Its attacks and releases are per band there (47.8, 22.4 and 13.5 ms; 282, 282 and 132 ms) and shared
+// here, so the mid band's stand for them; its lift is unbounded, so Range is all the way up, and its knees hard. Link
+// goes off first, so each band takes its own values.
+static std::vector<std::pair<int, double>> ottSettings(int slot) {
+    struct Band {
+        double above, down, below, up, gain;
+    };
+    constexpr double kInf = std::numeric_limits<double>::infinity();
+    constexpr Band kBands[kMcBands] = {{-33.8, 66.7, -40.8, 4.17, 10.3}, // low
+                                       {-30.2, 66.7, -41.8, 4.17, 5.7},  // mid
+                                       {-35.5, kInf, -40.8, 4.17, 10.3}}; // high
+    std::vector<std::pair<int, double>> changes{
+        {paramIndex(slot, FxParam::MdLink), 0.0},
+        {paramIndex(slot, FxParam::MdLowFreq), normFromCutoff(88.3)},
+        {paramIndex(slot, FxParam::MdHighFreq), normFromCutoff(2500.0)},
+    };
+    for (int b = 0; b < kMcBands; ++b) {
+        changes.push_back({mdAboveIndex(slot, b), kBands[b].above});
+        changes.push_back({mdDownIndex(slot, b), normFromDynRatio(kBands[b].down)});
+        changes.push_back({mdBelowIndex(slot, b), kBands[b].below});
+        changes.push_back({mdUpIndex(slot, b), normFromDynRatio(kBands[b].up)});
+        changes.push_back({mdGainIndex(slot, b), kBands[b].gain});
+    }
+    changes.insert(changes.end(), {{paramIndex(slot, FxParam::MdAttack), normFromTime(0.0224)},
+                                   {paramIndex(slot, FxParam::MdRelease), normFromTime(0.282)},
+                                   {paramIndex(slot, FxParam::MdKnee), 0.0},
+                                   {paramIndex(slot, FxParam::MdRange), 36.0},
+                                   {paramIndex(slot, FxParam::MdMix), 1.0},
+                                   {paramIndex(slot, FxParam::MdOutput), 0.0},
+                                   {paramIndex(slot, FxParam::MdRms), 1.0}});
+    return changes;
+}
 
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
@@ -8336,6 +8372,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         if (fxChain().size() < static_cast<size_t>(kFxSlots))
             items.push_back({6, tr(Str::MenuDuplicate)});
         items.push_back({8, tr(Str::MenuResetSettings)});
+        if (fxSlotType(menuFx_) == FxType::MultiDyn)
+            items.push_back({kOttCommand, tr(Str::MenuOtt)});
         items.push_back({0, ""});
         items.push_back({7, tr(Str::MenuRemove)});
         return items;
@@ -8487,6 +8525,8 @@ void View::menuCommand(int command) {
         for (int f = 0; f < kShapeParamCount; ++f)
             changes.push_back({clipCurveCountIndex(menuFx_) + f, table_[clipCurveCountIndex(menuFx_) + f].def});
         editMany(changes);
+    } else if (command == kOttCommand && menuFx_ >= 0 && fxSlotType(menuFx_) == FxType::MultiDyn) {
+        editMany(ottSettings(menuFx_));
     } else if (command == 3 && menuParam_ >= 0) {
         disconnect(menuParam_);
     } else if (command == 4 && menuParam_ >= 0) {

@@ -2239,6 +2239,38 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     check(linkedLine && linked && undone && model.value(paramIndex(0, FxParam::MdRms)) == 0.0 &&
               renderer.save(view, dir / "9h-3band-dynamics-linked.png"),
           "a three-band dynamics' LINK makes an edit of one band set every band's, undoably, and RMS switches to peaks");
+
+    // OTT, from its card's menu (with Link still on): each band set as Ableton's OTT preset has it, Link off, as one
+    // undo step. Another effect's menu doesn't offer it.
+    auto pick = [&](Point at, Str label) {
+        bool offered = false;
+        for (const MenuItem &item : view.contextMenu(at))
+            if (item.label == tr(label)) {
+                offered = true;
+                view.menuCommand(item.command);
+            }
+        return offered;
+    };
+    const double aboveBefore = model.value(mdAboveIndex(0, 1));
+    const bool offered = pick(fxGrip(model, 0), Str::MenuOtt);
+    const bool ott = offered && model.value(paramIndex(0, FxParam::MdLink)) == 0.0 &&
+                     std::abs(model.value(mdAboveIndex(0, 0)) + 33.8) < 1e-9 &&
+                     std::abs(model.value(mdAboveIndex(0, 1)) + 30.2) < 1e-9 &&
+                     std::abs(model.value(mdBelowIndex(0, 1)) + 41.8) < 1e-9 &&
+                     std::abs(model.value(mdGainIndex(0, 1)) - 5.7) < 1e-9 &&
+                     std::isinf(dynRatio(model.value(mdDownIndex(0, 2)))) &&
+                     std::abs(dynRatio(model.value(mdUpIndex(0, 0))) - 4.17) < 1e-6 &&
+                     std::abs(cutoffFromNorm(model.value(paramIndex(0, FxParam::MdLowFreq))) - 88.3) < 0.01 &&
+                     model.value(paramIndex(0, FxParam::MdRange)) == 36.0 &&
+                     model.value(paramIndex(0, FxParam::MdRms)) == 1.0;
+    const bool ottShot = renderer.save(view, dir / "9i-3band-dynamics-ott.png");
+    view.undo();
+    const bool ottUndone = model.value(paramIndex(0, FxParam::MdLink)) == 1.0 &&
+                           model.value(mdAboveIndex(0, 1)) == aboveBefore &&
+                           model.value(paramIndex(0, FxParam::MdRms)) == 0.0;
+    addFx(view, FxType::Delay);
+    check(ott && ottShot && ottUndone && !pick(fxGrip(model, 1), Str::MenuOtt),
+          "a three-band dynamics' menu sets it as OTT, undoably, and no other effect's menu offers OTT");
 }
 
 // The dashed cards after the sources: an LFO's above an envelope's, each adding one.
