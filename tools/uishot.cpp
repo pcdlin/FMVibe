@@ -227,8 +227,8 @@ constexpr float kOpEnvBottom = 426.0f;
 // The global strip, under the title bar: from the meter's left edge (kHeaderStart) on, the output scope left of the
 // meter (kOutScope).
 constexpr float kHeaderStart = 128.0f;
-constexpr Point kFmAmountKnob{307.0f, 64.0f};
-constexpr Point kFmAmountNumber{349.0f, 67.0f}; // beside its knob
+constexpr Point kFmAmountKnob{321.0f, 64.0f};
+constexpr Point kFmAmountNumber{363.0f, 67.0f}; // beside its knob
 constexpr Point kVoicesKnob{1058.0f, 64.0f}; // past the second divider, beside the count
 constexpr Point kMonoButton{773.0f, 53.0f};
 constexpr Point kLegatoToggle{751.0f, 76.0f};

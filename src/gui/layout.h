@@ -242,13 +242,15 @@ inline bool followScopeLevel(float &level, float peak) {
     level = peak >= level ? peak : std::max(peak, level * kScopeLevelFall);
     return std::abs(level - before) > 0.01f * before;
 }
-// The global knobs, 120 px apart, the first 27 px past the meter.
-constexpr float kHeaderKnobX = kHeaderStart + 41.0f;
+// The first divider, before the play cluster.
+constexpr float kDivider0 = kHeaderStart + 535.0f;
+// The global knobs, 120 px apart, centered between the meter and the first divider: from the first one's arc (2 px
+// into its place) to the Pan knob's widest value ("100 L", 78 px into its place), 43 px from each.
 constexpr float kHeaderKnobW = 120.0f;
-// The first divider 56 px past the Pan knob's widest value ("100 L", 78 px into its place), the play cluster 44 px
-// past it.
-constexpr float kDivider0 = kHeaderKnobX + 3.0f * kHeaderKnobW + 78.0f + 56.0f;
-constexpr float kPlayX = kDivider0 + 44.0f; // Poly | Mono over Legato
+constexpr float kHeaderKnobX = kHeaderStart + 55.0f;
+static_assert(kHeaderKnobX + 2.0f - (kHeaderStart + 14.0f) == 43.0f &&
+              kDivider0 - (kHeaderKnobX + 3.0f * kHeaderKnobW + 78.0f) == 42.0f);
+constexpr float kPlayX = kDivider0 + 44.0f; // Poly | Mono over Legato, 44 px past the first divider
 // The Glide knob 24 px past them, its Always switch (on its label's row) ending 32 px before the second divider.
 constexpr float kGlideX = kPlayX + 112.0f;
 constexpr float kGlideW = 126.0f;
