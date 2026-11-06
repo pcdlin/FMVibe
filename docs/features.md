@@ -636,8 +636,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
     the digit under the mouse, and a double-click rounds to it (on the ones, 3.47 becomes 3.00). The digit under the
     mouse, or being dragged, is lit behind. Ctrl+Click or the menu's Edit value types a value, which can be a
-    fraction (7/2) or start with ×. Over the digits a track runs from 0.5 to 128 on a log scale, a faint mark at 64 where the ratio set stops: a tick at the ratio,
-    each modulation's reach in its source's color (wider while its depth handle is hovered), and a dot where
+    fraction (7/2) or start with ×. Over the digits a track runs from 0.5 to 64 in a straight line: a tick at the ratio (at its right end at 64),
+    each modulation's reach in its source's color (wider while its depth handle is hovered, with an arrow after the
+    end where it goes on past 64), and a dot where
     modulation takes the newest voice; the depth handles sit along the box's bottom edge, clear of it, and a source's handle
     dropped anywhere on the box modulates it. A keyboard on the summary
     line, left of the power switch, switches fixed pitch: faint while the operator follows the keys, crossed out

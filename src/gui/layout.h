@@ -65,8 +65,8 @@ inline int ratioDigit(float x) {
             nearest = k;
     return nearest;
 }
-// The track over the digits: 0.5 to 128 on a log scale (modulation goes past 64), with the ratio and its modulations
-// along it.
+// The track over the digits: 0.5 to 64 in a straight line, with the ratio and its modulations along it (an arrow
+// after its end for a modulation that goes on past 64).
 constexpr Rect kRatioTrack{kRatioBox.x + 6.0f, kRatioBox.y + 4.0f, kRatioBox.w - 12.0f, 2.0f};
 // A Custom wave's edit button (a pencil, as big as the keyboard switch, left of it): opens its partial editor.
 constexpr Rect kPartialEditButton{kFixedSwitch.x - 4.0f - kFixedSwitch.w, kFixedSwitch.y, kFixedSwitch.w,

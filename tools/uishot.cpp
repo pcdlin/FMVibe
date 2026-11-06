@@ -1396,7 +1396,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // A source's handle dropped on the readout modulates it, its reach drawn in its color along the track.
     click(view, sourceAdd(SourceType::Lfo));
-    const Point track{938.0f, 199.0f}; // on the track over the digits, a little above 3.50 (at x 932)
+    const Point track{911.0f, 199.0f}; // on the track over the digits (from x 910), a little below 3.50 (at x 913)
     view.mouseMove({600.0f, 300.0f}, {});
     renderer.save(view, dir / "3g-ratio-plain.png");
     const uint32_t bare = renderer.pixel(track);
@@ -1406,6 +1406,19 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     check(slotTarget(model.value(slotTargetIndex(0, 0))) == ratio && model.value(slotAmountIndex(0, 0)) != 0.0 &&
               modShot && renderer.pixel(track) != bare,
           "a source's handle dropped on the Ratio readout modulates it, its reach drawn along the track");
+
+    // The track is a straight line to 64: set there, the ratio's tick is at its right end (x 979), and the modulation
+    // going on past 64 has an arrow after it (x 980 to 984) (read off the rendered pixels).
+    const Point end{978.5f, 197.0f}, arrow{981.5f, 199.0f};
+    const uint32_t endBefore = renderer.pixel(end), arrowBefore = renderer.pixel(arrow);
+    model.set(ratio, 1.0);
+    view.poll();
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool topModShot = renderer.save(view, dir / "3g-ratio-past-64.png");
+    check(topModShot && shown() == 6400 && renderer.pixel(end) != endBefore && renderer.pixel(arrow) != arrowBefore,
+          "the Ratio track ends at 64, where its tick then sits, with an arrow for modulation going on past it");
+    model.set(ratio, normFromRatio(3.5));
+    view.poll();
 
     // Its depth handles, 9 px apart along its bottom edge from x 913, hold eight before a pill: the eighth at x 976,
     // and with a ninth, six handles and the pill (x 966 to 978), which opens their list under it (read off the

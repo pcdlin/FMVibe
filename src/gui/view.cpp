@@ -5871,8 +5871,8 @@ void sevenSegments(Canvas &c, Rect r, int digit, Color on, Color off) {
 } // namespace
 
 // The Ratio readout: four digits, the one under the mouse (or being dragged) lit behind, and over them a track from
-// 0.5 to 128 on a log scale (64 marked, where the ratio set stops and modulation goes on) with the ratio's place and
-// each modulation's reach in its source's color, as a knob's rings.
+// 0.5 to 64 in a straight line with the ratio's place and each modulation's reach in its source's color, as a knob's
+// rings (an arrow after its end where modulation takes it on past 64).
 void View::paintRatio(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool dragged = drag_.kind == DragKind::Value && drag_.widget.same(w);
@@ -5899,20 +5899,28 @@ void View::paintRatio(Canvas &c, const Widget &w) {
                 kPoint, kPoint},
                kAccent, 0.5f);
 
-    // The track runs on to 128, where modulation can take the ratio; a faint mark at 64, where the ratio set stops.
+    // The track runs in a straight line from 0.5 to 64, the ratio's range, the value `v` (on Ratio's log curve) placed
+    // by the ratio it plays. Modulation can take it on to 128 (see kRatioModNorm): a reach past 64 stops at the end,
+    // with an arrow after it.
     auto along = [](double v) {
-        return kRatioTrack.x + static_cast<float>(std::clamp(v, 0.0, kRatioModNorm) / kRatioModNorm) * kRatioTrack.w;
+        const double ratio = std::min(ratioFromNorm(std::max(v, 0.0)), kMaxRatio);
+        return kRatioTrack.x + static_cast<float>((ratio - kMinRatio) / (kMaxRatio - kMinRatio)) * kRatioTrack.w;
     };
     c.fillRect(kRatioTrack, kTrack, 1.0f);
-    c.fillRect({along(1.0) - 0.5f, kRatioTrack.y - 1.5f, 1.0f, kRatioTrack.h + 3.0f}, kFaint, 0.0f);
     // A switched-off source's reach is faint; the one whose depth handle is under the mouse is wider, over the others.
     auto reach = [&](const Assignment &m, bool wide) {
         const auto [down, up] = modReach(m);
         const float a = along(n + down), b = along(n + up);
         const float alpha = (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.35f) * (wide ? 1.0f : 0.8f);
         const float thick = wide ? 4.0f : 2.0f;
+        const Color color = kSourceColors[m.source].alpha(alpha);
         c.fillRect({std::min(a, b), kRatioTrack.center().y - thick * 0.5f, std::max(std::abs(b - a), 1.0f), thick},
-                   kSourceColors[m.source].alpha(alpha), 1.0f);
+                   color, 1.0f);
+        if (n + std::max(down, up) > 1.0 + 1e-9) { // on past 64
+            const float x = kRatioTrack.right() + 1.0f, y = kRatioTrack.center().y;
+            const Point arrow[] = {{x, y - 2.5f}, {x + 3.5f, y}, {x, y + 2.5f}};
+            c.fillPolygon(arrow, std::size(arrow), color);
+        }
     };
     std::vector<Assignment> focus;
     forEachMod(w.param, [&](const Assignment &m) {

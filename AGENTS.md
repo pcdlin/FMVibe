@@ -232,7 +232,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator's Ratio readout: each digit dragged by its own place, carrying and held to 64.00, each drag an undo
     step; the wheel stepping the digit under the mouse, a double-click rounding to it, the hovered digit lit (read off
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
-    the track (read off the rendered pixels);
+    the track, a straight line to 64 with its tick at the end there and an arrow for modulation going on past it
+    (read off the rendered pixels);
   - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the
     ratio was in one undo step and taking Ratio's and Fine's places, Mult stepping (and typed into, its × taken
     whole), and Pitch and Detune dimmed (read off the rendered pixels), not turning and not ringed for a dragged
