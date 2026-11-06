@@ -722,7 +722,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     notes (or typed, as `C4`, `F#2 -20` or a MIDI note number); its ends stay at the ends too, and the reset button
     brings back every MIDI note and the curve along the dashed line. Velocity's curve opens over the routing panel
     the same way, from its display (see Velocity, under the keyboard strip).
-- **Header**: everything between the name and the voice count is centered between them. First the output scope:
+- **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
+  redo, Init, Load, Save and the settings cog at its right (see Presets and Settings, below). Under it, the
+  **global strip** spreads across the editor, from the output scope under the name to the voice count at its right
+  end. First the output scope:
   the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has
   ended, as the effects' key tracking keeps it; a high note's span holds a whole multiple of two periods, at least half
   a millisecond). Its spans follow one another at that pitch, so a sound that repeats with the note stands still
@@ -737,7 +740,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
   the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, then
   a Glide knob like the global ones, its Always switch beside its label, each switch explaining itself on hover);
-  Voices (it drags on a log scale, so 4 and 512 are both easy to reach); and how many voices are playing.
+  Voices (it drags on a log scale, so 4 and 512 are both easy to reach), right beside how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
   edits, up to 100 steps; hovering one says what it would undo. A drag, a run of wheel notches on one knob, a typed
   value, adding or removing an effect or source (with its modulation), moving nodes or cards and bending a wire are
@@ -1044,7 +1047,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
   they hold only the params that differ from Init, so their files are small, and load like any other.
-  - The **preset bar** in the middle of the tabs' row shows the preset loaded or saved last, or **- Init -** (as
+  - The **preset bar** in the middle of the title bar shows the preset loaded or saved last, or **- Init -** (as
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
     preset in the folder, round from the last to the first. Clicking the name opens the **browser**: the presets
     at the top of the folder, then each subfolder's under its name, the current one marked; a click loads one

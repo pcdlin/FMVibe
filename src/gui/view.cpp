@@ -1425,7 +1425,7 @@ std::vector<View::Widget> View::widgets() const {
 
     // Header.
     auto headerKnob = [&](int param, float x, float width, const char *label) {
-        add(Kind::Knob, {x, 12.0f, width, 40.0f}, param);
+        add(Kind::Knob, {x, kStripY + 12.0f, width, 40.0f}, param);
         list.back().label = label;
         list.back().compact = true;
     };
@@ -1438,16 +1438,16 @@ std::vector<View::Widget> View::widgets() const {
     // the knob, so it takes the clicks there).
     const int mono = paramIndex(GlobalParam::Mono);
     const size_t play = list.size();
-    add(Kind::Choice, {kPlayX, 12.0f, 44.0f, 19.0f}, mono, -1, 0);
-    add(Kind::Choice, {kPlayX + 44.0f, 12.0f, 44.0f, 19.0f}, mono, -1, 1);
+    add(Kind::Choice, {kPlayX, kStripY + 12.0f, 44.0f, 19.0f}, mono, -1, 0);
+    add(Kind::Choice, {kPlayX + 44.0f, kStripY + 12.0f, 44.0f, 19.0f}, mono, -1, 1);
     merge(play);
     // Under them Legato.
     add(Kind::Toggle, kLegatoSwitch, paramIndex(GlobalParam::Legato));
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
     // On the label's row, level with Poly | Mono, clear of the value under it.
-    add(Kind::Toggle, {kGlideX + kGlideW - 42.0f, 12.0f, 52.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
-    // Voices, past the second divider. (Bend's knob is over the bend wheel, in the keyboard strip.)
-    headerKnob(paramIndex(GlobalParam::Voices), kVoicesX, kHeaderKnobW, tr(Str::LabelVoices));
+    add(Kind::Toggle, {kGlideX + kGlideW - 42.0f, kStripY + 12.0f, 52.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
+    // Voices, past the second divider, beside the count. (Bend's knob is over the bend wheel, in the keyboard strip.)
+    headerKnob(paramIndex(GlobalParam::Voices), kVoicesX, kVoicesW, tr(Str::LabelVoices));
 
     // Routing panel, as a graph, as a matrix, or the effects chain; or the shape
     // editor of a freeform LFO, in place of all three.
@@ -2697,7 +2697,7 @@ void View::paint(Canvas &c) {
 
     // Under the preset bar, over the panels' title rows.
     if (flashTicks_ > 0) {
-        const Rect toast{View::kWidth * 0.5f - 220.0f, 102.0f, 440.0f, 28.0f};
+        const Rect toast{View::kWidth * 0.5f - 220.0f, kPanelsTop - 2.0f, 440.0f, 28.0f};
         c.fillRect(toast, kRaised, 8.0f);
         c.strokeRect(toast, kBorder, 1.0f, 8.0f);
         c.text(toast, flash_, 12.0f, kText);
@@ -2721,12 +2721,14 @@ void View::paintPanels(Canvas &c) {
 }
 
 void View::paintHeader(Canvas &c) {
-    const Rect header{0.0f, 0.0f, View::kWidth, 64.0f};
+    const Rect header{0.0f, 0.0f, View::kWidth, kHeaderH};
     c.fillGradient(header, look.headerTop, look.headerBottom);
-    c.line({0.0f, 63.5f}, {View::kWidth, 63.5f}, kBorder, 1.0f);
-    // The name: "FM" in the operators' color, then "Vibe".
-    c.text({24.0f, 12.0f, 40.0f, 40.0f}, "FM", 22.0f, kAccent, Align::Left, true);
-    c.text({53.0f, 12.0f, 100.0f, 40.0f}, "Vibe", 22.0f, kText, Align::Left, true);
+    c.line({0.0f, kTitleBarH - 0.5f}, {View::kWidth, kTitleBarH - 0.5f}, kBorder.alpha(0.5f), 1.0f);
+    c.line({0.0f, kHeaderH - 0.5f}, {View::kWidth, kHeaderH - 0.5f}, kBorder, 1.0f);
+    // The name, in the title bar: "FM" in the operators' color, then "Vibe".
+    const Rect name{24.0f, kTitleRowY + kTopRowH * 0.5f - 20.0f, 40.0f, 40.0f};
+    c.text(name, "FM", 22.0f, kAccent, Align::Left, true);
+    c.text({53.0f, name.y, 100.0f, 40.0f}, "Vibe", 22.0f, kText, Align::Left, true);
 
     // The output meter: each side's peak in the theme's color up to full scale, red past it, where the clip light
     // stays on for a while after the output went over.
@@ -2768,12 +2770,12 @@ void View::paintHeader(Canvas &c) {
     }
 
     for (float x : kDividers)
-        c.line({x, 14.0f}, {x, 50.0f}, kBorder, 1.0f);
+        c.line({x, kStripY + 14.0f}, {x, kStripY + 50.0f}, kBorder, 1.0f);
 
     char playing[16];
     std::snprintf(playing, sizeof(playing), "%d", telemetry_.voices);
-    c.text({1110.0f, 13.0f, 74.0f, 14.0f}, tr(Str::HeadingPlaying), 10.5f, kDim, Align::Right, true);
-    c.text({1110.0f, 28.0f, 74.0f, 22.0f}, playing, 15.0f, telemetry_.voices > 0 ? kText : kFaint, Align::Right,
+    c.text({1110.0f, kStripY + 13.0f, 74.0f, 14.0f}, tr(Str::HeadingPlaying), 10.5f, kDim, Align::Right, true);
+    c.text({1110.0f, kStripY + 28.0f, 74.0f, 22.0f}, playing, 15.0f, telemetry_.voices > 0 ? kText : kFaint, Align::Right,
            true);
 }
 
