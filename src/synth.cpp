@@ -123,6 +123,9 @@ Synth::Synth() : table_(paramTable()), waves_(waveTables()) {
         paramMin_[i] = table_[i].min;
         paramMax_[i] = table_[i].max;
     }
+    // Modulation takes an operator's Ratio past its range, to 128 (see kRatioModNorm).
+    for (int op = 0; op < kOps; ++op)
+        paramMax_[paramIndex(op, OpParam::Ratio)] = kRatioModNorm;
 }
 
 namespace {
@@ -1282,7 +1285,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // it; its unison copies still spread about it.
         double hz = fixedHz(p[paramIndex(i, OpParam::FixedFreq)], p[paramIndex(i, OpParam::FixedMult)]);
         if (p[paramIndex(i, OpParam::Fixed)] < 0.5) {
-            const double ratio = ratioFromNorm(std::clamp(p[paramIndex(i, OpParam::Ratio)], 0.0, 1.0));
+            const double ratio = ratioFromNorm(std::clamp(p[paramIndex(i, OpParam::Ratio)], 0.0, kRatioModNorm));
             const double cents = p[paramIndex(i, OpParam::Detune)];
             const double semitones = p[paramIndex(i, OpParam::Transpose)];
             hz = noteHz * ratio * std::exp2(semitones / 12.0 + cents / 1200.0);

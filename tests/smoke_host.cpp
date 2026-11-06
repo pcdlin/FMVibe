@@ -740,9 +740,9 @@ int main(int argc, char **argv) {
     // Operator A's Ratio takes modulation on its log curve, continuously: a seventh of its range (0.5 to 64 is seven
     // octaves) plays an octave up, and half that a tritone up (622 Hz), between the two.
     {
-        auto playRatio = [&](double mod) {
+        auto playRatio = [&](double mod, int16_t key = 69) {
             const clap_event_param_mod_t ratioMod = paramModEvent(paramIndex(0, OpParam::Ratio), -1, mod);
-            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 22, 69);
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 22, key);
             runBlock({&ratioMod.header, &on.header});
             runBlocks(8);
             std::vector<float> signal;
@@ -764,6 +764,24 @@ int main(int argc, char **argv) {
         const clap_event_param_mod_t unmod = paramModEvent(paramIndex(0, OpParam::Ratio), -1, 0.0);
         runBlock({&unmod.header});
         check(octave > 30.0 && same > 30.0, "a modulated Ratio moves along its log curve, continuously");
+
+        // Modulation takes it on past 64, to 128: set to 64, an A1 (55 Hz) plays 3520 Hz, an octave of modulation up
+        // 7040 Hz, and two octaves up still 7040 Hz, held at 128.
+        const clap_event_param_value_t top = paramEvent(paramIndex(0, OpParam::Ratio), 1.0);
+        runBlock({&top.header});
+        const auto still = playRatio(0.0, 33), past = playRatio(1.0 / 7.0, 33), held = playRatio(2.0 / 7.0, 33);
+        auto over = [&](const std::vector<float> &signal, double hz, double other) {
+            return magnitude(signal, hz) / std::max(magnitude(signal, other), 1e-9);
+        };
+        const double at64 = over(still, 3520.0, 7040.0), at128 = over(past, 7040.0, 3520.0),
+                     heldAt128 = over(held, 7040.0, 3520.0);
+        std::printf("      A's Ratio at 64 on an A1: 3520 Hz %.0fx over 7040 Hz; +1/7 puts 7040 Hz %.0fx over 3520 Hz, "
+                    "+2/7 %.0fx\n",
+                    at64, at128, heldAt128);
+        const clap_event_param_value_t back = paramEvent(paramIndex(0, OpParam::Ratio), normFromRatio(1.0));
+        runBlock({&unmod.header, &back.header});
+        check(at64 > 30.0 && at128 > 30.0 && heldAt128 > 30.0,
+              "modulation takes a Ratio set to 64 on to 128, and no further");
     }
 
     // The matrix does FM: B -> A puts the 2nd harmonic onto a pure-sine carrier.

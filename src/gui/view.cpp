@@ -5871,7 +5871,8 @@ void sevenSegments(Canvas &c, Rect r, int digit, Color on, Color off) {
 } // namespace
 
 // The Ratio readout: four digits, the one under the mouse (or being dragged) lit behind, and over them a track from
-// 0.5 to 64 on a log scale with the ratio's place and each modulation's reach in its source's color, as a knob's rings.
+// 0.5 to 128 on a log scale (64 marked, where the ratio set stops and modulation goes on) with the ratio's place and
+// each modulation's reach in its source's color, as a knob's rings.
 void View::paintRatio(Canvas &c, const Widget &w) {
     const ParamDef &def = table_[w.param];
     const bool dragged = drag_.kind == DragKind::Value && drag_.widget.same(w);
@@ -5898,8 +5899,12 @@ void View::paintRatio(Canvas &c, const Widget &w) {
                 kPoint, kPoint},
                kAccent, 0.5f);
 
-    auto along = [](double v) { return kRatioTrack.x + static_cast<float>(std::clamp(v, 0.0, 1.0)) * kRatioTrack.w; };
+    // The track runs on to 128, where modulation can take the ratio; a faint mark at 64, where the ratio set stops.
+    auto along = [](double v) {
+        return kRatioTrack.x + static_cast<float>(std::clamp(v, 0.0, kRatioModNorm) / kRatioModNorm) * kRatioTrack.w;
+    };
     c.fillRect(kRatioTrack, kTrack, 1.0f);
+    c.fillRect({along(1.0) - 0.5f, kRatioTrack.y - 1.5f, 1.0f, kRatioTrack.h + 3.0f}, kFaint, 0.0f);
     // A switched-off source's reach is faint; the one whose depth handle is under the mouse is wider, over the others.
     auto reach = [&](const Assignment &m, bool wide) {
         const auto [down, up] = modReach(m);

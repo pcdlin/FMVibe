@@ -1396,7 +1396,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // A source's handle dropped on the readout modulates it, its reach drawn in its color along the track.
     click(view, sourceAdd(SourceType::Lfo));
-    const Point track{944.0f, 199.0f}; // on the track over the digits, a little above 3.50 (at x 935)
+    const Point track{938.0f, 199.0f}; // on the track over the digits, a little above 3.50 (at x 932)
     view.mouseMove({600.0f, 300.0f}, {});
     renderer.save(view, dir / "3g-ratio-plain.png");
     const uint32_t bare = renderer.pixel(track);

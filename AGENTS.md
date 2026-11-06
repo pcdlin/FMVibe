@@ -49,7 +49,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
     still ends;
-  - an operator's Ratio taking modulation on its log curve, continuously (a seventh of its range an octave);
+  - an operator's Ratio taking modulation on its log curve, continuously (a seventh of its range an octave), and one
+    set to 64 modulated on to 128 and no further;
   - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, with its
     Pitch and Detune turned and modulated;
   - a new instance has only operator A on, no filter key tracking or going out, its shaper effects linked, its

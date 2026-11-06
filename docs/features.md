@@ -20,7 +20,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     from mono to fully uncorrelated left and right;
   - **Ratio**, 0.50 to 64.00 times the note, set to the hundredth. It is stored on a log curve, so a host's knob
     gives 1 to 2 as much travel as 32 to 64, and a modulation's depth is the same interval wherever the ratio is set
-    (a seventh of the range is an octave); modulated, it glides continuously. Patches saved before it (state version
+    (a seventh of the range is an octave); modulated, it glides continuously, and goes on past 64 up to 128. Patches saved before it (state version
     4 and earlier), which had a stepped Coarse (0.5, 1…32) and a Fine adding up to +100 %, load their ratio from those
     as they played, and a modulation on either moves onto Ratio with the depth that reaches the ratio its full swing
     reached from where the ratio is set. Each operator's pitch moves to a new control block's value over the block's
@@ -636,7 +636,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
     the digit under the mouse, and a double-click rounds to it (on the ones, 3.47 becomes 3.00). The digit under the
     mouse, or being dragged, is lit behind. Ctrl+Click or the menu's Edit value types a value, which can be a
-    fraction (7/2) or start with ×. Over the digits a track runs from 0.5 to 64 on a log scale: a tick at the ratio,
+    fraction (7/2) or start with ×. Over the digits a track runs from 0.5 to 128 on a log scale, a faint mark at 64 where the ratio set stops: a tick at the ratio,
     each modulation's reach in its source's color (wider while its depth handle is hovered), and a dot where
     modulation takes the newest voice; the depth handles sit along the box's bottom edge, clear of it, and a source's handle
     dropped anywhere on the box modulates it. A keyboard on the summary

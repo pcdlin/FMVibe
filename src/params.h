@@ -1256,6 +1256,12 @@ inline double coarseRatio(double coarse) {
 // interval wherever the ratio is set, and 1 to 2 takes as much of a host's knob as 32 to 64.
 constexpr double kMinRatio = 0.5;
 constexpr double kMaxRatio = 64.0;
+// Modulation takes it an octave further, to 128: past the top of its range by a seventh of it, the share of the
+// curve's seven octaves an octave is. The ratio set stays within 0.5 to 64.
+constexpr double kMaxModRatio = 128.0;
+constexpr double kRatioModNorm = 8.0 / 7.0;
+static_assert(kMaxRatio / kMinRatio == 128.0 && kMaxModRatio == 2.0 * kMaxRatio,
+              "kRatioModNorm is the norm an octave past kMaxRatio on a seven-octave curve");
 inline double ratioFromNorm(double x) { return kMinRatio * std::pow(kMaxRatio / kMinRatio, x); }
 inline double normFromRatio(double ratio) {
     return std::clamp(std::log(std::max(ratio, 1e-9) / kMinRatio) / std::log(kMaxRatio / kMinRatio), 0.0, 1.0);
