@@ -148,6 +148,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after;
+  - a shimmer's tail after an A4, with Shimmer half and full up: falling 60 dB in about its decay time, its energy
+    on the octaves and the first two octaves up narrow lines (not smeared by the shifter's crossfades); and at the
+    longest decay, undamped and full up, still dying away;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the

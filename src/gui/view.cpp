@@ -4046,12 +4046,13 @@ void View::paintReverb(Canvas &c, Rect r, int slot) {
         }
     }
     // A shimmer's shifted tail in sparks off the outline, above it for a shift up and below it for one down: each
-    // step of the interval later, further out and fainter, the more so the less it shifts. A quarter of the lines
-    // shift, so a step takes about four rounds of them to come in.
+    // step of the interval later, further out and fainter, the more so the less it shifts. The shifted tail goes
+    // back into the reverb and builds up as the tail does, so each step comes to the fore about a fifth of the
+    // decay after the last.
     const double interval = at(FxParam::ReverbShimmerPitch);
     const float amount = static_cast<float>(at(FxParam::ReverbShimmer));
     if (type == ReverbType::Shimmer && std::abs(interval) >= 0.5 && amount > 0.0f) {
-        const double round = 4.0 * (kReverbLongest * space + 0.5 * kShimmerWindow);
+        const double round = 0.2 * decay;
         const float side = interval > 0.0 ? -1.0f : 1.0f;
         for (int step = 1; step <= 3; ++step) {
             const double from = pre + step * round;

@@ -136,14 +136,17 @@ constexpr double kWanderRates[] = {0.31, 0.83, 0.47, 0.97, 0.37, 0.71, 0.53, 0.8
 constexpr double kReverbInSigns[] = {1, 1, -1, 1, 1, -1, -1, 1, -1, 1, 1, -1, 1, -1, 1, 1};
 constexpr double kReverbOutSigns[2][16] = {{1, -1, 1, 1, -1, 1, -1, -1, 1, 1, 1, -1, -1, -1, 1, -1},
                                            {1, 1, -1, 1, 1, 1, -1, -1, -1, 1, -1, 1, -1, 1, 1, 1}};
-// The lines a shimmer reads through its pitch shifters as well: short and long ones.
-constexpr int kShimmerLineIndices[] = {2, 6, 9, 13};
-// Their crossfades sit an eighth of a cycle apart, pi / 8 apart in angle: the cosine and sine of 0, 1, 2 and 3 of those.
-constexpr double kCosEighth = 0.92387953251128676, kSinEighth = 0.38268343236508977; // of pi / 8
-constexpr double kEighthTurns[][2] = {{1.0, 0.0},
-                                      {kCosEighth, kSinEighth},
-                                      {std::numbers::sqrt2 / 2.0, std::numbers::sqrt2 / 2.0},
-                                      {kSinEighth, kCosEighth}};
+// A shimmer's pitch shifters, one a side on the tail going back in: two read heads each, sweeping a window this long
+// (seconds) at least kShimmerNearest behind, and crossfading as they jump back.
+constexpr double kShimmerWindow = 0.1;
+constexpr double kShimmerNearest = 0.002;
+// How much of the energy its tail gives back a shimmer feeds in again shifted, the Shimmer knob up full: under unity,
+// so each step of the interval is fainter than the last, even before the band-pass takes its share.
+constexpr double kShimmerLoop = 0.7;
+// How much of the stretch that feedback would give the tail its lines' decay takes back. Not all of it: the band-pass
+// takes its share each time round, more of it the higher a shift up climbs, so the tail lasts about the decay time
+// with Shimmer anywhere (a little longer half way, a little shorter full up).
+constexpr double kShimmerStretch = 0.6;
 constexpr double kMaxPreDelay = 0.25;
 constexpr double kMaxFlangerDelay = 0.032; // the longest center delay at full depth, with room
 constexpr double kWidenerSweep = 0.12;    // how far the widener's taps are swept either way, of their delay
@@ -324,10 +327,12 @@ void Effects::prepare(double sampleRate) {
             comb.assign(static_cast<size_t>(combLength(sampleRate)), 0.0f);
         slot.filter.settingsFor.fill(std::numeric_limits<double>::quiet_NaN()); // for this rate
 
-        // Room behind the longest line for its wavering, the most of any algorithm, and a shimmer's window.
-        const double reach = kReverbLongest + 2.0 * kReverbWander * reverbStyle(ReverbType::Shimmer).wander + kShimmerWindow;
+        // Room behind the longest line for its wavering, the most of any algorithm.
+        const double reach = kReverbLongest + 2.0 * kReverbWander * reverbStyle(ReverbType::Shimmer).wander;
         for (ZeroBuffer &line : slot.reverb.lines)
             line.assign(static_cast<size_t>(std::ceil(reach * sampleRate)) + 4, 0.0f);
+        for (ZeroBuffer &line : slot.reverb.shifter)
+            line.assign(static_cast<size_t>(std::ceil((kShimmerNearest + kShimmerWindow) * sampleRate)) + 4, 0.0f);
         const double longestDiffuser = std::max(*std::max_element(std::begin(kDiffuserSeconds[0]), std::end(kDiffuserSeconds[0])),
                                                 *std::max_element(std::begin(kDiffuserSeconds[1]), std::end(kDiffuserSeconds[1])));
         const size_t widest = static_cast<size_t>(std::ceil(longestDiffuser * sampleRate)) + 4;
@@ -347,12 +352,15 @@ void Effects::prepare(double sampleRate) {
     analyzer_.prepare(sampleRate);
     static_assert(std::size(kReverbSeconds) == kReverbLines && std::size(kWanderRates) == kReverbLines &&
                   std::size(kReverbInSigns) == kReverbLines && std::size(kDiffuserSeconds[0]) == kDiffusers &&
-                  std::size(kDiffuserGains) == kDiffusers && std::size(kShimmerLineIndices) == kShimmerLines);
+                  std::size(kDiffuserGains) == kDiffusers);
+    double inverses = 0.0;
     for (int i = 0; i < kReverbLines; ++i) {
         reverbLengths_[i] = kReverbSeconds[i] * sampleRate;
+        inverses += 1.0 / reverbLengths_[i];
         const double step = 2.0 * std::numbers::pi * kWanderRates[i] / sampleRate;
         wanderTurn_[i] = {std::cos(step), std::sin(step)};
     }
+    reverbMeanLength_ = kReverbLines / inverses;
     for (int side = 0; side < 2; ++side)
         for (int i = 0; i < kDiffusers; ++i)
             diffuserLengths_[side][i] = static_cast<int>(std::lround(kDiffuserSeconds[side][i] * sampleRate));
@@ -450,9 +458,12 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
                 diffuser.zero();
         for (ZeroBuffer &line : r.preDelay)
             line.zero();
-        r.lineWrite = r.diffuserWrite = r.preWrite = 0;
+        for (ZeroBuffer &line : r.shifter)
+            line.zero();
+        r.lineWrite = r.diffuserWrite = r.preWrite = r.shiftWrite = 0;
         r.shimmerPhase = 0.0;
-        r.shimmerLow = r.shimmerBass = {};
+        r.shimmerLow = {};
+        r.shimmerBass = {};
         r.damp = {};
         r.gainsFor = {std::numeric_limits<double>::quiet_NaN()}; // the sample rate may have changed
         for (int i = 0; i < kReverbLines; ++i) { // each line's wavering starts somewhere else
@@ -460,7 +471,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
             r.wanderCos[i] = std::cos(angle);
             r.wanderSin[i] = std::sin(angle);
         }
-        r.shimmer = std::clamp(at(FxParam::ReverbShimmer), 0.0, 1.0);
+        r.shimmer = 0.0; // fades in with the rest
         r.size = reverbSpace(at(FxParam::ReverbSize), reverbType(at(FxParam::ReverbType)));
         r.preLength = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
         r.dry = delayDryLevel(at(FxParam::ReverbMix));
@@ -928,9 +939,6 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
         for (int d = r.diffusersUsed; d < style.diffusers; ++d)
             r.diffusers[c][d].zero();
     r.diffusersUsed = style.diffusers;
-    if (style.shimmer && !r.shimmered)
-        r.shimmerLow = r.shimmerBass = {};
-    r.shimmered = style.shimmer;
     const double sizeTarget = reverbSpace(at(FxParam::ReverbSize), type); // a new algorithm's length glides too
     const double preTarget = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
     // A room's early reflections spread with its size, after the pre-delay; they stay inside the buffer.
@@ -940,56 +948,76 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const double dryStep = rampStep(r.dry, delayDryLevel(mix), n);
     const double wetStep = rampStep(r.wet, delayWetLevel(mix), n);
     const double widthStep = rampStep(r.width, at(FxParam::ReverbWidth), n);
-    // A shimmer reads its shifted lines through two heads each that sweep a window behind the line's length: as fast
-    // as the interval asks, closing in for a shift up and falling back for one down, each crossfading as it jumps
-    // back across the window. They read with the line's own head, as far as the Shimmer knob says.
-    const double window = kShimmerWindow * sampleRate_;
+    constexpr double kInGain = 0.35355339059327373; // 1 / sqrt(8): each side goes into half the lines
+    constexpr double kOutGain = 0.22; // about 1 / sqrt(16), a little under, for the level a mono sound had before
+    // A shimmer feeds its tail back into its lines, band-passed and pitch-shifted, so each time round part of it
+    // climbs (or falls) by the interval. It goes in past the all-passes: run through them again each time round,
+    // the shifted tail would ring metallic. The share of the tail's energy that comes back, the Shimmer knob's times
+    // kShimmerLoop, sets how much. Within a semitone the shifted tail would much be the tail itself, ringing on
+    // rather than shimmering, so the loop fades out there.
     const double pitch = std::clamp(at(FxParam::ReverbShimmerPitch), -24.0, 24.0);
     const double ratio = std::exp2(pitch / 12.0);
-    // Shifted a semitone or more, what the heads read has moved off what the line's own head reads, so they add up
-    // in power: their crossfades keep it (sine windows). Within half a semitone they read much the same thing and
-    // add up in level, which crossfades only keep from growing by taking it down in power (squared windows); in
-    // between, a blend. Either way the loop stays below unity.
-    const double power = std::clamp(2.0 * std::abs(pitch) - 1.0, 0.0, 1.0);
-    const double shimmerTarget = style.shimmer ? std::clamp(at(FxParam::ReverbShimmer), 0.0, 1.0) : 0.0;
-    const double shimmerStep = rampStep(r.shimmer, shimmerTarget, n);
-    // What the shifters read is band-passed each time round, so it doesn't build up rumble below or turn harsh
-    // above: from 200 Hz up to 8 kHz, which the damping takes down to 2 kHz.
-    const double shimmerLow = onePole(8000.0 * std::pow(0.25, at(FxParam::ReverbDamping)), sampleRate_);
-    const double shimmerBass = onePole(200.0, sampleRate_);
-    // Each line's gain takes it down 60 dB in the decay time, for the length it has at this chunk's size (a shifted
-    // line's heads read half a window further back, as far as they are heard), and its shelf as much again
-    // kReverbHighDecay as fast above the damping's corner: 20 kHz down to 1 kHz.
+    const double share = style.shimmer ? kShimmerLoop * std::clamp(at(FxParam::ReverbShimmer), 0.0, 1.0) *
+                                             std::min(std::abs(pitch), 1.0)
+                                       : 0.0;
+    // Each line's gain takes it down 60 dB in the decay time, for the length it has at this chunk's size, and its
+    // shelf as much again kReverbHighDecay as fast above the damping's corner: 20 kHz down to 1 kHz. What a shimmer
+    // feeds back would stretch its tail by 1 / (1 - share) were nothing lost on the way, so its lines fall faster,
+    // by kShimmerStretch of that, and the tail as a whole still takes about the decay time.
     const double corner =
         onePole(20000.0 * std::pow(0.05, at(FxParam::ReverbDamping)) * style.brightness, sampleRate_);
-    const double decay = reverbDecay(at(FxParam::ReverbDecay));
-    if (r.gainsFor != std::array<double, 3>{r.size, shimmerTarget, decay}) { // worked out again once they move
-        r.gainsFor = {r.size, shimmerTarget, decay};
+    const double decay = reverbDecay(at(FxParam::ReverbDecay)) * (1.0 - kShimmerStretch * share);
+    if (r.gainsFor != std::array<double, 3>{r.size, share, decay}) { // worked out again once they move
+        r.gainsFor = {r.size, share, decay};
         for (int i = 0; i < kReverbLines; ++i) {
-            const bool shifted = std::find(std::begin(kShimmerLineIndices), std::end(kShimmerLineIndices), i) !=
-                                 std::end(kShimmerLineIndices);
-            const double length = reverbLengths_[i] * r.size + (shifted ? 0.5 * window * shimmerTarget : 0.0);
+            const double length = reverbLengths_[i] * r.size;
             r.gains[i] = std::pow(10.0, -3.0 * length / (decay * sampleRate_));
             r.highs[i] = std::pow(10.0, -3.0 * length / (decay * kReverbHighDecay * sampleRate_)) / r.gains[i];
         }
     }
+    // What goes into a side comes out of each at kOutGain^2 of its energy and again each time round the lines,
+    // falling 60 dB over the decay; both sides fed back, twice that comes round. The shifters keep the power of
+    // what they read, so the gain they feed back at makes it the share.
+    const double rounds = 1.0 - std::pow(10.0, -6.0 * reverbMeanLength_ * r.size / (decay * sampleRate_));
+    const double shimmerTarget = std::sqrt(share * rounds / (2.0 * kOutGain * kOutGain));
+    const double shimmerStep = rampStep(r.shimmer, shimmerTarget, n);
+    const bool shifting = r.shimmer > 0.0 || shimmerTarget > 0.0;
+    if (shifting && r.shimmer == 0.0) { // starting again: nothing from the last time it ran goes back in
+        for (ZeroBuffer &line : r.shifter)
+            line.zero();
+        r.shimmerLow = {};
+        r.shimmerBass = {};
+    }
+    // Each shifter's two heads sweep the window as fast as the interval asks, closing in for a shift up and falling
+    // back for one down, each fading out (on a sine) as it jumps back across the window while the other, half a
+    // window away, is heard in full; the right side's heads are a quarter of a cycle on, so the two sides' fades
+    // don't dip together. What a tail holds is diffuse, so the two heads add up in power, which the fades keep.
+    const double window = kShimmerWindow * sampleRate_;
+    const double nearest = kShimmerNearest * sampleRate_;
+    const double phaseStep = (1.0 - ratio) / window;
+    // What the shifters read is band-passed on its way in, so what goes round doesn't build up rumble below or turn
+    // harsh above: from 200 Hz (6 dB an octave) up to 8 kHz (two low-passes in a row, 24 dB an octave, so what
+    // climbs past the top stops there), which the damping takes down to 2 kHz. For a shift up the top comes
+    // down so it stays well under Nyquist shifted, and for a shift down the bottom goes up as far, so it stays above
+    // 200 Hz.
+    const Coefs low = biquad(BiquadType::LowPass,
+                             std::min(8000.0 * std::pow(0.25, at(FxParam::ReverbDamping)),
+                                      0.25 * sampleRate_ / std::max(ratio, 1.0)),
+                             sampleRate_);
+    const BiquadCoefs shimmerLow{low.b0, low.b1, low.b2, low.a1, low.a2};
+    const double shimmerBass = onePole(200.0 / std::min(ratio, 1.0), sampleRate_);
+    const int shiftSize = static_cast<int>(r.shifter[0].size());
     const std::array<double, kReverbLines> &gains = r.gains, &highs = r.highs;
     const double wander = kReverbWander * style.wander * sampleRate_;
-    constexpr double kInGain = 0.35355339059327373; // 1 / sqrt(8): each side goes into half the lines
-    constexpr double kOutGain = 0.22; // about 1 / sqrt(16), a little under, for the level a mono sound had before
     const int lineSize = static_cast<int>(r.lines[0].size());
     const int diffuserSize = static_cast<int>(r.diffusers[0][0].size());
     const int preSize = static_cast<int>(r.preDelay[0].size());
 
-    // How much of a shifted line keeps its own head and how much its shifters give, for the Shimmer they were worked
-    // out at.
-    double keepGiveFor = std::numeric_limits<double>::quiet_NaN(), keep = 1.0, give = 0.0;
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
         r.dry += dryStep;
         r.wet += wetStep;
         r.width += widthStep;
-        r.shimmer += shimmerStep;
         r.size += (sizeTarget - r.size) * glide;
         r.preLength += (preTarget - r.preLength) * glide;
         const double x[2] = {io[0][s], io[1][s]};
@@ -1005,6 +1033,29 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
             }
         }
         r.preWrite = r.preWrite + 1 == preSize ? 0 : r.preWrite + 1;
+        // The shifted tail, going into the lines: each side into the half the other side's input doesn't, signed as
+        // the left side of the output takes them.
+        double fed[2] = {0.0, 0.0};
+        if (shifting) {
+            r.shimmer += shimmerStep;
+            // The left side's heads read at the phase a and a + 1/2, faded by sin(pi a) and |cos(pi a)|, which the
+            // phase going round 0..1 makes |sin| and |cos| of it unwrapped; the right side's, a quarter on.
+            const double sinA = std::sin(std::numbers::pi * r.shimmerPhase);
+            const double cosA = std::cos(std::numbers::pi * r.shimmerPhase);
+            constexpr double kHalf = std::numbers::sqrt2 / 2.0;
+            const double fades[2][2] = {{sinA, std::abs(cosA)},
+                                        {std::abs(sinA + cosA) * kHalf, std::abs(cosA - sinA) * kHalf}};
+            for (int c = 0; c < 2; ++c) {
+                double a = r.shimmerPhase + 0.25 * c;
+                a -= a >= 1.0 ? 1.0 : 0.0;
+                const double b = a >= 0.5 ? a - 0.5 : a + 0.5;
+                const double heads = readBehind(r.shifter[c], r.shiftWrite, nearest + a * window) * fades[c][0] +
+                                     readBehind(r.shifter[c], r.shiftWrite, nearest + b * window) * fades[c][1];
+                fed[c] = heads * r.shimmer;
+            }
+            r.shimmerPhase += phaseStep;
+            r.shimmerPhase -= std::floor(r.shimmerPhase);
+        }
         std::array<std::array<int, kDiffusers>, 2> diffuserTap;
         for (int c = 0; c < 2; ++c)
             for (int d = 0; d < style.diffusers; ++d)
@@ -1029,37 +1080,6 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
             r.wanderSin[i] = sn * wanderTurn_[i][0] + c * wanderTurn_[i][1];
             out[i] = readBehind(r.lines[i], r.lineWrite, reverbLengths_[i] * r.size + wander * (1.0 + r.wanderSin[i]));
         }
-        if (style.shimmer || r.shimmer > 0.0) {
-            if (r.shimmer != keepGiveFor) { // worked out again only while Shimmer moves
-                keepGiveFor = r.shimmer;
-                const double angle = 0.5 * std::numbers::pi * r.shimmer;
-                keep = 1.0 - r.shimmer + (std::cos(angle) - 1.0 + r.shimmer) * power;
-                give = r.shimmer + (std::sin(angle) - r.shimmer) * power;
-            }
-            // The heads' crossfades, sin(pi a) and |cos(pi a)| at each line's a below: its sine and cosine turned on
-            // by an eighth of a cycle a line, from the first line's.
-            const double sinA = std::sin(std::numbers::pi * r.shimmerPhase);
-            const double cosA = std::cos(std::numbers::pi * r.shimmerPhase);
-            for (int k = 0; k < kShimmerLines; ++k) {
-                // Each line's heads an eighth of a cycle after the last's, so their crossfades don't all dip together.
-                // The phase is in 0..1, so this is its fmod(1), exactly.
-                const int i = kShimmerLineIndices[k];
-                const double ahead = r.shimmerPhase + 0.125 * k;
-                const double a = ahead >= 1.0 ? ahead - 1.0 : ahead, b = a + 0.5 >= 1.0 ? a - 0.5 : a + 0.5;
-                const double length = reverbLengths_[i] * r.size;
-                const double headA = readBehind(r.lines[i], r.lineWrite, length + a * window);
-                const double headB = readBehind(r.lines[i], r.lineWrite, length + b * window);
-                const double fadeA = std::abs(sinA * kEighthTurns[k][0] + cosA * kEighthTurns[k][1]);
-                const double fadeB = std::abs(cosA * kEighthTurns[k][0] - sinA * kEighthTurns[k][1]);
-                const double shifted = headA * (fadeA * fadeA + (fadeA - fadeA * fadeA) * power) +
-                                       headB * (fadeB * fadeB + (fadeB - fadeB * fadeB) * power);
-                r.shimmerLow[k] += shimmerLow * (shifted - r.shimmerLow[k]);
-                r.shimmerBass[k] += shimmerBass * (r.shimmerLow[k] - r.shimmerBass[k]);
-                out[i] = out[i] * keep + (r.shimmerLow[k] - r.shimmerBass[k]) * give;
-            }
-            r.shimmerPhase += (1.0 - ratio) / window;
-            r.shimmerPhase -= std::floor(r.shimmerPhase);
-        }
         double wet[2] = {0.0, 0.0};
         std::array<double, kReverbLines> back; // each set below
         for (int i = 0; i < kReverbLines; ++i) {
@@ -1070,10 +1090,21 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
         }
         hadamard(back);
         for (int i = 0; i < kReverbLines; ++i)
-            r.lines[i][r.lineWrite] = static_cast<float>(back[i] + in[i % 2] * kReverbInSigns[i] * kInGain);
+            r.lines[i][r.lineWrite] = static_cast<float>(
+                back[i] + (in[i % 2] * kReverbInSigns[i] + fed[(i + 1) % 2] * kReverbOutSigns[0][i]) * kInGain);
         r.lineWrite = r.lineWrite + 1 == lineSize ? 0 : r.lineWrite + 1;
-        wet[0] = wet[0] * kOutGain + early[0];
-        wet[1] = wet[1] * kOutGain + early[1];
+        wet[0] *= kOutGain;
+        wet[1] *= kOutGain;
+        if (shifting) { // what the shifters will read, band-passed
+            for (int c = 0; c < 2; ++c) {
+                const double top = r.shimmerLow[c][1].process(r.shimmerLow[c][0].process(wet[c], shimmerLow), shimmerLow);
+                r.shimmerBass[c] += shimmerBass * (top - r.shimmerBass[c]);
+                r.shifter[c][r.shiftWrite] = static_cast<float>(top - r.shimmerBass[c]);
+            }
+            r.shiftWrite = r.shiftWrite + 1 == shiftSize ? 0 : r.shiftWrite + 1;
+        }
+        wet[0] += early[0];
+        wet[1] += early[1];
         const double middle = 0.5 * (wet[0] + wet[1]);
         const double side = 0.5 * (wet[0] - wet[1]) * r.width;
         io[0][s] = static_cast<float>(x[0] * r.dry + (middle + side) * r.wet);

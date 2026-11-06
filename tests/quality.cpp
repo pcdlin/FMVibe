@@ -1762,6 +1762,102 @@ int main() {
         check(std::abs(t60 / 2.5 - 1.0) < 0.15, "an undamped reverb's tail falls 60 dB in its decay time");
     }
 
+    // --- A shimmer's tail after a 0.4 s A4 sine (4 s decay, at full wet), with Shimmer half and full up. As a whole it
+    // falls 60 dB in about the decay time; its energy stays on the octaves (within 3 %), where the shifter puts it; and
+    // each of the first two octaves up is a narrow line, not smeared by the shifter's crossfades: most of its energy
+    // within 4 Hz. At the longest decay, undamped, with Shimmer full up, it still dies away.
+    std::printf("shimmer tails (an A4 sine, 4 s decay):\n");
+    {
+        auto shimmer = [](double amount, double decay, double damping, double seconds) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Shimmer);
+            p[paramIndex(0, FxParam::ReverbShimmer)] = amount;
+            p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(decay);
+            p[paramIndex(0, FxParam::ReverbDamping)] = damping;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+            const size_t total = static_cast<size_t>(seconds * kSampleRate), note = static_cast<size_t>(0.4 * kSampleRate);
+            std::vector<float> left(total, 0.0f), right(total, 0.0f);
+            for (size_t i = 0; i < note; ++i) {
+                const double fade = std::min({1.0, i / 240.0, (note - i) / 240.0});
+                left[i] = right[i] =
+                    static_cast<float>(0.3 * fade * std::sin(2.0 * std::numbers::pi * 440.0 * i / kSampleRate));
+            }
+            for (size_t done = 0; done < total; done += kBlock)
+                fx.process(left.data() + done, right.data() + done,
+                           static_cast<uint32_t>(std::min<size_t>(kBlock, total - done)), p, 120.0, 60.0);
+            return left;
+        };
+        // The power spectrum of [from, to) s, Hann-windowed pieces of n samples averaged, and the energy in a band.
+        auto spectrum = [](const std::vector<float> &x, double from, double to, size_t n) {
+            std::vector<double> power(n / 2, 0.0);
+            for (size_t s = static_cast<size_t>(from * kSampleRate); s + n <= static_cast<size_t>(to * kSampleRate);
+                 s += n / 2) {
+                std::vector<std::complex<double>> a(n);
+                for (size_t i = 0; i < n; ++i)
+                    a[i] = x[s + i] * (0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * i / n));
+                fft(a);
+                for (size_t k = 0; k < n / 2; ++k)
+                    power[k] += std::norm(a[k]);
+            }
+            return power;
+        };
+        auto band = [](const std::vector<double> &power, double lo, double hi) {
+            const double bin = kSampleRate / (2.0 * power.size());
+            double e = 0.0;
+            for (size_t k = static_cast<size_t>(lo / bin); k <= static_cast<size_t>(hi / bin); ++k)
+                e += power[k];
+            return e;
+        };
+        bool lasts = true, onOctaves = true, narrow = true;
+        for (double amount : {0.5, 1.0}) {
+            const std::vector<float> tail = shimmer(amount, 4.0, 0.4, 4.5);
+            // Half-second pieces from 0.5 to 4 s into the tail (0.9 to 4.4 s): the level they fall by, and what lies
+            // off the octaves.
+            double first = 0.0, last = 0.0, off = 0.0;
+            constexpr int kPieces = 7;
+            for (int piece = 0; piece < kPieces; ++piece) {
+                const double from = 0.9 + 0.5 * piece;
+                const std::vector<double> power = spectrum(tail, from, from + 0.5, 8192);
+                const double total = band(power, 40.0, 20000.0);
+                double on = 0.0;
+                for (int k = 0; k <= 5; ++k)
+                    on += band(power, 440.0 * std::exp2(k) * 0.97, 440.0 * std::exp2(k) * 1.03);
+                off += 10.0 * std::log10((total - on) / total) / kPieces;
+                first = piece == 0 ? total : first;
+                last = total;
+            }
+            const double t60 = 60.0 * 0.5 * (kPieces - 1) / (10.0 * std::log10(first / last));
+            const std::vector<double> fine = spectrum(tail, 0.7, 2.7, 32768);
+            auto line = [&](double hz) { return 10.0 * std::log10(band(fine, hz - 4.0, hz + 4.0) / band(fine, hz - 60.0, hz + 60.0)); };
+            const double octave = line(880.0), two = line(1760.0);
+            std::printf("      Shimmer %3.0f %%: falls 60 dB in %.2f s, %.1f dB of it off the octaves, 880 and 1760 Hz "
+                        "within 4 Hz %.1f and %.1f dB\n",
+                        100.0 * amount, t60, off, octave, two);
+            lasts = lasts && t60 > 0.7 * 4.0 && t60 < 1.35 * 4.0;
+            onOctaves = onOctaves && off < -11.0;
+            narrow = narrow && octave > -2.5 && two > -5.0;
+        }
+        check(lasts, "a shimmer's tail falls 60 dB in about its decay time, with Shimmer half and full up");
+        check(onOctaves, "a shimmer's tail keeps its energy on the octaves its shifter climbs to");
+        check(narrow, "a shimmer's shifted octaves are narrow lines, not smeared by the shifter's crossfades");
+        const std::vector<float> longest = shimmer(1.0, 20.0, 0.0, 30.0);
+        auto energy = [&](double from) {
+            double e = 0.0;
+            for (size_t i = static_cast<size_t>(from * kSampleRate); i < static_cast<size_t>((from + 1.0) * kSampleRate); ++i)
+                e += longest[i] * longest[i];
+            return e;
+        };
+        const double early = energy(5.0), late = energy(28.0);
+        std::printf("      20 s decay, undamped, Shimmer full: 28 s against 5 s %.1f dB\n", 10.0 * std::log10(late / early));
+        check(std::isfinite(late) && late < 0.1 * early, "a shimmer's tail dies away at its longest decay, undamped");
+    }
+
     // --- The voice filters' analyzers: an A4 sine through filter 1 shows in its band, turned down by a low-pass
     // an octave under it; filter 2, switched off, shows nothing.
     std::printf("voice filter analyzers:\n");
