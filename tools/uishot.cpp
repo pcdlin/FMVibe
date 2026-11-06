@@ -413,10 +413,10 @@ Point waveButton(int button) {
     return {900.0f + button * kStep + (kStep - 4.0f) * 0.5f, 177.0f};
 }
 const Point kNoiseButton = waveButton(4);
-// An operator page's tabs, ENVELOPE, UNISON and SCOPE (by InspectorTab), and the scope's buttons for 1, 2 and 4
-// cycles in its display's top right corner.
+// An operator page's tabs, ENVELOPE, UNISON, INPUTS and SCOPE (by InspectorTab), and the scope's buttons for 1, 2
+// and 4 cycles in its display's top right corner.
 Point opTabPoint(InspectorTab tab) {
-    constexpr float kX[] = {1009.0f, 937.0f, 1071.0f, 1126.0f};
+    constexpr float kX[] = {1009.0f, 937.0f, 1127.0f, 1070.0f};
     return {kX[static_cast<int>(tab)], 270.0f};
 }
 Point scopeCycleButton(int choice) {

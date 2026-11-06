@@ -774,6 +774,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       does.
     - **UNISON**: the unison knobs and Rnd Phase, and a display of where the copies sit (left/right by spread,
       up/down by detune).
+    - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
+      which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
+      naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
+      wire's. Its feedback comes last, with its depth and "phase only". With nothing routed into it, a line says
+      so. The rows close up when there are many.
     - **SCOPE**: the operator's output in the newest voice as it plays, with its unison copies together and
       everything that moves it (the FM it gets, its envelope, the modulation on its level and pitch), before it
       reaches the filters, shapers or the output. It is caught at the operator's own phase, so a span starts where a
@@ -783,11 +788,6 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       operator, whose cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left
       of the last span faint after it. With no note playing, the wave's plain shape shows faintly. The audio thread
       captures only while the tab is shown.
-    - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
-      which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
-      naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
-      wire's. Its feedback comes last, with its depth and "phase only". With nothing routed into it, a line says
-      so. The rows close up when there are many.
 
     A noise operator shows Slope and Spread instead of the pitch knobs, and no Phase; its first tab is
     **SPECTRUM**, its spectrum against white, pink and brown, and it has no scope (picked, it shows its envelope).

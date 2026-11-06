@@ -86,8 +86,8 @@ inline Rect clipEditButton(Rect display) {
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
 inline Rect opTab(int tab) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS by InspectorTab; ENVELOPE first along the line
-    constexpr float kX[] = {78.0f, 0.0f, 144.0f, 200.0f}, kW[] = {62.0f, 74.0f, 54.0f, 52.0f};
+    // UNISON, ENVELOPE, SCOPE, INPUTS by InspectorTab; along the line ENVELOPE, UNISON, INPUTS, SCOPE
+    constexpr float kX[] = {78.0f, 0.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f, 52.0f};
     return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
 }
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
