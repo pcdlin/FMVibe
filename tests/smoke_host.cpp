@@ -3165,6 +3165,43 @@ int main(int argc, char **argv) {
               "earlier state's depths on them swing them as far as before");
     }
 
+    // Glide stops at 6 s since version 7: an earlier state's 20 s loads as 6 s, and a depth on Glide loads larger by
+    // as much as the range shrank, swinging it as far as before; a version 7 state's as it is.
+    {
+        const int glide = paramIndex(GlobalParam::Glide), depth = slotAmountIndex(1, 0);
+        auto loadFrom = [&](uint32_t version, double &glideLoaded, double &depthLoaded) {
+            const std::pair<int, double> stored[] = {
+                {glide, 1.0}, {slotTargetIndex(1, 0), slotTargetValue(glide)}, {depth, 0.5}};
+            MemoryStream old;
+            const uint32_t header[] = {0x38454C43, version, static_cast<uint32_t>(std::size(stored))};
+            old.data.assign(reinterpret_cast<const uint8_t *>(header),
+                            reinterpret_cast<const uint8_t *>(header) + sizeof(header));
+            for (const auto &[index, value] : stored) {
+                const uint32_t id = idOfIndex(index);
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                                reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&value),
+                                reinterpret_cast<const uint8_t *>(&value) + sizeof(value));
+            }
+            glideLoaded = depthLoaded = -1.0;
+            const bool loaded = state->load(plugin, &old.in);
+            plugin->on_main_thread(plugin);
+            if (loaded) {
+                params->get_value(plugin, idOfIndex(glide), &glideLoaded);
+                params->get_value(plugin, idOfIndex(depth), &depthLoaded);
+            }
+        };
+        double glideSix = -1.0, depthSix = -1.0, glideSeven = -1.0, depthSeven = -1.0;
+        loadFrom(6, glideSix, depthSix);
+        loadFrom(7, glideSeven, depthSeven);
+        std::printf("      glide stored at 20 s loads as %.2f s; a depth of 0.5 on it from version 6: %.4f, from "
+                    "version 7: %.4f\n",
+                    timeFromNorm(glideSix), depthSix, depthSeven);
+        check(std::abs(timeFromNorm(glideSix) - 6.0) < 1e-6 && glideSeven == glideSix &&
+                  std::abs(depthSix - 0.5 / kMaxGlideNorm) < 1e-9 && depthSeven == 0.5,
+              "glide stops at 6 s, and an earlier state's depth on it swings it as far as before");
+    }
+
     // An operator's ratio is one param, Ratio, since version 5: an earlier state's loads from its Coarse and Fine as
     // they played (3 and 50 % are 4.5, 0 is 0.5), and a modulation on either moves onto Ratio with the depth that
     // reaches where it reached (a step of Coarse from 4.5 to 6, half of Fine from 0.5 to 0.75). A version 5 state's

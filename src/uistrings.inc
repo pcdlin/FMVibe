@@ -672,6 +672,7 @@ STR(TipClosePartials, "Close partial editor")
 STR(TipDone, "Done")
 STR(TipShapeCollapse, "Collapse")
 STR(TipShapeExpand, "Open large editor")
+STR(TipShapeWiden, "Edit shape") // a Custom LFO's normal card: widens it to edit its shape
 STR(TipShapeInvert, "Invert")
 STR(TipShapeReverse, "Reverse")
 STR(TipShapeShiftLeft, "Shift left")

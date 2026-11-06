@@ -1656,8 +1656,8 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
 // up), whose icon stays where it was and still switches it, and whose name unfolds it; an LFO card folds the
 // same way (to 0.2 of a place) and its strip's grip still moves it.
 // A Custom LFO's card widens to edit its shape in the modulation panel, the panels above staying in use: picking
-// Custom, or a click on a Custom LFO's display, widens it to two card places, the next card moving along. Its shape
-// is drawn there as in the full-size editor; its tools invert, reverse, shift and copy it, Points | Steps and Snap
+// Custom, or a click on a Custom LFO's display or its widen button, widens it to two card places, the next card
+// moving along. Its shape is drawn there as in the full-size editor; its tools invert, reverse, shift and copy it, Points | Steps and Snap
 // pick how a click works and whether points snap; its full-size button opens the shape over the panels, greying the
 // card's editor out until it closes, and its own collapse button, another shape or folding takes the card back to
 // its size; collapsing the modulation panel leaves it widened.
@@ -1689,9 +1689,15 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const bool normal = switches(sourcePower(1), 1);
     click(view, lfoDisplay(0));
     const bool again = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
-    check(widened && normal && again &&
+    // Its normal card's widen button, left of the fold button, widens it too.
+    click(view, wideButton(0, 0));
+    view.mouseMove({cardX(0) + kCardW - 96.0f, 546.0f}, {});
+    const bool button = renderer.save(view, dir / "10d0-lfo-card-widen-button.png") && switches(sourcePower(1), 1);
+    click(view, {cardX(0) + kCardW - 96.0f, 546.0f});
+    const bool byButton = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
+    check(widened && normal && again && button && byButton &&
               model.value(paramIndex(0, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom),
-          "picking Custom widens an LFO's card, and so does a click on its display");
+          "picking Custom widens an LFO's card, and so do a click on its display and its widen button");
     // The inspector stays: its Phase knob turns while the shape shows.
     const double fineBefore = model.value(paramIndex(0, OpParam::Phase));
     drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
@@ -2132,7 +2138,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     constexpr float kHighBar = 201.0f, kMidBar = 218.0f;
     const float mid = kMidBar + 6.0f, high = kHighBar + 6.0f; // down the middle of their bars
     click(view, {60.0f, mid});
-    const Point above = fxKnob(model, 0, 0, 5, 142.0f);
+    const Point above = fxKnob(model, 0, 2, 5, 142.0f);
     drag(view, above, {above.x, above.y - 20.0f});
     check(model.value(mdAboveIndex(0, 1)) > -20.0 && model.value(mdAboveIndex(0, 0)) == -20.0,
           "a three-band dynamics band's row picks which band its knobs set");
@@ -4024,7 +4030,8 @@ void run(const std::filesystem::path &dir, float scale) {
               "the wheel over the keyboard switch fixes an operator as a click does");
     }
 
-    // Play switches: Mono on, Legato on (it starts off), off and on again, Glide to 0.5 (100 px up), Always on.
+    // Play switches: Mono on, Legato on (it starts off), off and on again, Glide half way up its range (100 px up),
+    // Always on.
     click(view, kMonoButton);
     click(view, kLegatoToggle);
     click(view, kLegatoToggle);
@@ -4034,7 +4041,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kAlwaysToggle);
     check(model.value(paramIndex(GlobalParam::Mono)) == 1.0 && legatoFlipped &&
               model.value(paramIndex(GlobalParam::Legato)) == 1.0 &&
-              std::abs(model.value(paramIndex(GlobalParam::Glide)) - 0.5) < 1e-6 &&
+              std::abs(model.value(paramIndex(GlobalParam::Glide)) - 0.5 * kMaxGlideNorm) < 1e-6 &&
               model.value(paramIndex(GlobalParam::GlideAlways)) == 1.0,
           "play switches and the glide knob set their params");
     view.mouseMove(kLegatoToggle, {});

@@ -1640,9 +1640,9 @@ std::vector<View::Widget> View::widgets() const {
                         knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
                              labels.begin()[i]);
                 };
-                row({mdAboveIndex(slot, band), mdDownIndex(slot, band), mdBelowIndex(slot, band), mdUpIndex(slot, band),
+                row({mdBelowIndex(slot, band), mdUpIndex(slot, band), mdAboveIndex(slot, band), mdDownIndex(slot, band),
                      mdGainIndex(slot, band)},
-                    {tr(Str::LabelAbove), tr(Str::LabelDown), tr(Str::LabelBelow), tr(Str::LabelUp),
+                    {tr(Str::LabelBelow), tr(Str::LabelUp), tr(Str::LabelAbove), tr(Str::LabelDown),
                      tr(Str::LabelGain)},
                     kMdBandKnobsY, 30.0f);
                 row({at(FxParam::MdLowFreq), at(FxParam::MdHighFreq), at(FxParam::MdAttack), at(FxParam::MdRelease)},
@@ -2003,13 +2003,19 @@ std::vector<View::Widget> View::widgets() const {
         const Rect p = sourceCard(card, span);
         const bool lfo = sourceTypeOf(s) == SourceType::Lfo;
         const bool widened = s == wideLfo();
+        const bool widens = lfo && !widened && std::lround(value(paramIndex(s, SourceParam::Shape))) ==
+                                                   static_cast<long>(LfoShape::Custom);
         const float fold = sourcePower(card, span).x - 4.0f - 18.0f;
-        const float gripEnd = widened ? lfoCardButton(card, 1).x - 4.0f : fold - 4.0f; // short of the reset, leftmost
+        const float gripEnd = widened ? lfoCardButton(card, 1).x - 4.0f // short of the reset, leftmost
+                              : widens ? lfoWidenButton(card).x - 4.0f
+                                       : fold - 4.0f;
         add(Kind::SourceGrip, {p.x, p.y, gripEnd - p.x, 34.0f}, -1, s, position);
         add(Kind::SourceFold, {fold, p.y + 8.0f, 18.0f, 19.0f}, -1, s);
         add(Kind::SourceHandle, {p.x + 14.0f, p.y + 7.0f, 20.0f, 20.0f}, -1, s);
         add(Kind::Toggle, sourcePower(card, span), sourceEnabledIndex(s));
         add(Kind::SourceRemove, sourceRemove(card, span), -1, s);
+        if (widens)
+            add(Kind::ShapeWiden, lfoWidenButton(card), -1, s);
         if (widened) {
             // Its shape in the card: the title row's buttons, the tools and modes where a normal card's display is,
             // the grid's steppers under the plot, and the plot with its points; greyed out, taking no input and
@@ -5059,7 +5065,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Color color = nodeColor(w.a);
         c.fillRect(w.rect, selected ? color.alpha(enabled ? 1.0f : 0.35f) : (hovered ? kTrack : kRaised.alpha(enabled ? 1.0f : 0.4f)),
                    6.0f);
-        c.text(w.rect, kNodeNames[w.a], 11.0f, selected ? kBackground : (enabled ? kDim : kFaint), Align::Center, true);
+        // An enabled node's name takes a little of its color.
+        c.text(w.rect, kNodeNames[w.a], 11.0f, selected ? kBackground : (enabled ? mix(kDim, color, 0.3f) : kFaint),
+               Align::Center, true);
         if (soundsOut(w.a))
             c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, selected ? kBackground : color);
         break;
@@ -5618,6 +5626,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::ShapeCollapse:
     case Kind::ShapeExpand:
+    case Kind::ShapeWiden:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
         if (w.kind == Kind::ShapeCollapse)
@@ -6294,6 +6303,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::PartialEdit && hover_->kind != Kind::ClipDisplay &&
          hover_->kind != Kind::ShapeDone && hover_->kind != Kind::ShapeCollapse && hover_->kind != Kind::ShapeExpand &&
+         hover_->kind != Kind::ShapeWiden &&
          hover_->kind != Kind::ShapeTool && hover_->kind != Kind::ShapeMode &&
          !(hover_->kind == Kind::ShapeArea && hover_->a == wideLfo() && shapeEditing() != hover_->a) &&
          hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
@@ -6417,6 +6427,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipShapeCollapse);
     else if (hover_->kind == Kind::ShapeExpand)
         text = tr(Str::TipShapeExpand);
+    else if (hover_->kind == Kind::ShapeWiden)
+        text = tr(Str::TipShapeWiden);
     else if (hover_->kind == Kind::ShapeTool) {
         const Str tips[] = {Str::TipShapeInvert, Str::TipShapeReverse, Str::TipShapeShiftLeft,
                             Str::TipShapeShiftRight, Str::TipShapeCopy, Str::TipShapePaste};
@@ -7433,6 +7445,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         flipSwitch(w.param);
         break;
 
+    case Kind::ShapeWiden:
     case Kind::LfoDisplay: // a Custom LFO's widens its card, which then has the shape (and the full-size editor not)
         if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom)) {
             wideLfo_ = w.a;

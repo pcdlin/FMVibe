@@ -114,7 +114,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   to 0 ms through fractions of a millisecond, a stored 0 loading as 1 ms and a version 3 state's depths on them
   loading scaled by as much as their range grew, a version 4 state's ratio loading from its Coarse and
   Fine, their modulations moved onto Ratio (a version 5 state's Coarse and Fine doing nothing), envelope times
-  stored past 10 s loading as 10 s, a layout as large as one gets among them (and one of NaNs,
+  stored past 10 s loading as 10 s, a version 6 state's Glide of 20 s loading as 6 s and its depth on Glide scaled
+  by as much as the range shrank, a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: 16 voices × 6 operators take about a third of what they took
   before the engine's per-block route lists and shared params, which on the development machine was about 22 % of
@@ -297,7 +298,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels), and the full-size LFO shape editor hiding the inspector;
   - a Custom LFO's card: picking Custom widening it, and so a click on its display (the next card moving along), the inspector's knobs turning meanwhile, its shape's points added and dragged in the card, its
     tools inverting, reversing and shifting the shape (each one undo step) and copying it into another LFO (one card
-    widened at a time), Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its
+    widened at a time), its title row's expand button widening it as a click on its display does, Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its
     full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
     tab, the card staying widened, also while the modulation panel collapses, and the
     card back to its size by its collapse button or another shape;
@@ -586,14 +587,15 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 6: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 7: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
   range now reaches below 0 down to 0 ms and a depth is a share of its target's range; before version 5, an
   operator's ratio loads from its Coarse and Fine, and their modulations move onto Ratio; before version 6, a slot
   holding the retired three-band compressor loads as a three-band dynamics, while a later state loads one back as
-  saved, so a state always loads what was saved), followed by the editor layout:
+  saved, so a state always loads what was saved; before version 7, a modulation's depth on Glide loads scaled by
+  `1 / kMaxGlideNorm`, since its range now stops at 6 s), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

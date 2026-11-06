@@ -1275,6 +1275,9 @@ inline double timeFromNorm(double x) { return kMinTime * std::pow(kMaxTime / kMi
 inline double normFromTime(double seconds) { return std::log(seconds / kMinTime) / std::log(kMaxTime / kMinTime); }
 // Where kMaxEnvTime sits on that curve: the top of the envelopes' attack, hold, decay and release.
 inline const double kMaxEnvNorm = normFromTime(kMaxEnvTime);
+// The longest glide, on the same curve; a state or preset with a longer one loads it as this.
+constexpr double kMaxGlideTime = 6.0;
+inline const double kMaxGlideNorm = normFromTime(kMaxGlideTime);
 // The norm a typed time or rate at the shortest or slowest shown is kept at: above 0, which is Off or still, and
 // shown as that shortest time or slowest rate.
 constexpr double kLeastNorm = 1e-6;

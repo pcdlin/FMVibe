@@ -169,7 +169,8 @@ void buildTable(ParamTable &t) {
     add(paramIndex(GlobalParam::Voices), tr(Str::ParamVoices), global, ParamKind::VoiceCount, 1.0, kMaxVoices, 16.0);
     add(paramIndex(GlobalParam::Mono), tr(Str::ParamMono), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
     add(paramIndex(GlobalParam::Legato), tr(Str::ParamLegato), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
-    add(paramIndex(GlobalParam::Glide), tr(Str::ParamGlide), global, ParamKind::TimeOrOff, 0.0, 1.0, 0.0);
+    add(paramIndex(GlobalParam::Glide), tr(Str::ParamGlide), global, ParamKind::TimeOrOff, 0.0, kMaxGlideNorm,
+        0.0);
     add(paramIndex(GlobalParam::GlideAlways), tr(Str::ParamGlideAlways), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
     add(paramIndex(GlobalParam::FxOrder), tr(Str::ParamFxOrder), tr(Str::ModuleFx), ParamKind::FxOrder, 0.0,
         static_cast<double>(kFxOrders - 1), 0.0);

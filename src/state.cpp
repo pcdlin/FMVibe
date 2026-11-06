@@ -42,7 +42,9 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 6: The three-band compressor is retired for the three-band dynamics, so an earlier state's slot holding one loads as
 //    a three-band dynamics doing what it did (see loadRetiredMultiComp()). A later state holding one (a host can still
 //    set the type) loads as it was saved, so a state loads back what was saved.
-constexpr uint32_t kStateVersion = 6;
+// 7: Glide stops at 6 s (kMaxGlideTime) rather than 20 s. An earlier state's longer glide loads as 6 s, and a depth on
+//    Glide loads larger by as much as its range shrank, swinging it as far as before.
+constexpr uint32_t kStateVersion = 7;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -475,6 +477,13 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
                 if (target >= 0 && table[target].kind == ParamKind::EnvTime)
                     loaded[slotAmountIndex(source, slot)] *= kMaxEnvNorm / (table[target].max - table[target].min);
             }
+    if (header[1] < 7) // as far as they swung Glide: its range was 0 to 1 then
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot)
+                if (slotTarget(loaded[slotTargetIndex(source, slot)]) == paramIndex(GlobalParam::Glide)) {
+                    const int depth = slotAmountIndex(source, slot);
+                    loaded[depth] = std::clamp(loaded[depth] / kMaxGlideNorm, table[depth].min, table[depth].max);
+                }
     if (header[1] < 5)
         ratioFromRetired(loaded);
     if (header[1] < 6)

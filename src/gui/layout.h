@@ -388,6 +388,11 @@ inline Rect sourcePower(float card, float span = 1.0f) {
     const Rect p = sourceCard(card, span);
     return {p.right() - 30.0f - 26.0f, p.y + 8.0f, 26.0f, 19.0f};
 }
+// A Custom LFO's normal card: left of the fold button (which is left of the power switch), the button that widens it.
+inline Rect lfoWidenButton(float card) {
+    const float fold = sourcePower(card).x - 4.0f - 18.0f;
+    return {fold - 4.0f - 28.0f, sourceCard(card).y + 7.0f, 28.0f, 22.0f};
+}
 
 // An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes
 // (retrigger, free, anchor and one-shot, as icons), side by side as Poly | Mono are, the two rows as wide.

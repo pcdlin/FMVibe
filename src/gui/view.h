@@ -214,6 +214,7 @@ private:
         ShapeGrid,    // a = axis (0 across, 1 up and down), b = -1 or 1 steps the grid, 0 is its count (wheel)
         ShapeCollapse, // a = lfo: its widened card back to a normal one
         ShapeExpand,  // a = lfo: opens its shape in the full-size editor, over the panels
+        ShapeWiden,   // a = lfo: a Custom LFO's normal card widened to have its shape, as a click on its display does
         ShapeTool,    // a = lfo, b = ShapeTool: a button in its widened card that changes the whole shape
         ShapeMode,    // a = lfo, b = 0 Points, 1 Steps (what a click on its shape does), 2 Snap (to the grid)
         UndoButton,   // a = 0 undoes, 1 redoes

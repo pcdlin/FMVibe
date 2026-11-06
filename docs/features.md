@@ -369,9 +369,11 @@ What the plugin does and how its editor works, in full. Building and installing 
       since its envelopes may start well above nothing. A key played with no other key down attacks as usual.
     - Patches saved before Legato acted in poly (state version 2 and earlier) load it off in poly, where it did
       nothing, so they play as they did; in mono they keep it.
-  - **Glide** (0 = off, 1 ms–20 s) slides the pitch from the previous note, in mono and poly alike. By default it
+  - **Glide** (0 = off, 1 ms–6 s) slides the pitch from the previous note, in mono and poly alike. By default it
     only glides between overlapping notes; **Always** makes it glide on every note. The slide is exponential and
-    covers 99 % of the interval in the glide time. Glide can be modulated like any knob.
+    covers 99 % of the interval in the glide time. Glide can be modulated like any knob. Patches saved when it
+    reached 20 s (state version 6 and earlier) load a longer glide as 6 s, and a modulation's depth on it larger by
+    as much as its range shrank, so it swings Glide as far as it did.
 - **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
   parameters accept CLAP modulation globally, the macros' knobs and depths, the
   mod wheel, the note source's range and depths, velocity's depths and every modulation's Amount and curve among them; those
@@ -487,7 +489,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       where the ratio takes it (Range and the knee left out), seven at most, as far as the bar's end. At 1:1 they
       stand 6 dB apart; they close up evenly toward the threshold as the ratio turns up, and from about 15:1 on stay
       0.4 dB apart. They move with their threshold: toward the bar's end it pushes them out past it, and moving back
-      brings more in. A band's row picks the band its first row of knobs (Above, Down, Below, Up and Gain)
+      brings more in. A band's row picks the band its first row of knobs (Below, Up, Above, Down and Gain)
       sets, the band's name on a plate; the line under those knobs is named after it (ALL BANDS while linked),
       and the shared knobs come in two rows under it, Low X, High X, Attack and Release above Knee, Range, Mix and
       Output. Each bar's threshold lines drag (lit under the mouse): across, a line moves its threshold (Above
@@ -498,7 +500,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       puts them back), showing it where the gain was. Pressing a line or a zone on another band picks that band. Linked, dragging any
       band's line or zone moves every band's the same way, and every band's readout shows the value. RMS and
       Link sit in the card's title row. The
-      card is one and a half places wide, like the Param EQ's. The Above, Down, Below and Up knobs, and Range,
+      card is one and a half places wide, like the Param EQ's. The Below, Up, Above and Down knobs, and Range,
       say in a tooltip which way they work ("Downward threshold", "Upward ratio").
     - the reverb's tail: after the pre-delay it builds up (slower in a bigger space, with its early reflections
       spread wider) and falls to nothing at the decay time, its texture sparser the bigger the space; a room's
@@ -620,8 +622,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     fourth); the ones a lower count hides keep what was drawn. The reset button (a circular arrow) goes back to a
     sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
     edit button (a pencil) on the operator's summary line opens it again. A stroke is one undo step.
-  - **Shape editor**: picking an LFO's Custom shape, or a click anywhere on a Custom LFO's display (which shows an
-    edit button, a pencil, in its corner), widens its card to two card places, the cards after it moving along and the row scrolling to show it
+  - **Shape editor**: picking an LFO's Custom shape, a click anywhere on a Custom LFO's display (which shows an
+    edit button, a pencil, in its corner), or the expand button in its title row, left of the fold button, widens its card to two card places, the cards after it moving along and the row scrolling to show it
     whole, to edit the shape right there while the panels above stay in use: the inspector's knobs, the routes and
     the other views can be turned and switched as the shape changes. The widened card keeps the LFO's own controls where a normal card has them,
     with the shape tools and drawing modes where its display was (see below), and the shape's plot beside them,
@@ -695,7 +697,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   the editor and its window is the active one: a keyboard hook catches them before the host does, so the host's
   own shortcuts keep working everywhere else.
 - **Inspector** (right): tabs A–F, F1 and F2, and S1 and S2 pick what it shows; tabs of switched-off nodes are
-  dimmed, and clicking one switches its operator, filter or shaper on. A dot in a tab's top right corner says the
+  dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little
+  of their node's color. A dot in a tab's top right corner says the
   node's own sound goes out: its Out is up and it is switched on (a filter's or shaper's only while something goes
   into it). Clicking the
   selected tab switches it off, or on again (its
@@ -831,7 +834,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     The Phase knob is faint while it does nothing (a random LFO, or a free one that isn't anchored), and otherwise
     a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A
     unipolar LFO's display has its zero line at the bottom. A Custom LFO's
-    display widens its card, to edit the shape there (see the shape editor).
+    display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor).
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click it
