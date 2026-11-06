@@ -44,7 +44,7 @@ static_assert(std::size(kReverbTypeNames) == static_cast<size_t>(ReverbType::Cou
 constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay,      Str::FxDjEq,
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
-                            Str::FxDisperser, Str::FxWidener};
+                            Str::FxDisperser, Str::FxWidener,   Str::FxMultiDyn};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
                                     Str::SourceMidi};
@@ -570,6 +570,31 @@ void buildTable(ParamTable &t) {
         fx(FxParam::McMix, tr(Str::ParamMcMix), ParamKind::Percent, 0.0, 1.0, 1.0);
         fx(FxParam::McOutput, tr(Str::ParamMcOutput), ParamKind::Decibel, -24.0, 24.0, 0.0);
         fx(FxParam::McLink, tr(Str::ParamMcLink), ParamKind::Toggle, 0.0, 1.0, 0.0);
+
+        // Three-band dynamics: each band pulled down 3:1 above -20 dB and lifted 2:1 below -40 dB, at most 12 dB,
+        // following the bands' RMS levels.
+        fx(FxParam::MdLowFreq, tr(Str::ParamMdLowCrossover), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(200.0));
+        fx(FxParam::MdHighFreq, tr(Str::ParamMdHighCrossover), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(2500.0));
+        for (int band = 0; band < kMcBands; ++band) {
+            const std::string b = name + " " + trf(Str::ParamMdBand, {tr(bandNames[band])});
+            add(mdAboveIndex(slot, band), b + " " + tr(Str::ParamAboveThreshold), module, ParamKind::Decibel, -60.0,
+                0.0, -20.0);
+            add(mdDownIndex(slot, band), b + " " + tr(Str::ParamDownRatio), module, ParamKind::DynRatio, 0.0, 1.0,
+                normFromDynRatio(3.0));
+            add(mdBelowIndex(slot, band), b + " " + tr(Str::ParamBelowThreshold), module, ParamKind::Decibel, -60.0,
+                0.0, -40.0);
+            add(mdUpIndex(slot, band), b + " " + tr(Str::ParamUpRatio), module, ParamKind::DynRatio, 0.0, 1.0,
+                normFromDynRatio(2.0));
+            add(mdGainIndex(slot, band), b + " " + tr(Str::ParamGain), module, ParamKind::Decibel, -12.0, 12.0, 0.0);
+        }
+        fx(FxParam::MdAttack, tr(Str::ParamMdAttack), ParamKind::Time, 0.0, normFromTime(0.5), normFromTime(0.01));
+        fx(FxParam::MdRelease, tr(Str::ParamMdRelease), ParamKind::Time, 0.0, normFromTime(2.0), normFromTime(0.15));
+        fx(FxParam::MdKnee, tr(Str::ParamMdKnee), ParamKind::Decibel, 0.0, 24.0, 6.0);
+        fx(FxParam::MdRange, tr(Str::ParamMdRange), ParamKind::Decibel, 0.0, 36.0, 12.0);
+        fx(FxParam::MdMix, tr(Str::ParamMdMix), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::MdOutput, tr(Str::ParamMdOutput), ParamKind::Decibel, -24.0, 24.0, 0.0);
+        fx(FxParam::MdLink, tr(Str::ParamMdLink), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::MdRms, tr(Str::ParamMdRms), ParamKind::Toggle, 0.0, 1.0, 1.0);
         fx(FxParam::ShaperLink, tr(Str::ParamShaperLink), ParamKind::Toggle, 0.0, 1.0,
             1.0); // turning the drive keeps the level
         fx(FxParam::ShaperSymmetric, tr(Str::ParamShaperSymmetric), ParamKind::Toggle, 0.0, 1.0, 0.0);
@@ -940,6 +965,12 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::CompRatio:
         std::snprintf(out, capacity, "%.1f:1", value);
         break;
+    case ParamKind::DynRatio:
+        if (value >= 1.0)
+            std::snprintf(out, capacity, "\xE2\x88\x9E:1"); // infinity
+        else
+            std::snprintf(out, capacity, dynRatio(value) < 100.0 ? "%.1f:1" : "%.0f:1", dynRatio(value));
+        break;
     case ParamKind::FxType:
         std::snprintf(out, capacity, "%s", nameAt(kFxNames, value));
         break;
@@ -1181,6 +1212,12 @@ bool parseParam(int index, const char *text, double *out) {
         }
     }
 
+    if (def.kind == ParamKind::DynRatio && // "∞", "∞:1" or "inf" is the top of the range
+        (std::strncmp(text, "\xE2\x88\x9E", 3) == 0 || std::strncmp(text, "inf", 3) == 0 ||
+         std::strncmp(text, "Inf", 3) == 0)) {
+        *out = 1.0;
+        return true;
+    }
     if (def.kind == ParamKind::FixedMult || def.kind == ParamKind::OpRatio) { // "×10", "x10" or "10"
         if (std::strncmp(text, "\xC3\x97", 2) == 0)
             text += 2;
@@ -1201,6 +1238,9 @@ bool parseParam(int index, const char *text, double *out) {
         value /= 100.0;
         break;
     case ParamKind::CompRatio: // "4:1", "4.0:1" or "4"
+        break;
+    case ParamKind::DynRatio: // likewise
+        value = normFromDynRatio(std::max(value, 1.0));
         break;
     case ParamKind::Q:
         value = normFromQ(std::max(value, kMinQ));

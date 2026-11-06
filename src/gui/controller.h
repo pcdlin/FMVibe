@@ -157,7 +157,8 @@ public:
 
     virtual double value(int index) const = 0;
     // Edits from the editor. A drag is wrapped in begin/end so the host records it as one gesture.
-    // Each gesture is an undo step, unless a beginStep() around it groups it with others.
+    // Each gesture is an undo step, unless a beginStep() around it groups it with others. While a three-band
+    // dynamics is linked, an edit of one band's threshold, ratio or gain is made to every band's (see linkedBands()).
     void beginEdit(int index);
     void setValue(int index, double value);
     void endEdit(int index);
@@ -243,6 +244,9 @@ protected:
 private:
     static constexpr size_t kMaxUndoSteps = 100;
     void record(int index);
+    // `index`, and while it is a linked three-band dynamics band's threshold, ratio or gain, the other bands' same
+    // field: the params an edit of it sets. -1 for none.
+    std::array<int, kMcBands> linkedBands(int index) const;
     void apply(const UndoStep &step, bool forward);
 
     std::vector<UndoStep> undo_; // oldest first

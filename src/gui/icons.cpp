@@ -115,11 +115,11 @@ bool isFxSync(FxParam field) {
 }
 
 // Effect switches drawn as icons, named in their tooltips: a metronome for any effect's SYNC, two chain links for
-// the delay's, the shaper's and the three-band compressor's LINK, a ball bouncing between two paddles for the
+// the delay's, the shaper's and the three-band dynamics' LINK, a ball bouncing between two paddles for the
 // delay's PING-PONG, and for the shaper's SYM an odd curve, its halves turned about the middle.
 bool isFxIconSwitch(FxParam field) {
     return isFxSync(field) || field == FxParam::DelayLink || field == FxParam::ShaperLink ||
-           field == FxParam::McLink || field == FxParam::DelayPingPong || field == FxParam::ShaperSymmetric;
+           field == FxParam::MdLink || field == FxParam::DelayPingPong || field == FxParam::ShaperSymmetric;
 }
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
     if (isFxSync(field)) {
@@ -128,7 +128,7 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
         c.polyline(body, std::size(body), color, 1.3f);
         c.line({m.x, m.y + 3.5f}, {m.x + 5.5f, m.y - 6.0f}, color, 1.3f);
         c.fillCircle({m.x + 2.8f, m.y - 1.4f}, 1.6f, color);
-    } else if (field == FxParam::DelayLink || field == FxParam::ShaperLink || field == FxParam::McLink) {
+    } else if (field == FxParam::DelayLink || field == FxParam::ShaperLink || field == FxParam::MdLink) {
         c.strokeRect({m.x - 9.0f, m.y - 3.5f, 11.0f, 7.0f}, color, 1.4f, 3.5f);
         c.strokeRect({m.x - 2.0f, m.y - 3.5f, 11.0f, 7.0f}, color, 1.4f, 3.5f);
     } else if (field == FxParam::ShaperSymmetric) {
@@ -147,30 +147,6 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
         c.polyline(path, std::size(path), color.alpha(0.6f), 1.0f);
         c.fillCircle({m.x - 4.5f, m.y + 3.0f}, 1.8f, color);
     }
-}
-
-// A three-band compressor's band, for its button: its slice of the spectrum (frequency across) raised over a faint
-// baseline, the low band falling away to the right, the mid one a plateau, the high one rising from the left.
-void mcBandIcon(Canvas &c, Rect r, int band, Color color) {
-    c.line({r.x, r.bottom()}, {r.right(), r.bottom()}, color.alpha(0.35f), 1.0f);
-    std::vector<double> key = curveKey(Curve::BandIcon, r);
-    key.push_back(band);
-    const std::vector<Point> points = icons.get(key, [&] {
-        auto rise = [](float x, float at) { // 0 well below `at`, 1 well above, smoothly across a crossover
-            const float t = std::clamp((x - at) / 0.22f + 0.5f, 0.0f, 1.0f);
-            return t * t * (3.0f - 2.0f * t);
-        };
-        std::vector<Point> points;
-        for (int i = 0; i <= 24; ++i) {
-            const float x = i / 24.0f;
-            const float level = band == 0 ? 1.0f - rise(x, 0.45f)
-                                : band == 1 ? rise(x, 0.25f) * (1.0f - rise(x, 0.75f))
-                                            : rise(x, 0.55f);
-            points.push_back({r.x + x * r.w, r.bottom() - level * r.h});
-        }
-        return points;
-    });
-    c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
 // An LFO's clock modes, named in their tooltips: RETRIGGER a rise that starts again at each dot (a note), FREE an
@@ -270,12 +246,22 @@ void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
         curve([&](float x) { return x < 0.5f ? 0.3f + 0.4f * notch(x, 0.5f, 60.0f) : 0.7f - 3.2f * (x - 0.5f); });
         break;
     case FxType::Compressor: // output against input, bending over at the threshold
-    case FxType::MultiComp:  // the same, over three bands
-        if (type == FxType::MultiComp)
-            for (float x : {1.0f / 3.0f, 2.0f / 3.0f})
-                c.line({r.x + x * r.w, r.y}, {r.x + x * r.w, r.bottom()}, color.alpha(0.4f), 1.0f);
         curve([](float x) { return x < 0.55f ? -1.0f + 2.4f * x : 0.32f + 0.5f * (x - 0.55f); });
         break;
+    case FxType::MultiDyn: { // over three bands, levels pressed toward the middle: down from above, up from below
+        for (float x : {1.0f / 3.0f, 2.0f / 3.0f})
+            c.line({r.x + x * r.w, r.y}, {r.x + x * r.w, r.bottom()}, color.alpha(0.4f), 1.0f);
+        const float mid = r.center().y;
+        c.line({r.x, mid}, {r.right(), mid}, color, 1.4f);
+        for (float side : {-1.0f, 1.0f}) { // the arrow down on the left, up on the right
+            const float x = r.x + (side < 0.0f ? 0.25f : 0.75f) * r.w;
+            const float from = mid + side * 0.5f * r.h, to = mid + side * 0.14f * r.h;
+            c.line({x, from}, {x, to + side * 1.5f}, color, 1.4f);
+            const Point head[] = {{x - 2.8f, to + side * 2.8f}, {x + 2.8f, to + side * 2.8f}, {x, to}};
+            c.fillPolygon(head, 3, color);
+        }
+        break;
+    }
     case FxType::Reverb: // a dense tail dying away
         for (int k = 0; k < 8; ++k)
             bar(0.06f + 0.125f * k, 1.0f - 0.115f * k, color.alpha(k == 0 ? 1.0f : 0.75f));
@@ -320,6 +306,7 @@ void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
         }
         break;
     }
+    case FxType::MultiComp: // retired, never offered
     case FxType::None:
     case FxType::Count:
         break;

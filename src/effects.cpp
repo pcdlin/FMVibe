@@ -425,12 +425,12 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     case FxType::Compressor:
         s.comp = {0.0, dbToGain(at(FxParam::CompMakeup)), at(FxParam::CompMix)};
         break;
-    case FxType::MultiComp:
-        s.multi = MultiComp{};
-        for (int band = 0; band < kMcBands; ++band) // linked, every band takes the low band's, as runMultiComp() has it
-            s.multi.gains[band] = dbToGain(p[mcGainIndex(slot, at(FxParam::McLink) >= 0.5 ? 0 : band)]);
-        s.multi.mix = at(FxParam::McMix);
-        s.multi.output = dbToGain(at(FxParam::McOutput));
+    case FxType::MultiDyn:
+        s.dyn = MultiDyn{};
+        for (int band = 0; band < kMcBands; ++band)
+            s.dyn.gains[band] = dbToGain(p[mdGainIndex(slot, band)]);
+        s.dyn.mix = at(FxParam::MdMix);
+        s.dyn.output = dbToGain(at(FxParam::MdOutput));
         break;
     case FxType::Reverb: {
         Reverb &r = s.reverb;
@@ -491,6 +491,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         e.mix = at(FxParam::WidenerMix);
         break;
     }
+    case FxType::MultiComp: // retired: a state's loads as a three-band dynamics (see readParams())
     case FxType::None:
     case FxType::Count:
         break;
@@ -525,6 +526,8 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             const bool on = fx.running == type && type != FxType::None && p[paramIndex(slot, FxParam::Enabled)] >= 0.5;
             if (!on && fx.fade <= 0.0) {
                 reduction_[slot] = {};
+                bandLevel_[slot] = {};
+                bandGain_[slot] = {};
                 fx.analyzed.bands = {};
                 continue;
             }
@@ -558,8 +561,8 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             case FxType::Compressor:
                 runCompressor(slot, io, n, p);
                 break;
-            case FxType::MultiComp:
-                runMultiComp(slot, io, n, p);
+            case FxType::MultiDyn:
+                runMultiDyn(slot, io, n, p);
                 break;
             case FxType::Reverb:
             case FxType::Phaser:
@@ -582,6 +585,7 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
                     feedAnalyzer(slot, io, n);
                 break;
             }
+            case FxType::MultiComp: // retired, as in start()
             case FxType::None:
             case FxType::Count:
                 break;
@@ -790,12 +794,12 @@ void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamV
     reduction_[slot] = {static_cast<float>(-most), 0.0f, 0.0f};
 }
 
-void Effects::runMultiComp(int slot, float *const *io, uint32_t n, const ParamValues &p) {
-    MultiComp &m = slots_[slot].multi;
+void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    MultiDyn &m = slots_[slot].dyn;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     // The high crossover stays at least a third of an octave above the low one.
-    const double lowHz = std::min(cutoffFromNorm(at(FxParam::McLowFreq)), 0.3 * sampleRate_);
-    const double highHz = std::clamp(cutoffFromNorm(at(FxParam::McHighFreq)), lowHz * 1.26, 0.45 * sampleRate_);
+    const double lowHz = std::min(cutoffFromNorm(at(FxParam::MdLowFreq)), 0.3 * sampleRate_);
+    const double highHz = std::clamp(cutoffFromNorm(at(FxParam::MdHighFreq)), lowHz * 1.26, 0.45 * sampleRate_);
     auto coefs = [&](BiquadType type, double hz) {
         const Coefs b = biquad(type, hz, sampleRate_);
         return BiquadCoefs{b.b0, b.b1, b.b2, b.a1, b.a2};
@@ -803,18 +807,25 @@ void Effects::runMultiComp(int slot, float *const *io, uint32_t n, const ParamVa
     const BiquadCoefs lp1 = coefs(BiquadType::LowPass, lowHz), hp1 = coefs(BiquadType::HighPass, lowHz),
                       lp2 = coefs(BiquadType::LowPass, highHz), hp2 = coefs(BiquadType::HighPass, highHz),
                       ap2 = coefs(BiquadType::AllPass, highHz);
-    const double attack = smoothing(timeFromNorm(at(FxParam::McAttack)), sampleRate_);
-    const double release = smoothing(timeFromNorm(at(FxParam::McRelease)), sampleRate_);
-    std::array<double, kMcBands> threshold{}, ratio{}, gainStep{};
-    for (int b = 0; b < kMcBands; ++b) {
-        const int from = at(FxParam::McLink) >= 0.5 ? 0 : b; // linked, every band takes the low band's
-        threshold[b] = p[mcThresholdIndex(slot, from)];
-        ratio[b] = p[mcRatioIndex(slot, from)];
-        gainStep[b] = rampStep(m.gains[b], dbToGain(p[mcGainIndex(slot, from)]), n);
+    const double attack = smoothing(timeFromNorm(at(FxParam::MdAttack)), sampleRate_);
+    const double release = smoothing(timeFromNorm(at(FxParam::MdRelease)), sampleRate_);
+    const double knee = at(FxParam::MdKnee);
+    const double range = at(FxParam::MdRange);
+    const bool rms = at(FxParam::MdRms) >= 0.5;
+    const double average = 1.0 - smoothing(kMdRmsSeconds, sampleRate_);
+    const double peakFall = smoothing(kMdPeakSeconds, sampleRate_);
+    const double fall = smoothing(0.33, sampleRate_); // the meters fall about 26 dB a second
+    std::array<double, kMcBands> above{}, down{}, below{}, up{}, gainStep{};
+    for (int b = 0; b < kMcBands; ++b) { // each band its own; Link is the editor's, which edits them together
+        above[b] = p[mdAboveIndex(slot, b)];
+        down[b] = dynRatio(p[mdDownIndex(slot, b)]);
+        below[b] = p[mdBelowIndex(slot, b)];
+        up[b] = dynRatio(p[mdUpIndex(slot, b)]);
+        gainStep[b] = rampStep(m.gains[b], dbToGain(p[mdGainIndex(slot, b)]), n);
     }
-    const double mixStep = rampStep(m.mix, at(FxParam::McMix), n);
-    const double outputStep = rampStep(m.output, dbToGain(at(FxParam::McOutput)), n);
-    std::array<double, kMcBands> most{};
+    const double mixStep = rampStep(m.mix, at(FxParam::MdMix), n);
+    const double outputStep = rampStep(m.output, dbToGain(at(FxParam::MdOutput)), n);
+    std::array<double, kMcBands> most{}, loudest{};
     for (uint32_t s = 0; s < n; ++s) {
         m.mix += mixStep;
         m.output += outputStep;
@@ -830,11 +841,18 @@ void Effects::runMultiComp(int slot, float *const *io, uint32_t n, const ParamVa
         double gain[kMcBands];
         for (int b = 0; b < kMcBands; ++b) {
             m.gains[b] += gainStep[b];
+            // Both sides follow the louder one, so the stereo image stays put.
             const double peak = std::max(std::abs(bands[0][b]), std::abs(bands[1][b]));
-            const double reduction =
-                followReduction(m.reduction[b], peak, threshold[b], ratio[b], kMcKnee, attack, release);
-            most[b] = std::min(most[b], reduction);
-            gain[b] = dbToGain(reduction) * m.gains[b];
+            m.power[b] += (peak * peak - m.power[b]) * average;
+            m.peak[b] = std::max(peak, m.peak[b] * peakFall);
+            const double level = rms ? std::sqrt(m.power[b]) : m.peak[b];
+            m.meter[b] = std::max(level, m.meter[b] * fall);
+            loudest[b] = std::max(loudest[b], m.meter[b]);
+            const double inDb = 20.0 * std::log10(std::max(level, 1e-9));
+            const double target = dynamicsGain(inDb, above[b], down[b], below[b], up[b], knee, range);
+            m.gain[b] = target + (m.gain[b] - target) * (target < m.gain[b] ? attack : release);
+            most[b] = std::min(most[b], m.gain[b]);
+            gain[b] = dbToGain(m.gain[b]) * m.gains[b];
         }
         // The dry side is the bands' plain sum, so a partial mix doesn't comb with the crossovers' phase shift.
         for (int ch = 0; ch < 2; ++ch) {
@@ -843,8 +861,11 @@ void Effects::runMultiComp(int slot, float *const *io, uint32_t n, const ParamVa
             io[ch][s] = static_cast<float>((dry + (wet - dry) * m.mix) * m.output);
         }
     }
-    for (int b = 0; b < kMcBands; ++b)
+    for (int b = 0; b < kMcBands; ++b) {
         reduction_[slot][b] = static_cast<float>(-most[b]);
+        bandLevel_[slot][b] = static_cast<float>(loudest[b]);
+        bandGain_[slot][b] = static_cast<float>(m.gain[b]);
+    }
 }
 
 double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p) {

@@ -39,11 +39,10 @@ std::vector<int> fxPageParams(int slot, FxType type, const ParamValues &values) 
     case FxType::Compressor:
         return at({FxParam::Enabled, FxParam::CompThreshold, FxParam::CompRatio, FxParam::CompKnee,
                    FxParam::CompAttack, FxParam::CompRelease, FxParam::CompMakeup, FxParam::CompMix});
-    case FxType::MultiComp: // the band ratios and gains are left to the editor
-        return {paramIndex(slot, FxParam::McLowFreq),  paramIndex(slot, FxParam::McHighFreq),
-                mcThresholdIndex(slot, 0),             mcThresholdIndex(slot, 1),
-                mcThresholdIndex(slot, 2),             paramIndex(slot, FxParam::McAttack),
-                paramIndex(slot, FxParam::McRelease),  paramIndex(slot, FxParam::McMix)};
+    case FxType::MultiDyn: // the bands' thresholds; their ratios, gains and the crossovers are left to the editor
+        return {mdAboveIndex(slot, 0), mdAboveIndex(slot, 1), mdAboveIndex(slot, 2),
+                mdBelowIndex(slot, 0), mdBelowIndex(slot, 1), mdBelowIndex(slot, 2),
+                paramIndex(slot, FxParam::MdRange), paramIndex(slot, FxParam::MdMix)};
     case FxType::Reverb: // a shimmer's interval and amount in place of the pre-delay and width
         if (reverbType(values[paramIndex(slot, FxParam::ReverbType)]) == ReverbType::Shimmer)
             return at({FxParam::Enabled, FxParam::ReverbType, FxParam::ReverbSize, FxParam::ReverbDecay,
@@ -65,6 +64,7 @@ std::vector<int> fxPageParams(int slot, FxType type, const ParamValues &values) 
     case FxType::Widener:
         return at({FxParam::Enabled, FxParam::WidenerSize, FxParam::WidenerWidth, FxParam::WidenerHighPass,
                    FxParam::WidenerMix});
+    case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
     case FxType::None:
     case FxType::Count:
         break;

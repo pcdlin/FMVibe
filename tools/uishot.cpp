@@ -337,7 +337,8 @@ constexpr float kFoldedSpan = (38.0f + kFxStep - kFxCardW) / kFxStep;
 float fxSpan(const FakeController &model, int slot) {
     if ((model.ui.fxFolded >> slot) & 1u)
         return kFoldedSpan;
-    return std::lround(model.value(paramIndex(slot, FxParam::Type))) == static_cast<long>(FxType::ParamEq) ? 1.5f : 1.0f;
+    const long type = std::lround(model.value(paramIndex(slot, FxParam::Type)));
+    return type == static_cast<long>(FxType::ParamEq) || type == static_cast<long>(FxType::MultiDyn) ? 1.5f : 1.0f;
 }
 // How far the test has left the chain scrolled, in card places: cards sit that much left of their places.
 float fxScrolled = 0.0f;
@@ -372,10 +373,15 @@ Point fxKnob(const FakeController &model, int position, int index, int count, fl
     return {fxCardX(model, position) + fxCardW(model, position) / count * (index + 0.5f), 152.0f + y};
 }
 
-// ADD EFFECT at the FX panel's top left, and the entry for `type` in the list it opens.
+// ADD EFFECT at the FX panel's top left, and the entry for `type` in the list it opens: 23 px a type, from y 139 + 4,
+// in their order but for the three-band dynamics, which takes the retired three-band compressor's place.
 constexpr Point kFxMenuButton{90.0f, 124.0f};
+constexpr float kFxMenuPitch = 23.0f;
+int fxMenuPlace(FxType type) {
+    return (type == FxType::MultiDyn ? static_cast<int>(FxType::MultiComp) : static_cast<int>(type)) - 1;
+}
 Point fxMenuItem(FxType type) {
-    return {122.0f, 155.0f + (static_cast<int>(type) - 1) * 26.0f};
+    return {122.0f, 153.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
 }
 
 
@@ -1890,6 +1896,127 @@ void testMeter(const std::filesystem::path &dir, Renderer &renderer) {
     check(shot && clipShot && (left & 255) > 200 && (right & 255) < 100 && (dark >> 16 & 255) < 120 &&
               (lit >> 16 & 255) > 200 && (lit >> 8 & 255) < 100,
           "the output meter shows each side's peak, and its clip light past full scale");
+}
+
+// The three-band dynamics, alone in the chain: a card one and a half places wide (x 32 to 299.5) whose display (from
+// y 194) has a bar a band, the high band on top (y 201, 218 and 235, 12 tall), levels across from -60 dB at x 84 to
+// 0 dB at x 245.5. A band's row picks the band its knobs set; its threshold lines, on every band, drag across (each
+// stopping at the other), picking their band, Alt-dragged up they turn its ratio, and a double-click puts the
+// threshold back. LINK makes the knobs and every band's lines set the low band; RMS switches the detector to peaks.
+// Its knobs for which way a threshold or ratio works tell it in a tooltip under their label, and the bars show what the
+// telemetry says.
+void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    addFx(view, FxType::MultiDyn);
+    check(model.value(paramIndex(0, FxParam::Type)) == static_cast<double>(FxType::MultiDyn),
+          "the list of effects adds a three-band dynamics");
+    auto x = [](double db) { return 84.0f + static_cast<float>((db + 60.0) / 60.0) * 161.5f; };
+    constexpr float kHighBar = 201.0f, kMidBar = 218.0f;
+    const float mid = kMidBar + 6.0f, high = kHighBar + 6.0f; // down the middle of their bars
+    click(view, {60.0f, mid});
+    const Point above = fxKnob(model, 0, 0, 5, 142.0f);
+    drag(view, above, {above.x, above.y - 20.0f});
+    check(model.value(mdAboveIndex(0, 1)) > -20.0 && model.value(mdAboveIndex(0, 0)) == -20.0,
+          "a three-band dynamics band's row picks which band its knobs set");
+    view.undo();
+    // The mid band's Below line dragged to -50 dB, and its Above line dragged past it.
+    drag(view, {x(-40.0), mid}, {x(-50.0), mid});
+    const bool below = std::abs(model.value(mdBelowIndex(0, 1)) + 50.0) < 0.5 && model.value(mdBelowIndex(0, 0)) == -40.0;
+    drag(view, {x(-20.0), mid}, {x(-55.0), mid});
+    const bool stopped = model.value(mdAboveIndex(0, 1)) == model.value(mdBelowIndex(0, 1));
+    view.undo();
+    view.undo();
+    check(below && stopped && model.value(mdBelowIndex(0, 1)) == -40.0 && model.value(mdAboveIndex(0, 1)) == -20.0,
+          "a three-band dynamics' threshold lines drag across, Above stopping at Below, undoably");
+    Modifiers alt;
+    alt.alt = true;
+    view.mouseDown({x(-20.0), mid}, alt);
+    view.mouseMove({x(-20.0), mid - 40.0f}, alt);
+    view.mouseUp({x(-20.0), mid - 40.0f}, alt);
+    const bool ratio =
+        model.value(mdDownIndex(0, 1)) > normFromDynRatio(3.0) && model.value(mdAboveIndex(0, 1)) == -20.0;
+    drag(view, {x(-20.0), mid}, {x(-30.0), mid});
+    doubleClick(view, {x(-30.0), mid});
+    check(ratio && model.value(mdAboveIndex(0, 1)) == -20.0,
+          "Alt-dragging a threshold line turns its ratio, and a double-click puts the threshold back");
+    // The ratio's lines, moving with their threshold: at 3:1, what goes in 6 dB over Above (-14 dB) comes out at
+    // -18 dB, so a line stands there, and none between it and the next (-16 dB). At 1:1 the line moves on to -14 dB.
+    view.mouseMove({600.0f, 600.0f}, {});
+    model.set(mdDownIndex(0, 1), normFromDynRatio(3.0));
+    const bool linesShot = renderer.save(view, dir / "9e1-3band-dynamics-ratio-lines.png");
+    const bool line = renderer.pixel({x(-18.0), mid}) != renderer.pixel({x(-17.1), mid});
+    model.set(mdDownIndex(0, 1), normFromDynRatio(1.0));
+    renderer.save(view, dir / "9e1-3band-dynamics-ratio-lines.png");
+    const bool moved = renderer.pixel({x(-18.0), mid}) == renderer.pixel({x(-17.1), mid}) &&
+                       renderer.pixel({x(-14.0), mid}) != renderer.pixel({x(-15.1), mid});
+    model.set(mdDownIndex(0, 1), normFromDynRatio(3.0));
+    check(linesShot && line && moved, "a three-band dynamics' bar draws its ratio as lines packed toward the threshold");
+    // The zones beyond the lines drag up and down for their side's ratio: the mid band's upward one left of Below up
+    // for more, and the high band's downward one right of Above down for more, which picks the high band.
+    drag(view, {x(-55.0), mid}, {x(-55.0), mid - 40.0f});
+    const bool upward = model.value(mdUpIndex(0, 1)) > normFromDynRatio(2.5) &&
+                        model.value(mdDownIndex(0, 1)) == normFromDynRatio(3.0);
+    drag(view, {x(-5.0), high}, {x(-5.0), high + 40.0f});
+    const bool downward = model.value(mdDownIndex(0, 2)) > normFromDynRatio(3.5) &&
+                          model.value(mdUpIndex(0, 2)) == normFromDynRatio(2.0);
+    drag(view, above, {above.x, above.y - 20.0f}); // the high band's knobs show now
+    const bool picked = model.value(mdAboveIndex(0, 2)) > -20.0 && model.value(mdAboveIndex(0, 1)) == -20.0;
+    view.undo();
+    view.undo();
+    view.undo();
+    check(upward && downward && picked && model.value(mdUpIndex(0, 1)) == normFromDynRatio(2.0) &&
+              model.value(mdDownIndex(0, 2)) == normFromDynRatio(3.0),
+          "a three-band dynamics' zones drag up and down for their ratios, undoably, picking their band");
+    // The high band's Above line, dragged while the mid band is picked, picks the high band: the knobs set it now.
+    click(view, {60.0f, mid});
+    drag(view, {x(-20.0), high}, {x(-25.0), high});
+    const bool dragged = std::abs(model.value(mdAboveIndex(0, 2)) + 25.0) < 0.5;
+    drag(view, above, {above.x, above.y - 20.0f});
+    check(dragged && model.value(mdAboveIndex(0, 2)) > -24.0 && model.value(mdAboveIndex(0, 1)) == -20.0,
+          "dragging a three-band dynamics' line on another band picks that band");
+    // Hovered, the Above knob says what it is under its label (its value now).
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool shot = renderer.save(view, dir / "9e-3band-dynamics.png");
+    const uint32_t bare = renderer.pixel({above.x, above.y + 48.0f});
+    view.mouseMove(above, {});
+    const bool tipShot = renderer.save(view, dir / "9f-3band-dynamics-tip.png");
+    check(shot && tipShot && renderer.pixel({above.x, above.y + 48.0f}) != bare,
+          "a three-band dynamics' Above knob shows its tooltip under its label");
+    // The mid band at -20 dB pulled down 6 dB: its meter, down the bar's middle, fills up to -26 dB in teal, then
+    // amber up to -20 dB.
+    view.mouseMove({600.0f, 600.0f}, {});
+    const uint32_t empty = renderer.pixel({x(-45.0), mid});
+    model.live.fxBandLevel[0] = {0.0f, 0.1f, 0.0f};
+    model.live.fxBandGain[0] = {0.0f, -6.0f, 0.0f};
+    view.poll();
+    const bool levelShot = renderer.save(view, dir / "9g-3band-dynamics-levels.png");
+    const uint32_t filled = renderer.pixel({x(-45.0), mid});
+    const uint32_t taken = renderer.pixel({x(-23.0), mid});
+    const uint32_t past = renderer.pixel({x(-15.0), mid});
+    check(levelShot && filled != empty && taken != filled && past != filled && past != taken,
+          "a three-band dynamics' bar shows its band's level and gain");
+    // LINK: an edit of one band, by its line or its knob, sets every band's same field, as one undo step; RMS off
+    // follows peaks.
+    click(view, {230.5f, 170.0f});
+    drag(view, {x(-40.0), mid}, {x(-45.0), mid});
+    bool linkedLine = true;
+    for (int band = 0; band < kMcBands; ++band)
+        linkedLine = linkedLine && std::abs(model.value(mdBelowIndex(0, band)) + 45.0) < 0.5;
+    drag(view, above, {above.x, above.y - 20.0f}); // the mid band's knob, its line picked it
+    const double raised = model.value(mdAboveIndex(0, 1));
+    const bool linked = model.value(paramIndex(0, FxParam::MdLink)) == 1.0 && raised > -20.0 &&
+                        model.value(mdAboveIndex(0, 0)) == raised && model.value(mdAboveIndex(0, 2)) == raised;
+    view.undo();
+    bool undone = true;
+    for (int band = 0; band < kMcBands; ++band)
+        undone = undone && model.value(mdAboveIndex(0, band)) < raised;
+    click(view, {194.5f, 170.0f});
+    view.mouseMove({600.0f, 600.0f}, {});
+    check(linkedLine && linked && undone && model.value(paramIndex(0, FxParam::MdRms)) == 0.0 &&
+              renderer.save(view, dir / "9h-3band-dynamics-linked.png"),
+          "a three-band dynamics' LINK makes an edit of one band set every band's, undoably, and RMS switches to peaks");
 }
 
 // The dashed cards after the sources: an LFO's above an envelope's, each adding one.
@@ -4022,7 +4149,9 @@ void run(const std::filesystem::path &dir, float scale) {
     check(fxChain(model).empty(), "a click outside the ADD EFFECT list closes it");
     // The dashed card at the chain's end (its first place, while it is empty) opens the list over itself.
     click(view, {fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 300.0f});
-    auto shadowItem = [](FxType type) { return Point{130.0f, 176.0f + (static_cast<int>(type) - 1) * 26.0f}; };
+    auto shadowItem = [](FxType type) {
+        return Point{130.0f, 174.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
+    };
     view.mouseMove(shadowItem(FxType::Shaper), {});
     check(renderer.save(view, dir / "8a2-fx-shadow-list.png"), "render the list of effects over the dashed card");
     click(view, shadowItem(FxType::Shaper));
@@ -4272,7 +4401,7 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove(arrow, {});
         const bool hoverShot = renderer.save(view, dir / "8d-fx-insert.png");
         click(view, arrow);
-        const Point delay{arrow.x, 160.0f + 4.0f + 26.0f + 12.0f}; // the list's second entry
+        const Point delay{arrow.x, 160.0f + 4.0f + kFxMenuPitch + 10.5f}; // the list's second entry
         view.mouseMove(delay, {});
         const bool insertListShot = renderer.save(view, dir / "8e-fx-insert-list.png");
         click(view, delay);
@@ -4285,31 +4414,17 @@ void run(const std::filesystem::path &dir, float scale) {
     }
 
     // More effects than fit (seven cards, seven and a half places with the EQ's): the one added last scrolls
-    // into view, so the compressors land on screen places 4 and 5.
+    // into view, so the compressors land on screen places 4 and 5. (The three-band dynamics' card has a test of its
+    // own: see testMultiDyn().)
     addFx(view, FxType::Compressor);
-    addFx(view, FxType::MultiComp);
+    addFx(view, FxType::Compressor);
     check(fxChain(model) == std::vector<int>{1, 2, 0, 3, 4, 5, 6} &&
               model.value(paramIndex(5, FxParam::Type)) == static_cast<double>(FxType::Compressor) &&
-              model.value(paramIndex(6, FxParam::Type)) == static_cast<double>(FxType::MultiComp),
+              model.value(paramIndex(6, FxParam::Type)) == static_cast<double>(FxType::Compressor),
           "the chain grows past six effects, compressors included");
     fxScrolled = 1.5f;
-    // The three-band card's MID button shows the mid band's knobs; LINK makes them set the low band, which
-    // every band follows.
-    click(view, {fxCardX(model, 6) + 14.0f + 37.25f + 16.0f, 152.0f + 44.0f + 11.0f});
-    drag(view, fxKnob(model, 6, 0, 3, 160.0f), {fxKnob(model, 6, 0, 3, 160.0f).x, fxKnob(model, 6, 0, 3, 160.0f).y - 20.0f});
-    check(model.value(mcThresholdIndex(6, 1)) > -20.0 && model.value(mcThresholdIndex(6, 0)) == -20.0,
-          "a three-band card's band buttons pick which band its knobs set");
-    click(view, {fxCardX(model, 6) + 14.0f + 3.0f * 37.25f + 16.0f, 152.0f + 44.0f + 11.0f});
-    drag(view, fxKnob(model, 6, 1, 3, 160.0f), {fxKnob(model, 6, 1, 3, 160.0f).x, fxKnob(model, 6, 1, 3, 160.0f).y - 20.0f});
-    const bool linked = model.value(paramIndex(6, FxParam::McLink)) == 1.0 && model.value(mcRatioIndex(6, 0)) > 3.0 &&
-                        model.value(mcRatioIndex(6, 1)) == 3.0;
-    view.mouseMove({600.0f, 300.0f}, {});
-    check(linked && renderer.save(view, dir / "9d-3band-linked.png"), "LINK makes the knobs set the low band for all");
-    click(view, {fxCardX(model, 6) + 14.0f + 3.0f * 37.25f + 16.0f, 152.0f + 44.0f + 11.0f});
-    drag(view, fxKnob(model, 6, 2, 3, 268.0f), {fxKnob(model, 6, 2, 3, 268.0f).x, fxKnob(model, 6, 2, 3, 268.0f).y - 20.0f});
-    check(model.value(paramIndex(6, FxParam::McOutput)) > 0.0, "a three-band card's Output knob sets its level");
     model.live.fxReduction[5] = {4.5f, 0.0f, 0.0f};
-    model.live.fxReduction[6] = {2.0f, 6.0f, 1.0f};
+    model.live.fxReduction[6] = {2.0f, 0.0f, 0.0f};
     view.poll();
     view.mouseMove({600.0f, 300.0f}, {});
     check(renderer.save(view, dir / "9b-compressors.png"), "render the compressors in a scrolled chain");
@@ -4705,6 +4820,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testShapers(dir, renderer);
     testFolding(dir, renderer);
     testSourceShadow(dir, renderer);
+    testMultiDyn(dir, renderer);
     testCardEdgeScroll(dir, renderer);
     testMiddleDrag(dir, renderer);
     testModFocus(dir, renderer);

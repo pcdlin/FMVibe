@@ -95,8 +95,8 @@ double widenerTap(int tap, double size, double lfo);
 double widenerSpread(double hz, double highPassNorm);
 
 // The effects chain on the sum of the voices: kFxSlots slots, each holding a
-// shaper, delay, DJ EQ, parametric EQ, filter, compressor (single or three
-// bands), reverb, phaser, flanger, frequency shifter, phase disperser or widener, or nothing, run in the order
+// shaper, delay, DJ EQ, parametric EQ, filter, compressor, three-band
+// dynamics, reverb, phaser, flanger, frequency shifter, phase disperser or widener, or nothing, run in the order
 // the FxOrder param picks. An empty or switched-off slot costs nothing;
 // switching one fades it in or out over a few milliseconds. Audio thread
 // only, apart from construction and prepare().
@@ -111,9 +111,13 @@ public:
     void process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch);
     // Something is still to be heard after the input went silent: delay echoes, a reverb's tail.
     bool ringing() const { return tail_ > 0; }
-    // How far a compressor in `slot` turns band `band` down right now, in dB (0 or more); a
-    // single-band one uses band 0. The most of the latest block, for the editor's meters.
+    // How far a compressor or three-band dynamics in `slot` turns band `band` down right now, in dB (0 or more); a
+    // compressor uses band 0. The most of the latest block, for the editor's meters.
     float reduction(int slot, int band) const { return reduction_[slot][band]; }
+    // A three-band dynamics' band `band` in `slot`: its detector's level (1 is full scale), the most of the latest
+    // block, falling about 26 dB a second, and the gain (dB, below 0 pulling down, above lifting) it applies now.
+    float bandLevel(int slot, int band) const { return bandLevel_[slot][band]; }
+    float bandGain(int slot, int band) const { return bandGain_[slot][band]; }
     // The parametric EQs measure their output only while the editor can show it.
     void setAnalyzing(bool on) { analyzing_ = on; }
     // The level of what a parametric EQ or filter in `slot` puts out in spectrum band `band`, where a full-scale
@@ -188,11 +192,15 @@ private:
         double mix = 1.0;
     };
 
-    // Split like the DJ EQ, at crossovers set per chunk.
-    struct MultiComp {
+    // Split like the DJ EQ, at crossovers set per chunk; each band's detector follows its peaks (`peak`, falling back slowly
+    // between them), or its RMS level (`power`, a mean square), and its gain (dB) follows dynamicsGain() at the attack pace while it falls, else at the release
+    // pace. `meter` is the detector level the editor shows, falling slowly.
+    struct MultiDyn {
         std::array<EqChannel, 2> channels{};
-        std::array<double, kMcBands> reduction{};
-        std::array<double, kMcBands> gains{1.0, 1.0, 1.0}; // band gains after compression, ramped
+        std::array<double, kMcBands> peak{}, power{};
+        std::array<double, kMcBands> gain{};
+        std::array<double, kMcBands> meter{};
+        std::array<double, kMcBands> gains{1.0, 1.0, 1.0}; // band gains after the dynamics, ramped
         double mix = 1.0;
         double output = 1.0; // gain after the mix, ramped
     };
@@ -302,7 +310,7 @@ private:
         ParamEq peq;
         FilterFx filter;
         Compressor comp;
-        MultiComp multi;
+        MultiDyn dyn;
         Reverb reverb;
         Phaser phaser;
         Flanger flanger;
@@ -323,7 +331,7 @@ private:
     void runParamEq(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runFilter(int slot, float *const *io, uint32_t n, const ParamValues &p, double pitch);
     void runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    void runMultiComp(int slot, float *const *io, uint32_t n, const ParamValues &p);
+    void runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p);
     // These return the loudest sample they put out or took in, so a tail keeps them running.
     double runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runPhaser(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
@@ -338,6 +346,7 @@ private:
     BiquadCoefs lowPass1_, highPass1_, lowPass2_, highPass2_, allPass2_;
     int64_t tail_ = 0; // samples left to keep processing after the input went silent
     std::array<std::array<float, kMcBands>, kFxSlots> reduction_{};
+    std::array<std::array<float, kMcBands>, kFxSlots> bandLevel_{}, bandGain_{};
     void feedAnalyzer(int slot, float *const *io, uint32_t n);
     double runDisperser(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runWidener(int slot, float *const *io, uint32_t n, const ParamValues &p);

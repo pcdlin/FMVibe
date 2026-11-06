@@ -371,16 +371,35 @@ inline Rect fxMenuButton() {
     return {kFxPanel.x + 16.0f, kFxPanel.y + 9.0f, 116.0f, 22.0f};
 }
 
-constexpr int kFxTypes = static_cast<int>(FxType::Count) - 1; // without None
-// The list's top left is under the button, or (from the shadow card after the effects) given.
+// The effects the list offers, in its order: every type but None and the retired three-band compressor, whose place
+// the three-band dynamics takes.
+constexpr FxType kFxOffered[] = {FxType::Shaper,     FxType::Delay,   FxType::Eq,          FxType::ParamEq,
+                                 FxType::Filter,     FxType::Compressor, FxType::MultiDyn, FxType::Reverb,
+                                 FxType::Phaser,     FxType::Flanger, FxType::FreqShifter, FxType::Disperser,
+                                 FxType::Widener};
+constexpr int kFxTypes = static_cast<int>(std::size(kFxOffered));
+static_assert(kFxTypes == static_cast<int>(FxType::Count) - 2, "a new effect type goes in the list of effects");
+constexpr int fxOfferedPlace(FxType type) {
+    for (int i = 0; i < kFxTypes; ++i)
+        if (kFxOffered[i] == type)
+            return i;
+    return 0;
+}
+// The list's top left is under the button, or (from the shadow card after the effects) given. Its entries are close
+// enough together that it fits in the panel under the button.
+constexpr float kFxMenuPitch = 23.0f;
 inline Rect fxMenu(Point at) {
     const Rect button = fxMenuButton();
-    return {at.x < 0.0f ? button.x : at.x, at.x < 0.0f ? button.bottom() + 4.0f : at.y, 180.0f, 8.0f + kFxTypes * 26.0f};
+    return {at.x < 0.0f ? button.x : at.x, at.x < 0.0f ? button.bottom() + 4.0f : at.y, 180.0f,
+            8.0f + kFxTypes * kFxMenuPitch};
 }
+static_assert(9.0f + 22.0f + 4.0f + 8.0f + kFxTypes * kFxMenuPitch <= kFxPanel.h, // from under the button
+              "the list of effects fits in the panel");
 
 inline Rect fxMenuItem(Point at, FxType type) {
     const Rect menu = fxMenu(at);
-    return {menu.x + 4.0f, menu.y + 4.0f + (static_cast<int>(type) - 1) * 26.0f, menu.w - 8.0f, 24.0f};
+    return {menu.x + 4.0f, menu.y + 4.0f + static_cast<float>(fxOfferedPlace(type)) * kFxMenuPitch, menu.w - 8.0f,
+            kFxMenuPitch - 2.0f};
 }
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
@@ -427,9 +446,10 @@ inline Rect fxCardClip() {
     return {kFxPanel.x + 8.0f, kFxTop - 4.0f, kFxPanel.w - 16.0f, kFxPanel.bottom() - 20.0f - kFxTop + 8.0f};
 }
 
-// How many of the usual card places a card takes: the parametric EQ's is wider, for its spectrum and knobs.
+// How many of the usual card places a card takes: the parametric EQ's and the three-band dynamics' are wider, for
+// their displays and knobs.
 inline float fxSpan(FxType type) {
-    return type == FxType::ParamEq ? 1.5f : 1.0f;
+    return type == FxType::ParamEq || type == FxType::MultiDyn ? 1.5f : 1.0f;
 }
 
 // A card's rect by its screen place, in card places from the row's left end (0..kVisibleFx, fractions while
@@ -448,7 +468,9 @@ inline Rect fxIconRect(Rect card) {
 // row of them, or two for the delay, the parametric EQ and the effects with six knobs or so.
 inline Rect fxDisplay(float position, FxType type) {
     const Rect card = fxCard(position, fxSpan(type));
-    const bool buttons = type == FxType::Shaper || type == FxType::MultiComp || type == FxType::Reverb;
+    if (type == FxType::MultiDyn) // its switches in the title row, its three rows of knobs under it
+        return {card.x + 14.0f, card.y + 42.0f, card.w - 28.0f, 72.0f};
+    const bool buttons = type == FxType::Shaper || type == FxType::Reverb;
     const bool buttonRow = buttons || type == FxType::Filter;
     const float top = buttonRow ? 74.0f : 44.0f;
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
@@ -461,11 +483,52 @@ inline Rect fxDisplay(float position, FxType type) {
     // The shaper's LINK goes between its display and its knobs.
     const float bottom = switchesUnder               ? 158.0f
                          : twoRows                   ? 180.0f
-                         : type == FxType::MultiComp ? 140.0f
                          : type == FxType::Shaper    ? 190.0f
                                                      : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
 }
+
+// The three-band dynamics' display: a level bar a band, the high band on top, each its name on the left and its gain
+// on the right, with a scale in dB under them. Levels run from -kMdRangeDb at the left to 0 dB at the right.
+constexpr float kMdRangeDb = 60.0f;
+inline Rect mdBar(Rect display, int band) {
+    const int row = kMcBands - 1 - band;
+    return {display.x + 38.0f, display.y + 7.0f + 17.0f * static_cast<float>(row), display.w - 78.0f, 12.0f};
+}
+inline float mdBarX(Rect bar, double db) {
+    return bar.x + static_cast<float>(std::clamp((db + kMdRangeDb) / kMdRangeDb, 0.0, 1.0)) * bar.w;
+}
+// A band's row, its name to its gain: a click picks the band its knobs set.
+inline Rect mdBandRow(Rect display, int band) {
+    const Rect bar = mdBar(display, band);
+    return {display.x + 2.0f, bar.y - 2.5f, display.w - 4.0f, bar.h + 5.0f};
+}
+// Where a band's threshold lines take the mouse: 8 px around each, down its row, `below` true for the Below
+// threshold's. Two lines closer than that share the room between them, the Below line's to the left of their middle
+// and the Above line's to the right, so each can still be dragged its own way.
+inline Rect mdLineGrip(Rect bar, double belowDb, double aboveDb, bool below) {
+    const float xBelow = mdBarX(bar, belowDb), xAbove = mdBarX(bar, aboveDb), middle = 0.5f * (xBelow + xAbove);
+    const float left = below ? xBelow - 4.0f : std::max(xAbove - 4.0f, middle);
+    const float right = below ? std::min(xBelow + 4.0f, middle) : xAbove + 4.0f;
+    return {left, bar.y - 2.5f, right - left, bar.h + 5.0f};
+}
+// A band's zones, where it acts: left of its Below threshold's line (`below` true), where it lifts, and right of its
+// Above threshold's, where it pulls down; dragged up and down they set that side's ratio. They stop short of the
+// lines' grips (see mdLineGrip()).
+inline Rect mdZone(Rect bar, double belowDb, double aboveDb, bool below) {
+    const float left = below ? bar.x : mdBarX(bar, aboveDb) + 4.0f;
+    const float right = below ? mdBarX(bar, belowDb) - 4.0f : bar.right();
+    return {left, bar.y - 2.5f, std::max(right - left, 0.0f), bar.h + 5.0f};
+}
+// The meter in a band's bar, half as tall, down its middle, and the most ratio lines a zone draws.
+constexpr float kMdMeterH = 6.0f;
+constexpr int kMdRatioLines = 7;
+
+// Its switches in the title row, left of the fold and remove buttons: RMS, then LINK.
+inline Rect mdRmsButton(Rect card) { return {card.right() - 122.0f, card.y + 8.5f, 34.0f, 19.0f}; }
+inline Rect mdLinkButton(Rect card) { return {card.right() - 84.0f, card.y + 8.5f, 30.0f, 19.0f}; }
+// Its rows of knobs: the band's own (Above, Down, Below, Up, Gain), a line, then the shared ones in two rows.
+constexpr float kMdBandKnobsY = 142.0f, kMdLineY = 186.5f, kMdSharedY1 = 214.0f, kMdSharedY2 = 266.0f;
 
 // The parametric EQ's plot: frequency across, gain up and down.
 constexpr float kPeqRangeDb = 20.0f;

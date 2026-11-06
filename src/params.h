@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <numbers>
 #include <string>
 
@@ -288,13 +289,14 @@ enum class FxType {
     ParamEq,
     Filter,
     Compressor,
-    MultiComp,
+    MultiComp, // retired: the three-band compressor, which a state loads as a MultiDyn (see readParams())
     Reverb,
     Phaser,
     Flanger,
     FreqShifter,
     Disperser,
     Widener,
+    MultiDyn, // three bands, each compressed downward above one threshold and upward below another
     Count
 };
 // Stored in projects by number: only append. Cubic is x - x^3/3 scaled to reach 1 at 1;
@@ -362,9 +364,10 @@ enum class FxParam {
     CompRelease,
     CompMakeup,
     CompMix,
-    // Three-band compressor: Linkwitz-Riley crossovers at LowFreq and HighFreq
-    // split the signal, and each band is compressed on its own (threshold, ratio,
-    // and gain after it) with a fixed knee; attack, release and mix are shared.
+    // The retired three-band compressor's fields, kept for the states that hold them: loading one, its slot takes the
+    // three-band dynamics, set from them (see readParams()). Linkwitz-Riley crossovers at LowFreq and HighFreq split
+    // the signal, and each band was compressed on its own (threshold, ratio, and gain after it) with a fixed knee;
+    // attack, release and mix were shared.
     McLowFreq,
     McHighFreq,
     McThreshold1,
@@ -451,6 +454,37 @@ enum class FxParam {
     FlangerStereo, // the flanger's right side a quarter cycle ahead of its left; off, both sweep together
     // The shaper's Custom curve odd: what it does to the input above 0, mirrored for the input below (see ClipCurve).
     ShaperSymmetric,
+    // Three-band dynamics: Linkwitz-Riley crossovers at LowFreq and HighFreq split the signal, and each band is pulled
+    // down above its Above threshold (by its Down ratio) and lifted below its Below threshold (by its Up ratio, at
+    // most Range dB), then takes its Gain (see dynamicsGain()). The detector follows each band's peaks or, with Rms,
+    // its RMS level; Attack and Release, Knee, Range, Mix and Output are shared. Link is the editor's: while it is on,
+    // an edit of one band's threshold, ratio or gain sets every band's (see Controller::linkedBands()); each band
+    // always plays its own.
+    MdLowFreq,
+    MdHighFreq,
+    MdAbove1,
+    MdDown1,
+    MdBelow1,
+    MdUp1,
+    MdGain1,
+    MdAbove2,
+    MdDown2,
+    MdBelow2,
+    MdUp2,
+    MdGain2,
+    MdAbove3,
+    MdDown3,
+    MdBelow3,
+    MdUp3,
+    MdGain3,
+    MdAttack,
+    MdRelease,
+    MdKnee,
+    MdRange,
+    MdMix,
+    MdOutput,
+    MdLink,
+    MdRms,
     Count
 };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as
@@ -477,6 +511,10 @@ constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's H
 constexpr int kPeqBands = 2;
 constexpr int kMcBands = 3;
 constexpr double kMcKnee = 6.0; // dB
+// The three-band dynamics' detectors: the RMS one's time constant, and how fast the peak one falls back between peaks
+// (its time constant), so a wave's zero crossings don't read as silence to the upward side.
+constexpr double kMdRmsSeconds = 0.01;
+constexpr double kMdPeakSeconds = 0.02;
 
 // --- Layout. An *index* is a position in the param table, used by the DSP.
 // An *id* is what hosts store in projects and automation; ids are grouped per
@@ -667,6 +705,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::ReverbShimmerPitch, FxParam::ReverbShimmer, FxType::Reverb},
     {FxParam::FlangerStereo, FxParam::FlangerStereo, FxType::Flanger},
     {FxParam::ShaperSymmetric, FxParam::ShaperSymmetric, FxType::Shaper},
+    {FxParam::MdLowFreq, FxParam::MdRms, FxType::MultiDyn},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -707,6 +746,13 @@ constexpr int mcThresholdIndex(int slot, int band) { return paramIndex(slot, FxP
 constexpr int mcRatioIndex(int slot, int band) { return mcThresholdIndex(slot, band) + 1; }
 constexpr int mcGainIndex(int slot, int band) { return mcThresholdIndex(slot, band) + 2; }
 static_assert(mcGainIndex(0, 2) == paramIndex(0, FxParam::McGain3));
+// Fields of band `band` of the three-band dynamics.
+constexpr int mdAboveIndex(int slot, int band) { return paramIndex(slot, FxParam::MdAbove1) + 5 * band; }
+constexpr int mdDownIndex(int slot, int band) { return mdAboveIndex(slot, band) + 1; }
+constexpr int mdBelowIndex(int slot, int band) { return mdAboveIndex(slot, band) + 2; }
+constexpr int mdUpIndex(int slot, int band) { return mdAboveIndex(slot, band) + 3; }
+constexpr int mdGainIndex(int slot, int band) { return mdAboveIndex(slot, band) + 4; }
+static_assert(mdGainIndex(0, 2) == paramIndex(0, FxParam::MdGain3));
 constexpr int shapeCountIndex(int source) { return kShapeBase + source * kShapeParamCount; }
 constexpr int shapePointIndex(int source, int point, PointField field) {
     return shapeCountIndex(source) + static_cast<int>(ShapeParam::Points) + 3 * point + static_cast<int>(field);
@@ -895,7 +941,8 @@ static_assert(kSourceFields <= static_cast<int>(kSourceIdStride) &&
               kLaterSlotFields <= static_cast<int>(kLaterSlotIdStride));
 
 // Sections whose fields ran out of room: the first `firstFields` of a block have ids from `base` on, `stride` a
-// block, and the ones past them from `laterBase` on, `laterStride` a block.
+// block, the next `laterFields` from `laterBase` on, `laterStride` a block, and any past those from `lastBase` on,
+// `lastStride` a block.
 struct SplitSection {
     int firstIndex;
     int blocks;
@@ -903,11 +950,13 @@ struct SplitSection {
     int firstFields;
     clap_id base, stride;
     clap_id laterBase, laterStride;
+    int laterFields = 1 << 20; // all the rest, unless a third range follows
+    clap_id lastBase = 0, lastStride = 0;
 };
 
 constexpr SplitSection kSplitSections[] = {
-    // Effect slots: the fields added once the 80 had run out.
-    {kFxBase, kFxSlots, kFxParamCount, 80, 1400, 80, 12000, 20},
+    // Effect slots: the fields added once the 80 had run out, and those added once the next 20 had too.
+    {kFxBase, kFxSlots, kFxParamCount, 80, 1400, 80, 12000, 20, 20, 25000, 40},
     // Freeform LFO shapes and shaper curves: the points past the 16 they had at first (33 for an LFO's).
     {kShapeBase, kMaxSources, kShapeParamCount, 100, 4000, 100, 15000, 100},
     {kClipCurveBase, kFxSlots, kShapeParamCount, 49, 7000, 50, 17000, 200},
@@ -923,8 +972,11 @@ constexpr clap_id idOfIndex(int index) {
             continue;
         const clap_id block = static_cast<clap_id>(local / s.fields);
         const int field = local % s.fields;
-        return field < s.firstFields ? s.base + block * s.stride + field
-                                     : s.laterBase + block * s.laterStride + (field - s.firstFields);
+        if (field < s.firstFields)
+            return s.base + block * s.stride + field;
+        if (field - s.firstFields < s.laterFields)
+            return s.laterBase + block * s.laterStride + (field - s.firstFields);
+        return s.lastBase + block * s.lastStride + (field - s.firstFields - s.laterFields);
     }
     if (const int source = sourceOf(index); source >= 0) {
         const int field = (index - kSourceBase) % kSourceParamCount;
@@ -952,7 +1004,13 @@ constexpr int indexOfId(clap_id id) {
         }
         if (id >= s.laterBase && id < s.laterBase + static_cast<clap_id>(s.blocks) * s.laterStride) {
             const int block = static_cast<int>((id - s.laterBase) / s.laterStride);
-            const int field = s.firstFields + static_cast<int>((id - s.laterBase) % s.laterStride);
+            const int later = static_cast<int>((id - s.laterBase) % s.laterStride);
+            const int field = s.firstFields + later;
+            return later < s.laterFields && field < s.fields ? s.firstIndex + block * s.fields + field : -1;
+        }
+        if (s.lastStride > 0 && id >= s.lastBase && id < s.lastBase + static_cast<clap_id>(s.blocks) * s.lastStride) {
+            const int block = static_cast<int>((id - s.lastBase) / s.lastStride);
+            const int field = s.firstFields + s.laterFields + static_cast<int>((id - s.lastBase) % s.lastStride);
             return field < s.fields ? s.firstIndex + block * s.fields + field : -1;
         }
     }
@@ -984,9 +1042,13 @@ constexpr bool idsRoundTrip() {
     for (const ids::Section &s : ids::kSections)
         if (s.fields > static_cast<int>(s.stride))
             return false;
-    for (const ids::SplitSection &s : ids::kSplitSections)
-        if (s.firstFields > static_cast<int>(s.stride) || s.fields - s.firstFields > static_cast<int>(s.laterStride))
+    for (const ids::SplitSection &s : ids::kSplitSections) {
+        const int later = std::min(s.fields - s.firstFields, s.laterFields);
+        const int last = s.fields - s.firstFields - later;
+        if (s.firstFields > static_cast<int>(s.stride) || later > static_cast<int>(s.laterStride) ||
+            last > static_cast<int>(s.lastStride))
             return false;
+    }
     for (int i = 0; i < kParamCount; ++i)
         if (indexOfId(idOfIndex(i)) != i)
             return false;
@@ -1070,7 +1132,11 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
 static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(kFxSlots - 1, FxParam::ReverbType)) == 2679 &&
                   idOfIndex(paramIndex(0, FxParam::PhaserStereo)) == 12000 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperSymmetric)) == 12318,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperSymmetric)) == 12318 &&
+                  idOfIndex(paramIndex(0, FxParam::MdLowFreq)) == 12019 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::MdLowFreq)) == 12319 &&
+                  idOfIndex(paramIndex(0, FxParam::MdHighFreq)) == 25000 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::MdRms)) == 25623,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1150,7 +1216,7 @@ static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, Filter
 static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxType::Eq, FxType::ParamEq,
                                FxType::Filter, FxType::Compressor, FxType::MultiComp, FxType::Reverb, FxType::Phaser,
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
-                               FxType::Count}),
+                               FxType::MultiDyn, FxType::Count}),
               "FxType is stored by number: only append");
 static_assert(numberedInOrder({MidiInput::Cc, MidiInput::Pressure, MidiInput::Slide, MidiInput::Count}),
               "MidiInput is stored by number: only append");
@@ -1541,6 +1607,25 @@ inline double compressorCurve(double inDb, double thresholdDb, double ratio, dou
     return thresholdDb + over / ratio;
 }
 
+// The three-band dynamics' ratios, stored as 0..1: how much of a level's distance from the threshold the band takes
+// away, 1 - 1 / ratio. 0 is 1:1, 0.5 2:1, 0.75 4:1 and 1 infinity (the level held at the threshold), so a knob or
+// a drag turns the ratio up evenly in what it does to the level.
+inline double dynRatio(double norm) {
+    return norm >= 1.0 ? std::numeric_limits<double>::infinity() : 1.0 / (1.0 - std::max(norm, 0.0));
+}
+inline double normFromDynRatio(double ratio) { return std::isinf(ratio) ? 1.0 : 1.0 - 1.0 / std::max(ratio, 1.0); }
+
+// The three-band dynamics' gain (dB) for a band at `inDb`: above `aboveDb` pulled down by `down`, as a compressor
+// does, and below `belowDb` lifted by `up`, its mirror image (a level the gap under the threshold shrinks by the
+// ratio), lifting at most `rangeDb`. A Below threshold over the Above one is taken as the Above one.
+inline double dynamicsGain(double inDb, double aboveDb, double down, double belowDb, double up, double kneeDb,
+                           double rangeDb) {
+    const double downGain = compressorCurve(inDb, aboveDb, down, kneeDb) - inDb;
+    const double below = std::min(belowDb, aboveDb);
+    const double lift = -inDb - compressorCurve(-inDb, -below, up, kneeDb); // the compressor's curve, mirrored
+    return downGain + std::clamp(lift, 0.0, std::max(rangeDb, 0.0));
+}
+
 // EQ band gain: -1 kills the band, 0 leaves it alone, 1 is +6 dB.
 inline double eqGain(double value) {
     return value >= 0.0 ? 1.0 + value : (1.0 + value) * (1.0 + value);
@@ -1614,6 +1699,7 @@ enum class ParamKind {
     FixedMult,   // stepped: one of kFixedMults, shown as x0.001 and so on
     SlotAux,      // stepped: the source + 1 that scales a slot (0 = none), set in the editor and hidden from hosts
     OpRatio,      // 0..1 on a log curve, shown as a ratio to two places; see ratioFromNorm()
+    DynRatio,     // 0..1 for 1:1 to infinity, shown as "4.0:1" or "∞:1"; see dynRatio()
 };
 
 struct ParamDef {

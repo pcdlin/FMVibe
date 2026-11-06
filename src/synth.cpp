@@ -827,8 +827,11 @@ void Synth::telemetry(Telemetry &out) const {
     for (const HeldNote &held : held_)
         out.keys[held.note.key / 32] |= 1u << (held.note.key % 32);
     for (int slot = 0; slot < kFxSlots; ++slot) { // effects keep working on echoes after the voices end
-        for (int band = 0; band < kMcBands; ++band)
+        for (int band = 0; band < kMcBands; ++band) {
             out.fxReduction[slot][band] = effects_.reduction(slot, band);
+            out.fxBandLevel[slot][band] = effects_.bandLevel(slot, band);
+            out.fxBandGain[slot][band] = effects_.bandGain(slot, band);
+        }
         for (int band = 0; band < kSpectrumBands; ++band)
             out.fxSpectrum[slot][band] = effects_.spectrum(slot, band);
         out.fxPhases[slot] = effects_.sweepPhase(slot);

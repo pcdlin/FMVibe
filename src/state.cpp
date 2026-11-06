@@ -39,7 +39,10 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    earlier state's depths on them load smaller, to swing them as far as they did.
 // 5: An operator's ratio is one param, Ratio, on a log curve; it was Coarse (stepped) times 1 + Fine. An earlier
 //    state's ratio loads from those, and their modulations move onto Ratio (see ratioFromRetired()).
-constexpr uint32_t kStateVersion = 5;
+// 6: The three-band compressor is retired for the three-band dynamics, so an earlier state's slot holding one loads as
+//    a three-band dynamics doing what it did (see loadRetiredMultiComp()). A later state holding one (a host can still
+//    set the type) loads as it was saved, so a state loads back what was saved.
+constexpr uint32_t kStateVersion = 6;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -380,6 +383,62 @@ void ratioFromRetired(ParamValues &loaded) {
     }
 }
 
+namespace {
+
+// The three-band compressor is retired: in a state from before version 5, a slot that held one loads as a three-band
+// dynamics doing what it did. Its
+// crossovers, thresholds (as Above), ratios (as Down), gains, timing, mix, output and link carry over; the upward side
+// stays at 1:1, the knee at the compressor's 6 dB, and the detector on peaks. Modulation aimed at its fields moves to
+// theirs, and the compressor's own fields go back to their defaults.
+void loadRetiredMultiComp(ParamValues &values) {
+    const ParamTable &table = paramTable();
+    for (int slot = 0; slot < kFxSlots; ++slot) {
+        if (fxType(values[paramIndex(slot, FxParam::Type)]) != FxType::MultiComp)
+            continue;
+        std::vector<std::pair<int, int>> moves = {
+            {paramIndex(slot, FxParam::McLowFreq), paramIndex(slot, FxParam::MdLowFreq)},
+            {paramIndex(slot, FxParam::McHighFreq), paramIndex(slot, FxParam::MdHighFreq)},
+            {paramIndex(slot, FxParam::McAttack), paramIndex(slot, FxParam::MdAttack)},
+            {paramIndex(slot, FxParam::McRelease), paramIndex(slot, FxParam::MdRelease)},
+            {paramIndex(slot, FxParam::McMix), paramIndex(slot, FxParam::MdMix)},
+            {paramIndex(slot, FxParam::McOutput), paramIndex(slot, FxParam::MdOutput)},
+            {paramIndex(slot, FxParam::McLink), paramIndex(slot, FxParam::MdLink)},
+        };
+        for (int band = 0; band < kMcBands; ++band) {
+            moves.push_back({mcThresholdIndex(slot, band), mdAboveIndex(slot, band)});
+            moves.push_back({mcRatioIndex(slot, band), mdDownIndex(slot, band)});
+            moves.push_back({mcGainIndex(slot, band), mdGainIndex(slot, band)});
+        }
+        for (const auto &[from, to] : moves) {
+            // A ratio (1 to 20) goes onto the dynamics' scale (see dynRatio()); a modulation's depth on it stays the
+            // share of its range it was.
+            const bool ratio = table[from].kind == ParamKind::CompRatio;
+            const double moved = ratio ? normFromDynRatio(values[from]) : values[from];
+            values[to] = std::clamp(moved, table[to].min, table[to].max);
+            values[from] = table[from].def;
+            for (int source = 0; source < kAllSources; ++source)
+                for (int s = 0; s < kSlots; ++s)
+                    if (slotTarget(values[slotTargetIndex(source, s)]) == from)
+                        values[slotTargetIndex(source, s)] = static_cast<double>(idOfIndex(to)) + 1.0;
+        }
+        // Linked, its bands all took the low band's threshold, ratio and gain; the dynamics' bands each play their
+        // own, so they take the low band's values.
+        if (values[paramIndex(slot, FxParam::MdLink)] >= 0.5)
+            for (int band = 1; band < kMcBands; ++band) {
+                values[mdAboveIndex(slot, band)] = values[mdAboveIndex(slot, 0)];
+                values[mdDownIndex(slot, band)] = values[mdDownIndex(slot, 0)];
+                values[mdGainIndex(slot, band)] = values[mdGainIndex(slot, 0)];
+            }
+        for (int band = 0; band < kMcBands; ++band)
+            values[mdUpIndex(slot, band)] = normFromDynRatio(1.0);
+        values[paramIndex(slot, FxParam::MdKnee)] = kMcKnee;
+        values[paramIndex(slot, FxParam::MdRms)] = 0.0;
+        values[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+    }
+}
+
+} // namespace
+
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     uint32_t header[3];
     if (!readAll(stream, header, sizeof(header)) || header[0] != kStateMagic || header[1] < 1 ||
@@ -415,6 +474,8 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
             }
     if (header[1] < 5)
         ratioFromRetired(loaded);
+    if (header[1] < 6)
+        loadRetiredMultiComp(loaded);
     return true;
 }
 

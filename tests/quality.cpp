@@ -14,6 +14,7 @@
 #include <complex>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -240,6 +241,7 @@ void effectsChainChecks() {
             {"delay mix 0 to 100 %", FxType::Delay, FxParam::DelayMix, 0.0, 1.0},
             {"reverb mix 0 to 100 %", FxType::Reverb, FxParam::ReverbMix, 0.0, 1.0},
             {"DJ EQ low band killed", FxType::Eq, FxParam::EqLow, 0.0, -1.0},
+            {"3-band dynamics output +12 dB", FxType::MultiDyn, FxParam::MdOutput, 0.0, 12.0},
         };
         double worst = 0.0;
         for (const Jump &jump : jumps) {
@@ -308,6 +310,164 @@ void effectsChainChecks() {
         }
         return peak;
     };
+    {
+        // The three-band dynamics on a 1 kHz sine, which the mid band takes. As it starts (RMS, Above -20 dB at 3:1,
+        // Below -40 dB at 2:1, 12 dB of Range), a quiet sine comes out louder, by half its RMS level's distance under
+        // Below, and a loud one quieter, its RMS level's distance over Above shrunk to a third.
+        auto settled = [&](ParamValues &p, double level) { // the gain (dB) once the detector has settled, and the band's
+            Effects fx;
+            fx.prepare(kSampleRate);
+            std::vector<float> left(kBlock), right(kBlock);
+            double power = 0.0; // the output's mean square over the last quarter second, against the input's
+            for (size_t t = 0; t < static_cast<size_t>(1.25 * kSampleRate); t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        level * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock && t >= static_cast<size_t>(kSampleRate); ++s)
+                    power += left[s] * left[s] / (0.25 * kSampleRate);
+            }
+            const double out = 10.0 * std::log10(power / (0.5 * level * level) + 1e-30);
+            return std::array<double, 3>{out, fx.bandGain(0, 1),
+                                         20.0 * std::log10(fx.bandLevel(0, 1) + 1e-30)};
+        };
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        // The low and high bands hold only what leaks past the crossovers, quiet: at 1:1 up, they leave it be.
+        p[mdUpIndex(0, 0)] = p[mdUpIndex(0, 2)] = normFromDynRatio(1.0);
+        const double rms = 20.0 * std::log10(std::sqrt(0.5)); // a sine's RMS level against its peak
+        const double quietDb = -50.0, loudDb = -6.0;
+        const auto quiet = settled(p, std::pow(10.0, quietDb / 20.0));
+        const auto loud = settled(p, std::pow(10.0, loudDb / 20.0));
+        const double lift = 0.5 * (-40.0 - (quietDb + rms));
+        const double pull = (-20.0 + (loudDb + rms + 20.0) / 3.0) - (loudDb + rms);
+        std::printf("      3-band dynamics, a -50 dB sine: %+.1f dB (expected %+.1f, the band says %+.1f at %.1f dB)\n",
+                    quiet[0], lift, quiet[1], quiet[2]);
+        std::printf("      3-band dynamics, a -6 dB sine: %+.1f dB (expected %+.1f, the band says %+.1f at %.1f dB)\n",
+                    loud[0], pull, loud[1], loud[2]);
+        // The output's gain strays a little from the band's: the other bands pass what leaks into them as it is.
+        check(std::abs(quiet[0] - lift) < 0.75 && std::abs(loud[0] - pull) < 0.75,
+              "the three-band dynamics lifts a quiet sine below Below and pulls a loud one down above Above");
+        check(std::abs(quiet[1] - lift) < 0.5 && std::abs(loud[1] - pull) < 0.5 &&
+                  std::abs(quiet[2] - (quietDb + rms)) < 0.5 && std::abs(loud[2] - (loudDb + rms)) < 0.5,
+              "a three-band dynamics band tells the editor its level and its gain");
+        // Range caps the lift: at 20:1, a sine 40 dB under Below comes up only Range's 12 dB.
+        p[mdUpIndex(0, 1)] = normFromDynRatio(20.0);
+        const double capped = settled(p, std::pow(10.0, -80.0 / 20.0))[0];
+        // Peaks: off RMS, the loud sine's peak is what goes over Above (the detector holding it between peaks).
+        p[paramIndex(0, FxParam::MdRms)] = 0.0;
+        const auto peaks = settled(p, std::pow(10.0, loudDb / 20.0));
+        const double peakPull = (-20.0 + (loudDb + 20.0) / 3.0) - loudDb;
+        // At 1:1 both ways, the bands just sum back up.
+        for (int band = 0; band < kMcBands; ++band)
+            p[mdUpIndex(0, band)] = p[mdDownIndex(0, band)] = normFromDynRatio(1.0);
+        const double flat = settled(p, std::pow(10.0, loudDb / 20.0))[0];
+        std::printf("      3-band dynamics: a -80 dB sine at 20:1 up %+.1f dB, peaks %+.1f dB (expected %+.1f, the band "
+                    "says %+.1f), 1:1 both ways %+.2f dB\n",
+                    capped, peaks[0], peakPull, peaks[1], flat);
+        check(std::abs(capped - 12.0) < 0.5, "the three-band dynamics lifts no more than its Range");
+        check(std::abs(peaks[0] - peakPull) < 0.75 && std::abs(peaks[1] - peakPull) < 0.5,
+              "the three-band dynamics follows peaks with RMS off");
+        check(std::abs(flat) < 0.05, "the three-band dynamics at 1:1 both ways leaves the level alone");
+        // Link is the editor's, which sets every band's field at once (see Controller::linkedBands()): the engine plays
+        // each band its own settings, linked or not, so the low band at 1:1 leaves the mid band's loud sine pulled down.
+        p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        p[mdUpIndex(0, 0)] = p[mdDownIndex(0, 0)] = normFromDynRatio(1.0);
+        const double unlinked = settled(p, std::pow(10.0, loudDb / 20.0))[0];
+        p[paramIndex(0, FxParam::MdLink)] = 1.0;
+        const double linked = settled(p, std::pow(10.0, loudDb / 20.0))[0];
+        std::printf("      3-band dynamics, the low band at 1:1: the mid band's sine %+.1f dB, linked %+.1f dB\n",
+                    unlinked, linked);
+        check(unlinked < -3.0 && std::abs(linked - unlinked) < 0.05,
+              "a linked three-band dynamics' bands play their own settings");
+        // At its top, infinity, a ratio holds the level at its threshold: the loud sine's RMS level comes out at
+        // Above. Its text says so, and reads back.
+        p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        p[mdUpIndex(0, 0)] = p[mdUpIndex(0, 2)] = normFromDynRatio(1.0);
+        p[mdDownIndex(0, 1)] = 1.0;
+        const auto held = settled(p, std::pow(10.0, loudDb / 20.0));
+        const double toAbove = -20.0 - (loudDb + rms);
+        char text[32];
+        formatParam(mdDownIndex(0, 1), 1.0, text, sizeof(text));
+        double typed = 0.0, typedFour = 0.0;
+        const bool readBack = parseParam(mdDownIndex(0, 1), text, &typed) && typed == 1.0 &&
+                              parseParam(mdDownIndex(0, 1), "4:1", &typedFour) &&
+                              std::abs(dynRatio(typedFour) - 4.0) < 1e-9;
+        std::printf("      3-band dynamics at %s: the band says %+.1f dB (expected %+.1f)\n", text, held[1], toAbove);
+        check(std::abs(held[1] - toAbove) < 0.5 && std::string(text) == "\xE2\x88\x9E:1" && readBack,
+              "a three-band dynamics ratio at infinity holds the level at its threshold, and reads as such");
+    }
+    {
+        // The retired three-band compressor in a state from before version 6 loads as a three-band dynamics doing what
+        // it did: its settings in the dynamics' fields (thresholds as Above, ratios as Down), the upward side at 1:1,
+        // the compressor's knee, peaks; an LFO's modulation of its mid threshold now aims at the mid band's Above; its
+        // own fields back at their defaults. Linked, its bands all took the low band's threshold, ratio and gain, and
+        // so the dynamics' bands take the low band's values.
+        ParamValues p = defaults();
+        p[paramIndex(3, FxParam::Type)] = static_cast<double>(FxType::MultiComp);
+        p[paramIndex(3, FxParam::McLowFreq)] = normFromCutoff(150.0);
+        p[mcThresholdIndex(3, 1)] = -33.0;
+        p[mcRatioIndex(3, 2)] = 7.0;
+        p[mcGainIndex(3, 0)] = 4.0;
+        p[paramIndex(3, FxParam::McRelease)] = normFromTime(0.4);
+        p[paramIndex(3, FxParam::McOutput)] = -5.0;
+        p[paramIndex(3, FxParam::McLink)] = 1.0;
+        p[slotTargetIndex(0, 0)] = static_cast<double>(idOfIndex(mcThresholdIndex(3, 1))) + 1.0;
+        p[slotAmountIndex(0, 0)] = 0.25;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version, ParamValues &loaded) { // the patch, as saved by that version
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            return readParams(&in, loaded);
+        };
+        ParamValues loaded;
+        const bool read = load(5, loaded);
+        auto at = [&](FxParam f) { return loaded[paramIndex(3, f)]; };
+        const bool type = at(FxParam::Type) == static_cast<double>(FxType::MultiDyn);
+        const bool moved = std::abs(at(FxParam::MdLowFreq) - normFromCutoff(150.0)) < 1e-9 &&
+                           loaded[mdAboveIndex(3, 1)] == loaded[mdAboveIndex(3, 0)] &&
+                           loaded[mdDownIndex(3, 2)] == loaded[mdDownIndex(3, 0)] && loaded[mdGainIndex(3, 0)] == 4.0 &&
+                           loaded[mdGainIndex(3, 1)] == 4.0 && loaded[mdGainIndex(3, 2)] == 4.0 &&
+                           std::abs(at(FxParam::MdRelease) - normFromTime(0.4)) < 1e-9 && at(FxParam::MdOutput) == -5.0 &&
+                           at(FxParam::MdLink) == 1.0 && at(FxParam::MdAttack) == paramTable()[paramIndex(3, FxParam::McAttack)].def;
+        bool upward = at(FxParam::MdKnee) == kMcKnee && at(FxParam::MdRms) == 0.0;
+        for (int band = 0; band < kMcBands; ++band)
+            upward = upward && loaded[mdUpIndex(3, band)] == normFromDynRatio(1.0);
+        const bool aimed = slotTarget(loaded[slotTargetIndex(0, 0)]) == mdAboveIndex(3, 1) &&
+                           loaded[slotAmountIndex(0, 0)] == 0.25;
+        const bool cleared = loaded[mcThresholdIndex(3, 1)] == paramTable()[mcThresholdIndex(3, 1)].def &&
+                             loaded[paramIndex(3, FxParam::McLink)] == 0.0;
+        check(read && type && moved && upward && aimed && cleared,
+              "a state's three-band compressor loads as a three-band dynamics doing what it did, its modulation along");
+        // Unlinked, each band's own carry over.
+        ParamValues apart;
+        {
+            ParamValues unlinkedComp = p;
+            unlinkedComp[paramIndex(3, FxParam::McLink)] = 0.0;
+            std::vector<unsigned char> saved;
+            const clap_ostream_t to = memoryOut(saved);
+            writePatch(&to, unlinkedComp, gui::UiLayout{}, true);
+            uint32_t five = 5;
+            std::memcpy(saved.data() + sizeof(uint32_t), &five, sizeof(five));
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            readParams(&in, apart);
+        }
+        check(apart[mdAboveIndex(3, 1)] == -33.0 && std::abs(apart[mdDownIndex(3, 2)] - normFromDynRatio(7.0)) < 1e-12 &&
+                  apart[mdGainIndex(3, 0)] == 4.0 && apart[mdGainIndex(3, 1)] == 0.0 &&
+                  apart[paramIndex(3, FxParam::MdLink)] == 0.0,
+              "an unlinked three-band compressor's bands carry their own settings over");
+        // A later state holding one (a host can still set the type) loads back as it was saved.
+        ParamValues kept;
+        const bool same = load(6, kept) && std::equal(kept.begin(), kept.end(), p.begin());
+        check(same, "a state from version 6 on loads a slot's three-band compressor as it was saved");
+    }
     {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
         // rather than playing back what it held then.

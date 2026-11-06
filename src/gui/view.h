@@ -185,7 +185,14 @@ private:
         FxAdd,        // a = FxType: an entry of the list, puts that effect at the end of the chain
         FxRemove,     // a = effect slot
         Scrollbar,    // a = ScrollArea: drag the thumb, or click the track to jump there
-        McBand,       // a = effect slot, b = band: which band of a three-band compressor its card shows
+        DynBand,      // a = effect slot, b = band: a three-band dynamics' band's row; a click picks the band its
+                      // knobs set
+        DynZone,      // param = the ratio, a = effect slot, b = 2 x band + 0 for its downward zone (right of the Above
+                      // line), 1 for its upward one (left of the Below line): drag up and down for the ratio. Linked,
+                      // every band's zones set the low band's
+        DynGrip,      // param = the threshold's ratio (for Alt and the wheel), a = effect slot, b = 2 x band + 0 for
+                      // its Above threshold's line, 1 for its Below one's: drag across for the threshold. Linked,
+                      // every band's lines set the low band's
         PeqPoint,     // param = the band's Q (for the wheel), a = effect slot, b = band: frequency and gain handle
         LfoDisplay,   // a = lfo: click opens the shape editor of a freeform LFO
         ClipDisplay,  // a = effect slot: the edit button on a drawn curve's display, which opens the big editor
@@ -261,6 +268,7 @@ private:
         EnvCurve,
         FilterPoint,
         PeqPoint,
+        DynGrip,
         FxMove,
         SourceMove,
         Scroll,
@@ -582,6 +590,10 @@ private:
     void setScroll(ScrollArea area, float first);
     Rect scrollThumb(ScrollArea area) const;
     Rect peqArea(int slot) const;
+    Rect mdDisplay(int slot) const; // a three-band dynamics' display, where its card is now
+    // The threshold a three-band dynamics' line `line` (2 x band + 0 for Above, 1 for Below) sets: its band's, or,
+    // linked, the low band's.
+    int mdThreshold(int slot, int line) const;
     // Several params changed as one gesture.
     void editMany(const std::vector<std::pair<int, double>> &changes);
     // Drawn shapes: a freeform LFO's (shape = the source), a shaper's curve (shape = kMaxSources + the shaper's
@@ -776,7 +788,7 @@ private:
     // Where a parametric EQ band's handle sits: at its gain, or for a cut, at its resonance's peak.
     Point peqHandle(Rect area, int slot, int band) const;
     void paintCompressor(Canvas &c, Rect r, int slot);
-    void paintMultiComp(Canvas &c, Rect r, int slot);
+    void paintMultiDyn(Canvas &c, Rect r, int slot);
     void paintReverb(Canvas &c, Rect r, int slot);
     // The phaser's and flanger's responses, with the LFO at the middle and at both ends.
     void paintSweep(Canvas &c, Rect r, int slot, FxType type);
@@ -916,7 +928,7 @@ private:
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it
-    std::array<int, kFxSlots> fxBand_{};     // the band each three-band compressor's card shows
+    std::array<int, kFxSlots> fxBand_{};     // the band each three-band dynamics' card shows
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1
     bool settingsOpen_ = false;
     int theme_ = 0;                          // the theme painted last
