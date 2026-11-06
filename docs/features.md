@@ -782,7 +782,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     readout takes the first two knobs' places: four digits of a 7-segment display (88.88, the tens dark below 10),
     each its own handle. A digit dragged up or down steps by its own place (tens 10, ones 1, tenths 0.1, hundredths
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
-    the digit under the mouse, and a double-click rounds to it (on the ones, 3.47 becomes 3.00). The digit under the
+    the digit under the mouse, and a double-click resets it and the digits below it to those of 1.00 (on the ones, 23.47 becomes 21.00). The digit under the
     mouse, or being dragged, is lit behind. Ctrl+Click or the menu's Edit value types a value, which can be a
     fraction (7/2) or start with ×. Over the digits a track runs from 0.5 to 64 in a straight line: a tick at the ratio (at its right end at 64),
     each modulation's reach in its source's color (wider while its depth handle is hovered, with an arrow after the
