@@ -572,7 +572,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     is the effect's switch: a click turns it off (the icon turns grey with the card, under the mouse too, and the
     effect costs nothing) or on again, in its color; dragged, it moves the card like the title. **+ EFFECT** (a drawn plus before the word) at the panel's top left
     opens a list of the effect types (beside it, how many of the 16
-    places are taken, as in 3/16), and so does a dashed card with a plus after the last effect, over itself; the
+    places are taken, as in 3/16), and so does a dashed card with a plus after the last effect, at the mouse (moved
+    back inside the editor where it would reach past an edge); the
     one picked goes at the end of the chain, which scrolls to show it, and so does a copy. The arrow between two
     cards turns into a plus under the mouse: a click opens the list over the cards there, and the one picked goes
     between those two. The dashed card takes a
@@ -838,7 +839,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
-  card with a plus, **ADD SOURCE**, as tall as the cards, opens the list of source types over itself (LFO, Envelope,
+  card with a plus, **ADD SOURCE**, as tall as the cards, opens the list of source types at the mouse, moved back
+  inside the editor where it would reach past an edge (LFO, Envelope,
   Random and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
   the list. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
   scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags

@@ -602,10 +602,12 @@ private:
     // source (LFO above ENV, square) add one.
     bool fxShadow() const;
     bool sourceShadow() const;
-    // That dashed card while it is on screen, and the open list of source types' top left over it, kept inside the
-    // panel: the list goes with the card, and shuts once the card isn't on screen (see poll()).
+    // That dashed card while it is on screen: the list of source types it opens shuts once the card isn't on screen
+    // (see poll()).
     std::optional<Rect> sourceShadowCard() const;
-    static Point sourceMenuAt(Rect card);
+    // The top left of a list as wide and high as `menu` that opens at the mouse, moved back inside the editor where
+    // it would reach past an edge.
+    Point menuAtMouse(Point mouse, Rect menu) const;
     float scrollFirst(ScrollArea area) const;
     void setScroll(ScrollArea area, float first);
     Rect scrollThumb(ScrollArea area) const;
@@ -987,12 +989,13 @@ private:
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     float fxScroll_ = 0.0f;                  // how many effect cards are scrolled past, before clamping
     bool fxMenuOpen_ = false;                // the ADD EFFECT list
-    Point fxMenuAt_{-1.0f, -1.0f};           // its top left: over the shadow card it opened from, or (x < 0) under ADD EFFECT
+    Point fxMenuAt_{-1.0f, -1.0f};           // its top left: at the mouse, or (x < 0) under ADD EFFECT
     int fxInsertAt_ = -1;                    // where the list puts the effect it adds: a place in the chain, or (-1) its end
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
-    bool sourceMenuOpen_ = false;            // the list of source types, over the dashed card after the sources
+    bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
+    Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it

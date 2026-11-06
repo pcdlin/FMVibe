@@ -394,6 +394,24 @@ Point fxMenuItem(FxType type) {
     return {122.0f, 153.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
 }
 
+// A list a dashed card opens: its top left where the card was clicked, moved back inside the editor (4 px in) where
+// it would reach past an edge. The effects' is 180 px wide, a type every 23 px from 4 px down; the sources' 150 px,
+// a type every 26 px.
+Point listAt(const View &view, Point click, float w, float h) {
+    return {std::clamp(click.x, 4.0f, View::kWidth - 4.0f - w), std::clamp(click.y, 4.0f, view.height() - 4.0f - h)};
+}
+Point fxListAt(const View &view, Point click) {
+    return listAt(view, click, 180.0f, 8.0f + 13.0f * kFxMenuPitch);
+}
+Point fxListItem(const View &view, Point click, FxType type) {
+    const Point at = fxListAt(view, click);
+    return {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
+}
+Point sourceListItem(const View &view, Point click, SourceType type) {
+    const Point at = listAt(view, click, 150.0f, 8.0f + 4.0f * 26.0f);
+    return {at.x + 70.0f, at.y + 16.0f + 26.0f * (static_cast<float>(type) - 1.0f)};
+}
+
 
 // The freeform shape editor: x 0..1 across, y -1..1 up. An LFO's spans the routing panel and the inspector, its
 // plot 1088 wide; the note source's curve, like the partial editor, fills the routing panel only, 772 wide.
@@ -2342,39 +2360,41 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // The dashed cards after the sources: an LFO's above an envelope's, each adding one.
-// The dashed card after the sources (with none yet, in the first place) opens the list of source types over itself,
+// The dashed card after the sources (with none yet, in the first place) opens the list of source types at the mouse,
 // from 8 px in: an entry 26 px a type, from y 536 + 12. LFO adds an LFO; after it, a click around the list closes it
 // adding nothing, and Envelope adds an envelope.
 void testSourceShadow(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    auto entry = [](float card, SourceType type) {
-        return Point{cardX(card) + 70.0f, 536.0f + 12.0f + 26.0f * (static_cast<float>(type) - 1.0f) + 12.0f};
-    };
-    click(view, {cardX(0) + 46.0f, 600.0f});
-    view.mouseMove(entry(0, SourceType::Midi), {});
+    // The list opens where the card is clicked: its entries from there, not from the card's corner.
+    const Point first{cardX(0) + 46.0f, 600.0f};
+    auto entry = [&](Point click, SourceType type) { return sourceListItem(view, click, type); };
+    click(view, first);
+    view.mouseMove(entry(first, SourceType::Midi), {});
     const bool menuShot = renderer.save(view, dir / "29b-source-menu.png");
-    click(view, entry(0, SourceType::Lfo));
+    click(view, entry(first, SourceType::Lfo));
     const bool lfo = shown(model) == std::vector<int>{0} &&
                      model.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::Lfo);
-    click(view, {cardX(1) + 46.0f, 600.0f}); // after it
-    click(view, {600.0f, 300.0f});           // around the list
+    const Point second{cardX(1) + 30.0f, 560.0f}; // after it, higher up
+    click(view, second);
+    click(view, {600.0f, 300.0f}); // around the list
     const bool closed = shown(model) == std::vector<int>{0};
-    click(view, {cardX(1) + 46.0f, 600.0f});
-    click(view, entry(1, SourceType::Env));
+    click(view, second);
+    click(view, entry(second, SourceType::Env));
     const bool env = shown(model) == std::vector<int>{0, 1} &&
                      model.value(paramIndex(1, SourceParam::Type)) == static_cast<double>(SourceType::Env);
     view.mouseMove({cardX(2) + 46.0f, 600.0f}, {});
     check(menuShot && lfo && closed && env && renderer.save(view, dir / "29-source-shadow.png"),
-          "the dashed card after the sources opens the list of source types, which adds the one picked");
+          "the dashed card after the sources opens the list of source types at the mouse, which adds the one picked");
     // Left open while the panel collapses (as a state load or another editor can do), the list shuts with it, and
     // doesn't come back when the panel opens again: a click where its LFO entry was opens it afresh instead.
-    click(view, {cardX(2) + 46.0f, 600.0f});
+    const Point third{cardX(2) + 46.0f, 600.0f};
+    click(view, third);
     model.ui.sourcesCollapsed = true;
     view.poll();
     model.ui.sourcesCollapsed = false;
     view.poll();
-    click(view, entry(2, SourceType::Lfo));
+    click(view, entry(third, SourceType::Lfo));
     check(shown(model) == std::vector<int>{0, 1}, "the list of source types shuts when its dashed card goes");
 }
 
@@ -4710,14 +4730,12 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "8a-fx-empty.png"), "render the empty FX chain with the ADD EFFECT list open");
     click(view, {600.0f, 400.0f}); // anywhere else closes the list
     check(fxChain(model).empty(), "a click outside the ADD EFFECT list closes it");
-    // The dashed card at the chain's end (its first place, while it is empty) opens the list over itself.
-    click(view, {fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 300.0f});
-    auto shadowItem = [](FxType type) {
-        return Point{130.0f, 174.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
-    };
-    view.mouseMove(shadowItem(FxType::Shaper), {});
-    check(renderer.save(view, dir / "8a2-fx-shadow-list.png"), "render the list of effects over the dashed card");
-    click(view, shadowItem(FxType::Shaper));
+    // The dashed card at the chain's end (its first place, while it is empty) opens the list where it is clicked.
+    const Point shadowClick{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 240.0f};
+    click(view, shadowClick);
+    view.mouseMove(fxListItem(view, shadowClick, FxType::Shaper), {});
+    check(renderer.save(view, dir / "8a2-fx-shadow-list.png"), "render the list of effects at the mouse");
+    click(view, fxListItem(view, shadowClick, FxType::Shaper));
     check(fxChain(model) == std::vector<int>{0} &&
               model.value(paramIndex(0, FxParam::Type)) == static_cast<double>(FxType::Shaper),
           "the dashed card at the chain's end adds an effect");
@@ -4732,11 +4750,18 @@ void run(const std::filesystem::path &dir, float scale) {
                                            static_cast<long>(added[slot]) &&
                        model.value(paramIndex(slot, FxParam::Enabled)) == 1.0;
     check(addedInOrder && model.openEdits == 0, "the add buttons fill the chain, the same effect more than once");
-    // At the chain's right end, the dashed card opens its list over the card before it, and a switched-off card's
-    // dimming stays under the list (read off the rendered pixels: the list looks the same over it either way).
+    // At the chain's right end, the dashed card clicked by its right edge opens its list moved back left inside the
+    // editor, over the card before it, and a switched-off card's dimming stays under the list (read off the rendered
+    // pixels: the list looks the same over it either way).
     {
-        click(view, {fxCardX(model, 5) + 40.0f, 300.0f});
-        const Point inList{1010.0f, 330.0f}; // over the second delay's card
+        const Point rightClick{std::min(fxCardX(model, 5) + fxCardW(model, 5), 32.0f + 1136.0f) - 6.0f, 300.0f};
+        const Point at = fxListAt(view, rightClick);
+        click(view, rightClick);
+        const Point inList{at.x + 8.0f, 330.0f}; // over the second delay's card
+        std::printf("      list at %.0f (clicked at %.0f), the second delay's card %.0f to %.0f\n", at.x, rightClick.x,
+                    fxCardX(model, 4), fxCardX(model, 4) + fxCardW(model, 4));
+        const bool moved = at.x + 8.0f < rightClick.x && inList.x > fxCardX(model, 4) &&
+                           inList.x < fxCardX(model, 4) + fxCardW(model, 4);
         renderer.save(view, dir / "8a3-fx-list-right.png");
         const uint32_t overOn = renderer.pixel(inList);
         model.set(paramIndex(4, FxParam::Enabled), 0.0);
@@ -4744,8 +4769,8 @@ void run(const std::filesystem::path &dir, float scale) {
         const uint32_t overOff = renderer.pixel(inList);
         model.set(paramIndex(4, FxParam::Enabled), 1.0);
         click(view, {600.0f, 140.0f}); // anywhere else closes it
-        check(shot && overOn == overOff && fxChain(model).size() == 5,
-              "the list of effects stays over a switched-off card's dimming");
+        check(moved && shot && overOn == overOff && fxChain(model).size() == 5,
+              "the list of effects stays inside the editor, and over a switched-off card's dimming");
     }
 
     // The filter card's type buttons, in a row: Comb is the fifth.

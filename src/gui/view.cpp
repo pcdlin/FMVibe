@@ -755,10 +755,10 @@ std::optional<Rect> View::sourceShadowCard() const {
     return sourceCard(place, kSourceShadowSpan);
 }
 
-Point View::sourceMenuAt(Rect card) {
-    const Rect panel = modPanel(false);
-    return {std::clamp(card.x + 8.0f, panel.x + 8.0f, panel.right() - 8.0f - sourceMenu({0.0f, 0.0f}).w),
-            card.y + 8.0f};
+Point View::menuAtMouse(Point mouse, Rect menu) const {
+    constexpr float kMargin = 4.0f;
+    return {std::clamp(mouse.x, kMargin, std::max(kWidth - kMargin - menu.w, kMargin)),
+            std::clamp(mouse.y, kMargin, std::max(height() - kMargin - menu.h, kMargin))};
 }
 
 float View::scrollFirst(ScrollArea area) const {
@@ -2340,9 +2340,9 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::PresetButton, toolbarButton(action), -1, action);
     add(Kind::SettingsButton, toolbarButton(3));
 
-    // The list of source types, over the dashed card it opened from, while the modulation panel is open.
-    if (const auto shadow = sourceShadowCard(); sourceMenuOpen_ && shadow) {
-        const Point at = sourceMenuAt(*shadow);
+    // The list of source types, where the dashed card was clicked, while that card is on screen.
+    if (sourceMenuOpen_ && sourceShadowCard()) {
+        const Point at = sourceMenuAt_;
         add(Kind::SourceMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::SourceMenu, sourceMenu(at), -1, 1);
         for (int t = 1; t <= kSourceTypes; ++t)
@@ -5728,16 +5728,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::FxShadow:
     case Kind::SourceShadow: {
-        // A dashed outline with a plus in it and what it adds under that, lit while hovered (an effect's in the
-        // theme's accent, like ADD EFFECT).
+        // A dashed outline with a plus in it and what it adds under that, faint at rest so it stays behind the cards,
+        // lit while hovered (an effect's in the theme's accent, like ADD EFFECT).
         const bool fx = w.kind == Kind::FxShadow;
         const Color color = fx ? kAccent : kSourceAddColor;
         if (hovered)
             c.fillRect(w.rect, color.alpha(0.07f), 8.0f);
-        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint, 1.2f, 8.0f, true);
+        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, 8.0f, true);
         const float arm = 12.0f;
         const Point m{w.rect.center().x, w.rect.center().y - arm};
-        const Color ink = hovered ? kText : kDim;
+        const Color ink = hovered ? kText : kFaint.alpha(0.8f);
         c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
         c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
         const char *what = tr(fx ? Str::ButtonAddEffect : Str::ButtonAddSource);
@@ -7647,8 +7647,8 @@ void View::mouseDown(Point p, Modifiers mods) {
             fxInsertAt_ = -1;
         }
         break;
-    case Kind::FxShadow: // the list over the card, kept inside the panel
-        fxMenuAt_ = {std::min(w.rect.x + 8.0f, kFxPanel.right() - 8.0f - fxMenu({0.0f, 0.0f}).w), w.rect.y + 8.0f};
+    case Kind::FxShadow: // the list at the mouse, kept inside the editor
+        fxMenuAt_ = menuAtMouse(p, fxMenu({0.0f, 0.0f}));
         fxMenuOpen_ = true;
         fxInsertAt_ = -1;
         hover_.reset();
@@ -7662,7 +7662,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         hover_.reset();
         break;
     }
-    case Kind::SourceShadow: // the list over the card
+    case Kind::SourceShadow: // the list at the mouse, kept inside the editor
+        sourceMenuAt_ = menuAtMouse(p, sourceMenu({0.0f, 0.0f}));
         sourceMenuOpen_ = true;
         hover_.reset();
         break;

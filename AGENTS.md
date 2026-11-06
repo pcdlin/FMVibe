@@ -301,8 +301,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard strip
     to its top row by its chevron or title, the mod wheel's handle moving into it and still mapping the wheel, and
     Bend's knob, over the bend wheel, staying in it and turning;
-  - the dashed cards that add effects and sources (opening the list of types over themselves, the effects' staying
-    over a switched-off card's dimming at the chain's right end, read off the rendered pixels; the sources' closing
+  - the dashed cards that add effects and sources (opening the list of types at the mouse, the effects' moved back
+    inside the editor at the chain's right end and staying over a switched-off card's dimming, read off the rendered
+    pixels; the sources' closing
     at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme and the depth handles'
     size (drawn bigger at each, read off the rendered pixels), and dragging the glow slider and the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
