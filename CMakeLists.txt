@@ -31,6 +31,8 @@ set(FMVIBE_ENGINE_SOURCES
     src/uistrings.inc
     src/synth.cpp
     src/synth.h
+    src/zerobuffer.cpp
+    src/zerobuffer.h
     src/wavetable.cpp
     src/wavetable.h
 )

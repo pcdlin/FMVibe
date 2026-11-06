@@ -7,8 +7,10 @@
 #include <wrl/client.h>
 #endif
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <string>
 #include <string_view>
@@ -71,7 +73,42 @@ public:
     // The widths Canvas::textWidth() measured, by text format and text (see there): measuring one lays the text out.
     std::unordered_map<std::string, float> &textWidths() { return widths_; }
 
+    // A path geometry made from a few numbers (an arc's, a curve's), kept for the next frame, which mostly draws the
+    // same ones again (knobs at rest, wires): `build` fills the sink of a path made for a key not kept yet.
+    struct PathKey {
+        uint32_t kind = 0;
+        std::array<float, 7> values{};
+    };
+    template <class Build>
+    ID2D1PathGeometry *path(const PathKey &key, const Build &build) {
+        if (const auto found = paths_.find(key); found != paths_.end())
+            return found->second.Get();
+        ComPtr<ID2D1PathGeometry> path;
+        factory_->CreatePathGeometry(path.GetAddressOf());
+        ComPtr<ID2D1GeometrySink> sink;
+        path->Open(sink.GetAddressOf());
+        build(sink.Get());
+        sink->Close();
+        if (paths_.size() >= 4096) // a few thousand at most, as the text widths
+            paths_.clear();
+        return paths_.emplace(key, path).first->second.Get();
+    }
+
 private:
+    // Keys alike byte for byte, so a key's hash and equality agree (-0 and 0, NaN).
+    struct PathKeyOps {
+        size_t operator()(const PathKey &key) const noexcept {
+            const auto *bytes = reinterpret_cast<const unsigned char *>(&key);
+            size_t hash = 14695981039346656037ull;
+            for (size_t i = 0; i < sizeof key; ++i)
+                hash = (hash ^ bytes[i]) * 1099511628211ull;
+            return hash;
+        }
+        bool operator()(const PathKey &a, const PathKey &b) const noexcept {
+            return std::memcmp(&a, &b, sizeof a) == 0;
+        }
+    };
+    std::unordered_map<PathKey, ComPtr<ID2D1PathGeometry>, PathKeyOps, PathKeyOps> paths_;
     ComPtr<ID2D1Factory> factory_;
     ComPtr<IDWriteFactory> write_;
     ComPtr<ID2D1StrokeStyle> round_;

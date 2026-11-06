@@ -4,6 +4,7 @@
 #include "clipcurve.h"
 #include "filter.h"
 #include "params.h"
+#include "zerobuffer.h"
 
 #include <algorithm>
 #include <array>
@@ -131,6 +132,10 @@ public:
 
 private:
     static constexpr uint32_t kChunk = 64; // samples per parameter ramp
+    // How often the phaser and flanger work out where their sweep is, in samples, moving in a straight line between:
+    // a sweep (100 Hz at most) bends too little over these few samples to tell, and each step costs a sine, an
+    // exponential and a tangent per side.
+    static constexpr uint32_t kSweepStep = 8;
 
     struct BiquadCoefs {
         double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
@@ -155,7 +160,7 @@ private:
     };
 
     struct Delay {
-        std::array<std::vector<float>, 2> lines;
+        std::array<ZeroBuffer, 2> lines;
         int write = 0;
         std::array<double, 2> length{};   // samples, glide toward the set times
         std::array<double, 2> lowPass{};  // tone filter states
@@ -183,8 +188,12 @@ private:
 
     struct FilterFx {
         std::array<Filter, 2> channels{};
-        std::array<std::vector<float>, 2> combs; // comb delay lines, combLength() long
+        std::array<ZeroBuffer, 2> combs; // comb delay lines, combLength() long
         double mix = 1.0;
+        // Its settings, and the params (and pitch, while it tracks the key) they were worked out from: NaN until the
+        // first chunk, so worked out again only when one moves (see runFilter()).
+        FilterSettings settings;
+        std::array<double, 7> settingsFor{std::numeric_limits<double>::quiet_NaN()};
     };
 
     // The gain reduction (dB, 0 or below) follows the static curve at the attack
@@ -219,9 +228,9 @@ private:
     static constexpr int kDiffusers = 6; // per side: a plate runs the input through all of them, the others through four
     static constexpr int kShimmerLines = 4;
     struct Reverb {
-        std::array<std::vector<float>, kReverbLines> lines; // all as long as the longest, with room for the wavering
-        std::array<std::array<std::vector<float>, kDiffusers>, 2> diffusers; // per side
-        std::array<std::vector<float>, 2> preDelay;
+        std::array<ZeroBuffer, kReverbLines> lines; // all as long as the longest, with room for the wavering
+        std::array<std::array<ZeroBuffer, kDiffusers>, 2> diffusers; // per side
+        std::array<ZeroBuffer, 2> preDelay;
         int lineWrite = 0;
         int diffuserWrite = 0;
         int preWrite = 0;
@@ -257,14 +266,21 @@ private:
         std::array<double, 2> last{}; // the last stage's output, fed back to the first
         double phase = 0.0;           // the LFO, in cycles
         double mix = 0.5;
+        // The all-passes' coefficient per side, worked out every kSweepStep samples and moved along in a straight
+        // line between (see runPhaser()): where it was last worked out, and whether it has been yet.
+        std::array<double, 2> coef{};
+        bool coefKnown = false;
     };
 
     struct Flanger {
-        std::array<std::vector<float>, 2> lines;
+        std::array<ZeroBuffer, 2> lines;
         int write = 0;
         std::array<double, 2> last{}; // the delayed sound, fed back
         double phase = 0.0;
         double mix = 0.5;
+        // The delay per side in samples, worked out every kSweepStep samples like the phaser's coefficient.
+        std::array<double, 2> delay{};
+        bool delayKnown = false;
     };
 
     // Two all-pass chains whose outputs stay 90 degrees apart across the audio band (Olli
@@ -286,7 +302,7 @@ private:
 
     // The sound above the high-pass, mono, in a short line that kWidenerTaps swept taps read.
     struct Widener {
-        std::vector<float> line;
+        ZeroBuffer line;
         int write = 0;
         Biquad highPass;
         std::array<double, kWidenerTaps> phases{}; // the taps' sweeps, in cycles

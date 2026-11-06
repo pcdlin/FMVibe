@@ -17,6 +17,7 @@ struct Analyzed {
     std::vector<float> samples;
     int write = 0;
     int since = 0;
+    int start = 0; // where `since` starts (see Analyzer::prepare())
     Spectrum bands{};
 
     void clear();
@@ -32,7 +33,9 @@ public:
 
     // Allocates, also each signal's samples (prepare(signal)). Main thread.
     void prepare(double sampleRate);
-    static void prepare(Analyzed &signal);
+    // `stagger` of `of`: signals measured together start their counts that far apart, so their transforms fall in
+    // different blocks rather than all in one.
+    static void prepare(Analyzed &signal, int stagger = 0, int of = 1);
 
     void push(Analyzed &signal, float x) {
         signal.samples[signal.write] = x;

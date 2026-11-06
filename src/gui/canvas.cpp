@@ -139,16 +139,17 @@ void Canvas::strokeCircleDotted(Point center, float radius, Color c, float width
     target_->DrawEllipse(D2D1::Ellipse(pt(center), radius, radius), brush(c), width, resources_.dottedStroke());
 }
 
+// A quadratic curve's path, kept with the resources (see Resources::path()).
+static ID2D1PathGeometry *curvePath(Resources &resources, Point a, Point control, Point b) {
+    return resources.path({1, {a.x, a.y, control.x, control.y, b.x, b.y}}, [&](ID2D1GeometrySink *sink) {
+        sink->BeginFigure(pt(a), D2D1_FIGURE_BEGIN_HOLLOW);
+        sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(pt(control), pt(b)));
+        sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    });
+}
+
 void Canvas::curveDotted(Point a, Point control, Point b, Color c, float width) {
-    ComPtr<ID2D1PathGeometry> path;
-    resources_.factory()->CreatePathGeometry(path.GetAddressOf());
-    ComPtr<ID2D1GeometrySink> sink;
-    path->Open(sink.GetAddressOf());
-    sink->BeginFigure(pt(a), D2D1_FIGURE_BEGIN_HOLLOW);
-    sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(pt(control), pt(b)));
-    sink->EndFigure(D2D1_FIGURE_END_OPEN);
-    sink->Close();
-    target_->DrawGeometry(path.Get(), brush(c), width, resources_.dottedStroke());
+    target_->DrawGeometry(curvePath(resources_, a, control, b), brush(c), width, resources_.dottedStroke());
 }
 
 void Canvas::line(Point a, Point b, Color c, float width, bool dashed) {
@@ -165,29 +166,22 @@ void Canvas::arc(Point center, float radius, float from, float to, Color c, floa
         strokeCircle(center, radius, c, width);
         return;
     }
-    ComPtr<ID2D1PathGeometry> path;
-    resources_.factory()->CreatePathGeometry(path.GetAddressOf());
-    ComPtr<ID2D1GeometrySink> sink;
-    path->Open(sink.GetAddressOf());
-    sink->BeginFigure(pt(onCircle(center, radius, from)), D2D1_FIGURE_BEGIN_HOLLOW);
-    sink->AddArc(D2D1::ArcSegment(pt(onCircle(center, radius, to)), D2D1::SizeF(radius, radius), 0.0f,
-                                  D2D1_SWEEP_DIRECTION_CLOCKWISE,
-                                  to - from > std::numbers::pi_v<float> ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL));
-    sink->EndFigure(D2D1_FIGURE_END_OPEN);
-    sink->Close();
-    target_->DrawGeometry(path.Get(), brush(c), width, resources_.roundStroke());
+    // Knobs at rest draw the same arcs frame after frame: their paths are kept (see Resources::path()).
+    ID2D1PathGeometry *path =
+        resources_.path({0, {center.x, center.y, radius, from, to}}, [&](ID2D1GeometrySink *sink) {
+            sink->BeginFigure(pt(onCircle(center, radius, from)), D2D1_FIGURE_BEGIN_HOLLOW);
+            sink->AddArc(D2D1::ArcSegment(pt(onCircle(center, radius, to)), D2D1::SizeF(radius, radius), 0.0f,
+                                          D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                                          to - from > std::numbers::pi_v<float> ? D2D1_ARC_SIZE_LARGE
+                                                                                : D2D1_ARC_SIZE_SMALL));
+            sink->EndFigure(D2D1_FIGURE_END_OPEN);
+        });
+    target_->DrawGeometry(path, brush(c), width, resources_.roundStroke());
 }
 
 void Canvas::curve(Point a, Point control, Point b, Color c, float width, bool dashed) {
-    ComPtr<ID2D1PathGeometry> path;
-    resources_.factory()->CreatePathGeometry(path.GetAddressOf());
-    ComPtr<ID2D1GeometrySink> sink;
-    path->Open(sink.GetAddressOf());
-    sink->BeginFigure(pt(a), D2D1_FIGURE_BEGIN_HOLLOW);
-    sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(pt(control), pt(b)));
-    sink->EndFigure(D2D1_FIGURE_END_OPEN);
-    sink->Close();
-    target_->DrawGeometry(path.Get(), brush(c), width, dashed ? resources_.dashedStroke() : resources_.roundStroke());
+    target_->DrawGeometry(curvePath(resources_, a, control, b), brush(c), width,
+                          dashed ? resources_.dashedStroke() : resources_.roundStroke());
 }
 
 void Canvas::polyline(const Point *points, size_t count, Color c, float width, bool dashed) {

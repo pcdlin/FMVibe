@@ -11,7 +11,8 @@ namespace fmvibe {
 
 void Analyzed::clear() {
     std::fill(samples.begin(), samples.end(), 0.0f);
-    write = since = 0;
+    write = 0;
+    since = start;
     bands = {};
 }
 
@@ -34,8 +35,9 @@ void Analyzer::prepare(double sampleRate) {
     }
 }
 
-void Analyzer::prepare(Analyzed &signal) {
+void Analyzer::prepare(Analyzed &signal, int stagger, int of) {
     signal.samples.assign(kSize, 0.0f);
+    signal.start = of > 0 ? stagger % of * (kSize / 2) / of : 0;
     signal.clear();
 }
 

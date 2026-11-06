@@ -43,7 +43,7 @@ void PluginCore::layoutChanged() {
 }
 
 void PluginCore::performSetValue(int index, double value) {
-    values_[index].store(value);
+    storeValue(index, value);
     hostEdit(index, value);
     if (shapesSections(index))
         sectionsChanged();
@@ -55,6 +55,7 @@ void PluginCore::performSetValue(int index, double value) {
 
 // Voices are allocated here, on the main thread, for the current voice limit.
 void PluginCore::activate(double sampleRate) {
+    sampleRate_ = sampleRate;
     synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
     restartRequested_.store(false);
 }
@@ -118,9 +119,14 @@ void PluginCore::beginBlock() {
     applyPlayMode();
 
     // The params are read once for the block; a param event in it updates the copy as well (see setHostValue()), so
-    // what follows hears it, and an edit in the editor meanwhile is heard from the next block on.
-    for (int i = 0; i < kParamCount; ++i)
-        snapshot_[i] = values_[i].load(std::memory_order_relaxed);
+    // what follows hears it, and an edit in the editor meanwhile is heard from the next block on. The copy is taken
+    // again only when something was stored since the last one.
+    if (const uint64_t version = valuesVersion_.load(std::memory_order_acquire); version != snapshotVersion_) {
+        snapshotVersion_ = version;
+        for (int i = 0; i < kParamCount; ++i)
+            snapshot_[i] = values_[i].load(std::memory_order_relaxed);
+        snapshotChanged_ = true;
+    }
 }
 
 void PluginCore::render(float *left, float *right, uint32_t frames) {
@@ -128,16 +134,23 @@ void PluginCore::render(float *left, float *right, uint32_t frames) {
         return;
     synth_.setVoiceLimit(static_cast<int>(std::lround(snapshot_[paramIndex(GlobalParam::Voices)])));
     applyPlayMode();
-    synth_.render(left, right, frames, snapshot_);
+    synth_.render(left, right, frames, snapshot_, !snapshotChanged_);
+    snapshotChanged_ = false;
+    telemetryFrames_ += frames;
 }
 
 void PluginCore::endBlock() {
     synth_.clearEndedNotes();
-    if (editorOpen_.load(std::memory_order_relaxed)) {
-        Telemetry t;
+    // The editor paints about 60 times a second: a snapshot every kTelemetrySeconds of audio is plenty, however short
+    // the host's blocks, and the first one as soon as the editor opens.
+    const bool open = editorOpen_.load(std::memory_order_relaxed);
+    if (open && (!telemetryOpen_ || telemetryFrames_ >= kTelemetrySeconds * sampleRate_)) {
+        telemetryFrames_ = 0.0;
+        Telemetry &t = *telemetryScratch_;
         synth_.telemetry(t);
         telemetry_.store(t);
     }
+    telemetryOpen_ = open;
     _mm_setcsr(csr_);
 }
 
@@ -168,8 +181,12 @@ void PluginCore::setHostValue(int index, double value, bool inBlock) {
         return;
     value = std::clamp(value, paramTable()[index].min, paramTable()[index].max);
     values_[index].store(value);
-    if (inBlock)
+    if (inBlock) {
         snapshot_[index] = value; // the rest of the block being processed hears it (see beginBlock())
+        snapshotChanged_ = true;
+    } else {
+        valuesChanged(); // the next block's snapshot takes it
+    }
     // Voice settings apply before any note-ons that follow in the same block.
     if (index == paramIndex(GlobalParam::Voices)) {
         if (inBlock)
@@ -258,6 +275,7 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         return false;
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(loaded[i]);
+    valuesChanged();
     // Hosts re-read the values only when asked; any hidden flags follow in sectionsChanged().
     hostValuesChanged();
     // The state's voice limit: more voices than are allocated take a restart (a lower limit the audio thread takes
@@ -336,6 +354,7 @@ void PluginCore::resetPreset() {
     const ParamTable &table = paramTable();
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(table[i].def);
+    valuesChanged();
     const gui::UiLayout before = layout_;
     layout_ = gui::UiLayout{};
     keepEditorLayout(before);

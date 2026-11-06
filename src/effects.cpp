@@ -4,6 +4,7 @@
 #include <bit>
 #include <cmath>
 #include <complex>
+#include <cstring>
 #include <limits>
 #include <numbers>
 
@@ -101,10 +102,15 @@ double rampStep(double from, double to, uint32_t n) {
 
 // Moves a band's gain reduction (dB) toward what the curve asks for at detector
 // level `peak`: at the attack pace while it has to come down, else at the release pace.
+// `quiet`: the level (1 is full scale) below which the curve leaves it alone, under the knee, where the reduction
+// heads for 0 without the logarithm worked out.
 double followReduction(double &reduction, double peak, double thresholdDb, double ratio, double kneeDb,
-                       double attack, double release) {
-    const double inDb = 20.0 * std::log10(std::max(peak, 1e-9));
-    const double target = compressorCurve(inDb, thresholdDb, ratio, kneeDb) - inDb;
+                       double attack, double release, double quiet) {
+    double target = 0.0;
+    if (peak >= quiet) {
+        const double inDb = 20.0 * std::log10(std::max(peak, 1e-9));
+        target = compressorCurve(inDb, thresholdDb, ratio, kneeDb) - inDb;
+    }
     reduction = target + (reduction - target) * (target < reduction ? attack : release);
     return reduction;
 }
@@ -143,7 +149,7 @@ constexpr double kMaxFlangerDelay = 0.032; // the longest center delay at full d
 constexpr double kWidenerSweep = 0.12;    // how far the widener's taps are swept either way, of their delay
 
 // Reads a delay line `delay` samples behind `write`, between samples.
-double readBehind(const std::vector<float> &line, int write, double delay) {
+double readBehind(const ZeroBuffer &line, int write, double delay) {
     const int size = static_cast<int>(line.size());
     double pos = write - delay;
     while (pos < 0.0)
@@ -312,29 +318,31 @@ void Effects::prepare(double sampleRate) {
     sampleRate_ = sampleRate;
     const size_t length = static_cast<size_t>(std::ceil(kMaxDelay * sampleRate)) + 4;
     for (Slot &slot : slots_) {
-        for (std::vector<float> &line : slot.delay.lines)
+        for (ZeroBuffer &line : slot.delay.lines)
             line.assign(length, 0.0f);
-        for (std::vector<float> &comb : slot.filter.combs)
+        for (ZeroBuffer &comb : slot.filter.combs)
             comb.assign(static_cast<size_t>(combLength(sampleRate)), 0.0f);
+        slot.filter.settingsFor.fill(std::numeric_limits<double>::quiet_NaN()); // for this rate
+
         // Room behind the longest line for its wavering, the most of any algorithm, and a shimmer's window.
         const double reach = kReverbLongest + 2.0 * kReverbWander * reverbStyle(ReverbType::Shimmer).wander + kShimmerWindow;
-        for (std::vector<float> &line : slot.reverb.lines)
+        for (ZeroBuffer &line : slot.reverb.lines)
             line.assign(static_cast<size_t>(std::ceil(reach * sampleRate)) + 4, 0.0f);
         const double longestDiffuser = std::max(*std::max_element(std::begin(kDiffuserSeconds[0]), std::end(kDiffuserSeconds[0])),
                                                 *std::max_element(std::begin(kDiffuserSeconds[1]), std::end(kDiffuserSeconds[1])));
         const size_t widest = static_cast<size_t>(std::ceil(longestDiffuser * sampleRate)) + 4;
         for (auto &side : slot.reverb.diffusers)
-            for (std::vector<float> &diffuser : side)
+            for (ZeroBuffer &diffuser : side)
                 diffuser.assign(widest, 0.0f);
         // Room for a room's latest early reflection behind the longest pre-delay.
         const double behind = kMaxPreDelay + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1];
-        for (std::vector<float> &line : slot.reverb.preDelay)
+        for (ZeroBuffer &line : slot.reverb.preDelay)
             line.assign(static_cast<size_t>(std::ceil(behind * sampleRate)) + 4, 0.0f);
         const double longestTap = kWidenerDelays[kWidenerTaps - 1] * (1.0 + kWidenerSweep);
         slot.widener.line.assign(static_cast<size_t>(std::ceil(longestTap * sampleRate)) + 4, 0.0f);
-        for (std::vector<float> &line : slot.flanger.lines)
+        for (ZeroBuffer &line : slot.flanger.lines)
             line.assign(static_cast<size_t>(std::ceil(kMaxFlangerDelay * sampleRate)) + 4, 0.0f);
-        Analyzer::prepare(slot.analyzed);
+        Analyzer::prepare(slot.analyzed, static_cast<int>(&slot - slots_.data()), kFxSlots + kFilters);
     }
     analyzer_.prepare(sampleRate);
     static_assert(std::size(kReverbSeconds) == kReverbLines && std::size(kWanderRates) == kReverbLines &&
@@ -396,8 +404,8 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     }
     case FxType::Delay: {
         Delay &d = s.delay;
-        for (std::vector<float> &line : d.lines)
-            std::fill(line.begin(), line.end(), 0.0f);
+        for (ZeroBuffer &line : d.lines)
+            line.zero();
         d.write = 0;
         d.length = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
         d.lowPass = {};
@@ -418,8 +426,8 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::Filter:
         s.filter.channels = {};
-        for (std::vector<float> &comb : s.filter.combs)
-            std::fill(comb.begin(), comb.end(), 0.0f);
+        for (ZeroBuffer &comb : s.filter.combs)
+            comb.zero();
         s.filter.mix = at(FxParam::FilterMix);
         s.analyzed.clear();
         break;
@@ -435,13 +443,13 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::Reverb: {
         Reverb &r = s.reverb;
-        for (std::vector<float> &line : r.lines)
-            std::fill(line.begin(), line.end(), 0.0f);
+        for (ZeroBuffer &line : r.lines)
+            line.zero();
         for (auto &side : r.diffusers)
-            for (std::vector<float> &diffuser : side)
-                std::fill(diffuser.begin(), diffuser.end(), 0.0f);
-        for (std::vector<float> &line : r.preDelay)
-            std::fill(line.begin(), line.end(), 0.0f);
+            for (ZeroBuffer &diffuser : side)
+                diffuser.zero();
+        for (ZeroBuffer &line : r.preDelay)
+            line.zero();
         r.lineWrite = r.diffuserWrite = r.preWrite = 0;
         r.shimmerPhase = 0.0;
         r.shimmerLow = r.shimmerBass = {};
@@ -465,11 +473,12 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         s.phaser.mix = sweepWet(at(FxParam::PhaserMix));
         break;
     case FxType::Flanger:
-        for (std::vector<float> &line : s.flanger.lines)
-            std::fill(line.begin(), line.end(), 0.0f);
+        for (ZeroBuffer &line : s.flanger.lines)
+            line.zero();
         s.flanger.write = 0;
         s.flanger.last = {};
         s.flanger.phase = 0.0;
+        s.flanger.delayKnown = false;
         s.flanger.mix = sweepWet(at(FxParam::FlangerMix));
         break;
     case FxType::FreqShifter:
@@ -483,7 +492,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::Widener: {
         Widener &e = s.widener;
-        std::fill(e.line.begin(), e.line.end(), 0.0f);
+        e.line.zero();
         e.write = 0;
         e.highPass = Biquad{};
         e.phases = {0.0, 0.25, 0.5, 0.75}; // apart from the start, so the sides never sweep together
@@ -752,16 +761,25 @@ void Effects::feedAnalyzer(int slot, float *const *io, uint32_t n) {
 
 double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamValues &p, double pitch) {
     FilterFx &filter = slots_[slot].filter;
-    const auto type = static_cast<FilterType>(
-        std::clamp(static_cast<int>(std::lround(p[paramIndex(slot, FxParam::FilterType)])), 0,
-                   static_cast<int>(FilterType::Count) - 1));
-    // Key tracking moves the cutoff with the pitch from C4 on, as a voice filter's does.
-    const double cutoffHz = cutoffFromNorm(p[paramIndex(slot, FxParam::FilterCutoff)]) *
-                            std::exp2((pitch - 60.0) / 12.0 * p[paramIndex(slot, FxParam::FilterKeyTrack)]);
-    const FilterSettings settings =
-        filterSettings(type, filterSlope(p[paramIndex(slot, FxParam::FilterSlope)]), cutoffHz,
-                       p[paramIndex(slot, FxParam::FilterResonance)], p[paramIndex(slot, FxParam::FilterDrive)],
-                       sampleRate_);
+    // Worked out again only when its params, or the pitch it tracks, move. Without key tracking the pitch moves
+    // nothing (2 to the power of 0 is exactly 1), and is left out.
+    const double keyTrack = p[paramIndex(slot, FxParam::FilterKeyTrack)];
+    const std::array<double, 7> inputs{p[paramIndex(slot, FxParam::FilterType)],
+                                       p[paramIndex(slot, FxParam::FilterCutoff)],
+                                       keyTrack,
+                                       keyTrack != 0.0 ? pitch : 0.0,
+                                       p[paramIndex(slot, FxParam::FilterSlope)],
+                                       p[paramIndex(slot, FxParam::FilterResonance)],
+                                       p[paramIndex(slot, FxParam::FilterDrive)]};
+    if (std::memcmp(inputs.data(), filter.settingsFor.data(), sizeof inputs) != 0) {
+        filter.settingsFor = inputs;
+        const auto type = static_cast<FilterType>(
+            std::clamp(static_cast<int>(std::lround(inputs[0])), 0, static_cast<int>(FilterType::Count) - 1));
+        // Key tracking moves the cutoff with the pitch from C4 on, as a voice filter's does.
+        const double cutoffHz = cutoffFromNorm(inputs[1]) * std::exp2((pitch - 60.0) / 12.0 * keyTrack);
+        filter.settings = filterSettings(type, filterSlope(inputs[4]), cutoffHz, inputs[5], inputs[6], sampleRate_);
+    }
+    const FilterSettings &settings = filter.settings;
     const double mixStep = rampStep(filter.mix, p[paramIndex(slot, FxParam::FilterMix)], n);
     const int combSize = static_cast<int>(filter.combs[0].size());
     double peak = 0.0;
@@ -787,15 +805,24 @@ void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamV
     const double release = smoothing(timeFromNorm(at(FxParam::CompRelease)), sampleRate_);
     const double makeupStep = rampStep(c.makeup, dbToGain(at(FxParam::CompMakeup)), n);
     const double mixStep = rampStep(c.mix, at(FxParam::CompMix), n);
+    // Below the knee the curve leaves the level as it is (see compressorCurve()): compared as a level, it takes no
+    // logarithm.
+    const double quiet = dbToGain(threshold - 0.5 * std::max(knee, 0.0));
     double most = 0.0;
+    // The reduction as a gain, worked out again only when it moves: below the threshold it rests at 0 dB.
+    double gainOf = std::numeric_limits<double>::quiet_NaN(), reductionGain = 1.0;
     for (uint32_t s = 0; s < n; ++s) {
         c.makeup += makeupStep;
         c.mix += mixStep;
         // Both sides follow the louder one, so the stereo image stays put.
         const double peak = std::max(std::abs(io[0][s]), std::abs(io[1][s]));
-        const double reduction = followReduction(c.reduction, peak, threshold, ratio, knee, attack, release);
+        const double reduction = followReduction(c.reduction, peak, threshold, ratio, knee, attack, release, quiet);
         most = std::min(most, reduction);
-        const double gain = dbToGain(reduction) * c.makeup;
+        if (reduction != gainOf) {
+            gainOf = reduction;
+            reductionGain = dbToGain(reduction);
+        }
+        const double gain = reductionGain * c.makeup;
         for (int ch = 0; ch < 2; ++ch) {
             const double x = io[ch][s];
             io[ch][s] = static_cast<float>(x + (x * gain - x) * c.mix);
@@ -825,17 +852,24 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
     const double average = 1.0 - smoothing(kMdRmsSeconds, sampleRate_);
     const double peakFall = smoothing(kMdPeakSeconds, sampleRate_);
     const double fall = smoothing(0.33, sampleRate_); // the meters fall about 26 dB a second
-    std::array<double, kMcBands> above{}, down{}, below{}, up{}, gainStep{};
+    std::array<double, kMcBands> above{}, down{}, below{}, up{}, gainStep{}, flatFrom{}, flatTo{};
     for (int b = 0; b < kMcBands; ++b) { // each band its own; Link is the editor's, which edits them together
         above[b] = p[mdAboveIndex(slot, b)];
         down[b] = dynRatio(p[mdDownIndex(slot, b)]);
         below[b] = p[mdBelowIndex(slot, b)];
         up[b] = dynRatio(p[mdUpIndex(slot, b)]);
         gainStep[b] = rampStep(m.gains[b], dbToGain(p[mdGainIndex(slot, b)]), n);
+        // Between the Below threshold's knee and the Above one's, the curve leaves the level as it is (see
+        // dynamicsGain()): compared as a level, it takes no logarithm. Empty when the knees overlap.
+        flatFrom[b] = dbToGain(std::min(below[b], above[b]) + 0.5 * std::max(knee, 0.0));
+        flatTo[b] = dbToGain(above[b] - 0.5 * std::max(knee, 0.0));
     }
     const double mixStep = rampStep(m.mix, at(FxParam::MdMix), n);
     const double outputStep = rampStep(m.output, dbToGain(at(FxParam::MdOutput)), n);
     std::array<double, kMcBands> most{}, loudest{};
+    // Each band's gain as a factor, worked out again only when it moves: between the thresholds it rests at 0 dB.
+    std::array<double, kMcBands> gainOf, bandFactor{};
+    gainOf.fill(std::numeric_limits<double>::quiet_NaN());
     for (uint32_t s = 0; s < n; ++s) {
         m.mix += mixStep;
         m.output += outputStep;
@@ -858,11 +892,17 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
             const double level = rms ? std::sqrt(m.power[b]) : m.peak[b];
             m.meter[b] = std::max(level, m.meter[b] * fall);
             loudest[b] = std::max(loudest[b], m.meter[b]);
-            const double inDb = 20.0 * std::log10(std::max(level, 1e-9));
-            const double target = dynamicsGain(inDb, above[b], down[b], below[b], up[b], knee, range);
+            const double target = level > flatFrom[b] && level < flatTo[b]
+                                      ? 0.0
+                                      : dynamicsGain(20.0 * std::log10(std::max(level, 1e-9)), above[b], down[b],
+                                                     below[b], up[b], knee, range);
             m.gain[b] = target + (m.gain[b] - target) * (target < m.gain[b] ? attack : release);
             most[b] = std::min(most[b], m.gain[b]);
-            gain[b] = dbToGain(m.gain[b]) * m.gains[b];
+            if (m.gain[b] != gainOf[b]) {
+                gainOf[b] = m.gain[b];
+                bandFactor[b] = dbToGain(m.gain[b]);
+            }
+            gain[b] = bandFactor[b] * m.gains[b];
         }
         // The dry side is the bands' plain sum, so a partial mix doesn't comb with the crossovers' phase shift.
         for (int ch = 0; ch < 2; ++ch) {
@@ -886,7 +926,7 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const ReverbStyle style = reverbStyle(type);
     for (int c = 0; c < 2; ++c)
         for (int d = r.diffusersUsed; d < style.diffusers; ++d)
-            std::fill(r.diffusers[c][d].begin(), r.diffusers[c][d].end(), 0.0f);
+            r.diffusers[c][d].zero();
     r.diffusersUsed = style.diffusers;
     if (style.shimmer && !r.shimmered)
         r.shimmerLow = r.shimmerBass = {};
@@ -1060,7 +1100,7 @@ double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamVal
     Phaser &ph = slots_[slot].phaser;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const double step = sweepHz([&p](int i) { return p[i]; }, slot, true, tempo) / sampleRate_;
-    const double center = at(FxParam::PhaserCenter);
+    const double centerHz = cutoffFromNorm(at(FxParam::PhaserCenter)); // phaserCorner()'s, the same all chunk
     const double depth = at(FxParam::PhaserDepth);
     const double feedback = sweepFeedback(at(FxParam::PhaserFeedback));
     const double gain = sweepGain(at(FxParam::PhaserFeedback));
@@ -1070,17 +1110,42 @@ double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamVal
             ph.stages[ch][k] = 0.0;
     const double mixStep = rampStep(ph.mix, sweepWet(at(FxParam::PhaserMix)), n);
     const double spread = at(FxParam::PhaserStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
+    // The all-passes' coefficient where the sweep is at `phase`, on each side.
+    auto coefAt = [&](double phase, int ch) {
+        const double lfo = std::sin(2.0 * std::numbers::pi * (phase + spread * ch));
+        const double corner = centerHz * std::exp2(2.5 * depth * lfo); // phaserCorner()
+        const double t = std::tan(std::numbers::pi * std::clamp(corner, 20.0, 0.45 * sampleRate_) / sampleRate_);
+        return (t - 1.0) / (t + 1.0);
+    };
+    if (!ph.coefKnown) {
+        ph.coef = {coefAt(ph.phase, 0), coefAt(ph.phase, 1)};
+        ph.coefKnown = true;
+    }
     double peak = 0.0;
+    // Every kSweepStep samples the coefficient is worked out where the sweep will be at the step's last sample, and
+    // moves there in a straight line from where it was.
+    std::array<double, 2> coefTo{}, coefStep{};
+    uint32_t stepLeft = 0;
     for (uint32_t s = 0; s < n; ++s) {
+        if (stepLeft == 0) {
+            stepLeft = std::min(kSweepStep, n - s);
+            double ahead = ph.phase;
+            for (uint32_t k = 0; k < stepLeft; ++k) { // as the samples move it, below
+                ahead += step;
+                ahead -= std::floor(ahead);
+            }
+            for (int ch = 0; ch < 2; ++ch) {
+                coefTo[ch] = coefAt(ahead, ch);
+                coefStep[ch] = (coefTo[ch] - ph.coef[ch]) / stepLeft;
+            }
+        }
+        --stepLeft;
         ph.mix += mixStep;
         ph.phase += step;
         ph.phase -= std::floor(ph.phase);
         for (int ch = 0; ch < 2; ++ch) {
-            const double lfo = std::sin(2.0 * std::numbers::pi * (ph.phase + spread * ch));
-            const double t = std::tan(std::numbers::pi *
-                                      std::clamp(phaserCorner(center, depth, lfo), 20.0, 0.45 * sampleRate_) /
-                                      sampleRate_);
-            const double a = (t - 1.0) / (t + 1.0);
+            ph.coef[ch] = stepLeft == 0 ? coefTo[ch] : ph.coef[ch] + coefStep[ch]; // exactly there at the step's end
+            const double a = ph.coef[ch];
             const double x = io[ch][s];
             double y = x + feedback * ph.last[ch];
             for (int k = 0; k < stages; ++k) { // y = a x + z; z = x - a y
@@ -1147,6 +1212,17 @@ double Effects::runWidener(int slot, float *const *io, uint32_t n, const ParamVa
     const double widthStep = rampStep(e.width, at(FxParam::WidenerWidth), n);
     const double mixStep = rampStep(e.mix, at(FxParam::WidenerMix), n);
     const int size = static_cast<int>(e.line.size());
+    // The taps' sweeps as phasors turned a step each sample, rather than a sine each (see runShifter()).
+    std::array<double, kWidenerTaps> sinNow{}, cosNow{}, sinStep{}, cosStep{};
+    for (int k = 0; k < kWidenerTaps; ++k) {
+        const double step = kWidenerRates[k] / sampleRate_;
+        const double first = e.phases[k] + step;
+        const double angle = 2.0 * std::numbers::pi * (first - std::floor(first));
+        sinNow[k] = std::sin(angle);
+        cosNow[k] = std::cos(angle);
+        sinStep[k] = std::sin(2.0 * std::numbers::pi * step);
+        cosStep[k] = std::cos(2.0 * std::numbers::pi * step);
+    }
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
         e.size += (sizeTarget - e.size) * glide;
@@ -1156,7 +1232,10 @@ double Effects::runWidener(int slot, float *const *io, uint32_t n, const ParamVa
         for (int k = 0; k < kWidenerTaps; ++k) {
             e.phases[k] += kWidenerRates[k] / sampleRate_;
             e.phases[k] -= std::floor(e.phases[k]);
-            const double lfo = std::sin(2.0 * std::numbers::pi * e.phases[k]);
+            const double lfo = sinNow[k];
+            const double sn = sinNow[k];
+            sinNow[k] = sn * cosStep[k] + cosNow[k] * sinStep[k];
+            cosNow[k] = cosNow[k] * cosStep[k] - sn * sinStep[k];
             taps[k] = readBehind(e.line, e.write, std::clamp(widenerTap(k, e.size, lfo) * sampleRate_, 1.0, size - 2.0));
         }
         const double x[2] = {io[0][s], io[1][s]};
@@ -1203,22 +1282,46 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
     Flanger &f = slots_[slot].flanger;
     auto at = [&](FxParam field) { return p[paramIndex(slot, field)]; };
     const double step = sweepHz([&p](int i) { return p[i]; }, slot, false, tempo) / sampleRate_;
-    const double delay = at(FxParam::FlangerDelay);
+    const double delaySeconds = timeFromNorm(at(FxParam::FlangerDelay)); // flangerDelay()'s, the same all chunk
     const double depth = at(FxParam::FlangerDepth);
     const double feedback = sweepFeedback(at(FxParam::FlangerFeedback));
     const double gain = sweepGain(at(FxParam::FlangerFeedback));
     const double mixStep = rampStep(f.mix, sweepWet(at(FxParam::FlangerMix)), n);
     const double spread = at(FxParam::FlangerStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     const int size = static_cast<int>(f.lines[0].size());
+    // The delay in samples where the sweep is at `phase`, on each side: worked out every kSweepStep samples, as the
+    // phaser's coefficient is (see runPhaser()).
+    auto delayAt = [&](double phase, int ch) {
+        const double lfo = std::sin(2.0 * std::numbers::pi * (phase + spread * ch));
+        return std::clamp(delaySeconds * (1.0 + 0.95 * depth * lfo) * sampleRate_, 1.0, size - 2.0); // flangerDelay()
+    };
+    if (!f.delayKnown) {
+        f.delay = {delayAt(f.phase, 0), delayAt(f.phase, 1)};
+        f.delayKnown = true;
+    }
+    std::array<double, 2> delayTo{}, delayStep{};
+    uint32_t stepLeft = 0;
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
+        if (stepLeft == 0) {
+            stepLeft = std::min(kSweepStep, n - s);
+            double ahead = f.phase;
+            for (uint32_t k = 0; k < stepLeft; ++k) {
+                ahead += step;
+                ahead -= std::floor(ahead);
+            }
+            for (int ch = 0; ch < 2; ++ch) {
+                delayTo[ch] = delayAt(ahead, ch);
+                delayStep[ch] = (delayTo[ch] - f.delay[ch]) / stepLeft;
+            }
+        }
+        --stepLeft;
         f.mix += mixStep;
         f.phase += step;
         f.phase -= std::floor(f.phase);
         for (int ch = 0; ch < 2; ++ch) {
-            const double lfo = std::sin(2.0 * std::numbers::pi * (f.phase + spread * ch));
-            const double samples = std::clamp(flangerDelay(delay, depth, lfo) * sampleRate_, 1.0, size - 2.0);
-            const double delayed = readBehind(f.lines[ch], f.write, samples);
+            f.delay[ch] = stepLeft == 0 ? delayTo[ch] : f.delay[ch] + delayStep[ch];
+            const double delayed = readBehind(f.lines[ch], f.write, f.delay[ch]);
             const double x = io[ch][s];
             f.lines[ch][f.write] = static_cast<float>(x + feedback * delayed);
             f.last[ch] = delayed;
@@ -1237,6 +1340,17 @@ double Effects::runShifter(int slot, float *const *io, uint32_t n, const ParamVa
     const double steps[2] = {hz / sampleRate_, hz * (1.0 - 2.0 * at(FxParam::ShiftSpread)) / sampleRate_};
     const double feedback = at(FxParam::ShiftFeedback);
     const double mixStep = rampStep(sh.mix, at(FxParam::ShiftMix), n);
+    // The oscillators as phasors turned a step each sample, rather than a cosine and a sine each: from where each
+    // phase is after its first step this chunk, which keeps the turning from drifting past a chunk.
+    std::array<double, 2> cosNow{}, sinNow{}, cosStep{}, sinStep{};
+    for (int ch = 0; ch < 2; ++ch) {
+        const double first = sh.phase[ch] + steps[ch];
+        const double angle = 2.0 * std::numbers::pi * (first - std::floor(first));
+        cosNow[ch] = std::cos(angle);
+        sinNow[ch] = std::sin(angle);
+        cosStep[ch] = std::cos(2.0 * std::numbers::pi * steps[ch]);
+        sinStep[ch] = std::sin(2.0 * std::numbers::pi * steps[ch]);
+    }
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
         sh.mix += mixStep;
@@ -1246,8 +1360,10 @@ double Effects::runShifter(int slot, float *const *io, uint32_t n, const ParamVa
             const double x = io[ch][s];
             const std::array<double, 2> parts = sh.hilbert[ch].process(x + feedback * sh.last[ch]);
             // The analytic signal turned by the oscillator: every partial moves up by `hz` (down if negative).
-            const double angle = 2.0 * std::numbers::pi * sh.phase[ch];
-            const double y = parts[0] * std::cos(angle) - parts[1] * std::sin(angle);
+            const double y = parts[0] * cosNow[ch] - parts[1] * sinNow[ch];
+            const double c = cosNow[ch];
+            cosNow[ch] = c * cosStep[ch] - sinNow[ch] * sinStep[ch];
+            sinNow[ch] = sinNow[ch] * cosStep[ch] + c * sinStep[ch];
             sh.last[ch] = y;
             io[ch][s] = static_cast<float>(x + (y - x) * sh.mix);
             peak = std::max({peak, std::abs(x), std::abs(y)});

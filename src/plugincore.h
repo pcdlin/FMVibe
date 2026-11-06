@@ -238,11 +238,31 @@ private:
     // copy taken at the start of each block, which the block's param events update.
     std::array<std::atomic<double>, kParamCount> values_;
     ParamValues snapshot_{};
+    // How many times values_ was written outside a block (see storeValue()), and what of it the snapshot holds: a
+    // block copies values_ only when they differ. Whether the snapshot changed since the synth last rendered, which
+    // has it work out again what follows from the params (see Synth::render()).
+    std::atomic<uint64_t> valuesVersion_{1};
+    uint64_t snapshotVersion_ = 0;
+    bool snapshotChanged_ = true;
+    // Stores a value outside a block, so the next block's snapshot takes it; storing many at once, valuesChanged()
+    // once after them does the same.
+    void storeValue(int index, double value) {
+        values_[index].store(value);
+        valuesChanged();
+    }
+    void valuesChanged() { valuesVersion_.fetch_add(1, std::memory_order_release); }
     // When each param's value last went out to the host (steady clock, ms); see setHostValue().
     std::array<std::atomic<int64_t>, kParamCount> toldAt_{};
     SpscQueue<KeyEvent, 256> keys_;
     std::atomic<double> wheelBend_{0.0};
     SharedTelemetry telemetry_;
+    // Audio thread: the telemetry's snapshots (see endBlock()), how often, the audio since the last one, whether the
+    // editor was open at the last block, and where a snapshot is put together (on the heap: it is large).
+    static constexpr double kTelemetrySeconds = 0.008;
+    double sampleRate_ = 48000.0;
+    double telemetryFrames_ = 0.0;
+    bool telemetryOpen_ = false;
+    std::unique_ptr<Telemetry> telemetryScratch_ = std::make_unique<Telemetry>();
     std::atomic<bool> editorOpen_{false};
     std::atomic<int> scopeOp_{-1}; // what the editor's scope shows (see Controller::setScope())
     std::atomic<int> scopeCycles_{2};

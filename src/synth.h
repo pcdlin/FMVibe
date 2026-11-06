@@ -221,7 +221,9 @@ public:
         }
     }
 
-    void render(float *left, float *right, uint32_t frames, const ParamValues &params);
+    // `sameParams`: the caller vouches that `params` are what the last render() had, so what follows from them alone
+    // (see sharedStale_) isn't worked out again; the host's modulation since is taken in any case.
+    void render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams = false);
 
     // Whether a voice still plays `note`'s key. A host without note ids keeps one voice per key, so a key struck again
     // keeps it alive; with note ids, an overlapping note on the same key is a voice of its own.
@@ -247,9 +249,13 @@ public:
     void clearEndedNotes() { ended_.clear(); }
 
 private:
-    // An operator's unison copies: each one's phase increment and stereo gains (see renderBlock()).
-    struct UnisonCopies {
-        std::array<double, kMaxUnison> inc, gainL, gainR;
+    // An operator's unison copies: each one's phase increment, and apart from those, which follow its pitch, their
+    // stereo gains, which follow only the spread and the number of copies (see renderBlock()).
+    struct UnisonIncs {
+        std::array<double, kMaxUnison> inc;
+    };
+    struct UnisonGains {
+        std::array<double, kMaxUnison> gainL, gainR;
     };
 
     struct Operator {
@@ -261,7 +267,8 @@ private:
         bool incKnown = false; // incNow holds the last block's, not stale: false for a new note and after being off
         Envelope env;
         Memo<EnvRates, 8> rates; // its envelope's, from its params
-        Memo<UnisonCopies, 4> unison; // its copies, from its pitch and its unison params
+        Memo<UnisonIncs, 3> unisonIncs;   // its copies' increments, from its pitch, detune and copies
+        Memo<UnisonGains, 2> unisonGains; // and their gains, from its spread and copies
         std::array<NoiseColor::State, 2> noise{}; // the Noise wave's color filters: middle and sides
     };
 
@@ -474,6 +481,20 @@ private:
     // (voiceBase_), and in their ranges (voiceClamped_). None of it changes during a render(), so it is worked out
     // once there, when the first voice needs it, and each voice works out again only the params its own modulation
     // moves (see renderBlock()). On the heap, like macroMod_.
+    // Whether what render() works out from the params and the host's modulation for every voice may be out of date,
+    // for want of a render() told its params changed (see render()), or with that modulation since.
+    bool sharedStale_ = true;
+    // Each source's slots in use, in order: those with a target that aren't bypassed, and their targets, which no
+    // modulation moves. Worked out once a render() whose params changed, when the first voice needs them; the voices
+    // look over these rather than every slot (an Amount of 0 they still leave out, as it takes modulation).
+    struct SharedSlot {
+        int slot;
+        int target;
+    };
+    std::array<std::array<SharedSlot, kSlots>, kAllSources> sharedSlots_{};
+    std::array<int, kAllSources> sharedSlotCount_{};
+    bool sharedSlotsReady_ = false;
+    void shareSlots(const ParamValues &params);
     std::vector<double> voiceBase_ = std::vector<double>(kVoiceParamCount, 0.0);
     std::vector<double> voiceClamped_ = std::vector<double>(kVoiceParamCount, 0.0);
     bool voiceBaseReady_ = false;
@@ -500,11 +521,44 @@ private:
     std::array<Lfo, kMaxSources> freeLfos_{};
     uint32_t freeRng_ = 1;
     std::vector<Voice> voices_;
+    // The active voices (Voice::active), in their places' order, so going over them adds them up as going over every
+    // place did; a voice is large, and the places resting needn't be read. setActive() keeps it; reserved in prepare().
+    std::vector<Voice *> active_;
+    void setActive(Voice &v, bool on);
+    int liveVoiceCount() const;
+    // The active voices, as Voice&, for loops that leave the list as it is.
+    template <class V>
+    struct ActiveVoices {
+        const std::vector<Voice *> &list;
+        struct It {
+            Voice *const *at;
+            V &operator*() const { return **at; }
+            It &operator++() {
+                ++at;
+                return *this;
+            }
+            bool operator!=(const It &other) const { return at != other.at; }
+        };
+        It begin() const { return {list.data()}; }
+        It end() const { return {list.data() + list.size()}; }
+    };
+    ActiveVoices<Voice> active() { return {active_}; }
+    ActiveVoices<const Voice> active() const { return {active_}; }
+    // Calls `f` on each active voice in order, which may end it (or start it fading, which keeps it listed).
+    template <class F>
+    void forEachActive(const F &f) {
+        for (size_t i = 0; i < active_.size();) {
+            Voice *v = active_[i];
+            f(*v);
+            if (i < active_.size() && active_[i] == v)
+                ++i;
+        }
+    }
     // The voices' sum at their rate, one control block long, and what brings it down to the host rate.
     std::array<std::vector<double>, 2> mix_;
     std::array<Decimator, 2> decimators_;
     // Comb delay lines per voice, filter and channel, kept out of Voice so voices stay small.
-    std::vector<float> combs_;
+    ZeroBuffer combs_; // a voice's line is cleared before a comb first reads it, so most are never written
     int combSize_ = 0;
     // While the editor is open, what each filter puts out, mono and summed over the voices: a control block of it at
     // the voices' rate, the way down to the host rate, and the analyzer that measures it there.

@@ -512,6 +512,7 @@ breakpoints in `src/` then hit.
 | `src/uistrings.inc` | The wording of every piece of text the plugin shows, by name; `src/uistrings.h` looks it up |
 | `src/synth.cpp` | FM voices, matrix, filter routing, LFOs and mod envelopes, telemetry; independent of the plugin formats |
 | `src/wavetable.cpp` | Band-limited operator wavetables, one per octave |
+| `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
@@ -656,7 +657,10 @@ itself.
   deactivates and reactivates the plugin. What VST3 only allows on the main thread, and the audio thread may ask for,
   goes through a message-only window there. Each voice takes about
   66 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
-  2x, about 105 KB, so 512 voices use about 54 MB. Voices isn't automatable for the same reason.
+  2x, about 105 KB, so 512 voices reserve about 54 MB. Voices isn't automatable for the same reason. The comb lines,
+  and the effects' delay lines (every slot has every type's, a few MB a slot), are `ZeroBuffer`s
+  (`src/zerobuffer.h`): pages Windows hands out as zeros once they are first written, so the lines no voice or
+  effect uses take address space, not memory, and allocating them fills nothing.
 - The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
   user32, Direct2D, DirectWrite, and ole32 for the VST3 one), not on the VC++ redistributable. The `.vst3` is a
   bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`.
