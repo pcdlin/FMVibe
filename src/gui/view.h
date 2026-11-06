@@ -710,6 +710,8 @@ private:
     int nodeAt(Point p) const;
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
+    // An operator's Ratio, a knob drawn as a 7-segment readout (see kRatioBox).
+    static bool isRatioDisplay(const Widget &w);
     static float compactTextX(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.
@@ -793,6 +795,7 @@ private:
     void paintWidget(Canvas &c, const Widget &w);
     void paintNode(Canvas &c, const Widget &w);
     void paintKnob(Canvas &c, const Widget &w);
+    void paintRatio(Canvas &c, const Widget &w);
     std::string modRangeText(int source, int slot) const;
     void paintModOverlay(Canvas &c, const std::vector<Widget> &list);
     // A route's amount where modulation takes the newest voice right now (0..1), or as set while nothing plays.

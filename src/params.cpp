@@ -184,9 +184,16 @@ void buildTable(ParamTable &t) {
         const std::string name = trf(Str::ParamOp, {letter(op)});
         const std::string module = tr(Str::ModuleOperators) + ("/" + name);
         const bool first = op == 0;
-        add(paramIndex(op, OpParam::Coarse), name + " " + tr(Str::ParamCoarse), module, ParamKind::Ratio, 0.0, 32.0,
-            1.0);
-        add(paramIndex(op, OpParam::Fine), name + " " + tr(Str::ParamFine), module, ParamKind::Percent, 0.0, 1.0, 0.0);
+        // The ratio as it was, a whole part and a fraction on top: kept for their ids, they do nothing and hosts don't
+        // see them. A state from before Ratio loads its ratio from them (see readParams()).
+        add(paramIndex(op, OpParam::RetiredCoarse), name + " " + tr(Str::ParamCoarse), module, ParamKind::Ratio, 0.0,
+            32.0, 1.0);
+        t[paramIndex(op, OpParam::RetiredCoarse)].flags = CLAP_PARAM_IS_HIDDEN;
+        add(paramIndex(op, OpParam::RetiredFine), name + " " + tr(Str::ParamFine), module, ParamKind::Percent, 0.0, 1.0,
+            0.0);
+        t[paramIndex(op, OpParam::RetiredFine)].flags = CLAP_PARAM_IS_HIDDEN;
+        add(paramIndex(op, OpParam::Ratio), name + " " + tr(Str::ParamRatio), module, ParamKind::OpRatio, 0.0, 1.0,
+            normFromRatio(1.0));
         add(paramIndex(op, OpParam::Detune), name + " " + tr(Str::ParamDetune), module, ParamKind::Cents, -50.0, 50.0,
             0.0);
         add(paramIndex(op, OpParam::Out), name + " " + tr(Str::ParamOut), module, ParamKind::Percent, 0.0, 1.0,
@@ -814,6 +821,13 @@ const ParamTable &paramTable() {
     return *table;
 }
 
+bool isRetired(int index) {
+    if (index < kOpBase || index >= kOpBase + kOps * kOpParamCount)
+        return false;
+    const auto field = static_cast<OpParam>((index - kOpBase) % kOpParamCount);
+    return field == OpParam::RetiredCoarse || field == OpParam::RetiredFine || field == OpParam::RetiredVelocity;
+}
+
 bool isStepped(ParamKind kind) {
     return kind == ParamKind::Ratio || kind == ParamKind::Semitones || kind == ParamKind::Count ||
            kind == ParamKind::VoiceCount || kind == ParamKind::Toggle || kind == ParamKind::LfoShape ||
@@ -1013,6 +1027,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
             std::snprintf(out, capacity, "%s%ld %+ld", name, octave, cents);
         break;
     }
+    case ParamKind::OpRatio:
+        std::snprintf(out, capacity, "%.2f", ratioHundredths(value) / 100.0);
+        break;
     case ParamKind::FixedFreq:
     case ParamKind::ShiftRange: {
         const double hz = paramTable()[index].kind == ParamKind::FixedFreq ? fixedFreqFromNorm(value)
@@ -1163,7 +1180,7 @@ bool parseParam(int index, const char *text, double *out) {
         }
     }
 
-    if (def.kind == ParamKind::FixedMult) { // "×10", "x10" or "10"
+    if (def.kind == ParamKind::FixedMult || def.kind == ParamKind::OpRatio) { // "×10", "x10" or "10"
         if (std::strncmp(text, "\xC3\x97", 2) == 0)
             text += 2;
         else if (*text == 'x' || *text == 'X')
@@ -1253,6 +1270,15 @@ bool parseParam(int index, const char *text, double *out) {
         break;
     case ParamKind::ShiftRange: // Hz, or kHz with a k
         value = normFromShiftRange(*end == 'k' || *end == 'K' ? value * 1000.0 : value);
+        break;
+    case ParamKind::OpRatio: // "3.5", or a fraction such as "7/2"; to the hundredth the editor shows
+        if (*end == '/') {
+            const double below = std::strtod(end + 1, nullptr);
+            if (!(below > 0.0) || !std::isfinite(below))
+                return false;
+            value /= below;
+        }
+        value = normFromRatio(std::clamp(std::round(value * 100.0) / 100.0, kMinRatio, kMaxRatio));
         break;
     case ParamKind::FixedFreq:
         value = normFromFixedFreq(*end == 'k' || *end == 'K' ? value * 1000.0 : value);

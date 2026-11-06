@@ -520,7 +520,7 @@ View::MenuNode View::cascadeCategories() const {
         const std::string prefix = trf(Str::ParamOp, {kNodeNames[op]});
         // In two columns, about as tall: the pitch, level, phase and unison, then the envelope and the noise.
         const std::pair<Str, std::vector<OpParam>> sections[] = {
-            {Str::CascadePitch, {OpParam::Coarse, OpParam::Fine, OpParam::Transpose, OpParam::Detune, OpParam::FixedFreq}},
+            {Str::CascadePitch, {OpParam::Ratio, OpParam::Transpose, OpParam::Detune, OpParam::FixedFreq}},
             {Str::CascadeLevel, {OpParam::Out}},
             {Str::CascadePhase, {OpParam::Phase}},
             {Str::CascadeUnison, {OpParam::UnisonDetune, OpParam::UnisonSpread, OpParam::PhaseRandom}},

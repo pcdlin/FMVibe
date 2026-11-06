@@ -874,7 +874,7 @@ void scopeChecks() {
     check(sineStill && fmStill && fmLike < 0.98, "FM changes the scope's span, which stands still from one to the next");
 
     // A modulator at half the ratio makes the two cycles differ.
-    e.p[paramIndex(1, OpParam::Coarse)] = 0.0;
+    e.p[paramIndex(1, OpParam::Ratio)] = normFromRatio(0.5);
     e.render(4800);
     e.synth().telemetry(*telemetry);
     double apart = 0.0;
@@ -910,7 +910,7 @@ void scopeChecks() {
     // than the voice, letting most short spans go by. Timed as the fastest of a few runs.
     {
         Engine high(1);
-        high.p[paramIndex(0, OpParam::Coarse)] = 24.0;
+        high.p[paramIndex(0, OpParam::Ratio)] = normFromRatio(24.0);
         high.noteOn(69);
         high.render(4800);
         auto fastest = [&] {
@@ -974,7 +974,7 @@ int main() {
         {"FM B(x4) -> A 80% at C6", 84,
          [](ParamValues &p) {
              p[paramIndex(1, OpParam::Enabled)] = 1.0;
-             p[paramIndex(1, OpParam::Coarse)] = 4.0;
+             p[paramIndex(1, OpParam::Ratio)] = normFromRatio(4.0);
              p[matrixIndex(1, 0)] = 0.8;
          },
          -80.0},
