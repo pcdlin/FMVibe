@@ -226,6 +226,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     disconnected, and one along the panel's top bowing only as far as keeps it and its label inside (read off the
     rendered pixels);
   - an operator lighting up while modulation opens its route from 0 % (read off the rendered pixels);
+  - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
+    one's ghost filled while it is shown (read off the rendered pixels);
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something
     (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, and the output meter and its clip light (read off

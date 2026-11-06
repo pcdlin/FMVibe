@@ -488,7 +488,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
       the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
       an undo step; a wire that is removed or moved to another node starts bowing as a new one does.
-    - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it. A node dragged onto another
+    - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it. The node the inspector shows
+      is filled with its color, like its tab's plate, and ringed in it a little way out; a switched-off one shown
+      there has its ghost filled the same way. A node dragged onto another
       stops short of it, held 10 px off its outline and sliding round it, and goes on once the mouse is past.
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
@@ -878,7 +880,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor).
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
-    knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click it
+    knob (on a matrix cell, in its top right corner; on a wire or OUT label, in its bottom right corner, the ranges
+    running along its top). Drag that dot to set the depth; double-click it
     to remove the modulation, or right-click it for a menu that types its depth, bypasses it, removes its aux (when
     it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,

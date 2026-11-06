@@ -2634,6 +2634,47 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
           "OUT label's its node's output");
 }
 
+// The node the inspector shows is filled with its color and ringed in it in the graph, and picking another node moves
+// both there (read off the rendered pixels); a switched-off node's ghost is filled while it is the one shown.
+void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.ui.selectedNode = 0;
+    view.poll();
+    const UiLayout &layout = model.layout();
+    view.mouseMove({600.0f, 440.0f}, {});
+    // Inside a circle, left of its letter, and on its left 5 px out, where the ring goes.
+    auto inside = [&](int node) {
+        const Point c = nodeCenter(layout, node);
+        return renderer.pixel({c.x - 14.0f, c.y});
+    };
+    auto ring = [&](int node) {
+        const Point c = nodeCenter(layout, node);
+        return renderer.pixel({c.x - 24.0f - 5.0f, c.y});
+    };
+    const bool shotA = renderer.save(view, dir / "1g-selected-node.png");
+    const uint32_t aIn = inside(0), bIn = inside(1), aRing = ring(0), bRing = ring(1);
+    click(view, nodeTab(1));
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool shotB = renderer.save(view, dir / "1h-selected-node-b.png");
+    const bool moved = inside(1) == aIn && inside(0) == bIn && ring(1) == aRing && ring(0) == bRing;
+    check(shotA && shotB && aIn != bIn && aRing != bRing && moved,
+          "the node the inspector shows is filled and ringed in the graph, and picking another moves both (read off the "
+          "rendered pixels)");
+    // C and D are off, the first two ghosts in the graph's top left: C's filled while it is the one shown.
+    auto ghost = [&](int k) { return renderer.pixel({32.0f + k * 30.0f + 5.0f, 104.0f + 10.0f + 12.0f}); };
+    const bool plainShot = renderer.save(view, dir / "1i-ghosts.png");
+    const uint32_t cPlain = ghost(0), dPlain = ghost(1);
+    click(view, nodeTab(2));
+    model.set(paramIndex(2, OpParam::Enabled), 0.0); // the tab switches it on; off again, it is a ghost still shown
+    view.poll();
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool ghostShot = renderer.save(view, dir / "1j-selected-ghost.png");
+    check(plainShot && ghostShot && layout.selectedNode == 2 && ghost(0) != cPlain && ghost(1) == dPlain,
+          "a switched-off node's ghost is filled while the inspector shows it (read off the rendered pixels)");
+}
+
 // The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls
 // them). A row's Amount bar, aux and its menu, target and source change it from the table, and the switch after a
 // source's name its polarity; the menus cascade by category; and a source's handle dropped on a depth handle makes it
@@ -5306,6 +5347,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testVelocity(dir, renderer);
     testWireBend(dir, renderer);
     testRouteModes(dir, renderer);
+    testSelectedNode(dir, renderer);
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);

@@ -29,6 +29,9 @@ constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
 constexpr float kBusY = kRouting.y + kRouting.h - 30.0f;
 constexpr float kNodeRadius = 24.0f;
+// The node the inspector shows: filled with its color at this strength, and ringed in it this far out.
+constexpr float kSelectedFill = 0.25f;
+constexpr float kSelectedRing = 5.0f;
 constexpr float kFilterHalfW = 33.0f;
 constexpr float kFilterHalfH = 17.0f;
 constexpr int kGridCols = kNodes + 1; // operators, filters, shapers, output

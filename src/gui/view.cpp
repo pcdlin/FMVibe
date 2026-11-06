@@ -2187,8 +2187,9 @@ std::vector<View::Widget> View::widgets() const {
         if (list[i].clip.w <= 0.0f)
             list[i].clip = sourceCardClip();
 
-    // Depth handles in the gap under each modulated knob, and small ones in the top right corner of each
-    // modulated wire label, matrix cell and source's depth bar (another source modulating its depth). As many as
+    // Depth handles in the gap under each modulated knob, and small ones in the bottom right corner of each
+    // modulated wire label and the top right of each matrix cell and source's depth bar (another source modulating
+    // its depth). As many as
     // the knob's, label's or cell's width holds; past that, as many as fit beside a "+n" pill holding the rest. The
     // handles and pills come in the user's size; they stay as far apart at each.
     const ModHandleSize &sizes = modHandleSize(controller_.handleSize());
@@ -2213,9 +2214,11 @@ std::vector<View::Widget> View::widgets() const {
         };
         if (kind != Kind::Knob) {
             // Leftwards from the corner, 7 px apart on a label and 6 on a cell or depth bar; past what fits, the
-            // pill takes the last two places.
+            // pill takes the last two places. A wire's or OUT label has them along its bottom, its ranges along its
+            // top; a cell and a depth bar in their top right corner, their ranges along their bottom.
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
-            const float margin = cell ? 4.0f : 3.0f, step = cell ? 6.0f : 7.0f, y = r.y + (cell ? 4.0f : 2.0f);
+            const float margin = cell ? 4.0f : 3.0f, step = cell ? 6.0f : 7.0f,
+                        y = cell ? r.y + 4.0f : r.bottom() - 2.0f;
             const int fit = static_cast<int>((r.w - 2.0f * margin) / step) + 1;
             const int shown = n > fit ? std::max(fit - 2, 0) : n;
             for (int k = 0; k < shown; ++k) {
@@ -5032,17 +5035,20 @@ void View::paintNode(Canvas &c, const Widget &w) {
         const bool live = boxHasInput(w.a);
         if (live && telemetry_.voices > 0 && reachesOut(w.a))
             c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f), corner + 4.0f);
+        // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
         c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
-        c.strokeRect(w.rect, live ? color : kFaint, selected ? 2.5f : 1.5f, corner);
         if (selected)
-            c.strokeRect(w.rect.inset(-4.5f), kText.alpha(0.5f), 1.0f, corner + 3.0f);
+            c.fillRect(w.rect, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill), corner);
+        c.strokeRect(w.rect, live ? color : kFaint, selected ? 2.0f : 1.5f, corner);
+        if (selected)
+            c.strokeRect(w.rect.inset(-kSelectedRing), color, 2.0f, corner + kSelectedRing);
         c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], 12.0f, kText, Align::Center, true);
         const int box = w.a - kOps; // the filter, or past them the shaper
         const std::string kind =
             shaper ? clipModeName(clipMode(value(paramIndex(shaperOfNode(w.a), ShaperParam::Mode))))
                    : filterLabel(static_cast<FilterType>(std::lround(value(paramIndex(box, FilterParam::Type)))),
                                  value(paramIndex(box, FilterParam::Slope)));
-        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, 10.5f, kDim);
+        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, 10.5f, selected ? kText.alpha(0.8f) : kDim);
         return;
     }
 
@@ -5062,14 +5068,18 @@ void View::paintNode(Canvas &c, const Widget &w) {
         c.strokeCircle({center.x - 4.5f, center.y}, kNodeRadius, (heard ? kAccent : kFaint).alpha(0.45f), 1.2f);
         c.strokeCircle({center.x + 4.5f, center.y}, kNodeRadius, (heard ? kAccent : kFaint).alpha(0.45f), 1.2f);
     }
+    // The node the inspector shows is filled with the accent, like its tab's plate, and ringed in it.
     c.fillCircle(center, kNodeRadius, hovered ? kTrack : kRaised);
-    c.strokeCircle(center, kNodeRadius, heard ? kAccent : kFaint, selected ? 2.5f : 1.5f);
     if (selected)
-        c.strokeCircle(center, kNodeRadius + 4.5f, kText.alpha(0.5f), 1.0f);
+        c.fillCircle(center, kNodeRadius, kAccent.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill));
+    c.strokeCircle(center, kNodeRadius, heard ? kAccent : kFaint, selected ? 2.0f : 1.5f);
+    if (selected)
+        c.strokeCircle(center, kNodeRadius + kSelectedRing, kAccent, 2.0f);
+    const Color caption = selected ? kText.alpha(0.8f) : kDim; // its wave and ratio, lighter on its fill
     // Wave glyph above the letter, ratio below it.
     const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
     const std::vector<Point> glyph = waveIcon(wave, {center.x - 6.0f, center.y - 16.0f, 12.0f, 5.0f});
-    c.polyline(glyph.data(), glyph.size(), kDim, 1.0f);
+    c.polyline(glyph.data(), glyph.size(), caption, 1.0f);
     c.text({center.x - 20.0f, center.y - 11.0f, 40.0f, 20.0f}, kNodeNames[op], 15.0f, kText, Align::Center, true);
     char ratio[16];
     const double r = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
@@ -5088,7 +5098,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
         else
             std::snprintf(ratio, sizeof(ratio), "-%.1fdB", db);
     }
-    c.text({center.x - 22.0f, center.y + 5.0f, 44.0f, 14.0f}, ratio, 10.0f, kDim); // inside the ring
+    c.text({center.x - 22.0f, center.y + 5.0f, 44.0f, 14.0f}, ratio, 10.0f, caption); // inside the ring
 }
 
 namespace {
@@ -5146,10 +5156,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::Node:
         paintNode(c, w);
         break;
-    case Kind::NodeGhost: { // dashed, like the cards that add things, and in the node's color while hovered
-        const Color color = hovered ? nodeColor(w.a) : kFaint;
-        c.strokeRect(w.rect, color, 1.0f, isShaperNode(w.a) ? 3.0f : isFilterNode(w.a) ? 6.0f : w.rect.h * 0.5f, true);
-        c.text(w.rect, kNodeNames[w.a], 10.5f, color, Align::Center, true);
+    case Kind::NodeGhost: {
+        // Dashed, like the cards that add things, and in the node's color while hovered; the one the inspector shows
+        // filled with its color, as a node shown in the graph is.
+        const bool selected = controller_.layout().selectedNode == w.a;
+        const Color color = hovered || selected ? nodeColor(w.a) : kFaint;
+        const float corner = isShaperNode(w.a) ? 3.0f : isFilterNode(w.a) ? 6.0f : w.rect.h * 0.5f;
+        if (selected)
+            c.fillRect(w.rect, nodeColor(w.a).alpha(kSelectedFill), corner);
+        c.strokeRect(w.rect, color, 1.0f, corner, true);
+        c.text(w.rect, kNodeNames[w.a], 10.5f, selected ? kText : color, Align::Center, true);
         break;
     }
     case Kind::Choice:
@@ -5325,14 +5341,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         std::string text = percent(amount);
         if (w.kind == Kind::WireLabel && w.a == w.b)
             text = trf(Str::CaptionFeedback, {text});
-        Rect textRect{w.rect.x, w.rect.y - 2.0f, w.rect.w, w.rect.h};
+        // A modulated label's text sits a little lower, between its ranges along its top and its handles along its
+        // bottom.
+        bool modulated = false;
+        forEachMod(w.param, [&](const Assignment &) { modulated = true; });
+        const float lift = modulated ? 0.0f : -2.0f;
+        Rect textRect{w.rect.x, w.rect.y + lift, w.rect.w, w.rect.h};
         if (w.modeGlyph) { // its mode, other than Phase, at its left
             const auto mode = routeMode(value(routeModeParam(w.a, w.b)));
             routeModeIcon(c, {w.rect.x + 13.0f, w.rect.center().y}, mode, routeColor(w.a, w.b), 0.85f);
-            textRect = {w.rect.x + 18.0f, w.rect.y - 2.0f, w.rect.w - 22.0f, w.rect.h};
+            textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 22.0f, w.rect.h};
         }
         c.text(textRect, text, 10.5f, focused ? kText : kDim);
-        paintModRange(c, {w.rect.x + 7.0f, w.rect.bottom() - 4.0f, w.rect.w - 14.0f, 1.5f}, w.param);
+        paintModRange(c, {w.rect.x + 7.0f, w.rect.y + 2.5f, w.rect.w - 14.0f, 1.5f}, w.param); // the handles go below
         break;
     }
     case Kind::LabelMode: {
@@ -6965,8 +6986,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         const bool off = target && std::find(bypassed.begin(), bypassed.end(), w.param) != bypassed.end();
         if (!modulated && !off)
             continue;
-        // The line ends at the source's own dot on the target: the one under a knob, or in the top right corner
-        // of a label, cell or depth bar. A param can show twice (an output's knob and its label on the bus), and
+        // The line ends at the source's own dot on the target: the one under a knob, or in the corner of a label,
+        // cell or depth bar. A param can show twice (an output's knob and its label on the bus), and
         // each has its dots, so the dot is the one on this widget.
         const auto dot = std::find_if(list.begin(), list.end(), [&](const Widget &d) {
             return d.kind == Kind::ModDot && d.a == source && (slot < 0 || d.b == slot) &&
