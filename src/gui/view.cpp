@@ -1645,15 +1645,17 @@ std::vector<View::Widget> View::widgets() const {
                     const Point h = peqHandle(area, slot, band);
                     add(Kind::PeqPoint, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f}, peqQIndex(slot, band), slot, band);
                 }
-                // Each band's row: its shape, then frequency, gain and Q.
+                // Each band's chip picks it, its power switch on the left and its shape on the right; the knobs set
+                // the band picked.
                 for (int band = 0; band < kPeqBands; ++band) {
-                    const float y = band == 0 ? 206.0f : 266.0f;
-                    add(Kind::PeqTypeButton, peqTypeButton(card, y), peqTypeIndex(slot, band), slot, band);
-                    const Str labels[kPeqBands][3] = {{Str::LabelFreq1, Str::LabelGain1, Str::LabelQ1},
-                                                      {Str::LabelFreq2, Str::LabelGain2, Str::LabelQ2}};
-                    knobs({-1, peqFreqIndex(slot, band), peqGainIndex(slot, band), peqQIndex(slot, band)},
-                          {nullptr, tr(labels[band][0]), tr(labels[band][1]), tr(labels[band][2])}, y);
+                    const Rect chip = peqChip(card, band);
+                    add(Kind::PeqBand, chip, -1, slot, band);
+                    add(Kind::PeqBandOn, peqChipPower(chip), peqOnIndex(slot, band), slot, band);
+                    add(Kind::PeqTypeButton, peqChipShape(chip), peqTypeIndex(slot, band), slot, band);
                 }
+                const int band = std::min(fxBand_[slot], kPeqBands - 1);
+                knobs({peqFreqIndex(slot, band), peqGainIndex(slot, band), peqQIndex(slot, band)},
+                      {tr(Str::LabelFreq), tr(Str::LabelGain), tr(Str::LabelQ)}, kPeqKnobsY);
                 break;
             }
             case FxType::Filter: {
@@ -2416,16 +2418,17 @@ std::vector<View::Widget> View::widgets() const {
     // The open list of a parametric EQ band's shapes, above its button, while that card is on screen.
     if (peqMenu_ >= 0 && fxWide() && fxSlotType(fxSlotOf(peqMenu_)) == FxType::ParamEq) {
         const int slot = fxSlotOf(peqMenu_);
-        const int band = peqMenu_ - peqTypeIndex(slot, 0);
+        const int band = peqBandOfType(peqMenu_);
         const std::vector<int> chain = fxChainShown();
         const auto at = std::find(chain.begin(), chain.end(), slot);
         const float screen = fxScreen(chain, static_cast<size_t>(at - chain.begin()));
-        if (at != chain.end() && !fxFolded(slot) && onScreen(screen, kVisibleFx, fxSpan(FxType::ParamEq))) {
-            const Rect button = peqTypeButton(fxCard(screen, fxSpan(FxType::ParamEq)), band == 0 ? 206.0f : 266.0f);
+        if (band >= 0 && at != chain.end() && !fxFolded(slot) &&
+            onScreen(screen, kVisibleFx, fxSpan(FxType::ParamEq))) {
+            const Rect card = fxCard(screen, fxSpan(FxType::ParamEq));
             add(Kind::PeqTypeMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
-            add(Kind::PeqTypeMenu, peqMenu(button), -1, 1);
+            add(Kind::PeqTypeMenu, peqMenu(card, band), -1, 1);
             for (int t = 0; t < kPeqTypes; ++t)
-                add(Kind::PeqTypeItem, peqMenuItem(button, t), peqMenu_, -1, t);
+                add(Kind::PeqTypeItem, peqMenuItem(card, band, t), peqMenu_, -1, t);
         }
     }
     // The open list of more waves, under "...", while its operator shows in the inspector.
@@ -3720,7 +3723,7 @@ void View::paintDelay(Canvas &c, Rect r, int slot) {
     }
 }
 
-// Both bands' bells and what they add up to, on a log frequency axis.
+// The bands' bells and what those that play add up to, on a log frequency axis.
 Point View::peqHandle(Rect area, int slot, int band) const {
     const bool cut = isCut(peqType(value(peqTypeIndex(slot, band))));
     const double db = cut ? 20.0 * std::log10(qFromNorm(value(peqQIndex(slot, band)))) : value(peqGainIndex(slot, band));
@@ -3754,20 +3757,20 @@ void View::paintParamEq(Canvas &c, Rect r, int slot) {
         c.line({x, area.y}, {x, area.bottom()}, kBorder.alpha(0.5f), 1.0f, true);
     }
     paintSpectrum(c, area, telemetry_.fxSpectrum[slot]);
-    const Color bandColors[kPeqBands] = {kSourceColors[0], kSourceColors[1]};
-    auto curve = [&](int only) { // only one band, or both (-1)
+    auto on = [&](int band) { return value(peqOnIndex(slot, band)) >= 0.5; };
+    auto curve = [&](int only) { // only one band, or every band that plays (-1)
         std::vector<double> key = curveKey(Curve::ParamEq, area);
         key.push_back(only);
         for (int band = 0; band < kPeqBands; ++band)
             key.insert(key.end(), {value(peqTypeIndex(slot, band)), value(peqFreqIndex(slot, band)),
-                                   value(peqGainIndex(slot, band)), value(peqQIndex(slot, band))});
+                                   value(peqGainIndex(slot, band)), value(peqQIndex(slot, band)), on(band) ? 1.0 : 0.0});
         return curves_.get(key, [&] {
             std::vector<Point> points;
             for (int i = 0; i <= 120; ++i) {
                 const double x = i / 120.0;
                 double magnitude = 1.0;
                 for (int band = 0; band < kPeqBands; ++band)
-                    if (only < 0 || only == band)
+                    if (only == band || (only < 0 && on(band)))
                         magnitude *= peqResponse(cutoffFromNorm(x), peqType(value(peqTypeIndex(slot, band))),
                                                  value(peqFreqIndex(slot, band)), value(peqGainIndex(slot, band)),
                                                  value(peqQIndex(slot, band)));
@@ -3779,8 +3782,10 @@ void View::paintParamEq(Canvas &c, Rect r, int slot) {
     // A cut falls far below the display, so the curves are cut off at its edge.
     c.pushClip(r);
     for (int band = 0; band < kPeqBands; ++band) {
+        if (!on(band))
+            continue;
         const std::vector<Point> points = curve(band);
-        c.polyline(points.data(), points.size(), bandColors[band].alpha(0.35f), 1.0f);
+        c.polyline(points.data(), points.size(), kSourceColors[band].alpha(0.35f), 1.0f);
     }
     std::vector<Point> points = curve(-1);
     std::vector<Point> area0 = points;
@@ -5805,12 +5810,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::PeqPoint: {
         const Point center = w.rect.center();
+        // Ringed for the band whose knobs show; faint for one switched off, which can still be moved.
         const bool focused = hovered || active;
-        const Color color = kSourceColors[w.b];
+        const bool on = value(peqOnIndex(w.a, w.b)) >= 0.5;
+        const Color color = on ? kSourceColors[w.b] : kFaint;
+        if (std::min(fxBand_[w.a], kPeqBands - 1) == w.b && on)
+            c.strokeCircle(center, 10.5f, color.alpha(0.45f), 3.0f);
         c.fillCircle(center, focused ? 7.5f : 6.5f, focused ? color : kPanel);
-        c.strokeCircle(center, focused ? 7.5f : 6.5f, color, 1.8f);
+        c.strokeCircle(center, focused ? 7.5f : 6.5f, color, on ? 1.8f : 1.2f);
         c.text({center.x - 8.0f, center.y - 7.0f, 16.0f, 14.0f}, std::to_string(w.b + 1), 10.5f,
-               focused ? kBackground : kText, Align::Center, true);
+               focused ? kBackground : (on ? kText : kFaint), Align::Center, true);
         if (focused) {
             char freq[32], gain[32], q[32], text[112];
             formatParam(peqFreqIndex(w.a, w.b), value(peqFreqIndex(w.a, w.b)), freq, sizeof(freq));
@@ -5864,15 +5873,36 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeRect(w.rect, kBorder, 1.0f, 7.0f);
         }
         break;
+    case Kind::PeqBand: {
+        // The chip: on a plate ringed in the band's color while its knobs show, its number in that color while it
+        // plays, and a line between the number and the shape.
+        const bool picked = std::min(fxBand_[w.a], kPeqBands - 1) == w.b;
+        const bool on = value(peqOnIndex(w.a, w.b)) >= 0.5;
+        const bool chipHovered = hover_ && hover_->a == w.a && hover_->b == w.b &&
+                                 (hover_->kind == Kind::PeqBand || hover_->kind == Kind::PeqBandOn ||
+                                  hover_->kind == Kind::PeqTypeButton);
+        const Color color = kSourceColors[w.b];
+        c.fillRect(w.rect, picked ? kTrack : (chipHovered ? kRaised : kCardColor), 5.0f);
+        c.strokeRect(w.rect, picked ? color.alpha(on ? 0.9f : 0.5f) : kBorder, 1.0f, 5.0f);
+        const Rect power = peqChipPower(w.rect), shape = peqChipShape(w.rect);
+        c.text({power.right(), w.rect.y, shape.x - power.right(), w.rect.h}, std::to_string(w.b + 1), 12.0f,
+               !on ? kFaint : picked ? kText : color, Align::Center, true);
+        c.line({shape.x, w.rect.y + 6.0f}, {shape.x, w.rect.bottom() - 6.0f}, kBorder, 1.0f);
+        break;
+    }
+    case Kind::PeqBandOn: {
+        const bool on = value(w.param) >= 0.5;
+        powerIcon(c, w.rect.center(), on ? kSourceColors[w.b] : (hovered ? kText : kFaint));
+        break;
+    }
     case Kind::PeqTypeButton: {
-        // The band's shape in its color, the shape's name under it like a knob's label.
+        // The band's shape on its chip, lit under the mouse and while its list is open.
         const bool lit = hovered || peqMenu_ == w.param;
-        const auto type = peqType(value(w.param));
-        c.fillRect(w.rect, lit ? fxColor(fxSlotOf(w.param)).alpha(0.18f) : kRaised, 6.0f);
-        c.strokeRect(w.rect, fxColor(fxSlotOf(w.param)).alpha(lit ? 0.9f : 0.45f), 1.0f, 6.0f);
-        peqIcon(c, w.rect.inset(7.0f), type, kSourceColors[w.b]);
-        c.text({w.rect.x - 14.0f, w.rect.bottom() + 4.0f, w.rect.w + 28.0f, 16.0f}, peqTypeName(type), 10.5f,
-               lit ? kText : kDim);
+        const bool on = value(peqOnIndex(w.a, w.b)) >= 0.5;
+        if (lit)
+            c.fillRect(w.rect.inset(3.0f), kSourceColors[w.b].alpha(0.18f), 4.0f);
+        peqIcon(c, {w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 14.0f, w.rect.h - 14.0f}, peqType(value(w.param)),
+                on ? kSourceColors[w.b] : (lit ? kText : kFaint));
         break;
     }
     case Kind::PeqTypeMenu:
@@ -5885,7 +5915,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = peqType(value(w.param)) == static_cast<PeqType>(w.b);
         if (hovered || selected)
             c.fillRect(w.rect, fxColor(fxSlotOf(w.param)).alpha(hovered ? 0.18f : 0.1f), 5.0f);
-        const int band = w.param - peqTypeIndex(fxSlotOf(w.param), 0);
+        const int band = peqBandOfType(w.param);
         peqIcon(c, {w.rect.x + 8.0f, w.rect.y + 5.0f, 22.0f, w.rect.h - 10.0f}, static_cast<PeqType>(w.b),
                 selected ? kSourceColors[band] : kDim);
         c.text({w.rect.x + 38.0f, w.rect.y, w.rect.w - 44.0f, w.rect.h}, peqTypeName(static_cast<PeqType>(w.b)), 11.0f,
@@ -7631,6 +7661,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         controller_.beginEdit(mdThreshold(w.a, w.b));
         break;
     case Kind::PeqPoint:
+        fxBand_[w.a] = w.b; // its knobs show
         if (mods.alt) { // up and down for its Q, as on a knob; the handle stays where it is
             drag_.kind = DragKind::Value;
             drag_.startValue = value(w.param);
@@ -7706,7 +7737,11 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     }
     case Kind::DynBand:
+    case Kind::PeqBand:
         fxBand_[w.a] = w.b;
+        break;
+    case Kind::PeqBandOn:
+        edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         break;
     case Kind::SourcesToggle:
         layout.sourcesCollapsed = !layout.sourcesCollapsed;
@@ -7856,6 +7891,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         }
         break;
     case Kind::PeqTypeButton:
+        fxBand_[w.a] = w.b;
         peqMenu_ = peqMenu_ == w.param ? -1 : w.param;
         break;
     case Kind::PeqTypeMenu:

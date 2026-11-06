@@ -98,8 +98,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     at 100 % mix (half wet), the flanger's taking half of the tone in it away at 50 %, a stereo flanger's sides
     sweeping apart and a mono one's together, a linked shaper keeping its level, a symmetric one shaping its
     lower half as its upper one (a drawn curve losing its 2nd harmonic, Asymmetric left as it is), and
-    the filter effect's key tracking putting a cutoff at C4 onto an A4, and the frequency shifter moving by its
-    Shift's share of its Range;
+    the filter effect's key tracking putting a cutoff at C4 onto an A4, the frequency shifter moving by its
+    Shift's share of its Range, and the Param EQ's third band starting off and playing once on, and a band switched
+    off left out;
   - unison copies spread across the stereo field (and match when centered);
   - mono: a new key takes the voice over, letting go returns to the held key, and every note reports `NOTE_END`
     exactly once;
@@ -137,7 +138,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
   - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
     LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
-    reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames;
+    reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
+    and when a Param EQ band is switched on and off;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
@@ -260,7 +262,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     plain click, and Snap snapping a shaper effect's curve point in its editor;
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);
-  - dragging a Param EQ band's handle, and Alt-dragging it for its Q;
+  - dragging a Param EQ band's handle, and Alt-dragging it for its Q; its bands' chips: a click on one, its shape
+    or a band's handle picking the band its knobs set, its power switch turning the band on and off, undoably, and
+    its shape's list (the third band's inside the card) picking the shape;
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
     off the rendered pixels), and the attack's below 1 ms, to 0.5 ms and to 0 ms, drawn as a vertical line (read off
     the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn

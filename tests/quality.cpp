@@ -262,6 +262,34 @@ void effectsChainChecks() {
         check(worst < 1.5, "an effect param jump ramps even when events split the block into single frames");
     }
     {
+        // A parametric EQ band switched on and off fades rather than clicking: a low cut at 5 kHz, which takes most
+        // of a C3 away, switched in single frames, under 4 times as rough as the note before it (as a stolen voice).
+        Engine e(2);
+        e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+        e.p[peqTypeIndex(0, 2)] = static_cast<double>(PeqType::LowCut);
+        e.p[peqFreqIndex(0, 2)] = normFromCutoff(5000.0);
+        e.noteOn(48);
+        const std::vector<float> before = e.render(4800, 1);
+        e.p[peqOnIndex(0, 2)] = 1.0;
+        const std::vector<float> on = e.render(2400, 1);
+        e.p[peqOnIndex(0, 2)] = 0.0;
+        const std::vector<float> all = joined(joined(before, on), e.render(2400, 1));
+        const double steady = roughness(all, 2400, before.size());
+        const size_t switchedOff = before.size() + on.size();
+        const double switched = std::max(roughness(all, before.size() - 2, before.size() + 480),
+                                         roughness(all, switchedOff - 2, switchedOff + 480));
+        double level = 0.0;
+        for (size_t i = before.size() + 480; i < switchedOff; ++i)
+            level = std::max(level, static_cast<double>(std::abs(all[i])));
+        double dryLevel = 0.0;
+        for (size_t i = 2400; i < before.size(); ++i)
+            dryLevel = std::max(dryLevel, static_cast<double>(std::abs(all[i])));
+        std::printf("      EQ band switched on and off: %.2fx as rough as the note, its low cut leaving x%.3f\n",
+                    switched / steady, level / dryLevel);
+        check(switched < 4.0 * steady && level < 0.1 * dryLevel,
+              "a parametric EQ band switched on and off fades in and out without a click");
+    }
+    {
         // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd),
         // at unity gain: each sample comes out as the curve has it at the middle of its step, through the DC blocker
         // every drawn curve has.

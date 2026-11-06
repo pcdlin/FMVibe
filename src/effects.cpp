@@ -742,20 +742,44 @@ void Effects::runEq(int slot, float *const *io, uint32_t n, const ParamValues &p
 
 void Effects::runParamEq(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     ParamEq &eq = slots_[slot].peq;
-    // New coefficients every chunk are smooth enough for knob moves and modulation.
+    // New coefficients every chunk are smooth enough for knob moves and modulation. A band switched on or off fades
+    // between what it puts out and what it takes in, over 5 ms. One switched off keeps running unheard, so it comes
+    // back without starting from silence.
+    const double fade = 1.0 / (0.005 * sampleRate_);
     for (int band = 0; band < kPeqBands; ++band) {
+        const double target = p[peqOnIndex(slot, band)] >= 0.5 ? 1.0 : 0.0;
+        double &on = eq.on[band];
+        if (std::isnan(on))
+            on = target;
         const PeqType type = peqType(p[peqTypeIndex(slot, band)]);
         const double gain = p[peqGainIndex(slot, band)];
         if (!isCut(type) && std::abs(gain) < 1e-3) {
             eq.bands[band] = {}; // flat: leave the band out, and start it clean when it comes back
+            on = target;
             continue;
         }
         const Coefs b = peqCoefs(type, p[peqFreqIndex(slot, band)], gain, p[peqQIndex(slot, band)], sampleRate_);
         const BiquadCoefs c{b.b0, b.b1, b.b2, b.a1, b.a2};
-        for (int ch = 0; ch < 2; ++ch) {
-            Biquad &f = eq.bands[band][ch];
-            for (uint32_t s = 0; s < n; ++s)
-                io[ch][s] = static_cast<float>(f.process(io[ch][s], c));
+        if (on == target) {
+            for (int ch = 0; ch < 2; ++ch) {
+                Biquad &f = eq.bands[band][ch];
+                if (on == 1.0)
+                    for (uint32_t s = 0; s < n; ++s)
+                        io[ch][s] = static_cast<float>(f.process(io[ch][s], c));
+                else
+                    for (uint32_t s = 0; s < n; ++s)
+                        f.process(io[ch][s], c);
+            }
+            continue;
+        }
+        // Along a raised cosine, which starts and ends without a kink.
+        for (uint32_t s = 0; s < n; ++s) {
+            on = target > on ? std::min(on + fade, target) : std::max(on - fade, target);
+            const double heard = 0.5 - 0.5 * std::cos(std::numbers::pi * on);
+            for (int ch = 0; ch < 2; ++ch) {
+                const double x = io[ch][s];
+                io[ch][s] = static_cast<float>(x + heard * (eq.bands[band][ch].process(x, c) - x));
+            }
         }
     }
     feedAnalyzer(slot, io, n);

@@ -2369,6 +2369,31 @@ int main(int argc, char **argv) {
         std::printf("      440 Hz through a low cut at 2 kHz: x%.3f, a +12 dB low shelf at 4 kHz: x%.2f\n", lowCut, lowShelf);
         check(lowCut < 0.1 && std::abs(lowShelf - 3.98) < 0.4, "the EQ's bands also cut and shelve");
         setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
+        // The third band starts switched off: set to a -12 dB bell on 440 Hz under the first band's +12 dB one, it
+        // does nothing until it is switched on; the first band switched off then leaves only the cut.
+        {
+            auto startsAt = [&](int index) {
+                clap_param_info_t info{};
+                params->get_info(plugin, static_cast<uint32_t>(index), &info);
+                return info.default_value;
+            };
+            const bool startsOff = startsAt(peqOnIndex(4, 2)) == 0.0 && startsAt(peqOnIndex(4, 0)) == 1.0 &&
+                                   startsAt(peqOnIndex(4, 1)) == 1.0;
+            setParams({{peqFreqIndex(4, 0), normFromCutoff(440.0)},
+                       {peqFreqIndex(4, 2), normFromCutoff(440.0)},
+                       {peqGainIndex(4, 2), -12.0}});
+            const double thirdOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            setParams({{peqOnIndex(4, 2), 1.0}});
+            const double thirdOn = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            setParams({{peqOnIndex(4, 0), 0.0}});
+            const double firstOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            std::printf("      440 Hz under a +12 dB bell: x%.2f, a -12 dB third band on too x%.2f, the first band "
+                        "off x%.3f\n", thirdOff, thirdOn, firstOff);
+            check(startsOff && std::abs(thirdOff - 3.98) < 0.4 && std::abs(thirdOn - 1.0) < 0.15 &&
+                      std::abs(firstOff - 0.251) < 0.03,
+                  "the EQ's third band starts off and plays once on, and a band switched off is left out");
+            setParams({{peqOnIndex(4, 0), 1.0}, {peqOnIndex(4, 2), 0.0}, {peqGainIndex(4, 2), 0.0}});
+        }
         setParams({{type(4), static_cast<double>(FxType::None)}, {type(5), static_cast<double>(FxType::None)}});
 
         // Delay: a short note's echoes, recorded from the note on, once the note

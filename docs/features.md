@@ -269,9 +269,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     changes glide like tape rather than click. The plugin keeps processing until the echoes have died away.
   - **DJ EQ**: a three-band isolator with Linkwitz-Riley crossovers (24 dB/octave) at 250 Hz and 2.5 kHz. Each
     band goes from kill to +6 dB, and with all three at 0 dB it is flat.
-  - **Param EQ**: two bands, each with Frequency (20 Hz–20 kHz), Gain (±18 dB) and Q (0.3–10), and a shape:
+  - **Param EQ**: three bands, each with Frequency (20 Hz–20 kHz), Gain (±18 dB) and Q (0.3–10), a shape:
     Peak (a bell), Low Shelf, High Shelf, Low Cut or High Cut (12 dB per octave, Q setting its resonance; the
-    gain does nothing there).
+    gain does nothing there), and an **On** switch. The first two start on (at 250 Hz and 4 kHz) and the third
+    off (at 1 kHz), so a patch from before the third band plays as it did. A band switched off leaves the sound
+    alone, fading out and back in over 5 ms.
   - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb; a row of icons on its
     card, with the list of slopes under the response) and their slopes, 6 to 24 dB, on
     the whole mix, with Cutoff, Resonance, **Key Track**, Drive and Mix. Key Track (0 to begin with) moves the
@@ -607,9 +609,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     patch but not undone. On the Param EQ's display,
     drag a band's numbered handle for frequency and gain, Alt-drag it up or down (it stays where it is) or scroll
     on it for Q, and double-click it to flatten it; a cut's handle sets its resonance instead of a gain, and a
-    double-click takes the resonance away. Each band's
-    row of knobs starts with its shape, an icon in the band's color with its name under it, which opens the list
-    of shapes.
+    double-click takes the resonance away. A band switched off shows a faint handle, which can still be moved.
+    Under the display, a chip for each band: its power switch, its number (in the band's color while it plays) and
+    its shape's icon, which opens the list of shapes over the display. A click on a chip, or on a band's handle,
+    picks the band the row of knobs under the chips (Freq, Gain and Q) sets; its chip and handle are ringed in its
+    color. The band picked isn't saved: a card shows its first band to begin with.
   - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
     in the order their cards show, then the macros, the note source, the mod wheel and velocity), the first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
