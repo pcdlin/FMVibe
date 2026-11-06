@@ -262,8 +262,9 @@ void effectsChainChecks() {
         check(worst < 1.5, "an effect param jump ramps even when events split the block into single frames");
     }
     {
-        // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd so
-        // no DC blocker follows), at unity gain: each sample comes out as the curve has it at the middle of its step.
+        // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd),
+        // at unity gain: each sample comes out as the curve has it at the middle of its step, through the DC blocker
+        // every drawn curve has.
         Effects fx;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
@@ -277,7 +278,8 @@ void effectsChainChecks() {
         const int curve = shaperParams(0).curve;
         auto get = [&p](int index) { return p[index]; };
         std::vector<float> left(kBlock), right(kBlock);
-        double last = 0.0, worst = 0.0;
+        double last = 0.0, worst = 0.0, dcIn = 0.0, dcOut = 0.0;
+        const double pole = clipBlockerPole(kSampleRate);
         for (size_t t = 0; t < static_cast<size_t>(kSampleRate); t += kBlock) {
             for (uint32_t s = 0; s < kBlock; ++s) {
                 const double phase = 2.0 * std::numbers::pi * 50.0 * static_cast<double>(t + s) / kSampleRate;
@@ -286,7 +288,10 @@ void effectsChainChecks() {
             const std::vector<float> in = left;
             fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
             for (uint32_t s = 0; s < kBlock; ++s) {
-                const double drawn = shaperCurveValue(get, ClipMode::Custom, curve, true, 0.5 * (in[s] + last));
+                const double shaped = shaperCurveValue(get, ClipMode::Custom, curve, true, 0.5 * (in[s] + last));
+                const double drawn = shaped - dcIn + pole * dcOut;
+                dcIn = shaped;
+                dcOut = drawn;
                 if (t + s >= 480) // once faded in
                     worst = std::max(worst, std::abs(left[s] - drawn));
                 last = in[s];
@@ -295,6 +300,93 @@ void effectsChainChecks() {
         std::printf("      drawn shaper curve, a -40 dB 50 Hz sine: off the curve by %.0f dB at most\n",
                     20.0 * std::log10(worst + 1e-30));
         check(worst < 1e-4, "a drawn shaper curve passes a quiet, slow sine as drawn, without spikes");
+    }
+    {
+        // A drawn curve's points moved (here every one halfway down to the middle, the curve halved): the curve
+        // glides there rather than stepping what comes out, in whole blocks and in single frames.
+        auto roughMove = [&defaults](uint32_t piece) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
+            p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+            p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
+            const int curve = shaperParams(0).curve;
+            std::vector<float> out, left(piece), right(piece);
+            double steady = -1.0;
+            size_t moved = 0;
+            for (size_t t = 0; t < static_cast<size_t>(kSampleRate); t += piece) {
+                if (steady < 0.0 && t >= static_cast<size_t>(kSampleRate / 2)) {
+                    moved = t;
+                    steady = roughness(out, out.size() / 2, out.size());
+                    for (int i = 0; i < shapePointCount(p[curve]); ++i)
+                        p[shapeFieldIndex(curve, i, PointField::Y)] *= 0.5;
+                }
+                for (uint32_t s = 0; s < piece; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        0.5 * std::sin(2.0 * std::numbers::pi * 50.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), piece, p, 120.0, 60.0);
+                out.insert(out.end(), left.begin(), left.end());
+            }
+            return roughness(out, moved - 2, out.size()) / steady;
+        };
+        const double whole = roughMove(kBlock), single = roughMove(1);
+        std::printf("      %-30s %7.1fx, %.1fx in 1-frame blocks\n", "drawn shaper curve moved", whole, single);
+        check(whole < 4.0 && single < 4.0, "a drawn shaper curve's moved points glide in instead of clicking");
+    }
+    {
+        // A drawn curve's points dragged up and down at 2 Hz by a fifth (as its middle point is, which sets what
+        // silence comes out at), under a sound that spends longer above 0 than below: what comes out puts out nothing
+        // below the tone, as plain and made symmetric (which then jumps at the middle).
+        auto worstDc = [&defaults](bool symmetric) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
+            p[paramIndex(0, FxParam::ShaperSymmetric)] = symmetric ? 1.0 : 0.0;
+            p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+            p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
+            const int curve = shaperParams(0).curve;
+            std::vector<double> rest(static_cast<size_t>(shapePointCount(p[curve])));
+            for (size_t i = 0; i < rest.size(); ++i)
+                rest[i] = p[shapeFieldIndex(curve, static_cast<int>(i), PointField::Y)];
+            std::vector<float> out, left(kBlock), right(kBlock);
+            for (size_t t = 0; t < static_cast<size_t>(2.0 * kSampleRate); t += kBlock) {
+                const double offset = 0.2 * std::sin(2.0 * std::numbers::pi * 2.0 * static_cast<double>(t) / kSampleRate);
+                for (size_t i = 0; i < rest.size(); ++i)
+                    p[shapeFieldIndex(curve, static_cast<int>(i), PointField::Y)] = rest[i] + offset;
+                for (uint32_t s = 0; s < kBlock; ++s) {
+                    const double phase = 2.0 * std::numbers::pi * 50.0 * static_cast<double>(t + s) / kSampleRate;
+                    left[s] = right[s] = static_cast<float>(0.3 * std::sin(phase) + 0.2 * std::cos(2.0 * phase));
+                }
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                out.insert(out.end(), left.begin(), left.end());
+            }
+            // What is left below the 50 Hz tone: averaged over a cycle twice, which takes out its harmonics and the
+            // sidebands the drag puts beside them, as an average over each cycle alone wouldn't.
+            const size_t cycle = static_cast<size_t>(kSampleRate / 50.0);
+            auto average = [cycle](const std::vector<double> &x) {
+                std::vector<double> y;
+                double sum = 0.0;
+                for (size_t i = 0; i < x.size(); ++i) {
+                    sum += x[i] - (i >= cycle ? x[i - cycle] : 0.0);
+                    if (i + 1 >= cycle)
+                        y.push_back(sum / static_cast<double>(cycle));
+                }
+                return y;
+            };
+            const std::vector<double> slow = average(average(std::vector<double>(out.begin(), out.end())));
+            double worst = 0.0;
+            for (size_t i = static_cast<size_t>(kSampleRate / 2); i < slow.size(); ++i)
+                worst = std::max(worst, std::abs(slow[i]));
+            return worst;
+        };
+        const double plain = worstDc(false), symmetric = worstDc(true);
+        std::printf("      drawn shaper curve dragged: DC %.0f dB, %.0f dB made symmetric\n",
+                    20.0 * std::log10(plain + 1e-30), 20.0 * std::log10(symmetric + 1e-30));
+        check(plain < 1e-3 && symmetric < 1e-3, "a drawn shaper curve's points dragged put out no DC");
     }
     // Runs `fx` for `seconds` of a sine at `hz` and `level` (0 for silence); returns the loudest sample out.
     auto run = [](Effects &fx, const ParamValues &p, double seconds, double hz, double level) {

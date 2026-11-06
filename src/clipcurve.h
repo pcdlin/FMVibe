@@ -97,10 +97,11 @@ inline double clipShape(ClipMode mode, double x) {
     return std::clamp(x, -1.0, 1.0);
 }
 
-// Curves that aren't symmetric shift the signal's average, which a DC blocker after them takes out. A symmetric
-// shaper's curve always is.
-constexpr bool clipNeedsBlocker(ClipMode mode, bool symmetric = false) {
-    return !symmetric && (mode == ClipMode::Asymmetric || mode == ClipMode::Custom);
+// Curves that aren't symmetric shift the signal's average, which a DC blocker after them takes out. A drawn curve
+// gets one even when it is made symmetric: one that jumps at the middle shifts the average of a sound that spends
+// longer above 0 than below.
+constexpr bool clipNeedsBlocker(ClipMode mode) {
+    return mode == ClipMode::Asymmetric || mode == ClipMode::Custom;
 }
 
 // A shaper curve: one of the formulas, or (Custom) the drawn one through its table. Symmetric, the input below 0
@@ -111,6 +112,17 @@ struct ClipCurve {
     const double *table;
     bool symmetric = false;
     uint32_t version = 0; // the table's (see ClipTable): it is filled again in place when its points change
+    // While a drawn curve glides to new points (see ClipTable), the table it glides from this block, and how far
+    // along toward `table` this sample is: the curve is the two blended, as is its integral.
+    const double *from = nullptr;
+    double fade = 1.0;
+    // A drawn curve's level at the middle, in `from` and in `table`, which run() takes out of what comes out (made
+    // symmetric, the jump it makes there, as far as it shifts the average): a point moved shifts it as slowly as a
+    // hand drags, which the DC blocker lets through.
+    double restFrom = 0.0;
+    double restTo = 0.0;
+
+    double rest() const { return from ? restFrom + (restTo - restFrom) * fade : restTo; }
 
     // Symmetric, a curve that jumps at 0 is the middle of its jump there, 0, so silence stays silent rather than
     // coming out at the curve's level there (a voice would never end).
@@ -123,7 +135,8 @@ struct ClipCurve {
     // Whether this is the curve `other` is, its table as it was then: one whose integral() is the same everywhere.
     bool same(const ClipCurve &other) const {
         return mode == other.mode && symmetric == other.symmetric &&
-               (mode != ClipMode::Custom || (table == other.table && version == other.version));
+               (mode != ClipMode::Custom || (table == other.table && version == other.version &&
+                                             from == other.from && fade == other.fade));
     }
 
     // The antiderivative, for first-order antiderivative anti-aliasing. Symmetric, it is even: F(|x|) - F(0).
@@ -133,7 +146,10 @@ struct ClipCurve {
 
 private:
     double plainShape(double x) const {
-        return mode == ClipMode::Custom ? clipTableValue(table, x) : clipShape(mode, x);
+        if (mode != ClipMode::Custom)
+            return clipShape(mode, x);
+        const double to = clipTableValue(table, x);
+        return from ? clipTableValue(from, x) + (to - clipTableValue(from, x)) * fade : to;
     }
 
     double plainIntegral(double x) const {
@@ -154,8 +170,10 @@ private:
             const double m = clip::foldPhase(x);
             return m <= 2.0 ? 0.5 * m * m - m : -0.5 * m * m + 3.0 * m - 4.0;
         }
-        case ClipMode::Custom:
-            return clipTableIntegral(table, x);
+        case ClipMode::Custom: {
+            const double to = clipTableIntegral(table, x);
+            return from ? clipTableIntegral(from, x) + (to - clipTableIntegral(from, x)) * fade : to;
+        }
         case ClipMode::Count:
             break;
         }
@@ -198,16 +216,28 @@ double shaperCurveValue(const Get &get, ClipMode mode, int curveBase, bool symme
     return symmetric && x < 0.0 ? -plain(-x) : plain(x);
 }
 
-// A drawn curve's table (see buildClipTable()), built again whenever the points it was built from change. Its
-// values are allocated when it is made, so the audio thread only fills them.
+// How long a drawn curve takes to glide to new points. Swapped in at once, a point dragged would step what comes out
+// every block, which is heard as crackle: most of all the middle point, which sets the level of all that is quiet.
+constexpr double kClipGlideSeconds = 0.02;
+
+// A drawn curve's table (see buildClipTable()), built again whenever the points it was built from change, and glided
+// to from the curve as it was then, block by block (see advance()). Its tables are allocated when it is made, so the
+// audio thread only fills them.
 struct ClipTable {
-    std::vector<double> values = std::vector<double>(kClipTableSize, 0.0);
+    std::vector<double> values = std::vector<double>(kClipTableSize, 0.0);   // the curve at this block's end
+    std::vector<double> previous = std::vector<double>(kClipTableSize, 0.0); // and at its start, while gliding
+    std::vector<double> target = std::vector<double>(kClipTableSize, 0.0);   // built from the points
+    std::vector<double> start = std::vector<double>(kClipTableSize, 0.0);    // where the glide began
     std::array<double, kShapeParamCount> points; // NaN until the first build
-    uint32_t version = 0;                        // how many times it was built
+    uint32_t version = 0;                        // how many times `values` changed
+    double progress = 1.0;                       // along the glide from `start` to `target`
+    bool gliding = false;                        // whether this block glides from `previous` to `values`
+    bool built = false;
 
     ClipTable() { points.fill(std::numeric_limits<double>::quiet_NaN()); }
 
-    // `base`: the drawn curve's point count.
+    // `base`: the drawn curve's point count. The first curve is taken at once; a later one glides in from the curve
+    // as it is (see advance()).
     template <class Get>
     void update(const Get &get, int base) {
         bool same = true;
@@ -217,12 +247,56 @@ struct ClipTable {
             return;
         for (int i = 0; i < kShapeParamCount; ++i)
             points[i] = get(base + i);
-        buildClipTable(get, base, values.data());
+        buildClipTable(get, base, target.data());
+        if (!built) {
+            built = true;
+            values = target;
+            gliding = false;
+            progress = 1.0;
+            ++version;
+            return;
+        }
+        start = values;
+        progress = 0.0;
+    }
+
+    // Moves the glide on by a block `seconds` long, before the block runs: through it the curve goes from
+    // `previous` to `values` (see curve()).
+    void advance(double seconds) {
+        if (progress >= 1.0) {
+            if (gliding) { // the last block's glide ended at `values`, which this one keeps
+                gliding = false;
+                ++version;
+            }
+            return;
+        }
+        previous.swap(values);
+        progress = std::min(1.0, progress + seconds / kClipGlideSeconds);
+        if (progress >= 1.0)
+            values = target;
+        else
+            for (int i = 0; i < kClipTableSize; ++i)
+                values[i] = start[i] + (target[i] - start[i]) * progress;
+        gliding = true;
         ++version;
+    }
+
+    // The curve to run this block; while it glides, its `fade` goes from 0 at the block's start to 1 at its end.
+    ClipCurve curve(ClipMode mode, bool symmetric) const {
+        const bool resting = mode == ClipMode::Custom;
+        return {mode,
+                values.data(),
+                symmetric,
+                version,
+                gliding ? previous.data() : nullptr,
+                1.0,
+                resting && gliding ? clipTableValue(previous.data(), 0.0) : 0.0,
+                resting ? clipTableValue(values.data(), 0.0) : 0.0};
     }
 };
 
-// The DC blocker after the uneven curves (see clipNeedsBlocker()): a 5 Hz high-pass, by its pole at `rate`.
+// The DC blocker after the uneven curves (see clipNeedsBlocker()): a 5 Hz high-pass, by its pole at `rate`. What a
+// drawn curve puts out at the middle is taken out before it (see ClipCurve::rest()).
 inline double clipBlockerPole(double rate) {
     return 1.0 - 2.0 * std::numbers::pi * 5.0 / rate;
 }
@@ -238,6 +312,10 @@ struct ClipState {
     double lastIntegral = 0.0;
     ClipCurve integralOf{ClipMode::Count, nullptr};
     bool integralKnown = false;
+    // A DC blocker on the sign of what goes into a symmetric curve, whose jump at the middle is that sign times the
+    // curve's level there (see ClipCurve::rest()).
+    double signIn = 0.0;
+    double signOut = 0.0;
 
     // `x` driven through the curve (blocked if `block`), then at `output`, and `mix` of that against x. The curve is
     // averaged over the last sample step (first-order antiderivative anti-aliasing), which keeps the harmonics that
@@ -246,15 +324,30 @@ struct ClipState {
         const double driven = x * drive;
         const double dx = driven - last;
         double y;
+        double sign; // of the input, averaged over the step as y is: what the jump of a symmetric curve scales
         if (dx > -1e-6 && dx < 1e-6) { // as |dx| < 1e-6, which MSVC can't see guards the division below
-            y = curve.shape(0.5 * (driven + last));
+            const double middle = 0.5 * (driven + last);
+            y = curve.shape(middle);
+            sign = middle > 0.0 ? 1.0 : middle < 0.0 ? -1.0 : 0.0;
             integralKnown = false;
         } else {
+            sign = (std::abs(driven) - std::abs(last)) / dx;
             const double from = integralKnown && curve.same(integralOf) ? lastIntegral : curve.integral(last);
             lastIntegral = curve.integral(driven);
             integralOf = curve;
             integralKnown = true;
             y = (lastIntegral - from) / dx;
+        }
+        // A drawn curve's level at the middle comes out as an offset, and made symmetric, as a jump at every crossing of
+        // 0, whose average follows how much longer the input stays above 0 than below; either moves with the curve's
+        // points. Both are taken out here as they move, the jump's average through a blocker of its own.
+        if (curve.symmetric) {
+            const double blockedSign = sign - signIn + pole * signOut;
+            signIn = sign;
+            signOut = blockedSign;
+            y -= curve.rest() * (sign - blockedSign);
+        } else {
+            y -= curve.rest();
         }
         last = driven;
         const double blocked = y - dcIn + pole * dcOut;

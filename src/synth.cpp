@@ -552,6 +552,9 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
     runSharedLfos(params, newestVoice(), 0, 0);
     for (uint32_t done = 0; done < frames; done += kControlBlock) {
         const uint32_t n = std::min(kControlBlock, frames - done);
+        for (int sh = 0; sh < kShapers; ++sh) // a drawn curve glides to new points, block by block
+            if (clipMode(params[shaperParams(kFxSlots + sh).mode]) == ClipMode::Custom)
+                shaperTables_[sh].advance(n / sampleRate_);
         // The voices add up at their own rate, which comes down to the host's
         // before the effects. With no voice sounding, the way down starts from
         // silence again: voices end only once they are quiet, or when choked,
@@ -1446,8 +1449,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         target.shaperDrive[sh] = settings.drive;
         target.shaperOutput[sh] = settings.output;
         target.shaperMix[sh] = settings.mix;
-        curve[sh] = {settings.mode, shaperTables_[sh].values.data(), settings.symmetric, shaperTables_[sh].version};
-        block[sh] = clipNeedsBlocker(settings.mode, settings.symmetric);
+        curve[sh] = shaperTables_[sh].curve(settings.mode, settings.symmetric);
+        block[sh] = clipNeedsBlocker(settings.mode);
     }
 
     // A new voice starts at its levels; after that they ramp.
@@ -1649,6 +1652,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         v.gainL += gainLStep;
         v.gainR += gainRStep;
         v.fade = std::clamp(v.fade + fadeStep, 0.0, 1.0);
+        for (ClipCurve &glide : curve) // a drawn curve gliding to new points, along this block
+            if (glide.from)
+                glide.fade = (s + 1.0) / frames;
         if (ramping) {
             const std::span<double> now = values(level), by = values(step);
             for (int m = 0; m < movingCount; ++m)

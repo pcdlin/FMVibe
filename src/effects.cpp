@@ -614,10 +614,13 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
     auto get = [&p](int index) { return p[index]; };
     const ShaperParams fields = shaperParams(slot);
     const ShaperSettings settings = shaperSettings(get, fields);
-    if (settings.mode == ClipMode::Custom)
+    if (settings.mode == ClipMode::Custom) { // a drawn curve glides to new points
         place.curve.update(get, fields.curve);
-    const ClipCurve curve{settings.mode, place.curve.values.data(), settings.symmetric, place.curve.version};
-    const bool block = clipNeedsBlocker(settings.mode, settings.symmetric);
+        place.curve.advance(n / sampleRate_);
+    }
+    ClipCurve curve = place.curve.curve(settings.mode, settings.symmetric);
+    const double fadeStep = 1.0 / n;
+    const bool block = clipNeedsBlocker(settings.mode);
     const double pole = clipBlockerPole(sampleRate_);
     const double driveStep = rampStep(sh.drive, settings.drive, n);
     const double outputStep = rampStep(sh.output, settings.output, n);
@@ -626,6 +629,8 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
         sh.drive += driveStep;
         sh.output += outputStep;
         sh.mix += mixStep;
+        if (curve.from)
+            curve.fade = (s + 1) * fadeStep;
         for (int ch = 0; ch < 2; ++ch)
             io[ch][s] = static_cast<float>(sh.sides[ch].run(curve, io[ch][s], sh.drive, sh.output, sh.mix, block, pole));
     }

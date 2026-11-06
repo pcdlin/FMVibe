@@ -95,7 +95,7 @@ What the plugin does and how its editor works, in full. Building and installing 
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
   voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
   effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with) and Symmetric
-  (off), and run by the same code: anti-aliased the same way, with the same DC blocker after the uneven curves. Any operator,
+  (off), and run by the same code: anti-aliased the same way, a drawn curve gliding to moved points and its level at the middle taken out the same way, with the same DC blocker after the uneven and drawn curves. Any operator,
   filter or shaper can be sent into a shaper (`A → S1`, `F1 → S1`, `S1 → S2`), a shaper into itself too (`S1
   Feedback`), and a shaper's output feeds the filters (`S1 → F1`), for
   distortion into a filter or a filter's sound distorted, and modulates operators the way an operator does
@@ -227,8 +227,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     hard, which adds even harmonics), Cubic (x − x³/3, scaled to reach full level), Gentle (x / (1 + |x|), which
     never quite gets there), Sine Fold and Fold (what goes past full level folds back, smoothly or in straight
     lines), or Custom, a curve you draw: up to 64 points from the quietest input to the loudest, each segment
-    bendable, level past the ends. A DC blocker takes out the offset that the asymmetric and drawn curves can
-    leave. Drive
+    bendable, level past the ends. When its points move, the sound glides to the new curve over 20 ms, so dragging
+    a point (the middle one above all, which sets the level of all that is quiet) doesn't crackle. What the curve
+    puts out at the middle is taken out as it moves, so dragging it puts out no DC (made symmetric, the jump it
+    makes there, as far as it shifts the average), and a DC blocker takes out the offset that the asymmetric and
+    drawn curves, symmetric ones too, can leave. Drive
     (0–36 dB), Output and Mix; **Link** (on to begin with) brings the output down as the drive goes up, so
     turning the drive changes the tone more than the level: by as much as keeps a sine at −6 dBFS as loud (RMS) as it went in, dB
     for dB while the driven sine stays under the ceiling, then less and less as the clipping squares it off
