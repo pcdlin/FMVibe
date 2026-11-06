@@ -1692,10 +1692,10 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     check(widened && normal && again &&
               model.value(paramIndex(0, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom),
           "picking Custom widens an LFO's card, and so does a click on its display");
-    // The inspector stays: its Fine knob turns while the shape shows.
-    const double fineBefore = model.value(paramIndex(0, OpParam::Fine));
-    drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 30.0f});
-    check(model.value(paramIndex(0, OpParam::Fine)) != fineBefore && model.openEdits == 0,
+    // The inspector stays: its Phase knob turns while the shape shows.
+    const double fineBefore = model.value(paramIndex(0, OpParam::Phase));
+    drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
+    check(model.value(paramIndex(0, OpParam::Phase)) != fineBefore && model.openEdits == 0,
           "the inspector's knobs turn while a widened card shows an LFO's shape");
     view.undo();
 
@@ -1792,8 +1792,8 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The full-size editor: the inspector hidden; its collapse button goes back into the card, still widened.
     click(view, wideButton(wideCard, 2));
-    drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 30.0f});
-    const bool covered = model.value(paramIndex(0, OpParam::Fine)) == fineBefore;
+    drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
+    const bool covered = model.value(paramIndex(0, OpParam::Phase)) == fineBefore;
     // Meanwhile the card's own editor is greyed out and takes nothing: its Invert leaves the shape be.
     const double firstLevel = pointValue(2, 0, PointField::Y);
     click(view, lfoTool(wideCard, 0));
@@ -3447,6 +3447,7 @@ void run(const std::filesystem::path &dir, float scale) {
         check(oneShotOn && anchored && stays && freed && undone && retriggered && wheeled && modes() == Modes{} &&
                   model.value(paramIndex(0, SourceParam::Unipolar)) == 0.0,
               "an LFO's clock modes go one at a time, undoably, and its Unipolar switch stands apart");
+        click(view, unipolarToggle(0)); // left unipolar, for the title menu's polarity check further on
     }
 
     // Drag LFO 1's handle onto the selected operator's Phase knob.
