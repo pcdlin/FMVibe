@@ -205,6 +205,15 @@ constexpr float kHeaderStart = 209.0f + (kOutScopeW + kOutScopeGap) * 0.5f;
 constexpr Rect kMeter{kHeaderStart, 13.0f, 14.0f, 38.0f};
 // The output scope, left of the meter and as tall: two periods of the newest note at a time (see kOutScopeBins).
 constexpr Rect kOutScope{kMeter.x - kOutScopeGap - kOutScopeW, kMeter.y, kOutScopeW, kMeter.h};
+// A span whose peak is below this draws nothing, and spans that small changing paint nothing again: the browser demo's
+// output never quite reaches 0 (see Effects::process()).
+constexpr float kOutScopeFloor = 1e-5f;
+inline float outScopePeak(const Telemetry &t) {
+    float peak = 0.0f;
+    for (float v : t.outScope)
+        peak = std::max(peak, std::abs(v));
+    return peak;
+}
 constexpr float kHeaderKnobX = kHeaderStart + 28.0f;
 constexpr float kHeaderKnobW = 104.0f;
 // The play cluster, its two dividers with it, sits centered between the Pan knob's widest value ("100 L", ending

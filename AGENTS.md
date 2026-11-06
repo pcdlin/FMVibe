@@ -223,7 +223,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, the output meter and its clip light, and the
     output scope beside it, empty with nothing captured and drawing a span at its peak (read off the rendered
-    pixels);
+    pixels), its spans too small to draw painting nothing again;
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs, its Custom curve drawn on the page and in the big editor;

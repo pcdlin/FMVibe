@@ -2147,6 +2147,28 @@ void testOutScope(const std::filesystem::path &dir, Renderer &renderer) {
     check(idleShot && shot && (idleCrest & 255) < 100 && (idleTrough & 255) < 100 && (litCrest & 255) > 140 &&
               (litTrough & 255) > 140,
           "the output scope is empty with nothing captured, and draws the captured span at its peak");
+
+    // Spans too small to draw (the browser demo's output never quite reaches 0) paint nothing again as they change;
+    // one that draws does, and so does the next one replacing it, even too small to draw.
+    auto fill = [&](float level) {
+        for (int bin = 0; bin < kOutScopeBins; ++bin)
+            model.live.outScope[bin] = level * static_cast<float>(((bin * 7 + 3) % 11) - 5);
+    };
+    fill(0.0f);
+    view.poll();
+    const bool settled = !view.poll();
+    fill(1e-12f);
+    const bool tinyFirst = view.poll();
+    fill(-2e-12f);
+    const bool tinySecond = view.poll();
+    fill(0.01f);
+    const bool drawing = view.poll();
+    fill(1e-12f);
+    const bool replaced = view.poll();
+    std::printf("output scope repaints: settled %d, tiny %d %d, drawing %d, replaced %d\n", settled, tinyFirst,
+                tinySecond, drawing, replaced);
+    check(settled && !tinyFirst && !tinySecond && drawing && replaced,
+          "the output scope's spans too small to draw paint nothing again, and one that draws does");
 }
 
 // The three-band dynamics, alone in the chain: a card one and a half places wide (x 32 to 299.5) whose display (from

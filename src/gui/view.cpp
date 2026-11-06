@@ -1227,7 +1227,9 @@ bool View::poll() {
     if (metering || metering_)
         changed = true;
     metering_ = metering;
-    if (t.outScope != telemetry_.outScope) // the output scope took another span
+    // The output scope took another span, which draws or replaces one that drew.
+    if ((outScopePeak(t) > kOutScopeFloor || outScopePeak(telemetry_) > kOutScopeFloor) &&
+        t.outScope != telemetry_.outScope)
         changed = true;
     // A three-band dynamics' bars move with its bands' levels and gains, until they settle.
     for (int slot : fxChain())
@@ -2681,10 +2683,8 @@ void View::paintHeader(Canvas &c) {
     const Rect inner{kOutScope.x + 5.0f, kOutScope.y + 4.0f, kOutScope.w - 10.0f, kOutScope.h - 8.0f};
     const float middle = inner.center().y;
     c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
-    float peak = 0.0f;
-    for (float v : telemetry_.outScope)
-        peak = std::max(peak, std::abs(v));
-    if (peak > 1e-5f) {
+    const float peak = outScopePeak(telemetry_);
+    if (peak > kOutScopeFloor) {
         const float gain = 0.5f * inner.h / std::max(peak, 1.0f / 16.0f);
         std::array<Point, kOutScopeBins> points;
         for (int bin = 0; bin < kOutScopeBins; ++bin)
