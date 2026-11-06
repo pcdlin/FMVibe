@@ -49,6 +49,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
     still ends;
+  - an operator's Ratio taking modulation on its log curve, continuously (a seventh of its range an octave), and one
+    set to 64 modulated on to 128 and no further;
   - a fixed operator playing its Freq × Mult (at ×0.1 and ×10 too) for a C3 and an A4, under a bend, with its
     Pitch and Detune turned and modulated;
   - a new instance has only operator A on, no filter key tracking or going out, its shaper effects linked, its
@@ -110,7 +112,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, a version 2
   state's Legato loading off in poly (and as it was in mono), envelope attacks, decays and releases typed down
   to 0 ms through fractions of a millisecond, a stored 0 loading as 1 ms and a version 3 state's depths on them
-  loading scaled by as much as their range grew, envelope times
+  loading scaled by as much as their range grew, a version 4 state's ratio loading from its Coarse and
+  Fine, their modulations moved onto Ratio (a version 5 state's Coarse and Fine doing nothing), envelope times
   stored past 10 s loading as 10 s, a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: 16 voices × 6 operators take about a third of what they took
@@ -226,6 +229,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
     modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
+  - an operator's Ratio readout: each digit dragged by its own place, carrying and held to 64.00, each drag an undo
+    step; the wheel stepping the digit under the mouse, a double-click rounding to it, its depth handle dragging an octave every 60 px, the hovered digit lit (read off
+    the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
+    the track, a straight line to 64 with its tick at the end there and an arrow for modulation going on past it
+    (read off the rendered pixels);
   - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the
     ratio was in one undo step and taking Ratio's and Fine's places, Mult stepping (and typed into, its × taken
     whole), and Pitch and Detune dimmed (read off the rendered pixels), not turning and not ringed for a dragged
@@ -502,7 +510,8 @@ itself.
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
   room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult and Phase; the
-  9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay), matrix
+  9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
+  Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past
@@ -544,11 +553,13 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 4: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 5: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
-  range now reaches below 0 down to 0 ms and a depth is a share of its target's range), followed by the editor layout:
+  range now reaches below 0 down to 0 ms and a depth is a share of its target's range; before version 5, an
+  operator's ratio loads from its Coarse and Fine, and their modulations move onto Ratio), followed by the editor
+  layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

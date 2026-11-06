@@ -43,6 +43,31 @@ constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMa
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
 // An operator's Fixed switch, a keyboard on the summary line left of the power switch.
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
+// An operator's Ratio: a 7-segment readout, 0.50 to 64.00, over the first two places of its knob row, each digit dragged
+// on its own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along
+// its top, clear of the depth handles along its bottom edge.
+constexpr Rect kRatioBox{kInspector.x + 20.0f, kInspector.y + 90.0f, (kInspector.w - 32.0f) / 3.0f - 8.0f, 36.0f};
+constexpr int kRatioDigits = 4; // tens, ones, tenths, hundredths
+constexpr long kRatioPlaces[kRatioDigits] = {1000, 100, 10, 1}; // in hundredths
+constexpr float kRatioDigitW = 14.0f, kRatioDigitH = 20.0f, kRatioDigitGap = 2.5f, kRatioPointW = 6.0f;
+// Digit k's place in the box (the decimal point after the second).
+inline Rect ratioDigitRect(int k) {
+    const float total = kRatioDigits * kRatioDigitW + (kRatioDigits - 1) * kRatioDigitGap + kRatioPointW;
+    const float left = kRatioBox.x + (kRatioBox.w - total) * 0.5f;
+    const float x = left + k * (kRatioDigitW + kRatioDigitGap) + (k >= 2 ? kRatioPointW : 0.0f);
+    return {x, kRatioBox.y + 10.0f, kRatioDigitW, kRatioDigitH};
+}
+// The digit nearest along the box to x.
+inline int ratioDigit(float x) {
+    int nearest = 0;
+    for (int k = 1; k < kRatioDigits; ++k)
+        if (std::abs(ratioDigitRect(k).center().x - x) < std::abs(ratioDigitRect(nearest).center().x - x))
+            nearest = k;
+    return nearest;
+}
+// The track over the digits: 0.5 to 64 in a straight line, with the ratio and its modulations along it (an arrow
+// after its end for a modulation that goes on past 64).
+constexpr Rect kRatioTrack{kRatioBox.x + 6.0f, kRatioBox.y + 4.0f, kRatioBox.w - 12.0f, 2.0f};
 // A Custom wave's edit button (a pencil, as big as the keyboard switch, left of it): opens its partial editor.
 constexpr Rect kPartialEditButton{kFixedSwitch.x - 4.0f - kFixedSwitch.w, kFixedSwitch.y, kFixedSwitch.w,
                                   kFixedSwitch.h};

@@ -1215,13 +1215,25 @@ bool View::poll() {
 
 // --- Geometry.
 
+bool View::isRatioDisplay(const Widget &w) {
+    return w.kind == Kind::Knob && isRatioTarget(w.param);
+}
+
+bool View::isRatioTarget(int param) {
+    return param >= 0 && paramTable()[param].kind == ParamKind::OpRatio;
+}
+
 Point View::knobCenter(const Widget &w) {
+    if (isRatioDisplay(w))
+        return kRatioBox.center();
     if (!w.compact)
         return {w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
     return w.shrunk ? Point{w.rect.x + 16.0f, w.rect.y + 16.0f} : Point{w.rect.x + 18.0f, w.rect.y + 20.0f};
 }
 
 float View::knobRadius(const Widget &w) {
+    if (isRatioDisplay(w))
+        return kRatioBox.h * 0.5f;
     if (!w.compact)
         return w.rect.w * 0.5f;
     return w.shrunk ? 14.0f : 17.0f;
@@ -1236,7 +1248,7 @@ float View::compactTextX(const Widget &w) {
 bool View::onValue(const Widget &w, Point p) {
     if (w.kind == Kind::ValueText)
         return true;
-    if (w.kind != Kind::Knob)
+    if (w.kind != Kind::Knob || isRatioDisplay(w)) // the Ratio readout's digits are its number
         return false;
     return w.compact ? p.x >= w.rect.x + compactTextX(w) - 4.0f : p.y >= w.rect.y + w.rect.w;
 }
@@ -1784,14 +1796,15 @@ std::vector<View::Widget> View::widgets() const {
                                           nullptr,             nullptr,              tr(Str::LabelOut)};
             opKnobRow(params, labels);
         } else {
-            // Fixed, Freq and Mult take Ratio's and Fine's places, and Pitch and Detune, which it ignores, are dimmed.
+            // The Ratio readout takes the first two places; fixed, Freq and Mult take its place, and Pitch and Detune,
+            // which it ignores, are dimmed.
             const bool fixed = isFixed(op);
-            const int params[] = {paramIndex(op, fixed ? OpParam::FixedFreq : OpParam::Coarse),
-                                  paramIndex(op, fixed ? OpParam::FixedMult : OpParam::Fine),
+            const int params[] = {fixed ? paramIndex(op, OpParam::FixedFreq) : -1,
+                                  fixed ? paramIndex(op, OpParam::FixedMult) : -1,
                                   paramIndex(op, OpParam::Transpose), paramIndex(op, OpParam::Detune),
                                   paramIndex(op, OpParam::Phase), paramIndex(op, OpParam::Out)};
-            const char *const labels[] = {tr(fixed ? Str::LabelFreq : Str::LabelRatio),
-                                          tr(fixed ? Str::LabelMult : Str::LabelFine),
+            const char *const labels[] = {fixed ? tr(Str::LabelFreq) : nullptr,
+                                          fixed ? tr(Str::LabelMult) : nullptr,
                                           tr(Str::LabelPitch),
                                           tr(Str::LabelDetune),
                                           tr(Str::LabelPhase),
@@ -1800,6 +1813,11 @@ std::vector<View::Widget> View::widgets() const {
             opKnobRow(params, labels);
             for (size_t i = row; i < list.size(); ++i)
                 list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
+            if (!fixed) {
+                add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kRatioBox.h + 19.0f},
+                    paramIndex(op, OpParam::Ratio));
+                list.back().label = tr(Str::LabelRatio);
+            }
             add(Kind::Toggle, kFixedSwitch, paramIndex(op, OpParam::Fixed));
             if (isCustomWave(op))
                 add(Kind::PartialEdit, kPartialEditButton, -1, op);
@@ -1992,8 +2010,12 @@ std::vector<View::Widget> View::widgets() const {
             continue;
         }
         // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left.
-        const Point base = list[i].compact ? Point{r.x + 18.0f, r.y + 37.0f} : Point{r.center().x, r.y + r.w - 1.0f};
-        const float width = list[i].compact ? 34.0f : r.w;
+        // The Ratio readout's go along its box's bottom edge.
+        const Point base = isRatioDisplay(list[i]) ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
+                           : list[i].compact       ? Point{r.x + 18.0f, r.y + 37.0f}
+                                                   : Point{r.center().x, r.y + r.w - 1.0f};
+        // The Ratio readout holds one handle fewer than its width would: eight, then the pill.
+        const float width = isRatioDisplay(list[i]) ? r.w - 9.0f : list[i].compact ? 34.0f : r.w;
         const int fit = static_cast<int>((width - 7.0f) / 9.0f) + 1;
         int shown = n;
         float pillW = 0.0f;
@@ -3953,8 +3975,7 @@ void View::paintInspector(Canvas &c) {
     }
     if (node < kOps) {
         const int op = node;
-        const double ratio = coarseRatio(value(paramIndex(op, OpParam::Coarse))) *
-                             (1.0 + value(paramIndex(op, OpParam::Fine)));
+        const double ratio = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
         std::string summary = std::string(kNodeNames[op]) + dot;
         summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
         if (isCustomWave(op))
@@ -4103,8 +4124,7 @@ void View::switchFixed(int op) {
     const int fixed = paramIndex(op, OpParam::Fixed);
     std::vector<std::pair<int, double>> changes;
     if (!isFixed(op)) {
-        const double hz = 440.0 * coarseRatio(value(paramIndex(op, OpParam::Coarse))) *
-                          (1.0 + value(paramIndex(op, OpParam::Fine)));
+        const double hz = 440.0 * ratioFromNorm(value(paramIndex(op, OpParam::Ratio)));
         int mult = 0;
         while (mult + 1 < kFixedMultCount && hz / kFixedMults[mult] > kMaxFixedFreq)
             ++mult;
@@ -4594,7 +4614,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
     c.polyline(glyph.data(), glyph.size(), kDim, 1.0f);
     c.text({center.x - 20.0f, center.y - 11.0f, 40.0f, 20.0f}, kNodeNames[op], 15.0f, kText, Align::Center, true);
     char ratio[16];
-    const double r = coarseRatio(value(paramIndex(op, OpParam::Coarse))) * (1.0 + value(paramIndex(op, OpParam::Fine)));
+    const double r = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
     std::snprintf(ratio, sizeof(ratio), "\xC3\x97%.2g", r);
     if (isFixed(op))
         std::snprintf(ratio, sizeof(ratio), "%s", fixedHzText(op, true).c_str());
@@ -4629,7 +4649,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     const bool active = isActive(w);
     switch (w.kind) {
     case Kind::Knob:
-        paintKnob(c, w);
+        if (isRatioDisplay(w))
+            paintRatio(c, w);
+        else
+            paintKnob(c, w);
         break;
     case Kind::Node:
         paintNode(c, w);
@@ -5817,6 +5840,111 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     }
 }
 
+namespace {
+// The Ratio readout's value for `hundredths`, held to its range.
+double ratioNorm(long hundredths) { return normFromRatio(std::clamp(hundredths, 50L, 6400L) / 100.0); }
+
+// A digit as a 7-segment display's, leaning right, its unlit segments faint; -1 for none lit.
+void sevenSegments(Canvas &c, Rect r, int digit, Color on, Color off) {
+    static constexpr const char *kLit[10] = {"abcdef", "bc",     "abdeg", "abcdg",   "bcfg",
+                                             "acdfg",  "acdefg", "abc",   "abcdefg", "abcdfg"};
+    constexpr float t = 2.6f, gap = 0.6f;
+    const float xl = r.x + 1.0f + t * 0.5f, xr = r.right() - 1.0f - t * 0.5f;
+    const float yt = r.y + t * 0.5f, yb = r.bottom() - t * 0.5f, ym = (yt + yb) * 0.5f;
+    const float middle = r.center().y;
+    auto lean = [&](float x, float y) { return Point{x + (middle - y) * 0.09f, y}; };
+    auto across = [&](float x0, float x1, float y) {
+        return std::array<Point, 6>{lean(x0, y), lean(x0 + t * 0.5f, y - t * 0.5f), lean(x1 - t * 0.5f, y - t * 0.5f),
+                                    lean(x1, y), lean(x1 - t * 0.5f, y + t * 0.5f), lean(x0 + t * 0.5f, y + t * 0.5f)};
+    };
+    auto down = [&](float x, float y0, float y1) {
+        return std::array<Point, 6>{lean(x, y0), lean(x + t * 0.5f, y0 + t * 0.5f), lean(x + t * 0.5f, y1 - t * 0.5f),
+                                    lean(x, y1), lean(x - t * 0.5f, y1 - t * 0.5f), lean(x - t * 0.5f, y0 + t * 0.5f)};
+    };
+    // a to g: top, top right, bottom right, bottom, bottom left, top left, middle
+    const std::array<Point, 6> segments[7] = {
+        across(xl + gap, xr - gap, yt), down(xr, yt + gap, ym - gap), down(xr, ym + gap, yb - gap),
+        across(xl + gap, xr - gap, yb), down(xl, ym + gap, yb - gap), down(xl, yt + gap, ym - gap),
+        across(xl + gap, xr - gap, ym)};
+    const std::string_view lit = digit >= 0 && digit <= 9 ? kLit[digit] : "";
+    for (int s = 0; s < 7; ++s) {
+        const bool shown = lit.find(static_cast<char>('a' + s)) != std::string_view::npos;
+        c.fillPolygon(segments[s].data(), segments[s].size(), shown ? on : off);
+    }
+}
+} // namespace
+
+// The Ratio readout: four digits, the one under the mouse (or being dragged) lit behind, and over them a track from
+// 0.5 to 64 in a straight line with the ratio's place and each modulation's reach in its source's color, as a knob's
+// rings (an arrow after its end where modulation takes it on past 64).
+void View::paintRatio(Canvas &c, const Widget &w) {
+    const ParamDef &def = table_[w.param];
+    const bool dragged = drag_.kind == DragKind::Value && drag_.widget.same(w);
+    const bool focused = isHovered(w) || dragged;
+    const double n = norm(w.param);
+    c.fillRect(kRatioBox, kDisplayColor, 5.0f);
+    c.strokeRect(kRatioBox, focused ? kFaint : kBorder, 1.0f, 5.0f);
+
+    const long h = ratioHundredths(value(w.param));
+    const int digits[kRatioDigits] = {h >= 1000 ? static_cast<int>(h / 1000) : -1, static_cast<int>(h / 100 % 10),
+                                      static_cast<int>(h / 10 % 10), static_cast<int>(h % 10)};
+    const int lit = dragged                                             ? drag_.widget.b
+                    : isHovered(w) && drag_.kind == DragKind::None ? ratioDigit(hoverPoint_.x)
+                                                                        : -1;
+    for (int k = 0; k < kRatioDigits; ++k) {
+        const Rect r = ratioDigitRect(k);
+        if (k == lit)
+            c.fillRect(r.inset(-1.5f), kAccent.alpha(0.14f), 2.0f);
+        sevenSegments(c, r, digits[k], kAccent, kAccent.alpha(0.08f));
+    }
+    const Rect ones = ratioDigitRect(1);
+    constexpr float kPoint = 2.6f;
+    c.fillRect({ones.right() + (kRatioPointW + 2.0f * kRatioDigitGap - kPoint) * 0.5f - 1.0f, ones.bottom() - kPoint,
+                kPoint, kPoint},
+               kAccent, 0.5f);
+
+    // The track runs in a straight line from 0.5 to 64, the ratio's range, the value `v` (on Ratio's log curve) placed
+    // by the ratio it plays. Modulation can take it on to 128 (see kRatioModNorm): a reach past 64 stops at the end,
+    // with an arrow after it.
+    auto along = [](double v) {
+        const double ratio = std::min(ratioFromNorm(std::max(v, 0.0)), kMaxRatio);
+        return kRatioTrack.x + static_cast<float>((ratio - kMinRatio) / (kMaxRatio - kMinRatio)) * kRatioTrack.w;
+    };
+    c.fillRect(kRatioTrack, kTrack, 1.0f);
+    // A switched-off source's reach is faint; the one whose depth handle is under the mouse is wider, over the others.
+    auto reach = [&](const Assignment &m, bool wide) {
+        const auto [down, up] = modReach(m);
+        const float a = along(n + down), b = along(n + up);
+        const float alpha = (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.35f) * (wide ? 1.0f : 0.8f);
+        const float thick = wide ? 4.0f : 2.0f;
+        const Color color = kSourceColors[m.source].alpha(alpha);
+        c.fillRect({std::min(a, b), kRatioTrack.center().y - thick * 0.5f, std::max(std::abs(b - a), 1.0f), thick},
+                   color, 1.0f);
+        if (n + std::max(down, up) > 1.0 + 1e-9) { // on past 64
+            const float x = kRatioTrack.right() + 1.0f, y = kRatioTrack.center().y;
+            const Point arrow[] = {{x, y - 2.5f}, {x + 3.5f, y}, {x, y + 2.5f}};
+            c.fillPolygon(arrow, std::size(arrow), color);
+        }
+    };
+    std::vector<Assignment> focus;
+    forEachMod(w.param, [&](const Assignment &m) {
+        if (modFocused(m))
+            focus.push_back(m);
+        else
+            reach(m, false);
+    });
+    for (const Assignment &f : focus)
+        reach(f, true);
+    c.fillRect({along(n) - 1.0f, kRatioTrack.y - 1.5f, 2.0f, kRatioTrack.h + 3.0f}, kText, 1.0f);
+    // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
+    const float offset = liveOffset(w.param);
+    if (offset != 0.0f)
+        c.fillCircle({along(n + offset / (def.max - def.min)), kRatioTrack.center().y}, 2.5f, kText);
+
+    c.text({w.rect.x, kRatioBox.bottom() + 2.0f, w.rect.w, 16.0f}, w.label ? w.label : "", 10.5f,
+           focused ? kText : kDim);
+}
+
 // What the play switches do, below the one under the mouse.
 void View::paintTooltip(Canvas &c) {
     if (!hover_ || drag_.kind != DragKind::None || (cascade_ && modsWide()) ||
@@ -6125,9 +6253,10 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             c.strokeRect(w.rect.inset(-1.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, 6.0f);
             continue;
         }
-        if (w.popup || covered(w.kind == Kind::Knob ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f,
-                                                           w.rect.w + 14.0f}
-                                                     : w.rect.inset(-4.0f)))
+        if (w.popup || covered(isRatioDisplay(w)      ? kRatioBox.inset(-4.0f)
+                               : w.kind == Kind::Knob ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f,
+                                                             w.rect.w + 14.0f}
+                                                      : w.rect.inset(-4.0f)))
             continue;
         if (w.kind == Kind::ModDot && w.a != source) { // a depth handle takes it as the modulation's aux
             if (w.clip.w > 0.0f && !w.clip.contains(w.rect.center()))
@@ -6156,7 +6285,9 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             c.pushClip(w.clip.inset(-4.0f));
         const bool over = target && target->same(w);
         const Color ring = color.alpha(over ? 1.0f : 0.35f);
-        if (w.kind == Kind::Knob) {
+        if (isRatioDisplay(w)) {
+            c.strokeRect(kRatioBox.inset(-4.0f), ring, over ? 2.5f : 1.5f, 8.0f);
+        } else if (w.kind == Kind::Knob) {
             c.strokeCircle(knobCenter(w), knobRadius(w) + 6.0f, ring, over ? 2.5f : 1.5f);
         } else {
             c.strokeRect(w.rect.inset(w.kind == Kind::GridCell ? -1.0f : -3.0f), ring, over ? 2.0f : 1.0f, 6.0f);
@@ -6217,7 +6348,9 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             c.strokeCircle(to, dot->compact ? 5.5f : 7.5f, color, 1.5f);
         else if (pill != list.end()) // or round the pill
             c.strokeRect(pill->rect.inset(-2.0f), color, 1.5f, pill->rect.h * 0.5f + 2.0f);
-        if (w.kind == Kind::Knob)
+        if (isRatioDisplay(w))
+            c.strokeRect(kRatioBox.inset(-3.0f), color.alpha(0.5f), 1.0f, 7.0f);
+        else if (w.kind == Kind::Knob)
             c.strokeCircle(knobCenter(w), knobRadius(w) + 5.0f, color.alpha(0.5f), 1.0f);
         else
             c.strokeRect(w.rect.inset(w.kind == Kind::GridCell ? -1.0f : -3.0f), color.alpha(0.5f), 1.0f, 6.0f);
@@ -6252,6 +6385,8 @@ void View::paintAuxLinks(Canvas &c, const std::vector<Widget> &list, int aux, in
 
 Rect View::typingField() const {
     const Widget &w = typing_->widget;
+    if (isRatioDisplay(w)) // over its digits
+        return {kRatioBox.x, kRatioBox.y + 9.0f, kRatioBox.w, 22.0f};
     if (w.kind == Kind::Knob && w.compact)
         return {w.rect.x + compactTextX(w) - 4.0f, w.rect.y + (w.shrunk ? 14.0f : 17.0f), w.rect.w + 2.0f - (compactTextX(w) - 4.0f), 20.0f};
     if (w.kind == Kind::Knob)
@@ -6363,12 +6498,19 @@ void View::applyDrag(Point p) {
         const ParamDef &def = table_[w.param];
         if (w.kind == Kind::GridCell) // dragging a matrix cell switches on what it joins, in the same step
             switchOnRoute(w.a, w.b);
-        if (w.kind == Kind::SlotBar)
+        if (isRatioDisplay(w)) { // the digit pressed, a step of its place every 6 px (24 with Shift), carrying
+            const long steps = std::lround((drag_.start.y - p.y) / (drag_.fine ? 24.0f : 6.0f));
+            set(w.param, steps != 0 ? ratioNorm(ratioHundredths(drag_.startValue) + steps * kRatioPlaces[w.b])
+                                    : drag_.startValue);
+        } else if (w.kind == Kind::SlotBar)
             set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / (w.rect.w * 0.5f) * 0.01
                                     : (p.x - w.rect.center().x) / (w.rect.w * 0.5f));
         else if (w.kind == Kind::ModsScale) // 0 at its left end, all of it at its right
             set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / w.rect.w * 0.01
                                     : (p.x - w.rect.x) / w.rect.w);
+        else if (w.kind == Kind::ModDot && w.a >= 0 && w.b >= 0 &&
+                 isRatioTarget(slotTarget(value(slotTargetIndex(w.a, w.b))))) // an octave every 60 px (3000 with Shift)
+            set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 3000.0 : 60.0) * (1.0 / 7.0));
         else if (def.kind == ParamKind::VoiceCount) // doubles every 40 px
             set(w.param, std::round(drag_.startValue * std::exp2((drag_.start.y - p.y) / 40.0)));
         else if (snapsToSteps(def.kind)) { // a step every 10 px; a note lands on a whole one
@@ -6543,6 +6685,7 @@ void View::applyDrag(Point p) {
 }
 
 bool View::mouseMove(Point p, Modifiers mods) {
+    const Point before = hoverPoint_;
     hoverPoint_ = p;
     if (drag_.kind == DragKind::None) {
         // The widget under the mouse, all of it (a tooltip goes under its rect), or for the partial editor's bars,
@@ -6553,7 +6696,8 @@ bool View::mouseMove(Point p, Modifiers mods) {
                    std::memcmp(&a.rect, &b.rect, sizeof(Rect)) == 0 && std::memcmp(&a.clip, &b.clip, sizeof(Rect)) == 0;
         };
         bool changed = hit.has_value() != hover_.has_value() || (hit && !same(*hit, *hover_)) ||
-                       (hit && hit->kind == Kind::PartialArea);
+                       (hit && hit->kind == Kind::PartialArea) ||
+                       (hit && isRatioDisplay(*hit) && ratioDigit(p.x) != ratioDigit(before.x)); // its lit digit
         hover_ = std::move(hit);
         // In a cascading menu, the mouse over a category opens it beside it, and over an entry closes what is open
         // past its level.
@@ -6660,6 +6804,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ModsCurve:
         drag_.kind = DragKind::Value;
         drag_.startValue = value(w.param);
+        if (isRatioDisplay(w)) // the digit pressed is the one dragged, wherever the mouse goes
+            drag_.widget.b = ratioDigit(p.x);
         controller_.beginEdit(w.param);
         if ((w.kind == Kind::SlotBar || w.kind == Kind::ModsScale) && !drag_.fine) // to the mouse at once; with
             applyDrag(p);                                                           // Shift, from where it is
@@ -7430,6 +7576,11 @@ void View::doubleClick(Point p, Modifiers mods) {
         startTyping(*hit);
         return;
     }
+    if (hit && isRatioDisplay(*hit)) { // rounded to the digit under the mouse: on the ones, 3.47 becomes 3.00
+        const long place = kRatioPlaces[ratioDigit(p.x)];
+        edit(hit->param, ratioNorm((ratioHundredths(value(hit->param)) + place / 2) / place * place));
+        return;
+    }
     if (hit && hit->kind == Kind::MacroName) {
         startTyping(*hit);
         return;
@@ -7563,6 +7714,13 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     if (!hit || hit->param < 0)
         return;
     const ParamDef &def = table_[hit->param];
+    if (isRatioDisplay(*hit)) { // a step of the digit under the mouse a notch, carrying
+        if (whole != 0) {
+            const UndoScope notches(controller_, true);
+            edit(hit->param, ratioNorm(ratioHundredths(value(hit->param)) + whole * kRatioPlaces[ratioDigit(p.x)]));
+        }
+        return;
+    }
     if (snapsToSteps(def.kind) && whole == 0) // short of a notch so far
         return;
     // A switch and the partial counts move as a click on them does: a switch on upward and off downward, with what

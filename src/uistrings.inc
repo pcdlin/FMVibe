@@ -456,7 +456,6 @@ STR(LabelHighPass, "High Pass")
 STR(LabelToOut, "To Out")
 STR(LabelSlope, "Slope")
 STR(LabelOut, "Out")
-STR(LabelFine, "Fine")
 STR(LabelMult, "Mult") // a fixed operator's knob in Fine's place, Freq in Ratio's
 STR(LabelDetune, "Detune")
 STR(LabelUnison, "Unison")

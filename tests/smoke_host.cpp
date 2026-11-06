@@ -737,12 +737,12 @@ int main(int argc, char **argv) {
               "a fixed operator plays its Freq x Mult whatever the note, bend, Pitch and Detune");
     }
 
-    // Operator A's Ratio takes modulation continuously: +1 plays an octave up, and +0.5 the ratio half way between
-    // the steps (660 Hz), not either of them.
+    // Operator A's Ratio takes modulation on its log curve, continuously: a seventh of its range (0.5 to 64 is seven
+    // octaves) plays an octave up, and half that a tritone up (622 Hz), between the two.
     {
-        auto playRatio = [&](double mod) {
-            const clap_event_param_mod_t ratioMod = paramModEvent(paramIndex(0, OpParam::Coarse), -1, mod);
-            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 22, 69);
+        auto playRatio = [&](double mod, int16_t key = 69) {
+            const clap_event_param_mod_t ratioMod = paramModEvent(paramIndex(0, OpParam::Ratio), -1, mod);
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 22, key);
             runBlock({&ratioMod.header, &on.header});
             runBlocks(8);
             std::vector<float> signal;
@@ -753,16 +753,35 @@ int main(int argc, char **argv) {
             runBlock({&chokeAll.header});
             return signal;
         };
-        const auto up = playRatio(1.0);
-        const auto between = playRatio(0.5);
+        const auto up = playRatio(1.0 / 7.0);
+        const auto between = playRatio(0.5 / 7.0);
+        const double tritone = 440.0 * std::sqrt(2.0);
         const double octave = magnitude(up, 880.0) / std::max(magnitude(up, 440.0), 1e-9);
-        const double same = magnitude(between, 660.0) /
+        const double same = magnitude(between, tritone) /
                             std::max(std::max(magnitude(between, 440.0), magnitude(between, 880.0)), 1e-9);
-        std::printf("      A's Ratio modulated: +1 puts 880 Hz %.0fx over 440 Hz, +0.5 puts 660 Hz %.0fx over both\n",
+        std::printf("      A's Ratio modulated: +1/7 puts 880 Hz %.0fx over 440 Hz, +1/14 puts 622 Hz %.0fx over both\n",
                     octave, same);
-        const clap_event_param_mod_t unmod = paramModEvent(paramIndex(0, OpParam::Coarse), -1, 0.0);
+        const clap_event_param_mod_t unmod = paramModEvent(paramIndex(0, OpParam::Ratio), -1, 0.0);
         runBlock({&unmod.header});
-        check(octave > 30.0 && same > 30.0, "a modulated Ratio plays the nearest whole step");
+        check(octave > 30.0 && same > 30.0, "a modulated Ratio moves along its log curve, continuously");
+
+        // Modulation takes it on past 64, to 128: set to 64, an A1 (55 Hz) plays 3520 Hz, an octave of modulation up
+        // 7040 Hz, and two octaves up still 7040 Hz, held at 128.
+        const clap_event_param_value_t top = paramEvent(paramIndex(0, OpParam::Ratio), 1.0);
+        runBlock({&top.header});
+        const auto still = playRatio(0.0, 33), past = playRatio(1.0 / 7.0, 33), held = playRatio(2.0 / 7.0, 33);
+        auto over = [&](const std::vector<float> &signal, double hz, double other) {
+            return magnitude(signal, hz) / std::max(magnitude(signal, other), 1e-9);
+        };
+        const double at64 = over(still, 3520.0, 7040.0), at128 = over(past, 7040.0, 3520.0),
+                     heldAt128 = over(held, 7040.0, 3520.0);
+        std::printf("      A's Ratio at 64 on an A1: 3520 Hz %.0fx over 7040 Hz; +1/7 puts 7040 Hz %.0fx over 3520 Hz, "
+                    "+2/7 %.0fx\n",
+                    at64, at128, heldAt128);
+        const clap_event_param_value_t back = paramEvent(paramIndex(0, OpParam::Ratio), normFromRatio(1.0));
+        runBlock({&unmod.header, &back.header});
+        check(at64 > 30.0 && at128 > 30.0 && heldAt128 > 30.0,
+              "modulation takes a Ratio set to 64 on to 128, and no further");
     }
 
     // The matrix does FM: B -> A puts the 2nd harmonic onto a pure-sine carrier.
@@ -2806,7 +2825,7 @@ int main(int argc, char **argv) {
         for (int b = 0; b < blocksPerSecond; ++b) {
             std::vector<clap_event_param_mod_t> mods;
             for (int op = 0; op < kOps; ++op)
-                mods.push_back(paramModEvent(paramIndex(op, OpParam::Coarse), -1, 0.5 + 0.5 * std::sin(b * 0.37 + op)));
+                mods.push_back(paramModEvent(paramIndex(op, OpParam::Ratio), -1, 0.2 + 0.2 * std::sin(b * 0.37 + op)));
             std::vector<const clap_event_header_t *> evs;
             for (const auto &m : mods)
                 evs.push_back(&m.header);
@@ -2964,7 +2983,7 @@ int main(int argc, char **argv) {
 
         MemoryStream newer;
         newer.data = patch.data;
-        newer.data[4] = 5; // a state version from the future
+        newer.data[4] = 6; // a state version from the future
         check(!state->load(plugin, &newer.in), "load rejects a newer state version");
 
         // Hosts see a slot's fields for the effect it holds, and not the others.
@@ -3118,6 +3137,66 @@ int main(int argc, char **argv) {
               "earlier state's depths on them swing them as far as before");
     }
 
+    // An operator's ratio is one param, Ratio, since version 5: an earlier state's loads from its Coarse and Fine as
+    // they played (3 and 50 % are 4.5, 0 is 0.5), and a modulation on either moves onto Ratio with the depth that
+    // reaches where it reached (a step of Coarse from 4.5 to 6, half of Fine from 0.5 to 0.75). A version 5 state's
+    // Coarse and Fine do nothing.
+    {
+        const int aCoarse = paramIndex(0, OpParam::RetiredCoarse), aFine = paramIndex(0, OpParam::RetiredFine);
+        const int bCoarse = paramIndex(1, OpParam::RetiredCoarse), bFine = paramIndex(1, OpParam::RetiredFine);
+        const std::pair<int, double> stored[] = {
+            {aCoarse, 3.0},
+            {aFine, 0.5},
+            {bCoarse, 0.0},
+            {slotTargetIndex(0, 0), idOfIndex(aCoarse) + 1.0},
+            {slotAmountIndex(0, 0), 1.0 / 32.0},
+            {slotTargetIndex(0, 1), idOfIndex(bFine) + 1.0},
+            {slotAmountIndex(0, 1), 0.5}};
+        auto ratioFrom = [&](uint32_t version, std::vector<double> &got) {
+            MemoryStream old;
+            const uint32_t header[] = {0x38454C43, version, static_cast<uint32_t>(std::size(stored))};
+            old.data.assign(reinterpret_cast<const uint8_t *>(header),
+                            reinterpret_cast<const uint8_t *>(header) + sizeof(header));
+            for (const auto &[index, v] : stored) {
+                const uint32_t id = idOfIndex(index);
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                                reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&v),
+                                reinterpret_cast<const uint8_t *>(&v) + sizeof(v));
+            }
+            const bool loaded = state->load(plugin, &old.in);
+            plugin->on_main_thread(plugin);
+            got.clear();
+            for (const int index : {paramIndex(0, OpParam::Ratio), paramIndex(1, OpParam::Ratio), slotTargetIndex(0, 0),
+                                    slotAmountIndex(0, 0), slotTargetIndex(0, 1), slotAmountIndex(0, 1)}) {
+                double value = -1.0;
+                if (loaded)
+                    params->get_value(plugin, idOfIndex(index), &value);
+                got.push_back(value);
+            }
+            char text[2][64] = {};
+            params->value_to_text(plugin, idOfIndex(paramIndex(0, OpParam::Ratio)), got[0], text[0], sizeof(text[0]));
+            params->value_to_text(plugin, idOfIndex(paramIndex(1, OpParam::Ratio)), got[1], text[1], sizeof(text[1]));
+            return std::string(text[0]) + ", " + text[1];
+        };
+        std::vector<double> four, five;
+        const std::string fromFour = ratioFrom(4, four), fromFive = ratioFrom(5, five);
+        std::printf("      A's and B's Ratio from a version 4 state: %s; from version 5: %s; depths %.4f and %.4f\n",
+                    fromFour.c_str(), fromFive.c_str(), four[3], four[5]);
+        const bool moved = four[2] == idOfIndex(paramIndex(0, OpParam::Ratio)) + 1.0 &&
+                           four[4] == idOfIndex(paramIndex(1, OpParam::Ratio)) + 1.0 &&
+                           std::abs(four[3] - std::log2(6.0 / 4.5) / 7.0) < 1e-9 &&
+                           std::abs(four[5] - std::log2(0.75 / 0.5) / 7.0) < 1e-9;
+        check(fromFour == "4.50, 0.50" && moved && fromFive == "1.00, 1.00",
+              "an earlier state's ratio loads from Coarse and Fine, their modulations moved onto Ratio");
+        const uint32_t initHeader[] = {0x38454C43, 5, 0};
+        MemoryStream init;
+        init.data.assign(reinterpret_cast<const uint8_t *>(initHeader),
+                         reinterpret_cast<const uint8_t *>(initHeader) + sizeof(initHeader));
+        state->load(plugin, &init.in);
+        plugin->on_main_thread(plugin);
+    }
+
     // Envelopes' attacks, holds, decays and releases go up to 10 s: one stored longer (up to 20 s, which they once
     // went to) loads as 10 s, and a shorter one as it is, operators' and mod envelopes' alike. Hosts are told the
     // 10 s top.
@@ -3253,7 +3332,7 @@ int main(int argc, char **argv) {
         layout.push_back(static_cast<float>(emptyMods));
         for (int k = 0; k < emptyMods; ++k) {
             layout.push_back(k % 3 == 0 ? 0.0f : static_cast<float>(k % kAllSources + 1)); // a source, or none
-            layout.push_back(k % 3 == 1 ? 0.0f : static_cast<float>(idOfIndex(paramIndex(k % kOps, OpParam::Fine))) + 1.0f);
+            layout.push_back(k % 3 == 1 ? 0.0f : static_cast<float>(idOfIndex(paramIndex(k % kOps, OpParam::Ratio))) + 1.0f);
         }
 
         MemoryStream big;

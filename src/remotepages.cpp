@@ -118,10 +118,11 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
     }
 
     for (int op = 0; op < kOps; ++op) {
-        const bool fixed = values[paramIndex(op, OpParam::Fixed)] >= 0.5; // Freq and Mult in Ratio's and Fine's places
+        // Fixed, Freq and Mult take the places of Ratio and Pitch, which it ignores.
+        const bool fixed = values[paramIndex(op, OpParam::Fixed)] >= 0.5;
         add(tr(Str::ModuleOperators), trf(Str::ParamOp, {letter(op)}),
-            {paramIndex(op, OpParam::Wave), paramIndex(op, fixed ? OpParam::FixedFreq : OpParam::Coarse),
-             paramIndex(op, fixed ? OpParam::FixedMult : OpParam::Fine),
+            {paramIndex(op, OpParam::Wave), paramIndex(op, fixed ? OpParam::FixedFreq : OpParam::Ratio),
+             paramIndex(op, fixed ? OpParam::FixedMult : OpParam::Transpose),
              paramIndex(op, OpParam::Detune), paramIndex(op, OpParam::Attack), paramIndex(op, OpParam::Decay),
              paramIndex(op, OpParam::Sustain), paramIndex(op, OpParam::Release)});
     }

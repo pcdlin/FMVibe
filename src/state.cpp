@@ -37,7 +37,9 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 4: An envelope's attack, decay and release go on below 1 ms to 0 ms, their range reaching below 0 (see
 //    kMinEnvNorm). Their values keep their meaning, but a modulation's depth is a share of its target's range, so an
 //    earlier state's depths on them load smaller, to swing them as far as they did.
-constexpr uint32_t kStateVersion = 4;
+// 5: An operator's ratio is one param, Ratio, on a log curve; it was Coarse (stepped) times 1 + Fine. An earlier
+//    state's ratio loads from those, and their modulations move onto Ratio (see ratioFromRetired()).
+constexpr uint32_t kStateVersion = 5;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -242,7 +244,10 @@ struct LayoutReader {
         for (int k = 0; k < count && field < stored.size(); ++k) {
             const int source = static_cast<int>(std::lround(next(0.0f, 0.0f, static_cast<float>(kAllSources)))) - 1;
             const long id = std::lround(next(0.0f, 0.0f, 1.0e6f)) - 1;
-            const int target = id < 0 ? -1 : indexOfId(static_cast<clap_id>(id));
+            int target = id < 0 ? -1 : indexOfId(static_cast<clap_id>(id));
+            for (int op = 0; op < kOps; ++op) // from before Ratio: a Coarse or Fine moves onto it, as the slots do
+                if (target == paramIndex(op, OpParam::RetiredCoarse) || target == paramIndex(op, OpParam::RetiredFine))
+                    target = paramIndex(op, OpParam::Ratio);
             mods.push_back({source, isModTarget(target) ? target : -1});
         }
     }
@@ -344,6 +349,37 @@ bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const g
     return writeAll(stream, chunk, sizeof(chunk)) && writeAll(stream, layout.data(), layout.size() * sizeof(float));
 }
 
+// A state from before Ratio: each operator's ratio from its Coarse and Fine, as they played, and the modulations on
+// them moved onto Ratio. A depth was a share of Coarse's range (0 to 32) or Fine's (0 to 1); it becomes the share of
+// Ratio's log range that reaches the ratio the old depth reached at its full swing from where the ratio is set.
+void ratioFromRetired(ParamValues &loaded) {
+    const ParamTable &table = paramTable();
+    for (int op = 0; op < kOps; ++op) {
+        const double coarse = loaded[paramIndex(op, OpParam::RetiredCoarse)];
+        const double fine = loaded[paramIndex(op, OpParam::RetiredFine)];
+        const double ratio = coarseRatio(coarse) * (1.0 + fine);
+        const double norm = normFromRatio(ratio);
+        loaded[paramIndex(op, OpParam::Ratio)] = norm;
+        const int coarseIndex = paramIndex(op, OpParam::RetiredCoarse), fineIndex = paramIndex(op, OpParam::RetiredFine);
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTargetIndex(source, slot);
+                const long id = std::lround(loaded[target]) - 1;
+                const int index = id < 0 ? -1 : indexOfId(static_cast<clap_id>(id));
+                if (index != coarseIndex && index != fineIndex)
+                    continue;
+                const int amount = slotAmountIndex(source, slot);
+                const double depth = loaded[amount];
+                const double reached =
+                    index == coarseIndex
+                        ? coarseRatio(std::clamp(coarse + depth * 32.0, 0.0, 32.0)) * (1.0 + fine)
+                        : coarseRatio(coarse) * (1.0 + std::clamp(fine + depth, 0.0, 1.0));
+                loaded[target] = slotTargetValue(paramIndex(op, OpParam::Ratio));
+                loaded[amount] = std::clamp(normFromRatio(reached) - norm, table[amount].min, table[amount].max);
+            }
+    }
+}
+
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     uint32_t header[3];
     if (!readAll(stream, header, sizeof(header)) || header[0] != kStateMagic || header[1] < 1 ||
@@ -377,6 +413,8 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
                 if (target >= 0 && table[target].kind == ParamKind::EnvTime)
                     loaded[slotAmountIndex(source, slot)] *= kMaxEnvNorm / (table[target].max - table[target].min);
             }
+    if (header[1] < 5)
+        ratioFromRetired(loaded);
     return true;
 }
 

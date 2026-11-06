@@ -53,8 +53,8 @@ enum class GlobalParam {
 // Out goes straight to the output; the sends go into the filters (see sendIndex()) and the shapers
 // (see shaperSendIndex()).
 enum class OpParam {
-    Coarse,
-    Fine,
+    RetiredCoarse, // was the ratio's whole part, 0 (0.5) to 32; does nothing since Ratio, kept so the ids after it stay
+    RetiredFine,   // was the ratio's fraction on top, 0..1 times it; likewise
     Detune,
     Out,
     Attack,
@@ -80,6 +80,7 @@ enum class OpParam {
     FixedFreq,                      // 0..1 on a log curve, see fixedFreqFromNorm()
     FixedMult,                      // one of kFixedMults, by number
     Phase,                          // 0..1 of a cycle: where a note starts the waveform (see PhaseRandom)
+    Ratio,                          // 0..1 on a log curve, 0.5 to 64 times the note; see ratioFromNorm()
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -998,13 +999,14 @@ static_assert(kOps == 6 && kMacros == 8 && kMaxSources == 16 && kSlots == 16 && 
               "a count the param ids are laid out by changed: see Pinned ids");
 static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(paramIndex(GlobalParam::ModWheel)) == 11,
               "global param ids moved");
-static_assert(idOfIndex(paramIndex(0, OpParam::Coarse)) == 100 && idOfIndex(paramIndex(0, OpParam::Transpose)) == 120 &&
+static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfIndex(paramIndex(0, OpParam::Transpose)) == 120 &&
                   idOfIndex(sendIndex(0, 0)) == 121 && idOfIndex(shaperSendIndex(0, 0)) == 123 &&
                   idOfIndex(shaperSendIndex(kOps - 1, kShapers - 1)) == 374 &&
                   idOfIndex(paramIndex(0, OpParam::Fixed)) == 125 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::FixedMult)) == 377 &&
                   idOfIndex(paramIndex(0, OpParam::RetiredVelocity)) == 108 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::Phase)) == 378,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::Phase)) == 378 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::Ratio)) == 379,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -1244,16 +1246,28 @@ inline int fixedSwitchOp(int index) {
             return op;
     return -1;
 }
-// Coarse is stepped 0..32; 0 stands for a ratio of 0.5.
+// The old Coarse was stepped 0..32, 0 standing for a ratio of 0.5; states before Ratio load through it.
 inline double coarseRatio(double coarse) {
     const long c = std::lround(coarse);
     return c <= 0 ? 0.5 : static_cast<double>(c);
 }
 
-// The ratio a modulated Coarse plays: between two steps it is interpolated linearly, from 0.5 at 0 to 1 at 1.
-inline double coarseRatioSmooth(double coarse) {
-    return coarse <= 0.0 ? 0.5 : coarse < 1.0 ? 0.5 + 0.5 * coarse : coarse;
+// An operator's Ratio: 0..1 on a log curve from 0.5 to 64 times the note, so a modulation's depth is the same
+// interval wherever the ratio is set, and 1 to 2 takes as much of a host's knob as 32 to 64.
+constexpr double kMinRatio = 0.5;
+constexpr double kMaxRatio = 64.0;
+// Modulation takes it an octave further, to 128: past the top of its range by a seventh of it, the share of the
+// curve's seven octaves an octave is. The ratio set stays within 0.5 to 64.
+constexpr double kMaxModRatio = 128.0;
+constexpr double kRatioModNorm = 8.0 / 7.0;
+static_assert(kMaxRatio / kMinRatio == 128.0 && kMaxModRatio == 2.0 * kMaxRatio,
+              "kRatioModNorm is the norm an octave past kMaxRatio on a seven-octave curve");
+inline double ratioFromNorm(double x) { return kMinRatio * std::pow(kMaxRatio / kMinRatio, x); }
+inline double normFromRatio(double ratio) {
+    return std::clamp(std::log(std::max(ratio, 1e-9) / kMinRatio) / std::log(kMaxRatio / kMinRatio), 0.0, 1.0);
 }
+// The ratio as the editor shows and sets it: in hundredths, 50 to 6400.
+inline long ratioHundredths(double norm) { return std::clamp(std::lround(ratioFromNorm(norm) * 100.0), 50L, 6400L); }
 
 // Note values for tempo sync, from 4/1 dotted down to a 1/64 triplet, slowest
 // first. Stored in projects by number.
@@ -1568,6 +1582,7 @@ enum class ParamKind {
     FixedFreq,   // 0..1 on a log curve, shown in Hz; see fixedFreqFromNorm()
     FixedMult,   // stepped: one of kFixedMults, shown as x0.001 and so on
     SlotAux,      // stepped: the source + 1 that scales a slot (0 = none), set in the editor and hidden from hosts
+    OpRatio,      // 0..1 on a log curve, shown as a ratio to two places; see ratioFromNorm()
 };
 
 struct ParamDef {
@@ -1593,13 +1608,13 @@ inline bool snapsToSteps(ParamKind kind) {
 }
 // Displayed and modulated around the middle of the range rather than from the minimum.
 bool isBipolar(ParamKind kind);
-// Continuous params are the ones LFOs, envelopes and host modulators can drive, and the operators' Ratio, which
-// interpolates between its steps when modulated.
+// Continuous params are the ones LFOs, envelopes and host modulators can drive; not the retired ones (see
+// isRetired()), which do nothing.
 // Not the macros' own knobs: they are read as set.
+bool isRetired(int index);
 inline bool isModTarget(int index) {
-    return index >= 0 && index < kMacroBase &&
-           (!isStepped(paramTable()[index].kind) || paramTable()[index].kind == ParamKind::Ratio) &&
-           paramTable()[index].kind != ParamKind::ShapePoint;
+    return index >= 0 && index < kMacroBase && !isRetired(index) &&
+           !isStepped(paramTable()[index].kind) && paramTable()[index].kind != ParamKind::ShapePoint;
 }
 // Value of a slot target param pointing at param `index`, and back (-1 = none or invalid).
 inline double slotTargetValue(int index) { return index < 0 ? 0.0 : idOfIndex(index) + 1.0; }

@@ -202,7 +202,11 @@ private:
 };
 
 // Screen positions of a few controls in the default layout (mirrors src/gui/layout.h).
-constexpr Point kFineKnob{967.0f, 214.0f};
+constexpr Point kOpPhaseKnob{1101.0f, 214.0f}; // an operator's Phase, a plain knob
+constexpr Point kMultKnob{967.0f, 214.0f};     // a fixed operator's Mult, in the Ratio readout's right half
+constexpr Point kRatioTens{917.0f, 214.0f}, kRatioOnes{933.0f, 214.0f}, kRatioTenths{956.0f, 214.0f},
+                kRatioHundredths{972.0f, 214.0f}; // the Ratio readout's digits
+constexpr Point kRatioDot{944.7f, 229.0f}; // the first depth handle along the Ratio readout's bottom edge
 constexpr Point kOutKnob{1146.0f, 214.0f};
 constexpr float kBusY = 446.0f; // the routing graph's OUT line
 constexpr Point kPitchKnob{1012.0f, 214.0f};
@@ -541,21 +545,21 @@ void type(View &view, const char *text) {
 void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    const int fine = paramIndex(0, OpParam::Fine);
+    const int opPhase = paramIndex(0, OpParam::Phase);
 
     // A knob drag is one step: undo takes it back, redo brings it again.
-    drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 40.0f});
-    check(std::abs(model.value(fine) - 0.2) < 1e-6 && model.nextUndo() != nullptr, "a knob drag is an undo step");
+    drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 40.0f});
+    check(std::abs(model.value(opPhase) - 0.2) < 1e-6 && model.nextUndo() != nullptr, "a knob drag is an undo step");
     click(view, kUndoButton);
-    const bool undone = model.value(fine) == 0.0;
+    const bool undone = model.value(opPhase) == 0.0;
     click(view, kRedoButton);
-    check(undone && std::abs(model.value(fine) - 0.2) < 1e-6 && model.openEdits == 0,
+    check(undone && std::abs(model.value(opPhase) - 0.2) < 1e-6 && model.openEdits == 0,
           "the undo and redo buttons take a drag back and bring it again");
     // A run of wheel notches on one knob undoes at once.
     for (int n = 0; n < 3; ++n)
-        view.wheel(kFineKnob, 1.0f, {});
+        view.wheel(kOpPhaseKnob, 1.0f, {});
     view.undo();
-    check(std::abs(model.value(fine) - 0.2) < 1e-6, "a run of wheel notches is one undo step");
+    check(std::abs(model.value(opPhase) - 0.2) < 1e-6, "a run of wheel notches is one undo step");
     // Moving a node is a step too.
     const Point a = nodeCenter(model.layout(), 0);
     drag(view, a, {a.x + 100.0f, a.y - 50.0f});
@@ -567,15 +571,15 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
 
     // Typing values: a double-click on a knob's number opens a field, Enter sets what it reads as.
-    doubleClick(view, {kFineKnob.x, 238.0f});
+    doubleClick(view, {kOpPhaseKnob.x, 238.0f});
     const bool typingOn = view.typing();
     type(view, "50");
-    view.mouseMove({kFineKnob.x, 238.0f}, {});
+    view.mouseMove({kOpPhaseKnob.x, 238.0f}, {});
     check(typingOn && renderer.save(view, dir / "16-typing.png"), "render a value being typed");
     view.typeKey(View::Key::Enter);
-    check(!view.typing() && std::abs(model.value(fine) - 0.5) < 1e-9, "a typed value sets the knob");
+    check(!view.typing() && std::abs(model.value(opPhase) - 0.5) < 1e-9, "a typed value sets the knob");
     view.undo();
-    check(std::abs(model.value(fine) - 0.2) < 1e-6, "a typed value is an undo step");
+    check(std::abs(model.value(opPhase) - 0.2) < 1e-6, "a typed value is an undo step");
     doubleClick(view, {401.0f, 35.0f}); // FM Amount's number, beside it in the header
     type(view, "150 %");
     view.typeKey(View::Key::Enter);
@@ -595,8 +599,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     type(view, "0");
     click(view, {600.0f, 300.0f}); // a click elsewhere takes the value
     check(std::abs(model.value(fmAmount)) < 1e-9 && !view.typing(), "a click elsewhere takes the value typed");
-    doubleClick(view, kFineKnob);
-    check(!view.typing() && model.value(fine) == 0.0, "a double-click on the knob itself still resets it");
+    doubleClick(view, kOpPhaseKnob);
+    check(!view.typing() && model.value(opPhase) == 0.0, "a double-click on the knob itself still resets it");
     view.undo();
     // The right-click menu's "Edit value" types into the knob too.
     auto menuEntry = [&](Point at, const std::string &label) {
@@ -605,11 +609,11 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
                 return item.command;
         return -1;
     };
-    view.menuCommand(menuEntry(kFineKnob, tr(Str::MenuEditValue)));
+    view.menuCommand(menuEntry(kOpPhaseKnob, tr(Str::MenuEditValue)));
     const bool menuTyping = view.typing();
     type(view, "35");
     view.typeKey(View::Key::Enter);
-    check(menuTyping && std::abs(model.value(fine) - 0.35) < 1e-9, "a knob's menu has Edit value, which types into it");
+    check(menuTyping && std::abs(model.value(opPhase) - 0.35) < 1e-9, "a knob's menu has Edit value, which types into it");
     // Ctrl+Click types into a route: A's label on its line to OUT in the graph, then its OUT cell in the matrix.
     const Point aOut = outLabelOf(model.layout(), 0);
     view.mouseDown(aOut, {false, true});
@@ -693,7 +697,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // LFO 1's first row is the top one (its middle at y 154). There a row's number takes a typed depth, its depth
     // bar's menu has Edit depth and its dot bypasses it; back in ROUTING, the modulated knob's menu resumes it.
     for (int k = 0; k < 6; ++k) {
-        model.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(k, OpParam::Fine)));
+        model.set(slotTargetIndex(0, k), slotTargetValue(paramIndex(k, OpParam::Phase)));
         model.set(slotAmountIndex(0, k), 0.1 * (k + 1));
     }
     view.poll();
@@ -716,7 +720,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({400.0f, 440.0f}, {});
     check(slotBypassed && renderer.save(view, dir / "17c-bypassed-slot.png"), "render a bypassed modulation");
     click(view, kRoutingTab);
-    view.menuCommand(menuEntry(kFineKnob, trf(Str::MenuResume, {trf(Str::SourceNameLfo, {"1"})})));
+    view.menuCommand(menuEntry(kOpPhaseKnob, trf(Str::MenuResume, {trf(Str::SourceNameLfo, {"1"})})));
     check(model.value(slotBypassIndex(0, 0)) == 0.0, "a row's dot bypasses its modulation, and the knob's menu resumes it");
 
     // Until a source modulates something, hovering its handle shows a "Drag to assign" tooltip below it (read off
@@ -851,9 +855,9 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // step up across is 24 lines, and Ctrl snaps a point to them.
     click(view, shapeButton(0));
     click(view, shapeItem(0, LfoShape::Custom));
-    const double fineBefore = model.value(paramIndex(0, OpParam::Fine));
-    drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 30.0f});
-    check(model.value(paramIndex(0, OpParam::Fine)) == fineBefore && model.value(shapeCountIndex(0)) == 2.0,
+    const double fineBefore = model.value(paramIndex(0, OpParam::Phase));
+    drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
+    check(model.value(paramIndex(0, OpParam::Phase)) == fineBefore && model.value(shapeCountIndex(0)) == 2.0,
           "the LFO shape editor hides the inspector");
     click(view, shapeGrid(0, 2));
     click(view, shapeGrid(1, 0));
@@ -1252,7 +1256,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     View modsView(mods);
     mods.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     mods.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
-    const OpParam targets[] = {OpParam::Fine,    OpParam::Detune,  OpParam::Transpose, OpParam::Out,
+    const OpParam targets[] = {OpParam::Ratio,    OpParam::Detune,  OpParam::Transpose, OpParam::Out,
                                OpParam::Phase,    OpParam::Attack, OpParam::Decay,     OpParam::Sustain,
                                OpParam::Release, OpParam::Hold,    OpParam::UnisonDetune};
     for (int k = 0; k < 11; ++k) {
@@ -1302,36 +1306,158 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // A modulation's depth handle under the mouse draws its range over the others, and wider: LFO 1's and Env 1's
-// ranges on Op A's Fine (set to the middle) overlap above the knob, Env 1's on top, and hovering either handle
+// ranges on Op A's Phase (set to the middle) overlap above the knob, Env 1's on top, and hovering either handle
 // changes what shows there (read off the rendered pixels).
 void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
     click(view, sourceAdd(SourceType::Lfo));
     click(view, sourceAdd(SourceType::Env));
-    model.set(paramIndex(0, OpParam::Fine), 0.5);
-    drag(view, sourceHandle(0), kFineKnob);
-    drag(view, sourceHandle(1), kFineKnob);
+    model.set(paramIndex(0, OpParam::Phase), 0.5);
+    drag(view, sourceHandle(0), kOpPhaseKnob);
+    drag(view, sourceHandle(1), kOpPhaseKnob);
     auto ring = [&] { // above the knob, where both ranges run
         std::vector<uint32_t> pixels;
         for (float y = 192.0f; y < 207.0f; y += 1.0f)
-            for (float x = kFineKnob.x - 20.0f; x < kFineKnob.x + 21.0f; x += 1.0f)
+            for (float x = kOpPhaseKnob.x - 20.0f; x < kOpPhaseKnob.x + 21.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
     };
     view.mouseMove({600.0f, 300.0f}, {});
     const bool plainShot = renderer.save(view, dir / "17c-mod-ranges.png");
     const std::vector<uint32_t> plain = ring();
-    view.mouseMove({kFineKnob.x - 5.0f, 229.0f}, {}); // LFO 1's handle, the first under the knob
+    view.mouseMove({kOpPhaseKnob.x - 5.0f, 229.0f}, {}); // LFO 1's handle, the first under the knob
     const bool lfoShot = renderer.save(view, dir / "17d-mod-range-hovered.png");
     const std::vector<uint32_t> lfo = ring();
-    view.mouseMove({kFineKnob.x + 5.0f, 229.0f}, {}); // Env 1's, the second
+    view.mouseMove({kOpPhaseKnob.x + 5.0f, 229.0f}, {}); // Env 1's, the second
     renderer.save(view, dir / "17e-mod-range-hovered.png");
     const std::vector<uint32_t> env = ring();
-    check(model.value(slotTargetIndex(0, 0)) == slotTargetValue(paramIndex(0, OpParam::Fine)) &&
-              model.value(slotTargetIndex(1, 0)) == slotTargetValue(paramIndex(0, OpParam::Fine)) && plainShot &&
+    check(model.value(slotTargetIndex(0, 0)) == slotTargetValue(paramIndex(0, OpParam::Phase)) &&
+              model.value(slotTargetIndex(1, 0)) == slotTargetValue(paramIndex(0, OpParam::Phase)) && plainShot &&
               lfoShot && lfo != plain && env != plain && lfo != env,
           "a hovered depth handle draws its range wider, over the others");
+}
+
+// An operator's Ratio, a 7-segment readout: each digit dragged on its own, a step of its place every 6 px, carrying
+// into the next and stopping at 64.00; the wheel stepping the digit under the mouse; a double-click rounding to the
+// digit; the hovered digit lit behind (read off the rendered pixels); a typed fraction; and a source's handle dropped
+// on it modulating it, its reach drawn along the track under the digits (read off the rendered pixels).
+void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const int ratio = paramIndex(0, OpParam::Ratio);
+    auto shown = [&] { return ratioHundredths(model.value(ratio)); };
+    const bool fresh = shown() == 100;
+    drag(view, kRatioOnes, {kRatioOnes.x, kRatioOnes.y - 12.0f}); // two steps of 1
+    const bool ones = shown() == 300 && model.nextUndo() != nullptr && model.openEdits == 0;
+    drag(view, kRatioHundredths, {kRatioHundredths.x, kRatioHundredths.y - 30.0f}); // five of 0.01
+    const bool hundredths = shown() == 305;
+    drag(view, kRatioTenths, {kRatioTenths.x, kRatioTenths.y + 60.0f}); // ten of 0.1 down, through the ones
+    const bool carried = shown() == 205;
+    drag(view, kRatioTens, {kRatioTens.x, kRatioTens.y - 600.0f}); // far past the top
+    const bool top = shown() == 6400;
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool topShot = renderer.save(view, dir / "3g-ratio-top.png");
+    view.undo();
+    std::printf("      Ratio dragged: 1.00 to %.2f, 3.05, %.2f (carried), 64.00 at the top; undone %.2f\n",
+                ones ? 3.0 : -1.0, carried ? 2.05 : -1.0, shown() / 100.0);
+    check(fresh && ones && hundredths && carried && top && topShot && shown() == 205,
+          "each digit of the Ratio readout drags by its own place, carrying, held to 64.00, each drag an undo step");
+
+    for (int n = 0; n < 3; ++n)
+        view.wheel(kRatioTenths, 1.0f, {});
+    view.wheel(kRatioHundredths, -1.0f, {});
+    const bool wheeled = shown() == 234;
+    doubleClick(view, kRatioOnes);
+    const bool rounded = shown() == 200;
+    doubleClick(view, kRatioTenths); // 2.00 is as round as the tenths go: no change
+    check(wheeled && rounded && shown() == 200,
+          "the wheel steps the Ratio digit under the mouse, and a double-click rounds to it");
+
+    // The digit under the mouse is lit behind: a pixel in its corner, clear of its segments.
+    const Point corner{kRatioTenths.x + 5.5f, kRatioTenths.y - 9.0f};
+    view.mouseMove({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "3g-ratio.png");
+    const uint32_t idle = renderer.pixel(corner);
+    view.mouseMove(kRatioTenths, {});
+    const bool hoverShot = renderer.save(view, dir / "3g-ratio-hover.png");
+    const uint32_t lit = renderer.pixel(corner);
+    view.mouseMove(kRatioOnes, {});
+    renderer.save(view, dir / "3g-ratio-hover-ones.png");
+    check(hoverShot && lit != idle && renderer.pixel(corner) == idle, "the Ratio digit under the mouse is lit behind");
+
+    view.mouseDown(kRatioOnes, {false, true}); // Ctrl+Click types a value, a fraction too
+    const bool typing = view.typing();
+    type(view, "7/2");
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool typingShot = renderer.save(view, dir / "3g-ratio-typing.png");
+    view.typeKey(View::Key::Enter);
+    check(typing && typingShot && shown() == 350, "a fraction typed into the Ratio readout sets it");
+
+    // A source's handle dropped on the readout modulates it, its reach drawn in its color along the track.
+    click(view, sourceAdd(SourceType::Lfo));
+    const Point track{911.0f, 199.0f}; // on the track over the digits (from x 910), a little below 3.50 (at x 913)
+    view.mouseMove({600.0f, 300.0f}, {});
+    renderer.save(view, dir / "3g-ratio-plain.png");
+    const uint32_t bare = renderer.pixel(track);
+    drag(view, sourceHandle(0), kRatioOnes);
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool modShot = renderer.save(view, dir / "3g-ratio-modulated.png");
+    check(slotTarget(model.value(slotTargetIndex(0, 0))) == ratio && model.value(slotAmountIndex(0, 0)) != 0.0 &&
+              modShot && renderer.pixel(track) != bare,
+          "a source's handle dropped on the Ratio readout modulates it, its reach drawn along the track");
+
+    // The track is a straight line to 64: set there, the ratio's tick is at its right end (x 979), and the modulation
+    // going on past 64 has an arrow after it (x 980 to 984) (read off the rendered pixels).
+    const Point end{978.5f, 197.0f}, arrow{981.5f, 199.0f};
+    const uint32_t endBefore = renderer.pixel(end), arrowBefore = renderer.pixel(arrow);
+    model.set(ratio, 1.0);
+    view.poll();
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool topModShot = renderer.save(view, dir / "3g-ratio-past-64.png");
+    check(topModShot && shown() == 6400 && renderer.pixel(end) != endBefore && renderer.pixel(arrow) != arrowBefore,
+          "the Ratio track ends at 64, where its tick then sits, with an arrow for modulation going on past it");
+    model.set(ratio, normFromRatio(3.5));
+    view.poll();
+
+    // Its depth handle drags on Ratio's log curve, an octave of depth (a seventh of its range) every 60 px.
+    const double depthBefore = model.value(slotAmountIndex(0, 0));
+    drag(view, kRatioDot, {kRatioDot.x, kRatioDot.y - 60.0f});
+    const double octaves = (model.value(slotAmountIndex(0, 0)) - depthBefore) * 7.0;
+    view.undo();
+    std::printf("      the Ratio's depth handle dragged up 60 px: %.3f octaves deeper\n", octaves);
+    check(std::abs(octaves - 1.0) < 1e-6 && model.value(slotAmountIndex(0, 0)) == depthBefore,
+          "a depth handle on the Ratio readout drags an octave of depth every 60 px");
+
+    // Its depth handles, 9 px apart along its bottom edge from x 913, hold eight before a pill: the eighth at x 976,
+    // and with a ninth, six handles and the pill (x 966 to 978), which opens their list under it (read off the
+    // rendered pixels).
+    const Point eighth{976.0f, 229.0f}, pill{971.7f, 229.0f}, under{960.0f, 280.0f};
+    const uint32_t noEighth = renderer.pixel(eighth);
+    for (int place = 1; place < 9; ++place) {
+        model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+        if (place < 8) {
+            model.set(slotTargetIndex(place, 0), slotTargetValue(ratio));
+            model.set(slotAmountIndex(place, 0), 0.05);
+        }
+    }
+    view.poll();
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool eightShot = renderer.save(view, dir / "3g-ratio-eight.png");
+    const bool eightFit = renderer.pixel(eighth) != noEighth;
+    model.set(slotTargetIndex(8, 0), slotTargetValue(ratio));
+    model.set(slotAmountIndex(8, 0), 0.05);
+    view.poll();
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool nineShot = renderer.save(view, dir / "3g-ratio-nine.png");
+    const uint32_t closedList = renderer.pixel(under);
+    click(view, pill);
+    view.mouseMove({600.0f, 300.0f}, {});
+    const bool listShot = renderer.save(view, dir / "3g-ratio-pill-list.png");
+    const bool opened = renderer.pixel(under) != closedList;
+    click(view, {600.0f, 300.0f});
+    check(eightShot && nineShot && listShot && eightFit && opened,
+          "the Ratio readout holds eight depth handles, and a ninth puts them in a pill");
 }
 
 // The examples that use the most of the synth, as the preset library writes them: Init, then their changes,
@@ -1805,8 +1931,8 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 300.0f}, {});
     renderer.save(view, dir / "26k-velocity-idle.png");
     const int idle = ringLevel(renderer, ring, 20.0f);
-    drag(view, handle, kFineKnob);
-    const bool mapped = slotTarget(model.value(slotTargetIndex(kVelocitySource, 0))) == paramIndex(0, OpParam::Fine) &&
+    drag(view, handle, kOpPhaseKnob);
+    const bool mapped = slotTarget(model.value(slotTargetIndex(kVelocitySource, 0))) == paramIndex(0, OpParam::Phase) &&
                         model.value(slotAmountIndex(kVelocitySource, 0)) == 0.3;
     model.live.voices = 1;
     model.live.noteVelocity = 100.0f / 127.0f;
@@ -1815,7 +1941,7 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shot = renderer.save(view, dir / "26l-velocity.png");
     const int live = ringLevel(renderer, ring, 20.0f);
     std::string removal;
-    for (const MenuItem &item : view.contextMenu(kFineKnob))
+    for (const MenuItem &item : view.contextMenu(kOpPhaseKnob))
         if (item.label.find(tr(Str::SourceNameVelocity)) != std::string::npos)
             removal = item.label;
     std::printf("      velocity's handle: brightness %d idle, %d mapped\n", idle, live);
@@ -1964,7 +2090,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     const OpParam fillers[] = {OpParam::Detune,  OpParam::Transpose, OpParam::Out,     OpParam::Phase,
                                OpParam::Attack,  OpParam::Decay,     OpParam::Sustain, OpParam::Release,
                                OpParam::Hold,    OpParam::UnisonDetune};
-    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
     model.set(slotAmountIndex(0, 0), 0.4);
     model.set(slotScaleIndex(0, 0), 0.5);
     model.set(slotAuxIndex(0, 0), slotAuxValue(kMaxSources + 1)); // Macro 2
@@ -2034,11 +2160,11 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {1080.0f, 211.0f + 4.0f + 11.0f});
     check(auxShot && slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1, "+ Aux's menu picks an aux from its category");
     // The target opens every target by category, under its search (30 px, the level 240 px wide from x 234):
-    // Operators, then B, then (under PITCH, after Ratio, Fine and Pitch) Detune, three levels deep.
+    // Operators, then B, then (under PITCH, after Ratio and Pitch) Detune, three levels deep.
     click(view, {300.0f, y});
     view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {});       // Operators
     view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {});       // B
-    const Point detune{650.0f, 244.0f + 4.0f + 20.0f + 3.0f * 22.0f + 11.0f};
+    const Point detune{650.0f, 244.0f + 4.0f + 20.0f + 2.0f * 22.0f + 11.0f};
     view.mouseMove(detune, {});
     const bool menuShot = renderer.save(view, dir / "35a-mods-target-menu.png");
     click(view, detune);
@@ -2047,7 +2173,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
                             std::abs(model.value(slotScaleIndex(0, 0)) - 0.75) < 1e-6 &&
                             slotAuxSource(model.value(slotAuxIndex(0, 0))) == 1;
     view.undo();
-    check(menuShot && retargeted && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+    check(menuShot && retargeted && slotIs(0, 0, paramIndex(0, OpParam::Ratio)),
           "a row's target menu moves its modulation to another target, keeping the rest, undoably");
     // Its source moves it to a free slot of another source, Macro 1 here, with its depth, Amount and aux, in one undo
     // step.
@@ -2057,12 +2183,12 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     const bool sourceShot = renderer.save(view, dir / "35b-mods-source-menu.png");
     click(view, {200.0f, 214.0f + 4.0f + 11.0f});
     const bool moved = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
-                       slotIs(kMaxSources, 1, paramIndex(0, OpParam::Fine)) &&
+                       slotIs(kMaxSources, 1, paramIndex(0, OpParam::Ratio)) &&
                        std::abs(model.value(slotAmountIndex(kMaxSources, 1)) - 0.4) < 1e-9 &&
                        std::abs(model.value(slotScaleIndex(kMaxSources, 1)) - 0.75) < 1e-6 &&
                        slotAuxSource(model.value(slotAuxIndex(kMaxSources, 1))) == 1;
     view.undo();
-    check(sourceShot && moved && slotIs(0, 0, paramIndex(0, OpParam::Fine)) &&
+    check(sourceShot && moved && slotIs(0, 0, paramIndex(0, OpParam::Ratio)) &&
               slotTarget(model.value(slotTargetIndex(kMaxSources, 1))) < 0,
           "a row's source menu moves its modulation to another source with its settings, undoably");
     // Thirteen rows: the wheel over them (not on a bar, which it turns) scrolls them, gliding a row a notch; two
@@ -2103,7 +2229,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, {156.0f, auxStrip}, auxCell); // Macro 1's own handle, 96 px before Macro 2's
     check(macroAux && slotAuxSource(model.value(slotAuxIndex(kMaxSources, 0))) < 0,
           "a source's handle dropped on a MODS row's aux cell becomes that modulation's aux, undoably, never its own");
-    // Macro 2's handle dropped on LFO 1's depth handle under Op A's Fine knob makes Macro 2 that modulation's aux.
+    // Macro 2's handle dropped on LFO 1's depth handle along Op A's Ratio readout makes Macro 2 that modulation's aux.
     // Modulating nothing itself, Macro 2 isn't faint as Macro 3 is, which does nothing (read off the rendered
     // pixels, the macros' handles 96 px apart).
     click(view, {64.0f, 88.0f}); // back to ROUTING, with the inspector
@@ -2111,13 +2237,13 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     // The depth handle's menu offers to remove an aux only once it has one.
     const std::string removeAux = trf(Str::MenuRemoveAux, {nameOf(model, kMaxSources + 1)});
     auto auxEntry = [&] {
-        for (const MenuItem &item : view.contextMenu({kFineKnob.x, 229.0f}))
+        for (const MenuItem &item : view.contextMenu(kRatioDot))
             if (item.label == removeAux)
                 return item.command;
         return 0;
     };
     const bool noAuxEntry = auxEntry() == 0;
-    drag(view, {252.0f, strip}, {kFineKnob.x, 229.0f});
+    drag(view, {252.0f, strip}, kRatioDot);
     view.mouseMove({600.0f, 300.0f}, {});
     const bool ringShot = renderer.save(view, dir / "35d-aux-ring.png");
     const int auxRing = ringLevel(renderer, {252.0f + 6.0f, strip - 10.0f}, 20.0f);
@@ -2137,7 +2263,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 300.0f}, {});
     // Hovering that depth handle draws the dashed line to it from LFO 1's handle, on screen on the first card: half
     // way along the line, bowed to one side, the pixels change (read off the rendered pixels).
-    const Point from = sourceHandle(0), to{kFineKnob.x, 229.0f};
+    const Point from = sourceHandle(0), to = kRatioDot;
     const Point d{to.x - from.x, to.y - from.y};
     const Point middle{(from.x + to.x) * 0.5f + d.y * 0.075f, (from.y + to.y) * 0.5f - d.x * 0.075f};
     auto aroundMiddle = [&] {
@@ -2176,7 +2302,7 @@ void testMods(const std::filesystem::path &dir, Renderer &renderer) {
           "an aux's handle hovered draws a dotted line to the depth handle it scales, and that handle hovered to it");
 }
 
-// A modulation moved to another source takes what modulates its depth along: LFO 1's on Op A's Fine, its depth
+// A modulation moved to another source takes what modulates its depth along: LFO 1's on Op A's Ratio, its depth
 // modulated by LFO 2, moved to Env 1 leaves LFO 2 modulating Env 1's depth; moved to Macro 1, whose depths can't be
 // modulated, it takes LFO 2's modulation away with it. The menus open as in testMods(): the first row's source at
 // x 90, y 154, its menu's categories 22 px apart from y 174 (LFOs, Envelopes, Macros), each opening beside it from x 176.
@@ -2275,7 +2401,7 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Env));
-    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
     model.set(slotAmountIndex(0, 0), 0.4);
     model.set(slotTargetIndex(1, 0), slotTargetValue(slotAmountIndex(0, 0)));
     model.set(slotAmountIndex(1, 0), 0.25);
@@ -2289,20 +2415,20 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, {200.0f, y});
     };
     moveTo(1); // Env 1
-    const bool followed = slotTarget(model.value(slotTargetIndex(2, 0))) == paramIndex(0, OpParam::Fine) &&
+    const bool followed = slotTarget(model.value(slotTargetIndex(2, 0))) == paramIndex(0, OpParam::Ratio) &&
                           slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
                           slotTarget(model.value(slotTargetIndex(1, 0))) == slotAmountIndex(2, 0) &&
                           std::abs(model.value(slotAmountIndex(1, 0)) - 0.25) < 1e-9;
     view.mouseMove({600.0f, 440.0f}, {});
     const bool shot = renderer.save(view, dir / "35m-mods-moved-with-depth.png");
     view.undo();
-    const bool back = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Fine) &&
+    const bool back = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Ratio) &&
                       slotTarget(model.value(slotTargetIndex(1, 0))) == slotAmountIndex(0, 0) &&
                       slotTarget(model.value(slotTargetIndex(2, 0))) < 0;
     check(followed && shot && back,
           "a modulation moved to another source takes what modulates its depth along, in one undo step");
     moveTo(2); // Macro 1
-    check(slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(0, OpParam::Fine) &&
+    check(slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == paramIndex(0, OpParam::Ratio) &&
               slotTarget(model.value(slotTargetIndex(1, 0))) < 0,
           "a modulation moved to a macro takes away what modulated its depth");
     // Removed by its row's x (at x 1144), it takes what modulated its depth with it, in one undo step.
@@ -2311,7 +2437,7 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
     const bool removed = slotTarget(model.value(slotTargetIndex(0, 0))) < 0 &&
                          slotTarget(model.value(slotTargetIndex(1, 0))) < 0;
     view.undo();
-    check(removed && slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Fine) &&
+    check(removed && slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Ratio) &&
               slotTarget(model.value(slotTargetIndex(1, 0))) == slotAmountIndex(0, 0),
           "a removed modulation takes what modulated its depth with it, in one undo step");
 }
@@ -2387,7 +2513,7 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     check(noneShot && headed, "the MODS view shows its columns' names with no modulations");
     click(view, kRoutingTab);
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
-    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
     model.set(slotAmountIndex(0, 0), 0.4);
     view.poll();
     click(view, {314.0f, 88.0f}); // the MODS tab
@@ -2447,7 +2573,7 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     // picked in the second row (its middle at y 184), makes it LFO 1's, Env 1's left as it was.
     click(view, {600.0f, 440.0f}); // closes the target menu the card's button opened
     model.ui.emptyMods.clear();
-    model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(1, OpParam::Fine)));
+    model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(1, OpParam::Ratio)));
     view.poll();
     click(view, {100.0f, 214.0f}); // the button, under Env 1's row, opens the source menu at y 230
     view.mouseMove({80.0f, 230.0f + 4.0f + 11.0f}, {}); // LFOs
@@ -2464,11 +2590,11 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, globalEntry(0));
     check(lfoSourced && sortedShot && model.ui.emptyMods.empty() &&
               slotTarget(model.value(slotTargetIndex(0, 1))) == globals[0] &&
-              slotTarget(model.value(slotTargetIndex(1, 0))) == paramIndex(1, OpParam::Fine),
+              slotTarget(model.value(slotTargetIndex(1, 0))) == paramIndex(1, OpParam::Ratio),
           "an empty modulation given a source with rows goes among them");
 }
 
-// The MODS view's filter and the target menu's search. LFO 1 modulates Op A's Fine and Detune, Env 1 FM Amount and
+// The MODS view's filter and the target menu's search. LFO 1 modulates Op A's Ratio and Detune, Env 1 FM Amount and
 // Macro 1 Filter 1's Resonance: four rows, their middles from y 154, 30 px apart, each one's x at x 1144. The filter's
 // magnifier is at the right end of the columns' names (x 1156, y 126); open, its x is at x 1155.
 void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
@@ -2476,7 +2602,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Env));
-    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Fine)));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
     model.set(slotTargetIndex(0, 1), slotTargetValue(paramIndex(0, OpParam::Detune)));
     model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount)));
     model.set(slotTargetIndex(kMaxSources, 0), slotTargetValue(paramIndex(0, FilterParam::Resonance)));
@@ -2497,7 +2623,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 440.0f}, {});
     const bool filterShot = renderer.save(view, dir / "35q-mods-filter.png");
     click(view, firstX);
-    const bool removedEnv = slotTarget(model.value(slotTargetIndex(1, 0))) < 0 && slotIs(0, 0, paramIndex(0, OpParam::Fine));
+    const bool removedEnv = slotTarget(model.value(slotTargetIndex(1, 0))) < 0 && slotIs(0, 0, paramIndex(0, OpParam::Ratio));
     const bool letGo = !view.typing();
     view.undo();
     check(idle && takesKeys && filterShot && removedEnv && letGo && slotIs(1, 0, paramIndex(GlobalParam::FmAmount)),
@@ -2509,18 +2635,18 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     view.typeKey(View::Key::SelectAll);
     type(view, "LFO det");
     click(view, firstX);
-    const bool removedDetune = slotTarget(model.value(slotTargetIndex(0, 1))) < 0 && slotIs(0, 0, paramIndex(0, OpParam::Fine));
+    const bool removedDetune = slotTarget(model.value(slotTargetIndex(0, 1))) < 0 && slotIs(0, 0, paramIndex(0, OpParam::Ratio));
     view.undo();
     click(view, {1155.0f, 126.0f}); // the filter's x
     const bool emptied = view.typing() && view.copyText(false).empty();
     view.typeKey(View::Key::Escape);
-    click(view, firstX); // the filter empty, the first row is LFO 1's Fine again
+    click(view, firstX); // the filter empty, the first row is LFO 1's Ratio again
     const bool all = slotTarget(model.value(slotTargetIndex(0, 0))) < 0;
     view.undo();
-    check(removedDetune && emptied && !view.typing() && all && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+    check(removedDetune && emptied && !view.typing() && all && slotIs(0, 0, paramIndex(0, OpParam::Ratio)),
           "the MODS view's filter takes every word typed, its x empties it and Escape lets the keyboard go");
     // An operator's targets show in two columns, 140 px each: under Operators, then B, ENVELOPE heads the second,
-    // its Attack beside Fine (the level from x 598, under the menu's 30 px search).
+    // its Attack beside the pitch's (the level from x 598, under the menu's 30 px search).
     click(view, {300.0f, 154.0f});
     view.mouseMove({300.0f, 200.0f + 4.0f + 22.0f + 11.0f}, {}); // Operators
     view.mouseMove({530.0f, 222.0f + 4.0f + 22.0f + 11.0f}, {}); // B
@@ -2530,7 +2656,7 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, attack);
     const bool attackPicked = slotIs(0, 0, paramIndex(1, OpParam::Attack));
     view.undo();
-    check(columnsShot && attackPicked && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+    check(columnsShot && attackPicked && slotIs(0, 0, paramIndex(0, OpParam::Ratio)),
           "an operator's targets show in two columns, the envelope's beside the pitch's");
     // The target menu takes the keyboard into its search: "b det" lists Op B's Detune, with its path, and Enter
     // picks it.
@@ -2553,12 +2679,12 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {300.0f, 154.0f});
     type(view, "zzz");
     view.typeKey(View::Key::Enter); // nothing found, nothing picked
-    const bool nothing = view.typing() && slotIs(0, 0, paramIndex(0, OpParam::Fine));
+    const bool nothing = view.typing() && slotIs(0, 0, paramIndex(0, OpParam::Ratio));
     view.typeKey(View::Key::Escape);
     const bool stillOpen = view.typing();
     view.typeKey(View::Key::Escape);
     check(menuKeys && searchShot && found && second && nothing && stillOpen && !view.typing() &&
-              slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+              slotIs(0, 0, paramIndex(0, OpParam::Ratio)),
           "the target menu's search lists the targets found with their path, Up and Down pick one and Enter takes it");
     // "a det" finds Op A's Detune first, which LFO 1 modulates already through its second slot and so can't be
     // picked: the match after it is lit instead (read off the rendered pixels at the matches' right ends, 22 px
@@ -2571,14 +2697,14 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
     const bool secondLit = matchPixel(1) != matchPixel(2);
     view.typeKey(View::Key::Enter);
     const int taken = slotTarget(model.value(slotTargetIndex(0, 0)));
-    const bool tookLit = !view.typing() && taken >= 0 && taken != paramIndex(0, OpParam::Fine) &&
+    const bool tookLit = !view.typing() && taken >= 0 && taken != paramIndex(0, OpParam::Ratio) &&
                          taken != paramIndex(0, OpParam::Detune);
     view.undo();
-    check(skipShot && secondLit && tookLit && slotIs(0, 0, paramIndex(0, OpParam::Fine)),
+    check(skipShot && secondLit && tookLit && slotIs(0, 0, paramIndex(0, OpParam::Ratio)),
           "the target menu's search lights the first match that can be picked, which Enter takes");
 }
 
-// Eight LFOs on Op A's Fine: under the knob, two depth handles and a "+6" pill, nothing drawn outside the knob's
+// Eight LFOs on Op A's Pitch: under the knob, two depth handles and a "+6" pill, nothing drawn outside the knob's
 // column (read off the rendered pixels). The pill opens the list of all eight, whose rows bypass, set the depth of
 // and remove their modulation as a card's rows do; a click elsewhere closes it. A macro's handle held over the pill
 // opens the list under it, and let go of on a row makes the macro that row's aux; let go of anywhere else, the list
@@ -2586,24 +2712,24 @@ void testModsSearch(const std::filesystem::path &dir, Renderer &renderer) {
 void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    model.set(paramIndex(0, OpParam::Fine), 0.5);
-    // Beside the knob, between its column and the next ones' (Ratio's and Pitch's), at the depth handles' height.
+    // Beside the knob, between its column and the next ones' (the Ratio readout's and Detune's), where the handles are.
+    // Beside the knob, between its column and the next ones' (the Ratio readout's and Detune's), at the depth handles' height.
     auto beside = [&] {
         std::vector<uint32_t> pixels;
         for (float y = 224.0f; y < 235.0f; y += 1.0f)
             for (float x = 17.0f; x < 27.0f; x += 1.0f) {
-                pixels.push_back(renderer.pixel({kFineKnob.x - x, y}));
-                pixels.push_back(renderer.pixel({kFineKnob.x + x, y}));
+                pixels.push_back(renderer.pixel({kPitchKnob.x - x, y}));
+                pixels.push_back(renderer.pixel({kPitchKnob.x + x, y}));
             }
         return pixels;
     };
     view.mouseMove({600.0f, 300.0f}, {});
     renderer.save(view, dir / "40-pill-none.png");
     const std::vector<uint32_t> none = beside();
-    const int fine = paramIndex(0, OpParam::Fine);
+    const int pitch = paramIndex(0, OpParam::Transpose);
     for (int s = 0; s < 8; ++s) {
         model.set(paramIndex(s, SourceParam::Type), static_cast<double>(SourceType::Lfo));
-        model.set(slotTargetIndex(s, 0), slotTargetValue(fine));
+        model.set(slotTargetIndex(s, 0), slotTargetValue(pitch));
         model.set(slotAmountIndex(s, 0), 0.05 + 0.03 * s);
     }
     view.poll();
@@ -2612,7 +2738,8 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The pill sits right of the two handles: 30 px across, centered under the knob, its middle 9 px right of the
     // knob's. Its list, 265 px wide, centered under it: the rows 24 px apart from 24 px down, as on a card.
-    const Point pill{kFineKnob.x + 9.0f, 229.0f};
+    // From the knob's exact middle, as the inspector's knob row places it (kPitchKnob rounds it).
+    const Point pill{884.0f + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.0f, 229.0f};
     const float listX = pill.x - 132.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
     auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
     view.mouseMove(pill, {});
@@ -2663,7 +2790,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // list narrowing again.
     click(view, pill);
     view.mouseMove({600.0f, 300.0f}, {});
-    const float wideX = pill.x - 180.5f + 6.0f;
+    const float wideX = std::min(pill.x - 180.5f, 1200.0f - 4.0f - 361.0f) + 6.0f; // held inside the window
     auto wideRow = [&](int k, float x) { return Point{wideX + x, rowsY + k * 24.0f + 10.0f}; };
     const bool chipShot = renderer.save(view, dir / "40g2-pill-aux-chip.png");
     const bool chip = renderer.pixel(wideRow(3, 126.0f)) != renderer.pixel(wideRow(2, 126.0f));
@@ -2704,14 +2831,14 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     check(cellShot && corner() == plain, "six modulations on a matrix cell show two handles and a pill, none in the next cell");
 }
 
-// LFO 2 modulating LFO 1's depth on operator A's Fine: hovering LFO 2's handle draws a dashed line to that
+// LFO 2 modulating LFO 1's depth on operator A's Ratio: hovering LFO 2's handle draws a dashed line to that
 // depth bar in the MODS view, which has a dot for the modulation, like a matrix cell's.
 void renderLfoOnLfo(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
     for (int source = 0; source < 2; ++source)
         model.values[paramIndex(source, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
-    model.values[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(0, OpParam::Fine));
+    model.values[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(0, OpParam::Ratio));
     model.values[slotAmountIndex(0, 0)] = 0.4;
     model.values[slotTargetIndex(1, 0)] = slotTargetValue(slotAmountIndex(0, 0));
     model.values[slotAmountIndex(1, 0)] = 0.5;
@@ -2914,14 +3041,14 @@ void run(const std::filesystem::path &dir, float scale) {
     check(modesOn && model.value(paramIndex(0, SourceParam::OneShot)) == 0.0,
           "an LFO's switches make it one-shot and unipolar");
 
-    // Drag LFO 1's handle onto the selected operator's Fine knob.
+    // Drag LFO 1's handle onto the selected operator's Phase knob.
     view.mouseDown(sourceHandle(0), {});
     view.mouseMove({500.0f, 300.0f}, {});
-    view.mouseMove(kFineKnob, {});
+    view.mouseMove(kOpPhaseKnob, {});
     renderer.save(view, dir / "2-dragging-lfo.png");
-    view.mouseUp(kFineKnob, {});
-    const int fine = paramIndex(0, OpParam::Fine);
-    check(slotTarget(model.value(slotTargetIndex(0, 0))) == fine && model.value(slotAmountIndex(0, 0)) != 0.0,
+    view.mouseUp(kOpPhaseKnob, {});
+    const int opPhase = paramIndex(0, OpParam::Phase);
+    check(slotTarget(model.value(slotTargetIndex(0, 0))) == opPhase && model.value(slotAmountIndex(0, 0)) != 0.0,
           "dropping LFO 1 on a knob assigns its first slot");
 
     // Only A starts switched on. Switch B, C and D on (as their chips would), then E with its chip,
@@ -3099,11 +3226,11 @@ void run(const std::filesystem::path &dir, float scale) {
         view.poll();
     }
 
-    // Drag the Fine knob up by 40 px: +20 % of its range.
-    view.mouseDown(kFineKnob, {});
-    view.mouseMove({kFineKnob.x, kFineKnob.y - 40.0f}, {});
-    view.mouseUp({kFineKnob.x, kFineKnob.y - 40.0f}, {});
-    check(std::abs(model.value(fine) - 0.2) < 1e-6 && model.openEdits == 0, "knob drag sets the value, edits closed");
+    // Drag the Phase knob up by 40 px: +20 % of its range.
+    view.mouseDown(kOpPhaseKnob, {});
+    view.mouseMove({kOpPhaseKnob.x, kOpPhaseKnob.y - 40.0f}, {});
+    view.mouseUp({kOpPhaseKnob.x, kOpPhaseKnob.y - 40.0f}, {});
+    check(std::abs(model.value(opPhase) - 0.2) < 1e-6 && model.openEdits == 0, "knob drag sets the value, edits closed");
 
     // Connect C to A by dragging from C's port.
     view.mouseDown(portOf(layout, 2), {});
@@ -3397,15 +3524,14 @@ void run(const std::filesystem::path &dir, float scale) {
     }
 
     // Fixed pitch: the keyboard on A's summary line switches it, setting Freq and Mult to where the ratio put A4 in
-    // one undo step. Freq and Mult take Ratio's and Fine's places (Mult stepping, 10 px up a step), and Pitch and
+    // one undo step. Freq and Mult take the Ratio readout's place (Mult stepping, 10 px up a step), and Pitch and
     // Detune, dimmed, don't turn (read off the rendered pixels: the Pitch knob's column darkens).
     {
         constexpr Point kFixedSwitch{1125.0f, 150.0f};
         const Point pitchColumn{kPitchKnob.x, 198.0f};
         const int fixed = paramIndex(0, OpParam::Fixed), freq = paramIndex(0, OpParam::FixedFreq),
                   mult = paramIndex(0, OpParam::FixedMult);
-        const double tracked = 440.0 * coarseRatio(model.value(paramIndex(0, OpParam::Coarse))) *
-                               (1.0 + model.value(paramIndex(0, OpParam::Fine)));
+        const double tracked = 440.0 * ratioFromNorm(model.value(paramIndex(0, OpParam::Ratio)));
         view.mouseMove({600.0f, 300.0f}, {});
         const bool trackingShot = renderer.save(view, dir / "3f-tracking.png");
         const int lit = ringLevel(renderer, pitchColumn, 32.0f);
@@ -3415,7 +3541,7 @@ void run(const std::filesystem::path &dir, float scale) {
         // Mult reads "×1", its × two bytes in UTF-8: typed into, the caret steps over it whole, and Backspace and
         // Delete take all of it, so "10" is left to read as a value either way.
         {
-            const Point multNumber{kFineKnob.x, 238.0f};
+            const Point multNumber{kMultKnob.x, 238.0f};
             doubleClick(view, multNumber);
             for (View::Key key : {View::Key::End, View::Key::Left, View::Key::Backspace, View::Key::End})
                 view.typeKey(key);
@@ -3437,7 +3563,7 @@ void run(const std::filesystem::path &dir, float scale) {
         // Pitch, which takes no drop (read off the rendered pixels: a strip across the top of each ring, with the
         // handle held and after the drag was called off).
         {
-            const Point freqKnob{kFineKnob.x - 45.0f, kFineKnob.y};
+            const Point freqKnob{kMultKnob.x - 45.0f, kMultKnob.y};
             auto strip = [&](Point knob) {
                 std::vector<uint32_t> pixels;
                 for (float y = knob.y - 34.0f; y <= knob.y - 14.0f; y += 1.0f)
@@ -3456,7 +3582,7 @@ void run(const std::filesystem::path &dir, float scale) {
             check(heldShot && freeShot && freqHeld != strip(freqKnob) && pitchHeld == strip(kPitchKnob),
                   "a dimmed knob isn't ringed as a drop target");
         }
-        drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 10.0f}); // Mult, in Fine's place: x1 to x10
+        drag(view, kMultKnob, {kMultKnob.x, kMultKnob.y - 10.0f}); // Mult, in the readout's right half: x1 to x10
         const double pitch = model.value(paramIndex(0, OpParam::Transpose));
         drag(view, kPitchKnob, {kPitchKnob.x, kPitchKnob.y - 30.0f});
         view.mouseMove({600.0f, 300.0f}, {});
@@ -3600,7 +3726,7 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(paramIndex(4, OpParam::Out), 0.6);
     model.set(paramIndex(4, OpParam::Wave), static_cast<double>(OpWave::HalfSine));
     model.set(matrixIndex(5, 4), 0.45);
-    model.set(paramIndex(5, OpParam::Coarse), 3.0);
+    model.set(paramIndex(5, OpParam::Ratio), normFromRatio(3.0));
     click(view, sourceAdd(SourceType::Lfo)); // LFO 2, in place 2
     model.set(paramIndex(2, SourceParam::Shape), 1.0);
     model.set(slotTargetIndex(2, 0), slotTargetValue(paramIndex(GlobalParam::Pan)));
@@ -4374,7 +4500,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // A source with modulations has the button that shows them in MODS, counting them, under its display.
     view.wheel(kSourcesToggle, 10.0f, {}); // the first card back in view
     for (int k = 0; k < 5; ++k) {
-        model.set(slotTargetIndex(0, kSlots - 1 - k), slotTargetValue(paramIndex(k, OpParam::Fine)));
+        model.set(slotTargetIndex(0, kSlots - 1 - k), slotTargetValue(paramIndex(k, OpParam::Phase)));
         model.set(slotAmountIndex(0, kSlots - 1 - k), 0.1 * (k + 1));
     }
     view.mouseMove({400.0f, 300.0f}, {});
@@ -4536,6 +4662,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testMiddleDrag(dir, renderer);
     testModFocus(dir, renderer);
     testModPill(dir, renderer);
+    testRatioDisplay(dir, renderer);
 }
 
 int main(int argc, char **argv) {
