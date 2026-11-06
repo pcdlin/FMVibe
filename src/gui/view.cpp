@@ -4486,16 +4486,21 @@ View::LabelPill View::labelPill(int param, int mode, Rect idle) const {
     LabelPill pill;
     pill.open = (hover_ && mine(*hover_)) || (mode >= 0 && listMenu_ == mode) ||
                 (drag_.kind != DragKind::None && mine(drag_.widget));
+    // A mode other than Phase shows inside it at rest, at its left: the label widens by kGlyphW, still centered on its
+    // wire, and its depth's text sits that much right of the middle, half of kGlyphW.
+    constexpr float kGlyphW = 18.0f;
+    const bool glyph = mode >= 0 && routeMode(value(mode)) != RouteMode::Phase;
+    const float shift = glyph ? 0.5f * kGlyphW : 0.0f;
     if (!pill.open) {
-        // A mode other than Phase shows inside it, at its left, the label widening that way.
-        pill.glyph = mode >= 0 && routeMode(value(mode)) != RouteMode::Phase;
-        pill.depth = pill.glyph ? Rect{idle.x - 18.0f, idle.y, idle.w + 18.0f, idle.h} : idle;
+        pill.glyph = glyph;
+        pill.depth = glyph ? Rect{idle.x - shift, idle.y, idle.w + kGlyphW, idle.h} : idle;
         pill.whole = pill.depth;
         return pill;
     }
-    // The depth stays where it rests, so the mouse on it stays on it as it opens; the mode's part goes on its left,
-    // over where a glyph shows while it rests, and the x on its right.
+    // The depth's text stays where it rests, so it doesn't move as the pill opens and the mouse on it stays on it; the
+    // mode's part goes on its left, over where a glyph shows at rest, and the x on its right.
     constexpr float kModeW = 28.0f, kRemoveW = 20.0f;
+    idle.x += shift;
     pill.depth = idle;
     if (mode >= 0)
         pill.mode = {idle.x - kModeW, idle.y, kModeW, idle.h};
@@ -5350,7 +5355,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         if (w.modeGlyph) { // its mode, other than Phase, at its left
             const auto mode = routeMode(value(routeModeParam(w.a, w.b)));
             routeModeIcon(c, {w.rect.x + 13.0f, w.rect.center().y}, mode, routeColor(w.a, w.b), 0.85f);
-            textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 22.0f, w.rect.h};
+            textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 18.0f, w.rect.h}; // where it sits when open
         }
         c.text(textRect, text, 10.5f, focused ? kText : kDim);
         paintModRange(c, {w.rect.x + 7.0f, w.rect.y + 2.5f, w.rect.w - 14.0f, 1.5f}, w.param); // the handles go below
