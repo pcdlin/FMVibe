@@ -175,6 +175,8 @@ public:
     // (-1..1, scaled by the Bend Range param) bends every voice, a controller's value is what the Midi sources follow
     // and the channel's pressure what they fall back on while a note has none of its own (see SourceType).
     // Polyphonic aftertouch is the pressure of the voices playing `match`, as CLAP's pressure expression is.
+    // Three controllers act on notes too (and are still followed like the others): CC 64, the sustain pedal (see
+    // setPedal()), CC 120, All Sound Off (see allSoundOff()) and CC 123, All Notes Off (see allNotesOff()).
     void pitchBend(int channel, double amount);
     void controlChange(int channel, int controller, double value);
     void channelPressure(int channel, double value);
@@ -187,6 +189,18 @@ public:
     // pressure and CC 74 are that note's alone (see pitchBend()). Off, every channel's apply to every voice, and the
     // member channels' bends are forgotten. CLAP's note expressions are per note either way.
     void setMpe(bool on, double bendRange);
+    // The sustain pedal on `channel`: while it is down, a key let go leaves its note sounding as if still held, until
+    // the pedal comes up. In mono, a key let go still hands the voice back to an earlier key held down, as without the
+    // pedal; with none down, the pedal holds the note. A note the pedal holds counts as held for legato and glide:
+    // a new note glides from it, a mono one carries on its envelopes, and in poly legato one joins it. A key struck
+    // again while the pedal holds its note lets that note go into its release. Which notes a channel's pedal reaches
+    // is as for All Notes Off below.
+    void setPedal(int channel, bool down);
+    // MIDI's panic messages, from `channel`: every note, or with MPE on, a member channel's own. All Notes Off lets
+    // them go as their keys coming up would (the pedal, if down, holding them still, as MIDI has it); All Sound Off
+    // ends them at once, fading out as a stolen voice does, and, for every note, has the effects' tails go too.
+    void allNotesOff(int channel);
+    void allSoundOff(int channel);
     // The editor's bend wheel, on top of the host's pitch bend. Audio thread.
     void setWheelBend(double amount) { wheelBend_ = amount; }
     // Host tempo in BPM, for synced LFOs and delay times.
@@ -289,6 +303,7 @@ private:
     struct Voice {
         bool active = false;
         bool released = false;
+        bool sustained = false; // its key is up, but a sustain pedal holds it (see setPedal()); not released
         bool fading = false;    // stolen: fades out over a few milliseconds, then ends; its note has ended
         // Released, and its sound is over, but a mod envelope still releases: it runs its modulation only.
         bool silent = false;
@@ -375,6 +390,15 @@ private:
     bool voiceHas(const NoteRef &note) const;
     void moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide);
     void releaseVoice(Voice &v);
+    // A voice whose key is let go: the pedal holds it, or it releases.
+    void letGo(Voice &v);
+    // Whether a sustain pedal holding `v`'s note is down (see setPedal()).
+    bool pedalHolds(const Voice &v) const;
+    // Releases the voices the pedal held that no pedal down holds any more.
+    void releaseUnpedaled();
+    // The notes a message on `channel` reaches (see allNotesOff()), as a match: a member channel's with MPE on, else
+    // every note.
+    NoteRef channelMatch(int channel) const;
     void endVoice(Voice &v);
     void reportEnded(const NoteRef &note);
     // Adds the voice to `left` and `right`, which run at the voices' rate: hostFrames * oversampling_ samples, and
@@ -417,6 +441,9 @@ private:
     std::array<double, 16> channelBend_{};
     std::array<double, 16> channelPressures_{}; // filled with -1 by reset()
     std::array<double, 16> channelSlides_{};
+    // The sustain pedals (see setPedal()): every note's, and with MPE on, each member channel's for its own notes.
+    bool pedal_ = false;
+    std::array<bool, 16> channelPedals_{};
     double tempo_ = 120.0;
     bool playing_ = false;     // the host's transport, as of the start of the next render() (see setTransport())
     double songBeats_ = 0.0;   // where, in beats

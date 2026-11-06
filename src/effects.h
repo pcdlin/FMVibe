@@ -111,6 +111,9 @@ public:
     void process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch);
     // Something is still to be heard after the input went silent: delay echoes, a reverb's tail.
     bool ringing() const { return tail_ > 0; }
+    // Silences what the effects still hold (MIDI's All Sound Off): every effect running fades out over a few
+    // milliseconds, as one switched off does, and then starts again cleared, as one switched on does.
+    void flush() { flushing_ = true; }
     // How far a compressor or three-band dynamics in `slot` turns band `band` down right now, in dB (0 or more); a
     // compressor uses band 0. The most of the latest block, for the editor's meters.
     float reduction(int slot, int band) const { return reduction_[slot][band]; }
@@ -345,6 +348,7 @@ private:
     std::array<Slot, kFxSlots> slots_;
     BiquadCoefs lowPass1_, highPass1_, lowPass2_, highPass2_, allPass2_;
     int64_t tail_ = 0; // samples left to keep processing after the input went silent
+    bool flushing_ = false; // fading every effect out, until all are (see flush())
     std::array<std::array<float, kMcBands>, kFxSlots> reduction_{};
     std::array<std::array<float, kMcBands>, kFxSlots> bandLevel_{}, bandGain_{};
     void feedAnalyzer(int slot, float *const *io, uint32_t n);

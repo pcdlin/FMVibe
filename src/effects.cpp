@@ -367,6 +367,7 @@ void Effects::reset() {
         slot.running = FxType::None;
     }
     tail_ = 0;
+    flushing_ = false;
 }
 
 double Effects::delayTarget(int slot, int side, const ParamValues &p, double tempo) const {
@@ -523,7 +524,8 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             const FxType type = fxType(p[paramIndex(slot, FxParam::Type)]);
             if (fx.running != type && fx.fade <= 0.0)
                 fx.running = type;
-            const bool on = fx.running == type && type != FxType::None && p[paramIndex(slot, FxParam::Enabled)] >= 0.5;
+            const bool on = !flushing_ && fx.running == type && type != FxType::None &&
+                            p[paramIndex(slot, FxParam::Enabled)] >= 0.5;
             if (!on && fx.fade <= 0.0) {
                 reduction_[slot] = {};
                 bandLevel_[slot] = {};
@@ -604,6 +606,9 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             if (std::abs(io[0][s]) > 1e-6f || std::abs(io[1][s]) > 1e-6f)
                 keep = static_cast<int64_t>(0.05 * sampleRate_);
         tail_ = std::max(tail_ - static_cast<int64_t>(n), keep);
+        // Flushed, once every effect has faded out: they start again cleared.
+        if (flushing_ && std::all_of(slots_.begin(), slots_.end(), [](const Slot &s) { return s.fade <= 0.0; }))
+            flushing_ = false;
     }
 }
 

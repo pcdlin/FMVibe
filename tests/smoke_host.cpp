@@ -2830,6 +2830,166 @@ int main(int argc, char **argv) {
                    {attack, attackWas}});
     }
 
+    // The sustain pedal (CC 64), and MIDI's panic messages: CC 123, All Notes Off, and CC 120, All Sound Off.
+    {
+        constexpr double c4 = 261.63, e4 = 329.63;
+        const clap_event_midi_t pedalDown = midiEvent(0xB0, 64, 127), pedalUp = midiEvent(0xB0, 64, 0);
+        const clap_event_midi_t notesOff = midiEvent(0xB0, 123, 0), soundOff = midiEvent(0xB0, 120, 0);
+        auto note = [&](uint16_t type, int32_t id, int16_t key) {
+            const clap_event_note_t ev = noteEvent(type, id, key);
+            return runBlock({&ev.header});
+        };
+        auto ends = [&](int32_t id) {
+            return std::count_if(out.noteEnds.begin(), out.noteEnds.end(),
+                                 [&](const clap_event_note_t &n) { return n.note_id == id; });
+        };
+        auto waitEnds = [&](size_t count) { // a second at most
+            for (uint32_t b = 0; b < blocksPerSecond && out.noteEnds.size() < count; ++b)
+                runBlock();
+        };
+        auto capture = [&](int blocks) {
+            std::vector<float> signal;
+            for (int b = 0; b < blocks; ++b) {
+                runBlock();
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            return signal;
+        };
+        const int mono = paramIndex(GlobalParam::Mono), legato = paramIndex(GlobalParam::Legato);
+        const int decay = paramIndex(0, OpParam::Decay), sustain = paramIndex(0, OpParam::Sustain);
+        double decayWas = 0.0;
+        params->get_value(plugin, idOfIndex(decay), &decayWas);
+
+        // Poly: a key let go with the pedal down sounds on, and releases once the pedal comes up.
+        out.noteEnds.clear();
+        runBlock({&pedalDown.header});
+        note(CLAP_EVENT_NOTE_ON, 400, 60);
+        runBlocks(4);
+        note(CLAP_EVENT_NOTE_OFF, 400, 60);
+        const float pedalled = runBlocks(blocksPerSecond / 2);
+        const bool heldOn = pedalled > 0.05f && out.noteEnds.empty();
+        runBlock({&pedalUp.header});
+        waitEnds(1);
+        check(heldOn && out.noteEnds.size() == 1 && ends(400) == 1 && runBlock() == 0.0f,
+              "the sustain pedal holds a note let go until it comes up, and the note then ends");
+
+        // A key struck again while the pedal holds its note lets that note go; lifting the pedal leaves a key still
+        // down sounding.
+        out.noteEnds.clear();
+        runBlock({&pedalDown.header});
+        note(CLAP_EVENT_NOTE_ON, 401, 62);
+        runBlocks(2);
+        note(CLAP_EVENT_NOTE_OFF, 401, 62);
+        runBlocks(2);
+        note(CLAP_EVENT_NOTE_ON, 402, 62);
+        waitEnds(1);
+        const bool restruck = ends(401) == 1 && ends(402) == 0;
+        runBlock({&pedalUp.header});
+        const float stillDown = runBlocks(4);
+        check(restruck && stillDown > 0.05f && ends(402) == 0,
+              "a key struck again under the pedal lets its held note go, and lifting the pedal leaves a key down "
+              "sounding");
+        note(CLAP_EVENT_NOTE_OFF, 402, 62);
+        waitEnds(2);
+        check(out.noteEnds.size() == 2 && ends(402) == 1, "a note whose key comes up after the pedal ends");
+
+        // Mono: letting the newer key go goes back to the earlier key still down, pedal or not; letting that one go
+        // too, the pedal holds it; a new key takes the voice over, and lifting the pedal ends what it holds. Each
+        // note ends once.
+        setParams({{matrixIndex(1, 0), 0.0}, {mono, 1.0}, {legato, 1.0}});
+        out.noteEnds.clear();
+        runBlock({&pedalDown.header});
+        note(CLAP_EVENT_NOTE_ON, 410, 60);
+        runBlocks(4);
+        note(CLAP_EVENT_NOTE_ON, 411, 64);
+        runBlocks(4);
+        note(CLAP_EVENT_NOTE_OFF, 411, 64);
+        runBlocks(2);
+        const std::vector<float> back = capture(8);
+        const bool wentBack = magnitude(back, c4) > 10.0 * magnitude(back, e4) && ends(411) == 1;
+        note(CLAP_EVENT_NOTE_OFF, 410, 60);
+        runBlocks(2);
+        const std::vector<float> kept = capture(8);
+        const bool monoHeld = magnitude(kept, c4) > 10.0 * magnitude(kept, e4) && ends(410) == 0;
+        note(CLAP_EVENT_NOTE_ON, 412, 64);
+        runBlocks(2);
+        const std::vector<float> over = capture(8);
+        const bool tookOver = magnitude(over, e4) > 10.0 * magnitude(over, c4) && ends(410) == 1;
+        note(CLAP_EVENT_NOTE_OFF, 412, 64);
+        const float monoPedalled = runBlocks(4);
+        runBlock({&pedalUp.header});
+        waitEnds(3);
+        std::printf("      mono under the pedal: back to the key down %d, held %d, taken over %d, %.3f held after "
+                    "its key\n",
+                    wentBack, monoHeld, tookOver, monoPedalled);
+        check(wentBack && monoHeld && tookOver && monoPedalled > 0.05f && out.noteEnds.size() == 3 &&
+                  ends(410) == 1 && ends(411) == 1 && ends(412) == 1,
+              "mono under the pedal: a key let go returns to the key still down, else the pedal holds the note; each "
+              "note ends once");
+
+        // Poly legato: a note played while the pedal holds another (no key down) joins it, starting at its sustain.
+        setParams({{mono, 0.0}});
+        auto pedalOverlapPeak = [&](double legatoOn) {
+            setParams({{legato, legatoOn}, {decay, normFromTime(0.05)}, {sustain, 0.2}});
+            runBlock({&pedalDown.header});
+            note(CLAP_EVENT_NOTE_ON, 420, 60);
+            runBlocks(blocksPerSecond / 4);
+            note(CLAP_EVENT_NOTE_OFF, 420, 60);
+            runBlocks(2);
+            const float onset = note(CLAP_EVENT_NOTE_ON, 421, 64);
+            const float peak = std::max(onset, runBlocks(4));
+            runBlock({&pedalUp.header});
+            runBlock({&chokeAll.header});
+            return peak;
+        };
+        const float joinedPeak = pedalOverlapPeak(1.0), freshPeak = pedalOverlapPeak(0.0);
+        std::printf("      a note over one the pedal holds: peak %.3f legato, %.3f retriggered\n", joinedPeak,
+                    freshPeak);
+        check(freshPeak > 2.0f * joinedPeak, "poly legato joins a note the pedal holds");
+        setParams({{legato, 0.0}, {decay, decayWas}, {sustain, 0.6}});
+
+        // All Notes Off lets every note go into its release, unless the pedal holds them, until it comes up.
+        out.noteEnds.clear();
+        note(CLAP_EVENT_NOTE_ON, 430, 60);
+        note(CLAP_EVENT_NOTE_ON, 431, 64);
+        runBlocks(2);
+        runBlock({&notesOff.header});
+        waitEnds(2);
+        const bool released = out.noteEnds.size() == 2 && runBlock() == 0.0f;
+        out.noteEnds.clear();
+        runBlock({&pedalDown.header});
+        note(CLAP_EVENT_NOTE_ON, 432, 60);
+        runBlocks(2);
+        runBlock({&notesOff.header});
+        const float heldThrough = runBlocks(blocksPerSecond / 4);
+        const bool pedalKept = heldThrough > 0.05f && out.noteEnds.empty();
+        runBlock({&pedalUp.header});
+        waitEnds(1);
+        check(released && pedalKept && ends(432) == 1, "All Notes Off releases every note, the pedal holding them");
+
+        // All Sound Off ends every note at once, and a reverb's tail with them.
+        const int fxType = paramIndex(0, FxParam::Type);
+        setParams({{fxType, static_cast<double>(FxType::Reverb)},
+                    {paramIndex(0, FxParam::Enabled), 1.0},
+                    {paramIndex(0, FxParam::ReverbMix), 0.5},
+                    {paramIndex(0, FxParam::ReverbDecay), normFromTime(8.0)}});
+        out.noteEnds.clear();
+        note(CLAP_EVENT_NOTE_ON, 440, 60);
+        note(CLAP_EVENT_NOTE_ON, 441, 64);
+        runBlocks(blocksPerSecond / 4);
+        note(CLAP_EVENT_NOTE_OFF, 441, 64);
+        const float ringing = runBlocks(4); // 441's tail rings in the reverb
+        runBlock({&soundOff.header});
+        const bool endedAtOnce = out.noteEnds.size() == 2 && ends(440) == 1 && ends(441) == 1;
+        runBlocks(2);
+        const float after = runBlocks(4);
+        std::printf("      All Sound Off: %.3f before, %.6f after\n", ringing, after);
+        check(endedAtOnce && ringing > 0.05f && after == 0.0f,
+              "All Sound Off ends every note at once, and the effects' tails");
+        setParams({{fxType, static_cast<double>(FxType::None)}});
+        runBlocks(2);
+    }
+
     // Voice limit: lowering it applies at once.
     {
         out.noteEnds.clear();

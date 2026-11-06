@@ -381,6 +381,20 @@ What the plugin does and how its editor works, in full. Building and installing 
   channel's pressure until its own channel sends some. With MPE off, every channel's bend, controllers and
   pressure apply to every voice, as without MPE. The plugin offers hosts the MPE MIDI dialect alongside CLAP's and
   plain MIDI. The browser demo takes no MIDI, so there MPE has nothing to act on.
+- **Sustain pedal** (CC 64, down from the middle of its travel): while it is down, a key let go leaves its note
+  sounding as if still held, until the pedal comes up and the note releases. A key struck again while the pedal holds
+  its note lets that note go into its release, the new note taking over. In mono, letting the sounding key go still
+  returns to the most recent key held down; with none down, the pedal holds the note. A note the pedal holds counts
+  as held for Legato and Glide: a new note glides from it, a mono one carries its envelopes on, and in poly legato one
+  joins it. When voices run out, those the pedal holds are stolen after the released ones and before those whose
+  keys are down. The keyboard strip lights only the keys held down. With MPE on, the master channel's pedal holds
+  every note, and a member channel's pedal its own; with MPE off, any channel's pedal holds every note. The pedal's
+  CC is also a controller like any other, which a MIDI source can follow.
+- **MIDI panic**: **All Notes Off** (CC 123) lets every note go as its key coming up would (the pedal, if down,
+  holding them still, as MIDI has it); **All Sound Off** (CC 120) ends every note at once, fading it out over 3 ms
+  as a stolen voice does, and the effects' tails with them: every effect running fades out over 5 ms and starts
+  again cleared. With MPE on, a member channel's panic reaches only its own notes (and leaves the effects alone);
+  the master channel's, like any channel's with MPE off, reaches every note.
 - **Play modes**:
   - **Mono** plays one voice that moves from note to note. When you let go of the sounding key while others are
     held, it returns to the most recent one.

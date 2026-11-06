@@ -103,6 +103,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - unison copies spread across the stereo field (and match when centered);
   - mono: a new key takes the voice over, letting go returns to the held key, and every note reports `NOTE_END`
     exactly once;
+  - the sustain pedal (CC 64) holding a note let go until it comes up; a key struck again under it letting its held
+    note go, and a key still down sounding on after it comes up; in mono a key let go returning to the key still
+    down, else the pedal holding the note, each note ending once; poly legato joining a note the pedal holds; All
+    Notes Off (CC 123) releasing every note (the pedal holding them), and All Sound Off (CC 120) ending every note
+    at once and a reverb's tail with them;
   - legato keeps the envelope at its sustain level while retrigger restarts the attack, in mono and in poly, where
     a note played over a held one joins that one's envelopes (at its sustain, or swelling along with it); glide
     slides between

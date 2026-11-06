@@ -213,6 +213,8 @@ void Synth::reset() {
     channelBend_ = {};
     channelPressures_.fill(-1.0);
     channelSlides_.fill(0.5);
+    pedal_ = false;
+    channelPedals_ = {};
     for (Decimator &d : decimators_)
         d.reset();
     for (int f = 0; f < kFilters; ++f) {
@@ -245,7 +247,9 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         return;
     // A velocity that isn't a number plays as 0, so the note still plays out and ends.
     const HeldNote played{note, std::isfinite(velocity) ? std::clamp(velocity, 0.0, 1.0) : 0.0};
-    const bool overlapping = !held_.empty(); // another key is still down: played legato
+    // Another key is still down, or the pedal holds a note: played legato.
+    const bool overlapping =
+        !held_.empty() || std::any_of(voices_.begin(), voices_.end(), [](const Voice &v) { return live(v) && v.sustained; });
     if (held_.size() == held_.capacity()) { // forget the oldest key rather than allocate
         const NoteRef forgotten = held_.front().note;
         held_.erase(held_.begin());
@@ -270,23 +274,37 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
     // Poly legato: a note played while another key is down joins the voice of the newest key still down, as a mono
     // voice moving to the note would carry on: its operators' and mod envelopes take up that voice's stage and level
     // (at its sustain, they start at their sustain), and its LFOs that start with notes that voice's phase, so the
-    // chord swells and wavers together. Taken before a voice is stolen for it, which may be that one.
+    // chord swells and wavers together. With no key down, it joins the newest note the pedal holds. Taken before a
+    // voice is stolen for it, which may be that one.
     struct Joined {
         std::array<Envelope, kOps> ops;
         std::array<Envelope, kMaxSources> modEnvs;
         std::array<Lfo, kMaxSources> lfos;
     };
     std::optional<Joined> joined;
-    if (legato_ && overlapping)
-        for (size_t i = held_.size() - 1; i-- > 0;) // the keys down before this one, newest first
-            if (const Voice *with = voicePlaying(held_[i].note)) {
-                joined.emplace();
-                for (int op = 0; op < kOps; ++op)
-                    joined->ops[op] = with->ops[op].env;
-                joined->modEnvs = with->modEnvs;
-                joined->lfos = with->lfos;
-                break;
-            }
+    if (legato_ && overlapping) {
+        const Voice *with = nullptr;
+        for (size_t i = held_.size() - 1; i-- > 0 && !with;) // the keys down before this one, newest first
+            with = voicePlaying(held_[i].note);
+        if (!with)
+            for (const Voice &u : voices_)
+                if (live(u) && u.sustained && (!with || u.order > with->order))
+                    with = &u;
+        if (with) {
+            joined.emplace();
+            for (int op = 0; op < kOps; ++op)
+                joined->ops[op] = with->ops[op].env;
+            joined->modEnvs = with->modEnvs;
+            joined->lfos = with->lfos;
+        }
+    }
+    // A key struck again while the pedal holds its note: that note goes into its release, the new one taking over.
+    for (Voice &u : voices_)
+        if (live(u) && u.sustained && u.note.port == note.port && u.note.channel == note.channel &&
+            u.note.key == note.key) {
+            u.sustained = false;
+            releaseVoice(u);
+        }
 
     Voice &v = allocateVoice();
     v = Voice{};
@@ -345,10 +363,60 @@ void Synth::noteOff(const NoteRef &match) {
         }
     }
     // Release what is left, including voices whose keys weren't tracked (e.g.
-    // started before a play-mode change).
+    // started before a play-mode change); the pedal holds them instead while it is down.
     for (Voice &v : voices_)
-        if (live(v) && !v.released && matches(match, v.note))
+        if (live(v) && !v.released && !v.sustained && matches(match, v.note))
+            letGo(v);
+}
+
+void Synth::letGo(Voice &v) {
+    if (pedalHolds(v))
+        v.sustained = true;
+    else
+        releaseVoice(v);
+}
+
+bool Synth::pedalHolds(const Voice &v) const {
+    return pedal_ || (mpe_ && memberChannel(v.note.channel) && channelPedals_[v.note.channel]);
+}
+
+void Synth::releaseUnpedaled() {
+    for (Voice &v : voices_)
+        if (live(v) && v.sustained && !pedalHolds(v)) {
+            v.sustained = false;
             releaseVoice(v);
+        }
+}
+
+NoteRef Synth::channelMatch(int channel) const {
+    return {-1, -1, static_cast<int16_t>(mpe_ && memberChannel(channel) ? channel : -1), -1};
+}
+
+void Synth::setPedal(int channel, bool down) {
+    (mpe_ && memberChannel(channel) ? channelPedals_[channel] : pedal_) = down;
+    if (!down)
+        releaseUnpedaled();
+}
+
+void Synth::allNotesOff(int channel) {
+    noteOff(channelMatch(channel));
+}
+
+void Synth::allSoundOff(int channel) {
+    const NoteRef match = channelMatch(channel);
+    for (size_t i = held_.size(); i-- > 0;) {
+        if (!matches(match, held_[i].note))
+            continue;
+        const NoteRef note = held_[i].note;
+        held_.erase(held_.begin() + static_cast<std::ptrdiff_t>(i));
+        if (!voiceHas(note)) // a mono note a later one took over
+            reportEnded(note);
+    }
+    for (Voice &v : voices_)
+        if (live(v) && matches(match, v.note))
+            startFade(v); // its note ends now; its sound in a few milliseconds
+    if (match.channel < 0)
+        effects_.flush();
 }
 
 void Synth::choke(const NoteRef &match) {
@@ -366,13 +434,14 @@ void Synth::choke(const NoteRef &match) {
 }
 
 void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) {
-    // A voice still releasing its note, whose key is already up, takes the new one: the old note is over. (One
-    // whose key is still down reports its end when that key is let go.)
-    if (v.released)
+    // A voice still releasing its note, or held by the pedal, whose key is already up, takes the new one: the old
+    // note is over. (One whose key is still down reports its end when that key is let go.)
+    if (v.released || v.sustained)
         reportEnded(v.note);
     v.note = to.note;
     v.velocity = to.velocity;
     v.released = false;
+    v.sustained = false;
     v.silent = false;
     v.tail = false;
     v.order = noteCounter_++;
@@ -464,12 +533,16 @@ void Synth::noteExpression(const NoteRef &match, int32_t expression, double valu
 }
 
 void Synth::setMpe(bool on, double bendRange) {
-    if (mpe_ && !on) {
+    const bool off = mpe_ && !on;
+    if (off) {
         channelBend_ = {};
         channelPressures_.fill(-1.0);
         channelSlides_.fill(0.5);
+        channelPedals_ = {};
     }
     mpe_ = on;
+    if (off) // what only a member channel's pedal held goes
+        releaseUnpedaled();
     if (std::isfinite(bendRange))
         mpeBendRange_ = std::clamp(bendRange, 0.0, 96.0);
 }
@@ -492,6 +565,12 @@ void Synth::controlChange(int channel, int controller, double value) {
         return;
     }
     cc_[controller] = value;
+    if (controller == 64) // the sustain pedal, down from the middle of its travel on
+        setPedal(channel, value >= 0.5);
+    else if (controller == 120)
+        allSoundOff(channel);
+    else if (controller == 123)
+        allNotesOff(channel);
 }
 
 void Synth::channelPressure(int channel, double value) {
@@ -992,9 +1071,11 @@ void Synth::setVoiceLimit(int limit) {
 
 Synth::Voice *Synth::stealable() {
     // A voice that hasn't played yet (one started by a note at the same moment, say) has no level to go by: it
-    // counts as loud, or each note of a chord would steal the one before it.
+    // counts as loud, or each note of a chord would steal the one before it. One the pedal holds, its key up, goes
+    // after the released ones and before those whose keys are down.
     auto rank = [](const Voice &v) {
-        return std::tuple(!v.released, v.fresh ? std::numeric_limits<double>::infinity() : v.peak, v.order);
+        return std::tuple(v.released ? 0 : v.sustained ? 1 : 2,
+                          v.fresh ? std::numeric_limits<double>::infinity() : v.peak, v.order);
     };
     Voice *victim = nullptr;
     for (Voice &v : voices_)
