@@ -19,6 +19,25 @@ bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
 constexpr double kMaxFeedback = std::numbers::pi;
+// The other ways a route can act on an operator (see RouteMode), at a 100 % amount and FM Amount: Linear FM swings
+// its frequency by this many times its own (through zero past 1, which an amount of 50 % reaches), Exp FM its pitch
+// by this many octaves either way. Both take the amount squared, as Phase does; Ring takes it as it is, a blend from
+// the operator as it was to it times the source.
+constexpr double kMaxLinearDepth = 4.0;
+constexpr double kMaxExpOctaves = 4.0;
+// A route's level for its mode, from its amount: what the voice ramps between blocks.
+double routeLevel(RouteMode mode, double amount, double phaseIndex) {
+    switch (mode) {
+    case RouteMode::LinearFm:
+        return amount * amount * kMaxLinearDepth;
+    case RouteMode::ExpFm:
+        return amount * amount * kMaxExpOctaves;
+    case RouteMode::Ring:
+        return amount;
+    default:
+        return amount * amount * phaseIndex / (2.0 * std::numbers::pi);
+    }
+}
 constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in
 constexpr double kFilterRingFloor = 1e-6; // a voice filter quieter than this, its inputs stopped, has rung out
 constexpr size_t kMaxEndedNotes = 4096; // notes ending in one block that are reported (see reportEnded())
@@ -529,6 +548,9 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
     std::fill_n(left, frames, 0.0f);
     std::fill_n(right, frames, 0.0f);
     applyMacros(params);
+    for (int from = 0; from < kRouteSources; ++from)
+        for (int to = 0; to < kOps; ++to)
+            routeModes_[from][to] = from == to ? RouteMode::Phase : routeMode(params[routeModeIndex(from, to)]);
     voiceBaseReady_ = false; // what the voices share is summed again for these params, once a voice needs it
     for (int op = 0; op < kOps; ++op) // the Custom waves follow their partials, built again when they change
         customWaves_[op].update(
@@ -1367,6 +1389,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     Levels target{};
     std::array<EnvRates, kOps> rates;
     std::array<const float *, kOps> wave;
+    std::array<OpWave, kOps> opShapes;   // each operator's wave, and the increment its table suits, for when
+    std::array<double, kOps> highestInc; // frequency modulation takes it higher (see below)
     std::array<bool, kOps> noise;
     // Noise has no pitch and no unison copies. Its color comes from a filter, and
     // Unison Spread widens it with a second noise on the sides.
@@ -1448,6 +1472,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // The table suits the highest copy, so none of them reaches past Nyquist.
         const double highest = copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc;
         wave[i] = shape == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(shape, highest);
+        opShapes[i] = shape;
+        highestInc[i] = highest;
         if (noise[i]) {
             const double slope = p[paramIndex(i, OpParam::NoiseSlope)];
             colored[i] = slope > 0.0;
@@ -1482,7 +1508,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         // Squared amounts give finer control over the subtle low end.
         for (int to = 0; to < kOps; ++to) {
             const double amount = p[matrixIndex(i, to)];
-            target.index[i][to] = amount * amount * (i == to ? kMaxFeedback : kMaxIndex) / (2.0 * std::numbers::pi);
+            target.index[i][to] = routeLevel(routeModes_[i][to], amount, i == to ? kMaxFeedback : kMaxIndex);
         }
     }
 
@@ -1498,7 +1524,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     for (int f = 0; f < kFilters; ++f) {
         for (int to = 0; to < kOps; ++to) {
             const double amount = filterEnabled[f] ? p[filterModIndex(f, to)] : 0.0;
-            target.filterIndex[f][to] = amount * amount * kMaxIndex / (2.0 * std::numbers::pi);
+            target.filterIndex[f][to] = routeLevel(routeModes_[kOps + f][to], amount, kMaxIndex);
         }
         for (int sh = 0; sh < kShapers; ++sh)
             target.filterShaper[f][sh] =
@@ -1517,7 +1543,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 shaperEnabled[sh] && shaperEnabled[to] && !v.tail ? p[shaperShaperIndex(sh, to)] : 0.0;
         for (int to = 0; to < kOps; ++to) {
             const double amount = shaperEnabled[sh] ? p[shaperModIndex(sh, to)] : 0.0;
-            target.shaperIndex[sh][to] = amount * amount * kMaxIndex / (2.0 * std::numbers::pi);
+            target.shaperIndex[sh][to] = routeLevel(routeModes_[kOps + kFilters + sh][to], amount, kMaxIndex);
         }
         for (int f = 0; f < kFilters; ++f)
             target.shaperLink[sh][f] = shaperEnabled[sh] && filterEnabled[f] ? p[shaperFilterIndex(sh, f)] : 0.0;
@@ -1689,7 +1715,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         std::array<int, kFilters> sends;      // the filters it feeds
         std::array<int, kShapers> shaperSends; // the shapers it feeds
         int opCount = 0, filterCount = 0, shaperCount = 0, sendCount = 0, shaperSendCount = 0;
-        bool out = false; // whether it goes straight to the output
+        bool out = false;      // whether it goes straight to the output
+        bool phaseOnly = true; // every route into it adds to its phase, as all did before the other modes came
+        bool pitched = false;  // some route into it moves its frequency (Linear or Exp FM)
     };
     std::array<OpRoutes, kOps> routes{};
     {
@@ -1707,6 +1735,16 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             for (int sh = 0; sh < kShapers; ++sh)
                 if (inUse(current.shaperIndex[sh][i], step.shaperIndex[sh][i]))
                     r.shapers[r.shaperCount++] = sh;
+            auto noteMode = [&](RouteMode mode) {
+                r.phaseOnly = r.phaseOnly && mode == RouteMode::Phase;
+                r.pitched = r.pitched || mode == RouteMode::LinearFm || mode == RouteMode::ExpFm;
+            };
+            for (int k = 0; k < r.opCount; ++k)
+                noteMode(routeModes_[r.ops[k]][i]);
+            for (int k = 0; k < r.filterCount; ++k)
+                noteMode(routeModes_[kOps + r.filters[k]][i]);
+            for (int k = 0; k < r.shaperCount; ++k)
+                noteMode(routeModes_[kOps + kFilters + r.shapers[k]][i]);
             for (int f = 0; f < kFilters; ++f)
                 if (filterOn[f] && inUse(current.send[i][f], step.send[i][f]))
                     r.sends[r.sendCount++] = f;
@@ -1715,6 +1753,33 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     r.shaperSends[r.shaperSendCount++] = sh;
             r.out = inUse(current.out[i], step.out[i]);
         }
+    }
+
+    // Frequency modulation takes an operator up to its frequency times 2^(its Exp depths) plus its Linear ones, with
+    // sources at full scale: its table suits that, so it stays below Nyquist there too.
+    for (int i = 0; i < kOps; ++i) {
+        if (!opOn[i] || noise[i] || !routes[i].pitched)
+            continue;
+        const double fm = std::max(fmTarget, v.fmScale);
+        double lin = 0.0, ex = 0.0;
+        auto reach = [&](RouteMode mode, double now, double to) {
+            const double depth = std::max(std::abs(now), std::abs(to)) * fm;
+            if (mode == RouteMode::LinearFm)
+                lin += depth;
+            else if (mode == RouteMode::ExpFm)
+                ex += depth;
+        };
+        const OpRoutes &r = routes[i];
+        for (int k = 0; k < r.opCount; ++k)
+            reach(routeModes_[r.ops[k]][i], current.index[r.ops[k]][i], target.index[r.ops[k]][i]);
+        for (int k = 0; k < r.filterCount; ++k)
+            reach(routeModes_[kOps + r.filters[k]][i], current.filterIndex[r.filters[k]][i],
+                  target.filterIndex[r.filters[k]][i]);
+        for (int k = 0; k < r.shaperCount; ++k)
+            reach(routeModes_[kOps + kFilters + r.shapers[k]][i], current.shaperIndex[r.shapers[k]][i],
+                  target.shaperIndex[r.shapers[k]][i]);
+        const double highest = std::min(highestInc[i] * (std::exp2(std::min(ex, 16.0)) + lin), 0.5);
+        wave[i] = opShapes[i] == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(opShapes[i], highest);
     }
 
     // The operators' envelopes for the whole block, ahead of it: nothing in it moves them but their own steps.
@@ -1751,15 +1816,53 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // Operators before i already hold this sample's output, later ones the
             // previous sample's. Feedback averages the last two outputs to stay stable.
             double pm = 0.0;
-            for (int k = 0; k < route.opCount; ++k) {
-                const int j = route.ops[k];
-                pm += level.index[j][i] * (j == i ? 0.5 * (op.out + op.prevOut) : v.ops[j].out);
+            // The other modes: Linear and Exp FM scale its frequency by 2^ex + lin, Ring its output by ring.
+            double lin = 0.0, ex = 0.0, ring = 1.0;
+            if (route.phaseOnly) {
+                for (int k = 0; k < route.opCount; ++k) {
+                    const int j = route.ops[k];
+                    pm += level.index[j][i] * (j == i ? 0.5 * (op.out + op.prevOut) : v.ops[j].out);
+                }
+                for (int k = 0; k < route.filterCount; ++k)
+                    pm += level.filterIndex[route.filters[k]][i] * v.filterOut[route.filters[k]];
+                for (int k = 0; k < route.shaperCount; ++k)
+                    pm += level.shaperIndex[route.shapers[k]][i] * v.shaperOut[route.shapers[k]];
+            } else {
+                auto take = [&](RouteMode mode, double depth, double x) {
+                    switch (mode) {
+                    case RouteMode::LinearFm:
+                        lin += depth * x;
+                        break;
+                    case RouteMode::ExpFm:
+                        ex += depth * x;
+                        break;
+                    case RouteMode::Ring: {
+                        const double d = std::min(depth * v.fmScale, 1.0);
+                        ring *= 1.0 - d + d * x;
+                        break;
+                    }
+                    default:
+                        pm += depth * x;
+                    }
+                };
+                for (int k = 0; k < route.opCount; ++k) {
+                    const int j = route.ops[k];
+                    take(routeModes_[j][i], level.index[j][i], j == i ? 0.5 * (op.out + op.prevOut) : v.ops[j].out);
+                }
+                for (int k = 0; k < route.filterCount; ++k) {
+                    const int f = route.filters[k];
+                    take(routeModes_[kOps + f][i], level.filterIndex[f][i], v.filterOut[f]);
+                }
+                for (int k = 0; k < route.shaperCount; ++k) {
+                    const int sh = route.shapers[k];
+                    take(routeModes_[kOps + kFilters + sh][i], level.shaperIndex[sh][i], v.shaperOut[sh]);
+                }
             }
-            for (int k = 0; k < route.filterCount; ++k)
-                pm += level.filterIndex[route.filters[k]][i] * v.filterOut[route.filters[k]];
-            for (int k = 0; k < route.shaperCount; ++k)
-                pm += level.shaperIndex[route.shapers[k]][i] * v.shaperOut[route.shapers[k]];
             const double offset = pm * v.fmScale;
+            // How far its frequency goes this sample, past zero too; 1 while nothing moves it.
+            const double factor =
+                route.pitched ? (ex != 0.0 ? std::exp2(std::clamp(ex * v.fmScale, -16.0, 16.0)) : 1.0) + lin * v.fmScale
+                              : 1.0;
 
             const double envLevel = envLevels[i][s];
             const double scopePhase = i == scopeOp ? op.phases[0] : 0.0; // where this sample is read
@@ -1783,7 +1886,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     if (op.phases[k] >= 1.0)
                         op.phases[k] -= 1.0;
                 }
-            } else {
+            } else if (factor == 1.0) {
                 for (int k = 0; k < copies[i]; ++k) {
                     const double x = WaveTables::read(wave[i], op.phases[k] + offset);
                     mono += x;
@@ -1794,6 +1897,26 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     if (op.phases[k] >= 1.0)
                         op.phases[k] -= 1.0;
                 }
+            } else {
+                // Frequency modulation: each copy's increment scaled, held within Nyquist either way, so the phase
+                // moves less than a cycle a sample and one wrap brings it back.
+                for (int k = 0; k < copies[i]; ++k) {
+                    const double x = WaveTables::read(wave[i], op.phases[k] + offset);
+                    mono += x;
+                    l += x * copy[i]->gainL[k];
+                    r += x * copy[i]->gainR[k];
+                    op.phases[k] += std::clamp(op.incNow[k] * factor, -0.5, 0.5);
+                    op.incNow[k] += incStep[i][k];
+                    if (op.phases[k] >= 1.0)
+                        op.phases[k] -= 1.0;
+                    else if (op.phases[k] < 0.0)
+                        op.phases[k] += 1.0;
+                }
+            }
+            if (ring != 1.0) {
+                mono *= ring;
+                l *= ring;
+                r *= ring;
             }
             op.prevOut = op.out;
             op.out = mono * monoGain[i] * envLevel;

@@ -285,7 +285,7 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.fxFolded, 0.0f, 65535.0f, rounded<uint32_t>); // 16 bits each: exact as floats
     io.number(ui.sourcesFolded, 0.0f, 65535.0f, rounded<uint32_t>);
     io.number(ui.keysCollapsed, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
-    io.number(ui.opTab, 0.0f, 2.0f, rounded<gui::InspectorTab>);
+    io.number(ui.opTab, 0.0f, static_cast<float>(gui::InspectorTab::Count) - 1.0f, rounded<gui::InspectorTab>);
     io.number(ui.scopeCycles, 0.0f, 4.0f, rounded<int>, oneOf(gui::kScopeCycleChoices));
     // The wires dragged to bow other than they start, by route.
     io.paramValues(ui.wireBends, -gui::kMaxWireBend, gui::kMaxWireBend);

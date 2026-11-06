@@ -394,6 +394,9 @@ private:
     const ParamTable &table_;
     const WaveTables &waves_;
     std::array<CustomWave, kOps> customWaves_; // each operator's Custom wave, built from its partials as they change
+    // How each route into an operator acts on it (see RouteMode), [from node][to operator], read once a render: these
+    // params are stepped, past the ones voices read, and feedback is always Phase.
+    std::array<std::array<RouteMode, kOps>, kRouteSources> routeModes_{};
     // Each shaper's drawn curve as a table, built again when its points change (see render()).
     std::array<ClipTable, kShapers> shaperTables_;
     NoiseColor noiseColor_;

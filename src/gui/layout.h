@@ -29,6 +29,9 @@ constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
 constexpr float kBusY = kRouting.y + kRouting.h - 30.0f;
 constexpr float kNodeRadius = 24.0f;
+// The node the inspector shows: filled with its color at this strength, and ringed in it this far out.
+constexpr float kSelectedFill = 0.25f;
+constexpr float kSelectedRing = 5.0f;
 constexpr float kFilterHalfW = 33.0f;
 constexpr float kFilterHalfH = 17.0f;
 constexpr int kGridCols = kNodes + 1; // operators, filters, shapers, output
@@ -83,9 +86,21 @@ inline Rect clipEditButton(Rect display) {
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
 inline Rect opTab(int tab) {
-    constexpr float kX[] = {78.0f, 0.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f}; // ENVELOPE, UNISON, SCOPE
+    // UNISON, ENVELOPE, SCOPE, INPUTS by InspectorTab; along the line ENVELOPE, UNISON, INPUTS, SCOPE
+    constexpr float kX[] = {78.0f, 0.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f, 52.0f};
     return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
 }
+// Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
+// the rows closer together when there are many.
+constexpr float kInputsTop = kInspector.y + 186.0f;
+constexpr float kInputsBottom = kInspector.y + kInspector.h - 10.0f;
+inline float inputsStep(int rows) {
+    return std::min(22.0f, (kInputsBottom - kInputsTop) / static_cast<float>(std::max(rows, 1)));
+}
+inline Rect inputsName(float y) { return {kInspector.x + 16.0f, y, 26.0f, 18.0f}; }
+inline Rect inputsMode(float y, int mode) { return {kInspector.x + 48.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
+inline Rect inputsModeName(float y) { return {kInspector.x + 158.0f, y, 74.0f, 18.0f}; }
+inline Rect inputsDepth(float y) { return {kInspector.x + kInspector.w - 16.0f - 48.0f, y, 48.0f, 18.0f}; }
 // Envelope: the curve, its knobs under it at y + 322.
 constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
 // Unison: the knobs at y + 206, where the copies sit under them.

@@ -263,6 +263,15 @@ enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 enum class OpWave { Sine, Triangle, Saw, Square, Pulse, HalfSine, AbsSine, Noise, Custom, AltSine, Organ, Vowel, Count };
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
+// How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
+// the source to where the operator reads its wave (phase modulation, what FM synths call FM); Linear FM adds it to the
+// operator's frequency, through zero once deep enough; Exp FM moves its pitch by octaves; Ring multiplies its output
+// by the source, all the way at 100 % and as classic AM at 50 %. Feedback is always Phase. Stored in projects by
+// number: only append.
+enum class RouteMode { Phase, LinearFm, ExpFm, Ring, Count };
+inline RouteMode routeMode(double value) {
+    return static_cast<RouteMode>(std::clamp(std::lround(value), 0L, static_cast<long>(RouteMode::Count) - 1L));
+}
 // The types that come in more than one slope.
 constexpr bool hasSlope(FilterType type) { return type <= FilterType::Notch; }
 // A filter's slope (FilterParam::Slope, and the filter effect's): 6, 12, 18 or 24 dB per octave, stored by number,
@@ -571,7 +580,12 @@ constexpr int kStripBypassBase = kSlotAuxBase + kAllSources * kSlots * kSlotAuxF
 // Each slot's curve (-1..1, 0 a straight line), which bends what its source puts out before the depth takes it, as
 // an envelope segment's curve bends the segment (see slotCurveValue()): kSlots a source, for every source in turn.
 constexpr int kSlotCurveBase = kStripBypassBase + (kAllSources - kMaxSources) * kSlots;
-constexpr int kParamCount = kSlotCurveBase + kAllSources * kSlots;
+// How each route into an operator acts on it (see RouteMode): a block per node it comes from (the operators, the
+// filters, then the shapers), a field per operator it goes into. An operator's own field, its feedback, is always
+// Phase and hidden.
+constexpr int kRouteSources = kOps + kFilters + kShapers;
+constexpr int kRouteModeBase = kSlotCurveBase + kAllSources * kSlots;
+constexpr int kParamCount = kRouteModeBase + kRouteSources * kOps;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -854,6 +868,16 @@ constexpr int slotScaleIndex(int source, int slot) {
     return kSlotAuxBase + (source * kSlots + slot) * kSlotAuxFields + static_cast<int>(SlotAuxParam::Amount);
 }
 constexpr int slotCurveIndex(int source, int slot) { return kSlotCurveBase + source * kSlots + slot; }
+// How the route from node `from` (an operator, then the filters, then the shapers, as the routing graph numbers them)
+// into operator `to` acts on it.
+constexpr int routeModeIndex(int from, int to) { return kRouteModeBase + from * kOps + to; }
+// The node a route's mode param comes from and the operator it goes into, or -1 for other params.
+constexpr int routeModeFrom(int index) {
+    return index >= kRouteModeBase && index < kParamCount ? (index - kRouteModeBase) / kOps : -1;
+}
+constexpr int routeModeTo(int index) {
+    return index >= kRouteModeBase && index < kParamCount ? (index - kRouteModeBase) % kOps : -1;
+}
 // The source an aux or Amount param belongs to; -1 for other params.
 constexpr int auxSourceOf(int index) {
     return index >= kSlotAuxBase && index < kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields
@@ -928,6 +952,9 @@ constexpr Section kSections[] = {
     {kStripBypassBase, kAllSources - kMaxSources, kSlots, 9320, 20},
     // A block per source, in source order, as the auxes'.
     {kSlotCurveBase, kAllSources, kSlots, 24000, 20},
+    // A block per node a route comes from, in the routing graph's order: ids that were never used, between the
+    // shapers' and the filters'.
+    {kRouteModeBase, kRouteSources, kOps, 700, 10},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1185,6 +1212,9 @@ static_assert(idOfIndex(slotAuxIndex(0, 0)) == 22000 && idOfIndex(slotScaleIndex
 static_assert(idOfIndex(slotCurveIndex(0, 0)) == 24000 && idOfIndex(slotCurveIndex(0, kSlots - 1)) == 24015 &&
                   idOfIndex(slotCurveIndex(kVelocitySource, kSlots - 1)) == 24535,
               "slot curve param ids moved");
+static_assert(idOfIndex(routeModeIndex(0, 0)) == 700 && idOfIndex(routeModeIndex(1, 0)) == 710 &&
+                  idOfIndex(routeModeIndex(kRouteSources - 1, kOps - 1)) == 795,
+              "route mode param ids moved");
 static_assert(idOfIndex(shaperCurveCountIndex(0)) == 13000 &&
                   idOfIndex(shapeFieldIndex(shaperCurveCountIndex(kShapers - 1), 15, PointField::Curve)) == 13098 &&
                   idOfIndex(shapeFieldIndex(shaperCurveCountIndex(0), 16, PointField::X)) == 21000 &&
@@ -1237,6 +1267,9 @@ static_assert(numberedInOrder({PeqType::Peak, PeqType::LowShelf, PeqType::HighSh
 static_assert(numberedInOrder({ReverbType::Hall, ReverbType::Room, ReverbType::Plate, ReverbType::Shimmer,
                                ReverbType::Count}),
               "ReverbType is stored by number: only append");
+static_assert(numberedInOrder({RouteMode::Phase, RouteMode::LinearFm, RouteMode::ExpFm, RouteMode::Ring,
+                               RouteMode::Count}),
+              "RouteMode is stored by number: only append");
 
 // The highest id in use; sections aren't in id order.
 constexpr clap_id maxParamId() {
@@ -1703,6 +1736,7 @@ enum class ParamKind {
     SlotAux,      // stepped: the source + 1 that scales a slot (0 = none), set in the editor and hidden from hosts
     OpRatio,      // 0..1 on a log curve, shown as a ratio to two places; see ratioFromNorm()
     DynRatio,     // 0..1 for 1:1 to infinity, shown as "4.0:1" or "∞:1"; see dynRatio()
+    RouteMode,    // stepped: how a route acts on the operator it goes into (see RouteMode)
 };
 
 struct ParamDef {
@@ -1820,6 +1854,7 @@ const char *divisionName(int division);
 const char *clipModeName(ClipMode mode);
 const char *peqTypeName(PeqType type);
 const char *reverbTypeName(ReverbType type);
+const char *routeModeName(RouteMode mode);
 const char *midiInputName(MidiInput input);
 const char *sourceTypeName(SourceType type);
 const char *fxName(FxType fx);
