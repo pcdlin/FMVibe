@@ -214,6 +214,15 @@ inline float outScopePeak(const Telemetry &t) {
         peak = std::max(peak, std::abs(v));
     return peak;
 }
+// A scope's level follows its spans' peaks, up at once and down by this much a poll (about 60 a second: down to a
+// third in about 300 ms), so a level that moves from span to span doesn't jolt what the scope shows. Returns whether
+// it moved by more than a hundredth.
+constexpr float kScopeLevelFall = 0.946f;
+inline bool followScopeLevel(float &level, float peak) {
+    const float before = level;
+    level = peak >= level ? peak : std::max(peak, level * kScopeLevelFall);
+    return std::abs(level - before) > 0.01f * before;
+}
 constexpr float kHeaderKnobX = kHeaderStart + 28.0f;
 constexpr float kHeaderKnobW = 104.0f;
 // The play cluster, its two dividers with it, sits centered between the Pan knob's widest value ("100 L", ending

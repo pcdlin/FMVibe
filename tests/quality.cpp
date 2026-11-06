@@ -1193,8 +1193,8 @@ void scopeChecks() {
     }
 }
 
-// The header's output scope: the output over two periods of the newest note, from a rising zero crossing, captured only
-// while the synth analyzes for the editor.
+// The header's output scope: the output over two periods of the newest note, its spans following one another at the
+// note's pitch, captured only while the synth analyzes for the editor.
 void outScopeChecks() {
     std::printf("output scope:\n");
     auto telemetry = std::make_unique<Telemetry>(); // large: the analyzers' spectra are in it
@@ -1204,19 +1204,22 @@ void outScopeChecks() {
             peak = std::max(peak, std::abs(v));
         return peak;
     };
-    // How alike the span is to two cycles of a sine from its start: 1 is the same up to level.
+    // How alike the span is to two cycles of a sine, from wherever in its cycle (the decimators delay it a little): 1
+    // is the same up to level.
     auto sineLike = [&] {
-        double dot = 0.0, own = 0.0, its = 0.0;
-        for (int bin = 0; bin < kOutScopeBins; ++bin) {
-            const double want = std::sin(2.0 * std::numbers::pi * kOutScopePeriods * bin / (kOutScopeBins - 1));
-            dot += telemetry->outScope[bin] * want;
+        double sin = 0.0, cos = 0.0, own = 0.0, its = 0.0;
+        for (int bin = 0; bin < kOutScopeBins - 1; ++bin) { // the last point is the next span's first
+            const double angle = 2.0 * std::numbers::pi * kOutScopePeriods * bin / (kOutScopeBins - 1);
+            sin += telemetry->outScope[bin] * std::sin(angle);
+            cos += telemetry->outScope[bin] * std::cos(angle);
             own += telemetry->outScope[bin] * telemetry->outScope[bin];
-            its += want * want;
+            its += std::sin(angle) * std::sin(angle);
         }
-        return own > 0.0 ? dot / std::sqrt(own * its) : 0.0;
+        return own > 0.0 ? std::hypot(sin, cos) / std::sqrt(own * its) : 0.0;
     };
-    // It stands still from one span to the next.
+    // It stands still from one span to the next: it moves by less than 3 % of its peak.
     Engine e(2);
+    double moved = 0.0;
     auto still = [&] {
         e.synth().telemetry(*telemetry);
         const auto first = telemetry->outScope;
@@ -1227,6 +1230,7 @@ void outScopeChecks() {
             most = std::max(most, static_cast<double>(std::abs(telemetry->outScope[bin] - first[bin])));
             peak = std::max(peak, static_cast<double>(std::abs(first[bin])));
         }
+        moved = peak > 0.0 ? most / peak : 1.0;
         return peak > 0.1 && most < 0.03 * peak;
     };
 
@@ -1240,18 +1244,62 @@ void outScopeChecks() {
     const double like = sineLike();
     const float level = peakOf();
     const bool sineStill = still();
-    std::printf("      an A4 sine: %.4f like two cycles of one from its start, at %.3f\n", like, level);
+    std::printf("      an A4 sine: %.4f like two cycles of one, at %.3f\n", like, level);
     check(idle && like > 0.999 && level > 0.5 && sineStill,
-          "the output scope captures nothing until the synth analyzes, then two periods of the note from a rising "
-          "zero crossing, standing still");
+          "the output scope captures nothing until the synth analyzes, then two periods of the note, standing still");
 
+    // Whatever the wave: one crossing 0 going up many times a period, and one repeating every other period (its two
+    // periods differing), stand still too.
+    auto crossings = [&] {
+        int count = 0;
+        for (int bin = 1; bin < kOutScopeBins; ++bin)
+            count += telemetry->outScope[bin - 1] < 0.0f && telemetry->outScope[bin] >= 0.0f;
+        return count;
+    };
     e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+    e.p[paramIndex(1, OpParam::Ratio)] = normFromRatio(3.0);
+    e.p[matrixIndex(1, 0)] = 1.0;
+    e.render(4800);
+    const bool richStill = still();
+    const double richMoved = moved;
+    const int rich = crossings();
+    const double richLike = sineLike();
+    e.p[paramIndex(1, OpParam::Ratio)] = normFromRatio(0.5);
     e.p[matrixIndex(1, 0)] = 0.5;
     e.render(4800);
-    const bool fmStill = still();
-    const double fmLike = sineLike();
-    std::printf("      B into A at 50 %%: %.4f like a sine\n", fmLike);
-    check(fmStill && fmLike < 0.98, "FM changes the output scope's span, which stands still from one to the next");
+    const bool halfStill = still();
+    const double halfMoved = moved;
+    double apart = 0.0;
+    for (int bin = 0; bin < (kOutScopeBins - 1) / 2; ++bin)
+        apart = std::max(apart, static_cast<double>(std::abs(telemetry->outScope[bin] -
+                                                             telemetry->outScope[bin + (kOutScopeBins - 1) / 2])));
+    std::printf("      B at ratio 3 into A: %d rising crossings, %.4f like a sine, moving by %.4f; B at ratio 0.5: the "
+                "periods differ by up to %.3f, moving by %.4f\n",
+                rich, richLike, richMoved, apart, halfMoved);
+    check(richStill && rich > 2 * kOutScopePeriods && richLike < 0.98 && halfStill && apart > 0.1,
+          "the output scope stands still for a wave crossing 0 many times a period, and one repeating every other "
+          "period");
+    e.p[paramIndex(1, OpParam::Enabled)] = 0.0;
+
+    // A high note's span holds more periods, at least kOutScopeMinSpan long, and stands still too, wherever the samples
+    // fall in its periods.
+    {
+        Engine high(2);
+        high.synth().setAnalyzing(true);
+        high.noteOn(117); // 7 kHz: 2 periods would be 0.29 ms
+        high.render(4800);
+        high.synth().telemetry(*telemetry);
+        const auto first = telemetry->outScope;
+        high.render(kBlock * 5 + 3);
+        high.synth().telemetry(*telemetry);
+        double most = 0.0, peak = 0.0;
+        for (int bin = 0; bin < kOutScopeBins; ++bin) {
+            most = std::max(most, static_cast<double>(std::abs(telemetry->outScope[bin] - first[bin])));
+            peak = std::max(peak, static_cast<double>(std::abs(first[bin])));
+        }
+        std::printf("      a 7 kHz note: moving by %.4f of its peak\n", peak > 0.0 ? most / peak : 1.0);
+        check(peak > 0.1 && most < 0.03 * peak, "a high note's output scope stands still, over more periods");
+    }
 
     // Let go of, the note fades to silence, which the scope takes too; switched off, it shows nothing.
     e.noteOff(69);

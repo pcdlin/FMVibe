@@ -75,13 +75,13 @@ constexpr int kScopeBins = kScopeBinsPerCycle * kScopeMaxCycles;
 // A span of cycles that lasts longer than this, in seconds, shows as it fills, up to a cursor.
 constexpr double kScopeSlowSpan = 0.2;
 // The header's output scope: the output (the mean of its two sides, after Volume) over kOutScopePeriods periods of
-// the newest note's pitch (what the effects' key tracking follows), from a rising zero crossing, kOutScopeBins points
-// across. With no crossing for a while (silence, or a sound with none), a span is taken from wherever it is. A span
-// lasts kOutScopeMinSpan to kOutScopeMaxSpan seconds.
+// the newest note's pitch (what the effects' key tracking follows), kOutScopeBins points across. Its spans follow one
+// another at that pitch, so whatever the wave, a sound that repeats with the note stands still; a new note starts
+// them over. A high note's span holds a whole multiple of kOutScopePeriods, lasting at least kOutScopeMinSpan seconds.
 constexpr int kOutScopeBins = 128;
 constexpr int kOutScopePeriods = 2;
 constexpr double kOutScopeMinSpan = 0.0005;
-constexpr double kOutScopeMaxSpan = 0.1;
+constexpr int kOutScopeTaps = 16; // the samples each point is interpolated from (see Synth::OutScopeCapture)
 
 struct Telemetry {
     std::array<float, kModulatedCount> modOffset{}; // LFO/envelope modulation, in plain units
@@ -522,18 +522,17 @@ private:
     const Voice *scopeVoice_ = nullptr; // the voice whose operator the scope takes, this control block
     void scopeTake(double phase, double value);
     void scopeRestart();
-    // The output scope (see kOutScopeBins): armed, it waits for the output to dip below a twentieth of the last span's
-    // peak and then cross 0 going up, and the span starts there, between two samples; the points between two samples
-    // are drawn in between them. A span is published whole once it is full, and the scope is armed again.
+    // The output scope (see kOutScopeBins): a phase runs through each span at the note's pitch, and each point is
+    // taken as it passes the point's place, between two samples: band-limited, from the kOutScopeTaps samples around
+    // that place (kOutScopeTaps / 2 - 1 samples back, so the ones after it have come), so a wave dense with high
+    // partials looks the same wherever the samples fall in it. A span is published whole once it is full, and the
+    // next one starts at once, where it ended.
     struct OutScopeCapture {
-        bool armed = true;
-        bool low = false;    // went below the threshold since it was armed
-        double waited = 0.0; // samples since it was armed
-        double pos = 0.0;    // where the latest sample is in the span being filled, in samples since its start
+        uint64_t order = 0;  // the newest voice, by its note-on number, when the spans last started over
+        double phase = 0.0;  // through the span being filled, 0..1
         int next = 0;        // the next point to fill
-        double last = 0.0;   // the sample before
-        float peak = 0.0f;   // the last whole span's, and the one being filled's
-        float filledPeak = 0.0f;
+        std::array<float, kOutScopeTaps> history{}; // the last samples, the newest at newest
+        int newest = 0;
         std::array<float, kOutScopeBins> filling{};
         std::array<float, kOutScopeBins> frame{};
     };

@@ -2148,6 +2148,23 @@ void testOutScope(const std::filesystem::path &dir, Renderer &renderer) {
               (litTrough & 255) > 140,
           "the output scope is empty with nothing captured, and draws the captured span at its peak");
 
+    // A span 8 dB quieter (still above the 24 dB the scope lifts at most) is drawn to the level it eases down from, not
+    // at once to its own peak: smaller at first, its crest at the top again some polls later.
+    for (int bin = 0; bin < kOutScopeBins; ++bin)
+        model.live.outScope[bin] =
+            0.08f * static_cast<float>(std::sin(2.0 * std::numbers::pi * 2.0 * bin / (kOutScopeBins - 1)));
+    const bool easing = view.poll();
+    renderer.save(view, dir / "26h-out-scope-easing.png");
+    const uint32_t easingCrest = renderer.pixel(crest);
+    int polls = 0;
+    while (view.poll() && polls < 600)
+        ++polls;
+    renderer.save(view, dir / "26i-out-scope-eased.png");
+    const uint32_t easedCrest = renderer.pixel(crest);
+    std::printf("output scope easing: crest %06x, after %d polls %06x\n", easingCrest, polls, easedCrest);
+    check(easing && (easingCrest & 255) < 100 && polls > 10 && polls < 100 && (easedCrest & 255) > 140,
+          "the output scope's height eases down to a quieter span, repainting until it gets there");
+
     // Spans too small to draw (the browser demo's output never quite reaches 0) paint nothing again as they change;
     // one that draws does, and so does the next one replacing it, even too small to draw.
     auto fill = [&](float level) {
