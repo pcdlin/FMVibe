@@ -712,6 +712,8 @@ private:
     static Point knobCenter(const Widget &w);
     // An operator's Ratio, a knob drawn as a 7-segment readout (see kRatioBox).
     static bool isRatioDisplay(const Widget &w);
+    // An operator's Ratio, whose depth handles drag on its log curve, an octave every 60 px.
+    static bool isRatioTarget(int param);
     static float compactTextX(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.

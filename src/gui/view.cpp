@@ -1216,7 +1216,11 @@ bool View::poll() {
 // --- Geometry.
 
 bool View::isRatioDisplay(const Widget &w) {
-    return w.kind == Kind::Knob && w.param >= 0 && paramTable()[w.param].kind == ParamKind::OpRatio;
+    return w.kind == Kind::Knob && isRatioTarget(w.param);
+}
+
+bool View::isRatioTarget(int param) {
+    return param >= 0 && paramTable()[param].kind == ParamKind::OpRatio;
 }
 
 Point View::knobCenter(const Widget &w) {
@@ -6504,6 +6508,9 @@ void View::applyDrag(Point p) {
         else if (w.kind == Kind::ModsScale) // 0 at its left end, all of it at its right
             set(w.param, drag_.fine ? drag_.startValue + (p.x - drag_.start.x) / w.rect.w * 0.01
                                     : (p.x - w.rect.x) / w.rect.w);
+        else if (w.kind == Kind::ModDot && w.a >= 0 && w.b >= 0 &&
+                 isRatioTarget(slotTarget(value(slotTargetIndex(w.a, w.b))))) // an octave every 60 px (3000 with Shift)
+            set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 3000.0 : 60.0) * (1.0 / 7.0));
         else if (def.kind == ParamKind::VoiceCount) // doubles every 40 px
             set(w.param, std::round(drag_.startValue * std::exp2((drag_.start.y - p.y) / 40.0)));
         else if (snapsToSteps(def.kind)) { // a step every 10 px; a note lands on a whole one

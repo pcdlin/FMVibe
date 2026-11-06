@@ -230,7 +230,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
     modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
   - an operator's Ratio readout: each digit dragged by its own place, carrying and held to 64.00, each drag an undo
-    step; the wheel stepping the digit under the mouse, a double-click rounding to it, the hovered digit lit (read off
+    step; the wheel stepping the digit under the mouse, a double-click rounding to it, its depth handle dragging an octave every 60 px, the hovered digit lit (read off
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
     the track, a straight line to 64 with its tick at the end there and an arrow for modulation going on past it
     (read off the rendered pixels);

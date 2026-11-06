@@ -639,7 +639,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     fraction (7/2) or start with ×. Over the digits a track runs from 0.5 to 64 in a straight line: a tick at the ratio (at its right end at 64),
     each modulation's reach in its source's color (wider while its depth handle is hovered, with an arrow after the
     end where it goes on past 64), and a dot where
-    modulation takes the newest voice; the depth handles sit along the box's bottom edge, clear of it, and a source's handle
+    modulation takes the newest voice; the depth handles sit along the box's bottom edge, clear of it, and drag an octave of depth every 60 px (50 times finer with Shift), and a source's handle
     dropped anywhere on the box modulates it. A keyboard on the summary
     line, left of the power switch, switches fixed pitch: faint while the operator follows the keys, crossed out
     and lit while it is fixed. Switched on, Freq and Mult are set to where the ratio put an A4 (the smallest Mult

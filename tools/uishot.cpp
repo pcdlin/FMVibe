@@ -1420,6 +1420,15 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(ratio, normFromRatio(3.5));
     view.poll();
 
+    // Its depth handle drags on Ratio's log curve, an octave of depth (a seventh of its range) every 60 px.
+    const double depthBefore = model.value(slotAmountIndex(0, 0));
+    drag(view, kRatioDot, {kRatioDot.x, kRatioDot.y - 60.0f});
+    const double octaves = (model.value(slotAmountIndex(0, 0)) - depthBefore) * 7.0;
+    view.undo();
+    std::printf("      the Ratio's depth handle dragged up 60 px: %.3f octaves deeper\n", octaves);
+    check(std::abs(octaves - 1.0) < 1e-6 && model.value(slotAmountIndex(0, 0)) == depthBefore,
+          "a depth handle on the Ratio readout drags an octave of depth every 60 px");
+
     // Its depth handles, 9 px apart along its bottom edge from x 913, hold eight before a pill: the eighth at x 976,
     // and with a ninth, six handles and the pill (x 966 to 978), which opens their list under it (read off the
     // rendered pixels).
