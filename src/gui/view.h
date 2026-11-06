@@ -205,6 +205,10 @@ private:
         ShapeDone,    // closes the shape editor
         ShapeReset,   // a = shape: back to the shape it starts with
         ShapeGrid,    // a = axis (0 across, 1 up and down), b = -1 or 1 steps the grid, 0 is its count (wheel)
+        ShapeCollapse, // a = lfo: its widened card back to a normal one
+        ShapeExpand,  // a = lfo: opens its shape in the full-size editor, over the panels
+        ShapeTool,    // a = lfo, b = ShapeTool: a button in its widened card that changes the whole shape
+        ShapeMode,    // a = lfo, b = 0 Points, 1 Steps (what a click on its shape does), 2 Snap (to the grid)
         UndoButton,   // a = 0 undoes, 1 redoes
         Key,          // a = key of the keyboard (0 = the lowest): drag across keys to play them
         Octave,       // a = -1 or 1: shifts the keyboard down or up an octave
@@ -233,6 +237,10 @@ private:
     };
 
     enum class PresetAction { Init, Load, Save };
+
+    // What a widened LFO card's tools do to its whole shape, each one undo step: flip it upside down, play it back to
+    // front, move it a grid column earlier or later (round the cycle), and copy it to paste into another LFO.
+    enum class ShapeTool { Invert, Reverse, ShiftLeft, ShiftRight, Copy, Paste };
 
     struct Widget {
         Kind kind = Kind::Knob;
@@ -592,6 +600,32 @@ private:
     // a shaper effect's card, or a voice shaper's page in the inspector, lets you edit its curve too. A curve's
     // points run from the left edge to the right one; an LFO's wrap around.
     int shapeEditing() const;
+    // A Custom LFO's card widened to edit its shape in it (see kWideSource), or -1: a click on its display widens it,
+    // and it stays so while it is Custom and not folded, also while the full-size editor has its shape. Its card's
+    // span, and whether the source's card is the widened one.
+    int wideLfo() const;
+    // Whether a click on a shape draws a step rather than working with points (Shift doing the other), and whether a
+    // dragged point snaps to the grid (Ctrl doing the other; the switch only where the grid shows: the big editor and
+    // a widened LFO card).
+    bool shapeSteps(int shape) const;
+    bool shapeSnaps(int shape, bool ctrl) const;
+    // The big editor's Points | Steps and Snap: left of its grid's controls under the plot, or in a shaper effect's
+    // narrower editor in its title row.
+    Rect shapeModeButton(int mode) const;
+    // A widened card's tools: what they make of the shape, and the shape copied, which Paste puts into another LFO.
+    void applyShapeTool(int lfo, ShapeTool tool);
+    struct DrawnPoint {
+        double x, y, curve; // the curve bends the segment leaving it
+    };
+    std::vector<DrawnPoint> drawnPoints(int shape) const;
+    // The edits that make the shape these points (the first at the start), or nothing when they don't fit in it.
+    std::optional<std::vector<std::pair<int, double>>> drawnChanges(int shape,
+                                                                    const std::vector<DrawnPoint> &points) const;
+    void paintLfoCard(Canvas &c, float card, int lfo);
+    // How to edit a shape in the big editor or a widened LFO card, as Points | Steps and Snap have it.
+    std::string shapeHint() const;
+    // Whether a widened card's Copy has kept a shape for Paste.
+    static bool shapeCopied();
     // Its geometry: the panel the big editor fills, its buttons, and where a shape is edited (the big
     // editor's plot, or a shaper curve's in its card while the big editor is closed) and where a value
     // sits there; without a shape, the big editor's.
@@ -742,7 +776,9 @@ private:
     void paintNoteCurveEditor(Canvas &c);
     void paintVelocityCurveEditor(Canvas &c);
     // The editor's grid; `zero` is where the zero line goes, and a centered grid stresses its middle line.
-    void paintShapeGrid(Canvas &c, double zero, bool centered);
+    void paintShapeGrid(Canvas &c, Rect area, double zero, bool centered);
+    // Where (x, y) of a shape plotted in `area` goes: x 0..1 across, y -1..1 up, a little short of its edges.
+    static Point areaAt(Rect area, double x, double y);
     void paintShapeGridControls(Canvas &c);
     // The partial editor: an operator's Custom wave, over the routing panel while the shape editor isn't.
     int partialEditing() const;
@@ -891,6 +927,7 @@ private:
     std::pair<int, int> menuPoint_{-1, -1}; // lfo and shape point of the open context menu
     std::optional<ModListOpen> modList_;     // a pill's open list
     int shapeEditor_ = -1;                   // the LFO whose shape the routing panel shows, or -1
+    int wideLfo_ = -1;                       // the LFO whose card is widened (see wideLfo()), or -1
     int partialEditor_ = -1;                 // the operator whose Custom wave's partials it shows, or -1
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     float fxScroll_ = 0.0f;                  // how many effect cards are scrolled past, before clamping

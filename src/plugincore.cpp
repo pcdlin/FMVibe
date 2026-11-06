@@ -323,6 +323,8 @@ void PluginCore::keepEditorLayout(const gui::UiLayout &from) {
     layout_.keysCollapsed = from.keysCollapsed;
     layout_.shapeGridX = from.shapeGridX;
     layout_.shapeGridY = from.shapeGridY;
+    layout_.shapeSteps = from.shapeSteps;
+    layout_.shapeSnap = from.shapeSnap;
     layout_.opTab = from.opTab;
     layout_.scopeCycles = from.scopeCycles;
 }

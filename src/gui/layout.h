@@ -223,6 +223,33 @@ inline Rect sourceCard(float card, float span = 1.0f) {
 // unfolds it. An effect card folds much the same way: its icon, which switches it, then its cross and its name.
 // That strip is as wide as the icon's place at the title's left, so the icon stays put as the card folds.
 constexpr float kFoldedSource = 0.2f;
+// A Custom LFO's card widened to edit its shape right there, two card places wide: its own controls stay where a
+// normal card has them, and the shape's plot, 264 px across, goes beside them, from under the title row down to the
+// row of the point readout and the grid's steppers, level with the MODS button.
+constexpr float kWideSource = 2.0f;
+inline Rect lfoCardPlot(float card) {
+    const Rect p = sourceCard(card, kWideSource);
+    return {p.x + 281.0f, p.y + 44.0f, 264.0f, 102.0f};
+}
+// Under the plot's frame, at its left: the point under the mouse in numbers.
+inline Rect lfoCardReadout(float card) {
+    const Rect plot = lfoCardPlot(card);
+    return {plot.x - 8.0f, plot.bottom() + 16.0f, 120.0f, 22.0f};
+}
+// Right of it, the grid's steppers, across (axis 0) then up and down: each an arrow, then a step down (part 0), its
+// count (1) and a step up (2).
+inline Rect lfoCardGridButton(float card, int axis, int part) {
+    constexpr float kX[] = {14.0f, 32.0f, 54.0f}, kW[] = {18.0f, 22.0f, 18.0f};
+    const Rect readout = lfoCardReadout(card);
+    return {readout.x + 128.0f + axis * 76.0f + kX[part], readout.y + 2.0f, kW[part], 18.0f};
+}
+// Its title row's buttons, by what they do: back to a normal card (0), the shape's reset (1) and the full-size editor
+// (2). Left to right, set off from the fold button: the reset, back to a normal card, the full-size editor.
+inline Rect lfoCardButton(float card, int button) {
+    constexpr float kFromRight[] = {1.0f, 2.0f, 0.0f};
+    const Rect p = sourceCard(card, kWideSource);
+    return {p.right() - 120.0f - kFromRight[button] * 34.0f, p.y + 7.0f, 28.0f, 22.0f};
+}
 // The dashed card after the sources, as tall as a card and narrower: it opens the list of source types.
 constexpr float kSourceShadowGap = 10.0f;
 constexpr float kSourceShadowW = (kCardH - kSourceShadowGap) * 0.5f;
@@ -296,14 +323,29 @@ inline Rect sourceModsButton(float card) {
     return {p.x + 16.0f, p.y + 160.0f, p.w - 32.0f, 24.0f};
 }
 
-// Title row: handle and name (the row drags the card), then (LFOs) SYNC, the power switch and the remove cross at the right.
-inline Rect sourceRemove(float card) {
-    const Rect p = sourceCard(card);
+// A widened LFO card's column of controls has the shape tools where a normal card's display is (see ShapeTool), in
+// a row, and under them Points | Steps and Snap (see ShapeMode).
+constexpr int kShapeTools = 6;
+inline Rect lfoToolButton(float card, int tool) {
+    const Rect d = sourceDisplay(card);
+    const float w = (d.w - (kShapeTools - 1) * 4.0f) / kShapeTools;
+    return {d.x + tool * (w + 4.0f), d.y, w, 22.0f};
+}
+inline Rect lfoModeButton(float card, int mode) {
+    const Rect d = sourceDisplay(card);
+    return mode < 2 ? Rect{d.x + mode * 75.0f, d.y + 28.0f, 75.0f, 22.0f}
+                    : Rect{d.x + 156.0f, d.y + 28.0f, d.w - 156.0f, 22.0f};
+}
+
+// Title row: handle and name (the row drags the card), then (LFOs) SYNC, the power switch and the remove cross at the
+// right; of a card `span` places wide.
+inline Rect sourceRemove(float card, float span = 1.0f) {
+    const Rect p = sourceCard(card, span);
     return {p.right() - 26.0f, p.y + 7.0f, 18.0f, 21.0f};
 }
 
-inline Rect sourcePower(float card) {
-    const Rect p = sourceCard(card);
+inline Rect sourcePower(float card, float span = 1.0f) {
+    const Rect p = sourceCard(card, span);
     return {p.right() - 30.0f - 26.0f, p.y + 8.0f, 26.0f, 19.0f};
 }
 

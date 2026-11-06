@@ -13,7 +13,8 @@ namespace fmvibe::gui {
 
 using namespace detail;
 
-// The freeform shape editor: an LFO's fills the routing panel and the inspector, which it hides; a shaper's curve
+// The freeform shape editor: an LFO's in its widened card, or in full size over the routing panel and the inspector,
+// which it hides; a shaper's curve
 // takes a narrower panel in the middle of the effects' panel it opens from, so its plot is closer to square, the
 // inspector still covered; the note source's curve and velocity's fill the routing panel.
 constexpr float kClipEditorW = 520.0f;
@@ -45,6 +46,8 @@ Rect View::shapeAreaNow(int shape) const {
     }
     if (shape >= 0 && isShaperCurve(shape) && shapeEditing() != shape) // on its page in the inspector
         return kShaperDisplay.inset(8.0f);
+    if (shape >= 0 && !isCurve(shape) && shapeEditing() != shape) // an LFO's, in its widened card
+        return lfoCardPlot(cardOf(shape));
     const Rect panel = shapePanel();
     return {panel.x + 40.0f, panel.y + 60.0f, panel.w - 80.0f, panel.h - 96.0f};
 }
@@ -68,14 +71,26 @@ Rect View::shapeGridButton(int axis, int part) const {
     return {x, area.bottom() + 9.0f, kParts[part], 18.0f};
 }
 
+// The big editor's Points | Steps and Snap, left of the grid's controls and their label; in a shaper effect's
+// narrower editor, in its title row left of the reset button.
+Rect View::shapeModeButton(int mode) const {
+    const bool title = isClipCurve(shapeEditing());
+    const float right = title ? shapeReset().x - 8.0f : shapeGridButton(0, 0).x - 60.0f;
+    const Rect snap{right - 64.0f, title ? shapeReset().y + 2.0f : shapeGridButton(0, 0).y, 64.0f, 18.0f};
+    return mode == 2 ? snap : Rect{snap.x - 8.0f - (2 - mode) * 68.0f, snap.y, 68.0f, snap.h};
+}
+
 // A little room above and below the full swing, so its points can be grabbed: 12 px, less in a card.
 static float shapeReach(Rect area) {
     return area.h * 0.5f - std::min(12.0f, area.h * 0.06f);
 }
 
-Point View::shapeAt(int shape, double x, double y) const {
-    const Rect area = shapeArea(shape);
+Point View::areaAt(Rect area, double x, double y) {
     return {area.x + static_cast<float>(x) * area.w, area.center().y - static_cast<float>(y) * shapeReach(area)};
+}
+
+Point View::shapeAt(int shape, double x, double y) const {
+    return areaAt(shapeArea(shape), x, y);
 }
 
 double View::shapeXAt(int shape, Point p) const {
@@ -108,6 +123,23 @@ int View::shapeEditing() const {
         std::lround(value(paramIndex(shapeEditor_, SourceParam::Shape))) != static_cast<long>(LfoShape::Custom))
         return -1;
     return shapeEditor_;
+}
+
+int View::wideLfo() const {
+    if (wideLfo_ < 0 || sourceTypeOf(wideLfo_) != SourceType::Lfo || sourceFolded(wideLfo_) ||
+        std::lround(value(paramIndex(wideLfo_, SourceParam::Shape))) != static_cast<long>(LfoShape::Custom))
+        return -1;
+    return wideLfo_;
+}
+
+bool View::shapeSteps(int) const {
+    return controller_.layout().shapeSteps;
+}
+
+// Snap is for the editors that show the grid: the big one and a widened LFO card; a shaper's curve in its card or on
+// its page snaps with Ctrl alone.
+bool View::shapeSnaps(int shape, bool ctrl) const {
+    return ctrl != ((shape == shapeEditing() || shape == wideLfo()) && controller_.layout().shapeSnap);
 }
 
 int View::shapeBase(int shape) {
@@ -320,10 +352,12 @@ bool View::addShapeStep(int shape, Point p, bool snap, const std::vector<double>
     return true;
 }
 
-// Shift+click anywhere in the big editor, over its points and bends too, draws a step.
+// Shift+click anywhere in the big editor or a widened LFO card, over its points and bends too, draws a step; or
+// with Steps picked, a plain click.
 bool View::drawsStep(const Widget &w, Modifiers mods) const {
-    return mods.shift && (w.kind == Kind::ShapeArea || w.kind == Kind::ShapePoint || w.kind == Kind::ShapeCurve) &&
-           w.a == shapeEditing();
+    return mods.shift != shapeSteps(w.a) &&
+           (w.kind == Kind::ShapeArea || w.kind == Kind::ShapePoint || w.kind == Kind::ShapeCurve) &&
+           (w.a == shapeEditing() || w.a == wideLfo());
 }
 
 void View::removeShapePoint(int shape, int point) {
@@ -375,6 +409,121 @@ void View::stepShapeGrid(int axis, int steps) {
     else
         step(kShapeGridsY);
     controller_.layoutChanged();
+}
+
+std::vector<View::DrawnPoint> View::drawnPoints(int shape) const {
+    std::vector<DrawnPoint> points;
+    for (int point = 0; point < shapePointCount(shape); ++point)
+        points.push_back({shapePointX(shape, point), value(shapeIndex(shape, point, PointField::Y)),
+                          value(shapeIndex(shape, point, PointField::Curve))});
+    return points;
+}
+
+std::optional<std::vector<std::pair<int, double>>> View::drawnChanges(int shape,
+                                                                      const std::vector<DrawnPoint> &points) const {
+    if (points.size() < 2 || static_cast<int>(points.size()) > shapeMaxPoints(shape))
+        return std::nullopt;
+    std::vector<std::pair<int, double>> changes;
+    auto put = [&](int index, double v) {
+        const ParamDef &info = table_[index];
+        v = std::clamp(v, info.min, info.max);
+        if (v != value(index))
+            changes.push_back({index, v});
+    };
+    for (size_t k = 0; k < points.size(); ++k) {
+        const int point = static_cast<int>(k);
+        if (point > 0) // the first point's place is the start, whatever its X says
+            put(shapeIndex(shape, point, PointField::X), points[k].x);
+        put(shapeIndex(shape, point, PointField::Y), points[k].y);
+        put(shapeIndex(shape, point, PointField::Curve), points[k].curve);
+    }
+    put(shapeBase(shape), static_cast<double>(points.size()));
+    return changes;
+}
+
+namespace {
+// The shape copied by a widened card's Copy, for its Paste into another LFO: its params from shapeBase() on.
+std::vector<double> copiedShape;
+} // namespace
+
+bool View::shapeCopied() {
+    return copiedShape.size() == static_cast<size_t>(kShapeParamCount);
+}
+
+// Inverting flips each level; a bend keeps its value, which bends the flipped segment the mirrored way. Reversed,
+// the shape runs from the end back to the start: the first point stays first, the others come in the other order,
+// each at 1 - its time, and a segment run backwards bends the other way (shapeBend(): 1 - bend(1 - t, c) is
+// bend(t, -c)). Shifted, the shape moves a column of the grid later (right) or earlier (left), round the cycle: the
+// point where the new start falls, or one put there on the curve (its segment split in two, each part bent as much as
+// keeps it on the same curve), becomes the first.
+void View::applyShapeTool(int lfo, ShapeTool tool) {
+    if (tool == ShapeTool::Copy) {
+        copiedShape.clear();
+        for (int f = 0; f < kShapeParamCount; ++f)
+            copiedShape.push_back(value(shapeBase(lfo) + f));
+        flash(trf(Str::MsgShapeCopied, {sourceName(lfo)}));
+        return;
+    }
+    if (tool == ShapeTool::Paste) {
+        if (copiedShape.size() != static_cast<size_t>(kShapeParamCount)) {
+            flash(tr(Str::MsgNothingCopied));
+            return;
+        }
+        std::vector<std::pair<int, double>> changes;
+        for (int f = 0; f < kShapeParamCount; ++f)
+            if (copiedShape[f] != value(shapeBase(lfo) + f))
+                changes.push_back({shapeBase(lfo) + f, copiedShape[f]});
+        if (!changes.empty())
+            editMany(changes);
+        return;
+    }
+    std::vector<DrawnPoint> points = drawnPoints(lfo), changed;
+    const size_t n = points.size();
+    if (tool == ShapeTool::Invert) {
+        changed = points;
+        for (DrawnPoint &point : changed)
+            point.y = -point.y;
+    } else if (tool == ShapeTool::Reverse) {
+        changed.push_back({0.0, points[0].y, -points[n - 1].curve});
+        for (size_t j = 1; j < n; ++j)
+            changed.push_back({1.0 - points[n - j].x, points[n - j].y, -points[n - 1 - j].curve});
+    } else {
+        constexpr double kSameTime = 1e-6;
+        const double column = 1.0 / std::max(controller_.layout().shapeGridX, 1);
+        const double start = tool == ShapeTool::ShiftRight ? 1.0 - column : column; // what comes to the start
+        size_t first = n;
+        for (size_t k = 0; k < n && first == n; ++k)
+            if (std::abs(points[k].x - start) < kSameTime)
+                first = k;
+        if (first == n) { // a point on the curve there, splitting the segment it falls in
+            size_t k = 0;
+            while (k + 1 < n && points[k + 1].x <= start)
+                ++k;
+            const DrawnPoint &from = points[k];
+            const double x1 = k + 1 < n ? points[k + 1].x : 1.0, y1 = points[k + 1 < n ? k + 1 : 0].y;
+            const double u = x1 - from.x < 1e-9 ? 0.0 : (start - from.x) / (x1 - from.x);
+            const DrawnPoint split{start, from.y + (y1 - from.y) * shapeBend(u, from.curve), from.curve * (1.0 - u)};
+            points[k].curve = from.curve * u;
+            points.insert(points.begin() + static_cast<std::ptrdiff_t>(k + 1), split);
+            first = k + 1;
+        }
+        for (size_t k = 0; k < points.size(); ++k) {
+            DrawnPoint point = points[(first + k) % points.size()];
+            point.x -= start;
+            if (k == 0 || std::abs(point.x) < kSameTime)
+                point.x = 0.0;
+            else if (point.x < 0.0)
+                point.x += 1.0;
+            changed.push_back(point);
+        }
+    }
+    const auto changes = drawnChanges(lfo, changed);
+    if (!changes) {
+        flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(lfo))}));
+        return;
+    }
+    if (!changes->empty())
+        editMany(*changes);
 }
 
 } // namespace fmvibe::gui

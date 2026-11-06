@@ -372,8 +372,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   choice is saved with the patch. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
-  showing faintly under the mouse. While the shape, shaper curve or partial editor has the panels, no tab is
-  shown, and clicking one closes the editor.
+  showing faintly under the mouse. While the full-size shape, shaper curve or partial editor has the panels, no tab
+  is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
 - **Routing panel**: the graph shows only what is switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their
@@ -566,10 +566,36 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     fourth); the ones a lower count hides keep what was drawn. The reset button (a circular arrow) goes back to a
     sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
     edit button (a pencil) on the operator's summary line opens it again. A stroke is one undo step.
-  - **Shape editor**: picking an LFO's Custom shape (or clicking its display, which then shows an edit button, a
-    pencil) opens the
-    shape over the routing panel and the inspector, which it hides while it is open; the done button (a check mark,
-    top right) closes it, and the reset button (a circular arrow) beside it puts back the shape it started with.
+  - **Shape editor**: picking an LFO's Custom shape, or a click anywhere on a Custom LFO's display (which shows an
+    edit button, a pencil, in its corner), widens its card to two card places, the cards after it moving along and the row scrolling to show it
+    whole, to edit the shape right there while the panels above stay in use: the inspector's knobs, the routes and
+    the other views can be turned and switched as the shape changes. The widened card keeps the LFO's own controls where a normal card has them,
+    with the shape tools and drawing modes where its display was (see below), and the shape's plot beside them,
+    264 px across; under the plot, the point under the mouse in numbers (its number, its place in the cycle and its
+    level) and the grid's steppers, and over it, as its tooltip, how to edit it. Its title row has, before the
+    fold, power and remove buttons, the reset button (a circular arrow), which puts back the shape it started with,
+    the collapse button (two arrows pointing in), which takes the card back to its size, and right of it the
+    full-size button (two arrows pointing apart); another shape, folding the card and removing it take it back to
+    its size too. Every edit applies as it is
+    made, so there is no done button. One card is widened at a time: widening another takes the first one back.
+    Collapsing the modulation panel leaves the card as it was, widened or not, for when the panel opens again; it
+    isn't saved with the patch. The full-size button opens the shape over the routing panel and the inspector,
+    which it hides while it is open, the card staying widened under it with its own editor greyed out (it takes no
+    input there meanwhile); the done button (a check mark, top right) closes it, as a view tab does, and the card's
+    editor is back in use.
+    The **shape tools**, a row of icons (named on hover), each change the whole shape in one undo step, a quick
+    second click being another: **Invert** flips it upside down; **Reverse** plays it back to front, the first point
+    staying first and each segment bent the other way; **Shift left** and **Shift right** move it a column of the
+    grid earlier or later, round the cycle (where the new start falls, a point is put on the curve if there is none
+    there, splitting its segment without changing its course); **Copy** keeps the shape, and **Paste** puts it into
+    another LFO (faint until a shape is copied; for now LFO shapes only). Under them, **Points | Steps** picks what a
+    click on the shape does, in the card and in every big editor below, which has them too (left of its GRID, or in
+    a shaper effect's narrower editor in its title row, left of the reset button): with Points, as below; with
+    Steps, a click draws a step, as Shift+click does with Points, and Shift+click works with points. **Snap** snaps
+    points and steps to the grid without Ctrl, which then lets them go (a shaper's curve drawn right in its card or on
+    its page, which show no grid, snaps with Ctrl only). Both belong to the editor, like the grid, and go for every
+    shape and curve. How to edit a shape, as they have it, shows in each editor's title row (a shaper effect's under
+    its plot) and as a widened card's plot's tooltip.
     Drag points to move them; the point under the mouse is shown in numbers, its level as the LFO puts it out (0 to 1 for a
     unipolar one). A point stays between its neighbors, but can reach a neighbor's time: points at one time make a
     line straight up or down (a spike, say), and at that moment the LFO takes the last of them in order, the one
@@ -586,7 +612,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     double-click to straighten. **GRID**, under the
     editor, sets how many lines run across (2–32, thirds included) and up and down (2–16), with its − and +
     buttons or the mouse wheel; hold Ctrl to snap points to them. The grid belongs to the editor: it is saved with
-    the project, and presets leave it alone. The first point always sits at the start of the cycle. A shaper
+    the project, and presets leave it alone (so do Points | Steps and Snap). The first point always sits at the start of the cycle. A shaper
     effect's Custom curve opens the same editor from the edit button (a pencil) on its card's display, in a panel in the middle of the
     effects' (the inspector stays hidden), its plot closer to square, with input across and output up; its first
     and last points stay at the ends. While the shaper is symmetric, only the curve's right half is edited, in
@@ -736,7 +762,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     over a random LFO's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
     with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
     The Phase knob is faint while it does nothing (a free or random LFO), and otherwise a thin line on the display
-    marks where notes start the LFO. A unipolar LFO's display has its zero line at the bottom.
+    marks where notes start the LFO. A unipolar LFO's display has its zero line at the bottom. A Custom LFO's
+    display widens its card, to edit the shape there (see the shape editor).
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click it
