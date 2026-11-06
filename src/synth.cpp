@@ -205,6 +205,7 @@ void Synth::reset() {
     volumeGain_ = -1.0; // set at once, the first time round
     outPeak_ = {};
     clipHold_ = 0.0;
+    outScope_ = {};
 }
 
 void Synth::advanceLfo(Lfo &lfo, double hz, uint32_t frames, uint32_t &rng, bool oneShot, double chaos) const {
@@ -639,6 +640,8 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         }
     }
     meterOutput(left, right, frames);
+    if (analyzing_)
+        captureOutput(left, right, frames);
     if (playing_) {
         songSeconds_ += frames / sampleRate_;
         songBeats_ += frames / sampleRate_ * tempo_ / 60.0;
@@ -700,6 +703,54 @@ void Synth::meterOutput(const float *left, const float *right, uint32_t frames) 
         outPeak_[c] = std::max(static_cast<double>(peak), outPeak_[c] * fall);
         if (peak > 1.0f)
             clipHold_ = kClipHold;
+    }
+}
+
+void Synth::captureOutput(const float *left, const float *right, uint32_t frames) {
+    OutScopeCapture &s = outScope_;
+    const double hz = 440.0 * std::pow(2.0, (fxPitch_ - 69.0) / 12.0);
+    const double span =
+        std::clamp(kOutScopePeriods / hz, kOutScopeMinSpan, kOutScopeMaxSpan) * sampleRate_; // in samples
+    const double step = span / (kOutScopeBins - 1);
+    // Armed longer than this, a span starts where the output is.
+    const double patience = std::max(2.0 * span, 0.05 * sampleRate_);
+    for (uint32_t i = 0; i < frames; ++i) {
+        double x = 0.5 * (static_cast<double>(left[i]) + right[i]);
+        if (!std::isfinite(x))
+            x = 0.0;
+        if (s.armed) {
+            const double threshold = std::max(0.05 * s.peak, 1e-5);
+            if (x < -threshold)
+                s.low = true;
+            if (s.low && s.last < 0.0 && x >= 0.0) {
+                s.armed = false;
+                s.pos = 1.0 + s.last / (x - s.last); // the crossing was that far back, between the two samples
+            } else if (++s.waited > patience) {
+                s.armed = false;
+                s.pos = 0.0;
+            }
+            if (!s.armed) {
+                s.next = 0;
+                s.filledPeak = 0.0f;
+            }
+        }
+        if (!s.armed) {
+            while (s.next < kOutScopeBins && s.next * step <= s.pos) {
+                const double at = s.next * step - (s.pos - 1.0); // 0..1 from the sample before to this one
+                const auto value = static_cast<float>(s.last + (x - s.last) * at);
+                s.filling[s.next++] = value;
+                s.filledPeak = std::max(s.filledPeak, std::abs(value));
+            }
+            s.pos += 1.0;
+            if (s.next == kOutScopeBins) {
+                s.frame = s.filling;
+                s.peak = s.filledPeak;
+                s.armed = true;
+                s.low = false;
+                s.waited = 0.0;
+            }
+        }
+        s.last = x;
     }
 }
 
@@ -827,6 +878,8 @@ void Synth::telemetry(Telemetry &out) const {
     out.fxPitch = static_cast<float>(fxPitch_);
     out.outPeak = {static_cast<float>(outPeak_[0]), static_cast<float>(outPeak_[1])};
     out.clipHold = static_cast<float>(clipHold_);
+    if (analyzing_)
+        out.outScope = outScope_.frame;
     for (const HeldNote &held : held_)
         out.keys[held.note.key / 32] |= 1u << (held.note.key % 32);
     for (int slot = 0; slot < kFxSlots; ++slot) { // effects keep working on echoes after the voices end

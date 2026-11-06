@@ -44,6 +44,7 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kScopeBins> scope{};
     std::atomic<int> scopeBins{0};
     std::atomic<float> scopeCursor{-1.0f};
+    std::array<std::atomic<float>, kOutScopeBins> outScope{};
 
     void store(const Telemetry &t) {
         for (size_t i = 0; i < keys.size(); ++i)
@@ -88,6 +89,8 @@ struct SharedTelemetry {
             scope[i].store(t.scope[i], std::memory_order_relaxed);
         scopeBins.store(t.scopeBins, std::memory_order_relaxed);
         scopeCursor.store(t.scopeCursor, std::memory_order_relaxed);
+        for (int i = 0; i < kOutScopeBins; ++i)
+            outScope[i].store(t.outScope[i], std::memory_order_relaxed);
         stamp.store(std::chrono::steady_clock::now().time_since_epoch().count(), std::memory_order_relaxed);
     }
 
@@ -134,6 +137,8 @@ struct SharedTelemetry {
         for (int i = 0; i < t.scopeBins; ++i)
             t.scope[i] = scope[i].load(std::memory_order_relaxed);
         t.scopeCursor = scopeCursor.load(std::memory_order_relaxed);
+        for (int i = 0; i < kOutScopeBins; ++i)
+            t.outScope[i] = outScope[i].load(std::memory_order_relaxed);
         const auto elapsed = std::chrono::steady_clock::duration(
             std::chrono::steady_clock::now().time_since_epoch().count() - stamp.load(std::memory_order_relaxed));
         t.age = std::chrono::duration<float>(elapsed).count();

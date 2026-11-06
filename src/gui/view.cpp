@@ -1227,6 +1227,8 @@ bool View::poll() {
     if (metering || metering_)
         changed = true;
     metering_ = metering;
+    if (t.outScope != telemetry_.outScope) // the output scope took another span
+        changed = true;
     // A three-band dynamics' bars move with its bands' levels and gains, until they settle.
     for (int slot : fxChain())
         if (fxSlotType(slot) == FxType::MultiDyn)
@@ -2670,6 +2672,25 @@ void View::paintHeader(Canvas &c) {
             c.fillRect({bar.x, std::max(top, zero), bar.w, bar.bottom() - std::max(top, zero)}, kAccent, 1.5f);
         if (top < zero - 1.0f)
             c.fillRect({bar.x, top, bar.w, zero - 1.0f - top}, kMeterRed, 1.5f);
+    }
+
+    // The output scope: the last span the audio thread took (see kOutScopeBins), its peak at the display's edges (but
+    // lifted by no more than 24 dB, so a fading tail shrinks away), over a faint middle line.
+    c.fillRect(kOutScope, kDisplayColor, 5.0f);
+    c.strokeRect(kOutScope, kBorder, 1.0f, 5.0f);
+    const Rect inner{kOutScope.x + 5.0f, kOutScope.y + 4.0f, kOutScope.w - 10.0f, kOutScope.h - 8.0f};
+    const float middle = inner.center().y;
+    c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
+    float peak = 0.0f;
+    for (float v : telemetry_.outScope)
+        peak = std::max(peak, std::abs(v));
+    if (peak > 1e-5f) {
+        const float gain = 0.5f * inner.h / std::max(peak, 1.0f / 16.0f);
+        std::array<Point, kOutScopeBins> points;
+        for (int bin = 0; bin < kOutScopeBins; ++bin)
+            points[bin] = {inner.x + inner.w * bin / (kOutScopeBins - 1),
+                           middle - std::clamp(telemetry_.outScope[bin], -peak, peak) * gain};
+        plotLine(c, points.data(), points.size(), kAccent, 1.5f);
     }
 
     for (float x : kDividers)

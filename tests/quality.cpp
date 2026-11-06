@@ -1193,6 +1193,80 @@ void scopeChecks() {
     }
 }
 
+// The header's output scope: the output over two periods of the newest note, from a rising zero crossing, captured only
+// while the synth analyzes for the editor.
+void outScopeChecks() {
+    std::printf("output scope:\n");
+    auto telemetry = std::make_unique<Telemetry>(); // large: the analyzers' spectra are in it
+    auto peakOf = [&] {
+        float peak = 0.0f;
+        for (float v : telemetry->outScope)
+            peak = std::max(peak, std::abs(v));
+        return peak;
+    };
+    // How alike the span is to two cycles of a sine from its start: 1 is the same up to level.
+    auto sineLike = [&] {
+        double dot = 0.0, own = 0.0, its = 0.0;
+        for (int bin = 0; bin < kOutScopeBins; ++bin) {
+            const double want = std::sin(2.0 * std::numbers::pi * kOutScopePeriods * bin / (kOutScopeBins - 1));
+            dot += telemetry->outScope[bin] * want;
+            own += telemetry->outScope[bin] * telemetry->outScope[bin];
+            its += want * want;
+        }
+        return own > 0.0 ? dot / std::sqrt(own * its) : 0.0;
+    };
+    // It stands still from one span to the next.
+    Engine e(2);
+    auto still = [&] {
+        e.synth().telemetry(*telemetry);
+        const auto first = telemetry->outScope;
+        e.render(kBlock * 3 + 7);
+        e.synth().telemetry(*telemetry);
+        double most = 0.0, peak = 0.0;
+        for (int bin = 0; bin < kOutScopeBins; ++bin) {
+            most = std::max(most, static_cast<double>(std::abs(telemetry->outScope[bin] - first[bin])));
+            peak = std::max(peak, static_cast<double>(std::abs(first[bin])));
+        }
+        return peak > 0.1 && most < 0.03 * peak;
+    };
+
+    e.noteOn(69);
+    e.render(4800);
+    e.synth().telemetry(*telemetry);
+    const bool idle = peakOf() == 0.0f;
+    e.synth().setAnalyzing(true);
+    e.render(4800);
+    e.synth().telemetry(*telemetry);
+    const double like = sineLike();
+    const float level = peakOf();
+    const bool sineStill = still();
+    std::printf("      an A4 sine: %.4f like two cycles of one from its start, at %.3f\n", like, level);
+    check(idle && like > 0.999 && level > 0.5 && sineStill,
+          "the output scope captures nothing until the synth analyzes, then two periods of the note from a rising "
+          "zero crossing, standing still");
+
+    e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+    e.p[matrixIndex(1, 0)] = 0.5;
+    e.render(4800);
+    const bool fmStill = still();
+    const double fmLike = sineLike();
+    std::printf("      B into A at 50 %%: %.4f like a sine\n", fmLike);
+    check(fmStill && fmLike < 0.98, "FM changes the output scope's span, which stands still from one to the next");
+
+    // Let go of, the note fades to silence, which the scope takes too; switched off, it shows nothing.
+    e.noteOff(69);
+    e.render(48000);
+    e.synth().telemetry(*telemetry);
+    const float silent = peakOf();
+    e.noteOn(69);
+    e.render(4800);
+    e.synth().setAnalyzing(false);
+    e.render(kBlock);
+    e.synth().telemetry(*telemetry);
+    std::printf("      a second after the note: %.6f; switched off: %.6f\n", silent, peakOf());
+    check(silent < 1e-4f && peakOf() == 0.0f, "the output scope falls silent with the output, and shows nothing off");
+}
+
 } // namespace
 
 int main() {
@@ -1682,6 +1756,7 @@ int main() {
     }
     presetContentChecks();
     scopeChecks();
+    outScopeChecks();
 
     // --- Clicks. Roughness is the largest second difference; a steady low sine has almost none.
     std::printf("clicks (largest second difference, against a smooth reference):\n");

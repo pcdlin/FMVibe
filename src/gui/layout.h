@@ -193,13 +193,18 @@ constexpr float kCascadePad = 4.0f;
 constexpr float kCascadeSearchH = 30.0f;
 constexpr float kCascadeSearchW = 240.0f;
 constexpr int kCascadeMatches = 16;
-// Header: the output meter, the global knobs, the play cluster between two dividers, then Voices; all laid out from
-// kHeaderStart, which centers them between the name and PLAYING (as far from the name's end as Voices' is from
-// PLAYING's start, 113 px).
-constexpr float kHeaderStart = 209.0f;
+// Header: the output scope and meter, the global knobs, the play cluster between two dividers, then Voices; all laid
+// out from kHeaderStart (the meter's left edge), which centers them between the name and PLAYING: the scope as far
+// from the name's end as Voices' is from PLAYING's start, 61 px. Without the scope, the meter stood at 209 px, 113 px
+// from the name's end, so it moved right by half the scope and its gap.
+constexpr float kOutScopeW = 96.0f;
+constexpr float kOutScopeGap = 8.0f; // between the scope and the meter
+constexpr float kHeaderStart = 209.0f + (kOutScopeW + kOutScopeGap) * 0.5f;
 // The output meter, left of the Volume knob: a bar for each side, from -48 dB at the bottom to +6 dB at the top, red
 // past full scale.
 constexpr Rect kMeter{kHeaderStart, 13.0f, 14.0f, 38.0f};
+// The output scope, left of the meter and as tall: two periods of the newest note at a time (see kOutScopeBins).
+constexpr Rect kOutScope{kMeter.x - kOutScopeGap - kOutScopeW, kMeter.y, kOutScopeW, kMeter.h};
 constexpr float kHeaderKnobX = kHeaderStart + 28.0f;
 constexpr float kHeaderKnobW = 104.0f;
 // The play cluster, its two dividers with it, sits centered between the Pan knob's widest value ("100 L", ending

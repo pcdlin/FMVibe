@@ -694,7 +694,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     notes (or typed, as `C4`, `F#2 -20` or a MIDI note number); its ends stay at the ends too, and the reset button
     brings back every MIDI note and the curve along the dashed line. Velocity's curve opens over the routing panel
     the same way, from its display (see Velocity, under the keyboard strip).
-- **Header**: the output meter, left of Volume: a bar for each side showing its peak, from −48 dB at the bottom,
+- **Header**: everything between the name and the voice count is centered between them. First the output scope:
+  the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has
+  ended, as the effects' key tracking keeps it), starting where it crosses zero going up, so a steady sound stands
+  still; a span is taken anyway when it doesn't cross for a while, so silence shows as a flat line. Each span is drawn
+  with its peak at the display's edges, lifted by no more than 24 dB, so the shape shows at any volume while a fading
+  tail shrinks away; the audio thread captures only while the editor is open. Then the output meter, left of Volume:
+  a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
   the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, then
