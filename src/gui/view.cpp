@@ -5345,7 +5345,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // bottom.
         bool modulated = false;
         forEachMod(w.param, [&](const Assignment &) { modulated = true; });
-        const float lift = modulated ? 0.0f : -2.0f;
+        const float lift = modulated ? 0.0f : -1.0f; // unmodulated, its digits centered in it
         Rect textRect{w.rect.x, w.rect.y + lift, w.rect.w, w.rect.h};
         if (w.modeGlyph) { // its mode, other than Phase, at its left
             const auto mode = routeMode(value(routeModeParam(w.a, w.b)));
