@@ -672,7 +672,7 @@ float View::fxCardSpan(int slot) const {
 }
 
 float View::sourceSpan(int source) const {
-    return sourceFolded(source) ? kFoldedSource : 1.0f;
+    return sourceFolded(source) ? kFoldedSource : source == wideLfo() ? kWideSource : 1.0f;
 }
 
 float View::sourceOffset(const std::vector<int> &shown, size_t index) const {
@@ -685,6 +685,8 @@ float View::sourceOffset(const std::vector<int> &shown, size_t index) const {
 // Folding a card or unfolding it; a new effect or source starts unfolded.
 void View::setFolded(bool fx, int index, bool folded) {
     uint32_t &bits = fx ? controller_.layout().fxFolded : controller_.layout().sourcesFolded;
+    if (!fx && folded && index == wideLfo_) // a widened card unfolds at its normal size
+        wideLfo_ = -1;
     const uint32_t before = bits;
     bits = folded ? bits | (1u << index) : bits & ~(1u << index);
     if (bits != before)
@@ -1076,6 +1078,8 @@ void View::addSource(SourceType type, int copyOf) {
     setFolded(false, source, false);
     if (shapeEditor_ == source) // left open for a source the place held before
         shapeEditor_ = -1;
+    if (wideLfo_ == source)
+        wideLfo_ = -1;
     editMany(changes);
     if (controller_.layout().sourcesCollapsed) {
         controller_.layout().sourcesCollapsed = false;
@@ -1106,6 +1110,8 @@ void View::removeSource(int source) {
         controller_.layoutChanged();
     if (shapeEditor_ == source)
         shapeEditor_ = -1;
+    if (wideLfo_ == source)
+        wideLfo_ = -1;
     edit(paramIndex(source, SourceParam::Type), static_cast<double>(SourceType::None));
 }
 
@@ -1402,6 +1408,8 @@ std::vector<View::Widget> View::widgets() const {
             for (int part = 0; part < 3; ++part)
                 add(Kind::ShapeGrid, shapeGridButton(axis, part), -1, axis, part - 1);
         add(Kind::ShapeArea, shapeArea().inset(-8.0f), -1, editing);
+        for (int mode = 0; mode < 3; ++mode) // Points | Steps and Snap, as in a widened LFO card
+            add(Kind::ShapeMode, shapeModeButton(mode), -1, editing, mode);
         if (isNoteCurve(editing)) { // the range across, in the title row, after the title, close together
             const char *const labels[] = {tr(Str::LabelLow), tr(Str::LabelHigh)};
             const int range[] = {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)};
@@ -1990,21 +1998,62 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::SourceFold, {p.x, p.y + 98.0f, p.w, p.h - 98.0f}, -1, s);
             continue;
         }
-        const Rect p = sourceCard(card);
+        const float span = sourceSpan(s);
+        const Rect p = sourceCard(card, span);
         const bool lfo = sourceTypeOf(s) == SourceType::Lfo;
-        const float fold = sourcePower(card).x - 4.0f - 18.0f;
-        add(Kind::SourceGrip, {p.x, p.y, fold - 4.0f - p.x, 34.0f}, -1, s, position);
+        const bool widened = s == wideLfo();
+        const float fold = sourcePower(card, span).x - 4.0f - 18.0f;
+        const float gripEnd = widened ? lfoCardButton(card, 1).x - 4.0f : fold - 4.0f; // short of the reset, leftmost
+        add(Kind::SourceGrip, {p.x, p.y, gripEnd - p.x, 34.0f}, -1, s, position);
         add(Kind::SourceFold, {fold, p.y + 8.0f, 18.0f, 19.0f}, -1, s);
         add(Kind::SourceHandle, {p.x + 14.0f, p.y + 7.0f, 20.0f, 20.0f}, -1, s);
-        add(Kind::Toggle, sourcePower(card), sourceEnabledIndex(s));
-        add(Kind::SourceRemove, sourceRemove(card), -1, s);
+        add(Kind::Toggle, sourcePower(card, span), sourceEnabledIndex(s));
+        add(Kind::SourceRemove, sourceRemove(card, span), -1, s);
+        if (widened) {
+            // Its shape in the card: the title row's buttons, the tools and modes where a normal card's display is,
+            // the grid's steppers under the plot, and the plot with its points; greyed out, taking no input and
+            // without its points, while the full-size editor has the shape.
+            const bool elsewhere = shapeEditing() == s;
+            const size_t editorStart = list.size();
+            add(Kind::ShapeCollapse, lfoCardButton(card, 0), -1, s);
+            add(Kind::ShapeReset, lfoCardButton(card, 1), -1, s);
+            add(Kind::ShapeExpand, lfoCardButton(card, 2), -1, s);
+            for (int tool = 0; tool < kShapeTools; ++tool)
+                add(Kind::ShapeTool, lfoToolButton(card, tool), -1, s, tool);
+            for (int mode = 0; mode < 3; ++mode)
+                add(Kind::ShapeMode, lfoModeButton(card, mode), -1, s, mode);
+            for (int axis = 0; axis < 2; ++axis)
+                for (int part = 0; part < 3; ++part)
+                    add(Kind::ShapeGrid, lfoCardGridButton(card, axis, part), -1, axis, part - 1);
+            add(Kind::ShapeArea, lfoCardPlot(card).inset(-8.0f), -1, s);
+            for (size_t i = editorStart; i < list.size(); ++i)
+                list[i].disabled = elsewhere;
+            if (!elsewhere) {
+                const int count = shapePointCount(s);
+                for (int point = 0; point < count; ++point) {
+                    const double next = point + 1 < count ? shapePointX(s, point + 1) : 1.0;
+                    if (next - shapePointX(s, point) < 1e-6)
+                        continue; // a jump straight up or down has nothing to bend
+                    const Point c = shapeCurvePos(s, point);
+                    add(Kind::ShapeCurve, {c.x - 5.0f, c.y - 5.0f, 10.0f, 10.0f}, shapeIndex(s, point, PointField::Curve),
+                        s, point);
+                    list.back().compact = true;
+                }
+                for (int point = 0; point < count; ++point) {
+                    const Point c = shapePointPos(s, point);
+                    add(Kind::ShapePoint, {c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f}, -1, s, point);
+                    list.back().compact = true;
+                }
+            }
+        }
         if (lfo) {
             add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
             if (listMenu_ == paramIndex(s, SourceParam::Shape))
                 lfoList = lfoShapeButton(card);
             const bool random =
                 std::lround(value(paramIndex(s, SourceParam::Shape))) == static_cast<long>(LfoShape::Random);
-            add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
+            if (!widened)
+                add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
             if (random) {
                 knob(paramIndex(s, SourceParam::RandomSmooth), randomKnob(card, 0), 30.0f, tr(Str::LabelSmooth));
                 knob(paramIndex(s, SourceParam::RandomChaos), randomKnob(card, 1), 30.0f, tr(Str::LabelChaos));
@@ -2426,7 +2475,7 @@ void View::paint(Canvas &c) {
         const float card = cardOf(s);
         if (card == kOffScreen || sourceOn(s) || sourceFolded(s))
             continue;
-        const Rect p = sourceCard(card);
+        const Rect p = sourceCard(card, sourceSpan(s));
         c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kPanel.alpha(0.6f), 7.0f);
     }
     c.popClip();
@@ -2971,13 +3020,13 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     c.fillRect(title, color.alpha(0.18f), 6.0f);
     c.text(title, trf(Str::TitleShape, {sourceName(lfo)}), 11.0f, color, Align::Center, true);
     c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f},
-           tr(Str::HintCurve), 10.5f, kFaint, Align::Right);
+           shapeHint(), 10.5f, kFaint, Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
     // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
     const double zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? -1.0 : 0.0;
-    paintShapeGrid(c, zero, false);
+    paintShapeGrid(c, shapeArea(), zero, false);
     paintShapeGridControls(c);
 
     // The curve, filled toward the zero line.
@@ -3009,9 +3058,15 @@ void View::paintShapeEditor(Canvas &c, int shape) {
         // What the LFO puts out there: a unipolar one maps -1..1 onto 0..1.
         const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
         const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
-        c.text({r.x, r.bottom() + 10.0f, r.w - 220.0f, 16.0f},
+        c.text({r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f},
                trf(Str::CaptionShapePoint, {std::to_string(focus->b + 1), cycle, level}), 10.5f, kDim, Align::Left);
     }
+}
+
+std::string View::shapeHint() const {
+    const UiLayout &layout = controller_.layout();
+    return trf(Str::HintShape, {tr(layout.shapeSteps ? Str::HintShapeSteps : Str::HintShapePoints),
+                                tr(layout.shapeSnap ? Str::HintCtrlFree : Str::HintCtrlSnap)});
 }
 
 // A shaper's drawn curve: input across, output up, the plain line (no change) for reference.
@@ -3028,7 +3083,7 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
-    paintShapeGrid(c, 0.0, true);
+    paintShapeGrid(c, shapeArea(), 0.0, true);
     paintShapeGridControls(c);
     c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
     c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisInput), 10.5f, kFaint, Align::Right);
@@ -3065,7 +3120,7 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
         const std::string out = number("%+.2f", value(shapeIndex(shape, focus->b, PointField::Y)));
         c.text(below, trf(Str::CaptionCurvePoint, {std::to_string(focus->b + 1), in, out}), 10.5f, kDim, Align::Left);
     } else {
-        c.text(below, tr(Str::HintCurve), 10.0f, kFaint, Align::Left);
+        c.text(below, shapeHint(), 10.0f, kFaint, Align::Left);
     }
 }
 
@@ -3079,10 +3134,13 @@ void View::paintNoteCurveEditor(Canvas &c) {
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
     c.fillRect(title, color.alpha(0.18f), 6.0f);
     c.text(title, tr(Str::TitleNoteCurve), 11.0f, color, Align::Center, true);
+    const float hintX = kRouting.x + 148.0f + 2.0f * 96.0f + 12.0f; // after Low and High
+    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - 12.0f - hintX, 22.0f}, shapeHint(), 10.5f, kFaint,
+           Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
-    paintShapeGrid(c, -1.0, false);
+    paintShapeGrid(c, shapeArea(), -1.0, false);
     paintShapeGridControls(c);
     const double low = value(paramIndex(NoteParam::Low)), high = value(paramIndex(NoteParam::High));
     std::vector<double> key = curveKey(Curve::NoteExact, r);
@@ -3130,14 +3188,14 @@ void View::paintNoteCurveEditor(Canvas &c) {
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    const Rect below{r.x, r.bottom() + 10.0f, shapeGridButton(0, 0).x - 12.0f - r.x, 16.0f};
+    const Rect below{r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f};
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         char note[32];
         formatParam(paramIndex(NoteParam::Low), low + shapePointX(shape, focus->b) * (high - low), note, sizeof(note));
         const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
         c.text(below, trf(Str::CaptionNotePoint, {std::to_string(focus->b + 1), note, out}), 10.5f, kDim, Align::Left);
     } else {
-        c.text(below, tr(Str::HintNoteCurve), 10.0f, kFaint, Align::Left);
+        c.text(below, tr(Str::HintNoteAxes), 10.0f, kFaint, Align::Left);
     }
 }
 
@@ -3150,10 +3208,12 @@ void View::paintVelocityCurveEditor(Canvas &c) {
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 136.0f, 22.0f};
     c.fillRect(title, color.alpha(0.18f), 6.0f);
     c.text(title, tr(Str::TitleVelocityCurve), 11.0f, color, Align::Center, true);
+    c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f}, shapeHint(),
+           10.5f, kFaint, Align::Right);
 
     const Rect r = shapeArea();
     c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
-    paintShapeGrid(c, -1.0, false);
+    paintShapeGrid(c, shapeArea(), -1.0, false);
     paintShapeGridControls(c);
     c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
     for (int velocity = 32; velocity < 127; velocity += 32)
@@ -3188,14 +3248,14 @@ void View::paintVelocityCurveEditor(Canvas &c) {
 
     // The point under the mouse in numbers, or how to edit, under the plot left of the grid's controls.
     const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
-    const Rect below{r.x, r.bottom() + 10.0f, shapeGridButton(0, 0).x - 12.0f - r.x, 16.0f};
+    const Rect below{r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f};
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         const std::string in = number("%.0f", 127.0 * shapePointX(shape, focus->b));
         const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
         c.text(below, trf(Str::CaptionVelocityPoint, {std::to_string(focus->b + 1), in, out}), 10.5f, kDim,
                Align::Left);
     } else {
-        c.text(below, tr(Str::HintVelocityCurve), 10.0f, kFaint, Align::Left);
+        c.text(below, tr(Str::HintVelocityAxes), 10.0f, kFaint, Align::Left);
     }
 }
 
@@ -3294,8 +3354,7 @@ void View::paintPartialEditor(Canvas &c, int op) {
     }
 }
 
-void View::paintShapeGrid(Canvas &c, double zero, bool centered) {
-    const Rect r = shapeArea();
+void View::paintShapeGrid(Canvas &c, Rect r, double zero, bool centered) {
     const int across = controller_.layout().shapeGridX;
     const int upDown = controller_.layout().shapeGridY;
     // Lines across stand out every quarter, or every third on a grid of thirds; a centered grid's middle more.
@@ -3310,7 +3369,8 @@ void View::paintShapeGrid(Canvas &c, double zero, bool centered) {
         const double y = -1.0 + 2.0 * i / upDown;
         const bool atZero = std::abs(y - zero) < 1e-9;
         const bool half = 4 * i % upDown == 0;
-        c.line(shapeAt(0.0, y), shapeAt(1.0, y), kBorder.alpha(atZero ? 1.0f : (half ? 0.5f : 0.3f)), 1.0f, !atZero);
+        c.line(areaAt(r, 0.0, y), areaAt(r, 1.0, y), kBorder.alpha(atZero ? 1.0f : (half ? 0.5f : 0.3f)), 1.0f,
+               !atZero);
     }
 }
 
@@ -4641,6 +4701,60 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     }
 }
 
+// A widened LFO card's shape: the grid and the shape in the plot's frame, filled toward its zero line, and where
+// the newest voice is; its points and bends are widgets, but for while the full-size editor has the shape, which the
+// plot then only shows. Under it the point under the mouse in numbers, and an arrow by each of the grid's steppers.
+void View::paintLfoCard(Canvas &c, float card, int lfo) {
+    const Color color = kSourceColors[lfo];
+    const Rect r = lfoCardPlot(card);
+    c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
+    // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
+    const double zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? -1.0 : 0.0;
+    paintShapeGrid(c, r, zero, false);
+    auto get = [this](int index) { return value(index); };
+    std::vector<double> key = curveKey(Curve::LfoEditor, r);
+    keyShape(key, shapeCountIndex(lfo));
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        shapeOutline(get, lfo, 200, [&](double x, double y) { points.push_back(areaAt(r, x, y)); });
+        return points;
+    });
+    std::vector<Point> area = points;
+    area.push_back(areaAt(r, 1.0, zero));
+    area.push_back(areaAt(r, 0.0, zero));
+    c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
+    plotLine(c, points.data(), points.size(), color, 2.0f);
+    if (telemetry_.voices > 0 && sourceOn(lfo)) {
+        const Point dot = areaAt(r, lfoPhaseNow(lfo), lfoValueNow(lfo));
+        c.fillCircle(dot, 7.0f, color.alpha(0.25f));
+        c.fillCircle(dot, 3.5f, kText);
+    }
+
+    const Rect readout = lfoCardReadout(card);
+    c.fillRect(readout, kDisplayColor, 5.0f);
+    const Rect text{readout.x + 8.0f, readout.y, readout.w - 16.0f, readout.h};
+    const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
+    if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo && shapeEditing() != lfo) {
+        // What the LFO puts out there: a unipolar one maps -1..1 onto 0..1.
+        const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
+        const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
+        c.text(text, trf(Str::CaptionCardPointNumber, {std::to_string(focus->b + 1)}), 10.5f, kText, Align::Left,
+               true);
+        c.text(text, trf(Str::CaptionCardPoint, {number("%.1f", shapePointX(lfo, focus->b) * 100.0), level}), 10.0f,
+               kDim, Align::Right);
+    } else {
+        c.text(text, tr(Str::HintCardPoint), 10.0f, kFaint, Align::Left);
+    }
+    for (int axis = 0; axis < 2; ++axis) {
+        const Rect down = lfoCardGridButton(card, axis, 0);
+        axisIcon(c, {down.x - 8.0f, down.center().y}, axis, kFaint);
+    }
+    // While the full-size editor has the shape, this row is greyed out like the rest of the card's editor (whose
+    // widgets are dimmed as disabled ones are).
+    if (shapeEditing() == lfo)
+        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h}, kPanel.alpha(0.6f), 4.0f);
+}
+
 void View::paintSources(Canvas &c) {
     if (controller_.layout().sourcesCollapsed)
         return; // the chips and the toggle are widgets
@@ -4695,7 +4809,9 @@ void View::paintSource(Canvas &c, float card, int s) {
     c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, sourceName(s), 11.5f, sourceOn(s) ? kText : kDim, Align::Left,
            true);
 
-    if (lfo) {
+    if (s == wideLfo()) {
+        paintLfoCard(c, card, s);
+    } else if (lfo) {
         paintLfo(c, sourceDisplay(card, std::lround(value(paramIndex(s, SourceParam::Shape))) ==
                                              static_cast<long>(LfoShape::Random)),
                  s);
@@ -5495,6 +5611,43 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
         doneIcon(c, w.rect.center(), kText);
         break;
+    case Kind::ShapeCollapse:
+    case Kind::ShapeExpand:
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
+        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
+        if (w.kind == Kind::ShapeCollapse)
+            collapseIcon(c, w.rect.center(), hovered ? kText : kDim);
+        else
+            expandIcon(c, w.rect.center(), hovered ? kText : kDim);
+        break;
+    case Kind::ShapeTool: { // Paste faint while nothing is copied
+        const bool can = w.b != static_cast<int>(ShapeTool::Paste) || shapeCopied();
+        c.fillRect(w.rect, hovered && can ? kTrack : kRaised, 5.0f);
+        shapeToolIcon(c, w.rect.center(), w.b, !can ? kFaint : hovered ? kText : kDim);
+        break;
+    }
+    case Kind::ShapeMode: { // Points | Steps, the one picked lit, and Snap lit while it is on
+        const UiLayout &layout = controller_.layout();
+        const bool on = w.b == 2 ? layout.shapeSnap : layout.shapeSteps == (w.b == 1);
+        const Color color = shapeColor(w.a);
+        c.fillRect(w.rect, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
+        if (on)
+            c.strokeRect(w.rect, color, 1.0f, 5.0f);
+        const Color ink = on ? kText : (hovered ? kText : kDim);
+        const Str names[] = {Str::SwitchPoints, Str::SwitchSteps, Str::SwitchSnap};
+        const char *name = tr(names[w.b]);
+        const float textW = c.textWidth(name, 10.5f, on);
+        const float left = w.rect.center().x - (16.0f + textW) * 0.5f;
+        const Point icon{left + 6.0f, w.rect.center().y};
+        if (w.b == 0)
+            pointsIcon(c, icon, on ? color : ink);
+        else if (w.b == 1)
+            stepsIcon(c, icon, on ? color : ink);
+        else
+            gridIcon(c, icon, on ? color : ink);
+        c.text({left + 16.0f, w.rect.y, textW + 2.0f, w.rect.h}, name, 10.5f, ink, Align::Left, on);
+        break;
+    }
     case Kind::Key:
         paintKey(c, w, hovered, active);
         break;
@@ -6124,7 +6277,10 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::PartialEdit && hover_->kind != Kind::ClipDisplay &&
-         hover_->kind != Kind::ShapeDone && hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
+         hover_->kind != Kind::ShapeDone && hover_->kind != Kind::ShapeCollapse && hover_->kind != Kind::ShapeExpand &&
+         hover_->kind != Kind::ShapeTool && hover_->kind != Kind::ShapeMode &&
+         !(hover_->kind == Kind::ShapeArea && hover_->a == wideLfo() && shapeEditing() != hover_->a) &&
+         hover_->kind != Kind::SlotBypass && hover_->kind != Kind::MacroName &&
          hover_->kind != Kind::ModPill &&
          hover_->kind != Kind::SourcePolarity && hover_->kind != Kind::Wire && hover_->kind != Kind::ModsSource &&
          hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
@@ -6241,6 +6397,18 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipEditCurve);
     else if (hover_->kind == Kind::ShapeDone)
         text = tr(Str::TipDone);
+    else if (hover_->kind == Kind::ShapeCollapse)
+        text = tr(Str::TipShapeCollapse);
+    else if (hover_->kind == Kind::ShapeExpand)
+        text = tr(Str::TipShapeExpand);
+    else if (hover_->kind == Kind::ShapeTool) {
+        const Str tips[] = {Str::TipShapeInvert, Str::TipShapeReverse, Str::TipShapeShiftLeft,
+                            Str::TipShapeShiftRight, Str::TipShapeCopy, Str::TipShapePaste};
+        text = tr(tips[std::clamp(hover_->b, 0, kShapeTools - 1)]);
+    } else if (hover_->kind == Kind::ShapeMode)
+        text = tr(hover_->b == 0 ? Str::TipShapePoints : hover_->b == 1 ? Str::TipShapeSteps : Str::TipShapeSnap);
+    else if (hover_->kind == Kind::ShapeArea) // a widened LFO card's plot, which has no room for the hint
+        text = shapeHint();
     else if (hover_->kind == Kind::ShapeGrid)
         text = tr(hover_->a == 0 ? Str::TipGridAcross : Str::TipGridUpDown);
     else if (hover_->kind == Kind::FxRemove)
@@ -6916,7 +7084,9 @@ bool View::mouseMove(Point p, Modifiers mods) {
         drag_.start = p;
         drag_.startValue = drag_.kind == DragKind::Glow ? glowDragged_ : value(drag_.widget.param);
     }
-    drag_.snap = mods.ctrl;
+    drag_.snap = drag_.kind == DragKind::ShapePoint || drag_.kind == DragKind::ShapeStep
+                     ? shapeSnaps(drag_.widget.a, mods.ctrl)
+                     : mods.ctrl;
     drag_.now = p;
     if (std::hypot(p.x - drag_.start.x, p.y - drag_.start.y) > 3.0f)
         drag_.moved = true;
@@ -6967,7 +7137,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         for (int f = 0; f < shapeParamCount(shape); ++f)
             before.push_back(value(shapeBase(shape) + f));
         controller_.beginStep();
-        if (!addShapeStep(shape, unmirrored(shape, p), mods.ctrl, before)) {
+        const bool snap = shapeSnaps(shape, mods.ctrl);
+        if (!addShapeStep(shape, unmirrored(shape, p), snap, before)) {
             controller_.endStep();
             flash(trf(Str::MsgShapeFull, {std::to_string(shapeMaxPoints(shape))}));
             return;
@@ -6975,7 +7146,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.kind = DragKind::ShapeStep;
         drag_.widget = w;
         drag_.start = drag_.now = p;
-        drag_.snap = mods.ctrl;
+        drag_.snap = snap;
         drag_.step = true;
         drag_.shapeBefore = std::move(before);
         return;
@@ -7242,13 +7413,41 @@ void View::mouseDown(Point p, Modifiers mods) {
         flipSwitch(w.param);
         break;
 
-    case Kind::LfoDisplay:
-        if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom))
-            shapeEditor_ = w.a;
+    case Kind::LfoDisplay: // a Custom LFO's widens its card, which then has the shape (and the full-size editor not)
+        if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom)) {
+            wideLfo_ = w.a;
+            if (shapeEditing() >= 0 && !isCurve(shapeEditing()))
+                shapeEditor_ = -1;
+            revealSource(w.a);
+            hover_.reset();
+        }
         break;
-    case Kind::ShapeDone:
+    case Kind::ShapeDone: // an LFO's full-size editor goes back into its widened card
+        if (const int shape = shapeEditing(); shape >= 0 && !isCurve(shape)) {
+            wideLfo_ = shape;
+            revealSource(shape);
+        }
         shapeEditor_ = -1;
         partialEditor_ = -1;
+        break;
+    case Kind::ShapeCollapse:
+        wideLfo_ = -1;
+        hover_.reset();
+        break;
+    case Kind::ShapeExpand:
+        shapeEditor_ = w.a;
+        partialEditor_ = -1;
+        hover_.reset();
+        break;
+    case Kind::ShapeTool:
+        applyShapeTool(w.a, static_cast<ShapeTool>(w.b));
+        break;
+    case Kind::ShapeMode:
+        if (w.b == 2)
+            layout.shapeSnap = !layout.shapeSnap;
+        else
+            layout.shapeSteps = w.b == 1;
+        controller_.layoutChanged();
         break;
     case Kind::ClipDisplay:
         shapeEditor_ = kMaxSources + w.a;
@@ -7275,8 +7474,16 @@ void View::mouseDown(Point p, Modifiers mods) {
             break; // the list stays open for another pick
         listMenu_ = -1;
         edit(w.param, w.b); // a drawn curve is edited in the card, or the big editor
-        if (isLfoShape(w.param) && w.b == static_cast<int>(LfoShape::Custom))
-            shapeEditor_ = sourceOf(w.param); // an LFO's opens the shape editor
+        // Custom widens an LFO's card, to draw the shape right there; another shape takes it back to its size.
+        if (isLfoShape(w.param) && w.b == static_cast<int>(LfoShape::Custom)) {
+            const int lfo = sourceOf(w.param);
+            wideLfo_ = lfo;
+            if (shapeEditing() >= 0 && !isCurve(shapeEditing()) && shapeEditing() != lfo)
+                shapeEditor_ = -1;
+            revealSource(lfo);
+        } else if (isLfoShape(w.param) && sourceOf(w.param) == wideLfo_) {
+            wideLfo_ = -1;
+        }
         break;
     case Kind::PeqTypeButton:
         peqMenu_ = peqMenu_ == w.param ? -1 : w.param;
@@ -7782,7 +7989,7 @@ void View::doubleClick(Point p, Modifiers mods) {
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
                 hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
-                drawsStep(*hit, mods))) {
+                hit->kind == Kind::ShapeTool || drawsStep(*hit, mods))) {
         // Windows turns a quick second click into a double-click instead of a press:
         // play it as a press so fast repeated notes, octave steps, undos and steps aren't dropped.
         mouseDown(p, mods);

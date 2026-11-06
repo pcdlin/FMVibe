@@ -73,6 +73,102 @@ void editIcon(Canvas &c, Point center, Color color) {
     c.fillPolygon(lead, std::size(lead), color);
 }
 
+namespace {
+// An arrowhead at `tip`, pointing along (dx, dy) (a unit vector), `size` long.
+void arrowTip(Canvas &c, Point tip, float dx, float dy, float size, Color color, float width) {
+    const Point back{tip.x - dx * size, tip.y - dy * size};
+    c.line({back.x - dy * size, back.y + dx * size}, tip, color, width);
+    c.line({back.x + dy * size, back.y - dx * size}, tip, color, width);
+}
+} // namespace
+
+void collapseIcon(Canvas &c, Point m, Color color) {
+    c.line({m.x, m.y - 5.5f}, {m.x, m.y + 5.5f}, color, 1.4f);
+    for (float side : {-1.0f, 1.0f}) {
+        const Point tip{m.x + side * 2.5f, m.y};
+        c.line({m.x + side * 8.0f, m.y}, tip, color, 1.4f);
+        arrowTip(c, tip, -side, 0.0f, 3.0f, color, 1.4f);
+    }
+}
+
+void expandIcon(Canvas &c, Point m, Color color) {
+    constexpr float k = 0.7071f;
+    for (float side : {-1.0f, 1.0f}) {
+        const Point tip{m.x + side * 5.5f, m.y - side * 5.5f};
+        c.line({m.x + side * 1.0f, m.y - side * 1.0f}, tip, color, 1.4f);
+        arrowTip(c, tip, side * k, -side * k, 3.0f, color, 1.4f);
+    }
+}
+
+void shapeToolIcon(Canvas &c, Point m, int tool, Color color) {
+    constexpr float kW = 1.4f;
+    switch (tool) {
+    case 0: // invert: up and down arrows across a middle line
+        c.line({m.x, m.y - 6.5f}, {m.x, m.y + 6.5f}, color, kW);
+        arrowTip(c, {m.x, m.y - 6.5f}, 0.0f, -1.0f, 3.0f, color, kW);
+        arrowTip(c, {m.x, m.y + 6.5f}, 0.0f, 1.0f, 3.0f, color, kW);
+        c.line({m.x - 8.0f, m.y}, {m.x - 3.0f, m.y}, color, kW);
+        c.line({m.x + 3.0f, m.y}, {m.x + 8.0f, m.y}, color, kW);
+        break;
+    case 1: // reverse: left and right arrows across an upright line
+        c.line({m.x - 6.5f, m.y}, {m.x + 6.5f, m.y}, color, kW);
+        arrowTip(c, {m.x - 6.5f, m.y}, -1.0f, 0.0f, 3.0f, color, kW);
+        arrowTip(c, {m.x + 6.5f, m.y}, 1.0f, 0.0f, 3.0f, color, kW);
+        c.line({m.x, m.y - 7.0f}, {m.x, m.y - 3.0f}, color, kW);
+        c.line({m.x, m.y + 3.0f}, {m.x, m.y + 7.0f}, color, kW);
+        break;
+    case 2: // shift left: an arrow to a line at the left
+    case 3: { // shift right: to one at the right
+        const float way = tool == 2 ? -1.0f : 1.0f;
+        const Point tip{m.x + way * 4.5f, m.y};
+        c.line({m.x - way * 5.5f, m.y}, tip, color, kW);
+        arrowTip(c, tip, way, 0.0f, 3.5f, color, kW);
+        c.line({m.x + way * 7.0f, m.y - 6.0f}, {m.x + way * 7.0f, m.y + 6.0f}, color, kW);
+        break;
+    }
+    case 4: // copy: two sheets, one over the other
+        c.strokeRect({m.x - 6.0f, m.y - 2.5f, 8.5f, 9.0f}, color, 1.2f, 1.5f);
+        c.line({m.x - 2.0f, m.y - 4.5f}, {m.x - 2.0f, m.y - 6.5f}, color, 1.2f);
+        c.line({m.x - 2.0f, m.y - 6.5f}, {m.x + 6.0f, m.y - 6.5f}, color, 1.2f);
+        c.line({m.x + 6.0f, m.y - 6.5f}, {m.x + 6.0f, m.y + 2.5f}, color, 1.2f);
+        c.line({m.x + 6.0f, m.y + 2.5f}, {m.x + 4.5f, m.y + 2.5f}, color, 1.2f);
+        break;
+    default: // paste: a clipboard
+        c.strokeRect({m.x - 5.5f, m.y - 5.0f, 11.0f, 12.5f}, color, 1.2f, 1.5f);
+        c.fillRect({m.x - 3.0f, m.y - 7.0f, 6.0f, 3.5f}, color, 1.0f);
+        c.line({m.x - 3.0f, m.y + 0.5f}, {m.x + 3.0f, m.y + 0.5f}, color, 1.2f);
+        c.line({m.x - 3.0f, m.y + 3.5f}, {m.x + 2.0f, m.y + 3.5f}, color, 1.2f);
+        break;
+    }
+}
+
+void pointsIcon(Canvas &c, Point m, Color color) {
+    c.line({m.x - 6.0f, m.y + 4.0f}, {m.x - 1.5f, m.y - 1.0f}, color, 1.2f);
+    c.line({m.x + 1.5f, m.y - 1.0f}, {m.x + 6.0f, m.y + 3.0f}, color, 1.2f);
+    c.strokeCircle({m.x, m.y - 2.0f}, 2.2f, color, 1.3f);
+}
+
+void stepsIcon(Canvas &c, Point m, Color color) {
+    const Point stair[] = {{m.x - 7.0f, m.y + 4.0f}, {m.x - 3.0f, m.y + 4.0f}, {m.x - 3.0f, m.y - 4.0f},
+                           {m.x + 3.0f, m.y - 4.0f}, {m.x + 3.0f, m.y + 1.0f}, {m.x + 7.0f, m.y + 1.0f}};
+    c.polyline(stair, std::size(stair), color, 1.3f);
+}
+
+void gridIcon(Canvas &c, Point m, Color color) {
+    for (int i = -1; i <= 1; ++i) {
+        c.line({m.x + i * 4.0f, m.y - 6.0f}, {m.x + i * 4.0f, m.y + 6.0f}, color, 1.0f);
+        c.line({m.x - 6.0f, m.y + i * 4.0f}, {m.x + 6.0f, m.y + i * 4.0f}, color, 1.0f);
+    }
+}
+
+void axisIcon(Canvas &c, Point m, int axis, Color color) {
+    const float dx = axis == 0 ? 1.0f : 0.0f, dy = axis == 0 ? 0.0f : 1.0f;
+    const Point a{m.x - dx * 5.5f, m.y - dy * 5.5f}, b{m.x + dx * 5.5f, m.y + dy * 5.5f};
+    c.line(a, b, color, 1.2f);
+    arrowTip(c, a, -dx, -dy, 2.5f, color, 1.2f);
+    arrowTip(c, b, dx, dy, 2.5f, color, 1.2f);
+}
+
 // A filter type's response in a few strokes, for the type buttons: frequency across, level up.
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color) {
     std::vector<double> key = curveKey(Curve::FilterIcon, r);

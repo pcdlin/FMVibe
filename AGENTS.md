@@ -226,6 +226,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     route (or one the wheel switched on) not kept at 0 %, and a press drifting a pixel setting nothing; a shaper's
     row routing it into the other shaper and, on the diagonal, into itself;
   - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
+  - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
+    plain click, and Snap snapping a shaper effect's curve point in its editor;
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q;
@@ -292,7 +294,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     double-click for a word), cutting and pasting;
   - drawing a Custom wave's partials, at 16 and 64 of them too (the wheel stepping through the counts), the ones a lower count hides kept as they were, the
     edit button (a pencil) by the keyboard switch opening the partial editor and closing it (read off the rendered
-    pixels), and the LFO shape editor hiding the inspector;
+    pixels), and the full-size LFO shape editor hiding the inspector;
+  - a Custom LFO's card: picking Custom widening it, and so a click on its display (the next card moving along), the inspector's knobs turning meanwhile, its shape's points added and dragged in the card, its
+    tools inverting, reversing and shifting the shape (each one undo step) and copying it into another LFO (one card
+    widened at a time), Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its
+    full-size editor greying the card's editor out (taking no clicks) until it closes, by its done button or a view
+    tab, the card staying widened, also while the modulation panel collapses, and the
+    card back to its size by its collapse button or another shape;
   - an LFO's shape list (going with the LFO undone), the random LFO's knobs and its dot waiting at the end of a cycle (read off the rendered
     pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, a point dragged
     onto its neighbor's time, and
@@ -589,8 +597,9 @@ itself.
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
-  scope's cycle count, the wires bent away from their first bow (by route) and the MODS view's empty modulations
-  (each its source + 1 and its target's id + 1, 0 for none). The host's state goes on with
+  scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
+  (each its source + 1 and its target's id + 1, 0 for none) and how shapes are edited (Steps, then Snap).
+  The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096

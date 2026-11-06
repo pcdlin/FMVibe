@@ -70,6 +70,11 @@ struct UiLayout {
     // source (-1 for none) and its target (a param index, -1 for none). They modulate nothing; once both are picked,
     // the modulation takes a slot of its source and leaves this list. Part of the patch, like the node places.
     std::vector<std::pair<int, int>> emptyMods;
+    // How shapes and curves are edited, with the grid: whether a click on one draws a step (Shift then works with
+    // points), and whether its points snap to the grid (Ctrl then lets them go). They belong to the editor, like the
+    // grid.
+    bool shapeSteps = false;
+    bool shapeSnap = false;
 };
 
 // How many empty modulations the MODS view keeps at most.

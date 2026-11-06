@@ -208,6 +208,8 @@ private:
         layout_.keysCollapsed = before.keysCollapsed;
         layout_.shapeGridX = before.shapeGridX;
         layout_.shapeGridY = before.shapeGridY;
+        layout_.shapeSteps = before.shapeSteps;
+        layout_.shapeSnap = before.shapeSnap;
         layout_.opTab = before.opTab;
         layout_.scopeCycles = before.scopeCycles;
     }

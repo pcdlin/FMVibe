@@ -66,6 +66,18 @@ void resetIcon(Canvas &c, Point center, Color color);
 void doneIcon(Canvas &c, Point center, Color color);
 // A pencil, about 11 x 11, writing toward the lower left: the edit buttons'.
 void editIcon(Canvas &c, Point center, Color color);
+// Two arrows pointing in at a middle line, across: a widened card back to its size; and two pointing out to opposite
+// corners: the full-size editor.
+void collapseIcon(Canvas &c, Point center, Color color);
+void expandIcon(Canvas &c, Point center, Color color);
+// A widened LFO card's tools, by View::ShapeTool: invert, reverse, shift left and right, copy and paste.
+void shapeToolIcon(Canvas &c, Point center, int tool, Color color);
+// What a click on a shape does: points (a dot on a line), steps (a stair); and snapping to the grid (a grid).
+void pointsIcon(Canvas &c, Point center, Color color);
+void stepsIcon(Canvas &c, Point center, Color color);
+void gridIcon(Canvas &c, Point center, Color color);
+// A double-headed arrow across (axis 0) or up and down (1), by the grid's steppers.
+void axisIcon(Canvas &c, Point center, int axis, Color color);
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color);
 bool isFxIconSwitch(FxParam field);
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);

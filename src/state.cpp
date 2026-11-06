@@ -289,6 +289,9 @@ void layoutFields(Io &io, Layout &ui) {
     io.paramValues(ui.wireBends, -gui::kMaxWireBend, gui::kMaxWireBend);
     // The modulations added in the MODS view without a source or a target yet.
     io.emptyMods(ui.emptyMods);
+    // How shapes are edited: steps or points, and snapping to the grid.
+    io.number(ui.shapeSteps, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    io.number(ui.shapeSnap, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
 }
 
 } // namespace

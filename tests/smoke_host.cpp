@@ -3362,6 +3362,7 @@ int main(int argc, char **argv) {
             layout.push_back(k % 3 == 0 ? 0.0f : static_cast<float>(k % kAllSources + 1)); // a source, or none
             layout.push_back(k % 3 == 1 ? 0.0f : static_cast<float>(idOfIndex(paramIndex(k % kOps, OpParam::Ratio))) + 1.0f);
         }
+        layout.insert(layout.end(), {1.0f, 1.0f}); // an LFO's shape drawn in steps, snapping to the grid
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

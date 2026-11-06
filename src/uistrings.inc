@@ -496,6 +496,9 @@ STR(SwitchMono, "MONO")
 STR(SwitchLegato, "LEGATO")
 STR(SwitchAlways, "ALWAYS") // the glide's
 STR(SwitchStereo, "STEREO")
+STR(SwitchPoints, "Points") // what a click on an LFO's shape does
+STR(SwitchSteps, "Steps")
+STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
 STR(SwitchHard, "HARD") // the shaper effect's first three curves
 STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")
@@ -521,12 +524,15 @@ STR(ButtonLoad, "Load")
 STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
 STR(HintFx, "click icon: toggle  ·  drag title: reorder")
-// An LFO's shape, a shaper's curve:
-STR(HintCurve, "double-click: add/delete  ·  Shift+click: step  ·  dots: bend  ·  Ctrl: snap")
-STR(HintNoteCurve, "across: notes from Low to High  ·  up: output  ·  double-click: add/delete  ·  "
-                   "Shift+click: step  ·  dots: bend  ·  Ctrl: snap")
-STR(HintVelocityCurve, "across: velocity  ·  up: output  ·  double-click: add/delete  ·  "
-                       "Shift+click: step  ·  dots: bend  ·  Ctrl: snap")
+// What the note source's and velocity's curves show:
+STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
+STR(HintVelocityAxes, "across: velocity  ·  up: output")
+// A shape or curve, by how a click works on it and whether its points snap:
+STR(HintShape, "{1}  ·  dots: bend  ·  Ctrl: {2}")
+STR(HintShapePoints, "double-click: add/delete  ·  Shift+click: step")
+STR(HintShapeSteps, "click: step  ·  Shift+click: points")
+STR(HintCtrlSnap, "snap")
+STR(HintCtrlFree, "free")
 STR(HintPartials, "drag to draw  ·  double-click to silence")
 STR(HintNoSources, "No modulators yet.")
 
@@ -573,6 +579,10 @@ STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
+// In a widened LFO card, under its shape: the point under the mouse, its place in the cycle and its level.
+STR(CaptionCardPointNumber, "#{1}")
+STR(CaptionCardPoint, "{1} %  ·  {2}")
+STR(HintCardPoint, "Hover a point")
 STR(CaptionCurvePoint, "point {1}  ·  in {2}  ·  out {3}")
 STR(CaptionNotePoint, "point {1}  ·  {2}  ·  out {3} %")
 STR(CaptionVelocityPoint, "point {1}  ·  velocity {2}  ·  out {3} %")
@@ -655,6 +665,17 @@ STR(TipEditPartials, "Edit partials") // a Custom wave's edit button, by the key
 STR(TipEditCurve, "Open curve editor") // a drawn shaper curve's edit button
 STR(TipClosePartials, "Close partial editor")
 STR(TipDone, "Done")
+STR(TipShapeCollapse, "Collapse")
+STR(TipShapeExpand, "Open large editor")
+STR(TipShapeInvert, "Invert")
+STR(TipShapeReverse, "Reverse")
+STR(TipShapeShiftLeft, "Shift left")
+STR(TipShapeShiftRight, "Shift right")
+STR(TipShapeCopy, "Copy shape")
+STR(TipShapePaste, "Paste copied shape")
+STR(TipShapePoints, "Double click to add and move points")
+STR(TipShapeSteps, "Click to draw steps, Shift+click for points")
+STR(TipShapeSnap, "Snap to grid")
 STR(TipGridAcross, "Horizontal grid (Ctrl to snap)")
 STR(TipGridUpDown, "Vertical grid (Ctrl to snap)")
 STR(TipFxRemove, "Remove effect")
@@ -745,6 +766,8 @@ STR(MsgEmptyModsFull, "Up to {1} empty modulations allowed.")
 STR(MsgRouteExists, "{1} already routes to {2}")
 STR(MsgChainFull, "Only supports up to {1} effects in the chain")
 STR(MsgShapeFull, "Only supports up to {1} points per shape")
+STR(MsgShapeCopied, "{1} shape copied")
+STR(MsgNothingCopied, "Copy a shape first")
 STR(MsgNoteCurveEnds, "End points can't be deleted")
 STR(MsgCurveEnds, "End points can't be deleted")
 STR(MsgCurveMiddle, "Symmetric curves keep their middle point")

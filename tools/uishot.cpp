@@ -539,6 +539,32 @@ Point shapeGrid(int axis, int part) {
     const float x = 1144.0f - (axis == 0 ? 148.0f : 64.0f) + (part > 0 ? 18.0f : 0.0f) + (part > 1 ? 28.0f : 0.0f);
     return {x + kParts[part] * 0.5f, 458.0f};
 }
+// A Custom LFO's display, a click on which widens its card to two card places. The widened card's title row buttons:
+// back to a normal card (0), the shape's reset (1) and the full-size editor (2), left to right the reset, back to a
+// normal card and the full-size editor; its shape tools, by
+// View::ShapeTool, where a normal card's display is, and under them Points (0), Steps (1) and Snap (2); its plot,
+// 264 x 102 from 281 px into the card, 44 under its top; and the grid's steppers under it, per axis (0 across) a
+// step down (part 0), the count and a step up.
+Point lfoDisplay(float card) {
+    return {cardX(card) + 138.0f, 660.0f};
+}
+Point wideButton(float card, int button) {
+    constexpr float kFromRight[] = {1.0f, 2.0f, 0.0f};
+    return {cardX(card) + 2.0f * kCardW + 12.0f - 106.0f - kFromRight[button] * 34.0f, 554.0f};
+}
+Point lfoTool(float card, int tool) {
+    return {cardX(card) + 16.0f + tool * 41.5f + 18.75f, 645.0f};
+}
+Point lfoMode(float card, int mode) {
+    return {cardX(card) + 16.0f + (mode < 2 ? mode * 75.0f + 37.5f : 156.0f + 44.5f), 673.0f};
+}
+Point cardShapeAt(float card, double x, double y) {
+    return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 631.0f - static_cast<float>(y) * 44.88f};
+}
+Point cardGrid(float card, int axis, int part) {
+    constexpr float kX[] = {14.0f, 32.0f, 54.0f}, kW[] = {18.0f, 22.0f, 18.0f};
+    return {cardX(card) + 273.0f + 128.0f + axis * 76.0f + kX[part] + kW[part] * 0.5f, 709.0f};
+}
 // A random LFO's Smooth (0) and Chaos (1) knobs, right of its narrowed display.
 Point randomKnob(float card, int knob) {
     return {cardX(card) + 186.0f + knob * 50.0f, 649.0f};
@@ -866,10 +892,11 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Organ), "the list picks Organ");
     view.undo();
 
-    // The shape editor spans the inspector, which it hides: no operator tab or knob where they were. Its grid: a
-    // step up across is 24 lines, and Ctrl snaps a point to them.
+    // The full-size shape editor (from a Custom LFO's widened card) spans the inspector, which it hides: no operator
+    // tab or knob where they were. Its grid: a step up across is 24 lines, and Ctrl snaps a point to them.
     click(view, shapeButton(0));
     click(view, shapeItem(0, LfoShape::Custom));
+    click(view, wideButton(0, 2));
     const double fineBefore = model.value(paramIndex(0, OpParam::Phase));
     drag(view, kOpPhaseKnob, {kOpPhaseKnob.x, kOpPhaseKnob.y - 30.0f});
     check(model.value(paramIndex(0, OpParam::Phase)) == fineBefore && model.value(shapeCountIndex(0)) == 2.0,
@@ -890,7 +917,8 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     const bool reset = model.value(point) == 0.5 && model.value(shapeCountIndex(0)) == 2.0;
     view.undo();
     check(reset && std::abs(model.value(point) - 7.0 / 24.0) < 1e-9, "the reset button brings the first shape back, and undoes");
-    click(view, kShapeDone);
+    click(view, kShapeDone); // back into the widened card, and that back to its size
+    click(view, wideButton(0, 0));
 
     // Taking an effect out is one step, its modulation included.
     click(view, kFxTab);
@@ -1621,6 +1649,179 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
 // Folding cards: the chevron left of an effect card's cross folds it to a strip (38 px, its neighbours closing
 // up), whose icon stays where it was and still switches it, and whose name unfolds it; an LFO card folds the
 // same way (to 0.2 of a place) and its strip's grip still moves it.
+// A Custom LFO's card widens to edit its shape in the modulation panel, the panels above staying in use: picking
+// Custom, or a click on a Custom LFO's display, widens it to two card places, the next card moving along. Its shape
+// is drawn there as in the full-size editor; its tools invert, reverse, shift and copy it, Points | Steps and Snap
+// pick how a click works and whether points snap; its full-size button opens the shape over the panels, greying the
+// card's editor out until it closes, and its own collapse button, another shape or folding takes the card back to
+// its size; collapsing the modulation panel leaves it widened.
+void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    for (int lfo = 0; lfo < 3; ++lfo)
+        model.values[paramIndex(lfo, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+    view.poll();
+    auto pointValue = [&](int lfo, int point, PointField field) {
+        return model.value(shapePointIndex(lfo, point, field));
+    };
+    auto roughly = [](double a, double b, double within = 0.01) { return std::abs(a - b) < within; };
+    const int count = shapeCountIndex(0);
+    // The power switch of the card at a place, and whose it is: LFO 2's card one place along while LFO 1's is wide.
+    auto powerAt = [&](float place, float span) {
+        return Point{cardX(place) + span * (kCardW + 12.0f) - 12.0f - 43.0f, 545.0f};
+    };
+    auto switches = [&](Point at, int lfo) {
+        click(view, at);
+        const bool off = model.value(sourceEnabledIndex(lfo)) == 0.0;
+        click(view, at);
+        return off && model.value(sourceEnabledIndex(lfo)) == 1.0;
+    };
+    click(view, shapeButton(0));
+    click(view, shapeItem(0, LfoShape::Custom));
+    const bool widened = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
+    click(view, wideButton(0, 0));
+    const bool normal = switches(sourcePower(1), 1);
+    click(view, lfoDisplay(0));
+    const bool again = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
+    check(widened && normal && again &&
+              model.value(paramIndex(0, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom),
+          "picking Custom widens an LFO's card, and so does a click on its display");
+    // The inspector stays: its Fine knob turns while the shape shows.
+    const double fineBefore = model.value(paramIndex(0, OpParam::Fine));
+    drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 30.0f});
+    check(model.value(paramIndex(0, OpParam::Fine)) != fineBefore && model.openEdits == 0,
+          "the inspector's knobs turn while a widened card shows an LFO's shape");
+    view.undo();
+
+    // Points as in the full-size editor: a double-click adds one, a drag moves it, a double-click deletes it.
+    view.doubleClick(cardShapeAt(0, 0.75, -0.4), {});
+    const bool added = model.value(count) == 3.0 && roughly(pointValue(0, 2, PointField::X), 0.75) &&
+                       roughly(pointValue(0, 2, PointField::Y), -0.4, 0.03);
+    drag(view, cardShapeAt(0, 0.75, -0.4), cardShapeAt(0, 0.8, 0.0));
+    const bool dragged = roughly(pointValue(0, 2, PointField::X), 0.8) && roughly(pointValue(0, 2, PointField::Y), 0.0, 0.03);
+    view.undo();
+    model.live.voices = 1;
+    model.live.lfoPhases[0] = 0.3f;
+    model.live.sources[0] = 0.2f;
+    view.poll();
+    view.mouseMove(cardShapeAt(0, 0.75, -0.4), {});
+    check(added && dragged && model.openEdits == 0 && renderer.save(view, dir / "10d-lfo-card.png"),
+          "a widened card's shape takes points and drags, as the full-size editor's");
+    model.live.voices = 0;
+    view.poll();
+
+    // The tools: Invert flips each level; Reverse runs the shape back to front, the first point staying first and each
+    // bend the other way; Shift moves it a grid column later or earlier round the cycle, a point put on the curve where
+    // the new start falls; each one undo step.
+    model.set(shapePointIndex(0, 1, PointField::Curve), 0.5);
+    click(view, lfoTool(0, 0));
+    const bool inverted = pointValue(0, 0, PointField::Y) == 1.0 && pointValue(0, 1, PointField::Y) == -1.0 &&
+                          roughly(pointValue(0, 2, PointField::Y), 0.4, 0.03) &&
+                          pointValue(0, 1, PointField::Curve) == 0.5;
+    click(view, lfoTool(0, 1));
+    const bool reversed = model.value(count) == 3.0 && pointValue(0, 0, PointField::Y) == 1.0 &&
+                          roughly(pointValue(0, 1, PointField::X), 0.25) &&
+                          roughly(pointValue(0, 1, PointField::Y), 0.4, 0.03) &&
+                          pointValue(0, 1, PointField::Curve) == -0.5 && pointValue(0, 2, PointField::X) == 0.5 &&
+                          pointValue(0, 2, PointField::Y) == -1.0;
+    const double third = pointValue(0, 1, PointField::X); // the reversed shape's second point, a little off 0.25
+    model.layout().shapeGridX = 4;
+    model.set(shapePointIndex(0, 1, PointField::X), 0.25);
+    click(view, lfoTool(0, 3)); // right: from (0, 1), (0.25, 0.4), (0.5, -1) to a start halfway back up to 1
+    const bool right = model.value(count) == 4.0 && roughly(pointValue(0, 0, PointField::Y), 0.0, 1e-9) &&
+                       pointValue(0, 1, PointField::X) == 0.25 && pointValue(0, 1, PointField::Y) == 1.0 &&
+                       pointValue(0, 2, PointField::X) == 0.5 && pointValue(0, 3, PointField::X) == 0.75 &&
+                       pointValue(0, 3, PointField::Y) == -1.0;
+    click(view, lfoTool(0, 2)); // left again: the point at 0.25 comes first, the one put in stays at the end
+    const bool left = model.value(count) == 4.0 && pointValue(0, 0, PointField::Y) == 1.0 &&
+                      pointValue(0, 1, PointField::X) == 0.25 && pointValue(0, 2, PointField::X) == 0.5 &&
+                      pointValue(0, 3, PointField::X) == 0.75 && roughly(pointValue(0, 3, PointField::Y), 0.0, 1e-9);
+    view.undo();
+    view.undo();
+    const bool undone = model.value(count) == 3.0 && pointValue(0, 1, PointField::X) == 0.25;
+    std::printf("      shape tools: inverted %d reversed %d (second point at %.4f) right %d left %d undone %d\n",
+                inverted, reversed, third, right, left, undone);
+    view.mouseMove(lfoTool(0, 3), {});
+    check(inverted && reversed && right && left && undone && renderer.save(view, dir / "10e-lfo-card-tools.png"),
+          "a widened card's tools invert, reverse and shift its shape, each one undo step");
+    model.layout().shapeGridX = 16;
+
+    // Steps: a plain click draws a step, Shift+click works with points; Snap snaps a dragged point to the grid, Ctrl
+    // letting it go. Both are the editor's, in the layout.
+    click(view, lfoMode(0, 1));
+    const bool stepsOn = model.layout().shapeSteps;
+    click(view, cardShapeAt(0, 2.5 / 16.0, 0.5));
+    const bool stepped = model.value(count) == 5.0 && pointValue(0, 1, PointField::X) == 2.0 / 16.0 &&
+                         pointValue(0, 2, PointField::X) == 3.0 / 16.0;
+    view.mouseMove(cardShapeAt(0, 0.9, 0.0), {});
+    const bool stepsShot = renderer.save(view, dir / "10f-lfo-card-steps.png");
+    view.undo();
+    click(view, lfoMode(0, 0));
+    click(view, lfoMode(0, 2));
+    const bool snapOn = model.layout().shapeSnap && !model.layout().shapeSteps;
+    drag(view, cardShapeAt(0, 0.25, 0.4), cardShapeAt(0, 0.3, 0.3));
+    const bool snapped = std::abs(pointValue(0, 1, PointField::X) - 5.0 / 16.0) < 1e-9 &&
+                         std::abs(pointValue(0, 1, PointField::Y) - 0.25) < 1e-9;
+    view.mouseDown(cardShapeAt(0, 5.0 / 16.0, 0.25), {});
+    view.mouseMove(cardShapeAt(0, 0.3, 0.3), {false, true});
+    view.mouseUp(cardShapeAt(0, 0.3, 0.3), {false, true});
+    const bool free = roughly(pointValue(0, 1, PointField::X), 0.3) && std::abs(pointValue(0, 1, PointField::X) - 5.0 / 16.0) > 1e-3;
+    click(view, lfoMode(0, 2));
+    check(stepsOn && stepped && stepsShot && snapOn && snapped && free && !model.layout().shapeSnap,
+          "Steps draws a step with a plain click, and Snap snaps a point to the grid unless Ctrl is held");
+
+    // Copy and Paste: LFO 1's shape into LFO 3, whose card, widened, takes LFO 1's back to its size.
+    click(view, lfoTool(0, 4));
+    click(view, shapeButton(3));
+    click(view, shapeItem(3, LfoShape::Custom));
+    const float wideCard = 2.0f; // with LFO 1's card back to its size, LFO 3's is the third, widened
+    click(view, lfoTool(wideCard, 5));
+    bool same = model.value(shapeCountIndex(2)) == model.value(count);
+    for (int point = 0; point < 3 && same; ++point)
+        for (PointField field : {PointField::X, PointField::Y, PointField::Curve})
+            same = same && pointValue(2, point, field) == pointValue(0, point, field);
+    view.undo();
+    const bool oneWide = switches(sourcePower(1), 1) && switches(powerAt(2, 2.0f), 2);
+    check(same && oneWide, "Copy and Paste take a shape from one LFO to another, one card widened at a time");
+
+    // The full-size editor: the inspector hidden; its collapse button goes back into the card, still widened.
+    click(view, wideButton(wideCard, 2));
+    drag(view, kFineKnob, {kFineKnob.x, kFineKnob.y - 30.0f});
+    const bool covered = model.value(paramIndex(0, OpParam::Fine)) == fineBefore;
+    // Meanwhile the card's own editor is greyed out and takes nothing: its Invert leaves the shape be.
+    const double firstLevel = pointValue(2, 0, PointField::Y);
+    click(view, lfoTool(wideCard, 0));
+    const bool greyed = pointValue(2, 0, PointField::Y) == firstLevel;
+    view.mouseMove({400.0f, 700.0f}, {});
+    const bool bigShot = renderer.save(view, dir / "10g-lfo-full-size.png");
+    click(view, kShapeDone);
+    const bool back = switches(powerAt(2, 2.0f), 2);
+    // Closed by a view tab too, the card's editor is back in use.
+    click(view, wideButton(wideCard, 2));
+    click(view, kRoutingTab);
+    click(view, lfoTool(wideCard, 0));
+    const bool restored = pointValue(2, 0, PointField::Y) == -firstLevel;
+    view.undo();
+    // Collapsing the modulation panel and opening it again leaves the card widened.
+    click(view, kSourcesToggle);
+    click(view, kSourcesToggle);
+    const bool kept = switches(powerAt(2, 2.0f), 2);
+    check(covered && greyed && bigShot && back && restored && kept,
+          "the full-size editor greys the widened card's editor out until it closes, by its done button or a tab, "
+          "and the card stays widened while the panel collapses");
+    // Back to its size: by its collapse button; widened again, by another shape; Custom again widens it.
+    click(view, wideButton(wideCard, 0));
+    const bool collapsed = switches(sourcePower(2), 2);
+    click(view, lfoDisplay(2));
+    click(view, shapeButton(2));
+    click(view, shapeItem(2, LfoShape::Sine));
+    const bool otherShape = switches(sourcePower(2), 2);
+    click(view, shapeButton(2));
+    click(view, shapeItem(2, LfoShape::Custom));
+    check(collapsed && otherShape && switches(powerAt(2, 2.0f), 2),
+          "a widened card goes back to its size by its button, or another shape, and Custom widens it again");
+}
+
 void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -1866,6 +2067,14 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     const bool raised = model.value(low) == std::round(lowFrom) + 10.0;
     view.doubleClick(noteCurveAt(0.5, 0.6), {});
     const bool pointAdded = model.value(paramIndex(NoteParam::Curve)) == 4.0;
+    // Steps, under the plot left of the grid's controls, has a plain click draw a step here too; Points goes back.
+    click(view, {514.0f, 458.0f});
+    click(view, noteCurveAt(0.2, -0.5));
+    const bool stepped = model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) > 4.0;
+    view.undo();
+    click(view, {446.0f, 458.0f});
+    click(view, noteCurveAt(0.2, -0.5));
+    const bool modes = stepped && !model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) == 4.0;
     model.live.notePitch = 72.0f;
     view.poll();
     view.mouseMove(noteCurveAt(0.5, 0.6), {});
@@ -1874,8 +2083,9 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     const bool reset = model.value(low) == paramTable()[low].def && model.value(high) == paramTable()[high].def &&
                        model.value(paramIndex(NoteParam::Curve)) == 3.0;
     click(view, kRoutingEditorDone);
-    check(raised && pointAdded && curveShot && reset,
-          "the note source's display opens its curve, with its range's knobs, and the reset button puts both back");
+    check(raised && pointAdded && modes && curveShot && reset,
+          "the note source's display opens its curve, with its range's knobs, Points | Steps working there, and the "
+          "reset button puts both back");
 }
 
 // The output meter left of Volume: each side's peak in the theme's color, and the zone past full scale red while the
@@ -4260,6 +4470,17 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove(clipAt(0.3, -0.5), {});
     check(renderer.save(view, dir / "8c-clip-curve.png"), "render the shaper's big curve editor");
     {
+        // Snap, in its title row, snaps a dragged point to the grid without Ctrl.
+        click(view, {742.0f, 124.0f});
+        drag(view, clipAt(0.3, -0.5), clipAt(0.33, -0.45));
+        const double x = model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X));
+        const double y = model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::Y));
+        const bool snapped = model.layout().shapeSnap && std::abs(x - 5.0 / 16.0) < 1e-9 && std::abs(y + 0.5) < 1e-9;
+        view.undo();
+        click(view, {742.0f, 124.0f});
+        check(snapped && !model.layout().shapeSnap, "Snap snaps a shaper curve's points in its big editor");
+    }
+    {
         // Shift+click draws steps here too, as many as on an LFO's shape: one in every column of a grid of 32.
         const int grid = model.layout().shapeGridX;
         model.layout().shapeGridX = 32;
@@ -4455,10 +4676,11 @@ void run(const std::filesystem::path &dir, float scale) {
     check(scrolledBack && fxChain(model) == std::vector<int>{1, 2, 0, 3, 4},
           "dragging the scrollbar scrolls the chain back");
 
-    // A freeform LFO 2: picking Custom opens its shape editor over the routing panel.
-    // The default shape is a triangle, with points at (0, -1) and (0.5, 1).
+    // A freeform LFO 2: picking Custom widens its card, whose full-size button opens its
+    // shape over the routing panel. The default shape is a triangle, with points at (0, -1) and (0.5, 1).
     click(view, shapeButton(2));
     click(view, shapeItem(2, LfoShape::Custom));
+    click(view, wideButton(2, 2));
     const int count = shapeCountIndex(2);
     auto pointValue = [&](int point, PointField field) { return model.value(shapePointIndex(2, point, field)); };
     check(std::lround(model.value(paramIndex(2, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom) &&
@@ -4557,7 +4779,9 @@ void run(const std::filesystem::path &dir, float scale) {
     }
     click(view, kShapeDone);
     click(view, fxPower(model, 0));
-    check(model.value(paramIndex(1, FxParam::Enabled)) == 0.0, "the done button closes the editor and the FX view is back");
+    check(model.value(paramIndex(1, FxParam::Enabled)) == 0.0,
+          "the full-size editor's collapse button closes it and the FX view is back");
+    click(view, wideButton(2, 0));
 
     // Four sources and the dashed cards, less than a card more than fit: dragged all the way, the scrollbar's thumb
     // reaches the track's right end (read off the rendered pixels).
@@ -4818,6 +5042,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testMeter(dir, renderer);
     renderNewEffects(dir, renderer);
     testShapers(dir, renderer);
+    testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
     testSourceShadow(dir, renderer);
     testMultiDyn(dir, renderer);
