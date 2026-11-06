@@ -264,7 +264,7 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color) {
         } else if (clock == LfoClock::Anchor) { // its arms, the rest drawn below
             for (int i = 0; i <= 24; ++i) {
                 const float t = (0.1f + 0.8f * i / 24.0f) * kPi;
-                points.push_back({m.x - 6.5f * std::cos(t), m.y + 0.5f + 6.5f * std::sin(t)});
+                points.push_back({m.x - 5.0f * std::cos(t), m.y + 0.2f + 5.0f * std::sin(t)});
             }
         } else {
             for (int i = 0; i <= 24; ++i)
@@ -276,10 +276,10 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color) {
     if (clock == LfoClock::Retrigger) { // the notes that start it
         c.fillCircle({m.x - 10.0f, m.y + 4.0f}, 1.6f, color);
         c.fillCircle({m.x, m.y + 4.0f}, 1.6f, color);
-    } else if (clock == LfoClock::Anchor) { // its ring, shank and stock
-        c.strokeCircle({m.x, m.y - 5.2f}, 1.8f, color, 1.2f);
-        c.line({m.x, m.y - 3.4f}, {m.x, m.y + 7.0f}, color, 1.4f);
-        c.line({m.x - 3.5f, m.y - 1.2f}, {m.x + 3.5f, m.y - 1.2f}, color, 1.4f);
+    } else if (clock == LfoClock::Anchor) { // its ring, shank and stock, within 6 px of the middle, as the buttons hold
+        c.strokeCircle({m.x, m.y - 4.0f}, 1.4f, color, 1.1f);
+        c.line({m.x, m.y - 2.6f}, {m.x, m.y + 5.2f}, color, 1.4f);
+        c.line({m.x - 2.8f, m.y - 0.8f}, {m.x + 2.8f, m.y - 0.8f}, color, 1.4f);
     } else if (clock == LfoClock::OneShot)
         c.fillCircle(points.back(), 1.7f, color);
     c.polyline(points.data(), points.size(), color, 1.4f);
