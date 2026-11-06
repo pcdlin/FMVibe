@@ -109,6 +109,16 @@ public:
         userSettings.glow = std::clamp(amount, 0.0, 1.0);
         writeUserSettings();
     }
+    int handleSize() const override { return userSettings.handleSize; }
+    void setHandleSize(int size) override {
+        userSettings.handleSize = std::clamp(size, 0, kMaxHandleSize);
+        writeUserSettings();
+    }
+    double linkIntensity() const override { return userSettings.links; }
+    void setLinkIntensity(double amount) override {
+        userSettings.links = std::clamp(amount, 0.0, 1.0);
+        writeUserSettings();
+    }
 
     // Every param's value now. Any thread.
     ParamValues valuesNow() const;

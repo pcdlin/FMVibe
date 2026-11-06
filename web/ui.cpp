@@ -37,7 +37,7 @@ EM_JS(void, js_scope, (int op, int cycles), { Module.fmvHost.scope(op, cycles); 
 EM_JS(void, js_oversampling, (int factor), { Module.fmvHost.oversampling(factor); });
 EM_JS(void, js_layout_changed, (), { Module.fmvHost.layoutChanged(); });
 EM_JS(void, js_toast, (const char *utf8), { Module.fmvHost.toast(UTF8ToString(utf8)); });
-// The user's settings (theme, glow) live in the browser's storage; -1 when there is none.
+// The user's settings (theme, glow, handle size) live in the browser's storage; -1 when there is none.
 EM_JS(int, js_setting, (const char *key, char *out, int capacity), {
     const value = Module.fmvHost.setting(UTF8ToString(key));
     if (value === null || value === undefined)
@@ -78,6 +78,9 @@ public:
         theme_ = setting("theme");
         const std::string glow = setting("glow");
         glow_ = glow.empty() ? 0.5 : std::clamp(std::atof(glow.c_str()), 0.0, 1.0);
+        handleSize_ = std::clamp(std::atoi(setting("handleSize").c_str()), 0, 2);
+        const std::string links = setting("linkIntensity");
+        links_ = links.empty() ? 0.75 : std::clamp(std::atof(links.c_str()), 0.0, 1.0);
     }
 
     const ParamValues &values() const { return values_; }
@@ -177,6 +180,16 @@ public:
         glow_ = std::clamp(amount, 0.0, 1.0);
         js_set_setting("glow", std::to_string(glow_).c_str());
     }
+    int handleSize() const override { return handleSize_; }
+    void setHandleSize(int size) override {
+        handleSize_ = std::clamp(size, 0, 2);
+        js_set_setting("handleSize", std::to_string(handleSize_).c_str());
+    }
+    double linkIntensity() const override { return links_; }
+    void setLinkIntensity(double amount) override {
+        links_ = std::clamp(amount, 0.0, 1.0);
+        js_set_setting("linkIntensity", std::to_string(links_).c_str());
+    }
 
     // Opens on an example rather than Init, so the first note sounds like something; nothing to undo yet.
     void start() {
@@ -228,6 +241,8 @@ private:
     int mpeBendRange_ = 48;
     std::string theme_;
     double glow_ = 0.5;
+    int handleSize_ = 0;
+    double links_ = 0.75;
 };
 
 std::unique_ptr<WebController> controller;

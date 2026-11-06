@@ -1265,7 +1265,8 @@ bool View::poll() {
         modList_.reset();
         changed = true;
     }
-    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_) // picked in another editor
+    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_ || shownLinks() != links_ ||
+        controller_.handleSize() != handles_) // picked in another editor
         changed = true;
     if ((typing_ || fieldTyping()) && ++caretTicks_ % 32 == 0)
         changed = true; // the caret blinks
@@ -2097,7 +2098,9 @@ std::vector<View::Widget> View::widgets() const {
 
     // Depth handles in the gap under each modulated knob, and small ones in the top right corner of each
     // modulated wire label, matrix cell and source's depth bar (another source modulating its depth). As many as
-    // the knob's, label's or cell's width holds; past that, as many as fit beside a "+n" pill holding the rest.
+    // the knob's, label's or cell's width holds; past that, as many as fit beside a "+n" pill holding the rest. The
+    // handles and pills come in the user's size; they stay as far apart at each.
+    const ModHandleSize &sizes = modHandleSize(controller_.handleSize());
     const size_t count = list.size();
     std::vector<Assignment> here;
     for (size_t i = 0; i < count; ++i) {
@@ -2132,10 +2135,10 @@ std::vector<View::Widget> View::widgets() const {
                 list.back().clip = list[i].clip; // a depth bar's is cut off with its card
             }
             if (n > fit) {
-                const float w = n - shown >= 10 ? kModPillWideCompact : kModPillCompact;
+                const float w = n - shown >= 10 ? sizes.pillWideCompact : sizes.pillCompact;
                 const float edge =
                     r.right() - margin - static_cast<float>(std::max(shown - 1, 0)) * step - (shown > 0 ? 4.25f : 0.0f);
-                pill({edge - w, y - 0.5f * kModPillCompactH, w, kModPillCompactH}, shown, true);
+                pill({edge - w, y - 0.5f * sizes.pillCompactH, w, sizes.pillCompactH}, shown, true);
             }
             continue;
         }
@@ -2150,10 +2153,10 @@ std::vector<View::Widget> View::widgets() const {
         int shown = n;
         float pillW = 0.0f;
         if (n > fit) {
-            pillW = kModPill;
+            pillW = sizes.pill;
             shown = static_cast<int>((width - pillW) / 9.0f);
             if (n - shown >= 10) { // two digits
-                pillW = kModPillWide;
+                pillW = sizes.pillWide;
                 shown = static_cast<int>((width - pillW) / 9.0f);
             }
         }
@@ -2167,7 +2170,7 @@ std::vector<View::Widget> View::widgets() const {
             list.back().disabled = list[i].disabled;
         }
         if (n > fit)
-            pill({left + static_cast<float>(shown) * 9.0f, base.y - 0.5f * kModPillH, pillW, kModPillH}, shown, false);
+            pill({left + static_cast<float>(shown) * 9.0f, base.y - 0.5f * sizes.pillH, pillW, sizes.pillH}, shown, false);
     }
 
     // The macros: their knobs, the names under them and their handles.
@@ -2413,6 +2416,8 @@ void View::paint(Canvas &c) {
     theme_ = themeIndex(controller_.theme());
     look = kThemes[theme_];
     glow_ = glowing = shownGlow();
+    links_ = shownLinks();
+    handles_ = controller_.handleSize();
     c.clear(kBackground);
     paintPanels(c);
     paintHeader(c);
@@ -5721,26 +5726,35 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::SettingsOption:
     case Kind::SettingsMpe:
-    case Kind::SettingsMpeRange: {
+    case Kind::SettingsMpeRange:
+    case Kind::SettingsHandles: {
         // A row of buttons, the one picked lit. The bend ranges fade while MPE is off, though they still take clicks.
-        const bool on = w.kind == Kind::SettingsOption ? controller_.oversampling() == w.b
-                        : w.kind == Kind::SettingsMpe  ? controller_.mpe() == (w.b != 0)
-                                                       : controller_.mpeBendRange() == w.b;
+        const bool on = w.kind == Kind::SettingsOption    ? controller_.oversampling() == w.b
+                        : w.kind == Kind::SettingsMpe     ? controller_.mpe() == (w.b != 0)
+                        : w.kind == Kind::SettingsHandles ? std::clamp(controller_.handleSize(), 0,
+                                                                       kModHandleSizeCount - 1) == w.b
+                                                          : controller_.mpeBendRange() == w.b;
         const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
         const Color accent = faint ? kDim : kAccent;
         c.fillRect(w.rect, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
         c.strokeRect(w.rect, on ? accent : kBorder, 1.0f, 5.0f);
         char factor[16];
         std::snprintf(factor, sizeof(factor), "%dx", w.b);
-        const std::string label = w.kind == Kind::SettingsOption ? std::string(factor)
-                                  : w.kind == Kind::SettingsMpe  ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
-                                                                 : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
+        static constexpr Str kHandleSizes[] = {Str::SettingsHandlesSmall, Str::SettingsHandlesMedium,
+                                               Str::SettingsHandlesLarge};
+        static_assert(std::size(kHandleSizes) == kModHandleSizeCount);
+        const std::string label = w.kind == Kind::SettingsOption    ? std::string(factor)
+                                  : w.kind == Kind::SettingsMpe     ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
+                                  : w.kind == Kind::SettingsHandles ? std::string(tr(kHandleSizes[w.b]))
+                                                                    : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
         c.text(w.rect, label, 11.0f, on && !faint ? kText : kDim, Align::Center, on);
         break;
     }
-    case Kind::SettingsGlow: {
+    case Kind::SettingsGlow:
+    case Kind::SettingsLinks: {
         // A track filled up to the amount, and a knob to drag along it.
-        const float x = w.rect.x + shownGlow() * w.rect.w, y = w.rect.center().y;
+        const float amount = w.kind == Kind::SettingsLinks ? shownLinks() : shownGlow();
+        const float x = w.rect.x + amount * w.rect.w, y = w.rect.center().y;
         c.fillRect({w.rect.x, y - 2.0f, w.rect.w, 4.0f}, kTrack, 2.0f);
         c.fillRect({w.rect.x, y - 2.0f, x - w.rect.x, 4.0f}, kAccent, 2.0f);
         c.fillCircle({x, y}, 7.0f, hovered || active ? kText : kDim);
@@ -5860,7 +5874,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Compact: on a wire label, matrix cell or depth bar.
         // A bypassed modulation's dot is hollow.
         const Point center = w.rect.center();
-        const float radius = hovered || active ? (w.compact ? 4.0f : 5.0f) : (w.compact ? 2.75f : 3.5f);
+        const ModHandleSize &sizes = modHandleSize(controller_.handleSize());
+        const float radius = hovered || active ? (w.compact ? sizes.dotCompactHover : sizes.dotHover)
+                                               : (w.compact ? sizes.dotCompact : sizes.dot);
         const Color color = kSourceColors[w.a].alpha(sourceOn(w.a) ? 1.0f : 0.35f);
         if (slotBypassed(w.a, w.b))
             c.strokeCircle(center, radius - 0.6f, color, 1.2f);
@@ -6497,7 +6513,9 @@ void View::paintModPill(Canvas &c, const Widget &w, bool hovered) {
     else
         c.strokeRect(w.rect.inset(0.5f), hovered ? kDim : kFaint, 1.0f, round);
     const std::string text = "+" + std::to_string(index - w.b);
-    c.text({w.rect.x - 2.0f, w.rect.y - 1.0f, w.rect.w + 4.0f, w.rect.h + 1.0f}, text, w.compact ? 6.5f : 7.5f,
+    const ModHandleSize &sizes = modHandleSize(controller_.handleSize());
+    c.text({w.rect.x - 2.0f, w.rect.y - 1.0f, w.rect.w + 4.0f, w.rect.h + 1.0f}, text,
+           w.compact ? sizes.pillCompactText : sizes.pillText,
            open ? kBackground : (live ? kText : kDim), Align::Center, true);
 }
 
@@ -6640,7 +6658,8 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         if (clipped)
             c.popClip();
     }
-    c.line(drag_.start, drag_.now, color.alpha(0.6f), 1.5f, true);
+    if (links_ > 0.0f) // 0.6 at the 0.75 LINES begins with
+        c.line(drag_.start, drag_.now, color.alpha(0.8f * links_), 1.5f, true);
     c.fillCircle(drag_.now, 7.0f, color.alpha(0.5f));
     c.fillCircle(drag_.now, 3.0f, color);
 }
@@ -6688,7 +6707,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         // Bowed to one side, so lines to targets in a row fan out rather than run over each other.
         const Point d{to.x - from.x, to.y - from.y};
         const Point control{(from.x + to.x) * 0.5f + d.y * 0.15f, (from.y + to.y) * 0.5f - d.x * 0.15f};
-        c.curve(from, control, to, color.alpha(0.75f), 1.5f, true);
+        if (links_ > 0.0f) // as strongly as the settings' LINES say
+            c.curve(from, control, to, color.alpha(links_), 1.5f, true);
         if (dot != list.end()) // a ring round the dot the line points at
             c.strokeCircle(to, dot->compact ? 5.5f : 7.5f, color, 1.5f);
         else if (pill != list.end()) // or round the pill
@@ -6829,9 +6849,9 @@ void View::applyDrag(Point p) {
         break;
     }
     case DragKind::Glow:
-        glowDragged_ = std::clamp(drag_.fine ? static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / w.rect.w * 0.01f
-                                             : (p.x - w.rect.x) / w.rect.w,
-                                  0.0f, 1.0f);
+        sliderDragged() = std::clamp(drag_.fine ? static_cast<float>(drag_.startValue) + (p.x - drag_.start.x) / w.rect.w * 0.01f
+                                                : (p.x - w.rect.x) / w.rect.w,
+                                     0.0f, 1.0f);
         break;
     case DragKind::BendWheel: {
         const double mid = w.rect.y + w.rect.h * 0.5;
@@ -7082,7 +7102,7 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // Switching to/from fine mode re-anchors the drag so the value doesn't jump.
         drag_.fine = mods.shift;
         drag_.start = p;
-        drag_.startValue = drag_.kind == DragKind::Glow ? glowDragged_ : value(drag_.widget.param);
+        drag_.startValue = drag_.kind == DragKind::Glow ? sliderDragged() : value(drag_.widget.param);
     }
     drag_.snap = drag_.kind == DragKind::ShapePoint || drag_.kind == DragKind::ShapeStep
                      ? shapeSnaps(drag_.widget.a, mods.ctrl)
@@ -7595,9 +7615,13 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::SettingsTheme:
         controller_.setTheme(kThemes[w.b].name);
         break;
+    case Kind::SettingsHandles:
+        controller_.setHandleSize(w.b);
+        break;
     case Kind::SettingsGlow: // dragged; the amount is kept when it is let go
+    case Kind::SettingsLinks:
         drag_.kind = DragKind::Glow;
-        drag_.startValue = glowDragged_ = shownGlow();
+        drag_.startValue = sliderDragged() = w.kind == Kind::SettingsLinks ? shownLinks() : shownGlow();
         if (!drag_.fine)
             applyDrag(p);
         break;
@@ -7757,7 +7781,10 @@ void View::mouseUp(Point p, Modifiers) {
         break;
     }
     case DragKind::Glow:
-        controller_.setGlow(glowDragged_);
+        if (w.kind == Kind::SettingsLinks)
+            controller_.setLinkIntensity(linksDragged_);
+        else
+            controller_.setGlow(glowDragged_);
         break;
     case DragKind::FxMove: {
         drag_.now = p;
@@ -7851,7 +7878,7 @@ void View::finishDrag() {
         controller_.pitchWheel(0.0);
         break;
     case DragKind::Glow: // the amount it was dragged to is kept only once it is let go (see mouseUp())
-        glowDragged_ = -1.0f;
+        glowDragged_ = linksDragged_ = -1.0f;
         break;
     case DragKind::Partials: // its undo step closes below
     case DragKind::ShapeStep:

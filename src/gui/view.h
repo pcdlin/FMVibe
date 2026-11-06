@@ -237,7 +237,9 @@ private:
         SettingsMpe,    // b = 1 switches MPE on, 0 off
         SettingsMpeRange, // b = the MPE bend range it picks, in semitones
         SettingsTheme,  // b = the theme it picks
+        SettingsHandles, // b = the depth handles' size it picks
         SettingsGlow,   // the slider for how strongly the graphs' curves glow
+        SettingsLinks,  // the slider for how strongly the sources' dashed lines are drawn
         SettingsClose,
         ModWheel,     // param = mod wheel: drag or scroll
         BendWheel,    // drag; springs back to center on release
@@ -1006,6 +1008,14 @@ private:
     float shownGlow() const {
         return glowDragged_ >= 0.0f ? glowDragged_ : static_cast<float>(controller_.glow());
     }
+    float links_ = 0.0f;                     // how strongly the source's dashed lines were drawn when painted last
+    int handles_ = 0;                        // and the depth handles' size
+    float linksDragged_ = -1.0f;             // the LINES slider's amount while it is dragged, else -1
+    float shownLinks() const {
+        return linksDragged_ >= 0.0f ? linksDragged_ : static_cast<float>(controller_.linkIntensity());
+    }
+    // The amount of the settings slider being dragged (DragKind::Glow): the glow's, or the lines'.
+    float &sliderDragged() { return drag_.widget.kind == Kind::SettingsLinks ? linksDragged_ : glowDragged_; }
     int confirm_ = -1;                       // the PresetAction the confirm dialog asks about, or -1
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
     bool browserOpen_ = false;

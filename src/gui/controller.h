@@ -233,6 +233,14 @@ public:
     // How strongly the curves in the editor's graphs glow, 0 (not at all) to 1; the user's too.
     virtual double glow() const = 0;
     virtual void setGlow(double amount) = 0;
+    // How big the depth handles and their "+n" pills are drawn: 0 (the smallest, to begin with), 1 or 2; the user's
+    // too.
+    virtual int handleSize() const = 0;
+    virtual void setHandleSize(int size) = 0;
+    // How strongly the dashed lines from a source's handle to what it modulates are drawn: 0 (not at all) to 1
+    // (opaque), 0.75 to begin with; the user's too.
+    virtual double linkIntensity() const = 0;
+    virtual void setLinkIntensity(double amount) = 0;
 
 protected:
     // What beginEdit(), setValue() and endEdit() do besides keeping the history: undo and redo
