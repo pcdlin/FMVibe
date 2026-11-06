@@ -1361,6 +1361,37 @@ int main(int argc, char **argv) {
         std::printf("      synced square LFO at 0.35 s: %.3f at 120 bpm, %.3f at 60 bpm\n", fast, slow);
         check(early == 0.0f && fast > 0.1f && slow == 0.0f, "a synced LFO follows the host tempo");
 
+        // Modulated, its note value moves in steps: a macro at 10 % of the 27 values takes 1/4 to 1/8 turned up (2.6
+        // steps, rounded to 3), where 0.35 s in falls in the muted half of its third cycle, and turned a little (0.4
+        // of a step) leaves it at 1/4, still sounding. Host modulation does the same.
+        const int division = paramIndex(0, SourceParam::Division);
+        setParams({{slotTargetIndex(kMaxSources, 0), slotTargetValue(division)},
+                   {slotAmountIndex(kMaxSources, 0), 0.1},
+                   {paramIndex(0, MacroParam::Value), 1.0}});
+        const float eighth = levelAt(120.0, 0.35);
+        setParams({{paramIndex(0, MacroParam::Value), 0.4 / 2.6}});
+        const float withinStep = levelAt(120.0, 0.35);
+        setParams({{slotTargetIndex(kMaxSources, 0), 0.0},
+                   {slotAmountIndex(kMaxSources, 0), 0.0},
+                   {paramIndex(0, MacroParam::Value), 0.0}});
+        auto hostModded = [&](double amount) {
+            const clap_event_param_mod_t mod = paramModEvent(division, -1, amount);
+            runBlock({&mod.header});
+            const float peak = levelAt(120.0, 0.35);
+            const clap_event_param_mod_t unmod = paramModEvent(division, -1, 0.0);
+            runBlock({&unmod.header});
+            return peak;
+        };
+        const float hostEighth = hostModded(2.6), hostWithin = hostModded(0.4);
+        std::printf("      synced square LFO at 0.35 s, its note value modulated: %.3f by 2.6 steps, %.3f by 0.4; by "
+                    "the host %.3f and %.3f\n",
+                    eighth, withinStep, hostEighth, hostWithin);
+        clap_param_info_t divisionInfo{};
+        params->get_info(plugin, static_cast<uint32_t>(division), &divisionInfo);
+        const bool flagged = (divisionInfo.flags & CLAP_PARAM_IS_MODULATABLE) && (divisionInfo.flags & CLAP_PARAM_IS_STEPPED);
+        check(flagged && eighth == 0.0f && withinStep > 0.1f && hostEighth == 0.0f && hostWithin > 0.1f,
+              "a synced LFO's note value takes modulation in steps");
+
         // Anchored, it stands where the playing transport puts it rather than starting with the note: a note at beat
         // 2.6 is in the second half of a cycle (sounding) from its start, one at beat 3.1 in the first (muted). The
         // host sends the same position each block, so it stays there. Retriggered, a note at 2.6 starts muted.

@@ -6232,7 +6232,10 @@ void View::paintKnob(Canvas &c, const Widget &w) {
            kText, 2.0f);
 
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
-    const float offset = liveOffset(w.param);
+    // One modulated in steps stands on the step it plays.
+    float offset = liveOffset(w.param);
+    if (offset != 0.0f && modulatedInSteps(w.param))
+        offset = static_cast<float>(std::clamp(std::round(value(w.param) + offset), def.min, def.max) - value(w.param));
     if (offset != 0.0f)
         c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))),
                      2.5f, kText);

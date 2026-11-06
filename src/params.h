@@ -1728,13 +1728,16 @@ inline bool snapsToSteps(ParamKind kind) {
 }
 // Displayed and modulated around the middle of the range rather than from the minimum.
 bool isBipolar(ParamKind kind);
-// Continuous params are the ones LFOs, envelopes and host modulators can drive; not the retired ones (see
-// isRetired()), which do nothing.
+// A stepped param that modulation still drives, a step at a time (its value rounded): an LFO's synced rate.
+constexpr bool modulatedInSteps(int index) { return sourceFieldOf(index) == SourceParam::Division; }
+// Continuous params are the ones LFOs, envelopes and host modulators can drive, and those modulatedInSteps(); not the
+// retired ones (see isRetired()), which do nothing.
 // Not the macros' own knobs: they are read as set.
 bool isRetired(int index);
 inline bool isModTarget(int index) {
     return index >= 0 && index < kMacroBase && !isRetired(index) &&
-           !isStepped(paramTable()[index].kind) && paramTable()[index].kind != ParamKind::ShapePoint;
+           (!isStepped(paramTable()[index].kind) || modulatedInSteps(index)) &&
+           paramTable()[index].kind != ParamKind::ShapePoint;
 }
 // Value of a slot target param pointing at param `index`, and back (-1 = none or invalid).
 inline double slotTargetValue(int index) { return index < 0 ? 0.0 : idOfIndex(index) + 1.0; }

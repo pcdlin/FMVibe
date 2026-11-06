@@ -74,6 +74,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pitch bend bending its note alone and the master channel's every
     note, and a member channel's pressure being its note's alone (the master channel's standing in until it sends
     some), in mono too for a note taking the voice over; with it off, any channel's bend bending every note;
+  - a synced LFO's note value taking a macro's and the host's modulation in steps, a part of a step leaving it as
+    it is;
   - an LFO's Phase moving where notes start it (a one-shot running from there to its cycle's end), while a free
     one keeps its clock, and an anchored one stands where the host's playing transport puts it;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and

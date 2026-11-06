@@ -204,7 +204,10 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
     dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. The browser demo has no
     host: its page has a **Tempo** field under the editor instead (20–999 BPM, 120 to begin with, remembered by the
-    browser), which every synced LFO, delay and sweep follows. A new LFO starts synced, in quarter notes.
+    browser), which every synced LFO, delay and sweep follows. A new LFO starts synced, in quarter notes. The note
+    value takes modulation like a knob, from the editor's sources and the host's, but in steps: it moves from one
+    note value to the next along the list (up for faster), never between them, and the dot on its knob stands on
+    the one playing.
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
     is never free or anchored): for a sine, a triangle or a drawn shape that is where it started, while a saw holds
     at its top, a square low and a random one at the value it took. A drawn shape with a point at the cycle's end
