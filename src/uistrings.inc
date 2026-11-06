@@ -676,7 +676,7 @@ STR(TipDelaySync, "Sync times to tempo")
 STR(TipSweepSync, "Sync sweep to tempo")
 STR(TipPingPong, "Alternate echoes between sides")
 STR(TipDelayLink, "Left time for both sides")
-STR(TipBandLink, "Edit all bands together")
+STR(TipBandLink, "Edit all bands")
 STR(TipMcBand, "{1} band settings") // a three-band dynamics band's row, with the band's name
 STR(TipMcBandLinked, "{1} band settings, linked") // the band's name; its edits go to every band
 STR(TipDownThreshold, "Downward threshold")
@@ -687,8 +687,8 @@ STR(TipUpRange, "Upward gain limit")
 STR(TipRms, "RMS detection (off: peaks)")
 STR(TipDownGrip, "Downward threshold · Alt+drag: ratio")
 STR(TipUpGrip, "Upward threshold · Alt+drag: ratio")
-STR(TipDownZone, "Downward ratio · drag down for more") // the stretch right of the Above threshold's line
-STR(TipUpZone, "Upward ratio · drag up for more")       // and left of the Below threshold's
+STR(TipDownZone, "Downward ratio") // the stretch right of the Above threshold's line
+STR(TipUpZone, "Upward ratio")       // and left of the Below threshold's
 STR(TipPartialCount, "First {1} partials only")
 STR(TipStereo, "Offset right sweep by 90°")
 STR(TipShaperLink, "Compensate level for drive")
