@@ -73,7 +73,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     note, and a member channel's pressure being its note's alone (the master channel's standing in until it sends
     some), in mono too for a note taking the voice over; with it off, any channel's bend bending every note;
   - an LFO's Phase moving where notes start it (a one-shot running from there to its cycle's end), while a free
-    one keeps its clock;
+    one keeps its clock, and an anchored one stands where the host's playing transport puts it;
   - bipolar sources swing their targets both ways: an envelope about its middle level, a macro, the mod wheel and
     the note source about the middle of what they put out;
   - the note source, its curve drawn along the cutoff knobs' as it starts, tunes a notch at 0 to an A4, and
@@ -151,6 +151,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     release taking a sample each, a 0.5 ms and a 1 ms attack their time, a sustain change after a 0 ms decay still
     smoothed, and a voice with a 0 ms attack at full level from its first sample;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
+  - an anchored LFO standing where the transport puts it, from its Phase, by beats when synced and by seconds when
+    not (a one-shot not anchored), following it through a block split into pieces, running on from there while the
+    transport is stopped, and a random one stepping as the transport passes a cycle;
   - the scope capturing nothing until asked, then an operator's cycles from where they start (a sine's a sine, a
     square's a square), standing still from one span to the next under FM, two cycles differing under a modulator
     at half the ratio, a slow span shown as it fills, nothing again once it isn't asked for, and a high operator's
@@ -234,7 +237,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
-    and faint while the LFO is free (read off the rendered pixels);
+    and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes
+    going one at a time, undoably, a click on the one lit leaving it and the wheel stepping along them, and its
+    Unipolar switch standing apart;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
     flanger's STEREO, the filter's Key Track and the shaper's and delay's LINK too) and the list of effects with
     their icons;
@@ -291,7 +296,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   VST3 side adds to the engine the tests above check:
   - the module's exports and its factory: one class, an Instrument|Synth at the project's version, which a host can't
     ask for an interface it doesn't have; the component being its own controller, with MIDI mapping, note
-    expressions, units and its process context needs;
+    expressions, units and its process context needs (the tempo, and the transport's state and position);
   - the buses (a stereo output, refusing mono, and a 16-channel note input) and 32-bit processing only;
   - the params: every one, with the CLAP plugin's ids, all different, each in a unit the plugin lists, going to
     normalized and back unchanged (a stepped one exactly), their defaults, a value's text and back, Voices stepped
@@ -301,9 +306,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - playing: an A4 at 440 Hz, bent through the MIDI-mapped pitch bend, tuned an octave by a note expression on its id
     (and not by one on another id), its level set by a volume expression, automation landing at its place in a
     block, a param change coming before a note at the same place, notes let go (with ids and without) falling
-    silent, more changes than a block sorts (a note's end past them still ending it, a param's last point
-    winning), a flush without audio taken, the controller's copy of a value from the host left alone while
-    processing, and a voice limit past the voices allocated asking the host for a restart;
+    silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
+    (a note's end past them still ending it, a param's last point winning), a flush without audio taken, the
+    controller's copy of a value from the host left alone while processing, and a voice limit past the voices
+    allocated asking the host for a restart;
   - the state: the CLAP plugin's bytes, through a stream that moves 5 bytes at a time, the controller's own state
     empty, a value from the host taken while not processing, loading bringing the saved value back and having the
     host read the values again, and a foreign blob refused;
@@ -328,7 +334,8 @@ More checks:
   keyboard, from the computer keyboard as in the browser demo (A W S E D … from middle C by key position, Z and X
   shifting the octave and C and V stepping the velocity through 1, 20, 40 … 100, 120 and 127, both of which the
   window's title shows; keys the editor takes for typing stay its own) and from every
-  MIDI input it can open, at a tempo of 120 BPM for synced LFOs and effects. With
+  MIDI input it can open, at a tempo of 120 BPM for synced LFOs and effects, its transport playing from its start
+  for anchored LFOs. With
   `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and
   the analyzers move; `--no-midi` leaves the MIDI inputs alone and `--tempo <bpm>` sets another tempo. It restarts
   the plugin when a higher voice limit asks for it, and runs its main-thread callbacks. It isn't a test, and like a

@@ -1341,6 +1341,29 @@ int main(int argc, char **argv) {
         const float early = levelAt(120.0, 0.1), fast = levelAt(120.0, 0.35), slow = levelAt(60.0, 0.35);
         std::printf("      synced square LFO at 0.35 s: %.3f at 120 bpm, %.3f at 60 bpm\n", fast, slow);
         check(early == 0.0f && fast > 0.1f && slow == 0.0f, "a synced LFO follows the host tempo");
+
+        // Anchored, it stands where the playing transport puts it rather than starting with the note: a note at beat
+        // 2.6 is in the second half of a cycle (sounding) from its start, one at beat 3.1 in the first (muted). The
+        // host sends the same position each block, so it stays there. Retriggered, a note at 2.6 starts muted.
+        auto anchoredAt = [&](double beats, bool anchor) {
+            setParams({{paramIndex(0, SourceParam::Anchor), anchor ? 1.0 : 0.0}});
+            transport.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_IS_PLAYING | CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
+            transport.tempo = 120.0;
+            transport.song_pos_beats = static_cast<clap_beattime>(std::llround(beats * CLAP_BEATTIME_FACTOR));
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 60, 69);
+            runBlock({&on.header});
+            runBlocks(2);
+            const float peak = runBlock();
+            runBlock({&chokeAll.header});
+            transport.flags = CLAP_TRANSPORT_HAS_TEMPO;
+            return peak;
+        };
+        const float secondHalf = anchoredAt(2.6, true), firstHalf = anchoredAt(3.1, true),
+                    retriggered = anchoredAt(2.6, false);
+        std::printf("      anchored square LFO: %.3f at beat 2.6, %.3f at 3.1; retriggered at 2.6: %.3f\n", secondHalf,
+                    firstHalf, retriggered);
+        check(secondHalf > 0.1f && firstHalf == 0.0f && retriggered == 0.0f,
+              "an anchored LFO stands where the host's transport puts it");
         proc.transport = nullptr;
         setParams({{paramIndex(0, SourceParam::Sync), 0.0}});
 

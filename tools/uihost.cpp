@@ -20,6 +20,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -74,7 +75,9 @@ class Audio {
 public:
     Audio(const clap_plugin_t *plugin, bool silent, double tempo) : plugin_(plugin), silent_(silent) {
         transport_.header = {sizeof(transport_), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0};
-        transport_.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_TIME_SIGNATURE;
+        // Playing from the moment it starts, as a song would, for anchored LFOs.
+        transport_.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_TIME_SIGNATURE | CLAP_TRANSPORT_IS_PLAYING |
+                           CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_HAS_SECONDS_TIMELINE;
         transport_.tempo = tempo;
         transport_.tsig_num = 4;
         transport_.tsig_denom = 4;
@@ -268,6 +271,10 @@ private:
             clap_process_t process{};
             process.steady_time = steadyTime_;
             process.frames_count = n;
+            const double seconds = static_cast<double>(steadyTime_) / rate_;
+            transport_.song_pos_seconds = static_cast<clap_sectime>(std::llround(seconds * CLAP_SECTIME_FACTOR));
+            transport_.song_pos_beats =
+                static_cast<clap_beattime>(std::llround(seconds * transport_.tempo / 60.0 * CLAP_BEATTIME_FACTOR));
             process.transport = &transport_;
             process.audio_outputs = &output;
             process.audio_outputs_count = 1;

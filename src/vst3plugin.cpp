@@ -296,7 +296,8 @@ public:
 
     // IProcessContextRequirements
     uint32 PLUGIN_API getProcessContextRequirements() override {
-        return IProcessContextRequirements::kNeedTempo;
+        return IProcessContextRequirements::kNeedTempo | IProcessContextRequirements::kNeedProjectTimeMusic |
+               IProcessContextRequirements::kNeedTransportState; // where it plays, for anchored LFOs
     }
 
     // IEditController
@@ -690,6 +691,16 @@ tresult PLUGIN_API Plugin::process(ProcessData &data) {
         processing_.store(true, std::memory_order_relaxed);
     if (data.processContext && (data.processContext->state & ProcessContext::kTempoValid))
         synth().setTempo(data.processContext->tempo);
+    // Where it plays, for anchored LFOs: in quarter notes when the host gives them, else from its samples, which are
+    // always there, at the tempo.
+    if (const ProcessContext *context = data.processContext; context && context->sampleRate > 0.0) {
+        const double seconds = static_cast<double>(context->projectTimeSamples) / context->sampleRate;
+        const bool music = (context->state & ProcessContext::kProjectTimeMusicValid) != 0;
+        synth().setTransport((context->state & ProcessContext::kPlaying) != 0,
+                             music ? context->projectTimeMusic : seconds * synth().tempo() / 60.0, seconds);
+    } else {
+        synth().setTransport(false, 0.0, 0.0);
+    }
     beginBlock();
     const bool overflow = collect(data);
 

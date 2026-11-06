@@ -145,6 +145,10 @@ enum class MidiInput { Cc, Pressure, Slide, Count };
 // Random shape takes a new value each cycle: Chaos sets how far it may jump from
 // the last one (at 100 % anywhere), Smooth how much of the cycle it glides there. Phase is where in its cycle an
 // LFO starts with each note (a one-shot runs from there to the cycle's end); a free or Random one ignores it. An
+// anchored LFO (Anchor, added later) is tied to the host's transport: while it plays, the LFO stands where it would
+// had it started at Phase at the song's start and run at its rate since (in beats when synced, else in seconds), all
+// voices sharing it; while the transport is stopped, or the host gives no position, it runs on as a free one. A
+// one-shot is never anchored. An
 // envelope is unipolar
 // unless EnvBipolar, which swings its depth across the set value like a bipolar LFO's (see sourceBipolar()).
 enum class SourceParam {
@@ -178,6 +182,7 @@ enum class SourceParam {
     CcNumber,  // Midi's: 0..127, while its input is a controller
     Bipolar,   // both's
     MidiInput, // Midi's (see MidiInput)
+    Anchor,    // an LFO's (see lfoAnchored())
     Count
 };
 // A freeform LFO shape, one per source: PointCount points, then
@@ -575,6 +580,7 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     case SourceParam::RandomSmooth:
     case SourceParam::RandomChaos:
     case SourceParam::Phase:
+    case SourceParam::Anchor:
         return t == SourceType::Lfo;
     case SourceParam::Slew:
     case SourceParam::CcNumber:
@@ -585,6 +591,29 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     default:
         return f < SourceParam::Attack ? t == SourceType::Lfo : t == SourceType::Env;
     }
+}
+// Whether the LFO in place `source` follows the host's transport (see SourceParam), or runs on one clock all voices
+// share (an anchored one too, while the transport is stopped), reading its params through `get`. A one-shot is
+// neither.
+template <class Get>
+bool lfoAnchored(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::Anchor)) >= 0.5 && get(paramIndex(source, SourceParam::OneShot)) < 0.5;
+}
+template <class Get>
+bool lfoShared(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::OneShot)) < 0.5 &&
+           (get(paramIndex(source, SourceParam::Free)) >= 0.5 ||
+            get(paramIndex(source, SourceParam::Anchor)) >= 0.5);
+}
+// What an LFO's Free, Anchor and One-Shot make of it, as the engine reads them (One-Shot over Anchor over Free): the
+// editor picks one, setting the switches for it.
+enum class LfoClock { Retrigger, Free, Anchor, OneShot, Count };
+template <class Get>
+LfoClock lfoClock(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::OneShot)) >= 0.5  ? LfoClock::OneShot
+           : get(paramIndex(source, SourceParam::Anchor)) >= 0.5 ? LfoClock::Anchor
+           : get(paramIndex(source, SourceParam::Free)) >= 0.5   ? LfoClock::Free
+                                                                 : LfoClock::Retrigger;
 }
 inline SourceType sourceType(double value) {
     const long t = std::lround(value);
@@ -1031,6 +1060,8 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Phase)) == 3428 &&
                   idOfIndex(paramIndex(0, SourceParam::Slew)) == 2829 &&
                   idOfIndex(paramIndex(kMaxSources - 1, SourceParam::MidiInput)) == 3432 &&
+                  idOfIndex(paramIndex(0, SourceParam::Anchor)) == 2833 &&
+                  idOfIndex(paramIndex(kMaxSources - 1, SourceParam::Anchor)) == 3433 &&
                   idOfIndex(slotTargetIndex(0, kFirstSlots)) == 6000 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");

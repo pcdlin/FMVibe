@@ -545,6 +545,8 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
     fxMovedCount_ = 0;
     fxParams_[paramIndex(GlobalParam::FxOrder)] = params[paramIndex(GlobalParam::FxOrder)];
     std::copy(params.begin() + kClipCurveBase, params.begin() + kSlotBypassBase, fxParams_.begin() + kClipCurveBase);
+    // Anchored LFOs go to where the transport stands: it may have jumped since the last render().
+    runSharedLfos(params, newestVoice(), 0, 0);
     for (uint32_t done = 0; done < frames; done += kControlBlock) {
         const uint32_t n = std::min(kControlBlock, frames - done);
         // The voices add up at their own rate, which comes down to the host's
@@ -607,21 +609,8 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             fxPitch_ = newest->pitch;
         }
 
-        // So are the free LFOs' clocks, which run even while no voice listens.
-        auto shared = [&](int i) {
-            double value = params[i] + globalMod_[i] + macroMod_[i];
-            if (newest) {
-                value += newest->mod[i];
-                for (int m = 0; m < newest->slotModCount; ++m)
-                    if (newest->slotMods[m].index == i)
-                        value += newest->slotMods[m].offset;
-            }
-            return std::clamp(value, table_[i].min, table_[i].max);
-        };
-        for (int s = 0; s < kMaxSources; ++s)
-            if (sourceType(params[paramIndex(s, SourceParam::Type)]) == SourceType::Lfo)
-                advanceLfo(freeLfos_[s], lfoHz(shared, s, tempo_), n, freeRng_, false,
-                           shared(paramIndex(s, SourceParam::RandomChaos)));
+        // So are the free and anchored LFOs' clocks, which run even while no voice listens.
+        runSharedLfos(params, newest, n, done + n);
         effects_.process(left + done, right + done, n, fxParams_, tempo_, fxPitch_);
 
         // Volume, after the effects: what is set, host and macro modulation, and the newest voice's LFOs and
@@ -644,6 +633,53 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         }
     }
     meterOutput(left, right, frames);
+    if (playing_) {
+        songSeconds_ += frames / sampleRate_;
+        songBeats_ += frames / sampleRate_ * tempo_ / 60.0;
+    }
+}
+
+void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32_t frames, uint32_t end) {
+    auto shared = [&](int i) {
+        double value = params[i] + globalMod_[i] + macroMod_[i];
+        if (newest) {
+            value += newest->mod[i];
+            for (int m = 0; m < newest->slotModCount; ++m)
+                if (newest->slotMods[m].index == i)
+                    value += newest->slotMods[m].offset;
+        }
+        return std::clamp(value, table_[i].min, table_[i].max);
+    };
+    for (int s = 0; s < kMaxSources; ++s) {
+        if (sourceType(params[paramIndex(s, SourceParam::Type)]) != SourceType::Lfo)
+            continue;
+        Lfo &lfo = freeLfos_[s];
+        const double chaos = shared(paramIndex(s, SourceParam::RandomChaos));
+        if (!playing_ || !lfoAnchored(shared, s)) {
+            if (frames > 0)
+                advanceLfo(lfo, lfoHz(shared, s, tempo_), frames, freeRng_, false, chaos);
+            continue;
+        }
+        // The cycles it has run since the song's start: synced, a note value's beats each, else at its rate. Its
+        // Phase is where it stood at the start; Random takes none, as with notes.
+        const double seconds = end / sampleRate_;
+        const double cycles =
+            shared(paramIndex(s, SourceParam::Sync)) >= 0.5
+                ? (songBeats_ + seconds * tempo_ / 60.0) /
+                      divisionBeats(static_cast<int>(std::lround(shared(paramIndex(s, SourceParam::Division)))))
+                : (songSeconds_ + seconds) * rateFromNorm(shared(paramIndex(s, SourceParam::Rate)));
+        const bool random =
+            std::lround(shared(paramIndex(s, SourceParam::Shape))) == static_cast<long>(LfoShape::Random);
+        const double at = cycles + (random ? 0.0 : shared(paramIndex(s, SourceParam::Phase)));
+        const double cycle = std::floor(at);
+        lfo.hz = lfoHz(shared, s, tempo_);
+        lfo.phase = at - cycle;
+        if (cycle != lfo.cycle) { // Random takes a new value each cycle
+            lfo.cycle = cycle;
+            lfo.from = lfo.held;
+            lfo.held = randomStep(lfo.held, chaos, freeRng_);
+        }
+    }
 }
 
 void Synth::meterOutput(const float *left, const float *right, uint32_t frames) {
@@ -1042,8 +1078,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             Lfo &lfo = v.lfos[s];
             // A free LFO takes the shared clock, which render() moves on; switched
             // back to retrigger, it carries on from there. A one-shot is never free.
+            // So does an anchored one, which render() moves to where the transport stands.
             const bool oneShot = p[paramIndex(s, SourceParam::OneShot)] >= 0.5;
-            const bool free = !oneShot && p[paramIndex(s, SourceParam::Free)] >= 0.5;
+            const bool free = lfoShared(get, s);
             const double chaos = p[paramIndex(s, SourceParam::RandomChaos)];
             if (free)
                 lfo = freeLfos_[s];

@@ -679,6 +679,7 @@ void buildTable(ParamTable &t) {
         field(SourceParam::Bipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::MidiInput, tr(Str::ParamInput), ParamKind::MidiInput, 0.0,
               static_cast<double>(MidiInput::Count) - 1.0, 0.0);
+        field(SourceParam::Anchor, tr(Str::ParamAnchor), ParamKind::Toggle, 0.0, 1.0, 0.0);
 
         // Freeform shapes start as a triangle: up from the bottom to the top at the middle of the
         // cycle, and down again as the last segment wraps around.

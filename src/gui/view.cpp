@@ -163,10 +163,6 @@ std::string filterLabel(FilterType type, double slope) {
            (hasSlope(type) && played != kDefaultSlope ? " " + std::to_string(slopeDb(played)) : "");
 }
 
-bool isLfoFree(int param) {
-    return sourceFieldOf(param) == SourceParam::Free;
-}
-
 bool isLfoPhase(int param) {
     return sourceFieldOf(param) == SourceParam::Phase;
 }
@@ -1094,10 +1090,29 @@ double View::lfoPhaseNow(int lfo) const {
     return phase - std::floor(phase);
 }
 
+LfoClock View::lfoClockOf(int lfo) const {
+    return lfoClock([this](int i) { return value(i); }, lfo);
+}
+
+// Free, Anchor and One-Shot set for `clock` alone (none for Retrigger), in one undo step.
+void View::setLfoClock(int lfo, LfoClock clock) {
+    const std::pair<SourceParam, LfoClock> modes[] = {{SourceParam::Free, LfoClock::Free},
+                                                      {SourceParam::Anchor, LfoClock::Anchor},
+                                                      {SourceParam::OneShot, LfoClock::OneShot}};
+    std::vector<std::pair<int, double>> changes;
+    for (const auto &[field, mode] : modes) {
+        const double to = mode == clock ? 1.0 : 0.0;
+        if (value(paramIndex(lfo, field)) != to)
+            changes.push_back({paramIndex(lfo, field), to});
+    }
+    if (!changes.empty())
+        editMany(changes);
+}
+
 bool View::lfoPhaseUsed(int lfo) const {
-    const bool free = value(paramIndex(lfo, SourceParam::Free)) >= 0.5 &&
-                      value(paramIndex(lfo, SourceParam::OneShot)) < 0.5;
-    return !free &&
+    // An anchored LFO stood at its Phase at the song's start.
+    auto get = [this](int i) { return value(i); };
+    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo)) &&
            std::lround(value(paramIndex(lfo, SourceParam::Shape))) != static_cast<long>(LfoShape::Random);
 }
 
@@ -1913,10 +1928,11 @@ std::vector<View::Widget> View::widgets() const {
             }
             // Synced, the knob picks a note value instead of a rate and shows it as its label.
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
-            // Free, one-shot and unipolar, as icons, under the shape list.
-            const SourceParam modes[] = {SourceParam::Free, SourceParam::OneShot, SourceParam::Unipolar};
-            for (int i = 0; i < 3; ++i)
-                add(Kind::Toggle, lfoModeSwitch(card, i), paramIndex(s, modes[i]));
+            // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
+            // One-Shot for it (see setLfoClock()), and stands for them all. Unipolar under the sync switch.
+            for (int i = 0; i < kLfoModes; ++i)
+                add(Kind::Choice, lfoModeSwitch(card, i), paramIndex(s, SourceParam::Free), s, i);
+            add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
                  lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
@@ -4642,10 +4658,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::Choice:
     case Kind::Toggle: {
-        const bool on = w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b : value(w.param) >= 0.5;
-        bool relevant = true;
-        if (isLfoFree(w.param)) // a one-shot restarts with every note
-            relevant = value(paramIndex(sourceOf(w.param), SourceParam::OneShot)) < 0.5;
+        const bool clockMode = isLfoClockChoice(w);
+        const bool on = clockMode                ? static_cast<int>(lfoClockOf(w.a)) == w.b
+                        : w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b
+                                                 : value(w.param) >= 0.5;
         const Str clipModes[] = {Str::SwitchHard, Str::SwitchSoft, Str::SwitchAsym};
         const FxParam field = fxFieldOf(w.param);
         // Operators', filters', sources' and effects' on switches show the power symbol rather than a word.
@@ -4667,9 +4683,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             color = fxColor(fxSlotOf(w.param));
         if (shaperOf(w.param) >= 0)
             color = kShaperColor;
-        c.fillRect(w.rect, on ? color.alpha(relevant ? 0.22f : 0.08f) : (hovered ? kTrack : kRaised), 5.0f);
+        c.fillRect(w.rect, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
         if (on)
-            c.strokeRect(w.rect, color.alpha(relevant ? 1.0f : 0.35f), 1.0f, 5.0f);
+            c.strokeRect(w.rect, color, 1.0f, 5.0f);
         if (field == FxParam::FilterType) // the filter types show as icons, named in their tooltips
             filterIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 5.0f, 20.0f, w.rect.h - 10.0f},
                        static_cast<FilterType>(w.b), on ? color : kDim);
@@ -4685,11 +4701,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             fxSwitchIcon(c, w.rect.center(), field, on ? color : (hovered ? kText : kDim));
         else if (isLfoSync(w.param)) // an LFO's SYNC, the effects' metronome
             fxSwitchIcon(c, w.rect.center(), FxParam::DelaySync, on ? color : (hovered ? kText : kDim));
-        else if (const SourceParam mode = sourceFieldOf(w.param);
-                 mode == SourceParam::Free || mode == SourceParam::OneShot || mode == SourceParam::Unipolar)
-            lfoModeIcon(c, w.rect.center(), mode, !relevant ? kFaint : on ? color : (hovered ? kText : kDim));
+        else if (clockMode)
+            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? color : (hovered ? kText : kDim));
+        else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's
+            polarityIcon(c, w.rect.center(), false, on ? color : (hovered ? kText : kDim));
         else
-            c.text(w.rect, text, 10.5f, !relevant ? kFaint : (on ? kText : kDim), Align::Center, on);
+            c.text(w.rect, text, 10.5f, on ? kText : kDim, Align::Center, on);
         break;
     }
     case Kind::ViewTab: {
@@ -5961,10 +5978,10 @@ void View::paintTooltip(Canvas &c) {
     else if (hover_->kind == Kind::ListButton && isFilterSlope(param))
         text = tr(slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0) ? Str::TipSlope
                                                                                                   : Str::TipSlopeBand);
-    else if (isLfoFree(param))
-        text = tr(Str::TipFree);
-    else if (sourceFieldOf(param) == SourceParam::OneShot)
-        text = tr(Str::TipOneShot);
+    else if (isLfoClockChoice(*hover_)) {
+        const Str tips[] = {Str::TipRetrigger, Str::TipFree, Str::TipAnchor, Str::TipOneShot};
+        text = tr(tips[std::clamp(hover_->b, 0, kLfoModes - 1)]);
+    }
     else if (sourceFieldOf(param) == SourceParam::Unipolar)
         text = tr(Str::TipUnipolar);
     else if (field == FxParam::DelaySync)
@@ -6878,7 +6895,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         hover_.reset();
         break;
     case Kind::Choice:
-        edit(w.param, w.b);
+        if (isLfoClockChoice(w))
+            setLfoClock(w.a, static_cast<LfoClock>(w.b));
+        else
+            edit(w.param, w.b);
         break;
     case Kind::Toggle:
         flipSwitch(w.param);
@@ -7570,6 +7590,12 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     if (hit->kind == Kind::Toggle) {
         if (whole != 0 && (whole > 0) != (value(hit->param) >= 0.5))
             flipSwitch(hit->param);
+        return;
+    }
+    if (isLfoClockChoice(*hit)) { // to the next mode along, as the wheel turns, from the one lit
+        const int to = std::clamp(static_cast<int>(lfoClockOf(hit->a)) + whole, 0, kLfoModes - 1);
+        if (whole != 0)
+            setLfoClock(hit->a, static_cast<LfoClock>(to));
         return;
     }
     if (isPartialCount(hit->param)) {

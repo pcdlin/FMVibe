@@ -178,20 +178,33 @@ What the plugin does and how its editor works, in full. Building and installing 
     each puts out, from nothing to all of it. As it starts, the curve is a straight line, so it puts out the
     velocity as it came: half of it for a note at 64. Drawn the other way round, the softest notes move their
     targets the most. The curve is part of the patch.
+  - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
+    **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
+    hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
+    wins, then Anchor.
   - **Free** makes an LFO run on without restarting at each note. All voices then follow one shared clock, which
-    runs at the rate the newest voice hears (like the effects) and keeps going between notes. Off (the default),
-    every note retriggers the LFO from its Phase.
+    runs at the rate the newest voice hears (like the effects) and keeps going between notes.
+  - **Anchor** ties an LFO to the host's transport: while it plays, the LFO stands where it would had it started at
+    its Phase at the very start of the song and run ever since, so it lands on the same spot of its cycle at the same
+    place in the song however playback started (a synced LFO counts in beats, so a quarter-note one is at its Phase
+    on every beat; a free-running rate counts in seconds). All voices share it, as a free LFO's clock, whenever
+    notes start. While the transport is stopped, or in a host that gives no position, it runs on from where it is,
+    as a free one, and it lands back in place as playback starts. As its place comes from the song position times
+    its rate, modulating the rate moves it along at once rather than speeding it up. A one-shot is never anchored.
+    The browser demo has no transport, so there anchored LFOs run free; `fmvibe-uihost` plays its transport from the
+    moment it starts.
   - **Phase** (0–100 %, 0 to begin with) is where in its cycle each note starts an LFO: at 25 % a sine starts at
     its peak, and 100 % is the cycle's start again. A free LFO keeps its shared clock and a random one its steps,
-    so neither uses it. A one-shot runs from there to the cycle's end, so at 50 % it plays only the second half.
+    so neither uses it; an anchored one stands at it at the song's start. A one-shot runs from there to the cycle's
+    end, so at 50 % it plays only the second half.
   - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
     dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. The browser demo has no
     host: its page has a **Tempo** field under the editor instead (20–999 BPM, 120 to begin with, remembered by the
     browser), which every synced LFO, delay and sweep follows. A new LFO starts synced, in quarter notes.
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
-    is never free): for a sine, a triangle or a drawn shape that is where it started, while a saw holds at its top,
-    a square low and a random one at the value it took. A drawn shape with a point at the cycle's end (100 %) holds
-    at that point's level instead, so a ramp from 0 up to 1 there stays at 1.
+    is never free or anchored): for a sine, a triangle or a drawn shape that is where it started, while a saw holds
+    at its top, a square low and a random one at the value it took. A drawn shape with a point at the cycle's end
+    (100 %) holds at that point's level instead, so a ramp from 0 up to 1 there stays at 1.
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
     bottom.
@@ -729,14 +742,18 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     quarter, round from the right end to the left, the older ones fainter, with the live dot on the newest (at
     the end of a cycle, it waits there until the next one comes in). An LFO picks its shape from a list, like a
     shaper's curve, its button and each entry showing the shape's icon before its name. Under the shape list, as
-    wide as it, three small switches drawn as icons (named on hover): an infinity sign
-    for **Free**, which stops notes from restarting it, a single cycle that ends in a dot for **One-Shot**, and
-    humps on a baseline for **Unipolar**. Right of those two rows, centered
+    wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
+    (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
+    anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. A click picks one (a click on the
+    one lit leaves it), and the wheel over them steps to the next one. Right of those two rows, centered
     on them, are the Rate and Phase knobs,
     over a random LFO's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
     with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
-    The Phase knob is faint while it does nothing (a free or random LFO), and otherwise a thin line on the display
-    marks where notes start the LFO. A unipolar LFO's display has its zero line at the bottom.
+    Under it, level with the clock modes, is the **Unipolar** switch, a hump on a baseline as a MODS row's
+    polarity switch has.
+    The Phase knob is faint while it does nothing (a random LFO, or a free one that isn't anchored), and otherwise
+    a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A
+    unipolar LFO's display has its zero line at the bottom.
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
     knob (on a wire label or matrix cell, in its top right corner). Drag that dot to set the depth; double-click it

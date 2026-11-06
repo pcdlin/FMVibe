@@ -267,6 +267,9 @@ struct Instance {
     IAudioProcessor *processor = nullptr;
     IEditController *controller = nullptr;
     std::vector<float> left = std::vector<float>(kBlock), right = std::vector<float>(kBlock);
+    // The transport each block hands over, at 120 BPM: stopped, or playing at a position it stays at.
+    bool playing = false;
+    double beats = 0.0;
 
     // One block: the events and param changes given, the audio into left and right.
     void process(Events &events, Changes &changes, int32 frames = kBlock) {
@@ -278,6 +281,11 @@ struct Instance {
         context.state = ProcessContext::kTempoValid;
         context.tempo = 120.0;
         context.sampleRate = kRate;
+        if (playing) {
+            context.state |= ProcessContext::kPlaying | ProcessContext::kProjectTimeMusicValid;
+            context.projectTimeMusic = beats;
+            context.projectTimeSamples = std::llround(beats * 0.5 * kRate);
+        }
         ProcessData data;
         data.processMode = kRealtime;
         data.symbolicSampleSize = kSample32;
@@ -411,6 +419,9 @@ int main(int argc, char **argv) {
         return 1;
     check((contextNeeds->getProcessContextRequirements() & IProcessContextRequirements::kNeedTempo) != 0,
           "it asks for the tempo");
+    check((contextNeeds->getProcessContextRequirements() & IProcessContextRequirements::kNeedTransportState) != 0 &&
+              (contextNeeds->getProcessContextRequirements() & IProcessContextRequirements::kNeedProjectTimeMusic) != 0,
+          "and for the transport's state and position, for anchored LFOs");
     Handler handler;
     plugin.controller->setComponentHandler(&handler);
 
@@ -649,6 +660,52 @@ int main(int argc, char **argv) {
         plugin.process(events, changes);
         const std::vector<float> off = plugin.render(4.0);
         check(on > 0.05 && peak(off, off.size() - 4800) < 1e-4, "notes without ids end by their key");
+    }
+
+    // An anchored square LFO 1 at -100 % on A's output, set to 0.5, synced to quarter notes: muted in the first half
+    // of each beat, full in the second, where the playing transport stands (the same position each block), not
+    // from the note's start.
+    {
+        Events events;
+        Changes changes;
+        auto set = [&](int index, double plain) {
+            changes.add(idOfIndex(index), 0, plugin.controller->plainParamToNormalized(idOfIndex(index), plain));
+        };
+        const int lfoParams[] = {paramIndex(0, SourceParam::Type), paramIndex(0, SourceParam::Shape),
+                                 paramIndex(0, SourceParam::Sync), paramIndex(0, SourceParam::Division),
+                                 paramIndex(0, SourceParam::Anchor), paramIndex(0, OpParam::Out),
+                                 slotTargetIndex(0, 0), slotAmountIndex(0, 0)};
+        set(lfoParams[0], static_cast<double>(SourceType::Lfo));
+        set(lfoParams[1], static_cast<double>(LfoShape::Square));
+        set(lfoParams[2], 1.0);
+        set(lfoParams[3], 13.0); // 1/4
+        set(lfoParams[4], 1.0);
+        set(lfoParams[5], 0.5);
+        set(lfoParams[6], slotTargetValue(paramIndex(0, OpParam::Out)));
+        set(lfoParams[7], -1.0);
+        plugin.process(events, changes);
+        changes.queues.clear();
+        plugin.playing = true;
+        auto levelAt = [&](double beats) {
+            plugin.beats = beats;
+            events.events = {noteOn(0, 69, 8)};
+            plugin.process(events, changes);
+            events.events.clear();
+            plugin.process();
+            const double level = peak(plugin.render(0.01));
+            events.events = {noteOff(0, 69, 8)};
+            plugin.process(events, changes);
+            events.events.clear();
+            plugin.render(4.0);
+            return level;
+        };
+        const double secondHalf = levelAt(2.6), firstHalf = levelAt(3.1);
+        plugin.playing = false;
+        for (int index : lfoParams)
+            set(index, paramTable()[index].def);
+        plugin.process(events, changes);
+        check(secondHalf > 0.05 && firstHalf == 0.0,
+              "an anchored LFO stands where the process context's position puts it");
     }
 
     // More param changes and events than a block sorts by their place (4096): those past them apply after them, in

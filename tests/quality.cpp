@@ -1130,6 +1130,85 @@ int main() {
               "a freeform LFO ending on a point at the cycle's end stays there, as a one-shot does");
     }
 
+    // --- An anchored LFO stands where the host's transport puts it, as if it had started at its Phase at the song's
+    // start: synced, by the beats, else by the seconds, whenever a note starts; a block split into pieces keeps the
+    // position moving; stopped, it runs on from where it was; a one-shot isn't anchored; Random steps each cycle.
+    std::printf("anchored LFO:\n");
+    {
+        auto telemetry = std::make_unique<Telemetry>();
+        // A sine on quarter notes at 120 BPM (2 Hz), anchored, and a note started where the transport stands: the
+        // phase of LFO 1 one control block in, when it was read (a one-shot's a control block on from its start).
+        auto anchored = [](Engine &e) {
+            e.synth().setTempo(120.0);
+            lfoOn(e.p, paramIndex(0, OpParam::Out), 0.1, 2.0);
+            e.p[paramIndex(0, SourceParam::Sync)] = 1.0;
+            e.p[paramIndex(0, SourceParam::Division)] = 13.0; // 1/4
+            e.p[paramIndex(0, SourceParam::Anchor)] = 1.0;
+        };
+        auto phase = [&](Engine &e) {
+            e.synth().telemetry(*telemetry);
+            return static_cast<double>(telemetry->lfoPhases[0]);
+        };
+        auto phaseAt = [&](double beats, auto setup) {
+            Engine e(1);
+            anchored(e);
+            setup(e);
+            e.synth().setTransport(true, beats, beats * 0.5);
+            e.noteOn(57);
+            e.render(32);
+            return phase(e);
+        };
+        auto none = [](Engine &) {};
+        auto near = [](double a, double b) { return std::abs(a - b) < 1e-4; };
+        const double atBeat = phaseAt(2.25, none), later = phaseAt(7.6, none);
+        const double offset = phaseAt(2.25, [](Engine &e) { e.p[paramIndex(0, SourceParam::Phase)] = 0.5; });
+        const double free = phaseAt(1.1, [](Engine &e) { // 2 Hz unsynced, 0.55 s in: 1.1 cycles
+            e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
+        });
+        const double oneShot = phaseAt(2.25, [](Engine &e) { e.p[paramIndex(0, SourceParam::OneShot)] = 1.0; });
+        std::printf("      at beat 2.25: %.4f (Phase 50 %%: %.4f), at 7.6: %.4f; unsynced 0.55 s in: %.4f; a one-shot: "
+                    "%.4f\n", atBeat, offset, later, free, oneShot);
+        check(near(atBeat, 0.25) && near(offset, 0.75) && near(later, 0.6) && near(free, 0.1) && oneShot < 0.01,
+              "an anchored LFO stands where the transport puts it, from its Phase, synced or not; a one-shot doesn't");
+
+        // 0.1 s from the song's start, rendered in blocks of 480 and in pieces of 7, the transport set once: both at
+        // a fifth of a cycle. Then stopped: on from there, another fifth a tenth of a second later.
+        Engine whole(1), pieces(1);
+        for (Engine *e : {&whole, &pieces}) {
+            anchored(*e);
+            e->synth().setTransport(true, 0.0, 0.0);
+            e->noteOn(57);
+        }
+        whole.render(4800, 480);
+        pieces.render(4800, 7);
+        whole.render(32);
+        pieces.render(32);
+        const double inBlocks = phase(whole), inPieces = phase(pieces);
+        whole.synth().setTransport(false, 0.0, 0.0);
+        whole.render(4800);
+        const double stopped = phase(whole);
+        std::printf("      0.1 s in: %.4f in blocks, %.4f in pieces; stopped, 0.1 s later: %.4f\n", inBlocks, inPieces,
+                    stopped);
+        check(near(inBlocks, 0.2) && near(inPieces, 0.2),
+              "an anchored LFO follows the transport through blocks split into pieces");
+        check(near(stopped, 0.4), "an anchored LFO runs on from where it is while the transport is stopped");
+
+        // Random: the value it holds through a cycle, and a new one in the next.
+        Engine random(1);
+        anchored(random);
+        random.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Random);
+        random.noteOn(57);
+        auto heldAt = [&](double beats) {
+            random.synth().setTransport(true, beats, beats * 0.5);
+            random.render(32);
+            random.synth().telemetry(*telemetry);
+            return telemetry->lfoTo[0];
+        };
+        const float first = heldAt(4.2), same = heldAt(4.9), next = heldAt(5.1);
+        std::printf("      random: %.3f at beat 4.2, %.3f at 4.9, %.3f at 5.1\n", first, same, next);
+        check(first == same && next != same, "an anchored random LFO steps as the transport passes a cycle");
+    }
+
     // --- The parametric EQ's and phase disperser's analyzers: a sine shows in its band, at its level (a flat EQ
     // passes it as it is, and so does a disperser all wet, an all-pass).
     std::printf("parametric EQ and phase disperser analyzers:\n");

@@ -173,32 +173,43 @@ void mcBandIcon(Canvas &c, Rect r, int band, Color color) {
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
-// An LFO's mode switches, named in their tooltips: FREE an infinity sign, ONE-SHOT a single cycle that then stays
-// where it ends, UNIPOLAR a wave that only rises from its baseline.
-void lfoModeIcon(Canvas &c, Point m, SourceParam mode, Color color) {
-    const std::vector<double> key{static_cast<double>(Curve::ModeIcon), m.x, m.y, static_cast<double>(mode)};
+// An LFO's clock modes, named in their tooltips: RETRIGGER a rise that starts again at each dot (a note), FREE an
+// infinity sign, ANCHOR an anchor, ONE-SHOT a single cycle that then stays where it ends.
+void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color) {
+    const std::vector<double> key{static_cast<double>(Curve::ModeIcon), m.x, m.y, static_cast<double>(clock)};
     const std::vector<Point> points = icons.get(key, [&] {
         std::vector<Point> points;
-        if (mode == SourceParam::Free) {
+        if (clock == LfoClock::Retrigger) {
+            for (int half = 0; half < 2; ++half)
+                for (int i = 0; i <= 12; ++i)
+                    points.push_back({m.x - 10.0f + half * 10.0f + i * (10.0f / 12.0f),
+                                      m.y + 4.0f - 8.0f * std::sin(i / 12.0f * 0.5f * kPi)});
+        } else if (clock == LfoClock::Free) {
             for (int i = 0; i <= 48; ++i) {
                 const float t = i / 48.0f * 2.0f * kPi, d = 1.0f + std::sin(t) * std::sin(t);
                 points.push_back({m.x + 10.0f * std::cos(t) / d, m.y + 11.0f * std::sin(t) * std::cos(t) / d});
             }
-        } else if (mode == SourceParam::OneShot) {
+        } else if (clock == LfoClock::Anchor) { // its arms, the rest drawn below
+            for (int i = 0; i <= 24; ++i) {
+                const float t = (0.1f + 0.8f * i / 24.0f) * kPi;
+                points.push_back({m.x - 6.5f * std::cos(t), m.y + 0.5f + 6.5f * std::sin(t)});
+            }
+        } else {
             for (int i = 0; i <= 24; ++i)
                 points.push_back({m.x - 10.0f + i * 0.5f, m.y - 4.5f * std::sin(i / 24.0f * 2.0f * kPi)});
             points.push_back({m.x + 10.0f, m.y});
-        } else {
-            for (int i = 0; i <= 32; ++i)
-                points.push_back(
-                    {m.x - 10.0f + i * 0.625f, m.y + 5.0f - 4.5f * (1.0f - std::cos(i / 32.0f * 4.0f * kPi))});
         }
         return points;
     });
-    if (mode == SourceParam::OneShot)
+    if (clock == LfoClock::Retrigger) { // the notes that start it
+        c.fillCircle({m.x - 10.0f, m.y + 4.0f}, 1.6f, color);
+        c.fillCircle({m.x, m.y + 4.0f}, 1.6f, color);
+    } else if (clock == LfoClock::Anchor) { // its ring, shank and stock
+        c.strokeCircle({m.x, m.y - 5.2f}, 1.8f, color, 1.2f);
+        c.line({m.x, m.y - 3.4f}, {m.x, m.y + 7.0f}, color, 1.4f);
+        c.line({m.x - 3.5f, m.y - 1.2f}, {m.x + 3.5f, m.y - 1.2f}, color, 1.4f);
+    } else if (clock == LfoClock::OneShot)
         c.fillCircle(points.back(), 1.7f, color);
-    else if (mode != SourceParam::Free)
-        c.line({m.x - 11.0f, m.y + 5.0f}, {m.x + 11.0f, m.y + 5.0f}, color.alpha(0.5f), 1.0f);
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
