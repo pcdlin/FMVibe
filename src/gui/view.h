@@ -140,6 +140,8 @@ private:
         OutLabel,     // param = output level, a = node
         WireEnd,      // param = the route, a = from node, b = to node (kNodes: the output): its arrowhead, to drag elsewhere
         Wire,         // param = the route, a = from node, b = to node: along its curve; drag to bend it
+        RouteModeButton, // param = the route's mode, a = from node, b = to operator: beside its wire label, its mode's
+                         // glyph (shown under the mouse, or while it isn't Phase); a click opens the list of modes
         GridCell,     // param, a = row node, b = column
         SourceHandle, // a = source: drag onto a param to modulate it
         SourceGrip,   // a = source, b = its position among the sources: drag to reorder
@@ -853,6 +855,9 @@ private:
     void paintScope(Canvas &c, Rect r, int op);
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
     InspectorTab opTabShown(int op) const;
+    // The nodes whose routes into operator `op` its INPUTS tab lists, in the graph's order, and that tab's picture.
+    std::vector<int> inputsOf(int op) const;
+    void paintInputs(Canvas &c, int op);
     bool opTabModulated(int op, InspectorTab tab) const;
     void paintNoiseSlope(Canvas &c, Rect r, int op);
     void paintLfo(Canvas &c, Rect r, int lfo);

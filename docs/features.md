@@ -65,6 +65,22 @@ What the plugin does and how its editor works, in full. Building and installing 
   Any operator can feed any other, cycles included. In each sample, earlier operators (A before B) pass on their
   current output and later ones their previous output; feedback is smoothed over two samples. Amounts are squared
   internally, so the low end is fine-grained. **FM Amount** scales the whole matrix.
+- **Route modes**: each route into an operator, from an operator, a filter or a shaper, acts on it in one of four
+  ways, Phase to begin with:
+  - **Phase**: the source moves where the operator reads its wave (phase modulation, what FM synths call FM). Up to
+    8 radians at 100 %.
+  - **Linear FM**: the source is added to the operator's frequency, up to 4 times its own frequency either way at
+    100 %. Past 50 % the frequency swings through zero and the operator runs backwards for a moment. The mean
+    pitch stays where it was, and a source with a DC offset (a shaper's asymmetric curve, a slow filter) detunes it.
+  - **Exp FM**: the source moves the operator's pitch by octaves, up to 4 either way at 100 % (one at 50 %), as a
+    control voltage into an analog oscillator does; the deeper it goes, the higher the mean pitch.
+  - **Ring**: the operator's output is multiplied by the source: at 100 % only the sum and difference frequencies
+    sound, at 50 % the operator stays at half its level with them beside it, as amplitude modulation.
+
+  Like Phase, Linear and Exp FM take their amounts squared, and all four are scaled by FM Amount. An operator's
+  feedback is always Phase. An operator that Linear or Exp FM can take higher reads a wavetable with fewer
+  harmonics, so it stays below Nyquist at the top of its swing. The mode is a param of its own for hosts (`B → A
+  Mode`), stepped and automatable, and changes at once.
 - **Filters F1 and F2**, per voice, each switchable on and off (a new instance starts with both off). Any
   operator or shaper can be sent into either filter, and each filter can feed the other one (`F1 → F2` for a
   series chain, `F2 → F1`) and itself (`F1 Feedback`), and either can feed the shapers (`F1 → S1`, see below); each filter has its own output level, its **Out**, which, like a shaper's or operators B–F's, is 0 to
@@ -451,6 +467,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       couldn't take it. Let go of off the nodes and the bus (where it turns faint), the route goes, with its
       modulation, as its right-click menu's Disconnect does. The feedback loop above an operator or a shaper has no
       arrowhead.
+    - A route into an operator has its mode's glyph left of its label (φ for Phase, a straight line for Linear FM,
+      a steepening curve for Exp FM, a ringed cross for Ring): shown while the label is under the mouse, and for
+      good once the mode isn't Phase. A click on it opens the list of modes; the right-click menus of the wire, its
+      label and its arrowhead list them too, the one in force checked. A route moved onto another operator keeps
+      its mode; moved elsewhere or removed, it is Phase again when it comes back.
     - Drag a wire's percentage label up or down to set the depth; double-click it to remove the wire, and
       Ctrl+Click it (or pick Edit value… from its right-click menu) to type a depth. A wire, or
       a node's line to OUT, turned down to 0 % stays, so modulation can still be dropped on it; only removing it
@@ -470,7 +491,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
     panel's height, as far from its top as from its bottom; every cell is a route; the row and
     column of a node that is off are greyed out, its routes kept as they are. The diagonal is each node's feedback,
-    outlined in its color; toggled on, it starts at 25 %. Drag cells
+    outlined in its color; toggled on, it starts at 25 %. A route into an operator that isn't Phase shows its mode's
+    glyph in its cell's top left corner, and the cell's right-click menu lists the modes. Drag cells
     vertically; double-click toggles a cell on or off; Ctrl+Click types an amount. Dragging a cell, or toggling it
     on, switches on the nodes it joins. A row's or column's name works like the node's tab in the
     inspector: clicking it shows that node there, switching it on if it is off, and the names of the node shown
@@ -756,6 +778,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       operator, whose cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left
       of the last span faint after it. With no note playing, the wave's plain shape shows faintly. The audio thread
       captures only while the tab is shown.
+    - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
+      which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
+      naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
+      wire's. Its feedback comes last, with its depth and "phase only". With nothing routed into it, a line says
+      so. The rows close up when there are many.
 
     A noise operator shows Slope and Spread instead of the pitch knobs, and no Phase; its first tab is
     **SPECTRUM**, its spectrum against white, pink and brown, and it has no scope (picked, it shows its envelope).

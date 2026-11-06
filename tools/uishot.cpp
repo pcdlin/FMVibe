@@ -416,7 +416,7 @@ const Point kNoiseButton = waveButton(4);
 // An operator page's tabs, ENVELOPE, UNISON and SCOPE (by InspectorTab), and the scope's buttons for 1, 2 and 4
 // cycles in its display's top right corner.
 Point opTabPoint(InspectorTab tab) {
-    constexpr float kX[] = {1009.0f, 937.0f, 1071.0f};
+    constexpr float kX[] = {1009.0f, 937.0f, 1071.0f, 1126.0f};
     return {kX[static_cast<int>(tab)], 270.0f};
 }
 Point scopeCycleButton(int choice) {
@@ -2466,6 +2466,141 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
     const bool fitShot = renderer.save(view, dir / "2j-wire-at-edge-bent.png");
     check(plainShot && fitShot && aboveGraph() == plain && bendOf() == kMaxWireBend,
           "a wire bowed out of the panel bows only as far as stays inside");
+}
+
+// How a route acts on its operator (RouteMode): picked from the list under the glyph beside its wire label (the
+// glyph showing while the label is under the mouse, and for good once it isn't Phase), from the right-click menus of
+// its label and its matrix cell (whose corner shows the glyph), and from the operator page's INPUTS tab; each pick an
+// undo step. Moved onto another operator by its arrowhead, a route keeps its mode; disconnected, it starts as Phase.
+void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(paramIndex(2, OpParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.5);
+    model.ui.keptRoutes.push_back(matrixIndex(1, 0));
+    model.ui.selectedNode = 0;
+    view.poll();
+    const UiLayout &layout = model.layout();
+    const int mode = routeModeIndex(1, 0);
+    // B -> A's label, in the middle of its wire as it bows to begin with (see testWireBend()), and the glyph left of it.
+    const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1);
+    const float span = std::hypot(a.x - b.x, a.y - b.y);
+    const Point left{-(a.y - b.y) / span, (a.x - b.x) / span};
+    const Point control{(a.x + b.x) * 0.5f + left.x * span * kDefaultWireBend,
+                        (a.y + b.y) * 0.5f + left.y * span * kDefaultWireBend};
+    auto toward = [&](Point from, float by) {
+        const float d = std::hypot(control.x - from.x, control.y - from.y);
+        return Point{from.x + (control.x - from.x) / d * by, from.y + (control.y - from.y) / d * by};
+    };
+    const Point start = toward(b, 24.0f), end = toward(a, 32.0f);
+    const Point label{0.25f * start.x + 0.5f * control.x + 0.25f * end.x,
+                      0.25f * start.y + 0.5f * control.y + 0.25f * end.y};
+    const Point glyph{label.x - 30.0f, label.y};
+    auto glyphPixels = [&] {
+        std::vector<uint32_t> pixels;
+        for (float y = glyph.y - 5.0f; y <= glyph.y + 5.0f; y += 1.0f)
+            for (float x = glyph.x - 5.0f; x <= glyph.x + 5.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool plainShot = renderer.save(view, dir / "2k-route-phase.png");
+    const std::vector<uint32_t> phaseAway = glyphPixels();
+    // Under the mouse, the label shows the glyph; a click on it opens the list of modes, Ring its last.
+    view.mouseMove(label, {});
+    view.mouseMove(glyph, {});
+    click(view, glyph);
+    const Point ringItem{glyph.x + 47.0f, label.y + 9.0f + 4.0f + 4.0f + 3 * 22.0f + 11.0f};
+    view.mouseMove(ringItem, {});
+    const bool listShot = renderer.save(view, dir / "2l-route-mode-list.png");
+    click(view, ringItem);
+    const bool ring = model.value(mode) == static_cast<double>(RouteMode::Ring);
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool ringShot = renderer.save(view, dir / "2m-route-ring.png");
+    const bool shows = glyphPixels() != phaseAway;
+    view.undo();
+    const bool undone = model.value(mode) == 0.0;
+    view.redo();
+    check(plainShot && listShot && ring && ringShot && shows && undone && model.value(mode) == 3.0,
+          "a wire label's glyph opens the list of its route's modes, and shows a mode other than Phase (read off the "
+          "rendered pixels)");
+
+    // The label's right-click menu lists the modes, the one in force checked; picking Exp FM sets it.
+    bool checked = false;
+    for (const MenuItem &item : view.contextMenu(label)) {
+        checked = checked || (item.label == routeModeName(RouteMode::Ring) && item.checked);
+        if (item.label == routeModeName(RouteMode::ExpFm))
+            view.menuCommand(item.command);
+    }
+    check(checked && model.value(mode) == static_cast<double>(RouteMode::ExpFm),
+          "a wire label's menu lists its route's modes and picks one");
+
+    // In the matrix, the cell's corner shows the glyph of a mode other than Phase (read off the rendered pixels), and
+    // its menu picks Linear FM.
+    model.ui.view = RoutingView::Matrix;
+    view.poll();
+    const Point cell = gridCellCenter(1, 0);
+    const Point corner{cell.x - 14.3f + 7.0f, cell.y - 14.3f + 7.0f};
+    auto cornerPixels = [&] {
+        std::vector<uint32_t> pixels;
+        for (float y = corner.y - 4.0f; y <= corner.y + 4.0f; y += 1.0f)
+            for (float x = corner.x - 4.0f; x <= corner.x + 4.0f; x += 1.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    view.mouseMove({600.0f, 440.0f}, {});
+    const bool matrixShot = renderer.save(view, dir / "6b-matrix-route-mode.png");
+    const std::vector<uint32_t> expCorner = cornerPixels();
+    for (const MenuItem &item : view.contextMenu(cell))
+        if (item.label == routeModeName(RouteMode::LinearFm))
+            view.menuCommand(item.command);
+    const bool linear = model.value(mode) == static_cast<double>(RouteMode::LinearFm);
+    model.set(mode, 0.0);
+    view.poll();
+    renderer.save(view, dir / "6c-matrix-route-phase.png");
+    check(matrixShot && linear && cornerPixels() != expCorner,
+          "a matrix cell shows its route's mode in its corner, and its menu picks one");
+
+    // The INPUTS tab: a row per route into A, B's and its feedback's; B's buttons pick its mode, its label its depth.
+    model.ui.view = RoutingView::Graph;
+    model.set(matrixIndex(0, 0), 0.25);
+    model.ui.keptRoutes.push_back(matrixIndex(0, 0));
+    view.poll();
+    click(view, opTabPoint(InspectorTab::Inputs));
+    const bool tab = layout.opTab == InspectorTab::Inputs;
+    const float row = 104.0f + 186.0f + 9.0f;
+    auto modeButton = [&](RouteMode m) { return Point{884.0f + 48.0f + 13.0f + static_cast<int>(m) * 26.0f, row}; };
+    click(view, modeButton(RouteMode::Ring));
+    const bool ringPicked = model.value(mode) == static_cast<double>(RouteMode::Ring);
+    view.mouseMove(modeButton(RouteMode::ExpFm), {});
+    const bool inputsShot = renderer.save(view, dir / "5k-op-inputs.png");
+    const Point depth{884.0f + 300.0f - 16.0f - 24.0f, row};
+    drag(view, depth, {depth.x, depth.y - 20.0f});
+    const bool deeper = model.value(matrixIndex(1, 0)) > 0.5;
+    view.undo();
+    view.undo();
+    const bool undoneTwice = model.value(matrixIndex(1, 0)) == 0.5 && model.value(mode) == 0.0;
+    view.redo();
+    check(tab && ringPicked && inputsShot && deeper && undoneTwice && model.value(mode) == 3.0,
+          "the INPUTS tab lists the routes into an operator, its buttons picking a route's mode and its label the depth");
+
+    // B -> A's arrowhead dragged onto C: B -> C keeps its amount and Ring, and B -> A is Phase again.
+    model.set(matrixIndex(0, 0), 0.0);
+    view.poll();
+    drag(view, arrowOf(b, a), nodeCenter(layout, 2));
+    const bool moved = model.value(matrixIndex(1, 2)) == 0.5 && model.value(routeModeIndex(1, 2)) == 3.0 &&
+                       model.value(mode) == 0.0 && model.value(matrixIndex(1, 0)) == 0.0;
+    // Disconnected, a route starts as Phase again.
+    model.set(matrixIndex(1, 0), 0.5);
+    model.set(mode, 2.0);
+    model.ui.keptRoutes.push_back(matrixIndex(1, 0));
+    view.poll();
+    for (const MenuItem &item : view.contextMenu(label))
+        if (item.label == tr(Str::MenuDisconnect))
+            view.menuCommand(item.command);
+    check(moved && model.value(matrixIndex(1, 0)) == 0.0 && model.value(mode) == 0.0,
+          "a route moved onto another operator keeps its mode, and one disconnected starts as Phase again");
 }
 
 // The MODS tab: every modulation as a row (LFO 1's eleven, Env 1's and Macro 1's, more than fit, so a bar scrolls
@@ -5139,6 +5274,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testMacros(dir, renderer);
     testVelocity(dir, renderer);
     testWireBend(dir, renderer);
+    testRouteModes(dir, renderer);
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);

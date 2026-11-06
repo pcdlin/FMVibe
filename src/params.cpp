@@ -41,6 +41,8 @@ constexpr Str kPeqTypeNames[] = {Str::PeqPeak, Str::PeqLowShelf, Str::PeqHighShe
 static_assert(std::size(kPeqTypeNames) == static_cast<size_t>(PeqType::Count));
 constexpr Str kReverbTypeNames[] = {Str::ReverbHall, Str::ReverbRoom, Str::ReverbPlate, Str::ReverbShimmer};
 static_assert(std::size(kReverbTypeNames) == static_cast<size_t>(ReverbType::Count));
+constexpr Str kRouteModeNames[] = {Str::RoutePhase, Str::RouteLinearFm, Str::RouteExpFm, Str::RouteRing};
+static_assert(std::size(kRouteModeNames) == static_cast<size_t>(RouteMode::Count));
 constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay,      Str::FxDjEq,
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
@@ -142,7 +144,8 @@ void buildTable(ParamTable &t) {
         if (kind == ParamKind::LfoShape || kind == ParamKind::OpWave || kind == ParamKind::FilterType ||
             kind == ParamKind::FilterSlope || kind == ParamKind::Toggle || kind == ParamKind::SyncDivision ||
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
-            kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput)
+            kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
+            kind == ParamKind::RouteMode)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -468,6 +471,19 @@ void buildTable(ParamTable &t) {
             if (isStripSource(source)) // the places' bypasses come with their other fields
                 add(slotBypassIndex(source, slot), name + " " + trf(Str::ParamBypass, {n}), module,
                     ParamKind::SlotBypass, 0.0, 1.0, 0.0);
+        }
+    }
+
+    // Every route into an operator starts as phase modulation. Feedback is always that: its field is hidden.
+    for (int from = 0; from < kRouteSources; ++from) {
+        const std::string tag = from < kOps                ? letter(from)
+                                : from < kOps + kFilters ? "F" + std::to_string(from - kOps + 1)
+                                                          : "S" + std::to_string(from - kOps - kFilters + 1);
+        for (int to = 0; to < kOps; ++to) {
+            add(routeModeIndex(from, to), trf(Str::ParamRouteMode, {tag + " → " + letter(to)}), tr(Str::ModuleMatrix),
+                ParamKind::RouteMode, 0.0, static_cast<double>(RouteMode::Count) - 1.0, 0.0);
+            if (from == to)
+                t[routeModeIndex(from, to)].flags = CLAP_PARAM_IS_HIDDEN;
         }
     }
 
@@ -831,6 +847,10 @@ const char *reverbTypeName(ReverbType type) {
     return nameAt(kReverbTypeNames, static_cast<double>(type));
 }
 
+const char *routeModeName(RouteMode mode) {
+    return nameAt(kRouteModeNames, static_cast<double>(mode));
+}
+
 const char *midiInputName(MidiInput input) {
     return nameAt(kMidiInputNames, static_cast<double>(input));
 }
@@ -863,7 +883,7 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
-           kind == ParamKind::MidiInput;
+           kind == ParamKind::MidiInput || kind == ParamKind::RouteMode;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1013,6 +1033,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::ReverbType:
         std::snprintf(out, capacity, "%s", nameAt(kReverbTypeNames, value));
         break;
+    case ParamKind::RouteMode:
+        std::snprintf(out, capacity, "%s", nameAt(kRouteModeNames, value));
+        break;
     case ParamKind::MidiInput:
         std::snprintf(out, capacity, "%s", nameAt(kMidiInputNames, value));
         break;
@@ -1098,6 +1121,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::PeqType      ? findName(kPeqTypeNames, text)
                       : def.kind == ParamKind::ReverbType   ? findName(kReverbTypeNames, text)
                       : def.kind == ParamKind::MidiInput    ? findName(kMidiInputNames, text)
+                      : def.kind == ParamKind::RouteMode    ? findName(kRouteModeNames, text)
                                                             : -1;
     if (named >= 0) {
         *out = named;
@@ -1295,6 +1319,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::PeqType:
     case ParamKind::ReverbType:
     case ParamKind::MidiInput:
+    case ParamKind::RouteMode:
     case ParamKind::FxOrder:
     case ParamKind::FxType:
     case ParamKind::SourceType:

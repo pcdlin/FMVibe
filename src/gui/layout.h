@@ -83,9 +83,21 @@ inline Rect clipEditButton(Rect display) {
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
 inline Rect opTab(int tab) {
-    constexpr float kX[] = {78.0f, 0.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f}; // ENVELOPE, UNISON, SCOPE
+    // UNISON, ENVELOPE, SCOPE, INPUTS by InspectorTab; ENVELOPE first along the line
+    constexpr float kX[] = {78.0f, 0.0f, 144.0f, 200.0f}, kW[] = {62.0f, 74.0f, 54.0f, 52.0f};
     return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
 }
+// Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
+// the rows closer together when there are many.
+constexpr float kInputsTop = kInspector.y + 186.0f;
+constexpr float kInputsBottom = kInspector.y + kInspector.h - 10.0f;
+inline float inputsStep(int rows) {
+    return std::min(22.0f, (kInputsBottom - kInputsTop) / static_cast<float>(std::max(rows, 1)));
+}
+inline Rect inputsName(float y) { return {kInspector.x + 16.0f, y, 26.0f, 18.0f}; }
+inline Rect inputsMode(float y, int mode) { return {kInspector.x + 48.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
+inline Rect inputsModeName(float y) { return {kInspector.x + 158.0f, y, 74.0f, 18.0f}; }
+inline Rect inputsDepth(float y) { return {kInspector.x + kInspector.w - 16.0f - 48.0f, y, 48.0f, 18.0f}; }
 // Envelope: the curve, its knobs under it at y + 322.
 constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
 // Unison: the knobs at y + 206, where the copies sit under them.

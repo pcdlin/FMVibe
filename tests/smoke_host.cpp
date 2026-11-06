@@ -790,6 +790,72 @@ int main(int argc, char **argv) {
     std::printf("      880/440 Hz magnitude: %.4f without B -> A, %.3f with B -> A at 40 %%\n", pure, fm);
     check(pure < 0.01 && fm > 0.1, "matrix routing adds FM sidebands");
 
+    // How a route acts on the operator it goes into (see RouteMode): B at 220 Hz into A at 440 Hz.
+    {
+        auto playMode = [&](RouteMode mode, double amount, int blocks, double feedback = 0.0) {
+            const clap_event_param_value_t settings[] = {
+                paramEvent(paramIndex(1, OpParam::Enabled), 1.0),
+                paramEvent(paramIndex(1, OpParam::Ratio), normFromRatio(0.5)),
+                paramEvent(matrixIndex(1, 0), amount),
+                paramEvent(routeModeIndex(1, 0), static_cast<double>(mode)),
+                paramEvent(matrixIndex(0, 0), feedback),
+                paramEvent(routeModeIndex(0, 0), static_cast<double>(mode)), // feedback's mode, which does nothing
+                paramEvent(paramIndex(0, OpParam::Out), 1.0),
+            };
+            const clap_event_note_t a4 = noteEvent(CLAP_EVENT_NOTE_ON, 23, 69);
+            std::vector<const clap_event_header_t *> events;
+            for (const auto &s : settings)
+                events.push_back(&s.header);
+            events.push_back(&a4.header);
+            runBlock(events);
+            runBlocks(4);
+            std::vector<float> signal;
+            for (int b = 0; b < blocks; ++b) {
+                if (!std::isfinite(runBlock()))
+                    return std::vector<float>{};
+                signal.insert(signal.end(), left.begin(), left.end());
+            }
+            runBlock({&chokeAll.header});
+            return signal;
+        };
+        // The mean frequency, from how often the signal crosses zero.
+        auto meanHz = [&](const std::vector<float> &signal) {
+            int crossings = 0;
+            for (size_t i = 1; i < signal.size(); ++i)
+                crossings += (signal[i - 1] < 0.0f) != (signal[i] < 0.0f);
+            return signal.empty() ? NAN : crossings * 0.5 * kSampleRate / static_cast<double>(signal.size());
+        };
+        // Ring at 100 % leaves only the sum and the difference, 660 and 220 Hz; at 50 % the carrier stays at half its
+        // level, twice each of them, as AM.
+        const auto ring = playMode(RouteMode::Ring, 1.0, 16), am = playMode(RouteMode::Ring, 0.5, 16);
+        const double ringCarrier = magnitude(ring, 440.0) / std::max(magnitude(ring, 660.0), 1e-9);
+        const double ringSides = magnitude(ring, 220.0) / std::max(magnitude(ring, 660.0), 1e-9);
+        const double amCarrier = magnitude(am, 440.0) / std::max(magnitude(am, 660.0), 1e-9);
+        // Phase and Linear FM leave the mean frequency where it was; Exp FM, a 50 % amount swinging an octave either
+        // way, lifts it to 440 x I0(ln 2), 494.5 Hz. Through zero (75 %), Linear FM stays finite and sounds.
+        const auto phase = playMode(RouteMode::Phase, 0.4, 64), linear = playMode(RouteMode::LinearFm, 0.4, 64),
+                   expo = playMode(RouteMode::ExpFm, 0.5, 64), zero = playMode(RouteMode::LinearFm, 0.75, 16);
+        const double linearSides = magnitude(linear, 660.0) / std::max(magnitude(linear, 440.0), 1e-9);
+        // Feedback is always Phase: its mode param changes nothing.
+        const auto fbPhase = playMode(RouteMode::Phase, 0.0, 8, 0.4), fbRing = playMode(RouteMode::Ring, 0.0, 8, 0.4);
+        const bool feedbackPhase = !fbPhase.empty() && fbPhase == fbRing;
+        std::printf("      route modes: ring carrier %.4f of 660 Hz (220 Hz %.2f), AM carrier %.2fx 660 Hz; mean Hz phase "
+                    "%.1f, linear %.1f (660 Hz %.2f of 440), exp %.1f; through zero peak %.2f\n",
+                    ringCarrier, ringSides, amCarrier, meanHz(phase), meanHz(linear), linearSides, meanHz(expo),
+                    peakOf(zero));
+        const clap_event_param_value_t reset[] = {
+            paramEvent(paramIndex(1, OpParam::Ratio), normFromRatio(1.0)), paramEvent(matrixIndex(1, 0), 0.0),
+            paramEvent(routeModeIndex(1, 0), 0.0),       paramEvent(matrixIndex(0, 0), 0.0),
+            paramEvent(routeModeIndex(0, 0), 0.0)};
+        runBlock({&reset[0].header, &reset[1].header, &reset[2].header, &reset[3].header, &reset[4].header});
+        check(ringCarrier < 0.02 && ringSides > 0.8 && ringSides < 1.25 && amCarrier > 1.6 && amCarrier < 2.5,
+              "a Ring route multiplies its operator: at 100 % only the sum and difference sound, at 50 % it is AM");
+        check(std::abs(meanHz(phase) - 440.0) < 3.0 && std::abs(meanHz(linear) - 440.0) < 3.0 && linearSides > 0.1 &&
+                  std::abs(meanHz(expo) - 494.5) < 6.0 && peakOf(zero) > 0.05,
+              "Linear FM keeps an operator's mean pitch, through zero too, and Exp FM lifts it by its octaves");
+        check(feedbackPhase, "feedback is always phase modulation, whatever its mode param says");
+    }
+
     // A filter's output modulates an operator the same way: B through an open
     // low-pass FMs A about as much as B directly; a low cutoff takes most of it away.
     const double filteredFm = secondHarmonicRatio({.cutoffHz = 8000.0, .f1ToA = 0.4});
