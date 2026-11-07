@@ -10,8 +10,9 @@ does).
 
 Steps: check we are on main, with a clean tree, level with origin and the tag free; set the version in
 CMakeLists.txt; build, run every test and both validators (build.ps1 -Validate, which also renders the editor's snapshots offscreen); copy the
-snapshots of the PD Crystal Motion preset over the README's: the editor over docs\editor.png, its effects' panel as a
-chain over docs\fx-chain.png and as a graph over docs\fx-graph.png; ask; on "yes", commit them all, tag vX.Y, and
+snapshots the tests render over the README's: the PD Crystal Motion preset's editor over docs\editor.png and its
+effects' panel as a chain over docs\fx-chain.png, and the BA Neon Pluck preset's effects' panel, a graph, over
+docs\fx-graph.png; ask; on "yes", commit them all, tag vX.Y, and
 push main and the tag. The tag makes GitHub Actions build the release and the browser demo (see AGENTS.md,
 "Releasing").
 
@@ -56,12 +57,12 @@ try {
         & "$PSScriptRoot\build.ps1" -Validate
         if ($LASTEXITCODE) { throw "build.ps1 failed (exit code $LASTEXITCODE)" }
 
-        # The README's screenshots, all of the PD Crystal Motion preset: the editor's routing view, and its effects'
-        # panel as a chain and as a graph.
+        # The README's screenshots: the PD Crystal Motion preset's routing view and its effects' panel as a chain,
+        # and the BA Neon Pluck preset's effects' panel, a graph split low and high.
         $shots = [ordered]@{
             'editor.png'   = '24-example-routing.png'
             'fx-chain.png' = '24-example-fx-chain-panel.png'
-            'fx-graph.png' = '24-example-fx-graph-panel.png'
+            'fx-graph.png' = '24b-split-example-fx-graph-panel.png'
         }
         foreach ($doc in $shots.Keys) {
             $shot = "$PSScriptRoot\build\release\ui-shots\$($shots[$doc])"

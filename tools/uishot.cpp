@@ -1587,12 +1587,15 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     click(view, kFxTab);
     view.mouseMove({600.0f, 328.0f}, {});
     shots = shots && renderer.save(view, dir / (prefix + "-fx.png"));
-    // Its effects' panel alone, as a chain and then as a graph (the README's, see release.ps1).
+    // Its effects' panel alone, as a chain and then as a graph, or as a graph only when it comes as one (the
+    // README's, see release.ps1).
     const Rect panel{detail::kFxPanel.x - 8.0f, detail::kFxPanel.y - 1.0f, detail::kFxPanel.w + 16.0f,
                      detail::kFxPanel.h + 9.0f}; // not the tabs above it
-    shots = shots && renderer.save(view, dir / (prefix + "-fx-chain-panel.png"), &panel);
-    const Rect graphSwitch = detail::fxModeButton(1);
-    click(view, {graphSwitch.x + graphSwitch.w * 0.5f, graphSwitch.y + graphSwitch.h * 0.5f});
+    if (model.value(paramIndex(GlobalParam::FxGraph)) < 0.5) {
+        shots = shots && renderer.save(view, dir / (prefix + "-fx-chain-panel.png"), &panel);
+        const Rect graphSwitch = detail::fxModeButton(1);
+        click(view, {graphSwitch.x + graphSwitch.w * 0.5f, graphSwitch.y + graphSwitch.h * 0.5f});
+    }
     view.mouseMove({600.0f, 600.0f}, {});
     shots = shots && model.value(paramIndex(GlobalParam::FxGraph)) == 1.0 &&
             renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
@@ -6230,6 +6233,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kSourcesToggle);
     runMore(dir, renderer);
     renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6);
+    renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4); // its effects as a graph, split low/high
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
     renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);

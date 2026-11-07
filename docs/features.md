@@ -1143,9 +1143,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   (three pairs at inharmonic ratios, one of them modulated by a fixed 137 Hz operator, so each key grinds
   differently, the modulators dying before their carriers and velocity driving every index); LD Feedback Lead (a
   mono lead whose oscillator is a self-modulating operator, the mod wheel opening its feedback and index from flute
-  to buzzing reed, a mod envelope's bite on each note and a vibrato that a second envelope, as its aux, fades in); and
+  to buzzing reed, a mod envelope's bite on each note and a vibrato that a second envelope, as its aux, fades in);
   PD Six-Op Cascade (all six operators in one chain, F down to A, four slow LFOs breathing its links at rates that
-  never line up, and an Index macro deepening them all). A folder made
+  never line up, and an Index macro deepening them all); and BA Neon Pluck (a mono saw plucked by FM through a
+  resonant low-pass over a sine sub, a two-bar LFO turning its FM and grit, its effects as a graph: a split at
+  180 Hz whose high band is widened and echoed while the low band stays tight, then a 3-band dynamics set as OTT;
+  its Timbre, Filter, Grit and Space macros). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
   they hold only the params that differ from Init, so their files are small, and load like any other.

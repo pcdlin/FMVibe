@@ -32,3 +32,4 @@ PL Deep Sea
 KY Temple Gong
 LD Feedback Lead
 PD Six-Op Cascade
+BA Neon Pluck
