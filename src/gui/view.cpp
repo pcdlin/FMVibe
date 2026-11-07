@@ -5440,6 +5440,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
                            : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? tr(Str::SwitchStereo)
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
+                           : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;

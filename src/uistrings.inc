@@ -144,6 +144,8 @@ STR(ParamSplitUsed, "Used")
 STR(ParamSplitBands, "Bands")
 STR(ParamSplitLow, "Crossover")
 STR(ParamSplitHigh, "High Crossover")
+STR(ParamSoloHigh, "Solo High") // a join's solo of its split's high band, after the join's name
+STR(ParamSoloLow, "Solo Low")
 STR(ParamFxOut, "FX Out") // the effects graph's output, as the node its wires go into
 STR(ParamFxInput, "Input {1}") // a wire into a node of the effects graph, by number; its field's name follows
 STR(ParamFxInputFrom, "From")
@@ -523,6 +525,8 @@ STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
 STR(SwitchHard, "HARD") // the shaper effect's first three curves
 STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")
+STR(SwitchSolo, "SOLO") // a join's card: solo the band above it
+STR(SoloMark, "S") // on a join node while one of its bands is soloed
 STR(SwitchRms, "RMS") // the three-band dynamics' detector: RMS, or peaks while off
 STR(BandButtonLow, "LOW") // the three-band dynamics' bands, and the DJ EQ's display
 STR(BandButtonMid, "MID")

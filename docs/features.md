@@ -245,8 +245,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   and off, reordered and removed. A patch saved while the chain held 16 loads its effects in the order they had.
   - **As a graph**, rather than a chain (the FX tab's switch, see the editor): the effects run along a line from the
     voices to the output, which up to four **splits** cut by frequency into two bands at their Crossover (250 Hz to
-    begin with), at a Slope of 6, 12 or 24 dB per octave (24 to begin with: the same Linkwitz-Riley crossovers as the
-    3-band dynamics; 12 a second-order one, 6 a one-pole low-pass with the rest as the high band), so the bands sum
+    begin with), at a Slope of 6, 12 or 24 dB per octave (12 to begin with, a second-order Linkwitz-Riley crossover; 24 the
+    fourth-order one the 3-band dynamics has; 6 a one-pole low-pass with the rest as the high band), so the bands sum
     back flat at each. Each band runs through effects of its own, say the lows through a shaper and a compressor and the
     highs through a delay and a reverb, until a **join** adds them back together, each at a level (0–100 %, full to
     begin with), and the line goes on from it; a split left open at the line's end sends both bands out. The splits
@@ -651,22 +651,24 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     box at the left) to the output (OUT, a box after the last column). Each effect is a circle in its color with its
     icon and name, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Split
-    into high/low bands**, after the effects: a split, a box with a dot for each band on its right side (the high band on
-    top, in amber, the low one in blue), always comes with its join, which adds the bands back together in the
+    into high/low bands**, after the effects: a split, a box its high band leaves from the top of its right side and
+    its low band from the bottom, always comes with its join, which adds the bands back together in the
     column after the longer band; the line goes on from the join. The bands run between them, the high one along the
     row above the main line and the low one along the row below, named beside the split; splits and joins are grey
     boxes as large as each other, and the wires out of a split's bands grey too. While sound plays, each node glows round it and each
     wire along it as loud as what comes out of it (IN, an effect, a split's band, a join), as the operators do in the
     routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops. An empty band curves out to a + on
     its row, a column on from the split, and on into the join, and a click on that + puts an effect on the band (its
-    list offers effects only). With the mouse
+    list offers effects only); the bands' +s are in the accent, as the line's. With the mouse
     anywhere along a wire between two nodes, a + shows at its middle (always on an empty band between a split
     and its join), and a click on that + opens the list too, the effect picked
     going in there: on the main line, the list also offers the split, which goes in with its join right after it and
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's card
     shows its bands' responses with a handle on the crossover to drag across, its slope (6 | 12 | 24 dB, which the
     wheel steps along too) and its Crossover knob; a join's card a
-    bar for each band's level, and its High and Low knobs, in dB (0 dB, full, at the top, down to -60 dB, silence). Under the mouse, a node shows an x in a circle at its upper
+    bar for each band's level, its High and Low knobs, in dB (0 dB, full, at the top, down to -60 dB, silence), and a
+    SOLO button under each, one at a time (soloing one band unsolos the other): while a band is soloed, the join lets
+    only it through, and its node shows an S in a circle at its top left, in the soloed band's color. Under the mouse, a node shows an x in a circle at its upper
     right, which removes it as the x on its card does. A node dragged onto
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would
     land in, outlined dotted, which moves only once it is over another gap between two nodes (an effect's anywhere on

@@ -2311,6 +2311,7 @@ int main(int argc, char **argv) {
         setParams({{paramIndex(0, SplitParam::Used), 1.0},
                    {paramIndex(0, SplitParam::Bands), 2.0},
                    {paramIndex(0, SplitParam::Low), normFromCutoff(1000.0)},
+                   {paramIndex(0, SplitParam::Slope), static_cast<double>(kFilterSlopes - 1)}, // 24 dB
                    {from(fxSplitNode(0), 0), port(kFxPortIn)},
                    {from(kFxOutNode, 0), port(fxBandPort(0, 0))},
                    {from(kFxOutNode, 1), port(fxBandPort(0, 2))}});
@@ -2365,6 +2366,32 @@ int main(int argc, char **argv) {
                     lows[0], lows[1], lows[2]);
         check(std::abs(lows[0] + 12.3) < 2.0 && std::abs(lows[1] + 24.6) < 2.5 && lows[2] < -40.0,
               "a split's slope sets how steeply its bands part");
+
+        // A join's solos: the A4 split at 1 kHz (24 dB) into a join, its high band on its first input and its low
+        // band on its second. Neither soloed, both play; the low band soloed keeps the A4, the high band soloed takes
+        // it away; both soloed, both play.
+        clearGraph(true);
+        setParams({{paramIndex(0, SplitParam::Used), 1.0},
+                   {paramIndex(0, SplitParam::Bands), 2.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(1000.0)},
+                   {paramIndex(0, SplitParam::Slope), static_cast<double>(kFilterSlopes - 1)},
+                   {paramIndex(0, SumParam::Used), 1.0},
+                   {from(fxSplitNode(0), 0), port(kFxPortIn)},
+                   {from(fxSumNode(0), 0), port(fxBandPort(0, 2))},
+                   {from(fxSumNode(0), 1), port(fxBandPort(0, 0))},
+                   {from(kFxOutNode, 0), port(fxSumPort(0))}});
+        auto soloed = [&](bool high, bool low) {
+            setParams({{paramIndex(0, SumParam::SoloHigh), high ? 1.0 : 0.0},
+                       {paramIndex(0, SumParam::SoloLow), low ? 1.0 : 0.0}});
+            return db(magnitude(play({}), 440.0) / plain);
+        };
+        const double neither = soloed(false, false), lowOnly = soloed(false, true), highOnly = soloed(true, false),
+                     both = soloed(true, true);
+        soloed(false, false);
+        std::printf("      a join's solos on the A4 split at 1 kHz: neither %+.1f dB, low %+.1f, high %+.1f, both %+.1f\n",
+                    neither, lowOnly, highOnly, both);
+        check(std::abs(neither) < 0.1 && std::abs(lowOnly) < 1.0 && highOnly < -20.0 && std::abs(both) < 0.1,
+              "a join's solo lets only the band soloed through");
 
         // A hard shaper on the low band of a split: at 2 kHz the A4 goes through it and comes out squared (its 3rd
         // harmonic), at 200 Hz it is in the high band, which goes straight out, and stays a sine.

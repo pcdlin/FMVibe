@@ -99,7 +99,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     source scaling an LFO's slot as its aux from a note's first block;
   - the FX order changing the result, and a slot past the 16th playing at its place in the chain;
   - the effects graph: its input straight out, two wires at half as one at full, and a split's two bands (at 6, 12
-    and 24 dB) and three summing back flat, each slope parting its bands as steeply as it says; a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
+    and 24 dB) and three summing back flat, each slope parting its bands as steeply as it says; a join's solos letting only the band soloed through (both when
+    neither or both are); a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
     chain running with the graph off, its wires doing nothing; a loop, which only params make, staying finite; and
     a macro taking a wire's level down;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
@@ -211,7 +212,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the effects graph's slot grid: switching to it putting the chain on its main line, wired as it ran; the main
     line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
     empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's card
-    (centered in the inspector) setting a band's level, in dB; the split's crossover handle dragged on its card, and its
+    (centered in the inspector) setting a band's level, in dB, and soloing a band, the join node marked with an S
+    (read off the rendered pixels), and then the other band, unsoloing the first; the split's crossover handle dragged on its card, and its
     slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
     out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire

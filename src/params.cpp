@@ -200,11 +200,15 @@ void buildTable(ParamTable &t) {
         add(paramIndex(split, SplitParam::High), name + " " + tr(Str::ParamSplitHigh), module, ParamKind::Cutoff, 0.0,
             1.0, normFromCutoff(2500.0));
         add(paramIndex(split, SplitParam::Slope), name + " " + tr(Str::ParamSlope), module, ParamKind::FilterSlope,
-            0.0, kFilterSlopes - 1.0, kFilterSlopes - 1.0); // 24 dB, as splits cut before they had a slope
+            0.0, kFilterSlopes - 1.0, 1.0); // 12 dB to begin with
     }
     for (int sum = 0; sum < kFxSums; ++sum) {
         const std::string name = trf(Str::ParamSum, {std::to_string(sum + 1)});
         add(paramIndex(sum, SumParam::Used), name + " " + tr(Str::ParamSplitUsed), tr(Str::ModuleFx) + ("/" + name),
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
+        add(paramIndex(sum, SumParam::SoloHigh), name + " " + tr(Str::ParamSoloHigh), tr(Str::ModuleFx) + ("/" + name),
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
+        add(paramIndex(sum, SumParam::SoloLow), name + " " + tr(Str::ParamSoloLow), tr(Str::ModuleFx) + ("/" + name),
             ParamKind::Toggle, 0.0, 1.0, 0.0);
     }
     // No wires to begin with; one connected starts at full level.

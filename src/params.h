@@ -537,8 +537,9 @@ constexpr double kSumFloorDb = -60.0;
 inline double sumLevelGain(double db) {
     return db <= kSumFloorDb ? 0.0 : std::pow(10.0, std::min(db, 0.0) / 20.0);
 }
-// A sum in the effects graph: Used puts it in the graph. Stored in projects by number: only append.
-enum class SumParam { Used, Count };
+// A sum in the effects graph: Used puts it in the graph. As a join, SoloHigh and SoloLow solo its first two inputs, the
+// high band and the low band (see sumSoloGain()). Stored in projects by number: only append.
+enum class SumParam { Used, SoloHigh, SoloLow, Count };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as
 // keeps a sine at -6 dBFS as loud (in RMS) as it went in: dB for dB with the drive while the driven sine stays
 // under the ceiling, then less and less as the clipping squares it off, about 9 dB at the full 36 dB of drive.
@@ -664,6 +665,15 @@ constexpr int paramIndex(int split, SplitParam p) {
     return kFxSplitBase + split * kSplitParamCount + static_cast<int>(p);
 }
 constexpr int paramIndex(int sum, SumParam p) { return kFxSumBase + sum * kSumParamCount + static_cast<int>(p); }
+// How much of a join's input passes its solos: while either band is soloed, only the soloed ones (inputs 0 and 1, the
+// high and the low band; any other input of the sum goes on as it is).
+template <class Get>
+double sumSoloGain(int sum, int input, Get &&get) {
+    const bool high = get(paramIndex(sum, SumParam::SoloHigh)) >= 0.5, low = get(paramIndex(sum, SumParam::SoloLow)) >= 0.5;
+    if (!(high || low) || input > 1)
+        return 1.0;
+    return (input == 0 ? high : low) ? 1.0 : 0.0;
+}
 // The effects graph's nodes that take wires in: a slot (0..kFxSlots - 1), a split (kFxSlots + split), the output, then
 // a sum (fxSumNode()), kFxNodes in all.
 constexpr int kFxOutNode = kFxInputNodes;
@@ -715,6 +725,10 @@ inline int fxPortOf(double value) {
 // The split a param belongs to, -1 for other params.
 constexpr int splitOf(int index) {
     return index >= kFxSplitBase && index < kFxInputBase ? (index - kFxSplitBase) / kSplitParamCount : -1;
+}
+// Whether a param is one of a join's solos.
+constexpr bool isJoinSolo(int index) {
+    return index >= kFxSumBase && index < kFxSumInputBase && (index - kFxSumBase) % kSumParamCount != 0;
 }
 // Whether a param belongs to the effects graph: its switch, a split's field or a wire's.
 constexpr bool isFxGraphParam(int index) {
@@ -1280,7 +1294,7 @@ static_assert(idOfIndex(paramIndex(GlobalParam::FxGraph)) == 12 && idOfIndex(par
                   idOfIndex(fxInputIndex(kFxOutNode, kFxOutInputs - 1, FxInputField::Level)) == 35015 &&
                   kFxSplits == 4 && kFxBands == 3 && kFxInputs == 4 && kFxOutInputs == 8,
               "effects graph param ids moved");
-static_assert(idOfIndex(paramIndex(0, SumParam::Used)) == 35100 && idOfIndex(paramIndex(kFxSums - 1, SumParam::Used)) == 35160 &&
+static_assert(idOfIndex(paramIndex(0, SumParam::Used)) == 35100 && idOfIndex(paramIndex(kFxSums - 1, SumParam::SoloLow)) == 35162 &&
                   idOfIndex(fxInputIndex(fxSumNode(0), 0, FxInputField::From)) == 35200 &&
                   idOfIndex(fxInputIndex(fxSumNode(kFxSums - 1), kFxSumInputs - 1, FxInputField::Level)) == 35275 &&
                   kFxSums == 4 && kFxSumInputs == 8,

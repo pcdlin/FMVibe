@@ -745,7 +745,9 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
         if (w.port < 0)
             continue;
         const double setLevel = p[fxInputIndex(node, input, FxInputField::Level)];
-        const double asGain = fxNodeSum(node) >= 0 ? sumLevelGain(setLevel) : setLevel; // a sum's in dB
+        const int sum = fxNodeSum(node);
+        const double asGain = sum >= 0 ? sumLevelGain(setLevel) * sumSoloGain(sum, input, [&p](int i) { return p[i]; })
+                                       : setLevel; // a sum's in dB, and soloed as a join
         const double target = std::isfinite(asGain) ? std::clamp(asGain, 0.0, 1.0) : 0.0;
         if (w.level < 0.0)
             w.level = target;

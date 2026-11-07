@@ -317,6 +317,9 @@ void View::writeFxLine(const FxLine &line, bool wired) {
         want[paramIndex(split, SplitParam::Used)] = used[split] ? 1.0 : 0.0;
         want[paramIndex(split, SplitParam::Bands)] = 2.0;
         want[paramIndex(split, SumParam::Used)] = joined[split] ? 1.0 : 0.0;
+        if (!joined[split]) // a join taken out starts again unsoloed
+            for (const SumParam f : {SumParam::SoloHigh, SumParam::SoloLow})
+                want[paramIndex(split, f)] = 0.0;
     }
     for (const auto &[index, v] : ::fmvibe::fxOrderChanges(fxOrderWith(chain)))
         want[index] = v;
@@ -819,6 +822,11 @@ void View::joinCardWidgets(std::vector<Widget> &list, int split, Rect card) cons
         knob.param = fxInputIndex(fxJoinNode(split), input, FxInputField::Level);
         knob.label = tr(labels[input]);
         list.push_back(knob);
+        Widget solo; // under it, its band's solo
+        solo.kind = Kind::Toggle;
+        solo.rect = {card.x + card.w * (input == 0 ? 0.67f : 0.33f) - 22.0f, card.y + 276.0f, 44.0f, 18.0f};
+        solo.param = paramIndex(split, input == 0 ? SumParam::SoloHigh : SumParam::SoloLow);
+        list.push_back(solo);
     }
 }
 
@@ -1041,6 +1049,19 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         return true;
     case Kind::FxWire: // only its + takes a click
         return true;
+    case Kind::Toggle: { // a join's solos, one at a time: one switched on switches the other off, one undo step
+        if (!isJoinSolo(w.param))
+            return false;
+        const int sum = (w.param - kFxSumBase) / kSumParamCount;
+        const int other = paramIndex(sum, w.param == paramIndex(sum, SumParam::SoloHigh) ? SumParam::SoloLow
+                                                                                          : SumParam::SoloHigh);
+        const UndoScope step(controller_);
+        if (value(w.param) >= 0.5)
+            editMany({{w.param, 0.0}});
+        else
+            editMany({{w.param, 1.0}, {other, 0.0}});
+        return true;
+    }
     case Kind::FxSlot: // the list of effects beside it, with a split or a join after them
         fxSlot_ = {w.a, -1, 0};
         fxMenuAt_ = menuAtMouse({w.rect.center().x + 26.0f, w.rect.center().y - 44.0f}, fxMenu({0.0f, 0.0f}, true));
@@ -1145,8 +1166,8 @@ void View::paintFxGraph(Canvas &c) {
             continue;
         const bool onPlus = hover_ && hover_->kind == Kind::FxGap && hover_->a == w.at.lane && hover_->b == b;
         const Point m = wireMiddle(w);
-        // An empty band's, on its row, in the band's color, as a band's + at its end.
-        const Color color = w.plus ? bandColor(w.at.lane == 1 ? kHighBand : kLowBand) : w.color;
+        // A band's in the accent, as the line's + at its end; the main line's in its wire's color.
+        const Color color = w.at.lane > 0 ? kAccent : w.color;
         c.fillCircle(m, 8.5f, kDisplayColor);
         c.fillCircle(m, 8.5f, color.alpha(listed ? 0.35f : onPlus ? 0.28f : 0.16f));
         c.strokeCircle(m, 8.5f, color, 1.2f);
@@ -1220,13 +1241,19 @@ void View::paintFxGraph(Canvas &c) {
         if (join) {
             joinIcon(c, {center.x - 8.0f, center.y - 7.0f, 15.0f, 14.0f}, color);
             name(kFxJoinHalfH, trf(Str::NodeJoin, {std::to_string(fxNodeSum(node) + 1)}));
+            // A band soloed: an S in a circle at its top left, in the soloed band's color (the accent for both).
+            const int sum = fxNodeSum(node);
+            const bool high = value(paramIndex(sum, SumParam::SoloHigh)) >= 0.5;
+            const bool low = value(paramIndex(sum, SumParam::SoloLow)) >= 0.5;
+            if (high || low) {
+                const Color mark = (high && low ? kAccent : bandColor(high ? kHighBand : kLowBand)).alpha(alpha);
+                const Point m{r.x + 1.0f, r.y + 1.0f};
+                c.fillCircle(m, 7.0f, kCardColor.alpha(alpha));
+                c.strokeCircle(m, 7.0f, mark, 1.3f);
+                c.text({m.x - 7.0f, m.y - 7.5f, 14.0f, 14.0f}, tr(Str::SoloMark), 8.5f, mark, Align::Center, true);
+            }
         } else {
             splitIcon(c, {center.x - 8.0f, center.y - 7.0f, 14.0f, 14.0f}, color);
-            for (const int band : {kHighBand, kLowBand}) {
-                const Point port = fxBandPortAt(center, band);
-                c.fillCircle(port, kFxPortR, bandColor(band).alpha(alpha));
-                c.strokeCircle(port, kFxPortR, kCardColor.alpha(alpha), 1.2f);
-            }
             name(kFxSplitHalfH, trf(Str::NodeSplit, {std::to_string(node - kFxSlots + 1)}));
         }
     };
@@ -1250,7 +1277,7 @@ void View::paintFxGraph(Canvas &c) {
     // The +s where a node can go next: a + in a circle, as on a wire's middle, in its lane's color.
     for (const auto &slot : grid.slots) {
         const Point m = at.slot[slot.lane];
-        const Color color = slot.lane == 1 ? bandColor(kHighBand) : slot.lane == 2 ? bandColor(kLowBand) : kAccent;
+        const Color color = kAccent; // a band's as the line's
         const bool listed = fxMenuOpen_ && fxSlot_.lane == slot.lane && fxSlot_.item < 0;
         const bool hot = !dragging && hover_ && hover_->kind == Kind::FxSlot && hover_->a == slot.lane;
         c.fillCircle(m, kFxSlotHalf, kDisplayColor);
@@ -1341,9 +1368,11 @@ void View::paintJoinCard(Canvas &c, int split, Rect card) {
         const Color band = bandColor(input == 0 ? kHighBand : kLowBand);
         const Rect bar{display.x + display.w * (input == 0 ? 0.67f : 0.33f) - 15.0f, display.y + 12.0f, 30.0f,
                        display.h - 38.0f};
+        const bool muted = sumSoloGain(split, input, [this](int i) { return value(i); }) == 0.0;
         c.fillRect(bar, kTrack, 4.0f);
         if (level > 0.0f)
-            c.fillRect({bar.x, bar.bottom() - bar.h * level, bar.w, bar.h * level}, band.alpha(0.75f), 4.0f);
+            c.fillRect({bar.x, bar.bottom() - bar.h * level, bar.w, bar.h * level},
+                       band.alpha(muted ? 0.2f : 0.75f), 4.0f);
         c.text({bar.center().x - 40.0f, bar.bottom() + 6.0f, 80.0f, 14.0f}, tr(input == 0 ? Str::BandHigh : Str::BandLow),
                9.5f, band, Align::Center, true);
     }
