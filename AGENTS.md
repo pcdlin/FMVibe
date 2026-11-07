@@ -485,6 +485,15 @@ for the tag with that zip and notes generated from the commits since the previou
 browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
 (`https://pcdlin.github.io/FMVibe/`). Neither goes out unless both build.
 
+`.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
+raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
+`build.ps1 -Validate` (every test and both validators), and copies the PD Crystal Motion routing snapshot the tests
+render over `docs/editor.png`. It then lists what it would do and asks; only an answer of `yes` commits
+`CMakeLists.txt` and `docs/editor.png` as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
+Any other answer puts both files back as they were.
+
+By hand, instead:
+
 1. Set the new version in `project()` at the top of `CMakeLists.txt` (and where `docs/features.md` names it), and
    commit.
 2. Tag that commit with the same version and a `v` before it, and push the tag:
@@ -559,6 +568,7 @@ breakpoints in `src/` then hit.
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `web/dsp.cpp`, `web/ui.cpp` | The browser demo's audio and editor modules |
 | `web/site/` | The demo page: the canvas and input (`main.js`), drawing (`canvas2d.js`), the AudioWorklet (`worklet.js`) |
+| `release.ps1` | Cuts a release: version bump, tests and validators, the README screenshot, commit, tag and push (see [Releasing](#releasing)) |
 | `build-web.ps1` | Builds the browser demo with Emscripten, and serves it |
 | `.github/workflows/release.yml` | On a version tag: a GitHub release with the plugins, and the browser demo on GitHub Pages |
 
