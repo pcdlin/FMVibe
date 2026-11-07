@@ -459,6 +459,12 @@ void peqIcon(Canvas &c, Rect r, PeqType type, Color color) {
             points.push_back({r.x + static_cast<float>(x) * r.w,
                               r.center().y - static_cast<float>(std::clamp(db, -15.0, 15.0) / 15.0) * r.h * 0.5f});
         }
+        // Centered by the height the curve takes, not by its 0 dB line: a bell rises above it, a cut falls below.
+        const auto [low, high] = std::minmax_element(points.begin(), points.end(),
+                                                     [](Point a, Point b) { return a.y < b.y; });
+        const float shift = r.center().y - 0.5f * (low->y + high->y);
+        for (Point &point : points)
+            point.y += shift;
         return points;
     });
     c.polyline(points.data(), points.size(), color, 1.4f);
