@@ -525,10 +525,11 @@ browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and pub
 
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
-`build.ps1 -Validate` (every test and both validators), and copies the PD Crystal Motion routing snapshot the tests
-render over `docs/editor.png`. It then lists what it would do and asks; only an answer of `yes` commits
-`CMakeLists.txt` and `docs/editor.png` as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
-Any other answer puts both files back as they were.
+`build.ps1 -Validate` (every test and both validators), and copies the PD Crystal Motion snapshots the tests render
+over the README's: its routing view over `docs/editor.png`, and its effects' panel as a chain and as a graph over
+`docs/fx-chain.png` and `docs/fx-graph.png`. It then lists what it would do and asks; only an answer of `yes` commits
+`CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
+Any other answer puts those files back as they were.
 
 By hand, instead:
 
@@ -607,7 +608,7 @@ breakpoints in `src/` then hit.
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `web/dsp.cpp`, `web/ui.cpp` | The browser demo's audio and editor modules |
 | `web/site/` | The demo page: the canvas and input (`main.js`), drawing (`canvas2d.js`), the AudioWorklet (`worklet.js`) |
-| `release.ps1` | Cuts a release: version bump, tests and validators, the README screenshot, commit, tag and push (see [Releasing](#releasing)) |
+| `release.ps1` | Cuts a release: version bump, tests and validators, the README screenshots, commit, tag and push (see [Releasing](#releasing)) |
 | `build-web.ps1` | Builds the browser demo with Emscripten, and serves it |
 | `.github/workflows/release.yml` | On a version tag: a GitHub release with the plugins, and the browser demo on GitHub Pages |
 

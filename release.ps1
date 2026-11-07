@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-Prepares a release: bumps the version, rebuilds and tests, refreshes docs\editor.png, then lists the commit, tag
-and push and asks whether to do them (only "yes" does).
+Prepares a release: bumps the version, rebuilds and tests, refreshes the README's screenshots (docs\editor.png,
+docs\fx-chain.png and docs\fx-graph.png), then lists the commit, tag and push and asks whether to do them (only "yes"
+does).
 
 .EXAMPLE
 .\release.ps1                # 0.6 -> 0.7: on "yes", commit "Version 0.7" on main, tag v0.7, push both
@@ -9,11 +10,13 @@ and push and asks whether to do them (only "yes" does).
 
 Steps: check we are on main, with a clean tree, level with origin and the tag free; set the version in
 CMakeLists.txt; build, run every test and both validators (build.ps1 -Validate, which also renders the editor's snapshots offscreen); copy the
-snapshot of the PD Crystal Motion preset over docs\editor.png; ask; on "yes", commit both, tag vX.Y, and push main
-and the tag. The tag makes GitHub Actions build the release and the browser demo (see AGENTS.md, "Releasing").
+snapshots of the PD Crystal Motion preset over the README's: the editor over docs\editor.png, its effects' panel as a
+chain over docs\fx-chain.png and as a graph over docs\fx-graph.png; ask; on "yes", commit them all, tag vX.Y, and
+push main and the tag. The tag makes GitHub Actions build the release and the browser demo (see AGENTS.md,
+"Releasing").
 
-On anything but "yes", CMakeLists.txt and docs\editor.png go back as they were afterwards (so the script can run
-again); the new screenshot stays at build\release\release-editor.png to look at.
+On anything but "yes", CMakeLists.txt and the screenshots go back as they were afterwards (so the script can run
+again); the new screenshots stay in build\release\ui-shots to look at.
 #>
 param(
     [ValidatePattern('^\d+\.\d+$')] [string] $Version
@@ -53,26 +56,34 @@ try {
         & "$PSScriptRoot\build.ps1" -Validate
         if ($LASTEXITCODE) { throw "build.ps1 failed (exit code $LASTEXITCODE)" }
 
-        $shot = "$PSScriptRoot\build\release\ui-shots\24-example-routing.png" # PD Crystal Motion, routing view
-        if (-not (Test-Path $shot) -or (Get-Item $shot).LastWriteTime -lt (Get-Date).AddHours(-1)) {
-            throw "The tests did not render $shot."
+        # The README's screenshots, all of the PD Crystal Motion preset: the editor's routing view, and its effects'
+        # panel as a chain and as a graph.
+        $shots = [ordered]@{
+            'editor.png'   = '24-example-routing.png'
+            'fx-chain.png' = '24-example-fx-chain-panel.png'
+            'fx-graph.png' = '24-example-fx-graph-panel.png'
         }
-        Copy-Item $shot "$PSScriptRoot\build\release\release-editor.png" -Force
-        Copy-Item $shot "$PSScriptRoot\docs\editor.png" -Force
+        foreach ($doc in $shots.Keys) {
+            $shot = "$PSScriptRoot\build\release\ui-shots\$($shots[$doc])"
+            if (-not (Test-Path $shot) -or (Get-Item $shot).LastWriteTime -lt (Get-Date).AddHours(-1)) {
+                throw "The tests did not render $shot."
+            }
+            Copy-Item $shot "$PSScriptRoot\docs\$doc" -Force
+        }
 
-        Write-Host "== next (the new screenshot: build\release\release-editor.png):" -ForegroundColor Yellow
-        Write-Host "   git add CMakeLists.txt docs/editor.png"
+        Write-Host "== next (the new screenshots: docs\editor.png, docs\fx-chain.png, docs\fx-graph.png):" -ForegroundColor Yellow
+        Write-Host "   git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png"
         Write-Host "   git commit -m `"Version $Version`""
         Write-Host "   git tag $tag"
         Write-Host "   git push origin main $tag"
         if ((Read-Host "Release $tag now? Type 'yes' to commit, tag and push") -ne 'yes') {
-            Write-Host "== not released; CMakeLists.txt and docs\editor.png are put back as they were." -ForegroundColor Yellow
+            Write-Host "== not released; CMakeLists.txt and the screenshots are put back as they were." -ForegroundColor Yellow
             return
         }
 
         # --- Commit, tag, push.
         Write-Host "== commit, tag $tag, push" -ForegroundColor Cyan
-        Invoke-Git add CMakeLists.txt docs/editor.png
+        Invoke-Git add CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png
         Invoke-Git commit -m "Version $Version"
         Invoke-Git tag $tag
         Invoke-Git push origin main $tag
@@ -81,7 +92,7 @@ try {
     finally {
         # Nothing was committed (not confirmed, or a step failed): put the files back.
         if ((& git log -1 --format=%s) -ne "Version $Version") {
-            & git checkout -- CMakeLists.txt docs/editor.png
+            & git checkout -- CMakeLists.txt docs/editor.png docs/fx-chain.png docs/fx-graph.png
         }
     }
 }

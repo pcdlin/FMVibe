@@ -163,7 +163,8 @@ public:
         CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic_.GetAddressOf()));
     }
 
-    bool save(View &view, const std::filesystem::path &path) {
+    // The whole editor, or only the part `crop` covers (in the view's coordinates).
+    bool save(View &view, const std::filesystem::path &path, const Rect *crop = nullptr) {
         const UINT width = static_cast<UINT>(View::kWidth * scale_);
         const UINT height = static_cast<UINT>(view.height() * scale_);
         ComPtr<IWICBitmap> bitmap;
@@ -192,13 +193,18 @@ public:
         ComPtr<IWICBitmapEncoder> encoder;
         ComPtr<IWICBitmapFrameEncode> frame;
         WICPixelFormatGUID format = GUID_WICPixelFormat32bppPBGRA;
+        WICRect part{0, 0, static_cast<INT>(width), static_cast<INT>(height)};
+        if (crop)
+            part = {static_cast<INT>(crop->x * scale_), static_cast<INT>(crop->y * scale_),
+                    static_cast<INT>(crop->w * scale_), static_cast<INT>(crop->h * scale_)};
         return SUCCEEDED(wic_->CreateStream(stream.GetAddressOf())) &&
                SUCCEEDED(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE)) &&
                SUCCEEDED(wic_->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.GetAddressOf())) &&
                SUCCEEDED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache)) &&
                SUCCEEDED(encoder->CreateNewFrame(frame.GetAddressOf(), nullptr)) &&
-               SUCCEEDED(frame->Initialize(nullptr)) && SUCCEEDED(frame->SetSize(width, height)) &&
-               SUCCEEDED(frame->SetPixelFormat(&format)) && SUCCEEDED(frame->WriteSource(bitmap.Get(), nullptr)) &&
+               SUCCEEDED(frame->Initialize(nullptr)) &&
+               SUCCEEDED(frame->SetSize(static_cast<UINT>(part.Width), static_cast<UINT>(part.Height))) &&
+               SUCCEEDED(frame->SetPixelFormat(&format)) && SUCCEEDED(frame->WriteSource(bitmap.Get(), &part)) &&
                SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit());
     }
 
@@ -1581,8 +1587,19 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     click(view, kFxTab);
     view.mouseMove({600.0f, 328.0f}, {});
     shots = shots && renderer.save(view, dir / (prefix + "-fx.png"));
+    // Its effects' panel alone, as a chain and then as a graph (the README's, see release.ps1).
+    const Rect panel{detail::kFxPanel.x - 8.0f, detail::kFxPanel.y - 1.0f, detail::kFxPanel.w + 16.0f,
+                     detail::kFxPanel.h + 9.0f}; // not the tabs above it
+    shots = shots && renderer.save(view, dir / (prefix + "-fx-chain-panel.png"), &panel);
+    const Rect graphSwitch = detail::fxModeButton(1);
+    click(view, {graphSwitch.x + graphSwitch.w * 0.5f, graphSwitch.y + graphSwitch.h * 0.5f});
+    view.mouseMove({600.0f, 600.0f}, {});
+    shots = shots && model.value(paramIndex(GlobalParam::FxGraph)) == 1.0 &&
+            renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
     check(shots && fxChain(model).size() == effects,
-          ("render " + name + "'s routing, matrix and " + std::to_string(effects) + " effects").c_str());
+          ("render " + name + "'s routing, matrix and " + std::to_string(effects) +
+           " effects, and its effects' panel as a chain and as a graph")
+              .c_str());
 }
 
 // A stereo phaser and a flanger mid-sweep (their LFOs where the audio left them), a phase disperser and a filter,
