@@ -2021,6 +2021,14 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               model.openEdits == 0 && renderer.save(view, dir / "40f-fx-split-card.png"),
           "a split's crossover handle drags across its card's display");
 
+    // Its slope under the display: 12 dB picked, the bands' responses gentler; back to 24, undoably.
+    click(view, {card.center().x - 63.0f + 42.0f + 21.0f, card.y + 202.0f});
+    const bool twelve = model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
+    const bool slopeShot = renderer.save(view, dir / "40f2-fx-split-slope.png");
+    view.undo();
+    check(twelve && slopeShot && model.value(paramIndex(0, SplitParam::Slope)) == kFilterSlopes - 1.0,
+          "a split's card picks its slope, 6, 12 or 24 dB");
+
     // + EFFECT with the split picked: a flanger at the end of its high band, before the join; undone.
     addFx(view, FxType::Flanger);
     const bool onBand = from(5, 0) == fxSlotPort(2) && from(join, 0) == fxSlotPort(5);

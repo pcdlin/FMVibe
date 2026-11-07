@@ -739,6 +739,7 @@ private:
     void paintJoinCard(Canvas &c, int split, Rect card);
     // A split's display on its card, and its crossover's handle there.
     static Rect splitDisplay(Rect card);
+    static Rect splitSlopeButton(Rect card, int k); // its slope's buttons under the display: 6, 12 and 24 dB
     Point splitHandle(int split, Rect display) const;
     // Ctrl+drag in the routing graph: where a node dragged to `want` goes on its grid, the nearest point it fits at
     // clear of the other nodes; and whether the grid's points show now.

@@ -199,6 +199,8 @@ void buildTable(ParamTable &t) {
             1.0, normFromCutoff(250.0));
         add(paramIndex(split, SplitParam::High), name + " " + tr(Str::ParamSplitHigh), module, ParamKind::Cutoff, 0.0,
             1.0, normFromCutoff(2500.0));
+        add(paramIndex(split, SplitParam::Slope), name + " " + tr(Str::ParamSlope), module, ParamKind::FilterSlope,
+            0.0, kFilterSlopes - 1.0, kFilterSlopes - 1.0); // 24 dB, as splits cut before they had a slope
     }
     for (int sum = 0; sum < kFxSums; ++sum) {
         const std::string name = trf(Str::ParamSum, {std::to_string(sum + 1)});

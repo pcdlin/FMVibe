@@ -5423,9 +5423,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Operators', filters', sources' and effects' on switches show the power symbol rather than a word.
         const bool power = isPowerParam(w.param) || isSourcePower(w.param) || field == FxParam::Enabled;
         const std::string count = std::to_string(w.b); // the partial editor's resolution
+        const bool splitSlope = splitOf(w.param) >= 0; // a split's slope, in dB
+        const std::string slope = std::to_string(slopeDb(w.b)) + " dB";
         const bool modeChoice = routeModeFrom(w.param) >= 0; // an operator's INPUTS row's, as glyphs
         const char *text = power || modeChoice ? ""
                            : isPartialCount(w.param) ? count.c_str()
+                           : splitSlope                ? slope.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
@@ -8982,6 +8985,15 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         const int to = std::clamp(static_cast<int>(lfoClockOf(hit->a)) + whole, 0, kLfoModes - 1);
         if (whole != 0)
             setLfoClock(hit->a, static_cast<LfoClock>(to));
+        return;
+    }
+    if (const int split = splitOf(hit->param); split >= 0 && hit->param == paramIndex(split, SplitParam::Slope)) {
+        const int slopes[] = {0, 1, kFilterSlopes - 1}; // 6, 12 and 24 dB, a notch a step
+        int at = 0;
+        for (int k = 0; k < 3; ++k)
+            at = filterSlope(value(hit->param)) >= slopes[k] ? k : at;
+        if (whole != 0)
+            edit(hit->param, slopes[std::clamp(at + whole, 0, 2)]);
         return;
     }
     if (hit->kind == Kind::LabelMode) { // to the next mode along, as the wheel turns, a run of notches one undo step

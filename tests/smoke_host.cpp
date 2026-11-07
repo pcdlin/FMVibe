@@ -2315,6 +2315,12 @@ int main(int argc, char **argv) {
                    {from(kFxOutNode, 0), port(fxBandPort(0, 0))},
                    {from(kFxOutNode, 1), port(fxBandPort(0, 2))}});
         const double twoBands = magnitude(play({}), 440.0);
+        // At 6 and 12 dB the two bands sum back flat too.
+        setParams({{paramIndex(0, SplitParam::Slope), 0.0}});
+        const double twoBands6 = magnitude(play({}), 440.0);
+        setParams({{paramIndex(0, SplitParam::Slope), 1.0}});
+        const double twoBands12 = magnitude(play({}), 440.0);
+        setParams({{paramIndex(0, SplitParam::Slope), static_cast<double>(kFilterSlopes - 1)}});
         setParams({{paramIndex(0, SplitParam::Bands), 3.0},
                    {paramIndex(0, SplitParam::Low), normFromCutoff(200.0)},
                    {paramIndex(0, SplitParam::High), normFromCutoff(2000.0)},
@@ -2330,14 +2336,35 @@ int main(int argc, char **argv) {
                    {from(kFxOutNode, 2), 0.0},
                    {level(kFxOutNode, 0), 0.5}});
         const double summed = magnitude(play({}), 440.0);
-        std::printf("      graph: in to out %+.3f dB, two halves %+.3f dB, two bands %+.3f dB, three %+.3f dB, "
-                    "summed and out at half %+.3f dB\n",
-                    db(direct / plain), db(halves / plain), db(twoBands / plain), db(threeBands / plain),
-                    db(summed / plain));
+        std::printf("      graph: in to out %+.3f dB, two halves %+.3f dB, two bands %+.3f dB (at 6 dB %+.3f, at 12 "
+                    "%+.3f), three %+.3f dB, summed and out at half %+.3f dB\n",
+                    db(direct / plain), db(halves / plain), db(twoBands / plain), db(twoBands6 / plain),
+                    db(twoBands12 / plain), db(threeBands / plain), db(summed / plain));
         check(std::abs(db(direct / plain)) < 0.1 && std::abs(db(halves / plain)) < 0.1 &&
-                  std::abs(db(twoBands / plain)) < 0.1 && std::abs(db(threeBands / plain)) < 0.1 &&
+                  std::abs(db(twoBands / plain)) < 0.1 && std::abs(db(twoBands6 / plain)) < 0.1 &&
+                  std::abs(db(twoBands12 / plain)) < 0.1 && std::abs(db(threeBands / plain)) < 0.1 &&
                   std::abs(db(summed / plain) + 6.02) < 0.1,
-              "the effects graph passes its input on, a split's bands sum back flat, and a sum adds up its wires");
+              "the effects graph passes its input on, a split's bands sum back flat at every slope, and a sum adds up "
+              "its wires");
+
+        // The low band alone, its crossover two octaves under the A4: at 6 dB about 12 dB down, at 12 about 25, at
+        // 24 about 48.
+        clearGraph(true);
+        setParams({{paramIndex(0, SplitParam::Used), 1.0},
+                   {paramIndex(0, SplitParam::Bands), 2.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(110.0)},
+                   {from(fxSplitNode(0), 0), port(kFxPortIn)},
+                   {from(kFxOutNode, 0), port(fxBandPort(0, 0))}});
+        double lows[3] = {};
+        const int slopes[] = {0, 1, kFilterSlopes - 1};
+        for (int k = 0; k < 3; ++k) {
+            setParams({{paramIndex(0, SplitParam::Slope), static_cast<double>(slopes[k])}});
+            lows[k] = db(magnitude(play({}), 440.0) / plain);
+        }
+        std::printf("      a split's low band two octaves under the A4: %.1f dB at 6 dB, %.1f at 12, %.1f at 24\n",
+                    lows[0], lows[1], lows[2]);
+        check(std::abs(lows[0] + 12.3) < 2.0 && std::abs(lows[1] + 24.6) < 2.5 && lows[2] < -40.0,
+              "a split's slope sets how steeply its bands part");
 
         // A hard shaper on the low band of a split: at 2 kHz the A4 goes through it and comes out squared (its 3rd
         // harmonic), at 200 Hz it is in the high band, which goes straight out, and stays a sine.

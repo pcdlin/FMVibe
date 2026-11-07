@@ -524,8 +524,10 @@ enum class FxParam {
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
 // for three, with Linkwitz-Riley crossovers whose bands sum back flat. Low and High are on the cutoff curve, High kept
-// a third of an octave above Low (see splitCrossovers()). Stored in projects by number: only append.
-enum class SplitParam { Used, Bands, Low, High, Count };
+// a third of an octave above Low (see splitCrossovers()). Slope is two bands' steepness, as a filter's slope is
+// stored: 6, 12 or 24 dB per octave (18 plays as 24; three bands are always 24). Stored in projects by number: only
+// append.
+enum class SplitParam { Used, Bands, Low, High, Slope, Count };
 // A wire into a node of the effects graph: From is the port it comes from (fxPortValue(), 0 for no wire) and Level how
 // much of it goes in. Stored in projects by number: only append.
 enum class FxInputField { From, Level, Count };
@@ -1265,7 +1267,7 @@ static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(param
 static_assert(idOfIndex(kFxPositionBase) == 33400 && idOfIndex(kFxPositionBase + kFxSlots - 1) == 33431,
               "chain order param ids moved");
 static_assert(idOfIndex(paramIndex(GlobalParam::FxGraph)) == 12 && idOfIndex(paramIndex(0, SplitParam::Used)) == 34000 &&
-                  idOfIndex(paramIndex(kFxSplits - 1, SplitParam::High)) == 34063 &&
+                  idOfIndex(paramIndex(kFxSplits - 1, SplitParam::Slope)) == 34064 &&
                   idOfIndex(fxInputIndex(0, 0, FxInputField::From)) == 34200 &&
                   idOfIndex(fxInputIndex(kFxInputNodes - 1, kFxInputs - 1, FxInputField::Level)) == 34907 &&
                   idOfIndex(fxInputIndex(kFxOutNode, 0, FxInputField::From)) == 35000 &&

@@ -369,6 +369,7 @@ private:
     struct Split {
         std::array<EqChannel, 2> channels{};
         bool running = false;
+        int slope = -1; // the slope its filters ran at: another starts them cleared
     };
     bool nodeInGraph(int node, const ParamValues &p) const;
     // The node a port comes out of: -1 for the input, -2 for a node that isn't in the graph.

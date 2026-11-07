@@ -245,8 +245,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   and off, reordered and removed. A patch saved while the chain held 16 loads its effects in the order they had.
   - **As a graph**, rather than a chain (the FX tab's switch, see the editor): the effects run along a line from the
     voices to the output, which up to four **splits** cut by frequency into two bands at their Crossover (250 Hz to
-    begin with), with the same Linkwitz-Riley crossovers (24 dB per octave) as the 3-band dynamics, so the bands sum
-    back flat. Each band runs through effects of its own, say the lows through a shaper and a compressor and the
+    begin with), at a Slope of 6, 12 or 24 dB per octave (24 to begin with: the same Linkwitz-Riley crossovers as the
+    3-band dynamics; 12 a second-order one, 6 a one-pole low-pass with the rest as the high band), so the bands sum
+    back flat at each. Each band runs through effects of its own, say the lows through a shaper and a compressor and the
     highs through a delay and a reverb, until a **join** adds them back together, each at a level (0–100 %, full to
     begin with), and the line goes on from it; a split left open at the line's end sends both bands out. The splits
     and joins don't take any of the 32 effects' places, and modulation moves a split's crossover and a join's levels
@@ -660,7 +661,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     and its join), and a click on that + opens the list too, the effect picked
     going in there: on the main line, the list also offers the split, which goes in with its join right after it and
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's card
-    shows its bands' responses with a handle on the crossover to drag across, and its Crossover knob; a join's card a
+    shows its bands' responses with a handle on the crossover to drag across, its slope (6 | 12 | 24 dB, which the
+    wheel steps along too) and its Crossover knob; a join's card a
     bar for each band's level, and its High and Low knobs. Under the mouse, a node shows an x in a circle at its upper
     right, which removes it as the x on its card does (faint on a join that can't go yet). A node dragged onto
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would

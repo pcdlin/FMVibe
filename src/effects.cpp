@@ -791,6 +791,17 @@ void Effects::runSplit(int split, uint32_t n, const ParamValues &p, const float 
         splitCrossovers(p[paramIndex(split, SplitParam::Low)], p[paramIndex(split, SplitParam::High)]);
     const bool three = std::lround(p[paramIndex(split, SplitParam::Bands)]) >= kFxBands;
     const CrossoverCoefs c = crossoverCoefs(hz[0], hz[1]);
+    // Two bands' slope: 6 dB a one-pole low-pass with the rest as the high band; 12 dB a second-order Linkwitz-Riley
+    // (two one-poles each way, the high band turned over so the two sum flat); 24 dB the fourth-order one, as three.
+    const int asked = slopeDb(filterSlope(p[paramIndex(split, SplitParam::Slope)]));
+    const int slope = three || asked > 12 ? 24 : asked; // 18 plays as 24
+    if (slope != sp.slope) {
+        sp.channels = {};
+        sp.slope = slope;
+    }
+    const double k = std::tan(std::numbers::pi * std::min(hz[0], 0.3 * sampleRate_) / sampleRate_);
+    const BiquadCoefs lp1{k / (1.0 + k), k / (1.0 + k), 0.0, (k - 1.0) / (k + 1.0), 0.0};
+    const BiquadCoefs hp1{1.0 / (1.0 + k), -1.0 / (1.0 + k), 0.0, (k - 1.0) / (k + 1.0), 0.0};
     auto &out = bandOut_[split];
     for (uint32_t s = 0; s < n; ++s)
         for (int ch = 0; ch < 2; ++ch) {
@@ -802,9 +813,20 @@ void Effects::runSplit(int split, uint32_t n, const ParamValues &p, const float 
                 for (int b = 0; b < kFxBands; ++b)
                     out[b][ch][s] = static_cast<float>(bands[b]);
             } else { // the low and the high band, the middle one silent
-                out[0][ch][s] = static_cast<float>(e.lowB.process(e.lowA.process(x, c.lp1), c.lp1));
+                double low = 0.0, high = 0.0;
+                if (slope == 6) {
+                    low = e.lowA.process(x, lp1);
+                    high = x - low;
+                } else if (slope == 12) {
+                    low = e.lowB.process(e.lowA.process(x, lp1), lp1);
+                    high = -e.restB.process(e.restA.process(x, hp1), hp1);
+                } else {
+                    low = e.lowB.process(e.lowA.process(x, c.lp1), c.lp1);
+                    high = e.restB.process(e.restA.process(x, c.hp1), c.hp1);
+                }
+                out[0][ch][s] = static_cast<float>(low);
                 out[1][ch][s] = 0.0f;
-                out[2][ch][s] = static_cast<float>(e.restB.process(e.restA.process(x, c.hp1), c.hp1));
+                out[2][ch][s] = static_cast<float>(high);
             }
         }
 }

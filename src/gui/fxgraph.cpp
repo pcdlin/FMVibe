@@ -781,12 +781,28 @@ void View::splitCardWidgets(std::vector<Widget> &list, int split, Rect card) con
     handle.param = low;
     handle.a = split;
     list.push_back(handle);
+    // Its slope under the display, 6 | 12 | 24 dB (18, which a filter has, it doesn't).
+    const size_t first = list.size();
+    const int slopes[] = {0, 1, kFilterSlopes - 1};
+    for (int k = 0; k < 3; ++k) {
+        Widget choice;
+        choice.kind = Kind::Choice;
+        choice.rect = splitSlopeButton(card, k);
+        choice.param = paramIndex(split, SplitParam::Slope);
+        choice.b = slopes[k];
+        list.push_back(choice);
+    }
+    mergeButtons(list, first);
     Widget knob;
     knob.kind = Kind::Knob;
     knob.rect = knobRect({card.x + card.w * 0.5f, card.y + 240.0f}, 36.0f);
     knob.param = low;
     knob.label = tr(Str::LabelCrossover);
     list.push_back(knob);
+}
+
+Rect View::splitSlopeButton(Rect card, int k) {
+    return {card.center().x - 63.0f + 42.0f * static_cast<float>(k), card.y + 192.0f, 42.0f, 20.0f};
 }
 
 void View::joinCardWidgets(std::vector<Widget> &list, int split, Rect card) const {
@@ -1236,11 +1252,15 @@ void View::paintSplitCard(Canvas &c, int split, Rect card) {
     const double hz =
         splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)))[0];
     const float top = display.y + display.h * 0.35f, span = display.h * 0.55f;
+    // At its slope: a one-pole and the rest, or a Linkwitz-Riley of second or fourth order.
+    const int slope = slopeDb(filterSlope(value(paramIndex(split, SplitParam::Slope))));
     for (const int band : {kLowBand, kHighBand}) {
         std::vector<Point> points;
         for (int k = 0; k <= 120; ++k) {
             const double norm = k / 120.0, f = cutoffFromNorm(norm);
-            const double m = 1.0 / std::sqrt(1.0 + std::pow(band == kLowBand ? f / hz : hz / f, 8.0));
+            const double x = band == kLowBand ? f / hz : hz / f;
+            const double m = slope == 6 ? 1.0 / std::sqrt(1.0 + x * x) : slope == 12 ? 1.0 / (1.0 + x * x)
+                                                                                  : 1.0 / (1.0 + x * x * x * x);
             points.push_back({display.x + static_cast<float>(norm) * display.w,
                               top + static_cast<float>(1.0 - m) * span - (1.0f - 0.707f) * span});
         }
