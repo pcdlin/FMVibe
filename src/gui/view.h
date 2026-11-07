@@ -198,9 +198,10 @@ private:
                       // its Above threshold's line, 1 for its Below one's: drag across for the threshold. Linked,
                       // every band's lines set the low band's
         PeqPoint,     // param = the band's Q (for the wheel), a = effect slot, b = band: frequency and gain handle;
-                      // a press picks the band too
+                      // a press picks the band too, and switches it on if it is off
         PeqBand,      // a = effect slot, b = band: a parametric EQ band's chip; a click picks the band its knobs set
-        PeqBandOn,    // param = the band's On switch, a = effect slot, b = band: the power switch on its chip
+        PeqBandOn,    // param = the band's On switch, a = effect slot, b = band: its chip's power symbol and number,
+                      // which switch it on and off, and pick it
         LfoDisplay,   // a = lfo: click opens the shape editor of a freeform LFO
         ClipDisplay,  // a = effect slot: the edit button on a drawn curve's display, which opens the big editor
         ListButton,   // param = a choice (an LFO's shape, the shaper's curve, the reverb's algorithm): opens its list

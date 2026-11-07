@@ -264,7 +264,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
     handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q; its bands' chips: a click on one, its shape
-    or a band's handle picking the band its knobs set, its power switch turning the band on and off, undoably, and
+    or a band's handle picking the band its knobs set, its power symbol and its number turning the band on and off,
+    a switched-off band's handle pressed switching it on, undoably, and
     its shape's list (the third band's inside the card) picking the shape, a notch's handle moving only across, and
     its Amount knob setting the whole EQ's amount;
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read

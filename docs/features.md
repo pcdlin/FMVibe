@@ -612,11 +612,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     drag a band's numbered handle for frequency and gain, Alt-drag it up or down (it stays where it is) or scroll
     on it for Q, and double-click it to flatten it; a cut's handle sets its resonance instead of a gain, and a
     double-click takes the resonance away. A notch's handle sits on the 0 dB line and only moves across (Alt-drag
-    or scroll for its width), and a double-click sets its Q back to 1. A band switched off shows a faint handle, which can still be moved.
-    Under the display, a chip for each band: its power switch, its number (in the band's color while it plays) and
-    its shape's icon, which opens the list of shapes over the display. A click on a chip, or on a band's handle,
-    picks the band the row of knobs under the chips (Freq, Gain and Q, as large as a one-row card's) sets; its chip
-    and handle are ringed in its color. Amount, the row's fourth knob, is the whole EQ's. The band picked isn't saved: a card shows its first band to begin with.
+    or scroll for its width), and a double-click sets its Q back to 1. A band switched off shows a faint handle;
+    pressing it switches the band on (and it can be dragged on from there).
+    Under the display, a chip for each band: its power symbol and its number (in the band's color while it plays),
+    which together switch the band on and off, and its shape's icon, which opens the list of shapes over the
+    display. Either part of a chip, or a band's handle, picks the band the row of knobs under the chips (Freq, Gain
+    and Q, as large as a one-row card's) sets; its chip and handle are ringed in its color. Amount, the row's fourth knob, is the whole EQ's. The band picked isn't saved: a card shows its first band to begin with.
   - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
     in the order their cards show, then the macros, the note source, the mod wheel and velocity), the first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.

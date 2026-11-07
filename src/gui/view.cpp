@@ -1645,12 +1645,12 @@ std::vector<View::Widget> View::widgets() const {
                     const Point h = peqHandle(area, slot, band);
                     add(Kind::PeqPoint, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f}, peqQIndex(slot, band), slot, band);
                 }
-                // Each band's chip picks it, its power switch on the left and its shape on the right; the knobs set
-                // the band picked.
+                // Each band's chip: its power symbol and number switch it on and off, and its shape opens the list
+                // of shapes; either picks the band, whose knobs show.
                 for (int band = 0; band < kPeqBands; ++band) {
                     const Rect chip = peqChip(card, band);
                     add(Kind::PeqBand, chip, -1, slot, band);
-                    add(Kind::PeqBandOn, peqChipPower(chip), peqOnIndex(slot, band), slot, band);
+                    add(Kind::PeqBandOn, peqChipSwitch(chip), peqOnIndex(slot, band), slot, band);
                     add(Kind::PeqTypeButton, peqChipShape(chip), peqTypeIndex(slot, band), slot, band);
                 }
                 // Then Amount, for the whole EQ; all four as large as a one-row card's.
@@ -5902,7 +5902,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::PeqBandOn: {
         const bool on = value(w.param) >= 0.5;
-        powerIcon(c, w.rect.center(), on ? kSourceColors[w.b] : (hovered ? kText : kFaint));
+        powerIcon(c, peqChipPower(w.rect).center(), on ? kSourceColors[w.b] : (hovered ? kText : kFaint));
         break;
     }
     case Kind::PeqTypeButton: {
@@ -7673,6 +7673,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::PeqPoint:
         fxBand_[w.a] = w.b; // its knobs show
+        if (value(peqOnIndex(w.a, w.b)) < 0.5) // a band switched off comes on, an undo step of its own
+            edit(peqOnIndex(w.a, w.b), 1.0);
         if (mods.alt) { // up and down for its Q, as on a knob; the handle stays where it is
             drag_.kind = DragKind::Value;
             drag_.startValue = value(w.param);
@@ -7751,7 +7753,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::PeqBand:
         fxBand_[w.a] = w.b;
         break;
-    case Kind::PeqBandOn:
+    case Kind::PeqBandOn: // its knobs show too
+        fxBand_[w.a] = w.b;
         edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         break;
     case Kind::SourcesToggle:

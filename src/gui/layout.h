@@ -655,8 +655,10 @@ inline Rect peqChip(Rect card, int band) {
     const float w = (card.w - 28.0f - 4.0f * (kPeqBands - 1)) / kPeqBands;
     return {card.x + 14.0f + band * (w + 4.0f), card.y + kPeqChipY, w, kPeqChipH};
 }
-inline Rect peqChipPower(Rect chip) { return {chip.x, chip.y, 26.0f, chip.h}; }
+inline Rect peqChipPower(Rect chip) { return {chip.x, chip.y, 26.0f, chip.h}; } // where the power symbol is drawn
 inline Rect peqChipShape(Rect chip) { return {chip.right() - 34.0f, chip.y, 34.0f, chip.h}; }
+// What switches the band on and off: the power symbol and the number, everything left of the shape.
+inline Rect peqChipSwitch(Rect chip) { return {chip.x, chip.y, peqChipShape(chip).x - chip.x, chip.h}; }
 // Its row of knobs under the chips, as large as a one-row card's: the band picked's Freq, Gain and Q, then Amount.
 constexpr float kPeqKnobsY = 256.0f, kPeqKnobD = 36.0f;
 inline Point peqKnobCenter(Rect card, int i) {
