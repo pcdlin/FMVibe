@@ -137,6 +137,17 @@ STR(ParamGlide, "Glide")
 STR(ParamGlideAlways, "Glide Always")
 STR(ParamFxOrder, "FX Order")
 STR(ParamFxPosition, "FX Order {1}")
+STR(ParamFxGraph, "FX Graph") // the effects running as a graph rather than a chain
+STR(ParamSplit, "Split {1}") // a split in the effects graph, by number; its field's name follows
+STR(ParamSplitUsed, "Used")
+STR(ParamSplitBands, "Bands")
+STR(ParamSplitLow, "Low Crossover")
+STR(ParamSplitHigh, "High Crossover")
+STR(ParamFxOut, "FX Out") // the effects graph's output, as the node its wires go into
+STR(ParamFxInput, "Input {1}") // a wire into a node of the effects graph, by number; its field's name follows
+STR(ParamFxInputFrom, "From")
+STR(ParamFxInputLevel, "Level")
+STR(ValueFxIn, "In") // a wire coming from the voices, into the effects graph
 STR(ParamModWheel, "Mod Wheel")
 STR(ParamNote, "Note")
 STR(ParamVelocitySource, "Velocity") // the velocity source, as hosts name its fields
@@ -463,6 +474,7 @@ STR(LabelRelease, "Release")
 STR(LabelMakeup, "Makeup")
 STR(LabelGain, "Gain")
 STR(LabelLowX, "Low X")
+STR(LabelBands, "BANDS") // before a split's 2 | 3
 STR(LabelHighX, "High X")
 STR(LabelSize, "Size")
 STR(LabelPreDelay, "Pre-Delay")
@@ -515,6 +527,8 @@ STR(BandButtonLow, "LOW") // the three-band dynamics' bands, and the DJ EQ's dis
 STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
+STR(ButtonAddSplit, "SPLIT") // after a drawn plus: puts a split in the effects graph
+STR(ButtonToChain, "To Chain") // the confirm dialog's button that turns the effects graph back into a chain
 STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
 STR(ButtonEnv, "ENV")
 STR(ButtonRandom, "RANDOM")
@@ -533,6 +547,8 @@ STR(ButtonOverwrite, "Overwrite")
 STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
 STR(HintFx, "click icon: toggle  ·  drag title: reorder")
+STR(HintFxGraph, "Add an effect or a split, then drag from a node's edge to wire it") // the empty effects graph
+STR(HintFxInspector, "Click a node to edit it here") // the graph's inspector, with no node to show
 // What the note source's and velocity's curves show:
 STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
 STR(HintVelocityAxes, "across: velocity  ·  up: output")
@@ -592,6 +608,8 @@ STR(ConfirmInit, "Resets all settings to defaults.")
 STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
+STR(ConfirmFxChainTitle, "Turn the graph back into a chain?")
+STR(ConfirmFxChain, "Splits and parallel wires are removed; the effects keep their settings.")
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
@@ -638,6 +656,9 @@ STR(SummaryMods, "mods {1}")
 STR(NodeOperator, "operator {1}")
 STR(NodeFilter, "filter {1}")
 STR(NodeShaper, "shaper {1}")
+STR(NodeFxIn, "IN") // the effects graph's input, the voices
+STR(NodeFxOut, "OUT") // its output
+STR(NodeSplit, "SPLIT {1}") // a split in the effects graph, by number
 
 // --- The editor: tooltips
 
@@ -647,6 +668,12 @@ STR(TipNoteDisplay, "Edit note curve")
 STR(TipVelocityDisplay, "Edit velocity curve")
 STR(TipWireEnd, "Drag to reroute")
 STR(TipWire, "Drag to bend, double-click resets")
+STR(TipFxChain, "Effects as a chain")
+STR(TipFxGraph, "Effects as a graph: parallel chains and splits")
+STR(TipFxPort, "Drag onto a node to wire it")
+STR(TipFxNode, "Click to edit, drag to move")
+STR(TipRemoveWire, "Remove wire")
+STR(TipRemoveSplit, "Remove split")
 STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
 STR(TipRemoveRoute, "Remove route") // the x at the right of a wire or OUT label's pill
 STR(TipRoutePhase, "Phase: adds to where the wave is read")
@@ -794,6 +821,10 @@ STR(MsgOwnKnob, "{1} can't modulate its own knob")
 STR(MsgEmptyModsFull, "Up to {1} empty modulations allowed.")
 STR(MsgRouteExists, "{1} already routes to {2}")
 STR(MsgChainFull, "Only supports up to {1} effects in the chain")
+STR(MsgFxLoop, "That wire would loop the effects back into themselves")
+STR(MsgFxWireExists, "That wire is there already")
+STR(MsgFxInputsFull, "A node takes up to {1} wires in")
+STR(MsgSplitsFull, "Only supports up to {1} splits")
 STR(MsgShapeFull, "Only supports up to {1} points per shape")
 STR(MsgShapeCopied, "{1} shape copied")
 STR(MsgNothingCopied, "Copy a shape first")
@@ -865,6 +896,7 @@ STR(CascadeMatrix, "Matrix")
 STR(CascadeFilters, "Filters")
 STR(CascadeShapers, "Shapers")
 STR(CascadeEffects, "Effects")
+STR(CascadeWires, "Wires") // the effects graph's wires, by what they join
 STR(CascadeModulation, "Modulation")
 STR(CascadePitch, "PITCH")
 STR(CascadeLevel, "LEVEL")

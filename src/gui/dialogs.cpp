@@ -148,6 +148,8 @@ void View::runPreset(PresetAction action) {
 // What replaces the patch: Init, or the preset picked from the library. A file still to be picked in the dialog goes
 // unsaid. Or, for Save, what overwriting the preset's file does.
 std::string View::confirmWhat() const {
+    if (confirm_ == kConfirmFxChain)
+        return tr(Str::ConfirmFxChain);
     if (confirm_ == static_cast<int>(PresetAction::Init))
         return tr(Str::ConfirmInit);
     if (confirm_ == static_cast<int>(PresetAction::Save))
@@ -602,15 +604,17 @@ void View::paintConfirm(Canvas &c) {
     c.fillRect(panel, kPanel, 10.0f);
     c.strokeRect(panel, kBorder, 1.0f, 10.0f);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
+    const bool toChain = confirm_ == kConfirmFxChain; // the patch stays: nothing is lost but the graph's wiring
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
-           overwrite ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()}) : std::string(tr(Str::ConfirmTitle)),
+           overwrite ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()})
+                     : std::string(tr(toChain ? Str::ConfirmFxChainTitle : Str::ConfirmTitle)),
            14.0f, kText, Align::Left, true);
     float y = panel.y + 48.0f;
     if (!what.empty()) {
         c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, what, 10.5f, kDim, Align::Left);
         y += kConfirmLine;
     }
-    if (!overwrite) // nothing is thrown away by overwriting but the file, which its line says
+    if (!overwrite && !toChain) // nothing is thrown away by overwriting but the file, nor by leaving the graph
         c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst), 10.5f, kDim, Align::Left);
     for (const Widget &w : confirmWidgets())
         paintWidget(c, w);

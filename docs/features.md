@@ -243,6 +243,18 @@ What the plugin does and how its editor works, in full. Building and installing 
 - **Effects**, after the voices: everything the operators and filters send to the output runs through a chain of
   up to 32 effects. A new instance starts with an empty chain. Any effect can be added more than once, switched on
   and off, reordered and removed. A patch saved while the chain held 16 loads its effects in the order they had.
+  - **As a graph**, rather than a chain (the FX tab's switch, see the editor): each effect takes up to four wires in
+    and sends its sound along any number out, so chains can run side by side and meet again. Up to four **splits**
+    cut what goes into them by frequency into two bands (at Low, 250 Hz to begin with) or three (at Low and High,
+    2.5 kHz to begin with), with the same Linkwitz-Riley crossovers (24 dB per octave) as the 3-band dynamics: the
+    bands sum back flat, and each sends its part on along its own wires, say the lows through a shaper and a
+    compressor and the highs through a delay and a reverb. High stays a third of an octave above Low. The splits
+    don't take any of the 32 effects' places. Every wire has a level (0–100 %, full as it is connected), which
+    modulation moves like any knob, as can the splits' crossovers; the output takes up to eight wires. The effects
+    run in the order the wires make; a wire that would loop back (which the editor doesn't make) reads what its
+    source put out 64 samples before. A wire's level glides as it moves, and a wire connected, moved or taken away
+    fades in or out over 5 ms. A patch starts
+    as a chain, and one saved before the graph loads as the chain it was.
   - **Shaper**: picked from a list: Hard (a flat ceiling), Soft (tanh), Asymmetric (the lower half clips twice as
     hard, which adds even harmonics), Cubic (x − x³/3, scaled to reach full level), Gentle (x / (1 + |x|), which
     never quite gets there), Sine Fold and Fold (what goes past full level folds back, smoothly or in straight
@@ -617,6 +629,28 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     which together switch the band on and off, and its shape's icon, which opens the list of shapes over the
     display. Either part of a chip, or a band's handle, picks the band the row of knobs under the chips (Freq, Gain
     and Q, as large as a one-row card's) sets; its chip and handle are ringed in its color. Amount, the row's fourth knob, is the whole EQ's. The band picked isn't saved: a card shows its first band to begin with.
+
+    The switch at the panel's top right (cards in a row, or a node forking and meeting again) shows the effects as
+    a **graph** instead: the graph at the left, and at the right the card of the node picked, as it would show in
+    the row (a split's card has BANDS 2 | 3, a display of its bands' responses with a handle on each crossover to
+    drag across, and its crossovers' knobs). Switching to the graph wires it as the chain ran, its nodes in a row
+    (two past six); switching back asks first when that loses splits or wires side by side, then leaves a chain in
+    the graph's order. In the graph, the input (IN) is a box at the left edge and the output (OUT) one at the right;
+    each effect is a circle in its color with its icon and name, a split a box with a dot for each band down its
+    right side (the high band on top, in amber, the middle one in lime, the low one in blue). Drag from an effect's
+    edge, a band's dot or IN onto a node or OUT to wire it; a wire that would loop back, or that is there already,
+    is refused with a message, as is one into a node whose inputs are all taken. Each wire, in the color of what it
+    comes from, has its level on a label at its middle: drag it up and down, type a value into it, drop a source's
+    handle on it to modulate it, or, with the mouse over it, click the x beside it to remove the wire. Drag a wire's
+    arrowhead onto another node to move it there (with its level and modulation), or off the nodes to remove it;
+    drag the wire sideways to bend it, and double-click it to straighten it back. A click on a node shows it in the
+    card at the right, and a drag moves it (an undo step). + EFFECT puts the new effect after the node picked,
+    taking over the wires out of it (after IN when a split or nothing is picked, and out to OUT when nothing went on
+    from there), and + SPLIT does the same with a split of two bands, both going where the wires went, so the sound
+    stays as it was until something goes into a band. Removing an effect or a split joins what went into it, if it
+    came from one place, to where it went. Right-click an effect's node for its card's menu, a split's to remove
+    it. The nodes' places are saved with the patch, and the node picked too; the effects' count beside + EFFECT and
+    the target menu follow the graph's order.
   - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
     in the order their cards show, then the macros, the note source, the mod wheel and velocity), the first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
@@ -644,7 +678,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
       its params in two columns, under PITCH, LEVEL, PHASE and UNISON, and beside them ENVELOPE and NOISE;
       the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
-      only those in the chain, in its order, each with the knobs of its type; and Modulation, each LFO's and
+      only those in the chain, in its order, each with the knobs of its type (in the effects graph, then each split's
+      crossovers and Wires, each wire's level named by what it joins, as "IN → 1 · Shaper"); and Modulation, each LFO's and
       envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
       rest. What the row has now is checked, and the categories it is in have a dot; a click elsewhere closes the
       menu, and so does a second click on what opened it. Atop the target's menu, a **search** takes the keyboard
@@ -1140,12 +1175,13 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,220 of FMVibe's 18,039 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,220 of FMVibe's 18,360 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
 modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the freeform LFO shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
-counts, the chain order, the feedback's route modes and the retired fields. They are
+counts, the chain order, the effects graph (its switch, splits and wires), the feedback's route modes and the
+retired fields. They are
 saved with the project and in presets like the others, the editor's sources modulate them and its history undoes
 them, but hosts can't automate them and don't record their edits: an edit of one marks the project changed
 instead.

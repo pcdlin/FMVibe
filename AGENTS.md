@@ -98,6 +98,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     leaving its target alone; a macro's and velocity's slots bypassed leaving theirs alone; velocity and the note
     source scaling an LFO's slot as its aux from a note's first block;
   - the FX order changing the result, and a slot past the 16th playing at its place in the chain;
+  - the effects graph: its input straight out, two wires at half as one at full, and a split's two and three bands
+    summing back flat; a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
+    chain running with the graph off, its wires doing nothing; a loop, which only params make, staying finite; and
+    a macro taking a wire's level down;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
@@ -143,11 +147,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
     feedback and a driven filter;
-  - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
+  - zipper noise from an LFO on an operator's level, a matrix amount, a filter cutoff and a wire of the effects
+    graph;
   - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
     LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
-    and when a Param EQ band is switched on and off;
+    when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
@@ -201,6 +206,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
+  - the effects graph: switching to it wiring the chain up as it ran, + SPLIT putting a split after the node picked
+    (its bands going on where that node went), its card's crossover handle dragged, a loop refused, the input's box
+    wired into a node, a wire's label setting its level and its x removing it, a node moved and the move undone, and
+    going back to a chain asking first, then leaving the chain in the graph's order;
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
   - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
     there only picks the node and a drag from further inside moves it; a filter's edge dragged onto an earlier
@@ -552,6 +561,7 @@ breakpoints in `src/` then hit.
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
+| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects graph: its nodes, splits and wires, wiring and rewiring them, its inspector and the split's card |
 | `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
@@ -619,10 +629,13 @@ itself.
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
   22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel
   and velocity; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
-  sources' number likewise).
+  sources' number likewise); the effects graph's switch is global 12, its splits 34000 + 20·split, the wires into its
+  slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
+  output 35000+. A wire's From stores its port + 1 (0 = none): the input, then each slot's output, then each split's
+  bands, low to high.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field and fixed Mult lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port and fixed Mult lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -636,11 +649,12 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,220 of the 18,039 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,220 of the 18,360 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
-  fields and the source places' own fields (a place's slot depths are listed, whatever it holds). Nothing hosts
+  fields, the effects graph (its switch, its splits and its wires) and the source places' own fields (a place's slot
+  depths are listed, whatever it holds). Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
   pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
   `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The
@@ -675,8 +689,9 @@ itself.
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
-  (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap) and which
-  effect cards past the 16th slot are folded.
+  (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
+  effect cards past the 16th slot are folded, and the effects graph's node places (the slots', then the splits', x
+  then y) and the node its inspector shows.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

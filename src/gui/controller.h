@@ -77,6 +77,15 @@ struct UiLayout {
     // grid.
     bool shapeSteps = false;
     bool shapeSnap = false;
+    // The effects graph's nodes, 0..1 within its area (see fxGraphArea()): the slots', then the splits'. Part of the
+    // patch, like the routing graph's. And the node its inspector shows (a slot or a split), -1 for none.
+    std::array<float, kFxInputNodes> fxNodeX = [] {
+        std::array<float, kFxInputNodes> x{};
+        x.fill(0.5f);
+        return x;
+    }();
+    std::array<float, kFxInputNodes> fxNodeY = fxNodeX;
+    int fxSelected = -1;
 };
 
 // How many empty modulations the MODS view keeps at most.

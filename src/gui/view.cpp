@@ -26,8 +26,7 @@ namespace fmvibe::gui {
 // routing graph and the drawn shapes.
 using namespace detail;
 
-namespace {
-
+namespace detail {
 // The effect cards' titles, by FxType from the shaper on.
 constexpr Str kFxTitles[] = {Str::FxTitleShaper, Str::FxTitleDelay, Str::FxTitleDjEq, Str::FxTitleParamEq,
                              Str::FxTitleFilter, Str::FxTitleCompressor, Str::FxTitleMultiComp, Str::FxTitleReverb,
@@ -37,6 +36,9 @@ static_assert(std::size(kFxTitles) == static_cast<size_t>(FxType::Count) - 1);
 const char *fxTitle(FxType type) {
     return type == FxType::None ? "" : tr(kFxTitles[static_cast<int>(type) - 1]);
 }
+} // namespace detail
+
+namespace {
 constexpr Str kMcBandNames[kMcBands] = {Str::BandButtonLow, Str::BandButtonMid, Str::BandButtonHigh};
 constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx, Str::ViewMods};
 static_assert(std::size(kViewNames) == std::size(kViewTabs));
@@ -567,7 +569,7 @@ bool View::droppable(const Widget &w, int source) const {
     // A list's row takes it as an aux instead; a disabled widget, which the mouse passes by, takes nothing.
     return w.param >= 0 && isModTarget(w.param) && !own && !w.popup && !w.disabled &&
            (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
-            w.kind == Kind::SlotBar);
+            w.kind == Kind::SlotBar || w.kind == Kind::FxLabel);
 }
 
 Color View::fxColor(int slot) const {
@@ -795,6 +797,7 @@ void View::revealFx(int position) {
 }
 
 void View::addEffect(FxType type, int copyOf, int at) {
+    const UndoScope step(controller_); // in the graph, with its wires
     std::vector<int> chain = fxChain();
     int slot = -1;
     for (int s = 0; s < kFxSlots && slot < 0; ++s)
@@ -829,6 +832,13 @@ void View::addEffect(FxType type, int copyOf, int at) {
         shapeEditor_ = -1;
     editMany(changes);
     fxBand_[slot] = copyOf >= 0 ? fxBand_[copyOf] : 0;
+    if (fxGraph()) {
+        std::vector<std::pair<int, double>> wiring;
+        fxInsertAfterSelected(slot, wiring);
+        editMany(wiring);
+        fxSyncOrder();
+        return;
+    }
     revealFx(position);
 }
 
@@ -841,25 +851,44 @@ void View::removeEffect(int slot) {
             removeSlot(m.source, m.slot);
     if (shapeEditor_ == kMaxSources + slot)
         shapeEditor_ = -1;
+    if (fxGraph()) {
+        // What went into it goes on where it went, if it came from one place; its own wires go.
+        std::vector<std::pair<int, double>> changes;
+        int into = -2;
+        for (const FxWireRef &w : fxWires())
+            if (w.node == slot)
+                into = into == -2 ? w.port : -1;
+        for (const FxWireRef &w : fxWires()) {
+            if (w.port != fxSlotPort(slot))
+                continue;
+            bool there = false;
+            for (int input = 0; input < fxInputCount(w.node) && into >= 0; ++input)
+                there = there || fxPortOf(value(fxInputIndex(w.node, input, FxInputField::From))) == into;
+            if (into >= 0 && !there)
+                changes.push_back({fxInputIndex(w.node, w.input, FxInputField::From), fxPortValue(into)});
+            else
+                fxRemoveWire(w.node, w.input, changes);
+        }
+        for (int input = 0; input < kFxInputs; ++input)
+            fxRemoveWire(slot, input, changes);
+        changes.push_back({paramIndex(slot, FxParam::Type), static_cast<double>(FxType::None)});
+        editMany(changes);
+        fxSyncOrder();
+        return;
+    }
     edit(paramIndex(slot, FxParam::Type), static_cast<double>(FxType::None));
 }
 
 Rect View::fxFilterArea(int slot) const {
-    const std::vector<int> chain = fxChainShown();
-    const auto pos = std::find(chain.begin(), chain.end(), slot) - chain.begin();
-    return fxDisplay(fxScreen(chain, static_cast<size_t>(pos)), FxType::Filter);
+    return fxDisplayIn(fxCardOf(slot).value_or(Rect{}), FxType::Filter);
 }
 
 Rect View::peqArea(int slot) const {
-    const std::vector<int> chain = fxChainShown();
-    const auto pos = std::find(chain.begin(), chain.end(), slot) - chain.begin();
-    return fxDisplay(fxScreen(chain, static_cast<size_t>(pos)), FxType::ParamEq).inset(8.0f);
+    return fxDisplayIn(fxCardOf(slot).value_or(Rect{}), FxType::ParamEq).inset(8.0f);
 }
 
 Rect View::mdDisplay(int slot) const {
-    const std::vector<int> chain = fxChainShown();
-    const auto pos = std::find(chain.begin(), chain.end(), slot) - chain.begin();
-    return fxDisplay(fxScreen(chain, static_cast<size_t>(pos)), FxType::MultiDyn);
+    return fxDisplayIn(fxCardOf(slot).value_or(Rect{}), FxType::MultiDyn);
 }
 
 int View::mdThreshold(int slot, int line) const {
@@ -1578,29 +1607,30 @@ std::vector<View::Widget> View::widgets() const {
     } else if (view == RoutingView::Fx) {
         const std::vector<int> chain = fxChainShown();
         add(Kind::FxMenuButton, fxMenuButton());
-        if (scrollLength(ScrollArea::Fx) > kVisibleFx + 0.01f)
+        if (fxGraph())
+            add(Kind::FxSplitAdd, fxSplitButton());
+        if (scrollLength(ScrollArea::Fx) > kVisibleFx + 0.01f && !fxGraph())
             add(Kind::Scrollbar, fxScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::Fx));
         const size_t cardsStart = list.size();
-        for (size_t pos = 0; pos < chain.size(); ++pos) {
-            const int slot = chain[pos];
+        // A card's widgets, where it shows: in the row, or in the effects graph's inspector (`graph`), where it
+        // neither folds nor moves.
+        auto cardWidgets = [&](int slot, size_t pos, Rect card, bool graph) {
             const FxType type = fxSlotType(slot);
-            const float screen = fxScreen(chain, pos);
-            if (!onScreen(screen, kVisibleFx, fxCardSpan(slot)))
-                continue;
-            const Rect card = fxCard(screen, fxCardSpan(slot));
             auto at = [slot](FxParam f) { return paramIndex(slot, f); };
             // The icon at the title's left switches the effect on and off, and drags the card like the title does.
             const Rect icon = fxIconRect(card).inset(-4.0f);
-            if (fxFolded(slot)) { // a strip: the icon, a grip, the cross, then the rest unfolds it
+            if (!graph && fxFolded(slot)) { // a strip: the icon, a grip, the cross, then the rest unfolds it
                 add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
                 add(Kind::FxGrip, {card.x, card.y + 30.0f, card.w, 16.0f}, -1, slot, static_cast<int>(pos));
                 add(Kind::FxRemove, {card.center().x - 9.0f, card.y + 50.0f, 18.0f, 21.0f}, -1, slot);
                 add(Kind::FxFold, {card.x, card.y + 76.0f, card.w, card.h - 76.0f}, -1, slot);
-                continue;
+                return;
             }
-            add(Kind::FxGrip, {card.x, card.y, card.w - 52.0f, 34.0f}, -1, slot, static_cast<int>(pos));
+            if (!graph) // in the graph, the card stays in the inspector
+                add(Kind::FxGrip, {card.x, card.y, card.w - 52.0f, 34.0f}, -1, slot, static_cast<int>(pos));
             add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
-            add(Kind::FxFold, {card.right() - 26.0f - 22.0f, card.y + 9.0f, 18.0f, 19.0f}, -1, slot);
+            if (!graph)
+                add(Kind::FxFold, {card.right() - 26.0f - 22.0f, card.y + 9.0f, 18.0f, 19.0f}, -1, slot);
             add(Kind::FxRemove, {card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f}, -1, slot);
             const float row = card.y + 44.0f; // mode buttons and switches
             auto knobs = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels,
@@ -1622,7 +1652,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::Toggle, clipLinkButton(card, custom), at(FxParam::ShaperLink));
                 merge(switches);
                 if (custom)
-                    drawnCurve(slot, fxDisplay(screen, type));
+                    drawnCurve(slot, fxDisplayIn(card, type));
                 knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
                       {tr(Str::LabelDrive), tr(Str::LabelOutput), tr(Str::LabelMix)});
                 break;
@@ -1631,7 +1661,7 @@ std::vector<View::Widget> View::widgets() const {
                 // Sync, link and ping-pong, as icons, across the card under the display.
                 const FxParam switches[] = {FxParam::DelaySync, FxParam::DelayLink, FxParam::DelayPingPong};
                 const float w = (card.w - 28.0f + 4.0f) / 3.0f;
-                const float under = fxDisplay(screen, type).bottom() + 4.0f;
+                const float under = fxDisplayIn(card, type).bottom() + 4.0f;
                 const size_t first = list.size();
                 for (int i = 0; i < 3; ++i)
                     add(Kind::Toggle, {card.x + 14.0f + i * w, under, w - 4.0f, 18.0f}, at(switches[i]));
@@ -1655,7 +1685,7 @@ std::vector<View::Widget> View::widgets() const {
                       {tr(Str::LabelLow), tr(Str::LabelMid), tr(Str::LabelHigh)});
                 break;
             case FxType::ParamEq: {
-                const Rect area = fxDisplay(screen, type).inset(8.0f);
+                const Rect area = fxDisplayIn(card, type).inset(8.0f);
                 for (int band = 0; band < kPeqBands; ++band) {
                     const Point h = peqHandle(area, slot, band);
                     add(Kind::PeqPoint, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f}, peqQIndex(slot, band), slot, band);
@@ -1685,9 +1715,9 @@ std::vector<View::Widget> View::widgets() const {
                 for (int t = 0; t < kTypes; ++t)
                     add(Kind::Choice, {card.x + 14.0f + t * w, row, w - 4.0f, 20.0f}, at(FxParam::FilterType), -1, t);
                 merge(types);
-                add(Kind::ListButton, fxSlopeButton(card, fxDisplay(screen, type)), at(FxParam::FilterSlope));
+                add(Kind::ListButton, fxSlopeButton(card, fxDisplayIn(card, type)), at(FxParam::FilterSlope));
                 // The response's handle, as a voice filter's: b = 1 marks the effect's.
-                const Point handle = filterHandle(fxDisplay(screen, type), value(at(FxParam::FilterCutoff)),
+                const Point handle = filterHandle(fxDisplayIn(card, type), value(at(FxParam::FilterCutoff)),
                                                   value(at(FxParam::FilterResonance)));
                 add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, slot, 1);
                 knobs({at(FxParam::FilterCutoff), at(FxParam::FilterResonance), at(FxParam::FilterKeyTrack)},
@@ -1711,7 +1741,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::Toggle, mdRmsButton(card), at(FxParam::MdRms));
                 add(Kind::Toggle, mdLinkButton(card), at(FxParam::MdLink));
                 merge(switches);
-                const Rect display = fxDisplay(screen, type);
+                const Rect display = fxDisplayIn(card, type);
                 for (int band = 0; band < kMcBands; ++band)
                     add(Kind::DynBand, mdBandRow(display, band), -1, slot, band);
                 for (int band = 0; band < kMcBands; ++band) {
@@ -1771,7 +1801,7 @@ std::vector<View::Widget> View::widgets() const {
                 // pill. Synced, the Rate knob picks a note value and shows it as its label.
                 const bool phaser = type == FxType::Phaser;
                 const int sync = at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync);
-                const float under = fxDisplay(screen, type).bottom() + 4.0f;
+                const float under = fxDisplayIn(card, type).bottom() + 4.0f;
                 const size_t switches = list.size();
                 add(Kind::Toggle, {card.x + 14.0f, under, 34.0f, 18.0f}, sync);
                 add(Kind::Toggle, {card.x + 48.0f, under, 72.0f, 18.0f},
@@ -1815,18 +1845,38 @@ std::vector<View::Widget> View::widgets() const {
             case FxType::Count:
                 break;
             }
+        };
+        for (size_t pos = 0; pos < chain.size() && !fxGraph(); ++pos) {
+            const int slot = chain[pos];
+            const float screen = fxScreen(chain, pos);
+            if (!onScreen(screen, kVisibleFx, fxCardSpan(slot)))
+                continue;
+            cardWidgets(slot, pos, fxCard(screen, fxCardSpan(slot)), false);
         }
-        if (const float place = fxOffset(chain, chain.size()) - fxScroll(); fxShadow() && onScreen(place, kVisibleFx))
+        if (fxGraph()) {
+            fxGraphWidgets(list);
+            if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots) {
+                const auto at = std::find(chain.begin(), chain.end(), node);
+                cardWidgets(node, static_cast<size_t>(at - chain.begin()), fxInspector(node), true);
+            } else if (node >= kFxSlots) {
+                splitCardWidgets(list, node - kFxSlots, fxInspector(node));
+            }
+        }
+        if (const float place = fxOffset(chain, chain.size()) - fxScroll();
+            !fxGraph() && fxShadow() && onScreen(place, kVisibleFx))
             add(Kind::FxShadow, fxCard(place));
         // The arrows between the cards, while there is room for another effect: a click adds one there.
-        for (size_t pos = 1; pos < chain.size() && fxShadow(); ++pos)
+        for (size_t pos = 1; pos < chain.size() && fxShadow() && !fxGraph(); ++pos)
             if (const float place = fxScreen(chain, pos); place > 0.0f && place < kVisibleFx) {
                 const Rect card = fxCard(place);
                 add(Kind::FxInsert, {card.x - kFxGap * 0.5f - 10.0f, card.center().y - 14.0f, 20.0f, 28.0f}, -1,
                     static_cast<int>(pos));
             }
-        for (size_t i = cardsStart; i < list.size(); ++i)
+        for (size_t i = cardsStart; i < list.size() && !fxGraph(); ++i)
             list[i].clip = fxCardClip();
+        for (int graph = 0; graph < 2; ++graph) // the switch between the chain and the graph
+            add(Kind::FxMode, fxModeButton(graph), -1, -1, graph);
+        merge(list.size() - 2);
     } else if (view == RoutingView::Matrix) {
         // Rows feed columns; the last column is the output. The rows' and columns' names work like the
         // nodes' tabs.
@@ -2383,14 +2433,12 @@ std::vector<View::Widget> View::widgets() const {
     // while that card is on screen and still holds that effect.
     const FxParam listField = fxFieldOf(listMenu_);
     const int listSlot = fxSlotOf(listMenu_);
-    if (listSlot >= 0 && fxWide() && fxTypeOfField(listField) == fxSlotType(listSlot) && !fxFolded(listSlot)) {
-        const std::vector<int> chain = fxChainShown();
-        const auto at = std::find(chain.begin(), chain.end(), listSlot);
-        const float screen = fxScreen(chain, static_cast<size_t>(at - chain.begin()));
-        if (at != chain.end() && onScreen(screen, kVisibleFx)) {
-            const Rect card = fxCard(screen, fxCardSpan(listSlot));
+    if (listSlot >= 0 && fxWide() && fxTypeOfField(listField) == fxSlotType(listSlot) &&
+        (fxGraph() || !fxFolded(listSlot))) {
+        if (const std::optional<Rect> shown = fxCardOf(listSlot)) {
+            const Rect card = *shown;
             const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
-                                : listField == FxParam::FilterSlope ? fxSlopeButton(card, fxDisplay(screen, FxType::Filter))
+                                : listField == FxParam::FilterSlope ? fxSlopeButton(card, fxDisplayIn(card, FxType::Filter))
                                                                     : clipModeButton(card);
             const int items = listCount(listMenu_);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
@@ -2442,12 +2490,9 @@ std::vector<View::Widget> View::widgets() const {
     if (peqMenu_ >= 0 && fxWide() && fxSlotType(fxSlotOf(peqMenu_)) == FxType::ParamEq) {
         const int slot = fxSlotOf(peqMenu_);
         const int band = peqBandOfType(peqMenu_);
-        const std::vector<int> chain = fxChainShown();
-        const auto at = std::find(chain.begin(), chain.end(), slot);
-        const float screen = fxScreen(chain, static_cast<size_t>(at - chain.begin()));
-        if (band >= 0 && at != chain.end() && !fxFolded(slot) &&
-            onScreen(screen, kVisibleFx, fxSpan(FxType::ParamEq))) {
-            const Rect card = fxCard(screen, fxSpan(FxType::ParamEq));
+        const std::optional<Rect> shown = fxCardOf(slot);
+        if (band >= 0 && shown && (fxGraph() || !fxFolded(slot))) {
+            const Rect card = *shown;
             add(Kind::PeqTypeMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::PeqTypeMenu, peqMenu(card, band), -1, 1);
             for (int t = 0; t < kPeqTypes; ++t)
@@ -2536,6 +2581,9 @@ std::optional<View::Widget> View::hitTest(Point p) const {
         } else if (it->kind == Kind::Wire) {
             const Wire w = wireBetween(it->a, nodeCenter(it->a), it->b, nodeCenter(it->b), wireBend(it->param));
             if (it->rect.contains(p) && distanceToWire(w, p) <= kWireGrab)
+                return *it;
+        } else if (it->kind == Kind::FxWire || it->kind == Kind::FxPort) {
+            if (fxHit(*it, p))
                 return *it;
         } else if (it->rect.contains(p)) {
             return *it;
@@ -2637,7 +2685,13 @@ void View::paint(Canvas &c) {
     }
     c.popClip();
     // So is a switched-off effect's.
-    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx) {
+    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && fxGraph()) {
+        if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots &&
+                                               value(paramIndex(node, FxParam::Enabled)) < 0.5) {
+            const Rect p = fxInspector(node);
+            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), 7.0f);
+        }
+    } else if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx) {
         c.pushClip(fxCardClip());
         const std::vector<int> chain = fxChainShown();
         for (size_t i = 0; i < chain.size(); ++i) {
@@ -3059,9 +3113,13 @@ void View::paintFx(Canvas &c) {
     const bool full = chain.size() >= static_cast<size_t>(kFxSlots);
     c.text(count, std::to_string(chain.size()) + "/" + std::to_string(kFxSlots), 11.0f, full ? kText : kDim,
            Align::Left, full);
+    if (fxGraph()) {
+        paintFxGraph(c);
+        return;
+    }
     const float hintX = count.right() + 8.0f;
     if (!chain.empty()) // how to work the cards, while there are some
-        c.text({hintX, kFxPanel.y + 10.0f, kFxPanel.right() - 16.0f - hintX, 22.0f}, tr(Str::HintFx), 10.5f, kFaint,
+        c.text({hintX, kFxPanel.y + 10.0f, fxModeButton(0).x - 12.0f - hintX, 22.0f}, tr(Str::HintFx), 10.5f, kFaint,
                Align::Right);
     // After a card, before the one at place `next`: the signal runs left to right. Under the mouse, or with its list
     // open, it is a plus that adds an effect there.
@@ -3091,10 +3149,10 @@ void View::paintFx(Canvas &c) {
         // Lit while grabbed by its title; by its icon only once it moves, as a click there only switches it.
         const bool dragged = drag_.kind == DragKind::FxMove && drag_.widget.a == slot &&
                              (drag_.moved || drag_.widget.kind != Kind::FxPower);
-        const Color fx = fxTypeColor(type); // each type of effect in a color of its own
-        c.fillRect(card, kCardColor, 8.0f);
-        c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f);
-        if (fxFolded(slot)) { // its icon and cross (widgets), the grip's dots between, then its name down the strip
+        if (fxFolded(slot)) {
+            const Color fx = fxTypeColor(type);
+            c.fillRect(card, kCardColor, 8.0f);
+            c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f); // its icon and cross (widgets), the grip's dots between, then its name down the strip
             const bool grip = (hover_ && hover_->kind == Kind::FxGrip && hover_->a == slot &&
                                drag_.kind == DragKind::None) ||
                               dragged;
@@ -3107,74 +3165,7 @@ void View::paintFx(Canvas &c) {
             continue;
         }
 
-        // Title row: the effect's icon (a widget of its own, which switches it) and its name.
-        // The three-band dynamics' switches sit in the title row too.
-        const Rect titleRect{card.x + 36.0f, card.y + 6.0f, card.w - (type == FxType::MultiDyn ? 162.0f : 84.0f),
-                             20.0f};
-        const char *title = fxTitle(type);
-        float titleSize = 11.0f; // smaller for a long name, so it fits beside the icon
-        while (titleSize > 9.0f && c.textWidth(title, titleSize, true) > titleRect.w)
-            titleSize -= 0.5f;
-        c.text(titleRect, title, titleSize, on ? kText : kDim, Align::Left, true);
-
-        const Rect display = fxDisplay(pos, type);
-        c.fillRect(display, kDisplayColor, 6.0f);
-        switch (type) {
-        case FxType::Shaper:
-            paintShaperCurve(c, display, slot);
-            break;
-        case FxType::Delay:
-            paintDelay(c, display, slot);
-            break;
-        case FxType::Eq:
-            paintEq(c, display, slot);
-            break;
-        case FxType::ParamEq:
-            paintParamEq(c, display, slot);
-            break;
-        case FxType::Filter:
-            paintFilterResponse(c, display, paramIndex(slot, FxParam::FilterType),
-                                paramIndex(slot, FxParam::FilterSlope), paramIndex(slot, FxParam::FilterCutoff),
-                                paramIndex(slot, FxParam::FilterResonance), paramIndex(slot, FxParam::FilterKeyTrack),
-                                telemetry_.fxPitch, fx, &telemetry_.fxSpectrum[slot]);
-            break;
-        case FxType::Compressor:
-            paintCompressor(c, display, slot);
-            break;
-        case FxType::MultiDyn:
-            paintMultiDyn(c, display, slot);
-            break;
-        case FxType::Reverb:
-            paintReverb(c, display, slot);
-            break;
-        case FxType::Phaser:
-        case FxType::Flanger:
-            paintSweep(c, display, slot, type);
-            break;
-        case FxType::FreqShifter:
-            paintShifter(c, display, slot);
-            break;
-        case FxType::Disperser:
-            paintDisperser(c, display, slot);
-            break;
-        case FxType::Widener:
-            paintWidener(c, display, slot);
-            break;
-        case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
-        case FxType::None:
-        case FxType::Count:
-            break;
-        }
-        if (type == FxType::MultiDyn) { // the band's own knobs above, the shared ones below, under a line named after it
-            const bool linked = value(paramIndex(slot, FxParam::MdLink)) >= 0.5;
-            const std::string name =
-                linked ? std::string(tr(Str::CaptionAllBands)) : trf(Str::CaptionBandKnobs, {tr(kMcBandNames[fxBand_[slot]])});
-            const float y = card.y + kMdLineY, width = std::ceil(c.textWidth(name, 9.0f, true)) + 8.0f;
-            c.line({card.x + 14.0f + width, y}, {card.right() - 14.0f, y}, kBorder, 1.0f);
-            c.text({card.x + 14.0f, y - 7.0f, width, 14.0f}, name, 9.0f, on ? fx : kDim, Align::Left, true);
-        }
-        if (!on)
-            c.fillRect(display, kPanel.alpha(0.55f), 6.0f); // dimmed while switched off
+        paintFxCard(c, slot, card, dragged);
         if (i + 1 < chain.size())
             chevron(card, i + 1);
     }
@@ -3187,6 +3178,84 @@ void View::paintFx(Canvas &c) {
                              kFxPanel.right() - 4.0f - ghost.w);
         c.strokeRect(ghost, fxColor(drag_.widget.a).alpha(0.6f), 1.0f, 8.0f);
     }
+}
+
+// A card's frame, title, display and what goes with them, wherever it shows: in the row, or in the effects graph's
+// inspector. Its knobs and buttons are widgets, painted with the others.
+void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
+    const FxType type = fxSlotType(slot);
+    const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
+    const Color fx = fxTypeColor(type); // each type of effect in a color of its own
+    c.fillRect(card, kCardColor, 8.0f);
+    c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f);
+    // Title row: the effect's icon (a widget of its own, which switches it) and its name.
+    // The three-band dynamics' switches sit in the title row too.
+    const Rect titleRect{card.x + 36.0f, card.y + 6.0f, card.w - (type == FxType::MultiDyn ? 162.0f : 84.0f),
+                         20.0f};
+    const char *title = fxTitle(type);
+    float titleSize = 11.0f; // smaller for a long name, so it fits beside the icon
+    while (titleSize > 9.0f && c.textWidth(title, titleSize, true) > titleRect.w)
+        titleSize -= 0.5f;
+    c.text(titleRect, title, titleSize, on ? kText : kDim, Align::Left, true);
+
+    const Rect display = fxDisplayIn(card, type);
+    c.fillRect(display, kDisplayColor, 6.0f);
+    switch (type) {
+    case FxType::Shaper:
+        paintShaperCurve(c, display, slot);
+        break;
+    case FxType::Delay:
+        paintDelay(c, display, slot);
+        break;
+    case FxType::Eq:
+        paintEq(c, display, slot);
+        break;
+    case FxType::ParamEq:
+        paintParamEq(c, display, slot);
+        break;
+    case FxType::Filter:
+        paintFilterResponse(c, display, paramIndex(slot, FxParam::FilterType),
+                            paramIndex(slot, FxParam::FilterSlope), paramIndex(slot, FxParam::FilterCutoff),
+                            paramIndex(slot, FxParam::FilterResonance), paramIndex(slot, FxParam::FilterKeyTrack),
+                            telemetry_.fxPitch, fx, &telemetry_.fxSpectrum[slot]);
+        break;
+    case FxType::Compressor:
+        paintCompressor(c, display, slot);
+        break;
+    case FxType::MultiDyn:
+        paintMultiDyn(c, display, slot);
+        break;
+    case FxType::Reverb:
+        paintReverb(c, display, slot);
+        break;
+    case FxType::Phaser:
+    case FxType::Flanger:
+        paintSweep(c, display, slot, type);
+        break;
+    case FxType::FreqShifter:
+        paintShifter(c, display, slot);
+        break;
+    case FxType::Disperser:
+        paintDisperser(c, display, slot);
+        break;
+    case FxType::Widener:
+        paintWidener(c, display, slot);
+        break;
+    case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
+    case FxType::None:
+    case FxType::Count:
+        break;
+    }
+    if (type == FxType::MultiDyn) { // the band's own knobs above, the shared ones below, under a line named after it
+        const bool linked = value(paramIndex(slot, FxParam::MdLink)) >= 0.5;
+        const std::string name =
+            linked ? std::string(tr(Str::CaptionAllBands)) : trf(Str::CaptionBandKnobs, {tr(kMcBandNames[fxBand_[slot]])});
+        const float y = card.y + kMdLineY, width = std::ceil(c.textWidth(name, 9.0f, true)) + 8.0f;
+        c.line({card.x + 14.0f + width, y}, {card.right() - 14.0f, y}, kBorder, 1.0f);
+        c.text({card.x + 14.0f, y - 7.0f, width, 14.0f}, name, 9.0f, on ? fx : kDim, Align::Left, true);
+    }
+    if (!on)
+        c.fillRect(display, kPanel.alpha(0.55f), 6.0f); // dimmed while switched off
 }
 
 void View::paintShapeEditor(Canvas &c, int shape) {
@@ -5277,7 +5346,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const std::string count = std::to_string(w.b); // the partial editor's resolution
         const bool modeChoice = routeModeFrom(w.param) >= 0; // an operator's INPUTS row's, as glyphs
         const char *text = power || modeChoice ? ""
-                           : isPartialCount(w.param) ? count.c_str()
+                           : isPartialCount(w.param) || w.param == paramIndex(std::max(splitOf(w.param), 0), SplitParam::Bands)
+                               ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
@@ -5293,6 +5363,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             color = fxColor(fxSlotOf(w.param));
         if (shaperOf(w.param) >= 0)
             color = kShaperColor;
+        if (splitOf(w.param) >= 0)
+            color = fxTypeColor(FxType::MultiDyn);
         if (modeChoice)
             color = routeColor(routeModeFrom(w.param), routeModeTo(w.param));
         paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, 5.0f);
@@ -5807,6 +5879,29 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::FxInsert: // drawn with the arrows between the cards
         break;
+    case Kind::FxMode: {
+        const bool on = fxGraph() == (w.b == 1);
+        paintButtonFace(c, w, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, kAccent, 5.0f);
+        fxModeIcon(c, w.rect.center(), w.b == 1, on ? kAccent : (hovered ? kText : kDim));
+        break;
+    }
+    case Kind::FxSplitAdd: {
+        const Color color = fxTypeColor(FxType::MultiDyn); // the splits' color
+        c.fillRect(w.rect, hovered ? color.alpha(0.18f) : kRaised, 5.0f);
+        c.strokeRect(w.rect, color.alpha(hovered ? 0.9f : 0.45f), 1.0f, 5.0f);
+        paintAddPlus(c, {w.rect.x + 10.0f, w.rect.center().y}, hovered ? kText : kDim);
+        c.text({w.rect.x + 10.0f + kAddPlusW, w.rect.y - kAddNameLift, w.rect.w - 16.0f - kAddPlusW, w.rect.h},
+               tr(Str::ButtonAddSplit), 10.5f, hovered ? kText : kDim, Align::Left, true);
+        break;
+    }
+    case Kind::FxNode:
+    case Kind::FxPort:
+    case Kind::FxWire:
+    case Kind::FxWireEnd:
+    case Kind::FxLabel:
+    case Kind::FxLabelRemove:
+    case Kind::SplitPoint:
+        break;
     case Kind::FxMenu:
         if (w.a == 1) { // the list's panel
             c.fillRect(w.rect, kRaised, 7.0f);
@@ -5854,6 +5949,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                hovered ? kText : kDim, Align::Left);
         break;
     case Kind::FxRemove:
+    case Kind::FxNodeRemove:
     case Kind::SourceRemove: {
         const Point center = w.rect.center();
         const Color color = hovered ? kText : kFaint;
@@ -6281,6 +6377,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillRect(w.rect, ok ? kAccent.alpha(hovered ? 0.35f : 0.22f) : (hovered ? kTrack : kRaised), 6.0f);
         c.strokeRect(w.rect, ok ? kAccent : kBorder, 1.0f, 6.0f);
         const char *label = tr(!ok                                                ? Str::ButtonCancel
+                               : confirm_ == kConfirmFxChain                      ? Str::ButtonToChain
                                : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
                                : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
                                                                                   : Str::ButtonLoad);
@@ -6734,7 +6831,9 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
          hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
-         hover_->kind != Kind::FxInsert && hover_->kind != Kind::DynBand &&
+         hover_->kind != Kind::FxInsert && hover_->kind != Kind::DynBand && hover_->kind != Kind::FxMode &&
+         hover_->kind != Kind::FxPort && hover_->kind != Kind::FxNode && hover_->kind != Kind::FxWire &&
+         hover_->kind != Kind::FxWireEnd && hover_->kind != Kind::FxLabelRemove && hover_->kind != Kind::FxNodeRemove &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
          !(hover_->kind == Kind::ListButton && (isFilterSlope(hover_->param) || isMidiInput(hover_->param))) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
@@ -6760,6 +6859,20 @@ void View::paintTooltip(Canvas &c) {
         text = trf(Str::TipModPill, {std::to_string(count - hover_->b)});
     } else if (hover_->kind == Kind::NoteDisplay) {
         text = tr(isVelocity(hover_->a) ? Str::TipVelocityDisplay : Str::TipNoteDisplay);
+    } else if (hover_->kind == Kind::FxMode) {
+        text = tr(hover_->b == 1 ? Str::TipFxGraph : Str::TipFxChain);
+    } else if (hover_->kind == Kind::FxPort) {
+        text = tr(Str::TipFxPort);
+    } else if (hover_->kind == Kind::FxNode) {
+        text = tr(Str::TipFxNode);
+    } else if (hover_->kind == Kind::FxWireEnd) {
+        text = tr(Str::TipWireEnd);
+    } else if (hover_->kind == Kind::FxWire) {
+        text = tr(Str::TipWire);
+    } else if (hover_->kind == Kind::FxLabelRemove) {
+        text = tr(Str::TipRemoveWire);
+    } else if (hover_->kind == Kind::FxNodeRemove) {
+        text = tr(Str::TipRemoveSplit);
     } else if (hover_->kind == Kind::WireEnd) {
         text = tr(Str::TipWireEnd);
     } else if (hover_->kind == Kind::Port) {
@@ -7134,7 +7247,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         return;
     for (const Widget &w : list) {
         const bool target = w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel ||
-                            w.kind == Kind::GridCell || w.kind == Kind::SlotBar; // the last: another source's depth
+                            w.kind == Kind::GridCell || w.kind == Kind::FxLabel ||
+                            w.kind == Kind::SlotBar; // the last: another source's depth
         const bool modulated = target && std::find(targets.begin(), targets.end(), w.param) != targets.end();
         const bool off = target && std::find(bypassed.begin(), bypassed.end(), w.param) != bypassed.end();
         if (!modulated && !off)
@@ -7211,7 +7325,8 @@ Rect View::typingField() const {
         return {w.rect.center().x - 40.0f, w.rect.y + w.rect.w + 1.0f, 80.0f, 18.0f};
     if (w.kind == Kind::ModDot) // under the small dot
         return {w.rect.center().x - 36.0f, w.rect.bottom() + 3.0f, 72.0f, 18.0f};
-    if (w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell) // over the label or cell
+    if (w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
+        w.kind == Kind::FxLabel) // over the label or cell
         return {w.rect.center().x - 36.0f, w.rect.center().y - 9.0f, 72.0f, 18.0f};
     return {w.rect.x - 4.0f, w.rect.y, w.rect.w + 8.0f, w.rect.h};
 }
@@ -7513,11 +7628,18 @@ void View::applyDrag(Point p) {
             setWireBend(w.param, bend);
         break;
     }
+    case DragKind::FxNode:
+    case DragKind::FxBend:
+    case DragKind::SplitPoint:
+        fxGraphDrag(p);
+        break;
     case DragKind::None:
     case DragKind::Connect:
     case DragKind::Reroute:
     case DragKind::FxMove:
     case DragKind::SourceMove:
+    case DragKind::FxConnect:
+    case DragKind::FxRewire:
         break;
     }
 }
@@ -7604,7 +7726,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     const Widget &w = *hit;
     // Ctrl+Click types a value into whatever shows one: a knob, a modulation's depth, a route.
     if (mods.ctrl && (w.kind == Kind::Knob || w.kind == Kind::ValueText || w.kind == Kind::WireLabel ||
-                      w.kind == Kind::OutLabel || w.kind == Kind::GridCell)) {
+                      w.kind == Kind::OutLabel || w.kind == Kind::GridCell || w.kind == Kind::FxLabel)) {
         startTyping(w);
         return;
     }
@@ -7633,9 +7755,12 @@ void View::mouseDown(Point p, Modifiers mods) {
     drag_.start = drag_.now = p;
     drag_.fine = mods.shift;
     UiLayout &layout = controller_.layout();
+    if (fxGraphPress(w, p)) // the effects graph's own
+        return;
 
     switch (w.kind) {
     case Kind::Knob:
+    case Kind::FxLabel:
     case Kind::WireLabel:
     case Kind::OutLabel:
     case Kind::GridCell:
@@ -7879,6 +8004,11 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::FxGrip:
     case Kind::FxPower: // the icon: let go without moving, it switches the effect
+        if (fxGraph()) { // in the graph's inspector, where the card doesn't move
+            if (w.kind == Kind::FxPower)
+                edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
+            break;
+        }
         drag_.kind = DragKind::FxMove;
         drag_.scrollStart = fxScroll();
         break;
@@ -8073,9 +8203,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::ConfirmButton: {
         const auto action = static_cast<PresetAction>(confirm_);
+        const bool toChain = confirm_ == kConfirmFxChain;
         confirm_ = -1;
         hover_.reset();
-        if (w.a == 1)
+        if (w.a == 1 && toChain)
+            setFxGraph(false, true);
+        else if (w.a == 1)
             runPreset(action);
         pendingPreset_ = -1;
         break;
@@ -8291,6 +8424,16 @@ void View::mouseUp(Point p, Modifiers) {
         if (drag_.moved) // a click leaves the card where it is
             setSourceOrder(sourcesShown());
         break;
+    case DragKind::FxNode:
+        if (drag_.moved)
+            controller_.layoutChanged();
+        break;
+    case DragKind::FxConnect:
+    case DragKind::FxRewire:
+        fxGraphRelease(p);
+        break;
+    case DragKind::FxBend:
+    case DragKind::SplitPoint:
     case DragKind::Value:
     case DragKind::EnvPoint:
     case DragKind::EnvCurve:
@@ -8319,8 +8462,8 @@ void View::mouseUp(Point p, Modifiers) {
 void View::cancelDrag() {
     if (drag_.kind == DragKind::None)
         return;
-    if (drag_.kind == DragKind::Node && drag_.moved) // it stays where it was taken, as an undo step
-        controller_.layoutChanged();
+    if ((drag_.kind == DragKind::Node || drag_.kind == DragKind::FxNode) && drag_.moved) // it stays where it was
+        controller_.layoutChanged();                                                       // taken, as an undo step
     if (drag_.kind == DragKind::ModSource && modList_ && modList_->sprung) // opened under the handle, for it alone
         modList_.reset();
     finishDrag();
@@ -8337,6 +8480,7 @@ void View::finishDrag() {
     case DragKind::EnvCurve:
     case DragKind::ShapeCurve:
     case DragKind::ModWheel:
+    case DragKind::SplitPoint:
         controller_.endEdit(w.param);
         break;
     case DragKind::PeqPoint:
@@ -8381,6 +8525,10 @@ void View::finishDrag() {
     case DragKind::Scroll:
     case DragKind::Pan:
     case DragKind::TextSelect:
+    case DragKind::FxNode:
+    case DragKind::FxConnect:
+    case DragKind::FxRewire:
+    case DragKind::FxBend:
     case DragKind::None:
         break;
     }
@@ -8508,6 +8656,15 @@ void View::doubleClick(Point p, Modifiers mods) {
         // Windows turns a quick second click into a double-click instead of a press:
         // play it as a press so fast repeated notes, octave steps, undos and steps aren't dropped.
         mouseDown(p, mods);
+        return;
+    }
+    if (hit && (hit->kind == Kind::FxMode || hit->kind == Kind::FxSplitAdd)) {
+        mouseDown(p, mods);
+        return;
+    }
+    if (hit && hit->kind == Kind::FxWire) {
+        const UndoScope step(controller_);
+        setWireBend(hit->param, kDefaultWireBend);
         return;
     }
     if (hit && hit->param >= 0 && onValue(*hit, p)) {
@@ -8785,7 +8942,12 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     const auto hit = hitTest(p);
     if (!hit)
         return items;
-    if (hit->kind == Kind::FxGrip || hit->kind == Kind::FxPower) {
+    if (hit->kind == Kind::FxNode && hit->a >= kFxSlots) { // a split of the effects graph
+        menuFx_ = hit->a;
+        items.push_back({7, tr(Str::MenuRemove)});
+        return items;
+    }
+    if (hit->kind == Kind::FxGrip || hit->kind == Kind::FxPower || hit->kind == Kind::FxNode) {
         menuFx_ = hit->a;
         if (fxChain().size() < static_cast<size_t>(kFxSlots))
             items.push_back({6, tr(Str::MenuDuplicate)});
@@ -8900,7 +9062,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
 
     menuParam_ = hit->param;
     if (hit->kind == Kind::Knob || hit->kind == Kind::WireLabel || hit->kind == Kind::OutLabel ||
-        hit->kind == Kind::GridCell) {
+        hit->kind == Kind::GridCell || hit->kind == Kind::FxLabel) {
         menuValue_ = *hit;
         items.push_back({11, tr(Str::MenuEditValue)});
     }
@@ -8952,7 +9114,13 @@ void View::menuCommand(int command) {
                 removeSlot(m.source, m.slot);
     } else if (command == 5 && menuPoint_.first >= 0) {
         removeShapePoint(menuPoint_.first, menuPoint_.second);
+    } else if (command == 7 && menuFx_ >= kFxSlots) {
+        removeSplit(menuFx_ - kFxSlots);
+    } else if (menuFx_ >= kFxSlots) {
+        // a split offers nothing else
     } else if (command == 6 && menuFx_ >= 0) {
+        if (fxGraph()) // the copy goes after the original
+            controller_.layout().fxSelected = menuFx_;
         addEffect(fxSlotType(menuFx_), menuFx_);
     } else if (command == 7 && menuFx_ >= 0) {
         removeEffect(menuFx_);
@@ -9209,7 +9377,8 @@ void View::endTyping(bool commit) {
 CursorKind View::cursor() const {
     if (drag_.kind == DragKind::Pan)
         return CursorKind::Move;
-    if (drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute || drag_.kind == DragKind::ModSource)
+    if (drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute || drag_.kind == DragKind::ModSource ||
+        drag_.kind == DragKind::FxConnect || drag_.kind == DragKind::FxRewire)
         return CursorKind::Hand;
     if (drag_.kind == DragKind::Value &&
         (drag_.widget.kind == Kind::PeqPoint || drag_.widget.kind == Kind::DynGrip)) // Alt-dragged for Q or ratio
@@ -9222,11 +9391,14 @@ CursorKind View::cursor() const {
     case Kind::Knob:
     case Kind::WireLabel:
     case Kind::OutLabel:
+    case Kind::FxLabel:
     case Kind::GridCell:
     case Kind::ModDot:
     case Kind::ShapeCurve:
     case Kind::EnvCurve:
         return CursorKind::Vertical;
+    case Kind::SplitPoint:
+        return CursorKind::Horizontal;
     case Kind::ShapeArea:
     case Kind::SettingsBackdrop:
     case Kind::ConfirmBackdrop:
@@ -9249,6 +9421,8 @@ CursorKind View::cursor() const {
     case Kind::SourceGrip:
     case Kind::ShapePoint:
     case Kind::Wire:
+    case Kind::FxNode:
+    case Kind::FxWire:
         return CursorKind::Move;
     default:
         return CursorKind::Hand;

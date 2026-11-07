@@ -390,6 +390,10 @@ void Effects::reset() {
     }
     tail_ = 0;
     flushing_ = false;
+    clearGraph();
+    for (auto &node : wires_)
+        node.fill(Wire{});
+    outWires_.fill(Wire{});
 }
 
 double Effects::delayTarget(int slot, int side, const ParamValues &p, double tempo) const {
@@ -527,8 +531,9 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
 }
 
 void Effects::process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch) {
-    const FxOrder order = fxOrder([&p](int index) { return p[index]; });
-    const double fadeStep = 1.0 / (0.005 * sampleRate_);
+    const bool graph = p[paramIndex(GlobalParam::FxGraph)] >= 0.5;
+    if (graph)
+        orderGraph(p);
     for (uint32_t done = 0; done < frames; done += kChunk) {
         const uint32_t n = std::min(kChunk, frames - done);
         float *const io[2] = {left + done, right + done};
@@ -546,97 +551,293 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             if (std::abs(io[0][s]) > 1e-6f || std::abs(io[1][s]) > 1e-6f)
                 keep = static_cast<int64_t>(0.05 * sampleRate_); // filter and DC blocker tails
 
-        for (int slot : order) {
-            Slot &fx = slots_[slot];
-            const FxType type = fxType(p[paramIndex(slot, FxParam::Type)]);
-            if (fx.running != type && fx.fade <= 0.0)
-                fx.running = type;
-            const bool on = !flushing_ && fx.running == type && type != FxType::None &&
-                            p[paramIndex(slot, FxParam::Enabled)] >= 0.5;
-            if (!on && fx.fade <= 0.0) {
-                reduction_[slot] = {};
-                bandLevel_[slot] = {};
-                bandGain_[slot] = {};
-                fx.analyzed.bands = {};
-                continue;
-            }
-            if (fx.fade <= 0.0)
-                start(slot, p, tempo);
-            float dry[2][kChunk];
-            std::copy_n(io[0], n, dry[0]);
-            std::copy_n(io[1], n, dry[1]);
-            switch (fx.running) {
-            case FxType::Shaper:
-                runShaper(slot, io, n, p);
-                break;
-            case FxType::Delay:
-                // While anything goes in or comes out, another echo may follow.
-                if (runDelay(slot, io, n, p, tempo) > 1e-5)
-                    keep = std::max(keep, static_cast<int64_t>(std::max(fx.delay.length[0], fx.delay.length[1]) +
-                                                               0.05 * sampleRate_));
-                break;
-            case FxType::Eq:
-                runEq(slot, io, n, p);
-                break;
-            case FxType::ParamEq:
-                runParamEq(slot, io, n, p);
-                break;
-            case FxType::Filter:
-                // A resonant comb rings on; keep going while it does.
-                if (runFilter(slot, io, n, p, pitch) > 1e-5)
-                    keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
-                feedAnalyzer(slot, io, n);
-                break;
-            case FxType::Compressor:
-                runCompressor(slot, io, n, p);
-                break;
-            case FxType::MultiDyn:
-                runMultiDyn(slot, io, n, p);
-                break;
-            case FxType::Reverb:
-            case FxType::Phaser:
-            case FxType::Flanger:
-            case FxType::FreqShifter:
-            case FxType::Disperser:
-            case FxType::Widener: {
-                // Tails and feedback ring on; keep going while they do. A reverb's input may still wait in its
-                // pre-delay, as a delay's in its lines.
-                const double peak = fx.running == FxType::Reverb      ? runReverb(slot, io, n, p)
-                                    : fx.running == FxType::Phaser    ? runPhaser(slot, io, n, p, tempo)
-                                    : fx.running == FxType::Flanger   ? runFlanger(slot, io, n, p, tempo)
-                                    : fx.running == FxType::Disperser ? runDisperser(slot, io, n, p)
-                                    : fx.running == FxType::Widener  ? runWidener(slot, io, n, p)
-                                                                      : runShifter(slot, io, n, p);
-                const double waiting = fx.running == FxType::Reverb ? fx.reverb.reach : 0.0;
-                if (peak > 1e-5)
-                    keep = std::max(keep, static_cast<int64_t>(waiting + 0.05 * sampleRate_));
-                if (fx.running == FxType::Disperser)
-                    feedAnalyzer(slot, io, n);
-                break;
-            }
-            case FxType::MultiComp: // retired, as in start()
-            case FxType::None:
-            case FxType::Count:
-                break;
-            }
-            if (on && fx.fade >= 1.0)
-                continue;
-            for (uint32_t s = 0; s < n; ++s) {
-                fx.fade = std::clamp(fx.fade + (on ? fadeStep : -fadeStep), 0.0, 1.0);
-                for (int c = 0; c < 2; ++c)
-                    io[c][s] = static_cast<float>(dry[c][s] + (io[c][s] - dry[c][s]) * fx.fade);
-            }
-        }
+        if (graph)
+            processGraph(io, n, p, tempo, pitch, keep);
+        else
+            for (int slot : fxOrder([&p](int index) { return p[index]; }))
+                runSlot(slot, io, n, p, tempo, pitch, keep);
         // Whatever still comes out keeps them going too: a DC blocker settling, an EQ's ring, which no check above
         // covers. Stopping there would step the output to silence.
         for (uint32_t s = 0; s < n && keep == 0; ++s)
             if (std::abs(io[0][s]) > 1e-6f || std::abs(io[1][s]) > 1e-6f)
                 keep = static_cast<int64_t>(0.05 * sampleRate_);
         tail_ = std::max(tail_ - static_cast<int64_t>(n), keep);
-        // Flushed, once every effect has faded out: they start again cleared.
-        if (flushing_ && std::all_of(slots_.begin(), slots_.end(), [](const Slot &s) { return s.fade <= 0.0; }))
+        // Flushed, once every effect has faded out: they start again cleared, and so does what the graph holds.
+        if (flushing_ && std::all_of(slots_.begin(), slots_.end(), [](const Slot &s) { return s.fade <= 0.0; })) {
             flushing_ = false;
+            clearGraph();
+        }
     }
+}
+
+void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo, double pitch,
+                      int64_t &keep) {
+    const double fadeStep = 1.0 / (0.005 * sampleRate_);
+    Slot &fx = slots_[slot];
+    const FxType type = fxType(p[paramIndex(slot, FxParam::Type)]);
+    if (fx.running != type && fx.fade <= 0.0)
+        fx.running = type;
+    const bool on = !flushing_ && fx.running == type && type != FxType::None &&
+                    p[paramIndex(slot, FxParam::Enabled)] >= 0.5;
+    if (!on && fx.fade <= 0.0) {
+        reduction_[slot] = {};
+        bandLevel_[slot] = {};
+        bandGain_[slot] = {};
+        fx.analyzed.bands = {};
+        return;
+    }
+    if (fx.fade <= 0.0)
+        start(slot, p, tempo);
+    float dry[2][kChunk];
+    std::copy_n(io[0], n, dry[0]);
+    std::copy_n(io[1], n, dry[1]);
+    switch (fx.running) {
+    case FxType::Shaper:
+        runShaper(slot, io, n, p);
+        break;
+    case FxType::Delay:
+        // While anything goes in or comes out, another echo may follow.
+        if (runDelay(slot, io, n, p, tempo) > 1e-5)
+            keep = std::max(keep, static_cast<int64_t>(std::max(fx.delay.length[0], fx.delay.length[1]) +
+                                                       0.05 * sampleRate_));
+        break;
+    case FxType::Eq:
+        runEq(slot, io, n, p);
+        break;
+    case FxType::ParamEq:
+        runParamEq(slot, io, n, p);
+        break;
+    case FxType::Filter:
+        // A resonant comb rings on; keep going while it does.
+        if (runFilter(slot, io, n, p, pitch) > 1e-5)
+            keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
+        feedAnalyzer(slot, io, n);
+        break;
+    case FxType::Compressor:
+        runCompressor(slot, io, n, p);
+        break;
+    case FxType::MultiDyn:
+        runMultiDyn(slot, io, n, p);
+        break;
+    case FxType::Reverb:
+    case FxType::Phaser:
+    case FxType::Flanger:
+    case FxType::FreqShifter:
+    case FxType::Disperser:
+    case FxType::Widener: {
+        // Tails and feedback ring on; keep going while they do. A reverb's input may still wait in its
+        // pre-delay, as a delay's in its lines.
+        const double peak = fx.running == FxType::Reverb      ? runReverb(slot, io, n, p)
+                            : fx.running == FxType::Phaser    ? runPhaser(slot, io, n, p, tempo)
+                            : fx.running == FxType::Flanger   ? runFlanger(slot, io, n, p, tempo)
+                            : fx.running == FxType::Disperser ? runDisperser(slot, io, n, p)
+                            : fx.running == FxType::Widener  ? runWidener(slot, io, n, p)
+                                                              : runShifter(slot, io, n, p);
+        const double waiting = fx.running == FxType::Reverb ? fx.reverb.reach : 0.0;
+        if (peak > 1e-5)
+            keep = std::max(keep, static_cast<int64_t>(waiting + 0.05 * sampleRate_));
+        if (fx.running == FxType::Disperser)
+            feedAnalyzer(slot, io, n);
+        break;
+    }
+    case FxType::MultiComp: // retired, as in start()
+    case FxType::None:
+    case FxType::Count:
+        break;
+    }
+    if (on && fx.fade >= 1.0)
+        return;
+    for (uint32_t s = 0; s < n; ++s) {
+        fx.fade = std::clamp(fx.fade + (on ? fadeStep : -fadeStep), 0.0, 1.0);
+        for (int c = 0; c < 2; ++c)
+            io[c][s] = static_cast<float>(dry[c][s] + (io[c][s] - dry[c][s]) * fx.fade);
+    }
+}
+
+Effects::CrossoverCoefs Effects::crossoverCoefs(double lowHz, double highHz) const {
+    // Kept below where the biquads hold up, the high crossover at least a third of an octave above the low one.
+    lowHz = std::min(lowHz, 0.3 * sampleRate_);
+    highHz = std::clamp(highHz, lowHz * 1.26, 0.45 * sampleRate_);
+    auto coefs = [&](BiquadType type, double hz) {
+        const Coefs b = biquad(type, hz, sampleRate_);
+        return BiquadCoefs{b.b0, b.b1, b.b2, b.a1, b.a2};
+    };
+    return {coefs(BiquadType::LowPass, lowHz), coefs(BiquadType::HighPass, lowHz), coefs(BiquadType::LowPass, highHz),
+            coefs(BiquadType::HighPass, highHz), coefs(BiquadType::AllPass, highHz)};
+}
+
+void Effects::splitThree(EqChannel &e, double x, const CrossoverCoefs &c, double *bands) {
+    bands[0] = e.lowPhase.process(e.lowB.process(e.lowA.process(x, c.lp1), c.lp1), c.ap2);
+    const double rest = e.restB.process(e.restA.process(x, c.hp1), c.hp1);
+    bands[1] = e.midB.process(e.midA.process(rest, c.lp2), c.lp2);
+    bands[2] = e.highB.process(e.highA.process(rest, c.hp2), c.hp2);
+}
+
+bool Effects::nodeInGraph(int node, const ParamValues &p) const {
+    if (node == kFxOutNode)
+        return true;
+    if (node < kFxSlots) // an empty slot fading out still runs
+        return fxType(p[paramIndex(node, FxParam::Type)]) != FxType::None || slots_[node].fade > 0.0;
+    return p[paramIndex(node - kFxSlots, SplitParam::Used)] >= 0.5;
+}
+
+int Effects::portNode(int port, const ParamValues &p) const {
+    if (port == kFxPortIn)
+        return -1;
+    const int node = fxPortSlot(port) >= 0 ? fxPortSlot(port) : fxSplitNode(fxPortSplit(port));
+    return nodeInGraph(node, p) ? node : -2;
+}
+
+void Effects::orderGraph(const ParamValues &p) {
+    // Kahn's algorithm over the wires connected, whatever their levels, so modulation never changes the order. The
+    // nodes a loop holds run after the others, by number: a wire from a node that hasn't run yet in a chunk reads what
+    // it put out the chunk before.
+    std::array<int, kFxInputNodes> waiting{};
+    std::array<bool, kFxInputNodes> present{}, done{};
+    std::array<std::array<int, kFxInputs>, kFxInputNodes> from{};
+    for (int node = 0; node < kFxInputNodes; ++node) {
+        present[node] = nodeInGraph(node, p);
+        for (int input = 0; input < kFxInputs; ++input) {
+            const int port = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+            from[node][input] = port >= 0 ? portNode(port, p) : -2;
+            if (present[node] && from[node][input] >= 0)
+                ++waiting[node];
+        }
+    }
+    graphOrderCount_ = 0;
+    for (bool moved = true; moved;) {
+        moved = false;
+        for (int node = 0; node < kFxInputNodes; ++node) {
+            if (!present[node] || done[node] || waiting[node] > 0)
+                continue;
+            done[node] = true;
+            moved = true;
+            graphOrder_[graphOrderCount_++] = node;
+            for (int other = 0; other < kFxInputNodes; ++other)
+                for (int input = 0; input < kFxInputs; ++input)
+                    if (from[other][input] == node)
+                        --waiting[other];
+        }
+    }
+    for (int node = 0; node < kFxInputNodes; ++node) // on a loop
+        if (present[node] && !done[node])
+            graphOrder_[graphOrderCount_++] = node;
+}
+
+void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamValues &p) {
+    for (int c = 0; c < 2; ++c)
+        std::fill_n(mix[c], n, 0.0f);
+    const bool out = node == kFxOutNode;
+    for (int input = 0; input < fxInputCount(node); ++input) {
+        Wire &w = out ? outWires_[input] : wires_[node][input];
+        const int set = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+        // A wire moved or taken away fades out from where it came first; a new one fades in from silence, both along a
+        // raised cosine over 5 ms, as a parametric EQ band switched does. Its level glides across the chunk.
+        if (set != w.port && w.fade <= 0.0) {
+            w.port = set;
+            w.level = -1.0; // takes its level at once as it fades in
+        }
+        if (w.port < 0)
+            continue;
+        const double setLevel = p[fxInputIndex(node, input, FxInputField::Level)];
+        const double target = std::isfinite(setLevel) ? std::clamp(setLevel, 0.0, 1.0) : 0.0;
+        if (w.level < 0.0)
+            w.level = target;
+        const double fadeTo = set == w.port ? 1.0 : 0.0;
+        const float *from[2] = {nullptr, nullptr};
+        if (w.port == kFxPortIn) {
+            from[0] = input_[0].data();
+            from[1] = input_[1].data();
+        } else if (portNode(w.port, p) >= 0) {
+            if (const int slot = fxPortSlot(w.port); slot >= 0) {
+                from[0] = slotOut_[slot][0].data();
+                from[1] = slotOut_[slot][1].data();
+            } else {
+                const int split = fxPortSplit(w.port), band = fxPortBand(w.port);
+                from[0] = bandOut_[split][band][0].data();
+                from[1] = bandOut_[split][band][1].data();
+            }
+        }
+        const double fadeStep = 1.0 / (0.005 * sampleRate_);
+        const double step = (target - w.level) / n;
+        double level = w.level, fade = w.fade;
+        for (uint32_t s = 0; s < n; ++s) {
+            level += step;
+            fade = fadeTo > fade ? std::min(fade + fadeStep, 1.0) : std::max(fade - fadeStep, fadeTo);
+            if (!from[0]) // from a node that isn't in the graph: silence
+                continue;
+            const double gain = fade >= 1.0 ? level : level * (0.5 - 0.5 * std::cos(std::numbers::pi * fade));
+            mix[0][s] += static_cast<float>(from[0][s] * gain);
+            mix[1][s] += static_cast<float>(from[1][s] * gain);
+        }
+        w.level = target;
+        w.fade = fade;
+    }
+}
+
+void Effects::runSplit(int split, uint32_t n, const ParamValues &p, const float (*mix)[kChunk]) {
+    Split &sp = splits_[split];
+    if (!sp.running) { // taken into the graph: it starts cleared
+        sp.channels = {};
+        sp.running = true;
+    }
+    const std::array<double, 2> hz =
+        splitCrossovers(p[paramIndex(split, SplitParam::Low)], p[paramIndex(split, SplitParam::High)]);
+    const bool three = std::lround(p[paramIndex(split, SplitParam::Bands)]) >= kFxBands;
+    const CrossoverCoefs c = crossoverCoefs(hz[0], hz[1]);
+    auto &out = bandOut_[split];
+    for (uint32_t s = 0; s < n; ++s)
+        for (int ch = 0; ch < 2; ++ch) {
+            EqChannel &e = sp.channels[ch];
+            const double x = mix[ch][s];
+            if (three) {
+                double bands[kFxBands];
+                splitThree(e, x, c, bands);
+                for (int b = 0; b < kFxBands; ++b)
+                    out[b][ch][s] = static_cast<float>(bands[b]);
+            } else { // the low and the high band, the middle one silent
+                out[0][ch][s] = static_cast<float>(e.lowB.process(e.lowA.process(x, c.lp1), c.lp1));
+                out[1][ch][s] = 0.0f;
+                out[2][ch][s] = static_cast<float>(e.restB.process(e.restA.process(x, c.hp1), c.hp1));
+            }
+        }
+}
+
+void Effects::processGraph(float *const *io, uint32_t n, const ParamValues &p, double tempo, double pitch,
+                           int64_t &keep) {
+    std::copy_n(io[0], n, input_[0].data());
+    std::copy_n(io[1], n, input_[1].data());
+    for (int split = 0; split < kFxSplits; ++split)
+        if (p[paramIndex(split, SplitParam::Used)] < 0.5)
+            splits_[split].running = false;
+    float mix[2][kChunk];
+    for (int i = 0; i < graphOrderCount_; ++i) {
+        const int node = graphOrder_[i];
+        mixInputs(node, mix, n, p);
+        if (node < kFxSlots) {
+            std::copy_n(mix[0], n, slotOut_[node][0].data());
+            std::copy_n(mix[1], n, slotOut_[node][1].data());
+            float *const out[2] = {slotOut_[node][0].data(), slotOut_[node][1].data()};
+            runSlot(node, out, n, p, tempo, pitch, keep);
+        } else {
+            runSplit(node - kFxSlots, n, p, mix);
+        }
+    }
+    mixInputs(kFxOutNode, mix, n, p);
+    std::copy_n(mix[0], n, io[0]);
+    std::copy_n(mix[1], n, io[1]);
+}
+
+void Effects::clearGraph() {
+    for (auto &out : slotOut_)
+        for (auto &side : out)
+            side.fill(0.0f);
+    for (auto &split : bandOut_)
+        for (auto &band : split)
+            for (auto &side : band)
+                side.fill(0.0f);
+    for (Split &sp : splits_)
+        sp.running = false;
 }
 
 // The voices' shapers run the same way (see Synth::renderBlock()), on what goes into them.
@@ -891,16 +1092,8 @@ void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamV
 void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     MultiDyn &m = slots_[slot].dyn;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
-    // The high crossover stays at least a third of an octave above the low one.
-    const double lowHz = std::min(cutoffFromNorm(at(FxParam::MdLowFreq)), 0.3 * sampleRate_);
-    const double highHz = std::clamp(cutoffFromNorm(at(FxParam::MdHighFreq)), lowHz * 1.26, 0.45 * sampleRate_);
-    auto coefs = [&](BiquadType type, double hz) {
-        const Coefs b = biquad(type, hz, sampleRate_);
-        return BiquadCoefs{b.b0, b.b1, b.b2, b.a1, b.a2};
-    };
-    const BiquadCoefs lp1 = coefs(BiquadType::LowPass, lowHz), hp1 = coefs(BiquadType::HighPass, lowHz),
-                      lp2 = coefs(BiquadType::LowPass, highHz), hp2 = coefs(BiquadType::HighPass, highHz),
-                      ap2 = coefs(BiquadType::AllPass, highHz);
+    const CrossoverCoefs crossovers = crossoverCoefs(cutoffFromNorm(at(FxParam::MdLowFreq)),
+                                                     cutoffFromNorm(at(FxParam::MdHighFreq)));
     const double attack = smoothing(timeFromNorm(at(FxParam::MdAttack)), sampleRate_);
     const double release = smoothing(timeFromNorm(at(FxParam::MdRelease)), sampleRate_);
     const double knee = at(FxParam::MdKnee);
@@ -931,14 +1124,8 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
         m.mix += mixStep;
         m.output += outputStep;
         double bands[2][kMcBands];
-        for (int ch = 0; ch < 2; ++ch) {
-            EqChannel &e = m.channels[ch];
-            const double x = io[ch][s];
-            bands[ch][0] = e.lowPhase.process(e.lowB.process(e.lowA.process(x, lp1), lp1), ap2);
-            const double rest = e.restB.process(e.restA.process(x, hp1), hp1);
-            bands[ch][1] = e.midB.process(e.midA.process(rest, lp2), lp2);
-            bands[ch][2] = e.highB.process(e.highA.process(rest, hp2), hp2);
-        }
+        for (int ch = 0; ch < 2; ++ch)
+            splitThree(m.channels[ch], io[ch][s], crossovers, bands[ch]);
         double gain[kMcBands];
         for (int b = 0; b < kMcBands; ++b) {
             m.gains[b] += gainStep[b];

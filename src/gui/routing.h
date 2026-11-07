@@ -184,7 +184,10 @@ inline Point leftOf(Point a, Point b) {
     return {-u.y, u.x};
 }
 
-inline Wire bentWire(int fromNode, Point a, int toNode, Point b, float bend) {
+// A wire between nodes whose outlines lie `extentA(dir)` and `extentB(dir)` from their centers in direction `dir`:
+// the routing graph's nodes (see bentWire()), or the effects graph's.
+template <class ExtentA, class ExtentB>
+inline Wire bentWireBy(Point a, Point b, float bend, ExtentA extentA, ExtentB extentB) {
     const Point d{b.x - a.x, b.y - a.y};
     const Point left = leftOf(a, b);
     const float reach = std::hypot(d.x, d.y) * bend;
@@ -192,14 +195,19 @@ inline Wire bentWire(int fromNode, Point a, int toNode, Point b, float bend) {
     w.control = {(a.x + b.x) * 0.5f + left.x * reach, (a.y + b.y) * 0.5f + left.y * reach};
     const Point fromA = normalize({w.control.x - a.x, w.control.y - a.y});
     const Point fromB = normalize({w.control.x - b.x, w.control.y - b.y});
-    const float startOffset = nodeExtent(fromNode, fromA);
-    const float endOffset = nodeExtent(toNode, fromB) + 8.0f;
+    const float startOffset = extentA(fromA);
+    const float endOffset = extentB(fromB) + 8.0f;
     w.start = {a.x + fromA.x * startOffset, a.y + fromA.y * startOffset};
     w.end = {b.x + fromB.x * endOffset, b.y + fromB.y * endOffset};
     w.label = {0.25f * w.start.x + 0.5f * w.control.x + 0.25f * w.end.x,
                0.25f * w.start.y + 0.5f * w.control.y + 0.25f * w.end.y};
     w.tangent = normalize({w.end.x - w.control.x, w.end.y - w.control.y});
     return w;
+}
+
+inline Wire bentWire(int fromNode, Point a, int toNode, Point b, float bend) {
+    return bentWireBy(a, b, bend, [fromNode](Point dir) { return nodeExtent(fromNode, dir); },
+                      [toNode](Point dir) { return nodeExtent(toNode, dir); });
 }
 
 // Whether a wire stays inside the routing panel, a little in from its edge, its label too. A quadratic curve goes

@@ -338,6 +338,29 @@ void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale)
 }
 
 // A small picture of each effect, for its card's title and the ADD EFFECT list.
+void splitIcon(Canvas &c, Rect r, Color color) {
+    const Point from{r.x, r.center().y}, fork{r.x + r.w * 0.4f, r.center().y};
+    c.line(from, fork, color, 1.4f);
+    for (float y : {-0.45f, 0.0f, 0.45f})
+        c.line(fork, {r.right(), r.center().y + y * r.h}, color, 1.4f);
+}
+
+void fxModeIcon(Canvas &c, Point m, bool graph, Color color) {
+    if (!graph) { // three cards in a row
+        for (int i = -1; i <= 1; ++i)
+            c.strokeRect({m.x + i * 6.0f - 2.5f, m.y - 5.0f, 5.0f, 10.0f}, color, 1.2f, 1.0f);
+        return;
+    }
+    // A node forking into two, which meet again
+    const Point a{m.x - 8.0f, m.y}, b{m.x + 8.0f, m.y}, up{m.x, m.y - 5.0f}, down{m.x, m.y + 5.0f};
+    c.line(a, up, color, 1.2f);
+    c.line(a, down, color, 1.2f);
+    c.line(up, b, color, 1.2f);
+    c.line(down, b, color, 1.2f);
+    for (const Point p : {a, b, up, down})
+        c.fillCircle(p, 1.8f, color);
+}
+
 void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
     std::vector<Point> points;
     auto at = [&](float x, float y) { points.push_back({r.x + x * r.w, r.center().y - y * r.h * 0.5f}); };

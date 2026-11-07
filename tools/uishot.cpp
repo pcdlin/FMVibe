@@ -5,6 +5,7 @@
 #include "factory.h"
 #include "gui/canvas.h"
 #include "gui/layout.h"
+#include "gui/routing.h"
 #include "gui/view.h"
 #include "uistrings.h"
 
@@ -1917,6 +1918,99 @@ void testLaterSlots(const std::filesystem::path &dir, Renderer &renderer) {
     }
     check(folded && moved && renderer.save(view, dir / "28g-later-slots.png"),
           "an effect in a slot past the 16th folds and moves in the chain like the others");
+}
+
+// The effects graph: switching to it wires the chain up as it ran; + SPLIT puts a split after the node picked, its
+// bands going on where that node went; its card's crossover handle drags; a loop is refused; the input wired into a
+// node; a wire's label sets its level and its x removes it; a node moves, undoably; and going back to a chain asks
+// first, then leaves a chain in the graph's order.
+void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    for (const auto &[index, value] : fxOrderChanges(fxOrderStarting({0, 1})))
+        model.values[index] = value;
+    view.poll();
+    click(view, kFxTab);
+    auto centerOf = [](Rect r) { return Point{r.x + r.w * 0.5f, r.y + r.h * 0.5f}; };
+    click(view, centerOf(detail::fxModeButton(1)));
+    auto from = [&](int node, int input) {
+        return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
+    };
+    auto wiredFrom = [&](int node, int port) {
+        for (int input = 0; input < fxInputCount(node); ++input)
+            if (from(node, input) == port)
+                return input;
+        return -1;
+    };
+    check(model.value(paramIndex(GlobalParam::FxGraph)) == 1.0 && from(0, 0) == kFxPortIn &&
+              from(1, 0) == fxSlotPort(0) && from(kFxOutNode, 0) == fxSlotPort(1) &&
+              renderer.save(view, dir / "40a-fx-graph.png"),
+          "switching to the effects graph wires it as the chain ran");
+
+    auto nodeAt = [&](int node) { return detail::fxNodeAt(model.ui.fxNodeX[node], model.ui.fxNodeY[node]); };
+    click(view, nodeAt(0)); // picks the shaper
+    click(view, centerOf(detail::fxSplitButton()));
+    const int split = fxSplitNode(0);
+    check(model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(split, 0) == fxSlotPort(0) &&
+              wiredFrom(1, fxBandPort(0, 0)) >= 0 && wiredFrom(1, fxBandPort(0, kFxBands - 1)) >= 0 &&
+              wiredFrom(1, fxSlotPort(0)) < 0 && model.ui.fxSelected == split &&
+              renderer.save(view, dir / "40b-fx-split.png"),
+          "+ SPLIT puts a split after the node picked, its bands going on where that node went");
+
+    // Its low crossover's handle, on its card in the inspector, dragged from 250 Hz to 500 Hz.
+    const Rect card = detail::fxInspectorCard(1.0f);
+    const Rect display{card.x + 14.0f, card.y + 74.0f, card.w - 28.0f, 110.0f};
+    const float handleY = display.y + display.h * 0.35f;
+    drag(view, {display.x + static_cast<float>(normFromCutoff(250.0)) * display.w, handleY},
+         {display.x + static_cast<float>(normFromCutoff(500.0)) * display.w, handleY});
+    check(std::abs(model.value(paramIndex(0, SplitParam::Low)) - normFromCutoff(500.0)) < 0.01 &&
+              model.openEdits == 0 && renderer.save(view, dir / "40c-fx-split-card.png"),
+          "a split's crossover handle drags across its card's display");
+
+    // From the reverb's edge back onto the shaper: a loop, refused.
+    const Point reverb = nodeAt(1);
+    drag(view, {reverb.x + detail::kFxNodeR + 1.0f, reverb.y}, nodeAt(0));
+    check(wiredFrom(0, fxSlotPort(1)) < 0, "a wire that would loop the effects back is refused");
+
+    // The input's box onto the reverb: a dry wire into it, at full level.
+    drag(view, detail::fxInCenter(), reverb);
+    const int dry = wiredFrom(1, kFxPortIn);
+    check(dry >= 0 && model.value(fxInputIndex(1, dry, FxInputField::Level)) == 1.0,
+          "the input's box wired into a node");
+
+    // Its label, at the wire's middle, dragged down takes its level down; its x, once the label is under the mouse,
+    // removes it.
+    const Point in = detail::fxInCenter();
+    const detail::Wire w = detail::bentWireBy(
+        Point{in.x + detail::kFxEndHalfW, in.y}, reverb, kDefaultWireBend, [](Point) { return 0.0f; },
+        [](Point) { return detail::kFxNodeR; });
+    drag(view, w.label, {w.label.x, w.label.y + 40.0f});
+    const double turned = model.value(fxInputIndex(1, dry, FxInputField::Level));
+    view.mouseMove(w.label, {});
+    const bool shown = renderer.save(view, dir / "40d-fx-wire-label.png");
+    click(view, {w.label.x + 19.0f + 2.0f + 8.0f, w.label.y});
+    check(turned < 0.9 && shown && wiredFrom(1, kFxPortIn) < 0 && model.openEdits == 0,
+          "a wire's label sets its level, and its x removes it");
+
+    // The reverb dragged down, and back by undo.
+    const float before = model.ui.fxNodeY[1];
+    drag(view, reverb, {reverb.x, reverb.y + 50.0f});
+    const bool moved = model.ui.fxNodeY[1] > before + 0.05f;
+    view.undo();
+    check(moved && std::abs(model.ui.fxNodeY[1] - before) < 1e-6f, "a node of the graph moves, undoably");
+
+    // Back to a chain: with a split in the graph, it asks first; going ahead leaves the chain in the graph's order.
+    click(view, centerOf(detail::fxModeButton(0)));
+    const bool asked = model.value(paramIndex(GlobalParam::FxGraph)) == 1.0;
+    const Rect confirm{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
+    const bool dialog = renderer.save(view, dir / "40e-fx-to-chain.png");
+    click(view, {confirm.right() - 64.0f, confirm.bottom() - 38.0f});
+    check(asked && dialog && model.value(paramIndex(GlobalParam::FxGraph)) == 0.0 &&
+              model.value(paramIndex(0, SplitParam::Used)) == 0.0 && fxChain(model) == std::vector<int>{0, 1} &&
+              from(1, 0) < 0,
+          "going back to a chain asks first, then leaves the chain in the graph's order");
 }
 
 void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
@@ -5679,6 +5773,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testShapers(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
+    testFxGraph(dir, renderer);
     testLaterSlots(dir, renderer);
     testSourceShadow(dir, renderer);
     testMultiDyn(dir, renderer);

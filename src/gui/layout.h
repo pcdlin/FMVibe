@@ -583,8 +583,7 @@ inline Rect fxIconRect(Rect card) {
 
 // Displays sit under a card's buttons, if it has any, and above its knobs: one
 // row of them, or two for the delay, the parametric EQ and the effects with six knobs or so.
-inline Rect fxDisplay(float position, FxType type) {
-    const Rect card = fxCard(position, fxSpan(type));
+inline Rect fxDisplayIn(Rect card, FxType type) {
     if (type == FxType::MultiDyn) // its switches in the title row, its three rows of knobs under it
         return {card.x + 14.0f, card.y + 42.0f, card.w - 28.0f, 72.0f};
     const bool buttons = type == FxType::Shaper || type == FxType::Reverb;
@@ -603,6 +602,56 @@ inline Rect fxDisplay(float position, FxType type) {
                          : type == FxType::Shaper    ? 190.0f
                                                      : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
+}
+inline Rect fxDisplay(float position, FxType type) {
+    return fxDisplayIn(fxCard(position, fxSpan(type)), type);
+}
+
+// The effects graph (GlobalParam::FxGraph) takes the card row's place: the graph at the left, and at the right the
+// card of the node it shows (an effect's, or a split's), as wide as the widest cards. The switch between the chain and
+// the graph sits at the panel's top right, and + SPLIT after the count beside ADD EFFECT.
+constexpr float kFxInspectorW = 1.5f * (kFxCardW + kFxGap) - kFxGap;
+inline Rect fxInspectorCard(float span = 1.5f) {
+    const float w = span * (kFxCardW + kFxGap) - kFxGap;
+    return {kFxPanel.right() - 16.0f - w, kFxTop, w, kFxPanel.bottom() - 20.0f - kFxTop};
+}
+inline Rect fxGraphArea() {
+    return {kFxPanel.x + 16.0f, kFxTop, kFxPanel.w - 32.0f - kFxInspectorW - 16.0f, kFxPanel.bottom() - 20.0f - kFxTop};
+}
+inline Rect fxModeButton(int graph) {
+    return {kFxPanel.right() - 16.0f - 2.0f * 34.0f + graph * 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
+}
+inline Rect fxSplitButton() {
+    return {fxMenuButton().right() + 62.0f, fxMenuButton().y, 92.0f, fxMenuButton().h};
+}
+// Its nodes: an effect a circle, a split a box with its bands' ports down its right side (the high band on top), the
+// input a box at the area's left edge and the output one at its right.
+constexpr float kFxNodeR = 22.0f;
+constexpr float kFxSplitHalfW = 22.0f, kFxSplitHalfH = 30.0f;
+constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
+constexpr float kFxPortR = 5.0f;
+inline Point fxInCenter() {
+    const Rect area = fxGraphArea();
+    return {area.x + kFxEndHalfW + 2.0f, area.center().y};
+}
+inline Point fxOutCenter() {
+    const Rect area = fxGraphArea();
+    return {area.right() - kFxEndHalfW - 2.0f, area.center().y};
+}
+// Where a node at (x, y), 0..1 each, sits: between the input's and the output's boxes, clear of the area's edges.
+inline Point fxNodeAt(float x, float y) {
+    const Rect area = fxGraphArea();
+    const float left = area.x + 2.0f * kFxEndHalfW + 64.0f, right = area.right() - 2.0f * kFxEndHalfW - 64.0f;
+    const float top = area.y + kFxSplitHalfH + 8.0f, bottom = area.bottom() - kFxSplitHalfH - 18.0f;
+    return {left + x * (right - left), top + y * (bottom - top)};
+}
+inline Point fxNodeNorm(Point p) { // the other way round, held inside
+    const Point a = fxNodeAt(0.0f, 0.0f), b = fxNodeAt(1.0f, 1.0f);
+    return {std::clamp((p.x - a.x) / (b.x - a.x), 0.0f, 1.0f), std::clamp((p.y - a.y) / (b.y - a.y), 0.0f, 1.0f)};
+}
+// A split's band port: on its right edge, the high band at the top, the middle one in the middle.
+inline Point fxBandPortAt(Point split, int band) {
+    return {split.x + kFxSplitHalfW, split.y + (1 - band) * (kFxSplitHalfH - 10.0f)};
 }
 
 // The three-band dynamics' display: a level bar a band, the high band on top, each its name on the left and its gain

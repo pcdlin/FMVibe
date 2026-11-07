@@ -291,6 +291,32 @@ void effectsChainChecks() {
               "a parametric EQ band switched on and off fades in and out without a click");
     }
     {
+        // A wire of the effects graph connected and taken away fades rather than clicking: a second wire from the
+        // input to the output, doubling a C3, then gone again, in single frames, under 4 times as rough as the note.
+        Engine e(2);
+        e.p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+        e.p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        e.noteOn(48);
+        const std::vector<float> before = e.render(4800, 1);
+        e.p[fxInputIndex(kFxOutNode, 1, FxInputField::From)] = fxPortValue(kFxPortIn);
+        const std::vector<float> on = e.render(2400, 1);
+        e.p[fxInputIndex(kFxOutNode, 1, FxInputField::From)] = 0.0;
+        const std::vector<float> all = joined(joined(before, on), e.render(2400, 1));
+        const double steady = roughness(all, 2400, before.size());
+        const size_t gone = before.size() + on.size();
+        const double switched =
+            std::max(roughness(all, before.size() - 2, before.size() + 480), roughness(all, gone - 2, gone + 480));
+        double doubled = 0.0, single = 0.0;
+        for (size_t i = before.size() + 480; i < gone; ++i)
+            doubled = std::max(doubled, static_cast<double>(std::abs(all[i])));
+        for (size_t i = 2400; i < before.size(); ++i)
+            single = std::max(single, static_cast<double>(std::abs(all[i])));
+        std::printf("      a wire connected and taken away: %.2fx as rough as the note, doubling it x%.3f\n",
+                    switched / steady, doubled / single);
+        check(switched < 4.0 * steady && std::abs(doubled / single - 2.0) < 0.05,
+              "a wire of the effects graph connected and taken away fades in and out without a click");
+    }
+    {
         // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd),
         // at unity gain: each sample comes out as the curve has it at the middle of its step, through the DC blocker
         // every drawn curve has.
@@ -1470,6 +1496,18 @@ int main() {
         const double cutoff = unexpectedDb(steadyTone(1, key, cutoffMod), partials);
         std::printf("      %-30s %7.1f\n", "LFO on filter cutoff", cutoff);
         check(cutoff < -80.0, "LFO on a filter cutoff doesn't zipper");
+
+        // The effects graph's input straight to its output, its wire's level swung like operator Out's above.
+        auto wireMod = [&](ParamValues &p) {
+            const int level = fxInputIndex(kFxOutNode, 0, FxInputField::Level);
+            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+            p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+            p[level] = 0.5;
+            lfoOn(p, level, 0.4, lfo);
+        };
+        const double wire = unexpectedDb(steadyTone(1, key, wireMod), {f0, f0 - lfo, f0 + lfo});
+        std::printf("      %-30s %7.1f\n", "LFO on an effects graph wire", wire);
+        check(wire < -70.0, "LFO on a wire of the effects graph doesn't zipper");
     }
 
     // --- The random LFO: how far its steps go with chaos, and how smoothing glides between them.

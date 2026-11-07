@@ -90,6 +90,10 @@ void polarityIcon(Canvas &c, Point m, bool bipolar, Color color);
 // it), Linear FM a straight rising line, Exp FM a curve rising ever faster, Ring a ring with a cross in it.
 void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale = 1.0f);
 void fxIcon(Canvas &c, Rect r, FxType type, Color color);
+// A split of the effects graph: a line forking into three.
+void splitIcon(Canvas &c, Rect r, Color color);
+// The FX panel's switch between the chain (cards in a row) and the graph (nodes and wires).
+void fxModeIcon(Canvas &c, Point m, bool graph, Color color);
 void peqIcon(Canvas &c, Rect r, PeqType type, Color color);
 
 // Wave icons, one cycle across r.
