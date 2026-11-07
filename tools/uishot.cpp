@@ -5457,26 +5457,36 @@ void run(const std::filesystem::path &dir, float scale) {
     const uint32_t lit = renderer.pixel({kSaveAsButton.x - 6.5f, kSaveAsButton.y});
     check(unchangedShot && model.writes == 0 && model.saves == 2 && greyed != lit,
           "Save is greyed out and does nothing while the preset is unchanged");
+    // Its dialog has one line, so it is the shorter one.
+    const Point overwriteOk{shorter.right() - 64.0f, shorter.bottom() - 38.0f};
+    const Point overwriteCancel{shorter.x + 170.0f + 40.0f, shorter.bottom() - 38.0f};
     model.setPreset(L"Bell", true);
     click(view, kSaveButton);
-    view.mouseMove(ok, {});
+    view.mouseMove(overwriteOk, {});
     const bool overwriteShot = renderer.save(view, dir / "15d-confirm-overwrite.png");
-    click(view, cancel);
+    click(view, overwriteCancel);
     check(overwriteShot && model.writes == 0 && model.patchEdited(), "Save asks before overwriting, and Cancel keeps it");
     click(view, kSaveButton);
-    click(view, ok);
+    click(view, overwriteOk);
     check(model.writes == 1 && model.written == L"Bell" && !model.patchEdited() && model.saves == 2,
           "Overwrite writes the patch over the preset's file, which is then unchanged");
     model.setPreset(L"Bell", true);
     model.writeFails = true;
     click(view, kSaveButton);
-    click(view, ok);
+    click(view, overwriteOk);
     model.writeFails = false;
     check(model.writes == 2 && model.patchEdited(), "a preset that could not be written stays changed");
-    model.setPreset(L"", true); // Init, changed: Save picks a file, as Save As does
+    model.setPreset(L""); // Init, unchanged: neither saves
     click(view, kSaveButton);
     click(view, kSaveAsButton);
-    check(model.writes == 2 && model.saves == 4, "Save on a changed Init opens the file dialog without asking");
+    check(model.writes == 2 && model.saves == 2, "Save and Save As do nothing on an unchanged Init");
+    model.setPreset(L"", true); // Init, changed: only Save As, which asks nothing
+    click(view, kSaveButton);
+    click(view, kSaveAsButton);
+    view.mouseMove(kSaveButton, {});
+    const bool initShot = renderer.save(view, dir / "15e-save-init.png");
+    click(view, kSaveAsButton);
+    check(initShot && model.writes == 2 && model.saves == 4, "Save does nothing on a changed Init, and Save As goes ahead");
     model.setPreset(presetBefore, editedBefore);
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.

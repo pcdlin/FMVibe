@@ -330,8 +330,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
   - the preset bar's arrows (asking first while the patch has changed, the dialog a line shorter before a file
     loads); Save greyed out (read off the rendered pixels) and doing nothing while the preset is unchanged, asking
-    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), and on a
-    changed Init opening the file dialog as Save As does and the preset browser, which loading a preset closes; its search narrowing the list as words are
+    before it overwrites the preset's file (Cancel keeping it, a failed write leaving the patch changed), and
+    doing nothing on Init, changed or not, where Save As does nothing until the patch changes and the preset browser, which loading a preset closes; its search narrowing the list as words are
     typed, Enter loading the preset found, Up and Down picking one, Escape and the search's × emptying it, and
     its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
     double-click for a word), cutting and pasting;

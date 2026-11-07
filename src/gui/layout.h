@@ -870,7 +870,7 @@ inline Rect settingsClose(Rect panel) {
 }
 
 // The dialog asking before Init or Load replaces a changed patch, or Save overwrites its preset, centered like the settings; a line shorter when
-// it doesn't say what replaces the patch.
+// it doesn't say what replaces the patch, and before Save overwrites a preset.
 constexpr float kConfirmW = 360.0f;
 constexpr float kConfirmH = 150.0f;
 constexpr float kConfirmLine = 18.0f;

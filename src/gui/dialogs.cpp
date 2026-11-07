@@ -104,6 +104,18 @@ void View::paintSettings(Canvas &c) {
         paintWidget(c, w);
 }
 
+// Save only for a preset loaded from a file and changed since; Save As for any preset, but for Init only once changed.
+bool View::presetActionOn(PresetAction action) const {
+    switch (action) {
+    case PresetAction::Save:
+        return controller_.presetHasFile() && controller_.patchEdited();
+    case PresetAction::SaveAs:
+        return controller_.presetHasFile() || controller_.patchEdited();
+    default:
+        return true;
+    }
+}
+
 void View::runPreset(PresetAction action) {
     switch (action) {
     case PresetAction::Init:
@@ -119,8 +131,8 @@ void View::runPreset(PresetAction action) {
             controller_.choosePreset(false);
         }
         break;
-    case PresetAction::Save: // over the preset's file; with none (Init), or none to write (the demo), as Save As
-        if (!controller_.presetHasFile() || !controller_.writesPresetFiles())
+    case PresetAction::Save: // over the preset's file; with none to write (the demo), its dialog says so
+        if (!controller_.writesPresetFiles())
             controller_.choosePreset(true);
         else if (controller_.overwritePreset())
             flash(trf(Str::MsgPresetSaved, {controller_.presetName()}));
@@ -146,8 +158,13 @@ std::string View::confirmWhat() const {
                : std::string();
 }
 
+// A line shorter with one line to show: before a file still to be picked loads, or before Save overwrites a preset.
+bool View::confirmShorter() const {
+    return confirmWhat().empty() || confirm_ == static_cast<int>(PresetAction::Save);
+}
+
 std::vector<View::Widget> View::confirmWidgets() const {
-    const Rect panel = confirmPanel(height(), confirmWhat().empty());
+    const Rect panel = confirmPanel(height(), confirmShorter());
     std::vector<Widget> list;
     auto add = [&](Kind kind, Rect r, int a) {
         Widget w;
@@ -581,7 +598,7 @@ void View::stepPreset(int direction) {
 void View::paintConfirm(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
     const std::string what = confirmWhat();
-    const Rect panel = confirmPanel(height(), what.empty());
+    const Rect panel = confirmPanel(height(), confirmShorter());
     c.fillRect(panel, kPanel, 10.0f);
     c.strokeRect(panel, kBorder, 1.0f, 10.0f);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
@@ -593,8 +610,8 @@ void View::paintConfirm(Canvas &c) {
         c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, what, 10.5f, kDim, Align::Left);
         y += kConfirmLine;
     }
-    c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(overwrite ? Str::ConfirmOverwriteLost : Str::ConfirmSaveFirst),
-           10.5f, kDim, Align::Left);
+    if (!overwrite) // nothing is thrown away by overwriting but the file, which its line says
+        c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst), 10.5f, kDim, Align::Left);
     for (const Widget &w : confirmWidgets())
         paintWidget(c, w);
 }

@@ -1095,9 +1095,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the preset folder; Save As suggests the current preset's name. The file holds the same data as the host's
     saved state, apart from the settings.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
-    tells in a message that it saved or couldn't. It is greyed out and does nothing while the patch hasn't changed
-    since it was loaded, saved or reset. On a patch that has no file (Init), it does what Save As does. In the
-    browser demo, which has no files, both say so.
+    tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) from a file that has
+    changed since; otherwise, and always for Init, it is greyed out and does nothing. Save As is greyed out too on
+    Init until the patch changes. In the browser demo, which has no files, both say so.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
     since a preset loaded leaves it unchanged again). The project remembers which preset it was and whether it changed.

@@ -6044,8 +6044,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintWheel(c, w, hovered, active);
         break;
     case Kind::PresetButton: {
-        // Save greyed out while there is nothing to save.
-        const bool off = static_cast<PresetAction>(w.a) == PresetAction::Save && !controller_.patchEdited();
+        // Save and Save As greyed out while they have nothing to save.
+        const bool off = !presetActionOn(static_cast<PresetAction>(w.a));
         c.fillRect(w.rect, hovered && !off ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
         const Point m = w.rect.center();
@@ -6796,12 +6796,12 @@ void View::paintTooltip(Canvas &c) {
             text = tr(Str::TipLoad);
             break;
         case PresetAction::Save:
-            text = !controller_.patchEdited() ? tr(Str::TipSaveUnchanged)
-                   : controller_.presetHasFile() ? trf(Str::TipSave, {controller_.presetName()})
-                                                 : tr(Str::TipSaveAs);
+            text = !controller_.presetHasFile() ? tr(Str::TipSaveNoFile)
+                   : controller_.patchEdited()  ? trf(Str::TipSave, {controller_.presetName()})
+                                                : tr(Str::TipSaveUnchanged);
             break;
         case PresetAction::SaveAs:
-            text = tr(Str::TipSaveAs);
+            text = tr(presetActionOn(PresetAction::SaveAs) ? Str::TipSaveAs : Str::TipSaveUnchanged);
             break;
         }
     else if (hover_->kind == Kind::SettingsButton)
@@ -7976,12 +7976,12 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::PresetButton: {
         // Init and Load ask first when they would throw away changes, and Save before it overwrites a preset's file.
-        // Save does nothing while there is nothing to save.
+        // Save and Save As do nothing while greyed out.
         pendingPreset_ = -1;
         const auto action = static_cast<PresetAction>(w.a);
-        if (action == PresetAction::Save && !controller_.patchEdited())
+        if (!presetActionOn(action))
             break;
-        const bool ask = action == PresetAction::Save     ? controller_.presetHasFile() && controller_.writesPresetFiles()
+        const bool ask = action == PresetAction::Save     ? controller_.writesPresetFiles()
                          : action == PresetAction::SaveAs ? false
                                                           : controller_.patchEdited();
         if (ask) {

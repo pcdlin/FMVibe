@@ -255,8 +255,8 @@ private:
         BendWheel,    // drag; springs back to center on release
     };
 
-    // Save writes the patch over its preset's file (asking first), and is only on while the patch has changed; on a
-    // patch with no file (Init) it does what Save As does, picking a file in the dialog.
+    // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
+    // changed; Save As picks a file in the dialog, and is off for Init until it changes.
     enum class PresetAction { Init, Load, Save, SaveAs };
 
     // What a widened LFO card's tools do to its whole shape, each one undo step: flip it upside down, play it back to
@@ -930,6 +930,7 @@ private:
     std::vector<Widget> settingsWidgets() const;
     std::vector<Widget> confirmWidgets() const;
     std::string confirmWhat() const;
+    bool confirmShorter() const;
     // The preset browser: while it is open it takes every click, and the confirm dialog goes over it.
     std::vector<Widget> browserWidgets() const;
     void paintBrowser(Canvas &c);
@@ -961,6 +962,7 @@ private:
     bool soundsOut(int node) const;
     void keepRoutes();
     void disconnect(int param); // to 0 %, and its wire goes
+    bool presetActionOn(PresetAction action) const;
     void runPreset(PresetAction action);
     void paintSettings(Canvas &c);
     void paintConfirm(Canvas &c);
