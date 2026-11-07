@@ -60,6 +60,10 @@ To try the plugin without a DAW, run `build\<config>\fmvibe-uihost.exe` (or `.\b
 the editor in a window and plays through the default output device; notes come from the editor's keyboard, the computer
 keyboard (A W S E D … from middle C, Z/X for the octave, C/V for the velocity) and any MIDI input.
 
+On Linux, `./build.sh` builds the engine and the editor without the plugins and runs the audio quality test and the
+editor's snapshots (PNGs in `build/linux/ui-shots`). It needs CMake, Ninja, a C++20 compiler and Cairo
+(`libcairo2-dev`). See [AGENTS.md](AGENTS.md#linux-development-build).
+
 ## License
 
 FMVibe is released under the [MIT license](LICENSE).
