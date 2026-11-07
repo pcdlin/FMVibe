@@ -273,8 +273,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Param EQ**: three bands, each with Frequency (20 Hz–20 kHz), Gain (±18 dB) and Q (0.3–10), a shape:
     Peak (a bell), Low Shelf, High Shelf, Low Cut or High Cut (12 dB per octave, Q setting its resonance; the
     gain does nothing there) or Notch (taking its frequency away, Q setting how narrowly; the gain does nothing
-    there either), and an **On** switch. The first two start on (at 250 Hz and 4 kHz) and the third
-    off (at 1 kHz), so a patch from before the third band plays as it did. A band switched off leaves the sound
+    there either), and an **On** switch. All three start on, flat (at 250 Hz, 1 kHz and 4 kHz). A band switched off leaves the sound
     alone, fading out and back in over 5 ms. **Amount** (100 % to begin with) mixes what the bands put out with
     what goes in, as a Mix knob does: at 0 % the EQ leaves the sound alone.
   - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb; a row of icons on its

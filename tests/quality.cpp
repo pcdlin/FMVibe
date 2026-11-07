@@ -268,6 +268,7 @@ void effectsChainChecks() {
         e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
         e.p[peqTypeIndex(0, 2)] = static_cast<double>(PeqType::LowCut);
         e.p[peqFreqIndex(0, 2)] = normFromCutoff(5000.0);
+        e.p[peqOnIndex(0, 2)] = 0.0;
         e.noteOn(48);
         const std::vector<float> before = e.render(4800, 1);
         e.p[peqOnIndex(0, 2)] = 1.0;

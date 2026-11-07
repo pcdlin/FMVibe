@@ -103,7 +103,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     sweeping apart and a mono one's together, a linked shaper keeping its level, a symmetric one shaping its
     lower half as its upper one (a drawn curve losing its 2nd harmonic, Asymmetric left as it is), and
     the filter effect's key tracking putting a cutoff at C4 onto an A4, the frequency shifter moving by its
-    Shift's share of its Range, and the Param EQ's third band starting off and playing once on, a band switched
+    Shift's share of its Range, and the Param EQ's third band doing nothing off and playing once on, a band switched
     off left out, its notch taking its frequency away (and leaving an octave off it mostly alone), and its Amount
     mixing it with what goes in;
   - unison copies spread across the stereo field (and match when centered);

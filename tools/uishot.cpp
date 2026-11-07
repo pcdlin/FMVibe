@@ -4934,10 +4934,11 @@ void run(const std::filesystem::path &dir, float scale) {
         model.set(paramIndex(2, FxParam::PeqAmount), 1.0);
         check(amount, "a Param EQ's Amount knob sets the whole EQ's amount");
     }
-    // The third band starts off, its handle faint at 1 kHz on the 0 dB line: a press on it switches it on and picks
+    // The third band switched off, its handle faint on the 0 dB line: a press on it switches it on and picks
     // it (and moves nothing), undoably; its chip's power symbol switches it off and on again, and its shape's list
     // stays inside the card. Made a notch, its handle stays on the 0 dB line and only moves across.
     {
+        model.set(peqOnIndex(2, 2), 0.0);
         const Point third{peqCardX + 22.0f + static_cast<float>(model.value(peqFreqIndex(2, 2))) * peqW, 292.0f};
         const double freq = model.value(peqFreqIndex(2, 2));
         const bool startsOff = model.value(peqOnIndex(2, 2)) == 0.0;
