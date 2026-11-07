@@ -47,7 +47,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     each be bent from −100 % (starts slow, rushes at the end) through 0 (a straight line) to +100 % (starts fast and
     settles). Every segment arrives in its set time, whatever its curve. By default the attack is straight and
     decay and release sit at +50 %, an exponential fall of 60 dB over the segment's time.
-  - Out (level straight to the audio output) and sends into the two filters and the two shapers;
+  - Out (level straight to the audio output) and sends into the two filters and the two shapers, set in the
+    routing graph and the matrix;
+  - **Pan**: where the operator sits in the stereo field, L100 to R100 (centered by default), equal-power and at
+    full level in the middle, as the global Pan. It places all the operator puts out, to the output and into the
+    filters and shapers (which are stereo, so a panned operator stays where it is through them), and its unison
+    copies' spread with it; what other operators hear of it is the mono sum, so a modulator's Pan changes nothing it
+    modulates, and does nothing unless the operator is also heard;
   - **Phase**: where a note starts the waveform, 0 to 100 % of a cycle (0 % by default; a sine at 25 % starts at
     its peak). It is read as a note starts, with the host's and the sources' modulation on it then, and holds for the
     note. A noise operator has none. Operators don't follow velocity themselves: velocity reaches them as a source
@@ -517,7 +523,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       Ctrl+Click it (or pick Edit value… from its right-click menu) to type a depth. A wire, or
       a node's line to OUT, turned down to 0 % stays, so modulation can still be dropped on it; only removing it
       (double-click, or Disconnect in its right-click menu) takes it away, together with its modulation. Dropping
-      an LFO or envelope on a matrix cell or an Out knob shows that route's wire too, even at 0 %.
+      an LFO or envelope on a matrix cell shows that route's wire too, even at 0 %.
     - A wire between two nodes bows to its left as it starts, so two running opposite ways between the same nodes
       don't overlap. To keep wires apart where they would, drag one sideways anywhere along it (it lights up under
       the mouse, apart from its label and arrowhead): its middle follows the mouse, out to either side or straight,
@@ -856,7 +862,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   line; its knobs still work.
   - Operators: wave buttons for the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine,
     Organ, Vowel and Custom (picked,
-    one of these shows on that button); the Ratio readout, then pitch, detune, phase and output knobs. The Ratio
+    one of these shows on that button); the Ratio readout, then pitch, detune, phase and pan knobs. The Ratio
     readout takes the first two knobs' places: four digits of a 7-segment display (88.88, the tens dark below 10),
     each its own handle. A digit dragged up or down steps by its own place (tens 10, ones 1, tenths 0.1, hundredths
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
@@ -1212,7 +1218,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,220 of FMVibe's 18,428 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,226 of FMVibe's 18,574 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
 modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

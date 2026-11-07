@@ -292,6 +292,8 @@ private:
     // What renderBlock() ramps sample by sample toward each block's values.
     struct Levels {
         std::array<double, kOps> out{};
+        std::array<double, kOps> panL{}; // an operator's Pan as left and right gains, on all it puts out but its FM
+        std::array<double, kOps> panR{};
         std::array<std::array<double, kFilters>, kOps> send{};
         std::array<std::array<double, kOps>, kOps> index{};        // [from][to], phase offset in cycles per unit of output
         std::array<std::array<double, kOps>, kFilters> filterIndex{}; // [filter][to]
