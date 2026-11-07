@@ -556,6 +556,7 @@ void buildTable(ParamTable &t) {
             add(peqOnIndex(slot, band), b + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0, 1.0,
                 band < 2 ? 1.0 : 0.0);
         }
+        fx(FxParam::PeqAmount, tr(Str::ParamPeqAmount), ParamKind::Percent, 0.0, 1.0, 1.0);
 
         fx(FxParam::FilterType, tr(Str::ParamFilterType), ParamKind::FilterType, 0.0,
            static_cast<double>(FilterType::Count) - 1.0, static_cast<double>(FilterType::LowPass));

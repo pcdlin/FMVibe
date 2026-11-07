@@ -2408,6 +2408,20 @@ int main(int argc, char **argv) {
                   "the EQ's notch takes its frequency away, and leaves an octave off it mostly alone");
             setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
         }
+        // Amount mixes the EQ with what goes in: a +12 dB bell on 440 Hz (x3.98) at half is x2.49, and at 0 nothing.
+        {
+            clap_param_info_t amount{};
+            params->get_info(plugin, static_cast<uint32_t>(fx(4, FxParam::PeqAmount)), &amount);
+            const bool full = amount.default_value == 1.0;
+            setParams({{peqFreqIndex(4, 0), normFromCutoff(440.0)}, {fx(4, FxParam::PeqAmount), 0.5}});
+            const double half = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            setParams({{fx(4, FxParam::PeqAmount), 0.0}});
+            const double none = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            std::printf("      a +12 dB bell on 440 Hz at half its Amount: x%.2f, at none x%.3f\n", half, none);
+            check(full && std::abs(half - 2.49) < 0.15 && std::abs(none - 1.0) < 0.02,
+                  "the EQ's Amount mixes it with what goes in, and starts full");
+            setParams({{fx(4, FxParam::PeqAmount), 1.0}});
+        }
         setParams({{type(4), static_cast<double>(FxType::None)}, {type(5), static_cast<double>(FxType::None)}});
 
         // Delay: a short note's echoes, recorded from the note on, once the note

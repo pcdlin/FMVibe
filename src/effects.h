@@ -184,6 +184,7 @@ private:
         // which takes the switch as it is.
         static constexpr double kUnset = std::numeric_limits<double>::quiet_NaN();
         std::array<double, kPeqBands> on{kUnset, kUnset, kUnset};
+        double amount = 1.0; // ramping to its Amount (see runParamEq())
     };
 
     struct FilterFx {

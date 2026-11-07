@@ -4799,7 +4799,8 @@ void run(const std::filesystem::path &dir, float scale) {
               "Alt-dragging a band handle up and down sets its Q");
     }
     // The bands' chips under its display, 26 px tall at 368: each its power switch (26 px) on the left, its number,
-    // and its shape (34 px) on the right; the band picked's knobs at 432.
+    // and its shape (34 px) on the right; the band picked's Freq, Gain and Q at 436, a quarter of the card each, then
+    // Amount.
     const float peqCardX = fxCardX(model, 2), peqCardW = fxCardW(model, 2);
     const float chipW = (peqCardW - 28.0f - 8.0f) / 3.0f;
     auto chipX = [&](int b) { return peqCardX + 14.0f + static_cast<float>(b) * (chipW + 4.0f); };
@@ -4811,7 +4812,7 @@ void run(const std::filesystem::path &dir, float scale) {
         const float x = std::clamp(chipX(b) + chipW * 0.5f, peqCardX + 8.0f + 62.0f, peqCardX + peqCardW - 8.0f - 62.0f);
         return Point{x, 228.0f + static_cast<float>(t) * 22.0f + 11.0f};
     };
-    auto peqKnob = [&](int i) { return Point{peqCardX + peqCardW * (static_cast<float>(i) + 0.5f) / 3.0f, 432.0f}; };
+    auto peqKnob = [&](int i) { return Point{peqCardX + peqCardW * (static_cast<float>(i) + 0.5f) / 4.0f, 436.0f}; };
     // The second band's shape comes from a list that opens above its chip: a high cut.
     click(view, chipShape(1));
     view.mouseMove(peqShapeItem(1, PeqType::HighCut), {});
@@ -4832,6 +4833,13 @@ void run(const std::filesystem::path &dir, float scale) {
         model.set(peqGainIndex(2, 0), first);
         model.set(peqGainIndex(2, 1), second);
         check(turnedSecond && turnedFirst, "a Param EQ's knobs set the band whose chip was clicked");
+        // Amount, the fourth, is the whole EQ's, whichever band is picked.
+        drag(view, peqKnob(3), {peqKnob(3).x, peqKnob(3).y + 40.0f});
+        const bool amount = model.value(paramIndex(2, FxParam::PeqAmount)) < 1.0 &&
+                            model.value(peqGainIndex(2, 0)) == first && model.value(peqGainIndex(2, 1)) == second;
+        check(renderer.save(view, dir / "8e1-peq-amount.png"), "render the Param EQ's knobs, Amount turned down");
+        model.set(paramIndex(2, FxParam::PeqAmount), 1.0);
+        check(amount, "a Param EQ's Amount knob sets the whole EQ's amount");
     }
     // The third band starts off, its handle faint at 1 kHz on the 0 dB line: a press on it picks it (and moves
     // nothing), its chip's power switch turns it on and off, undoably, and its shape's list stays inside the card.

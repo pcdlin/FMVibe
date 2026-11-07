@@ -1653,9 +1653,13 @@ std::vector<View::Widget> View::widgets() const {
                     add(Kind::PeqBandOn, peqChipPower(chip), peqOnIndex(slot, band), slot, band);
                     add(Kind::PeqTypeButton, peqChipShape(chip), peqTypeIndex(slot, band), slot, band);
                 }
+                // Then Amount, for the whole EQ; all four as large as a one-row card's.
                 const int band = std::min(fxBand_[slot], kPeqBands - 1);
-                knobs({peqFreqIndex(slot, band), peqGainIndex(slot, band), peqQIndex(slot, band)},
-                      {tr(Str::LabelFreq), tr(Str::LabelGain), tr(Str::LabelQ)}, kPeqKnobsY);
+                const int params[] = {peqFreqIndex(slot, band), peqGainIndex(slot, band), peqQIndex(slot, band),
+                                      at(FxParam::PeqAmount)};
+                const Str labels[] = {Str::LabelFreq, Str::LabelGain, Str::LabelQ, Str::LabelAmount};
+                for (int i = 0; i < 4; ++i)
+                    knob(params[i], peqKnobCenter(card, i), kPeqKnobD, tr(labels[i]));
                 break;
             }
             case FxType::Filter: {

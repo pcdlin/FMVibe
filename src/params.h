@@ -505,6 +505,7 @@ enum class FxParam {
     PeqOn1,
     PeqOn2,
     PeqOn3,
+    PeqAmount, // the parametric EQ's output against what went in, as a mix: 0 leaves the sound alone
     Count
 };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as
@@ -731,7 +732,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::FlangerStereo, FxParam::FlangerStereo, FxType::Flanger},
     {FxParam::ShaperSymmetric, FxParam::ShaperSymmetric, FxType::Shaper},
     {FxParam::MdLowFreq, FxParam::MdRms, FxType::MultiDyn},
-    {FxParam::PeqFreq3, FxParam::PeqOn3, FxType::ParamEq},
+    {FxParam::PeqFreq3, FxParam::PeqAmount, FxType::ParamEq},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1192,7 +1193,8 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(0, FxParam::MdHighFreq)) == 25000 &&
                   idOfIndex(paramIndex(kFxSlots - 1, FxParam::MdRms)) == 25623 &&
                   idOfIndex(paramIndex(0, FxParam::PeqFreq3)) == 25024 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqOn3)) == 25630,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqOn3)) == 25630 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqAmount)) == 25631,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&

@@ -100,7 +100,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     lower half as its upper one (a drawn curve losing its 2nd harmonic, Asymmetric left as it is), and
     the filter effect's key tracking putting a cutoff at C4 onto an A4, the frequency shifter moving by its
     Shift's share of its Range, and the Param EQ's third band starting off and playing once on, a band switched
-    off left out, and its notch taking its frequency away (and leaving an octave off it mostly alone);
+    off left out, its notch taking its frequency away (and leaving an octave off it mostly alone), and its Amount
+    mixing it with what goes in;
   - unison copies spread across the stereo field (and match when centered);
   - mono: a new key takes the voice over, letting go returns to the held key, and every note reports `NOTE_END`
     exactly once;
@@ -264,7 +265,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle, the mod wheel and the note source's display);
   - dragging a Param EQ band's handle, and Alt-dragging it for its Q; its bands' chips: a click on one, its shape
     or a band's handle picking the band its knobs set, its power switch turning the band on and off, undoably, and
-    its shape's list (the third band's inside the card) picking the shape, and a notch's handle moving only across;
+    its shape's list (the third band's inside the card) picking the shape, a notch's handle moving only across, and
+    its Amount knob setting the whole EQ's amount;
   - dragging an envelope's handles, past the display's end too, where the envelope zooms out to stay inside (read
     off the rendered pixels), and the attack's below 1 ms, to 0.5 ms and to 0 ms, drawn as a vertical line (read off
     the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn

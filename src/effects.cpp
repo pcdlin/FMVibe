@@ -436,6 +436,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::ParamEq:
         s.peq = ParamEq{};
+        s.peq.amount = at(FxParam::PeqAmount);
         s.analyzed.clear();
         break;
     case FxType::Filter:
@@ -748,6 +749,9 @@ void Effects::runEq(int slot, float *const *io, uint32_t n, const ParamValues &p
 
 void Effects::runParamEq(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     ParamEq &eq = slots_[slot].peq;
+    float dry[2][kChunk];
+    std::copy_n(io[0], n, dry[0]);
+    std::copy_n(io[1], n, dry[1]);
     // New coefficients every chunk are smooth enough for knob moves and modulation. A band switched on or off fades
     // between what it puts out and what it takes in, over 5 ms. One switched off keeps running unheard, so it comes
     // back without starting from silence.
@@ -787,6 +791,18 @@ void Effects::runParamEq(int slot, float *const *io, uint32_t n, const ParamValu
                 io[ch][s] = static_cast<float>(x + heard * (eq.bands[band][ch].process(x, c) - x));
             }
         }
+    }
+    // Amount mixes what the bands put out with what came in, ramping to a new value over the chunk.
+    const double target = p[paramIndex(slot, FxParam::PeqAmount)];
+    if (eq.amount != 1.0 || target != 1.0) {
+        const double step = rampStep(eq.amount, target, n);
+        for (uint32_t s = 0; s < n; ++s) {
+            eq.amount += step;
+            for (int ch = 0; ch < 2; ++ch)
+                io[ch][s] = static_cast<float>(dry[ch][s] + eq.amount * (io[ch][s] - dry[ch][s]));
+        }
+        if (std::abs(eq.amount - target) < 1e-9) // arrived, but for rounding
+            eq.amount = target;
     }
     feedAnalyzer(slot, io, n);
 }

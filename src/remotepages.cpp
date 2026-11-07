@@ -30,9 +30,9 @@ std::vector<int> fxPageParams(int slot, FxType type, const ParamValues &values) 
                    FxParam::DelayTone, FxParam::DelayWidth, FxParam::DelayPingPong, FxParam::DelayMix});
     case FxType::Eq:
         return at({FxParam::Enabled, FxParam::EqLow, FxParam::EqMid, FxParam::EqHigh});
-    case FxType::ParamEq: // each band's frequency and gain; their Qs, shapes and switches are left to the editor
+    case FxType::ParamEq: // each band's frequency and gain, and Amount; the Qs, shapes and switches are the editor's
         return at({FxParam::Enabled, FxParam::PeqFreq1, FxParam::PeqGain1, FxParam::PeqFreq2, FxParam::PeqGain2,
-                   FxParam::PeqFreq3, FxParam::PeqGain3});
+                   FxParam::PeqFreq3, FxParam::PeqGain3, FxParam::PeqAmount});
     case FxType::Filter:
         return at({FxParam::Enabled, FxParam::FilterType, FxParam::FilterSlope, FxParam::FilterCutoff,
                    FxParam::FilterResonance, FxParam::FilterKeyTrack, FxParam::FilterDrive, FxParam::FilterMix});

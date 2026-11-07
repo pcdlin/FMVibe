@@ -650,13 +650,18 @@ inline Point peqAt(Rect area, double freq, double db) {
 
 // The bands' chips, in a row under the display: each its power switch, its number and its shape. A click picks the
 // band the row of knobs under them sets.
-constexpr float kPeqChipY = 188.0f, kPeqChipH = 26.0f, kPeqKnobsY = 252.0f;
+constexpr float kPeqChipY = 188.0f, kPeqChipH = 26.0f;
 inline Rect peqChip(Rect card, int band) {
     const float w = (card.w - 28.0f - 4.0f * (kPeqBands - 1)) / kPeqBands;
     return {card.x + 14.0f + band * (w + 4.0f), card.y + kPeqChipY, w, kPeqChipH};
 }
 inline Rect peqChipPower(Rect chip) { return {chip.x, chip.y, 26.0f, chip.h}; }
 inline Rect peqChipShape(Rect chip) { return {chip.right() - 34.0f, chip.y, 34.0f, chip.h}; }
+// Its row of knobs under the chips, as large as a one-row card's: the band picked's Freq, Gain and Q, then Amount.
+constexpr float kPeqKnobsY = 256.0f, kPeqKnobD = 36.0f;
+inline Point peqKnobCenter(Rect card, int i) {
+    return {card.x + card.w * (static_cast<float>(i) + 0.5f) / 4.0f, card.y + kPeqKnobsY};
+}
 
 // The list of band shapes, which opens upward from its chip over the card's display, inside the card.
 constexpr int kPeqTypes = static_cast<int>(PeqType::Count);
