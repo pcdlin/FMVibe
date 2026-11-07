@@ -226,7 +226,7 @@ constexpr Point kMultKnob{967.0f, 242.0f};     // a fixed operator's Mult, in th
 constexpr Point kRatioTens{917.0f, 242.0f}, kRatioOnes{933.0f, 242.0f}, kRatioTenths{956.0f, 242.0f},
                 kRatioHundredths{972.0f, 242.0f}; // the Ratio readout's digits
 constexpr Point kRatioDot{944.7f, 257.0f}; // the first depth handle along the Ratio readout's bottom edge
-constexpr Point kOutKnob{1146.0f, 242.0f};
+constexpr Point kPanKnob{1146.0f, 242.0f}; // an operator's Pan, bipolar
 constexpr float kBusY = 474.0f; // the routing graph's OUT line
 constexpr Point kPitchKnob{1012.0f, 242.0f};
 constexpr Point kUnisonKnob{934.0f, 338.0f}; // on the UNISON tab
@@ -3975,13 +3975,23 @@ void run(const std::filesystem::path &dir, float scale) {
           "an output turned down to 0 % stays connected");
     model.set(paramIndex(0, OpParam::Out), 1.0);
     view.poll();
-    // Modulation dropped on a silent operator's Out knob shows its wire to OUT; Disconnect takes both away.
+    // The inspector's last knob is the operator's Pan, bipolar: dragged up 40 px it moves 20 % of its range, to R40,
+    // and a double-click centers it again.
+    drag(view, kPanKnob, {kPanKnob.x, kPanKnob.y - 40.0f});
+    const bool panned = std::abs(model.value(paramIndex(0, OpParam::Pan)) - 0.4) < 1e-6;
+    doubleClick(view, kPanKnob);
+    check(panned && model.value(paramIndex(0, OpParam::Pan)) == 0.0 && model.value(paramIndex(0, OpParam::Out)) == 1.0,
+          "an operator's Pan knob turns from the middle and resets to it, its output left alone");
+    // Modulation dropped on a silent operator's OUT cell in the matrix shows its wire to OUT; Disconnect takes both
+    // away.
     click(view, b);
-    drag(view, sourceHandle(0), kOutKnob);
+    click(view, kMatrixTab);
+    drag(view, sourceHandle(0), gridCellCenter(1, kNodes));
+    click(view, kRoutingTab);
     const Point bOut = outLabelOf(layout, 1);
     check(slotTarget(model.value(slotTargetIndex(0, 1))) == paramIndex(1, OpParam::Out) &&
               model.value(paramIndex(1, OpParam::Out)) == 0.0 && outDisconnect(bOut) >= 0,
-          "modulating an operator's Out knob shows its wire to OUT");
+          "modulating an operator's output at 0 % shows its wire to OUT");
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "2c-modulated-out.png"), "render a modulated output at 0 %");
     view.menuCommand(outDisconnect(bOut));
@@ -4049,10 +4059,10 @@ void run(const std::filesystem::path &dir, float scale) {
             const int lfoUsed = used(0);
             view.mouseDown(sourceHandle(0), {});
             view.mouseMove({sourceHandle(0).x + 40.0f, sourceHandle(0).y - 40.0f}, {});
-            view.mouseMove(kOutKnob, {});
+            view.mouseMove(kPanKnob, {});
             view.cancelDrag();
             const bool unassigned = used(0) == lfoUsed;
-            drag(view, sourceHandle(0), kOutKnob);
+            drag(view, sourceHandle(0), kPanKnob);
             const bool assigns = used(0) == lfoUsed + 1;
             view.undo();
             const double fm = model.value(fmAmount);

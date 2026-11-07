@@ -86,6 +86,8 @@ enum class OpParam {
     FixedMult,                      // one of kFixedMults, by number
     Phase,                          // 0..1 of a cycle: where a note starts the waveform (see PhaseRandom)
     Ratio,                          // 0..1 on a log curve, 0.5 to 64 times the note; see ratioFromNorm()
+    Pan,                            // -1..1: where what it puts out (to the output, the filters, the shapers) sits;
+                                    // what other operators hear of it stays mono
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -1172,7 +1174,8 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(kOps - 1, OpParam::FixedMult)) == 377 &&
                   idOfIndex(paramIndex(0, OpParam::RetiredVelocity)) == 108 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Phase)) == 378 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::Ratio)) == 379,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::Ratio)) == 379 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 && kOpParamCount <= 50,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");

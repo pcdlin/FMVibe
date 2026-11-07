@@ -1579,6 +1579,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             return envRates(times[0], times[1], times[2], times[3], times[4], times[5], times[6], times[7], rate_);
         });
         target.out[i] = p[paramIndex(i, OpParam::Out)];
+        // Its Pan, equal-power and unity at the center, as the voice's (above): on what it puts out, to the output,
+        // the filters and the shapers; what other operators hear of it stays mono.
+        const double opPan = std::clamp(p[paramIndex(i, OpParam::Pan)], -1.0, 1.0);
+        const double opAngle = (opPan + 1.0) * std::numbers::pi / 4.0;
+        target.panL[i] = std::numbers::sqrt2 * std::cos(opAngle);
+        target.panR[i] = std::numbers::sqrt2 * std::sin(opAngle);
         double heard = target.out[i];
         for (int f = 0; f < kFilters; ++f) {
             target.send[i][f] = filterEnabled[f] ? p[sendIndex(i, f)] : 0.0;
@@ -1628,7 +1634,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             return c;
         });
-        stereo = stereo || ((copies[i] > 1 || noise[i]) && spread > 0.0 && heard > 0.0);
+        // Panned, or still ramping back from a pan, it is stereo too.
+        const bool panned = opPan != 0.0 || v.levels.panL[i] != v.levels.panR[i];
+        stereo = stereo || (((copies[i] > 1 || noise[i]) && spread > 0.0) || panned) && heard > 0.0;
         // The copies' increments move to this block's over its length rather than jumping at its start, so
         // modulated pitch (Ratio most of all) doesn't step every control block.
         if (starting || !op.incKnown || op.incCopies != copies[i])
@@ -2059,8 +2067,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             op.out = mono * monoGain[i] * envLevel;
             if (i == scopeOp)
                 scopeTake(scopePhase, op.out);
-            l *= envLevel;
-            r *= envLevel;
+            l *= envLevel * level.panL[i];
+            r *= envLevel * level.panR[i];
             if (route.out) {
                 mix[0] += l * level.out[i];
                 mix[1] += r * level.out[i];

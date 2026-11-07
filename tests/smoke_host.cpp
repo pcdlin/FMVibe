@@ -1375,6 +1375,67 @@ int main(int argc, char **argv) {
     const clap_event_param_value_t unisonOff = paramEvent(paramIndex(0, OpParam::Unison), 1.0);
     runBlock({&unisonOff.header});
 
+    // An operator's Pan: A hard left puts out nothing on the right and the left at the equal-power gain, through a
+    // filter too; a modulator panned changes nothing it modulates, since what operators hear stays mono.
+    {
+        struct Take {
+            float left = 0.0f, right = 0.0f;
+            std::vector<float> samples;
+        };
+        auto play = [&](const std::vector<std::pair<int, double>> &values) {
+            std::vector<clap_event_param_value_t> evs;
+            for (const auto &[index, value] : values)
+                evs.push_back(paramEvent(index, value));
+            std::vector<const clap_event_header_t *> events;
+            for (const clap_event_param_value_t &ev : evs)
+                events.push_back(&ev.header);
+            runBlock(events);
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 46, 69);
+            runBlock({&on.header});
+            Take take;
+            for (int b = 0; b < 8; ++b) {
+                runBlock();
+                for (uint32_t i = 0; i < kBlock; ++i) {
+                    take.left = std::max(take.left, std::fabs(left[i]));
+                    take.right = std::max(take.right, std::fabs(right[i]));
+                    take.samples.push_back(left[i]);
+                }
+            }
+            runBlock({&chokeAll.header});
+            return take;
+        };
+        const int aPan = paramIndex(0, OpParam::Pan), bPan = paramIndex(1, OpParam::Pan);
+        const Take centered = play({{aPan, 0.0}});
+        const Take hardLeft = play({{aPan, -1.0}});
+        const Take hardRight = play({{aPan, 1.0}});
+        const Take filtered = play({{aPan, -1.0},
+                                    {paramIndex(0, OpParam::Out), 0.0},
+                                    {sendIndex(0, 0), 1.0},
+                                    {paramIndex(0, FilterParam::Enabled), 1.0},
+                                    {paramIndex(0, FilterParam::Out), 1.0}});
+        std::printf("      pan: centered %.3f/%.3f, left %.3f/%.4f, right %.4f/%.3f, filtered left %.3f/%.4f\n",
+                    centered.left, centered.right, hardLeft.left, hardLeft.right, hardRight.left, hardRight.right,
+                    filtered.left, filtered.right);
+        check(centered.left > 0.05f && std::abs(centered.left - centered.right) < 1e-6f &&
+                  std::abs(hardLeft.left / centered.left - std::sqrt(2.0f)) < 0.01f && hardLeft.right < 1e-6f &&
+                  std::abs(hardRight.right / centered.left - std::sqrt(2.0f)) < 0.01f && hardRight.left < 1e-6f,
+              "an operator's Pan places it, equal-power");
+        check(filtered.left > 0.01f && filtered.right < 1e-6f, "an operator panned through a filter stays panned");
+        const Take modulated = play({{aPan, 0.0},
+                                     {paramIndex(0, OpParam::Out), 1.0},
+                                     {sendIndex(0, 0), 0.0},
+                                     {paramIndex(0, FilterParam::Enabled), 0.0},
+                                     {paramIndex(0, FilterParam::Out), 0.0},
+                                     {paramIndex(1, OpParam::Enabled), 1.0},
+                                     {matrixIndex(1, 0), 0.5}});
+        const Take modulatorPanned = play({{bPan, 1.0}});
+        check(modulated.samples == modulatorPanned.samples && modulated.left > 0.05f,
+              "a modulator's Pan leaves what it modulates alone");
+        const clap_event_param_value_t back[] = {paramEvent(bPan, 0.0), paramEvent(matrixIndex(1, 0), 0.0),
+                                                 paramEvent(paramIndex(1, OpParam::Enabled), 0.0)};
+        runBlock({&back[0].header, &back[1].header, &back[2].header});
+    }
+
     // Phase randomization: at 0 % every note starts the waveform at the same
     // point, so two notes begin identically; at 100 % they don't.
     auto firstBlocksMatch = [&](double amount) {

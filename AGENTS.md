@@ -109,6 +109,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     off left out, its notch taking its frequency away (and leaving an octave off it mostly alone), and its Amount
     mixing it with what goes in;
   - unison copies spread across the stereo field (and match when centered);
+  - an operator's Pan placing it, equal-power, through a filter too, and a modulator's leaving what it modulates
+    alone;
   - mono: a new key takes the voice over, letting go returns to the held key, and every note reports `NOTE_END`
     exactly once;
   - the sustain pedal (CC 64) holding a note let go until it comes up; a key struck again under it letting its held
@@ -143,7 +145,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
     feedback and a driven filter;
-  - zipper noise from an LFO on an operator's level, a matrix amount and a filter cutoff;
+  - zipper noise from an LFO on an operator's level and Pan, a matrix amount and a filter cutoff;
   - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
     LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
@@ -247,7 +249,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undoably, back to its first bow by a double-click or Reset Bend, its bend going with it when it is
     disconnected, and one along the panel's top bowing only as far as keeps it and its label inside (read off the
     rendered pixels);
-  - an operator lighting up while modulation opens its route from 0 % (read off the rendered pixels);
+  - an operator lighting up while modulation opens its route from 0 % (read off the rendered pixels), and
+    modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
+  - an operator's Pan knob turning from its middle and reset to it by a double-click;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
     one's ghost filled while it is shown (read off the rendered pixels);
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something
@@ -636,7 +640,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,220 of the 18,039 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,226 of the 18,045 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

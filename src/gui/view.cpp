@@ -1983,9 +1983,9 @@ std::vector<View::Widget> View::widgets() const {
             // Its slope and stereo spread take the place of the pitch knobs; the unison row shows the spectrum. Noise
             // has no cycle to start, so no Phase.
             const int params[] = {paramIndex(op, OpParam::NoiseSlope), paramIndex(op, OpParam::UnisonSpread), -1, -1,
-                                  -1, paramIndex(op, OpParam::Out)};
+                                  -1, paramIndex(op, OpParam::Pan)};
             const char *const labels[] = {tr(Str::LabelSlope), tr(Str::LabelSpread), nullptr,
-                                          nullptr,             nullptr,              tr(Str::LabelOut)};
+                                          nullptr,             nullptr,              tr(Str::LabelPan)};
             opKnobRow(params, labels);
         } else {
             // The Ratio readout takes the first two places; fixed, Freq and Mult take its place, and Pitch and Detune,
@@ -1994,13 +1994,13 @@ std::vector<View::Widget> View::widgets() const {
             const int params[] = {fixed ? paramIndex(op, OpParam::FixedFreq) : -1,
                                   fixed ? paramIndex(op, OpParam::FixedMult) : -1,
                                   paramIndex(op, OpParam::Transpose), paramIndex(op, OpParam::Detune),
-                                  paramIndex(op, OpParam::Phase), paramIndex(op, OpParam::Out)};
+                                  paramIndex(op, OpParam::Phase), paramIndex(op, OpParam::Pan)};
             const char *const labels[] = {fixed ? tr(Str::LabelFreq) : nullptr,
                                           fixed ? tr(Str::LabelMult) : nullptr,
                                           tr(Str::LabelPitch),
                                           tr(Str::LabelDetune),
                                           tr(Str::LabelPhase),
-                                          tr(Str::LabelOut)};
+                                          tr(Str::LabelPan)};
             const size_t row = list.size();
             opKnobRow(params, labels);
             for (size_t i = row; i < list.size(); ++i)

@@ -211,6 +211,7 @@ void buildTable(ParamTable &t) {
             0.0);
         add(paramIndex(op, OpParam::Out), name + " " + tr(Str::ParamOut), module, ParamKind::Percent, 0.0, 1.0,
             first ? 1.0 : 0.0);
+        add(paramIndex(op, OpParam::Pan), name + " " + tr(Str::ParamPan), module, ParamKind::Pan, -1.0, 1.0, 0.0);
         add(paramIndex(op, OpParam::Attack), name + " " + tr(Str::ParamAttack), module, ParamKind::EnvTime,
             kMinEnvNorm, kMaxEnvNorm, 0.0);
         add(paramIndex(op, OpParam::Decay), name + " " + tr(Str::ParamDecay), module, ParamKind::EnvTime, kMinEnvNorm,

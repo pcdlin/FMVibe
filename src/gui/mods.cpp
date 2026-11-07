@@ -521,7 +521,7 @@ View::MenuNode View::cascadeCategories() const {
         // In two columns, about as tall: the pitch, level, phase and unison, then the envelope and the noise.
         const std::pair<Str, std::vector<OpParam>> sections[] = {
             {Str::CascadePitch, {OpParam::Ratio, OpParam::Transpose, OpParam::Detune, OpParam::FixedFreq}},
-            {Str::CascadeLevel, {OpParam::Out}},
+            {Str::CascadeLevel, {OpParam::Out, OpParam::Pan}},
             {Str::CascadePhase, {OpParam::Phase}},
             {Str::CascadeUnison, {OpParam::UnisonDetune, OpParam::UnisonSpread, OpParam::PhaseRandom}},
             {Str::CascadeEnvelope,

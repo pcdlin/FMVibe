@@ -1470,6 +1470,12 @@ int main() {
         const double cutoff = unexpectedDb(steadyTone(1, key, cutoffMod), partials);
         std::printf("      %-30s %7.1f\n", "LFO on filter cutoff", cutoff);
         check(cutoff < -80.0, "LFO on a filter cutoff doesn't zipper");
+
+        // An operator's Pan, swept: its left channel's gain moves with it, smoothly.
+        auto panMod = [&](ParamValues &p) { lfoOn(p, paramIndex(0, OpParam::Pan), 0.3, lfo); };
+        const double pan = unexpectedDb(steadyTone(1, key, panMod), partials);
+        std::printf("      %-30s %7.1f\n", "LFO on operator Pan", pan);
+        check(pan < -80.0, "LFO on an operator's Pan doesn't zipper");
     }
 
     // --- The random LFO: how far its steps go with chaos, and how smoothing glides between them.
