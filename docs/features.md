@@ -221,7 +221,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. The browser demo has no
     host: its page has a **Tempo** field under the editor instead (20–999 BPM, 120 to begin with, remembered by the
     browser), which every synced LFO, delay and sweep follows. A new LFO starts synced, in quarter notes. The note
-    value takes modulation like a knob, from the editor's sources and the host's, but in steps: it moves from one
+    value takes modulation like a knob, from the editor's sources, but in steps: it moves from one
     note value to the next along the list (up for faster), never between them, and the dot on its knob stands on
     the one playing.
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
@@ -238,7 +238,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Custom** shapes are drawn from 2 to 64 points, starting as a triangle: up from the bottom to the top at the
     middle of the cycle and down again. Each segment between two points can be bent, from easing in
     to easing out, and the last segment wraps around to the first point, so the cycle loops without a jump. The
-    points are saved with the patch (as hidden params, so hosts record edits for undo but don't list them).
+    points are saved with the patch (as params of the editor's own, which hosts aren't given: see
+    [CLAP and VST3](#clap-and-vst3)).
 - **Effects**, after the voices: everything the operators and filters send to the output runs through a chain of
   up to 16 effects. A new instance starts with an empty chain. Any effect can be added more than once, switched on
   and off, reordered and removed.
@@ -298,7 +299,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     pulled down 3:1 above −20 dB and lifted 2:1 below −40 dB. **Link** edits the bands together: while it
     is on, changing one band's threshold, ratio or gain in the editor (a knob, a line, a zone, a typed value)
     sets every band's to the same value, as one undo step. Each band always plays its own settings, so turning Link
-    on changes nothing until the next edit, and a host's automation of one band's param moves that band alone. It
+    on changes nothing until the next edit, and a modulation of one band's param moves that band alone. It
     replaces the 3-Band Comp,
     which the list of effects no longer offers: a project or preset saved with one before then loads it as a 3-Band Dynamics
     doing what it did, its crossovers, thresholds (as Above), ratios (as Down), gains, Attack, Release, Mix,
@@ -366,8 +367,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and
   mixes ramp to a new setting sample by sample, however the host splits the block. As the effects are shared by all voices, the LFOs and envelopes
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of
-  every effect type, and hosts only list the ones of the effect it holds. Each effect gets a remote control page in
-  chain order.
+  every effect type. Hosts aren't given the effects' parameters: an effect is set and automated from the editor's
+  sources only, and has no remote control page.
 - **Global**: **Volume**, the level of the whole output after the effects (−60 to +12 dB, −12 to begin with, room
   for chords and stacked operators; at 0 dB a full-scale operator comes out at full scale. The voices go into the
   effects at a level of their own, 12 dB down, so the effects' drive and thresholds don't depend on it, and Volume
@@ -423,11 +424,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     reached 20 s (state version 6 and earlier) load a longer glide as 6 s, and a modulation's depth on it larger by
     as much as its range shrank, so it swings Glide as far as it did.
 - **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
-  parameters accept CLAP modulation globally, the macros' knobs and depths, the
-  mod wheel, the note source's range and depths, velocity's depths and every modulation's Amount and curve among them; those
-  the voices read also per
-  voice (not Volume, the mod wheel, the effects, the macros, the note source or velocity), so Bitwig's modulators
-  (including per-note ones) can drive them directly.
+  parameters hosts are given accept CLAP modulation globally, the macros' knobs, the mod wheel, the note source's
+  range and every modulation's depth and Amount among them (not the effects or the sources' own knobs, which hosts
+  aren't given); those the voices read also per voice (not Volume, the mod wheel, the macros, the note source or
+  velocity), so Bitwig's modulators (including per-note ones) can drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
   clicking; a voice that hasn't played yet, and an operator still in its attack, count as loud, so a chord played
   into full voices takes the oldest rather than its own notes), and note expressions (tuning, volume, pan, and pressure and brightness for MIDI sources; see
@@ -790,7 +790,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     readout takes the first two knobs' places: four digits of a 7-segment display (88.88, the tens dark below 10),
     each its own handle. A digit dragged up or down steps by its own place (tens 10, ones 1, tenths 0.1, hundredths
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
-    the digit under the mouse, and a double-click rounds to it (on the ones, 3.47 becomes 3.00). The digit under the
+    the digit under the mouse, and a double-click resets it and the digits below it to those of 1.00 (on the ones, 23.47 becomes 21.00). The digit under the
     mouse, or being dragged, is lit behind. Ctrl+Click or the menu's Edit value types a value, which can be a
     fraction (7/2) or start with ×. Over the digits a track runs from 0.5 to 64 in a straight line: a tick at the ratio (at its right end at 64),
     each modulation's reach in its source's color (wider while its depth handle is hovered, with an arrow after the
@@ -956,7 +956,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     note source, the mod wheel or velocity); so do **Bypass** / **Resume** in the right-click
     menus of the row, the
     knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed. Bypasses
-    are saved with the patch (as hidden params, like the drawn shapes).
+    are saved with the patch (as params of the editor's own, like the drawn shapes).
   - A modulation's ring on a knob, and the bar on a label, cell or depth bar, show the range it swings through: both
     ways of the set value while its source is bipolar, or one way while it is unipolar.
   - While notes play, a white dot on each modulated knob shows where the newest voice currently is; with no note
@@ -1124,9 +1124,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 | Operators | Op A … Op F: Wave, Ratio, Pitch (Fixed Freq and Fixed Mult while the operator is fixed), Detune, Attack, Decay, Sustain, Release |
 | Filters | Filter 1 and 2: Type, Cutoff, Resonance, Key Track, Drive, Out, On, Slope; Filter links: F1 Feedback, F1 → F2, F2 → F1, F2 Feedback |
 | Shapers | Shaper 1 and 2: On, Curve, Drive, Output, Mix, Link, then what it feeds into F1 and F2 |
-| FX | One page per effect in the chain, named after its place and type, with that effect's knobs (a shimmer reverb's Pitch and Shimmer in place of its Pre-Delay and Width) |
 | Matrix | "A modulates" … "F modulates": what that operator modulates; "Into F1", "Into F2": each operator's send into that filter; "F1 modulates", "F2 modulates": the operators each filter modulates; "Into S1", "S1 modulates" and the same for S2: each operator's and filter's send into that shaper, and the operators it modulates; "Shapers into shapers": S1 Feedback, S1 → S2, S2 → S1, S2 Feedback |
-| Modulation | One page per source, in the editor's order: an LFO's shape, rate, sync and division, or an envelope's attack, decay, sustain and release, then its 4 slot depths |
+| Modulation | One page per source, in the editor's order: its first 8 slot depths |
 
 ## CLAP and VST3
 
@@ -1135,6 +1134,16 @@ the same engine, editor, parameters (with the same ids), presets and settings. T
 against the VST3 interfaces, with no wrapper in between, as one object that is both its processor and its edit
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
+
+Hosts are given 1,220 of FMVibe's 12,807 parameters: the globals, the operators, the matrix and the routes' modes,
+the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
+modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
+the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
+bypass, the freeform LFO shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
+counts, the chain order, the feedback's route modes and the retired fields. They are
+saved with the project and in presets like the others, the editor's sources modulate them and its history undoes
+them, but hosts can't automate them and don't record their edits: an edit of one marks the project changed
+instead.
 
 What the VST3 plugin does its own way:
 
@@ -1146,9 +1155,7 @@ What the VST3 plugin does its own way:
   them, and Pressure, one of FMVibe's own. For touch surfaces and MPE controllers, FMVibe tells hosts to send a
   finger's sideways movement as Tuning, its movement along the key as Brightness and how hard it presses as
   Pressure. A note-on's tuning (in cents) tunes the note from its start.
-- **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...). The fields of effects
-  and sources a slot or place doesn't hold are hidden, as in the CLAP plugin, and the host is told to look again
-  when they change. Parameters hosts don't show are read-only to them.
+- **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...).
 - **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), or changing the
   oversampling, asks the host to deactivate and reactivate the plugin (through a latency change, which has hosts do that).
 - **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end

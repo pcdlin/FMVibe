@@ -1441,10 +1441,10 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     view.wheel(kRatioHundredths, -1.0f, {});
     const bool wheeled = shown() == 234;
     doubleClick(view, kRatioOnes);
-    const bool rounded = shown() == 200;
-    doubleClick(view, kRatioTenths); // 2.00 is as round as the tenths go: no change
-    check(wheeled && rounded && shown() == 200,
-          "the wheel steps the Ratio digit under the mouse, and a double-click rounds to it");
+    const bool rounded = shown() == 100; // the ones and below back to 1.00's: 2.34 becomes 1.00
+    doubleClick(view, kRatioTenths); // 1.00 already has its tenths and hundredths at default: no change
+    check(wheeled && rounded && shown() == 100,
+          "the wheel steps the Ratio digit under the mouse, and a double-click resets it and the digits below");
 
     // The digit under the mouse is lit behind: a pixel in its corner, clear of its segments.
     const Point corner{kRatioTenths.x + 5.5f, kRatioTenths.y - 9.0f};

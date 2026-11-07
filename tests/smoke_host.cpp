@@ -166,6 +166,15 @@ clap_event_param_mod_t paramModEvent(int index, int32_t noteId, double amount) {
     return ev;
 }
 
+// The info hosts get for param `index`, looked up by its id in the list they are given; false for one they aren't
+// given.
+bool paramInfo(const clap_plugin_t *plugin, const clap_plugin_params_t *params, int index, clap_param_info_t *info) {
+    for (uint32_t i = 0; i < params->count(plugin); ++i)
+        if (params->get_info(plugin, i, info) && info->id == idOfIndex(index))
+            return true;
+    return false;
+}
+
 bool paramInfosAreSane(const clap_plugin_t *plugin, const clap_plugin_params_t *params) {
     std::set<clap_id> seen;
     for (uint32_t i = 0; i < params->count(plugin); ++i) {
@@ -304,8 +313,29 @@ int main(int argc, char **argv) {
     if (!params || !state || !remote)
         return 1;
 
-    check(params->count(plugin) == static_cast<uint32_t>(kParamCount) && paramInfosAreSane(plugin, params),
+    check(params->count(plugin) < static_cast<uint32_t>(kParamCount) && paramInfosAreSane(plugin, params),
           "param infos: unique ids, names, defaults within range");
+    {
+        // Hosts are given the params they can automate and see, and not those drawn and wired in the editor alone,
+        // whose values still read back by their ids.
+        auto listed = [&](int index) {
+            clap_param_info_t info{};
+            return paramInfo(plugin, params, index, &info);
+        };
+        double point = -1.0;
+        check(listed(paramIndex(GlobalParam::Volume)) && !listed(paramIndex(0, FxParam::DelayMix)) &&
+                  !listed(paramIndex(0, SourceParam::Rate)) && !listed(slotTargetIndex(0, 0)) &&
+                  !listed(slotTargetIndex(kMaxSources, 0)) && listed(slotAmountIndex(0, 0)) &&
+                  listed(slotAmountIndex(kMaxSources, 0)) && listed(slotScaleIndex(0, 0)) &&
+                  listed(slotScaleIndex(kVelocitySource, kSlots - 1)) &&
+                  listed(paramIndex(0, MacroParam::Value)) &&
+                  !listed(paramIndex(GlobalParam::FxOrder)) && !listed(shapeCountIndex(0)) &&
+                  !listed(partialCountIndex(0)) && !listed(slotAuxIndex(0, 0)) && !listed(slotCurveIndex(0, 0)) &&
+                  !listed(slotBypassIndex(0, 0)) && !listed(routeModeIndex(0, 0)) && listed(routeModeIndex(0, 1)) &&
+                  params->get_value(plugin, idOfIndex(shapeCountIndex(0)), &point) && point >= 0.0,
+              "hosts are given the params they automate and see and the slots' depths and Amounts, not the effects, "
+              "the sources' own fields or the editor's drawn shapes and wiring");
+    }
     check(paramTextRoundTrips(plugin, params), "param text conversions read back what they write");
     check(paramTextsAreWholeUtf8(plugin, params), "param names and texts are whole UTF-8, even in small buffers");
     {
@@ -325,7 +355,7 @@ int main(int argc, char **argv) {
         for (int index : {paramIndex(NoteParam::Low), paramIndex(NoteParam::High)}) {
             clap_param_info_t info;
             char low[32] = {}, high[32] = {};
-            rangeOk = rangeOk && params->get_info(plugin, static_cast<uint32_t>(index), &info) &&
+            rangeOk = rangeOk && paramInfo(plugin, params, index, &info) &&
                       params->value_to_text(plugin, info.id, info.min_value, low, sizeof(low)) &&
                       params->value_to_text(plugin, info.id, info.max_value, high, sizeof(high)) &&
                       std::strcmp(low, "C-1") == 0 && std::strcmp(high, "D#10 +8") == 0 &&
@@ -340,20 +370,26 @@ int main(int argc, char **argv) {
     {
         auto infoOf = [&](int index) {
             clap_param_info_t info{};
-            params->get_info(plugin, static_cast<uint32_t>(index), &info);
+            paramInfo(plugin, params, index, &info);
             return info;
         };
-        bool defaults = infoOf(paramIndex(0, FxParam::ShaperLink)).default_value == 1.0 &&
-                        infoOf(paramIndex(0, FxParam::FilterKeyTrack)).default_value == 0.0 &&
-                        infoOf(paramIndex(0, FxParam::FlangerStereo)).default_value == 1.0;
+        // The params hosts aren't given: their values as a new instance has them.
+        auto startsAt = [&](int index) {
+            double value = -1.0;
+            params->get_value(plugin, idOfIndex(index), &value);
+            return value;
+        };
+        bool defaults = startsAt(paramIndex(0, FxParam::ShaperLink)) == 1.0 &&
+                        startsAt(paramIndex(0, FxParam::FilterKeyTrack)) == 0.0 &&
+                        startsAt(paramIndex(0, FxParam::FlangerStereo)) == 1.0;
         for (int op = 0; op < kOps; ++op)
-            defaults = defaults && infoOf(partialCountIndex(op)).default_value == 32.0;
+            defaults = defaults && startsAt(partialCountIndex(op)) == 32.0;
         for (int f = 0; f < kFilters; ++f)
             defaults = defaults && infoOf(paramIndex(f, FilterParam::KeyTrack)).default_value == 0.0 &&
                        infoOf(paramIndex(f, FilterParam::Out)).default_value == 0.0;
-        const clap_param_info_t range = infoOf(paramIndex(0, FxParam::ShiftRange));
+        const int range = paramIndex(0, FxParam::ShiftRange);
         char text[32] = {};
-        defaults = defaults && params->value_to_text(plugin, range.id, range.default_value, text, sizeof(text)) &&
+        defaults = defaults && params->value_to_text(plugin, idOfIndex(range), startsAt(range), text, sizeof(text)) &&
                    std::strcmp(text, "100 Hz") == 0;
         check(defaults, "filters start without key tracking or going out, a shaper linked, a shifter's range at 100 Hz, "
                         "a flanger stereo and a Custom wave with 32 partials");
@@ -377,14 +413,20 @@ int main(int argc, char **argv) {
               "a new instance has only operator A switched on and heard, with no modulation");
     }
 
+    std::set<clap_id> listedIds;
+    for (uint32_t i = 0; i < params->count(plugin); ++i) {
+        clap_param_info_t info{};
+        if (params->get_info(plugin, i, &info))
+            listedIds.insert(info.id);
+    }
     bool pagesOk = remote->count(plugin) > 0;
     for (uint32_t i = 0; i < remote->count(plugin); ++i) {
         clap_remote_controls_page_t page;
         pagesOk = pagesOk && remote->get(plugin, i, &page);
         for (clap_id id : page.param_ids)
-            pagesOk = pagesOk && (id == CLAP_INVALID_ID || indexOfId(id) >= 0);
+            pagesOk = pagesOk && (id == CLAP_INVALID_ID || listedIds.count(id) > 0);
     }
-    check(pagesOk, "remote control pages point at existing params");
+    check(pagesOk, "remote control pages point at params hosts are given");
 
     // --- Audio.
     constexpr double kSampleRate = 48000.0;
@@ -1452,9 +1494,9 @@ int main(int argc, char **argv) {
         std::printf("      synced square LFO at 0.35 s, its note value modulated: %.3f by 2.6 steps, %.3f by 0.4; by "
                     "the host %.3f and %.3f\n",
                     eighth, withinStep, hostEighth, hostWithin);
-        clap_param_info_t divisionInfo{};
-        params->get_info(plugin, static_cast<uint32_t>(division), &divisionInfo);
-        const bool flagged = (divisionInfo.flags & CLAP_PARAM_IS_MODULATABLE) && (divisionInfo.flags & CLAP_PARAM_IS_STEPPED);
+        // Hosts aren't given it, but its slots' and the host's modulation reach it the same way.
+        const clap_param_info_flags divisionFlags = paramTable()[division].flags;
+        const bool flagged = (divisionFlags & CLAP_PARAM_IS_MODULATABLE) && (divisionFlags & CLAP_PARAM_IS_STEPPED);
         check(flagged && eighth == 0.0f && withinStep > 0.1f && hostEighth == 0.0f && hostWithin > 0.1f,
               "a synced LFO's note value takes modulation in steps");
 
@@ -1946,7 +1988,7 @@ int main(int argc, char **argv) {
                    {slotAmountIndex(kNoteSource, 0), 1.0}});
         const double onNote = magnitude(play(notch), 440.0) / open;
         clap_param_info_t cutoffInfo;
-        params->get_info(plugin, static_cast<uint32_t>(paramIndex(0, FilterParam::Cutoff)), &cutoffInfo);
+        paramInfo(plugin, params, paramIndex(0, FilterParam::Cutoff), &cutoffInfo);
         Patch fromMiddle = notch;
         fromMiddle.cutoffHz = cutoffFromNorm(cutoffInfo.default_value);
         setParams({{paramIndex(NoteParam::Bipolar), 1.0}});
@@ -2003,12 +2045,12 @@ int main(int argc, char **argv) {
               "a bipolar note source swings about the middle of what it puts out");
         setParams({{shapeFieldIndex(curve, 0, PointField::Y), 1.0}, {shapeFieldIndex(curve, 1, PointField::Y), -1.0}});
         const float flippedA3 = peakAt(57), flippedA5 = peakAt(81);
-        // Back to the range and curve it starts with, as the plugin lists them.
+        // Back to the range and curve it starts with: the range as the plugin lists it, the curve (which hosts
+        // aren't given) as the param table has it.
         std::vector<clap_event_param_value_t> back;
         for (int i = paramIndex(NoteParam::Low); i < paramIndex(NoteParam::Count); ++i) {
             clap_param_info_t info;
-            if (params->get_info(plugin, static_cast<uint32_t>(i), &info))
-                back.push_back(paramEvent(i, info.default_value));
+            back.push_back(paramEvent(i, paramInfo(plugin, params, i, &info) ? info.default_value : paramTable()[i].def));
         }
         std::vector<const clap_event_header_t *> events;
         for (const clap_event_param_value_t &ev : back)
@@ -2369,16 +2411,10 @@ int main(int argc, char **argv) {
         std::printf("      440 Hz through a low cut at 2 kHz: x%.3f, a +12 dB low shelf at 4 kHz: x%.2f\n", lowCut, lowShelf);
         check(lowCut < 0.1 && std::abs(lowShelf - 3.98) < 0.4, "the EQ's bands also cut and shelve");
         setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
-        // The third band starts switched off: set to a -12 dB bell on 440 Hz under the first band's +12 dB one, it
-        // does nothing until it is switched on; the first band switched off then leaves only the cut.
+        // The third band starts switched off (never switched here): set to a -12 dB bell on 440 Hz under the first
+        // band's +12 dB one, it does nothing until it is switched on; the first band switched off then leaves only the
+        // cut. Hosts aren't given the effects' fields, so their defaults show in what they play.
         {
-            auto startsAt = [&](int index) {
-                clap_param_info_t info{};
-                params->get_info(plugin, static_cast<uint32_t>(index), &info);
-                return info.default_value;
-            };
-            const bool startsOff = startsAt(peqOnIndex(4, 2)) == 0.0 && startsAt(peqOnIndex(4, 0)) == 1.0 &&
-                                   startsAt(peqOnIndex(4, 1)) == 1.0;
             setParams({{peqFreqIndex(4, 0), normFromCutoff(440.0)},
                        {peqFreqIndex(4, 2), normFromCutoff(440.0)},
                        {peqGainIndex(4, 2), -12.0}});
@@ -2389,7 +2425,7 @@ int main(int argc, char **argv) {
             const double firstOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
             std::printf("      440 Hz under a +12 dB bell: x%.2f, a -12 dB third band on too x%.2f, the first band "
                         "off x%.3f\n", thirdOff, thirdOn, firstOff);
-            check(startsOff && std::abs(thirdOff - 3.98) < 0.4 && std::abs(thirdOn - 1.0) < 0.15 &&
+            check(std::abs(thirdOff - 3.98) < 0.4 && std::abs(thirdOn - 1.0) < 0.15 &&
                       std::abs(firstOff - 0.251) < 0.03,
                   "the EQ's third band starts off and plays once on, and a band switched off is left out");
             setParams({{peqOnIndex(4, 0), 1.0}, {peqOnIndex(4, 2), 0.0}, {peqGainIndex(4, 2), 0.0}});
@@ -2408,18 +2444,16 @@ int main(int argc, char **argv) {
                   "the EQ's notch takes its frequency away, and leaves an octave off it mostly alone");
             setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
         }
-        // Amount mixes the EQ with what goes in: a +12 dB bell on 440 Hz (x3.98) at half is x2.49, and at 0 nothing.
+        // Amount mixes the EQ with what goes in: a +12 dB bell on 440 Hz (x3.98 above, at the Amount it starts with)
+        // at half is x2.49, and at 0 nothing.
         {
-            clap_param_info_t amount{};
-            params->get_info(plugin, static_cast<uint32_t>(fx(4, FxParam::PeqAmount)), &amount);
-            const bool full = amount.default_value == 1.0;
             setParams({{peqFreqIndex(4, 0), normFromCutoff(440.0)}, {fx(4, FxParam::PeqAmount), 0.5}});
             const double half = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
             setParams({{fx(4, FxParam::PeqAmount), 0.0}});
             const double none = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
             std::printf("      a +12 dB bell on 440 Hz at half its Amount: x%.2f, at none x%.3f\n", half, none);
-            check(full && std::abs(half - 2.49) < 0.15 && std::abs(none - 1.0) < 0.02,
-                  "the EQ's Amount mixes it with what goes in, and starts full");
+            check(std::abs(half - 2.49) < 0.15 && std::abs(none - 1.0) < 0.02,
+                  "the EQ's Amount mixes it with what goes in");
             setParams({{fx(4, FxParam::PeqAmount), 1.0}});
         }
         setParams({{type(4), static_cast<double>(FxType::None)}, {type(5), static_cast<double>(FxType::None)}});
@@ -3324,30 +3358,29 @@ int main(int argc, char **argv) {
         newer.data[4] = static_cast<uint8_t>(saved.data[4] + 1); // a state version from the future: one past the plugin's
         check(!state->load(plugin, &newer.in), "load rejects a newer state version");
 
-        // Hosts see a slot's fields for the effect it holds, and not the others.
+        // Hosts aren't given the effects' fields, whatever a slot holds, nor the sources' own, and so no effect has
+        // a remote control page.
+        auto listed = [&](int index) {
+            clap_param_info_t info{};
+            return paramInfo(plugin, params, index, &info);
+        };
         auto hidden = [&](int index) {
             clap_param_info_t info{};
-            params->get_info(plugin, static_cast<uint32_t>(index), &info);
-            return (info.flags & CLAP_PARAM_IS_HIDDEN) != 0;
+            return !paramInfo(plugin, params, index, &info) || (info.flags & CLAP_PARAM_IS_HIDDEN) != 0;
         };
-        check(!hidden(paramIndex(0, FxParam::DelayFeedback)) && hidden(paramIndex(0, FxParam::ShaperDrive)) &&
-                  !hidden(paramIndex(2, FxParam::Type)) && hidden(paramIndex(2, FxParam::Enabled)),
-              "an effect slot's unused fields are hidden from hosts");
+        check(!listed(paramIndex(0, FxParam::DelayFeedback)) && !listed(paramIndex(0, FxParam::Type)) &&
+                  !listed(paramIndex(1, FxParam::ShaperDrive)) && !listed(paramIndex(2, SourceParam::Rate)) &&
+                  !listed(paramIndex(9, SourceParam::Attack)) && !listed(paramIndex(0, SourceParam::Type)),
+              "hosts aren't given the effects' fields or the sources' own");
         uint32_t fxPages = 0;
         for (uint32_t i = 0; i < remote->count(plugin); ++i) {
             clap_remote_controls_page_t page;
             remote->get(plugin, i, &page);
             fxPages += std::strcmp(page.section_name, tr(Str::ModuleFx)) == 0;
         }
-        check(fxPages == 2, "each effect in the chain gets a remote control page");
+        check(fxPages == 0, "no effect gets a remote control page");
 
-        // Likewise a source place's fields for the type it holds, and a page per source,
-        // named by type in the order they show.
-        check(!hidden(paramIndex(2, SourceParam::Rate)) && hidden(paramIndex(2, SourceParam::Attack)) &&
-                  !hidden(paramIndex(9, SourceParam::Attack)) && hidden(paramIndex(9, SourceParam::Rate)) &&
-                  !hidden(slotAmountIndex(9, 0)) && !hidden(paramIndex(0, SourceParam::Type)) &&
-                  hidden(paramIndex(0, SourceParam::Enabled)) && hidden(slotAmountIndex(0, 0)),
-              "a source place's unused fields are hidden from hosts");
+        // A source's slot depths are, and each source gets a page of them, named by type in the order they show.
         std::vector<std::string> sourcePages;
         for (uint32_t i = 0; i < remote->count(plugin); ++i) {
             clap_remote_controls_page_t page;
@@ -3355,8 +3388,9 @@ int main(int argc, char **argv) {
             if (std::strcmp(page.section_name, tr(Str::ModuleModulation)) == 0)
                 sourcePages.push_back(page.page_name);
         }
-        check(sourcePages == std::vector<std::string>{trf(Str::SourceNameLfo, {"1"}), trf(Str::SourceNameEnv, {"1"})},
-              "each source gets a remote control page");
+        check(!hidden(slotAmountIndex(9, 0)) && !hidden(slotAmountIndex(2, kSlots - 1)) &&
+                  sourcePages == std::vector<std::string>{trf(Str::SourceNameLfo, {"1"}), trf(Str::SourceNameEnv, {"1"})},
+              "a source's slot depths are given to hosts, and each source gets a remote control page");
     }
 
     // Volume gives back the 12 dB the voices go into the effects with since version 2: a version 1 state's Volume
@@ -3609,9 +3643,10 @@ int main(int argc, char **argv) {
         bool tops = true;
         for (const int index : {opAttack, opHold, opDecay, opRelease, envAttack, envHold, envRelease,
                                 paramIndex(0, SourceParam::Decay), paramIndex(5, OpParam::Release)}) {
+            // Hosts are told the operators' tops; a mod envelope's (not given to hosts) is the table's.
             clap_param_info_t info{};
-            params->get_info(plugin, static_cast<uint32_t>(index), &info);
-            tops = tops && about(timeFromNorm(info.max_value), 10.0);
+            const double top = paramInfo(plugin, params, index, &info) ? info.max_value : paramTable()[index].max;
+            tops = tops && about(timeFromNorm(top), 10.0);
         }
         std::printf("      envelope times from a 20 s top: attack %.2f s, hold %.2f s, decay %.2f s, release %.2f s; "
                     "mod envelope attack %.2f s, hold %.2f s, release %.2f s\n",

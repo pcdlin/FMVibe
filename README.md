@@ -10,8 +10,8 @@ In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMV
 
 Implemented using Claude Code.
 
-The full feature reference is in [docs/features.md](docs/features.md); working on the code, its tests and the
-plugin's internals are in [AGENTS.md](AGENTS.md).
+The full feature reference is in [docs/features.md](docs/features.md).
+Information about working on the code, its tests and the plugin's internals are in [AGENTS.md](AGENTS.md).
 
 ## Download
 
@@ -28,29 +28,22 @@ Copying into a system-wide folder needs administrator rights.
 
 ## Build
 
-You need:
+Requirements:
 
-- Visual Studio 2026 with the *Desktop development with C++* workload. That workload already includes CMake and
-  Ninja, so nothing else needs installing.
-- Internet access on the first configure. CMake fetches the CLAP SDK 1.2.10, the VST3 SDK 3.8.1 (its interfaces,
-  and the parts its validator is built from) and clap-validator 0.4.1, all pinned by SHA-256, into
-  `build/<config>/_deps`.
+- Visual Studio 2026 with the *Desktop development with C++* workload (includes CMake and Ninja).
+- Internet access on the first configure: CMake fetches the CLAP SDK, the VST3 SDK and clap-validator.
 
 ```powershell
 .\build.ps1                    # release: configure, build, tests
 .\build.ps1 -Config debug      # debug build in build\debug
-.\build.ps1 -Validate          # also run clap-validator and Steinberg's VST3 validator against the plugins
-.\build.ps1 -Install           # also copy the plugins to %LOCALAPPDATA%\Programs\Common\CLAP and ...\VST3
-.\build.ps1 -Install -SkipTests  # build only the plugins and install them, without the tests
-.\build.ps1 -Install -Format vst3 -SkipTests  # the same for the VST3 plugin alone (or -Format clap)
+.\build.ps1 -Validate          # also run clap-validator and Steinberg's VST3 validator
+.\build.ps1 -Install           # also install the plugins into the per-user CLAP and VST3 folders
+.\build.ps1 -Install -SkipTests  # build only the plugins and install them
+.\build.ps1 -Install -Format vst3 -SkipTests  # one format only (or -Format clap)
 ```
 
-The plugins end up at `build\<config>\FMVibe.clap` and `build\<config>\FMVibe.vst3` (a folder, as VST3 has it).
-To try the plugin without a DAW, run `build\<config>\fmvibe-uihost.exe` (or `.\build.ps1 -Run -SkipTests`): it opens
-the editor in a window and plays it through the default output device, with notes from the editor's keyboard, the
-computer keyboard (A W S E D … from middle C, Z and X for the octave, C and V for the velocity) and any MIDI input.
-`build.ps1` loads the Visual Studio developer environment itself, so it works from any PowerShell window. Once it
-has run in a session, the plain CMake commands work too:
+`build.ps1` sets up the Visual Studio environment itself and runs from any PowerShell window. Output goes to
+`build\<config>\FMVibe.clap` and `build\<config>\FMVibe.vst3`. Once it has run in a session, plain CMake works too:
 
 ```powershell
 cmake --preset release
@@ -60,12 +53,12 @@ cmake --build --preset release --target validate
 cmake --install build\release
 ```
 
-You can also open the folder directly in Visual Studio, or in VS Code with the CMake Tools extension: both pick up
-the `debug` and `release` presets from `CMakePresets.json`.
+The folder also opens in Visual Studio or VS Code (CMake Tools), which pick up the `debug` and `release` presets from
+`CMakePresets.json`.
 
-`.\build.ps1 -Install` copies the plugins into the per-user CLAP and VST3 folders
-(`%LOCALAPPDATA%\Programs\Common\CLAP` and `%LOCALAPPDATA%\Programs\Common\VST3`), where hosts such as DAWs find
-them.
+To try the plugin without a DAW, run `build\<config>\fmvibe-uihost.exe` (or `.\build.ps1 -Run -SkipTests`). It opens
+the editor in a window and plays through the default output device; notes come from the editor's keyboard, the computer
+keyboard (A W S E D … from middle C, Z/X for the octave, C/V for the velocity) and any MIDI input.
 
 ## License
 

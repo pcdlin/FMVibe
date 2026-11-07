@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(FMVibe VERSION 0.4 LANGUAGES CXX)
+project(FMVibe VERSION 0.5 LANGUAGES CXX)
 
 # The version hosts are told and the settings dialog shows, for every target (the browser demo's too). Change it
 # in project() above.
@@ -184,7 +184,7 @@ install(TARGETS FMVibe-vst3 LIBRARY DESTINATION VST3/FMVibe.vst3/Contents/x86_64
 enable_testing()
 
 # Headless host that loads the built plugin, plays notes and opens the editor.
-add_executable(fmvibe-smoke tests/smoke_host.cpp src/uistrings.cpp)
+add_executable(fmvibe-smoke tests/smoke_host.cpp src/params.cpp src/uistrings.cpp)
 target_link_libraries(fmvibe-smoke PRIVATE clap)
 # For the param id helpers in params.h and the wordings in uistrings.h; the test still talks to the plugin only
 # through CLAP.

@@ -44,7 +44,10 @@ void PluginCore::layoutChanged() {
 
 void PluginCore::performSetValue(int index, double value) {
     storeValue(index, value);
-    hostEdit(index, value);
+    if (hostListed(index))
+        hostEdit(index, value);
+    else
+        hostMarkDirty(); // the host hears of no edit to mark the project by
     if (shapesSections(index))
         sectionsChanged();
     if (index == paramIndex(GlobalParam::Voices)) {
@@ -209,29 +212,17 @@ ParamValues PluginCore::valuesNow() const {
 }
 
 void PluginCore::sectionsChanged() {
-    std::array<int64_t, kFxSlots + 1 + 2 * kMaxSources + kFxSlots> now{};
-    for (int slot = 0; slot < kFxSlots; ++slot) {
-        now[slot] = std::lround(values_[paramIndex(slot, FxParam::Type)].load());
-        if (fxType(static_cast<double>(now[slot])) == FxType::Reverb) // a shimmer's page differs
-            now[kFxSlots + 1 + 2 * kMaxSources + slot] =
-                static_cast<int64_t>(reverbType(values_[paramIndex(slot, FxParam::ReverbType)].load()));
-    }
-    now[kFxSlots] = std::llround(values_[paramIndex(GlobalParam::FxOrder)].load()); // up to 16!, past a long
+    std::array<int64_t, kOps + 2 * kMaxSources> now{};
+    for (int op = 0; op < kOps; ++op)
+        now[op] = values_[paramIndex(op, OpParam::Fixed)].load() >= 0.5;
     for (int source = 0; source < kMaxSources; ++source) {
-        now[kFxSlots + 1 + source] = std::lround(values_[paramIndex(source, SourceParam::Type)].load());
-        now[kFxSlots + 1 + kMaxSources + source] = layout_.sourceOrder[source];
+        now[kOps + source] = std::lround(values_[paramIndex(source, SourceParam::Type)].load());
+        now[kOps + kMaxSources + source] = layout_.sourceOrder[source];
     }
     if (now == shownSections_)
         return;
-    auto types = [](const auto &a) { // which effect or source each slot and place holds
-        std::array<int64_t, kFxSlots + kMaxSources> t{};
-        std::copy_n(a.begin(), kFxSlots, t.begin());
-        std::copy_n(a.begin() + kFxSlots + 1, kMaxSources, t.begin() + kFxSlots);
-        return t;
-    };
-    const bool typesChanged = types(now) != types(shownSections_);
     shownSections_ = now;
-    hostSectionsChanged(typesChanged);
+    hostSectionsChanged();
 }
 
 void PluginCore::editorFitChanged() {
@@ -276,7 +267,7 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(loaded[i]);
     valuesChanged();
-    // Hosts re-read the values only when asked; any hidden flags follow in sectionsChanged().
+    // Hosts re-read the values only when asked; the remote pages follow in sectionsChanged().
     hostValuesChanged();
     // The state's voice limit: more voices than are allocated take a restart (a lower limit the audio thread takes
     // at its next block), and hosts read the voice info again.
@@ -323,7 +314,7 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
 void PluginCore::notifyParams(const ParamValues &before) {
     for (int i = 0; i < kParamCount; ++i) {
         const double value = values_[i].load();
-        if (value == before[i])
+        if (value == before[i] || !hostListed(i))
             continue;
         hostBeginEdit(i);
         hostEdit(i, value);

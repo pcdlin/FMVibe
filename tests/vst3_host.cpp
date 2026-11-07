@@ -444,9 +444,17 @@ int main(int argc, char **argv) {
               plugin.processor->canProcessSampleSize(kSample64) != kResultTrue,
           "32-bit processing only");
 
-    // --- Params: FMVibe's, with the CLAP plugin's ids, then the MIDI controllers'.
+    // --- Params: those FMVibe gives hosts, with the CLAP plugin's ids, then the MIDI controllers'.
     const int32 paramCount = plugin.controller->getParameterCount();
-    check(paramCount == kParamCount + vst3::kMidiParamCount, "every param and every MIDI controller's");
+    check(paramCount == hostParamCount() + vst3::kMidiParamCount && hostParamCount() < kParamCount,
+          "every param hosts are given and every MIDI controller's");
+    // Where param `index` is in the list hosts are given.
+    auto hostIndexOf = [](int index) {
+        for (int h = 0; h < hostParamCount(); ++h)
+            if (hostParamIndex(h) == index)
+                return h;
+        return -1;
+    };
     std::set<ParamID> ids;
     bool sameIds = true, unitsKnown = true, roundTrips = true, defaultsRight = true;
     std::set<UnitID> unitIds;
@@ -467,10 +475,10 @@ int main(int argc, char **argv) {
         }
         ids.insert(p.id);
         unitsKnown = unitsKnown && unitIds.count(p.unitId) == 1;
-        if (i >= kParamCount)
+        if (i >= hostParamCount())
             continue;
-        sameIds = sameIds && p.id == idOfIndex(i);
-        const ParamDef &def = paramTable()[i];
+        sameIds = sameIds && p.id == idOfIndex(hostParamIndex(i));
+        const ParamDef &def = paramTable()[hostParamIndex(i)];
         // Plain to normalized and back gives the value again: exactly, for a stepped param.
         for (double v : {def.min, def.def, def.max}) {
             const double back = plugin.controller->normalizedParamToPlain(
@@ -488,7 +496,7 @@ int main(int argc, char **argv) {
     const int volume = paramIndex(GlobalParam::Volume);
     const ParamID volumeId = idOfIndex(volume);
     ParameterInfo volumeInfo{};
-    plugin.controller->getParameterInfo(volume, volumeInfo);
+    plugin.controller->getParameterInfo(hostIndexOf(volume), volumeInfo);
     check(narrow(volumeInfo.title) == tr(Str::ParamVolume) && (volumeInfo.flags & ParameterInfo::kCanAutomate) &&
               !(volumeInfo.flags & ParameterInfo::kIsHidden),
           "Volume is named and automatable");
@@ -500,29 +508,27 @@ int main(int argc, char **argv) {
               std::abs(parsed - minus6) < 1e-9,
           "a value's text, and back");
     ParameterInfo voicesInfo{};
-    plugin.controller->getParameterInfo(paramIndex(GlobalParam::Voices), voicesInfo);
+    plugin.controller->getParameterInfo(hostIndexOf(paramIndex(GlobalParam::Voices)), voicesInfo);
     check(voicesInfo.stepCount == kMaxVoices - 1 && !(voicesInfo.flags & ParameterInfo::kCanAutomate),
           "Voices is stepped and not automatable");
     ParameterInfo midiInfo{};
-    plugin.controller->getParameterInfo(kParamCount, midiInfo);
+    plugin.controller->getParameterInfo(hostParamCount(), midiInfo);
     check(midiInfo.id == vst3::kMidiParamBase && (midiInfo.flags & ParameterInfo::kIsHidden),
           "MIDI controllers' params are hidden");
 
-    // A field of an effect the slot doesn't hold is hidden; once it holds that effect, the host hears to look again.
-    const int delayTime = paramIndex(0, FxParam::DelayTimeR);
-    const int slotType = paramIndex(0, FxParam::Type);
-    ParameterInfo fieldInfo{};
-    plugin.controller->getParameterInfo(delayTime, fieldInfo);
-    const bool hiddenBefore = (fieldInfo.flags & ParameterInfo::kIsHidden) != 0;
-    plugin.controller->setParamNormalized(idOfIndex(slotType),
-                                          plugin.controller->plainParamToNormalized(
-                                              idOfIndex(slotType), static_cast<double>(FxType::Delay)));
-    pumpMessages(50);
-    plugin.controller->getParameterInfo(delayTime, fieldInfo);
-    check(hiddenBefore && !(fieldInfo.flags & ParameterInfo::kIsHidden) && (handler.restarts & kParamTitlesChanged),
-          "an effect's fields show once its slot holds it, and the host is told");
-    plugin.controller->setParamNormalized(idOfIndex(slotType), 0.0);
-    pumpMessages(50);
+    // The effects, the sources' own fields and the slots' wiring aren't given to hosts, their depths and Amounts
+    // are, and every param they are given shows: an effect or source changing type changes nothing they see.
+    bool noneHidden = true;
+    for (int32 i = 0; i < hostParamCount(); ++i) {
+        ParameterInfo p{};
+        noneHidden = noneHidden && plugin.controller->getParameterInfo(i, p) == kResultOk &&
+                     !(p.flags & ParameterInfo::kIsHidden);
+    }
+    check(hostIndexOf(paramIndex(0, FxParam::DelayTimeR)) < 0 && hostIndexOf(paramIndex(0, SourceParam::Rate)) < 0 &&
+              hostIndexOf(slotAmountIndex(0, 0)) >= 0 && hostIndexOf(slotScaleIndex(0, 0)) >= 0 &&
+              hostIndexOf(slotTargetIndex(kMaxSources, 0)) < 0 && hostIndexOf(slotCurveIndex(0, 0)) < 0 && noneHidden,
+          "hosts are given the slots' depths and Amounts, not the effects, the sources' own fields or the slots' "
+          "wiring, and the params they are given all show");
 
     // MIDI controllers, channel pressure and pitch bend map onto params, per channel.
     ParamID bendId = 0, ccId = 0, other = 0;

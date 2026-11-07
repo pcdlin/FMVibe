@@ -38,6 +38,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   table, text round-trips (at each end and just inside it too, the slowest sweep rate and the shortest time typed
   neither still nor Off), the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:
+  - hosts given the params they automate and see and the slots' depths and Amounts, and not the effects, the
+    sources' own fields, the slots' wiring or the editor's drawn shapes (whose values still read back by id); no
+    effect getting a remote-control page, a page per source, and the pages pointing only at params hosts are given;
   - sound comes out and `NOTE_END` arrives after the release;
   - voice stealing and choke, and a reset ending the notes playing, their ends reported in the next block;
   - per-voice host modulation, and a mod-envelope slot driving its target, and running its release out after
@@ -366,10 +369,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     ask for an interface it doesn't have; the component being its own controller, with MIDI mapping, note
     expressions, units and its process context needs (the tempo, and the transport's state and position);
   - the buses (a stereo output, refusing mono, and a 16-channel note input) and 32-bit processing only;
-  - the params: every one, with the CLAP plugin's ids, all different, each in a unit the plugin lists, going to
+  - the params: every one hosts are given, fewer than the engine's, with the CLAP plugin's ids, all different, each in a unit the plugin lists, going to
     normalized and back unchanged (a stepped one exactly), their defaults, a value's text and back, Voices stepped
-    and not automatable, the MIDI controllers' params hidden, and an effect's fields showing once its slot holds it,
-    with the host told; the MIDI mapping (per channel, on the note input only), the note expressions and the
+    and not automatable, the MIDI controllers' params hidden, the effects, the sources' own fields and the slots'
+    wiring not given to hosts (their depths and Amounts given), and every param they are given showing; the MIDI
+    mapping (per channel, on the note input only), the note expressions and the
     physical UI mapping;
   - playing: an A4 at 440 Hz, bent through the MIDI-mapped pitch bend, tuned an octave by a note expression on its id
     (and not by one on another id), its level set by a volume expression, automation landing at its place in a
@@ -609,14 +613,24 @@ itself.
   state keeps it as it is.
 - Like an effect slot, each of the 16 source places has the fields of every type (an LFO's, an envelope's, and
   Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random or MIDI) that
-  picks which are used (`sourceFieldUsedBy()`). Hosts name the fields by place ("Mod 3 Rate"), since a name can't
-  follow the type; fields of the other types are hidden from them. A MIDI source takes CLAP MIDI events
+  picks which are used (`sourceFieldUsedBy()`). Hosts are given only a place's slot depths and Amounts; its fields go by place
+  ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- A slot's *target* param stores the target's id + 1 (0 = unused). Targets aren't offered for automation, since
-  they are wiring, but they are saved like any other param. Their depths are normal automatable params. Each slot
-  also has an aux (the source + 1 that scales it, 0 = none; wiring, hidden) and an Amount (0–1, 1 to begin with,
-  automatable), whose defaults leave a slot as it was. A slot swings its target one way or both as its source's
+- Hosts are given 1,220 of the 12,807 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+  `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
+  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain order, the
+  feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
+  fields and the source places' own fields (a place's slot depths are listed, whatever it holds). Nothing hosts
+  see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
+  pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
+  `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The
+  state, presets, undo and the editor's modulation cover every param. The core tells hosts of edits to listed ones
+  only, and marks the project dirty for the others.
+- A slot's *target* param stores the target's id + 1 (0 = unused). Each slot also has a depth, an aux (the
+  source + 1 that scales it, 0 = none) and an Amount (0–1, 1 to begin with), whose defaults leave a slot as it was.
+  Depths and Amounts are automatable params; targets and auxes are wiring, set in the editor and not given to
+  hosts, but saved like any other param. A slot swings its target one way or both as its source's
   own switch says.
 - Edits in the editor reach the host as `PARAM_GESTURE_BEGIN` / `PARAM_VALUE` / `PARAM_GESTURE_END` events (in
   VST3, `beginEdit()` / `performEdit()` / `endEdit()` on the main thread). Hosts

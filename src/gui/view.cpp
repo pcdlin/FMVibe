@@ -8426,9 +8426,9 @@ void View::doubleClick(Point p, Modifiers mods) {
         startTyping(*hit);
         return;
     }
-    if (hit && isRatioDisplay(*hit)) { // rounded to the digit under the mouse: on the ones, 3.47 becomes 3.00
-        const long place = kRatioPlaces[ratioDigit(p.x)];
-        edit(hit->param, ratioNorm((ratioHundredths(value(hit->param)) + place / 2) / place * place));
+    if (hit && isRatioDisplay(*hit)) { // the digit under the mouse and those below it back to 1.00's: on the ones, 23.47 becomes 21.00
+        const long span = kRatioPlaces[ratioDigit(p.x)] * 10;
+        edit(hit->param, ratioNorm(ratioHundredths(value(hit->param)) / span * span + 100 % span));
         return;
     }
     if (hit && hit->kind == Kind::MacroName) {
