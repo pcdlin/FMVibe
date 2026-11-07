@@ -5891,8 +5891,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Color color = kSourceColors[w.b];
         c.fillRect(w.rect, picked ? kTrack : (chipHovered ? kRaised : kCardColor), 5.0f);
         c.strokeRect(w.rect, picked ? color.alpha(on ? 0.9f : 0.5f) : kBorder, 1.0f, 5.0f);
+        // The number midway between the power symbol's edge (its ring 5 px about its middle, and its stroke) and the
+        // line, raised 1.5 px so its middle meets the symbol's (whose stroke reaches above its ring).
         const Rect power = peqChipPower(w.rect), shape = peqChipShape(w.rect);
-        c.text({power.right(), w.rect.y, shape.x - power.right(), w.rect.h}, std::to_string(w.b + 1), 12.0f,
+        const float left = power.center().x + 6.0f;
+        c.text({left, w.rect.y - 1.5f, shape.x - left, w.rect.h}, std::to_string(w.b + 1), 14.0f,
                !on ? kFaint : picked ? kText : color, Align::Center, true);
         c.line({shape.x, w.rect.y + 6.0f}, {shape.x, w.rect.bottom() - 6.0f}, kBorder, 1.0f);
         break;
