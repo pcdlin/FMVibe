@@ -114,7 +114,8 @@ const Units &units() {
         u.units.push_back({kRootUnitId, kNoParentUnitId, kPluginName});
         u.unitOf.assign(kParamCount, kRootUnitId);
         std::map<std::string, UnitID> byPath;
-        for (int i = 0; i < kParamCount; ++i) {
+        for (int h = 0; h < hostParamCount(); ++h) { // units for the params hosts are given
+            const int i = hostParamIndex(h);
             const std::string &module = paramTable()[i].module;
             UnitID parent = kRootUnitId;
             size_t start = 0;
@@ -302,7 +303,7 @@ public:
 
     // IEditController
     tresult PLUGIN_API setComponentState(IBStream *) override { return kResultOk; } // the component is this
-    int32 PLUGIN_API getParameterCount() override { return kParamCount + kMidiParamCount; }
+    int32 PLUGIN_API getParameterCount() override { return hostParamCount() + kMidiParamCount; }
     tresult PLUGIN_API getParameterInfo(int32 index, ParameterInfo &info) override;
     tresult PLUGIN_API getParamStringByValue(ParamID id, ParamValue normalized, String128 string) override;
     tresult PLUGIN_API getParamValueByString(ParamID id, TChar *string, ParamValue &normalized) override;
@@ -369,10 +370,6 @@ protected:
     }
     // Asked for later, on the main thread: a host may be in the middle of handing over a state.
     void hostValuesChanged() override { restart(kParamValuesChanged); }
-    void hostSectionsChanged(bool fieldsShown) override {
-        if (fieldsShown)
-            restart(kParamTitlesChanged); // titles, and the flags that hide the fields of other types
-    }
     void hostMarkDirty() override {
         if (handler2_)
             handler2_->setDirty(true);
@@ -855,8 +852,8 @@ tresult PLUGIN_API Plugin::getParameterInfo(int32 index, ParameterInfo &info) {
     if (index < 0 || index >= getParameterCount())
         return kInvalidArgument;
     info = {};
-    if (index >= kParamCount) { // a MIDI controller's
-        const int midi = index - kParamCount;
+    if (index >= hostParamCount()) { // a MIDI controller's
+        const int midi = index - hostParamCount();
         const int channel = midi / kMidiControllers + 1;
         const int controller = midi % kMidiControllers;
         info.id = kMidiParamBase + static_cast<ParamID>(midi);
@@ -870,22 +867,17 @@ tresult PLUGIN_API Plugin::getParameterInfo(int32 index, ParameterInfo &info) {
         info.flags = ParameterInfo::kIsHidden; // not read-only: the host sets them, which is how controllers come in
         return kResultOk;
     }
+    index = hostParamIndex(index); // the params hosts are given, then the MIDI controllers'
     const ParamDef &def = paramTable()[index];
     info.id = def.id;
     copyText(info.title, 128, def.name);
     info.stepCount = stepCount(index);
     info.defaultNormalizedValue = toNormalized(index, def.def);
     info.unitId = units().unitOf[index];
-    // Fields of effect slots and source places for other types than they hold stay out of sight.
-    auto get = [this](int i) { return value(i); };
-    if ((def.flags & CLAP_PARAM_IS_HIDDEN) || !fieldInUse(get, index)) {
-        info.flags = ParameterInfo::kIsHidden | ParameterInfo::kIsReadOnly; // as VST3 has hidden ones
-    } else {
-        if (def.flags & CLAP_PARAM_IS_AUTOMATABLE)
-            info.flags |= ParameterInfo::kCanAutomate;
-        if ((def.flags & CLAP_PARAM_IS_ENUM) && info.stepCount > 0)
-            info.flags |= ParameterInfo::kIsList;
-    }
+    if (def.flags & CLAP_PARAM_IS_AUTOMATABLE)
+        info.flags |= ParameterInfo::kCanAutomate;
+    if ((def.flags & CLAP_PARAM_IS_ENUM) && info.stepCount > 0)
+        info.flags |= ParameterInfo::kIsList;
     return kResultOk;
 }
 

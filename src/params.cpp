@@ -9,6 +9,7 @@
 #include <iterator>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace fmvibe {
 
@@ -125,7 +126,8 @@ void buildTable(ParamTable &t) {
         // and what each effect slot or source place holds are wiring, set from the editor, so hosts
         // don't offer them for automation. The voice limit reallocates voices, so
         // it isn't automatable either. Freeform LFO points are drawn in the editor,
-        // slots are bypassed there and the chain order is set by dragging; hosts don't show them.
+        // slots are bypassed there and the chain order is set by dragging; hosts aren't given them (see
+        // hostParamCount()).
         const bool shape = kind == ParamKind::ShapeCount || kind == ParamKind::ShapePoint ||
                            kind == ParamKind::SlotBypass || kind == ParamKind::SlotAux;
         const bool wiring = kind == ParamKind::ModTarget || kind == ParamKind::FxType ||
@@ -867,6 +869,48 @@ const ParamTable &paramTable() {
     }();
     return *table;
 }
+
+namespace {
+struct HostList {
+    std::vector<int> indexes;          // by host index
+    std::array<int, kParamCount> host; // each param's host index, -1 for none
+};
+
+const HostList &hostList() {
+    static const std::unique_ptr<const HostList> list = [] {
+        auto l = std::make_unique<HostList>();
+        const ParamTable &table = paramTable();
+        // Every source's slots: what each modulates, its aux, curve and bypass are set in the editor; its depth and
+        // Amount hosts may automate (see hostParamCount()).
+        std::vector<bool> wiring(kParamCount, false), kept(kParamCount, false);
+        for (int source = 0; source < kAllSources; ++source)
+            for (int s = 0; s < kSlots; ++s) {
+                for (int i : {slotTargetIndex(source, s), slotAuxIndex(source, s), slotCurveIndex(source, s),
+                              slotBypassIndex(source, s)})
+                    wiring[i] = true;
+                kept[slotAmountIndex(source, s)] = kept[slotScaleIndex(source, s)] = true;
+            }
+        for (int i = 0; i < kParamCount; ++i) {
+            const bool listed = kept[i] || (!(table[i].flags & CLAP_PARAM_IS_HIDDEN) && !wiring[i] &&
+                                            fxSlotOf(i) < 0 && sourceOf(i) < 0);
+            l->host[i] = listed ? static_cast<int>(l->indexes.size()) : -1;
+            if (listed)
+                l->indexes.push_back(i);
+        }
+        return l;
+    }();
+    return *list;
+}
+} // namespace
+
+int hostParamCount() { return static_cast<int>(hostList().indexes.size()); }
+
+int hostParamIndex(int hostIndex) {
+    const HostList &l = hostList();
+    return hostIndex >= 0 && hostIndex < static_cast<int>(l.indexes.size()) ? l.indexes[hostIndex] : -1;
+}
+
+bool hostListed(int index) { return index >= 0 && index < kParamCount && hostList().host[index] >= 0; }
 
 bool isRetired(int index) {
     if (index < kOpBase || index >= kOpBase + kOps * kOpParamCount)

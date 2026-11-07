@@ -11,69 +11,6 @@
 
 namespace fmvibe {
 
-namespace {
-
-// The knobs of an effect slot's page, for the effect it holds (and for a reverb, its algorithm).
-std::vector<int> fxPageParams(int slot, FxType type, const ParamValues &values) {
-    auto at = [slot](std::initializer_list<FxParam> fields) {
-        std::vector<int> indices;
-        for (FxParam f : fields)
-            indices.push_back(paramIndex(slot, f));
-        return indices;
-    };
-    switch (type) {
-    case FxType::Shaper:
-        return at({FxParam::Enabled, FxParam::ShaperMode, FxParam::ShaperDrive, FxParam::ShaperOutput, FxParam::ShaperMix,
-                   FxParam::ShaperLink, FxParam::ShaperSymmetric});
-    case FxType::Delay:
-        return at({FxParam::Enabled, FxParam::DelayTimeL, FxParam::DelayTimeR, FxParam::DelayFeedback,
-                   FxParam::DelayTone, FxParam::DelayWidth, FxParam::DelayPingPong, FxParam::DelayMix});
-    case FxType::Eq:
-        return at({FxParam::Enabled, FxParam::EqLow, FxParam::EqMid, FxParam::EqHigh});
-    case FxType::ParamEq:
-        return at({FxParam::Enabled, FxParam::PeqFreq1, FxParam::PeqGain1, FxParam::PeqQ1, FxParam::PeqFreq2,
-                   FxParam::PeqGain2, FxParam::PeqQ2});
-    case FxType::Filter:
-        return at({FxParam::Enabled, FxParam::FilterType, FxParam::FilterSlope, FxParam::FilterCutoff,
-                   FxParam::FilterResonance, FxParam::FilterKeyTrack, FxParam::FilterDrive, FxParam::FilterMix});
-    case FxType::Compressor:
-        return at({FxParam::Enabled, FxParam::CompThreshold, FxParam::CompRatio, FxParam::CompKnee,
-                   FxParam::CompAttack, FxParam::CompRelease, FxParam::CompMakeup, FxParam::CompMix});
-    case FxType::MultiDyn: // the bands' thresholds; their ratios, gains and the crossovers are left to the editor
-        return {mdAboveIndex(slot, 0), mdAboveIndex(slot, 1), mdAboveIndex(slot, 2),
-                mdBelowIndex(slot, 0), mdBelowIndex(slot, 1), mdBelowIndex(slot, 2),
-                paramIndex(slot, FxParam::MdRange), paramIndex(slot, FxParam::MdMix)};
-    case FxType::Reverb: // a shimmer's interval and amount in place of the pre-delay and width
-        if (reverbType(values[paramIndex(slot, FxParam::ReverbType)]) == ReverbType::Shimmer)
-            return at({FxParam::Enabled, FxParam::ReverbType, FxParam::ReverbSize, FxParam::ReverbDecay,
-                       FxParam::ReverbDamping, FxParam::ReverbShimmerPitch, FxParam::ReverbShimmer, FxParam::ReverbMix});
-        return at({FxParam::Enabled, FxParam::ReverbType, FxParam::ReverbSize, FxParam::ReverbDecay,
-                   FxParam::ReverbDamping, FxParam::ReverbPreDelay, FxParam::ReverbWidth, FxParam::ReverbMix});
-    case FxType::Phaser:
-        return at({FxParam::Enabled, FxParam::PhaserRate, FxParam::PhaserDepth, FxParam::PhaserCenter,
-                   FxParam::PhaserFeedback, FxParam::PhaserStages, FxParam::PhaserMix, FxParam::PhaserStereo});
-    case FxType::Flanger:
-        return at({FxParam::Enabled, FxParam::FlangerRate, FxParam::FlangerDepth, FxParam::FlangerDelay,
-                   FxParam::FlangerFeedback, FxParam::FlangerMix, FxParam::FlangerStereo});
-    case FxType::FreqShifter:
-        return at({FxParam::Enabled, FxParam::ShiftRange, FxParam::ShiftAmount, FxParam::ShiftSpread,
-                   FxParam::ShiftFeedback, FxParam::ShiftMix});
-    case FxType::Disperser:
-        return at({FxParam::Enabled, FxParam::DisperserFreq, FxParam::DisperserStages, FxParam::DisperserPinch,
-                   FxParam::DisperserMix});
-    case FxType::Widener:
-        return at({FxParam::Enabled, FxParam::WidenerSize, FxParam::WidenerWidth, FxParam::WidenerHighPass,
-                   FxParam::WidenerMix});
-    case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
-    case FxType::None:
-    case FxType::Count:
-        break;
-    }
-    return {};
-}
-
-} // namespace
-
 std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &values, const gui::UiLayout &layout) {
     std::vector<clap_remote_controls_page_t> pages;
     clap_id nextId = 0;
@@ -109,13 +46,6 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
     for (int shaper = 0; shaper < kShapers; ++shaper)
         outputs.push_back(paramIndex(shaper, ShaperParam::Out));
     add(mix, tr(Str::PageOutputs), outputs);
-    // Effect pages keep their slot's id whatever else changes.
-    for (int slot : fxOrder(values[paramIndex(GlobalParam::FxOrder)])) {
-        const FxType type = fxType(values[paramIndex(slot, FxParam::Type)]);
-        if (type != FxType::None)
-            add(tr(Str::ModuleFx), std::to_string(slot + 1) + " " + fxName(type), fxPageParams(slot, type, values),
-                static_cast<clap_id>(1000 + slot));
-    }
 
     for (int op = 0; op < kOps; ++op) {
         // Fixed, Freq and Mult take the places of Ratio and Pitch, which it ignores.
@@ -183,25 +113,14 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
         for (int to = 0; to < kShapers; ++to)
             shaperLoops.push_back(shaperShaperIndex(from, to));
     add(tr(Str::ModuleMatrix), tr(Str::PageShaperLoops), shaperLoops);
-
-    // Sources with their slot depths; the targets themselves are set in the editor.
-    // Pages keep their place's id, like the effects'.
+    // Each source its slots' depths, in the editor's order; its own knobs and the targets are set in the editor, and
+    // the effects have no pages (hosts aren't given their params: see hostParamCount()). Pages keep their place's id.
     auto get = [&values](int i) { return values[i]; };
     for (int source : gui::shownSources(layout, get)) {
-        auto at = [source](SourceParam f) { return paramIndex(source, f); };
-        const SourceType type = sourceType(values[at(SourceParam::Type)]);
-        std::vector<int> fields =
-            type == SourceType::Lfo ? std::vector<int>{at(SourceParam::Shape), at(SourceParam::Rate),
-                                                       at(SourceParam::Sync), at(SourceParam::Division)}
-            : type == SourceType::Env
-                ? std::vector<int>{at(SourceParam::Attack), at(SourceParam::Decay), at(SourceParam::Sustain),
-                                   at(SourceParam::Release)}
-            : type == SourceType::Midi ? std::vector<int>{at(SourceParam::MidiInput), at(SourceParam::CcNumber),
-                                                         at(SourceParam::Slew)}
-                                       : std::vector<int>{};
-        for (int slot = 0; slot < kSlots && fields.size() < CLAP_REMOTE_CONTROLS_COUNT; ++slot)
-            fields.push_back(slotAmountIndex(source, slot));
-        add(tr(Str::ModuleModulation), gui::sourceName(layout, get, source), fields,
+        std::vector<int> depths;
+        for (int slot = 0; slot < kSlots && depths.size() < CLAP_REMOTE_CONTROLS_COUNT; ++slot)
+            depths.push_back(slotAmountIndex(source, slot));
+        add(tr(Str::ModuleModulation), gui::sourceName(layout, get, source), depths,
             static_cast<clap_id>(2000 + source));
     }
     return pages;

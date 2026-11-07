@@ -70,10 +70,8 @@ protected:
         if (hostParams_)
             hostParams_->rescan(host_, CLAP_PARAM_RESCAN_VALUES);
     }
-    void hostSectionsChanged(bool fieldsShown) override {
+    void hostSectionsChanged() override {
         remotePages_ = buildRemotePages(valuesNow(), uiLayout());
-        if (fieldsShown && hostParams_)
-            hostParams_->rescan(host_, CLAP_PARAM_RESCAN_INFO);
         if (hostRemoteControls_)
             hostRemoteControls_->changed(host_);
     }
@@ -428,17 +426,17 @@ const clap_plugin_note_ports_t Plugin::kNotePorts = {
 };
 
 const clap_plugin_params_t Plugin::kParamsExt = {
-    [](const clap_plugin_t *) { return static_cast<uint32_t>(kParamCount); },
-    [](const clap_plugin_t *p, uint32_t index, clap_param_info_t *info) {
-        if (index >= static_cast<uint32_t>(kParamCount))
+    // Only the params hosts are given (see hostParamCount()): the others are the editor's alone.
+    [](const clap_plugin_t *) { return static_cast<uint32_t>(hostParamCount()); },
+    [](const clap_plugin_t *, uint32_t hostIndex, clap_param_info_t *info) {
+        const int index = hostIndex < static_cast<uint32_t>(hostParamCount()) ? hostParamIndex(static_cast<int>(hostIndex))
+                                                                             : -1;
+        if (index < 0)
             return false;
         const ParamDef &def = paramTable()[index];
-        const Plugin &plugin = self(p);
-        auto get = [&plugin](int i) { return plugin.value(i); };
         *info = {};
         info->id = def.id;
-        // Fields of effect slots and source places for other types than they hold stay out of sight.
-        info->flags = def.flags | (fieldInUse(get, static_cast<int>(index)) ? 0u : CLAP_PARAM_IS_HIDDEN);
+        info->flags = def.flags;
         std::snprintf(info->name, sizeof(info->name), "%s", def.name.c_str());
         std::snprintf(info->module, sizeof(info->module), "%s", def.module.c_str());
         info->min_value = def.min;

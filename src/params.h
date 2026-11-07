@@ -1755,6 +1755,19 @@ using ParamValues = std::array<double, kParamCount>;
 
 const ParamTable &paramTable();
 
+// The params hosts are given, in table order: the globals, the operators, the matrix, the filters, the shapers, the
+// route modes into operators, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
+// source's slots' depths and Amounts. Left out are those the table marks CLAP_PARAM_IS_HIDDEN, which are drawn and
+// wired in the editor only (freeform shapes, shaper curves, Custom waves' partials, the chain order, the retired
+// fields and the feedback's route modes), the slots' targets, auxes, curves and bypasses, the effect slots' fields
+// and the source places' own. They are still params everywhere else: the state, presets, undo and the editor's
+// modulation take them as any other.
+int hostParamCount();
+// The param at `hostIndex` in that list, or -1 past its end.
+int hostParamIndex(int hostIndex);
+// Whether hosts are given param `index`. A value a host sends for one it isn't given is still taken.
+bool hostListed(int index);
+
 bool isStepped(ParamKind kind);
 // Dragged and scrolled in whole steps in the editor: the stepped kinds, the operators' pitch and the notes.
 inline bool snapsToSteps(ParamKind kind) {

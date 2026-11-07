@@ -161,28 +161,33 @@ public:
     bool openEditor();
     void closeEditor();
 
-    // Which effect each slot holds, the chain order, which source each place holds, each reverb's algorithm and
-    // which operators are fixed: what hosts see of the effects and sources.
+    // Which source each place holds and which operators are fixed: what the remote pages follow (a page per source,
+    // and a fixed operator's has Freq and Mult in Ratio's and Pitch's places), with the sources' order.
     static bool shapesSections(int index) {
-        return fxFieldOf(index) == FxParam::Type || sourceFieldOf(index) == SourceParam::Type ||
-               index == paramIndex(GlobalParam::FxOrder) || fxFieldOf(index) == FxParam::ReverbType ||
-               fixedSwitchOp(index) >= 0; // a fixed operator's page has Freq and Mult in Ratio's and Fine's places
+        return sourceFieldOf(index) == SourceParam::Type || fixedSwitchOp(index) >= 0;
     }
 
 protected:
-    void performBeginEdit(int index) override { hostBeginEdit(index); }
+    void performBeginEdit(int index) override {
+        if (hostListed(index))
+            hostBeginEdit(index);
+    }
     void performSetValue(int index, double value) override;
-    void performEndEdit(int index) override { hostEndEdit(index); }
+    void performEndEdit(int index) override {
+        if (hostListed(index))
+            hostEndEdit(index);
+    }
 
     // How each format tells its host. Main thread, unless they say otherwise.
-    // An edit in the editor (or a preset load) of param `index`: a gesture's begin, its values and its end.
+    // An edit in the editor (or a preset load) of param `index`, one hosts are given (see hostListed()): a gesture's
+    // begin, its values and its end. An edit of another one marks the project changed instead.
     virtual void hostBeginEdit(int index) = 0;
     virtual void hostEdit(int index, double value) = 0;
     virtual void hostEndEdit(int index) = 0;
     // Every param's value may have changed: a state was loaded.
     virtual void hostValuesChanged() = 0;
-    // The sections changed (see shapesSections()): `fieldsShown` when which fields hosts see changed with them.
-    virtual void hostSectionsChanged(bool fieldsShown) = 0;
+    // The sections changed (see shapesSections()): the remote pages follow.
+    virtual void hostSectionsChanged() {}
     // The project has changes to save.
     virtual void hostMarkDirty() = 0;
     // The voice limit changed.
@@ -201,8 +206,7 @@ protected:
     // Main thread: whether a restart was asked for and not yet done (activate() clears it).
     bool restartPending() const { return restartRequested_.load(); }
 
-    // Main thread. A slot's or place's fields only show in hosts while it holds their type, and each effect and
-    // source gets a remote page.
+    // Main thread: tells the host when the remote pages differ.
     void sectionsChanged();
 
 private:
@@ -267,9 +271,9 @@ private:
     std::atomic<int> scopeOp_{-1}; // what the editor's scope shows (see Controller::setScope())
     std::atomic<int> scopeCycles_{2};
     unsigned int csr_ = 0; // the audio thread's floating-point control word, while a block is processed
-    // Main thread: what the sections were when hosts were last told: the effect types, then the chain order, the
-    // source types, the sources' order and each reverb's algorithm.
-    std::array<int64_t, kFxSlots + 1 + 2 * kMaxSources + kFxSlots> shownSections_{};
+    // Main thread: what the sections were when hosts were last told: whether each operator is fixed, then which
+    // source each place holds and the sources' order.
+    std::array<int64_t, kOps + 2 * kMaxSources> shownSections_{};
     gui::UiLayout layout_;
     std::unique_ptr<gui::Editor> editor_;
     // The preset library as last scanned, with each entry's file (the patch's own is the Controller's).
