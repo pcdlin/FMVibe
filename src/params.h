@@ -531,6 +531,12 @@ enum class SplitParam { Used, Bands, Low, High, Slope, Count };
 // A wire into a node of the effects graph: From is the port it comes from (fxPortValue(), 0 for no wire) and Level how
 // much of it goes in. Stored in projects by number: only append.
 enum class FxInputField { From, Level, Count };
+// A sum's (a join's) wires' levels are in dB, from kSumFloorDb, silence, up to 0 dB; every other wire's is a share,
+// 0..1. sumLevelGain() is a sum's level as a gain.
+constexpr double kSumFloorDb = -60.0;
+inline double sumLevelGain(double db) {
+    return db <= kSumFloorDb ? 0.0 : std::pow(10.0, std::min(db, 0.0) / 20.0);
+}
 // A sum in the effects graph: Used puts it in the graph. Stored in projects by number: only append.
 enum class SumParam { Used, Count };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as

@@ -2470,15 +2470,15 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::SourceMenuItem, sourceMenuItem(at, static_cast<SourceType>(t)), -1, t);
     }
     if (fxMenuOpen_ && fxWide()) {
-        // Opened from a + of the effects graph, it offers a split after the effects on the main line, a join at a
-        // band's end; from a wire's middle, a split on the main line, nothing more on a band.
-        const bool withNode = fxSlot_.lane >= 0 && fxGraph() && (fxSlot_.item < 0 || fxSlot_.lane == 0);
+        // Opened from a + of the effects graph on the main line, it offers a split (with its join) after the effects;
+        // on a band, effects only.
+        const bool withNode = fxSlot_.lane == 0 && fxGraph();
         add(Kind::FxMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::FxMenu, fxMenu(fxMenuAt_, withNode), -1, 1);
         for (FxType type : kFxOffered)
             add(Kind::FxAdd, fxMenuItem(fxMenuAt_, type), -1, static_cast<int>(type));
         if (withNode)
-            add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_), -1, fxSlot_.lane == 0 ? 0 : 1);
+            add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_), -1, 0);
     }
     // The open list of an effect's choice (the shaper's curve, the reverb's algorithm), under its button,
     // while that card is on screen and still holds that effect.
@@ -6039,19 +6039,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, fxName(static_cast<FxType>(w.a)), 11.0f,
                hovered ? kText : kDim, Align::Left);
         break;
-    case Kind::FxAddNode: { // apart from the effects by a line: a split, or a join
-        const Color color = w.a == 0 ? splitColor() : sumColor();
+    case Kind::FxAddNode: { // apart from the effects by a line: a split, with its join
+        const Color color = splitColor();
         const float line = w.rect.y - 0.5f * kFxMenuNodeGap - 1.0f;
         c.line({w.rect.x + 4.0f, line}, {w.rect.right() - 4.0f, line}, kBorder, 1.0f);
         if (hovered)
             c.fillRect(w.rect, color.alpha(0.18f), 5.0f);
         const Rect icon{w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f};
-        if (w.a == 0)
-            splitIcon(c, icon, hovered ? color : kDim);
-        else
-            joinIcon(c, icon, hovered ? color : kDim);
-        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h},
-               tr(w.a == 0 ? Str::MenuSplitBands : Str::MenuJoinBands), 11.0f, hovered ? kText : kDim, Align::Left);
+        splitIcon(c, icon, hovered ? color : kDim);
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, tr(Str::MenuSplitBands), 11.0f,
+               hovered ? kText : kDim, Align::Left);
         break;
     }
     case Kind::FxRemove:

@@ -207,20 +207,21 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - the effects graph's slot grid: switching to it putting the chain on its main line, wired as it ran; the main
-    line's + opening the list of effects with Split into two bands after them, the split's two bands each going out
-    with a + of its own; a band's + putting an effect on its band, and its list joining the bands, the line going on
-    from the join with one + again; the join's card (centered in the inspector) setting a band's level, and its x
-    refused while something comes after it; the split's crossover handle dragged on its card, and its slope picked there; + EFFECT with the split
-    picked putting an effect at the end of a band, undone; the split taken out putting its bands' effects on the main
-    line, undoably; a wire's middle lit under the mouse and opening the list, an effect going in between two effects,
-    a split going in with its join right after it, and, from the wire into a join, an effect going at its band's end
-    (the list offering no split there), each undone; a node under the mouse showing an x in a circle at its upper
-    right (read off the rendered pixels), whose click removes it, undone; nodes dragged and dropped while the others
-    glide aside (polled until they settle): an effect along the main line, one from the high band to the low band's
-    end, and a split with its bands and join, carried by the join, to the line's start, each one undo step, undone;
-    the mouse anywhere along a wire showing its + (read off the rendered pixels), a click there doing nothing and on
-    the + opening the list, and an empty band between a split and its join showing its + always (read off the
-    rendered pixels); and going back to a chain asking first, then leaving the chain in the line's order;
+    line's + opening the list of effects with Split into two bands after them, the split coming with its join, its
+    empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's card
+    (centered in the inspector) setting a band's level, in dB; the split's crossover handle dragged on its card, and its
+    slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
+    out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
+    list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
+    into a join, an effect going at its band's end (the list offering no split there), each undone; a node under the
+    mouse showing an x in a circle at its upper right (read off the rendered pixels), whose click removes it, undone;
+    nodes dragged and dropped while the others glide aside (polled until they settle), its place staying open while
+    it is held over a node: an effect along the main line, one onto a band's end by its wire into the join, one from
+    the high band to the low band's end, and a split with its bands and join, carried by the join, to the line's
+    start, each one undo step, undone; the mouse anywhere along a wire showing its + (read off the rendered pixels), a
+    click there doing nothing and on the + opening the list, and an empty band between a split and its join showing
+    its + always (read off the rendered pixels); and going back to a chain asking first, then leaving the chain in the
+    line's order;
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
     the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
     nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the

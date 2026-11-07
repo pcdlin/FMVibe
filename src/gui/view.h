@@ -652,6 +652,7 @@ private:
         Color color;
         bool arrow = true;
         FxSlotAt at;
+        std::optional<Point> plus; // where its + shows, if not at its middle: an empty band's, on the band's row
     };
     // Where the graph's nodes (by node), +s (by lane), IN and OUT show on screen: on their cells (fxPlacesOf()), or,
     // while a node is dragged and until they settle after, gliding there (fxPlacesShown(), see fxGlide_).
@@ -714,7 +715,6 @@ private:
     // A split goes at the main line's end, open, or where a wire's middle was clicked with its join right after it.
     void fxPlaceNew(int slot, int copyOf);
     void addSplit(); // from the main line's + or a wire's middle on it (see fxSlot_)
-    void addJoin();  // closing the open split, from a band's +
     // An effect, a split (its bands' effects going on the main line in its place, high band first) or a join (its
     // split open again, only while nothing comes after it).
     void removeFxNode(int node);

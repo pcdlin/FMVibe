@@ -220,9 +220,13 @@ void buildTable(ParamTable &t) {
                 ParamKind::FxPort, 0.0, static_cast<double>(kFxPorts), 0.0);
             // A join's first two inputs take its split's high and low bands, as the editor wires them.
             const bool band = fxNodeSum(node) >= 0 && input < 2;
-            add(fxInputIndex(node, input, FxInputField::Level),
-                band ? name + " " + tr(input == 0 ? Str::BandHigh : Str::BandLow) : wire + tr(Str::ParamFxInputLevel),
-                module, ParamKind::Percent, 0.0, 1.0, 1.0);
+            const std::string level =
+                band ? name + " " + tr(input == 0 ? Str::BandHigh : Str::BandLow) : wire + tr(Str::ParamFxInputLevel);
+            if (fxNodeSum(node) >= 0) // in dB, full at 0 dB to begin with (see sumLevelGain())
+                add(fxInputIndex(node, input, FxInputField::Level), level, module, ParamKind::Decibel, kSumFloorDb,
+                    0.0, 0.0);
+            else
+                add(fxInputIndex(node, input, FxInputField::Level), level, module, ParamKind::Percent, 0.0, 1.0, 1.0);
         }
     }
     // The mod wheel moves its targets for every voice, like a macro: hosts modulate it globally too.

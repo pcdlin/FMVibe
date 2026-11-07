@@ -1966,49 +1966,65 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, plusItem(plus, type));
     };
 
-    // The main line's + after the reverb: Split into two bands, each band going out.
+    // The main line's + after the reverb: Split into two bands, with its join a column on, each empty band curving
+    // out to a + on its row and into the join.
     const int split = fxSplitNode(0), join = fxSumNode(0);
     const int high = fxBandPort(0, kFxBands - 1), low = fxBandPort(0, 0);
     click(view, cell(3, 0));
     const bool listed = renderer.save(view, dir / "40b-fx-plus-list.png");
     click(view, plusNode(cell(3, 0)));
+    view.mouseMove({600.0f, 428.0f}, {});
     check(listed && model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(split, 0) == fxSlotPort(1) &&
-              from(kFxOutNode, 0) == high && from(kFxOutNode, 1) == low && model.ui.fxSelected == split &&
-              model.value(paramIndex(0, SumParam::Used)) == 0.0 && renderer.save(view, dir / "40c-fx-split.png"),
-          "the main line's + splits it into two bands, each with a + of its own, both going out");
+              model.value(paramIndex(0, SumParam::Used)) == 1.0 && from(join, 0) == high && from(join, 1) == low &&
+              from(kFxOutNode, 0) == fxSumPort(0) && from(kFxOutNode, 1) < 0 && model.ui.fxSelected == split &&
+              renderer.save(view, dir / "40c-fx-split.png"),
+          "the main line's + puts a split there with its join, each band's + on its row between them");
 
-    // A delay on the high band and a compressor on the low one, from their +s.
+    // A delay on the high band and a compressor on the low one, from their +s; the band's list offers no split.
     addAt(cell(4, -1), FxType::Delay);
     addAt(cell(4, 1), FxType::Compressor);
-    check(from(2, 0) == high && from(3, 0) == low && from(kFxOutNode, 0) == fxSlotPort(2) &&
-              from(kFxOutNode, 1) == fxSlotPort(3) && fxChain(model) == std::vector<int>{0, 1, 2, 3},
+    check(from(2, 0) == high && from(3, 0) == low && from(join, 0) == fxSlotPort(2) &&
+              from(join, 1) == fxSlotPort(3) && fxChain(model) == std::vector<int>{0, 1, 2, 3} &&
+              renderer.save(view, dir / "40d-fx-join.png"),
           "a band's + puts an effect on its band");
 
-    // The low band's + after the compressor: Join the bands, the line going on from the join.
-    click(view, cell(5, 1));
-    click(view, plusNode(cell(5, 1)));
-    check(model.value(paramIndex(0, SumParam::Used)) == 1.0 && from(join, 0) == fxSlotPort(2) &&
-              from(join, 1) == fxSlotPort(3) && from(kFxOutNode, 0) == fxSumPort(0) && from(kFxOutNode, 1) < 0 &&
-              model.ui.fxSelected == join && renderer.save(view, dir / "40d-fx-join.png"),
-          "a band's + joins the bands, the line going on from the join");
+    // The shaper dropped at the low band's end, on its wire into the join: there; undone.
+    {
+        const Point drop = detail::fxGridAt(4.5f, 0.585f, 0.0f);
+        view.mouseMove(cell(1, 0), {});
+        view.mouseDown(cell(1, 0), {});
+        view.mouseMove({cell(1, 0).x + 8.0f, cell(1, 0).y + 4.0f}, {});
+        view.mouseMove(drop, {});
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+        view.mouseUp(drop, {});
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+        const bool atBandEnd = from(0, 0) == fxSlotPort(3) && from(join, 1) == fxSlotPort(0) &&
+                               from(1, 0) == kFxPortIn;
+        view.undo();
+        view.mouseMove({600.0f, 428.0f}, {});
+        check(atBandEnd && from(0, 0) == kFxPortIn && from(join, 1) == fxSlotPort(3),
+              "a node dropped at a band's end, on its wire into the join, goes there");
+    }
 
     // A phaser after the join, from the main line's + again.
     addAt(cell(6, 0), FxType::Phaser);
     check(from(4, 0) == fxSumPort(0) && from(kFxOutNode, 0) == fxSlotPort(4),
           "the main line's + after a join puts an effect after it");
 
-    // The join's card: its High knob takes the high band's level down; its x refuses while the phaser comes after it.
+    // The join's card: its High knob takes the high band's level down.
     click(view, cell(5, 0));
     const Rect card = detail::fxInspectorCard(1.0f);
     const Point highKnob{card.x + card.w * 0.67f, card.y + 240.0f}; // Low on the left, High on the right
     drag(view, highKnob, {highKnob.x, highKnob.y + 40.0f});
     const double highLevel = model.value(fxInputIndex(join, 0, FxInputField::Level));
-    click(view, centerOf({card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f}));
-    check(model.ui.fxSelected == join && highLevel < 0.9 &&
-              model.value(fxInputIndex(join, 1, FxInputField::Level)) == 1.0 &&
-              model.value(paramIndex(0, SumParam::Used)) == 1.0 && model.openEdits == 0 &&
-              renderer.save(view, dir / "40e-fx-join-card.png"),
-          "a join's card sets its bands' levels, and it stays while something comes after it");
+    char highText[32] = {};
+    formatParam(fxInputIndex(join, 0, FxInputField::Level), highLevel, highText, sizeof(highText));
+    check(model.ui.fxSelected == join && highLevel < -1.0 &&
+              model.value(fxInputIndex(join, 1, FxInputField::Level)) == 0.0 && model.openEdits == 0 &&
+              std::string(highText).find(" dB") != std::string::npos && renderer.save(view, dir / "40e-fx-join-card.png"),
+          "a join's card sets its bands' levels, in dB from 0 dB at the top");
 
     // The split's crossover handle, on its card in the inspector, dragged from 250 Hz to 500 Hz.
     click(view, cell(3, 0));
@@ -2053,7 +2069,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     // and a widener goes on the high band before the join. Each undone.
     auto middle = [](Point from, Point to) { return Point{(from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f}; };
     auto gapItem = [&](Point gap, bool withNode, int place) {
-        const Point at = listAt(view, {gap.x + 14.0f, gap.y - 34.0f}, 180.0f,
+        const Point at = listAt(view, {gap.x + 26.0f, gap.y - 44.0f}, 180.0f,
                                 8.0f + 13.0f * kFxMenuPitch + (withNode ? 7.0f + kFxMenuPitch : 0.0f));
         return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(place) * kFxMenuPitch + (place >= 13 ? 7.0f : 0.0f)};
     };
@@ -2076,9 +2092,8 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 428.0f}, {});
     const bool splitShot = renderer.save(view, dir / "40j-fx-gap-split.png");
     bool emptyPluses = true;
-    for (const int band : {0, kFxBands - 1}) {
-        const Point port = detail::fxBandPortAt(cell(2, 0), band);
-        const Point plus{(port.x + cell(3, 0).x - detail::kFxJoinHalfW - 8.0f) * 0.5f, port.y};
+    for (const int row : {-1, 1}) {
+        const Point plus = cell(3, row);
         emptyPluses = emptyPluses && renderer.pixel({plus.x + 6.0f, plus.y + 6.0f}) != renderer.pixel({plus.x, plus.y + 30.0f});
     }
     view.undo();
@@ -2149,7 +2164,21 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                                 from(join, 0) == fxSlotPort(2) && from(join, 1) == fxSlotPort(3) &&
                                 from(kFxOutNode, 0) == fxSlotPort(4);
         view.undo();
+        // The phaser held over that gap, then over the reverb beyond it (where the gap opened pushed it): the place
+        // stays open where it was, and that is where it lands.
+        view.mouseMove(cell(6, 0), {});
+        view.mouseDown(cell(6, 0), {});
+        view.mouseMove({cell(6, 0).x + 8.0f, cell(6, 0).y + 4.0f}, {});
+        view.mouseMove(detail::fxGridAt(1.5f, 0.0f, 0.0f), {});
+        settle();
+        view.mouseMove(detail::fxGridAt(3.0f, 0.0f, 0.0f), {});
+        settle();
+        view.mouseUp(detail::fxGridAt(3.0f, 0.0f, 0.0f), {});
+        settle();
+        const bool held = from(4, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(4);
+        view.undo();
         view.mouseMove({600.0f, 428.0f}, {});
+        check(held, "a dragged node's place stays open until it is over another gap");
         check(roomShot && phaserMoved && droppedShot && phaserBack && delayMoved && groupShot && groupMoved &&
                   from(0, 0) == kFxPortIn && from(split, 0) == fxSlotPort(1) && from(2, 0) == high &&
                   fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},
@@ -2170,7 +2199,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, {a.x + 5.0f, a.y + 1.0f});
         // Had that opened the list, this click would only close it.
         click(view, mid);
-        const Point at = listAt(view, {mid.x + 14.0f, mid.y - 34.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+        const Point at = listAt(view, {mid.x + 26.0f, mid.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
         click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Filter)) * kFxMenuPitch});
         const bool added = from(5, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(5);
         view.undo();
@@ -2274,11 +2303,13 @@ void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, plus);
     const Point list = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
     click(view, {list.x + 90.0f, list.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f});
-    const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0;
+    const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
+                       model.value(paramIndex(0, SumParam::Used)) == 1.0;
     click(view, bin);
     click(view, ok);
     const bool graphEmptied =
         fxChain(model).empty() && model.value(paramIndex(0, SplitParam::Used)) == 0.0 &&
+        model.value(paramIndex(0, SumParam::Used)) == 0.0 &&
         fxPortOf(model.value(fxInputIndex(kFxOutNode, 0, FxInputField::From))) == kFxPortIn &&
         fxPortOf(model.value(fxInputIndex(kFxOutNode, 1, FxInputField::From))) < 0 && renderer.save(view, dir / "40t-fx-cleared.png");
 

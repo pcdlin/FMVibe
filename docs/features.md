@@ -652,29 +652,31 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     icon and name, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Split
     into two bands**, after the effects: a split, a box with a dot for each band on its right side (the high band on
-    top, in amber, the low one in blue), opens two bands, the high one along the row above the main line and the low
-    one along the row below, named beside the split; splits and joins are grey boxes as large as each other, and the
-    wires out of a split's bands grey too. Each band has a + at its end and goes out from there. A band's
-    + puts an effect on that band, and its list offers **Join the bands** instead: a join, a smaller box in the column
-    after the longer band, adds them back together, and the line goes on from it with one + again. With the mouse
+    top, in amber, the low one in blue), always comes with its join, which adds the bands back together in the
+    column after the longer band; the line goes on from the join. The bands run between them, the high one along the
+    row above the main line and the low one along the row below, named beside the split; splits and joins are grey
+    boxes as large as each other, and the wires out of a split's bands grey too. An empty band curves out to a + on
+    its row, a column on from the split, and on into the join, and a click on that + puts an effect on the band (its
+    list offers effects only). With the mouse
     anywhere along a wire between two nodes, a + shows at its middle (always on an empty band between a split
     and its join), and a click on that + opens the list too, the effect picked
     going in there: on the main line, the list also offers the split, which goes in with its join right after it and
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's card
     shows its bands' responses with a handle on the crossover to drag across, its slope (6 | 12 | 24 dB, which the
     wheel steps along too) and its Crossover knob; a join's card a
-    bar for each band's level, and its High and Low knobs. Under the mouse, a node shows an x in a circle at its upper
-    right, which removes it as the x on its card does (faint on a join that can't go yet). A node dragged onto
+    bar for each band's level, and its High and Low knobs, in dB (0 dB, full, at the top, down to -60 dB, silence). Under the mouse, a node shows an x in a circle at its upper
+    right, which removes it as the x on its card does. A node dragged onto
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would
-    land in, outlined dotted, the nearest place to it (an effect anywhere on the main line or a band, a split only on
-    the main line, one left open only at its end), and they glide into place once it is let go of. A split or a join
+    land in, outlined dotted, which moves only once it is over another gap between two nodes (an effect's anywhere on
+    the main line or a band, a split's only on the main line; the line's end reaching on past its + along the wire
+    to OUT), and stays where it is
+    while it passes over a node or away from the line; they glide into place once it is let go of. A split or a join
     carries the split with its bands' effects and its join along. Held at the graph's left or right edge, it scrolls
     that way. The x on a card removes its node: an effect closes up the
     line or band it was on, a split puts its bands' effects on the main line in its place (the high band's first),
-    and a join opens its split again, only while nothing comes after it (else it says so). + EFFECT puts the new
+    and so does a join, which goes with its split. + EFFECT puts the new
     effect after the node picked: after an effect on its line or band, after a join on the main line, and at the end
-    of a split's shorter band (the high one when they are as long); with nothing picked, at the line's end (on the
-    high band while a split is open there). A copy goes right after its original. Wider than its box, the graph
+    of a split's shorter band (the high one when they are as long); with nothing picked, at the line's end. A copy goes right after its original. Wider than its box, the graph
     has a scrollbar under it (its thumb dragged, or the track clicked to jump there), and scrolls sideways under the
     wheel too or with the middle button held; it shows a node just added. Switching to the
     graph puts the chain on its main line; switching back asks first while there is a split, then leaves a chain in

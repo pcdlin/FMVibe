@@ -743,7 +743,8 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
         if (w.port < 0)
             continue;
         const double setLevel = p[fxInputIndex(node, input, FxInputField::Level)];
-        const double target = std::isfinite(setLevel) ? std::clamp(setLevel, 0.0, 1.0) : 0.0;
+        const double asGain = fxNodeSum(node) >= 0 ? sumLevelGain(setLevel) : setLevel; // a sum's in dB
+        const double target = std::isfinite(asGain) ? std::clamp(asGain, 0.0, 1.0) : 0.0;
         if (w.level < 0.0)
             w.level = target;
         const double fadeTo = set == w.port ? 1.0 : 0.0;
