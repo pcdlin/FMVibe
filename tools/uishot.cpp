@@ -266,7 +266,7 @@ Point sourceGrip(float card) {
 }
 
 Point sourceHandle(float card) {
-    return {cardX(card) + 24.0f, 571.0f};
+    return {cardX(card) + 24.0f, 582.0f};
 }
 
 // An LFO's sync switch, a square left of its Rate knob.

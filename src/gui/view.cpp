@@ -2116,7 +2116,7 @@ std::vector<View::Widget> View::widgets() const {
                                        : fold - 4.0f;
         add(Kind::SourceGrip, {p.x, p.y, gripEnd - p.x, 34.0f}, -1, s, position);
         add(Kind::SourceFold, {fold, p.y + 8.0f, 18.0f, 19.0f}, -1, s);
-        add(Kind::SourceHandle, {p.x + 14.0f, p.y + 7.0f, 20.0f, 20.0f}, -1, s);
+        add(Kind::SourceHandle, {p.x + 14.0f, p.y + 8.0f, 20.0f, 20.0f}, -1, s);
         add(Kind::Toggle, sourcePower(card, span), sourceEnabledIndex(s));
         add(Kind::SourceRemove, sourceRemove(card, span), -1, s);
         if (widens)
@@ -3065,7 +3065,9 @@ void View::paintFx(Canvas &c) {
             continue;
         const Rect card = fxCard(pos, fxCardSpan(slot));
         const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
-        const bool dragged = drag_.kind == DragKind::FxMove && drag_.widget.a == slot;
+        // Lit while grabbed by its title; by its icon only once it moves, as a click there only switches it.
+        const bool dragged = drag_.kind == DragKind::FxMove && drag_.widget.a == slot &&
+                             (drag_.moved || drag_.widget.kind != Kind::FxPower);
         const Color fx = fxTypeColor(type); // each type of effect in a color of its own
         c.fillRect(card, kCardColor, 8.0f);
         c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f);
@@ -3078,7 +3080,7 @@ void View::paintFx(Canvas &c) {
 
         // Title row: the effect's icon (a widget of its own, which switches it) and its name.
         // The three-band dynamics' switches sit in the title row too.
-        const Rect titleRect{card.x + 34.0f, card.y + 8.0f, card.w - (type == FxType::MultiDyn ? 160.0f : 82.0f),
+        const Rect titleRect{card.x + 36.0f, card.y + 6.0f, card.w - (type == FxType::MultiDyn ? 162.0f : 84.0f),
                              20.0f};
         const char *title = fxTitle(type);
         float titleSize = 11.0f; // smaller for a long name, so it fits beside the icon
