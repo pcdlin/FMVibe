@@ -3947,9 +3947,6 @@ int main(int argc, char **argv) {
         }
         layout.insert(layout.end(), {1.0f, 1.0f}); // an LFO's shape drawn in steps, snapping to the grid
         layout.push_back(3.0f);                    // folded cards past the 16th slot
-        for (int axis = 0; axis < 2; ++axis)       // the effects graph's nodes, spread across and down
-            for (int node = 0; node < kFxNodes; ++node)
-                layout.push_back(static_cast<float>(axis == 0 ? node : kFxNodes - 1 - node) / kFxNodes);
         layout.push_back(static_cast<float>(kFxSlots)); // the graph's inspector showing the first split
 
         MemoryStream big;

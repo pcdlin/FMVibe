@@ -34,10 +34,9 @@ constexpr Rect kRouting{16.0f, kPanelsTop, 852.0f, 372.0f};
 constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
 constexpr float kBusY = kRouting.y + kRouting.h - 30.0f;
-// Ctrl+drag puts a node on the nearest point of a coarse grid over the area its center may go in: the cells' centers,
-// kRoutingGridCols x kRoutingGridRows in the routing graph and one row fewer in the effects graph, which is shorter.
+// Ctrl+drag puts a node of the routing graph on the nearest point of a coarse grid over the area its center may go
+// in: the cells' centers, kRoutingGridCols x kRoutingGridRows.
 constexpr int kRoutingGridCols = 12, kRoutingGridRows = 5;
-constexpr int kFxGridCols = 12, kFxGridRows = 4;
 inline Point gridPoint(Rect area, int cols, int rows, int col, int row) {
     return {area.x + (static_cast<float>(col) + 0.5f) / static_cast<float>(cols) * area.w,
             area.y + (static_cast<float>(row) + 0.5f) / static_cast<float>(rows) * area.h};
@@ -513,10 +512,13 @@ constexpr int fxOfferedPlace(FxType type) {
 // The list's top left is under the button, or (from the shadow card after the effects) given. Its entries are close
 // enough together that it fits in the panel under the button.
 constexpr float kFxMenuPitch = 23.0f;
-inline Rect fxMenu(Point at) {
+// Opened from a + of the effects graph, it has one more entry after the effects, a little apart: a split on the main
+// line, a join on a band (`node`).
+constexpr float kFxMenuNodeGap = 7.0f;
+inline Rect fxMenu(Point at, bool node = false) {
     const Rect button = fxMenuButton();
     return {at.x < 0.0f ? button.x : at.x, at.x < 0.0f ? button.bottom() + 4.0f : at.y, 180.0f,
-            8.0f + kFxTypes * kFxMenuPitch};
+            8.0f + kFxTypes * kFxMenuPitch + (node ? kFxMenuNodeGap + kFxMenuPitch : 0.0f)};
 }
 static_assert(9.0f + 22.0f + 4.0f + 8.0f + kFxTypes * kFxMenuPitch <= kFxPanel.h, // from under the button
               "the list of effects fits in the panel");
@@ -525,6 +527,10 @@ inline Rect fxMenuItem(Point at, FxType type) {
     const Rect menu = fxMenu(at);
     return {menu.x + 4.0f, menu.y + 4.0f + static_cast<float>(fxOfferedPlace(type)) * kFxMenuPitch, menu.w - 8.0f,
             kFxMenuPitch - 2.0f};
+}
+inline Rect fxMenuNodeItem(Point at) {
+    const Rect menu = fxMenu(at, true);
+    return {menu.x + 4.0f, menu.y + 4.0f + kFxTypes * kFxMenuPitch + kFxMenuNodeGap, menu.w - 8.0f, kFxMenuPitch - 2.0f};
 }
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
@@ -616,8 +622,8 @@ inline Rect fxDisplay(float position, FxType type) {
 }
 
 // The effects graph (GlobalParam::FxGraph) takes the card row's place: the graph at the left, and at the right the
-// card of the node it shows (an effect's, or a split's), centered in an area as wide as the widest cards. The switch
-// between the chain and the graph sits at the panel's top right, and + SPLIT after the count beside ADD EFFECT.
+// card of the node it shows (an effect's, a split's or a join's), centered in an area as wide as the widest cards. The
+// switch between the chain and the graph sits at the panel's top right.
 constexpr float kFxInspectorW = 1.5f * (kFxCardW + kFxGap) - kFxGap;
 inline Rect fxInspectorCard(float span = 1.5f) {
     const float w = span * (kFxCardW + kFxGap) - kFxGap;
@@ -627,42 +633,38 @@ inline Rect fxInspectorCard(float span = 1.5f) {
 inline Rect fxGraphArea() {
     return {kFxPanel.x + 16.0f, kFxTop, kFxPanel.w - 32.0f - kFxInspectorW - 16.0f, kFxPanel.bottom() - 20.0f - kFxTop};
 }
+// Under the graph's box, while it is wider than that: its scrollbar, along the box at the panel's bottom edge.
+inline Rect fxGraphScrollTrack() {
+    const Rect area = fxGraphArea();
+    return {area.x + 12.0f, kFxPanel.y + kFxPanel.h - 14.0f, area.w - 24.0f, 6.0f};
+}
+// Left of the switch, a button that removes every effect.
+inline Rect fxClearButton() {
+    return {kFxPanel.right() - 16.0f - 2.0f * 34.0f - 10.0f - 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
+}
 inline Rect fxModeButton(int graph) {
     return {kFxPanel.right() - 16.0f - 2.0f * 34.0f + graph * 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
 }
-inline Rect fxSplitButton() {
-    return {fxMenuButton().right() + 62.0f, fxMenuButton().y, 92.0f, fxMenuButton().h};
-}
-inline Rect fxSumButton() {
-    return {fxSplitButton().right() + 8.0f, fxMenuButton().y, 80.0f, fxMenuButton().h};
-}
-// Its nodes: an effect a circle, a split a box with its bands' ports down its right side (the high band on top), the
-// input a box at the area's left edge and the output one at its right.
+// Its nodes sit on a fixed grid: IN in column 0, then a column a node, the main line in the middle row (0) and a
+// split's high and low bands in the rows above and below it (-1, 1), OUT after the last column. The graph scrolls
+// sideways when its columns reach past the area (`scroll`, in pixels). An effect is a circle, a split a box with its
+// bands' ports on its right edge (the high band on top), a join a smaller box, IN and OUT boxes, and the + where a
+// node can go next a dashed square.
+constexpr float kFxGridCol = 92.0f, kFxGridRow = 70.0f, kFxGridLeft = 34.0f;
 constexpr float kFxNodeR = 22.0f;
-constexpr float kFxSplitHalfW = 22.0f, kFxSplitHalfH = 30.0f;
+constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
 constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
 constexpr float kFxPortR = 5.0f;
-constexpr float kFxSumHalfW = 15.0f, kFxSumHalfH = 20.0f; // a sum: a small box, its output's dot on its right edge
-inline Point fxInCenter() {
+constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
+constexpr float kFxSlotHalf = 17.0f;
+inline Point fxGridAt(float col, float row, float scroll) { // fractions of a cell too, as nodes glide
     const Rect area = fxGraphArea();
-    return {area.x + kFxEndHalfW + 2.0f, area.center().y};
+    return {area.x + kFxGridLeft + col * kFxGridCol - scroll, area.center().y + row * kFxGridRow};
 }
-inline Point fxOutCenter() {
-    const Rect area = fxGraphArea();
-    return {area.right() - kFxEndHalfW - 2.0f, area.center().y};
+inline Point fxGridCell(int col, int row, float scroll) {
+    return fxGridAt(static_cast<float>(col), static_cast<float>(row), scroll);
 }
-// Where a node at (x, y), 0..1 each, sits: between the input's and the output's boxes, clear of the area's edges.
-inline Point fxNodeAt(float x, float y) {
-    const Rect area = fxGraphArea();
-    const float left = area.x + 2.0f * kFxEndHalfW + 64.0f, right = area.right() - 2.0f * kFxEndHalfW - 64.0f;
-    const float top = area.y + kFxSplitHalfH + 8.0f, bottom = area.bottom() - kFxSplitHalfH - 18.0f;
-    return {left + x * (right - left), top + y * (bottom - top)};
-}
-inline Point fxNodeNorm(Point p) { // the other way round, held inside
-    const Point a = fxNodeAt(0.0f, 0.0f), b = fxNodeAt(1.0f, 1.0f);
-    return {std::clamp((p.x - a.x) / (b.x - a.x), 0.0f, 1.0f), std::clamp((p.y - a.y) / (b.y - a.y), 0.0f, 1.0f)};
-}
-// A split's band port: on its right edge, the high band at the top, the middle one in the middle.
+// A split's band port: on its right edge, the high band (2) at the top, the low one (0) at the bottom.
 inline Point fxBandPortAt(Point split, int band) {
     return {split.x + kFxSplitHalfW, split.y + (1 - band) * (kFxSplitHalfH - 10.0f)};
 }

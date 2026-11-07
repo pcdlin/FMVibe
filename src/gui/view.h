@@ -260,17 +260,15 @@ private:
         BendWheel,    // drag; springs back to center on release
         // The effects graph (see fxgraph.cpp).
         FxMode,       // b = 0 the chain, 1 the graph: the switch at the FX panel's top right
-        FxSplitAdd,   // + SPLIT: puts a split in the graph, with a sum its bands meet again in
-        FxSumAdd,     // + SUM: puts a sum in the graph
-        FxNode,       // a = node: a click shows it in the inspector, a drag moves it
-        FxPort,       // a = port, b = its node (-1 for the input): drag from it onto a node to wire them
-        FxWire,       // param = its level, a = node it goes into, b = its input: along its curve; drag to bend it
-        FxWireEnd,    // param = its level, a = node, b = input: its arrowhead, to drag onto another node or away
-        FxWireStart,  // param = its level, a = node, b = input: where it leaves its port, to drag onto another one
-        FxLabel,      // param = its level, a = node, b = input: its level in numbers; drag it, or drop a handle on it
-        FxLabelRemove, // param = its level, a = node, b = input: the x beside the label; removes the wire
-        FxNodeRemove, // a = node: the x on the inspector's card of a split or a sum
-        SplitPoint,   // param = the crossover, a = split, b = 0 low, 1 high: its handle on the split's display
+        FxNode,       // a = node: a click shows it in the inspector
+        FxSlot,       // a = lane (0 the main line, 1 the high band, 2 the low band): a +, which opens the list of effects
+        FxGap,        // a = lane, b = item·kFxGapStride + place (see FxSlotAt): a wire's middle, which opens it too
+        FxAddNode,    // a = 0 a split, 1 a join: the list's entry after the effects, opened from a + or a wire
+        FxNodeRemove, // a = node: the x on the inspector's card of a split or a join
+        FxNodeDelete, // a = node: the x in a circle at a node's upper right, while the mouse is over the node
+        FxWire,       // a = lane, b = item·kFxGapStride + place: along a wire that takes a node at its middle, its +
+        FxClear,      // the button at the FX panel's top right that removes every effect, asking first
+        SplitPoint,   // param = the crossover, a = split: its handle on the split's display
     };
 
     // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
@@ -330,12 +328,8 @@ private:
         Bend,       // a wire, sideways: how far it bows
         ModsScroll, // the MODS view's thumb
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
-        FxNode,     // a node of the effects graph, moved
-        FxConnect,  // from a port of the effects graph, to wire it into a node
-        FxRewire,   // a wire of the effects graph by its arrowhead
-        FxRewireFrom, // a wire of the effects graph by its start, onto another port to come from
-        FxBend,     // a wire of the effects graph, sideways
         SplitPoint, // a split's crossover handle, across
+        FxNodeMove, // a node of the effects graph (a split or a join with what it holds), onto another place
     };
 
     struct Drag {
@@ -612,86 +606,144 @@ private:
     void removeEffect(int slot);
     // The chain order with `chain` first, then the empty slots.
     FxOrder fxOrderWith(const std::vector<int> &chain) const;
-    // The effects graph (see fxgraph.cpp). Its nodes are the slots and splits (by FxInput's numbering: a slot, then
-    // kFxSlots + split) and the output (kFxOutNode); wires come from ports (fxSlotPort(), fxBandPort(), kFxPortIn).
+    // The effects graph (see fxgraph.cpp): a main line of effects and splits from IN to OUT on a fixed grid, each
+    // split with a high and a low band of effects, closed by a join (the sum of its number) or, the line's last item,
+    // left open into OUT. The editor reads the line from the wires (fxLine()) and writes the wires from it
+    // (writeFxLine()), so the engine runs what the grid shows. Nodes are numbered as the graph's params number them
+    // (a slot, kFxSlots + split, the output, then the sums); wires come from ports (fxSlotPort(), fxBandPort(), ...).
     struct FxWireRef {
         int node;  // the node it goes into
         int input; // which of that node's inputs
         int port;  // where it comes from
     };
+    struct FxLineItem {
+        int node;            // an effect's slot, or a split's node
+        std::vector<int> hi; // a split's bands: the effects' slots along each, in order
+        std::vector<int> lo;
+        bool joined = false; // closed by its join
+    };
+    using FxLine = std::vector<FxLineItem>;
+    // Where the grid puts things: each node (row -1 the high band, 0 the main line, 1 the low band), each + (lane 0
+    // the main line, 1 the high band, 2 the low band) and OUT's column.
+    struct FxGridLayout {
+        struct Place {
+            int node, col, row;
+        };
+        struct Slot {
+            int lane, col, row;
+        };
+        std::vector<Place> nodes;
+        std::vector<Slot> slots;
+        int outCol = 1;
+    };
+    // Where the list of effects puts what it adds when it was opened in the graph: at the end of a lane (a +, `item`
+    // -1), or where a wire's middle was clicked: on the main line before item `item`, or on that item's band (lane 1
+    // the high one, 2 the low one) at `place`. Lane -1: neither, the list opened elsewhere.
+    struct FxSlotAt {
+        int lane = -1;
+        int item = -1;
+        int place = 0;
+    };
+    static constexpr int kFxGapStride = 64; // a band's places, more than it can hold
+    // The wires the grid draws: S-shaped from `from` to `to` (an arrowhead's base where `arrow`), in `color`, and
+    // where a node clicked in at their middle goes (`at`, lane -1 for none).
+    struct FxGraphWire {
+        Point from, to;
+        Color color;
+        bool arrow = true;
+        FxSlotAt at;
+    };
+    // Where the graph's nodes (by node), +s (by lane), IN and OUT show on screen: on their cells (fxPlacesOf()), or,
+    // while a node is dragged and until they settle after, gliding there (fxPlacesShown(), see fxGlide_).
+    struct FxPlaces {
+        std::array<Point, kFxNodes> node{};
+        std::array<Point, 3> slot{};
+        Point in, out;
+    };
+    FxPlaces fxPlacesOf(const FxGridLayout &grid, float scroll) const;
+    FxPlaces fxPlacesShown(const FxGridLayout &grid, float scroll) const;
+    std::vector<FxGraphWire> fxGraphWires(const FxLine &line, const FxPlaces &places) const;
+    bool fxWireHit(const Widget &w, Point p) const; // whether `p` is on the wire an FxWire widget stands for
+    // Dragging a node: what is dragged (an effect, or a split with its bands and join, by its split or its join),
+    // the line without it, where it was taken from and where it would land now, and where its nodes were on screen.
+    struct FxDrag {
+        FxLineItem item;
+        FxLine rest;
+        FxSlotAt was, at;
+        std::vector<int> nodes;
+        std::array<Point, kFxNodes> from{};
+    };
+    // The nodes' places as shown, in grid cells (fractions while they glide).
+    struct FxGlide {
+        bool on = false;
+        std::array<Point, kFxNodes> node{};
+        std::array<Point, 3> slot{};
+        float outCol = 1.0f;
+    };
+    FxLine fxLineShown() const; // the line, or while a node is dragged, the line with it where it would land
+    void startFxDrag(int node);
+    void retargetFxDrag(Point mouse); // where it would land, for the mouse at `mouse`
+    void dropFxNode(bool take);       // let go of: moved there if `take`, gliding into its place either way
+    bool glideFxGraph();              // a step of the glide, in poll(): whether anything moved
+    static FxLine fxLineWith(FxLine rest, const FxLineItem &item, FxSlotAt at);
+    // Every effect (and every split and join) gone, one undo step, the modulation of their knobs with them; whether
+    // there is any.
+    void clearFx();
+    bool fxAnyToClear() const;
     bool fxGraph() const;
     bool fxNodeShown(int node) const;
     std::vector<FxWireRef> fxWires() const;
-    // The node a port comes out of: -1 for the input.
-    static int fxPortNode(int port);
-    // Whether `to` can be reached from `from` along the wires (a node reaches itself).
-    bool fxReaches(int from, int to) const;
-    Point fxNodeCenter(int node) const;
-    // Where a wire from `port` leaves its node, toward `toward`.
-    Point fxPortPoint(int port, Point toward) const;
+    // The line the wires make, with any effect they leave out put at its end (on the high band while a split is open).
+    FxLine fxLine() const;
+    // Wires the graph as `line` says, the splits and joins it holds in use and the others not, the join's band
+    // levels kept, and the chain's places in its order (so the count and the target menu follow it), in the undo
+    // step the caller holds.
+    void writeFxLine(const FxLine &line, bool wired = true); // not `wired`: no wires, the line only the chain's order
+    static FxGridLayout fxGridLayout(const FxLine &line);
+    static int fxJoinNode(int split) { return fxSumNode(split); } // a split's join: the sum of the same number
+    float fxGraphScroll(const FxGridLayout &grid) const;     // how far the graph is scrolled, held to its width
+    float fxGraphScrollMost(const FxGridLayout &grid) const; // how far it scrolls at most
+    void revealFxNode(int node);                         // scrolls the graph to show that node
     // The card the effects graph's inspector shows the node in.
     Rect fxInspector(int node) const;
     // The card of the effect in `slot` where it shows now: in the row, or in the graph's inspector; none while it
     // doesn't show.
     std::optional<Rect> fxCardOf(int slot) const;
     int fxSelectedNode() const; // the node the inspector shows, -1 for none
-    // Connects `port` into `node` at full level, in its first free input; refused (with a message) when the node takes
-    // no more, the wire is there already or (unless kAllowFxLoops) it would make a loop.
-    bool fxConnect(int port, int node);
-    // Moves a wire's end onto another node, with its level and modulation; -1 removes it.
-    void fxRewire(int node, int input, int into);
-    // Moves a wire's start onto another port, which it then comes from, keeping its level and modulation.
-    void fxRewireFrom(int node, int input, int port);
-    // The port a wire's start let go of at `p` comes from: the input's box, an effect, or a split's band nearest `p`;
-    // -1 for none.
-    int fxPortAtPoint(Point p) const;
-    void fxRemoveWire(int node, int input, std::vector<std::pair<int, double>> &changes);
-    // Changes that wire `node` (just added) after the node the inspector shows, taking over its wires out: an effect's
-    // output, or one of a split's bands (the first from the low one up without an effect of its own); after the input
-    // when none is shown.
-    void fxInsertAfterSelected(int node, std::vector<std::pair<int, double>> &changes);
-    // The chain's places in the graph's order, so what goes by the chain (the count, the target menu) follows it.
-    void fxSyncOrder();
-    void addSplit(); // with a sum its bands meet again in, while one is free
-    void removeSplit(int split);
-    // A sum after the node the inspector shows, taking over its wires out; one taken out joins what went into it, if it
-    // came from one place, to where it went.
-    void addSum();
-    void removeSum(int sum);
-    void removeFxNode(int node); // an effect, a split or a sum
-    void sumCardWidgets(std::vector<Widget> &list, int sum, Rect card) const;
-    void paintSumCard(Canvas &c, int sum, Rect card);
-    // A split's band count from its card. Going to three with nothing wired from the middle band, it goes where the
-    // high band goes, at the high band's level, so the sound stays as it was.
-    void setSplitBands(int split, int bands);
-    // The effects as a graph, wired as the chain was, or back as a chain in the graph's order (its splits and wires
-    // gone): asked first, unless `asked`, when that loses parallel wires or splits.
+    // An effect just put in `slot`: where the list was opened (see fxSlot_), or, a copy, after the effect it copies.
+    // A split goes at the main line's end, open, or where a wire's middle was clicked with its join right after it.
+    void fxPlaceNew(int slot, int copyOf);
+    void addSplit(); // from the main line's + or a wire's middle on it (see fxSlot_)
+    void addJoin();  // closing the open split, from a band's +
+    // An effect, a split (its bands' effects going on the main line in its place, high band first) or a join (its
+    // split open again, only while nothing comes after it).
+    void removeFxNode(int node);
+    // The effects as a graph, on its main line in the chain's order, or back as a chain in the line's order (bands
+    // high then low), asked first, unless `asked`, when that loses splits.
     void setFxGraph(bool on, bool asked = false);
     bool fxGraphIsChain() const; // whether going back to a chain loses nothing
-    // The graph's widgets: its nodes, ports and wires.
+    // The node of the graph under the mouse, or whose x is (see Kind::FxNodeDelete), -1 for none; and where its x
+    // goes, at its upper right.
+    int fxHoveredNode() const;
+    static Point fxDeleteAt(int node, Point center);
+    // The graph's widgets: its nodes and +s, and the inspector's split or join card.
     void fxGraphWidgets(std::vector<Widget> &list) const;
     void splitCardWidgets(std::vector<Widget> &list, int split, Rect card) const;
-    // The mouse on the graph's widgets: a press (true if it was one of them), a drag going on, and its end.
+    void joinCardWidgets(std::vector<Widget> &list, int split, Rect card) const;
+    // The mouse on the graph's widgets: a press (true if it was one of them), and a drag going on.
     bool fxGraphPress(const Widget &w, Point p);
     void fxGraphDrag(Point p);
-    void fxGraphRelease(Point p);
     void paintFxGraph(Canvas &c);
     void paintFxCard(Canvas &c, int slot, Rect card, bool dragged);
     void paintSplitCard(Canvas &c, int split, Rect card);
-    // A split's display on its card, and its crossover handles there.
+    void paintJoinCard(Canvas &c, int split, Rect card);
+    // A split's display on its card, and its crossover's handle there.
     static Rect splitDisplay(Rect card);
-    Point splitHandle(int split, int which, Rect display) const;
-    // The node under `p` in the graph (kFxOutNode for the output's box), or -1.
-    int fxNodeAtPoint(Point p) const;
-    // Whether `p` hits a wire of the graph (near its curve) or a port (an effect's edge, a band's dot, the input's box).
-    bool fxHit(const Widget &w, Point p) const;
-    // Ctrl+drag: where a node dragged to `want` goes on its graph's grid, the nearest point it fits at clear of the other
-    // nodes (in the routing graph and in the effects graph); and whether the grid's points show now, and over what.
+    Point splitHandle(int split, Rect display) const;
+    // Ctrl+drag in the routing graph: where a node dragged to `want` goes on its grid, the nearest point it fits at
+    // clear of the other nodes; and whether the grid's points show now.
     Point routingGridPoint(int node, Point want) const;
-    Point fxGridPoint(int node, Point want) const;
     bool routingGridShown() const;
-    bool fxGridShown() const;
-    static Rect fxNodeArea(); // where the effects graph's nodes' centers may go
     // Measured in card places (the parametric EQ's card takes more than one): how far the row is scrolled,
     // where the card at `index` of `chain` starts in the row, and so its screen place, 0..6 on screen and
     // fractions while it scrolls partly out.
@@ -707,9 +759,9 @@ private:
     float fxOffset(const std::vector<int> &chain, size_t index) const;
     float fxScreen(const std::vector<int> &chain, size_t index) const;
     void revealFx(int position);
-    // The card rows that scroll: the effects chain and the modulation sources. How many
-    // card places each has, how many fit, and its thumb.
-    enum class ScrollArea { Fx, Sources };
+    // What scrolls sideways with a scrollbar: the effects chain and the modulation sources, by card places, and the
+    // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
+    enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
     enum class PanArea { Fx, Sources, Mods, Browser };
     void applyPan(Point p);
@@ -724,6 +776,7 @@ private:
     // The top left of a list as wide and high as `menu` that opens at the mouse, moved back inside the editor where
     // it would reach past an edge.
     Point menuAtMouse(Point mouse, Rect menu) const;
+    float scrollShown(ScrollArea area) const;
     float scrollFirst(ScrollArea area) const;
     void setScroll(ScrollArea area, float first);
     Rect scrollThumb(ScrollArea area) const;
@@ -1110,6 +1163,10 @@ private:
     bool fxMenuOpen_ = false;                // the ADD EFFECT list
     Point fxMenuAt_{-1.0f, -1.0f};           // its top left: at the mouse, or (x < 0) under ADD EFFECT
     int fxInsertAt_ = -1;                    // where the list puts the effect it adds: a place in the chain, or (-1) its end
+    FxSlotAt fxSlot_;                        // where in the effects graph the list was opened, if there
+    std::optional<FxDrag> fxDrag_;           // a node of the effects graph being dragged
+    FxGlide fxGlide_;
+    float fxGraphScroll_ = 0.0f;             // how far the effects graph is scrolled sideways, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
@@ -1174,6 +1231,7 @@ private:
     bool ctrlHeld_ = false; // see setCtrl()
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxChain, or -1
     static constexpr int kConfirmFxChain = 3; // asking before the effects graph goes back to a chain
+    static constexpr int kConfirmFxClear = 4; // asking before every effect goes
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
     bool browserOpen_ = false;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping

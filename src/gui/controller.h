@@ -77,15 +77,8 @@ struct UiLayout {
     // grid.
     bool shapeSteps = false;
     bool shapeSnap = false;
-    // The effects graph's nodes, 0..1 within its area (see fxNodeArea()), by node: the slots', the splits', the
-    // output's (unused), then the sums'. Part of the patch, like the routing graph's. And the node its inspector shows
-    // (a slot, a split or a sum), -1 for none.
-    std::array<float, kFxNodes> fxNodeX = [] {
-        std::array<float, kFxNodes> x{};
-        x.fill(0.5f);
-        return x;
-    }();
-    std::array<float, kFxNodes> fxNodeY = fxNodeX;
+    // The node the effects graph's inspector shows (a slot, a split or a join, numbered as the graph's params number
+    // them), -1 for none. Where the nodes sit follows from the wires (see View::fxGridLayout()).
     int fxSelected = -1;
 };
 

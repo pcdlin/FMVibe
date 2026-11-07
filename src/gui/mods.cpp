@@ -597,45 +597,25 @@ View::MenuNode View::cascadeCategories() const {
         if (!node.children.empty())
             effects.children.push_back(std::move(node));
     }
-    // In the graph, its splits' crossovers, and its wires' levels named by what they join.
-    if (fxGraph()) {
-        auto nodeName = [&](int node) -> std::string {
-            if (node == kFxOutNode)
-                return tr(Str::NodeFxOut);
-            if (fxNodeSum(node) >= 0)
-                return trf(Str::NodeSum, {std::to_string(fxNodeSum(node) + 1)});
-            if (node >= kFxSlots)
-                return trf(Str::NodeSplit, {std::to_string(node - kFxSlots + 1)});
-            const auto at = std::find(chain.begin(), chain.end(), node);
-            return std::to_string(at - chain.begin() + 1) + " \xC2\xB7 " + fxName(fxSlotType(node));
-        };
-        const char *const bands[] = {tr(Str::BandLow), tr(Str::BandMid), tr(Str::BandHigh)};
-        for (int split = 0; split < kFxSplits; ++split) {
-            if (!fxNodeShown(fxSplitNode(split)))
+    // In the graph, its splits' crossovers and its joins' band levels, in the line's order.
+    if (fxGraph())
+        for (const FxLineItem &item : fxLine()) {
+            if (!fxNodeSplit(item.node))
                 continue;
-            MenuNode node = category(nodeName(fxSplitNode(split)));
+            const int split = item.node - kFxSlots;
+            MenuNode node = category(trf(Str::NodeSplit, {std::to_string(split + 1)}));
             node.color = splitColor();
-            const std::string prefix = trf(Str::ParamSplit, {std::to_string(split + 1)});
-            add(node, paramIndex(split, SplitParam::Low), prefix);
-            if (std::lround(value(paramIndex(split, SplitParam::Bands))) >= kFxBands)
-                add(node, paramIndex(split, SplitParam::High), prefix);
+            add(node, paramIndex(split, SplitParam::Low), trf(Str::ParamSplit, {std::to_string(split + 1)}));
             effects.children.push_back(std::move(node));
+            if (!item.joined)
+                continue;
+            MenuNode join = category(trf(Str::NodeJoin, {std::to_string(split + 1)}));
+            join.color = sumColor();
+            for (int input = 0; input < 2; ++input)
+                add(join, fxInputIndex(fxJoinNode(split), input, FxInputField::Level),
+                    trf(Str::ParamSum, {std::to_string(split + 1)}));
+            effects.children.push_back(std::move(join));
         }
-        MenuNode wires = category(tr(Str::CascadeWires));
-        for (const FxWireRef &w : fxWires()) {
-            const int from = fxPortNode(w.port);
-            std::string label = from < 0 ? std::string(tr(Str::NodeFxIn)) : nodeName(from);
-            if (fxPortBand(w.port) >= 0)
-                label += std::string(" ") + bands[fxPortBand(w.port)];
-            label += " \xE2\x86\x92 " + nodeName(w.node);
-            wires.children.push_back(targetPick(label, fxInputIndex(w.node, w.input, FxInputField::Level),
-                                                from >= 0 && from < kFxSlots ? fxColor(from)
-                                                : fxPortSum(w.port) >= 0     ? sumColor()
-                                                                             : splitColor()));
-        }
-        if (!wires.children.empty())
-            effects.children.push_back(std::move(wires));
-    }
     keep(std::move(effects));
 
     // The sources' own knobs, then the depths of their modulations (another source's modulation scaled by this one).

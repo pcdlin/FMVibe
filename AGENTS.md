@@ -206,14 +206,25 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
-  - the effects graph: switching to it wiring the chain up as it ran, + SPLIT putting a split after the node picked
-    (its bands meeting in a sum that goes where that node went, the high band's wire bowing up and the low one's
-    down), + SUM putting a sum after the node picked, BANDS 3 on its
-    card (centered in the inspector) wiring the middle band where the high band goes, + EFFECT with the split picked
-    putting an effect on its low band and then one on its middle band, its card's crossover handle dragged, a wire's
-    start dragged from a band onto IN, a node Ctrl+dragged onto the graph's grid, a loop refused, the input's box
-    wired into a node, a wire's label setting its level and its x removing it, a node moved and the move undone, and
-    going back to a chain asking first, then leaving the chain in the graph's order;
+  - the effects graph's slot grid: switching to it putting the chain on its main line, wired as it ran; the main
+    line's + opening the list of effects with Split into two bands after them, the split's two bands each going out
+    with a + of its own; a band's + putting an effect on its band, and its list joining the bands, the line going on
+    from the join with one + again; the join's card (centered in the inspector) setting a band's level, and its x
+    refused while something comes after it; the split's crossover handle dragged on its card; + EFFECT with the split
+    picked putting an effect at the end of a band, undone; the split taken out putting its bands' effects on the main
+    line, undoably; a wire's middle lit under the mouse and opening the list, an effect going in between two effects,
+    a split going in with its join right after it, and, from the wire into a join, an effect going at its band's end
+    (the list offering no split there), each undone; a node under the mouse showing an x in a circle at its upper
+    right (read off the rendered pixels), whose click removes it, undone; nodes dragged and dropped while the others
+    glide aside (polled until they settle): an effect along the main line, one from the high band to the low band's
+    end, and a split with its bands and join, carried by the join, to the line's start, each one undo step, undone;
+    the mouse anywhere along a wire showing its + (read off the rendered pixels), a click there doing nothing and on
+    the + opening the list; and going back to a chain asking first, then leaving the chain in the line's order;
+  - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
+    the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
+    nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the
+    rendered pixels) whose thumb dragged to its end scrolls the graph there, the + at the end then taking a click,
+    and no scrollbar once the graph fits (read off the rendered pixels);
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
   - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
     there only picks the node and a drag from further inside moves it; a filter's edge dragged onto an earlier
@@ -568,7 +579,7 @@ breakpoints in `src/` then hit.
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
-| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects graph: its nodes, splits and wires, wiring and rewiring them, its inspector and the split's card |
+| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects graph's slot grid: its line of effects, splits and joins, read from the wires and written back to them, its +s, its inspector and the split's and join's cards |
 | `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
@@ -640,7 +651,9 @@ itself.
   slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
   output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
   (0 = none): the input, then each slot's output, each split's bands, low to high, then each sum's output. The graph's
-  nodes are numbered the slots, the splits, the output, then the sums.
+  nodes are numbered the slots, the splits, the output, then the sums. The editor wires a line (see
+  `src/gui/fxgraph.cpp`): a split's two bands are its low and high ones (Bands 2), and its join is the sum of its
+  number, whose first two inputs take the high band and the low band.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port and fixed Mult lists, the routing views and the operator page's tabs,
@@ -698,8 +711,7 @@ itself.
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
-  effect cards past the 16th slot are folded, and the effects graph's node places (by node: the slots', the
-  splits', the output's, unused, then the sums', x then y) and the node its inspector shows.
+  effect cards past the 16th slot are folded, and the node the effects graph's inspector shows.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

@@ -298,9 +298,7 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.shapeSnap, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     // The effect cards folded past the first 16 slots, which the 16 bits above don't reach.
     io.number(ui.fxFoldedLater, 0.0f, 65535.0f, rounded<uint32_t>);
-    // The effects graph's node places, and the node its inspector shows.
-    io.numbers(ui.fxNodeX, 0.0f, 1.0f);
-    io.numbers(ui.fxNodeY, 0.0f, 1.0f);
+    // The node the effects graph's inspector shows.
     io.number(ui.fxSelected, -1.0f, kFxNodes - 1.0f, rounded<int>);
 }
 
