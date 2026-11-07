@@ -1043,8 +1043,9 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(routeModulated && renderer.save(view, dir / "18b-modulated-route.png"),
           "render a modulated route, its wire swelling and its label showing the range");
     // That route turned down to 0 %: B, sounding, lights up only while its modulation opens the route again, just
-    // above it (read off the rendered pixels).
+    // above it (read off the rendered pixels), with the glow setting at its middle, where it starts; off, no halo.
     const double routed = model.value(matrixIndex(1, 0));
+    model.glowLevel = 0.5;
     model.set(matrixIndex(1, 0), 0.0);
     model.live.opLevels[1] = 1.0f;
     auto aboveB = [&](float offset) {
@@ -1054,7 +1055,10 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         return renderer.pixel({bNode.x, bNode.y - 28.0f});
     };
     const uint32_t shut = aboveB(0.0f), opened = aboveB(0.3f);
-    check(opened != shut, "an operator lights up while modulation opens its route from 0 %");
+    model.glowLevel = 0.0;
+    const uint32_t glowOff = aboveB(0.3f);
+    check(opened != shut && glowOff == shut,
+          "an operator lights up while modulation opens its route from 0 %, unless the glow setting is off");
     model.set(matrixIndex(1, 0), routed);
     model.live = Telemetry{};
     view.poll();
@@ -2108,6 +2112,31 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(paramIndex(1, SplitParam::Used)) == 0.0 && from(join, 0) == fxSlotPort(2) &&
               fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},
           "a wire's middle puts an effect there, or a split with its join right after it, its empty bands showing their +");
+
+    // What goes through a node lights it: the shaper's output at half scale in the telemetry, a halo round it and a
+    // glow along its wire out (read off the rendered pixels), gone again once it is silent.
+    {
+        const Point shaperAt = cell(1, 0);
+        const Point halo{shaperAt.x, shaperAt.y - detail::kFxNodeR - 4.0f};
+        const Point along{(shaperAt.x + detail::kFxNodeR + cell(2, 0).x - detail::kFxNodeR - 8.0f) * 0.5f, shaperAt.y + 3.0f};
+        model.glowLevel = 0.5; // the glow setting where it starts; off, nothing glows
+        view.mouseMove({600.0f, 428.0f}, {});
+        renderer.save(view, dir / "40v-fx-quiet.png");
+        const uint32_t quietHalo = renderer.pixel(halo), quietAlong = renderer.pixel(along);
+        model.live.fxPortLevels[fxSlotPort(0)] = 0.5f;
+        view.poll();
+        const bool shot = renderer.save(view, dir / "40v-fx-glow.png");
+        const bool lit = renderer.pixel(halo) != quietHalo && renderer.pixel(along) != quietAlong;
+        model.glowLevel = 0.0;
+        renderer.save(view, dir / "40v-fx-glow-off.png");
+        const bool offDark = renderer.pixel(halo) == quietHalo;
+        model.live.fxPortLevels[fxSlotPort(0)] = 0.0f;
+        view.poll();
+        renderer.save(view, dir / "40v-fx-quiet.png");
+        check(shot && lit && offDark && renderer.pixel(halo) == quietHalo,
+              "a node of the effects graph and its wire out glow as loud as what comes out of it, unless the glow "
+              "setting is off");
+    }
 
     // The mouse over the reverb shows an x in a circle at its upper right (read off the rendered pixels: none there
     // before), whose click removes it, the shaper going on into the split; undone.

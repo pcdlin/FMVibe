@@ -317,6 +317,38 @@ void effectsChainChecks() {
               "a wire of the effects graph connected and taken away fades in and out without a click");
     }
     {
+        // The effects graph's ports, as the editor lights its nodes and wires by them: a sine at half scale from IN
+        // through a DJ EQ at its middle to OUT reads half scale at IN and out of the EQ, an effect not in the graph 0;
+        // a second of silence after, every port has fallen about 90 dB, and as a chain they all read 0.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Eq);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Delay);
+        p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(fxSlotPort(0));
+        std::vector<float> left(4800), right(4800);
+        for (int i = 0; i < 4800; ++i)
+            left[i] = right[i] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * i / kSampleRate));
+        fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        const float in = fx.portLevel(kFxPortIn), eq = fx.portLevel(fxSlotPort(0)), apart = fx.portLevel(fxSlotPort(1));
+        for (int k = 0; k < 10; ++k) {
+            std::fill(left.begin(), left.end(), 0.0f);
+            std::fill(right.begin(), right.end(), 0.0f);
+            fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        }
+        const float fallen = fx.portLevel(fxSlotPort(0));
+        p[paramIndex(GlobalParam::FxGraph)] = 0.0;
+        fx.process(left.data(), right.data(), 64, p, 120.0, 60.0);
+        const float chain = fx.portLevel(kFxPortIn);
+        std::printf("      graph ports: IN %.3f, EQ %.3f, apart %.3f, after a second %.1f dB down\n", in, eq, apart,
+                    20.0 * std::log10(eq / std::max(fallen, 1e-9f)));
+        check(std::abs(in - 0.5f) < 0.01f && std::abs(eq - 0.5f) < 0.05f && apart == 0.0f &&
+                  std::abs(20.0 * std::log10(eq / fallen) - Effects::kPortFallDb) < 3.0 && chain == 0.0f,
+              "the effects graph tells how loud each of its ports is, falling away after");
+    }
+    {
         // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd),
         // at unity gain: each sample comes out as the curve has it at the middle of its step, through the DC blocker
         // every drawn curve has.

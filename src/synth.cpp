@@ -1048,6 +1048,8 @@ void Synth::telemetry(Telemetry &out) const {
             out.fxSpectrum[slot][band] = effects_.spectrum(slot, band);
         out.fxPhases[slot] = effects_.sweepPhase(slot);
     }
+    for (int port = 0; port < kFxPorts; ++port)
+        out.fxPortLevels[port] = effects_.portLevel(port);
     for (int f = 0; f < kFilters; ++f) // and so do the filters' analyzers, as the filters ring out
         out.filterSpectrum[f] = filterAnalyzed_[f].bands;
     const Voice *newest = nullptr;

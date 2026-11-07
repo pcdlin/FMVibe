@@ -674,34 +674,38 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
     struct Tail {
         Point at;
         Color color;
+        int port; // what goes along from there
     };
     std::vector<FxGraphWire> wires;
     // From each node's right to the next one's left (`to`, an arrowhead's tip where `arrow`); a node clicked in at its
     // middle goes `where`.
     auto wire = [&](Tail from, Point to, bool arrow, FxSlotAt where = {}) {
-        wires.push_back({from.at, arrow ? Point{to.x - 8.0f, to.y} : to, from.color, arrow, where});
+        wires.push_back({from.at, arrow ? Point{to.x - 8.0f, to.y} : to, from.color, arrow, where, std::nullopt,
+                         from.port});
     };
     const auto &at = places.node;
     const Point in = places.in, out = places.out;
-    Tail tail{{in.x + kFxEndHalfW, in.y}, kDim};
+    Tail tail{{in.x + kFxEndHalfW, in.y}, kDim, kFxPortIn};
     bool open = false;
     for (int i = 0; i < static_cast<int>(line.size()); ++i) {
         const FxLineItem &item = line[i];
         const Point p = at[item.node];
         if (item.node < kFxSlots) {
             wire(tail, {p.x - kFxNodeR, p.y}, true, {0, i, 0});
-            tail = {{p.x + kFxNodeR, p.y}, effectColor(item.node)};
+            tail = {{p.x + kFxNodeR, p.y}, effectColor(item.node), fxSlotPort(item.node)};
             continue;
         }
         wire(tail, {p.x - kFxSplitHalfW, p.y}, true, {0, i, 0});
         // Out of the bands' ports in the split's grey.
-        Tail bands[] = {{fxBandPortAt(p, kHighBand), splitColor()}, {fxBandPortAt(p, kLowBand), splitColor()}};
+        const int split = item.node - kFxSlots;
+        Tail bands[] = {{fxBandPortAt(p, kHighBand), splitColor(), fxBandPort(split, kHighBand)},
+                        {fxBandPortAt(p, kLowBand), splitColor(), fxBandPort(split, kLowBand)}};
         for (int lane = 0; lane < 2; ++lane) {
             const std::vector<int> &band = lane == 0 ? item.hi : item.lo;
             for (size_t k = 0; k < band.size(); ++k) {
                 const Point e = at[band[k]];
                 wire(bands[lane], {e.x - kFxNodeR, e.y}, true, {lane + 1, i, static_cast<int>(k)});
-                bands[lane] = {{e.x + kFxNodeR, e.y}, effectColor(band[k])};
+                bands[lane] = {{e.x + kFxNodeR, e.y}, effectColor(band[k]), fxSlotPort(band[k])};
             }
         }
         if (item.joined) { // into the join, a node clicked in there going at its band's end
@@ -719,25 +723,34 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
                 const Point plus{p.x + kFxGridCol, p.y + (lane == 0 ? -kFxGridRow : kFxGridRow)};
                 wire(bands[lane], {plus.x - kFxSlotHalf, plus.y}, false, end);
                 wires.back().plus = plus;
-                wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color}, into, true);
+                wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color, bands[lane].port}, into, true);
             }
-            tail = {{j.x + kFxJoinHalfW, j.y}, sumColor()};
+            tail = {{j.x + kFxJoinHalfW, j.y}, sumColor(), fxSumPort(item.node - kFxSlots)};
             continue;
         }
         open = true; // each band on to its +, and from there out
         for (int lane = 0; lane < 2; ++lane) {
             const Point plus = places.slot[lane + 1];
             wire(bands[lane], {plus.x - kFxSlotHalf, plus.y}, false);
-            wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color},
+            wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color, bands[lane].port},
                  {out.x - kFxEndHalfW, out.y + (lane == 0 ? -12.0f : 12.0f)}, true);
         }
     }
     if (!open) {
         const Point plus = places.slot[0];
         wire(tail, {plus.x - kFxSlotHalf, plus.y}, false);
-        wire({{plus.x + kFxSlotHalf, plus.y}, tail.color}, {out.x - kFxEndHalfW, out.y}, true);
+        wire({{plus.x + kFxSlotHalf, plus.y}, tail.color, tail.port}, {out.x - kFxEndHalfW, out.y}, true);
     }
     return wires;
+}
+
+float View::fxGlow(int port) const {
+    if (port < 0 || port >= kFxPorts || !(telemetry_.age < 0.5f))
+        return 0.0f;
+    const float level = telemetry_.fxPortLevels[port];
+    if (!(level > 0.0f))
+        return 0.0f;
+    return std::clamp((20.0f * std::log10(level) - kFxGlowFloorDb) / -kFxGlowFloorDb, 0.0f, 1.0f);
 }
 
 Rect View::splitDisplay(Rect card) {
@@ -1102,9 +1115,17 @@ void View::paintFxGraph(Canvas &c) {
 
     // The wires, S-shaped, each in the color of what it comes from with an arrowhead where it goes into a node; the
     // middle of one under the mouse anywhere along it, or whose list is open, or of an empty band, a + in a circle.
+    // As loud as what goes along it is, a wire glows in its color under it, and an arrowhead into OUT lights OUT.
     const std::vector<FxGraphWire> wires = fxGraphWires(line, at);
+    float outGlow = 0.0f;
     for (const FxGraphWire &w : wires) {
         const std::vector<Point> points = sWire(w.from, w.to);
+        const float glow = fxGlow(w.port);
+        if (glow > 0.01f) {
+            featherLine(c, points.data(), points.size(), 1.6f, 6.0f, w.color.alpha(0.3f * glow));
+        }
+        if (w.arrow && std::abs(w.to.x + 8.0f - (at.out.x - kFxEndHalfW)) < 0.5f)
+            outGlow = std::max(outGlow, glow);
         c.polyline(points.data(), points.size(), w.color.alpha(0.8f), 1.6f);
         if (w.arrow)
             arrowHead(c, w.to, {1.0f, 0.0f}, w.color);
@@ -1145,6 +1166,8 @@ void View::paintFxGraph(Canvas &c) {
     // IN and OUT.
     for (const auto &[p, name] : {std::pair{at.in, Str::NodeFxIn}, std::pair{at.out, Str::NodeFxOut}}) {
         const Rect r = boxAround(p, kFxEndHalfW, kFxEndHalfH);
+        if (const float glow = name == Str::NodeFxIn ? fxGlow(kFxPortIn) : outGlow; glow > 0.01f)
+            featherRect(c, r, 6.0f, 12.0f, kText.alpha(0.18f * glow));
         c.fillRect(r, kCardColor, 6.0f);
         c.strokeRect(r, kBorder, 1.0f, 6.0f);
         c.text(r, tr(name), 10.0f, kDim, Align::Center, true);
@@ -1168,8 +1191,11 @@ void View::paintFxGraph(Canvas &c) {
             c.text({center.x - 60.0f, center.y + below + 3.0f, 120.0f, 14.0f}, text, 9.5f, (isSelected ? kText : kDim).alpha(alpha),
                    Align::Center, true);
         };
+        // As loud as what comes out of it is, a node glows in its color around it, as an operator does.
         if (node < kFxSlots) {
             const Color color = effectColor(node).alpha(alpha);
+            if (const float glow = alpha < 1.0f ? 0.0f : fxGlow(fxSlotPort(node)); glow > 0.01f)
+                featherCircle(c, center, kFxNodeR, 16.0f, color.alpha(0.3f * glow));
             if (isSelected)
                 c.strokeCircle(center, kFxNodeR + 5.0f, color.alpha(0.5f), 1.5f);
             c.fillCircle(center, kFxNodeR, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(alpha));
@@ -1181,6 +1207,12 @@ void View::paintFxGraph(Canvas &c) {
         const bool join = fxNodeSum(node) >= 0;
         const Color color = (join ? sumColor() : splitColor()).alpha(alpha);
         const Rect r = nodeRect(node, center);
+        const float glow = alpha < 1.0f ? 0.0f
+                           : join ? fxGlow(fxSumPort(fxNodeSum(node)))
+                                  : std::max(fxGlow(fxBandPort(node - kFxSlots, kHighBand)),
+                                             fxGlow(fxBandPort(node - kFxSlots, kLowBand)));
+        if (glow > 0.01f)
+            featherRect(c, r, 6.0f, 14.0f, kText.alpha(0.18f * glow));
         if (isSelected)
             c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, 9.0f);
         c.fillRect(r, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(alpha), 6.0f);

@@ -150,4 +150,11 @@ extern float glowing; // how strongly graphs' curves glow, 0..1, which View::pai
 // A graph's curve, glowing as `glowing` says (see theme.cpp).
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width);
 
+// A glow feathering out, as strong as `color`'s alpha where it starts and fading to nothing `spread` further out: round a
+// circle of radius `inner`, round a rounded box, and along a line `width` wide. As the glow setting (`glowing`) is at
+// 75 %; stronger and wider above it, fainter and narrower below, and none when it is off.
+void featherCircle(Canvas &c, Point center, float inner, float spread, Color color);
+void featherRect(Canvas &c, Rect r, float radius, float spread, Color color);
+void featherLine(Canvas &c, const Point *points, size_t count, float width, float spread, Color color);
+
 } // namespace fmvibe::gui::detail

@@ -651,11 +651,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     box at the left) to the output (OUT, a box after the last column). Each effect is a circle in its color with its
     icon and name, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Split
-    into two bands**, after the effects: a split, a box with a dot for each band on its right side (the high band on
+    into high/low bands**, after the effects: a split, a box with a dot for each band on its right side (the high band on
     top, in amber, the low one in blue), always comes with its join, which adds the bands back together in the
     column after the longer band; the line goes on from the join. The bands run between them, the high one along the
     row above the main line and the low one along the row below, named beside the split; splits and joins are grey
-    boxes as large as each other, and the wires out of a split's bands grey too. An empty band curves out to a + on
+    boxes as large as each other, and the wires out of a split's bands grey too. While sound plays, each node glows round it and each
+    wire along it as loud as what comes out of it (IN, an effect, a split's band, a join), as the operators do in the
+    routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops. An empty band curves out to a + on
     its row, a column on from the split, and on into the join, and a click on that + puts an effect on the band (its
     list offers effects only). With the mouse
     anywhere along a wire between two nodes, a + shows at its middle (always on an empty band between a split
@@ -1176,7 +1178,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   gray, with deep colors) or Paper (warm: cream on sand, with ink-brown text and earthy colors), each button
   shown in its own colors. **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the
   graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
-  stronger and wider the halo.
+  stronger and wider the halo. It sets the halos that sounding operators and the effects graph's nodes and wires
+  feather out with too: as they are drawn at 75 %, stronger and wider above it, fainter below, and none at Off.
   The editor shows it while it is dragged and keeps it when it is let go. **Lines**, a slider like it from Off to
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
   one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Handles**, Small (to begin

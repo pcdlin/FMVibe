@@ -653,7 +653,12 @@ private:
         bool arrow = true;
         FxSlotAt at;
         std::optional<Point> plus; // where its + shows, if not at its middle: an empty band's, on the band's row
+        int port = -1;             // what it carries: the port it comes from, which lights it as loud as that is
     };
+    // How brightly a port of the effects graph lights what it goes out of and along, 0..1: by its level in the
+    // telemetry, in dB from kFxGlowFloorDb up to full scale; 0 while the audio has stopped.
+    static constexpr float kFxGlowFloorDb = -48.0f;
+    float fxGlow(int port) const;
     // Where the graph's nodes (by node), +s (by lane), IN and OUT show on screen: on their cells (fxPlacesOf()), or,
     // while a node is dragged and until they settle after, gliding there (fxPlacesShown(), see fxGlide_).
     struct FxPlaces {

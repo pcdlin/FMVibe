@@ -548,8 +548,8 @@ STR(ButtonOverwrite, "Overwrite")
 STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
 STR(HintFx, "click icon: toggle  ·  drag title: reorder")
-STR(HintFxInspector, "Click a node to edit it here") // the graph's inspector, with no node to show
-STR(CaptionSplit, "High on top, low below") // a split's card: what it does, in a line that fits
+STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
+STR(CaptionSplit, "Split into high/low bands") // a split's card: what it does, in a line that fits
 STR(CaptionJoin, "Adds the bands together") // a join's card: what it does, in a line that fits
 // What the note source's and velocity's curves show:
 STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
@@ -610,10 +610,10 @@ STR(ConfirmInit, "Resets all settings to defaults.")
 STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
-STR(ConfirmFxChainTitle, "Turn the graph back into a chain?")
+STR(ConfirmFxChainTitle, "Convert graph into a chain?")
 STR(ConfirmFxClearTitle, "Really remove all FX?")
-STR(ConfirmFxClear, "Every effect and split goes, with its modulation.")
-STR(ConfirmFxChain, "Splits and joins are removed, and the bands' effects go in a row; the effects keep their settings.")
+STR(ConfirmFxClear, "All effects are removed.")
+STR(ConfirmFxChain, "Splits and joins are removed, effects go in a row.")
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
@@ -672,7 +672,7 @@ STR(TipModPill, "{1} more. Click to list") // the "+n" pill in place of depth ha
 STR(TipNoteDisplay, "Edit note curve")
 STR(TipVelocityDisplay, "Edit velocity curve")
 STR(TipWireEnd, "Drag to reroute")
-STR(TipWireStart, "Drag onto another node to change where it comes from")
+STR(TipWireStart, "Drag onto another node to change source")
 STR(TipWire, "Drag to bend, double-click resets")
 STR(TipFxChain, "Effects as a chain")
 STR(TipFxGraph, "Effects as a graph: parallel chains and splits")
@@ -792,7 +792,7 @@ STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
 // --- The editor: right-click menus
 
 STR(MenuDuplicate, "Duplicate")
-STR(MenuSplitBands, "Split into two bands") // the list a + of the effects graph opens, after the effects
+STR(MenuSplitBands, "Split into high/low bands") // the list a + of the effects graph opens, after the effects
 STR(MenuResetSettings, "Reset settings")
 STR(MenuOtt, "OTT") // a 3-band dynamics' settings set to those of Ableton's OTT preset
 STR(MenuRemove, "Remove")

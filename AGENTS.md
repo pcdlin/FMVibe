@@ -153,6 +153,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
+  - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
+    an effect not in the graph silent, a second of silence taking them about 90 dB down, and all silent as a chain;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
@@ -207,7 +209,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - the effects graph's slot grid: switching to it putting the chain on its main line, wired as it ran; the main
-    line's + opening the list of effects with Split into two bands after them, the split coming with its join, its
+    line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
     empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's card
     (centered in the inspector) setting a band's level, in dB; the split's crossover handle dragged on its card, and its
     slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
@@ -220,7 +222,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the high band to the low band's end, and a split with its bands and join, carried by the join, to the line's
     start, each one undo step, undone; the mouse anywhere along a wire showing its + (read off the rendered pixels), a
     click there doing nothing and on the + opening the list, and an empty band between a split and its join showing
-    its + always (read off the rendered pixels); and going back to a chain asking first, then leaving the chain in the
+    its + always (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
+    output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to a chain asking first, then
+    leaving the chain in the
     line's order;
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
     the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
@@ -276,7 +280,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undoably, back to its first bow by a double-click or Reset Bend, its bend going with it when it is
     disconnected, and one along the panel's top bowing only as far as keeps it and its label inside (read off the
     rendered pixels);
-  - an operator lighting up while modulation opens its route from 0 % (read off the rendered pixels);
+  - an operator lighting up while modulation opens its route from 0 %, and not with the glow setting off (read off
+    the rendered pixels);
   - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
     one's ghost filled while it is shown (read off the rendered pixels);
   - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something

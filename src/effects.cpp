@@ -383,6 +383,7 @@ void Effects::prepare(double sampleRate) {
 }
 
 void Effects::reset() {
+    portLevel_.fill(0.0f);
     // Each effect clears its state when it fades in again.
     for (Slot &slot : slots_) {
         slot.fade = 0.0;
@@ -555,6 +556,7 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
         else
             for (int slot : fxOrder([&p](int index) { return p[index]; }))
                 runSlot(slot, io, n, p, tempo, pitch, keep);
+        measurePorts(n, graph);
         // Whatever still comes out keeps them going too: a DC blocker settling, an EQ's ring, which no check above
         // covers. Stopping there would step the output to silence.
         for (uint32_t s = 0; s < n && keep == 0; ++s)
@@ -858,6 +860,38 @@ void Effects::processGraph(float *const *io, uint32_t n, const ParamValues &p, d
     mixInputs(kFxOutNode, mix, n, p);
     std::copy_n(mix[0], n, io[0]);
     std::copy_n(mix[1], n, io[1]);
+}
+
+void Effects::measurePorts(uint32_t n, bool graph) {
+    if (!graph) {
+        portLevel_.fill(0.0f);
+        return;
+    }
+    // This chunk's peak of each port that ran, against the last level fallen by the chunk's length.
+    std::array<float, kFxPorts> peak{};
+    auto peakOf = [n](const std::array<std::array<float, kChunk>, 2> &out) {
+        float most = 0.0f;
+        for (const auto &side : out)
+            for (uint32_t s = 0; s < n; ++s)
+                most = std::max(most, std::abs(side[s]));
+        return most;
+    };
+    peak[kFxPortIn] = peakOf(input_);
+    for (int i = 0; i < graphOrderCount_; ++i) {
+        const int node = graphOrder_[i];
+        if (node < kFxSlots) {
+            peak[fxSlotPort(node)] = peakOf(slotOut_[node]);
+        } else if (const int sum = fxNodeSum(node); sum >= 0) {
+            peak[fxSumPort(sum)] = peakOf(sumOut_[sum]);
+        } else {
+            const int split = node - kFxSlots;
+            for (int band = 0; band < kFxBands; ++band)
+                peak[fxBandPort(split, band)] = peakOf(bandOut_[split][band]);
+        }
+    }
+    const float fall = static_cast<float>(std::pow(10.0, -kPortFallDb * n / sampleRate_ / 20.0));
+    for (int port = 0; port < kFxPorts; ++port)
+        portLevel_[port] = std::isfinite(peak[port]) ? std::max(peak[port], portLevel_[port] * fall) : 0.0f;
 }
 
 void Effects::clearGraph() {
