@@ -670,7 +670,7 @@ void View::fxGraphWidgets(std::vector<Widget> &list) const {
             add(Kind::FxNodeDelete, {x.x - 8.0f, x.y - 8.0f, 16.0f, 16.0f}, -1, place.node);
         }
     for (const auto &slot : grid.slots)
-        add(Kind::FxSlot, slotRect(at.slot[slot.lane]).inset(-3.0f), -1, slot.lane);
+        add(Kind::FxSlot, slotRect(at.slot[slot.lane]).inset(-4.0f), -1, slot.lane);
     for (const FxGraphWire &w : wires) // the +s at their middles, which take the click
         if (w.at.lane >= 0) {
             const Point m = wireMiddle(w);
@@ -997,7 +997,7 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         return true;
     case Kind::FxSlot: // the list of effects beside it, with a split or a join after them
         fxSlot_ = {w.a, -1, 0};
-        fxMenuAt_ = menuAtMouse({w.rect.right() + 6.0f, w.rect.y - 24.0f}, fxMenu({0.0f, 0.0f}, true));
+        fxMenuAt_ = menuAtMouse({w.rect.center().x + 26.0f, w.rect.center().y - 44.0f}, fxMenu({0.0f, 0.0f}, true));
         fxMenuOpen_ = true;
         fxInsertAt_ = -1;
         hover_.reset();
@@ -1183,17 +1183,17 @@ void View::paintFxGraph(Canvas &c) {
         c.line({x.x + 3.0f, x.y - 3.0f}, {x.x - 3.0f, x.y + 3.0f}, ink, 1.4f);
     }
 
-    // The +s: a dashed square, solid while its list is open.
+    // The +s where a node can go next: a + in a circle, as on a wire's middle, in its lane's color.
     for (const auto &slot : grid.slots) {
-        const Point p = at.slot[slot.lane];
+        const Point m = at.slot[slot.lane];
         const Color color = slot.lane == 1 ? bandColor(kHighBand) : slot.lane == 2 ? bandColor(kLowBand) : kAccent;
         const bool listed = fxMenuOpen_ && fxSlot_.lane == slot.lane && fxSlot_.item < 0;
         const bool hot = !dragging && hover_ && hover_->kind == Kind::FxSlot && hover_->a == slot.lane;
-        const Rect r = slotRect(p);
-        c.fillRect(r, listed ? color.alpha(0.2f) : hot ? color.alpha(0.13f) : kDisplayColor, 8.0f);
-        c.strokeRect(r, color.alpha(listed || hot ? 1.0f : 0.6f), 1.3f, 8.0f, !listed);
-        c.line({p.x - 7.0f, p.y}, {p.x + 7.0f, p.y}, listed ? kText : color, 2.0f);
-        c.line({p.x, p.y - 7.0f}, {p.x, p.y + 7.0f}, listed ? kText : color, 2.0f);
+        c.fillCircle(m, kFxSlotHalf, kDisplayColor);
+        c.fillCircle(m, kFxSlotHalf, color.alpha(listed ? 0.35f : hot ? 0.28f : 0.16f));
+        c.strokeCircle(m, kFxSlotHalf, color, 1.2f);
+        c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, kText, 1.5f);
+        c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, kText, 1.5f);
     }
 
     // What is being dragged, over everything, with the mouse.

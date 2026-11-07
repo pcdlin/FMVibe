@@ -648,7 +648,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     space a wide card takes, as it would show in the row. The graph's nodes sit on a fixed grid, a column each, and
     wire themselves: S-shaped wires, each in the color of what it comes from, run left to right from the input (IN, a
     box at the left) to the output (OUT, a box after the last column). Each effect is a circle in its color with its
-    icon and name, on the main line across the middle. A dashed **+** marks where a node can go next; a click on it
+    icon and name, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Split
     into two bands**, after the effects: a split, a box with a dot for each band on its right side (the high band on
     top, in amber, the low one in blue), opens two bands, the high one along the row above the main line and the low

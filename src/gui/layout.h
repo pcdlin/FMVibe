@@ -649,14 +649,14 @@ inline Rect fxModeButton(int graph) {
 // split's high and low bands in the rows above and below it (-1, 1), OUT after the last column. The graph scrolls
 // sideways when its columns reach past the area (`scroll`, in pixels). An effect is a circle, a split a box with its
 // bands' ports on its right edge (the high band on top), a join a smaller box, IN and OUT boxes, and the + where a
-// node can go next a dashed square.
+// node can go next a + in a circle.
 constexpr float kFxGridCol = 92.0f, kFxGridRow = 70.0f, kFxGridLeft = 34.0f;
 constexpr float kFxNodeR = 22.0f;
 constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
 constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
 constexpr float kFxPortR = 5.0f;
 constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
-constexpr float kFxSlotHalf = 17.0f;
+constexpr float kFxSlotHalf = 8.5f; // a + where a node can go next: a circle, as on a wire's middle
 inline Point fxGridAt(float col, float row, float scroll) { // fractions of a cell too, as nodes glide
     const Rect area = fxGraphArea();
     return {area.x + kFxGridLeft + col * kFxGridCol - scroll, area.center().y + row * kFxGridRow};
