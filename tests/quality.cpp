@@ -317,9 +317,151 @@ void effectsChainChecks() {
               "a wire of the effects graph connected and taken away fades in and out without a click");
     }
     {
+        // Editing a graph while a C3 plays: neither a click (under 4 times as rough as the note) nor a dip (each
+        // period's peak at least 90 % of the note's, where a wire fading out before the next fades in would leave a
+        // gap). Each edit is what the editor writes: wires moved, nodes coming and going, the graph switched on and off.
+        auto from = [](int node, int input) { return fxInputIndex(node, input, FxInputField::From); };
+        auto port = [](int p) { return fxPortValue(p); };
+        const size_t period = static_cast<size_t>(kSampleRate / 130.81) + 1;
+        auto steadyEdit = [&](const char *what, auto &&before, auto &&edit) {
+            Engine e(2);
+            before(e.p);
+            e.noteOn(48);
+            const std::vector<float> settled = e.render(9600, 1);
+            edit(e.p);
+            const std::vector<float> all = joined(settled, e.render(2400, 1));
+            const double steady = roughness(all, 4800, settled.size());
+            const double switched = roughness(all, settled.size() - 2, settled.size() + 960);
+            double peak = 0.0, least = 1e9;
+            for (size_t i = 4800; i < settled.size(); ++i)
+                peak = std::max(peak, static_cast<double>(std::abs(all[i])));
+            for (size_t at = settled.size() - period; at + period < all.size(); at += period / 4) {
+                double most = 0.0;
+                for (size_t i = at; i < at + period; ++i)
+                    most = std::max(most, static_cast<double>(std::abs(all[i])));
+                least = std::min(least, most);
+            }
+            std::printf("      %-48s %.2fx as rough, its least period at %.3f\n", what, switched / steady,
+                        least / peak);
+            return switched < 4.0 * steady && least > 0.9 * peak;
+        };
+        // Parametric EQs as they start (every band at 0 dB, passing the note as it is) in slots 0 and 1, as a chain.
+        auto eqs = [](ParamValues &p) {
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+            p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+        };
+        auto line = [&](ParamValues &p) { // IN, the first EQ, OUT
+            eqs(p);
+            p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::None);
+            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+            p[from(0, 0)] = port(kFxPortIn);
+            p[from(kFxOutNode, 0)] = port(fxSlotPort(0));
+        };
+        const bool added = steadyEdit("an effect added at the line's end", line, [&](ParamValues &p) {
+            p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+            p[from(1, 0)] = port(fxSlotPort(0));
+            p[from(kFxOutNode, 0)] = port(fxSlotPort(1));
+        });
+        const bool removed = steadyEdit("an effect taken out of the line", line, [&](ParamValues &p) {
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::None);
+            p[from(0, 0)] = 0.0;
+            p[from(kFxOutNode, 0)] = port(kFxPortIn);
+        });
+        // A split at 2 kHz, the first EQ on its high band and its low band empty, into its join and out.
+        auto split = [&](ParamValues &p) {
+            line(p);
+            p[paramIndex(0, SplitParam::Used)] = 1.0;
+            p[paramIndex(0, SplitParam::Low)] = normFromCutoff(2000.0);
+            p[paramIndex(0, SumParam::Used)] = 1.0;
+            p[from(fxSplitNode(0), 0)] = port(kFxPortIn);
+            p[from(0, 0)] = port(fxBandPort(0, kFxBands - 1));
+            p[from(fxSumNode(0), 0)] = port(fxSlotPort(0));
+            p[from(fxSumNode(0), 1)] = port(fxBandPort(0, 0));
+            p[from(kFxOutNode, 0)] = port(fxSumPort(0));
+        };
+        const bool unsplit = steadyEdit("a split and its join taken out", split, [&](ParamValues &p) {
+            p[paramIndex(0, SplitParam::Used)] = 0.0;
+            p[paramIndex(0, SumParam::Used)] = 0.0;
+            p[from(fxSplitNode(0), 0)] = 0.0;
+            p[from(fxSumNode(0), 0)] = 0.0;
+            p[from(fxSumNode(0), 1)] = 0.0;
+            p[from(0, 0)] = port(kFxPortIn);
+            p[from(kFxOutNode, 0)] = port(fxSlotPort(0));
+        });
+        const bool sloped = steadyEdit("a split's slope from 24 to 6 dB", split, [&](ParamValues &p) {
+            p[paramIndex(0, SplitParam::Slope)] = 0.0;
+        });
+        // The chain of the two EQs as a graph of them one after the other, and back.
+        auto chained = [&](ParamValues &p) {
+            eqs(p);
+            p[from(0, 0)] = port(kFxPortIn);
+            p[from(1, 0)] = port(fxSlotPort(0));
+            p[from(kFxOutNode, 0)] = port(fxSlotPort(1));
+        };
+        const bool toGraph = steadyEdit("the chain switched to the same graph", chained, [&](ParamValues &p) {
+            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+        });
+        const bool toChain = steadyEdit("that graph switched back to the chain", [&](ParamValues &p) {
+            chained(p);
+            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+        }, [&](ParamValues &p) { p[paramIndex(GlobalParam::FxGraph)] = 0.0; });
+        check(added && removed && unsplit && sloped && toGraph && toChain,
+              "editing the effects graph as a note plays neither clicks nor drops out");
+
+        // A graph that sounds otherwise than the chain switches to it ducking out and back in, without a click.
+        Engine e(2);
+        split(e.p);
+        e.noteOn(48);
+        const std::vector<float> before = e.render(9600, 1);
+        e.p[paramIndex(GlobalParam::FxGraph)] = 0.0;
+        const std::vector<float> all = joined(before, e.render(2400, 1));
+        const double steady = roughness(all, 4800, before.size());
+        const double switched = roughness(all, before.size() - 2, before.size() + 960);
+        std::printf("      a split graph switched to the chain: %.2fx as rough as the note\n", switched / steady);
+        check(switched < 4.0 * steady, "the effects switch between a graph and the chain without a click");
+    }
+    {
+        // An effect the output doesn't hear doesn't run: a delay fed from IN with nothing reading it neither lights its
+        // port nor keeps the effects ringing on after its echoes would; read by OUT, it runs.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+        p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        std::vector<float> left(4800), right(4800);
+        auto sine = [&]() {
+            for (int i = 0; i < 4800; ++i)
+                left[i] = right[i] =
+                    static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * i / kSampleRate));
+        };
+        auto silence = [&](int blocks) {
+            for (int k = 0; k < blocks; ++k) {
+                std::fill(left.begin(), left.end(), 0.0f);
+                std::fill(right.begin(), right.end(), 0.0f);
+                fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+            }
+        };
+        sine();
+        fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        const float unheard = fx.portLevel(fxSlotPort(0));
+        silence(2);
+        const bool rings = fx.ringing();
+        p[fxInputIndex(kFxOutNode, 1, FxInputField::From)] = fxPortValue(fxSlotPort(0));
+        sine();
+        fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        const float heard = fx.portLevel(fxSlotPort(0));
+        silence(2);
+        std::printf("      a delay nothing reads: its port %.3f, ringing %d; read by OUT: %.3f, ringing %d\n", unheard,
+                    rings, heard, fx.ringing());
+        check(unheard == 0.0f && !rings && heard > 0.1f && fx.ringing(),
+              "an effect in the graph runs only while the output hears it");
+    }
+    {
         // The effects graph's ports, as the editor lights its nodes and wires by them: a sine at half scale from IN
         // through a DJ EQ at its middle to OUT reads half scale at IN and out of the EQ, an effect not in the graph 0;
-        // a second of silence after, every port has fallen about 90 dB, and as a chain they all read 0.
+        // a second of silence after, every port has fallen about 90 dB, and once it runs as a chain they all read 0.
         Effects fx;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
@@ -339,8 +481,8 @@ void effectsChainChecks() {
             fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
         }
         const float fallen = fx.portLevel(fxSlotPort(0));
-        p[paramIndex(GlobalParam::FxGraph)] = 0.0;
-        fx.process(left.data(), right.data(), 64, p, 120.0, 60.0);
+        p[paramIndex(GlobalParam::FxGraph)] = 0.0; // the graph ducking out over 3 ms, then the chain
+        fx.process(left.data(), right.data(), 480, p, 120.0, 60.0);
         const float chain = fx.portLevel(kFxPortIn);
         std::printf("      graph ports: IN %.3f, EQ %.3f, apart %.3f, after a second %.1f dB down\n", in, eq, apart,
                     20.0 * std::log10(eq / std::max(fallen, 1e-9f)));

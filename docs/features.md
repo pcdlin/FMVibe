@@ -258,8 +258,16 @@ What the plugin does and how its editor works, in full. Building and installing 
     begin with), and the line goes on from it; a split left open at the line's end sends both bands out. The splits
     and joins don't take any of the 32 effects' places, and modulation moves a split's crossover and a join's levels
     like any knob. Underneath, the graph is wires between the effects, which the editor lays along the line: a
-    wire's level glides as it moves, a wire connected or taken away fades in or out over 5 ms, and a wire that would
-    loop back (which the editor doesn't make) reads what its source put out 64 samples before. A patch starts as a
+    wire's level glides as it moves, a wire connected or taken away fades in or out over 5 ms, a wire moved
+    crossfades from where it came from to where it comes from now over the same 5 ms, and a wire that would loop
+    back (which the editor doesn't make) reads what its source put out 64 samples before. A node leaving the graph
+    (an effect removed, a split taken out with its join) keeps playing what goes into it until the wires out of it
+    have faded, so the sound moves to its new path without a click or a gap; one coming into it starts from what goes
+    into it, as the wires into what follows fade in. A split's slope changed crossfades from its filters at the old
+    slope to fresh ones at the new over 5 ms. Only what the output hears runs: an effect no wire takes on to the
+    output costs nothing, and starts again cleared once one does. Switching between the chain and a graph that is
+    the chain's effects one after another, as the editor switches, changes nothing heard; a graph that sounds
+    otherwise ducks the output out over 3 ms, switches, and brings it back in over 3 ms. A patch starts as a
     chain, and one saved before the graph loads as the chain it was.
   - **Shaper**: picked from a list: Hard (a flat ceiling), Soft (tanh), Asymmetric (the lower half clips twice as
     hard, which adds even harmonics), Cubic (x − x³/3, scaled to reach full level), Gentle (x / (1 + |x|), which
@@ -479,8 +487,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their
     type) and squarer boxes the shapers (with their curve). A colored outline means the node is heard, as its routes are set, and a
-    halo glows around it while it sounds: an operator's as brightly as its envelope and the routes taking it to the
-    output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
+    halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off):
+    an operator's as brightly as its envelope and the routes taking it to the output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
     opens. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
     graph, and shows it in the inspector. However it is switched on (its ghost, its tab, the matrix), a node whose
@@ -1190,7 +1198,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   shown in its own colors. **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the
   graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
   stronger and wider the halo. It sets the halos that sounding operators and the effects graph's nodes and wires
-  feather out with too: as they are drawn at 75 %, stronger and wider above it, fainter below, and none at Off.
+  feather out with too: as they are drawn at 75 %, stronger and wider above it, fainter below. At Off the effects
+  graph shows no level (and the editor doesn't repaint for it), and an operator's halo is a plain ring.
   The editor shows it while it is dragged and keeps it when it is let go. **Lines**, a slider like it from Off to
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
   one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Handles**, Small (to begin

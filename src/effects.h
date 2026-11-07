@@ -126,8 +126,8 @@ public:
     // Where a phaser's, flanger's or widener's sweep is, in cycles (the widener's first tap's); 0 for other effects.
     float sweepPhase(int slot) const;
     // The effects graph's ports (see fxPortValue()): how loud what comes out of each is, the peak of either side
-    // (1 is full scale), falling kPortFallDb a second; 0 for a port of a node not in the graph, and all 0 while the
-    // effects run as a chain. For the editor, which lights the graph's nodes and wires by them.
+    // (1 is full scale), falling kPortFallDb a second; 0 for a port of a node the graph doesn't run, and all 0 while
+    // the effects run as a chain. For the editor, which lights the graph's nodes and wires by them.
     static constexpr double kPortFallDb = 90.0;
     float portLevel(int port) const { return port >= 0 && port < kFxPorts ? portLevel_[port] : 0.0f; }
 
@@ -362,28 +362,58 @@ private:
     CrossoverCoefs crossoverCoefs(double lowHz, double highHz) const;
     static void splitThree(EqChannel &e, double x, const CrossoverCoefs &c, double *bands);
 
-    // The effects graph (GlobalParam::FxGraph). Each node of it that is there (a slot holding an effect, a split in
-    // use, the output) sums the wires into it, each gliding to its level (see mixInputs()), then runs into a buffer of
-    // its own, in the order orderGraph() works out once a process(). A wire from a node that hasn't run yet in a
-    // chunk, which only a loop makes, reads what it put out the chunk before.
-    struct Wire {
-        int port = -1;      // what it comes from as heard: it fades out before it follows a move
-        double level = 0.0; // its level at the end of the last chunk
+    // The effects graph (GlobalParam::FxGraph). The nodes it runs are those OUT hears, through the wires as set or
+    // still fading: a slot holding an effect, a split or a sum in use, and one leaving the graph for as long as a wire
+    // fading out still reads it. Each sums the wires into it, each gliding to its level (see mixInputs()), then runs
+    // into a buffer of its own, in the order orderGraph() works out once a process(). A wire from a node that hasn't
+    // run yet in a chunk, which only a loop makes, reads what it put out the chunk before.
+    struct WireEnd {
+        int port = -1;      // what it comes from
+        double level = 0.0; // its gain at the end of the last chunk; below 0, it takes the next chunk's at once
         double fade = 0.0;  // 0 out .. 1 in, along a raised cosine as heard (see mixInputs())
     };
-    struct Split {
-        std::array<EqChannel, 2> channels{};
-        bool running = false;
-        int slope = -1; // the slope its filters ran at: another starts them cleared
+    // A wire moved crossfades: what it comes from now fades in as what it came from before fades out.
+    struct Wire {
+        WireEnd now, was;
     };
-    bool nodeInGraph(int node, const ParamValues &p) const;
-    // The node a port comes out of: -1 for the input, -2 for a node that isn't in the graph.
-    int portNode(int port, const ParamValues &p) const;
+    // A split's filters at one slope: 6, 12 or 24 for two bands, 3 for three (always 24 dB), with their coefficients
+    // for the crossovers they were last worked out for.
+    struct SplitFilters {
+        std::array<EqChannel, 2> channels{};
+        int mode = -1;
+        double lowNorm = -1.0, highNorm = -1.0; // as the coefficients below were worked out for
+        CrossoverCoefs coefs;                   // 24 dB: lp1 and hp1; three bands: all of them
+        BiquadCoefs onePoleLow, onePoleHigh;    // 6 and 12 dB
+    };
+    struct Split {
+        SplitFilters now, was; // was: at the slope it left, fading out over 5 ms as `now` fades in
+        double wasFade = 0.0;  // 1 .. 0
+        bool running = false;
+    };
+    // Whether a node is in the graph by its params: a slot holding an effect (or fading one out), a split or a sum in
+    // use, the output.
+    bool nodeWanted(int node, const ParamValues &p) const;
     void orderGraph(const ParamValues &p);
-    void mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamValues &p);
+    // A wire's gain as set: a sum's in dB and soloed as a join, every other's a share.
+    double wireTarget(int node, int input, const ParamValues &p) const;
+    // Every wire of `node` as its params set it, at its level and fully in.
+    void setWires(int node, const ParamValues &p);
+    // Where what comes out of `port` is this chunk; false for a port of a node not running, which reads silence.
+    bool portOut(int port, const float *(&out)[2]) const;
+    // Sums the wires into `node`. `frozen`, for a node only a wire fading out still reads, keeps them as they are.
+    void mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamValues &p, bool frozen);
+    void splitCoefs(SplitFilters &f, double lowNorm, double highNorm) const;
+    static void splitBands(SplitFilters &f, int ch, double x, double *bands);
     void runSplit(int split, uint32_t n, const ParamValues &p, const float (*mix)[kChunk]);
     void processGraph(float *const *io, uint32_t n, const ParamValues &p, double tempo, double pitch, int64_t &keep);
     void clearGraph();
+    // A slot the graph no longer runs: it starts again cleared, as one switched on does.
+    void idleSlot(int slot);
+    // Whether the graph does what the chain does, every wire at full: the slots one after another from IN to OUT, in
+    // the chain's order. As its params set it (`asSet`), or as its wires play now.
+    bool graphIsChain(const ParamValues &p, bool asSet) const;
+    // Starts running as the graph or as the chain.
+    void runAs(bool graph, const ParamValues &p);
 
     void start(int slot, const ParamValues &p, double tempo);
     double delayTarget(int slot, int side, const ParamValues &p, double tempo) const;
@@ -428,6 +458,11 @@ private:
     std::array<Split, kFxSplits> splits_{};
     std::array<int, kFxNodes> graphOrder_{};
     int graphOrderCount_ = 0;
+    std::array<bool, kFxNodes> running_{};   // the nodes the graph runs this process() (see orderGraph())
+    std::array<bool, kFxNodes> frozen_{};    // those only a wire fading out reads: their wires stay as they were
+    std::array<bool, kFxNodes> ranBefore_{}; // the nodes it ran the process() before
+    int graphRunning_ = -1;  // what runs: 1 the graph, 0 the chain, -1 not yet known (the first chunk takes the switch)
+    double modeGain_ = 1.0; // the output, ducked to switch between the chain and a graph that sounds otherwise
 };
 
 } // namespace fmvibe

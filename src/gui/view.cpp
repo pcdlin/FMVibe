@@ -351,13 +351,17 @@ View::~View() {
 }
 
 View::DerivedScope::DerivedScope(const View &view) : view_(view) {
-    if (view_.derivedDepth_++ == 0)
+    if (view_.derivedDepth_++ == 0) {
         view_.derived_ = Derived{};
+        view_.fxDerived_ = FxDerived{};
+    }
 }
 
 View::DerivedScope::~DerivedScope() {
-    if (--view_.derivedDepth_ == 0)
+    if (--view_.derivedDepth_ == 0) {
         view_.derived_ = Derived{};
+        view_.fxDerived_ = FxDerived{};
+    }
 }
 
 View::ModTable View::modTable() const {
@@ -1327,8 +1331,8 @@ bool View::poll() {
                         0.01f * std::max(t.fxBandLevel[slot][band], 1e-5f) ||
                     std::abs(t.fxBandGain[slot][band] - telemetry_.fxBandGain[slot][band]) > 0.05f)
                     changed = true;
-    // The effects graph's nodes and wires glow with what goes through them.
-    if (fxWide() && fxGraph())
+    // The effects graph's nodes and wires glow with what goes through them; with the glow off, they show nothing of it.
+    if (fxWide() && fxGraph() && shownGlow() > 0.0f)
         for (int port = 0; port < kFxPorts; ++port)
             if (std::abs(t.fxPortLevels[port] - telemetry_.fxPortLevels[port]) > 0.002f * (1.0f + t.fxPortLevels[port]))
                 changed = true;
@@ -5310,8 +5314,12 @@ void View::paintNode(Canvas &c, const Widget &w) {
     // Its halo lights up while playing only if it ends up in the output, as brightly as its envelope and the routes
     // that take it there let it through, where modulation takes them now: one an LFO opens from 0 % lights up too.
     const float level = std::min(telemetry_.opLevels[op], 1.0f) * static_cast<float>(std::sqrt(outLevel(op)));
-    if (level > 0.01f)
-        featherCircle(c, center, kNodeRadius, 16.0f, kAccent.alpha(0.3f * level));
+    if (level > 0.01f) {
+        if (glowing > 0.0f) // feathered, as strongly as the glow is set
+            featherCircle(c, center, kNodeRadius, 16.0f, kAccent.alpha(0.3f * level));
+        else // with the glow off, a plain ring of light, so a sounding operator still shows
+            c.fillCircle(center, kNodeRadius + 7.0f, kAccent.alpha(0.22f * level));
+    }
     if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
         // Unison: a stack of rings peeking out on both sides.
         c.strokeCircle({center.x - 4.5f, center.y}, kNodeRadius, (heard ? kAccent : kFaint).alpha(0.45f), 1.2f);

@@ -156,8 +156,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
     LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
+  - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
+    an effect added at the line's end and one taken out, a split taken out with its join, a split's slope changed,
+    and the chain switched to the same graph and back; and a graph with a split switched to the chain, ducking
+    without a click;
+  - an effect in the graph that the output doesn't hear not running (its port silent, nothing ringing on after it),
+    and running once the output reads it;
   - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
-    an effect not in the graph silent, a second of silence taking them about 90 dB down, and all silent as a chain;
+    an effect not in the graph silent, a second of silence taking them about 90 dB down, and all silent once it runs
+    as a chain;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text

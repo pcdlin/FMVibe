@@ -198,6 +198,15 @@ std::vector<View::FxWireRef> View::fxWires() const {
 }
 
 View::FxLine View::fxLine() const {
+    if (fxDerived_.line) // only kept while a scope goes on
+        return *fxDerived_.line;
+    FxLine line = fxLineOfWires();
+    if (derivedDepth_ > 0)
+        fxDerived_.line = line;
+    return line;
+}
+
+View::FxLine View::fxLineOfWires() const {
     const std::vector<FxWireRef> wires = fxWires();
     // Where a port goes: the first node that takes it other than the output, else the output, else nowhere.
     auto into = [&](int port) {
@@ -566,19 +575,23 @@ void View::setFxGraph(bool on, bool asked) {
         controller_.layout().fxSelected = line.empty() ? -1 : line.front().node;
         controller_.layoutChanged();
         fxGraphScroll_ = 0.0f;
-    } else { // the line's effects as the chain, in its order (a split's high band, then its low band), no wires
-        FxLine chain;
-        for (const FxLineItem &item : fxLine()) {
-            if (item.node < kFxSlots)
-                chain.push_back({item.node, {}, {}, false});
-            for (int slot : item.hi)
-                chain.push_back({slot, {}, {}, false});
-            for (int slot : item.lo)
-                chain.push_back({slot, {}, {}, false});
-        }
-        writeFxLine(chain, false);
+        edit(paramIndex(GlobalParam::FxGraph), 1.0); // after the wires, which the engine starts from as set
+        return;
     }
-    edit(paramIndex(GlobalParam::FxGraph), on ? 1.0 : 0.0);
+    // The line's effects as the chain, in its order (a split's high band, then its low band), no wires. The switch
+    // goes first: the engine compares the graph as it plays with the chain, and switches at once where they sound
+    // alike (see Effects::graphIsChain()), which the wires taken away first would spoil.
+    FxLine chain;
+    for (const FxLineItem &item : fxLine()) {
+        if (item.node < kFxSlots)
+            chain.push_back({item.node, {}, {}, false});
+        for (int slot : item.hi)
+            chain.push_back({slot, {}, {}, false});
+        for (int slot : item.lo)
+            chain.push_back({slot, {}, {}, false});
+    }
+    edit(paramIndex(GlobalParam::FxGraph), 0.0);
+    writeFxLine(chain, false);
 }
 
 // --- Places
@@ -657,9 +670,16 @@ void View::fxGraphWidgets(std::vector<Widget> &list) const {
 }
 
 bool View::fxWireHit(const Widget &w, Point p) const {
-    const FxLine line = fxLine();
-    const FxGridLayout grid = fxGridLayout(line);
-    for (const FxGraphWire &wire : fxGraphWires(line, fxPlacesOf(grid, fxGraphScroll(grid))))
+    // The wires where they sit on their cells, worked out once while a scope goes on (each FxWire widget the mouse
+    // is over asks).
+    std::optional<std::vector<FxGraphWire>> fresh;
+    std::optional<std::vector<FxGraphWire>> &kept = derivedDepth_ > 0 ? fxDerived_.hitWires : fresh;
+    if (!kept) {
+        const FxLine line = fxLine();
+        const FxGridLayout grid = fxGridLayout(line);
+        kept = fxGraphWires(line, fxPlacesOf(grid, fxGraphScroll(grid)));
+    }
+    for (const FxGraphWire &wire : *kept)
         if (wire.at.lane == w.a && wire.at.item * kFxGapStride + wire.at.place == w.b) {
             const std::vector<Point> points = sWire(wire.from, wire.to);
             for (size_t k = 1; k < points.size(); ++k)

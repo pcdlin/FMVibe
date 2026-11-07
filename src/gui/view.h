@@ -670,6 +670,13 @@ private:
     FxPlaces fxPlacesShown(const FxGridLayout &grid, float scroll) const;
     std::vector<FxGraphWire> fxGraphWires(const FxLine &line, const FxPlaces &places) const;
     bool fxWireHit(const Widget &w, Point p) const; // whether `p` is on the wire an FxWire widget stands for
+    // The line and the wires hit tests look along, kept while a DerivedScope goes on, as derived_ is: widgets(),
+    // hitTest() and paint() ask for them many times over.
+    struct FxDerived {
+        std::optional<FxLine> line;
+        std::optional<std::vector<FxGraphWire>> hitWires;
+    };
+    mutable FxDerived fxDerived_;
     // Dragging a node: what is dragged (an effect, or a split with its bands and join, by its split or its join),
     // the line without it, where it was taken from and where it would land now, and where its nodes were on screen.
     struct FxDrag {
@@ -701,6 +708,7 @@ private:
     std::vector<FxWireRef> fxWires() const;
     // The line the wires make, with any effect they leave out put at its end (on the high band while a split is open).
     FxLine fxLine() const;
+    FxLine fxLineOfWires() const; // fxLine() worked out
     // Wires the graph as `line` says, the splits and joins it holds in use and the others not, the join's band
     // levels kept, and the chain's places in its order (so the count and the target menu follow it), in the undo
     // step the caller holds.
