@@ -18,9 +18,20 @@ using namespace fmvibe;
 
 namespace {
 
-bool normalize(const std::filesystem::path &path) {
+// The file at `path`, opened in `mode` ("rb" or "wb"), or null.
+FILE *openFile(const std::filesystem::path &path, const char *mode) {
+#ifdef _WIN32
     FILE *file = nullptr;
-    if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
+    const wchar_t *wide = mode[0] == 'r' ? L"rb" : L"wb";
+    return _wfopen_s(&file, path.c_str(), wide) == 0 ? file : nullptr;
+#else
+    return std::fopen(path.c_str(), mode);
+#endif
+}
+
+bool normalize(const std::filesystem::path &path) {
+    FILE *file = openFile(path, "rb");
+    if (!file)
         return false;
     ParamValues values;
     clap_istream_t in = fileIn(file);
@@ -33,7 +44,8 @@ bool normalize(const std::filesystem::path &path) {
     clap_ostream_t out = memoryOut(bytes);
     if (!writePatch(&out, values, layout, true))
         return false;
-    if (_wfopen_s(&file, path.c_str(), L"wb") != 0 || !file)
+    file = openFile(path, "wb");
+    if (!file)
         return false;
     const bool written = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
     return std::fclose(file) == 0 && written;
@@ -41,6 +53,7 @@ bool normalize(const std::filesystem::path &path) {
 
 } // namespace
 
+#ifdef _WIN32
 int wmain(int argc, wchar_t **argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: fmvibe-presettool <file.fmv>...\n");
@@ -54,3 +67,18 @@ int wmain(int argc, wchar_t **argv) {
     }
     return failed ? 1 : 0;
 }
+#else
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        std::fprintf(stderr, "usage: fmvibe-presettool <file.fmv>...\n");
+        return 2;
+    }
+    int failed = 0;
+    for (int i = 1; i < argc; ++i) {
+        const bool done = normalize(argv[i]);
+        std::fprintf(done ? stdout : stderr, "%s: %s\n", argv[i], done ? "sparse" : "can't read or write it");
+        failed += done ? 0 : 1;
+    }
+    return failed ? 1 : 0;
+}
+#endif
