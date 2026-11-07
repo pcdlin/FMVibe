@@ -171,7 +171,7 @@ private:
         ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
         EnvPoint,     // a = envelope (ops, then kOps + source), b = point
         EnvCurve,     // param = curve, a = envelope, b = segment (attack, decay, release): bends it
-        FilterPoint,  // a = filter: cutoff and resonance handle
+        FilterPoint,  // a = filter (b = 1: the filter effect in slot a): cutoff and resonance handle
         ModDot,       // param = slot amount, a = source, b = slot: depth handle on a knob
         ModPill,      // a = the target param, b = how many depth handles show before it: "+n" in place of the handles
                       // that don't fit; a click opens the list of the target's modulations
@@ -619,6 +619,7 @@ private:
     void setScroll(ScrollArea area, float first);
     Rect scrollThumb(ScrollArea area) const;
     Rect peqArea(int slot) const;
+    Rect fxFilterArea(int slot) const;
     Rect mdDisplay(int slot) const; // a three-band dynamics' display, where its card is now
     // The threshold a three-band dynamics' line `line` (2 x band + 0 for Above, 1 for Below) sets: its band's, or,
     // linked, the low band's.

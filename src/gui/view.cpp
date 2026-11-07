@@ -304,6 +304,8 @@ Point envSegmentPoint(const EnvShape &s, int segment, double t, double curve, do
 constexpr float kResponseMinDb = -36.0f;
 constexpr float kResponseMaxDb = 18.0f;
 
+std::vector<int> filterPointParams(int a, int b);
+
 Point filterHandle(Rect r, double cutoff, double resonance) {
     return {r.x + 10.0f + static_cast<float>(cutoff) * (r.w - 20.0f),
             r.bottom() - 10.0f - static_cast<float>(resonance) * (r.h - 20.0f)};
@@ -840,6 +842,12 @@ void View::removeEffect(int slot) {
     if (shapeEditor_ == kMaxSources + slot)
         shapeEditor_ = -1;
     edit(paramIndex(slot, FxParam::Type), static_cast<double>(FxType::None));
+}
+
+Rect View::fxFilterArea(int slot) const {
+    const std::vector<int> chain = fxChainShown();
+    const auto pos = std::find(chain.begin(), chain.end(), slot) - chain.begin();
+    return fxDisplay(fxScreen(chain, static_cast<size_t>(pos)), FxType::Filter);
 }
 
 Rect View::peqArea(int slot) const {
@@ -1678,6 +1686,10 @@ std::vector<View::Widget> View::widgets() const {
                     add(Kind::Choice, {card.x + 14.0f + t * w, row, w - 4.0f, 20.0f}, at(FxParam::FilterType), -1, t);
                 merge(types);
                 add(Kind::ListButton, fxSlopeButton(card, fxDisplay(screen, type)), at(FxParam::FilterSlope));
+                // The response's handle, as a voice filter's: b = 1 marks the effect's.
+                const Point handle = filterHandle(fxDisplay(screen, type), value(at(FxParam::FilterCutoff)),
+                                                  value(at(FxParam::FilterResonance)));
+                add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, slot, 1);
                 knobs({at(FxParam::FilterCutoff), at(FxParam::FilterResonance), at(FxParam::FilterKeyTrack)},
                       {tr(Str::LabelCutoff), tr(Str::LabelReso), tr(Str::LabelKeyTrack)}, 206.0f);
                 knobs({at(FxParam::FilterDrive), -1, at(FxParam::FilterMix)},
@@ -5700,17 +5712,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FilterPoint: {
         const Point center = w.rect.center();
         const bool focused = hovered || active;
-        c.fillCircle(center, focused ? 7.0f : 5.5f, focused ? kFilterColor : kPanel);
-        c.strokeCircle(center, focused ? 7.0f : 5.5f, kFilterColor, 2.0f);
+        const Color color = w.b == 1 ? fxColor(w.a) : kFilterColor;
+        c.fillCircle(center, focused ? 7.0f : 5.5f, focused ? color : kPanel);
+        c.strokeCircle(center, focused ? 7.0f : 5.5f, color, 2.0f);
         if (focused) {
-            const int cutoff = paramIndex(w.a, FilterParam::Cutoff);
-            const int resonance = paramIndex(w.a, FilterParam::Resonance);
+            const std::vector<int> pair = filterPointParams(w.a, w.b);
+            const int cutoff = pair[0];
+            const int resonance = pair[1];
             char a[32], b[32], text[80];
             formatParam(cutoff, value(cutoff), a, sizeof(a));
             formatParam(resonance, value(resonance), b, sizeof(b));
             std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionResonance, {a, b}).c_str());
-            c.text({kFilterDisplay.x, kFilterDisplay.y + 2.0f, kFilterDisplay.w - 8.0f, 14.0f}, text, 10.5f, kText,
-                   Align::Right);
+            const Rect shown = w.b == 1 ? fxFilterArea(w.a) : kFilterDisplay;
+            c.text({shown.x, shown.y + 2.0f, shown.w - 8.0f, 14.0f}, text, 10.5f, kText, Align::Right);
         }
         break;
     }
@@ -7243,8 +7257,11 @@ std::vector<int> envPointParams(int env, int point) {
     return {e.release};
 }
 
-std::vector<int> filterPointParams(int filter) {
-    return {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance)};
+// A voice filter's cutoff and resonance, or (b = 1) those of the filter effect in slot a.
+std::vector<int> filterPointParams(int a, int b) {
+    if (b == 1)
+        return {paramIndex(a, FxParam::FilterCutoff), paramIndex(a, FxParam::FilterResonance)};
+    return {paramIndex(a, FilterParam::Cutoff), paramIndex(a, FilterParam::Resonance)};
 }
 
 // A cut's handle sets its Q instead of its gain; a drag may touch either.
@@ -7364,9 +7381,10 @@ void View::applyDrag(Point p) {
         set(w.param, drag_.startValue + (w.b == 0 ? 1.0 : -1.0) * (drag_.start.y - p.y) / 100.0);
         break;
     case DragKind::FilterPoint: {
-        const Rect r = kFilterDisplay;
-        set(paramIndex(w.a, FilterParam::Cutoff), (p.x - r.x - 10.0f) / (r.w - 20.0f));
-        set(paramIndex(w.a, FilterParam::Resonance), (r.bottom() - 10.0f - p.y) / (r.h - 20.0f));
+        const Rect r = w.b == 1 ? fxFilterArea(w.a) : kFilterDisplay;
+        const std::vector<int> params = filterPointParams(w.a, w.b);
+        set(params[0], (p.x - r.x - 10.0f) / (r.w - 20.0f));
+        set(params[1], (r.bottom() - 10.0f - p.y) / (r.h - 20.0f));
         break;
     }
     case DragKind::DynGrip: {
@@ -7706,7 +7724,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::FilterPoint:
         drag_.kind = DragKind::FilterPoint;
-        for (int index : filterPointParams(w.a))
+        for (int index : filterPointParams(w.a, w.b))
             controller_.beginEdit(index);
         break;
     case Kind::DynZone: // up and down for its ratio, as on a knob; its band's knobs show
@@ -8329,7 +8347,7 @@ void View::finishDrag() {
             controller_.endEdit(index);
         break;
     case DragKind::FilterPoint:
-        for (int index : filterPointParams(w.a))
+        for (int index : filterPointParams(w.a, w.b))
             controller_.endEdit(index);
         break;
     case DragKind::ShapePoint:

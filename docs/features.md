@@ -853,7 +853,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     handle drags cutoff (sideways) and resonance (up/down). With its cutoff or resonance modulated, faint curves
     show how far the modulation takes it either way, and while notes play the curve follows where the newest
     voice is (the handle stays at the set values, the cutoff a C4 has). Key tracking moves all of it with that
-    voice's note, an octave per octave at 100 %. The filter effect's display does the same, its key tracking
+    voice's note, an octave per octave at 100 %. The filter effect's display does the same, with a handle of its own for cutoff and resonance, its key tracking
     staying where the last note left it, as the effect's does. It sits on the filter effect's grid. Behind the curve,
     like the filter effect's, is what the filter puts out, all voices together, measured before its output level
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter

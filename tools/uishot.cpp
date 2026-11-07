@@ -4,6 +4,7 @@
 
 #include "factory.h"
 #include "gui/canvas.h"
+#include "gui/layout.h"
 #include "gui/view.h"
 #include "uistrings.h"
 
@@ -1641,6 +1642,17 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     };
     const int fillC4 = fillAt(60.0f), fillC7 = fillAt(96.0f);
     check(fillC7 > fillC4 + 10, "the filter effect's response moves with the note its key tracking follows");
+    // Its response has a handle for cutoff (sideways) and resonance (up and down), as a voice filter's.
+    model.live.fxPitch = 60.0f;
+    view.poll();
+    const Rect shown = detail::fxDisplay((fxCardX(model, 3) - 32.0f) / kFxStep, FxType::Filter);
+    const int fxCutoff = paramIndex(3, FxParam::FilterCutoff), fxReso = paramIndex(3, FxParam::FilterResonance);
+    const double fxCutoffBefore = model.value(fxCutoff), fxResoBefore = model.value(fxReso);
+    const Point fxHandle{shown.x + 10.0f + static_cast<float>(fxCutoffBefore) * (shown.w - 20.0f),
+                         shown.bottom() - 10.0f - static_cast<float>(fxResoBefore) * (shown.h - 20.0f)};
+    drag(view, fxHandle, {fxHandle.x - 30.0f, fxHandle.y - 15.0f});
+    check(model.value(fxCutoff) < fxCutoffBefore - 0.05 && model.value(fxReso) > fxResoBefore + 0.05,
+          "dragging the filter effect's response handle moves its cutoff and resonance");
 }
 
 // A shaper's page: the curve list picks Hard, the link switch unlinks, Drive turns; picked from the list, Custom shows
