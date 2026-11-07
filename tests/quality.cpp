@@ -291,6 +291,64 @@ void effectsChainChecks() {
               "a parametric EQ band switched on and off fades in and out without a click");
     }
     {
+        // A wire of the effects graph connected and taken away fades rather than clicking: a second wire from the
+        // input to the output, doubling a C3, then gone again, in single frames, under 4 times as rough as the note.
+        Engine e(2);
+        e.p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+        e.p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        e.noteOn(48);
+        const std::vector<float> before = e.render(4800, 1);
+        e.p[fxInputIndex(kFxOutNode, 1, FxInputField::From)] = fxPortValue(kFxPortIn);
+        const std::vector<float> on = e.render(2400, 1);
+        e.p[fxInputIndex(kFxOutNode, 1, FxInputField::From)] = 0.0;
+        const std::vector<float> all = joined(joined(before, on), e.render(2400, 1));
+        const double steady = roughness(all, 2400, before.size());
+        const size_t gone = before.size() + on.size();
+        const double switched =
+            std::max(roughness(all, before.size() - 2, before.size() + 480), roughness(all, gone - 2, gone + 480));
+        double doubled = 0.0, single = 0.0;
+        for (size_t i = before.size() + 480; i < gone; ++i)
+            doubled = std::max(doubled, static_cast<double>(std::abs(all[i])));
+        for (size_t i = 2400; i < before.size(); ++i)
+            single = std::max(single, static_cast<double>(std::abs(all[i])));
+        std::printf("      a wire connected and taken away: %.2fx as rough as the note, doubling it x%.3f\n",
+                    switched / steady, doubled / single);
+        check(switched < 4.0 * steady && std::abs(doubled / single - 2.0) < 0.05,
+              "a wire of the effects graph connected and taken away fades in and out without a click");
+    }
+    {
+        // The effects graph's ports, as the editor lights its nodes and wires by them: a sine at half scale from IN
+        // through a DJ EQ at its middle to OUT reads half scale at IN and out of the EQ, an effect not in the graph 0;
+        // a second of silence after, every port has fallen about 90 dB, and as a chain they all read 0.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Eq);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Delay);
+        p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(fxSlotPort(0));
+        std::vector<float> left(4800), right(4800);
+        for (int i = 0; i < 4800; ++i)
+            left[i] = right[i] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * i / kSampleRate));
+        fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        const float in = fx.portLevel(kFxPortIn), eq = fx.portLevel(fxSlotPort(0)), apart = fx.portLevel(fxSlotPort(1));
+        for (int k = 0; k < 10; ++k) {
+            std::fill(left.begin(), left.end(), 0.0f);
+            std::fill(right.begin(), right.end(), 0.0f);
+            fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        }
+        const float fallen = fx.portLevel(fxSlotPort(0));
+        p[paramIndex(GlobalParam::FxGraph)] = 0.0;
+        fx.process(left.data(), right.data(), 64, p, 120.0, 60.0);
+        const float chain = fx.portLevel(kFxPortIn);
+        std::printf("      graph ports: IN %.3f, EQ %.3f, apart %.3f, after a second %.1f dB down\n", in, eq, apart,
+                    20.0 * std::log10(eq / std::max(fallen, 1e-9f)));
+        check(std::abs(in - 0.5f) < 0.01f && std::abs(eq - 0.5f) < 0.05f && apart == 0.0f &&
+                  std::abs(20.0 * std::log10(eq / fallen) - Effects::kPortFallDb) < 3.0 && chain == 0.0f,
+              "the effects graph tells how loud each of its ports is, falling away after");
+    }
+    {
         // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd),
         // at unity gain: each sample comes out as the curve has it at the middle of its step, through the DC blocker
         // every drawn curve has.
@@ -1476,6 +1534,17 @@ int main() {
         const double pan = unexpectedDb(steadyTone(1, key, panMod), partials);
         std::printf("      %-30s %7.1f\n", "LFO on operator Pan", pan);
         check(pan < -80.0, "LFO on an operator's Pan doesn't zipper");
+        // The effects graph's input straight to its output, its wire's level swung like operator Out's above.
+        auto wireMod = [&](ParamValues &p) {
+            const int level = fxInputIndex(kFxOutNode, 0, FxInputField::Level);
+            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
+            p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+            p[level] = 0.5;
+            lfoOn(p, level, 0.4, lfo);
+        };
+        const double wire = unexpectedDb(steadyTone(1, key, wireMod), {f0, f0 - lfo, f0 + lfo});
+        std::printf("      %-30s %7.1f\n", "LFO on an effects graph wire", wire);
+        check(wire < -70.0, "LFO on a wire of the effects graph doesn't zipper");
     }
 
     // --- The random LFO: how far its steps go with chaos, and how smoothing glides between them.

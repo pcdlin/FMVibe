@@ -137,6 +137,20 @@ STR(ParamGlide, "Glide")
 STR(ParamGlideAlways, "Glide Always")
 STR(ParamFxOrder, "FX Order")
 STR(ParamFxPosition, "FX Order {1}")
+STR(ParamFxGraph, "FX Graph") // the effects running as a graph rather than a chain
+STR(ParamSplit, "Split {1}") // a split in the effects graph, by number; its field's name follows
+STR(ParamSum, "Join {1}") // a join (a sum) in the effects graph, by number; its field's name follows
+STR(ParamSplitUsed, "Used")
+STR(ParamSplitBands, "Bands")
+STR(ParamSplitLow, "Crossover")
+STR(ParamSplitHigh, "High Crossover")
+STR(ParamSoloHigh, "Solo High") // a join's solo of its split's high band, after the join's name
+STR(ParamSoloLow, "Solo Low")
+STR(ParamFxOut, "FX Out") // the effects graph's output, as the node its wires go into
+STR(ParamFxInput, "Input {1}") // a wire into a node of the effects graph, by number; its field's name follows
+STR(ParamFxInputFrom, "From")
+STR(ParamFxInputLevel, "Level")
+STR(ValueFxIn, "In") // a wire coming from the voices, into the effects graph
 STR(ParamModWheel, "Mod Wheel")
 STR(ParamNote, "Note")
 STR(ParamVelocitySource, "Velocity") // the velocity source, as hosts name its fields
@@ -463,6 +477,7 @@ STR(LabelRelease, "Release")
 STR(LabelMakeup, "Makeup")
 STR(LabelGain, "Gain")
 STR(LabelLowX, "Low X")
+STR(LabelCrossover, "Crossover") // a split's knob
 STR(LabelHighX, "High X")
 STR(LabelSize, "Size")
 STR(LabelPreDelay, "Pre-Delay")
@@ -510,11 +525,15 @@ STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
 STR(SwitchHard, "HARD") // the shaper effect's first three curves
 STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")
+STR(SwitchSolo, "SOLO") // a join's card: solo the band above it
+STR(SoloMark, "S") // on a join node while one of its bands is soloed
 STR(SwitchRms, "RMS") // the three-band dynamics' detector: RMS, or peaks while off
 STR(BandButtonLow, "LOW") // the three-band dynamics' bands, and the DJ EQ's display
 STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
+STR(ButtonToChain, "To Chain") // the confirm dialog's button that turns the effects graph back into a chain
+STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
 STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
 STR(ButtonEnv, "ENV")
 STR(ButtonRandom, "RANDOM")
@@ -533,6 +552,9 @@ STR(ButtonOverwrite, "Overwrite")
 STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
 STR(HintFx, "click icon: toggle  ·  drag title: reorder")
+STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
+STR(CaptionSplit, "Split into high/low bands") // a split's card: what it does, in a line that fits
+STR(CaptionJoin, "Adds the bands together") // a join's card: what it does, in a line that fits
 // What the note source's and velocity's curves show:
 STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
 STR(HintVelocityAxes, "across: velocity  ·  up: output")
@@ -592,6 +614,10 @@ STR(ConfirmInit, "Resets all settings to defaults.")
 STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
+STR(ConfirmFxChainTitle, "Convert graph into a chain?")
+STR(ConfirmFxClearTitle, "Really remove all FX?")
+STR(ConfirmFxClear, "All effects are removed.")
+STR(ConfirmFxChain, "Splits and joins are removed, effects go in a row.")
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
@@ -638,6 +664,10 @@ STR(SummaryMods, "mods {1}")
 STR(NodeOperator, "operator {1}")
 STR(NodeFilter, "filter {1}")
 STR(NodeShaper, "shaper {1}")
+STR(NodeFxIn, "IN") // the effects graph's input, the voices
+STR(NodeFxOut, "OUT") // its output
+STR(NodeSplit, "SPLIT {1}") // a split in the effects graph, by number
+STR(NodeJoin, "JOIN {1}") // a join in the effects graph, by number, as its split's
 
 // --- The editor: tooltips
 
@@ -646,7 +676,18 @@ STR(TipModPill, "{1} more. Click to list") // the "+n" pill in place of depth ha
 STR(TipNoteDisplay, "Edit note curve")
 STR(TipVelocityDisplay, "Edit velocity curve")
 STR(TipWireEnd, "Drag to reroute")
+STR(TipWireStart, "Drag onto another node to change source")
 STR(TipWire, "Drag to bend, double-click resets")
+STR(TipFxChain, "Effects as a chain")
+STR(TipFxGraph, "Effects as a graph: parallel chains and splits")
+STR(TipFxNode, "Click to show its card, drag to move it")
+STR(TipFxSlot, "Add an effect or a split here")
+STR(TipFxSlotBand, "Add an effect to this band")
+STR(TipFxGap, "Add an effect or a split here") // the middle of a wire in the effects graph
+STR(TipFxGapBand, "Add an effect to this band here")
+STR(TipFxClear, "Remove all effects")
+STR(TipRemoveSplit, "Remove split")
+STR(TipRemoveJoin, "Remove join")
 STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
 STR(TipRemoveRoute, "Remove route") // the x at the right of a wire or OUT label's pill
 STR(TipRoutePhase, "Phase: adds to where the wave is read")
@@ -755,6 +796,7 @@ STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
 // --- The editor: right-click menus
 
 STR(MenuDuplicate, "Duplicate")
+STR(MenuSplitBands, "Split into high/low bands") // the list a + of the effects graph opens, after the effects
 STR(MenuResetSettings, "Reset settings")
 STR(MenuOtt, "OTT") // a 3-band dynamics' settings set to those of Ableton's OTT preset
 STR(MenuRemove, "Remove")
@@ -794,6 +836,7 @@ STR(MsgOwnKnob, "{1} can't modulate its own knob")
 STR(MsgEmptyModsFull, "Up to {1} empty modulations allowed.")
 STR(MsgRouteExists, "{1} already routes to {2}")
 STR(MsgChainFull, "Only supports up to {1} effects in the chain")
+STR(MsgSplitsFull, "Only supports up to {1} splits")
 STR(MsgShapeFull, "Only supports up to {1} points per shape")
 STR(MsgShapeCopied, "{1} shape copied")
 STR(MsgNothingCopied, "Copy a shape first")

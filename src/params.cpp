@@ -133,10 +133,10 @@ void buildTable(ParamTable &t) {
                            kind == ParamKind::SlotBypass || kind == ParamKind::SlotAux;
         const bool wiring = kind == ParamKind::ModTarget || kind == ParamKind::FxType ||
                             kind == ParamKind::SourceType || kind == ParamKind::FxOrder ||
-                            kind == ParamKind::FxPosition;
+                            kind == ParamKind::FxPosition || kind == ParamKind::FxPort;
         clap_param_info_flags flags = wiring || kind == ParamKind::VoiceCount || shape ? 0u : CLAP_PARAM_IS_AUTOMATABLE;
         // The chain order is set by dragging the cards; hosts can't do anything useful with it.
-        if (shape || kind == ParamKind::FxOrder || kind == ParamKind::FxPosition)
+        if (shape || kind == ParamKind::FxOrder || kind == ParamKind::FxPosition || kind == ParamKind::FxPort)
             flags |= CLAP_PARAM_IS_HIDDEN;
         if (isStepped(kind))
             flags |= CLAP_PARAM_IS_STEPPED;
@@ -186,6 +186,53 @@ void buildTable(ParamTable &t) {
     for (int position = 0; position < kFxSlots; ++position)
         add(fxPositionIndex(position), trf(Str::ParamFxPosition, {std::to_string(position + 1)}), tr(Str::ModuleFx),
             ParamKind::FxPosition, 0.0, kFxSlots - 1.0, position);
+    // The effects run as a chain to begin with; as a graph, its splits and wires (see FxInput) say how.
+    add(paramIndex(GlobalParam::FxGraph), tr(Str::ParamFxGraph), tr(Str::ModuleFx), ParamKind::Toggle, 0.0, 1.0, 0.0);
+    for (int split = 0; split < kFxSplits; ++split) {
+        const std::string name = trf(Str::ParamSplit, {std::to_string(split + 1)});
+        const std::string module = tr(Str::ModuleFx) + ("/" + name);
+        add(paramIndex(split, SplitParam::Used), name + " " + tr(Str::ParamSplitUsed), module, ParamKind::Toggle, 0.0,
+            1.0, 0.0);
+        add(paramIndex(split, SplitParam::Bands), name + " " + tr(Str::ParamSplitBands), module, ParamKind::Count, 2.0,
+            static_cast<double>(kFxBands), 2.0);
+        add(paramIndex(split, SplitParam::Low), name + " " + tr(Str::ParamSplitLow), module, ParamKind::Cutoff, 0.0,
+            1.0, normFromCutoff(250.0));
+        add(paramIndex(split, SplitParam::High), name + " " + tr(Str::ParamSplitHigh), module, ParamKind::Cutoff, 0.0,
+            1.0, normFromCutoff(2500.0));
+        add(paramIndex(split, SplitParam::Slope), name + " " + tr(Str::ParamSlope), module, ParamKind::FilterSlope,
+            0.0, kFilterSlopes - 1.0, 1.0); // 12 dB to begin with
+    }
+    for (int sum = 0; sum < kFxSums; ++sum) {
+        const std::string name = trf(Str::ParamSum, {std::to_string(sum + 1)});
+        add(paramIndex(sum, SumParam::Used), name + " " + tr(Str::ParamSplitUsed), tr(Str::ModuleFx) + ("/" + name),
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
+        add(paramIndex(sum, SumParam::SoloHigh), name + " " + tr(Str::ParamSoloHigh), tr(Str::ModuleFx) + ("/" + name),
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
+        add(paramIndex(sum, SumParam::SoloLow), name + " " + tr(Str::ParamSoloLow), tr(Str::ModuleFx) + ("/" + name),
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
+    }
+    // No wires to begin with; one connected starts at full level.
+    for (int node = 0; node < kFxNodes; ++node) {
+        const std::string name = node == kFxOutNode       ? std::string(tr(Str::ParamFxOut))
+                                 : node < kFxSlots        ? trf(Str::ParamFx, {std::to_string(node + 1)})
+                                 : fxNodeSum(node) >= 0   ? trf(Str::ParamSum, {std::to_string(fxNodeSum(node) + 1)})
+                                                          : trf(Str::ParamSplit, {std::to_string(node - kFxSlots + 1)});
+        const std::string module = tr(Str::ModuleFx) + ("/" + name);
+        for (int input = 0; input < fxInputCount(node); ++input) {
+            const std::string wire = name + " " + trf(Str::ParamFxInput, {std::to_string(input + 1)}) + " ";
+            add(fxInputIndex(node, input, FxInputField::From), wire + tr(Str::ParamFxInputFrom), module,
+                ParamKind::FxPort, 0.0, static_cast<double>(kFxPorts), 0.0);
+            // A join's first two inputs take its split's high and low bands, as the editor wires them.
+            const bool band = fxNodeSum(node) >= 0 && input < 2;
+            const std::string level =
+                band ? name + " " + tr(input == 0 ? Str::BandHigh : Str::BandLow) : wire + tr(Str::ParamFxInputLevel);
+            if (fxNodeSum(node) >= 0) // in dB, full at 0 dB to begin with (see sumLevelGain())
+                add(fxInputIndex(node, input, FxInputField::Level), level, module, ParamKind::Decibel, kSumFloorDb,
+                    0.0, 0.0);
+            else
+                add(fxInputIndex(node, input, FxInputField::Level), level, module, ParamKind::Percent, 0.0, 1.0, 1.0);
+        }
+    }
     // The mod wheel moves its targets for every voice, like a macro: hosts modulate it globally too.
     add(paramIndex(GlobalParam::ModWheel), tr(Str::ParamModWheel), global, ParamKind::Percent, 0.0, 1.0, 0.0);
     t[paramIndex(GlobalParam::ModWheel)].flags &=
@@ -872,6 +919,19 @@ const char *fxName(FxType fx) {
     return nameAt(kFxNames, static_cast<double>(fx));
 }
 
+std::string fxPortName(int port) {
+    if (port < 0 || port >= kFxPorts)
+        return tr(Str::ValueNone);
+    if (port == kFxPortIn)
+        return tr(Str::ValueFxIn);
+    if (const int slot = fxPortSlot(port); slot >= 0)
+        return trf(Str::ParamFx, {std::to_string(slot + 1)});
+    if (const int sum = fxPortSum(port); sum >= 0)
+        return trf(Str::ParamSum, {std::to_string(sum + 1)});
+    const Str bands[kFxBands] = {Str::BandLow, Str::BandMid, Str::BandHigh};
+    return trf(Str::ParamSplit, {std::to_string(fxPortSplit(port) + 1)}) + " " + tr(bands[fxPortBand(port)]);
+}
+
 const ParamTable &paramTable() {
     static const std::unique_ptr<const ParamTable> table = [] {
         auto t = std::make_unique<ParamTable>();
@@ -903,7 +963,7 @@ const HostList &hostList() {
             }
         for (int i = 0; i < kParamCount; ++i) {
             const bool listed = kept[i] || (!(table[i].flags & CLAP_PARAM_IS_HIDDEN) && !wiring[i] &&
-                                            fxSlotOf(i) < 0 && sourceOf(i) < 0);
+                                            fxSlotOf(i) < 0 && sourceOf(i) < 0 && !isFxGraphParam(i));
             l->host[i] = listed ? static_cast<int>(l->indexes.size()) : -1;
             if (listed)
                 l->indexes.push_back(i);
@@ -935,7 +995,7 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::VoiceCount || kind == ParamKind::Toggle || kind == ParamKind::LfoShape ||
            kind == ParamKind::OpWave || kind == ParamKind::FilterType || kind == ParamKind::ModTarget ||
            kind == ParamKind::SyncDivision || kind == ParamKind::ClipMode || kind == ParamKind::FxOrder ||
-           kind == ParamKind::FxPosition || kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
+           kind == ParamKind::FxPosition || kind == ParamKind::FxPort || kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
            kind == ParamKind::MidiInput || kind == ParamKind::RouteMode;
@@ -1100,6 +1160,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::FxPosition: // the slot, by its number
         std::snprintf(out, capacity, "%ld", std::lround(value) + 1);
         break;
+    case ParamKind::FxPort:
+        std::snprintf(out, capacity, "%s", fxPortName(fxPortOf(value)).c_str());
+        break;
     case ParamKind::ShapeCount:
         std::snprintf(out, capacity, "%ld", std::lround(value));
         break;
@@ -1211,6 +1274,14 @@ bool parseParam(int index, const char *text, double *out) {
         return false; // names only: "1/4" would otherwise read as the number 1
     if (def.kind == ParamKind::FxOrder)
         return parseFxOrder(text, out);
+    if (def.kind == ParamKind::FxPort) { // a port's name
+        for (int port = -1; port < kFxPorts; ++port)
+            if (equalsIgnoreCase(text, fxPortName(port).c_str())) {
+                *out = fxPortValue(port);
+                return true;
+            }
+        return false;
+    }
     if (def.kind == ParamKind::FxPosition) { // a slot's number
         char *end = nullptr;
         const long slot = std::strtol(text, &end, 10);
@@ -1388,6 +1459,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::RouteMode:
     case ParamKind::FxOrder:
     case ParamKind::FxPosition:
+    case ParamKind::FxPort:
     case ParamKind::FxType:
     case ParamKind::SourceType:
     case ParamKind::SlotAux:

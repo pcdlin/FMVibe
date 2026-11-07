@@ -98,6 +98,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     leaving its target alone; a macro's and velocity's slots bypassed leaving theirs alone; velocity and the note
     source scaling an LFO's slot as its aux from a note's first block;
   - the FX order changing the result, and a slot past the 16th playing at its place in the chain;
+  - the effects graph: its input straight out, two wires at half as one at full, and a split's two bands (at 6, 12
+    and 24 dB) and three summing back flat, each slope parting its bands as steeply as it says; a join's solos letting only the band soloed through (both when
+    neither or both are); a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
+    chain running with the graph off, its wires doing nothing; a loop, which only params make, staying finite; and
+    a macro taking a wire's level down;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
@@ -145,11 +150,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),
     feedback and a driven filter;
-  - zipper noise from an LFO on an operator's level and Pan, a matrix amount and a filter cutoff;
+  - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff and a wire of the
+    effects graph;
   - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
     LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
-    and when a Param EQ band is switched on and off;
+    when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
+  - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
+    an effect not in the graph silent, a second of silence taking them about 90 dB down, and all silent as a chain;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
@@ -203,6 +211,30 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
+  - the effects graph's slot grid: switching to it putting the chain on its main line, wired as it ran; the main
+    line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
+    empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's card
+    (centered in the inspector) setting a band's level, in dB, and soloing a band, the join node marked with an S
+    (read off the rendered pixels), and then the other band, unsoloing the first; the split's crossover handle dragged on its card, and its
+    slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
+    out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
+    list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
+    into a join, an effect going at its band's end (the list offering no split there), each undone; a node under the
+    mouse showing an x in a circle at its upper right (read off the rendered pixels), whose click removes it, undone;
+    nodes dragged and dropped while the others glide aside (polled until they settle), its place staying open while
+    it is held over a node: an effect along the main line, one onto a band's end by its wire into the join, one from
+    the high band to the low band's end, and a split with its bands and join, carried by the join, to the line's
+    start, each one undo step, undone; the mouse anywhere along a wire showing its + (read off the rendered pixels), a
+    click there doing nothing and on the + opening the list, and an empty band between a split and its join showing
+    its + always (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
+    output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to a chain asking first, then
+    leaving the chain in the
+    line's order;
+  - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
+    the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
+    nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the
+    rendered pixels) whose thumb dragged to its end scrolls the graph there, the + at the end then taking a click,
+    and no scrollbar once the graph fits (read off the rendered pixels);
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
   - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
     there only picks the node and a drag from further inside moves it; a filter's edge dragged onto an earlier
@@ -210,7 +242,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the bus, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
     which goes out in its place, and picking waves and filter types;
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
-    removing one by letting its arrowhead go in empty space; a drag called off as the mouse is taken away dropping
+    removing one by letting its arrowhead go in empty space; a route's start and an OUT line's start dragged onto
+    another node coming from there, with its amount and mode, undoably, grabbed 16 px along the wire and lit there;
+    Ctrl+drag putting a node on the grid's nearest free point, the grid's points showing while Ctrl is held, and a
+    plain drag leaving it off the grid; a drag called off as the mouse is taken away dropping
     nothing (an arrowhead held off the nodes, a source's handle over a knob) and ending a knob's gesture;
   - the MODS tab: a row per modulation, its Amount bar and aux's × changing it, and the switch after its source's
     name the source's polarity; its curve bent up and down by a drag, undoably, drawn in its source's color (read
@@ -249,8 +284,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undoably, back to its first bow by a double-click or Reset Bend, its bend going with it when it is
     disconnected, and one along the panel's top bowing only as far as keeps it and its label inside (read off the
     rendered pixels);
-  - an operator lighting up while modulation opens its route from 0 % (read off the rendered pixels), and
-    modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
+  - an operator lighting up while modulation opens its route from 0 %, and not with the glow setting off (read off
+    the rendered pixels), and modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
     one's ghost filled while it is shown (read off the rendered pixels);
@@ -493,10 +528,11 @@ browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and pub
 
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
-`build.ps1 -Validate` (every test and both validators), and copies the PD Crystal Motion routing snapshot the tests
-render over `docs/editor.png`. It then lists what it would do and asks; only an answer of `yes` commits
-`CMakeLists.txt` and `docs/editor.png` as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
-Any other answer puts both files back as they were.
+`build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render over the README's:
+PD Crystal Motion's routing view over `docs/editor.png` and its effects' panel as a chain over `docs/fx-chain.png`, and
+BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`. It then lists what it would do and asks; only an answer of `yes` commits
+`CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
+Any other answer puts those files back as they were.
 
 By hand, instead:
 
@@ -556,6 +592,7 @@ breakpoints in `src/` then hit.
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
+| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects graph's slot grid: its line of effects, splits and joins, read from the wires and written back to them, its +s, its inspector and the split's and join's cards |
 | `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
@@ -574,7 +611,7 @@ breakpoints in `src/` then hit.
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `web/dsp.cpp`, `web/ui.cpp` | The browser demo's audio and editor modules |
 | `web/site/` | The demo page: the canvas and input (`main.js`), drawing (`canvas2d.js`), the AudioWorklet (`worklet.js`) |
-| `release.ps1` | Cuts a release: version bump, tests and validators, the README screenshot, commit, tag and push (see [Releasing](#releasing)) |
+| `release.ps1` | Cuts a release: version bump, tests and validators, the README screenshots, commit, tag and push (see [Releasing](#releasing)) |
 | `build-web.ps1` | Builds the browser demo with Emscripten, and serves it |
 | `.github/workflows/release.yml` | On a version tag: a GitHub release with the plugins, and the browser demo on GitHub Pages |
 
@@ -623,10 +660,16 @@ itself.
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
   22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel
   and velocity; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
-  sources' number likewise).
+  sources' number likewise); the effects graph's switch is global 12, its splits 34000 + 20·split, the wires into its
+  slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
+  output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
+  (0 = none): the input, then each slot's output, each split's bands, low to high, then each sum's output. The graph's
+  nodes are numbered the slots, the splits, the output, then the sums. The editor wires a line (see
+  `src/gui/fxgraph.cpp`): a split's two bands are its low and high ones (Bands 2), and its join is the sum of its
+  number, whose first two inputs take the high band and the low band.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field and fixed Mult lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port and fixed Mult lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -640,11 +683,12 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,226 of the 18,045 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,226 of the 18,574 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
-  fields and the source places' own fields (a place's slot depths are listed, whatever it holds). Nothing hosts
+  fields, the effects graph (its switch, its splits and its wires) and the source places' own fields (a place's slot
+  depths are listed, whatever it holds). Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
   pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
   `getParameterCount()`/`getParameterInfo()` index that list; a value sent for any known id is still taken. The
@@ -679,8 +723,8 @@ itself.
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
-  (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap) and which
-  effect cards past the 16th slot are folded.
+  (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
+  effect cards past the 16th slot are folded, and the node the effects graph's inspector shows.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

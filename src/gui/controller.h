@@ -77,6 +77,9 @@ struct UiLayout {
     // grid.
     bool shapeSteps = false;
     bool shapeSnap = false;
+    // The node the effects graph's inspector shows (a slot, a split or a join, numbered as the graph's params number
+    // them), -1 for none. Where the nodes sit follows from the wires (see View::fxGridLayout()).
+    int fxSelected = -1;
 };
 
 // How many empty modulations the MODS view keeps at most.

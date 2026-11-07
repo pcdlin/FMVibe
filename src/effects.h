@@ -125,6 +125,11 @@ public:
     float spectrum(int slot, int band) const { return slots_[slot].analyzed.bands[band]; }
     // Where a phaser's, flanger's or widener's sweep is, in cycles (the widener's first tap's); 0 for other effects.
     float sweepPhase(int slot) const;
+    // The effects graph's ports (see fxPortValue()): how loud what comes out of each is, the peak of either side
+    // (1 is full scale), falling kPortFallDb a second; 0 for a port of a node not in the graph, and all 0 while the
+    // effects run as a chain. For the editor, which lights the graph's nodes and wires by them.
+    static constexpr double kPortFallDb = 90.0;
+    float portLevel(int port) const { return port >= 0 && port < kFxPorts ? portLevel_[port] : 0.0f; }
 
 private:
     static constexpr uint32_t kChunk = 64; // samples per parameter ramp
@@ -345,6 +350,41 @@ private:
         ClipTable curve;
     };
 
+    // A slot's effect in place on `io`, fading as it is switched; `keep` grows while it rings on.
+    void runSlot(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo, double pitch,
+                 int64_t &keep);
+
+    // Linkwitz-Riley crossovers at `lowHz` and `highHz` (kept apart and below where the biquads hold up), and three
+    // bands of `x` through them, the low one through an all-pass at the high crossover so the bands sum back flat.
+    struct CrossoverCoefs {
+        BiquadCoefs lp1, hp1, lp2, hp2, ap2;
+    };
+    CrossoverCoefs crossoverCoefs(double lowHz, double highHz) const;
+    static void splitThree(EqChannel &e, double x, const CrossoverCoefs &c, double *bands);
+
+    // The effects graph (GlobalParam::FxGraph). Each node of it that is there (a slot holding an effect, a split in
+    // use, the output) sums the wires into it, each gliding to its level (see mixInputs()), then runs into a buffer of
+    // its own, in the order orderGraph() works out once a process(). A wire from a node that hasn't run yet in a
+    // chunk, which only a loop makes, reads what it put out the chunk before.
+    struct Wire {
+        int port = -1;      // what it comes from as heard: it fades out before it follows a move
+        double level = 0.0; // its level at the end of the last chunk
+        double fade = 0.0;  // 0 out .. 1 in, along a raised cosine as heard (see mixInputs())
+    };
+    struct Split {
+        std::array<EqChannel, 2> channels{};
+        bool running = false;
+        int slope = -1; // the slope its filters ran at: another starts them cleared
+    };
+    bool nodeInGraph(int node, const ParamValues &p) const;
+    // The node a port comes out of: -1 for the input, -2 for a node that isn't in the graph.
+    int portNode(int port, const ParamValues &p) const;
+    void orderGraph(const ParamValues &p);
+    void mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamValues &p);
+    void runSplit(int split, uint32_t n, const ParamValues &p, const float (*mix)[kChunk]);
+    void processGraph(float *const *io, uint32_t n, const ParamValues &p, double tempo, double pitch, int64_t &keep);
+    void clearGraph();
+
     void start(int slot, const ParamValues &p, double tempo);
     double delayTarget(int slot, int side, const ParamValues &p, double tempo) const;
     void runShaper(int slot, float *const *io, uint32_t n, const ParamValues &p);
@@ -376,6 +416,18 @@ private:
     double runWidener(int slot, float *const *io, uint32_t n, const ParamValues &p);
     bool analyzing_ = false;
     Analyzer analyzer_;
+
+    std::array<std::array<float, kChunk>, 2> input_{}; // what came in, this chunk
+    std::array<std::array<std::array<float, kChunk>, 2>, kFxSlots> slotOut_{};
+    std::array<std::array<std::array<std::array<float, kChunk>, 2>, kFxBands>, kFxSplits> bandOut_{};
+    std::array<std::array<std::array<float, kChunk>, 2>, kFxSums> sumOut_{};
+    std::array<float, kFxPorts> portLevel_{}; // see portLevel()
+    void measurePorts(uint32_t n, bool graph);
+    std::array<std::array<Wire, kFxSumInputs>, kFxNodes> wires_{}; // as many as a node takes at most
+    static_assert(kFxSumInputs >= kFxInputs && kFxSumInputs >= kFxOutInputs);
+    std::array<Split, kFxSplits> splits_{};
+    std::array<int, kFxNodes> graphOrder_{};
+    int graphOrderCount_ = 0;
 };
 
 } // namespace fmvibe

@@ -35,6 +35,7 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kFxSlots * kSpectrumBands> fxSpectrum{};
     std::array<std::atomic<float>, kFilters * kSpectrumBands> filterSpectrum{};
     std::array<std::atomic<float>, kFxSlots> fxPhases{};
+    std::array<std::atomic<float>, kFxPorts> fxPortLevels{};
     std::array<std::atomic<float>, 2> outPeak{};
     std::atomic<float> clipHold{0.0f};
     std::atomic<int64_t> stamp{0}; // steady_clock ticks when stored, for Telemetry::age
@@ -80,6 +81,8 @@ struct SharedTelemetry {
             filterSpectrum[i].store(t.filterSpectrum[i / kSpectrumBands][i % kSpectrumBands], std::memory_order_relaxed);
         for (int i = 0; i < kFxSlots; ++i)
             fxPhases[i].store(t.fxPhases[i], std::memory_order_relaxed);
+        for (int i = 0; i < kFxPorts; ++i)
+            fxPortLevels[i].store(t.fxPortLevels[i], std::memory_order_relaxed);
         for (int c = 0; c < 2; ++c)
             outPeak[c].store(t.outPeak[c], std::memory_order_relaxed);
         clipHold.store(t.clipHold, std::memory_order_relaxed);
@@ -128,6 +131,8 @@ struct SharedTelemetry {
             t.filterSpectrum[i / kSpectrumBands][i % kSpectrumBands] = filterSpectrum[i].load(std::memory_order_relaxed);
         for (int i = 0; i < kFxSlots; ++i)
             t.fxPhases[i] = fxPhases[i].load(std::memory_order_relaxed);
+        for (int i = 0; i < kFxPorts; ++i)
+            t.fxPortLevels[i] = fxPortLevels[i].load(std::memory_order_relaxed);
         for (int c = 0; c < 2; ++c)
             t.outPeak[c] = outPeak[c].load(std::memory_order_relaxed);
         t.clipHold = clipHold.load(std::memory_order_relaxed);
