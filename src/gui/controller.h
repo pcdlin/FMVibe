@@ -202,6 +202,14 @@ public:
     virtual bool savePreset(const std::wstring &path) = 0;
     // Asks the host window for a file dialog; the result comes back through load/savePreset.
     virtual void choosePreset(bool save) = 0;
+    // Whether presets are files that can be written (not in the browser demo, whose dialog only says so).
+    virtual bool writesPresetFiles() const { return true; }
+    // Whether the patch is a preset file (not Init), and writing the patch over that file, as Save does.
+    bool presetHasFile() const { return !preset_.empty(); }
+    bool overwritePreset() {
+        const std::wstring file = preset_; // savePreset() sets preset_ again
+        return !file.empty() && savePreset(file);
+    }
 
     // The preset library: the presets in the preset folder (Documents\FMVibe\presets), by subfolder and
     // then by name, as the last scan found them. The first scan makes the folder, with a few examples.

@@ -240,7 +240,7 @@ private:
                       // search): click to put the caret there, drag to select, double-click for a word
         SearchClear,  // a = Field: the x in a text field: empties it
         SettingsButton, // the cog next to the preset buttons: opens the settings dialog
-        ConfirmBackdrop, // a = 1 on the dialog asking before Init or Load, 0 around it (a click there cancels)
+        ConfirmBackdrop, // a = 1 on the dialog asking before Init, Load or Save, 0 around it (a click there cancels)
         ConfirmButton,  // a = 1 goes ahead, 0 cancels
         SettingsBackdrop, // a = 1 on the dialog itself, 0 around it (a click there closes it)
         SettingsOption, // b = the oversampling factor it picks
@@ -255,7 +255,9 @@ private:
         BendWheel,    // drag; springs back to center on release
     };
 
-    enum class PresetAction { Init, Load, Save };
+    // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
+    // changed; Save As picks a file in the dialog, and is off for Init until it changes.
+    enum class PresetAction { Init, Load, Save, SaveAs };
 
     // What a widened LFO card's tools do to its whole shape, each one undo step: flip it upside down, play it back to
     // front, move it a grid column earlier or later (round the cycle), and copy it to paste into another LFO.
@@ -928,6 +930,7 @@ private:
     std::vector<Widget> settingsWidgets() const;
     std::vector<Widget> confirmWidgets() const;
     std::string confirmWhat() const;
+    bool confirmShorter() const;
     // The preset browser: while it is open it takes every click, and the confirm dialog goes over it.
     std::vector<Widget> browserWidgets() const;
     void paintBrowser(Canvas &c);
@@ -959,6 +962,7 @@ private:
     bool soundsOut(int node) const;
     void keepRoutes();
     void disconnect(int param); // to 0 %, and its wire goes
+    bool presetActionOn(PresetAction action) const;
     void runPreset(PresetAction action);
     void paintSettings(Canvas &c);
     void paintConfirm(Canvas &c);

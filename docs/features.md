@@ -748,7 +748,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     brings back every MIDI note and the curve along the dashed line. Velocity's curve opens over the routing panel
     the same way, from its display (see Velocity, under the keyboard strip).
 - **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
-  redo, Init, Load, Save and the settings cog at its right (see Presets and Settings, below). Under it, the
+  redo, Init, Load, Save, Save As and the settings cog at its right (see Presets and Settings, below). Under it, the
   **global strip** spreads across the editor, from the output scope under the name to the voice count at its right
   end. First the output scope:
   the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has
@@ -1091,13 +1091,17 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     characters in all). A search longer than the field scrolls to keep the caret in sight. A value typed into a
     knob copies and pastes too, while all of it is selected.
   - **Init** sets every param and the routing layout back to their defaults (the zoom stays). **Load** and
-    **Save** read and write a `.fmv` file through the standard file dialog, which starts in the preset folder;
-    Save suggests the current preset's name. The file holds the same data as the host's saved state, apart from
-    the settings.
+    **Save As** (a disk with a plus) read and write a `.fmv` file through the standard file dialog, which starts in
+    the preset folder; Save As suggests the current preset's name. The file holds the same data as the host's
+    saved state, apart from the settings.
+  - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
+    tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) from a file that has
+    changed since; otherwise, and always for Init, it is greyed out and does nothing. Save As is greyed out too on
+    Init until the patch changes. In the browser demo, which has no files, both say so.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
     since a preset loaded leaves it unchanged again). The project remembers which preset it was and whether it changed.
-- **Settings** (the cog after Save): **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
+- **Settings** (the cog after Save As): **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,

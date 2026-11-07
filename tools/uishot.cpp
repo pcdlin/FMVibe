@@ -57,9 +57,19 @@ public:
     }
     void resetPreset() override { ++resets; }
     bool loadPreset(const std::wstring &) override { return false; }
-    bool savePreset(const std::wstring &) override { return false; }
+    // As the plugin does: a preset saved is the patch's preset, unchanged. Unless writing is to fail.
+    bool savePreset(const std::wstring &path) override {
+        ++writes;
+        written = path;
+        if (writeFails)
+            return false;
+        setPreset(path);
+        return true;
+    }
     void choosePreset(bool save) override { ++(save ? saves : loads); }
-    int resets = 0, loads = 0, saves = 0;
+    int resets = 0, loads = 0, saves = 0, writes = 0;
+    std::wstring written; // the file savePreset() was given last
+    bool writeFails = false;
     // A small library: one preset at the top, two in a subfolder.
     void rescanPresets() override {}
     const std::vector<PresetEntry> &presets() const override { return library; }
@@ -74,6 +84,7 @@ public:
     std::string presetName() const override {
         return presetIndex() < 0 ? tr(Str::PresetInit) : library[presetIndex()].name;
     }
+    using Controller::presetFile;
     using Controller::setPreset;
     bool loadPresetAt(int index) override {
         values[paramIndex(GlobalParam::Volume)] = -20.0 + 2.0 * index;
@@ -241,9 +252,10 @@ constexpr Point kMatrixTab{160.0f, 116.0f};
 constexpr Point kFxTab{240.0f, 116.0f};
 constexpr Point kF1Tab{1068.0f, 152.0f};
 // Init, Load, Save and the settings cog at the right end of the title bar.
-constexpr Point kInitButton{1068.0f, 18.0f};
-constexpr Point kLoadButton{1102.0f, 18.0f};
-constexpr Point kSaveButton{1136.0f, 18.0f};
+constexpr Point kInitButton{1034.0f, 18.0f};
+constexpr Point kLoadButton{1068.0f, 18.0f};
+constexpr Point kSaveButton{1102.0f, 18.0f};
+constexpr Point kSaveAsButton{1136.0f, 18.0f};
 constexpr Point kSettingsButton{1170.0f, 18.0f};
 constexpr Point kOpFTab{1037.0f, 152.0f};
 constexpr Point kSourcesToggle{60.0f, 541.0f};
@@ -559,8 +571,8 @@ void drag(View &view, Point from, Point to) {
 }
 
 // Undo and redo at the left of the toolbar.
-constexpr Point kUndoButton{986.0f, 18.0f};
-constexpr Point kRedoButton{1020.0f, 18.0f};
+constexpr Point kUndoButton{952.0f, 18.0f};
+constexpr Point kRedoButton{986.0f, 18.0f};
 // The LFO shape editor's reset button (the note curve's further left), and its grid's buttons: per axis (0 across)
 // a step down (part 0), the count, a step up.
 constexpr Point kShapeReset{1120.0f, 152.0f};
@@ -5437,7 +5449,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kSourcesToggle);
     check(!layout.sourcesCollapsed && view.height() == open, "the toggle opens the panel again");
 
-    // Init and Load ask before throwing away a changed patch; Save never asks.
+    // Init and Load ask before throwing away a changed patch; Save As never asks.
     const Rect confirm{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
     const Point cancel{confirm.x + 170.0f + 40.0f, confirm.bottom() - 38.0f};
     const Point ok{confirm.right() - 64.0f, confirm.bottom() - 38.0f};
@@ -5459,13 +5471,58 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({shorter.right() - 64.0f, shorter.bottom() - 38.0f}, {});
     const bool fileConfirm = renderer.save(view, dir / "15a-confirm-file.png");
     click(view, {confirm.x + 40.0f, confirm.bottom() - 4.0f});
-    click(view, kSaveButton);
+    click(view, kSaveAsButton);
     check(fileConfirm && model.loads == 1 && model.saves == 1, "the dialog before a file loads is a line shorter");
     click(view, kLoadButton);
     click(view, {shorter.right() - 64.0f, shorter.bottom() - 38.0f});
-    check(model.loads == 2 && model.saves == 1, "Load asks first, Save goes ahead");
-    view.mouseMove(kSaveButton, {});
+    check(model.loads == 2 && model.saves == 1, "Load asks first, Save As goes ahead");
+    view.mouseMove(kSaveAsButton, {});
     check(renderer.save(view, dir / "15b-toolbar.png"), "render the preset icons with a tooltip");
+
+    // Save writes the patch over its preset's file, asking first, and only while the patch has changed. A Save As
+    // clicked after it shows whether a dialog took the click instead (its backdrop cancelling it).
+    const std::wstring presetBefore = model.presetFile();
+    const bool editedBefore = model.patchEdited();
+    model.setPreset(L"Bell"); // unchanged: Save is greyed out and does nothing
+    click(view, kSaveButton);
+    click(view, kSaveAsButton);
+    view.mouseMove(kSaveButton, {});
+    const bool unchangedShot = renderer.save(view, dir / "15c-save-unchanged.png");
+    const uint32_t greyed = renderer.pixel({kSaveButton.x - 6.5f, kSaveButton.y}); // the disk's left edge
+    const uint32_t lit = renderer.pixel({kSaveAsButton.x - 6.5f, kSaveAsButton.y});
+    check(unchangedShot && model.writes == 0 && model.saves == 2 && greyed != lit,
+          "Save is greyed out and does nothing while the preset is unchanged");
+    // Its dialog has one line, so it is the shorter one.
+    const Point overwriteOk{shorter.right() - 64.0f, shorter.bottom() - 38.0f};
+    const Point overwriteCancel{shorter.x + 170.0f + 40.0f, shorter.bottom() - 38.0f};
+    model.setPreset(L"Bell", true);
+    click(view, kSaveButton);
+    view.mouseMove(overwriteOk, {});
+    const bool overwriteShot = renderer.save(view, dir / "15d-confirm-overwrite.png");
+    click(view, overwriteCancel);
+    check(overwriteShot && model.writes == 0 && model.patchEdited(), "Save asks before overwriting, and Cancel keeps it");
+    click(view, kSaveButton);
+    click(view, overwriteOk);
+    check(model.writes == 1 && model.written == L"Bell" && !model.patchEdited() && model.saves == 2,
+          "Overwrite writes the patch over the preset's file, which is then unchanged");
+    model.setPreset(L"Bell", true);
+    model.writeFails = true;
+    click(view, kSaveButton);
+    click(view, overwriteOk);
+    model.writeFails = false;
+    check(model.writes == 2 && model.patchEdited(), "a preset that could not be written stays changed");
+    model.setPreset(L""); // Init, unchanged: neither saves
+    click(view, kSaveButton);
+    click(view, kSaveAsButton);
+    check(model.writes == 2 && model.saves == 2, "Save and Save As do nothing on an unchanged Init");
+    model.setPreset(L"", true); // Init, changed: only Save As, which asks nothing
+    click(view, kSaveButton);
+    click(view, kSaveAsButton);
+    view.mouseMove(kSaveButton, {});
+    const bool initShot = renderer.save(view, dir / "15e-save-init.png");
+    click(view, kSaveAsButton);
+    check(initShot && model.writes == 2 && model.saves == 4, "Save does nothing on a changed Init, and Save As goes ahead");
+    model.setPreset(presetBefore, editedBefore);
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;

@@ -2349,9 +2349,9 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::PresetStep, presetStep(-1), -1, -1);
     add(Kind::PresetNameBox, kPresetName);
     add(Kind::PresetStep, presetStep(1), -1, 1);
-    for (int action = 0; action < 3; ++action)
+    for (int action = 0; action < 4; ++action)
         add(Kind::PresetButton, toolbarButton(action), -1, action);
-    add(Kind::SettingsButton, toolbarButton(3));
+    add(Kind::SettingsButton, toolbarButton(4));
 
     // The list of source types, where the dashed card was clicked, while that card is on screen.
     if (sourceMenuOpen_ && sourceShadowCard()) {
@@ -6050,10 +6050,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintWheel(c, w, hovered, active);
         break;
     case Kind::PresetButton: {
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
+        // Save and Save As greyed out while they have nothing to save.
+        const bool off = !presetActionOn(static_cast<PresetAction>(w.a));
+        c.fillRect(w.rect, hovered && !off ? kTrack : kRaised, 6.0f);
         c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
         const Point m = w.rect.center();
-        const Color color = hovered ? kText : kDim;
+        const Color color = off ? kFaint : hovered ? kText : kDim;
         switch (static_cast<PresetAction>(w.a)) {
         case PresetAction::Init:
             resetIcon(c, m, color);
@@ -6075,6 +6077,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.polyline(body, std::size(body), color, 1.4f);
             c.fillRect({m.x - 3.5f, m.y - 6.5f, 6.0f, 3.5f}, color);
             c.strokeRect({m.x - 3.5f, m.y + 1.0f, 7.0f, 5.5f}, color, 1.2f);
+            break;
+        }
+        case PresetAction::SaveAs: {
+            // The same disk, its bottom right corner left open for a plus: a new file.
+            const Point body[] = {{m.x + 6.5f, m.y + 1.0f}, {m.x + 6.5f, m.y - 3.5f}, {m.x + 3.5f, m.y - 6.5f},
+                                  {m.x - 6.5f, m.y - 6.5f}, {m.x - 6.5f, m.y + 6.5f}, {m.x + 1.0f, m.y + 6.5f}};
+            c.polyline(body, std::size(body), color, 1.4f);
+            c.fillRect({m.x - 3.5f, m.y - 6.5f, 6.0f, 3.5f}, color);
+            const Point plus{m.x + 5.0f, m.y + 5.0f};
+            c.line({plus.x - 3.5f, plus.y}, {plus.x + 3.5f, plus.y}, color, 1.5f);
+            c.line({plus.x, plus.y - 3.5f}, {plus.x, plus.y + 3.5f}, color, 1.5f);
             break;
         }
         }
@@ -6251,6 +6264,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.strokeRect(w.rect, ok ? kAccent : kBorder, 1.0f, 6.0f);
         const char *label = tr(!ok                                                ? Str::ButtonCancel
                                : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
+                               : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
                                                                                   : Str::ButtonLoad);
         c.text(w.rect, label, 11.0f, kText, Align::Center, ok);
         break;
@@ -6780,7 +6794,22 @@ void View::paintTooltip(Canvas &c) {
     else if (hover_->kind == Kind::BrowserFolder)
         text = tr(Str::TipOpenFolder);
     else if (hover_->kind == Kind::PresetButton)
-        text = tr(hover_->a == 0 ? Str::TipInit : hover_->a == 1 ? Str::TipLoad : Str::TipSave);
+        switch (static_cast<PresetAction>(hover_->a)) {
+        case PresetAction::Init:
+            text = tr(Str::TipInit);
+            break;
+        case PresetAction::Load:
+            text = tr(Str::TipLoad);
+            break;
+        case PresetAction::Save:
+            text = !controller_.presetHasFile() ? tr(Str::TipSaveNoFile)
+                   : controller_.patchEdited()  ? trf(Str::TipSave, {controller_.presetName()})
+                                                : tr(Str::TipSaveUnchanged);
+            break;
+        case PresetAction::SaveAs:
+            text = tr(presetActionOn(PresetAction::SaveAs) ? Str::TipSaveAs : Str::TipSaveUnchanged);
+            break;
+        }
     else if (hover_->kind == Kind::SettingsButton)
         text = tr(Str::TipSettings);
     else if (hover_->kind == Kind::SlotBypass)
@@ -7951,16 +7980,24 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::Octave:
         octave_ = std::clamp(octave_ + w.a, -2, 2);
         break;
-    case Kind::PresetButton:
-        // Init and Load ask first when they would throw away changes.
+    case Kind::PresetButton: {
+        // Init and Load ask first when they would throw away changes, and Save before it overwrites a preset's file.
+        // Save and Save As do nothing while greyed out.
         pendingPreset_ = -1;
-        if (static_cast<PresetAction>(w.a) != PresetAction::Save && controller_.patchEdited()) {
+        const auto action = static_cast<PresetAction>(w.a);
+        if (!presetActionOn(action))
+            break;
+        const bool ask = action == PresetAction::Save     ? controller_.writesPresetFiles()
+                         : action == PresetAction::SaveAs ? false
+                                                          : controller_.patchEdited();
+        if (ask) {
             confirm_ = w.a;
             hover_.reset();
         } else {
-            runPreset(static_cast<PresetAction>(w.a));
+            runPreset(action);
         }
         break;
+    }
     case Kind::PresetStep:
         stepPreset(w.a);
         break;
