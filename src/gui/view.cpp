@@ -2755,6 +2755,10 @@ void View::paintHeader(Canvas &c) {
     const Rect name{24.0f, kTitleRowY + kTopRowH * 0.5f - 20.0f, 40.0f, 40.0f};
     c.text(name, "FM", 22.0f, kAccent, Align::Left, true);
     c.text({53.0f, name.y, 100.0f, 40.0f}, "Vibe", 22.0f, kText, Align::Left, true);
+    // The version, faint and at half the name's height, on the name's baseline (text is centered in its box, so the
+    // box sits a quarter of the name's height lower).
+    const float versionX = 53.0f + c.textWidth("Vibe", 22.0f, true) + 5.0f;
+    c.text({versionX, name.y + 4.0f, 60.0f, 40.0f}, FMVIBE_VERSION, 11.0f, kFaint, Align::Left, true);
 
     // The output meter: each side's peak in the theme's color up to full scale, red past it, where the clip light
     // stays on for a while after the output went over.
