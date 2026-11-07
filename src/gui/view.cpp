@@ -6860,8 +6860,6 @@ void View::paintTooltip(Canvas &c) {
         text = tr(tips[std::clamp(hover_->b, 0, kShapeTools - 1)]);
     } else if (hover_->kind == Kind::ShapeMode)
         text = tr(hover_->b == 0 ? Str::TipShapePoints : hover_->b == 1 ? Str::TipShapeSteps : Str::TipShapeSnap);
-    else if (hover_->kind == Kind::ShapeArea) // a widened LFO card's plot, which has no room for the hint
-        text = shapeHint();
     else if (hover_->kind == Kind::ShapeGrid)
         text = tr(hover_->a == 0 ? Str::TipGridAcross : Str::TipGridUpDown);
     else if (hover_->kind == Kind::FxRemove)
