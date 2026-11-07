@@ -10,6 +10,7 @@
 #include "../wavetable.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -1576,11 +1577,11 @@ std::vector<View::Widget> View::widgets() const {
             auto at = [slot](FxParam f) { return paramIndex(slot, f); };
             // The icon at the title's left switches the effect on and off, and drags the card like the title does.
             const Rect icon = fxIconRect(card).inset(-4.0f);
-            if (fxFolded(slot)) { // a strip: the icon, the cross, then the rest unfolds it
-                add(Kind::FxGrip, {card.x, card.y, card.w, 30.0f}, -1, slot, static_cast<int>(pos));
+            if (fxFolded(slot)) { // a strip: the icon, a grip, the cross, then the rest unfolds it
                 add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
-                add(Kind::FxRemove, {card.center().x - 9.0f, card.y + 34.0f, 18.0f, 21.0f}, -1, slot);
-                add(Kind::FxFold, {card.x, card.y + 60.0f, card.w, card.h - 60.0f}, -1, slot);
+                add(Kind::FxGrip, {card.x, card.y + 30.0f, card.w, 16.0f}, -1, slot, static_cast<int>(pos));
+                add(Kind::FxRemove, {card.center().x - 9.0f, card.y + 50.0f, 18.0f, 21.0f}, -1, slot);
+                add(Kind::FxFold, {card.x, card.y + 76.0f, card.w, card.h - 76.0f}, -1, slot);
                 continue;
             }
             add(Kind::FxGrip, {card.x, card.y, card.w - 52.0f, 34.0f}, -1, slot, static_cast<int>(pos));
@@ -2097,7 +2098,7 @@ std::vector<View::Widget> View::widgets() const {
         const int s = cardSources[position];
         if (sourceFolded(s)) { // a strip: the handle, a grip, the switch and cross, then the rest unfolds it
             const Rect p = sourceCard(card, kFoldedSource);
-            add(Kind::SourceHandle, {p.center().x - 10.0f, p.y + 7.0f, 20.0f, 20.0f}, -1, s);
+            add(Kind::SourceHandle, sourceHandleRect(p), -1, s); // where it is unfolded
             add(Kind::SourceGrip, {p.x, p.y + 30.0f, p.w, 16.0f}, -1, s, position);
             add(Kind::Toggle, {p.center().x - 13.0f, p.y + 50.0f, 26.0f, 19.0f}, sourceEnabledIndex(s));
             add(Kind::SourceRemove, {p.center().x - 9.0f, p.y + 73.0f, 18.0f, 21.0f}, -1, s);
@@ -2116,7 +2117,7 @@ std::vector<View::Widget> View::widgets() const {
                                        : fold - 4.0f;
         add(Kind::SourceGrip, {p.x, p.y, gripEnd - p.x, 34.0f}, -1, s, position);
         add(Kind::SourceFold, {fold, p.y + 8.0f, 18.0f, 19.0f}, -1, s);
-        add(Kind::SourceHandle, {p.x + 14.0f, p.y + 8.0f, 20.0f, 20.0f}, -1, s);
+        add(Kind::SourceHandle, sourceHandleRect(p), -1, s);
         add(Kind::Toggle, sourcePower(card, span), sourceEnabledIndex(s));
         add(Kind::SourceRemove, sourceRemove(card, span), -1, s);
         if (widens)
@@ -3071,8 +3072,14 @@ void View::paintFx(Canvas &c) {
         const Color fx = fxTypeColor(type); // each type of effect in a color of its own
         c.fillRect(card, kCardColor, 8.0f);
         c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f);
-        if (fxFolded(slot)) { // its icon (a widget of its own) and cross, then its name down the strip
-            paintDownward(c, {card.x, card.y + 66.0f, card.w, card.h - 74.0f}, fxTitle(type), on ? kText : kDim);
+        if (fxFolded(slot)) { // its icon and cross (widgets), the grip's dots between, then its name down the strip
+            const bool grip = (hover_ && hover_->kind == Kind::FxGrip && hover_->a == slot &&
+                               drag_.kind == DragKind::None) ||
+                              dragged;
+            for (int d = 0; d < 6; ++d)
+                c.fillCircle({card.center().x - 5.0f + (d / 2) * 5.0f, card.y + 35.0f + (d % 2) * 5.0f}, 1.4f,
+                             grip ? kText : kFaint);
+            paintDownward(c, {card.x, card.y + 82.0f, card.w, card.h - 90.0f}, fxTitle(type), on ? kText : kDim);
             if (i + 1 < chain.size())
                 chevron(card, i + 1);
             continue;
@@ -3806,11 +3813,22 @@ void View::paintParamEq(Canvas &c, Rect r, int slot) {
 }
 
 // The EQ's response, with the crossovers marked.
-// A name down a folded card's strip, a letter a line, from the top of `r`.
+// A name down a folded card's strip, a letter a line, from the top of `r`; a number ending it ("LFO 13") on a line
+// of its own, across.
 void View::paintDownward(Canvas &c, Rect r, std::string_view name, Color color) {
-    for (size_t i = 0; i < name.size() && (i + 1) * 13.0f <= r.h; ++i)
+    size_t number = name.size();
+    while (number > 0 && std::isdigit(static_cast<unsigned char>(name[number - 1])))
+        --number;
+    if (number == 0 || name[number - 1] != ' ')
+        number = name.size(); // no number after a space: every character down
+    size_t line = 0;
+    for (size_t i = 0; i < name.size() && (line + 1) * 13.0f <= r.h; ++i, ++line) {
+        const size_t length = i == number ? name.size() - i : 1;
         if (name[i] != ' ')
-            c.text({r.x, r.y + i * 13.0f, r.w, 13.0f}, std::string(1, name[i]), 10.5f, color, Align::Center, true);
+            c.text({r.x, r.y + line * 13.0f, r.w, 13.0f}, std::string(name.substr(i, length)), 10.5f, color,
+                   Align::Center, true);
+        i += length - 1;
+    }
 }
 
 void View::paintEq(Canvas &c, Rect r, int slot) {
@@ -5033,6 +5051,8 @@ void View::paintSource(Canvas &c, float card, int s) {
         for (int d = 0; d < 6; ++d)
             c.fillCircle({p.center().x - 5.0f + (d / 2) * 5.0f, p.y + 35.0f + (d % 2) * 5.0f}, 1.4f, grip ? kText : kFaint);
         std::string name = sourceName(s);
+        if (sourceTypeOf(s) == SourceType::Random) // "Random" too long for the strip: its short name, by its number
+            name = trf(Str::SourceFoldedRandom, {name.substr(name.find_last_of(' ') + 1)});
         std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
         paintDownward(c, {p.x, p.y + 104.0f, p.w, p.h - 110.0f}, name, sourceOn(s) ? color : kDim);
         return;

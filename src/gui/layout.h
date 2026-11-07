@@ -295,8 +295,14 @@ inline Rect sourceCard(float card, float span = 1.0f) {
 }
 // A folded card is a narrow strip: its handle, a grip, its switch and cross, then its name down the rest, which
 // unfolds it. An effect card folds much the same way: its icon, which switches it, then its cross and its name.
-// That strip is as wide as the icon's place at the title's left, so the icon stays put as the card folds.
-constexpr float kFoldedSource = 0.2f;
+// That strip is as wide as the icon's (or the handle's) place at the title's left, so it stays put as the card folds.
+constexpr float kSourceHandleX = 14.0f; // the handle's left edge, from the card's
+constexpr float kSourceHandleY = 8.0f;  // and its top
+constexpr float kSourceHandleW = 20.0f;
+constexpr float kFoldedSource = (2.0f * kSourceHandleX + kSourceHandleW + kCardGap) / (kCardW + kCardGap);
+inline Rect sourceHandleRect(Rect card) {
+    return {card.x + kSourceHandleX, card.y + kSourceHandleY, kSourceHandleW, kSourceHandleW};
+}
 // A Custom LFO's card widened to edit its shape right there, two card places wide: its own controls stay where a
 // normal card has them, and the shape's plot, 264 px across, goes beside them, from under the title row down to the
 // row of the point readout and the grid's steppers, level with the MODS button.

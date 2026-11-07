@@ -607,7 +607,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings,
     set a 3-band dynamics as OTT, or remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
     title's left, so the icon stays where it was: the icon, which still switches the effect and drags the card,
-    its ×, then its name down the strip, which unfolds it. The cards after it close up; folds are saved with the
+    a grip (six dots) that drags it, its ×, then its name down the strip, which unfolds it. The cards after it close up; folds are saved with the
     patch but not undone. On the Param EQ's display,
     drag a band's numbered handle for frequency and gain, Alt-drag it up or down (it stays where it is) or scroll
     on it for Q, and double-click it to flatten it; a cut's handle sets its resonance instead of a gain, and a
@@ -887,7 +887,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings
     on knobs faint (the handle can still be dragged onto targets).
   - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip
-    to drag it by, the switch and ×, then the name, which unfolds it.
+    to drag it by, the switch and ×, then the name, which unfolds it: its letters down the strip and its number
+    across (a Random source's shortened to RND).
   - Each source has a colored handle in its card's title row. Drag it onto any knob, wire label
     or matrix cell; a filter's cutoff is the classic target. Held near the left or right end of the modulation
     panel or the effects chain, it scrolls those cards that way, faster nearer the edge, so a knob on a card out of

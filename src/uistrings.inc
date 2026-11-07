@@ -358,6 +358,7 @@ STR(SourceNameLfo, "LFO {1}") // numbered by type in the order the sources show
 STR(SourceNameEnv, "Env {1}")
 STR(SourceNameRandom, "Random {1}")
 STR(SourceNameMidi, "MIDI {1}")
+STR(SourceFoldedRandom, "RND {1}") // a Random source's name down its folded card, which "Random 3" doesn't fit
 STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")

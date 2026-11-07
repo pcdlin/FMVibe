@@ -1888,20 +1888,57 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, fxFold(1));
     click(view, fxRemove(model, 0)); // removing another effect leaves the fold alone
     const bool kept = model.ui.fxFolded == 1u << 1 && fxChain(model).size() == 2;
+    const std::vector<int> before = fxChain(model);
+    const float folded = fxCardX(model, 0) + fxCardW(model, 0) * 0.5f; // the folded card, now first
+    view.mouseMove({folded, cardTop + 38.0f}, {});
+    const bool gripShot = renderer.save(view, dir / "28b-folded-grip.png");
+    drag(view, {folded, cardTop + 38.0f}, {folded + 400.0f, cardTop + 38.0f}); // its grip, past the next card
+    const bool fxMoved = fxChain(model) == std::vector<int>{before[1], before[0]} && model.ui.fxFolded == 1u << 1;
 
     const float sourceTop = 564.0f; // a source card's
+    auto handlePixels = [&] { // the LFO's handle, which stays put as its card folds (read off the rendered pixels)
+        std::vector<uint32_t> pixels;
+        for (float dy = -12.0f; dy <= 12.0f; dy += 1.0f)
+            for (float dx = -12.0f; dx <= 12.0f; dx += 1.0f)
+                pixels.push_back(renderer.pixel({sourceHandle(0).x + dx, sourceHandle(0).y + dy}));
+        return pixels;
+    };
+    view.mouseMove({600.0f, 328.0f}, {});
+    renderer.save(view, dir / "28c-unfolded-handle.png");
+    const std::vector<uint32_t> handleOpen = handlePixels();
     click(view, {cardX(0) + kCardW - 69.0f, sourceTop + 17.5f}); // the LFO's chevron, left of its switch
     const bool sourceFolded = model.ui.sourcesFolded == 1u << 0;
-    const float envX = cardX(0) + 0.2f * (kCardW + 12.0f); // the envelope's card, closed up
+    view.mouseMove({600.0f, 328.0f}, {});
+    renderer.save(view, dir / "28d-folded-handle.png");
+    const bool handleStays = handlePixels() == handleOpen;
+    const float envX = cardX(0) + 60.0f; // the envelope's card, closed up after the 48 px strip
     click(view, {envX + kCardW - 43.0f, sourceTop + 17.5f}); // its switch
     const bool envClosedUp = model.value(sourceEnabledIndex(1)) < 0.5;
-    const float lfoStrip = cardX(0) + 0.5f * (0.2f * (kCardW + 12.0f) - 12.0f);
+    const float lfoStrip = cardX(0) + 24.0f;
     drag(view, {lfoStrip, sourceTop + 38.0f}, {lfoStrip + 300.0f, sourceTop + 38.0f}); // its grip, past the envelope
     const bool moved = shown(model) == std::vector<int>{1, 0} && model.ui.sourcesFolded == 1u << 0;
     view.mouseMove({600.0f, 328.0f}, {});
-    check(fxFolded && shot && switched && closedUp && fxUnfolded && kept && sourceFolded && envClosedUp && moved &&
-              renderer.save(view, dir / "28-folded.png"),
-          "effect and LFO cards fold to strips that still switch, move and unfold, the effect's icon staying put");
+    check(fxFolded && shot && switched && closedUp && fxUnfolded && kept && gripShot && fxMoved && sourceFolded &&
+              envClosedUp && moved && handleStays && renderer.save(view, dir / "28-folded.png"),
+          "effect and LFO cards fold to strips that still switch, move by their grips and unfold, the effect's icon "
+          "and the source's handle staying put");
+
+    // A folded Random card's name: RND down the randomStrip and its number across, four lines and nothing after them
+    // (read off the rendered pixels), where "RANDOM 1" took six.
+    model.values[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
+    view.poll();
+    renderer.save(view, dir / "28e-folded-random.png");
+    const float randomStrip = cardX(1); // the folded card, after the envelope's
+    auto inked = [&](int line) {
+        const uint32_t card = renderer.pixel({randomStrip + 4.0f, sourceTop + 150.0f});
+        for (float y = sourceTop + 104.0f + line * 13.0f + 1.0f; y < sourceTop + 104.0f + (line + 1) * 13.0f; y += 1.0f)
+            for (float x = randomStrip + 8.0f; x < randomStrip + 40.0f; x += 1.0f)
+                if (renderer.pixel({x, y}) != card)
+                    return true;
+        return false;
+    };
+    check(inked(0) && inked(1) && inked(2) && !inked(3) && inked(4) && !inked(5),
+          "a folded Random card shows RND and its number, which fit the strip");
 }
 
 // The macros in the keyboard panel, above the keys: a knob each (centers 112.75 px apart, 179 px above the
