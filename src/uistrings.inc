@@ -57,6 +57,7 @@ STR(PeqLowShelf, "Low Shelf")
 STR(PeqHighShelf, "High Shelf")
 STR(PeqLowCut, "Low Cut")
 STR(PeqHighCut, "High Cut")
+STR(PeqNotch, "Notch")
 
 STR(ReverbHall, "Hall")
 STR(ReverbRoom, "Room")

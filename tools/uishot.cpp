@@ -4806,10 +4806,10 @@ void run(const std::filesystem::path &dir, float scale) {
     auto chipPower = [&](int b) { return Point{chipX(b) + 13.0f, 381.0f}; };
     auto chipNumber = [&](int b) { return Point{chipX(b) + 26.0f + (chipW - 60.0f) * 0.5f, 381.0f}; };
     auto chipShape = [&](int b) { return Point{chipX(b) + chipW - 17.0f, 381.0f}; };
-    // A shape's list opens above its chip, inside the card: 124 px wide, an item 22 px from 250.
+    // A shape's list opens above its chip, inside the card: 124 px wide, an item 22 px from 228.
     auto peqShapeItem = [&](int b, PeqType t) {
         const float x = std::clamp(chipX(b) + chipW * 0.5f, peqCardX + 8.0f + 62.0f, peqCardX + peqCardW - 8.0f - 62.0f);
-        return Point{x, 250.0f + static_cast<float>(t) * 22.0f + 11.0f};
+        return Point{x, 228.0f + static_cast<float>(t) * 22.0f + 11.0f};
     };
     auto peqKnob = [&](int i) { return Point{peqCardX + peqCardW * (static_cast<float>(i) + 0.5f) / 3.0f, 432.0f}; };
     // The second band's shape comes from a list that opens above its chip: a high cut.
@@ -4835,6 +4835,7 @@ void run(const std::filesystem::path &dir, float scale) {
     }
     // The third band starts off, its handle faint at 1 kHz on the 0 dB line: a press on it picks it (and moves
     // nothing), its chip's power switch turns it on and off, undoably, and its shape's list stays inside the card.
+    // Made a notch, its handle stays on the 0 dB line and only moves across.
     {
         const Point third{peqCardX + 22.0f + static_cast<float>(model.value(peqFreqIndex(2, 2))) * peqW, 292.0f};
         const double freq = model.value(peqFreqIndex(2, 2));
@@ -4850,13 +4851,20 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool undone = model.value(peqOnIndex(2, 2)) == 0.0;
         view.redo();
         click(view, chipShape(2));
-        view.mouseMove(peqShapeItem(2, PeqType::LowShelf), {});
+        view.mouseMove(peqShapeItem(2, PeqType::Notch), {});
         check(renderer.save(view, dir / "8e2-peq-third-band.png"), "render the EQ's third band's list of shapes");
-        click(view, peqShapeItem(2, PeqType::LowShelf));
-        const bool shaped = model.value(peqTypeIndex(2, 2)) == static_cast<double>(PeqType::LowShelf);
+        click(view, peqShapeItem(2, PeqType::Notch));
+        const bool shaped = model.value(peqTypeIndex(2, 2)) == static_cast<double>(PeqType::Notch);
+        const double gain = model.value(peqGainIndex(2, 2)), q = model.value(peqQIndex(2, 2));
+        drag(view, third, {third.x + 12.0f, third.y - 30.0f});
+        const bool across = model.value(peqFreqIndex(2, 2)) > freq && model.value(peqGainIndex(2, 2)) == gain &&
+                            model.value(peqQIndex(2, 2)) == q;
+        check(renderer.save(view, dir / "8e3-peq-notch.png"), "render the EQ's third band as a notch");
+        model.set(peqFreqIndex(2, 2), freq);
         click(view, chipPower(2));
         check(picked && startsOff && on && undone && shaped && model.value(peqOnIndex(2, 2)) == 0.0,
               "a Param EQ band's handle picks it, its chip switches it on and off and its shape's list picks its shape");
+        check(across, "a Param EQ notch's handle moves only across");
     }
     model.set(peqGainIndex(2, 1), -6.0);
     model.set(peqQIndex(2, 1), 0.2);

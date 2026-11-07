@@ -2394,6 +2394,20 @@ int main(int argc, char **argv) {
                   "the EQ's third band starts off and plays once on, and a band switched off is left out");
             setParams({{peqOnIndex(4, 0), 1.0}, {peqOnIndex(4, 2), 0.0}, {peqGainIndex(4, 2), 0.0}});
         }
+        // A notch on 440 Hz takes the sine away whatever its gain says, and one an octave up leaves most of it.
+        {
+            setParams({{peqGainIndex(4, 0), 12.0},
+                       {peqTypeIndex(4, 0), static_cast<double>(PeqType::Notch)},
+                       {peqQIndex(4, 0), normFromQ(1.0)}});
+            const double notched = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            setParams({{peqFreqIndex(4, 0), normFromCutoff(880.0)}});
+            const double octaveUp = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            std::printf("      440 Hz through a notch on it: x%.3f, through one an octave up x%.2f\n", notched,
+                        octaveUp);
+            check(notched < 0.05 && std::abs(octaveUp - 0.83) < 0.06,
+                  "the EQ's notch takes its frequency away, and leaves an octave off it mostly alone");
+            setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
+        }
         setParams({{type(4), static_cast<double>(FxType::None)}, {type(5), static_cast<double>(FxType::None)}});
 
         // Delay: a short note's echoes, recorded from the note on, once the note

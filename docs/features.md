@@ -271,7 +271,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     band goes from kill to +6 dB, and with all three at 0 dB it is flat.
   - **Param EQ**: three bands, each with Frequency (20 Hz–20 kHz), Gain (±18 dB) and Q (0.3–10), a shape:
     Peak (a bell), Low Shelf, High Shelf, Low Cut or High Cut (12 dB per octave, Q setting its resonance; the
-    gain does nothing there), and an **On** switch. The first two start on (at 250 Hz and 4 kHz) and the third
+    gain does nothing there) or Notch (taking its frequency away, Q setting how narrowly; the gain does nothing
+    there either), and an **On** switch. The first two start on (at 250 Hz and 4 kHz) and the third
     off (at 1 kHz), so a patch from before the third band plays as it did. A band switched off leaves the sound
     alone, fading out and back in over 5 ms.
   - **Filter**: the voice filters' types (low-pass, high-pass, band-pass, notch, comb; a row of icons on its
@@ -609,7 +610,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     patch but not undone. On the Param EQ's display,
     drag a band's numbered handle for frequency and gain, Alt-drag it up or down (it stays where it is) or scroll
     on it for Q, and double-click it to flatten it; a cut's handle sets its resonance instead of a gain, and a
-    double-click takes the resonance away. A band switched off shows a faint handle, which can still be moved.
+    double-click takes the resonance away. A notch's handle sits on the 0 dB line and only moves across (Alt-drag
+    or scroll for its width), and a double-click sets its Q back to 1. A band switched off shows a faint handle, which can still be moved.
     Under the display, a chip for each band: its power switch, its number (in the band's color while it plays) and
     its shape's icon, which opens the list of shapes over the display. A click on a chip, or on a band's handle,
     picks the band the row of knobs under the chips (Freq, Gain and Q) sets; its chip and handle are ringed in its

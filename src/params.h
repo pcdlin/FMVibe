@@ -312,14 +312,16 @@ enum class FxType {
 // Gentle is x / (1 + |x|), which never quite gets there; the folds fold back what goes
 // past 1, smoothly (Sine Fold) or in straight lines (Fold); Custom is a drawn curve.
 enum class ClipMode { Hard, Soft, Asymmetric, Cubic, Gentle, SineFold, Fold, Custom, Count };
-// A parametric EQ band's shape: a bell, a shelf, or a 12 dB per octave cut (where Q is the resonance
-// and the gain does nothing). Stored in projects by number: only append.
-enum class PeqType { Peak, LowShelf, HighShelf, LowCut, HighCut, Count };
+// A parametric EQ band's shape: a bell, a shelf, a 12 dB per octave cut (where Q is the resonance and the gain does
+// nothing) or a notch (where Q sets the width and the gain does nothing). Stored in projects by number: only append.
+enum class PeqType { Peak, LowShelf, HighShelf, LowCut, HighCut, Notch, Count };
 // The reverb's algorithm: Hall, the plain network; Room, shorter and darker, with distinct early
 // reflections; Plate, denser and brighter; Shimmer, a brighter hall that feeds its own tail back into itself
 // pitch-shifted, so each pass climbs (or falls) another interval. Stored in projects by number: only append.
 enum class ReverbType { Hall, Room, Plate, Shimmer, Count };
 constexpr bool isCut(PeqType type) { return type == PeqType::LowCut || type == PeqType::HighCut; }
+// Whether a band's Gain does anything: a cut's and a notch's don't.
+constexpr bool peqHasGain(PeqType type) { return !isCut(type) && type != PeqType::Notch; }
 inline PeqType peqType(double value) {
     const long t = std::lround(value);
     return static_cast<PeqType>(t < 0 ? 0 : (t >= static_cast<long>(PeqType::Count) ? 0 : t));
@@ -1289,7 +1291,7 @@ static_assert(numberedInOrder({ClipMode::Hard, ClipMode::Soft, ClipMode::Asymmet
                                ClipMode::SineFold, ClipMode::Fold, ClipMode::Custom, ClipMode::Count}),
               "ClipMode is stored by number: only append");
 static_assert(numberedInOrder({PeqType::Peak, PeqType::LowShelf, PeqType::HighShelf, PeqType::LowCut, PeqType::HighCut,
-                               PeqType::Count}),
+                               PeqType::Notch, PeqType::Count}),
               "PeqType is stored by number: only append");
 static_assert(numberedInOrder({ReverbType::Hall, ReverbType::Room, ReverbType::Plate, ReverbType::Shimmer,
                                ReverbType::Count}),

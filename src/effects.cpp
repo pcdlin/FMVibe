@@ -47,7 +47,7 @@ Coefs biquad(BiquadType type, double hz, double sampleRate) {
     return {b0 / a0, b1 / a0, b2 / a0, -2.0 * cosW / a0, (1.0 - alpha) / a0};
 }
 
-// A parametric EQ band (RBJ cookbook: peaking EQ, shelves, high- and low-pass), from its params.
+// A parametric EQ band (RBJ cookbook: peaking EQ, shelves, high- and low-pass, notch), from its params.
 Coefs peqCoefs(PeqType type, double freq, double gainDb, double q, double sampleRate) {
     const double hz = std::min(cutoffFromNorm(freq), 0.45 * sampleRate);
     const double a = std::pow(10.0, gainDb / 40.0);
@@ -80,6 +80,10 @@ Coefs peqCoefs(PeqType type, double freq, double gainDb, double q, double sample
         break;
     case PeqType::HighCut:
         b0 = 0.5 * (1.0 - cosW), b1 = 1.0 - cosW, b2 = 0.5 * (1.0 - cosW);
+        a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
+        break;
+    case PeqType::Notch:
+        b0 = 1.0, b1 = -2.0 * cosW, b2 = 1.0;
         a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
         break;
     }
@@ -310,6 +314,8 @@ double peqResponse(double hz, PeqType type, double freq, double gainDb, double q
         return std::abs(s * s / (s * s + bandwidth * s + 1.0));
     case PeqType::HighCut:
         return std::abs(1.0 / (s * s + bandwidth * s + 1.0));
+    case PeqType::Notch:
+        return std::abs((s * s + 1.0) / (s * s + bandwidth * s + 1.0));
     case PeqType::Peak:
     case PeqType::Count:
         break;
@@ -753,7 +759,7 @@ void Effects::runParamEq(int slot, float *const *io, uint32_t n, const ParamValu
             on = target;
         const PeqType type = peqType(p[peqTypeIndex(slot, band)]);
         const double gain = p[peqGainIndex(slot, band)];
-        if (!isCut(type) && std::abs(gain) < 1e-3) {
+        if (peqHasGain(type) && std::abs(gain) < 1e-3) {
             eq.bands[band] = {}; // flat: leave the band out, and start it clean when it comes back
             on = target;
             continue;

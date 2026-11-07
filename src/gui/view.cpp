@@ -3725,8 +3725,11 @@ void View::paintDelay(Canvas &c, Rect r, int slot) {
 
 // The bands' bells and what those that play add up to, on a log frequency axis.
 Point View::peqHandle(Rect area, int slot, int band) const {
-    const bool cut = isCut(peqType(value(peqTypeIndex(slot, band))));
-    const double db = cut ? 20.0 * std::log10(qFromNorm(value(peqQIndex(slot, band)))) : value(peqGainIndex(slot, band));
+    // A cut's stands at its resonance's peak, and a notch's on the 0 dB line.
+    const PeqType type = peqType(value(peqTypeIndex(slot, band)));
+    const double db = isCut(type)                ? 20.0 * std::log10(qFromNorm(value(peqQIndex(slot, band))))
+                      : type == PeqType::Notch ? 0.0
+                                               : value(peqGainIndex(slot, band));
     return peqAt(area, value(peqFreqIndex(slot, band)), db);
 }
 
@@ -5825,7 +5828,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             formatParam(peqFreqIndex(w.a, w.b), value(peqFreqIndex(w.a, w.b)), freq, sizeof(freq));
             formatParam(peqGainIndex(w.a, w.b), value(peqGainIndex(w.a, w.b)), gain, sizeof(gain));
             formatParam(peqQIndex(w.a, w.b), value(peqQIndex(w.a, w.b)), q, sizeof(q));
-            if (isCut(peqType(value(peqTypeIndex(w.a, w.b))))) // a cut has no gain
+            if (!peqHasGain(peqType(value(peqTypeIndex(w.a, w.b))))) // a cut and a notch have no gain
                 std::snprintf(text, sizeof(text), "%s  \xC2\xB7  %s", freq, q);
             else
                 std::snprintf(text, sizeof(text), "%s  \xC2\xB7  %s  \xC2\xB7  %s", freq, gain, q);
@@ -7319,9 +7322,10 @@ void View::applyDrag(Point p) {
         const Rect area = peqArea(w.a);
         set(peqFreqIndex(w.a, w.b), (p.x - area.x) / area.w);
         const double db = (area.center().y - p.y) / (area.h * 0.5f) * kPeqRangeDb;
-        if (isCut(peqType(value(peqTypeIndex(w.a, w.b))))) // up and down is the resonance's peak
+        const PeqType type = peqType(value(peqTypeIndex(w.a, w.b)));
+        if (isCut(type)) // up and down is the resonance's peak
             set(peqQIndex(w.a, w.b), normFromQ(std::clamp(std::pow(10.0, db / 20.0), kMinQ, kMaxQ)));
-        else
+        else if (type != PeqType::Notch) // a notch's handle only moves across
             set(peqGainIndex(w.a, w.b), db);
         break;
     }
@@ -8458,8 +8462,11 @@ void View::doubleClick(Point p, Modifiers mods) {
         return;
     }
     if (hit && hit->kind == Kind::PeqPoint) {
-        if (isCut(peqType(value(peqTypeIndex(hit->a, hit->b)))))
+        const PeqType type = peqType(value(peqTypeIndex(hit->a, hit->b)));
+        if (isCut(type))
             edit(peqQIndex(hit->a, hit->b), normFromQ(std::numbers::sqrt2 * 0.5)); // no resonance
+        else if (type == PeqType::Notch)
+            edit(peqQIndex(hit->a, hit->b), resetValue(peqQIndex(hit->a, hit->b))); // its width as it starts
         else
             edit(peqGainIndex(hit->a, hit->b), 0.0); // flat again
         return;

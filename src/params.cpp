@@ -37,7 +37,8 @@ static_assert(std::size(kDivisionNames) == static_cast<size_t>(kDivisions));
 constexpr Str kClipModeNames[] = {Str::ClipHard,   Str::ClipSoft,     Str::ClipAsymmetric, Str::ClipCubic,
                                   Str::ClipGentle, Str::ClipSineFold, Str::ClipFold,       Str::ClipCustom};
 static_assert(std::size(kClipModeNames) == static_cast<size_t>(ClipMode::Count));
-constexpr Str kPeqTypeNames[] = {Str::PeqPeak, Str::PeqLowShelf, Str::PeqHighShelf, Str::PeqLowCut, Str::PeqHighCut};
+constexpr Str kPeqTypeNames[] = {Str::PeqPeak,   Str::PeqLowShelf, Str::PeqHighShelf,
+                                 Str::PeqLowCut, Str::PeqHighCut,  Str::PeqNotch};
 static_assert(std::size(kPeqTypeNames) == static_cast<size_t>(PeqType::Count));
 constexpr Str kReverbTypeNames[] = {Str::ReverbHall, Str::ReverbRoom, Str::ReverbPlate, Str::ReverbShimmer};
 static_assert(std::size(kReverbTypeNames) == static_cast<size_t>(ReverbType::Count));
