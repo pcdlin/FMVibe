@@ -2411,6 +2411,51 @@ int main(int argc, char **argv) {
         std::printf("      440 Hz through a low cut at 2 kHz: x%.3f, a +12 dB low shelf at 4 kHz: x%.2f\n", lowCut, lowShelf);
         check(lowCut < 0.1 && std::abs(lowShelf - 3.98) < 0.4, "the EQ's bands also cut and shelve");
         setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
+        // The third band starts switched off (never switched here): set to a -12 dB bell on 440 Hz under the first
+        // band's +12 dB one, it does nothing until it is switched on; the first band switched off then leaves only the
+        // cut. Hosts aren't given the effects' fields, so their defaults show in what they play.
+        {
+            setParams({{peqFreqIndex(4, 0), normFromCutoff(440.0)},
+                       {peqFreqIndex(4, 2), normFromCutoff(440.0)},
+                       {peqGainIndex(4, 2), -12.0}});
+            const double thirdOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            setParams({{peqOnIndex(4, 2), 1.0}});
+            const double thirdOn = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            setParams({{peqOnIndex(4, 0), 0.0}});
+            const double firstOff = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            std::printf("      440 Hz under a +12 dB bell: x%.2f, a -12 dB third band on too x%.2f, the first band "
+                        "off x%.3f\n", thirdOff, thirdOn, firstOff);
+            check(std::abs(thirdOff - 3.98) < 0.4 && std::abs(thirdOn - 1.0) < 0.15 &&
+                      std::abs(firstOff - 0.251) < 0.03,
+                  "the EQ's third band starts off and plays once on, and a band switched off is left out");
+            setParams({{peqOnIndex(4, 0), 1.0}, {peqOnIndex(4, 2), 0.0}, {peqGainIndex(4, 2), 0.0}});
+        }
+        // A notch on 440 Hz takes the sine away whatever its gain says, and one an octave up leaves most of it.
+        {
+            setParams({{peqGainIndex(4, 0), 12.0},
+                       {peqTypeIndex(4, 0), static_cast<double>(PeqType::Notch)},
+                       {peqQIndex(4, 0), normFromQ(1.0)}});
+            const double notched = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            setParams({{peqFreqIndex(4, 0), normFromCutoff(880.0)}});
+            const double octaveUp = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            std::printf("      440 Hz through a notch on it: x%.3f, through one an octave up x%.2f\n", notched,
+                        octaveUp);
+            check(notched < 0.05 && std::abs(octaveUp - 0.83) < 0.06,
+                  "the EQ's notch takes its frequency away, and leaves an octave off it mostly alone");
+            setParams({{peqTypeIndex(4, 0), static_cast<double>(PeqType::Peak)}});
+        }
+        // Amount mixes the EQ with what goes in: a +12 dB bell on 440 Hz (x3.98 above, at the Amount it starts with)
+        // at half is x2.49, and at 0 nothing.
+        {
+            setParams({{peqFreqIndex(4, 0), normFromCutoff(440.0)}, {fx(4, FxParam::PeqAmount), 0.5}});
+            const double half = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            setParams({{fx(4, FxParam::PeqAmount), 0.0}});
+            const double none = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+            std::printf("      a +12 dB bell on 440 Hz at half its Amount: x%.2f, at none x%.3f\n", half, none);
+            check(std::abs(half - 2.49) < 0.15 && std::abs(none - 1.0) < 0.02,
+                  "the EQ's Amount mixes it with what goes in");
+            setParams({{fx(4, FxParam::PeqAmount), 1.0}});
+        }
         setParams({{type(4), static_cast<double>(FxType::None)}, {type(5), static_cast<double>(FxType::None)}});
 
         // Delay: a short note's echoes, recorded from the note on, once the note

@@ -312,14 +312,16 @@ enum class FxType {
 // Gentle is x / (1 + |x|), which never quite gets there; the folds fold back what goes
 // past 1, smoothly (Sine Fold) or in straight lines (Fold); Custom is a drawn curve.
 enum class ClipMode { Hard, Soft, Asymmetric, Cubic, Gentle, SineFold, Fold, Custom, Count };
-// A parametric EQ band's shape: a bell, a shelf, or a 12 dB per octave cut (where Q is the resonance
-// and the gain does nothing). Stored in projects by number: only append.
-enum class PeqType { Peak, LowShelf, HighShelf, LowCut, HighCut, Count };
+// A parametric EQ band's shape: a bell, a shelf, a 12 dB per octave cut (where Q is the resonance and the gain does
+// nothing) or a notch (where Q sets the width and the gain does nothing). Stored in projects by number: only append.
+enum class PeqType { Peak, LowShelf, HighShelf, LowCut, HighCut, Notch, Count };
 // The reverb's algorithm: Hall, the plain network; Room, shorter and darker, with distinct early
 // reflections; Plate, denser and brighter; Shimmer, a brighter hall that feeds its own tail back into itself
 // pitch-shifted, so each pass climbs (or falls) another interval. Stored in projects by number: only append.
 enum class ReverbType { Hall, Room, Plate, Shimmer, Count };
 constexpr bool isCut(PeqType type) { return type == PeqType::LowCut || type == PeqType::HighCut; }
+// Whether a band's Gain does anything: a cut's and a notch's don't.
+constexpr bool peqHasGain(PeqType type) { return !isCut(type) && type != PeqType::Notch; }
 inline PeqType peqType(double value) {
     const long t = std::lround(value);
     return static_cast<PeqType>(t < 0 ? 0 : (t >= static_cast<long>(PeqType::Count) ? 0 : t));
@@ -494,6 +496,16 @@ enum class FxParam {
     MdOutput,
     MdLink,
     MdRms,
+    // The parametric EQ's third band (its first two are PeqFreq1..PeqQ2 and PeqType1, PeqType2), then whether each
+    // band plays: a band switched off leaves the sound alone (see peqOnIndex()).
+    PeqFreq3,
+    PeqGain3,
+    PeqQ3,
+    PeqType3,
+    PeqOn1,
+    PeqOn2,
+    PeqOn3,
+    PeqAmount, // the parametric EQ's output against what went in, as a mix: 0 leaves the sound alone
     Count
 };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as
@@ -517,7 +529,7 @@ inline double clipOutputDb(double outputDb, double driveDb, bool linked) {
 constexpr int kMaxPhaserStages = 12;
 constexpr int kMaxDisperserStages = 64;
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
-constexpr int kPeqBands = 2;
+constexpr int kPeqBands = 3;
 constexpr int kMcBands = 3;
 constexpr double kMcKnee = 6.0; // dB
 // The three-band dynamics' detectors: the RMS one's time constant, and how fast the peak one falls back between peaks
@@ -720,6 +732,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::FlangerStereo, FxParam::FlangerStereo, FxType::Flanger},
     {FxParam::ShaperSymmetric, FxParam::ShaperSymmetric, FxType::Shaper},
     {FxParam::MdLowFreq, FxParam::MdRms, FxType::MultiDyn},
+    {FxParam::PeqFreq3, FxParam::PeqAmount, FxType::ParamEq},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -748,13 +761,28 @@ inline FxType fxType(double value) {
     const long t = std::lround(value);
     return static_cast<FxType>(t < 0 ? 0 : (t >= static_cast<long>(FxType::Count) ? 0 : t));
 }
-// Fields of band `band` of the parametric EQ.
-constexpr int peqFreqIndex(int slot, int band) { return paramIndex(slot, FxParam::PeqFreq1) + 3 * band; }
+// Fields of band `band` of the parametric EQ: the first two bands' sit together, the third's came later.
+constexpr int peqFreqIndex(int slot, int band) {
+    return band < 2 ? paramIndex(slot, FxParam::PeqFreq1) + 3 * band : paramIndex(slot, FxParam::PeqFreq3);
+}
 constexpr int peqGainIndex(int slot, int band) { return peqFreqIndex(slot, band) + 1; }
 constexpr int peqQIndex(int slot, int band) { return peqFreqIndex(slot, band) + 2; }
-static_assert(peqQIndex(0, 1) == paramIndex(0, FxParam::PeqQ2));
-constexpr int peqTypeIndex(int slot, int band) { return paramIndex(slot, FxParam::PeqType1) + band; }
-static_assert(peqTypeIndex(0, 1) == paramIndex(0, FxParam::PeqType2));
+static_assert(peqQIndex(0, 1) == paramIndex(0, FxParam::PeqQ2) && peqQIndex(0, 2) == paramIndex(0, FxParam::PeqQ3));
+constexpr int peqTypeIndex(int slot, int band) {
+    return band < 2 ? paramIndex(slot, FxParam::PeqType1) + band : paramIndex(slot, FxParam::PeqType3);
+}
+static_assert(peqTypeIndex(0, 1) == paramIndex(0, FxParam::PeqType2) &&
+              peqTypeIndex(0, 2) == paramIndex(0, FxParam::PeqType3));
+constexpr int peqOnIndex(int slot, int band) { return paramIndex(slot, FxParam::PeqOn1) + band; }
+static_assert(peqOnIndex(0, 2) == paramIndex(0, FxParam::PeqOn3));
+// The band whose shape `typeIndex` is, or -1.
+constexpr int peqBandOfType(int typeIndex) {
+    const int slot = fxSlotOf(typeIndex);
+    for (int band = 0; slot >= 0 && band < kPeqBands; ++band)
+        if (peqTypeIndex(slot, band) == typeIndex)
+            return band;
+    return -1;
+}
 // Fields of band `band` of the three-band compressor.
 constexpr int mcThresholdIndex(int slot, int band) { return paramIndex(slot, FxParam::McThreshold1) + 3 * band; }
 constexpr int mcRatioIndex(int slot, int band) { return mcThresholdIndex(slot, band) + 1; }
@@ -1163,7 +1191,10 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(0, FxParam::MdLowFreq)) == 12019 &&
                   idOfIndex(paramIndex(kFxSlots - 1, FxParam::MdLowFreq)) == 12319 &&
                   idOfIndex(paramIndex(0, FxParam::MdHighFreq)) == 25000 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::MdRms)) == 25623,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::MdRms)) == 25623 &&
+                  idOfIndex(paramIndex(0, FxParam::PeqFreq3)) == 25024 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqOn3)) == 25630 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqAmount)) == 25631,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1262,7 +1293,7 @@ static_assert(numberedInOrder({ClipMode::Hard, ClipMode::Soft, ClipMode::Asymmet
                                ClipMode::SineFold, ClipMode::Fold, ClipMode::Custom, ClipMode::Count}),
               "ClipMode is stored by number: only append");
 static_assert(numberedInOrder({PeqType::Peak, PeqType::LowShelf, PeqType::HighShelf, PeqType::LowCut, PeqType::HighCut,
-                               PeqType::Count}),
+                               PeqType::Notch, PeqType::Count}),
               "PeqType is stored by number: only append");
 static_assert(numberedInOrder({ReverbType::Hall, ReverbType::Room, ReverbType::Plate, ReverbType::Shimmer,
                                ReverbType::Count}),

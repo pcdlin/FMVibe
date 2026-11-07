@@ -38,7 +38,8 @@ static_assert(std::size(kDivisionNames) == static_cast<size_t>(kDivisions));
 constexpr Str kClipModeNames[] = {Str::ClipHard,   Str::ClipSoft,     Str::ClipAsymmetric, Str::ClipCubic,
                                   Str::ClipGentle, Str::ClipSineFold, Str::ClipFold,       Str::ClipCustom};
 static_assert(std::size(kClipModeNames) == static_cast<size_t>(ClipMode::Count));
-constexpr Str kPeqTypeNames[] = {Str::PeqPeak, Str::PeqLowShelf, Str::PeqHighShelf, Str::PeqLowCut, Str::PeqHighCut};
+constexpr Str kPeqTypeNames[] = {Str::PeqPeak,   Str::PeqLowShelf, Str::PeqHighShelf,
+                                 Str::PeqLowCut, Str::PeqHighCut,  Str::PeqNotch};
 static_assert(std::size(kPeqTypeNames) == static_cast<size_t>(PeqType::Count));
 constexpr Str kReverbTypeNames[] = {Str::ReverbHall, Str::ReverbRoom, Str::ReverbPlate, Str::ReverbShimmer};
 static_assert(std::size(kReverbTypeNames) == static_cast<size_t>(ReverbType::Count));
@@ -542,8 +543,9 @@ void buildTable(ParamTable &t) {
         fx(FxParam::EqMid, tr(Str::ParamEqMid), ParamKind::EqGain, -1.0, 1.0, 0.0);
         fx(FxParam::EqHigh, tr(Str::ParamEqHigh), ParamKind::EqGain, -1.0, 1.0, 0.0);
 
-        // Flat to begin with: a band in the lows and one in the highs.
-        const double bandHz[kPeqBands] = {250.0, 4000.0};
+        // Flat to begin with: a band in the lows and one in the highs, and a third between them, switched off (so a
+        // state from before it plays as it did).
+        const double bandHz[kPeqBands] = {250.0, 4000.0, 1000.0};
         for (int band = 0; band < kPeqBands; ++band) {
             const std::string b = name + " " + trf(Str::ParamPeqBand, {std::to_string(band + 1)});
             add(peqFreqIndex(slot, band), b + " " + tr(Str::ParamFreq), module, ParamKind::Cutoff, 0.0, 1.0,
@@ -553,7 +555,10 @@ void buildTable(ParamTable &t) {
             add(peqQIndex(slot, band), b + " " + tr(Str::ParamQ), module, ParamKind::Q, 0.0, 1.0, normFromQ(1.0));
             add(peqTypeIndex(slot, band), b + " " + tr(Str::ParamType), module, ParamKind::PeqType, 0.0,
                 static_cast<double>(PeqType::Count) - 1.0, static_cast<double>(PeqType::Peak));
+            add(peqOnIndex(slot, band), b + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0, 1.0,
+                band < 2 ? 1.0 : 0.0);
         }
+        fx(FxParam::PeqAmount, tr(Str::ParamPeqAmount), ParamKind::Percent, 0.0, 1.0, 1.0);
 
         fx(FxParam::FilterType, tr(Str::ParamFilterType), ParamKind::FilterType, 0.0,
            static_cast<double>(FilterType::Count) - 1.0, static_cast<double>(FilterType::LowPass));

@@ -47,7 +47,7 @@ Coefs biquad(BiquadType type, double hz, double sampleRate) {
     return {b0 / a0, b1 / a0, b2 / a0, -2.0 * cosW / a0, (1.0 - alpha) / a0};
 }
 
-// A parametric EQ band (RBJ cookbook: peaking EQ, shelves, high- and low-pass), from its params.
+// A parametric EQ band (RBJ cookbook: peaking EQ, shelves, high- and low-pass, notch), from its params.
 Coefs peqCoefs(PeqType type, double freq, double gainDb, double q, double sampleRate) {
     const double hz = std::min(cutoffFromNorm(freq), 0.45 * sampleRate);
     const double a = std::pow(10.0, gainDb / 40.0);
@@ -80,6 +80,10 @@ Coefs peqCoefs(PeqType type, double freq, double gainDb, double q, double sample
         break;
     case PeqType::HighCut:
         b0 = 0.5 * (1.0 - cosW), b1 = 1.0 - cosW, b2 = 0.5 * (1.0 - cosW);
+        a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
+        break;
+    case PeqType::Notch:
+        b0 = 1.0, b1 = -2.0 * cosW, b2 = 1.0;
         a0 = 1.0 + alpha, a1 = -2.0 * cosW, a2 = 1.0 - alpha;
         break;
     }
@@ -310,6 +314,8 @@ double peqResponse(double hz, PeqType type, double freq, double gainDb, double q
         return std::abs(s * s / (s * s + bandwidth * s + 1.0));
     case PeqType::HighCut:
         return std::abs(1.0 / (s * s + bandwidth * s + 1.0));
+    case PeqType::Notch:
+        return std::abs((s * s + 1.0) / (s * s + bandwidth * s + 1.0));
     case PeqType::Peak:
     case PeqType::Count:
         break;
@@ -430,6 +436,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::ParamEq:
         s.peq = ParamEq{};
+        s.peq.amount = at(FxParam::PeqAmount);
         s.analyzed.clear();
         break;
     case FxType::Filter:
@@ -742,21 +749,60 @@ void Effects::runEq(int slot, float *const *io, uint32_t n, const ParamValues &p
 
 void Effects::runParamEq(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     ParamEq &eq = slots_[slot].peq;
-    // New coefficients every chunk are smooth enough for knob moves and modulation.
+    float dry[2][kChunk];
+    std::copy_n(io[0], n, dry[0]);
+    std::copy_n(io[1], n, dry[1]);
+    // New coefficients every chunk are smooth enough for knob moves and modulation. A band switched on or off fades
+    // between what it puts out and what it takes in, over 5 ms. One switched off keeps running unheard, so it comes
+    // back without starting from silence.
+    const double fade = 1.0 / (0.005 * sampleRate_);
     for (int band = 0; band < kPeqBands; ++band) {
+        const double target = p[peqOnIndex(slot, band)] >= 0.5 ? 1.0 : 0.0;
+        double &on = eq.on[band];
+        if (std::isnan(on))
+            on = target;
         const PeqType type = peqType(p[peqTypeIndex(slot, band)]);
         const double gain = p[peqGainIndex(slot, band)];
-        if (!isCut(type) && std::abs(gain) < 1e-3) {
+        if (peqHasGain(type) && std::abs(gain) < 1e-3) {
             eq.bands[band] = {}; // flat: leave the band out, and start it clean when it comes back
+            on = target;
             continue;
         }
         const Coefs b = peqCoefs(type, p[peqFreqIndex(slot, band)], gain, p[peqQIndex(slot, band)], sampleRate_);
         const BiquadCoefs c{b.b0, b.b1, b.b2, b.a1, b.a2};
-        for (int ch = 0; ch < 2; ++ch) {
-            Biquad &f = eq.bands[band][ch];
-            for (uint32_t s = 0; s < n; ++s)
-                io[ch][s] = static_cast<float>(f.process(io[ch][s], c));
+        if (on == target) {
+            for (int ch = 0; ch < 2; ++ch) {
+                Biquad &f = eq.bands[band][ch];
+                if (on == 1.0)
+                    for (uint32_t s = 0; s < n; ++s)
+                        io[ch][s] = static_cast<float>(f.process(io[ch][s], c));
+                else
+                    for (uint32_t s = 0; s < n; ++s)
+                        f.process(io[ch][s], c);
+            }
+            continue;
         }
+        // Along a raised cosine, which starts and ends without a kink.
+        for (uint32_t s = 0; s < n; ++s) {
+            on = target > on ? std::min(on + fade, target) : std::max(on - fade, target);
+            const double heard = 0.5 - 0.5 * std::cos(std::numbers::pi * on);
+            for (int ch = 0; ch < 2; ++ch) {
+                const double x = io[ch][s];
+                io[ch][s] = static_cast<float>(x + heard * (eq.bands[band][ch].process(x, c) - x));
+            }
+        }
+    }
+    // Amount mixes what the bands put out with what came in, ramping to a new value over the chunk.
+    const double target = p[paramIndex(slot, FxParam::PeqAmount)];
+    if (eq.amount != 1.0 || target != 1.0) {
+        const double step = rampStep(eq.amount, target, n);
+        for (uint32_t s = 0; s < n; ++s) {
+            eq.amount += step;
+            for (int ch = 0; ch < 2; ++ch)
+                io[ch][s] = static_cast<float>(dry[ch][s] + eq.amount * (io[ch][s] - dry[ch][s]));
+        }
+        if (std::abs(eq.amount - target) < 1e-9) // arrived, but for rounding
+            eq.amount = target;
     }
     feedAnalyzer(slot, io, n);
 }

@@ -648,21 +648,35 @@ inline Point peqAt(Rect area, double freq, double db) {
             area.center().y - static_cast<float>(db) / kPeqRangeDb * area.h * 0.5f};
 }
 
-// The list of band shapes, which opens upward from its button over the card's display.
+// The bands' chips, in a row under the display: each its power switch, its number and its shape. A click picks the
+// band the row of knobs under them sets.
+constexpr float kPeqChipY = 188.0f, kPeqChipH = 26.0f;
+inline Rect peqChip(Rect card, int band) {
+    const float w = (card.w - 28.0f - 4.0f * (kPeqBands - 1)) / kPeqBands;
+    return {card.x + 14.0f + band * (w + 4.0f), card.y + kPeqChipY, w, kPeqChipH};
+}
+inline Rect peqChipPower(Rect chip) { return {chip.x, chip.y, 26.0f, chip.h}; } // where the power symbol is drawn
+inline Rect peqChipShape(Rect chip) { return {chip.right() - 34.0f, chip.y, 34.0f, chip.h}; }
+// What switches the band on and off: the power symbol and the number, everything left of the shape.
+inline Rect peqChipSwitch(Rect chip) { return {chip.x, chip.y, peqChipShape(chip).x - chip.x, chip.h}; }
+// Its row of knobs under the chips, as large as a one-row card's: the band picked's Freq, Gain and Q, then Amount.
+constexpr float kPeqKnobsY = 256.0f, kPeqKnobD = 36.0f;
+inline Point peqKnobCenter(Rect card, int i) {
+    return {card.x + card.w * (static_cast<float>(i) + 0.5f) / 4.0f, card.y + kPeqKnobsY};
+}
+
+// The list of band shapes, which opens upward from its chip over the card's display, inside the card.
 constexpr int kPeqTypes = static_cast<int>(PeqType::Count);
-inline Rect peqMenu(Rect button) {
-    constexpr float kH = 8.0f + kPeqTypes * 22.0f;
-    return {button.x, button.y - 4.0f - kH, 124.0f, kH};
+inline Rect peqMenu(Rect card, int band) {
+    constexpr float kH = 8.0f + kPeqTypes * 22.0f, kW = 124.0f;
+    const Rect chip = peqChip(card, band);
+    const float x = std::clamp(chip.center().x - kW * 0.5f, card.x + 8.0f, card.right() - 8.0f - kW);
+    return {x, chip.y - 4.0f - kH, kW, kH};
 }
 
-inline Rect peqMenuItem(Rect button, int type) {
-    const Rect menu = peqMenu(button);
+inline Rect peqMenuItem(Rect card, int band, int type) {
+    const Rect menu = peqMenu(card, band);
     return {menu.x + 4.0f, menu.y + 4.0f + type * 22.0f, menu.w - 8.0f, 22.0f};
-}
-
-// A band's type button, in the first place of its row of knobs.
-inline Rect peqTypeButton(Rect card, float y) {
-    return {card.x + card.w * 0.125f - 17.0f, card.y + y - 14.0f, 34.0f, 28.0f};
 }
 
 // The keyboard strip under the modulation panel, `top` down: along its top the collapse toggle with the strip's

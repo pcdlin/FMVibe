@@ -197,13 +197,18 @@ private:
         DynGrip,      // param = the threshold's ratio (for Alt and the wheel), a = effect slot, b = 2 x band + 0 for
                       // its Above threshold's line, 1 for its Below one's: drag across for the threshold. Linked,
                       // every band's lines set the low band's
-        PeqPoint,     // param = the band's Q (for the wheel), a = effect slot, b = band: frequency and gain handle
+        PeqPoint,     // param = the band's Q (for the wheel), a = effect slot, b = band: frequency and gain handle;
+                      // a press picks the band too, and switches it on if it is off
+        PeqBand,      // a = effect slot, b = band: a parametric EQ band's chip; a click picks the band its knobs set
+        PeqBandOn,    // param = the band's On switch, a = effect slot, b = band: its chip's power symbol and number,
+                      // which switch it on and off, and pick it
         LfoDisplay,   // a = lfo: click opens the shape editor of a freeform LFO
         ClipDisplay,  // a = effect slot: the edit button on a drawn curve's display, which opens the big editor
         ListButton,   // param = a choice (an LFO's shape, the shaper's curve, the reverb's algorithm): opens its list
         ListMenu,     // a = 1 on the open list, 0 around it (a click there closes it)
         ListItem,     // param, b = the value it picks: an entry of the list
-        PeqTypeButton, // param = the band's type, a = effect slot, b = band: opens the list of band shapes
+        PeqTypeButton, // param = the band's type, a = effect slot, b = band: the shape on its chip, which opens the
+                       // list of band shapes
         PeqTypeMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
         PeqTypeItem,  // param = the band's type, b = PeqType: an entry of the list
         ShapeArea,    // a = shape (see shapeEditor_): double-click adds a point
@@ -999,7 +1004,7 @@ private:
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it
-    std::array<int, kFxSlots> fxBand_{};     // the band each three-band dynamics' card shows
+    std::array<int, kFxSlots> fxBand_{};     // the band each three-band dynamics' or parametric EQ's card shows
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1
     bool settingsOpen_ = false;
     int theme_ = 0;                          // the theme painted last
