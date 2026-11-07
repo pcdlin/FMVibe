@@ -1119,7 +1119,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT
-  license.
+  license. The editor's size is kept there too (`zoom`), written when an editor you resized closes: a new instance
+  opens at it, while a project that saved a size keeps its own.
 
 ### Remote-control pages (Bitwig, CLAP)
 

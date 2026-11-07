@@ -32,6 +32,10 @@ PluginCore::PluginCore() {
     const ParamTable &table = paramTable();
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(table[i].def);
+    // A new instance opens at the size the user last gave an editor; a state loaded after it brings its own.
+    readUserSettings();
+    if (userSettings.zoom >= 0.5)
+        layout_.zoom = static_cast<float>(userSettings.zoom);
 }
 
 PluginCore::~PluginCore() = default;

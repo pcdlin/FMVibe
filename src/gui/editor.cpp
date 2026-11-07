@@ -1,6 +1,7 @@
 #include "editor.h"
 
 #include "../uistrings.h"
+#include "../usersettings.h"
 
 #include <windowsx.h>
 
@@ -196,6 +197,10 @@ Editor::~Editor() {
     }
     view_.endTyping(false);
     syncFocus();
+    if (resized_) { // the size is the user's, so the next instance opens at it
+        userSettings.zoom = controller_.layout().zoom;
+        writeUserSettings();
+    }
     if (hwnd_) {
         KillTimer(hwnd_, kPollTimer);
         DestroyWindow(hwnd_);
@@ -222,7 +227,9 @@ bool Editor::setSize(uint32_t width, uint32_t height) {
     fit(width, height);
     width_ = width;
     height_ = height;
-    controller_.layout().zoom = width / (View::kWidth * (GetDpiForSystem() / 96.0f));
+    const float zoom = width / (View::kWidth * (GetDpiForSystem() / 96.0f));
+    resized_ = resized_ || std::fabs(zoom - controller_.layout().zoom) > 1e-4f;
+    controller_.layout().zoom = zoom;
     if (hwnd_)
         SetWindowPos(hwnd_, nullptr, 0, 0, static_cast<int>(width), static_cast<int>(height),
                      SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);

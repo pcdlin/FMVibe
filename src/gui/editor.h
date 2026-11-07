@@ -56,6 +56,7 @@ private:
     Resources resources_;
     ComPtr<ID2D1HwndRenderTarget> target_;
     HWND hwnd_ = nullptr;
+    bool resized_ = false; // the user changed the size, which new instances then open at
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     bool trackingLeave_ = false;

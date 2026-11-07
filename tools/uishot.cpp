@@ -399,11 +399,15 @@ Point fxKnob(const FakeController &model, int position, int index, int count, fl
 }
 
 // ADD EFFECT at the FX panel's top left, and the entry for `type` in the list it opens: 23 px a type, from y 139 + 4,
-// in their order but for the three-band dynamics, which takes the retired three-band compressor's place.
+// in the order of `kFxOffered` (src/gui/layout.h).
 constexpr Point kFxMenuButton{90.0f, 152.0f};
 constexpr float kFxMenuPitch = 23.0f;
 int fxMenuPlace(FxType type) {
-    return (type == FxType::MultiDyn ? static_cast<int>(FxType::MultiComp) : static_cast<int>(type)) - 1;
+    static const FxType offered[] = {FxType::Shaper,     FxType::Eq,         FxType::ParamEq,   FxType::Filter,
+                                     FxType::Compressor, FxType::MultiDyn,   FxType::Delay,     FxType::Reverb,
+                                     FxType::Phaser,     FxType::Flanger,    FxType::Widener,   FxType::FreqShifter,
+                                     FxType::Disperser};
+    return static_cast<int>(std::find(std::begin(offered), std::end(offered), type) - std::begin(offered));
 }
 Point fxMenuItem(FxType type) {
     return {122.0f, 181.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
@@ -5163,7 +5167,7 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove(arrow, {});
         const bool hoverShot = renderer.save(view, dir / "8d-fx-insert.png");
         click(view, arrow);
-        const Point delay{arrow.x, 188.0f + 4.0f + kFxMenuPitch + 10.5f}; // the list's second entry
+        const Point delay{arrow.x, 188.0f + 4.0f + kFxMenuPitch * static_cast<float>(fxMenuPlace(FxType::Delay)) + 10.5f};
         view.mouseMove(delay, {});
         const bool insertListShot = renderer.save(view, dir / "8e-fx-insert-list.png");
         click(view, delay);

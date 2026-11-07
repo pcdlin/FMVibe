@@ -37,6 +37,8 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.handleSize = std::clamp(std::atoi(line.c_str() + 11), 0, kMaxHandleSize);
         else if (line.starts_with("linkIntensity="))
             settings.links = std::clamp(std::atof(line.c_str() + 14), 0.0, 1.0);
+        else if (line.starts_with("zoom="))
+            settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
         else if (line.starts_with("examples="))
             settings.examples = std::max(std::atoi(line.c_str() + 9), 0);
     }
@@ -71,6 +73,8 @@ void writeUserSettings() {
         merged.handleSize = userSettings.handleSize;
     if (userSettings.links != asRead.links)
         merged.links = userSettings.links;
+    if (userSettings.zoom != asRead.zoom)
+        merged.zoom = userSettings.zoom;
     merged.examples = std::max(merged.examples, userSettings.examples);
     userSettings = asRead = merged;
 
@@ -79,6 +83,8 @@ void writeUserSettings() {
     std::ofstream out(file);
     out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize
         << "\nlinkIntensity=" << merged.links << '\n';
+    if (merged.zoom > 0.0)
+        out << "zoom=" << merged.zoom << '\n';
     if (merged.examples >= 0)
         out << "examples=" << merged.examples << '\n';
 }
