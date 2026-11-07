@@ -795,12 +795,13 @@ void View::joinCardWidgets(std::vector<Widget> &list, int split, Rect card) cons
     remove.rect = {card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f};
     remove.a = fxJoinNode(split);
     list.push_back(remove);
-    // The bands' levels as they come together: the high band's first, as its wire takes the join's first input.
+    // The bands' levels as they come together, Low on the left and High on the right (the high band's wire takes
+    // the join's first input).
     const Str labels[] = {Str::BandHigh, Str::BandLow};
     for (int input = 0; input < 2; ++input) {
         Widget knob;
         knob.kind = Kind::Knob;
-        knob.rect = knobRect({card.x + card.w * (input == 0 ? 0.33f : 0.67f), card.y + 240.0f}, 36.0f);
+        knob.rect = knobRect({card.x + card.w * (input == 0 ? 0.67f : 0.33f), card.y + 240.0f}, 36.0f);
         knob.param = fxInputIndex(fxJoinNode(split), input, FxInputField::Level);
         knob.label = tr(labels[input]);
         list.push_back(knob);
@@ -1260,14 +1261,14 @@ void View::paintJoinCard(Canvas &c, int split, Rect card) {
     c.text({card.x + 36.0f, card.y + 6.0f, card.w - 84.0f, 20.0f}, trf(Str::NodeJoin, {std::to_string(split + 1)}),
            11.0f, kText, Align::Left, true);
     c.text({card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 20.0f}, tr(Str::CaptionJoin), 10.0f, kDim, Align::Left);
-    // A bar a band at its level, the high band's first.
+    // A bar a band at its level, Low on the left and High on the right.
     const Rect display = splitDisplay(card);
     c.fillRect(display, kDisplayColor, 6.0f);
     for (int input = 0; input < 2; ++input) {
         const float level = static_cast<float>(
             std::clamp(value(fxInputIndex(fxJoinNode(split), input, FxInputField::Level)), 0.0, 1.0));
         const Color band = bandColor(input == 0 ? kHighBand : kLowBand);
-        const Rect bar{display.x + display.w * (input == 0 ? 0.33f : 0.67f) - 15.0f, display.y + 12.0f, 30.0f,
+        const Rect bar{display.x + display.w * (input == 0 ? 0.67f : 0.33f) - 15.0f, display.y + 12.0f, 30.0f,
                        display.h - 38.0f};
         c.fillRect(bar, kTrack, 4.0f);
         if (level > 0.0f)

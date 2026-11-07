@@ -2000,7 +2000,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     // The join's card: its High knob takes the high band's level down; its x refuses while the phaser comes after it.
     click(view, cell(5, 0));
     const Rect card = detail::fxInspectorCard(1.0f);
-    const Point highKnob{card.x + card.w * 0.33f, card.y + 240.0f};
+    const Point highKnob{card.x + card.w * 0.67f, card.y + 240.0f}; // Low on the left, High on the right
     drag(view, highKnob, {highKnob.x, highKnob.y + 40.0f});
     const double highLevel = model.value(fxInputIndex(join, 0, FxInputField::Level));
     click(view, centerOf({card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f}));
