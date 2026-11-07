@@ -490,10 +490,10 @@ inline Rect fxMenuButton() {
 
 // The effects the list offers, in its order: every type but None and the retired three-band compressor, whose place
 // the three-band dynamics takes.
-constexpr FxType kFxOffered[] = {FxType::Shaper,     FxType::Delay,   FxType::Eq,          FxType::ParamEq,
-                                 FxType::Filter,     FxType::Compressor, FxType::MultiDyn, FxType::Reverb,
-                                 FxType::Phaser,     FxType::Flanger, FxType::FreqShifter, FxType::Disperser,
-                                 FxType::Widener};
+constexpr FxType kFxOffered[] = {FxType::Shaper,     FxType::Eq,         FxType::ParamEq,
+                                 FxType::Filter,     FxType::Compressor, FxType::MultiDyn, FxType::Delay, FxType::Reverb,
+                                 FxType::Phaser,     FxType::Flanger,    FxType::Widener,  FxType::FreqShifter, FxType::Disperser
+                                };
 constexpr int kFxTypes = static_cast<int>(std::size(kFxOffered));
 static_assert(kFxTypes == static_cast<int>(FxType::Count) - 2, "a new effect type goes in the list of effects");
 constexpr int fxOfferedPlace(FxType type) {
