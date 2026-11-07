@@ -8,8 +8,10 @@
 #include "gui/view.h"
 #include "uistrings.h"
 
+#ifdef _WIN32
 #include <windows.h>
 #include <wincodec.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -17,6 +19,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <numbers>
 #include <string>
@@ -156,6 +159,7 @@ bool setLast(const FakeController &model, int first, int count, int last) {
     return false;
 }
 
+#ifdef _WIN32
 class Renderer {
 public:
     explicit Renderer(float scale) : scale_(scale) {
@@ -219,6 +223,59 @@ private:
     ComPtr<IWICImagingFactory> wic_;
     ComPtr<IWICBitmap> last_;
 };
+#else
+// The Linux development build's: the same over a Cairo image surface (src/gui/canvas_cairo.cpp).
+class Renderer {
+public:
+    explicit Renderer(float scale) : scale_(scale) {}
+    ~Renderer() {
+        if (last_)
+            cairo_surface_destroy(last_);
+    }
+    Renderer(const Renderer &) = delete;
+    Renderer &operator=(const Renderer &) = delete;
+
+    bool save(View &view, const std::filesystem::path &path) {
+        const int width = static_cast<int>(View::kWidth * scale_);
+        const int height = static_cast<int>(view.height() * scale_);
+        cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(surface);
+            return false;
+        }
+        cairo_t *cr = cairo_create(surface);
+        cairo_scale(cr, scale_, scale_);
+        {
+            Canvas canvas(cr, resources_);
+            view.paint(canvas);
+        }
+        cairo_destroy(cr);
+        cairo_surface_flush(surface);
+        if (last_)
+            cairo_surface_destroy(last_);
+        last_ = surface;
+        return cairo_surface_write_to_png(surface, path.c_str()) == CAIRO_STATUS_SUCCESS;
+    }
+
+    // The color at `p` (in the view's coordinates) in what was saved last, as 0xRRGGBB.
+    uint32_t pixel(Point p) const {
+        if (!last_)
+            return 0;
+        const int x = static_cast<int>(p.x * scale_), y = static_cast<int>(p.y * scale_);
+        if (x < 0 || y < 0 || x >= cairo_image_surface_get_width(last_) || y >= cairo_image_surface_get_height(last_))
+            return 0;
+        const unsigned char *row = cairo_image_surface_get_data(last_) + y * cairo_image_surface_get_stride(last_);
+        uint32_t argb;
+        std::memcpy(&argb, row + 4 * x, sizeof argb);
+        return argb & 0xFFFFFF;
+    }
+
+private:
+    float scale_;
+    Resources resources_;
+    cairo_surface_t *last_ = nullptr;
+};
+#endif
 
 // Screen positions of a few controls in the default layout (mirrors src/gui/layout.h).
 constexpr Point kOpPhaseKnob{1101.0f, 242.0f}; // an operator's Phase, a plain knob
@@ -1522,8 +1579,8 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Its depth handles, 9 px apart along its bottom edge from x 913, hold eight before a pill: the eighth at x 976,
     // and with a ninth, six handles and the pill (x 966 to 978), which opens their list under it (read off the
-    // rendered pixels).
-    const Point eighth{976.0f, 257.0f}, pill{971.7f, 257.0f}, under{960.0f, 308.0f};
+    // rendered pixels, inside the envelope's display, clear of the tabs above it, whose width follows the font).
+    const Point eighth{976.0f, 257.0f}, pill{971.7f, 257.0f}, under{960.0f, 320.0f};
     const uint32_t noEighth = renderer.pixel(eighth);
     for (int place = 1; place < 9; ++place) {
         model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));
@@ -5707,9 +5764,13 @@ int main(int argc, char **argv) {
     const std::filesystem::path dir = argv[1];
     std::filesystem::create_directories(dir);
     std::setvbuf(stdout, nullptr, _IONBF, 0); // every line out before a crash, if there is one
+#ifdef _WIN32
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+#endif
     run(dir, argc > 2 ? static_cast<float>(std::atof(argv[2])) : 1.0f); // COM objects die before CoUninitialize
+#ifdef _WIN32
     CoUninitialize();
+#endif
     std::printf("%s (images in %s)\n", failures ? "UI CHECKS FAILED" : "all UI checks passed", dir.string().c_str());
     return failures ? 1 : 0;
 }

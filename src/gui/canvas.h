@@ -1,10 +1,13 @@
 #pragma once
 
-// Direct2D and DirectWrite on Windows; in the browser build, an HTML canvas (canvas_web.cpp).
+// Direct2D and DirectWrite on Windows; in the browser build, an HTML canvas (canvas_web.cpp); in the Linux
+// development build (FMVIBE_CAIRO), a Cairo context (canvas_cairo.cpp), for the tests and the UI snapshots.
 #ifdef _WIN32
 #include <d2d1.h>
 #include <dwrite.h>
 #include <wrl/client.h>
+#elif defined(FMVIBE_CAIRO)
+#include <cairo.h>
 #endif
 
 #include <array>
@@ -125,6 +128,8 @@ class Canvas {
 public:
 #ifdef _WIN32
     Canvas(ID2D1RenderTarget *target, Resources &resources);
+#elif defined(FMVIBE_CAIRO)
+    Canvas(cairo_t *target, Resources &resources);
 #else
     explicit Canvas(Resources &resources);
 #endif
@@ -163,6 +168,14 @@ private:
     ID2D1RenderTarget *target_;
     Resources &resources_;
     ComPtr<ID2D1SolidColorBrush> brush_;
+#elif defined(FMVIBE_CAIRO)
+    void setColor(Color c);
+    // Round caps and joins (dashes twice the width, or dots), or the flat caps and mitered joins Direct2D strokes
+    // with by default.
+    enum class Stroke { Round, Dashed, Dotted, Square };
+    void stroke(Color c, float width, Stroke style);
+
+    cairo_t *target_;
 #endif
 };
 
