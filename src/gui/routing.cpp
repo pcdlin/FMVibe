@@ -80,6 +80,35 @@ void View::reroute(int from, int to, int into) {
     controller_.layoutChanged();
 }
 
+void View::rerouteFrom(int from, int to, int source) {
+    const int param = routeTo(from, to), next = routeTo(source, to);
+    if (next == param)
+        return;
+    if (wired(next)) {
+        flash(trf(Str::MsgRouteExists, {nodeTitle(source), to == kNodes ? tr(Str::BusOut) : nodeTitle(to)}));
+        return;
+    }
+    const UndoScope step(controller_); // with the routes it keeps
+    const ParamDef &def = table_[next];
+    std::vector<std::pair<int, double>> changes{{next, def.min + norm(param) * (def.max - def.min)}, {param, 0.0}};
+    // Its mode goes along while it still goes into an operator from elsewhere; the one it leaves is Phase again.
+    const int mode = routeModeOfRoute(param), nextMode = routeModeOfRoute(next);
+    if (mode >= 0 && value(mode) != 0.0) {
+        if (nextMode >= 0)
+            changes.push_back({nextMode, value(mode)});
+        changes.push_back({mode, 0.0});
+    }
+    for (const Assignment &m : assignments())
+        if (m.target == param)
+            changes.push_back({slotTargetIndex(m.source, m.slot), slotTargetValue(next)});
+    editMany(changes);
+    std::vector<int> &kept = controller_.layout().keptRoutes;
+    std::erase(kept, param);
+    std::erase_if(controller_.layout().wireBends, [&](const auto &bend) { return bend.first == param; }); // a new wire
+    kept.push_back(next); // shown even at 0 %, as the route was
+    controller_.layoutChanged();
+}
+
 // Filters and shapers can feed each other round in a loop, so each is looked at once.
 bool View::boxGoesOut(int node) const {
     std::array<bool, kNodes> seen{};
@@ -98,7 +127,8 @@ bool View::boxGoesOut(int node) const {
 }
 
 int View::rerouting() const {
-    return drag_.kind == DragKind::Reroute && drag_.moved ? drag_.widget.param : -1;
+    return (drag_.kind == DragKind::Reroute || drag_.kind == DragKind::RerouteFrom) && drag_.moved ? drag_.widget.param
+                                                                                                    : -1;
 }
 
 bool View::soundsOut(int node) const {

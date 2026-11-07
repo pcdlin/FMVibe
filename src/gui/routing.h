@@ -287,6 +287,30 @@ inline Rect arrowGrip(Point base, Point dir) {
     return {middle.x - 9.0f, middle.y - 9.0f, 18.0f, 18.0f};
 }
 
+// The grips that drag a wire by its ends, reaching back along it from where it meets its nodes: its arrowhead (from
+// the base at `base`, pointing along `dir`), and its start (at `start`, leaving along `dir`).
+inline Rect wireEndGrip(Point base, Point dir) {
+    const Point middle{base.x - dir.x * 2.0f, base.y - dir.y * 2.0f};
+    return {middle.x - 13.0f, middle.y - 13.0f, 26.0f, 26.0f};
+}
+inline Rect wireStartGrip(Point start, Point dir) {
+    const Point middle{start.x + dir.x * 9.0f, start.y + dir.y * 9.0f};
+    return {middle.x - 12.0f, middle.y - 12.0f, 24.0f, 24.0f};
+}
+
+// A wire's end under the mouse, which drags: a faint circle around its arrowhead (from the base at `base`, pointing
+// along `dir`), or around its start with a dot on it.
+inline void wireEndHighlight(Canvas &c, Point base, Point dir, Color color) {
+    const Point middle{base.x + dir.x * 4.0f, base.y + dir.y * 4.0f};
+    c.fillCircle(middle, 9.0f, color.alpha(0.16f));
+    c.strokeCircle(middle, 9.0f, color.alpha(0.5f), 1.2f);
+}
+inline void wireStartHighlight(Canvas &c, Point start, Color color) {
+    c.fillCircle(start, 8.0f, color.alpha(0.16f));
+    c.strokeCircle(start, 8.0f, color.alpha(0.5f), 1.2f);
+    c.fillCircle(start, 3.0f, color);
+}
+
 // A node's line down to the OUT bus: from its outline to the base of the arrowhead, whose tip touches the bus, with
 // its label halfway along. A node too close to the bus for the label to fit in between has it beside the line, on
 // the left.

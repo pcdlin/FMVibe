@@ -207,9 +207,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - the effects graph: switching to it wiring the chain up as it ran, + SPLIT putting a split after the node picked
-    (its bands going on where that node went, the high band's wire bowing up and the low one's down), BANDS 3 on its
-    card (centered in the inspector) wiring the middle band where the high band goes, its card's crossover handle
-    dragged, a loop refused, the input's box
+    (its bands meeting in a sum that goes where that node went, the high band's wire bowing up and the low one's
+    down), + SUM putting a sum after the node picked, BANDS 3 on its
+    card (centered in the inspector) wiring the middle band where the high band goes, + EFFECT with the split picked
+    putting an effect on its low band and then one on its middle band, its card's crossover handle dragged, a wire's
+    start dragged from a band onto IN, a node Ctrl+dragged onto the graph's grid, a loop refused, the input's box
     wired into a node, a wire's label setting its level and its x removing it, a node moved and the move undone, and
     going back to a chain asking first, then leaving the chain in the graph's order;
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
@@ -219,7 +221,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the bus, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
     which goes out in its place, and picking waves and filter types;
   - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
-    removing one by letting its arrowhead go in empty space; a drag called off as the mouse is taken away dropping
+    removing one by letting its arrowhead go in empty space; a route's start and an OUT line's start dragged onto
+    another node coming from there, with its amount and mode, undoably, grabbed 16 px along the wire and lit there;
+    Ctrl+drag putting a node on the grid's nearest free point, the grid's points showing while Ctrl is held, and a
+    plain drag leaving it off the grid; a drag called off as the mouse is taken away dropping
     nothing (an arrowhead held off the nodes, a source's handle over a knob) and ending a knob's gesture;
   - the MODS tab: a row per modulation, its Amount bar and aux's × changing it, and the switch after its source's
     name the source's polarity; its curve bent up and down by a drag, undoably, drawn in its source's color (read
@@ -633,8 +638,9 @@ itself.
   and velocity; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
   sources' number likewise); the effects graph's switch is global 12, its splits 34000 + 20·split, the wires into its
   slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
-  output 35000+. A wire's From stores its port + 1 (0 = none): the input, then each slot's output, then each split's
-  bands, low to high.
+  output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
+  (0 = none): the input, then each slot's output, each split's bands, low to high, then each sum's output. The graph's
+  nodes are numbered the slots, the splits, the output, then the sums.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port and fixed Mult lists, the routing views and the operator page's tabs,
@@ -651,7 +657,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,220 of the 18,360 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,220 of the 18,428 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
@@ -692,8 +698,8 @@ itself.
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
-  effect cards past the 16th slot are folded, and the effects graph's node places (the slots', then the splits', x
-  then y) and the node its inspector shows.
+  effect cards past the 16th slot are folded, and the effects graph's node places (by node: the slots', the
+  splits', the output's, unused, then the sums', x then y) and the node its inspector shows.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

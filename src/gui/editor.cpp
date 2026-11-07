@@ -363,17 +363,25 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_GETDLGCODE: // in a host's dialog, Enter, Escape and the arrows still come here
         return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
     case WM_KEYDOWN:
+        if (wParam == VK_CONTROL && view_.setCtrl(true)) // a graph's grid shows while Ctrl is held
+            invalidate();
         if (key(wParam, lParam)) {
             syncFocus();
             invalidate();
             return 0;
         }
         break;
+    case WM_KEYUP:
+        if (wParam == VK_CONTROL && view_.setCtrl(false))
+            invalidate();
+        break;
     case WM_CHAR:
         if (view_.typing())
             return 0; // key() took the character already: not every host translates keys into WM_CHAR
         break;
     case WM_KILLFOCUS:
+        if (view_.setCtrl(false)) // no key-up comes once the keyboard is gone
+            invalidate();
         // Clicked away into the host: the value typed so far counts.
         if (view_.typing()) {
             hasKeyboard_ = false;

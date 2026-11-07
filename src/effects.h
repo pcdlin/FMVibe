@@ -414,10 +414,11 @@ private:
     std::array<std::array<float, kChunk>, 2> input_{}; // what came in, this chunk
     std::array<std::array<std::array<float, kChunk>, 2>, kFxSlots> slotOut_{};
     std::array<std::array<std::array<std::array<float, kChunk>, 2>, kFxBands>, kFxSplits> bandOut_{};
-    std::array<std::array<Wire, kFxInputs>, kFxInputNodes> wires_{};
-    std::array<Wire, kFxOutInputs> outWires_{};
+    std::array<std::array<std::array<float, kChunk>, 2>, kFxSums> sumOut_{};
+    std::array<std::array<Wire, kFxSumInputs>, kFxNodes> wires_{}; // as many as a node takes at most
+    static_assert(kFxSumInputs >= kFxInputs && kFxSumInputs >= kFxOutInputs);
     std::array<Split, kFxSplits> splits_{};
-    std::array<int, kFxInputNodes> graphOrder_{};
+    std::array<int, kFxNodes> graphOrder_{};
     int graphOrderCount_ = 0;
 };
 

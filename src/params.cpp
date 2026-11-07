@@ -200,11 +200,17 @@ void buildTable(ParamTable &t) {
         add(paramIndex(split, SplitParam::High), name + " " + tr(Str::ParamSplitHigh), module, ParamKind::Cutoff, 0.0,
             1.0, normFromCutoff(2500.0));
     }
+    for (int sum = 0; sum < kFxSums; ++sum) {
+        const std::string name = trf(Str::ParamSum, {std::to_string(sum + 1)});
+        add(paramIndex(sum, SumParam::Used), name + " " + tr(Str::ParamSplitUsed), tr(Str::ModuleFx) + ("/" + name),
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
+    }
     // No wires to begin with; one connected starts at full level.
-    for (int node = 0; node <= kFxOutNode; ++node) {
-        const std::string name = node == kFxOutNode   ? std::string(tr(Str::ParamFxOut))
-                                 : node < kFxSlots    ? trf(Str::ParamFx, {std::to_string(node + 1)})
-                                                      : trf(Str::ParamSplit, {std::to_string(node - kFxSlots + 1)});
+    for (int node = 0; node < kFxNodes; ++node) {
+        const std::string name = node == kFxOutNode       ? std::string(tr(Str::ParamFxOut))
+                                 : node < kFxSlots        ? trf(Str::ParamFx, {std::to_string(node + 1)})
+                                 : fxNodeSum(node) >= 0   ? trf(Str::ParamSum, {std::to_string(fxNodeSum(node) + 1)})
+                                                          : trf(Str::ParamSplit, {std::to_string(node - kFxSlots + 1)});
         const std::string module = tr(Str::ModuleFx) + ("/" + name);
         for (int input = 0; input < fxInputCount(node); ++input) {
             const std::string wire = name + " " + trf(Str::ParamFxInput, {std::to_string(input + 1)}) + " ";
@@ -906,6 +912,8 @@ std::string fxPortName(int port) {
         return tr(Str::ValueFxIn);
     if (const int slot = fxPortSlot(port); slot >= 0)
         return trf(Str::ParamFx, {std::to_string(slot + 1)});
+    if (const int sum = fxPortSum(port); sum >= 0)
+        return trf(Str::ParamSum, {std::to_string(sum + 1)});
     const Str bands[kFxBands] = {Str::BandLow, Str::BandMid, Str::BandHigh};
     return trf(Str::ParamSplit, {std::to_string(fxPortSplit(port) + 1)}) + " " + tr(bands[fxPortBand(port)]);
 }

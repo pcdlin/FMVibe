@@ -92,6 +92,8 @@ void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale 
 void fxIcon(Canvas &c, Rect r, FxType type, Color color);
 // A split of the effects graph: a line forking into three.
 void splitIcon(Canvas &c, Rect r, Color color);
+// A sum of the effects graph: a sigma.
+void sumIcon(Canvas &c, Rect r, Color color);
 // The FX panel's switch between the chain (cards in a row) and the graph (nodes and wires).
 void fxModeIcon(Canvas &c, Point m, bool graph, Color color);
 void peqIcon(Canvas &c, Rect r, PeqType type, Color color);

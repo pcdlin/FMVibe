@@ -342,6 +342,8 @@ int main(int argc, char **argv) {
                   !listed(paramIndex(GlobalParam::FxGraph)) && !listed(paramIndex(0, SplitParam::Low)) &&
                   !listed(fxInputIndex(0, 0, FxInputField::Level)) &&
                   !listed(fxInputIndex(kFxOutNode, kFxOutInputs - 1, FxInputField::From)) &&
+                  !listed(paramIndex(0, SumParam::Used)) &&
+                  !listed(fxInputIndex(fxSumNode(kFxSums - 1), kFxSumInputs - 1, FxInputField::Level)) &&
                   !listed(shapeCountIndex(0)) &&
                   !listed(partialCountIndex(0)) && !listed(slotAuxIndex(0, 0)) && !listed(slotCurveIndex(0, 0)) &&
                   !listed(slotBypassIndex(0, 0)) && !listed(routeModeIndex(0, 0)) && listed(routeModeIndex(0, 1)) &&
@@ -2285,11 +2287,13 @@ int main(int argc, char **argv) {
         // Clears every wire and split, and puts the graph switch as asked.
         auto clearGraph = [&](bool graph) {
             std::vector<std::pair<int, double>> values = {{paramIndex(GlobalParam::FxGraph), graph ? 1.0 : 0.0}};
-            for (int node = 0; node <= kFxOutNode; ++node)
+            for (int node = 0; node < kFxNodes; ++node)
                 for (int input = 0; input < fxInputCount(node); ++input)
                     values.insert(values.end(), {{from(node, input), 0.0}, {level(node, input), 1.0}});
             for (int split = 0; split < kFxSplits; ++split)
                 values.push_back({paramIndex(split, SplitParam::Used), 0.0});
+            for (int sum = 0; sum < kFxSums; ++sum)
+                values.push_back({paramIndex(sum, SumParam::Used), 0.0});
             setParams(values);
         };
         auto db = [](double ratio) { return 20.0 * std::log10(ratio); };
@@ -2316,11 +2320,24 @@ int main(int argc, char **argv) {
                    {paramIndex(0, SplitParam::High), normFromCutoff(2000.0)},
                    {from(kFxOutNode, 2), port(fxBandPort(0, 1))}});
         const double threeBands = magnitude(play({}), 440.0);
-        std::printf("      graph: in to out %+.3f dB, two halves %+.3f dB, two bands %+.3f dB, three %+.3f dB\n",
-                    db(direct / plain), db(halves / plain), db(twoBands / plain), db(threeBands / plain));
+        // The three bands meeting in a sum, and the sum out at half: as loud as the A4 at half.
+        setParams({{paramIndex(0, SumParam::Used), 1.0},
+                   {from(fxSumNode(0), 0), port(fxBandPort(0, 0))},
+                   {from(fxSumNode(0), 1), port(fxBandPort(0, 1))},
+                   {from(fxSumNode(0), 2), port(fxBandPort(0, 2))},
+                   {from(kFxOutNode, 0), port(fxSumPort(0))},
+                   {from(kFxOutNode, 1), 0.0},
+                   {from(kFxOutNode, 2), 0.0},
+                   {level(kFxOutNode, 0), 0.5}});
+        const double summed = magnitude(play({}), 440.0);
+        std::printf("      graph: in to out %+.3f dB, two halves %+.3f dB, two bands %+.3f dB, three %+.3f dB, "
+                    "summed and out at half %+.3f dB\n",
+                    db(direct / plain), db(halves / plain), db(twoBands / plain), db(threeBands / plain),
+                    db(summed / plain));
         check(std::abs(db(direct / plain)) < 0.1 && std::abs(db(halves / plain)) < 0.1 &&
-                  std::abs(db(twoBands / plain)) < 0.1 && std::abs(db(threeBands / plain)) < 0.1,
-              "the effects graph passes its input on, and a split's bands sum back flat");
+                  std::abs(db(twoBands / plain)) < 0.1 && std::abs(db(threeBands / plain)) < 0.1 &&
+                  std::abs(db(summed / plain) + 6.02) < 0.1,
+              "the effects graph passes its input on, a split's bands sum back flat, and a sum adds up its wires");
 
         // A hard shaper on the low band of a split: at 2 kHz the A4 goes through it and comes out squared (its 3rd
         // harmonic), at 200 Hz it is in the high band, which goes straight out, and stays a sine.
@@ -3931,8 +3948,8 @@ int main(int argc, char **argv) {
         layout.insert(layout.end(), {1.0f, 1.0f}); // an LFO's shape drawn in steps, snapping to the grid
         layout.push_back(3.0f);                    // folded cards past the 16th slot
         for (int axis = 0; axis < 2; ++axis)       // the effects graph's nodes, spread across and down
-            for (int node = 0; node < kFxInputNodes; ++node)
-                layout.push_back(static_cast<float>(axis == 0 ? node : kFxInputNodes - 1 - node) / kFxInputNodes);
+            for (int node = 0; node < kFxNodes; ++node)
+                layout.push_back(static_cast<float>(axis == 0 ? node : kFxNodes - 1 - node) / kFxNodes);
         layout.push_back(static_cast<float>(kFxSlots)); // the graph's inspector showing the first split
 
         MemoryStream big;

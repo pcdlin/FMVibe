@@ -301,7 +301,7 @@ void layoutFields(Io &io, Layout &ui) {
     // The effects graph's node places, and the node its inspector shows.
     io.numbers(ui.fxNodeX, 0.0f, 1.0f);
     io.numbers(ui.fxNodeY, 0.0f, 1.0f);
-    io.number(ui.fxSelected, -1.0f, kFxInputNodes - 1.0f, rounded<int>);
+    io.number(ui.fxSelected, -1.0f, kFxNodes - 1.0f, rounded<int>);
 }
 
 } // namespace

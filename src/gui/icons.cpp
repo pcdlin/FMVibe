@@ -345,6 +345,13 @@ void splitIcon(Canvas &c, Rect r, Color color) {
         c.line(fork, {r.right(), r.center().y + y * r.h}, color, 1.4f);
 }
 
+void sumIcon(Canvas &c, Rect r, Color color) {
+    const float h = std::min(r.h, 14.0f), w = h * 0.75f;
+    const float x = r.center().x - 0.5f * w, y = r.center().y - 0.5f * h;
+    const Point sigma[] = {{x + w, y}, {x, y}, {x + 0.55f * w, y + 0.5f * h}, {x, y + h}, {x + w, y + h}};
+    c.polyline(sigma, 5, color, 1.5f);
+}
+
 void fxModeIcon(Canvas &c, Point m, bool graph, Color color) {
     if (!graph) { // three cards in a row
         for (int i = -1; i <= 1; ++i)

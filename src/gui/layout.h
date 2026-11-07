@@ -34,6 +34,14 @@ constexpr Rect kRouting{16.0f, kPanelsTop, 852.0f, 372.0f};
 constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
 constexpr float kBusY = kRouting.y + kRouting.h - 30.0f;
+// Ctrl+drag puts a node on the nearest point of a coarse grid over the area its center may go in: the cells' centers,
+// kRoutingGridCols x kRoutingGridRows in the routing graph and one row fewer in the effects graph, which is shorter.
+constexpr int kRoutingGridCols = 12, kRoutingGridRows = 5;
+constexpr int kFxGridCols = 12, kFxGridRows = 4;
+inline Point gridPoint(Rect area, int cols, int rows, int col, int row) {
+    return {area.x + (static_cast<float>(col) + 0.5f) / static_cast<float>(cols) * area.w,
+            area.y + (static_cast<float>(row) + 0.5f) / static_cast<float>(rows) * area.h};
+}
 constexpr float kNodeRadius = 24.0f;
 // The node the inspector shows: filled with its color at this strength, and ringed in it this far out.
 constexpr float kSelectedFill = 0.25f;
@@ -625,12 +633,16 @@ inline Rect fxModeButton(int graph) {
 inline Rect fxSplitButton() {
     return {fxMenuButton().right() + 62.0f, fxMenuButton().y, 92.0f, fxMenuButton().h};
 }
+inline Rect fxSumButton() {
+    return {fxSplitButton().right() + 8.0f, fxMenuButton().y, 80.0f, fxMenuButton().h};
+}
 // Its nodes: an effect a circle, a split a box with its bands' ports down its right side (the high band on top), the
 // input a box at the area's left edge and the output one at its right.
 constexpr float kFxNodeR = 22.0f;
 constexpr float kFxSplitHalfW = 22.0f, kFxSplitHalfH = 30.0f;
 constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
 constexpr float kFxPortR = 5.0f;
+constexpr float kFxSumHalfW = 15.0f, kFxSumHalfH = 20.0f; // a sum: a small box, its output's dot on its right edge
 inline Point fxInCenter() {
     const Rect area = fxGraphArea();
     return {area.x + kFxEndHalfW + 2.0f, area.center().y};

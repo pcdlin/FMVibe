@@ -1,5 +1,6 @@
 #include "view.h"
 
+#include "fxgraph.h"
 #include "icons.h"
 #include "layout.h"
 #include "routing.h"
@@ -1607,8 +1608,10 @@ std::vector<View::Widget> View::widgets() const {
     } else if (view == RoutingView::Fx) {
         const std::vector<int> chain = fxChainShown();
         add(Kind::FxMenuButton, fxMenuButton());
-        if (fxGraph())
+        if (fxGraph()) {
             add(Kind::FxSplitAdd, fxSplitButton());
+            add(Kind::FxSumAdd, fxSumButton());
+        }
         if (scrollLength(ScrollArea::Fx) > kVisibleFx + 0.01f && !fxGraph())
             add(Kind::Scrollbar, fxScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::Fx));
         const size_t cardsStart = list.size();
@@ -1858,8 +1861,10 @@ std::vector<View::Widget> View::widgets() const {
             if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots) {
                 const auto at = std::find(chain.begin(), chain.end(), node);
                 cardWidgets(node, static_cast<size_t>(at - chain.begin()), fxInspector(node), true);
-            } else if (node >= kFxSlots) {
+            } else if (fxNodeSplit(node)) {
                 splitCardWidgets(list, node - kFxSlots, fxInspector(node));
+            } else if (fxNodeSum(node) >= 0) {
+                sumCardWidgets(list, fxNodeSum(node), fxInspector(node));
             }
         }
         if (const float place = fxOffset(chain, chain.size()) - fxScroll();
@@ -1943,11 +1948,28 @@ std::vector<View::Widget> View::widgets() const {
                 if (from == to || !wired(param) || param == moving)
                     continue;
                 const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
-                add(Kind::WireEnd, arrowGrip(w.end, w.tangent), param, from, to);
+                add(Kind::WireEnd, wireEndGrip(w.end, w.tangent), param, from, to);
             }
             if (goesOut(from) && outParam(from) != moving)
-                add(Kind::WireEnd, arrowGrip(outWireOf(from, nodeCenter(from)).end, {0.0f, 1.0f}), outParam(from), from,
-                    kNodes);
+                add(Kind::WireEnd, wireEndGrip(outWireOf(from, nodeCenter(from)).end, {0.0f, 1.0f}), outParam(from),
+                    from, kNodes);
+        }
+        // Where the wires leave their nodes, over the nodes' edges: dragged onto another node, they come from there.
+        auto startGrip = [](Point start, Point toward) {
+            return wireStartGrip(start, normalize({toward.x - start.x, toward.y - start.y}));
+        };
+        for (int from : on) {
+            for (int to : on) {
+                const int param = routeParam(from, to);
+                if (from == to || !wired(param) || param == moving)
+                    continue;
+                const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
+                add(Kind::WireStart, startGrip(w.start, w.control), param, from, to);
+            }
+            if (goesOut(from) && outParam(from) != moving) {
+                const OutWire w = outWireOf(from, nodeCenter(from));
+                add(Kind::WireStart, startGrip(w.start, w.end), outParam(from), from, kNodes);
+            }
         }
         // The nodes that are off, as dashed ghosts in the graph's top left, over any node moved there.
         float x = kRouting.x + 16.0f;
@@ -2718,7 +2740,30 @@ void View::paint(Canvas &c) {
         c.strokeRect(ghost, kSourceColors[drag_.widget.a].alpha(0.6f), 1.0f, 8.0f);
     }
 
-    if (drag_.kind == DragKind::Connect || rerouting() >= 0) {
+    if (drag_.kind == DragKind::RerouteFrom && drag_.moved) {
+        const int to = drag_.widget.b;
+        // From the mouse to where it goes; away from the nodes it is faint: let go of there, it goes.
+        const int source = nodeAt(drag_.now);
+        const Color color = source < 0 ? kFaint : nodeColor(source);
+        const Point end = to == kNodes ? Point{drag_.now.x, kBusY - 10.0f}
+                                       : outlineToward(to, nodeCenter(to), drag_.now);
+        const Point dir = normalize({end.x - drag_.now.x, end.y - drag_.now.y});
+        const Point base{end.x - dir.x * 8.0f, end.y - dir.y * 8.0f};
+        c.line(drag_.now, base, color, 2.0f, true);
+        arrowHead(c, base, dir, color);
+        c.fillCircle(drag_.now, 3.5f, color);
+        if (source >= 0) { // a route that is there already from that node rings faintly
+            const int param = routeTo(source, to);
+            const Color ring = param == drag_.widget.param || !wired(param) ? color : kFaint;
+            const Point center = nodeCenter(source);
+            if (isBoxNode(source))
+                c.strokeRect({center.x - kFilterHalfW - 5.0f, center.y - kFilterHalfH - 5.0f,
+                              2.0f * kFilterHalfW + 10.0f, 2.0f * kFilterHalfH + 10.0f},
+                             ring, 2.0f, 10.0f);
+            else
+                c.strokeCircle(center, kNodeRadius + 5.0f, ring, 2.0f);
+        }
+    } else if (drag_.kind == DragKind::Connect || rerouting() >= 0) {
         const int from = drag_.widget.a;
         // A moving route away from the nodes and the bus is faint: let go of there, it goes.
         const bool removing = rerouting() >= 0 && nodeAt(drag_.now) < 0 && !onBus(drag_.now);
@@ -2927,6 +2972,10 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
 void View::paintRouting(Canvas &c) {
     c.text({kHintX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kHintX, 22.0f},
            tr(Str::HintRouting), 10.5f, kFaint, Align::Right);
+    if (routingGridShown()) { // Ctrl held: the grid's points, under everything, the one a node dragged lands on lit
+        const Point target = drag_.kind == DragKind::Node ? nodeCenter(drag_.widget.a) : Point{};
+        paintGridMarks(c, kGraph, kRoutingGridCols, kRoutingGridRows, drag_.kind == DragKind::Node ? &target : nullptr);
+    }
 
     // Output bus along the bottom, lit while a new or moving route would go there.
     const int moving = rerouting(); // drawn following the mouse instead
@@ -5486,7 +5535,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         }
         break;
     }
-    case Kind::WireEnd: // drawn with its wire, which lights up under the mouse
+    case Kind::WireEnd: // drawn with its wire, which lights up under the mouse, a circle around its arrowhead
+        if (hovered) {
+            if (w.b == kNodes) {
+                wireEndHighlight(c, outWireOf(w.a, nodeCenter(w.a)).end, {0.0f, 1.0f}, nodeColor(w.a));
+            } else {
+                const Wire wire = wireBetween(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param));
+                wireEndHighlight(c, wire.end, wire.tangent, nodeColor(w.a));
+            }
+        }
         break;
     case Kind::WireLabel:
     case Kind::OutLabel: {
@@ -5885,15 +5942,27 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         fxModeIcon(c, w.rect.center(), w.b == 1, on ? kAccent : (hovered ? kText : kDim));
         break;
     }
-    case Kind::FxSplitAdd: {
-        const Color color = fxTypeColor(FxType::MultiDyn); // the splits' color
+    case Kind::FxSplitAdd:
+    case Kind::FxSumAdd: {
+        const bool split = w.kind == Kind::FxSplitAdd;
+        const Color color = split ? splitColor() : sumColor();
         c.fillRect(w.rect, hovered ? color.alpha(0.18f) : kRaised, 5.0f);
         c.strokeRect(w.rect, color.alpha(hovered ? 0.9f : 0.45f), 1.0f, 5.0f);
         paintAddPlus(c, {w.rect.x + 10.0f, w.rect.center().y}, hovered ? kText : kDim);
         c.text({w.rect.x + 10.0f + kAddPlusW, w.rect.y - kAddNameLift, w.rect.w - 16.0f - kAddPlusW, w.rect.h},
-               tr(Str::ButtonAddSplit), 10.5f, hovered ? kText : kDim, Align::Left, true);
+               tr(split ? Str::ButtonAddSplit : Str::ButtonAddSum), 10.5f, hovered ? kText : kDim, Align::Left, true);
         break;
     }
+    case Kind::WireStart: // a circle with a dot where it leaves its node
+        if (hovered) {
+            const Point start = w.b == kNodes
+                                    ? outWireOf(w.a, nodeCenter(w.a)).start
+                                    : wireBetween(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param)).start;
+            wireStartHighlight(c, start, nodeColor(w.a));
+        }
+        break;
+    case Kind::FxWireStart: // drawn with the effects graph (see paintFxGraph())
+        break;
     case Kind::FxNode:
     case Kind::FxPort:
     case Kind::FxWire:
@@ -6834,6 +6903,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::FxInsert && hover_->kind != Kind::DynBand && hover_->kind != Kind::FxMode &&
          hover_->kind != Kind::FxPort && hover_->kind != Kind::FxNode && hover_->kind != Kind::FxWire &&
          hover_->kind != Kind::FxWireEnd && hover_->kind != Kind::FxLabelRemove && hover_->kind != Kind::FxNodeRemove &&
+         hover_->kind != Kind::WireStart && hover_->kind != Kind::FxWireStart &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
          !(hover_->kind == Kind::ListButton && (isFilterSlope(hover_->param) || isMidiInput(hover_->param))) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
@@ -6867,12 +6937,14 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipFxNode);
     } else if (hover_->kind == Kind::FxWireEnd) {
         text = tr(Str::TipWireEnd);
+    } else if (hover_->kind == Kind::WireStart || hover_->kind == Kind::FxWireStart) {
+        text = tr(Str::TipWireStart);
     } else if (hover_->kind == Kind::FxWire) {
         text = tr(Str::TipWire);
     } else if (hover_->kind == Kind::FxLabelRemove) {
         text = tr(Str::TipRemoveWire);
     } else if (hover_->kind == Kind::FxNodeRemove) {
-        text = tr(Str::TipRemoveSplit);
+        text = tr(fxNodeSum(hover_->a) >= 0 ? Str::TipRemoveSum : Str::TipRemoveSplit);
     } else if (hover_->kind == Kind::WireEnd) {
         text = tr(Str::TipWireEnd);
     } else if (hover_->kind == Kind::Port) {
@@ -7463,7 +7535,8 @@ void View::applyDrag(Point p) {
     }
     case DragKind::Node: {
         UiLayout &layout = controller_.layout();
-        const Point at = nodePlace(w.a, p); // kept off the other nodes
+        // Kept off the other nodes; Ctrl held, onto the grid's nearest point it fits at.
+        const Point at = ctrlHeld_ ? routingGridPoint(w.a, p) : nodePlace(w.a, p);
         const float x = std::clamp((at.x - kGraph.x) / kGraph.w, 0.0f, 1.0f);
         const float y = std::clamp((at.y - kGraph.y) / kGraph.h, 0.0f, 1.0f);
         if (isBoxNode(w.a)) {
@@ -7636,6 +7709,8 @@ void View::applyDrag(Point p) {
     case DragKind::None:
     case DragKind::Connect:
     case DragKind::Reroute:
+    case DragKind::RerouteFrom:
+    case DragKind::FxRewireFrom:
     case DragKind::FxMove:
     case DragKind::SourceMove:
     case DragKind::FxConnect:
@@ -7647,6 +7722,7 @@ void View::applyDrag(Point p) {
 bool View::mouseMove(Point p, Modifiers mods) {
     const Point before = hoverPoint_;
     hoverPoint_ = p;
+    const bool ctrlChanged = setCtrl(mods.ctrl);
     if (drag_.kind == DragKind::None) {
         // The widget under the mouse, all of it (a tooltip goes under its rect), or for the partial editor's bars,
         // where along them the mouse is: its caption names the partial under it.
@@ -7655,7 +7731,10 @@ bool View::mouseMove(Point p, Modifiers mods) {
             return a.same(b) && a.label == b.label && a.compact == b.compact && a.shrunk == b.shrunk &&
                    std::memcmp(&a.rect, &b.rect, sizeof(Rect)) == 0 && std::memcmp(&a.clip, &b.clip, sizeof(Rect)) == 0;
         };
-        bool changed = hit.has_value() != hover_.has_value() || (hit && !same(*hit, *hover_)) ||
+        // Ctrl going down or up, or the mouse going in or out of a graph with it held, shows or hides its grid.
+        const bool gridEdge = ctrlHeld_ && (kRouting.contains(before) != kRouting.contains(p) ||
+                                            fxGraphArea().contains(before) != fxGraphArea().contains(p));
+        bool changed = ctrlChanged || gridEdge || hit.has_value() != hover_.has_value() || (hit && !same(*hit, *hover_)) ||
                        (hit && hit->kind == Kind::PartialArea) ||
                        (hit && isRatioDisplay(*hit) && ratioDigit(p.x) != ratioDigit(before.x)); // its lit digit
         hover_ = std::move(hit);
@@ -7699,6 +7778,7 @@ bool View::mouseMove(Point p, Modifiers mods) {
 }
 
 void View::mouseDown(Point p, Modifiers mods) {
+    setCtrl(mods.ctrl);
     pressed_ = hitTest(p); // before the press acts, for a double-click that may follow
     pressPoint_ = p;
     // A click in the field being typed in leaves it be; anywhere else, it takes the value typed.
@@ -7828,6 +7908,9 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::WireEnd:
         drag_.kind = DragKind::Reroute;
+        break;
+    case Kind::WireStart:
+        drag_.kind = DragKind::RerouteFrom;
         break;
     case Kind::Wire:
         drag_.kind = DragKind::Bend;
@@ -8371,6 +8454,15 @@ void View::mouseUp(Point p, Modifiers) {
         }
         break;
     }
+    case DragKind::RerouteFrom: {
+        if (!drag_.moved) // a click leaves it be
+            break;
+        if (const int source = nodeAt(p); source >= 0)
+            rerouteFrom(w.a, w.b, source);
+        else // let go of off the nodes, the route goes, with its modulation
+            disconnect(w.param);
+        break;
+    }
     case DragKind::Reroute: {
         if (!drag_.moved) // a click leaves it be
             break;
@@ -8430,6 +8522,7 @@ void View::mouseUp(Point p, Modifiers) {
         break;
     case DragKind::FxConnect:
     case DragKind::FxRewire:
+    case DragKind::FxRewireFrom:
         fxGraphRelease(p);
         break;
     case DragKind::FxBend:
@@ -8519,6 +8612,8 @@ void View::finishDrag() {
     case DragKind::ModsScroll:
     case DragKind::Connect:
     case DragKind::Reroute:
+    case DragKind::RerouteFrom:
+    case DragKind::FxRewireFrom:
     case DragKind::ModSource:
     case DragKind::FxMove:
     case DragKind::SourceMove:
@@ -8658,7 +8753,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         mouseDown(p, mods);
         return;
     }
-    if (hit && (hit->kind == Kind::FxMode || hit->kind == Kind::FxSplitAdd)) {
+    if (hit && (hit->kind == Kind::FxMode || hit->kind == Kind::FxSplitAdd || hit->kind == Kind::FxSumAdd)) {
         mouseDown(p, mods);
         return;
     }
@@ -9120,7 +9215,7 @@ void View::menuCommand(int command) {
     } else if (command == 5 && menuPoint_.first >= 0) {
         removeShapePoint(menuPoint_.first, menuPoint_.second);
     } else if (command == 7 && menuFx_ >= kFxSlots) {
-        removeSplit(menuFx_ - kFxSlots);
+        removeFxNode(menuFx_);
     } else if (menuFx_ >= kFxSlots) {
         // a split offers nothing else
     } else if (command == 6 && menuFx_ >= 0) {
@@ -9383,7 +9478,8 @@ CursorKind View::cursor() const {
     if (drag_.kind == DragKind::Pan)
         return CursorKind::Move;
     if (drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute || drag_.kind == DragKind::ModSource ||
-        drag_.kind == DragKind::FxConnect || drag_.kind == DragKind::FxRewire)
+        drag_.kind == DragKind::FxConnect || drag_.kind == DragKind::FxRewire || drag_.kind == DragKind::RerouteFrom ||
+        drag_.kind == DragKind::FxRewireFrom)
         return CursorKind::Hand;
     if (drag_.kind == DragKind::Value &&
         (drag_.widget.kind == Kind::PeqPoint || drag_.widget.kind == Kind::DynGrip)) // Alt-dragged for Q or ratio

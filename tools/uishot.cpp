@@ -1952,12 +1952,14 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     auto nodeAt = [&](int node) { return detail::fxNodeAt(model.ui.fxNodeX[node], model.ui.fxNodeY[node]); };
     click(view, nodeAt(0)); // picks the shaper
     click(view, centerOf(detail::fxSplitButton()));
-    const int split = fxSplitNode(0);
-    check(model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(split, 0) == fxSlotPort(0) &&
-              wiredFrom(1, fxBandPort(0, 0)) >= 0 && wiredFrom(1, fxBandPort(0, kFxBands - 1)) >= 0 &&
+    const int split = fxSplitNode(0), sum = fxSumNode(0);
+    check(model.value(paramIndex(0, SplitParam::Used)) == 1.0 && model.value(paramIndex(0, SumParam::Used)) == 1.0 &&
+              from(split, 0) == fxSlotPort(0) && wiredFrom(sum, fxBandPort(0, 0)) >= 0 &&
+              wiredFrom(sum, fxBandPort(0, kFxBands - 1)) >= 0 && wiredFrom(1, fxSumPort(0)) >= 0 &&
               wiredFrom(1, fxSlotPort(0)) < 0 && model.ui.fxSelected == split &&
+              model.ui.fxNodeX[split] < model.ui.fxNodeX[sum] && model.ui.fxNodeX[sum] < model.ui.fxNodeX[1] &&
               renderer.save(view, dir / "40b-fx-split.png"),
-          "+ SPLIT puts a split after the node picked, its bands going on where that node went");
+          "+ SPLIT puts a split after the node picked, its bands meeting in a sum that goes where that node went");
     auto bendOf = [&](int param) {
         for (const auto &[route, bend] : model.ui.wireBends)
             if (route == param)
@@ -1967,7 +1969,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     auto levelOf = [&](int node, int port) {
         return fxInputIndex(node, std::max(wiredFrom(node, port), 0), FxInputField::Level);
     };
-    check(bendOf(levelOf(1, fxBandPort(0, kFxBands - 1))) < 0.0f && bendOf(levelOf(1, fxBandPort(0, 0))) > 0.0f,
+    check(bendOf(levelOf(sum, fxBandPort(0, kFxBands - 1))) < 0.0f && bendOf(levelOf(sum, fxBandPort(0, 0))) > 0.0f,
           "a new split's high band bows up toward where it goes, its low band down");
 
     // BANDS 3 on its card, centered in the inspector's area: the middle band goes where the high band goes, straight.
@@ -1975,9 +1977,38 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     const Rect area = detail::fxInspectorCard();
     click(view, {card.x + 14.0f + 56.0f + 40.0f + 20.0f, card.y + 54.0f});
     check(std::abs(card.center().x - area.center().x) < 1.0f &&
-              model.value(paramIndex(0, SplitParam::Bands)) == 3.0 && wiredFrom(1, fxBandPort(0, 1)) >= 0 &&
-              bendOf(levelOf(1, fxBandPort(0, 1))) == 0.0f && renderer.save(view, dir / "40b2-fx-split-3.png"),
+              model.value(paramIndex(0, SplitParam::Bands)) == 3.0 && wiredFrom(sum, fxBandPort(0, 1)) >= 0 &&
+              bendOf(levelOf(sum, fxBandPort(0, 1))) == 0.0f && renderer.save(view, dir / "40b2-fx-split-3.png"),
           "a split going to three bands wires its middle band where the high band goes");
+
+    // With the split picked, + EFFECT puts a delay on its low band, then (the split picked again) a compressor on its
+    // middle one, each taking over its band's wire; both undone.
+    addFx(view, FxType::Delay);
+    const bool onLow = from(2, 0) == fxBandPort(0, 0) && wiredFrom(sum, fxSlotPort(2)) >= 0 &&
+                       wiredFrom(sum, fxBandPort(0, 0)) < 0;
+    click(view, nodeAt(split));
+    addFx(view, FxType::Compressor);
+    const bool onMid = from(3, 0) == fxBandPort(0, 1) && wiredFrom(sum, fxSlotPort(3)) >= 0 &&
+                       wiredFrom(sum, fxBandPort(0, 1)) < 0 && wiredFrom(sum, fxBandPort(0, kFxBands - 1)) >= 0;
+    const bool bandsShot = renderer.save(view, dir / "40b3-fx-split-effects.png");
+    view.undo();
+    view.undo();
+    click(view, nodeAt(split));
+    check(onLow && onMid && bandsShot && fxChain(model) == std::vector<int>{0, 1} && model.ui.fxSelected == split,
+          "an effect added with a split picked goes on its first band without an effect of its own");
+
+    // + SUM with the reverb picked: a sum after it, going out in its place; undone.
+    click(view, nodeAt(1));
+    click(view, centerOf(detail::fxSumButton()));
+    const int second = fxSumNode(1);
+    const bool sumAdded = model.value(paramIndex(1, SumParam::Used)) == 1.0 && from(second, 0) == fxSlotPort(1) &&
+                          wiredFrom(kFxOutNode, fxSumPort(1)) >= 0 && wiredFrom(kFxOutNode, fxSlotPort(1)) < 0;
+    const bool sumShot = renderer.save(view, dir / "40b4-fx-sum.png");
+    view.undo();
+    click(view, nodeAt(split));
+    check(sumAdded && sumShot && model.value(paramIndex(1, SumParam::Used)) == 0.0 &&
+              wiredFrom(kFxOutNode, fxSlotPort(1)) >= 0,
+          "+ SUM puts a sum after the node picked, taking over its wires out");
 
     // Its low crossover's handle, on its card in the inspector, dragged from 250 Hz to 500 Hz.
     const Rect display{card.x + 14.0f, card.y + 74.0f, card.w - 28.0f, 110.0f};
@@ -2013,12 +2044,50 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     check(turned < 0.9 && shown && wiredFrom(1, kFxPortIn) < 0 && model.openEdits == 0,
           "a wire's label sets its level, and its x removes it");
 
+    // The reverb Ctrl+dragged: onto a point of the effects graph's grid.
+    {
+        const Modifiers ctrl{false, true, false};
+        const Point from = nodeAt(1);
+        view.mouseDown(from, ctrl);
+        view.mouseMove({from.x + 20.0f, from.y + 30.0f}, ctrl);
+        view.mouseMove({from.x + 37.0f, from.y + 41.0f}, ctrl);
+        const bool shot = renderer.save(view, dir / "40f-fx-grid.png");
+        view.mouseUp({from.x + 37.0f, from.y + 41.0f}, ctrl);
+        const Point at = nodeAt(1);
+        const Point a = detail::fxNodeAt(0.0f, 0.0f), b = detail::fxNodeAt(1.0f, 1.0f);
+        const Rect area{a.x, a.y, b.x - a.x, b.y - a.y};
+        bool snapped = false;
+        for (int row = 0; row < detail::kFxGridRows; ++row)
+            for (int col = 0; col < detail::kFxGridCols; ++col) {
+                const Point g = detail::gridPoint(area, detail::kFxGridCols, detail::kFxGridRows, col, row);
+                snapped = snapped || (std::abs(g.x - at.x) < 0.5f && std::abs(g.y - at.y) < 0.5f);
+            }
+        view.undo();
+        view.mouseMove({600.0f, 428.0f}, {});
+        check(shot && snapped, "Ctrl+drag puts an effects graph node on its grid");
+    }
+
     // The reverb dragged down, and back by undo.
     const float before = model.ui.fxNodeY[1];
     drag(view, reverb, {reverb.x, reverb.y + 50.0f});
     const bool moved = model.ui.fxNodeY[1] > before + 0.05f;
     view.undo();
     check(moved && std::abs(model.ui.fxNodeY[1] - before) < 1e-6f, "a node of the graph moves, undoably");
+
+    // The high band's wire into the sum, by its start off the band's dot, onto IN: the sum takes IN there.
+    {
+        const int high = fxBandPort(0, kFxBands - 1);
+        const int level = levelOf(sum, high);
+        const Point from = detail::fxBandPortAt(nodeAt(split), kFxBands - 1), to = nodeAt(sum);
+        const detail::Wire w = detail::bentWireBy(
+            from, to, bendOf(level), [](Point) { return 0.0f; }, [](Point) { return detail::kFxNodeR; });
+        const float d = std::hypot(w.control.x - w.start.x, w.control.y - w.start.y);
+        const Point grip{w.start.x + (w.control.x - w.start.x) / d * 12.0f,
+                         w.start.y + (w.control.y - w.start.y) / d * 12.0f};
+        drag(view, grip, detail::fxInCenter());
+        check(wiredFrom(sum, kFxPortIn) >= 0 && wiredFrom(sum, high) < 0,
+              "a wire's start dragged onto another port comes from there");
+    }
 
     // Back to a chain: with a split in the graph, it asks first; going ahead leaves the chain in the graph's order.
     click(view, centerOf(detail::fxModeButton(0)));
@@ -2027,7 +2096,8 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     const bool dialog = renderer.save(view, dir / "40e-fx-to-chain.png");
     click(view, {confirm.right() - 64.0f, confirm.bottom() - 38.0f});
     check(asked && dialog && model.value(paramIndex(GlobalParam::FxGraph)) == 0.0 &&
-              model.value(paramIndex(0, SplitParam::Used)) == 0.0 && fxChain(model) == std::vector<int>{0, 1} &&
+              model.value(paramIndex(0, SplitParam::Used)) == 0.0 && model.value(paramIndex(0, SumParam::Used)) == 0.0 &&
+              fxChain(model) == std::vector<int>{0, 1} &&
               from(1, 0) < 0,
           "going back to a chain asks first, then leaves the chain in the graph's order");
 }
@@ -2669,6 +2739,90 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
 
 // A wire in the graph bends when dragged sideways (its label following its middle), keeps the bend through a save of
 // the layout and back, goes back to how it bowed with a double-click or Reset Bend, and each is an undo step.
+// A route's start dragged onto another node comes from there, with its amount and mode; an OUT line's start too.
+void testRouteFrom(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(paramIndex(2, OpParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.4);
+    model.set(routeModeIndex(1, 0), static_cast<double>(RouteMode::LinearFm));
+    view.poll();
+    const UiLayout &layout = model.layout();
+    const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1), c = nodeCenter(layout, 2);
+    const detail::Wire w = detail::wireBetween(1, b, 0, a, kDefaultWireBend);
+    const float d = std::hypot(w.control.x - w.start.x, w.control.y - w.start.y);
+    // Its grip reaches back along the wire from where it leaves B: 16 px out still takes it.
+    const Point grip{w.start.x + (w.control.x - w.start.x) / d * 16.0f, w.start.y + (w.control.y - w.start.y) / d * 16.0f};
+    view.mouseMove(grip, {});
+    const bool lit = renderer.save(view, dir / "41b-route-start-lit.png");
+    view.mouseDown(grip, {});
+    view.mouseMove({(grip.x + c.x) * 0.5f, (grip.y + c.y) * 0.5f}, {});
+    view.mouseMove(c, {});
+    const bool shot = renderer.save(view, dir / "41a-route-from.png");
+    view.mouseUp(c, {});
+    const bool moved = model.value(matrixIndex(1, 0)) == 0.0 && std::abs(model.value(matrixIndex(2, 0)) - 0.4) < 1e-6 &&
+                       model.value(routeModeIndex(2, 0)) == static_cast<double>(RouteMode::LinearFm) &&
+                       model.value(routeModeIndex(1, 0)) == 0.0;
+    // A's line to OUT, by where it leaves A, onto B: B goes out at A's level, A no longer does.
+    const double out = model.value(paramIndex(0, OpParam::Out));
+    drag(view, {a.x, a.y + 24.0f + 4.0f}, b);
+    const bool outMoved = model.value(paramIndex(0, OpParam::Out)) == 0.0 &&
+                          model.value(paramIndex(1, OpParam::Out)) == out;
+    view.undo();
+    view.undo();
+    check(lit && shot && moved && outMoved && model.value(matrixIndex(1, 0)) == 0.4 && model.value(matrixIndex(2, 0)) == 0.0,
+          "a route's start dragged onto another node comes from there, with its amount and mode, undoably");
+}
+
+// Ctrl+drag puts a node on its graph's grid, the nearest point it fits at: a second one dragged there goes to the next
+// free point. While Ctrl is held over the graph, the grid's points show.
+void testNodeGrid(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    for (int op : {1, 2})
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+    view.poll();
+    UiLayout &layout = model.layout();
+    const Modifiers ctrl{false, true, false};
+    auto onGrid = [&](int node, Point *at) {
+        const Point c = nodeCenter(layout, node);
+        for (int row = 0; row < detail::kRoutingGridRows; ++row)
+            for (int col = 0; col < detail::kRoutingGridCols; ++col) {
+                const Point g = detail::gridPoint(detail::kGraph, detail::kRoutingGridCols, detail::kRoutingGridRows, col, row);
+                if (std::abs(g.x - c.x) < 0.5f && std::abs(g.y - c.y) < 0.5f) {
+                    if (at)
+                        *at = g;
+                    return true;
+                }
+            }
+        return false;
+    };
+    view.mouseMove({400.0f, 300.0f}, ctrl);
+    const bool marks = renderer.save(view, dir / "42a-grid-marks.png");
+    const Point to{430.0f, 230.0f};
+    const Point b = nodeCenter(layout, 1);
+    view.mouseDown(b, ctrl);
+    view.mouseMove({(b.x + to.x) * 0.5f, (b.y + to.y) * 0.5f}, ctrl);
+    view.mouseMove(to, ctrl);
+    const bool dragShot = renderer.save(view, dir / "42b-grid-drag.png");
+    view.mouseUp(to, ctrl);
+    Point bAt{}, cAt{};
+    const bool bSnapped = onGrid(1, &bAt);
+    // C dragged with Ctrl onto where B landed: the next free point.
+    const Point c = nodeCenter(layout, 2);
+    view.mouseDown(c, ctrl);
+    view.mouseMove({(c.x + bAt.x) * 0.5f, (c.y + bAt.y) * 0.5f}, ctrl);
+    view.mouseMove(bAt, ctrl);
+    view.mouseUp(bAt, ctrl);
+    const bool cSnapped = onGrid(2, &cAt) && std::hypot(cAt.x - bAt.x, cAt.y - bAt.y) > 1.0f;
+    // A plain drag leaves a node where it is let go of, off the grid.
+    view.mouseMove({600.0f, 428.0f}, {});
+    drag(view, cAt, {cAt.x + 13.0f, cAt.y + 7.0f});
+    check(marks && dragShot && bSnapped && cSnapped && !onGrid(2, nullptr),
+          "Ctrl+drag puts a node on the grid's nearest free point, and the grid's points show while Ctrl is held");
+}
+
 void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5777,6 +5931,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testMacros(dir, renderer);
     testVelocity(dir, renderer);
     testWireBend(dir, renderer);
+    testRouteFrom(dir, renderer);
+    testNodeGrid(dir, renderer);
     testRouteModes(dir, renderer);
     testSelectedNode(dir, renderer);
     testModsEmpty(dir, renderer);

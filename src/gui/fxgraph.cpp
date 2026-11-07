@@ -27,9 +27,16 @@ float boxExtent(Point dir, float halfW, float halfH) {
     return std::min(tx, ty);
 }
 
+// The nodes that sit where the graph's layout puts them: the slots, splits and sums (not the output).
+bool placed(int node) {
+    return node >= 0 && node < kFxNodes && node != kFxOutNode;
+}
+
 float nodeExtentOf(int node, Point dir) {
     if (node == kFxOutNode)
         return boxExtent(dir, kFxEndHalfW, kFxEndHalfH);
+    if (fxNodeSum(node) >= 0)
+        return boxExtent(dir, kFxSumHalfW, kFxSumHalfH);
     if (node >= kFxSlots)
         return boxExtent(dir, kFxSplitHalfW, kFxSplitHalfH);
     return kFxNodeR;
@@ -38,6 +45,8 @@ float nodeExtentOf(int node, Point dir) {
 Rect nodeRect(int node, Point center) {
     if (node == kFxOutNode)
         return {center.x - kFxEndHalfW, center.y - kFxEndHalfH, 2.0f * kFxEndHalfW, 2.0f * kFxEndHalfH};
+    if (fxNodeSum(node) >= 0)
+        return {center.x - kFxSumHalfW, center.y - kFxSumHalfH, 2.0f * kFxSumHalfW, 2.0f * kFxSumHalfH};
     if (node >= kFxSlots)
         return {center.x - kFxSplitHalfW, center.y - kFxSplitHalfH, 2.0f * kFxSplitHalfW, 2.0f * kFxSplitHalfH};
     return {center.x - kFxNodeR, center.y - kFxNodeR, 2.0f * kFxNodeR, 2.0f * kFxNodeR};
@@ -68,6 +77,88 @@ std::string percent(double v) {
 
 } // namespace
 
+void detail::paintGridMarks(Canvas &c, Rect area, int cols, int rows, const Point *target) {
+    for (int row = 0; row < rows; ++row)
+        for (int col = 0; col < cols; ++col) {
+            const Point p = gridPoint(area, cols, rows, col, row);
+            if (target && std::hypot(p.x - target->x, p.y - target->y) < 0.5f)
+                continue; // drawn lit below
+            c.line({p.x - 3.5f, p.y}, {p.x + 3.5f, p.y}, kFaint.alpha(0.45f), 1.0f);
+            c.line({p.x, p.y - 3.5f}, {p.x, p.y + 3.5f}, kFaint.alpha(0.45f), 1.0f);
+        }
+    if (target) {
+        c.line({target->x - 7.0f, target->y}, {target->x + 7.0f, target->y}, kAccent, 1.6f);
+        c.line({target->x, target->y - 7.0f}, {target->x, target->y + 7.0f}, kAccent, 1.6f);
+    }
+}
+
+// --- Grid (Ctrl+drag)
+
+bool View::setCtrl(bool held) {
+    if (held == ctrlHeld_)
+        return false;
+    ctrlHeld_ = held;
+    return true; // the grid's points show or go, and a node being dragged snaps or goes free
+}
+
+Rect View::fxNodeArea() {
+    const Point a = fxNodeAt(0.0f, 0.0f), b = fxNodeAt(1.0f, 1.0f);
+    return {a.x, a.y, b.x - a.x, b.y - a.y};
+}
+
+bool View::routingGridShown() const {
+    return ctrlHeld_ && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
+           partialEditing() < 0 && (drag_.kind == DragKind::Node || (drag_.kind == DragKind::None && kRouting.contains(hoverPoint_)));
+}
+
+bool View::fxGridShown() const {
+    return ctrlHeld_ && fxWide() && fxGraph() &&
+           (drag_.kind == DragKind::FxNode || (drag_.kind == DragKind::None && fxGraphArea().contains(hoverPoint_)));
+}
+
+// The grid's points nearest `want` first; a point a node fits at, clear of the others, takes it.
+namespace {
+template <class Fits>
+Point nearestGridPoint(Rect area, int cols, int rows, Point want, Fits fits, Point otherwise) {
+    std::vector<Point> points;
+    for (int row = 0; row < rows; ++row)
+        for (int col = 0; col < cols; ++col)
+            points.push_back(gridPoint(area, cols, rows, col, row));
+    std::sort(points.begin(), points.end(), [&](Point a, Point b) {
+        return std::hypot(a.x - want.x, a.y - want.y) < std::hypot(b.x - want.x, b.y - want.y);
+    });
+    for (const Point p : points)
+        if (fits(p))
+            return p;
+    return otherwise;
+}
+} // namespace
+
+Point View::routingGridPoint(int node, Point want) const {
+    // Where nodePlace() would leave it untouched, nothing is in its way.
+    auto fits = [&](Point p) {
+        bool found = false;
+        const Point at = nodePlace(node, p, &found);
+        return found && std::hypot(at.x - p.x, at.y - p.y) < 0.5f;
+    };
+    return nearestGridPoint(kGraph, kRoutingGridCols, kRoutingGridRows, want, fits, nodePlace(node, want));
+}
+
+Point View::fxGridPoint(int node, Point want) const {
+    auto fits = [&](Point p) {
+        const Rect mine = nodeRect(node, p).inset(-4.0f);
+        for (int other = 0; other < kFxNodes; ++other) {
+            if (other == node || !placed(other) || !fxNodeShown(other))
+                continue;
+            const Rect r = nodeRect(other, fxNodeCenter(other));
+            if (mine.x < r.right() && r.x < mine.right() && mine.y < r.bottom() && r.y < mine.bottom())
+                return false;
+        }
+        return true;
+    };
+    return nearestGridPoint(fxNodeArea(), kFxGridCols, kFxGridRows, want, fits, want);
+}
+
 // --- Model
 
 bool View::fxGraph() const {
@@ -77,22 +168,22 @@ bool View::fxGraph() const {
 bool View::fxNodeShown(int node) const {
     if (node == kFxOutNode)
         return true;
-    if (node < 0 || node > kFxOutNode)
+    if (node < 0 || node >= kFxNodes)
         return false;
     if (node < kFxSlots)
         return fxSlotType(node) != FxType::None;
+    if (const int sum = fxNodeSum(node); sum >= 0)
+        return value(paramIndex(sum, SumParam::Used)) >= 0.5;
     return value(paramIndex(node - kFxSlots, SplitParam::Used)) >= 0.5;
 }
 
 int View::fxPortNode(int port) {
-    if (port == kFxPortIn)
-        return -1;
-    return fxPortSlot(port) >= 0 ? fxPortSlot(port) : fxSplitNode(fxPortSplit(port));
+    return ::fmvibe::fxPortNode(port);
 }
 
 std::vector<View::FxWireRef> View::fxWires() const {
     std::vector<FxWireRef> wires;
-    for (int node = 0; node <= kFxOutNode; ++node) {
+    for (int node = 0; node < kFxNodes; ++node) {
         if (!fxNodeShown(node))
             continue;
         for (int input = 0; input < fxInputCount(node); ++input) {
@@ -115,7 +206,7 @@ bool View::fxReaches(int from, int to) const {
     if (from == to)
         return true;
     const std::vector<FxWireRef> wires = fxWires();
-    std::vector<bool> seen(kFxOutNode + 1, false);
+    std::vector<bool> seen(kFxNodes, false);
     std::deque<int> next{from};
     seen[from] = true;
     while (!next.empty()) {
@@ -148,6 +239,10 @@ Point View::fxPortPoint(int port, Point toward) const {
     }
     if (const int band = fxPortBand(port); band >= 0)
         return fxBandPortAt(fxNodeCenter(fxSplitNode(fxPortSplit(port))), band);
+    if (const int sum = fxPortSum(port); sum >= 0) { // its dot, on its right edge
+        const Point c = fxNodeCenter(fxSumNode(sum));
+        return {c.x + kFxSumHalfW, c.y};
+    }
     const Point c = fxNodeCenter(fxPortSlot(port));
     const Point dir = normalize({toward.x - c.x, toward.y - c.y});
     return {c.x + dir.x * kFxNodeR, c.y + dir.y * kFxNodeR};
@@ -159,7 +254,7 @@ Rect View::fxInspector(int node) const {
 
 int View::fxSelectedNode() const {
     const int node = controller_.layout().fxSelected;
-    if (node >= 0 && node < kFxInputNodes && fxNodeShown(node))
+    if (placed(node) && fxNodeShown(node))
         return node;
     const std::vector<int> chain = fxChain(); // none picked: the first effect, else the first split
     if (!chain.empty())
@@ -207,16 +302,42 @@ bool View::fxHit(const Widget &w, Point p) const {
 int View::fxNodeAtPoint(Point p) const {
     if (nodeRect(kFxOutNode, fxOutCenter()).inset(-6.0f).contains(p))
         return kFxOutNode;
-    for (int node = kFxInputNodes - 1; node >= 0; --node) // the ones drawn last first
-        if (fxNodeShown(node) && nodeRect(node, fxNodeCenter(node)).inset(-6.0f).contains(p))
+    for (int node = kFxNodes - 1; node >= 0; --node) // the ones drawn last first
+        if (placed(node) && fxNodeShown(node) && nodeRect(node, fxNodeCenter(node)).inset(-6.0f).contains(p))
             return node;
     return -1;
+}
+
+int View::fxPortAtPoint(Point p) const {
+    if (inRect().inset(-6.0f).contains(p))
+        return kFxPortIn;
+    const int node = fxNodeAtPoint(p);
+    if (node < 0 || node == kFxOutNode)
+        return -1;
+    if (node < kFxSlots)
+        return fxSlotPort(node);
+    if (const int sum = fxNodeSum(node); sum >= 0)
+        return fxSumPort(sum);
+    const int split = node - kFxSlots;
+    const bool three = std::lround(value(paramIndex(split, SplitParam::Bands))) >= kFxBands;
+    int best = -1;
+    float nearest = 1e9f;
+    for (int band = 0; band < kFxBands; ++band) {
+        if (band == 1 && !three)
+            continue;
+        const float d = std::abs(fxBandPortAt(fxNodeCenter(node), band).y - p.y);
+        if (d < nearest) {
+            nearest = d;
+            best = fxBandPort(split, band);
+        }
+    }
+    return best;
 }
 
 // --- Editing
 
 bool View::fxConnect(int port, int node) {
-    if (node < 0 || node > kFxOutNode || !fxNodeShown(node))
+    if (node < 0 || node >= kFxNodes || !fxNodeShown(node))
         return false;
     const int from = fxPortNode(port);
     if (from == node || (!kAllowFxLoops && from >= 0 && fxReaches(node, from))) {
@@ -302,14 +423,61 @@ void View::fxRewire(int node, int input, int into) {
     fxSyncOrder();
 }
 
+void View::fxRewireFrom(int node, int input, int port) {
+    const int from = fxInputIndex(node, input, FxInputField::From);
+    if (port < 0 || port == fxPortOf(value(from)))
+        return;
+    const int source = fxPortNode(port);
+    if (source == node || (!kAllowFxLoops && source >= 0 && fxReaches(node, source))) {
+        flash(tr(Str::MsgFxLoop));
+        return;
+    }
+    for (int k = 0; k < fxInputCount(node); ++k)
+        if (k != input && fxPortOf(value(fxInputIndex(node, k, FxInputField::From))) == port) {
+            flash(tr(Str::MsgFxWireExists));
+            return;
+        }
+    const UndoScope step(controller_); // with the chain's places it moves
+    setWireBend(fxInputIndex(node, input, FxInputField::Level), kDefaultWireBend); // a new wire's bow
+    edit(from, fxPortValue(port));
+    fxSyncOrder();
+}
+
 void View::fxInsertAfterSelected(int node, std::vector<std::pair<int, double>> &changes) {
     const int selected = fxSelectedNode();
-    const bool afterSlot = selected >= 0 && selected < kFxSlots && selected != node;
-    const int source = afterSlot ? fxSlotPort(selected) : kFxPortIn;
+    // After an effect or a sum, on its output; after a split, on one of its bands.
+    const bool afterSlot = selected >= 0 && (selected < kFxSlots || fxNodeSum(selected) >= 0) && selected != node;
+    const bool afterSplit = fxNodeSplit(selected) && selected != node;
+    // After a split, on one of its bands: the first, from the low one up, without an effect of its own yet (one it
+    // feeds that takes nothing else in), else the low band, ahead of what is there.
+    int band = -1;
+    if (afterSplit) {
+        const int split = selected - kFxSlots;
+        const std::vector<FxWireRef> wires = fxWires();
+        const bool three = std::lround(value(paramIndex(split, SplitParam::Bands))) >= kFxBands;
+        for (int b = 0; b < kFxBands && band < 0; ++b) {
+            if (b == 1 && !three)
+                continue;
+            bool own = false;
+            for (const FxWireRef &w : wires)
+                own = own || (w.port == fxBandPort(split, b) && w.node < kFxSlots &&
+                              std::count_if(wires.begin(), wires.end(),
+                                            [&](const FxWireRef &o) { return o.node == w.node; }) == 1);
+            if (!own)
+                band = b;
+        }
+        if (band < 0)
+            band = 0;
+    }
+    const int source = afterSlot    ? (selected < kFxSlots ? fxSlotPort(selected) : fxSumPort(fxNodeSum(selected)))
+                       : afterSplit ? fxBandPort(selected - kFxSlots, band)
+                                    : kFxPortIn;
     // What the node puts out: an effect its output, a split its low and high bands.
     std::vector<int> outs;
     if (node < kFxSlots)
         outs.push_back(fxSlotPort(node));
+    else if (fxNodeSum(node) >= 0)
+        outs.push_back(fxSumPort(fxNodeSum(node)));
     else
         outs = {fxBandPort(node - kFxSlots, 0), fxBandPort(node - kFxSlots, kFxBands - 1)};
     // A split's high band bows up toward where it goes, its low band down (as wires bow to begin with).
@@ -353,20 +521,50 @@ void View::fxInsertAfterSelected(int node, std::vector<std::pair<int, double>> &
         changes.push_back({fxInputIndex(node, input, FxInputField::From), input == 0 ? fxPortValue(source) : 0.0});
         changes.push_back({fxInputIndex(node, input, FxInputField::Level), 1.0});
     }
-    // It sits right of what it goes after, clear of the other nodes.
+    // It sits right of what it goes after (level with the band it takes), clear of the other nodes.
     UiLayout &layout = controller_.layout();
-    float x = afterSlot ? std::min(layout.fxNodeX[selected] + 0.2f, 1.0f) : 0.1f;
-    float y = afterSlot ? layout.fxNodeY[selected] : 0.5f;
-    for (int tries = 0; tries < 8; ++tries) {
-        bool clear = true;
-        for (int other = 0; other < kFxInputNodes && clear; ++other)
-            clear = other == node || !fxNodeShown(other) ||
-                    std::hypot(layout.fxNodeX[other] - x, layout.fxNodeY[other] - y) > 0.12f;
-        if (clear)
-            break;
-        y = y + 0.3f > 1.0f ? y - 0.6f + 0.15f : y + 0.3f;
-        y = std::clamp(y, 0.0f, 1.0f);
-    }
+    float x = afterSlot || afterSplit ? std::min(layout.fxNodeX[selected] + 0.2f, 1.0f) : 0.1f;
+    float y = afterSlot || afterSplit ? layout.fxNodeY[selected] : 0.5f;
+    if (afterSplit)
+        y = std::clamp(y + 0.4f * static_cast<float>(1 - band), 0.0f, 1.0f);
+    // What comes after it moves right, as far as leaves it room: the nodes it now goes into and those after them.
+    std::vector<int> after;
+    for (const FxWireRef &w : fxWires())
+        if (w.port == source && w.node != node && placed(w.node))
+            for (int other = 0; other < kFxNodes; ++other)
+                if (other != node && placed(other) && fxNodeShown(other) && fxReaches(w.node, other) &&
+                    std::find(after.begin(), after.end(), other) == after.end())
+                    after.push_back(other);
+    float nearest = 2.0f;
+    for (int other : after)
+        nearest = std::min(nearest, layout.fxNodeX[other]);
+    if (const float push = x + 0.15f - nearest; push > 0.0f)
+        for (int other : after)
+            layout.fxNodeX[other] = std::min(layout.fxNodeX[other] + push, 1.0f);
+    // Clear by pixels on screen (the graph is far wider than it is tall): the first of a few places near there, up
+    // and down, then a little further right, with room for a node and its name.
+    constexpr float kRoom = 70.0f;
+    auto clearAt = [&](float cx, float cy) {
+        const Point p = fxNodeAt(cx, cy);
+        for (int other = 0; other < kFxNodes; ++other) {
+            if (other == node || !placed(other) || !fxNodeShown(other))
+                continue;
+            const Point o = fxNodeAt(layout.fxNodeX[other], layout.fxNodeY[other]);
+            if (std::hypot(o.x - p.x, o.y - p.y) < kRoom)
+                return false;
+        }
+        return true;
+    };
+    bool found = false;
+    for (const float dx : {0.0f, 0.1f, 0.2f, -0.1f})
+        for (const float dy : {0.0f, -0.3f, 0.3f, -0.6f, 0.6f}) {
+            const float cx = std::clamp(x + dx, 0.0f, 1.0f), cy = std::clamp(y + dy, 0.0f, 1.0f);
+            if (!found && clearAt(cx, cy)) {
+                x = cx;
+                y = cy;
+                found = true;
+            }
+        }
     layout.fxNodeX[node] = x;
     layout.fxNodeY[node] = y;
     layout.fxSelected = node;
@@ -376,26 +574,26 @@ void View::fxInsertAfterSelected(int node, std::vector<std::pair<int, double>> &
 void View::fxSyncOrder() {
     // Kahn's algorithm over the wires between the slots and splits; what a loop holds goes after, by number.
     const std::vector<FxWireRef> wires = fxWires();
-    std::array<int, kFxInputNodes> waiting{};
+    std::array<int, kFxNodes> waiting{};
     for (const FxWireRef &w : wires)
-        if (w.node < kFxInputNodes && fxPortNode(w.port) >= 0)
+        if (placed(w.node) && fxPortNode(w.port) >= 0)
             ++waiting[w.node];
     std::vector<int> order;
-    std::array<bool, kFxInputNodes> done{};
+    std::array<bool, kFxNodes> done{};
     for (bool moved = true; moved;) {
         moved = false;
-        for (int node = 0; node < kFxInputNodes; ++node) {
-            if (done[node] || !fxNodeShown(node) || waiting[node] > 0)
+        for (int node = 0; node < kFxNodes; ++node) {
+            if (done[node] || !placed(node) || !fxNodeShown(node) || waiting[node] > 0)
                 continue;
             done[node] = moved = true;
             order.push_back(node);
             for (const FxWireRef &w : wires)
-                if (w.node < kFxInputNodes && fxPortNode(w.port) == node)
+                if (placed(w.node) && fxPortNode(w.port) == node)
                     --waiting[w.node];
         }
     }
-    for (int node = 0; node < kFxInputNodes; ++node)
-        if (!done[node] && fxNodeShown(node))
+    for (int node = 0; node < kFxNodes; ++node)
+        if (!done[node] && placed(node) && fxNodeShown(node))
             order.push_back(node);
     std::vector<int> chain;
     for (int node : order)
@@ -419,16 +617,132 @@ void View::addSplit() {
         flash(trf(Str::MsgSplitsFull, {std::to_string(kFxSplits)}));
         return;
     }
+    int sum = -1; // its bands meet again in a sum, while one is free
+    for (int s = 0; s < kFxSums && sum < 0; ++s)
+        if (!fxNodeShown(fxSumNode(s)))
+            sum = s;
     const UndoScope step(controller_);
     std::vector<std::pair<int, double>> changes;
     for (const SplitParam f : {SplitParam::Bands, SplitParam::Low, SplitParam::High})
         changes.push_back({paramIndex(split, f), table_[paramIndex(split, f)].def});
     changes.push_back({paramIndex(split, SplitParam::Used), 1.0});
+    if (sum >= 0)
+        changes.push_back({paramIndex(sum, SumParam::Used), 1.0});
     editMany(changes);
     changes.clear();
-    fxInsertAfterSelected(fxSplitNode(split), changes);
+    if (sum < 0) { // its bands go where the wires went
+        fxInsertAfterSelected(fxSplitNode(split), changes);
+        editMany(changes);
+        fxSyncOrder();
+        return;
+    }
+    // The sum first, after the node picked (taking over its wires out), then the split ahead of it, from what went into
+    // the sum, its low and high bands into the sum: the sound stays as it was until something goes into a band.
+    const int splitNode = fxSplitNode(split), sumNode = fxSumNode(sum);
+    fxInsertAfterSelected(sumNode, changes);
+    editMany(changes);
+    changes.clear();
+    const int source = fxPortOf(value(fxInputIndex(sumNode, 0, FxInputField::From)));
+    UiLayout &layout = controller_.layout();
+    std::vector<int> after{sumNode}; // the sum and what comes after it move right, making room for the split
+    for (int other = 0; other < kFxNodes; ++other)
+        if (placed(other) && other != sumNode && other != splitNode && fxNodeShown(other) && fxReaches(sumNode, other))
+            after.push_back(other);
+    layout.fxNodeX[splitNode] = layout.fxNodeX[sumNode];
+    layout.fxNodeY[splitNode] = layout.fxNodeY[sumNode];
+    for (int node : after)
+        layout.fxNodeX[node] = std::min(layout.fxNodeX[node] + 0.2f, 1.0f);
+    for (int input = 0; input < kFxInputs; ++input) {
+        changes.push_back({fxInputIndex(splitNode, input, FxInputField::From), input == 0 ? fxPortValue(source) : 0.0});
+        changes.push_back({fxInputIndex(splitNode, input, FxInputField::Level), 1.0});
+    }
+    for (int input = 0; input < kFxSumInputs; ++input) {
+        const int level = fxInputIndex(sumNode, input, FxInputField::Level);
+        const int port = input == 0 ? fxBandPort(split, 0) : input == 1 ? fxBandPort(split, kFxBands - 1) : -1;
+        changes.push_back({fxInputIndex(sumNode, input, FxInputField::From), fxPortValue(port)});
+        changes.push_back({level, 1.0});
+        setWireBend(level, input == 1 ? -kDefaultWireBend : kDefaultWireBend); // the high band bows up, the low down
+    }
+    editMany(changes);
+    layout.fxSelected = splitNode;
+    controller_.layoutChanged();
+    fxSyncOrder();
+}
+
+void View::addSum() {
+    int sum = -1;
+    for (int s = 0; s < kFxSums && sum < 0; ++s)
+        if (!fxNodeShown(fxSumNode(s)))
+            sum = s;
+    if (sum < 0) {
+        flash(trf(Str::MsgSumsFull, {std::to_string(kFxSums)}));
+        return;
+    }
+    const UndoScope step(controller_);
+    edit(paramIndex(sum, SumParam::Used), 1.0);
+    std::vector<std::pair<int, double>> changes;
+    fxInsertAfterSelected(fxSumNode(sum), changes);
     editMany(changes);
     fxSyncOrder();
+}
+
+void View::removeSum(int sum) {
+    const UndoScope step(controller_);
+    const int node = fxSumNode(sum);
+    std::vector<std::pair<int, double>> changes;
+    // What went into it goes on where it went, if it came from one place; its own wires go.
+    int into = -2;
+    for (const FxWireRef &w : fxWires())
+        if (w.node == node)
+            into = into == -2 ? w.port : -1;
+    for (const FxWireRef &w : fxWires()) {
+        if (w.port != fxSumPort(sum))
+            continue;
+        bool there = false;
+        for (int input = 0; input < fxInputCount(w.node) && into >= 0; ++input)
+            there = there || fxPortOf(value(fxInputIndex(w.node, input, FxInputField::From))) == into;
+        if (into >= 0 && !there)
+            changes.push_back({fxInputIndex(w.node, w.input, FxInputField::From), fxPortValue(into)});
+        else
+            fxRemoveWire(w.node, w.input, changes);
+    }
+    for (int input = 0; input < kFxSumInputs; ++input)
+        fxRemoveWire(node, input, changes);
+    changes.push_back({paramIndex(sum, SumParam::Used), 0.0});
+    editMany(changes);
+    fxSyncOrder();
+}
+
+void View::removeFxNode(int node) {
+    if (fxNodeSplit(node))
+        removeSplit(node - kFxSlots);
+    else if (fxNodeSum(node) >= 0)
+        removeSum(fxNodeSum(node));
+    else if (node >= 0 && node < kFxSlots)
+        removeEffect(node);
+}
+
+void View::sumCardWidgets(std::vector<Widget> &list, int sum, Rect card) const {
+    Widget w;
+    w.kind = Kind::FxNodeRemove;
+    w.rect = {card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f};
+    w.a = fxSumNode(sum);
+    list.push_back(w);
+}
+
+void View::paintSumCard(Canvas &c, int sum, Rect card) {
+    c.fillRect(card, kCardColor, 8.0f);
+    c.strokeRect(card, sumColor().alpha(0.45f), 1.0f, 8.0f);
+    sumIcon(c, fxIconRect(card), sumColor());
+    c.text({card.x + 36.0f, card.y + 6.0f, card.w - 84.0f, 20.0f}, trf(Str::NodeSum, {std::to_string(sum + 1)}), 11.0f,
+           kText, Align::Left, true);
+    int wires = 0;
+    for (const FxWireRef &w : fxWires())
+        wires += w.node == fxSumNode(sum) ? 1 : 0;
+    const Rect text{card.x + 14.0f, card.y + 50.0f, card.w - 28.0f, 60.0f};
+    c.text({text.x, text.y, text.w, 18.0f},
+           trf(Str::CaptionSumWires, {std::to_string(wires), std::to_string(kFxSumInputs)}), 10.5f, kText, Align::Left);
+    c.text({text.x, text.y + 22.0f, text.w, 36.0f}, tr(Str::HintSum), 10.0f, kDim, Align::Left);
 }
 
 void View::removeSplit(int split) {
@@ -474,7 +788,7 @@ void View::setSplitBands(int split, int bands) {
     const int mid = fxBandPort(split, 1), high = fxBandPort(split, kFxBands - 1);
     // Wires from the middle band kept while it had two bands come back as they were.
     bool midWired = false;
-    for (int node = 0; node <= kFxOutNode && !midWired; ++node)
+    for (int node = 0; node < kFxNodes && !midWired; ++node)
         for (int input = 0; input < fxInputCount(node) && !midWired; ++input)
             midWired = fxNodeShown(node) && fxPortOf(value(fxInputIndex(node, input, FxInputField::From))) == mid;
     if (bands >= kFxBands && !midWired)
@@ -501,6 +815,9 @@ void View::setSplitBands(int split, int bands) {
 bool View::fxGraphIsChain() const {
     for (int split = 0; split < kFxSplits; ++split)
         if (fxNodeShown(fxSplitNode(split)))
+            return false;
+    for (int sum = 0; sum < kFxSums; ++sum)
+        if (fxNodeShown(fxSumNode(sum)))
             return false;
     // A single path from the input to the output through every effect, each wire at full level.
     const std::vector<FxWireRef> wires = fxWires();
@@ -530,7 +847,7 @@ void View::setFxGraph(bool on, bool asked) {
     std::vector<std::pair<int, double>> changes;
     for (const FxWireRef &w : fxWires()) // the wires there were go, with their modulation
         fxRemoveWire(w.node, w.input, changes);
-    for (int node = 0; node <= kFxOutNode; ++node)
+    for (int node = 0; node < kFxNodes; ++node)
         for (int input = 0; input < fxInputCount(node); ++input)
             if (value(fxInputIndex(node, input, FxInputField::From)) != 0.0)
                 changes.push_back({fxInputIndex(node, input, FxInputField::From), 0.0});
@@ -541,6 +858,9 @@ void View::setFxGraph(bool on, bool asked) {
                     removeSlot(m.source, m.slot);
             changes.push_back({paramIndex(split, SplitParam::Used), 0.0});
         }
+    for (int sum = 0; sum < kFxSums; ++sum)
+        if (fxNodeShown(fxSumNode(sum)))
+            changes.push_back({paramIndex(sum, SumParam::Used), 0.0});
     changes.push_back({paramIndex(GlobalParam::FxGraph), on ? 1.0 : 0.0});
     if (on) { // wired as the chain ran, its nodes in a row (two past six)
         const std::vector<int> chain = fxChain();
@@ -590,11 +910,15 @@ void View::fxGraphWidgets(std::vector<Widget> &list) const {
     }
     // The nodes, each with its edge to wire it from (a split its bands' ports), and the input's port.
     add(Kind::FxPort, inRect(), -1, kFxPortIn, -1);
-    for (int node = 0; node < kFxInputNodes; ++node) {
-        if (!fxNodeShown(node))
+    for (int node = 0; node < kFxNodes; ++node) {
+        if (!placed(node) || !fxNodeShown(node))
             continue;
         const Rect r = nodeRect(node, fxNodeCenter(node));
-        if (node < kFxSlots) {
+        if (const int sum = fxNodeSum(node); sum >= 0) {
+            add(Kind::FxNode, r, -1, node);
+            const Point p = fxPortPoint(fxSumPort(sum), {});
+            add(Kind::FxPort, {p.x - 8.0f, p.y - 8.0f, 16.0f, 16.0f}, -1, fxSumPort(sum), node);
+        } else if (node < kFxSlots) {
             add(Kind::FxPort, r.inset(-kEdgeOut), -1, fxSlotPort(node), node);
             add(Kind::FxNode, r.inset(kEdgeIn), -1, node);
         } else {
@@ -607,6 +931,20 @@ void View::fxGraphWidgets(std::vector<Widget> &list) const {
                     add(Kind::FxPort, {p.x - 8.0f, p.y - 8.0f, 16.0f, 16.0f}, -1, fxBandPort(split, band), node);
                 }
         }
+    }
+    // Where the wires leave their ports, over the ports: dragged onto another, they come from there. Off a band's
+    // dot or the input's box a little, so the dot still starts a new wire.
+    for (const FxWireRef &r : wires) {
+        const int level = fxInputIndex(r.node, r.input, FxInputField::Level);
+        const Point to = fxNodeCenter(r.node);
+        const int from = fxPortNode(r.port);
+        const bool slot = from >= 0 && from < kFxSlots;
+        const Wire w = fxWireShape(slot ? fxNodeCenter(from) : fxPortPoint(r.port, to), slot, r.node, to,
+                                   wireBend(level));
+        const Point dir = normalize({w.control.x - w.start.x, w.control.y - w.start.y});
+        const float out = slot ? 0.0f : 8.0f; // past a band's dot or the input's box, which start new wires
+        add(Kind::FxWireStart, wireStartGrip({w.start.x + dir.x * out, w.start.y + dir.y * out}, dir), level, r.node,
+            r.input);
     }
     // Then the labels and arrowheads on top.
     for (const FxWireRef &r : wires) {
@@ -624,7 +962,7 @@ void View::fxGraphWidgets(std::vector<Widget> &list) const {
                            drag_.widget.param == level);
         if (open)
             add(Kind::FxLabelRemove, {label.right() + 2.0f, label.y, 16.0f, 16.0f}, level, r.node, r.input);
-        add(Kind::FxWireEnd, arrowGrip(w.end, w.tangent), level, r.node, r.input);
+        add(Kind::FxWireEnd, wireEndGrip(w.end, w.tangent), level, r.node, r.input);
     }
 }
 
@@ -705,6 +1043,9 @@ bool View::fxGraphPress(const Widget &w, Point p) {
     case Kind::FxWireEnd:
         drag_.kind = DragKind::FxRewire;
         return true;
+    case Kind::FxWireStart:
+        drag_.kind = DragKind::FxRewireFrom;
+        return true;
     case Kind::FxWire:
         drag_.kind = DragKind::FxBend;
         drag_.startValue = wireBend(w.param);
@@ -721,8 +1062,11 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         return true;
     }
     case Kind::FxNodeRemove:
-        removeSplit(w.a - kFxSlots);
+        removeFxNode(w.a);
         hover_.reset();
+        return true;
+    case Kind::FxSumAdd:
+        addSum();
         return true;
     case Kind::SplitPoint:
         drag_.kind = DragKind::SplitPoint;
@@ -738,9 +1082,8 @@ bool View::fxGraphPress(const Widget &w, Point p) {
 void View::fxGraphDrag(Point p) {
     switch (drag_.kind) {
     case DragKind::FxNode: {
-        const Point start = fxNodeCenter(drag_.widget.a);
-        (void)start;
-        const Point norm = fxNodeNorm({p.x, p.y});
+        // Ctrl held, onto the grid's nearest point it fits at.
+        const Point norm = fxNodeNorm(ctrlHeld_ ? fxGridPoint(drag_.widget.a, p) : p);
         UiLayout &layout = controller_.layout();
         layout.fxNodeX[drag_.widget.a] = norm.x;
         layout.fxNodeY[drag_.widget.a] = norm.y;
@@ -783,6 +1126,19 @@ void View::fxGraphRelease(Point p) {
         if (drag_.moved)
             fxConnect(drag_.widget.a, fxNodeAtPoint(p));
         break;
+    case DragKind::FxRewireFrom:
+        if (drag_.moved) {
+            if (const int port = fxPortAtPoint(p); port >= 0) {
+                fxRewireFrom(drag_.widget.a, drag_.widget.b, port);
+            } else { // let go of off the ports, the wire goes, with its modulation
+                const UndoScope step(controller_);
+                std::vector<std::pair<int, double>> changes;
+                fxRemoveWire(drag_.widget.a, drag_.widget.b, changes);
+                editMany(changes);
+                fxSyncOrder();
+            }
+        }
+        break;
     case DragKind::FxRewire:
         if (drag_.moved) {
             const int into = fxNodeAtPoint(p);
@@ -800,9 +1156,14 @@ void View::fxGraphRelease(Point p) {
 void View::paintFxGraph(Canvas &c) {
     const Rect area = fxGraphArea();
     c.fillRect(area, kDisplayColor, 8.0f);
+    if (fxGridShown()) { // under everything, the point a node dragged lands on lit
+        const Point target = drag_.kind == DragKind::FxNode ? fxNodeCenter(drag_.widget.a) : Point{};
+        paintGridMarks(c, fxNodeArea(), kFxGridCols, kFxGridRows, drag_.kind == DragKind::FxNode ? &target : nullptr);
+    }
     const std::vector<FxWireRef> wires = fxWires();
     const int selected = fxSelectedNode();
     const bool rewiring = drag_.kind == DragKind::FxRewire && drag_.moved;
+    const bool rewiringFrom = drag_.kind == DragKind::FxRewireFrom && drag_.moved;
     if (wires.empty() && fxChain().empty())
         c.text({area.x + 60.0f, area.center().y - 40.0f, area.w - 120.0f, 20.0f}, tr(Str::HintFxGraph), 10.5f, kFaint);
 
@@ -811,17 +1172,22 @@ void View::paintFxGraph(Canvas &c) {
             return kDim;
         if (const int band = fxPortBand(port); band >= 0)
             return bandColor(band);
+        if (fxPortSum(port) >= 0)
+            return sumColor();
         return fxColor(fxPortSlot(port));
     };
     // The wires, each in the color of what it comes from, with its arrowhead and its level.
     for (const FxWireRef &r : wires) {
         const int level = fxInputIndex(r.node, r.input, FxInputField::Level);
         const bool moving = rewiring && drag_.widget.a == r.node && drag_.widget.b == r.input;
+        const bool movingFrom = rewiringFrom && drag_.widget.a == r.node && drag_.widget.b == r.input;
         const Point to = moving ? drag_.now : fxNodeCenter(r.node);
         const int from = fxPortNode(r.port);
-        const bool slot = from >= 0 && from < kFxSlots;
-        const Wire w = bentWireBy(slot ? fxNodeCenter(from) : fxPortPoint(r.port, to), to,
-                                  moving ? 0.0f : wireBend(level), [slot](Point) { return slot ? kFxNodeR : 0.0f; },
+        const bool slot = from >= 0 && from < kFxSlots && !movingFrom;
+        // Moved by its start, it runs straight from the mouse.
+        const Point start = movingFrom ? drag_.now : slot ? fxNodeCenter(from) : fxPortPoint(r.port, to);
+        const Wire w = bentWireBy(start, to, moving || movingFrom ? 0.0f : wireBend(level),
+                                  [slot](Point) { return slot ? kFxNodeR : 0.0f; },
                                   [&](Point dir) { return moving ? 0.0f : nodeExtentOf(r.node, dir); });
         const double amount = value(level);
         const bool lit = (hover_ && (hover_->kind == Kind::FxWire || hover_->kind == Kind::FxLabel ||
@@ -832,7 +1198,16 @@ void View::paintFxGraph(Canvas &c) {
         c.curve(w.start, w.control, w.end, color.alpha(amount > 0.0 ? 0.45f + 0.5f * static_cast<float>(amount) : 0.4f),
                 lit ? 2.4f : 1.6f, amount <= 0.0);
         arrowHead(c, w.end, w.tangent, color);
-        if (moving)
+        if (movingFrom)
+            c.fillCircle(w.start, 3.5f, color);
+        // Its ends under the mouse, which drag: a circle around its arrowhead or its start.
+        if (hover_ && drag_.kind == DragKind::None && hover_->a == r.node && hover_->b == r.input) {
+            if (hover_->kind == Kind::FxWireEnd)
+                wireEndHighlight(c, w.end, w.tangent, color);
+            else if (hover_->kind == Kind::FxWireStart)
+                wireStartHighlight(c, w.start, color);
+        }
+        if (moving || movingFrom)
             continue;
         const Rect label = labelRect(w.label);
         const bool hot = hover_ && (hover_->kind == Kind::FxLabel || hover_->kind == Kind::FxLabelRemove) &&
@@ -855,6 +1230,17 @@ void View::paintFxGraph(Canvas &c) {
         const Point start = fxPortPoint(port, drag_.now);
         c.line(start, drag_.now, portColor(port), 1.6f, true);
     }
+    if (rewiringFrom) { // the port it would come from, ringed: a band's dot, or its node
+        const int port = fxPortAtPoint(drag_.now);
+        if (const int band = fxPortBand(port); band >= 0)
+            c.strokeCircle(fxBandPortAt(fxNodeCenter(fxSplitNode(fxPortSplit(port))), band), kFxPortR + 4.0f, kAccent,
+                           1.5f);
+        else if (port == kFxPortIn)
+            c.strokeRect(inRect().inset(-5.0f), kAccent, 1.5f, 8.0f);
+        else if (port >= 0)
+            c.strokeRect(nodeRect(fxPortSlot(port), fxNodeCenter(fxPortSlot(port))).inset(-5.0f), kAccent, 1.5f,
+                         kFxNodeR + 5.0f);
+    }
     if ((drag_.kind == DragKind::FxConnect || rewiring) && drag_.moved) {
         const int target = fxNodeAtPoint(drag_.now);
         if (target >= 0 && target != drag_.widget.a)
@@ -874,14 +1260,27 @@ void View::paintFxGraph(Canvas &c) {
     endBox(nodeRect(kFxOutNode, fxOutCenter()), Str::NodeFxOut, false);
 
     // The nodes: an effect a circle with its icon and its name under it, a split a box with its bands' ports.
-    for (int node = 0; node < kFxInputNodes; ++node) {
-        if (!fxNodeShown(node))
+    for (int node = 0; node < kFxNodes; ++node) {
+        if (!placed(node) || !fxNodeShown(node))
             continue;
         const Point center = fxNodeCenter(node);
         const bool isSelected = node == selected;
         const bool edge = (hover_ && hover_->kind == Kind::FxPort && hover_->b == node) ||
                           (drag_.kind == DragKind::FxConnect && drag_.widget.b == node);
-        if (node < kFxSlots) {
+        if (const int sum = fxNodeSum(node); sum >= 0) { // a small box with a sigma, its output's dot on its right edge
+            const Rect r = nodeRect(node, center);
+            const Color color = sumColor();
+            if (isSelected)
+                c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, 9.0f);
+            c.fillRect(r, isSelected ? color.alpha(kSelectedFill) : kCardColor, 6.0f);
+            c.strokeRect(r, color, 1.6f, 6.0f);
+            sumIcon(c, {center.x - 6.0f, center.y - 7.0f, 12.0f, 14.0f}, color);
+            c.text({center.x - 60.0f, r.bottom() + 3.0f, 120.0f, 14.0f}, trf(Str::NodeSum, {std::to_string(sum + 1)}),
+                   9.5f, isSelected ? kText : kDim, Align::Center, true);
+            const Point port = fxPortPoint(fxSumPort(sum), {});
+            c.fillCircle(port, kFxPortR + (edge ? 1.5f : 0.0f), color);
+            c.strokeCircle(port, kFxPortR + (edge ? 1.5f : 0.0f), kCardColor, 1.2f);
+        } else if (node < kFxSlots) {
             const FxType type = fxSlotType(node);
             const bool on = value(paramIndex(node, FxParam::Enabled)) >= 0.5;
             const Color color = on ? fxTypeColor(type) : kFaint;
@@ -920,8 +1319,10 @@ void View::paintFxGraph(Canvas &c) {
     // The node it shows, in the inspector.
     if (selected >= 0 && selected < kFxSlots)
         paintFxCard(c, selected, fxInspector(selected), false);
-    else if (selected >= kFxSlots)
+    else if (fxNodeSplit(selected))
         paintSplitCard(c, selected - kFxSlots, fxInspector(selected));
+    else if (fxNodeSum(selected) >= 0)
+        paintSumCard(c, fxNodeSum(selected), fxInspector(selected));
     else {
         const Rect card = fxInspectorCard();
         c.strokeRect(card, kBorder, 1.0f, 8.0f, true);

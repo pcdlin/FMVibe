@@ -602,6 +602,8 @@ View::MenuNode View::cascadeCategories() const {
         auto nodeName = [&](int node) -> std::string {
             if (node == kFxOutNode)
                 return tr(Str::NodeFxOut);
+            if (fxNodeSum(node) >= 0)
+                return trf(Str::NodeSum, {std::to_string(fxNodeSum(node) + 1)});
             if (node >= kFxSlots)
                 return trf(Str::NodeSplit, {std::to_string(node - kFxSlots + 1)});
             const auto at = std::find(chain.begin(), chain.end(), node);
@@ -627,7 +629,9 @@ View::MenuNode View::cascadeCategories() const {
                 label += std::string(" ") + bands[fxPortBand(w.port)];
             label += " \xE2\x86\x92 " + nodeName(w.node);
             wires.children.push_back(targetPick(label, fxInputIndex(w.node, w.input, FxInputField::Level),
-                                                from >= 0 && from < kFxSlots ? fxColor(from) : splitColor()));
+                                                from >= 0 && from < kFxSlots ? fxColor(from)
+                                                : fxPortSum(w.port) >= 0     ? sumColor()
+                                                                             : splitColor()));
         }
         if (!wires.children.empty())
             effects.children.push_back(std::move(wires));

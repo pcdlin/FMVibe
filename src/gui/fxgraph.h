@@ -21,7 +21,16 @@ inline Color splitColor() {
     return fxTypeColor(FxType::MultiDyn);
 }
 
+// The sums' own color, recombining what was split apart: the widener's.
+inline Color sumColor() {
+    return fxTypeColor(FxType::Widener);
+}
+
 // The effect cards' titles (see view.cpp).
 const char *fxTitle(FxType type);
+
+// A graph's grid points, while Ctrl is held: a faint + at each, and at `target` (the point a node dragged lands on, if
+// any) a larger one in the accent.
+void paintGridMarks(Canvas &c, Rect area, int cols, int rows, const Point *target);
 
 } // namespace fmvibe::gui::detail

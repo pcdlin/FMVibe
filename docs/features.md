@@ -249,7 +249,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     2.5 kHz to begin with), with the same Linkwitz-Riley crossovers (24 dB per octave) as the 3-band dynamics: the
     bands sum back flat, and each sends its part on along its own wires, say the lows through a shaper and a
     compressor and the highs through a delay and a reverb. High stays a third of an octave above Low. The splits
-    don't take any of the 32 effects' places. Every wire has a level (0–100 %, full as it is connected), which
+    don't take any of the 32 effects' places, and neither do up to four **sums**, which add up as many as eight
+    wires into one output, so paths that were split apart can go on together (into two effects at once, say). Every wire has a level (0–100 %, full as it is connected), which
     modulation moves like any knob, as can the splits' crossovers; the output takes up to eight wires. The effects
     run in the order the wires make; a wire that would loop back (which the editor doesn't make) reads what its
     source put out 64 samples before. A wire's level glides as it moves, and a wire connected, moved or taken away
@@ -499,6 +500,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       couldn't take it. Let go of off the nodes and the bus (where it turns faint), the route goes, with its
       modulation, as its right-click menu's Disconnect does. The feedback loop above an operator or a shaper has no
       arrowhead.
+    - A wire's ends drag from a little way along it too: under the mouse, a faint circle rings its arrowhead, or
+      its start, with a dot where it leaves its node.
+    - A wire's start, where it leaves its node, drags the other way: let go of on
+      another node, the route comes from there instead, with its amount, its mode (while it still goes into an
+      operator) and its modulation, as one undo step; a line to OUT's start onto another node sends that node out in
+      its place. It can't come from a node that has that route already. Let go of off the nodes, the route goes.
     - Under the mouse, a wire's or OUT label opens into a pill, its depth staying where it was: on its right an ×
       that removes the route with its modulation (one undo step, as Disconnect), and on its left, for a route into
       an operator (its feedback aside), its mode's glyph (φ for Phase, a straight line for Linear FM, a steepening
@@ -523,7 +530,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it. The node the inspector shows
       is filled with its color, like its tab's plate, and ringed in it a little way out; a switched-off one shown
       there has its ghost filled the same way. A node dragged onto another
-      stops short of it, held 10 px off its outline and sliding round it, and goes on once the mouse is past.
+      stops short of it, held 10 px off its outline and sliding round it, and goes on once the mouse is past. With
+      Ctrl held, a node dragged goes onto the nearest point of a coarse grid (12 across, 5 down, the cells' centers
+      over the area nodes may sit in) where it fits clear of the others, the next free one if that is taken; pressed
+      or let go of mid-drag, Ctrl snaps or frees it at once. While Ctrl is held over the graph, a faint + marks each
+      of the grid's points, and the one a dragged node sits on is lit. The keys reach the editor while it has the
+      keyboard; otherwise the marks show at the next mouse move.
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
     panel's height, as far from its top as from its bottom; every cell is a route; the row and
@@ -642,17 +654,27 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     is refused with a message, as is one into a node whose inputs are all taken. Each wire, in the color of what it
     comes from, has its level on a label at its middle: drag it up and down, type a value into it, drop a source's
     handle on it to modulate it, or, with the mouse over it, click the x beside it to remove the wire. Drag a wire's
-    arrowhead onto another node to move it there (with its level and modulation), or off the nodes to remove it;
+    arrowhead onto another node to move it there (with its level and modulation), or its start (a dot there under
+    the mouse, a little off a band's dot or IN's box) onto another effect, a split (the band nearest where it is let
+    go of) or IN to have it come from there, or either off the nodes to remove it;
     drag the wire sideways to bend it, and double-click it to straighten it back. A click on a node shows it in the
-    card at the right, and a drag moves it (an undo step). + EFFECT puts the new effect after the node picked,
-    taking over the wires out of it (after IN when a split or nothing is picked, and out to OUT when nothing went on
-    from there), and + SPLIT does the same with a split of two bands, both going where the wires went (the high
-    band's wire bowing up, the low one's down), so the sound stays as it was until something goes into a band.
+    card at the right, and a drag moves it (an undo step); Ctrl+drag puts it on the graph's grid, 12 across and 4
+    down between IN and OUT, as in the routing graph. + EFFECT puts the new effect after the node picked,
+    taking over the wires out of it: an effect's output, or a split's band, the first from the low one up that has
+    no effect of its own yet (one it feeds that takes nothing else in), else the low band, ahead of what is there.
+    It goes after IN when nothing is picked, and out to OUT when nothing went on from there. It sits right of what it
+    goes after (on a split's band, level with that band), the nodes after it moving right to make room, clear of the
+    others. + SPLIT puts a split of two bands there together with a sum its bands meet again in, which goes
+    where the wires went (the high band's wire into it bowing up, the low one's down), so the sound stays as it was
+    until something goes into a band; with all four sums taken, the bands go where the wires went themselves.
+    + SUM puts a sum there on its own, a small box with a sigma and its output's dot on its right edge; its card
+    says how many wires go into it. Removing a sum joins what went into it, if it came from one place, to where it
+    went, as removing an effect or a split does.
     Switched to three bands (by BANDS or the wheel over it) while nothing is wired from its middle band, a split
     sends the middle band where its high band goes, at the high band's level and in a straight wire, so the sound
     still stays as it was; middle-band wires kept while it had two bands come back as they were. Removing an effect or a split joins what went into it, if it
-    came from one place, to where it went. Right-click an effect's node for its card's menu, a split's to remove
-    it. The nodes' places are saved with the patch, and the node picked too; the effects' count beside + EFFECT and
+    came from one place, to where it went. Right-click an effect's node for its card's menu, a split's or a sum's
+    to remove it. The nodes' places are saved with the patch, and the node picked too; the effects' count beside + EFFECT and
     the target menu follow the graph's order.
   - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
     in the order their cards show, then the macros, the note source, the mod wheel and velocity), the first of a
@@ -1178,12 +1200,12 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,220 of FMVibe's 18,360 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,220 of FMVibe's 18,428 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
 modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the freeform LFO shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
-counts, the chain order, the effects graph (its switch, splits and wires), the feedback's route modes and the
+counts, the chain order, the effects graph (its switch, splits, sums and wires), the feedback's route modes and the
 retired fields. They are
 saved with the project and in presets like the others, the editor's sources modulate them and its history undoes
 them, but hosts can't automate them and don't record their edits: an edit of one marks the project changed

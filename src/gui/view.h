@@ -110,6 +110,9 @@ public:
     void pasteText(std::string_view text);
     // Commits the value typed, if it reads as one, or drops it.
     void endTyping(bool commit);
+    // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
+    // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
+    bool setCtrl(bool held);
 
 private:
     enum class Kind {
@@ -139,6 +142,8 @@ private:
         WireLabel,    // param = route amount, a = from node, b = to node
         OutLabel,     // param = output level, a = node
         WireEnd,      // param = the route, a = from node, b = to node (kNodes: the output): its arrowhead, to drag elsewhere
+        WireStart,    // param = the route, a = from node, b = to node (kNodes: the output): where it leaves its node, to
+                      // drag onto another node, which it then comes from
         Wire,         // param = the route, a = from node, b = to node: along its curve; drag to bend it
         LabelMode,    // param = the route's mode, a = from node, b = to operator: the left part of a wire label's pill
                       // (see labelPill()), its mode's glyph; a click opens the list of modes, the wheel steps them
@@ -255,14 +260,16 @@ private:
         BendWheel,    // drag; springs back to center on release
         // The effects graph (see fxgraph.cpp).
         FxMode,       // b = 0 the chain, 1 the graph: the switch at the FX panel's top right
-        FxSplitAdd,   // + SPLIT: puts a split in the graph
+        FxSplitAdd,   // + SPLIT: puts a split in the graph, with a sum its bands meet again in
+        FxSumAdd,     // + SUM: puts a sum in the graph
         FxNode,       // a = node: a click shows it in the inspector, a drag moves it
         FxPort,       // a = port, b = its node (-1 for the input): drag from it onto a node to wire them
         FxWire,       // param = its level, a = node it goes into, b = its input: along its curve; drag to bend it
         FxWireEnd,    // param = its level, a = node, b = input: its arrowhead, to drag onto another node or away
+        FxWireStart,  // param = its level, a = node, b = input: where it leaves its port, to drag onto another one
         FxLabel,      // param = its level, a = node, b = input: its level in numbers; drag it, or drop a handle on it
         FxLabelRemove, // param = its level, a = node, b = input: the x beside the label; removes the wire
-        FxNodeRemove, // a = node: the x on the inspector's card of a split
+        FxNodeRemove, // a = node: the x on the inspector's card of a split or a sum
         SplitPoint,   // param = the crossover, a = split, b = 0 low, 1 high: its handle on the split's display
     };
 
@@ -301,6 +308,7 @@ private:
         Node,
         Connect,
         Reroute,
+        RerouteFrom, // a route by its start, onto another node to come from
         ModSource,
         EnvPoint,
         EnvCurve,
@@ -325,6 +333,7 @@ private:
         FxNode,     // a node of the effects graph, moved
         FxConnect,  // from a port of the effects graph, to wire it into a node
         FxRewire,   // a wire of the effects graph by its arrowhead
+        FxRewireFrom, // a wire of the effects graph by its start, onto another port to come from
         FxBend,     // a wire of the effects graph, sideways
         SplitPoint, // a split's crossover handle, across
     };
@@ -559,7 +568,11 @@ private:
     void connect(int from, int to);
     // Moves the route from `from` into `to` over to `into` (kNodes: the output), with its amount and modulation.
     void reroute(int from, int to, int into);
-    // The route whose arrowhead is being dragged elsewhere, which the graph then draws following the mouse; else -1.
+    // Moves the route from `from` into `to` (kNodes: the output) over to come from `source`, with its amount, mode and
+    // modulation.
+    void rerouteFrom(int from, int to, int source);
+    // The route whose arrowhead or start is being dragged elsewhere, which the graph then draws following the mouse;
+    // else -1.
     int rerouting() const;
     // Whether a source's handle let go of on `w` modulates what it shows: a knob, a route's label or matrix cell, or
     // a depth bar, as the drag's overlay rings them; never the source's own output (the mod wheel's knob).
@@ -627,14 +640,27 @@ private:
     bool fxConnect(int port, int node);
     // Moves a wire's end onto another node, with its level and modulation; -1 removes it.
     void fxRewire(int node, int input, int into);
+    // Moves a wire's start onto another port, which it then comes from, keeping its level and modulation.
+    void fxRewireFrom(int node, int input, int port);
+    // The port a wire's start let go of at `p` comes from: the input's box, an effect, or a split's band nearest `p`;
+    // -1 for none.
+    int fxPortAtPoint(Point p) const;
     void fxRemoveWire(int node, int input, std::vector<std::pair<int, double>> &changes);
-    // Changes that wire `node` (just added) after the node the inspector shows, taking over its wires out, or after
-    // the input when none is shown.
+    // Changes that wire `node` (just added) after the node the inspector shows, taking over its wires out: an effect's
+    // output, or one of a split's bands (the first from the low one up without an effect of its own); after the input
+    // when none is shown.
     void fxInsertAfterSelected(int node, std::vector<std::pair<int, double>> &changes);
     // The chain's places in the graph's order, so what goes by the chain (the count, the target menu) follows it.
     void fxSyncOrder();
-    void addSplit();
+    void addSplit(); // with a sum its bands meet again in, while one is free
     void removeSplit(int split);
+    // A sum after the node the inspector shows, taking over its wires out; one taken out joins what went into it, if it
+    // came from one place, to where it went.
+    void addSum();
+    void removeSum(int sum);
+    void removeFxNode(int node); // an effect, a split or a sum
+    void sumCardWidgets(std::vector<Widget> &list, int sum, Rect card) const;
+    void paintSumCard(Canvas &c, int sum, Rect card);
     // A split's band count from its card. Going to three with nothing wired from the middle band, it goes where the
     // high band goes, at the high band's level, so the sound stays as it was.
     void setSplitBands(int split, int bands);
@@ -659,6 +685,13 @@ private:
     int fxNodeAtPoint(Point p) const;
     // Whether `p` hits a wire of the graph (near its curve) or a port (an effect's edge, a band's dot, the input's box).
     bool fxHit(const Widget &w, Point p) const;
+    // Ctrl+drag: where a node dragged to `want` goes on its graph's grid, the nearest point it fits at clear of the other
+    // nodes (in the routing graph and in the effects graph); and whether the grid's points show now, and over what.
+    Point routingGridPoint(int node, Point want) const;
+    Point fxGridPoint(int node, Point want) const;
+    bool routingGridShown() const;
+    bool fxGridShown() const;
+    static Rect fxNodeArea(); // where the effects graph's nodes' centers may go
     // Measured in card places (the parametric EQ's card takes more than one): how far the row is scrolled,
     // where the card at `index` of `chain` starts in the row, and so its screen place, 0..6 on screen and
     // fractions while it scrolls partly out.
@@ -1138,6 +1171,7 @@ private:
     }
     // The amount of the settings slider being dragged (DragKind::Glow): the glow's, or the lines'.
     float &sliderDragged() { return drag_.widget.kind == Kind::SettingsLinks ? linksDragged_ : glowDragged_; }
+    bool ctrlHeld_ = false; // see setCtrl()
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxChain, or -1
     static constexpr int kConfirmFxChain = 3; // asking before the effects graph goes back to a chain
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file

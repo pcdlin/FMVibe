@@ -393,7 +393,6 @@ void Effects::reset() {
     clearGraph();
     for (auto &node : wires_)
         node.fill(Wire{});
-    outWires_.fill(Wire{});
 }
 
 double Effects::delayTarget(int slot, int side, const ParamValues &p, double tempo) const {
@@ -678,13 +677,15 @@ bool Effects::nodeInGraph(int node, const ParamValues &p) const {
         return true;
     if (node < kFxSlots) // an empty slot fading out still runs
         return fxType(p[paramIndex(node, FxParam::Type)]) != FxType::None || slots_[node].fade > 0.0;
+    if (const int sum = fxNodeSum(node); sum >= 0)
+        return p[paramIndex(sum, SumParam::Used)] >= 0.5;
     return p[paramIndex(node - kFxSlots, SplitParam::Used)] >= 0.5;
 }
 
 int Effects::portNode(int port, const ParamValues &p) const {
     if (port == kFxPortIn)
         return -1;
-    const int node = fxPortSlot(port) >= 0 ? fxPortSlot(port) : fxSplitNode(fxPortSplit(port));
+    const int node = fxPortNode(port);
     return nodeInGraph(node, p) ? node : -2;
 }
 
@@ -692,12 +693,15 @@ void Effects::orderGraph(const ParamValues &p) {
     // Kahn's algorithm over the wires connected, whatever their levels, so modulation never changes the order. The
     // nodes a loop holds run after the others, by number: a wire from a node that hasn't run yet in a chunk reads what
     // it put out the chunk before.
-    std::array<int, kFxInputNodes> waiting{};
-    std::array<bool, kFxInputNodes> present{}, done{};
-    std::array<std::array<int, kFxInputs>, kFxInputNodes> from{};
-    for (int node = 0; node < kFxInputNodes; ++node) {
-        present[node] = nodeInGraph(node, p);
-        for (int input = 0; input < kFxInputs; ++input) {
+    // The output runs last of all, and isn't ordered.
+    std::array<int, kFxNodes> waiting{};
+    std::array<bool, kFxNodes> present{}, done{};
+    std::array<std::array<int, kFxSumInputs>, kFxNodes> from{};
+    for (auto &inputs : from)
+        inputs.fill(-2);
+    for (int node = 0; node < kFxNodes; ++node) {
+        present[node] = node != kFxOutNode && nodeInGraph(node, p);
+        for (int input = 0; input < fxInputCount(node) && node != kFxOutNode; ++input) {
             const int port = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
             from[node][input] = port >= 0 ? portNode(port, p) : -2;
             if (present[node] && from[node][input] >= 0)
@@ -707,19 +711,19 @@ void Effects::orderGraph(const ParamValues &p) {
     graphOrderCount_ = 0;
     for (bool moved = true; moved;) {
         moved = false;
-        for (int node = 0; node < kFxInputNodes; ++node) {
+        for (int node = 0; node < kFxNodes; ++node) {
             if (!present[node] || done[node] || waiting[node] > 0)
                 continue;
             done[node] = true;
             moved = true;
             graphOrder_[graphOrderCount_++] = node;
-            for (int other = 0; other < kFxInputNodes; ++other)
-                for (int input = 0; input < kFxInputs; ++input)
+            for (int other = 0; other < kFxNodes; ++other)
+                for (int input = 0; input < kFxSumInputs; ++input)
                     if (from[other][input] == node)
                         --waiting[other];
         }
     }
-    for (int node = 0; node < kFxInputNodes; ++node) // on a loop
+    for (int node = 0; node < kFxNodes; ++node) // on a loop
         if (present[node] && !done[node])
             graphOrder_[graphOrderCount_++] = node;
 }
@@ -727,9 +731,8 @@ void Effects::orderGraph(const ParamValues &p) {
 void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamValues &p) {
     for (int c = 0; c < 2; ++c)
         std::fill_n(mix[c], n, 0.0f);
-    const bool out = node == kFxOutNode;
     for (int input = 0; input < fxInputCount(node); ++input) {
-        Wire &w = out ? outWires_[input] : wires_[node][input];
+        Wire &w = wires_[node][input];
         const int set = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
         // A wire moved or taken away fades out from where it came first; a new one fades in from silence, both along a
         // raised cosine over 5 ms, as a parametric EQ band switched does. Its level glides across the chunk.
@@ -752,6 +755,9 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
             if (const int slot = fxPortSlot(w.port); slot >= 0) {
                 from[0] = slotOut_[slot][0].data();
                 from[1] = slotOut_[slot][1].data();
+            } else if (const int sum = fxPortSum(w.port); sum >= 0) {
+                from[0] = sumOut_[sum][0].data();
+                from[1] = sumOut_[sum][1].data();
             } else {
                 const int split = fxPortSplit(w.port), band = fxPortBand(w.port);
                 from[0] = bandOut_[split][band][0].data();
@@ -819,6 +825,9 @@ void Effects::processGraph(float *const *io, uint32_t n, const ParamValues &p, d
             std::copy_n(mix[1], n, slotOut_[node][1].data());
             float *const out[2] = {slotOut_[node][0].data(), slotOut_[node][1].data()};
             runSlot(node, out, n, p, tempo, pitch, keep);
+        } else if (const int sum = fxNodeSum(node); sum >= 0) { // what goes in, as it is
+            std::copy_n(mix[0], n, sumOut_[sum][0].data());
+            std::copy_n(mix[1], n, sumOut_[sum][1].data());
         } else {
             runSplit(node - kFxSlots, n, p, mix);
         }
@@ -829,6 +838,9 @@ void Effects::processGraph(float *const *io, uint32_t n, const ParamValues &p, d
 }
 
 void Effects::clearGraph() {
+    for (auto &out : sumOut_)
+        for (auto &side : out)
+            side.fill(0.0f);
     for (auto &out : slotOut_)
         for (auto &side : out)
             side.fill(0.0f);

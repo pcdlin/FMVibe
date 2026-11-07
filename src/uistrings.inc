@@ -139,6 +139,7 @@ STR(ParamFxOrder, "FX Order")
 STR(ParamFxPosition, "FX Order {1}")
 STR(ParamFxGraph, "FX Graph") // the effects running as a graph rather than a chain
 STR(ParamSplit, "Split {1}") // a split in the effects graph, by number; its field's name follows
+STR(ParamSum, "Sum {1}") // a sum in the effects graph, by number; its field's name follows
 STR(ParamSplitUsed, "Used")
 STR(ParamSplitBands, "Bands")
 STR(ParamSplitLow, "Low Crossover")
@@ -528,6 +529,7 @@ STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonAddSplit, "SPLIT") // after a drawn plus: puts a split in the effects graph
+STR(ButtonAddSum, "SUM") // after a drawn plus: puts a sum in the effects graph
 STR(ButtonToChain, "To Chain") // the confirm dialog's button that turns the effects graph back into a chain
 STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
 STR(ButtonEnv, "ENV")
@@ -549,6 +551,8 @@ STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to togg
 STR(HintFx, "click icon: toggle  ·  drag title: reorder")
 STR(HintFxGraph, "Add an effect or a split, then drag from a node's edge to wire it") // the empty effects graph
 STR(HintFxInspector, "Click a node to edit it here") // the graph's inspector, with no node to show
+STR(HintSum, "Mixes its wires together.") // a sum's card: what it does, in a line that fits
+STR(CaptionSumWires, "{1} of {2} wires in") // a sum's card: how many wires go into it, of how many it takes
 // What the note source's and velocity's curves show:
 STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
 STR(HintVelocityAxes, "across: velocity  ·  up: output")
@@ -659,6 +663,7 @@ STR(NodeShaper, "shaper {1}")
 STR(NodeFxIn, "IN") // the effects graph's input, the voices
 STR(NodeFxOut, "OUT") // its output
 STR(NodeSplit, "SPLIT {1}") // a split in the effects graph, by number
+STR(NodeSum, "SUM {1}") // a sum in the effects graph, by number
 
 // --- The editor: tooltips
 
@@ -667,6 +672,7 @@ STR(TipModPill, "{1} more. Click to list") // the "+n" pill in place of depth ha
 STR(TipNoteDisplay, "Edit note curve")
 STR(TipVelocityDisplay, "Edit velocity curve")
 STR(TipWireEnd, "Drag to reroute")
+STR(TipWireStart, "Drag onto another node to change where it comes from")
 STR(TipWire, "Drag to bend, double-click resets")
 STR(TipFxChain, "Effects as a chain")
 STR(TipFxGraph, "Effects as a graph: parallel chains and splits")
@@ -674,6 +680,8 @@ STR(TipFxPort, "Drag onto a node to wire it")
 STR(TipFxNode, "Click to edit, drag to move")
 STR(TipRemoveWire, "Remove wire")
 STR(TipRemoveSplit, "Remove split")
+STR(TipRemoveSum, "Remove sum")
+STR(MsgSumsFull, "Only supports up to {1} sums")
 STR(TipRouteMode, "{1}. Click to pick how it modulates") // the mode part of a wire label's pill
 STR(TipRemoveRoute, "Remove route") // the x at the right of a wire or OUT label's pill
 STR(TipRoutePhase, "Phase: adds to where the wave is read")

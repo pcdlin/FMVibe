@@ -285,6 +285,11 @@ EMSCRIPTEN_KEEPALIVE void ui_paint() {
 }
 
 // 1 if what the editor shows changed, so it wants a paint.
+// Ctrl going down or up while the page has the keyboard: a graph's grid shows while it is held.
+EMSCRIPTEN_KEEPALIVE int ui_ctrl(int held) {
+    return view->setCtrl(held != 0) ? 1 : 0;
+}
+
 EMSCRIPTEN_KEEPALIVE int ui_mouse_move(float x, float y, int shift, int ctrl) {
     return view->mouseMove({x, y}, mods(shift, ctrl)) ? 1 : 0;
 }
