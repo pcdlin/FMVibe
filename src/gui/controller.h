@@ -60,7 +60,8 @@ struct UiLayout {
     std::array<std::string, kMacros> macroNames{};
     // The effect slots' and source places' cards folded to a narrow strip, a bit each; saved with the patch,
     // but not undone.
-    uint32_t fxFolded = 0;
+    uint32_t fxFolded = 0;      // the first kFirstFxSlots slots
+    uint32_t fxFoldedLater = 0; // the slots after them
     uint32_t sourcesFolded = 0;
     InspectorTab opTab = InspectorTab::Envelope;
     int scopeCycles = 2;

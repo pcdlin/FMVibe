@@ -95,6 +95,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a slot's Amount scaling its depth, and its aux: velocity scaling a macro's slot in each voice, the mod wheel down
     leaving its target alone; a macro's and velocity's slots bypassed leaving theirs alone; velocity and the note
     source scaling an LFO's slot as its aux from a note's first block;
+  - the FX order changing the result, and a slot past the 16th playing at its place in the chain;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
@@ -129,7 +130,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   loading scaled by as much as their range grew, a version 4 state's ratio loading from its Coarse and
   Fine, their modulations moved onto Ratio (a version 5 state's Coarse and Fine doing nothing), envelope times
   stored past 10 s loading as 10 s, a version 6 state's Glide of 20 s loading as 6 s and its depth on Glide scaled
-  by as much as the range shrank, a layout as large as one gets among them (and one of NaNs,
+  by as much as the range shrank, a version 7 state's chain order loading onto the places (a version 8 state's
+  retired one doing nothing), a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: 16 voices × 6 operators take about a third of what they took
   before the engine's per-block route lists and shared params, which on the development machine was about 22 % of
@@ -310,7 +312,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a filter's and the filter effect's responses moving with the note their key tracking follows (read off the
     rendered pixels);
   - switching effects with their cards' icons (a switched-off one's staying grey under the mouse, read off the
-    rendered pixels), dragging cards by them, and folding cards, the icon staying put;
+    rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
+    too;
   - the right-click menu on knobs;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
     and velocity's handles, displays and curve editors, velocity's handle faint until it modulates something (read
@@ -570,7 +573,7 @@ itself.
 - The VST3 plugin is a single component: one object is its component, processor and edit controller, so
   `getControllerClassId()` has none to name, and the controller's own state is empty (the component's is the whole
   state). Its params are FMVibe's, by the same ids, normalized over each one's range (a stepped one's steps spread
-  as VST3 has them; the chain order has more orders than a step count holds, and passes as continuous). After them
+  as VST3 has them; the retired chain order has more orders than a step count holds, and passes as continuous). After them
   come the MIDI controllers' params (ids from `0x40000000`, `kMidiParamBase`: 130 per channel, CC 0-127, then
   channel pressure and pitch bend), which `IMidiMapping` hands hosts and the process loop turns back into MIDI;
   they are not stored. Param changes and events are sorted by their place in a block and applied there, param
@@ -587,10 +590,12 @@ itself.
   400 + 10·from + to, filter modulation
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past
-  the 80th 12000 + 20·slot, and past the 100th 25000 + 40·slot), source places
+  the 80th 12000 + 20·slot, and past the 100th 25000 + 40·slot; the slots past the first 16 every field
+  26000 + 200·(slot - 16)), source places
   2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
-  17000 + 200·slot), slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's and
+  17000 + 200·slot; the slots past the first 16 every field 30000 + 200·(slot - 16)), the chain's order 33400 + place,
+  slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's and
   velocity's, 9320 + 20 a source by the sources' number), Custom waves' first 32 partials 10000 + 100·op, macros
   11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod wheel's slots 11500+,
   velocity 11600+ (its slots, then its curve and Bipolar), the
@@ -617,7 +622,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,220 of the 12,807 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,220 of the 18,039 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
@@ -641,7 +646,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 7: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 8: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -649,12 +654,15 @@ itself.
   operator's ratio loads from its Coarse and Fine, and their modulations move onto Ratio; before version 6, a slot
   holding the retired three-band compressor loads as a three-band dynamics, while a later state loads one back as
   saved, so a state always loads what was saved; before version 7, a modulation's depth on Glide loads scaled by
-  `1 / kMaxGlideNorm`, since its range now stops at 6 s), followed by the editor layout:
+  `1 / kMaxGlideNorm`, since its range now stops at 6 s; before version 8, the chain's order loads from the retired
+  `RetiredFxOrder`, the rank of the first 16 slots' order, onto its places, a param a place, since 32! wouldn't fit a
+  double), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
-  (each its source + 1 and its target's id + 1, 0 for none) and how shapes are edited (Steps, then Snap).
+  (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap) and which
+  effect cards past the 16th slot are folded.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

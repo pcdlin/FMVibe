@@ -527,7 +527,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
 }
 
 void Effects::process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch) {
-    const FxOrder order = fxOrder(p[paramIndex(GlobalParam::FxOrder)]);
+    const FxOrder order = fxOrder([&p](int index) { return p[index]; });
     const double fadeStep = 1.0 / (0.005 * sampleRate_);
     for (uint32_t done = 0; done < frames; done += kChunk) {
         const uint32_t n = std::min(kChunk, frames - done);

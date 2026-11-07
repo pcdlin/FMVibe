@@ -26,7 +26,7 @@ constexpr size_t kMaxMacroName = 24; // bytes of a macro's name that are saved
 constexpr uint32_t kMaxLayoutFloats = 4096;
 constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
-                  kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods <=
+                  kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 <=
               kMaxLayoutFloats);
 constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
 // The most bytes of a preset chunk read and written: its flag and a preset file's path in UTF-8, past the longest a
@@ -44,7 +44,9 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    set the type) loads as it was saved, so a state loads back what was saved.
 // 7: Glide stops at 6 s (kMaxGlideTime) rather than 20 s. An earlier state's longer glide loads as 6 s, and a depth on
 //    Glide loads larger by as much as its range shrank, swinging it as far as before.
-constexpr uint32_t kStateVersion = 7;
+// 8: The chain has 32 slots, its order a param a place (see fxOrder()); it was one number, the rank of the first 16
+//    slots' order (RetiredFxOrder), which an earlier state's order loads from.
+constexpr uint32_t kStateVersion = 8;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -294,6 +296,8 @@ void layoutFields(Io &io, Layout &ui) {
     // How shapes are edited: steps or points, and snapping to the grid.
     io.number(ui.shapeSteps, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     io.number(ui.shapeSnap, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    // The effect cards folded past the first 16 slots, which the 16 bits above don't reach.
+    io.number(ui.fxFoldedLater, 0.0f, 65535.0f, rounded<uint32_t>);
 }
 
 } // namespace
@@ -488,6 +492,12 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         ratioFromRetired(loaded);
     if (header[1] < 6)
         loadRetiredMultiComp(loaded);
+    if (header[1] < 8) { // the chain's order onto its places
+        const int retired = paramIndex(GlobalParam::RetiredFxOrder);
+        for (const auto &[index, value] : fxOrderChanges(fxOrderFromRetired(loaded[retired])))
+            loaded[index] = value;
+        loaded[retired] = table[retired].def;
+    }
     return true;
 }
 

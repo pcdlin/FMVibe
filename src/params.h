@@ -10,6 +10,8 @@
 #include <limits>
 #include <numbers>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace fmvibe {
 
@@ -23,7 +25,8 @@ constexpr int kFilters = 2;
 constexpr int kForwardFilterLinks = kFilters * (kFilters - 1) / 2;
 constexpr int kFilterLinks = kFilters * kFilters;
 constexpr int kShapers = 2; // per-voice waveshapers, which feed and are fed by the filters and modulate operators
-constexpr int kFxSlots = 16; // places in the effects chain; their order is a param
+constexpr int kFxSlots = 32; // places in the effects chain; their order is a param a place (see fxOrder())
+constexpr int kFirstFxSlots = 16; // the slots the chain had at first; see idOfIndex()
 constexpr int kMaxShapePoints = 64; // per freeform LFO or shaper curve, enough for a step a column on a grid of 32
 constexpr int kMaxNotePoints = 16;  // on the note source's curve
 
@@ -33,7 +36,8 @@ constexpr int kMaxUnison = 16;  // copies per operator
 // Voices is the polyphony limit. Mono plays one voice at a time; Legato (mono only) keeps
 // envelopes running between overlapping notes; Glide slides the pitch from the
 // previous note, on every note when GlideAlways is on, else only between
-// overlapping ones. FxOrder is the order of the effect slots after the voices (see fxOrder()).
+// overlapping ones. RetiredFxOrder was the order of the first kFirstFxSlots effect slots as one number; it does
+// nothing since the chain's order is a param a place (see fxOrder()), kept so the ids after it stay.
 // ModWheel is the mod wheel's position, 0..1: like a macro's knob, it moves only what it is assigned to (see
 // WheelParam).
 enum class GlobalParam {
@@ -47,7 +51,7 @@ enum class GlobalParam {
     Legato,
     Glide,
     GlideAlways,
-    FxOrder,
+    RetiredFxOrder,
     ModWheel,
     Count
 };
@@ -597,7 +601,9 @@ constexpr int kSlotCurveBase = kStripBypassBase + (kAllSources - kMaxSources) * 
 // Phase and hidden.
 constexpr int kRouteSources = kOps + kFilters + kShapers;
 constexpr int kRouteModeBase = kSlotCurveBase + kAllSources * kSlots;
-constexpr int kParamCount = kRouteModeBase + kRouteSources * kOps;
+// The effects chain's order: the slot at each of its kFxSlots places, in the order they run (see fxOrder()).
+constexpr int kFxPositionBase = kRouteModeBase + kRouteSources * kOps;
+constexpr int kParamCount = kFxPositionBase + kFxSlots;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
 // and what voices read with modulation applied. Shapes are only ever read as set.
 constexpr int kModulatedCount = kShapeBase;
@@ -983,6 +989,8 @@ constexpr Section kSections[] = {
     // A block per node a route comes from, in the routing graph's order: ids that were never used, between the
     // shapers' and the filters'.
     {kRouteModeBase, kRouteSources, kOps, 700, 10},
+    // The chain's places, in order.
+    {kFxPositionBase, 1, kFxSlots, 33400, 100},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1010,11 +1018,15 @@ struct SplitSection {
 };
 
 constexpr SplitSection kSplitSections[] = {
-    // Effect slots: the fields added once the 80 had run out, and those added once the next 20 had too.
-    {kFxBase, kFxSlots, kFxParamCount, 80, 1400, 80, 12000, 20, 20, 25000, 40},
+    // Effect slots: the fields added once the 80 had run out, and those added once the next 20 had too. The slots
+    // past the kFirstFxSlots the chain had at first have every field in a range of their own.
+    {kFxBase, kFirstFxSlots, kFxParamCount, 80, 1400, 80, 12000, 20, 20, 25000, 40},
+    {kFxBase + kFirstFxSlots * kFxParamCount, kFxSlots - kFirstFxSlots, kFxParamCount, 200, 26000, 200, 0, 0, 0},
     // Freeform LFO shapes and shaper curves: the points past the 16 they had at first (33 for an LFO's).
     {kShapeBase, kMaxSources, kShapeParamCount, 100, 4000, 100, 15000, 100},
-    {kClipCurveBase, kFxSlots, kShapeParamCount, 49, 7000, 50, 17000, 200},
+    {kClipCurveBase, kFirstFxSlots, kShapeParamCount, 49, 7000, 50, 17000, 200},
+    {kClipCurveBase + kFirstFxSlots * kShapeParamCount, kFxSlots - kFirstFxSlots, kShapeParamCount, 200, 30000, 200,
+     0, 0, 0},
     {kShaperCurveBase, kShapers, kShapeParamCount, 49, 13000, 50, 21000, 200},
 };
 
@@ -1093,7 +1105,9 @@ constexpr int indexOfId(clap_id id) {
     return -1;
 }
 
-constexpr bool idsRoundTrip() {
+// Over the params from `from` to before `to`, which a static_assert takes a part at a time: all at once would take
+// the compiler more steps than it allows an expression.
+constexpr bool idsRoundTrip(int from, int to) {
     for (const ids::Section &s : ids::kSections)
         if (s.fields > static_cast<int>(s.stride))
             return false;
@@ -1104,12 +1118,16 @@ constexpr bool idsRoundTrip() {
             last > static_cast<int>(s.lastStride))
             return false;
     }
-    for (int i = 0; i < kParamCount; ++i)
+    for (int i = from; i < to && i < kParamCount; ++i)
         if (indexOfId(idOfIndex(i)) != i)
             return false;
     return true;
 }
-static_assert(idsRoundTrip(), "param id layout overlaps");
+static_assert(kParamCount <= 4 * 6000);
+static_assert(idsRoundTrip(0, 6000), "param id layout overlaps");
+static_assert(idsRoundTrip(6000, 12000), "param id layout overlaps");
+static_assert(idsRoundTrip(12000, 18000), "param id layout overlaps");
+static_assert(idsRoundTrip(18000, 24000), "param id layout overlaps");
 // Projects store params by id: effect fields keep theirs as later ones come (the 80th was the last in the
 // first section),
 static_assert(idOfIndex(paramIndex(1, FxParam::ReverbType)) == 1400 + 80 + 79 &&
@@ -1140,11 +1158,13 @@ static_assert(idOfIndex(shapeFieldIndex(clipCurveCountIndex(1), 15, PointField::
 // Sends (kFilters), ShaperParam's Mods and Out (kFilters, kOps), the fields after the slots of sources, macros, the
 // note source and the mod wheel (kSlots), and blocks past the room their section has.
 static_assert(kOps == 6 && kMacros == 8 && kMaxSources == 16 && kSlots == 16 && kFirstSlots == 4 && kFilters == 2 &&
-                  kShapers == 2 && kFxSlots == 16 && kMaxShapePoints == 64 && kMaxNotePoints == 16 &&
+                  kShapers == 2 && kFxSlots == 32 && kFirstFxSlots == 16 && kMaxShapePoints == 64 && kMaxNotePoints == 16 &&
                   kPartials == 64 && kFirstPartials == 32,
               "a count the param ids are laid out by changed: see Pinned ids");
 static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(paramIndex(GlobalParam::ModWheel)) == 11,
               "global param ids moved");
+static_assert(idOfIndex(kFxPositionBase) == 33400 && idOfIndex(kFxPositionBase + kFxSlots - 1) == 33431,
+              "chain order param ids moved");
 static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfIndex(paramIndex(0, OpParam::Transpose)) == 120 &&
                   idOfIndex(sendIndex(0, 0)) == 121 && idOfIndex(shaperSendIndex(0, 0)) == 123 &&
                   idOfIndex(shaperSendIndex(kOps - 1, kShapers - 1)) == 374 &&
@@ -1185,16 +1205,19 @@ static_assert(idOfIndex(paramIndex(0, SourceParam::Type)) == 2800 &&
                   idOfIndex(slotAmountIndex(kMaxSources - 1, kSlots - 1)) == 6473,
               "source param ids moved");
 static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ReverbType)) == 2679 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ReverbType)) == 2679 &&
                   idOfIndex(paramIndex(0, FxParam::PhaserStereo)) == 12000 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ShaperSymmetric)) == 12318 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ShaperSymmetric)) == 12318 &&
                   idOfIndex(paramIndex(0, FxParam::MdLowFreq)) == 12019 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::MdLowFreq)) == 12319 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::MdLowFreq)) == 12319 &&
                   idOfIndex(paramIndex(0, FxParam::MdHighFreq)) == 25000 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::MdRms)) == 25623 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::MdRms)) == 25623 &&
                   idOfIndex(paramIndex(0, FxParam::PeqFreq3)) == 25024 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqOn3)) == 25630 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqAmount)) == 25631,
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::PeqOn3)) == 25630 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::PeqAmount)) == 25631 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::Type)) == 26000 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::PhaserStereo)) == 26080 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqAmount)) == 29131,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1202,10 +1225,13 @@ static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, kMaxShapePoints - 1, PointField::Curve)) == 16592,
               "freeform LFO shape param ids moved");
 static_assert(idOfIndex(clipCurveCountIndex(0)) == 7000 &&
-                  idOfIndex(shapeFieldIndex(clipCurveCountIndex(kFxSlots - 1), 15, PointField::Curve)) == 7798 &&
+                  idOfIndex(shapeFieldIndex(clipCurveCountIndex(kFirstFxSlots - 1), 15, PointField::Curve)) == 7798 &&
                   idOfIndex(shapeFieldIndex(clipCurveCountIndex(0), 16, PointField::X)) == 17000 &&
+                  idOfIndex(shapeFieldIndex(clipCurveCountIndex(kFirstFxSlots - 1), kMaxShapePoints - 1,
+                                            PointField::Curve)) == 20143 &&
+                  idOfIndex(clipCurveCountIndex(kFirstFxSlots)) == 30000 &&
                   idOfIndex(shapeFieldIndex(clipCurveCountIndex(kFxSlots - 1), kMaxShapePoints - 1,
-                                            PointField::Curve)) == 20143,
+                                            PointField::Curve)) == 33192,
               "shaper effect curve param ids moved");
 static_assert(idOfIndex(slotBypassIndex(0, 0)) == 9000 &&
                   idOfIndex(slotBypassIndex(kMaxSources - 1, kSlots - 1)) == 9315,
@@ -1488,22 +1514,39 @@ constexpr int64_t permutationRank(const std::array<int, N> &order) {
     return rank;
 }
 
-// Effect orders: FxOrder picks one of the kFxOrders permutations of the slots,
-// numbered in lexicographic order. Empty slots take no part. 16! still fits a
-// double exactly.
-constexpr int64_t factorial(int n) { return n <= 1 ? 1 : n * factorial(n - 1); }
-constexpr int64_t kFxOrders = factorial(kFxSlots);
-static_assert(kFxOrders < (int64_t{1} << 53));
+// The effects chain's order: the slot at each of its places, a param a place (fxPositionIndex()), in the order
+// they run. Empty slots take no part. Any values make an order: a place holding no slot, or one an earlier place
+// holds, is passed over, and the slots no place holds run after the others, by number. `get(index)` returns a param
+// value.
 using FxOrder = std::array<int, kFxSlots>;
-inline FxOrder fxOrder(double value) {
-    const int64_t i = std::llround(value);
-    return permutationAt<kFxSlots>(i < 0 ? 0 : (i >= kFxOrders ? kFxOrders - 1 : i));
+constexpr int fxPositionIndex(int position) { return kFxPositionBase + position; }
+template <class Get>
+FxOrder fxOrder(const Get &get) {
+    FxOrder order{};
+    std::array<bool, kFxSlots> taken{};
+    int n = 0;
+    for (int position = 0; position < kFxSlots; ++position) {
+        const double value = get(fxPositionIndex(position));
+        const long slot = std::isfinite(value) ? std::lround(value) : -1;
+        if (slot >= 0 && slot < kFxSlots && !taken[slot]) {
+            taken[slot] = true;
+            order[n++] = static_cast<int>(slot);
+        }
+    }
+    for (int slot = 0; slot < kFxSlots; ++slot)
+        if (!taken[slot])
+            order[n++] = slot;
+    return order;
 }
-inline double fxOrderValue(const FxOrder &order) {
-    return static_cast<double>(permutationRank<kFxSlots>(order));
+// The (param, value) pairs that set `order`: a place each.
+inline std::vector<std::pair<int, double>> fxOrderChanges(const FxOrder &order) {
+    std::vector<std::pair<int, double>> changes;
+    for (int position = 0; position < kFxSlots; ++position)
+        changes.push_back({fxPositionIndex(position), static_cast<double>(order[position])});
+    return changes;
 }
 // The order that runs the slots in `first` in that order, then the others by number.
-inline double fxOrderStarting(std::initializer_list<int> first) {
+inline FxOrder fxOrderStarting(std::initializer_list<int> first) {
     FxOrder order{};
     std::array<bool, kFxSlots> taken{};
     size_t n = 0;
@@ -1514,10 +1557,31 @@ inline double fxOrderStarting(std::initializer_list<int> first) {
     for (int slot = 0; slot < kFxSlots; ++slot)
         if (!taken[slot])
             order[n++] = slot;
-    return fxOrderValue(order);
+    return order;
 }
-static_assert(permutationRank<kFxSlots>(permutationAt<kFxSlots>(437)) == 437);
-static_assert(permutationRank<kFxSlots>(permutationAt<kFxSlots>(kFxOrders - 1)) == kFxOrders - 1);
+
+// RetiredFxOrder: the order of the first kFirstFxSlots slots as one number, one of their kRetiredFxOrders
+// permutations in lexicographic order, which a state from before version 8 holds (see readParams()). 16! fits a
+// double exactly; 32! wouldn't, hence a param a place.
+constexpr int64_t factorial(int n) { return n <= 1 ? 1 : n * factorial(n - 1); }
+constexpr int64_t kRetiredFxOrders = factorial(kFirstFxSlots);
+static_assert(kRetiredFxOrders < (int64_t{1} << 53));
+using RetiredFxOrder = std::array<int, kFirstFxSlots>;
+inline RetiredFxOrder retiredFxOrder(double value) {
+    const int64_t i = std::isfinite(value) ? std::llround(value) : 0;
+    return permutationAt<kFirstFxSlots>(i < 0 ? 0 : (i >= kRetiredFxOrders ? kRetiredFxOrders - 1 : i));
+}
+// The order a retired one stands for: its slots, then the later ones by number.
+inline FxOrder fxOrderFromRetired(double value) {
+    FxOrder order{};
+    const RetiredFxOrder first = retiredFxOrder(value);
+    for (int i = 0; i < kFxSlots; ++i)
+        order[i] = i < kFirstFxSlots ? first[i] : i;
+    return order;
+}
+static_assert(permutationRank<kFirstFxSlots>(permutationAt<kFirstFxSlots>(437)) == 437);
+static_assert(permutationRank<kFirstFxSlots>(permutationAt<kFirstFxSlots>(kRetiredFxOrders - 1)) ==
+              kRetiredFxOrders - 1);
 
 // --- Freeform LFO shapes.
 
@@ -1744,7 +1808,8 @@ enum class ParamKind {
     ModTarget,
     SyncDivision, // stepped note value
     ClipMode,
-    FxOrder,
+    FxOrder,    // the retired chain order, see retiredFxOrder()
+    FxPosition, // the slot at a place in the effects chain, see fxOrder()
     FxType,
     SourceType,
     DelayTone,  // -1..1, see delayTone()

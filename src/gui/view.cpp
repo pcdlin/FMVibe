@@ -611,7 +611,7 @@ std::vector<int> View::fxChain() const {
     if (derived_.chain) // only kept while a scope goes on
         return *derived_.chain;
     std::vector<int> chain;
-    for (int slot : fxOrder(value(paramIndex(GlobalParam::FxOrder))))
+    for (int slot : fxOrder([this](int index) { return value(index); }))
         if (fxSlotType(slot) != FxType::None)
             chain.push_back(slot);
     if (derivedDepth_ > 0)
@@ -666,7 +666,8 @@ float View::fxOffset(const std::vector<int> &chain, size_t index) const {
 }
 
 bool View::fxFolded(int slot) const {
-    return (controller_.layout().fxFolded >> slot) & 1u;
+    const UiLayout &layout = controller_.layout();
+    return slot < kFirstFxSlots ? (layout.fxFolded >> slot) & 1u : (layout.fxFoldedLater >> (slot - kFirstFxSlots)) & 1u;
 }
 
 bool View::sourceFolded(int source) const {
@@ -690,24 +691,27 @@ float View::sourceOffset(const std::vector<int> &shown, size_t index) const {
 
 // Folding a card or unfolding it; a new effect or source starts unfolded.
 void View::setFolded(bool fx, int index, bool folded) {
-    uint32_t &bits = fx ? controller_.layout().fxFolded : controller_.layout().sourcesFolded;
+    UiLayout &layout = controller_.layout();
+    const bool later = fx && index >= kFirstFxSlots; // the slots past the first 16 have bits of their own
+    uint32_t &bits = later ? layout.fxFoldedLater : fx ? layout.fxFolded : layout.sourcesFolded;
+    const int bit = later ? index - kFirstFxSlots : index;
     if (!fx && folded && index == wideLfo_) // a widened card unfolds at its normal size
         wideLfo_ = -1;
     const uint32_t before = bits;
-    bits = folded ? bits | (1u << index) : bits & ~(1u << index);
+    bits = folded ? bits | (1u << bit) : bits & ~(1u << bit);
     if (bits != before)
         controller_.layoutChanged();
 }
 
-double View::fxOrderWith(const std::vector<int> &chain) const {
+FxOrder View::fxOrderWith(const std::vector<int> &chain) const {
     FxOrder order{};
     size_t n = 0;
     for (int slot : chain)
         order[n++] = slot;
-    for (int slot : fxOrder(value(paramIndex(GlobalParam::FxOrder))))
+    for (int slot : fxOrder([this](int index) { return value(index); }))
         if (std::find(chain.begin(), chain.end(), slot) == chain.end())
             order[n++] = slot;
-    return fxOrderValue(order);
+    return order;
 }
 
 float View::fxScroll() const {
@@ -815,7 +819,9 @@ void View::addEffect(FxType type, int copyOf, int at) {
     // A new effect, a copy too, goes where it was asked for, or at the end of the chain, which scrolls to show it.
     const int position = at >= 0 && at < static_cast<int>(chain.size()) ? at : static_cast<int>(chain.size());
     chain.insert(chain.begin() + position, slot);
-    changes.push_back({paramIndex(GlobalParam::FxOrder), fxOrderWith(chain)});
+    for (const auto &change : fxOrderChanges(fxOrderWith(chain)))
+        if (change.second != value(change.first))
+            changes.push_back(change);
     setFolded(true, slot, false);
     if (shapeEditor_ == kMaxSources + slot) // left open for an effect the slot held before
         shapeEditor_ = -1;
@@ -8215,9 +8221,12 @@ void View::mouseUp(Point p, Modifiers) {
                 edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
             break;
         }
-        const double order = fxOrderWith(fxChainShown());
-        if (order != value(paramIndex(GlobalParam::FxOrder)))
-            edit(paramIndex(GlobalParam::FxOrder), order);
+        std::vector<std::pair<int, double>> changes;
+        for (const auto &change : fxOrderChanges(fxOrderWith(fxChainShown())))
+            if (change.second != value(change.first))
+                changes.push_back(change);
+        if (!changes.empty())
+            editMany(changes);
         break;
     }
     case DragKind::SourceMove:

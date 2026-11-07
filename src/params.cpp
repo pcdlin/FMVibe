@@ -62,19 +62,19 @@ constexpr int kWhole = 7;    // "1/1"
 constexpr int kQuarter = 13; // "1/4"
 constexpr int kEighthDotted = 15;
 
-// "1,2,3,…,16": the slots in the order they run.
+// "1,2,3,…,16": the retired order's slots in the order they ran.
 std::string fxOrderName(double value) {
     std::string name;
-    for (int slot : fxOrder(value))
+    for (int slot : retiredFxOrder(value))
         name += (name.empty() ? "" : ",") + std::to_string(slot + 1);
     return name;
 }
 
 // Reads the slot numbers back from an order's name; false unless each slot comes up once.
 bool parseFxOrder(const char *text, double *out) {
-    FxOrder order{};
+    RetiredFxOrder order{};
     int count = 0;
-    bool seen[kFxSlots] = {};
+    bool seen[kFirstFxSlots] = {};
     for (const char *c = text; *c;) {
         if (*c < '0' || *c > '9') {
             ++c;
@@ -84,14 +84,14 @@ bool parseFxOrder(const char *text, double *out) {
         const long number = std::strtol(c, &end, 10);
         c = end;
         const int slot = static_cast<int>(number) - 1;
-        if (slot < 0 || slot >= kFxSlots || seen[slot] || count == kFxSlots)
+        if (slot < 0 || slot >= kFirstFxSlots || seen[slot] || count == kFirstFxSlots)
             return false;
         seen[slot] = true;
         order[count++] = slot;
     }
-    if (count != kFxSlots)
+    if (count != kFirstFxSlots)
         return false;
-    *out = fxOrderValue(order);
+    *out = static_cast<double>(permutationRank<kFirstFxSlots>(order));
     return true;
 }
 
@@ -132,10 +132,11 @@ void buildTable(ParamTable &t) {
         const bool shape = kind == ParamKind::ShapeCount || kind == ParamKind::ShapePoint ||
                            kind == ParamKind::SlotBypass || kind == ParamKind::SlotAux;
         const bool wiring = kind == ParamKind::ModTarget || kind == ParamKind::FxType ||
-                            kind == ParamKind::SourceType || kind == ParamKind::FxOrder;
+                            kind == ParamKind::SourceType || kind == ParamKind::FxOrder ||
+                            kind == ParamKind::FxPosition;
         clap_param_info_flags flags = wiring || kind == ParamKind::VoiceCount || shape ? 0u : CLAP_PARAM_IS_AUTOMATABLE;
-        // The chain order has 16! values; hosts can't do anything useful with it.
-        if (shape || kind == ParamKind::FxOrder)
+        // The chain order is set by dragging the cards; hosts can't do anything useful with it.
+        if (shape || kind == ParamKind::FxOrder || kind == ParamKind::FxPosition)
             flags |= CLAP_PARAM_IS_HIDDEN;
         if (isStepped(kind))
             flags |= CLAP_PARAM_IS_STEPPED;
@@ -178,8 +179,13 @@ void buildTable(ParamTable &t) {
     add(paramIndex(GlobalParam::Glide), tr(Str::ParamGlide), global, ParamKind::TimeOrOff, 0.0, kMaxGlideNorm,
         0.0);
     add(paramIndex(GlobalParam::GlideAlways), tr(Str::ParamGlideAlways), global, ParamKind::Toggle, 0.0, 1.0, 0.0);
-    add(paramIndex(GlobalParam::FxOrder), tr(Str::ParamFxOrder), tr(Str::ModuleFx), ParamKind::FxOrder, 0.0,
-        static_cast<double>(kFxOrders - 1), 0.0);
+    // Retired: a state from before version 8 holds the order here, which loads onto the places (see readParams()).
+    add(paramIndex(GlobalParam::RetiredFxOrder), tr(Str::ParamFxOrder), tr(Str::ModuleFx), ParamKind::FxOrder, 0.0,
+        static_cast<double>(kRetiredFxOrders - 1), 0.0);
+    // The chain runs the slots by number to begin with.
+    for (int position = 0; position < kFxSlots; ++position)
+        add(fxPositionIndex(position), trf(Str::ParamFxPosition, {std::to_string(position + 1)}), tr(Str::ModuleFx),
+            ParamKind::FxPosition, 0.0, kFxSlots - 1.0, position);
     // The mod wheel moves its targets for every voice, like a macro: hosts modulate it globally too.
     add(paramIndex(GlobalParam::ModWheel), tr(Str::ParamModWheel), global, ParamKind::Percent, 0.0, 1.0, 0.0);
     t[paramIndex(GlobalParam::ModWheel)].flags &=
@@ -929,7 +935,7 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::VoiceCount || kind == ParamKind::Toggle || kind == ParamKind::LfoShape ||
            kind == ParamKind::OpWave || kind == ParamKind::FilterType || kind == ParamKind::ModTarget ||
            kind == ParamKind::SyncDivision || kind == ParamKind::ClipMode || kind == ParamKind::FxOrder ||
-           kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
+           kind == ParamKind::FxPosition || kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
            kind == ParamKind::MidiInput || kind == ParamKind::RouteMode;
@@ -1091,6 +1097,9 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::FxOrder:
         std::snprintf(out, capacity, "%s", fxOrderName(value).c_str());
         break;
+    case ParamKind::FxPosition: // the slot, by its number
+        std::snprintf(out, capacity, "%ld", std::lround(value) + 1);
+        break;
     case ParamKind::ShapeCount:
         std::snprintf(out, capacity, "%ld", std::lround(value));
         break;
@@ -1202,6 +1211,14 @@ bool parseParam(int index, const char *text, double *out) {
         return false; // names only: "1/4" would otherwise read as the number 1
     if (def.kind == ParamKind::FxOrder)
         return parseFxOrder(text, out);
+    if (def.kind == ParamKind::FxPosition) { // a slot's number
+        char *end = nullptr;
+        const long slot = std::strtol(text, &end, 10);
+        if (end == text || slot < 1 || slot > kFxSlots)
+            return false;
+        *out = static_cast<double>(slot - 1);
+        return true;
+    }
     if (def.kind == ParamKind::DelayTone) {
         // "Open", "LP 2 kHz", "HP 300 Hz", or a bare percentage.
         const char kind = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
@@ -1370,6 +1387,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::MidiInput:
     case ParamKind::RouteMode:
     case ParamKind::FxOrder:
+    case ParamKind::FxPosition:
     case ParamKind::FxType:
     case ParamKind::SourceType:
     case ParamKind::SlotAux:

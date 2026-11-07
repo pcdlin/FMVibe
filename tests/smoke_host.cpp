@@ -329,7 +329,9 @@ int main(int argc, char **argv) {
                   listed(slotAmountIndex(kMaxSources, 0)) && listed(slotScaleIndex(0, 0)) &&
                   listed(slotScaleIndex(kVelocitySource, kSlots - 1)) &&
                   listed(paramIndex(0, MacroParam::Value)) &&
-                  !listed(paramIndex(GlobalParam::FxOrder)) && !listed(shapeCountIndex(0)) &&
+                  !listed(paramIndex(GlobalParam::RetiredFxOrder)) && !listed(fxPositionIndex(0)) &&
+                  !listed(fxPositionIndex(kFxSlots - 1)) && !listed(paramIndex(kFxSlots - 1, FxParam::Type)) &&
+                  !listed(shapeCountIndex(0)) &&
                   !listed(partialCountIndex(0)) && !listed(slotAuxIndex(0, 0)) && !listed(slotCurveIndex(0, 0)) &&
                   !listed(slotBypassIndex(0, 0)) && !listed(routeModeIndex(0, 0)) && listed(routeModeIndex(0, 1)) &&
                   params->get_value(plugin, idOfIndex(shapeCountIndex(0)), &point) && point >= 0.0,
@@ -1386,7 +1388,7 @@ int main(int argc, char **argv) {
     runBlock({&phaseOff.header});
 
     // Sets params in one block, before the next check.
-    auto setParams = [&](std::initializer_list<std::pair<int, double>> values) {
+    auto setParams = [&](const std::vector<std::pair<int, double>> &values) {
         std::vector<clap_event_param_value_t> evs;
         for (const auto &[index, value] : values)
             evs.push_back(paramEvent(index, value));
@@ -2266,7 +2268,6 @@ int main(int argc, char **argv) {
     // Effects, on the plain sine. Slot 0 holds a shaper, slot 1 a DJ EQ, slot 2
     // a delay, slot 3 a filter, slots 4 and 5 parametric EQs; each starts on.
     {
-        const int order = paramIndex(GlobalParam::FxOrder);
         auto type = [](int slot) { return paramIndex(slot, FxParam::Type); };
         auto fx = [](int slot, FxParam field) { return paramIndex(slot, field); };
         // A hard shaper at full drive, unlinked, turns the sine into a square at its output level.
@@ -2323,17 +2324,18 @@ int main(int argc, char **argv) {
                    {fx(0, FxParam::ShaperDrive), 18.0},
                    {fx(0, FxParam::ShaperOutput), 0.0},
                    {type(1), static_cast<double>(FxType::Eq)},
-                   {fx(1, FxParam::EqMid), 1.0},
-                   {order, fxOrderStarting({0, 1, 2, 3, 4, 5})}});
+                   {fx(1, FxParam::EqMid), 1.0}});
+        setParams(fxOrderChanges(fxOrderStarting({0, 1, 2, 3, 4, 5})));
         const float clipThenEq = peakOf(play({}));
-        setParams({{order, fxOrderStarting({1, 0, 2, 3, 4, 5})}});
+        setParams(fxOrderChanges(fxOrderStarting({1, 0, 2, 3, 4, 5})));
         const float eqThenClip = peakOf(play({}));
         std::printf("      peak %.2f shaper then EQ, %.2f EQ then shaper\n", clipThenEq, eqThenClip);
         check(clipThenEq > 1.5f * eqThenClip, "the FX order changes the result");
 
         // DJ EQ: unity is transparent, killing the mid band removes the 440 Hz sine.
         // An empty slot passes the sound untouched.
-        setParams({{type(0), static_cast<double>(FxType::None)}, {fx(1, FxParam::EqMid), 0.0}, {order, 0.0}});
+        setParams({{type(0), static_cast<double>(FxType::None)}, {fx(1, FxParam::EqMid), 0.0}});
+        setParams(fxOrderChanges(fxOrderStarting({})));
         const std::vector<float> flat = play({});
         setParams({{fx(1, FxParam::EqMid), -1.0}});
         const std::vector<float> killed = play({});
@@ -2344,6 +2346,29 @@ int main(int argc, char **argv) {
         std::printf("      EQ at 440 Hz: %.3f flat, %.3f with the mid killed\n", flatRatio, killRatio);
         check(std::abs(flatRatio - 1.0) < 0.02 && killRatio < 0.15, "the EQ is flat at unity and kills its bands");
         setParams({{type(1), static_cast<double>(FxType::None)}});
+
+        // The slots past the 16 the chain had at first play too, at their places in it: the last one's DJ EQ kills
+        // the mid band, and boosting it before a hard shaper in slot 0 comes out quieter than after it.
+        const int last = kFxSlots - 1;
+        setParams({{type(last), static_cast<double>(FxType::Eq)}, {fx(last, FxParam::EqMid), -1.0}});
+        const double lastKill = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        setParams({{fx(last, FxParam::EqMid), 1.0},
+                   {type(0), static_cast<double>(FxType::Shaper)},
+                   {fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
+                   {fx(0, FxParam::ShaperDrive), 18.0},
+                   {fx(0, FxParam::ShaperOutput), 0.0}});
+        setParams(fxOrderChanges(fxOrderStarting({0, last})));
+        const float shapedThenEq = peakOf(play({}));
+        setParams(fxOrderChanges(fxOrderStarting({last, 0})));
+        const float eqThenShaped = peakOf(play({}));
+        std::printf("      slot %d's EQ at 440 Hz with the mid killed: %.3f; peak %.2f after the shaper, %.2f before\n",
+                    last + 1, lastKill, shapedThenEq, eqThenShaped);
+        check(lastKill < 0.15 && shapedThenEq > 1.5f * eqThenShaped,
+              "a slot past the 16th plays, at its place in the chain");
+        setParams({{type(last), static_cast<double>(FxType::None)},
+                   {fx(last, FxParam::EqMid), 0.0},
+                   {type(0), static_cast<double>(FxType::None)}});
+        setParams(fxOrderChanges(fxOrderStarting({})));
 
         // Compressor: the sine peaks 18 dB over a -30 dB threshold; at 4:1 it comes out
         // 13.5 dB down (x0.21). Makeup brings it back up; at 0 % mix it is untouched.
@@ -3546,6 +3571,50 @@ int main(int argc, char **argv) {
               "glide stops at 6 s, and an earlier state's depth on it swings it as far as before");
     }
 
+    // The chain's order is a param a place since version 8: an earlier state's, the rank of the first 16 slots'
+    // order, loads onto the places, the later slots after them; a version 8 state's retired order does nothing.
+    {
+        RetiredFxOrder swapped{};
+        for (int i = 0; i < kFirstFxSlots; ++i)
+            swapped[i] = i;
+        std::swap(swapped[0], swapped[1]);
+        std::swap(swapped[2], swapped[kFirstFxSlots - 1]);
+        const int retired = paramIndex(GlobalParam::RetiredFxOrder);
+        auto loadFrom = [&](uint32_t version) {
+            const std::pair<int, double> stored[] = {
+                {retired, static_cast<double>(permutationRank<kFirstFxSlots>(swapped))}};
+            MemoryStream old;
+            const uint32_t header[] = {0x38454C43, version, static_cast<uint32_t>(std::size(stored))};
+            old.data.assign(reinterpret_cast<const uint8_t *>(header),
+                            reinterpret_cast<const uint8_t *>(header) + sizeof(header));
+            for (const auto &[index, value] : stored) {
+                const uint32_t id = idOfIndex(index);
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&id),
+                                reinterpret_cast<const uint8_t *>(&id) + sizeof(id));
+                old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&value),
+                                reinterpret_cast<const uint8_t *>(&value) + sizeof(value));
+            }
+            std::vector<double> places(kFxSlots, -1.0);
+            if (state->load(plugin, &old.in)) {
+                plugin->on_main_thread(plugin);
+                for (int place = 0; place < kFxSlots; ++place)
+                    params->get_value(plugin, idOfIndex(fxPositionIndex(place)), &places[place]);
+            }
+            return places;
+        };
+        const std::vector<double> seven = loadFrom(7), eight = loadFrom(8);
+        bool sevenOk = true, eightOk = true;
+        for (int place = 0; place < kFxSlots; ++place) {
+            const int want = place < kFirstFxSlots ? swapped[place] : place;
+            sevenOk = sevenOk && seven[place] == want;
+            eightOk = eightOk && eight[place] == place;
+        }
+        std::printf("      a version 7 state's order loads as %.0f,%.0f,%.0f ... %.0f,%.0f; version 8's as %.0f,%.0f\n",
+                    seven[0] + 1, seven[1] + 1, seven[2] + 1, seven[kFirstFxSlots - 1] + 1, seven[kFxSlots - 1] + 1,
+                    eight[0] + 1, eight[1] + 1);
+        check(sevenOk && eightOk, "an earlier state's chain order loads onto the places, the later slots after it");
+    }
+
     // An operator's ratio is one param, Ratio, since version 5: an earlier state's loads from its Coarse and Fine as
     // they played (3 and 50 % are 4.5, 0 is 0.5), and a modulation on either moves onto Ratio with the depth that
     // reaches where it reached (a step of Coarse from 4.5 to 6, half of Fine from 0.5 to 0.75). A version 5 state's
@@ -3745,6 +3814,7 @@ int main(int argc, char **argv) {
             layout.push_back(k % 3 == 1 ? 0.0f : static_cast<float>(idOfIndex(paramIndex(k % kOps, OpParam::Ratio))) + 1.0f);
         }
         layout.insert(layout.end(), {1.0f, 1.0f}); // an LFO's shape drawn in steps, snapping to the grid
+        layout.push_back(3.0f);                    // folded cards past the 16th slot
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

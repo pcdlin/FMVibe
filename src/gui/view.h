@@ -580,7 +580,7 @@ private:
     void addEffect(FxType type, int copyOf = -1, int at = -1);
     void removeEffect(int slot);
     // The chain order with `chain` first, then the empty slots.
-    double fxOrderWith(const std::vector<int> &chain) const;
+    FxOrder fxOrderWith(const std::vector<int> &chain) const;
     // Measured in card places (the parametric EQ's card takes more than one): how far the row is scrolled,
     // where the card at `index` of `chain` starts in the row, and so its screen place, 0..6 on screen and
     // fractions while it scrolls partly out.

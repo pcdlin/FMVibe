@@ -333,7 +333,7 @@ std::string nameOf(FakeController &model, int source) {
 // The slots holding an effect, in chain order.
 std::vector<int> fxChain(const FakeController &model) {
     std::vector<int> chain;
-    for (int slot : fxOrder(model.value(paramIndex(GlobalParam::FxOrder))))
+    for (int slot : fxOrder([&](int index) { return model.value(index); }))
         if (std::lround(model.value(paramIndex(slot, FxParam::Type))) != 0)
             chain.push_back(slot);
     return chain;
@@ -346,7 +346,9 @@ constexpr float kFxCardW = 171.0f;
 constexpr float kFxStep = kFxCardW + (1136.0f - 6.0f * kFxCardW) / 5.0f;
 constexpr float kFoldedSpan = (38.0f + kFxStep - kFxCardW) / kFxStep;
 float fxSpan(const FakeController &model, int slot) {
-    if ((model.ui.fxFolded >> slot) & 1u)
+    const bool folded = slot < kFirstFxSlots ? (model.ui.fxFolded >> slot) & 1u
+                                             : (model.ui.fxFoldedLater >> (slot - kFirstFxSlots)) & 1u;
+    if (folded)
         return kFoldedSpan;
     const long type = std::lround(model.value(paramIndex(slot, FxParam::Type)));
     return type == static_cast<long>(FxType::ParamEq) || type == static_cast<long>(FxType::MultiDyn) ? 1.5f : 1.0f;
@@ -1566,7 +1568,8 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
 void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    model.values[paramIndex(GlobalParam::FxOrder)] = fxOrderStarting({0, 1, 2, 3, 4});
+    for (const auto &[index, value] : fxOrderChanges(fxOrderStarting({0, 1, 2, 3, 4})))
+        model.values[index] = value;
     const FxType types[] = {FxType::Phaser, FxType::Flanger, FxType::Disperser, FxType::Filter, FxType::Widener};
     for (int slot = 0; slot < 5; ++slot)
         model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(types[slot]);
@@ -1857,10 +1860,42 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
           "a widened card goes back to its size by its button, or another shape, and Custom widens it again");
 }
 
+// Slots past the 16 the chain had at first: one at the chain's start folds by a bit of its own, and moved by its
+// grip past the next card takes its place in the order.
+void testLaterSlots(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const int later = kFxSlots - 3;
+    for (const auto &[index, value] : fxOrderChanges(fxOrderStarting({later, 0, kFxSlots - 1})))
+        model.values[index] = value;
+    model.values[paramIndex(later, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    model.values[paramIndex(kFxSlots - 1, FxParam::Type)] = static_cast<double>(FxType::Phaser);
+    view.poll();
+    click(view, kFxTab);
+    const float cardTop = 179.5f; // an effect card's
+    click(view, {fxCardX(model, 0) + fxCardW(model, 0) - 39.0f, cardTop + 18.5f}); // its fold chevron
+    const bool folded = model.ui.fxFolded == 0 && model.ui.fxFoldedLater == 1u << (later - kFirstFxSlots);
+    const float strip = fxCardX(model, 0) + fxCardW(model, 0) * 0.5f;
+    drag(view, {strip, cardTop + 38.0f}, {strip + 200.0f, cardTop + 38.0f}); // its grip, past the next card
+    const bool moved = fxChain(model) == std::vector<int>{0, later, kFxSlots - 1} &&
+                       model.ui.fxFoldedLater == 1u << (later - kFirstFxSlots);
+    view.mouseMove({600.0f, 328.0f}, {});
+    if (!folded || !moved) {
+        std::printf("      folded bits %u %u, chain", model.ui.fxFolded, model.ui.fxFoldedLater);
+        for (int slot : fxChain(model))
+            std::printf(" %d", slot);
+        std::printf("\n");
+    }
+    check(folded && moved && renderer.save(view, dir / "28g-later-slots.png"),
+          "an effect in a slot past the 16th folds and moves in the chain like the others");
+}
+
 void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    model.values[paramIndex(GlobalParam::FxOrder)] = fxOrderStarting({0, 1, 2});
+    for (const auto &[index, value] : fxOrderChanges(fxOrderStarting({0, 1, 2})))
+        model.values[index] = value;
     const FxType types[] = {FxType::Delay, FxType::Reverb, FxType::Phaser};
     for (int slot = 0; slot < 3; ++slot)
         model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(types[slot]);
@@ -5570,6 +5605,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testShapers(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
+    testLaterSlots(dir, renderer);
     testSourceShadow(dir, renderer);
     testMultiDyn(dir, renderer);
     testCardEdgeScroll(dir, renderer);

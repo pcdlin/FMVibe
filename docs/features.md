@@ -241,8 +241,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     points are saved with the patch (as params of the editor's own, which hosts aren't given: see
     [CLAP and VST3](#clap-and-vst3)).
 - **Effects**, after the voices: everything the operators and filters send to the output runs through a chain of
-  up to 16 effects. A new instance starts with an empty chain. Any effect can be added more than once, switched on
-  and off, reordered and removed.
+  up to 32 effects. A new instance starts with an empty chain. Any effect can be added more than once, switched on
+  and off, reordered and removed. A patch saved while the chain held 16 loads its effects in the order they had.
   - **Shaper**: picked from a list: Hard (a flat ceiling), Soft (tanh), Asymmetric (the lower half clips twice as
     hard, which adds even harmonics), Cubic (x − x³/3, scaled to reach full level), Gentle (x / (1 + |x|), which
     never quite gets there), Sine Fold and Fold (what goes past full level folds back, smoothly or in straight
@@ -592,8 +592,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     Each effect has an icon, at the left of its card's title and in the list of effects. On the card, the icon
     is the effect's switch: a click turns it off (the icon turns grey with the card, under the mouse too, and the
     effect costs nothing) or on again, in its color; dragged, it moves the card like the title. **+ EFFECT** (a drawn plus before the word) at the panel's top left
-    opens a list of the effect types (beside it, how many of the 16
-    places are taken, as in 3/16), and so does a dashed card with a plus after the last effect, at the mouse (moved
+    opens a list of the effect types (beside it, how many of the 32
+    places are taken, as in 3/32), and so does a dashed card with a plus after the last effect, at the mouse (moved
     back inside the editor where it would reach past an edge); the
     one picked goes at the end of the chain, which scrolls to show it, and so does a copy. The arrow between two
     cards turns into a plus under the mouse: a click opens the list over the cards there, and the one picked goes
@@ -1136,7 +1136,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,220 of FMVibe's 12,807 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,220 of FMVibe's 18,039 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
 modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

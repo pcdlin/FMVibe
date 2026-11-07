@@ -94,7 +94,7 @@ double widenerSpread(double hz, double highPassNorm);
 // The effects chain on the sum of the voices: kFxSlots slots, each holding a
 // shaper, delay, DJ EQ, parametric EQ, filter, compressor, three-band
 // dynamics, reverb, phaser, flanger, frequency shifter, phase disperser or widener, or nothing, run in the order
-// the FxOrder param picks. An empty or switched-off slot costs nothing;
+// the chain's places pick (see fxOrder()). An empty or switched-off slot costs nothing;
 // switching one fades it in or out over a few milliseconds. Audio thread
 // only, apart from construction and prepare().
 class Effects {
@@ -103,8 +103,8 @@ public:
     void prepare(double sampleRate);
     void reset();
 
-    // In place. Reads the slot params and FxOrder from `p`; synced delays and sweeps use `tempo` (BPM), and a
-    // filter's key tracking follows `pitch`, the newest voice's (semitones, 69 is A4).
+    // In place. Reads the slot params and the chain's places from `p`; synced delays and sweeps use `tempo` (BPM),
+    // and a filter's key tracking follows `pitch`, the newest voice's (semitones, 69 is A4).
     void process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch);
     // Something is still to be heard after the input went silent: delay echoes, a reverb's tail.
     bool ringing() const { return tail_ > 0; }

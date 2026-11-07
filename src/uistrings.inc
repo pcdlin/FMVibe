@@ -136,6 +136,7 @@ STR(ParamLegato, "Legato")
 STR(ParamGlide, "Glide")
 STR(ParamGlideAlways, "Glide Always")
 STR(ParamFxOrder, "FX Order")
+STR(ParamFxPosition, "FX Order {1}")
 STR(ParamModWheel, "Mod Wheel")
 STR(ParamNote, "Note")
 STR(ParamVelocitySource, "Velocity") // the velocity source, as hosts name its fields
