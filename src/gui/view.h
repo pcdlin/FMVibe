@@ -635,6 +635,9 @@ private:
     void fxSyncOrder();
     void addSplit();
     void removeSplit(int split);
+    // A split's band count from its card. Going to three with nothing wired from the middle band, it goes where the
+    // high band goes, at the high band's level, so the sound stays as it was.
+    void setSplitBands(int split, int bands);
     // The effects as a graph, wired as the chain was, or back as a chain in the graph's order (its splits and wires
     // gone): asked first, unless `asked`, when that loses parallel wires or splits.
     void setFxGraph(bool on, bool asked = false);

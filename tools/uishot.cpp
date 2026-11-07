@@ -1958,9 +1958,28 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               wiredFrom(1, fxSlotPort(0)) < 0 && model.ui.fxSelected == split &&
               renderer.save(view, dir / "40b-fx-split.png"),
           "+ SPLIT puts a split after the node picked, its bands going on where that node went");
+    auto bendOf = [&](int param) {
+        for (const auto &[route, bend] : model.ui.wireBends)
+            if (route == param)
+                return bend;
+        return kDefaultWireBend;
+    };
+    auto levelOf = [&](int node, int port) {
+        return fxInputIndex(node, std::max(wiredFrom(node, port), 0), FxInputField::Level);
+    };
+    check(bendOf(levelOf(1, fxBandPort(0, kFxBands - 1))) < 0.0f && bendOf(levelOf(1, fxBandPort(0, 0))) > 0.0f,
+          "a new split's high band bows up toward where it goes, its low band down");
+
+    // BANDS 3 on its card, centered in the inspector's area: the middle band goes where the high band goes, straight.
+    const Rect card = detail::fxInspectorCard(1.0f);
+    const Rect area = detail::fxInspectorCard();
+    click(view, {card.x + 14.0f + 56.0f + 40.0f + 20.0f, card.y + 54.0f});
+    check(std::abs(card.center().x - area.center().x) < 1.0f &&
+              model.value(paramIndex(0, SplitParam::Bands)) == 3.0 && wiredFrom(1, fxBandPort(0, 1)) >= 0 &&
+              bendOf(levelOf(1, fxBandPort(0, 1))) == 0.0f && renderer.save(view, dir / "40b2-fx-split-3.png"),
+          "a split going to three bands wires its middle band where the high band goes");
 
     // Its low crossover's handle, on its card in the inspector, dragged from 250 Hz to 500 Hz.
-    const Rect card = detail::fxInspectorCard(1.0f);
     const Rect display{card.x + 14.0f, card.y + 74.0f, card.w - 28.0f, 110.0f};
     const float handleY = display.y + display.h * 0.35f;
     drag(view, {display.x + static_cast<float>(normFromCutoff(250.0)) * display.w, handleY},

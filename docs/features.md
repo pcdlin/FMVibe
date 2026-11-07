@@ -631,8 +631,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     and Q, as large as a one-row card's) sets; its chip and handle are ringed in its color. Amount, the row's fourth knob, is the whole EQ's. The band picked isn't saved: a card shows its first band to begin with.
 
     The switch at the panel's top right (cards in a row, or a node forking and meeting again) shows the effects as
-    a **graph** instead: the graph at the left, and at the right the card of the node picked, as it would show in
-    the row (a split's card has BANDS 2 | 3, a display of its bands' responses with a handle on each crossover to
+    a **graph** instead: the graph at the left, and at the right the card of the node picked, centered in the
+    space a wide card takes, as it would show in the row (a split's card has BANDS 2 | 3, a display of its bands' responses with a handle on each crossover to
     drag across, and its crossovers' knobs). Switching to the graph wires it as the chain ran, its nodes in a row
     (two past six); switching back asks first when that loses splits or wires side by side, then leaves a chain in
     the graph's order. In the graph, the input (IN) is a box at the left edge and the output (OUT) one at the right;
@@ -646,8 +646,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     drag the wire sideways to bend it, and double-click it to straighten it back. A click on a node shows it in the
     card at the right, and a drag moves it (an undo step). + EFFECT puts the new effect after the node picked,
     taking over the wires out of it (after IN when a split or nothing is picked, and out to OUT when nothing went on
-    from there), and + SPLIT does the same with a split of two bands, both going where the wires went, so the sound
-    stays as it was until something goes into a band. Removing an effect or a split joins what went into it, if it
+    from there), and + SPLIT does the same with a split of two bands, both going where the wires went (the high
+    band's wire bowing up, the low one's down), so the sound stays as it was until something goes into a band.
+    Switched to three bands (by BANDS or the wheel over it) while nothing is wired from its middle band, a split
+    sends the middle band where its high band goes, at the high band's level and in a straight wire, so the sound
+    still stays as it was; middle-band wires kept while it had two bands come back as they were. Removing an effect or a split joins what went into it, if it
     came from one place, to where it went. Right-click an effect's node for its card's menu, a split's to remove
     it. The nodes' places are saved with the patch, and the node picked too; the effects' count beside + EFFECT and
     the target menu follow the graph's order.

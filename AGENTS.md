@@ -207,7 +207,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - the effects graph: switching to it wiring the chain up as it ran, + SPLIT putting a split after the node picked
-    (its bands going on where that node went), its card's crossover handle dragged, a loop refused, the input's box
+    (its bands going on where that node went, the high band's wire bowing up and the low one's down), BANDS 3 on its
+    card (centered in the inspector) wiring the middle band where the high band goes, its card's crossover handle
+    dragged, a loop refused, the input's box
     wired into a node, a wire's label setting its level and its x removing it, a node moved and the move undone, and
     going back to a chain asking first, then leaving the chain in the graph's order;
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;

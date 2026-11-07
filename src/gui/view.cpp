@@ -8843,6 +8843,11 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             setLfoClock(hit->a, static_cast<LfoClock>(to));
         return;
     }
+    if (const int split = splitOf(hit->param); split >= 0 && hit->param == paramIndex(split, SplitParam::Bands)) {
+        if (whole != 0) // as a click on 2 or 3 does, the middle band wired as it comes
+            setSplitBands(split, std::clamp(static_cast<int>(std::lround(value(hit->param))) + whole, 2, kFxBands));
+        return;
+    }
     if (hit->kind == Kind::LabelMode) { // to the next mode along, as the wheel turns, a run of notches one undo step
         const int to = std::clamp(static_cast<int>(routeMode(value(hit->param))) + whole, 0,
                                   static_cast<int>(RouteMode::Count) - 1);

@@ -608,12 +608,13 @@ inline Rect fxDisplay(float position, FxType type) {
 }
 
 // The effects graph (GlobalParam::FxGraph) takes the card row's place: the graph at the left, and at the right the
-// card of the node it shows (an effect's, or a split's), as wide as the widest cards. The switch between the chain and
-// the graph sits at the panel's top right, and + SPLIT after the count beside ADD EFFECT.
+// card of the node it shows (an effect's, or a split's), centered in an area as wide as the widest cards. The switch
+// between the chain and the graph sits at the panel's top right, and + SPLIT after the count beside ADD EFFECT.
 constexpr float kFxInspectorW = 1.5f * (kFxCardW + kFxGap) - kFxGap;
 inline Rect fxInspectorCard(float span = 1.5f) {
     const float w = span * (kFxCardW + kFxGap) - kFxGap;
-    return {kFxPanel.right() - 16.0f - w, kFxTop, w, kFxPanel.bottom() - 20.0f - kFxTop};
+    const float area = kFxPanel.right() - 16.0f - kFxInspectorW;
+    return {std::round(area + 0.5f * (kFxInspectorW - w)), kFxTop, w, kFxPanel.bottom() - 20.0f - kFxTop};
 }
 inline Rect fxGraphArea() {
     return {kFxPanel.x + 16.0f, kFxTop, kFxPanel.w - 32.0f - kFxInspectorW - 16.0f, kFxPanel.bottom() - 20.0f - kFxTop};

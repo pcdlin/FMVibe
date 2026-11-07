@@ -312,6 +312,8 @@ void View::fxInsertAfterSelected(int node, std::vector<std::pair<int, double>> &
         outs.push_back(fxSlotPort(node));
     else
         outs = {fxBandPort(node - kFxSlots, 0), fxBandPort(node - kFxSlots, kFxBands - 1)};
+    // A split's high band bows up toward where it goes, its low band down (as wires bow to begin with).
+    auto bowUp = [&](int level) { setWireBend(level, -kDefaultWireBend); };
     // The wires out of what it goes after now come out of it.
     bool taken = false;
     for (const FxWireRef &w : fxWires()) {
@@ -328,6 +330,7 @@ void View::fxInsertAfterSelected(int node, std::vector<std::pair<int, double>> &
                     changes.push_back({index, fxPortValue(outs[k])});
                     changes.push_back({fxInputIndex(w.node, input, FxInputField::Level),
                                        value(fxInputIndex(w.node, w.input, FxInputField::Level))});
+                    bowUp(fxInputIndex(w.node, input, FxInputField::Level));
                     break;
                 }
             }
@@ -337,8 +340,13 @@ void View::fxInsertAfterSelected(int node, std::vector<std::pair<int, double>> &
         for (size_t k = 0, input = 0; k < outs.size() && input < kFxOutInputs; ++input) {
             const int index = fxInputIndex(kFxOutNode, static_cast<int>(input), FxInputField::From);
             if (fxPortOf(value(index)) < 0) {
+                const int level = fxInputIndex(kFxOutNode, static_cast<int>(input), FxInputField::Level);
+                if (k > 0)
+                    bowUp(level);
+                else
+                    setWireBend(level, kDefaultWireBend);
                 changes.push_back({index, fxPortValue(outs[k++])});
-                changes.push_back({fxInputIndex(kFxOutNode, static_cast<int>(input), FxInputField::Level), 1.0});
+                changes.push_back({level, 1.0});
             }
         }
     for (int input = 0; input < fxInputCount(node); ++input) { // it takes what it goes after, and nothing else
@@ -453,6 +461,39 @@ void View::removeSplit(int split) {
         if (m.target == paramIndex(split, SplitParam::Low) || m.target == paramIndex(split, SplitParam::High))
             removeSlot(m.source, m.slot);
     changes.push_back({paramIndex(split, SplitParam::Used), 0.0});
+    editMany(changes);
+    fxSyncOrder();
+}
+
+void View::setSplitBands(int split, int bands) {
+    const int param = paramIndex(split, SplitParam::Bands);
+    if (std::lround(value(param)) == bands)
+        return;
+    const UndoScope step(controller_); // with the middle band's wires
+    std::vector<std::pair<int, double>> changes{{param, static_cast<double>(bands)}};
+    const int mid = fxBandPort(split, 1), high = fxBandPort(split, kFxBands - 1);
+    // Wires from the middle band kept while it had two bands come back as they were.
+    bool midWired = false;
+    for (int node = 0; node <= kFxOutNode && !midWired; ++node)
+        for (int input = 0; input < fxInputCount(node) && !midWired; ++input)
+            midWired = fxNodeShown(node) && fxPortOf(value(fxInputIndex(node, input, FxInputField::From))) == mid;
+    if (bands >= kFxBands && !midWired)
+        for (const FxWireRef &w : fxWires()) {
+            if (w.port != high)
+                continue;
+            for (int input = 0; input < fxInputCount(w.node); ++input) {
+                const int from = fxInputIndex(w.node, input, FxInputField::From);
+                const bool taken = std::any_of(changes.begin(), changes.end(),
+                                               [&](const auto &c) { return c.first == from; });
+                if (!taken && fxPortOf(value(from)) < 0) {
+                    const int level = fxInputIndex(w.node, input, FxInputField::Level);
+                    changes.push_back({from, fxPortValue(mid)});
+                    changes.push_back({level, value(fxInputIndex(w.node, w.input, FxInputField::Level))});
+                    setWireBend(level, 0.0f); // straight, between the high band's bowing up and the low one's down
+                    break;
+                }
+            }
+        }
     editMany(changes);
     fxSyncOrder();
 }
@@ -646,6 +687,12 @@ bool View::fxGraphPress(const Widget &w, Point p) {
     case Kind::FxSplitAdd:
         addSplit();
         return true;
+    case Kind::Choice: // a split's BANDS 2 | 3
+        if (const int split = splitOf(w.param); split >= 0) {
+            setSplitBands(split, w.b);
+            return true;
+        }
+        return false;
     case Kind::FxNode:
         layout.fxSelected = w.a;
         drag_.kind = DragKind::FxNode;
