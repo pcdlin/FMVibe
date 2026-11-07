@@ -732,8 +732,10 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
         }
         if (item.joined) { // into the join, a node clicked in there going at its band's end
             const Point j = at[fxJoinNode(item.node - kFxSlots)];
-            wire(bands[0], {j.x - kFxJoinHalfW, j.y - 10.0f}, true, {1, i, static_cast<int>(item.hi.size())});
-            wire(bands[1], {j.x - kFxJoinHalfW, j.y + 10.0f}, true, {2, i, static_cast<int>(item.lo.size())});
+            // Level with the split's ports (both boxes are as large), so a band with nothing on it runs straight.
+            const float input = fxBandPortAt(j, kHighBand).y - j.y;
+            wire(bands[0], {j.x - kFxJoinHalfW, j.y + input}, true, {1, i, static_cast<int>(item.hi.size())});
+            wire(bands[1], {j.x - kFxJoinHalfW, j.y - input}, true, {2, i, static_cast<int>(item.lo.size())});
             tail = {{j.x + kFxJoinHalfW, j.y}, sumColor()};
             continue;
         }

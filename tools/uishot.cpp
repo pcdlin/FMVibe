@@ -2067,7 +2067,8 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     const bool splitShot = renderer.save(view, dir / "40j-fx-gap-split.png");
     view.undo();
     const Point bandGap = middle({cell(4, -1).x + detail::kFxNodeR, cell(4, -1).y},
-                                 {cell(5, 0).x - detail::kFxJoinHalfW - 8.0f, cell(5, 0).y - 10.0f});
+                                 {cell(5, 0).x - detail::kFxJoinHalfW - 8.0f,
+                                  detail::fxBandPortAt(cell(5, 0), kFxBands - 1).y});
     click(view, bandGap);
     click(view, gapItem(bandGap, false, fxMenuPlace(FxType::Widener)));
     const bool onJoinedBand = from(5, 0) == fxSlotPort(2) && from(join, 0) == fxSlotPort(5);
