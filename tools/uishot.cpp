@@ -2064,7 +2064,15 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                               model.value(paramIndex(1, SumParam::Used)) == 1.0 && from(split2, 0) == fxSlotPort(0) &&
                               from(join2, 0) == fxBandPort(1, kFxBands - 1) && from(join2, 1) == fxBandPort(1, 0) &&
                               from(1, 0) == fxSumPort(1);
+    // Its bands are empty: each shows its + with the mouse away (read off the rendered pixels).
+    view.mouseMove({600.0f, 428.0f}, {});
     const bool splitShot = renderer.save(view, dir / "40j-fx-gap-split.png");
+    bool emptyPluses = true;
+    for (const int band : {0, kFxBands - 1}) {
+        const Point port = detail::fxBandPortAt(cell(2, 0), band);
+        const Point plus{(port.x + cell(3, 0).x - detail::kFxJoinHalfW - 8.0f) * 0.5f, port.y};
+        emptyPluses = emptyPluses && renderer.pixel({plus.x + 6.0f, plus.y + 6.0f}) != renderer.pixel({plus.x, plus.y + 30.0f});
+    }
     view.undo();
     const Point bandGap = middle({cell(4, -1).x + detail::kFxNodeR, cell(4, -1).y},
                                  {cell(5, 0).x - detail::kFxJoinHalfW - 8.0f,
@@ -2073,10 +2081,10 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, gapItem(bandGap, false, fxMenuPlace(FxType::Widener)));
     const bool onJoinedBand = from(5, 0) == fxSlotPort(2) && from(join, 0) == fxSlotPort(5);
     view.undo();
-    check(gapShot && between && splitBetween && splitShot && onJoinedBand && from(1, 0) == fxSlotPort(0) &&
+    check(gapShot && between && splitBetween && splitShot && emptyPluses && onJoinedBand && from(1, 0) == fxSlotPort(0) &&
               model.value(paramIndex(1, SplitParam::Used)) == 0.0 && from(join, 0) == fxSlotPort(2) &&
               fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},
-          "a wire's middle puts an effect there, or a split with its join right after it");
+          "a wire's middle puts an effect there, or a split with its join right after it, its empty bands showing their +");
 
     // The mouse over the reverb shows an x in a circle at its upper right (read off the rendered pixels: none there
     // before), whose click removes it, the shaper going on into the split; undone.

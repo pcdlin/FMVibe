@@ -219,7 +219,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     glide aside (polled until they settle): an effect along the main line, one from the high band to the low band's
     end, and a split with its bands and join, carried by the join, to the line's start, each one undo step, undone;
     the mouse anywhere along a wire showing its + (read off the rendered pixels), a click there doing nothing and on
-    the + opening the list; and going back to a chain asking first, then leaving the chain in the line's order;
+    the + opening the list, and an empty band between a split and its join showing its + always (read off the
+    rendered pixels); and going back to a chain asking first, then leaving the chain in the line's order;
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
     the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
     nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the

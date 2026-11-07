@@ -1071,7 +1071,7 @@ void View::paintFxGraph(Canvas &c) {
             c.fillCircle(fxGridCell(col, row, scroll), 1.3f, kText.alpha(0.08f));
 
     // The wires, S-shaped, each in the color of what it comes from with an arrowhead where it goes into a node; the
-    // middle of one under the mouse anywhere along it, or whose list is open, a + in a circle.
+    // middle of one under the mouse anywhere along it, or whose list is open, or of an empty band, a + in a circle.
     const std::vector<FxGraphWire> wires = fxGraphWires(line, at);
     for (const FxGraphWire &w : wires) {
         const std::vector<Point> points = sWire(w.from, w.to);
@@ -1087,7 +1087,10 @@ void View::paintFxGraph(Canvas &c) {
                             fxSlot_.place == w.at.place;
         const bool hot = hover_ && (hover_->kind == Kind::FxGap || hover_->kind == Kind::FxWire) &&
                          hover_->a == w.at.lane && hover_->b == b;
-        if (!listed && !hot)
+        // An empty band between a split and its join shows it always.
+        const bool empty = w.at.lane > 0 && w.at.item < static_cast<int>(line.size()) &&
+                           (w.at.lane == 1 ? line[w.at.item].hi : line[w.at.item].lo).empty();
+        if (!listed && !hot && !empty)
             continue;
         const bool onPlus = hover_ && hover_->kind == Kind::FxGap && hover_->a == w.at.lane && hover_->b == b;
         const Point m = wireMiddle(w);

@@ -656,7 +656,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     wires out of a split's bands grey too. Each band has a + at its end and goes out from there. A band's
     + puts an effect on that band, and its list offers **Join the bands** instead: a join, a smaller box in the column
     after the longer band, adds them back together, and the line goes on from it with one + again. With the mouse
-    anywhere along a wire between two nodes, a + shows at its middle, and a click on that + opens the list too, the effect picked
+    anywhere along a wire between two nodes, a + shows at its middle (always on an empty band between a split
+    and its join), and a click on that + opens the list too, the effect picked
     going in there: on the main line, the list also offers the split, which goes in with its join right after it and
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's card
     shows its bands' responses with a handle on the crossover to drag across, and its Crossover knob; a join's card a
