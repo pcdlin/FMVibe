@@ -525,6 +525,7 @@ STR(ButtonOpenFolder, "OPEN FOLDER")
 STR(ButtonCancel, "Cancel")
 STR(ButtonInit, "Discard")
 STR(ButtonLoad, "Load")
+STR(ButtonOverwrite, "Overwrite")
 
 // --- The editor: hints and notes along the panels
 
@@ -588,6 +589,9 @@ STR(ConfirmTitle, "Discard the current patch?")
 STR(ConfirmLoadPreset, "Loading {1} replaces every setting.")
 STR(ConfirmInit, "Resets all settings to defaults.")
 STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
+STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
+STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
+STR(ConfirmOverwriteLost, "The preset as it was can't be brought back.")
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
@@ -668,7 +672,9 @@ STR(TipPresetName, "Browse presets")
 STR(TipOpenFolder, "Open preset folder")
 STR(TipInit, "Reset all settings")
 STR(TipLoad, "Load preset")
-STR(TipSave, "Save preset")
+STR(TipSave, "Save changes to {1}")
+STR(TipSaveUnchanged, "No changes to save")
+STR(TipSaveAs, "Save as a new preset")
 STR(TipSettings, "Settings")
 STR(TipBypassed, "Bypassed. Click to resume")
 STR(InputsNone, "Nothing modulates {1} yet.") // an operator's INPUTS tab with no route into it
@@ -798,6 +804,8 @@ STR(MsgTwoPoints, "A shape needs two points")
 STR(MsgSourcesFull, "Only supports up to {1} sources")
 STR(MsgPresetUnreadable, "Preset could not be read")
 STR(MsgNoPresets, "Preset folder is empty")
+STR(MsgPresetSaved, "Saved {1}")
+STR(MsgPresetNotSaved, "Could not save the preset")
 STR(MsgBadValue, "Invalid value for {2}: \"{1}\"")
 
 // --- The plugin's file dialogs

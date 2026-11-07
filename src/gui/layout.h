@@ -748,10 +748,10 @@ constexpr float kWhiteW = kKeys.w / kWhiteKeys;
 constexpr float kBlackW = kWhiteW * 0.6f;
 constexpr float kBlackH = kKeys.h * 0.6f;
 constexpr int kBaseNote = 24; // C1, where the keyboard starts before any octave shift
-// Init, Load, Save and the settings cog: icons at the right end of the title bar.
+// Init, Load, Save, Save As and the settings cog: icons at the right end of the title bar.
 inline Rect toolbarButton(int i) {
     constexpr float kW = 28.0f, kGap = 6.0f;
-    return {kInspector.right() - (4 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
+    return {kInspector.right() - (5 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
 }
 // Undo and redo, a little apart to their left.
 inline Rect undoButton(int redo) {
@@ -869,7 +869,7 @@ inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};
 }
 
-// The dialog asking before Init or Load replaces a changed patch, centered like the settings; a line shorter when
+// The dialog asking before Init or Load replaces a changed patch, or Save overwrites its preset, centered like the settings; a line shorter when
 // it doesn't say what replaces the patch.
 constexpr float kConfirmW = 360.0f;
 constexpr float kConfirmH = 150.0f;

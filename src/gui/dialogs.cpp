@@ -119,17 +119,27 @@ void View::runPreset(PresetAction action) {
             controller_.choosePreset(false);
         }
         break;
-    case PresetAction::Save:
+    case PresetAction::Save: // over the preset's file; with none (Init), or none to write (the demo), as Save As
+        if (!controller_.presetHasFile() || !controller_.writesPresetFiles())
+            controller_.choosePreset(true);
+        else if (controller_.overwritePreset())
+            flash(trf(Str::MsgPresetSaved, {controller_.presetName()}));
+        else
+            flash(tr(Str::MsgPresetNotSaved));
+        break;
+    case PresetAction::SaveAs:
         controller_.choosePreset(true);
         break;
     }
 }
 
 // What replaces the patch: Init, or the preset picked from the library. A file still to be picked in the dialog goes
-// unsaid.
+// unsaid. Or, for Save, what overwriting the preset's file does.
 std::string View::confirmWhat() const {
     if (confirm_ == static_cast<int>(PresetAction::Init))
         return tr(Str::ConfirmInit);
+    if (confirm_ == static_cast<int>(PresetAction::Save))
+        return tr(Str::ConfirmOverwrite);
     const std::vector<PresetEntry> &presets = controller_.presets();
     return pendingPreset_ >= 0 && pendingPreset_ < static_cast<int>(presets.size())
                ? trf(Str::ConfirmLoadPreset, {presets[pendingPreset_].name})
@@ -574,14 +584,17 @@ void View::paintConfirm(Canvas &c) {
     const Rect panel = confirmPanel(height(), what.empty());
     c.fillRect(panel, kPanel, 10.0f);
     c.strokeRect(panel, kBorder, 1.0f, 10.0f);
-    c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f}, tr(Str::ConfirmTitle), 14.0f, kText,
-           Align::Left, true);
+    const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
+    c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
+           overwrite ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()}) : std::string(tr(Str::ConfirmTitle)),
+           14.0f, kText, Align::Left, true);
     float y = panel.y + 48.0f;
     if (!what.empty()) {
         c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, what, 10.5f, kDim, Align::Left);
         y += kConfirmLine;
     }
-    c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst), 10.5f, kDim, Align::Left);
+    c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(overwrite ? Str::ConfirmOverwriteLost : Str::ConfirmSaveFirst),
+           10.5f, kDim, Align::Left);
     for (const Widget &w : confirmWidgets())
         paintWidget(c, w);
 }

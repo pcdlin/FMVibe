@@ -127,6 +127,7 @@ public:
     bool loadPreset(const std::wstring &) override { return false; }
     bool savePreset(const std::wstring &) override { return false; }
     void choosePreset(bool) override { js_toast(tr(Str::DemoNoFiles)); }
+    bool writesPresetFiles() const override { return false; }
     void rescanPresets() override {}
     const std::vector<PresetEntry> &presets() const override { return library_; }
     int presetIndex() const override {
