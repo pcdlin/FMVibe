@@ -14,6 +14,11 @@ namespace fmvibe {
 namespace {
 
 std::filesystem::path userSettingsFile() {
+    // The tests name a folder of their own, so they leave the user's settings alone.
+    wchar_t override_[MAX_PATH];
+    const DWORD length = GetEnvironmentVariableW(L"FMVIBE_SETTINGS_DIR", override_, MAX_PATH);
+    if (length > 0 && length < MAX_PATH)
+        return std::filesystem::path(override_) / L"settings.txt";
     PWSTR appData = nullptr;
     std::filesystem::path file;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &appData)))

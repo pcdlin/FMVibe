@@ -34,7 +34,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 `ctest` runs four programs:
 
-- **Smoke test** (`tests/smoke_host.cpp`): a small headless host. It loads the `.clap` and checks the parameter
+- **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
+  which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
+  settings file.) It loads the `.clap` and checks the parameter
   table, text round-trips (at each end and just inside it too, the slowest sweep rate and the shortest time typed
   neither still nor Off), the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:

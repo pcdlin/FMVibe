@@ -350,6 +350,14 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "usage: fmvibe-vst3-smoke <FMVibe.vst3>\n");
         return 2;
     }
+    // The editor saves its size into the user's settings: keep the test's resizes out of them.
+    {
+        wchar_t temp[MAX_PATH];
+        GetTempPathW(MAX_PATH, temp);
+        const std::wstring dir = std::wstring(temp) + L"fmvibe-vst3-settings";
+        CreateDirectoryW(dir.c_str(), nullptr);
+        SetEnvironmentVariableW(L"FMVIBE_SETTINGS_DIR", dir.c_str());
+    }
     HMODULE lib = LoadLibraryA(argv[1]);
     if (!lib) {
         std::fprintf(stderr, "cannot load %s (error %lu)\n", argv[1], GetLastError());
