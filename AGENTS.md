@@ -484,10 +484,11 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 ## Releasing
 
 A version tag publishes a release. `.github/workflows/release.yml` builds the plugins on Windows (Visual Studio
-2026) with `build.ps1 -Validate`, so every test and both validators have to pass. It puts `FMVibe.clap`, the
-`FMVibe.vst3` folder, `LICENSE` and the CLAP and VST3 SDKs' licenses (`LICENSE-CLAP`, `LICENSE-VST3`) into
-`FMVibe-<tag>-windows-x64.zip`, and creates a GitHub release
-for the tag with that zip and notes generated from the commits since the previous tag. Meanwhile it builds the
+2026) with `build.ps1 -Validate`, so every test and both validators have to pass. It packs each format into a zip
+of its own: `FMVibe.clap`, `LICENSE` and the CLAP SDK's license (`LICENSE-CLAP`) into
+`FMVibe-<tag>-windows-x64-clap.zip`, and the `FMVibe.vst3` folder, `LICENSE` and the VST3 SDK's license
+(`LICENSE-VST3`) into `FMVibe-<tag>-windows-x64-vst3.zip`. It then creates a GitHub release for the tag with both
+zips and notes generated from the commits since the previous tag. Meanwhile it builds the
 browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and publishes it on GitHub Pages
 (`https://pcdlin.github.io/FMVibe/`). Neither goes out unless both build.
 
