@@ -225,7 +225,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - the effects graph's slot grid: switching to it showing the chain as its main line, as wired; the main
-    line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
+    line's + opening the list of effects with Add frequency split after them, the split coming with its join, its
     empty bands each curving out to a + on its row, each + ringed in its wire's color (read off the rendered
     pixels); a band's + putting an effect on its band; the join's node showing
     the split's card (at the inspector's right), its High knob setting the high band's level, in dB, and its S

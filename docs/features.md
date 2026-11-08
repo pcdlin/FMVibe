@@ -690,7 +690,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     a narrow dashed card (ADD TO LOW or ADD TO HIGH, in capitals as ADD EFFECT) that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
-    + EFFECT offer **Split into high/low bands** after the effects, which goes in there (at the line's end from the
+    + EFFECT offer **Add frequency split** after the effects, which goes in there (at the line's end from the
     last two) with its join, its bands empty and its low band shown. A card dragged over the band a container shows
     lands on that band, and carried over a container's tab it shows that band, to land on; a card dragged out of a
     band goes onto the main line. A copy of a card on a band goes at the end of that band. The band each split shows
@@ -709,8 +709,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     wire themselves: S-shaped wires, grey along the main line, run left to right from the input (IN, a
     box at the left) to the output (OUT, a box after the last column). Each effect is a rounded box in its color, as a voice
     filter's node is in the routing graph, its icon in it and its name under it, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
-    opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Split
-    into high/low bands**, after the effects: a split, a box its high band leaves from the top of its right side and
+    opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Add
+    frequency split**, after the effects: a split, a box its high band leaves from the top of its right side and
     its low band from the bottom, always comes with its join, which adds the bands back together in the
     column after the longer band; the line goes on from the join. The bands run between them, the high one along the
     row above the main line and the low one along the row below, named beside the split, each band's wires in its
