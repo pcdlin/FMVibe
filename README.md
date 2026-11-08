@@ -15,8 +15,9 @@ Information about working on the code, its tests and the plugin's internals are 
 
 ## Download
 
-Each [release](https://github.com/pcdlin/FMVibe/releases) has a zip for 64-bit Windows with `FMVibe.clap` and the
-`FMVibe.vst3` folder; use whichever your DAW takes, or both.
+Each [release](https://github.com/pcdlin/FMVibe/releases) has two zips for 64-bit Windows, one per format:
+`FMVibe-v<version>-windows-x64-clap.zip` holds `FMVibe.clap`, and `FMVibe-v<version>-windows-x64-vst3.zip` the
+`FMVibe.vst3` folder. Download whichever your DAW takes, or both.
 
 - Put `FMVibe.clap` into either the per-user CLAP folder, `%LOCALAPPDATA%\Programs\Common\CLAP`, or the system-wide
   one, `%COMMONPROGRAMFILES%\CLAP`.
