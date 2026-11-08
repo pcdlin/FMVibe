@@ -2409,12 +2409,12 @@ std::vector<View::Widget> View::widgets() const {
         if (kind != Kind::Knob) {
             // Leftwards from the corner, 8 px apart on a label and 7 on a cell or depth bar, no further out than
             // stays inside it at the user's size; past what fits, as many as leave room for the pill. A wire's or
-            // OUT label in the graph has them under it and its ranges over it, so its depth stays readable; on the
-            // operator page's INPUTS tab, along its bottom, its ranges along its top. A cell and a depth bar have
-            // them in their top right corner, their ranges along their bottom.
+            // OUT label in the graph has them centered just under it and its ranges on its outline's top, so its
+            // depth stays readable; on the operator page's INPUTS tab, along its bottom, its ranges along its top. A
+            // cell and a depth bar have them in their top right corner, their ranges along their bottom.
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
             const float margin = std::max(cell ? 4.0f : 3.0f, sizes.dotCompact + 1.0f), step = cell ? 7.0f : 8.0f,
-                        y = cell ? r.y + 4.0f : list[i].graph ? r.bottom() + 5.0f : r.bottom() - 2.0f;
+                        y = cell ? r.y + 4.0f : list[i].graph ? r.bottom() + 0.75f + sizes.dotCompact : r.bottom() - 2.0f;
             const int fit = static_cast<int>((r.w - 2.0f * margin) / step) + 1;
             int shown = n;
             float pillW = 0.0f;
@@ -2424,8 +2424,16 @@ std::vector<View::Widget> View::widgets() const {
                 const float room = r.w - margin - 4.25f - pillW - 1.0f;
                 shown = room < 0.0f ? 0 : std::min(static_cast<int>(std::floor(room / step)) + 1, n - 1);
             }
+            // The first handle's center; in the graph, the handles and pill as a group centered under the label.
+            float first = r.right() - margin;
+            if (list[i].graph) {
+                const float span = static_cast<float>(std::max(shown - 1, 0)) * step;
+                const float right = shown > 0 ? sizes.dotCompact : 0.0f;
+                const float left = n > fit ? -(shown > 0 ? span + 4.25f : 0.0f) - pillW : -span - sizes.dotCompact;
+                first = r.center().x - 0.5f * (left + right);
+            }
             for (int k = 0; k < shown; ++k) {
-                const Point c{r.right() - margin - static_cast<float>(k) * step, y};
+                const Point c{first - static_cast<float>(k) * step, y};
                 add(Kind::ModDot, {c.x - 3.5f, c.y - 3.5f, 7.0f, 7.0f},
                     slotAmountIndex(here[k].source, here[k].slot), here[k].source, here[k].slot);
                 list.back().compact = true;
@@ -2433,7 +2441,7 @@ std::vector<View::Widget> View::widgets() const {
             }
             if (n > fit) {
                 const float edge =
-                    r.right() - margin - static_cast<float>(std::max(shown - 1, 0)) * step - (shown > 0 ? 4.25f : 0.0f);
+                    first - static_cast<float>(std::max(shown - 1, 0)) * step - (shown > 0 ? 4.25f : 0.0f);
                 pill({edge - pillW, y - 0.5f * sizes.pillCompactH, pillW, sizes.pillCompactH}, shown, true);
             }
             continue;
@@ -5868,8 +5876,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 18.0f, w.rect.h}; // where it sits when open
         }
         c.text(textRect, text, kTextLabel, focused ? kText : kDim);
-        paintModRange(c, {w.rect.x + 7.0f, w.graph ? w.rect.y - 4.5f : w.rect.y + 2.5f, w.rect.w - 14.0f, 1.5f},
-                      w.param); // the handles go below
+        // In the graph, on its outline's top line (the line's middle half a pixel in); the handles go below.
+        paintModRange(c, {w.rect.x + 7.0f, w.graph ? w.rect.y - 0.25f : w.rect.y + 2.5f, w.rect.w - 14.0f, 1.5f},
+                      w.param);
         break;
     }
     case Kind::LabelMode: {
