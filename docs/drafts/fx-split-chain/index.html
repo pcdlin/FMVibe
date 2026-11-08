@@ -92,7 +92,7 @@ ul.dense li::marker { color: var(--ink-dim); }
         <li><div><h3>Band tabs: LOW | HIGH</h3><p>Drawn like the operator page's ENVELOPE / UNISON / SCOPE tabs: names on a line, the shown tab's underline in its band's color (blue for low, amber for high, the graph's band colors). A tab whose band is hidden shows its effect count, faint. The wheel switches tabs, and so does holding a dragged card over a tab.</p></div></li>
         <li><div><h3>Crossover display</h3><p>Both bands' responses with the shown band's curve filled, and a handle on the crossover that drags across it. A double-click resets it to 250 Hz. It's 104 px tall, shorter than in PR #37's split card, to make room for the solos.</p></div></li>
         <li><div><h3>Slope: 6 | 12 | 24 dB</h3><p>The split card's segmented switch. The wheel steps along it.</p></div></li>
-        <li><div><h3>SOLO LOW | SOLO HIGH</h3><p>The join's solos, one at a time: soloing one band unsolos the other, and a click on the lit one unsolos it. A soloed button fills with its band's color, and its band's tab shows an S in that color, as the graph's join node does. That way a soloed band shows even while the other band's tab is picked.</p></div></li>
+        <li><div><h3>Solo: S | S</h3><p>A plain rectangular S button over the Low knob and another over the High knob: the join's solos, one at a time. Soloing one band unsolos the other, and a click on the lit one unsolos it. A soloed button fills with its band's color, and its band's tab shows an S in that color, as the graph's join node does. That way a soloed band shows even while the other band's tab is picked.</p></div></li>
         <li><div><h3>Low · Crossover · High</h3><p>Low and High are the join's band levels (0 dB down to −60 dB, silence), so the chain view has no join card. Crossover is the split's knob. All three take modulation and right-click menus like any knob, and the MODS view still lists them as Split 1 Crossover, Join 1 Low and Join 1 High.</p></div></li>
         <li><div><h3>Grey column and outline</h3><p>A neutral grey: splits and joins are already grey in the graph, because they shape the line rather than the sound. The outline's corners are 11 px against the cards' 8, so the gap between them stays even.</p></div></li>
         <li><div><h3>Add placeholder</h3><p>A narrow dashed card in the same neutral grey as the chain's add-effect card. A click opens the list of effects (effects only: a split can't go inside a band), and the one picked goes at the band's end.</p></div></li>
@@ -106,7 +106,7 @@ ul.dense li::marker { color: var(--ink-dim); }
           <tr><td>Container outline</td><td>5 px outside the cards on every side: <code>kFxTop − 5</code> to the cards' bottom <code>+ 5</code></td><td>"Very slightly larger": it fits in the 22 px gap and above the scrollbar.</td></tr>
           <tr><td>Column</td><td>One card place: 171 px of controls plus the 5 px edge</td><td>The first inner card lands on the chain's grid of card places.</td></tr>
           <tr><td>Crossover display</td><td><code>143 × 104</code> px</td><td>Shorter than PR #37's split card's, leaving room for the solo row.</td></tr>
-          <tr><td>Solo row</td><td>Two buttons, <code>69.5 × 20</code> px, 4 px apart, 8 px under the slope</td><td>Left for low and right for high, like the tabs and the knobs.</td></tr>
+          <tr><td>Solo buttons</td><td>Two S buttons, <code>24 × 20</code> px, 10 px under the slope, each centered over its band's knob</td><td>Each one sits with the level it belongs to: low on the left, high on the right.</td></tr>
           <tr><td>Placeholder</td><td><code>64 × 304</code> px, the add-effect card's dashed <code>kFaint</code> outline</td><td>Narrower than the chain's dashed card, so an empty band costs little room.</td></tr>
           <tr><td>Column knobs</td><td>Centers at card <code>y + 267</code>, labels at <code>+ 293</code></td><td>The same row as the bottom knobs on the compressor, delay and reverb cards.</td></tr>
           <tr><td>Grey</td><td>Fill <code>#252931</code>, outline <code>#565C69</code> (Midnight)</td><td>New palette entries per theme, close to <code>kDim</code>, the split color, at low strength.</td></tr>
@@ -136,7 +136,7 @@ ul.dense li::marker { color: var(--ink-dim); }
           <tr><td>The container card</td><td>A split node, its two band rows and its join node</td><td>The split's and the sum's <code>Used</code>; wires</td></tr>
           <tr><td>The container's grey column</td><td>The card of the split or the join picked: the same component</td><td>All of the rows below</td></tr>
           <tr><td>Crossover display, Slope, Crossover knob</td><td>The same controls on the card</td><td><code>SplitParam::Low</code>, <code>SplitParam::Slope</code></td></tr>
-          <tr><td>SOLO LOW | SOLO HIGH</td><td>The same buttons; the join node's S badge</td><td><code>SumParam::SoloLow</code>, <code>SoloHigh</code></td></tr>
+          <tr><td>The two S buttons</td><td>The same buttons; the join node's S badge</td><td><code>SumParam::SoloLow</code>, <code>SoloHigh</code></td></tr>
           <tr><td>Low and High knobs</td><td>The same knobs on the card</td><td>The levels of the join's two input wires (dB)</td></tr>
           <tr><td>The cards in a band, in order</td><td>The nodes along that band's row</td><td>Wires from the split's band port through the effects into the join</td></tr>
           <tr><td>The cards before and after the container</td><td>The main line</td><td>Wires from IN to OUT</td></tr>
@@ -421,11 +421,12 @@ function splitControls(px, o) {
     s += R(x0, sy, sw, 22, { r: 4, fill: sel ? C.accent : C.greyInset, fop: sel ? 0.22 : 1, stroke: sel ? C.accent : C.greyRule, sw: 1 });
     s += T(x0 + sw / 2, sy + 11, t, { size: 10.5, fill: sel ? C.text : C.dim, weight: sel ? 700 : 400, anchor: 'middle' });
   });
-  const oy = Y0 + 208, ow = (tw - 4) / 2;
-  [['low', 'SOLO LOW'], ['high', 'SOLO HIGH']].forEach(([b, t], i) => {
-    const on = o.solo === b, x0 = tx + i * (ow + 4);
-    s += R(x0, oy, ow, 20, { r: 4, fill: on ? BAND[b] : C.greyInset, fop: on ? 0.22 : 1, stroke: on ? BAND[b] : C.greyRule, sw: 1 });
-    s += T(x0 + ow / 2, oy + 10, t, { size: 9.5, weight: 700, fill: on ? C.text : C.dim, anchor: 'middle', ls: 0.4 });
+  // Solo: a plain S button over each band's knob.
+  const oy = Y0 + 210;
+  [['low', 0], ['high', 2]].forEach(([b, k]) => {
+    const on = o.solo === b, x0 = third(px, CARD_W, k) - 12;
+    s += R(x0, oy, 24, 20, { r: 4, fill: on ? BAND[b] : C.greyInset, fop: on ? 0.22 : 1, stroke: on ? BAND[b] : C.greyRule, sw: 1 });
+    s += T(x0 + 12, oy + 10, 'S', { size: 10.5, weight: 700, fill: on ? C.text : C.dim, anchor: 'middle' });
   });
   const kv = db => 1 + db / 60;
   s += knob(third(px, CARD_W, 0), Y0 + 267, 'Low', kv(o.lowDb ?? 0), BAND.low, { body: C.greyInset });
@@ -575,7 +576,7 @@ graphView('fig-graph-join', 'join');
   marks += mark(2, px + 14, Y0 + 48, Y0 + 52);
   marks += mark(3, px + 14, Y0 + 118, Y0 + 118);
   marks += mark(4, px + 14, Y0 + 189, Y0 + 184);
-  marks += mark(5, px + 14, Y0 + 218, Y0 + 218);
+  marks += mark(5, third(px, CARD_W, 0) - 12, Y0 + 220, Y0 + 220);
   marks += mark(6, px + 18, Y0 + 267, Y0 + 256);
   marks += mark(7, px - 5, Y0 + 290, Y0 + 294);
   marks += L(sc.phX + sc.phW / 2, Y0 + 196, sc.phX + sc.phW / 2, Y0 + 228, C.note, 1.2) + Ci(sc.phX + sc.phW / 2, Y0 + 196, 2.5, { fill: C.note })
