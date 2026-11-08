@@ -662,7 +662,8 @@ private:
         int place = 0;
     };
     static constexpr int kFxGapStride = 64; // a band's places, more than it can hold
-    // The wires the grid draws: S-shaped from `from` to `to` (an arrowhead's base where `arrow`), in `color`, and
+    // The wires the grid draws: level from `from` to `to` (an arrowhead's base where `arrow`), bending S-shaped from one
+    // row to another within a gap between nodes, in `color`, and
     // where a node clicked in at their middle goes (`at`, lane -1 for none).
     struct FxGraphWire {
         Point from, to;
@@ -672,6 +673,7 @@ private:
         std::optional<Point> plus; // where its + shows, if not at its middle: an empty band's, on the band's row
         int port = -1;             // what it carries: the port it comes from, which lights it as loud as that is
         bool faint = false;        // along a band its join doesn't hear, the other one soloed
+        bool bendAtStart = false;  // bending to its row as it leaves (out of a split's band), else as it arrives
     };
     // Whether the join of a split on the line lets a band of it through (`lane` 1 the high one, 2 the low one, 3 the
     // middle one): not while another band is soloed and it isn't.

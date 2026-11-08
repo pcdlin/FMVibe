@@ -722,8 +722,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     widest card, so picking a node never moves it: scrolled to its end beside a narrow card, a little room shows
     after OUT. Its hint at the top right reads "click node: edit · drag
     node: move · click wire: insert". The graph's nodes sit on a fixed grid, a column each, and
-    wire themselves: S-shaped wires, grey along the main line, run left to right from the input (IN, a
-    box at the left) to the output (OUT, a box after the last column). Each effect is a rounded box in its color, as a voice
+    wire themselves: wires, grey along the main line, run left to right from the input (IN, a
+    box at the left) to the output (OUT, a box after the last column). A wire from one row to another runs level as
+    far as it can and bends S-shaped only within the gap between two columns' nodes, so it never crosses a node: out
+    of a split's band right as it leaves the split, into a join (or OUT) just before it. Each effect is a rounded box in its color, as a voice
     filter's node is in the routing graph, its icon in it and its name under it, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Add
     frequency split** and **Add 3-band split**, after the effects: a split, a box its high band leaves from the top of

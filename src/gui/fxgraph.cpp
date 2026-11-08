@@ -111,13 +111,6 @@ float distanceToSegment(Point p, Point a, Point b) {
     return std::hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
-// Where a wire's + shows: at its middle, which an S-shaped wire passes through halfway between its ends, or where it
-// says (an empty band's).
-template <class Wire>
-Point wireMiddle(const Wire &w) {
-    return w.plus ? *w.plus : Point{(w.from.x + w.to.x) * 0.5f, (w.from.y + w.to.y) * 0.5f};
-}
-
 // An S-shaped wire from `a` to `b`, leaving and arriving level: a cubic, sampled.
 std::vector<Point> sWire(Point a, Point b) {
     const float dx = std::max(16.0f, (b.x - a.x) * 0.5f);
@@ -131,6 +124,41 @@ std::vector<Point> sWire(Point a, Point b) {
         points.push_back({wa * a.x + w1 * c1.x + w2 * c2.x + wb * b.x, wa * a.y + w1 * c1.y + w2 * c2.y + wb * b.y});
     }
     return points;
+}
+
+// A graph wire's path: level for as long as it can be, bending from one row to another within a gap between two grid
+// columns' nodes (kFxWireBend), at its start where it leaves a split's band port (`bendAtStart`), else at its end,
+// so it never crosses a node on its way.
+template <class Wire>
+std::vector<Point> wirePath(const Wire &w) {
+    const Point a = w.from, b = w.to;
+    if (b.x - a.x <= kFxWireBend || std::abs(b.y - a.y) < 0.5f)
+        return sWire(a, b);
+    if (w.bendAtStart) {
+        std::vector<Point> points = sWire(a, {a.x + kFxWireBend, b.y});
+        points.push_back(b);
+        return points;
+    }
+    std::vector<Point> points{a};
+    const std::vector<Point> bend = sWire({b.x - kFxWireBend, a.y}, b);
+    points.insert(points.end(), bend.begin(), bend.end());
+    return points;
+}
+
+// Where a wire's + shows: on its path halfway across, or where it says (an empty band's).
+template <class Wire>
+Point wireMiddle(const Wire &w) {
+    if (w.plus)
+        return *w.plus;
+    const float x = (w.from.x + w.to.x) * 0.5f;
+    const std::vector<Point> points = wirePath(w);
+    for (size_t k = 1; k < points.size(); ++k)
+        if (points[k].x >= x) {
+            const Point p = points[k - 1], q = points[k];
+            const float t = q.x > p.x ? (x - p.x) / (q.x - p.x) : 0.0f;
+            return {x, p.y + t * (q.y - p.y)};
+        }
+    return {x, (w.from.y + w.to.y) * 0.5f};
 }
 
 // Where an item of the line sits: on the main line, or along one of a split's bands.
@@ -800,7 +828,7 @@ bool View::fxWireHit(const Widget &w, Point p) const {
     }
     for (const FxGraphWire &wire : *kept)
         if (wire.at.lane == w.a && wire.at.item * kFxGapStride + wire.at.place == w.b) {
-            const std::vector<Point> points = sWire(wire.from, wire.to);
+            const std::vector<Point> points = wirePath(wire);
             for (size_t k = 1; k < points.size(); ++k)
                 if (distanceToSegment(p, points[k - 1], points[k]) <= 6.0f)
                     return true;
@@ -833,6 +861,7 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
     auto wire = [&](Tail from, Point to, bool arrow, FxSlotAt where = {}) {
         wires.push_back({from.at, arrow ? Point{to.x - 8.0f, to.y} : to, from.color, arrow, where, std::nullopt,
                          from.port});
+        wires.back().bendAtStart = fxPortSplit(from.port) >= 0; // out of a split's band, next to the main line
     };
     const auto &at = places.node;
     const Point in = places.in, out = places.out;
@@ -1661,7 +1690,7 @@ void View::paintFxGraph(Canvas &c) {
     const std::vector<FxGraphWire> wires = fxGraphWires(line, at);
     float outGlow = 0.0f;
     for (const FxGraphWire &w : wires) {
-        const std::vector<Point> points = sWire(w.from, w.to);
+        const std::vector<Point> points = wirePath(w);
         const float glow = w.faint ? 0.0f : fxGlow(w.port);
         if (glow > 0.01f) {
             featherLine(c, points.data(), points.size(), 1.6f, 6.0f, w.color.alpha(0.3f * glow));
@@ -1703,18 +1732,19 @@ void View::paintFxGraph(Canvas &c) {
     std::array<bool, kFxNodes> soloedOut{};
     for (const FxLineItem &item : line)
         if (fxNodeSplit(item.node)) {
-            const float x = at.node[item.node].x + 22.0f;
+            const Point split = at.node[item.node];
             for (int lane : item.lanes()) {
                 const float heard = fxBandSoloedOut(item, lane) ? kSoloedOutAlpha : 1.0f;
                 for (int slot : item.band(lane))
                     soloedOut[slot] = heard < 1.0f;
-                // The middle band's name over its wire, a little above the main line, clear of the nodes on it.
-                const float y = lane == 1   ? fxGridCell(0, -1, scroll).y - kFxNodeR - 22.0f
-                                : lane == 2 ? fxGridCell(0, 1, scroll).y + kFxNodeR + 22.0f
-                                            : fxGridCell(0, 0, scroll).y - 20.0f;
+                // The high band's name just over its wire and the low band's just under it, where they level out on
+                // their rows; the middle band's over its wire, past where the high band's has climbed away from it,
+                // short of the node or + on it.
+                const float row = static_cast<float>(laneRow(lane)) * kFxGridRow;
+                const float y = lane == 1 ? split.y + row - 18.0f : lane == 2 ? split.y + row + 4.0f : split.y - 17.0f;
                 const Str name = lane == 1 ? Str::BandHigh : lane == 2 ? Str::BandLow : Str::BandMid;
-                c.text({lane == 3 ? x + 4.0f : x, y, 80.0f, 14.0f}, tr(name), kTextSmall, laneColor(lane).alpha(heard),
-                       Align::Left, true);
+                c.text({split.x + (lane == 3 ? 36.0f : 30.0f), y, 80.0f, 14.0f}, tr(name), kTextSmall,
+                       laneColor(lane).alpha(heard), Align::Left, true);
             }
         }
 

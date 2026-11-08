@@ -2347,6 +2347,24 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove({600.0f, 428.0f}, {});
         const bool onMiddle = widener >= 0 && from(join, 2) == fxSlotPort(widener) &&
                               renderer.save(view, dir / "40f4-fx-split-three-middle.png");
+        // A phaser after it, on the wire into the join: the middle band two nodes long, the join a column on. The high
+        // and low bands' wires into it run level along their rows past the phaser's column, bending only in the gap
+        // before the join (read off the rendered pixels: each wire there on its row, not below or above it).
+        bool levelWires = false;
+        {
+            const float into = (cell(4, 0).x + detail::kFxNodeR + cell(5, 0).x - detail::kFxJoinHalfW - 8.0f) * 0.5f;
+            addAt({into, cell(5, 0).y}, FxType::Phaser);
+            view.mouseMove({600.0f, 428.0f}, {});
+            const bool longShot = renderer.save(view, dir / "40f4a-fx-split-three-long.png");
+            auto onRow = [&](int row) {
+                const Point p = cell(5, row);
+                const uint32_t wire = renderer.pixel(p);
+                return wire != renderer.pixel({p.x, p.y - 10.0f}) && wire != renderer.pixel({p.x, p.y + 10.0f});
+            };
+            levelWires = longShot && from(join, 2) != fxSlotPort(widener) && onRow(-1) && onRow(1);
+            view.undo();
+        }
+        check(levelWires, "the bands' wires into a join run level along their rows, bending only before it");
         click(view, cell(3, 0)); // the split's card again, in the effect's place
         click(view, centerOf(detail::splitSoloButton(card, 1)));
         click(view, centerOf(detail::splitSoloButton(card, 0))); // and the low band's too, the high band left out
