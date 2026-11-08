@@ -4,7 +4,9 @@
 #include "../synth.h"
 #include "../uistrings.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -144,6 +146,15 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
     return trf(name, {std::to_string(number)});
 }
 
+// The tempo a host that stands in for a transport offers the editor (see Controller::hasTempo()): its range, where it
+// starts, and a tempo held to the range and rounded to hundredths of a BPM (one that isn't a number, to the default).
+constexpr double kMinTempo = 20.0, kMaxTempo = 999.0, kDefaultTempo = 120.0;
+inline double clampTempo(double bpm) {
+    if (std::isnan(bpm))
+        return kDefaultTempo;
+    return std::round(std::clamp(bpm, kMinTempo, kMaxTempo) * 100.0) / 100.0;
+}
+
 // A preset in the library: a .fmv file in the preset folder, or in one of its subfolders.
 struct PresetEntry {
     std::string name;     // the file's name without .fmv
@@ -264,6 +275,13 @@ public:
     // (opaque), 0.75 to begin with; the user's too.
     virtual double linkIntensity() const = 0;
     virtual void setLinkIntensity(double amount) = 0;
+    // The tempo, for a host that stands in for a transport and lets the editor set it (the browser demo, and
+    // fmvibe-uihost through FMVibe's own host extension, see src/hosttempo.h): the editor then shows it in the title
+    // bar, to drag, scroll or type. A plugin host's tempo is its own, and the editor shows none. In BPM, kMinTempo to
+    // kMaxTempo, in hundredths (see clampTempo()).
+    virtual bool hasTempo() const { return false; }
+    virtual double tempo() const { return kDefaultTempo; }
+    virtual void setTempo(double) {}
 
 protected:
     // What beginEdit(), setValue() and endEdit() do besides keeping the history: undo and redo

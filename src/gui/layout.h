@@ -907,6 +907,9 @@ constexpr Rect kPresetName{430.0f, kTitleRowY, 340.0f, kTopRowH};
 inline Rect presetStep(int direction) {
     return {direction < 0 ? kPresetName.x - 30.0f : kPresetName.right() + 4.0f, kPresetName.y, 26.0f, kPresetName.h};
 }
+// The tempo, for a host that lets the editor set it (see Controller::hasTempo()): a field midway between the name and
+// the preset bar's back arrow, a metronome at its left.
+constexpr Rect kTempoBox{215.0f, kTitleRowY, 96.0f, kTopRowH};
 // The octave shift: two small buttons under the keys' right end, the keys' range between them.
 inline Rect octaveButton(int dir, float top) {
     return {dir < 0 ? 1094.0f : 1162.0f, top + kKeys.y + kKeys.h + 2.0f, 14.0f, 12.0f};

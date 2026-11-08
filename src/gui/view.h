@@ -240,6 +240,7 @@ private:
         PresetButton, // a = PresetAction
         PresetStep,   // a = -1 or 1: the previous or next preset in the library
         PresetNameBox, // the current preset's name: opens the preset browser
+        TempoBox,     // the host's tempo (see Controller::hasTempo()): drag up and down, scroll, or double-click to type
         BrowserBackdrop, // a = 1 on the browser itself, 0 around it (a click there closes it)
         BrowserRow,   // a = preset index: loads it
         BrowserClose,
@@ -345,6 +346,7 @@ private:
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
         SplitPoint, // a split's crossover handle, across
         FxNodeMove, // a node of the effects graph (a split or a join with what it holds), onto another place
+        Tempo,      // the title bar's tempo, up and down (drag_.startValue: the tempo it started at)
     };
 
     struct Drag {

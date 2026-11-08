@@ -115,6 +115,12 @@ public:
     void setHandleSize(int size) override { handles = size; }
     double linkIntensity() const override { return links; }
     void setLinkIntensity(double amount) override { links = amount; }
+    bool hasTempo() const override { return offersTempo; }
+    double tempo() const override { return bpm; }
+    void setTempo(double v) override {
+        bpm = v;
+        ++tempoSets;
+    }
 
 protected:
     void performBeginEdit(int) override { ++openEdits; }
@@ -134,6 +140,9 @@ public:
     int mpeRange = 48;
     int handles = 0;
     double links = 0.75;
+    bool offersTempo = false; // a host that lets the editor set its tempo (the browser demo, fmvibe-uihost)
+    double bpm = 120.0;
+    int tempoSets = 0;
     std::string themeName;
     double glowLevel = 0.0;
     Telemetry live{};
@@ -1596,6 +1605,92 @@ void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
 // into the next and stopping at 64.00; the wheel stepping the digit under the mouse; a double-click rounding to the
 // digit; the hovered digit lit behind (read off the rendered pixels); a typed fraction; and a source's handle dropped
 // on it modulating it, its reach drawn along the track under the digits (read off the rendered pixels).
+// The title bar's tempo, for a host that lets the editor set it (the browser demo, fmvibe-uihost): none for a plugin
+// host; a field between the name and the preset bar, dragged a BPM every 2 px (with Shift a tenth), scrolled a BPM a
+// notch onto whole ones (with Shift a tenth), typed into after a double-click or Ctrl+Click, held to 20-999 BPM, and
+// none of it touching the patch or its undo history.
+void testTempo(const std::filesystem::path &dir, Renderer &renderer) {
+    const Rect titleBar{0.0f, 0.0f, 820.0f, detail::kTitleBarH};
+    const Point box = detail::kTempoBox.center();
+    // Inside the field, clear of the metronome and the number (whatever the font), and clear of its border.
+    const Point inside{detail::kTempoBox.right() - 5.0f, detail::kTempoBox.center().y};
+    const Point away{600.0f, 328.0f};
+    uint32_t bare = 0;
+    {
+        FakeController model; // a plugin host, whose tempo is its own
+        View view(model);
+        view.mouseMove(away, {});
+        const bool shot = renderer.save(view, dir / "43-tempo-none.png", &titleBar);
+        bare = renderer.pixel(inside);
+        drag(view, box, {box.x, box.y - 40.0f});
+        view.wheel(box, 1.0f, {});
+        doubleClick(view, box);
+        check(shot && model.tempoSets == 0 && !view.typing(), "a plugin host's editor shows no tempo");
+    }
+    FakeController model;
+    model.offersTempo = true;
+    View view(model);
+    const ParamValues patch = model.values;
+    view.mouseMove(away, {});
+    const bool shown = renderer.save(view, dir / "43a-tempo.png", &titleBar) && renderer.pixel(inside) != bare;
+    view.mouseMove(box, {});
+    check(shown && renderer.save(view, dir / "43b-tempo-hover.png", &titleBar),
+          "a host that lets the editor set its tempo gets a field for it in the title bar (read off the rendered pixels)");
+
+    drag(view, box, {box.x, box.y - 20.0f});
+    const bool dragged = model.bpm == 130.0;
+    view.mouseDown(box, {true, false}); // with Shift, a tenth of a BPM every 2 px
+    view.mouseMove({box.x, box.y - 10.0f}, {true, false});
+    view.mouseUp({box.x, box.y - 10.0f}, {true, false});
+    const bool fine = std::abs(model.bpm - 130.5) < 1e-9;
+    click(view, box); // a click leaves it be
+    const bool clicked = std::abs(model.bpm - 130.5) < 1e-9;
+    check(dragged && fine && clicked, "the tempo is dragged a BPM every 2 px, a tenth of one with Shift");
+    view.wheel(box, 1.0f, {});
+    const bool up = model.bpm == 131.0; // onto whole BPM
+    view.wheel(box, -2.0f, {});
+    const bool down = model.bpm == 129.0;
+    view.wheel(box, 1.0f, {true, false});
+    check(up && down && std::abs(model.bpm - 129.1) < 1e-9, "the wheel steps the tempo a BPM a notch, a tenth with Shift");
+    drag(view, box, {box.x, box.y - 4000.0f});
+    const bool top = model.bpm == 999.0;
+    drag(view, box, {box.x, box.y + 4000.0f});
+    check(top && model.bpm == 20.0, "the tempo stops at 999 and 20 BPM");
+
+    doubleClick(view, box);
+    const bool typing = view.typing();
+    type(view, "92.5");
+    view.mouseMove(away, {});
+    const bool typingShot = renderer.save(view, dir / "43c-tempo-typing.png", &titleBar);
+    view.typeKey(View::Key::Enter);
+    const bool typed = !view.typing() && model.bpm == 92.5;
+    view.mouseMove(away, {});
+    const bool typedShot = renderer.save(view, dir / "43d-tempo-typed.png", &titleBar);
+    check(typing && typingShot && typed && typedShot, "a double-click on the tempo types one");
+    click(view, box, {false, true}); // Ctrl+Click types too, a unit after the number allowed
+    type(view, "140 BPM");
+    view.typeKey(View::Key::Enter);
+    const bool ctrlTyped = model.bpm == 140.0;
+    doubleClick(view, box);
+    type(view, "fast");
+    view.typeKey(View::Key::Enter);
+    doubleClick(view, box);
+    type(view, "60");
+    view.typeKey(View::Key::Escape);
+    const bool kept = model.bpm == 140.0;
+    doubleClick(view, box);
+    type(view, "5000");
+    view.typeKey(View::Key::Enter);
+    const bool held = model.bpm == 999.0;
+    doubleClick(view, box);
+    type(view, "100");
+    click(view, away); // a click elsewhere takes the value
+    check(ctrlTyped && kept && held && model.bpm == 100.0 && !view.typing(),
+          "a typed tempo takes a unit after it and is held to its range; Escape, or text that isn't one, leave it");
+    check(model.values == patch && model.nextUndo() == nullptr && model.openEdits == 0,
+          "the tempo leaves the patch and its undo history alone");
+}
+
 void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -7295,6 +7390,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModFocus(dir, renderer);
     testModPill(dir, renderer);
     testRatioDisplay(dir, renderer);
+    testTempo(dir, renderer);
 }
 
 int main(int argc, char **argv) {

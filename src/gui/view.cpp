@@ -14,6 +14,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <numbers>
@@ -43,6 +44,17 @@ namespace {
 constexpr Str kMcBandNames[kMcBands] = {Str::BandButtonLow, Str::BandButtonMid, Str::BandButtonHigh};
 constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx, Str::ViewMods};
 static_assert(std::size(kViewNames) == std::size(kViewTabs));
+
+// A tempo as the title bar shows it, and as typing it starts: whole, or with the hundredths it holds ("92.5").
+std::string tempoText(double bpm) {
+    char text[16];
+    std::snprintf(text, sizeof(text), "%.2f", clampTempo(bpm));
+    std::string s = text;
+    s.erase(s.find_last_not_of('0') + 1);
+    if (s.back() == '.')
+        s.pop_back();
+    return s;
+}
 
 // A view tab's outline over `r`, from its bottom-left corner up around its rounded top and down to its bottom-right
 // one. With a flare, its sides curve out into the edge at its bottom by that much on either side, as the tab shown
@@ -2524,6 +2536,8 @@ std::vector<View::Widget> View::widgets() const {
     }
     for (int redo = 0; redo < 2; ++redo)
         add(Kind::UndoButton, undoButton(redo), -1, redo);
+    if (controller_.hasTempo())
+        add(Kind::TempoBox, kTempoBox);
     add(Kind::PresetStep, presetStep(-1), -1, -1);
     add(Kind::PresetNameBox, kPresetName);
     add(Kind::PresetStep, presetStep(1), -1, 1);
@@ -6753,6 +6767,28 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.polyline(chevron, 3, lit ? kText : kDim, 1.5f);
         break;
     }
+    case Kind::TempoBox: {
+        // A metronome, then the tempo and its unit, centered in the room right of it.
+        const bool lit = hovered || active;
+        c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        const Color ink = lit ? kText : kDim;
+        const Point m{w.rect.x + 14.0f, w.rect.center().y};
+        const Point body[] = {{m.x - 5.0f, m.y + 6.0f}, {m.x - 2.0f, m.y - 6.0f}, {m.x + 2.0f, m.y - 6.0f},
+                              {m.x + 5.0f, m.y + 6.0f}, {m.x - 5.0f, m.y + 6.0f}};
+        c.polyline(body, std::size(body), ink, 1.2f);
+        c.line({m.x, m.y + 3.0f}, {m.x + 5.0f, m.y - 6.0f}, ink, 1.4f);
+        if (typing_ && typing_->widget.kind == Kind::TempoBox)
+            break; // the field being typed in covers the number
+        const std::string number = tempoText(controller_.tempo());
+        const char *unit = "BPM";
+        const float numberW = c.textWidth(number, kTextValue, true), unitW = c.textWidth(unit, kTextLabel);
+        const float room = w.rect.right() - (m.x + 7.0f);
+        const float x = m.x + 7.0f + (room - numberW - 4.0f - unitW) * 0.5f;
+        c.text({x, w.rect.y, numberW + 1.0f, w.rect.h}, number, kTextValue, kText, Align::Left, true);
+        c.text({x + numberW + 4.0f, w.rect.y + 1.0f, unitW + 1.0f, w.rect.h}, unit, kTextLabel, kFaint, Align::Left);
+        break;
+    }
     case Kind::PresetStep: {
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
         c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
@@ -7274,7 +7310,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::FxRemove && hover_->kind != Kind::SourceRemove &&
          hover_->kind != Kind::PresetButton &&
          hover_->kind != Kind::PresetStep && hover_->kind != Kind::PresetNameBox &&
-         hover_->kind != Kind::BrowserFolder &&
+         hover_->kind != Kind::TempoBox && hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
          hover_->kind != Kind::PartialEdit && hover_->kind != Kind::ClipDisplay &&
@@ -7398,6 +7434,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(hover_->a < 0 ? Str::TipPreviousPreset : Str::TipNextPreset);
     else if (hover_->kind == Kind::PresetNameBox)
         text = tr(controller_.patchEdited() ? Str::TipPresetChanged : Str::TipPresetName);
+    else if (hover_->kind == Kind::TempoBox)
+        text = tr(Str::TipTempo);
     else if (hover_->kind == Kind::BrowserFolder)
         text = tr(Str::TipOpenFolder);
     else if (hover_->kind == Kind::PresetButton)
@@ -7809,6 +7847,8 @@ Rect View::typingField() const {
         return {w.rect.center().x - 36.0f, w.rect.bottom() + 3.0f, 72.0f, 18.0f};
     if (w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell) // over the label or cell
         return {w.rect.center().x - 36.0f, w.rect.center().y - 9.0f, 72.0f, 18.0f};
+    if (w.kind == Kind::TempoBox) // right of the metronome
+        return {w.rect.x + 24.0f, w.rect.y + 2.0f, w.rect.w - 27.0f, w.rect.h - 4.0f};
     return {w.rect.x - 4.0f, w.rect.y, w.rect.w + 8.0f, w.rect.h};
 }
 
@@ -8114,6 +8154,14 @@ void View::applyDrag(Point p) {
     case DragKind::FxNodeMove:
         fxGraphDrag(p);
         break;
+    case DragKind::Tempo: { // a BPM every 2 px up, in whole BPM; with Shift, a tenth of one, in tenths
+        const double step = drag_.fine ? 0.1 : 1.0;
+        const double moved = std::trunc((drag_.start.y - p.y) / 2.0f) * step;
+        const double bpm = clampTempo(std::round((drag_.startValue + moved) / step) * step);
+        if (bpm != controller_.tempo())
+            controller_.setTempo(bpm);
+        break;
+    }
     case DragKind::FxMove: // where it would land follows the mouse, the others gliding aside
         if (drag_.moved) {
             startFxRowGlide();
@@ -8181,7 +8229,7 @@ bool View::mouseMove(Point p, Modifiers mods) {
         drag_.moved = true;
     // A value moves only once the mouse has: the jitter of a click, or between a double-click's presses, leaves it
     // (and what a matrix cell joins) as it was.
-    if (drag_.kind == DragKind::Value && !drag_.moved)
+    if ((drag_.kind == DragKind::Value || drag_.kind == DragKind::Tempo) && !drag_.moved)
         return true;
     applyDrag(p);
     return true;
@@ -8217,7 +8265,7 @@ void View::mouseDown(Point p, Modifiers mods) {
     const Widget &w = *hit;
     // Ctrl+Click types a value into whatever shows one: a knob, a modulation's depth, a route.
     if (mods.ctrl && (w.kind == Kind::Knob || w.kind == Kind::ValueText || w.kind == Kind::WireLabel ||
-                      w.kind == Kind::OutLabel || w.kind == Kind::GridCell)) {
+                      w.kind == Kind::OutLabel || w.kind == Kind::GridCell || w.kind == Kind::TempoBox)) {
         startTyping(w);
         return;
     }
@@ -8661,6 +8709,10 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::PresetStep:
         stepPreset(w.a);
         break;
+    case Kind::TempoBox:
+        drag_.kind = DragKind::Tempo;
+        drag_.startValue = controller_.tempo();
+        break;
     case Kind::PresetNameBox: {
         controller_.rescanPresets();
         browserOpen_ = true;
@@ -8954,6 +9006,8 @@ void View::mouseUp(Point p, Modifiers) {
         drag_.now = p;
         dropFxNode(true);
         break;
+    case DragKind::Tempo: // each move set it already
+        break;
     case DragKind::SplitPoint:
     case DragKind::Value:
     case DragKind::EnvPoint:
@@ -9052,6 +9106,7 @@ void View::finishDrag() {
     case DragKind::Pan:
     case DragKind::TextSelect:
     case DragKind::FxNodeMove:
+    case DragKind::Tempo:
     case DragKind::None:
         break;
     }
@@ -9201,7 +9256,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         edit(hit->param, ratioNorm(ratioHundredths(value(hit->param)) / span * span + 100 % span));
         return;
     }
-    if (hit && hit->kind == Kind::MacroName) {
+    if (hit && (hit->kind == Kind::MacroName || hit->kind == Kind::TempoBox)) {
         startTyping(*hit);
         return;
     }
@@ -9287,7 +9342,8 @@ void View::doubleClick(Point p, Modifiers mods) {
 
 // The wheel's targets besides the params (see wheelNotches()): the preset browser's list, and the shape grid's axes.
 constexpr int kWheelBrowser = kParamCount;
-constexpr int kWheelGrid = kParamCount + 1;
+constexpr int kWheelGrid = kParamCount + 1; // and + 2, the grid's two axes
+constexpr int kWheelTempo = kParamCount + 3;
 
 int View::wheelNotches(int target, float steps) {
     if (target != wheelTarget_) {
@@ -9321,8 +9377,21 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     if (hit && (hit->popup || hit->kind == Kind::ModPill) && hit->kind != Kind::SlotBar && hit->kind != Kind::ValueText)
         return;
     // What moves in whole steps (the grid, a stepped param, an operator's pitch, a note) moves by whole notches.
-    const int target = hit && hit->kind == Kind::ShapeGrid ? kWheelGrid + hit->a : (hit ? hit->param : -1);
+    const int target = hit && hit->kind == Kind::ShapeGrid  ? kWheelGrid + hit->a
+                       : hit && hit->kind == Kind::TempoBox ? kWheelTempo
+                                                             : (hit ? hit->param : -1);
     const int whole = wheelNotches(target, steps);
+    if (hit && hit->kind == Kind::TempoBox) { // a BPM a notch, onto whole ones; with Shift, a tenth of one
+        const double step = mods.shift ? 0.1 : 1.0;
+        if (whole != 0) {
+            const double from = controller_.tempo();
+            const double on = whole > 0 ? std::floor(from / step + 1e-6) : std::ceil(from / step - 1e-6);
+            const double bpm = clampTempo((on + whole) * step);
+            if (bpm != from)
+                controller_.setTempo(bpm);
+        }
+        return;
+    }
     if (hit && hit->kind == Kind::ShapeGrid) {
         if (whole != 0)
             stepShapeGrid(hit->a, whole);
@@ -9772,6 +9841,12 @@ void View::startTyping(const Widget &w) {
         caretTicks_ = 0;
         return;
     }
+    if (w.kind == Kind::TempoBox) { // the number, without its unit
+        const std::string bpm = tempoText(controller_.tempo());
+        typing_ = Typing{w, bpm, bpm.size(), true};
+        caretTicks_ = 0;
+        return;
+    }
     char text[64];
     formatParam(w.param, value(w.param), text, sizeof(text));
     typing_ = Typing{w, text, std::string_view(text).size(), true};
@@ -9937,6 +10012,24 @@ void View::endTyping(bool commit) {
         }
         return;
     }
+    if (t.widget.kind == Kind::TempoBox) { // a number of BPM ("bpm" after it allowed), held to the range
+        const char *text = t.text.c_str();
+        char *end = nullptr;
+        const double bpm = std::strtod(text, &end);
+        std::string rest = end;
+        std::erase(rest, ' ');
+        for (char &ch : rest)
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (!commit || t.text.find_first_not_of(' ') == std::string::npos || t.text == tempoText(controller_.tempo()))
+            return;
+        if (end == text || !std::isfinite(bpm) || !(rest.empty() || rest == "bpm")) {
+            flash(trf(Str::MsgBadValue, {t.text, tr(Str::TempoName)}));
+            return;
+        }
+        if (clampTempo(bpm) != controller_.tempo())
+            controller_.setTempo(clampTempo(bpm));
+        return;
+    }
     // Spaces around it don't count. Left as it was shown, or emptied, the value stays as it is,
     // rather than being rounded to what the text says.
     const size_t first = t.text.find_first_not_of(' ');
@@ -9975,6 +10068,7 @@ CursorKind View::cursor() const {
     case Kind::ModDot:
     case Kind::ShapeCurve:
     case Kind::EnvCurve:
+    case Kind::TempoBox:
         return CursorKind::Vertical;
     case Kind::SplitPoint:
         return CursorKind::Horizontal;

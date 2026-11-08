@@ -35,6 +35,7 @@ EM_JS(void, js_note, (int key, int on), { Module.fmvHost.note(key, on != 0); });
 EM_JS(void, js_bend, (double amount), { Module.fmvHost.bend(amount); });
 EM_JS(void, js_scope, (int op, int cycles), { Module.fmvHost.scope(op, cycles); });
 EM_JS(void, js_oversampling, (int factor), { Module.fmvHost.oversampling(factor); });
+EM_JS(void, js_tempo, (double bpm), { Module.fmvHost.tempo(bpm); });
 EM_JS(void, js_layout_changed, (), { Module.fmvHost.layoutChanged(); });
 EM_JS(void, js_toast, (const char *utf8), { Module.fmvHost.toast(UTF8ToString(utf8)); });
 // The user's settings (theme, glow, handle size) live in the browser's storage; -1 when there is none.
@@ -81,6 +82,8 @@ public:
         handleSize_ = std::clamp(std::atoi(setting("handleSize").c_str()), 0, 2);
         const std::string links = setting("linkIntensity");
         links_ = links.empty() ? 0.75 : std::clamp(std::atof(links.c_str()), 0.0, 1.0);
+        const std::string tempo = setting("tempo");
+        tempo_ = tempo.empty() ? kDefaultTempo : clampTempo(std::atof(tempo.c_str()));
     }
 
     const ParamValues &values() const { return values_; }
@@ -191,6 +194,14 @@ public:
         links_ = std::clamp(amount, 0.0, 1.0);
         js_set_setting("linkIntensity", std::to_string(links_).c_str());
     }
+    // The page stands in for a host's transport: the editor's title bar shows its tempo, which the page hands the
+    // synth and keeps in the browser's storage.
+    bool hasTempo() const override { return true; }
+    double tempo() const override { return tempo_; }
+    void setTempo(double bpm) override {
+        tempo_ = clampTempo(bpm);
+        js_tempo(tempo_);
+    }
 
     // Opens on an example rather than Init, so the first note sounds like something; nothing to undo yet.
     void start() {
@@ -244,6 +255,7 @@ private:
     double glow_ = 0.5;
     int handleSize_ = 0;
     double links_ = 0.75;
+    double tempo_ = kDefaultTempo;
 };
 
 std::unique_ptr<WebController> controller;
