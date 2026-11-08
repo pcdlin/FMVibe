@@ -2763,6 +2763,49 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         view.undo();
         view.mouseMove({600.0f, 428.0f}, {});
         check(held, "a dragged node's place stays open until it is over another gap");
+        // The phaser let go of with the mouse on the low band's wire just past the compressor, well short of the gap
+        // at the band's +: anywhere on a wire, it lands where that wire goes, at the band's end; undone.
+        {
+            const bool shot = dragNode(cell(7, 0), detail::fxGridAt(4.4f, 1.0f, 0.0f), "40q1-fx-drop-on-wire.png");
+            const bool onWire = from(4, 0) == fxSlotPort(3) && from(join, 1) == fxSlotPort(4) &&
+                                from(kFxOutNode, 0) == fxSumPort(0);
+            view.undo();
+            settle();
+            view.mouseMove({600.0f, 428.0f}, {});
+            check(shot && onWire && from(4, 0) == fxSumPort(0) && from(join, 1) == fxSlotPort(3),
+                  "a node let go of anywhere on a wire lands where that wire goes");
+        }
+        // While a node is dragged no + shows: the delay held over the low band's end, the high band left empty and its
+        // + gone, its wire running straight through where it was, and the main line's + after the phaser gone too
+        // (read off the rendered pixels: a +'s upright stroke against its disc beside it, where without a + both are
+        // the background, and the wire against the background above it). Let go of there, undone.
+        {
+            auto plusAt = [&](Point p) {
+                return renderer.pixel({p.x, p.y - 3.0f}) != renderer.pixel({p.x + 6.0f, p.y - 3.0f});
+            };
+            auto wireAt = [&](Point p) { return renderer.pixel(p) != renderer.pixel({p.x, p.y - 10.0f}); };
+            renderer.save(view, dir / "40q2-fx-pluses.png");
+            const bool before = plusAt(cell(8, 0)) && plusAt(cell(5, -1));
+            const Point grab = cell(4, -1), to = detail::fxGridAt(5.0f, 1.0f, 0.0f);
+            view.mouseMove(grab, {});
+            view.mouseDown(grab, {});
+            view.mouseMove({grab.x + 8.0f, grab.y + 4.0f}, {});
+            view.mouseMove(to, {});
+            settle();
+            const bool shot = renderer.save(view, dir / "40q3-fx-drag-no-pluses.png");
+            // The high band empty, its + would be a column on from the split; the main line's a column further on, the
+            // low band two nodes long.
+            const bool hidden = !plusAt(cell(4, -1)) && wireAt(cell(4, -1)) && !plusAt(cell(9, 0)) && wireAt(cell(9, 0));
+            view.mouseUp(to, {});
+            settle();
+            view.undo();
+            settle();
+            view.mouseMove({600.0f, 428.0f}, {});
+            std::printf("      +s before dragging %d, hidden while dragging %d\n", before, hidden);
+            check(before && shot && hidden && from(2, 0) == high && from(join, 1) == fxSlotPort(3),
+                  "while a node is dragged no + shows, an empty band's and the main line's too, the wires running "
+                  "through");
+        }
         check(roomShot && phaserMoved && droppedShot && phaserBack && delayMoved && groupShot && groupMoved &&
                   from(0, 0) == kFxPortIn && from(split, 0) == fxSlotPort(1) && from(2, 0) == high &&
                   fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},

@@ -760,7 +760,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     anywhere along a wire between two nodes on the main line, a + shows at its middle, and a click on that + opens
     the list too. A split's band shows its + at its end always: in its next place, a column on from its last node on
     its row (on an empty band, a column on from the split), the join a column further on. Every + in the graph is faint until the mouse is on it
-    (or its list is open). The list a wire's + opens puts the effect picked
+    (or its list is open), and none shows while a node is dragged, the wires running straight through. The list a wire's + opens puts the effect picked
     in there: on the main line, the list also offers the split, which goes in with its join right after it and
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's
     node and its join's both show the split's card: the same controls as its container in the row (see above), on
@@ -772,7 +772,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would
     land in, outlined dotted, which moves only once it is over another gap between two nodes (an effect's anywhere on
     the main line or a band, a split's only on the main line; the line's end reaching on past its + along the wire
-    to OUT), and stays where it is
+    to OUT) or the mouse is anywhere on a wire, its arrowhead too, which takes it where that wire goes (into the node
+    it ends at, or on to a +, a join or OUT the end of its line or band), and stays where it is
     while it passes over a node or away from the line. The dotted place goes where it would land at once, and the
     wires run to it there as to a node, never to the node being carried; let go of, the node takes that place, and
     the others glide on into theirs. A split or a join

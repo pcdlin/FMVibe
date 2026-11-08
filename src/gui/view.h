@@ -675,6 +675,7 @@ private:
         Color color;
         bool arrow = true;
         FxSlotAt at;
+        FxSlotAt drop;             // where a node dropped anywhere on it goes: `at`, or on to a +, a join or OUT its end
         std::optional<Point> plus; // where its + shows, if not at its middle: an empty band's, on the band's row
         int port = -1;             // what it carries: the port it comes from, which lights it as loud as that is
         bool faint = false;        // along a band its join doesn't hear, the other one soloed

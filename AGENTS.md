@@ -254,7 +254,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     place a node would land from the glide's first step (read off the rendered pixels), its place staying open while
     it is held over a node: an effect along the main line, one onto a band's end by its wire into the join, one from
     the high band to the low band's end, and a split with its bands and join, carried by the join, to the line's
-    start, each one undo step, undone; the mouse anywhere along a wire showing its + (read off the rendered pixels), a
+    start, each one undo step, undone, and one let go of with the mouse anywhere on a wire landing where it goes, no + showing while one is held, an
+    empty band's and the main line's too (read off the rendered pixels); the mouse anywhere along a wire showing its + (read off the rendered pixels), a
     click there doing nothing and on the + opening the list, the wire's + and the line's faint until the mouse is on
     them, and a band's + after its last node showing always, an empty band's too (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to

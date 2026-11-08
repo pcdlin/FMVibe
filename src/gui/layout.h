@@ -735,6 +735,7 @@ constexpr float kFxWireBend = kFxGridCol - 2.0f * kFxNodeR - 4.0f;
 constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
 constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
 constexpr float kFxSlotHalf = 8.5f; // a + where a node can go next: a circle, as on a wire's middle
+constexpr float kFxDropReach = 8.0f; // how near a wire (or its arrowhead) the mouse lands a dragged node where it goes
 inline Point fxGridAt(float col, float row, float scroll) { // fractions of a cell too, as nodes glide
     const Rect area = fxGraphArea(); // its left edge and middle, whatever its width
     return {area.x + kFxGridLeft + col * kFxGridCol - scroll, area.center().y + row * kFxGridRow};

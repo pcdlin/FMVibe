@@ -891,14 +891,18 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
     };
     std::vector<FxGraphWire> wires;
     // From each node's right to the next one's left (`to`, an arrowhead's tip where `arrow`); a node clicked in at its
-    // middle goes `where`.
-    auto wire = [&](Tail from, Point to, bool arrow, FxSlotAt where = {}) {
-        wires.push_back({from.at, arrow ? Point{to.x - 8.0f, to.y} : to, from.color, arrow, where, std::nullopt,
-                         from.port});
+    // middle goes `where`, and so does one dragged onto it anywhere, unless `drop` says otherwise.
+    auto wire = [&](Tail from, Point to, bool arrow, FxSlotAt where = {}, std::optional<FxSlotAt> drop = {}) {
+        wires.push_back({from.at, arrow ? Point{to.x - 8.0f, to.y} : to, from.color, arrow, where, drop.value_or(where),
+                         std::nullopt, from.port});
         wires.back().bendAtStart = from.split; // out of a split's band, next to the main line
     };
     const auto &at = places.node;
     const Point in = places.in, out = places.out;
+    // A wire runs on to a + and on from it, leaving room for it; while a node is dragged no + shows, and the wire
+    // runs straight through where it would be.
+    const bool dragging = drag_.kind == DragKind::FxNodeMove && drag_.moved && fxDrag_.has_value();
+    const float plusHalf = dragging ? 0.0f : kFxSlotHalf;
     Tail tail{{in.x + kFxEndHalfW, in.y}, mainLine, kFxPortIn};
     bool open = false;
     for (int i = 0; i < static_cast<int>(line.size()); ++i) {
@@ -943,10 +947,10 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
                 }
                 // Empty: out to its +, on its row a column on from the split, and from there into the join.
                 const Point plus{p.x + kFxGridCol, p.y + row * kFxGridRow};
-                wire(bands[lane], {plus.x - kFxSlotHalf, plus.y}, false, end);
+                wire(bands[lane], {plus.x - plusHalf, plus.y}, false, end);
                 wires.back().plus = plus;
                 wires.back().faint = faint;
-                wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color, bands[lane].port}, into, true);
+                wire({{plus.x + plusHalf, plus.y}, bands[lane].color, bands[lane].port}, into, true, {}, end);
                 wires.back().faint = faint;
             }
             tail = {{j.x + kFxJoinHalfW, j.y}, mainLine, fxSumPort(item.node - kFxSlots)};
@@ -955,15 +959,17 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
         open = true; // each band on to its +, and from there out
         for (int lane : item.lanes()) {
             const Point plus = places.slot[lane];
-            wire(bands[lane], {plus.x - kFxSlotHalf, plus.y}, false);
-            wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color, bands[lane].port},
-                 {out.x - kFxEndHalfW, out.y + 12.0f * static_cast<float>(laneRow(lane))}, true);
+            const FxSlotAt end{lane, i, static_cast<int>(item.band(lane).size())};
+            wire(bands[lane], {plus.x - plusHalf, plus.y}, false, {}, end);
+            wire({{plus.x + plusHalf, plus.y}, bands[lane].color, bands[lane].port},
+                 {out.x - kFxEndHalfW, out.y + 12.0f * static_cast<float>(laneRow(lane))}, true, {}, end);
         }
     }
     if (!open) {
         const Point plus = places.slot[0];
-        wire(tail, {plus.x - kFxSlotHalf, plus.y}, false);
-        wire({{plus.x + kFxSlotHalf, plus.y}, tail.color, tail.port}, {out.x - kFxEndHalfW, out.y}, true);
+        const FxSlotAt end{0, static_cast<int>(line.size()), 0};
+        wire(tail, {plus.x - plusHalf, plus.y}, false, {}, end);
+        wire({{plus.x + plusHalf, plus.y}, tail.color, tail.port}, {out.x - kFxEndHalfW, out.y}, true, {}, end);
     }
     for (FxGraphWire &w : wires) { // each one's path and its + once, for the widgets, the hit tests and the paint
         w.path = wirePath(w);
@@ -1503,7 +1509,9 @@ void View::retargetFxDrag(Point mouse) {
     constexpr float kOverCols = 0.35f, kOverRows = 0.45f;
     float best = 1e30f;
     FxSlotAt over{};
+    std::vector<FxSlotAt> places; // every place it can land in
     auto consider = [&](FxSlotAt at, float prev, float next, float row) {
+        places.push_back(at);
         const float col = 0.5f * (prev + next);
         if (std::abs(col - cell.x) > kOverCols || std::abs(row - cell.y) > kOverRows)
             return;
@@ -1558,6 +1566,66 @@ void View::retargetFxDrag(Point mouse) {
                 if (k == size && !d.rest[i].joined) // an open band's wire bends from its + into OUT
                     considerOut({lane, i, k}, slotCol(lane), row, 0.17f * row);
             }
+        }
+    }
+    // The mouse anywhere on a wire, its arrowhead too, lands it where that wire goes: read off the line as it will
+    // stand once the others have glided aside, so a wire sweeping by under the mouse doesn't take it somewhere else.
+    // A wire into or out of its own placeholder keeps the place it has.
+    {
+        const FxLine shownLine = fxLineShown();
+        const FxGridLayout grid = fxGridLayout(shownLine);
+        auto restAt = [&](FxSlotAt s) -> std::optional<FxSlotAt> { // a place on the line shown, on the line without it
+            auto itemOf = [&](int node) {
+                for (int k = 0; k < n; ++k)
+                    if (d.rest[k].node == node)
+                        return k;
+                return -1;
+            };
+            if (s.item < 0 || s.item > static_cast<int>(shownLine.size()))
+                return std::nullopt;
+            if (s.lane == 0) {
+                if (s.item == static_cast<int>(shownLine.size()))
+                    return FxSlotAt{0, n, 0};
+                const int node = shownLine[s.item].node;
+                if (node == d.item.node)
+                    return d.at;
+                const int k = itemOf(node);
+                return k >= 0 ? std::optional(FxSlotAt{0, k, 0}) : std::nullopt;
+            }
+            if (s.item == static_cast<int>(shownLine.size()))
+                return std::nullopt;
+            const int split = shownLine[s.item].node;
+            if (split == d.item.node) // inside the split it carries
+                return d.at;
+            const int k = itemOf(split);
+            if (k < 0)
+                return std::nullopt;
+            const std::vector<int> &band = shownLine[s.item].band(s.lane);
+            const std::vector<int> &restBand = d.rest[k].band(s.lane);
+            if (s.place >= static_cast<int>(band.size()))
+                return FxSlotAt{s.lane, k, static_cast<int>(restBand.size())};
+            if (band[s.place] == d.item.node)
+                return d.at;
+            const auto it = std::find(restBand.begin(), restBand.end(), band[s.place]);
+            return it != restBand.end() ? std::optional(FxSlotAt{s.lane, k, static_cast<int>(it - restBand.begin())})
+                                        : std::nullopt;
+        };
+        auto same = [](FxSlotAt a, FxSlotAt b) { return a.lane == b.lane && a.item == b.item && a.place == b.place; };
+        float nearest = kFxDropReach;
+        for (const FxGraphWire &w : fxGraphWires(shownLine, fxPlacesOf(grid, fxGraphScroll(grid)))) {
+            if (w.drop.lane < 0)
+                continue;
+            float dist = w.arrow ? distanceToSegment(mouse, w.to, {w.to.x + 8.0f, w.to.y}) : 1e30f; // its arrowhead
+            for (size_t k = 1; k < w.path.size(); ++k)
+                dist = std::min(dist, distanceToSegment(mouse, w.path[k - 1], w.path[k]));
+            if (dist > nearest)
+                continue;
+            const std::optional<FxSlotAt> at = restAt(w.drop);
+            if (!at || (!same(*at, d.at) && std::none_of(places.begin(), places.end(),
+                                                          [&](FxSlotAt p) { return same(p, *at); })))
+                continue;
+            nearest = dist;
+            over = *at;
         }
     }
     if (over.lane >= 0)
@@ -1984,11 +2052,13 @@ void View::paintFxGraph(Canvas &c) {
 
     // The +s where a node can go next: a + in a circle, as on a wire's middle, in the color of the wire it is on (grey
     // at the main line's end, a band's color at the end of a split left open), faint until the mouse is on it (or its
-    // list is open).
+    // list is open). None while a node is dragged.
     for (const auto &slot : grid.slots) {
+        if (dragging)
+            break;
         const Point m = at.slot[slot.lane];
         const bool listed = fxMenuOpen_ && fxSlot_.lane == slot.lane && fxSlot_.item < 0;
-        const bool hot = !dragging && hover_ && hover_->kind == Kind::FxSlot && hover_->a == slot.lane;
+        const bool hot = hover_ && hover_->kind == Kind::FxSlot && hover_->a == slot.lane;
         const float shown = listed || hot ? 1.0f : kFxPlusIdleAlpha;
         const Color color = (slot.lane > 0 ? laneColor(slot.lane) : kDim).alpha(shown);
         c.fillCircle(m, kFxSlotHalf, kDisplayColor);
