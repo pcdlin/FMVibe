@@ -643,10 +643,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     a scrollbar under them (drag its thumb or click its track; drawn thinner while the mouse is away from it) or the
     mouse wheel over the panel scrolls the chain smoothly, cutting off the cards at the ends, and so does a drag with
     the middle button held (see Everywhere). Drag a card by its
-    title to move it along the chain (held at either end of the row, it scrolls the chain along that way): while it
-    is held, the cards between glide aside to open the place it would land in, where it shows once they are clear of
-    it, an outline following the mouse; let go of, they glide on into place. A click while they glide puts them in
-    place at once.
+    title to move it along the chain (held at either end of the row, it scrolls the chain along that way; while it
+    is held, it shows faint where it would land, an outline following the mouse, and the cards between glide aside
+    to make room; let go of, they glide on into place, and a click while they glide puts them in place at once),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings,
     set a 3-band dynamics as OTT, or remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
     title's left, so the icon stays where it was: the icon, which still switches the effect and drags the card,
@@ -663,21 +662,22 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     and Q, as large as a one-row card's) sets; its chip and handle are ringed in its color. Amount, the row's fourth knob, is the whole EQ's. The band picked isn't saved: a card shows its first band to begin with.
 
     A **split** shows in the row as a container card holding its bands, its grey outline a little outside the cards
-    in it, so they line up with the row's, with a little more room before and after it than between two cards, so
-    the arrows on either side clear its outline. At its left, on grey, a card place wide: its title (the split's icon and
+    in it, so they line up with the row's, and as much more room before and after it as the outline stands out, so
+    the arrows on either side are as far from its outline as from any card. At its left, on grey, a card place wide: its title (the split's icon and
     name, SPLIT 1), which drags the split with its bands and its join along the line (between the main line's
     cards only), the chevron left of its × folding the container to a strip as an effect card folds, and its ×
     taking the split out, its bands' effects going on the main line in its place, the high band's first. Under the
     title, the split's controls: **LOW | HIGH** tabs, as an operator page's tabs, the one shown underlined in its
     band's color (the low band blue, the high band amber; the wheel switches them too), a hidden band's tab saying
     how many effects it holds and a soloed band's showing an S in its color; the bands' responses with a handle on
-    the crossover to drag across, each band's curve lowered by its level, the shown band's filled; the slope,
+    the crossover to drag across, each band's curve lowered as far as its level's knob is turned down (flat at
+    -60 dB), the shown band's filled; the slope,
     6 | 12 | 24 dB; three knobs: the low band's level, the Crossover and the high band's level (in dB, 0 dB, full, at
     the top, down to -60 dB, silence); and an **S** under each band's level that solos it, one at a time (soloing one
     unsolos the other, a click on the lit one unsolos it), lit in its band's color. To the right of the controls, the cards of the band shown, then
     a narrow dashed card that opens the list of effects at the mouse (effects only: a band holds no split), the one
-    picked going at the end of that band. The arrows inside the container add an effect to its band there (the
-    first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
+    picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
+    its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
     + EFFECT offer **Split into high/low bands** after the effects, which goes in there (at the line's end from the
     last two) with its join, its bands empty and its low band shown. A card dragged over the band a container shows
     lands on that band, and carried over a container's tab it shows that band, to land on; a card dragged out of a

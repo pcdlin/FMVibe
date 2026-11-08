@@ -1822,11 +1822,9 @@ std::vector<View::Widget> View::widgets() const {
             const FxRow row = fxRowShown();
             const float scroll = fxScroll();
             for (const FxRowCard &card : row.cards)
-                if (const float place = card.place - scroll; !card.hidden && onScreen(place, kVisibleFx, card.span))
+                if (const float place = card.place - scroll; onScreen(place, kVisibleFx, card.span))
                     cardWidgets(card.slot, 0, fxCard(place, card.span), false);
             for (const FxRowBox &box : row.boxes) {
-                if (box.hidden)
-                    continue;
                 const float place = box.place - scroll;
                 if (box.folded) { // a strip: the icon and a grip drag it, the cross, then the rest unfolds it
                     if (!onScreen(place, kVisibleFx, box.span))
@@ -1849,7 +1847,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::FxShadow, fxCard(place));
             // The arrows between the cards, while there is room for another effect: a click adds one there. On the
             // main line before each item but the first; in a container, before each of its band's cards (the first
-            // after its controls) and before its dashed card.
+            // after its controls). None goes before a dashed card, which adds there itself.
             auto insert = [&](float place, int lane, int item, int at) {
                 if (place - scroll > 0.0f && place - scroll < kVisibleFx) {
                     const Rect card = fxCard(place - scroll);
@@ -1860,13 +1858,12 @@ std::vector<View::Widget> View::widgets() const {
             for (size_t i = 1; i + 1 < row.items.size() && fxShadow(); ++i)
                 insert(row.items[i], 0, static_cast<int>(i), 0);
             for (const FxRowBox &box : row.boxes) {
-                if (box.folded || box.hidden || !fxShadow())
+                if (box.folded || !fxShadow())
                     continue;
                 int k = 0;
                 for (const FxRowCard &card : row.cards)
                     if (card.at.lane == box.lane && card.at.item == box.item)
                         insert(card.place, box.lane, box.item, k++);
-                insert(box.add, box.lane, box.item, k);
             }
         }
         for (size_t i = cardsStart; i < list.size() && !fxGraph(); ++i)
@@ -2714,14 +2711,27 @@ void View::paint(Canvas &c) {
         }
     } else if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx) {
         c.pushClip(fxCardClip());
-        for (const FxRowCard &card : fxRowShown().cards) {
+        const FxRow row = fxRowShown();
+        for (const FxRowCard &card : row.cards) {
             const float pos = card.place - fxScroll();
-            if (card.hidden || !onScreen(pos, kVisibleFx, card.span) ||
-                value(paramIndex(card.slot, FxParam::Enabled)) >= 0.5 ||
+            if (!onScreen(pos, kVisibleFx, card.span) || value(paramIndex(card.slot, FxParam::Enabled)) >= 0.5 ||
                 fxFolded(card.slot))
                 continue;
             const Rect p = fxCard(pos, card.span);
             c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), 7.0f);
+        }
+        // The card or container carried, faint where it would land until it is let go of.
+        for (const FxRowCard &card : row.cards)
+            if (const float pos = card.place - fxScroll(); card.faint && onScreen(pos, kVisibleFx, card.span))
+                c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(0.65f), 9.0f);
+        for (const FxRowBox &box : row.boxes) {
+            if (!box.faint || !onScreen(box.place - fxScroll(), kVisibleFx, box.span))
+                continue;
+            if (box.folded)
+                c.fillRect(fxCard(box.place - fxScroll(), box.span).inset(-1.0f), kPanel.alpha(0.65f), 9.0f);
+            else
+                c.fillRect(fxCard(boxColumn(box) - fxScroll(), box.span - 2.0f * kFxBoxEdge).inset(-kFxBoxPad - 1.0f),
+                           kPanel.alpha(0.65f), kFxBoxRadius + 1.0f);
         }
         c.popClip();
     }
@@ -3201,7 +3211,7 @@ void View::paintFx(Canvas &c) {
     // then the cards of the band it shows (painted below) and its dashed card (a widget).
     for (const FxRowBox &box : row.boxes) {
         const float place = box.place - scroll;
-        if (box.hidden || !onScreen(place, kVisibleFx, box.span))
+        if (!onScreen(place, kVisibleFx, box.span))
             continue;
         // Unfolded, inside the room it keeps before and after it.
         const Rect whole = box.folded ? fxCard(place, box.span)
@@ -3228,7 +3238,7 @@ void View::paintFx(Canvas &c) {
         c.fillRect({bandX, outer.y, kFxBoxRadius, outer.h}, kPanel);
         c.strokeRect(outer, outline, held ? 1.6f : 1.3f, kFxBoxRadius);
         paintSplitControls(c, box.split, column, true);
-        // The arrows along its band: into its first card in the band's color, then between its cards and into its
+        // The arrows along its band: into its first card in the band's color, then between its cards; none into its
         // dashed card.
         const Color band = bandColor(box.lane == 1 ? kFxBands - 1 : 0);
         int k = 0;
@@ -3237,13 +3247,12 @@ void View::paintFx(Canvas &c) {
                 chevron(card.place, box.lane, box.item, k, k == 0 ? band : kFaint);
                 ++k;
             }
-        chevron(box.add, box.lane, box.item, k, k == 0 ? band : kFaint);
     }
     for (const FxRowCard &card : row.cards) {
         const int slot = card.slot;
         const FxType type = fxSlotType(slot);
         const float pos = card.place - scroll;
-        if (card.hidden || !onScreen(pos, kVisibleFx, card.span))
+        if (!onScreen(pos, kVisibleFx, card.span))
             continue;
         const Rect r = fxCard(pos, card.span);
         const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;

@@ -243,7 +243,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     rendered pixels), its S buttons soloing one band at a time, both undone, and its crossover handle dragged; the
     graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
-    pixels), undone; its x putting its bands' effects on the
+    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); its x putting its bands' effects on the
     main line, the high band's first, undone; and a card carried over the LOW tab showing the low band and landing at
     its end;
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around

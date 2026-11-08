@@ -2526,6 +2526,26 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     std::printf("      the low band's curve at the display's low end: at %.0f px at full level, %.0f px at %.1f dB\n",
                 fullY, loweredY, lowLevel);
     check(fullShot && soloShot && loweredY > fullY + 4.0f, "a band's level lowers its curve on the split's display");
+    // An arrow leads into the reverb on the band, and none into the dashed card after it (read off the rendered pixels:
+    // the brightest pixel where each would be, against the panel's above them).
+    auto brightest = [&](Point m) {
+        int most = 0;
+        for (float x = m.x - 5.0f; x <= m.x + 5.0f; x += 1.0f)
+            for (float y = m.y - 8.0f; y <= m.y + 8.0f; y += 1.0f) {
+                const uint32_t color = renderer.pixel({x, y});
+                most = std::max({most, static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                                 static_cast<int>(color & 255)});
+            }
+        return most;
+    };
+    auto arrowAt = [&](float place) {
+        const Rect next = detail::fxCard(place);
+        return Point{next.x - detail::kFxGap * 0.5f, next.center().y};
+    };
+    const Point intoReverb = arrowAt(2.0f + detail::kFxBoxEdge), intoAdd = arrowAt(3.0f + detail::kFxBoxEdge);
+    const int panel = brightest({intoAdd.x, intoAdd.y - 60.0f});
+    check(brightest(intoReverb) > panel + 40 && brightest(intoAdd) <= panel + 10,
+          "a container's band has arrows between its cards, and none into its dashed card");
     view.undo();
     view.undo();
     const Rect display{column.x + 14.0f, column.y + 66.0f, column.w - 28.0f, 104.0f};

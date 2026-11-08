@@ -357,10 +357,10 @@ constexpr float kFoldedFx = (2.0f * kFxIconX + kFxIconW + kFxGap) / (kFxCardW + 
 // A split's container in the row: its controls in a grey column a card place wide, the cards of the band it shows, then
 // a narrow dashed card adding an effect to that band, kFxBoxAddW wide; its grey outline kFxBoxPad outside them all
 // round, so the cards in it line up with the row's. Folded, it is a strip as wide as a folded card. Unfolded, it keeps
-// kFxBoxMargin more room before and after it (kFxBoxEdge in card places), so the arrows and +s on either side of it
-// clear its outline.
+// kFxBoxMargin more room before and after it (kFxBoxEdge in card places), as much as its outline stands out, so the
+// arrows on either side of it are as far from its outline as from any card.
 constexpr float kFxBoxPad = 5.0f;
-constexpr float kFxBoxMargin = 10.0f;
+constexpr float kFxBoxMargin = kFxBoxPad;
 constexpr float kFxBoxEdge = kFxBoxMargin / (kFxCardW + kFxGap);
 constexpr float kFxBoxRadius = 11.0f; // the outline's corners, the cards' 8 px plus its pad
 constexpr float kFxBoxAddW = 64.0f;

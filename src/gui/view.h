@@ -760,7 +760,7 @@ private:
         int slot;
         float place, span;
         FxSlotAt at;         // where it is in the line: the main line's item (lane 0), or a place on a band
-        bool hidden = false; // carried, while the others glide out of where it lands (see fxRowShown())
+        bool faint = false; // carried, where it would land (see fxRowShown())
     };
     struct FxRowBox {
         int split, item;
@@ -768,7 +768,7 @@ private:
         float place, span; // the whole container, or its strip folded
         bool folded;
         float add;         // its dashed card's place
-        bool hidden = false;
+        bool faint = false;
     };
     struct FxRow {
         std::vector<FxRowCard> cards;
@@ -779,8 +779,7 @@ private:
     static float boxColumn(const FxRowBox &box);
     FxRow fxRow(const FxLine &line) const;
     // With a card or container being dragged where it would land, and the cards and containers gliding there (see
-    // fxRowGlide_). The one carried goes where it would land at once, hidden while any other still overlaps it there:
-    // the others make room for it without crossing it.
+    // fxRowGlide_). The one carried goes where it would land at once, and shows faint there until it is let go of.
     FxRow fxRowShown() const;
     // The row's cards (by slot) and containers (by split node) as shown, in card places, and where the line ends: once a
     // card or container is dragged, each glides a step of the way to where it goes every poll(), until they settle after
@@ -810,7 +809,9 @@ private:
     // A split's display on its controls' card, and its crossover's handle there.
     static Rect splitDisplay(Rect card);
     Point splitHandle(int split, Rect display) const;
-    double splitBandGain(int split, int band) const; // a band's level at its join, as a gain (kLowBand, kHighBand)
+    // How far a band's level at its join lowers its curve: its knob's position, 0 silent .. 1 at 0 dB (kLowBand,
+    // kHighBand).
+    double splitBandGain(int split, int band) const;
     // Ctrl+drag in the routing graph: where a node dragged to `want` goes on its grid, the nearest point it fits at
     // clear of the other nodes; and whether the grid's points show now.
     Point routingGridPoint(int node, Point want) const;

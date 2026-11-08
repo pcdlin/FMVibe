@@ -433,7 +433,7 @@ std::optional<Rect> View::fxCardOf(int slot) const {
     for (const FxRowCard &card : fxRowShown().cards)
         if (card.slot == slot) {
             const float place = card.place - fxScroll();
-            if (card.hidden || place <= -card.span || place >= static_cast<float>(kVisibleFx))
+            if (place <= -card.span || place >= static_cast<float>(kVisibleFx))
                 return std::nullopt;
             return fxCard(place, card.span);
         }
@@ -766,8 +766,10 @@ float responseY(Rect display, double level) {
 } // namespace
 
 double View::splitBandGain(int split, int band) const {
-    // The high band's wire takes the join's first input, the low band's its second.
-    return sumLevelGain(value(fxInputIndex(fxJoinNode(split), band == kLowBand ? 1 : 0, FxInputField::Level)));
+    // The high band's wire takes the join's first input, the low band's its second. As far along as its knob is, from
+    // silence to 0 dB: as a gain, half the knob would leave a curve at 3 % of its height.
+    const double db = value(fxInputIndex(fxJoinNode(split), band == kLowBand ? 1 : 0, FxInputField::Level));
+    return std::clamp((db - kSumFloorDb) / -kSumFloorDb, 0.0, 1.0);
 }
 
 Point View::splitHandle(int split, Rect display) const {
@@ -812,7 +814,7 @@ std::optional<Rect> View::splitCardOf(int split) const {
         return std::nullopt;
     }
     for (const FxRowBox &box : fxRowShown().boxes)
-        if (box.split == split && !box.folded && !box.hidden) {
+        if (box.split == split && !box.folded) {
             const float place = boxColumn(box) - fxScroll();
             if (place > -1.0f && place < static_cast<float>(kVisibleFx))
                 return fxCard(place, 1.0f);
@@ -926,17 +928,6 @@ View::FxRow View::fxRowShown() const {
     auto carried = [&](const FxRowCard &card) {
         return card.slot == g.carried || (carriedItem >= 0 && card.at.lane != 0 && card.at.item == carriedItem);
     };
-    float from = 0.0f, to = -1.0f; // where it lands
-    for (const FxRowCard &card : row.cards)
-        if (card.slot == g.carried) {
-            from = card.place;
-            to = card.place + card.span;
-        }
-    for (const FxRowBox &box : row.boxes)
-        if (box.item == carriedItem) {
-            from = box.place;
-            to = box.place + box.span;
-        }
     for (FxRowCard &card : row.cards)
         if (g.known[card.slot] && !carried(card))
             card.place = g.place[card.slot];
@@ -949,23 +940,12 @@ View::FxRow View::fxRowShown() const {
         if (g.known[line[i].node] && line[i].node != g.carried)
             row.items[i] = g.place[line[i].node];
     row.items.back() = g.end;
-    // Hidden while another card, or a container that doesn't hold it, overlaps where it lands.
-    constexpr float kTouch = 0.02f;
-    bool overlapped = false;
-    for (const FxRowCard &card : row.cards)
-        overlapped = overlapped || (!carried(card) && card.place < to - kTouch && card.place + card.span > from + kTouch);
-    for (const FxRowBox &box : row.boxes) {
-        const bool holds = row.cards.end() != std::find_if(row.cards.begin(), row.cards.end(), [&](const FxRowCard &c) {
-                               return c.slot == g.carried && c.at.lane != 0 && c.at.item == box.item;
-                           });
-        overlapped = overlapped || (box.item != carriedItem && !holds && box.place < to - kTouch &&
-                                    box.place + box.span > from + kTouch);
-    }
-    if (overlapped) {
+    // Faint while it is carried (a container with what it holds).
+    if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_) {
         for (FxRowCard &card : row.cards)
-            card.hidden = carried(card);
+            card.faint = card.slot == g.carried;
         for (FxRowBox &box : row.boxes)
-            box.hidden = box.item == carriedItem;
+            box.faint = box.item == carriedItem;
     }
     return row;
 }
