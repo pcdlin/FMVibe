@@ -138,6 +138,7 @@ private:
         TypeButton,   // a = filter, b = type
         Node,         // a = node (operators, then filters)
         NodeGhost,    // a = node that is off: a dashed button in the graph's top left that switches it on
+        NodeDelete,   // a = node: the x in a circle at a node's upper right, while the mouse is over it: switches it off
         Port,         // a = node: its edge, a band along its outline; drag from it to connect
         WireLabel,    // param = route amount, a = from node, b = to node
         OutLabel,     // param = output level, a = node
@@ -751,6 +752,9 @@ private:
     // The node of the graph under the mouse, or whose x is (see Kind::FxNodeDelete), -1 for none; and where its x
     // goes, at its upper right.
     int fxHoveredNode() const;
+    // The same for the routing graph's nodes, whose x switches the node off (see Kind::NodeDelete).
+    int routingHoveredNode() const;
+    static Point nodeDeleteAt(int node, Point center);
     static Point fxDeleteAt(int node, Point center);
     // The graph's widgets: its nodes and +s, and the inspector's split or join card.
     void fxGraphWidgets(std::vector<Widget> &list) const;
@@ -1148,6 +1152,9 @@ private:
     void paintModOverlay(Canvas &c, const std::vector<Widget> &list);
     // A route's amount where modulation takes the newest voice right now (0..1), or as set while nothing plays.
     double liveAmount(int param) const;
+    // A param's value where modulation takes the newest voice right now, in its range (the macros' with no note), as
+    // the effects play it: what their displays draw.
+    double liveValue(int param) const;
     // Under a route's label or matrix cell: each modulation's range, as on a knob's ring, and where it is now.
     void paintModRange(Canvas &c, Rect bar, int param);
     // A pill's list: every modulation of its target, a row each, under the pill (or over it, short of room), kept
