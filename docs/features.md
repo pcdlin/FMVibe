@@ -370,11 +370,15 @@ What the plugin does and how its editor works, in full. Building and installing 
     into the first. **Sync** (off to begin with) makes the LFO go round once per note value of the host tempo
     instead, 4/1 down to 1/64 like an LFO's (a bar to begin with; 120 BPM without a tempo from the host). **Stereo** (off to begin with, under its display) runs the right side's LFO a quarter cycle
     ahead. Mix runs to 100 %, which is half wet: there the notches are deepest, and past it they would only get
-    shallower again.
+    shallower again. Its polarity, **+** or **−** (+ to begin with, at the right under its display), picks whether
+    the wet sound is added to the dry one or taken from it: negative turns the wet sound over, and the feedback
+    with it, so every notch moves to where a peak was (between the positive ones) and Feedback keeps its sense
+    either way. Switched, it fades over 10 ms rather than clicking.
   - **Flanger**: a 1–15 ms Delay that an LFO (Rate, 0–20 Hz) sweeps by Depth, with Feedback of either sign (a
     negative one gives the hollower sound) and Mix, which runs to 100 %, half wet, like the phaser's (and starts
     there). **Sync** works like the phaser's, two bars a sweep to begin with, and so does **Stereo**, under its
-    display, but on to begin with: the right side a quarter cycle ahead.
+    display, but on to begin with: the right side a quarter cycle ahead. So does its polarity: negative puts a notch
+    at 0 Hz and the others where the positive peaks were, the hollow, thin-bottomed negative flange.
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound.
@@ -624,8 +628,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band dynamics' (in
     its title row), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
     rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
-    has that metronome: the phaser and flanger at the left under their displays (in one pill with their STEREO),
-    over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
+    has that metronome: the phaser and flanger at the left under their displays (a button of its own, STEREO
+    another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
     do. The filter's slope is a list under its display, like a voice filter's (see the inspector). The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.
@@ -1123,11 +1127,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
 - **Button rows**: buttons that pick one of a few (Poly | Mono, an operator's waves, a voice filter's and the filter
-  effect's types, an LFO's clock modes, the partial counts, Points | Steps) and switches that sit side by side (the
-  delay's Sync, Link and Ping-Pong, the phaser's and flanger's Sync and STEREO, the shaper's Symmetric and Link, the
-  3-band dynamics' RMS and LINK) are drawn merged into one pill: one outline, rounded at its ends, with a thin line
-  between its parts, each part lit on its own. A switch with no neighbor (Legato, Always, the power switches) stays a
-  button of its own.
+  effect's types, an LFO's clock modes, the partial counts, Points | Steps, the phaser's and flanger's + | −) and
+  switches that sit side by side (the
+  delay's Sync, Link and Ping-Pong, the shaper's Symmetric and Link, the 3-band dynamics' RMS and LINK) are drawn
+  merged into one pill: one outline, rounded at its ends, with a thin line between its parts, each part lit on its
+  own. A switch with no neighbor (Legato, Always, the power switches, the phaser's and flanger's Sync and STEREO)
+  stays a button of its own.
 - **Keyboard strip**: along its top the **KEYBOARD** toggle, the macros close together, the note source and, at the
   right end, velocity; under them the
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
@@ -1275,7 +1280,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,226 of FMVibe's 18,573 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,226 of FMVibe's 18,637 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
 modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

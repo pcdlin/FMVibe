@@ -39,10 +39,16 @@ double flangerDelay(double delayNorm, double depth, double lfo);
 // their broadband level where it was without feedback.
 double sweepFeedback(double feedback);
 double sweepGain(double feedback);
+// The phaser's and flanger's polarity from their Negative switch: 1, or -1 to turn their wet sound and their
+// feedback over. Their response then is the positive one's with the wet sound's phase turned half a cycle, every
+// notch moved to where a peak was.
+inline double sweepPolarity(double negative) {
+    return negative >= 0.5 ? -1.0 : 1.0;
+}
 // Magnitude responses, for drawing: the phaser with its corner at `cornerHz`, the flanger with its
-// delay at `delaySeconds`. At 50 % mix their notches go deepest.
-double phaserResponse(double hz, double cornerHz, int stages, double feedback, double mix);
-double flangerResponse(double hz, double delaySeconds, double feedback, double mix);
+// delay at `delaySeconds`, at `polarity` (see sweepPolarity()). At 50 % mix their notches go deepest.
+double phaserResponse(double hz, double cornerHz, int stages, double feedback, double mix, double polarity);
+double flangerResponse(double hz, double delaySeconds, double feedback, double mix, double polarity);
 // The phase disperser's all-pass (b0, b1, b2, a1, a2) at Freq (0..1 on the cutoff curve), Pinch setting its Q
 // from 0.3 to 6, and how long the sound at `hz` comes out after the rest through `stages` of them (seconds).
 std::array<double, 5> disperserCoefs(double freqNorm, double pinch, double sampleRate);
@@ -274,6 +280,7 @@ private:
         std::array<double, 2> last{}; // the last stage's output, fed back to the first
         double phase = 0.0;           // the LFO, in cycles
         double mix = 0.5;
+        double polarity = 1.0; // sweepPolarity()'s, moved there over 10 ms (kPolaritySeconds)
         // The all-passes' coefficient per side, worked out every kSweepStep samples and moved along in a straight
         // line between (see runPhaser()): where it was last worked out, and whether it has been yet.
         std::array<double, 2> coef{};
@@ -286,6 +293,7 @@ private:
         std::array<double, 2> last{}; // the delayed sound, fed back
         double phase = 0.0;
         double mix = 0.5;
+        double polarity = 1.0; // as the phaser's
         // The delay per side in samples, worked out every kSweepStep samples like the phaser's coefficient.
         std::array<double, 2> delay{};
         bool delayKnown = false;
