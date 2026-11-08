@@ -551,8 +551,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       Ctrl held, a node dragged goes onto the nearest point of a coarse grid (12 across, 5 down, the cells' centers
       over the area nodes may sit in) where it fits clear of the others, the next free one if that is taken; pressed
       or let go of mid-drag, Ctrl snaps or frees it at once. While Ctrl is held over the graph, a faint + marks each
-      of the grid's points, and the one a dragged node sits on is lit. The keys reach the editor while it has the
-      keyboard; otherwise the marks show at the next mouse move.
+      of the grid's points, and the one a dragged node sits on is lit. The marks show and go as Ctrl is pressed and
+      let go of, also while the host has the keyboard (with the mouse over the editor for a press).
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
     panel's height, as far from its top as from its bottom; every cell is a route; the row and
@@ -635,9 +635,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     opens a list of the effect types (beside it, how many of the 32
     places are taken, as in 3/32), and so does a dashed card with a plus after the last effect, at the mouse (moved
     back inside the editor where it would reach past an edge); the
-    one picked goes at the end of the chain, which scrolls to show it, and so does a copy. The arrow between two
-    cards turns into a plus under the mouse: a click opens the list over the cards there, and the one picked goes
-    between those two. The dashed card takes a
+    one picked goes at the end of the chain, which scrolls to show it, and so does a copy. An arrow goes before each
+    card, the first too, and turns into a plus under the mouse: a click opens the list over the cards there, and the
+    one picked goes in there. While there are effects, a hint at the panel's top right tells how to work the cards
+    ("click icon: toggle · drag title: reorder"). The dashed card takes a
     card place at the chain's end while there is room for another effect. Six cards fit across, the Param EQ's
     taking one and a half places for a wider spectrum; with more,
     a scrollbar under them (drag its thumb or click its track; drawn thinner while the mouse is away from it) or the
@@ -690,7 +691,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 
     The switch at the panel's top right (cards in a row, or a node forking and meeting again) shows the effects as
     a **graph** instead: the graph at the left, and at the right the card of the node picked, centered in the
-    space a wide card takes, as it would show in the row. The graph's nodes sit on a fixed grid, a column each, and
+    space a wide card takes, as it would show in the row. Its hint at the top right reads "click node: edit · drag
+    node: move · click wire: insert". The graph's nodes sit on a fixed grid, a column each, and
     wire themselves: S-shaped wires, each in the color of what it comes from, run left to right from the input (IN, a
     box at the left) to the output (OUT, a box after the last column). Each effect is a circle in its color with its
     icon and name, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it

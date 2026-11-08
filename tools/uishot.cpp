@@ -469,11 +469,11 @@ void setChain(FakeController &model, std::initializer_list<int> slots) {
         model.values[index] = value;
 }
 
-// FX cards, by position in the chain: 22 apart and 171 wide (spread over the panel's 1136), the parametric EQ's one
-// and a half card places wide, a folded card a strip 38 wide: the icon's place, 18 wide and 10 in from the card's
-// left edge, and as much on its right.
-constexpr float kFxCardW = 171.0f;
-constexpr float kFxStep = kFxCardW + (1136.0f - 6.0f * kFxCardW) / 5.0f;
+// FX cards, by position in the chain: 22 apart and about 169 wide (spread over the panel's 1122 from x 46, a gap in
+// for the arrow before the first), the parametric EQ's one and a half card places wide, a folded card a strip 38
+// wide: the icon's place, 18 wide and 10 in from the card's left edge, and as much on its right.
+constexpr float kFxCardW = (1122.0f - 5.0f * 22.0f) / 6.0f;
+constexpr float kFxStep = kFxCardW + 22.0f;
 constexpr float kFoldedSpan = (38.0f + kFxStep - kFxCardW) / kFxStep;
 float fxSpan(const FakeController &model, int slot) {
     const bool folded = slot < kFirstFxSlots ? (model.ui.fxFolded >> slot) & 1u
@@ -490,7 +490,7 @@ float fxCardX(const FakeController &model, int position) {
     float place = 0.0f;
     for (int i = 0; i < position && i < static_cast<int>(chain.size()); ++i)
         place += fxSpan(model, chain[i]);
-    return 32.0f + (place - fxScrolled) * kFxStep;
+    return 46.0f + (place - fxScrolled) * kFxStep;
 }
 float fxCardW(const FakeController &model, int position) {
     const std::vector<int> chain = fxChain(model);
@@ -1784,7 +1784,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     // Its response has a handle for cutoff (sideways) and resonance (up and down), as a voice filter's.
     model.live.fxPitch = 60.0f;
     view.poll();
-    const Rect shown = detail::fxDisplay((fxCardX(model, 3) - 32.0f) / kFxStep, FxType::Filter);
+    const Rect shown = detail::fxDisplay((fxCardX(model, 3) - 46.0f) / kFxStep, FxType::Filter);
     const int fxCutoff = paramIndex(3, FxParam::FilterCutoff), fxReso = paramIndex(3, FxParam::FilterResonance);
     const double fxCutoffBefore = model.value(fxCutoff), fxResoBefore = model.value(fxReso);
     const Point fxHandle{shown.x + 10.0f + static_cast<float>(fxCutoffBefore) * (shown.w - 20.0f),
@@ -2655,6 +2655,33 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     check(switched && from(2, 0) == fxSlotPort(1) && from(join, 1) == fxSlotPort(2) &&
               from(kFxOutNode, 0) == fxSumPort(0) && renderer.save(view, dir / "41i-fx-row-low-band.png"),
           "a card carried over a container's tab shows that band, and lands on it");
+
+    // An arrow before the first card too (read off the rendered pixels: its brightest pixel against the panel's above
+    // it), whose list puts a phaser at the line's start.
+    {
+        const Point first{detail::fxCard(0.0f).x - detail::kFxGap * 0.5f, detail::fxCard(0.0f).center().y};
+        auto brightest = [&](Point m) {
+            int most = 0;
+            for (float x = m.x - 5.0f; x <= m.x + 5.0f; x += 1.0f)
+                for (float y = m.y - 8.0f; y <= m.y + 8.0f; y += 1.0f) {
+                    const uint32_t color = renderer.pixel({x, y});
+                    most = std::max({most, static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                                     static_cast<int>(color & 255)});
+                }
+            return most;
+        };
+        const bool drawn = brightest(first) > brightest({first.x, first.y - 60.0f}) + 30;
+        click(view, first);
+        const Rect list = detail::fxMenu({0.0f, 0.0f}, true);
+        const Point listAt{std::clamp(first.x - 0.5f * list.w, detail::kFxPanel.x + 8.0f,
+                                      detail::kFxPanel.right() - 8.0f - list.w),
+                           std::min(detail::kFxTop + 8.0f, detail::kFxPanel.bottom() - 4.0f - list.h)};
+        const Rect phaser = detail::fxMenuItem(listAt, FxType::Phaser);
+        click(view, {phaser.x + 0.5f * phaser.w, phaser.y + 0.5f * phaser.h});
+        check(drawn && model.value(paramIndex(4, FxParam::Type)) == static_cast<double>(FxType::Phaser) &&
+                  from(4, 0) == kFxPortIn && from(0, 0) == fxSlotPort(4),
+              "an arrow goes before the first card, its list putting an effect at the line's start");
+    }
 }
 
 // The effects graph wider than its box: a scrollbar under the box, whose thumb dragged to its end scrolls the graph
@@ -2784,7 +2811,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     const bool switched = model.value(paramIndex(1, FxParam::Enabled)) < 0.5;
     click(view, {fxCardX(model, 2) + 40.0f, 428.0f}); // the next card, closed up: its own field, no change
     const bool closedUp = model.ui.fxFolded == 1u << 1 &&
-                          std::abs(fxCardX(model, 2) - (32.0f + (1.0f + kFoldedSpan) * kFxStep)) < 0.1f;
+                          std::abs(fxCardX(model, 2) - (46.0f + (1.0f + kFoldedSpan) * kFxStep)) < 0.1f;
     click(view, {strip, 328.0f}); // the strip's name unfolds it
     const bool fxUnfolded = model.ui.fxFolded == 0;
     click(view, fxFold(1));
@@ -3146,9 +3173,9 @@ void testOutScope(const std::filesystem::path &dir, Renderer &renderer) {
           "the output scope's spans too small to draw paint nothing again, and one that draws does");
 }
 
-// The three-band dynamics, alone in the chain: a card one and a half places wide (x 32 to 299.5) whose display (from
-// y 222) has a bar a band, the high band on top (y 229, 246 and 263, 12 tall), levels across from -60 dB at x 84 to
-// 0 dB at x 245.5. A band's row picks the band its knobs set; its threshold lines, on every band, drag across (each
+// The three-band dynamics, alone in the chain: a card one and a half places wide (from x 46) whose display (14 px in,
+// from y 222) has a bar a band, the high band on top (y 229, 246 and 263, 12 tall), levels across from -60 dB at x 98
+// (38 px into the display) to 0 dB 40 px short of its right end. A band's row picks the band its knobs set; its threshold lines, on every band, drag across (each
 // stopping at the other), picking their band, Alt-dragged up they turn its ratio, and a double-click puts the
 // threshold back. LINK makes the knobs and every band's lines set the low band; RMS switches the detector to peaks.
 // Its knobs for which way a threshold or ratio works tell it in a tooltip under their label, and the bars show what the
@@ -3160,10 +3187,10 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     addFx(view, FxType::MultiDyn);
     check(model.value(paramIndex(0, FxParam::Type)) == static_cast<double>(FxType::MultiDyn),
           "the list of effects adds a three-band dynamics");
-    auto x = [](double db) { return 84.0f + static_cast<float>((db + 60.0) / 60.0) * 161.5f; };
+    auto x = [](double db) { return 98.0f + static_cast<float>((db + 60.0) / 60.0) * (1.5f * kFxStep - 22.0f - 106.0f); };
     constexpr float kHighBar = 229.0f, kMidBar = 246.0f;
     const float mid = kMidBar + 6.0f, high = kHighBar + 6.0f; // down the middle of their bars
-    click(view, {60.0f, mid});
+    click(view, {74.0f, mid});
     const Point above = fxKnob(model, 0, 2, 5, 142.0f);
     drag(view, above, {above.x, above.y - 20.0f});
     check(model.value(mdAboveIndex(0, 1)) > -20.0 && model.value(mdAboveIndex(0, 0)) == -20.0,
@@ -3218,7 +3245,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(mdDownIndex(0, 2)) == normFromDynRatio(3.0),
           "a three-band dynamics' zones drag up and down for their ratios, undoably, picking their band");
     // The high band's Above line, dragged while the mid band is picked, picks the high band: the knobs set it now.
-    click(view, {60.0f, mid});
+    click(view, {74.0f, mid});
     drag(view, {x(-20.0), high}, {x(-25.0), high});
     const bool dragged = std::abs(model.value(mdAboveIndex(0, 2)) + 25.0) < 0.5;
     drag(view, above, {above.x, above.y - 20.0f});
@@ -5935,11 +5962,12 @@ void run(const std::filesystem::path &dir, float scale) {
     check(std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
           "the shaper's list picks its curve");
     // Custom draws the curve in the card, to edit right there: its plot is the display less 8 px all round
-    // (127 x 100), the full swing 6 px short of its edges. A double-click adds a point, a drag moves it.
+    // (the card less 44 px across, 100 down), the full swing 6 px short of its edges. A double-click adds a point, a
+    // drag moves it.
     click(view, clipButton);
     click(view, clipItem(ClipMode::Custom));
     auto cardAt = [&](double x, double y) {
-        return Point{fxCardX(model, 0) + 22.0f + static_cast<float>(x) * 127.0f,
+        return Point{fxCardX(model, 0) + 22.0f + static_cast<float>(x) * (kFxCardW - 44.0f),
                      312.0f - static_cast<float>(y) * (50.0f - 6.0f)};
     };
     view.doubleClick(cardAt(0.8, 0.4), {}); // under the bend handle of the curve's upper half

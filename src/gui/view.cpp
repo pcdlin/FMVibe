@@ -1846,16 +1846,16 @@ std::vector<View::Widget> View::widgets() const {
             if (const float place = row.items.back() - scroll; fxShadow() && onScreen(place, kVisibleFx))
                 add(Kind::FxShadow, fxCard(place));
             // The arrows between the cards, while there is room for another effect: a click adds one there. On the
-            // main line before each item but the first; in a container, before each of its band's cards (the first
+            // main line before each item, the first too; in a container, before each of its band's cards (the first
             // after its controls). None goes before a dashed card, which adds there itself.
             auto insert = [&](float place, int lane, int item, int at) {
-                if (place - scroll > 0.0f && place - scroll < kVisibleFx) {
+                if (place - scroll >= 0.0f && place - scroll < kVisibleFx) {
                     const Rect card = fxCard(place - scroll);
                     add(Kind::FxInsert, {card.x - kFxGap * 0.5f - 10.0f, card.center().y - 14.0f, 20.0f, 28.0f}, -1,
                         lane, item * kFxGapStride + at);
                 }
             };
-            for (size_t i = 1; i + 1 < row.items.size() && fxShadow(); ++i)
+            for (size_t i = 0; i + 1 < row.items.size() && fxShadow(); ++i)
                 insert(row.items[i], 0, static_cast<int>(i), 0);
             for (const FxRowBox &box : row.boxes) {
                 if (box.folded || !fxShadow())
@@ -3179,14 +3179,14 @@ void View::paintFx(Canvas &c) {
     const bool full = chain.size() >= static_cast<size_t>(kFxSlots);
     c.text(count, std::to_string(chain.size()) + "/" + std::to_string(kFxSlots), 11.0f, full ? kText : kDim,
            Align::Left, full);
+    const float hintX = count.right() + 8.0f;
+    if (!chain.empty()) // how to work the cards or the graph's nodes, while there are some
+        c.text({hintX, kFxPanel.y + 10.0f, fxClearButton().x - 12.0f - hintX, 22.0f},
+               tr(fxGraph() ? Str::HintFxGraph : Str::HintFx), 10.5f, kFaint, Align::Right);
     if (fxGraph()) {
         paintFxGraph(c);
         return;
     }
-    const float hintX = count.right() + 8.0f;
-    if (!chain.empty()) // how to work the cards, while there are some
-        c.text({hintX, kFxPanel.y + 10.0f, fxClearButton().x - 12.0f - hintX, 22.0f}, tr(Str::HintFx), 10.5f, kFaint,
-               Align::Right);
     const FxRow row = fxRowShown();
     const float scroll = fxScroll();
     // In the gap before the card at `place`, an arrow: the signal runs left to right. Under the mouse, or with its
@@ -3214,7 +3214,7 @@ void View::paintFx(Canvas &c) {
                          lit ? kText : kFaint);
     };
     c.pushClip(fxCardClip());
-    for (size_t i = 1; i + 1 < row.items.size(); ++i)
+    for (size_t i = 0; i + 1 < row.items.size(); ++i) // before each item on the main line, the first too
         chevron(row.items[i], 0, static_cast<int>(i), 0, kFaint);
     // Each split's container under its cards: its outline round them a little out, its controls on grey at its left
     // (out to the outline above, below and before them, and only to their card place after them),

@@ -279,8 +279,14 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         invalidate();
         return 0;
     case WM_TIMER:
-        if (wParam == kPollTimer && view_.poll())
-            invalidate();
+        if (wParam == kPollTimer) {
+            // Ctrl let go, or pressed with the mouse over the editor: while the host has the keyboard no key message
+            // comes here, and only the next mouse move would tell the view (whose grid shows while Ctrl is held).
+            const bool ctrl = GetAsyncKeyState(VK_CONTROL) < 0;
+            const bool ctrlChanged = (!ctrl || trackingLeave_) && view_.setCtrl(ctrl);
+            if (view_.poll() || ctrlChanged)
+                invalidate();
+        }
         return 0;
     case kPresetMessage:
         browsePreset(wParam != 0);

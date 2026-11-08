@@ -176,7 +176,9 @@ constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel'
 constexpr Rect kFxPanel{kRouting.x, kRouting.y, kInspector.x + kInspector.w - kRouting.x, kRouting.h};
 constexpr int kVisibleFx = 6;
 constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
-constexpr float kFxCardW = (kFxPanel.w - 32.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
+// The row's first card starts a gap in from the clip it scrolls in (see fxCardClip()), for the arrow before it.
+constexpr float kFxRowLeft = 8.0f + kFxGap;
+constexpr float kFxCardW = (kFxPanel.w - kFxRowLeft - 16.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
 // The MODS view covers them too: a row per modulation under the columns' names (the count at the right of their
 // row), scrolling with a bar at the right. Within a row, from its left: the bypass dot, the source and its polarity
@@ -617,7 +619,7 @@ inline float fxSpan(FxType type) {
 // A card's rect by its screen place, in card places from the row's left end (0..kVisibleFx, fractions while
 // it scrolls), and how many places it takes.
 inline Rect fxCard(float position, float span = 1.0f) {
-    return {kFxPanel.x + 16.0f + position * (kFxCardW + kFxGap), kFxTop, span * (kFxCardW + kFxGap) - kFxGap,
+    return {kFxPanel.x + kFxRowLeft + position * (kFxCardW + kFxGap), kFxTop, span * (kFxCardW + kFxGap) - kFxGap,
             kFxPanel.bottom() - 20.0f - kFxTop};
 }
 

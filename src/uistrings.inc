@@ -550,6 +550,7 @@ STR(ButtonOverwrite, "Overwrite")
 STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
 STR(HintFx, "click icon: toggle  ·  drag title: reorder")
+STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
 // A split's controls: the tabs that pick the band it shows, and its container's dashed card adding to that band.
 STR(TabBandLow, "LOW")
