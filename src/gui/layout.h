@@ -593,8 +593,8 @@ inline Rect fxDisplay(float position, FxType type) {
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
                          type == FxType::Reverb || type == FxType::Phaser || type == FxType::Flanger ||
                          type == FxType::Filter || type == FxType::FreqShifter;
-    // The filter's slope switch, the delay's SYNC, LINK and PING-PONG and the phaser's and flanger's SYNC and STEREO
-    // go under their displays.
+    // The filter's slope switch, the delay's SYNC, LINK and PING-PONG and the phaser's and flanger's SYNC, STEREO and
+    // polarity go under their displays.
     const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Filter ||
                                type == FxType::Delay;
     // The shaper's LINK goes between its display and its knobs.

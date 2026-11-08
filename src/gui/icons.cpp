@@ -285,6 +285,12 @@ void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color) {
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
+void polaritySign(Canvas &c, Point m, bool minus, Color color) {
+    c.line({m.x - 4.5f, m.y}, {m.x + 4.5f, m.y}, color, 1.6f);
+    if (!minus)
+        c.line({m.x, m.y - 4.5f}, {m.x, m.y + 4.5f}, color, 1.6f);
+}
+
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color) {
     const std::vector<double> key{static_cast<double>(Curve::PolarityIcon), m.x, m.y, bipolar ? 1.0 : 0.0};
     const std::vector<Point> points = icons.get(key, [&] {

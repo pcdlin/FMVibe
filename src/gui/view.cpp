@@ -1767,16 +1767,21 @@ std::vector<View::Widget> View::widgets() const {
                 break;
             case FxType::Phaser:
             case FxType::Flanger: {
-                // Under the display at the left, over the Rate knob, SYNC (the delay's metronome) and STEREO in one
-                // pill. Synced, the Rate knob picks a note value and shows it as its label.
+                // Under the display: at the left, over the Rate knob, SYNC (the delay's metronome), then STEREO, two
+                // switches of their own; at the right the polarity, + and - as one choice. Synced, the Rate knob
+                // picks a note value and shows it as its label.
                 const bool phaser = type == FxType::Phaser;
                 const int sync = at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync);
-                const float under = fxDisplay(screen, type).bottom() + 4.0f;
-                const size_t switches = list.size();
-                add(Kind::Toggle, {card.x + 14.0f, under, 34.0f, 18.0f}, sync);
-                add(Kind::Toggle, {card.x + 48.0f, under, 72.0f, 18.0f},
+                const Rect display = fxDisplay(screen, type);
+                const float under = display.bottom() + 4.0f;
+                add(Kind::Toggle, {display.x, under, 32.0f, 18.0f}, sync);
+                add(Kind::Toggle, {display.x + 36.0f, under, 60.0f, 18.0f},
                     at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo));
-                merge(switches);
+                const int negative = at(phaser ? FxParam::PhaserNegative : FxParam::FlangerNegative);
+                const size_t polarity = list.size();
+                add(Kind::Choice, {display.right() - 40.0f, under, 20.0f, 18.0f}, negative, -1, 0);
+                add(Kind::Choice, {display.right() - 20.0f, under, 20.0f, 18.0f}, negative, -1, 1);
+                merge(polarity);
                 const bool synced = value(sync) >= 0.5;
                 const int rate = synced ? at(phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision)
                                         : at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate);
@@ -4145,6 +4150,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     const double mix = sweepWet(at(phaser ? FxParam::PhaserMix : FxParam::FlangerMix));
     const double depth = at(phaser ? FxParam::PhaserDepth : FxParam::FlangerDepth);
     const int stages = static_cast<int>(std::lround(at(FxParam::PhaserStages)));
+    const double polarity = sweepPolarity(at(phaser ? FxParam::PhaserNegative : FxParam::FlangerNegative));
     constexpr float kMinDb = -30.0f, kMaxDb = 9.0f;
     auto yOfDb = [&](double db) {
         return inner.bottom() - (std::clamp(static_cast<float>(db), kMinDb, kMaxDb) - kMinDb) / (kMaxDb - kMinDb) * inner.h;
@@ -4168,7 +4174,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     for (const Response &curve : curves) {
         std::vector<double> key = curveKey(Curve::Sweep, inner);
         key.insert(key.end(), {phaser ? 1.0 : 0.0, curve.lfo, feedback, mix, depth, static_cast<double>(stages),
-                               at(phaser ? FxParam::PhaserCenter : FxParam::FlangerDelay)});
+                               at(phaser ? FxParam::PhaserCenter : FxParam::FlangerDelay), polarity});
         const std::vector<Point> points = curves_.get(key, [&] {
             std::vector<Point> points;
             for (int i = 0; i <= 160; ++i) {
@@ -4177,8 +4183,10 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
                 const double lfo = curve.lfo;
                 const double magnitude =
                     phaser
-                        ? phaserResponse(hz, phaserCorner(at(FxParam::PhaserCenter), depth, lfo), stages, feedback, mix)
-                        : flangerResponse(hz, flangerDelay(at(FxParam::FlangerDelay), depth, lfo), feedback, mix);
+                        ? phaserResponse(hz, phaserCorner(at(FxParam::PhaserCenter), depth, lfo), stages, feedback,
+                                         mix, polarity)
+                        : flangerResponse(hz, flangerDelay(at(FxParam::FlangerDelay), depth, lfo), feedback, mix,
+                                          polarity);
                 points.push_back({inner.x + static_cast<float>(x) * inner.w,
                                   yOfDb(20.0 * std::log10(std::max(magnitude, 1e-6)))});
             }
@@ -5309,6 +5317,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             fxSwitchIcon(c, w.rect.center(), FxParam::ShaperLink, on ? color : (hovered ? kText : kDim));
         else if (shaperFieldOf(w.param) == ShaperParam::Symmetric)
             fxSwitchIcon(c, w.rect.center(), FxParam::ShaperSymmetric, on ? color : (hovered ? kText : kDim));
+        else if (field == FxParam::PhaserNegative || field == FxParam::FlangerNegative)
+            polaritySign(c, w.rect.center(), w.b == 1, on ? color : (hovered ? kText : kDim));
         else if (isFxIconSwitch(field))
             fxSwitchIcon(c, w.rect.center(), field, on ? color : (hovered ? kText : kDim));
         else if (isLfoSync(w.param)) // an LFO's SYNC, the effects' metronome
@@ -6921,6 +6931,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipRms);
     else if (field == FxParam::PhaserStereo || field == FxParam::FlangerStereo)
         text = tr(Str::TipStereo);
+    else if (field == FxParam::PhaserNegative || field == FxParam::FlangerNegative)
+        text = tr(hover_->b == 1 ? Str::TipNegative : Str::TipPositive);
     else if (field == FxParam::ShaperLink || shaperFieldOf(param) == ShaperParam::Link)
         text = tr(Str::TipShaperLink);
     else if (field == FxParam::ShaperSymmetric || shaperFieldOf(param) == ShaperParam::Symmetric)

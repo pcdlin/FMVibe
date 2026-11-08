@@ -1699,6 +1699,83 @@ int main() {
         check(synced, "synced, the phaser's and flanger's sweeps follow the host tempo");
     }
 
+    // --- The phaser's and flanger's polarity, standing still with no feedback at full Mix (half wet). Positive, a
+    // sine where the wet sound comes out turned over is taken away and one where it comes out as it went in plays on
+    // at full level; negative, the other way round. A 2 ms flanger's first notch is at 250 Hz, and negative at
+    // 500 Hz; four all-passes at 1 kHz turn a whole cycle there, half a cycle where each turns an eighth. Turned
+    // over while a sine plays, the polarity fades through nothing: no sample steps further than the sine's own do.
+    std::printf("polarity (level of a sine, in dB, positive and negative):\n");
+    {
+        auto run = [](FxType type, double hz, bool negative, bool turnOver, double *steepest) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            const bool phaser = type == FxType::Phaser;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(type);
+            p[paramIndex(0, phaser ? FxParam::PhaserRate : FxParam::FlangerRate)] = 0.0;
+            p[paramIndex(0, phaser ? FxParam::PhaserDepth : FxParam::FlangerDepth)] = 0.0;
+            p[paramIndex(0, phaser ? FxParam::PhaserFeedback : FxParam::FlangerFeedback)] = 0.0;
+            p[paramIndex(0, phaser ? FxParam::PhaserMix : FxParam::FlangerMix)] = 1.0;
+            p[paramIndex(0, phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo)] = 0.0;
+            p[paramIndex(0, FxParam::PhaserCenter)] = normFromCutoff(1000.0);
+            p[paramIndex(0, FxParam::PhaserStages)] = 4.0;
+            p[paramIndex(0, FxParam::FlangerDelay)] = normFromTime(0.002);
+            const int polarity = paramIndex(0, phaser ? FxParam::PhaserNegative : FxParam::FlangerNegative);
+            p[polarity] = negative ? 1.0 : 0.0;
+            const uint32_t total = static_cast<uint32_t>(kSampleRate / 2), turnAt = total / 2;
+            std::vector<float> left(kBlock), right(kBlock);
+            double sum = 0.0, last = 0.0;
+            uint32_t measured = 0;
+            *steepest = 0.0;
+            for (uint32_t done = 0; done < total; done += kBlock) {
+                const uint32_t n = std::min(kBlock, total - done);
+                if (turnOver && done >= turnAt)
+                    p[polarity] = negative ? 0.0 : 1.0;
+                for (uint32_t s = 0; s < n; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        0.5 * std::sin(2.0 * std::numbers::pi * hz * (done + s) / kSampleRate));
+                fx.process(left.data(), right.data(), n, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < n; ++s) {
+                    if (done + s > total / 4) // past the first 125 ms
+                        *steepest = std::max(*steepest, std::abs(left[s] - last));
+                    last = left[s];
+                    if (done + s >= total - total / 5) {
+                        sum += left[s] * left[s];
+                        ++measured;
+                    }
+                }
+            }
+            return 20.0 * std::log10(std::sqrt(sum / measured) / (0.5 / std::sqrt(2.0)) + 1e-12);
+        };
+        // Where each of four all-passes at 1 kHz turns an eighth of a cycle (by the bilinear transform's curve).
+        const double eighth = kSampleRate / std::numbers::pi *
+                              std::atan(std::tan(std::numbers::pi * 1000.0 / kSampleRate) * std::tan(std::numbers::pi / 8.0));
+        bool flipped = true, smooth = true;
+        for (FxType type : {FxType::Phaser, FxType::Flanger}) {
+            const bool phaser = type == FxType::Phaser;
+            const double positiveNotch = phaser ? eighth : 250.0, negativeNotch = phaser ? 1000.0 : 500.0;
+            double steep = 0.0;
+            const double a = run(type, positiveNotch, false, false, &steep), b = run(type, positiveNotch, true, false, &steep);
+            const double c = run(type, negativeNotch, false, false, &steep), d = run(type, negativeNotch, true, false, &steep);
+            std::printf("      %-8s %4.0f Hz: %6.1f, %6.1f   %4.0f Hz: %6.1f, %6.1f\n", phaser ? "phaser" : "flanger",
+                        positiveNotch, a, b, negativeNotch, c, d);
+            flipped = flipped && a < -40.0 && std::abs(b) < 0.5 && std::abs(c) < 0.5 && d < -40.0;
+            for (bool negative : {false, true}) {
+                // The sine's own steepest step, against the steepest once its polarity turns over and it fades out.
+                const double hz = negative ? positiveNotch : negativeNotch;
+                const double own = 0.5 * 2.0 * std::numbers::pi * hz / kSampleRate;
+                const double level = run(type, hz, negative, true, &steep);
+                std::printf("      %-8s turned %s at %4.0f Hz: steepest step %.4f (the sine's %.4f), then %.1f dB\n",
+                            phaser ? "phaser" : "flanger", negative ? "positive" : "negative", hz, steep, own, level);
+                smooth = smooth && steep < 1.05 * own && level < -40.0;
+            }
+        }
+        check(flipped, "negative, the phaser's and flanger's notches move to where they had peaks");
+        check(smooth, "the phaser's and flanger's polarity turned over mid-sine fades rather than clicking");
+    }
+
     // --- The reverb's tails, from an impulse into both sides (2.5 s decay, at full wet). Late on, a tail's
     // spectrum, averaged over a second, keeps close to its own third-octave smoothing: no resonance rings on above
     // the rest, as a plain network's would, its lines' modes standing still. Its two sides come out unalike. Without

@@ -1679,6 +1679,22 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     const bool flangerMono = model.value(flangerStereo) == 0.0;
     click(view, stereo);
     check(flangerMono && model.value(flangerStereo) == 1.0, "the flanger's STEREO switches its sides apart and together");
+    // The polarity, + and - at the right under the display: - turns the flanger's wet sound and feedback over, + back,
+    // and a click on the side lit leaves it. Its - is left on for the render, its curve's notches where the peaks were.
+    const int flangerNegative = paramIndex(1, FxParam::FlangerNegative);
+    const float polarityRight = fxCardX(model, 1) + fxCardW(model, 1) - 14.0f;
+    const Point plus{polarityRight - 30.0f, 180.0f + 171.0f}, minus{polarityRight - 10.0f, 180.0f + 171.0f};
+    const bool startsPositive = model.value(flangerNegative) == 0.0;
+    click(view, minus);
+    const bool negated = model.value(flangerNegative) == 1.0;
+    click(view, minus);
+    const bool stays = model.value(flangerNegative) == 1.0;
+    click(view, plus);
+    const bool back = model.value(flangerNegative) == 0.0;
+    click(view, minus);
+    check(startsPositive && negated && stays && back && model.value(flangerNegative) == 1.0 &&
+              model.value(paramIndex(0, FxParam::PhaserNegative)) == 0.0 && model.value(flangerStereo) == 1.0,
+          "the flanger's + and - pick its polarity");
     // The filter's Key Track, the third knob of its first row.
     const int keyTrack = paramIndex(3, FxParam::FilterKeyTrack);
     drag(view, fxKnob(model, 3, 2, 3, 206.0f), {fxKnob(model, 3, 2, 3, 206.0f).x, fxKnob(model, 3, 2, 3, 206.0f).y - 20.0f});

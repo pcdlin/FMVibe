@@ -171,6 +171,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     silence, and an input that isn't a number reading inside its table;
   - the filter effect switched to another type or slope and back, and a plate switched to a hall and back,
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
+  - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
+    turned over mid-sine fading through nothing rather than clicking;
   - the random LFO's steps and glides, a freeform LFO's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
@@ -314,8 +316,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and the bars' meters showing the telemetry's levels and gains, in teal, then amber for what is taken off (read
     off the rendered pixels), and LINK (an edit of one band, by its line or knob, then setting every band's, undoably) and RMS;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
-    flanger's STEREO, the filter's Key Track and the shaper's and delay's LINK too) and the list of effects with
-    their icons;
+    flanger's STEREO and its + | − picking its polarity, the filter's Key Track and the shaper's and delay's LINK
+    too) and the list of effects with their icons;
   - a filter's and the filter effect's responses moving with the note their key tracking follows (read off the
     rendered pixels);
   - switching effects with their cards' icons (a switched-off one's staying grey under the mouse, read off the
@@ -670,7 +672,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,226 of the 18,045 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,226 of the 18,109 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

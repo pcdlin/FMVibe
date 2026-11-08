@@ -86,6 +86,8 @@ void lfoModeIcon(Canvas &c, Point m, SourceParam mode, Color color);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.
 void polarityIcon(Canvas &c, Point m, bool bipolar, Color color);
+// A plus, or a minus: the phaser's and flanger's polarity.
+void polaritySign(Canvas &c, Point m, bool minus, Color color);
 // How a route acts on the operator it goes into, about 10 x 10 around `m` (times `scale`): Phase a phi (a ring with a stroke through
 // it), Linear FM a straight rising line, Exp FM a curve rising ever faster, Ring a ring with a cross in it.
 void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale = 1.0f);

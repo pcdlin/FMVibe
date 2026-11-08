@@ -104,6 +104,14 @@ double rampStep(double from, double to, uint32_t n) {
     return (to - from) / std::max(n, kShortest);
 }
 
+// The phaser's and flanger's polarity turns over in this long, its wet sound and feedback fading through nothing
+// rather than jumping, however the host splits the block.
+constexpr double kPolaritySeconds = 0.01;
+
+double moveToward(double from, double to, double step) {
+    return from < to ? std::min(from + step, to) : std::max(from - step, to);
+}
+
 // Moves a band's gain reduction (dB) toward what the curve asks for at detector
 // level `peak`: at the attack pace while it has to come down, else at the release pace.
 // `quiet`: the level (1 is full scale) below which the curve leaves it alone, under the knee, where the reduction
@@ -212,22 +220,22 @@ double sweepGain(double feedback) {
     return std::sqrt(1.0 - g * g);
 }
 
-double phaserResponse(double hz, double cornerHz, int stages, double feedback, double mix) {
+double phaserResponse(double hz, double cornerHz, int stages, double feedback, double mix, double polarity) {
     using Complex = std::complex<double>;
     const Complex s(0.0, hz / cornerHz);
     const Complex stage = (1.0 - s) / (1.0 + s); // the analog first-order all-pass
     Complex chain = 1.0;
     for (int k = 0; k < stages; ++k)
         chain *= stage;
-    const double g = sweepFeedback(feedback);
-    return std::abs(1.0 - mix + mix * sweepGain(feedback) * chain / (1.0 - g * chain));
+    const double g = polarity * sweepFeedback(feedback);
+    return std::abs(1.0 - mix + polarity * mix * sweepGain(feedback) * chain / (1.0 - g * chain));
 }
 
-double flangerResponse(double hz, double delaySeconds, double feedback, double mix) {
+double flangerResponse(double hz, double delaySeconds, double feedback, double mix, double polarity) {
     using Complex = std::complex<double>;
     const Complex delay = std::polar(1.0, -2.0 * std::numbers::pi * hz * delaySeconds);
-    const double g = sweepFeedback(feedback);
-    return std::abs(1.0 - mix + mix * sweepGain(feedback) * delay / (1.0 - g * delay));
+    const double g = polarity * sweepFeedback(feedback);
+    return std::abs(1.0 - mix + polarity * mix * sweepGain(feedback) * delay / (1.0 - g * delay));
 }
 
 double reverbDecay(double norm) {
@@ -489,6 +497,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     case FxType::Phaser:
         s.phaser = Phaser{};
         s.phaser.mix = sweepWet(at(FxParam::PhaserMix));
+        s.phaser.polarity = sweepPolarity(at(FxParam::PhaserNegative));
         break;
     case FxType::Flanger:
         for (ZeroBuffer &line : s.flanger.lines)
@@ -498,6 +507,7 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         s.flanger.phase = 0.0;
         s.flanger.delayKnown = false;
         s.flanger.mix = sweepWet(at(FxParam::FlangerMix));
+        s.flanger.polarity = sweepPolarity(at(FxParam::FlangerNegative));
         break;
     case FxType::FreqShifter:
         s.shifter = Shifter{};
@@ -1186,6 +1196,8 @@ double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamVal
         for (int k = stages; k < kMaxPhaserStages; ++k)
             ph.stages[ch][k] = 0.0;
     const double mixStep = rampStep(ph.mix, sweepWet(at(FxParam::PhaserMix)), n);
+    const double polarity = sweepPolarity(at(FxParam::PhaserNegative));
+    const double polarityStep = 2.0 / (kPolaritySeconds * sampleRate_); // the whole way, -1 to 1
     const double spread = at(FxParam::PhaserStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     // The all-passes' coefficient where the sweep is at `phase`, on each side.
     auto coefAt = [&](double phase, int ch) {
@@ -1218,13 +1230,14 @@ double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamVal
         }
         --stepLeft;
         ph.mix += mixStep;
+        ph.polarity = moveToward(ph.polarity, polarity, polarityStep);
         ph.phase += step;
         ph.phase -= std::floor(ph.phase);
         for (int ch = 0; ch < 2; ++ch) {
             ph.coef[ch] = stepLeft == 0 ? coefTo[ch] : ph.coef[ch] + coefStep[ch]; // exactly there at the step's end
             const double a = ph.coef[ch];
             const double x = io[ch][s];
-            double y = x + feedback * ph.last[ch];
+            double y = x + ph.polarity * feedback * ph.last[ch];
             for (int k = 0; k < stages; ++k) { // y = a x + z; z = x - a y
                 double &z = ph.stages[ch][k];
                 const double out = a * y + z;
@@ -1232,7 +1245,7 @@ double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamVal
                 y = out;
             }
             ph.last[ch] = y;
-            io[ch][s] = static_cast<float>(x + (y * gain - x) * ph.mix);
+            io[ch][s] = static_cast<float>(x + (ph.polarity * y * gain - x) * ph.mix);
             peak = std::max({peak, std::abs(x), std::abs(y)});
         }
     }
@@ -1364,6 +1377,8 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
     const double feedback = sweepFeedback(at(FxParam::FlangerFeedback));
     const double gain = sweepGain(at(FxParam::FlangerFeedback));
     const double mixStep = rampStep(f.mix, sweepWet(at(FxParam::FlangerMix)), n);
+    const double polarity = sweepPolarity(at(FxParam::FlangerNegative));
+    const double polarityStep = 2.0 / (kPolaritySeconds * sampleRate_);
     const double spread = at(FxParam::FlangerStereo) >= 0.5 ? 0.25 : 0.0; // the right side's head start
     const int size = static_cast<int>(f.lines[0].size());
     // The delay in samples where the sweep is at `phase`, on each side: worked out every kSweepStep samples, as the
@@ -1394,15 +1409,16 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
         }
         --stepLeft;
         f.mix += mixStep;
+        f.polarity = moveToward(f.polarity, polarity, polarityStep);
         f.phase += step;
         f.phase -= std::floor(f.phase);
         for (int ch = 0; ch < 2; ++ch) {
             f.delay[ch] = stepLeft == 0 ? delayTo[ch] : f.delay[ch] + delayStep[ch];
             const double delayed = readBehind(f.lines[ch], f.write, f.delay[ch]);
             const double x = io[ch][s];
-            f.lines[ch][f.write] = static_cast<float>(x + feedback * delayed);
+            f.lines[ch][f.write] = static_cast<float>(x + f.polarity * feedback * delayed);
             f.last[ch] = delayed;
-            io[ch][s] = static_cast<float>(x + (delayed * gain - x) * f.mix);
+            io[ch][s] = static_cast<float>(x + (f.polarity * delayed * gain - x) * f.mix);
             peak = std::max({peak, std::abs(x), std::abs(delayed)});
         }
         f.write = f.write + 1 == size ? 0 : f.write + 1;

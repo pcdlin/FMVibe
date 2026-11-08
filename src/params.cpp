@@ -651,6 +651,7 @@ void buildTable(ParamTable &t) {
         fx(FxParam::PhaserStages, tr(Str::ParamPhaserStages), ParamKind::Count, 2.0, kMaxPhaserStages, 4.0);
         fx(FxParam::PhaserMix, tr(Str::ParamPhaserMix), ParamKind::Percent, 0.0, 1.0, 1.0);
         fx(FxParam::PhaserStereo, tr(Str::ParamPhaserStereo), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::PhaserNegative, tr(Str::ParamPhaserNegative), ParamKind::Toggle, 0.0, 1.0, 0.0);
         // Synced, a bar a sweep.
         fx(FxParam::PhaserSync, tr(Str::ParamPhaserSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::PhaserDivision, tr(Str::ParamPhaserDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
@@ -678,6 +679,7 @@ void buildTable(ParamTable &t) {
         fx(FxParam::FlangerMix, tr(Str::ParamFlangerMix), ParamKind::Percent, 0.0, 1.0, 1.0);
         // Stereo to begin with, unlike the phaser: the classic flanger's sides sweep apart.
         fx(FxParam::FlangerStereo, tr(Str::ParamFlangerStereo), ParamKind::Toggle, 0.0, 1.0, 1.0);
+        fx(FxParam::FlangerNegative, tr(Str::ParamFlangerNegative), ParamKind::Toggle, 0.0, 1.0, 0.0);
         // Synced, two bars a sweep.
         fx(FxParam::FlangerSync, tr(Str::ParamFlangerSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::FlangerDivision, tr(Str::ParamFlangerDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
