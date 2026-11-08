@@ -1043,8 +1043,8 @@ private:
     bool sourceOn(int source) const;
     // Whether `m`'s depth handle is under the mouse or being dragged: its range is drawn wider, over the others.
     bool modFocused(const Assignment &m) const;
-    // Whether it does anything, as its handle shows: an LFO or envelope while it is on, a macro or the note source
-    // once it is used (see sourceUsed()).
+    // Whether it does anything, as its handle shows: a source once it is used (see sourceUsed()), and an LFO or
+    // envelope only while it is on too.
     bool sourceLive(int source) const;
     // How many sources are scrolled past, as a fraction, and the screen place (0..3,
     // fractions while scrolling) of a source's card, or kOffScreen.

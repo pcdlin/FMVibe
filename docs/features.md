@@ -1070,7 +1070,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   - A card's title row is laid out as an effect card's: the handle and the name in capitals ("LFO 2", "ENV 1") at
     the left, then the fold chevron, the power switch and the × at the right.
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings
-    on knobs faint (the handle can still be dragged onto targets).
+    on knobs faint (the handle can still be dragged onto targets). Like a macro's, a source's handle is faint too
+    while it modulates nothing (and scales no modulation as its aux).
   - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip
     to drag it by, the switch and ×, then the name, which unfolds it: its letters down the strip and its number
     across (a Random source's shortened to RND).

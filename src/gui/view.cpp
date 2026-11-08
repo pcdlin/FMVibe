@@ -1072,7 +1072,7 @@ bool View::modFocused(const Assignment &m) const {
 }
 
 bool View::sourceLive(int source) const {
-    return isStripSource(source) ? sourceUsed(source) : sourceOn(source);
+    return sourceOn(source) && sourceUsed(source);
 }
 
 float View::sourceScroll() const {
@@ -6002,8 +6002,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::SourceHandle:
     case Kind::MacroHandle: {
-        // A switched-off source's is faint, like its rings on knobs, and so is a macro's or the note source's while
-        // it modulates nothing; either can still be dragged onto a target.
+        // A switched-off source's is faint, like its rings on knobs, and so is any source's while it modulates
+        // nothing; either can still be dragged onto a target.
         const Point center = w.rect.center();
         const Color color = kSourceColors[w.a].alpha(sourceLive(w.a) ? 1.0f : 0.3f);
         if (hovered || active)

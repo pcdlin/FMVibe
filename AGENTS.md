@@ -349,7 +349,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
     one's ghost filled while it is shown (read off the rendered pixels);
-  - a switched-off source's handle going faint, and a macro's and the note source's until they modulate something
+  - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
+    they modulate something
     (read off the rendered pixels);
   - the dot on a filter's and a shaper's tab while it sounds out, the output meter and its clip light, and the
     output scope beside it, empty with nothing captured and drawing a span at its peak (read off the rendered

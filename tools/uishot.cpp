@@ -5546,19 +5546,31 @@ void run(const std::filesystem::path &dir, float scale) {
               model.value(paramIndex(1, SourceParam::Type)) == static_cast<double>(SourceType::Env) &&
               model.value(sourceEnabledIndex(0)) == 1.0 && model.openEdits == 0,
           "the add buttons add an LFO and an envelope, switched on");
-    // A switched-off source's handle is faint, like its card (read off the rendered pixels: its ring darkens).
+    // An LFO's and an envelope's handles are faint while they modulate nothing, like a macro's, and a switched-off
+    // source's is faint too, like its card (read off the rendered pixels: its ring darkens).
     {
         const Point ring{sourceHandle(0).x + 6.0f, sourceHandle(0).y};
+        const Point envRing{sourceHandle(1).x + 6.0f, sourceHandle(1).y};
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool idleShot = renderer.save(view, dir / "1a-source-idle.png");
+        const int idle = ringLevel(renderer, ring, 20.0f), envIdle = ringLevel(renderer, envRing, 20.0f);
+        model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount)));
+        model.set(slotTargetIndex(1, 0), slotTargetValue(paramIndex(GlobalParam::FmAmount)));
         view.mouseMove({600.0f, 328.0f}, {});
         const bool onShot = renderer.save(view, dir / "1b-source-on.png");
-        const int on = ringLevel(renderer, ring, 20.0f);
+        const int on = ringLevel(renderer, ring, 20.0f), envOn = ringLevel(renderer, envRing, 20.0f);
         click(view, sourcePower(0));
         view.mouseMove({600.0f, 328.0f}, {});
         const bool offShot = renderer.save(view, dir / "1c-source-off.png");
         const int off = ringLevel(renderer, ring, 20.0f);
         click(view, sourcePower(0));
-        std::printf("      LFO 1's handle: brightness %d on, %d off\n", on, off);
-        check(onShot && offShot && model.value(sourceEnabledIndex(0)) == 1.0 && on > 200 && off * 18 < on * 10,
+        model.set(slotTargetIndex(0, 0), 0.0);
+        model.set(slotTargetIndex(1, 0), 0.0);
+        std::printf("      LFO 1's handle: brightness %d idle, %d on, %d off; Env 1's %d idle, %d on\n", idle, on, off,
+                    envIdle, envOn);
+        check(idleShot && on > 200 && idle * 18 < on * 10 && envOn > 200 && envIdle * 18 < envOn * 10,
+              "an LFO's and an envelope's handles are faint until they modulate something");
+        check(onShot && offShot && model.value(sourceEnabledIndex(0)) == 1.0 && off * 18 < on * 10,
               "a switched-off source's handle looks switched off");
     }
 
