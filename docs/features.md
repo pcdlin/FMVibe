@@ -656,8 +656,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     mouse wheel over the panel scrolls the chain smoothly, cutting off the cards at the ends, and so does a drag with
     the middle button held (see Everywhere). Drag a card by its
     title to move it along the chain (held at either end of the row, it scrolls the chain along that way; while it
-    is held, it shows faint where it would land, an outline following the mouse, and the cards between glide aside
-    to make room; let go of, they glide on into place, and a click while they glide puts them in place at once),
+    is held, only its outline shows where it would land, and a faint image of it follows the mouse anywhere, over the
+    other panels too; nothing moves while the mouse is still across from the card's own place, and once it is clear of it the
+    cards glide aside to make room where the mouse is; across from a split container's controls, where it would land
+    stays as it was, so an effect on a band can be carried over them to another band's tab, which lights in that
+    band's color and, let go of there, puts it at that band's end, the container still showing the band it showed;
+    let go of, they glide on into place, and a click while they glide puts them in place at once),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings,
     set a 3-band dynamics as OTT, or remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
     title's left, so the icon stays where it was: the icon, which still switches the effect and drags the card,
@@ -707,7 +711,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
     + EFFECT offer **Add frequency split** and **Add 3-band split** after the effects, which go in there (at the
     line's end from the last two) with their join, their bands empty and their low band shown. A card dragged over the band a container shows
-    lands on that band, and carried over a container's tab it shows that band, to land on; a card dragged out of a
+    lands on that band, and let go of on a container's tab it goes to the end of that band (the tab lit while it is
+    over it; the band shown stays as it is); a card dragged out of a
     band goes onto the main line. A copy of a card on a band goes at the end of that band. The band each split shows
     and which containers are folded are saved with the patch, but not undone.
 
@@ -1029,7 +1034,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   the list. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
   scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
   them along. Sources are numbered by type in the order they show ("LFO 2", "Env 1", "Random 1", "MIDI 1").
-  - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way.
+  - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way. A faint image of it follows the mouse anywhere, over the other panels too, and only its outline shows where it would land; the other cards make room only once the mouse is clear of the card's own place, where the mouse is.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its
     settings and targets), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
     remove it; the × removes it too, together with its modulation and whatever modulates its knobs. A bipolar

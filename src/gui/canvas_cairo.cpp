@@ -287,4 +287,18 @@ void Canvas::popClip() {
     cairo_restore(target_);
 }
 
+void Canvas::pushLayer(Point offset, float opacity) {
+    cairo_save(target_);
+    cairo_translate(target_, offset.x, offset.y);
+    cairo_push_group(target_);
+    opacities_.push_back(opacity);
+}
+
+void Canvas::popLayer() {
+    cairo_pop_group_to_source(target_);
+    cairo_paint_with_alpha(target_, opacities_.back());
+    opacities_.pop_back();
+    cairo_restore(target_);
+}
+
 } // namespace fmvibe::gui

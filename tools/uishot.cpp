@@ -2902,8 +2902,10 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Dragged by its title past the delay: the split goes after it, with its bands, the delay gliding into its place
     // (a step on, the row showing neither where they were nor where they go: read off the rendered pixels along the
-    // cards' title row); undone.
+    // cards' title row); undone. Nothing moves until the mouse is clear of the container's own place (its controls,
+    // its band's card and its dashed card), so it is carried past its end.
     const Point title{column.x + 60.0f, column.y + 17.0f};
+    const float pastBox = detail::fxCard(1.0f + 2.0f * detail::kFxBoxEdge + 2.0f + detail::kFxBoxAddSpan + 0.3f).x;
     auto rowPixels = [&] {
         std::vector<uint32_t> line;
         for (float x = detail::kFxPanel.x + 12.0f; x < detail::kFxPanel.right() - 12.0f; x += 2.0f)
@@ -2912,7 +2914,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     };
     view.mouseDown(title, {});
     view.mouseMove({title.x + 20.0f, title.y}, {});
-    view.mouseMove({detail::fxCard(2.2f).x, title.y}, {});
+    view.mouseMove({pastBox, title.y}, {});
     const bool startShot = renderer.save(view, dir / "41h1-fx-row-glide-start.png");
     const std::vector<uint32_t> atStart = rowPixels();
     view.poll();
@@ -2922,7 +2924,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     const bool carryShot = renderer.save(view, dir / "41h-fx-row-drag-container.png");
     check(startShot && stepShot && carryShot && aStepOn != atStart && aStepOn != rowPixels(),
           "cards dragged along the row glide aside, a step at a time");
-    view.mouseUp({detail::fxCard(2.2f).x, title.y}, {});
+    view.mouseUp({pastBox, title.y}, {});
     settle();
     const bool carried = from(2, 0) == fxSlotPort(0) && from(split, 0) == fxSlotPort(2) &&
                          from(kFxOutNode, 0) == fxSumPort(0) && from(1, 0) == low && from(3, 0) == high;
@@ -2939,21 +2941,85 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     check(flattened && model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(1, 0) == low,
           "a container's x puts its bands' effects on the main line, the high band's first");
 
-    // The delay carried over the LOW tab shows the low band, and lands at its end, after the widener.
+    // The delay carried over the LOW tab lights it (read off the rendered pixels), leaving the high band shown, and
+    // let go of there lands at the low band's end, after the widener. Then the low band shown by its tab.
     const Rect delay = detail::fxCard(3.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge);
     const Point delayGrip{delay.x + 40.0f, delay.y + 17.0f};
-    const Point lowTab = centerOf(detail::splitTab(column, 0, 2));
+    const Rect lowTabRect = detail::splitTab(column, 0, 2);
+    const Point lowTab = centerOf(lowTabRect);
+    const Point tabCorner{lowTabRect.x + 4.0f, lowTabRect.y + 4.0f}; // clear of its name and dot
+    view.mouseMove({600.0f, 600.0f}, {});
+    renderer.save(view, dir / "41i0-fx-row-tab-plain.png");
+    const uint32_t tabPlain = renderer.pixel(tabCorner);
     view.mouseDown(delayGrip, {});
     view.mouseMove({delayGrip.x - 30.0f, delayGrip.y}, {});
     view.mouseMove(lowTab, {});
-    const bool switched = model.ui.splitBand[0] == 0;
-    view.mouseMove({detail::fxCard(3.2f).x, lowTab.y}, {});
-    view.mouseUp({detail::fxCard(3.2f).x, lowTab.y}, {});
+    const bool kept = model.ui.splitBand[0] == 1;
+    const bool litShot = renderer.save(view, dir / "41i1-fx-row-tab-target.png");
+    const bool lit = renderer.pixel(tabCorner) != tabPlain;
+    view.mouseUp(lowTab, {});
     settle();
+    const bool landed = from(2, 0) == fxSlotPort(1) && from(join, 1) == fxSlotPort(2) &&
+                        from(kFxOutNode, 0) == fxSumPort(0) && model.ui.splitBand[0] == 1;
+    click(view, lowTab);
     view.mouseMove({600.0f, 600.0f}, {});
-    check(switched && from(2, 0) == fxSlotPort(1) && from(join, 1) == fxSlotPort(2) &&
-              from(kFxOutNode, 0) == fxSumPort(0) && renderer.save(view, dir / "41i-fx-row-low-band.png"),
-          "a card carried over a container's tab shows that band, and lands on it");
+    check(kept && litShot && lit && landed && model.ui.splitBand[0] == 0 &&
+              renderer.save(view, dir / "41i-fx-row-low-band.png"),
+          "a card carried over a container's tab lights it, leaves the band shown, and let go of there lands on its "
+          "band");
+
+    // The delay, now the low band's second card, carried freely. Moved within its own place, or straight down over
+    // the modulation panel (the card outlined under the mouse there), nothing moves. Carried left over the widener it
+    // goes before it; on over the container's controls it stays there, landing at the low band's start rather than
+    // before the split. Carried on to the HIGH tab and let go of there, it lands at the high band's end, after the
+    // reverb, the low band still shown. Each undone.
+    {
+        const Rect delayCard = detail::fxCard(3.0f + detail::kFxBoxEdge);
+        const Point grip{delayCard.x + 40.0f, delayCard.y + 17.0f};
+        const Point overWidener{detail::fxCard(2.0f + detail::kFxBoxEdge).x + 40.0f, grip.y};
+        const Point overControls{column.x + 100.0f, grip.y};
+        const Point highTab = centerOf(detail::splitTab(column, 1, 2));
+        auto lowBand = [&] { return from(1, 0) == low && from(2, 0) == fxSlotPort(1) && from(join, 1) == fxSlotPort(2); };
+        view.mouseDown(grip, {});
+        view.mouseMove({grip.x + 60.0f, grip.y}, {});
+        view.mouseUp({grip.x + 60.0f, grip.y}, {});
+        settle();
+        const bool withinOwn = lowBand();
+        view.mouseDown(grip, {});
+        view.mouseMove({grip.x + 20.0f, grip.y}, {});
+        view.mouseMove({grip.x + 20.0f, 640.0f}, {});
+        settle();
+        const bool freeShot = renderer.save(view, dir / "41j-fx-row-carried-free.png");
+        view.mouseUp({grip.x + 20.0f, 640.0f}, {});
+        settle();
+        const bool straightDown = lowBand();
+        view.mouseDown(grip, {});
+        view.mouseMove({grip.x - 30.0f, grip.y}, {});
+        view.mouseMove(overWidener, {});
+        view.mouseMove(overControls, {});
+        view.mouseUp(overControls, {});
+        settle();
+        const bool bandStart = from(2, 0) == low && from(1, 0) == fxSlotPort(2) && from(join, 1) == fxSlotPort(1) &&
+                               model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(split, 0) == fxSlotPort(0);
+        view.undo();
+        view.mouseDown(grip, {});
+        view.mouseMove({grip.x - 30.0f, grip.y}, {});
+        view.mouseMove(overWidener, {});
+        view.mouseMove(overControls, {});
+        view.mouseMove(highTab, {});
+        const bool highShown = model.ui.splitBand[0] == 0; // the low band still shown
+        view.mouseUp(highTab, {});
+        settle();
+        const bool onHigh = from(2, 0) == fxSlotPort(3) && from(join, 0) == fxSlotPort(2) && from(join, 1) == fxSlotPort(1);
+        view.undo();
+        std::printf("      carried freely: within its place %d, straight down %d, over the controls %d, onto the high "
+                    "band %d %d\n",
+                    withinOwn, straightDown, bandStart, highShown, onHigh);
+        check(withinOwn && straightDown && freeShot && bandStart && highShown && onHigh && lowBand() &&
+                  model.ui.splitBand[0] == 0,
+              "a card moves nothing until the mouse is clear of its place, waits over a container's controls, and "
+              "carried over a tab lands on that band");
+    }
 
     // An arrow before the first card too (read off the rendered pixels: its brightest pixel against the panel's above
     // it), whose list puts a phaser at the line's start.
@@ -6687,6 +6753,23 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, sourcePower(0));
     check(model.value(sourceEnabledIndex(0)) == 0.0, "the wheel scrolls nothing behind the settings dialog");
     click(view, sourcePower(0));
+
+    // Env 1's card moved within its own place, and carried straight up out of the panel (outlined under the mouse
+    // there), moves nothing: the others shift only once the mouse is clear of its place.
+    {
+        const std::vector<int> order = shown(model);
+        view.mouseDown(sourceGrip(1), {});
+        view.mouseMove({sourceGrip(1).x + 100.0f, 588.0f}, {});
+        view.mouseUp({sourceGrip(1).x + 100.0f, 588.0f}, {});
+        const bool within = shown(model) == order;
+        view.mouseDown(sourceGrip(1), {});
+        view.mouseMove({sourceGrip(1).x + 20.0f, 588.0f}, {});
+        view.mouseMove({sourceGrip(1).x + 20.0f, 300.0f}, {});
+        const bool freeShot = renderer.save(view, dir / "11a0-source-carried-free.png");
+        view.mouseUp({sourceGrip(1).x + 20.0f, 300.0f}, {});
+        check(within && freeShot && shown(model) == order,
+              "a source card moves nothing until the mouse is clear of its place, carried anywhere");
+    }
 
     // Drag Env 1's card one place along.
     view.mouseDown(sourceGrip(1), {});

@@ -1317,16 +1317,38 @@ void View::retargetRowDrag(Point mouse) {
         return;
     FxDrag &d = *fxDrag_;
     const bool effect = d.item.node < kFxSlots;
-    // Carrying an effect over a container's tab shows that band, to drop it on.
+    // An effect carried over a container's tab goes to the end of that band, let go of there; the container keeps
+    // showing the band it shows.
     if (effect) // the container where it shows, gliding too
         for (const FxRowBox &box : fxRowShown().boxes) {
             if (box.folded)
                 continue;
             const Rect column = fxCard(boxColumn(box) - fxScroll(), 1.0f);
             const bool three = splitThree(box.split);
-            for (int tab = 0; tab < (three ? 3 : 2); ++tab)
-                if (splitTab(column, tabPosition(tab, three), three ? 3 : 2).contains(mouse))
-                    showSplitBand(box.split, tab);
+            for (int tab = 0; tab < (three ? 3 : 2); ++tab) {
+                if (!splitTab(column, tabPosition(tab, three), three ? 3 : 2).contains(mouse))
+                    continue;
+                for (int i = 0; i < static_cast<int>(d.rest.size()); ++i)
+                    if (d.rest[i].node == fxSplitNode(box.split)) {
+                        const int lane = laneOfTab(tab);
+                        d.at = {lane, i, static_cast<int>(d.rest[i].band(lane).size())};
+                        return;
+                    }
+            }
+        }
+    // While the mouse is still across from the card's own place (above or below it too: the card moves freely), it
+    // stays where it was: nothing moves until the mouse is clear of it. Across from a container's controls (on the way
+    // to its tabs), where it would land stays as it is too.
+    const Rect own = fxCard(d.startPlace - fxScroll(), d.span);
+    if (mouse.x >= own.x && mouse.x < own.right()) {
+        d.at = d.was;
+        return;
+    }
+    for (const FxRowBox &box : fxRowShown().boxes)
+        if (!box.folded && fxSplitNode(box.split) != d.item.node) {
+            const Rect column = fxCard(boxColumn(box) - fxScroll(), 1.0f);
+            if (mouse.x >= column.x && mouse.x < column.right())
+                return;
         }
     // Where the mouse is along the row, in card places, held to the cards on screen while the row scrolls under it. It
     // lands after the main line's items whose middles are left of that; an effect, over the band a container shows,

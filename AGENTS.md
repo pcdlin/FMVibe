@@ -264,9 +264,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     off the rendered pixels), both undone, and its crossover handle dragged; the
     graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
-    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); its x, kept, putting its bands' effects on the
-    main line, the high band's first, undone; a card carried over the LOW tab showing the low band and landing at
-    its end; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
+    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); a card moved within its own
+    place, or carried straight down out of the panel, moving nothing, carried over its neighbor and then the
+    container's controls landing at its band's start (not before the split), and on over the other band's tab
+    and let go of there landing at that band's end, the band shown left as it was, each undone; its x, kept, putting its bands' effects on the
+    main line, the high band's first, undone; a card carried over the LOW tab lighting it (read off the rendered
+    pixels), leaving the band shown, and let go of there landing at the low band's end; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
     pixels), the first's list putting an effect at the line's start;
   - the effects graph's box taking the room the inspector's card leaves, more beside a narrow card than a wide one
     (read off the rendered pixels);
@@ -434,7 +437,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, a point dragged
     onto its neighbor's time, and
     scrolling the source cards by holding a dragged handle at the panel's edge;
-  - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
+  - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands; a
+    source card moved within its own place, or carried out of its panel, moving nothing;
   - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle
     button held: over a knob without turning it, stopping at the row's end and following back from there at once,
     and doing nothing while the left button drags a knob;

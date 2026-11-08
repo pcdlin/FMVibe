@@ -981,11 +981,14 @@ std::vector<int> View::sourcesMoved() const {
     std::vector<int> shown = sources();
     if (drag_.kind != DragKind::SourceMove || !drag_.moved) // a click on a card's title moves nothing
         return shown;
-    // The dragged card lands after the other cards whose middles are left of its own, among those on screen. It
-    // stays under the mouse while the row scrolls under it.
+    // While the mouse is still across from the card's own place (above or below it too: the card moves freely), nothing
+    // moves. Once it is clear of it, the dragged card lands after the other cards whose middles are left of the mouse,
+    // among those on screen, whatever the row scrolls to.
     const int source = drag_.widget.a;
-    const float moved = (drag_.now.x - drag_.start.x) / (kCardW + kCardGap) + sourceScroll() - drag_.scrollStart;
-    const float middle = sourceOffset(shown, drag_.widget.b) + 0.5f * sourceSpan(source) + moved;
+    const Rect own = sourceCard(sourceOffset(shown, drag_.widget.b) - sourceScroll(), sourceSpan(source));
+    if (drag_.now.x >= own.x && drag_.now.x < own.right())
+        return shown;
+    const float middle = (drag_.now.x - sourceCard(0.0f).x) / (kCardW + kCardGap) + sourceScroll();
     int first = 0, last = 0; // the cards that start on screen
     for (size_t i = 0; i < shown.size(); ++i) {
         const float place = sourceOffset(shown, i) - sourceScroll();
@@ -1896,6 +1899,15 @@ std::vector<View::Widget> View::widgets() const {
             for (const FxRowCard &card : row.cards)
                 if (const float place = card.place - scroll; onScreen(place, kVisibleFx, card.span))
                     cardWidgets(card.slot, 0, fxCard(place, card.span), false);
+            carriedWidgets_.clear();
+            if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && fxDrag_->item.node < kFxSlots &&
+                !fxFolded(fxDrag_->item.node)) {
+                const size_t mark = list.size();
+                cardWidgets(fxDrag_->item.node, 0, fxCard(fxDrag_->startPlace - drag_.scrollStart, fxDrag_->span),
+                            false);
+                carriedWidgets_.assign(list.begin() + static_cast<std::ptrdiff_t>(mark), list.end());
+                list.resize(mark);
+            }
             for (const FxRowBox &box : row.boxes) {
                 const float place = box.place - scroll;
                 if (box.folded) { // a strip: the icon and a grip drag it, the cross, then the rest unfolds it
@@ -2845,12 +2857,73 @@ void View::paint(Canvas &c) {
         c.fillRect({kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f},
                    kPanel.alpha(0.6f), kRadiusPanel - 1.0f);
     paintWidgets(true);
-    // The card under the mouse while dragging, before it snaps into place.
+    // The card being dragged: where it would land only its outline, and a faint image of it under the mouse wherever
+    // it goes (over every panel, held to none), before it snaps into place: an effect card or a split's container, or
+    // a source's card. The image is the card painted at its landing place, moved, with the widgets on it (not the
+    // row's dashed card, which may glide through there).
+    auto outlined = [&](Rect landing, Rect row, float radius, Color color) {
+        c.pushClip(row);
+        c.fillRect(landing.inset(-1.0f), kPanel, radius + 1.0f);
+        c.strokeRect(landing, color.alpha(0.6f), 1.0f, radius);
+        c.popClip();
+    };
+    auto carried = [&](Rect landing, Rect start, Rect row, float radius, Color color, auto paintCard) {
+        outlined(landing, row, radius, color);
+        const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
+                           start.y + drag_.now.y - drag_.start.y - landing.y};
+        c.pushLayer(offset, 0.5f);
+        c.pushClip(landing);
+        paintCard();
+        for (const Widget &w : list)
+            if (!w.popup && w.kind != Kind::FxShadow && w.rect.x < landing.right() && w.rect.right() > landing.x && w.rect.y < landing.bottom() &&
+                w.rect.bottom() > landing.y)
+                paintWidget(c, w);
+        c.popClip();
+        c.popLayer();
+    };
+    if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && !fxGraph()) {
+        const int node = fxDrag_->item.node;
+        const FxRow row = fxRowShown();
+        std::optional<Rect> landing;
+        float radius = kRadiusCard;
+        for (const FxRowCard &card : row.cards)
+            if (card.slot == node)
+                landing = fxCard(card.place - fxScroll(), card.span);
+        for (const FxRowBox &box : row.boxes)
+            if (fxSplitNode(box.split) == node) {
+                landing = box.folded ? fxCard(box.place - fxScroll(), box.span)
+                                     : fxCard(boxColumn(box) - fxScroll(), box.span - 2.0f * kFxBoxEdge)
+                                           .inset(-kFxBoxPad);
+                radius = box.folded ? kRadiusCard : kFxBoxRadius;
+            }
+        Rect start = fxCard(fxDrag_->startPlace - drag_.scrollStart, fxDrag_->span);
+        if (node < kFxSlots && !fxFolded(node)) {
+            // An effect card: its outline where it lands, if that shows (not on a band its container hides), and its
+            // image painted afresh where it was picked up from, moved under the mouse.
+            if (landing)
+                outlined(*landing, fxCardClip(), radius, fxColor(node));
+            c.pushLayer({drag_.now.x - drag_.start.x, drag_.now.y - drag_.start.y}, 0.5f);
+            paintFxCard(c, node, start, true);
+            for (const Widget &w : carriedWidgets_)
+                paintWidget(c, w);
+            c.popLayer();
+        } else if (landing) { // a container, or a folded card: painted at its landing place, moved
+            if (node >= kFxSlots && landing->w > start.w) // a container's outline stands out round it
+                start = start.inset(-kFxBoxPad);
+            carried(*landing, start, fxCardClip(), radius, node < kFxSlots ? fxColor(node) : splitLine(),
+                    [&] { paintFx(c); });
+        }
+    }
     if (drag_.kind == DragKind::SourceMove && drag_.moved) {
-        Rect ghost = sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(drag_.widget.a));
-        ghost.x = std::clamp(ghost.x + drag_.now.x - drag_.start.x, kModPanel.x + 4.0f,
-                             kModPanel.right() - 4.0f - ghost.w);
-        c.strokeRect(ghost, kSourceColors[drag_.widget.a].alpha(0.6f), 1.0f, kRadiusCard);
+        const int source = drag_.widget.a;
+        const std::vector<int> shown = sourcesShown();
+        const auto at = std::find(shown.begin(), shown.end(), source);
+        if (at != shown.end()) {
+            const float place = sourceOffset(shown, static_cast<size_t>(at - shown.begin())) - sourceScroll();
+            carried(sourceCard(place, sourceSpan(source)),
+                    sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(source)),
+                    sourceCardClip(), kRadiusCard, kSourceColors[source], [&] { paintSource(c, place, source); });
+        }
     }
 
     if (drag_.kind == DragKind::RerouteFrom && drag_.moved) {
@@ -3385,14 +3458,6 @@ void View::paintFx(Canvas &c) {
     }
     c.popClip();
 
-    // What is being dragged under the mouse, outlined, before it snaps into place.
-    if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_) {
-        Rect ghost = fxCard(fxDrag_->startPlace - drag_.scrollStart, fxDrag_->span);
-        ghost.x = std::clamp(ghost.x + drag_.now.x - drag_.start.x, kFxPanel.x + 4.0f,
-                             std::max(kFxPanel.right() - 4.0f - ghost.w, kFxPanel.x + 4.0f));
-        const int node = fxDrag_->item.node;
-        c.strokeRect(ghost, (node < kFxSlots ? fxColor(node) : splitLine()).alpha(0.6f), 1.0f, kRadiusCard);
-    }
 }
 
 // A card's frame, title, display and what goes with them, wherever it shows: in the row, or in the effects graph's
@@ -6098,6 +6163,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const float x = w.rect.center().x - 0.5f * (width + (counted ? 12.0f : 0.0f) - lead) + 4.0f,
                     y = w.rect.center().y;
         const float base = w.rect.bottom();
+        // Lit in its band's color while an effect carried over it would land on that band.
+        if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && fxDrag_->item.node < kFxSlots &&
+            w.rect.contains(drag_.now)) {
+            c.fillRect(w.rect, band.alpha(0.18f), kRadiusControl);
+            c.strokeRect(w.rect, band.alpha(0.8f), 1.2f, kRadiusControl);
+        }
         c.line({w.rect.x, base - 0.5f}, {w.rect.right(), base - 0.5f}, mix(kCardColor, kDim, 0.25f), 1.0f);
         if (shown)
             c.line({w.rect.x + 8.0f, base - 1.0f}, {w.rect.right() - 8.0f, base - 1.0f}, band, 2.0f);

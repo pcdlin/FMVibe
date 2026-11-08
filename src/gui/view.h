@@ -819,6 +819,9 @@ private:
     FxRow fxRowShownOf(const FxLine &line) const; // the same for `line`, worked out
     // fxRowShown(), kept while a DerivedScope goes on, as fxDerived_ is: every card's display asks for it.
     mutable std::optional<FxRow> fxRowDerived_;
+    // The widgets of the effect card being carried in the row, laid out at the place it was picked up from, only for
+    // its faint image under the mouse (painted, never hit): it may land on a band its container doesn't show.
+    mutable std::vector<Widget> carriedWidgets_;
     // The row's cards (by slot) and containers (by split node) as shown, in card places, and where the line ends: once a
     // card or container is dragged, each glides a step of the way to where it goes every poll(), until they settle after
     // it is let go. A node not shown at the last step shows where it goes at once.

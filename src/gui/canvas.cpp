@@ -83,6 +83,27 @@ void Canvas::popClip() {
     target_->PopAxisAlignedClip();
 }
 
+void Canvas::pushLayer(Point offset, float opacity) {
+    D2D1_MATRIX_3X2_F before;
+    target_->GetTransform(&before);
+    transforms_.push_back(before);
+    const D2D1::Matrix3x2F base = *D2D1::Matrix3x2F::ReinterpretBaseType(&before);
+    target_->SetTransform(D2D1::Matrix3x2F::Translation(offset.x, offset.y) * base);
+    ComPtr<ID2D1Layer> layer;
+    target_->CreateLayer(nullptr, layer.GetAddressOf());
+    target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                                             D2D1::IdentityMatrix(), opacity),
+                       layer.Get());
+    layers_.push_back(layer);
+}
+
+void Canvas::popLayer() {
+    target_->PopLayer();
+    layers_.pop_back();
+    target_->SetTransform(transforms_.back());
+    transforms_.pop_back();
+}
+
 Canvas::Canvas(ID2D1RenderTarget *target, Resources &resources) : target_(target), resources_(resources) {
     target_->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0), brush_.GetAddressOf());
 }
