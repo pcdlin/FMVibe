@@ -241,7 +241,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     putting a container there, its low band shown and empty; a card dragged onto that band landing on it; the HIGH tab
     showing the high band, whose dashed card opens the list of effects (no split) and puts a reverb on it; the
     container's Low knob setting the low band's level, lowering that band's curve on its display (read off the
-    rendered pixels), its S buttons soloing one band at a time, both undone, and its crossover handle dragged; the
+    rendered pixels), its S buttons soloing one band at a time, the band shown faint while the other is soloed (read
+    off the rendered pixels), both undone, and its crossover handle dragged; the
     graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
     pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); its x putting its bands' effects on the

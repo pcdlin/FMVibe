@@ -2720,10 +2720,19 @@ void View::paint(Canvas &c) {
             const Rect p = fxCard(pos, card.span);
             c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), 7.0f);
         }
-        // The card or container carried, faint where it would land until it is let go of.
-        for (const FxRowCard &card : row.cards)
-            if (const float pos = card.place - fxScroll(); card.faint && onScreen(pos, kVisibleFx, card.span))
+        // The card or container carried, faint where it would land until it is let go of; and the cards of a band a
+        // container shows that its join doesn't let through, the other band soloed.
+        const FxLine line = fxLineShown();
+        for (const FxRowCard &card : row.cards) {
+            const float pos = card.place - fxScroll();
+            if (!onScreen(pos, kVisibleFx, card.span))
+                continue;
+            if (card.faint)
                 c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(0.65f), 9.0f);
+            else if (card.at.lane != 0 && card.at.item < static_cast<int>(line.size()) &&
+                     fxBandSoloedOut(line[card.at.item], card.at.lane))
+                c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(1.0f - kSoloedOutAlpha), 9.0f);
+        }
         for (const FxRowBox &box : row.boxes) {
             if (!box.faint || !onScreen(box.place - fxScroll(), kVisibleFx, box.span))
                 continue;
@@ -3242,11 +3251,16 @@ void View::paintFx(Canvas &c) {
         paintSplitControls(c, box.split, column, true);
         // The arrows along its band: into its first card in the band's color, then between its cards; none into its
         // dashed card.
-        const Color band = bandColor(box.lane == 1 ? kFxBands - 1 : 0);
+        // Faint along a band its join doesn't let through, the other band soloed.
+        const FxLine line = fxLineShown();
+        const float heard = box.item < static_cast<int>(line.size()) && fxBandSoloedOut(line[box.item], box.lane)
+                                ? kSoloedOutAlpha
+                                : 1.0f;
+        const Color band = bandColor(box.lane == 1 ? kFxBands - 1 : 0).alpha(heard);
         int k = 0;
         for (const FxRowCard &card : row.cards)
             if (card.at.lane == box.lane && card.at.item == box.item) {
-                chevron(card.place, box.lane, box.item, k, k == 0 ? band : kFaint);
+                chevron(card.place, box.lane, box.item, k, k == 0 ? band : kFaint.alpha(heard));
                 ++k;
             }
     }

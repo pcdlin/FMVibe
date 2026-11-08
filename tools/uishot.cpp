@@ -2526,21 +2526,6 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 600.0f}, {});
     const bool fullShot = renderer.save(view, dir / "41d2-fx-row-levels-full.png");
     const float fullY = lowCurveY();
-    const Point lowKnob = detail::splitKnob(column, 0);
-    drag(view, lowKnob, {lowKnob.x, lowKnob.y + 40.0f});
-    const double lowLevel = model.value(fxInputIndex(join, 1, FxInputField::Level));
-    click(view, centerOf(detail::splitSoloButton(column, 1)));
-    const bool soloHigh = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
-                          model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
-    click(view, centerOf(detail::splitSoloButton(column, 0)));
-    const bool soloLow = model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
-                         model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
-    view.mouseMove({600.0f, 600.0f}, {});
-    const bool soloShot = renderer.save(view, dir / "41e-fx-row-solo.png");
-    const float loweredY = lowCurveY();
-    std::printf("      the low band's curve at the display's low end: at %.0f px at full level, %.0f px at %.1f dB\n",
-                fullY, loweredY, lowLevel);
-    check(fullShot && soloShot && loweredY > fullY + 4.0f, "a band's level lowers its curve on the split's display");
     // An arrow leads into the reverb on the band, and none into the dashed card after it (read off the rendered pixels:
     // the brightest pixel where each would be, against the panel's above them).
     auto brightest = [&](Point m) {
@@ -2559,8 +2544,30 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     };
     const Point intoReverb = arrowAt(2.0f + detail::kFxBoxEdge), intoAdd = arrowAt(3.0f + detail::kFxBoxEdge);
     const int panel = brightest({intoAdd.x, intoAdd.y - 60.0f});
-    check(brightest(intoReverb) > panel + 40 && brightest(intoAdd) <= panel + 10,
+    check(fullShot && brightest(intoReverb) > panel + 40 && brightest(intoAdd) <= panel + 10,
           "a container's band has arrows between its cards, and none into its dashed card");
+    const Rect reverbCard = detail::fxCard(2.0f + detail::kFxBoxEdge);
+    const Point reverbIcon{reverbCard.x + detail::kFxIconX + 0.5f * detail::kFxIconW, reverbCard.y + 17.0f};
+    const int reverbIconHeard = brightest(reverbIcon);
+    const Point lowKnob = detail::splitKnob(column, 0);
+    drag(view, lowKnob, {lowKnob.x, lowKnob.y + 40.0f});
+    const double lowLevel = model.value(fxInputIndex(join, 1, FxInputField::Level));
+    click(view, centerOf(detail::splitSoloButton(column, 1)));
+    const bool soloHigh = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
+                          model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
+    click(view, centerOf(detail::splitSoloButton(column, 0)));
+    const bool soloLow = model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
+                         model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool soloShot = renderer.save(view, dir / "41e-fx-row-solo.png");
+    const float loweredY = lowCurveY();
+    std::printf("      the low band's curve at the display's low end: at %.0f px at full level, %.0f px at %.1f dB\n",
+                fullY, loweredY, lowLevel);
+    check(fullShot && soloShot && loweredY > fullY + 4.0f, "a band's level lowers its curve on the split's display");
+    // With the low band soloed, the high band shown is faint, its reverb's icon dimmer (read off the rendered pixels).
+    const int reverbIconSoloed = brightest(reverbIcon);
+    std::printf("      the high band's reverb icon: %d, with the low band soloed %d\n", reverbIconHeard, reverbIconSoloed);
+    check(reverbIconSoloed < reverbIconHeard - 60, "a container's band shows its cards faint while the other is soloed");
     view.undo();
     view.undo();
     const Rect display{column.x + 14.0f, column.y + 66.0f, column.w - 28.0f, 104.0f};

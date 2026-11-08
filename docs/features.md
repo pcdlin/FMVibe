@@ -674,7 +674,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     -60 dB), the shown band's filled; the slope,
     6 | 12 | 24 dB; three knobs: the low band's level, the Crossover and the high band's level (in dB, 0 dB, full, at
     the top, down to -60 dB, silence); and an **S** under each band's level that solos it, one at a time (soloing one
-    unsolos the other, a click on the lit one unsolos it), lit in its band's color. To the right of the controls, the cards of the band shown, then
+    unsolos the other, a click on the lit one unsolos it), lit in its band's color. To the right of the controls, the
+    cards of the band shown (faint, with the arrows between them, while the other band is soloed), then
     a narrow dashed card that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
