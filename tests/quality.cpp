@@ -1951,6 +1951,7 @@ int main() {
             p[paramIndex(0, FxParam::FlangerDelay)] = normFromTime(0.002);
             const int polarity = paramIndex(0, phaser ? FxParam::PhaserNegative : FxParam::FlangerNegative);
             p[polarity] = negative ? 1.0 : 0.0;
+            chain(p, {0});
             const uint32_t total = static_cast<uint32_t>(kSampleRate / 2), turnAt = total / 2;
             std::vector<float> left(kBlock), right(kBlock);
             double sum = 0.0, last = 0.0;
