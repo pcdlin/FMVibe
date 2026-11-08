@@ -524,7 +524,7 @@ STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
 STR(SwitchHard, "HARD") // the shaper effect's first three curves
 STR(SwitchSoft, "SOFT")
 STR(SwitchAsym, "ASYM")
-STR(SwitchSolo, "SOLO") // a join's card: solo the band above it
+STR(SwitchSolo, "Solo") // a join's card: solo the band above it
 STR(SoloMark, "S") // on a join node while one of its bands is soloed
 STR(SwitchRms, "RMS") // the three-band dynamics' detector: RMS, or peaks while off
 STR(BandButtonLow, "LOW") // the three-band dynamics' bands, and the DJ EQ's display
@@ -553,8 +553,8 @@ STR(HintFx, "click icon: toggle  ·  drag title: reorder")
 STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
 // A split's controls: the tabs that pick the band it shows, and its container's dashed card adding to that band.
-STR(TabBandLow, "LOW")
-STR(TabBandHigh, "HIGH")
+STR(TabBandLow, "Low")
+STR(TabBandHigh, "High")
 STR(ButtonAddToBand, "Add to") // over the band's name (TabBandLow or TabBandHigh)
 // What the note source's and velocity's curves show:
 STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
@@ -677,8 +677,8 @@ STR(TipVelocityDisplay, "Edit velocity curve")
 STR(TipWireEnd, "Drag to reroute")
 STR(TipWireStart, "Drag onto another node to change source")
 STR(TipWire, "Drag to bend, double-click resets")
-STR(TipFxChain, "Effects as a chain")
-STR(TipFxGraph, "Effects as a graph: parallel chains and splits")
+STR(TipFxChain, "Chain View")
+STR(TipFxGraph, "Graph View")
 STR(TipFxNode, "Click to show its card, drag to move it")
 STR(TipFxSlot, "Add an effect or a split here")
 STR(TipFxSlotBand, "Add an effect to this band")
