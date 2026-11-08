@@ -80,6 +80,14 @@ struct UiLayout {
     // The node the effects graph's inspector shows (a slot, a split or a join, numbered as the graph's params number
     // them), -1 for none. Where the nodes sit follows from the wires (see View::fxGridLayout()).
     int fxSelected = -1;
+    // Whether the FX view shows the effects as their graph rather than as a row of cards: two views of the same
+    // effects, which switching between changes nothing of. Part of the patch, like the routing view.
+    bool fxGraphView = false;
+    // The band each split shows, by split (0 its low band, 1 its high one): the band whose effects its container in
+    // the row shows, and whose response its card fills. Part of the patch, like the node places.
+    std::array<int, kFxSplits> splitBand{};
+    // The splits' containers in the row folded to a narrow strip, a bit each; saved with the patch, but not undone.
+    uint32_t splitsFolded = 0;
 };
 
 // How many empty modulations the MODS view keeps at most.

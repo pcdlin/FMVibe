@@ -97,12 +97,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a slot's Amount scaling its depth, and its aux: velocity scaling a macro's slot in each voice, the mod wheel down
     leaving its target alone; a macro's and velocity's slots bypassed leaving theirs alone; velocity and the note
     source scaling an LFO's slot as its aux from a note's first block;
-  - the FX order changing the result, and a slot past the 16th playing at its place in the chain;
+  - the FX order changing the result, and a slot past the 16th playing at its place in the chain (the slots holding
+    an effect wired one after another, as the editor wires a chain);
   - the effects graph: its input straight out, two wires at half as one at full, and a split's two bands (at 6, 12
     and 24 dB) and three summing back flat, each slope parting its bands as steeply as it says; a join's solos letting only the band soloed through (both when
     neither or both are); a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
-    chain running with the graph off, its wires doing nothing; a loop, which only params make, staying finite; and
-    a macro taking a wire's level down;
+    chain's retired places doing nothing; a loop, which only params make, staying finite; and a macro taking a wire's
+    level down;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
@@ -139,8 +140,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   loading scaled by as much as their range grew, a version 4 state's ratio loading from its Coarse and
   Fine, their modulations moved onto Ratio (a version 5 state's Coarse and Fine doing nothing), envelope times
   stored past 10 s loading as 10 s, a version 6 state's Glide of 20 s loading as 6 s and its depth on Glide scaled
-  by as much as the range shrank, a version 7 state's chain order loading onto the places (a version 8 state's
-  retired one doing nothing), a layout as large as one gets among them (and one of NaNs,
+  by as much as the range shrank, a version 7 state's chain order loading as the effects graph's line (a version
+  8 state's retired one doing nothing, its places putting the effects in order), a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: 16 voices × 6 operators take about a third of what they took
   before the engine's per-block route lists and shared params, which on the development machine was about 22 % of
@@ -157,14 +158,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
-    an effect added at the line's end and one taken out, a split taken out with its join, a split's slope changed,
-    and the chain switched to the same graph and back; and a graph with a split switched to the chain, ducking
-    without a click;
+    an effect added at the line's end and one taken out, a split taken out with its join and a split's slope
+    changed; and two effects swapped along the line, ducking out and back in without a click;
   - an effect in the graph that the output doesn't hear not running (its port silent, nothing ringing on after it),
     and running once the output reads it;
   - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
-    an effect not in the graph silent, a second of silence taking them about 90 dB down, and all silent once it runs
-    as a chain;
+    an effect not in the graph silent, and a second of silence taking them about 90 dB down;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
@@ -218,12 +217,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
-  - the effects graph's slot grid: switching to it putting the chain on its main line, wired as it ran; the main
+  - the effects graph's slot grid: switching to it showing the chain as its main line, as wired; the main
     line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
-    empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's card
-    (centered in the inspector) setting a band's level, in dB, and soloing a band, the join node marked with an S
-    (read off the rendered pixels), and then the other band, unsoloing the first; the split's crossover handle dragged on its card, and its
-    slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
+    empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's node showing
+    the split's card (centered in the inspector), its High knob setting the high band's level, in dB, and its S
+    soloing a band, the join node marked with an S (read off the rendered pixels), and then the other band's,
+    unsoloing the first; the split's crossover handle dragged on its card, and its slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
     out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
     into a join, an effect going at its band's end (the list offering no split there), each undone; a node under the
@@ -234,9 +233,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     start, each one undo step, undone; the mouse anywhere along a wire showing its + (read off the rendered pixels), a
     click there doing nothing and on the + opening the list, and an empty band between a split and its join showing
     its + always (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
-    output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to a chain asking first, then
-    leaving the chain in the
-    line's order;
+    output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
+    the row changing nothing, the split showing there as its container;
+  - a split in the row: the arrow between two cards offering it after the effects (its list kept inside the panel),
+    putting a container there, its low band shown and empty; a card dragged onto that band landing on it; the HIGH tab
+    showing the high band, whose dashed card opens the list of effects (no split) and puts a reverb on it; the
+    container's Low knob setting the low band's level, its S buttons soloing one band at a time, both undone, and its
+    crossover handle dragged; the graph and back leaving every wire as it was; the container folded to a strip and
+    unfolded; dragged by its title past the next card, with its bands, undone; its x putting its bands' effects on the
+    main line, the high band's first, undone; and a card carried over the LOW tab showing the low band and landing at
+    its end;
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
     the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
     nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the
@@ -599,7 +605,7 @@ breakpoints in `src/` then hit.
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
-| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects graph's slot grid: its line of effects, splits and joins, read from the wires and written back to them, its +s, its inspector and the split's and join's cards |
+| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
 | `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
@@ -667,13 +673,16 @@ itself.
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
   22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel
   and velocity; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
-  sources' number likewise); the effects graph's switch is global 12, its splits 34000 + 20·split, the wires into its
+  sources' number likewise); the effects graph's splits 34000 + 20·split, the wires into its
   slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
   output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
   (0 = none): the input, then each slot's output, each split's bands, low to high, then each sum's output. The graph's
   nodes are numbered the slots, the splits, the output, then the sums. The editor wires a line (see
   `src/gui/fxgraph.cpp`): a split's two bands are its low and high ones (Bands 2), and its join is the sum of its
-  number, whose first two inputs take the high band and the low band.
+  number, whose first two inputs take the high band and the low band. The effects always run as the graph: a chain
+  is a line of it (the output's first wire comes from the input to begin with), and the FX view's row and graph are
+  two views of it, the view a layout field (`UiLayout::fxGraphView`). The chain's places (33400 + place) are only
+  read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
   mode, slot aux field, split field, wire field, port and fixed Mult lists, the routing views and the operator page's tabs,
@@ -690,11 +699,11 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,226 of the 18,574 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,226 of the 18,573 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
-  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain order, the
+  `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
-  fields, the effects graph (its switch, its splits and its wires) and the source places' own fields (a place's slot
+  fields, the effects graph (its splits, joins and wires) and the source places' own fields (a place's slot
   depths are listed, whatever it holds). Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
   pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
@@ -715,7 +724,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 8: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 9: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -725,13 +734,16 @@ itself.
   saved, so a state always loads what was saved; before version 7, a modulation's depth on Glide loads scaled by
   `1 / kMaxGlideNorm`, since its range now stops at 6 s; before version 8, the chain's order loads from the retired
   `RetiredFxOrder`, the rank of the first 16 slots' order, onto its places, a param a place, since 32! wouldn't fit a
-  double), followed by the editor layout:
+  double; before version 9, a state that doesn't wire the effects graph's output, saved with the effects as a chain,
+  loads its chain's order as the graph's line (`fxChainWires()`), since the wires alone put the effects in order now,
+  and the places do nothing), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
-  effect cards past the 16th slot are folded, and the node the effects graph's inspector shows.
+  effect cards past the 16th slot are folded, the node the effects graph's inspector shows, whether the FX view shows
+  the graph, the band each split shows and which splits' containers are folded.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

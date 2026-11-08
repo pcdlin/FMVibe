@@ -137,7 +137,6 @@ STR(ParamGlide, "Glide")
 STR(ParamGlideAlways, "Glide Always")
 STR(ParamFxOrder, "FX Order")
 STR(ParamFxPosition, "FX Order {1}")
-STR(ParamFxGraph, "FX Graph") // the effects running as a graph rather than a chain
 STR(ParamSplit, "Split {1}") // a split in the effects graph, by number; its field's name follows
 STR(ParamSum, "Join {1}") // a join (a sum) in the effects graph, by number; its field's name follows
 STR(ParamSplitUsed, "Used")
@@ -532,7 +531,6 @@ STR(BandButtonLow, "LOW") // the three-band dynamics' bands, and the DJ EQ's dis
 STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
-STR(ButtonToChain, "To Chain") // the confirm dialog's button that turns the effects graph back into a chain
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
 STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
 STR(ButtonEnv, "ENV")
@@ -553,8 +551,10 @@ STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
 STR(HintFx, "click icon: toggle  ·  drag title: reorder")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
-STR(CaptionSplit, "Split into high/low bands") // a split's card: what it does, in a line that fits
-STR(CaptionJoin, "Adds the bands together") // a join's card: what it does, in a line that fits
+// A split's controls: the tabs that pick the band it shows, and its container's dashed card adding to that band.
+STR(TabBandLow, "LOW")
+STR(TabBandHigh, "HIGH")
+STR(ButtonAddToBand, "Add to") // over the band's name (TabBandLow or TabBandHigh)
 // What the note source's and velocity's curves show:
 STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
 STR(HintVelocityAxes, "across: velocity  ·  up: output")
@@ -614,10 +614,8 @@ STR(ConfirmInit, "Resets all settings to defaults.")
 STR(ConfirmSaveFirst, "Unsaved changes will be lost.")
 STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
-STR(ConfirmFxChainTitle, "Convert graph into a chain?")
 STR(ConfirmFxClearTitle, "Really remove all FX?")
 STR(ConfirmFxClear, "All effects are removed.")
-STR(ConfirmFxChain, "Splits and joins are removed, effects go in a row.")
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
@@ -695,7 +693,10 @@ STR(TipRouteLinearFm, "Linear FM: adds to the frequency, through zero")
 STR(TipRouteExpFm, "Exp FM: moves the pitch by octaves")
 STR(TipRouteRing, "Ring: multiplies the output, 50 % is AM")
 STR(TipPort, "Drag to a node or OUT to connect")
-STR(TipFxInsert, "Add an effect here") // the arrow between two effect cards
+STR(TipFxInsert, "Add an effect or a split here") // the arrow between two effect cards on the main line
+STR(TipSplitGrip, "Drag to move the split with its bands") // a split's container's title row
+STR(TipSplitBand, "Show this band's effects") // a split's band tab
+STR(TipSplitSolo, "Solo this band") // the S over a split's band level
 STR(TipWheelHandle, "Drag to assign mod wheel")
 STR(TipNoteHandle, "Drag to assign note pitch modulation")
 STR(TipVelocityHandle, "Drag to assign velocity")

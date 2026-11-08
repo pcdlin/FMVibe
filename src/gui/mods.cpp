@@ -597,25 +597,24 @@ View::MenuNode View::cascadeCategories() const {
         if (!node.children.empty())
             effects.children.push_back(std::move(node));
     }
-    // In the graph, its splits' crossovers and its joins' band levels, in the line's order.
-    if (fxGraph())
-        for (const FxLineItem &item : fxLine()) {
-            if (!fxNodeSplit(item.node))
-                continue;
-            const int split = item.node - kFxSlots;
-            MenuNode node = category(trf(Str::NodeSplit, {std::to_string(split + 1)}));
-            node.color = splitColor();
-            add(node, paramIndex(split, SplitParam::Low), trf(Str::ParamSplit, {std::to_string(split + 1)}));
-            effects.children.push_back(std::move(node));
-            if (!item.joined)
-                continue;
-            MenuNode join = category(trf(Str::NodeJoin, {std::to_string(split + 1)}));
-            join.color = sumColor();
-            for (int input = 0; input < 2; ++input)
-                add(join, fxInputIndex(fxJoinNode(split), input, FxInputField::Level),
-                    trf(Str::ParamSum, {std::to_string(split + 1)}));
-            effects.children.push_back(std::move(join));
-        }
+    // Then the splits' crossovers and their joins' band levels, in the line's order.
+    for (const FxLineItem &item : fxLine()) {
+        if (!fxNodeSplit(item.node))
+            continue;
+        const int split = item.node - kFxSlots;
+        MenuNode node = category(trf(Str::NodeSplit, {std::to_string(split + 1)}));
+        node.color = splitColor();
+        add(node, paramIndex(split, SplitParam::Low), trf(Str::ParamSplit, {std::to_string(split + 1)}));
+        effects.children.push_back(std::move(node));
+        if (!item.joined)
+            continue;
+        MenuNode join = category(trf(Str::NodeJoin, {std::to_string(split + 1)}));
+        join.color = sumColor();
+        for (int input = 0; input < 2; ++input)
+            add(join, fxInputIndex(fxJoinNode(split), input, FxInputField::Level),
+                trf(Str::ParamSum, {std::to_string(split + 1)}));
+        effects.children.push_back(std::move(join));
+    }
     keep(std::move(effects));
 
     // The sources' own knobs, then the depths of their modulations (another source's modulation scaled by this one).

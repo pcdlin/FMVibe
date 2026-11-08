@@ -397,9 +397,9 @@ void Effects::reset() {
     running_.fill(false);
     frozen_.fill(false);
     ranBefore_.fill(false);
-    graphOrderCount_ = 0;
-    graphRunning_ = -1; // the first chunk runs as the switch says, at once
-    modeGain_ = 1.0;
+    graphOrderCount_ = 0; // the first chunk's nodes start with their wires as set, at once (see orderGraph())
+    looped_ = rewiring_ = false;
+    duck_ = 1.0;
 }
 
 double Effects::delayTarget(int slot, int side, const ParamValues &p, double tempo) const {
@@ -537,10 +537,16 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
 }
 
 void Effects::process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch) {
-    const bool graph = p[paramIndex(GlobalParam::FxGraph)] >= 0.5;
-    if (graphRunning_ == 1)
-        orderGraph(p);
-    const double modeStep = 1.0 / (0.003 * sampleRate_);
+    // Effects moved along the line crossfade their wires, which for a moment would make a loop (two effects swapped
+    // each read the other) reading a chunk late, as rough as a comb. Instead the graph plays on as it was while the
+    // output ducks out over 3 ms, every wire takes its place at once, and the output comes back in over 3 ms.
+    if (!rewiring_) {
+        orderGraph(p, true);
+        rewiring_ = looped_;
+    }
+    if (rewiring_)
+        orderGraph(p, false);
+    const double duckStep = 1.0 / (0.003 * sampleRate_);
     for (uint32_t done = 0; done < frames; done += kChunk) {
         const uint32_t n = std::min(kChunk, frames - done);
         float *const io[2] = {left + done, right + done};
@@ -558,27 +564,23 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             if (std::abs(io[0][s]) > 1e-6f || std::abs(io[1][s]) > 1e-6f)
                 keep = static_cast<int64_t>(0.05 * sampleRate_); // filter and DC blocker tails
 
-        // Between the chain and the graph: at once where the two sound alike (the graph the chain's slots one after
-        // another, as the editor makes it from the chain and back), else the output ducks out before the switch and
-        // back in after it, over 3 ms each way.
-        const int wanted = graph ? 1 : 0;
-        if (graphRunning_ != wanted &&
-            (graphRunning_ < 0 || modeGain_ <= 0.0 || (modeGain_ >= 1.0 && graphIsChain(p, graph))))
-            runAs(graph, p);
-        const bool switching = graphRunning_ != wanted;
-        if (graphRunning_ == 1)
-            processGraph(io, n, p, tempo, pitch, keep);
-        else
-            for (int slot : fxOrder([&p](int index) { return p[index]; }))
-                runSlot(slot, io, n, p, tempo, pitch, keep);
-        measurePorts(n, graphRunning_ == 1);
-        if (switching || modeGain_ < 1.0)
+        processGraph(io, n, p, tempo, pitch, keep);
+        measurePorts(n);
+        if (rewiring_ || duck_ < 1.0) {
             for (uint32_t s = 0; s < n; ++s) {
-                modeGain_ = switching ? std::max(modeGain_ - modeStep, 0.0) : std::min(modeGain_ + modeStep, 1.0);
-                const float gain = static_cast<float>(0.5 - 0.5 * std::cos(std::numbers::pi * modeGain_));
+                duck_ = rewiring_ ? std::max(duck_ - duckStep, 0.0) : std::min(duck_ + duckStep, 1.0);
+                const float gain = static_cast<float>(0.5 - 0.5 * std::cos(std::numbers::pi * duck_));
                 io[0][s] *= gain;
                 io[1][s] *= gain;
             }
+            if (rewiring_ && duck_ <= 0.0) { // silent: the wires as set, at once
+                for (int node = 0; node < kFxNodes; ++node)
+                    if (ranBefore_[node])
+                        setWires(node, p);
+                rewiring_ = false;
+                orderGraph(p, true);
+            }
+        }
         // Whatever still comes out keeps them going too: a DC blocker settling, an EQ's ring, which no check above
         // covers. Stopping there would step the output to silence.
         for (uint32_t s = 0; s < n && keep == 0; ++s)
@@ -729,12 +731,45 @@ void Effects::idleSlot(int slot) {
     slots_[slot].analyzed.bands = {};
 }
 
-void Effects::orderGraph(const ParamValues &p) {
+bool Effects::loopsAsSet(const ParamValues &p) const {
+    // Depth first along the wires as set from every node in the graph: back to a node on the way is a loop.
+    std::array<uint8_t, kFxNodes> state{}; // 0 not reached, 1 on the way, 2 done
+    std::array<std::pair<int, int>, kFxNodes> stack;
+    for (int start = 0; start < kFxNodes; ++start) {
+        if (state[start] != 0 || !nodeWanted(start, p))
+            continue;
+        int depth = 0;
+        stack[depth++] = {start, 0};
+        state[start] = 1;
+        while (depth > 0) {
+            auto &[node, input] = stack[depth - 1];
+            if (input >= fxInputCount(node)) {
+                state[node] = 2;
+                --depth;
+                continue;
+            }
+            const int port = fxPortOf(p[fxInputIndex(node, input++, FxInputField::From)]);
+            const int from = port >= 0 ? fxPortNode(port) : -1;
+            if (from < 0 || !nodeWanted(from, p))
+                continue;
+            if (state[from] == 1)
+                return true;
+            if (state[from] == 0) {
+                state[from] = 1;
+                stack[depth++] = {from, 0};
+            }
+        }
+    }
+    return false;
+}
+
+void Effects::orderGraph(const ParamValues &p, bool asSet) {
     // Back from OUT along the wires into each node, as set or still fading, depth first: each node runs after what
     // goes into it, but where a wire closes a loop, which reads the chunk before. A wire as set comes from a node only
     // while that node is in the graph (see nodeWanted()); one still fading out keeps the node it fades out of running,
     // `frozen` while no wire as set reads it, so a node leaves the graph without a click. The nodes OUT doesn't hear
-    // don't run at all.
+    // don't run at all. Not `asSet`, only along the wires as they play, every node frozen: the graph as it was.
+    // As set, a loop that only wires moving make (see process()) leaves everything as it was.
     std::array<int8_t, kFxNodes> wanted;
     wanted.fill(-1);
     auto wants = [&](int node) {
@@ -743,6 +778,7 @@ void Effects::orderGraph(const ParamValues &p) {
         return wanted[node] == 1;
     };
     std::array<uint8_t, kFxNodes> state{}; // 0 not reached, 1 on the way, 2 done
+    looped_ = false;
     std::array<bool, kFxNodes> readAsSet{};
     readAsSet[kFxOutNode] = true;
     graphOrderCount_ = 0;
@@ -762,7 +798,7 @@ void Effects::orderGraph(const ParamValues &p) {
             int port = -1;
             const bool fading = end > 0;
             if (!fading) {
-                if (wants(node))
+                if (asSet && wants(node))
                     port = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
             } else if (const WireEnd &e = end == 1 ? w.now : w.was; e.fade > 0.0) {
                 port = e.port;
@@ -774,6 +810,8 @@ void Effects::orderGraph(const ParamValues &p) {
                 readAsSet[from] = true;
             if (state[from] == 0)
                 deeper = from;
+            else if (state[from] == 1) // back to a node on the way: a loop, which only wires moving make
+                looped_ = true;
         }
         if (deeper >= 0) {
             state[deeper] = 1;
@@ -785,6 +823,10 @@ void Effects::orderGraph(const ParamValues &p) {
             graphOrder_[graphOrderCount_++] = node;
         --depth;
     }
+    if (looped_ && asSet && loopsAsSet(p)) // a loop as set (which the editor doesn't make) plays a chunk late
+        looped_ = false;
+    if (looped_ && asSet)
+        return;
     for (int node = 0; node < kFxNodes; ++node) {
         const bool runs = state[node] == 2;
         running_[node] = runs;
@@ -995,79 +1037,12 @@ void Effects::processGraph(float *const *io, uint32_t n, const ParamValues &p, d
             runSplit(node - kFxSlots, n, p, mix);
         }
     }
-    mixInputs(kFxOutNode, mix, n, p, false);
+    mixInputs(kFxOutNode, mix, n, p, rewiring_); // as it was, while it ducks out to rewire
     std::copy_n(mix[0], n, io[0]);
     std::copy_n(mix[1], n, io[1]);
 }
 
-bool Effects::graphIsChain(const ParamValues &p, bool asSet) const {
-    auto runs = [&](int slot) {
-        return fxType(p[paramIndex(slot, FxParam::Type)]) != FxType::None || slots_[slot].fade > 0.0;
-    };
-    // Back from OUT, one wire at full into each node, through slots only, to IN.
-    std::array<int, kFxSlots> path{};
-    std::array<bool, kFxSlots> seen{};
-    int count = 0;
-    for (int node = kFxOutNode;;) {
-        int port = -1, wires = 0;
-        for (int input = 0; input < fxInputCount(node); ++input) {
-            int at = -1;
-            double gain = 0.0;
-            if (asSet) {
-                at = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
-                gain = at >= 0 ? wireTarget(node, input, p) : 0.0;
-            } else {
-                const Wire &w = wires_[node][input];
-                if (w.was.fade > 0.0) // moving
-                    return false;
-                if (w.now.fade > 0.0) {
-                    at = w.now.port;
-                    gain = w.now.fade >= 1.0 ? w.now.level : 0.0;
-                }
-            }
-            if (at < 0)
-                continue;
-            if (++wires > 1 || !(gain >= 0.999))
-                return false;
-            port = at;
-        }
-        if (port < 0) // nothing goes in: silence, where the chain would play
-            return false;
-        if (port == kFxPortIn)
-            break;
-        const int slot = fxPortSlot(port);
-        if (slot < 0 || seen[slot] || !runs(slot))
-            return false;
-        seen[slot] = true;
-        path[count++] = slot;
-        node = slot;
-    }
-    // The same slots as the chain runs, in its order.
-    for (int slot : fxOrder([&p](int index) { return p[index]; }))
-        if (runs(slot) && (count == 0 || path[--count] != slot))
-            return false;
-    return count == 0;
-}
-
-void Effects::runAs(bool graph, const ParamValues &p) {
-    graphRunning_ = graph ? 1 : 0;
-    if (!graph)
-        return;
-    // Every node starts as its params set it, what it held before cleared; an effect the graph doesn't run starts
-    // again cleared when it does.
-    clearGraph();
-    ranBefore_.fill(false);
-    orderGraph(p);
-    for (int slot = 0; slot < kFxSlots; ++slot)
-        if (!running_[slot])
-            idleSlot(slot);
-}
-
-void Effects::measurePorts(uint32_t n, bool graph) {
-    if (!graph) {
-        portLevel_.fill(0.0f);
-        return;
-    }
+void Effects::measurePorts(uint32_t n) {
     // This chunk's peak of each port that ran, against the last level fallen by the chunk's length.
     std::array<float, kFxPorts> peak{};
     auto peakOf = [n](const std::array<std::array<float, kChunk>, 2> &out) {

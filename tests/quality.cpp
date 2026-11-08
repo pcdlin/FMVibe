@@ -26,6 +26,12 @@ using namespace fmvibe;
 
 namespace {
 
+// The effects in `slots` one after another from the input to the output: a chain, as the effects graph wires it.
+void chain(ParamValues &p, const std::vector<int> &slots) {
+    for (const auto &[index, value] : fxChainWires(slots))
+        p[index] = value;
+}
+
 int failures = 0;
 
 void check(bool ok, const char *what) {
@@ -204,6 +210,7 @@ void effectsChainChecks() {
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        chain(p, {0});
         p[paramIndex(0, FxParam::ReverbPreDelay)] = normFromTime(0.2);
         p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(1.0);
         constexpr uint32_t kPiece = 32;
@@ -248,6 +255,7 @@ void effectsChainChecks() {
             auto roughJump = [&jump](uint32_t piece) {
                 Engine e(2);
                 e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(jump.type);
+                chain(e.p, {0});
                 e.p[paramIndex(0, jump.param)] = jump.from;
                 e.noteOn(48);
                 const std::vector<float> before = e.render(4800, piece);
@@ -266,6 +274,7 @@ void effectsChainChecks() {
         // of a C3 away, switched in single frames, under 4 times as rough as the note before it (as a stolen voice).
         Engine e(2);
         e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+        chain(e.p, {0});
         e.p[peqTypeIndex(0, 2)] = static_cast<double>(PeqType::LowCut);
         e.p[peqFreqIndex(0, 2)] = normFromCutoff(5000.0);
         e.p[peqOnIndex(0, 2)] = 0.0;
@@ -294,7 +303,6 @@ void effectsChainChecks() {
         // A wire of the effects graph connected and taken away fades rather than clicking: a second wire from the
         // input to the output, doubling a C3, then gone again, in single frames, under 4 times as rough as the note.
         Engine e(2);
-        e.p[paramIndex(GlobalParam::FxGraph)] = 1.0;
         e.p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
         e.noteOn(48);
         const std::vector<float> before = e.render(4800, 1);
@@ -319,7 +327,7 @@ void effectsChainChecks() {
     {
         // Editing a graph while a C3 plays: neither a click (under 4 times as rough as the note) nor a dip (each
         // period's peak at least 90 % of the note's, where a wire fading out before the next fades in would leave a
-        // gap). Each edit is what the editor writes: wires moved, nodes coming and going, the graph switched on and off.
+        // gap). Each edit is what the editor writes: wires moved, nodes coming and going.
         auto from = [](int node, int input) { return fxInputIndex(node, input, FxInputField::From); };
         auto port = [](int p) { return fxPortValue(p); };
         const size_t period = static_cast<size_t>(kSampleRate / 130.81) + 1;
@@ -353,7 +361,6 @@ void effectsChainChecks() {
         auto line = [&](ParamValues &p) { // IN, the first EQ, OUT
             eqs(p);
             p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::None);
-            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
             p[from(0, 0)] = port(kFxPortIn);
             p[from(kFxOutNode, 0)] = port(fxSlotPort(0));
         };
@@ -391,34 +398,29 @@ void effectsChainChecks() {
         const bool sloped = steadyEdit("a split's slope from 24 to 6 dB", split, [&](ParamValues &p) {
             p[paramIndex(0, SplitParam::Slope)] = 0.0;
         });
-        // The chain of the two EQs as a graph of them one after the other, and back.
-        auto chained = [&](ParamValues &p) {
-            eqs(p);
-            p[from(0, 0)] = port(kFxPortIn);
-            p[from(1, 0)] = port(fxSlotPort(0));
-            p[from(kFxOutNode, 0)] = port(fxSlotPort(1));
-        };
-        const bool toGraph = steadyEdit("the chain switched to the same graph", chained, [&](ParamValues &p) {
-            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
-        });
-        const bool toChain = steadyEdit("that graph switched back to the chain", [&](ParamValues &p) {
-            chained(p);
-            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
-        }, [&](ParamValues &p) { p[paramIndex(GlobalParam::FxGraph)] = 0.0; });
-        check(added && removed && unsplit && sloped && toGraph && toChain,
+        check(added && removed && unsplit && sloped,
               "editing the effects graph as a note plays neither clicks nor drops out");
 
-        // A graph that sounds otherwise than the chain switches to it ducking out and back in, without a click.
+        // The two EQs one after the other, then the other way round, as a card dragged along the row writes it: the
+        // output ducks out and back in around the move (its wires crossfading would loop) rather than clicking.
         Engine e(2);
-        split(e.p);
+        eqs(e.p);
+        chain(e.p, {0, 1});
         e.noteOn(48);
-        const std::vector<float> before = e.render(9600, 1);
-        e.p[paramIndex(GlobalParam::FxGraph)] = 0.0;
-        const std::vector<float> all = joined(before, e.render(2400, 1));
-        const double steady = roughness(all, 4800, before.size());
-        const double switched = roughness(all, before.size() - 2, before.size() + 960);
-        std::printf("      a split graph switched to the chain: %.2fx as rough as the note\n", switched / steady);
-        check(switched < 4.0 * steady, "the effects switch between a graph and the chain without a click");
+        const std::vector<float> settled = e.render(9600, 1);
+        chain(e.p, {1, 0});
+        const std::vector<float> all = joined(settled, e.render(2400, 1));
+        const double steady = roughness(all, 4800, settled.size());
+        const double switched = roughness(all, settled.size() - 2, settled.size() + 960);
+        double back = 0.0, peak = 0.0;
+        for (size_t i = 4800; i < settled.size(); ++i)
+            peak = std::max(peak, static_cast<double>(std::abs(all[i])));
+        for (size_t i = settled.size() + 960; i < all.size(); ++i)
+            back = std::max(back, static_cast<double>(std::abs(all[i])));
+        std::printf("      two effects swapped along the line: %.2fx as rough as the note, back at %.3f\n",
+                    switched / steady, back / peak);
+        check(switched < 4.0 * steady && back > 0.95 * peak,
+              "two effects swapped along the line duck out and back in without a click");
     }
     {
         // An effect the output doesn't hear doesn't run: a delay fed from IN with nothing reading it neither lights its
@@ -426,7 +428,6 @@ void effectsChainChecks() {
         Effects fx;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
-        p[paramIndex(GlobalParam::FxGraph)] = 1.0;
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
         p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
         p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
@@ -461,11 +462,10 @@ void effectsChainChecks() {
     {
         // The effects graph's ports, as the editor lights its nodes and wires by them: a sine at half scale from IN
         // through a DJ EQ at its middle to OUT reads half scale at IN and out of the EQ, an effect not in the graph 0;
-        // a second of silence after, every port has fallen about 90 dB, and once it runs as a chain they all read 0.
+        // a second of silence after, every port has fallen about 90 dB.
         Effects fx;
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
-        p[paramIndex(GlobalParam::FxGraph)] = 1.0;
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Eq);
         p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Delay);
         p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
@@ -481,13 +481,10 @@ void effectsChainChecks() {
             fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
         }
         const float fallen = fx.portLevel(fxSlotPort(0));
-        p[paramIndex(GlobalParam::FxGraph)] = 0.0; // the graph ducking out over 3 ms, then the chain
-        fx.process(left.data(), right.data(), 480, p, 120.0, 60.0);
-        const float chain = fx.portLevel(kFxPortIn);
         std::printf("      graph ports: IN %.3f, EQ %.3f, apart %.3f, after a second %.1f dB down\n", in, eq, apart,
                     20.0 * std::log10(eq / std::max(fallen, 1e-9f)));
         check(std::abs(in - 0.5f) < 0.01f && std::abs(eq - 0.5f) < 0.05f && apart == 0.0f &&
-                  std::abs(20.0 * std::log10(eq / fallen) - Effects::kPortFallDb) < 3.0 && chain == 0.0f,
+                  std::abs(20.0 * std::log10(eq / fallen) - Effects::kPortFallDb) < 3.0,
               "the effects graph tells how loud each of its ports is, falling away after");
     }
     {
@@ -498,6 +495,7 @@ void effectsChainChecks() {
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        chain(p, {0});
         p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
         p[paramIndex(0, FxParam::ShaperSymmetric)] = 1.0;
         p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
@@ -538,6 +536,7 @@ void effectsChainChecks() {
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            chain(p, {0});
             p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
             p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
             p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
@@ -573,6 +572,7 @@ void effectsChainChecks() {
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            chain(p, {0});
             p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
             p[paramIndex(0, FxParam::ShaperSymmetric)] = symmetric ? 1.0 : 0.0;
             p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
@@ -654,6 +654,7 @@ void effectsChainChecks() {
         };
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {0});
         // The low and high bands hold only what leaks past the crossovers, quiet: at 1:1 up, they leave it be.
         p[mdUpIndex(0, 0)] = p[mdUpIndex(0, 2)] = normFromDynRatio(1.0);
         const double rms = 20.0 * std::log10(std::sqrt(0.5)); // a sine's RMS level against its peak
@@ -694,6 +695,7 @@ void effectsChainChecks() {
         // each band its own settings, linked or not, so the low band at 1:1 leaves the mid band's loud sine pulled down.
         p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {0});
         p[mdUpIndex(0, 0)] = p[mdDownIndex(0, 0)] = normFromDynRatio(1.0);
         const double unlinked = settled(p, std::pow(10.0, loudDb / 20.0))[0];
         p[paramIndex(0, FxParam::MdLink)] = 1.0;
@@ -706,6 +708,7 @@ void effectsChainChecks() {
         // Above. Its text says so, and reads back.
         p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {0});
         p[mdUpIndex(0, 0)] = p[mdUpIndex(0, 2)] = normFromDynRatio(1.0);
         p[mdDownIndex(0, 1)] = 1.0;
         const auto held = settled(p, std::pow(10.0, loudDb / 20.0));
@@ -728,6 +731,7 @@ void effectsChainChecks() {
         // so the dynamics' bands take the low band's values.
         ParamValues p = defaults();
         p[paramIndex(3, FxParam::Type)] = static_cast<double>(FxType::MultiComp);
+        chain(p, {3});
         p[paramIndex(3, FxParam::McLowFreq)] = normFromCutoff(150.0);
         p[mcThresholdIndex(3, 1)] = -33.0;
         p[mcRatioIndex(3, 2)] = 7.0;
@@ -797,6 +801,7 @@ void effectsChainChecks() {
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
+            chain(p, {0});
             p[paramIndex(0, FxParam::FilterCutoff)] = normFromCutoff(80.0);
             p[paramIndex(0, FxParam::FilterResonance)] = 0.9;
             p[paramIndex(0, FxParam::FilterMix)] = 1.0;
@@ -824,6 +829,7 @@ void effectsChainChecks() {
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        chain(p, {0});
         p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
         p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(0.2);
         p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Plate);
@@ -842,6 +848,7 @@ void effectsChainChecks() {
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        chain(p, {0});
         p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Asymmetric);
         p[paramIndex(0, FxParam::ShaperDrive)] = 24.0;
         run(fx, p, 0.5, 110.0, 0.5);
@@ -1679,7 +1686,6 @@ int main() {
         // The effects graph's input straight to its output, its wire's level swung like operator Out's above.
         auto wireMod = [&](ParamValues &p) {
             const int level = fxInputIndex(kFxOutNode, 0, FxInputField::Level);
-            p[paramIndex(GlobalParam::FxGraph)] = 1.0;
             p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
             p[level] = 0.5;
             lfoOn(p, level, 0.4, lfo);
@@ -1858,6 +1864,7 @@ int main() {
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(type);
+        chain(p, {0});
         p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
         std::vector<float> left(kBlock), right(kBlock);
         size_t t = 0;
@@ -1892,6 +1899,7 @@ int main() {
                 p[i] = paramTable()[i].def;
             const bool phaser = type == FxType::Phaser;
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(type);
+            chain(p, {0});
             p[paramIndex(0, phaser ? FxParam::PhaserRate : FxParam::FlangerRate)] = 0.0;
             p[paramIndex(0, phaser ? FxParam::PhaserSync : FxParam::FlangerSync)] = 1.0;
             p[paramIndex(0, phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision)] = 13.0; // 1/4
@@ -1923,6 +1931,7 @@ int main() {
             for (int i = 0; i < kParamCount; ++i)
                 p[i] = paramTable()[i].def;
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            chain(p, {0});
             p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(type);
             p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(2.5);
             p[paramIndex(0, FxParam::ReverbDamping)] = damping;
@@ -2021,6 +2030,7 @@ int main() {
             for (int i = 0; i < kParamCount; ++i)
                 p[i] = paramTable()[i].def;
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            chain(p, {0});
             p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Shimmer);
             p[paramIndex(0, FxParam::ReverbShimmer)] = amount;
             p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(decay);
@@ -2295,6 +2305,7 @@ int main() {
         auto clipped = [](double volume) {
             Engine e(2);
             e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            chain(e.p, {0});
             e.p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Hard);
             e.p[paramIndex(0, FxParam::ShaperDrive)] = 24.0;
             e.p[paramIndex(0, FxParam::ShaperLink)] = 0.0;

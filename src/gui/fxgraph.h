@@ -19,6 +19,13 @@ inline Color splitColor() {
 inline Color sumColor() {
     return kDim;
 }
+// A split's controls stand on grey: its container's column and outline in the row, and its card in the graph.
+inline Color splitFill() {
+    return mix(kCardColor, kDim, 0.1f);
+}
+inline Color splitLine() {
+    return mix(kCardColor, kDim, 0.5f);
+}
 
 // The effect cards' titles (see view.cpp).
 const char *fxTitle(FxType type);

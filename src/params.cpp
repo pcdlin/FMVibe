@@ -182,12 +182,11 @@ void buildTable(ParamTable &t) {
     // Retired: a state from before version 8 holds the order here, which loads onto the places (see readParams()).
     add(paramIndex(GlobalParam::RetiredFxOrder), tr(Str::ParamFxOrder), tr(Str::ModuleFx), ParamKind::FxOrder, 0.0,
         static_cast<double>(kRetiredFxOrders - 1), 0.0);
-    // The chain runs the slots by number to begin with.
+    // Retired: a state from before version 9 holds the chain's order here, which loads as the effects graph's line (see
+    // readParams()).
     for (int position = 0; position < kFxSlots; ++position)
         add(fxPositionIndex(position), trf(Str::ParamFxPosition, {std::to_string(position + 1)}), tr(Str::ModuleFx),
             ParamKind::FxPosition, 0.0, kFxSlots - 1.0, position);
-    // The effects run as a chain to begin with; as a graph, its splits and wires (see FxInput) say how.
-    add(paramIndex(GlobalParam::FxGraph), tr(Str::ParamFxGraph), tr(Str::ModuleFx), ParamKind::Toggle, 0.0, 1.0, 0.0);
     for (int split = 0; split < kFxSplits; ++split) {
         const std::string name = trf(Str::ParamSplit, {std::to_string(split + 1)});
         const std::string module = tr(Str::ModuleFx) + ("/" + name);
@@ -211,7 +210,7 @@ void buildTable(ParamTable &t) {
         add(paramIndex(sum, SumParam::SoloLow), name + " " + tr(Str::ParamSoloLow), tr(Str::ModuleFx) + ("/" + name),
             ParamKind::Toggle, 0.0, 1.0, 0.0);
     }
-    // No wires to begin with; one connected starts at full level.
+    // The input straight out to begin with, no other wire; one connected starts at full level.
     for (int node = 0; node < kFxNodes; ++node) {
         const std::string name = node == kFxOutNode       ? std::string(tr(Str::ParamFxOut))
                                  : node < kFxSlots        ? trf(Str::ParamFx, {std::to_string(node + 1)})
@@ -220,8 +219,9 @@ void buildTable(ParamTable &t) {
         const std::string module = tr(Str::ModuleFx) + ("/" + name);
         for (int input = 0; input < fxInputCount(node); ++input) {
             const std::string wire = name + " " + trf(Str::ParamFxInput, {std::to_string(input + 1)}) + " ";
+            const bool straight = node == kFxOutNode && input == 0;
             add(fxInputIndex(node, input, FxInputField::From), wire + tr(Str::ParamFxInputFrom), module,
-                ParamKind::FxPort, 0.0, static_cast<double>(kFxPorts), 0.0);
+                ParamKind::FxPort, 0.0, static_cast<double>(kFxPorts), straight ? fxPortValue(kFxPortIn) : 0.0);
             // A join's first two inputs take its split's high and low bands, as the editor wires them.
             const bool band = fxNodeSum(node) >= 0 && input < 2;
             const std::string level =

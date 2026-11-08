@@ -25,10 +25,11 @@ constexpr int kFilters = 2;
 constexpr int kForwardFilterLinks = kFilters * (kFilters - 1) / 2;
 constexpr int kFilterLinks = kFilters * kFilters;
 constexpr int kShapers = 2; // per-voice waveshapers, which feed and are fed by the filters and modulate operators
-constexpr int kFxSlots = 32; // places in the effects chain; their order is a param a place (see fxOrder())
+constexpr int kFxSlots = 32; // places for effects; the effects graph's wires put them in order (see FxInputField)
 constexpr int kFirstFxSlots = 16; // the slots the chain had at first; see idOfIndex()
-// The effects graph (GlobalParam::FxGraph): besides the slots, kFxSplits splits, each cutting what goes in into up to
-// kFxBands bands by frequency; every slot and split takes up to kFxInputs wires in, the output kFxOutInputs.
+// The effects graph, which the effects always run as: besides the slots, kFxSplits splits, each cutting what goes in
+// into up to kFxBands bands by frequency; every slot and split takes up to kFxInputs wires in, the output kFxOutInputs.
+// A chain is the graph's plainest case: the slots one after another from the input to the output.
 constexpr int kFxSplits = 4;
 constexpr int kFxBands = 3;
 constexpr int kFxInputs = 4;
@@ -62,7 +63,6 @@ enum class GlobalParam {
     GlideAlways,
     RetiredFxOrder,
     ModWheel,
-    FxGraph, // the effects run as the graph their inputs wire up (see FxInput) instead of as a chain
     Count
 };
 // Out goes straight to the output; the sends go into the filters (see sendIndex()) and the shapers
@@ -641,7 +641,9 @@ constexpr int kSlotCurveBase = kStripBypassBase + (kAllSources - kMaxSources) * 
 // Phase and hidden.
 constexpr int kRouteSources = kOps + kFilters + kShapers;
 constexpr int kRouteModeBase = kSlotCurveBase + kAllSources * kSlots;
-// The effects chain's order: the slot at each of its kFxSlots places, in the order they run (see fxOrder()).
+// The effects chain's order as a state from before version 9 holds it: the slot at each of its kFxSlots places, in the
+// order they ran (see fxOrder()). Loading one wires them as the effects graph's line (see readParams()); since then the
+// graph's wires alone hold the order, and these do nothing.
 constexpr int kFxPositionBase = kRouteModeBase + kRouteSources * kOps;
 constexpr int kParamCount = kFxPositionBase + kFxSlots;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
@@ -732,9 +734,19 @@ constexpr int splitOf(int index) {
 constexpr bool isJoinSolo(int index) {
     return index >= kFxSumBase && index < kFxSumInputBase && (index - kFxSumBase) % kSumParamCount != 0;
 }
-// Whether a param belongs to the effects graph: its switch, a split's field or a wire's.
+// The join (a sum) whose band's level `index` is, the Level of one of its first two inputs; -1 for any other param.
+constexpr int fxSumOfLevel(int index) {
+    if (index < kFxSumInputBase || index >= kShapeBase)
+        return -1;
+    const int within = index - kFxSumInputBase;
+    const int input = (within / kFxInputFields) % kFxSumInputs;
+    return within % kFxInputFields == static_cast<int>(FxInputField::Level) && input < 2
+               ? within / (kFxSumInputs * kFxInputFields)
+               : -1;
+}
+// Whether a param belongs to the effects graph: a split's field, a join's or a wire's.
 constexpr bool isFxGraphParam(int index) {
-    return index == static_cast<int>(GlobalParam::FxGraph) || (index >= kFxSplitBase && index < kShapeBase);
+    return index >= kFxSplitBase && index < kShapeBase;
 }
 
 constexpr int paramIndex(int shaper, ShaperParam p) {
@@ -1288,7 +1300,7 @@ static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(param
               "global param ids moved");
 static_assert(idOfIndex(kFxPositionBase) == 33400 && idOfIndex(kFxPositionBase + kFxSlots - 1) == 33431,
               "chain order param ids moved");
-static_assert(idOfIndex(paramIndex(GlobalParam::FxGraph)) == 12 && idOfIndex(paramIndex(0, SplitParam::Used)) == 34000 &&
+static_assert(idOfIndex(paramIndex(0, SplitParam::Used)) == 34000 &&
                   idOfIndex(paramIndex(kFxSplits - 1, SplitParam::Slope)) == 34064 &&
                   idOfIndex(fxInputIndex(0, 0, FxInputField::From)) == 34200 &&
                   idOfIndex(fxInputIndex(kFxInputNodes - 1, kFxInputs - 1, FxInputField::Level)) == 34907 &&
@@ -1662,10 +1674,10 @@ constexpr int64_t permutationRank(const std::array<int, N> &order) {
     return rank;
 }
 
-// The effects chain's order: the slot at each of its places, a param a place (fxPositionIndex()), in the order
-// they run. Empty slots take no part. Any values make an order: a place holding no slot, or one an earlier place
-// holds, is passed over, and the slots no place holds run after the others, by number. `get(index)` returns a param
-// value.
+// The effects chain's order as a state from before version 9 holds it: the slot at each of its places, a param a place
+// (fxPositionIndex()), in the order they ran. Empty slots take no part. Any values make an order: a place holding no
+// slot, or one an earlier place holds, is passed over, and the slots no place holds run after the others, by number.
+// `get(index)` returns a param value.
 using FxOrder = std::array<int, kFxSlots>;
 constexpr int fxPositionIndex(int position) { return kFxPositionBase + position; }
 template <class Get>
@@ -1706,6 +1718,27 @@ inline FxOrder fxOrderStarting(std::initializer_list<int> first) {
         if (!taken[slot])
             order[n++] = slot;
     return order;
+}
+
+// The effects graph's wires (their From params) that run `slots` one after another from the input to the output, every
+// other wire taken away: a chain, as the graph has it. With none, the input goes straight out.
+inline std::vector<std::pair<int, double>> fxChainWires(const std::vector<int> &slots) {
+    std::vector<std::pair<int, double>> changes;
+    for (int node = 0; node < kFxNodes; ++node)
+        for (int input = 0; input < fxInputCount(node); ++input)
+            changes.push_back({fxInputIndex(node, input, FxInputField::From), 0.0});
+    auto wire = [&changes](int node, int port) {
+        for (auto &change : changes)
+            if (change.first == fxInputIndex(node, 0, FxInputField::From))
+                change.second = fxPortValue(port);
+    };
+    int port = kFxPortIn;
+    for (int slot : slots) {
+        wire(slot, port);
+        port = fxSlotPort(slot);
+    }
+    wire(kFxOutNode, port);
+    return changes;
 }
 
 // RetiredFxOrder: the order of the first kFirstFxSlots slots as one number, one of their kRetiredFxOrders

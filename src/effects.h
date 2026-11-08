@@ -91,11 +91,11 @@ double widenerTap(int tap, double size, double lfo);
 // response of its high-pass, 12 dB per octave.
 double widenerSpread(double hz, double highPassNorm);
 
-// The effects chain on the sum of the voices: kFxSlots slots, each holding a
+// The effects on the sum of the voices: kFxSlots slots, each holding a
 // shaper, delay, DJ EQ, parametric EQ, filter, compressor, three-band
-// dynamics, reverb, phaser, flanger, frequency shifter, phase disperser or widener, or nothing, run in the order
-// the chain's places pick (see fxOrder()). An empty or switched-off slot costs nothing;
-// switching one fades it in or out over a few milliseconds. Audio thread
+// dynamics, reverb, phaser, flanger, frequency shifter, phase disperser or widener, or nothing, run as the effects
+// graph's wires take them from the input to the output (a chain is the slots one after another). An empty or
+// switched-off slot costs nothing; switching one fades it in or out over a few milliseconds. Audio thread
 // only, apart from construction and prepare().
 class Effects {
 public:
@@ -103,7 +103,7 @@ public:
     void prepare(double sampleRate);
     void reset();
 
-    // In place. Reads the slot params and the chain's places from `p`; synced delays and sweeps use `tempo` (BPM),
+    // In place. Reads the slot params and the graph's from `p`; synced delays and sweeps use `tempo` (BPM),
     // and a filter's key tracking follows `pitch`, the newest voice's (semitones, 69 is A4).
     void process(float *left, float *right, uint32_t frames, const ParamValues &p, double tempo, double pitch);
     // Something is still to be heard after the input went silent: delay echoes, a reverb's tail.
@@ -126,8 +126,8 @@ public:
     // Where a phaser's, flanger's or widener's sweep is, in cycles (the widener's first tap's); 0 for other effects.
     float sweepPhase(int slot) const;
     // The effects graph's ports (see fxPortValue()): how loud what comes out of each is, the peak of either side
-    // (1 is full scale), falling kPortFallDb a second; 0 for a port of a node the graph doesn't run, and all 0 while
-    // the effects run as a chain. For the editor, which lights the graph's nodes and wires by them.
+    // (1 is full scale), falling kPortFallDb a second; 0 for a port of a node the graph doesn't run. For the editor,
+    // which lights the graph's nodes and wires by them.
     static constexpr double kPortFallDb = 90.0;
     float portLevel(int port) const { return port >= 0 && port < kFxPorts ? portLevel_[port] : 0.0f; }
 
@@ -362,11 +362,12 @@ private:
     CrossoverCoefs crossoverCoefs(double lowHz, double highHz) const;
     static void splitThree(EqChannel &e, double x, const CrossoverCoefs &c, double *bands);
 
-    // The effects graph (GlobalParam::FxGraph). The nodes it runs are those OUT hears, through the wires as set or
-    // still fading: a slot holding an effect, a split or a sum in use, and one leaving the graph for as long as a wire
-    // fading out still reads it. Each sums the wires into it, each gliding to its level (see mixInputs()), then runs
-    // into a buffer of its own, in the order orderGraph() works out once a process(). A wire from a node that hasn't
-    // run yet in a chunk, which only a loop makes, reads what it put out the chunk before.
+    // The effects graph, which the effects always run as (a chain is a line of it). The nodes it runs are those OUT
+    // hears, through the wires as set or still fading: a slot holding an effect, a split or a sum in use, and one
+    // leaving the graph for as long as a wire fading out still reads it. Each sums the wires into it, each gliding to
+    // its level (see mixInputs()), then runs into a buffer of its own, in the order orderGraph() works out once a
+    // process(). A wire from a node that hasn't run yet in a chunk, which only a loop makes, reads what it put out the
+    // chunk before.
     struct WireEnd {
         int port = -1;      // what it comes from
         double level = 0.0; // its gain at the end of the last chunk; below 0, it takes the next chunk's at once
@@ -393,7 +394,8 @@ private:
     // Whether a node is in the graph by its params: a slot holding an effect (or fading one out), a split or a sum in
     // use, the output.
     bool nodeWanted(int node, const ParamValues &p) const;
-    void orderGraph(const ParamValues &p);
+    void orderGraph(const ParamValues &p, bool asSet);
+    bool loopsAsSet(const ParamValues &p) const; // whether the wires as set make a loop
     // A wire's gain as set: a sum's in dB and soloed as a join, every other's a share.
     double wireTarget(int node, int input, const ParamValues &p) const;
     // Every wire of `node` as its params set it, at its level and fully in.
@@ -409,11 +411,6 @@ private:
     void clearGraph();
     // A slot the graph no longer runs: it starts again cleared, as one switched on does.
     void idleSlot(int slot);
-    // Whether the graph does what the chain does, every wire at full: the slots one after another from IN to OUT, in
-    // the chain's order. As its params set it (`asSet`), or as its wires play now.
-    bool graphIsChain(const ParamValues &p, bool asSet) const;
-    // Starts running as the graph or as the chain.
-    void runAs(bool graph, const ParamValues &p);
 
     void start(int slot, const ParamValues &p, double tempo);
     double delayTarget(int slot, int side, const ParamValues &p, double tempo) const;
@@ -452,17 +449,18 @@ private:
     std::array<std::array<std::array<std::array<float, kChunk>, 2>, kFxBands>, kFxSplits> bandOut_{};
     std::array<std::array<std::array<float, kChunk>, 2>, kFxSums> sumOut_{};
     std::array<float, kFxPorts> portLevel_{}; // see portLevel()
-    void measurePorts(uint32_t n, bool graph);
+    void measurePorts(uint32_t n);
     std::array<std::array<Wire, kFxSumInputs>, kFxNodes> wires_{}; // as many as a node takes at most
     static_assert(kFxSumInputs >= kFxInputs && kFxSumInputs >= kFxOutInputs);
     std::array<Split, kFxSplits> splits_{};
     std::array<int, kFxNodes> graphOrder_{};
     int graphOrderCount_ = 0;
+    bool looped_ = false;   // orderGraph() found a loop through wires moving (see process())
+    bool rewiring_ = false; // the output ducking out to put every wire as set at once
+    double duck_ = 1.0;     // how far in the output is, 0 .. 1
     std::array<bool, kFxNodes> running_{};   // the nodes the graph runs this process() (see orderGraph())
     std::array<bool, kFxNodes> frozen_{};    // those only a wire fading out reads: their wires stay as they were
     std::array<bool, kFxNodes> ranBefore_{}; // the nodes it ran the process() before
-    int graphRunning_ = -1;  // what runs: 1 the graph, 0 the chain, -1 not yet known (the first chunk takes the switch)
-    double modeGain_ = 1.0; // the output, ducked to switch between the chain and a graph that sounds otherwise
 };
 
 } // namespace fmvibe
