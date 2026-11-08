@@ -104,7 +104,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the FX order changing the result, and a slot past the 16th playing at its place in the chain (the slots holding
     an effect wired one after another, as the editor wires a chain);
   - the effects graph: its input straight out, two wires at half as one at full, and a split's two bands (at 6, 12
-    and 24 dB) and three summing back flat, each slope parting its bands as steeply as it says; a join's solos letting only the band soloed through (both when
+    and 24 dB) and three (at 12 and 24) summing back flat, each slope parting its bands as steeply as it says (three
+    bands set to 6 playing at 12); a join's solos letting only the band soloed through (both when
     neither or both are), a three-band split's middle one too; a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
     chain's retired places doing nothing; a loop, which only params make, staying finite; and a macro taking a wire's
     level down;
@@ -225,7 +226,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - the effects graph's slot grid: switching to it showing the chain as its main line, as wired; the main
-    line's + opening the list of effects with Add frequency split after them, the split coming with its join, its
+    line's + opening the list of effects with Add 2-band split after them, the split coming with its join, its
     empty bands each curving out to a + on its row, each + ringed in its wire's color (read off the rendered
     pixels); a band's + putting an effect on its band; the join's node showing
     the split's card (at the inspector's right), its High knob setting the high band's level, in dB, and its S
@@ -235,7 +236,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the other band's too,
     both soloed; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its title's
     2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
-    crossover at 2500 Hz, an effect put on its + along the main line's row (and a second one after it, the other bands'
+    crossover at 2500 Hz, its slope kept and its list refusing 6 dB and picking 24 (a split at 6 going to 12 as it
+    splits in three), an effect put on its + along the main line's row (and a second one after it, the other bands'
     wires into the join running level along their rows past it and their +s in their next places, read off the
     rendered pixels), its S soloing it and the low band's too, the row showing
     the container with it, and back to two asking where its effect goes (onto the low band's end), undone onto the

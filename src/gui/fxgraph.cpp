@@ -625,6 +625,8 @@ void View::addSplit(int bands) {
         changes.push_back({paramIndex(split, f), table_[paramIndex(split, f)].def});
     for (int input = 0; input < 3; ++input) // and its join's band levels
         changes.push_back({fxInputIndex(fxJoinNode(split), input, FxInputField::Level), 0.0}); // 0 dB
+    if (bands >= 3 && filterSlope(value(paramIndex(split, SplitParam::Slope))) == 0) // three bands have no 6 dB
+        changes.push_back({paramIndex(split, SplitParam::Slope), 1.0});
     editMany(changes);
     FxLineItem item{fxSplitNode(split), {}, {}, true};
     item.three = bands >= 3;
@@ -725,8 +727,13 @@ void View::setSplitBands(int split, int bands, int midTo) {
             splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)))[0];
         const double high =
             std::max(table_[paramIndex(split, SplitParam::High)].def, normFromCutoff(std::min(4.0 * low, kMaxCutoff)));
-        editMany({{paramIndex(split, SplitParam::High), high},
-                  {fxInputIndex(fxJoinNode(split), laneJoinInput(3), FxInputField::Level), 0.0}});
+        std::vector<std::pair<int, double>> changes{
+            {paramIndex(split, SplitParam::High), high},
+            {fxInputIndex(fxJoinNode(split), laneJoinInput(3), FxInputField::Level), 0.0}};
+        // Its slope kept, but 6 dB, which three bands don't have: 12 dB, the nearest they do.
+        if (filterSlope(value(paramIndex(split, SplitParam::Slope))) == 0)
+            changes.push_back({paramIndex(split, SplitParam::Slope), 1.0});
+        editMany(changes);
         writeFxLine(line);
         showSplitBand(split, tabOfLane(3));
         return;
@@ -977,19 +984,20 @@ Rect View::splitDisplay(Rect card, bool three) {
 
 namespace {
 // The bands' responses on a split's display: how much of each band (0..1) goes through at `hz` (by its port's band),
-// at its slope (a one-pole and the rest, or a Linkwitz-Riley of second or fourth order; three bands are always of
-// fourth order), and where on the display that shows.
+// at its slope (a one-pole and the rest, or a Linkwitz-Riley of second or fourth order; three bands at 12 or 24 dB,
+// 6 playing as 12), and where on the display that shows.
 double passed(double x, int slope) {
     return slope == 6 ? 1.0 / std::sqrt(1.0 + x * x) : slope == 12 ? 1.0 / (1.0 + x * x) : 1.0 / (1.0 + x * x * x * x);
 }
 double bandResponse(int band, double hz, std::array<double, 2> crossovers, int slope, bool three) {
     if (!three)
         return band == kLowBand ? passed(hz / crossovers[0], slope) : passed(crossovers[0] / hz, slope);
+    const int s = slope > 12 ? 24 : 12;
     if (band == kLowBand)
-        return passed(hz / crossovers[0], 24);
+        return passed(hz / crossovers[0], s);
     if (band == kHighBand)
-        return passed(crossovers[1] / hz, 24);
-    return passed(crossovers[0] / hz, 24) * passed(hz / crossovers[1], 24);
+        return passed(crossovers[1] / hz, s);
+    return passed(crossovers[0] / hz, s) * passed(hz / crossovers[1], s);
 }
 float responseY(Rect display, double level) {
     const float top = display.y + 12.0f, bottom = display.bottom() - 22.0f;
@@ -1093,8 +1101,7 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
             paramIndex(split, which == 1 ? SplitParam::High : SplitParam::Low), split, which);
     }
     // In the title row after its name, the BANDS switch (over the row's grip). Under the display, the slope's list as a
-    // filter's is: 6, 12 or 24 dB (18, which a filter has, it doesn't). Three bands always part at 24 dB, so there the
-    // list shows that, faint, and doesn't open.
+    // filter's is: 6, 12 or 24 dB (18, which a filter has, it doesn't); three bands 12 or 24 dB.
     for (int bands : {2, 3})
         add(Kind::SplitBands, splitBandsButton(card, bands), -1, split, bands);
     add(Kind::ListButton, splitSlopeButton(display), paramIndex(split, SplitParam::Slope));

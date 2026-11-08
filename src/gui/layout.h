@@ -397,6 +397,11 @@ constexpr float kFxBoxEdge = kFxBoxMargin / (kFxCardW + kFxGap);
 constexpr float kFxBoxRadius = kRadiusCard + kFxBoxPad; // the outline's corners, round the cards' at its pad
 constexpr float kFxBoxAddW = 64.0f;
 constexpr float kFxBoxAddSpan = (kFxBoxAddW + kFxGap) / (kFxCardW + kFxGap);
+// That dashed card, given the card place it starts (`at`): centered in the room between what comes before it (the last
+// card, or the controls) and the container's outline, kFxGap before it and kFxBoxPad after it.
+inline Rect fxBoxAddCard(Rect at) {
+    return {at.x - 0.5f * (kFxGap - kFxBoxPad), at.y, kFxBoxAddW, at.h};
+}
 // A split's controls on a card's place (its container's column, or its card in the graph), top to bottom under the
 // title row: the band tabs (left to right the low band's, a middle one's, the high one's; see tabPosition()), the
 // crossover's display (see View::splitDisplay()), under it at the right the slope's list, in three bands a row of the

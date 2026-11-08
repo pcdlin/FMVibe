@@ -385,14 +385,16 @@ private:
     struct Wire {
         WireEnd now, was;
     };
-    // A split's filters at one slope: 6, 12 or 24 for two bands, 3 for three (always 24 dB), with their coefficients
-    // for the crossovers they were last worked out for.
+    // A split's filters at one slope: 6, 12 or 24 for two bands, kThree12 or kThree24 for three (at 12 or 24 dB),
+    // with their coefficients for the crossovers they were last worked out for.
+    static constexpr int kThree12 = 112, kThree24 = 124;
     struct SplitFilters {
         std::array<EqChannel, 2> channels{};
         int mode = -1;
         double lowNorm = -1.0, highNorm = -1.0; // as the coefficients below were worked out for
-        CrossoverCoefs coefs;                   // 24 dB: lp1 and hp1; three bands: all of them
-        BiquadCoefs onePoleLow, onePoleHigh;    // 6 and 12 dB
+        CrossoverCoefs coefs;                   // 24 dB: lp1 and hp1; three bands at 24: all of them
+        BiquadCoefs onePoleLow, onePoleHigh;    // 6 and 12 dB, and three bands at 12: at the low crossover
+        BiquadCoefs onePoleLow2, onePoleHigh2, allPass2; // three bands at 12: at the high crossover
     };
     struct Split {
         SplitFilters now, was; // was: at the slope it left, fading out over 5 ms as `now` fades in

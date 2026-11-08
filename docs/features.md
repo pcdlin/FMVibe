@@ -254,8 +254,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     begin with), at a Slope of 6, 12 or 24 dB per octave (12 to begin with, a second-order Linkwitz-Riley crossover; 24 the
     fourth-order one the 3-band dynamics has; 6 a one-pole low-pass with the rest as the high band), so the bands sum
     back flat at each. A split can also cut into **three** bands, low, middle and high, at a low and a high crossover
-    (250 Hz and 2.5 kHz to begin with, the high one kept a third of an octave above the low one), always at 24 dB, as
-    the 3-band dynamics does. Each band runs through effects of its own, say the lows through a shaper and a compressor and the
+    (250 Hz and 2.5 kHz to begin with, the high one kept a third of an octave above the low one), at 12 or 24 dB
+    (24 as the 3-band dynamics does; at 12 the low band goes through the high crossover's all-pass, so the three still
+    sum back flat; set to 6, it plays at 12). Each band runs through effects of its own, say the lows through a shaper and a compressor and the
     highs through a delay and a reverb, until a **join** adds them back together, each at a level (0 dB, full, down to
     -60 dB, silence; full to begin with), and the line goes on from it; a split left open at the line's end sends both
     bands out. The join can **solo** bands, each on its own, letting only those soloed through. The splits
@@ -694,8 +695,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     amber, each theme with band colors of its own; the wheel steps along them too), a hidden band's tab saying how
     many effects it holds after its name and a soloed band's showing an S in its color in its dot's place; the bands'
     responses with a handle on each crossover to drag across, each band's curve lowered as far as its level's knob
-    is turned down (flat at -60 dB), the shown band's filled; under them, at the right, the slope's list, as a filter's is, 6, 12 or 24 dB (18 shows faintly and can't be picked; in three bands it shows
-    24 dB faintly and doesn't open, the slope picked coming back with two bands). In two bands, three knobs: the low
+    is turned down (flat at -60 dB), the shown band's filled; under them, at the right, the slope's list, as a filter's is, 6, 12 or 24 dB (18 shows faintly and can't be picked; in three bands 6 does
+    too). Switching between two and three bands keeps the slope, but for 6 dB, which goes to 12 as it splits in three,
+    in the same undo step. In two bands, three knobs: the low
     band's level, the Crossover and the high band's level (in dB, 0 dB, full, at the top, down to -60 dB, silence).
     In three, the display is shorter, and a row of two smaller knobs, Low X and High X, the crossovers, goes under
     it, over the low, the middle and the high band's levels. Under each band's level an **S** solos it, each band's on its
@@ -703,7 +705,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     three bands, as one undo step, an empty middle band opens between the two, shown, its crossover at 2500 Hz, or two
     octaves above the low one where that is higher (as high as it goes), so a new split's 250 Hz gives 250 and
     2500 Hz, and its level at the join 0 dB. Switched back to two, an empty middle band
-    just goes; one holding effects asks first ("Back to two bands?"): **Onto Low** puts them at the low band's end,
+    just goes; one holding effects asks first ("Change to two bands?"): **Onto Low** puts them at the low band's end,
     **Onto High** at the high band's start, **Remove** removes them with their modulation, each one undo step, and
     Cancel, or a click around the dialog, leaves it in three. To the right of the controls, the
     cards of the band shown, the arrows into them in the band's color (faint, cards and arrows, while another band
@@ -711,7 +713,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     a narrow dashed card (ADD TO LOW, ADD TO MID or ADD TO HIGH, in capitals as ADD EFFECT) that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
-    + EFFECT offer **Add frequency split** and **Add 3-band split** after the effects, which go in there (at the
+    + EFFECT offer **Add 2-band split** and **Add 3-band split** after the effects, which go in there (at the
     line's end from the last two) with their join, their bands empty and their low band shown. A card dragged over the band a container shows
     lands on that band, and let go of on a container's tab it goes to the end of that band (the tab lit while it is
     over it; the band shown stays as it is); a card dragged out of a

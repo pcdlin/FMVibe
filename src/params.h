@@ -531,7 +531,7 @@ enum class FxParam {
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
 // for three, with Linkwitz-Riley crossovers whose bands sum back flat. Low and High are on the cutoff curve, High kept
 // a third of an octave above Low (see splitCrossovers()). Slope is two bands' steepness, as a filter's slope is
-// stored: 6, 12 or 24 dB per octave (18 plays as 24; three bands are always 24). Stored in projects by number: only
+// stored: 6, 12 or 24 dB per octave (18 plays as 24; three bands part at 12 or 24, 6 playing as 12). Stored in projects by number: only
 // append.
 enum class SplitParam { Used, Bands, Low, High, Slope, Count };
 // A wire into a node of the effects graph: From is the port it comes from (fxPortValue(), 0 for no wire) and Level how

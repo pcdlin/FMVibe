@@ -633,16 +633,18 @@ Color View::listColor(int param) const {
 }
 
 int View::listShown(int param) const {
-    if (isSplitSlope(param)) // 18 plays as 24, and three bands always part at 24
-        return filterSlope(value(param)) == 2 || splitThree(splitOf(param)) ? kFilterSlopes - 1 : filterSlope(value(param));
+    if (isSplitSlope(param)) { // 18 plays as 24; three bands part at 12 or 24, 6 playing as 12
+        const int slope = filterSlope(value(param));
+        return slope == 2 ? kFilterSlopes - 1 : slope == 0 && splitThree(splitOf(param)) ? 1 : slope;
+    }
     if (isFilterSlope(param))
         return playedSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), filterSlope(value(param)));
     return static_cast<int>(std::lround(value(param)));
 }
 
 bool View::listItemFits(int param, int item) const {
-    if (isSplitSlope(param))
-        return item != 2;
+    if (isSplitSlope(param)) // 6, 12 or 24 dB; three bands 12 or 24
+        return item != 2 && !(item == 0 && splitThree(splitOf(param)));
     return !isFilterSlope(param) || slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), item);
 }
 
@@ -1924,7 +1926,7 @@ std::vector<View::Widget> View::widgets() const {
                     splitControlWidgets(list, box.split, fxCard(column, 1.0f), true);
                 if (const float at = box.add - scroll; fxShadow() && onScreen(at, kVisibleFx, kFxBoxAddSpan)) {
                     const Rect card = fxCard(at);
-                    add(Kind::FxBoxAdd, {card.x, card.y, kFxBoxAddW, card.h}, -1, box.lane, box.item);
+                    add(Kind::FxBoxAdd, fxBoxAddCard(card), -1, box.lane, box.item);
                 }
             }
             if (const float place = row.items.back() - scroll; fxShadow() && onScreen(place, kVisibleFx))
@@ -6376,8 +6378,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.
         const int shown = listShown(w.param);
         const bool relevant =
-            (!isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))))) &&
-            !(isSplitSlope(w.param) && splitThree(splitOf(w.param)));
+            !isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
         const bool lit = relevant && (hovered || listMenu_ == w.param);
         const Color color = listColor(w.param);
         c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, kRadiusControl);
@@ -8533,8 +8534,6 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ListButton:
         if (isFilterSlope(w.param) && !hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param))))))
             break; // a comb has no slope: its list stays shut
-        if (isSplitSlope(w.param) && splitThree(splitOf(w.param)))
-            break; // nor do three bands, which always part at 24 dB
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
     case Kind::LabelMode:
@@ -9343,14 +9342,13 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     }
     if (const int split = splitOf(hit->param); split >= 0 && hit->param == paramIndex(split, SplitParam::Slope)) {
-        if (splitThree(split))
-            return; // three bands always part at 24 dB
-        const int slopes[] = {0, 1, kFilterSlopes - 1}; // 6, 12 and 24 dB, a notch a step
-        int at = 0;
-        for (int k = 0; k < 3; ++k)
+        const int slopes[] = {0, 1, kFilterSlopes - 1}; // 6, 12 and 24 dB, a notch a step (three bands from 12)
+        const int first = splitThree(split) ? 1 : 0;
+        int at = first;
+        for (int k = first; k < 3; ++k)
             at = filterSlope(value(hit->param)) >= slopes[k] ? k : at;
         if (whole != 0)
-            edit(hit->param, slopes[std::clamp(at + whole, 0, 2)]);
+            edit(hit->param, slopes[std::clamp(at + whole, first, 2)]);
         return;
     }
     if (hit->kind == Kind::LabelMode) { // to the next mode along, as the wheel turns, a run of notches one undo step

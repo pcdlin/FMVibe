@@ -620,9 +620,9 @@ STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
 STR(ConfirmFxClearTitle, "Really remove all FX?")
 STR(ConfirmFxClear, "All effects are removed.")
-STR(ConfirmMidBandTitle, "Back to two bands?") // a three-band split switched to two, its middle band holding effects
-STR(ConfirmMidBand, "The middle band holds {1} effects. Where do they go?")
-STR(ConfirmMidBandOne, "The middle band holds an effect. Where does it go?")
+STR(ConfirmMidBandTitle, "Change to two bands?") // a three-band split switched to two, its middle band holding effects
+STR(ConfirmMidBand, "The mid band holds {1} effects. Where should they go?")
+STR(ConfirmMidBandOne, "The mid band holds an effect. Where should it go?")
 STR(ButtonMidToLow, "Onto Low") // the middle band's effects onto the low band's end
 STR(ButtonMidToHigh, "Onto High") // onto the high band's start
 STR(ButtonMidRemove, "Remove")
@@ -712,8 +712,8 @@ STR(TipFxInsert, "Add an effect or a split here") // the arrow between two effec
 STR(TipSplitGrip, "Drag to move the split with its bands") // a split's container's title row
 STR(TipSplitBand, "Show this band's effects") // a split's band tab
 STR(TipSplitSolo, "Solo this band") // the S over a split's band level
-STR(TipSplitTwo, "Split in two bands") // a split's BANDS switch
-STR(TipSplitThree, "Split in three bands (always 24 dB)")
+STR(TipSplitTwo, "Split into two bands") // a split's BANDS switch
+STR(TipSplitThree, "Split into three bands")
 STR(TipWheelHandle, "Drag to assign mod wheel")
 STR(TipNoteHandle, "Drag to assign note pitch modulation")
 STR(TipVelocityHandle, "Drag to assign velocity")
@@ -816,7 +816,7 @@ STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
 // --- The editor: right-click menus
 
 STR(MenuDuplicate, "Duplicate")
-STR(MenuSplitBands, "Add frequency split") // the list of effects on the main line, after the effects
+STR(MenuSplitBands, "Add 2-band split") // the list of effects on the main line, after the effects
 STR(MenuSplitThree, "Add 3-band split") // after it: a split in three bands
 STR(MenuResetSettings, "Reset settings")
 STR(MenuOtt, "OTT") // a 3-band dynamics' settings set to those of Ableton's OTT preset

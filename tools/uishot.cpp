@@ -2327,7 +2327,8 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
           "a split's slope list picks 6, 12 or 24 dB (not 18), 12 to begin with");
 
     // BANDS 3 in its card's title: an empty middle band opens between the two, shown, into the join's third input, its
-    // crossover at 2500 Hz (more than two octaves above the low one's 500 Hz), the slope's list showing 24 dB. An effect on its +, along the
+    // crossover at 2500 Hz (more than two octaves above the low one's 500 Hz), its slope kept at 12 dB: its list opens,
+    // refusing 6 dB and picking 24, undone. An effect on its +, along the
     // main line's row; its S soloing it alone. BANDS 2 then asks where its effect goes: onto the low band's end. Undone,
     // it is back on the middle band; without it, BANDS 2 asks nothing; undone, as it was.
     {
@@ -2339,6 +2340,19 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                            model.ui.splitBand[0] == 2 &&
                            std::abs(model.value(paramIndex(0, SplitParam::High)) - normFromCutoff(2500.0)) < 0.01 &&
                            renderer.save(view, dir / "40f3-fx-split-three.png");
+        bool threeSlopes = false;
+        {
+            const Rect threeDisplay{card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, 70.0f};
+            const Rect list = detail::splitSlopeButton(threeDisplay);
+            const bool kept12 = model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
+            click(view, centerOf(list));
+            click(view, centerOf(detail::listMenuItem(list, kFilterSlopes, 0))); // 6 dB: refused, the list still open
+            const bool refused6 = model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
+            click(view, centerOf(detail::listMenuItem(list, kFilterSlopes, kFilterSlopes - 1)));
+            const bool picked24 = model.value(paramIndex(0, SplitParam::Slope)) == kFilterSlopes - 1.0;
+            view.undo();
+            threeSlopes = kept12 && refused6 && picked24 && model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
+        }
         addAt(cell(4, 0), FxType::Widener);
         int widener = -1;
         for (int slot = 0; slot < kFxSlots; ++slot)
@@ -2424,6 +2438,19 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         std::printf("      three bands: split %d, an effect on the middle band %d, soloed alone %d, asked %d, onto the "
                     "low band %d, undone %d, an empty one straight back %d\n",
                     three, onMiddle, soloMid, asked, ontoLow, backOnMiddle, straight);
+        // A split at 6 dB switched to three bands goes to 12 dB, which they have, in the same undo step.
+        model.set(paramIndex(0, SplitParam::Slope), 0.0);
+        view.poll();
+        click(view, centerOf(detail::splitBandsButton(card, 3)));
+        const bool sixTo12 = model.value(paramIndex(0, SplitParam::Bands)) == 3.0 &&
+                             model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
+        view.undo();
+        const bool sixBack = model.value(paramIndex(0, SplitParam::Bands)) == 2.0 &&
+                             model.value(paramIndex(0, SplitParam::Slope)) == 0.0;
+        model.set(paramIndex(0, SplitParam::Slope), 1.0);
+        view.poll();
+        check(threeSlopes && sixTo12 && sixBack,
+              "three bands keep the split's slope, 12 or 24 dB (6 going to 12 as they split), their list refusing 6");
         check(three && onMiddle && soloMid && soloShot && rowShot && asked && ontoLow && backOnMiddle && straight &&
                   model.value(paramIndex(0, SplitParam::Bands)) == 2.0 && from(join, 2) < 0 &&
                   model.value(paramIndex(0, SplitParam::High)) == highBefore,
@@ -2792,8 +2819,8 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     // (no split), and a reverb goes on that band.
     click(view, centerOf(detail::splitTab(column, 1, 2)));
     const bool highShown = model.ui.splitBand[0] == 1;
-    const Rect add = detail::fxCard(2.0f + detail::kFxBoxEdge);
-    const Point addAt{add.x + detail::kFxBoxAddW * 0.5f, add.center().y};
+    const Rect add = detail::fxBoxAddCard(detail::fxCard(2.0f + detail::kFxBoxEdge));
+    const Point addAt = centerOf(add);
     click(view, addAt);
     view.mouseMove(fxListItem(view, addAt, FxType::Reverb), {});
     const bool bandListShot = renderer.save(view, dir / "41d-fx-row-band-list.png");
