@@ -8,6 +8,10 @@ In-browser demo: [https://pcdlin.github.io/FMVibe/](https://pcdlin.github.io/FMV
 
 ![FMVibe UI](docs/editor.png)
 
+![FMVibe UI](docs/fx-chain.png)
+
+![FMVibe UI](docs/fx-graph.png)
+
 Implemented using Claude Code.
 
 The full feature reference is in [docs/features.md](docs/features.md).

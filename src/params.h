@@ -25,8 +25,18 @@ constexpr int kFilters = 2;
 constexpr int kForwardFilterLinks = kFilters * (kFilters - 1) / 2;
 constexpr int kFilterLinks = kFilters * kFilters;
 constexpr int kShapers = 2; // per-voice waveshapers, which feed and are fed by the filters and modulate operators
-constexpr int kFxSlots = 32; // places in the effects chain; their order is a param a place (see fxOrder())
+constexpr int kFxSlots = 32; // places for effects; the effects graph's wires put them in order (see FxInputField)
 constexpr int kFirstFxSlots = 16; // the slots the chain had at first; see idOfIndex()
+// The effects graph, which the effects always run as: besides the slots, kFxSplits splits, each cutting what goes in
+// into up to kFxBands bands by frequency; every slot and split takes up to kFxInputs wires in, the output kFxOutInputs.
+// A chain is the graph's plainest case: the slots one after another from the input to the output.
+constexpr int kFxSplits = 4;
+constexpr int kFxBands = 3;
+constexpr int kFxInputs = 4;
+constexpr int kFxOutInputs = 8;
+// And kFxSums sums, each adding up to kFxSumInputs wires into one output, for the paths it joins to go on together.
+constexpr int kFxSums = 4;
+constexpr int kFxSumInputs = 8;
 constexpr int kMaxShapePoints = 64; // per freeform LFO or shaper curve, enough for a step a column on a grid of 32
 constexpr int kMaxNotePoints = 16;  // on the note source's curve
 
@@ -514,6 +524,24 @@ enum class FxParam {
     PeqAmount, // the parametric EQ's output against what went in, as a mix: 0 leaves the sound alone
     Count
 };
+// A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
+// for three, with Linkwitz-Riley crossovers whose bands sum back flat. Low and High are on the cutoff curve, High kept
+// a third of an octave above Low (see splitCrossovers()). Slope is two bands' steepness, as a filter's slope is
+// stored: 6, 12 or 24 dB per octave (18 plays as 24; three bands are always 24). Stored in projects by number: only
+// append.
+enum class SplitParam { Used, Bands, Low, High, Slope, Count };
+// A wire into a node of the effects graph: From is the port it comes from (fxPortValue(), 0 for no wire) and Level how
+// much of it goes in. Stored in projects by number: only append.
+enum class FxInputField { From, Level, Count };
+// A sum's (a join's) wires' levels are in dB, from kSumFloorDb, silence, up to 0 dB; every other wire's is a share,
+// 0..1. sumLevelGain() is a sum's level as a gain.
+constexpr double kSumFloorDb = -60.0;
+inline double sumLevelGain(double db) {
+    return db <= kSumFloorDb ? 0.0 : std::pow(10.0, std::min(db, 0.0) / 20.0);
+}
+// A sum in the effects graph: Used puts it in the graph. As a join, SoloHigh and SoloLow solo its first two inputs, the
+// high band and the low band (see sumSoloGain()). Stored in projects by number: only append.
+enum class SumParam { Used, SoloHigh, SoloLow, Count };
 // The shaper's output level in dB, from its Output and Drive, linked or not. Linked, it comes down by as much as
 // keeps a sine at -6 dBFS as loud (in RMS) as it went in: dB for dB with the drive while the driven sine stays
 // under the ceiling, then less and less as the clipping squares it off, about 9 dB at the full 36 dB of drive.
@@ -563,7 +591,17 @@ constexpr int kFilterLinkBase = kFilterBase + kFilters * kFilterParamCount;
 constexpr int kShaperBase = kFilterLinkBase + kFilterLinks;
 constexpr int kSourceBase = kShaperBase + kShapers * kShaperParamCount;
 constexpr int kFxBase = kSourceBase + kMaxSources * kSourceParamCount;
-constexpr int kShapeBase = kFxBase + kFxSlots * kFxParamCount; // the effect params run up to here
+constexpr int kSplitParamCount = static_cast<int>(SplitParam::Count);
+constexpr int kFxInputFields = static_cast<int>(FxInputField::Count);
+// The effects graph's splits and wires, after the slots: shared by the voices like them, and modulated like them.
+constexpr int kFxSplitBase = kFxBase + kFxSlots * kFxParamCount;
+constexpr int kFxInputNodes = kFxSlots + kFxSplits; // the nodes with kFxInputs inputs: the slots, then the splits
+constexpr int kFxInputBase = kFxSplitBase + kFxSplits * kSplitParamCount;
+constexpr int kFxOutInputBase = kFxInputBase + kFxInputNodes * kFxInputs * kFxInputFields;
+constexpr int kSumParamCount = static_cast<int>(SumParam::Count);
+constexpr int kFxSumBase = kFxOutInputBase + kFxOutInputs * kFxInputFields;
+constexpr int kFxSumInputBase = kFxSumBase + kFxSums * kSumParamCount;
+constexpr int kShapeBase = kFxSumInputBase + kFxSums * kFxSumInputs * kFxInputFields; // the effect params run up to here
 constexpr int kClipCurveBase = kShapeBase + kMaxSources * kShapeParamCount;
 // Each source's slots can be bypassed one by one: the slot stops modulating but keeps its target and depth.
 constexpr int kSlotBypassBase = kClipCurveBase + kFxSlots * kShapeParamCount;
@@ -603,7 +641,9 @@ constexpr int kSlotCurveBase = kStripBypassBase + (kAllSources - kMaxSources) * 
 // Phase and hidden.
 constexpr int kRouteSources = kOps + kFilters + kShapers;
 constexpr int kRouteModeBase = kSlotCurveBase + kAllSources * kSlots;
-// The effects chain's order: the slot at each of its kFxSlots places, in the order they run (see fxOrder()).
+// The effects chain's order as a state from before version 9 holds it: the slot at each of its kFxSlots places, in the
+// order they ran (see fxOrder()). Loading one wires them as the effects graph's line (see readParams()); since then the
+// graph's wires alone hold the order, and these do nothing.
 constexpr int kFxPositionBase = kRouteModeBase + kRouteSources * kOps;
 constexpr int kParamCount = kFxPositionBase + kFxSlots;
 // The params before the shapes: what LFOs, envelopes and hosts can modulate,
@@ -625,6 +665,90 @@ constexpr int paramIndex(int filter, FilterParam p) {
     return kFilterBase + filter * kFilterParamCount + static_cast<int>(p);
 }
 constexpr int paramIndex(int slot, FxParam p) { return kFxBase + slot * kFxParamCount + static_cast<int>(p); }
+constexpr int paramIndex(int split, SplitParam p) {
+    return kFxSplitBase + split * kSplitParamCount + static_cast<int>(p);
+}
+constexpr int paramIndex(int sum, SumParam p) { return kFxSumBase + sum * kSumParamCount + static_cast<int>(p); }
+// How much of a join's input passes its solos: while either band is soloed, only the soloed ones (inputs 0 and 1, the
+// high and the low band; any other input of the sum goes on as it is).
+template <class Get>
+double sumSoloGain(int sum, int input, Get &&get) {
+    const bool high = get(paramIndex(sum, SumParam::SoloHigh)) >= 0.5, low = get(paramIndex(sum, SumParam::SoloLow)) >= 0.5;
+    if (!(high || low) || input > 1)
+        return 1.0;
+    return (input == 0 ? high : low) ? 1.0 : 0.0;
+}
+// The effects graph's nodes that take wires in: a slot (0..kFxSlots - 1), a split (kFxSlots + split), the output, then
+// a sum (fxSumNode()), kFxNodes in all.
+constexpr int kFxOutNode = kFxInputNodes;
+constexpr int kFxNodes = kFxOutNode + 1 + kFxSums;
+constexpr int fxSplitNode(int split) { return kFxSlots + split; }
+constexpr int fxSumNode(int sum) { return kFxOutNode + 1 + sum; }
+constexpr int fxNodeSum(int node) { return node > kFxOutNode && node < kFxNodes ? node - kFxOutNode - 1 : -1; }
+constexpr bool fxNodeSplit(int node) { return node >= kFxSlots && node < kFxInputNodes; }
+constexpr int fxInputCount(int node) {
+    return node == kFxOutNode ? kFxOutInputs : fxNodeSum(node) >= 0 ? kFxSumInputs : kFxInputs;
+}
+constexpr int fxInputIndex(int node, int input, FxInputField f) {
+    return node == kFxOutNode ? kFxOutInputBase + input * kFxInputFields + static_cast<int>(f)
+           : fxNodeSum(node) >= 0
+               ? kFxSumInputBase + (fxNodeSum(node) * kFxSumInputs + input) * kFxInputFields + static_cast<int>(f)
+               : kFxInputBase + (node * kFxInputs + input) * kFxInputFields + static_cast<int>(f);
+}
+// Ports, what wires come from: the effects' input (the voices), each slot's output, each split's bands, then each sum's
+// output.
+constexpr int kFxPortIn = 0;
+constexpr int kFxBandPorts = 1 + kFxSlots; // the first split's first band
+constexpr int kFxSumPorts = kFxBandPorts + kFxSplits * kFxBands;
+constexpr int kFxPorts = kFxSumPorts + kFxSums;
+constexpr int fxSlotPort(int slot) { return 1 + slot; }
+constexpr int fxBandPort(int split, int band) { return kFxBandPorts + split * kFxBands + band; }
+constexpr int fxSumPort(int sum) { return kFxSumPorts + sum; }
+constexpr int fxPortSlot(int port) { return port >= 1 && port <= kFxSlots ? port - 1 : -1; }
+constexpr int fxPortSplit(int port) {
+    return port >= kFxBandPorts && port < kFxSumPorts ? (port - kFxBandPorts) / kFxBands : -1;
+}
+constexpr int fxPortBand(int port) {
+    return port >= kFxBandPorts && port < kFxSumPorts ? (port - kFxBandPorts) % kFxBands : -1;
+}
+constexpr int fxPortSum(int port) { return port >= kFxSumPorts && port < kFxPorts ? port - kFxSumPorts : -1; }
+// The node a port comes out of: -1 for the effects' input.
+constexpr int fxPortNode(int port) {
+    return port == kFxPortIn          ? -1
+           : fxPortSlot(port) >= 0    ? fxPortSlot(port)
+           : fxPortSplit(port) >= 0   ? fxSplitNode(fxPortSplit(port))
+                                      : fxSumNode(fxPortSum(port));
+}
+// A From param's value for a port (-1 for none), and back: -1 for none or anything that isn't a port.
+constexpr double fxPortValue(int port) { return port < 0 ? 0.0 : port + 1.0; }
+inline int fxPortOf(double value) {
+    if (!(value >= 0.5 && value < kFxPorts + 0.5)) // NaN too
+        return -1;
+    return static_cast<int>(std::lround(value)) - 1;
+}
+// The split a param belongs to, -1 for other params.
+constexpr int splitOf(int index) {
+    return index >= kFxSplitBase && index < kFxInputBase ? (index - kFxSplitBase) / kSplitParamCount : -1;
+}
+// Whether a param is one of a join's solos.
+constexpr bool isJoinSolo(int index) {
+    return index >= kFxSumBase && index < kFxSumInputBase && (index - kFxSumBase) % kSumParamCount != 0;
+}
+// The join (a sum) whose band's level `index` is, the Level of one of its first two inputs; -1 for any other param.
+constexpr int fxSumOfLevel(int index) {
+    if (index < kFxSumInputBase || index >= kShapeBase)
+        return -1;
+    const int within = index - kFxSumInputBase;
+    const int input = (within / kFxInputFields) % kFxSumInputs;
+    return within % kFxInputFields == static_cast<int>(FxInputField::Level) && input < 2
+               ? within / (kFxSumInputs * kFxInputFields)
+               : -1;
+}
+// Whether a param belongs to the effects graph: a split's field, a join's or a wire's.
+constexpr bool isFxGraphParam(int index) {
+    return index >= kFxSplitBase && index < kShapeBase;
+}
+
 constexpr int paramIndex(int shaper, ShaperParam p) {
     return kShaperBase + shaper * kShaperParamCount + static_cast<int>(p);
 }
@@ -700,7 +824,9 @@ constexpr ShaperParam shaperFieldOf(int index) {
     return shaperOf(index) < 0 ? ShaperParam::Count : static_cast<ShaperParam>((index - kShaperBase) % kShaperParamCount);
 }
 // The effect slot a param belongs to, and which of its fields it is; -1 / Count for other params.
-constexpr int fxSlotOf(int index) { return index >= kFxBase && index < kShapeBase ? (index - kFxBase) / kFxParamCount : -1; }
+constexpr int fxSlotOf(int index) {
+    return index >= kFxBase && index < kFxSplitBase ? (index - kFxBase) / kFxParamCount : -1;
+}
 constexpr FxParam fxFieldOf(int index) {
     return fxSlotOf(index) < 0 ? FxParam::Count : static_cast<FxParam>((index - kFxBase) % kFxParamCount);
 }
@@ -993,6 +1119,13 @@ constexpr Section kSections[] = {
     {kRouteModeBase, kRouteSources, kOps, 700, 10},
     // The chain's places, in order.
     {kFxPositionBase, 1, kFxSlots, 33400, 100},
+    // The effects graph: the splits, the wires into the slots and splits, then the wires into the output.
+    {kFxSplitBase, kFxSplits, kSplitParamCount, 34000, 20},
+    {kFxInputBase, kFxInputNodes, kFxInputs * kFxInputFields, 34200, 20},
+    {kFxOutInputBase, 1, kFxOutInputs * kFxInputFields, 35000, 100},
+    // Its sums, then the wires into them.
+    {kFxSumBase, kFxSums, kSumParamCount, 35100, 20},
+    {kFxSumInputBase, kFxSums, kFxSumInputs * kFxInputFields, 35200, 20},
 };
 
 // Sources had kFirstSlots slots at first. Their fields keep the ids they had
@@ -1167,6 +1300,24 @@ static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(param
               "global param ids moved");
 static_assert(idOfIndex(kFxPositionBase) == 33400 && idOfIndex(kFxPositionBase + kFxSlots - 1) == 33431,
               "chain order param ids moved");
+static_assert(idOfIndex(paramIndex(0, SplitParam::Used)) == 34000 &&
+                  idOfIndex(paramIndex(kFxSplits - 1, SplitParam::Slope)) == 34064 &&
+                  idOfIndex(fxInputIndex(0, 0, FxInputField::From)) == 34200 &&
+                  idOfIndex(fxInputIndex(kFxInputNodes - 1, kFxInputs - 1, FxInputField::Level)) == 34907 &&
+                  idOfIndex(fxInputIndex(kFxOutNode, 0, FxInputField::From)) == 35000 &&
+                  idOfIndex(fxInputIndex(kFxOutNode, kFxOutInputs - 1, FxInputField::Level)) == 35015 &&
+                  kFxSplits == 4 && kFxBands == 3 && kFxInputs == 4 && kFxOutInputs == 8,
+              "effects graph param ids moved");
+static_assert(idOfIndex(paramIndex(0, SumParam::Used)) == 35100 && idOfIndex(paramIndex(kFxSums - 1, SumParam::SoloLow)) == 35162 &&
+                  idOfIndex(fxInputIndex(fxSumNode(0), 0, FxInputField::From)) == 35200 &&
+                  idOfIndex(fxInputIndex(fxSumNode(kFxSums - 1), kFxSumInputs - 1, FxInputField::Level)) == 35275 &&
+                  kFxSums == 4 && kFxSumInputs == 8,
+              "effects graph sum ids moved");
+// A wire's From is stored by number: the input, the slots, then the splits' bands.
+static_assert(fxPortValue(kFxPortIn) == 1.0 && fxPortValue(fxSlotPort(kFxSlots - 1)) == 33.0 &&
+                  fxPortValue(fxBandPort(0, 0)) == 34.0 && fxPortValue(fxBandPort(kFxSplits - 1, kFxBands - 1)) == 45.0 &&
+                  fxPortValue(fxSumPort(0)) == 46.0 && fxPortValue(fxSumPort(kFxSums - 1)) == 49.0,
+              "the effects graph's port numbers moved");
 static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfIndex(paramIndex(0, OpParam::Transpose)) == 120 &&
                   idOfIndex(sendIndex(0, 0)) == 121 && idOfIndex(shaperSendIndex(0, 0)) == 123 &&
                   idOfIndex(shaperSendIndex(kOps - 1, kShapers - 1)) == 374 &&
@@ -1390,6 +1541,12 @@ inline double normFromRate(double hz) { return std::log(hz / kMinRate) / std::lo
 inline double sweepRateHz(double norm) { return norm <= 0.0 ? 0.0 : rateFromNorm(norm); }
 inline double cutoffFromNorm(double x) { return kMinCutoff * std::pow(kMaxCutoff / kMinCutoff, x); }
 inline double normFromCutoff(double hz) { return std::log(hz / kMinCutoff) / std::log(kMaxCutoff / kMinCutoff); }
+// A split's crossovers in Hz from its Low and High params, High kept a third of an octave above Low, as the three-band
+// dynamics' are.
+inline std::array<double, 2> splitCrossovers(double lowNorm, double highNorm) {
+    const double low = cutoffFromNorm(std::clamp(lowNorm, 0.0, 1.0));
+    return {low, std::max(cutoffFromNorm(std::clamp(highNorm, 0.0, 1.0)), low * std::pow(2.0, 1.0 / 3.0))};
+}
 // Pitches in semitones (MIDI numbering, 69 is A4 at 440 Hz) and frequencies.
 inline double pitchOfHz(double hz) { return 69.0 + 12.0 * std::log2(hz / 440.0); }
 inline double hzOfPitch(double pitch) { return 440.0 * std::exp2((pitch - 69.0) / 12.0); }
@@ -1517,10 +1674,10 @@ constexpr int64_t permutationRank(const std::array<int, N> &order) {
     return rank;
 }
 
-// The effects chain's order: the slot at each of its places, a param a place (fxPositionIndex()), in the order
-// they run. Empty slots take no part. Any values make an order: a place holding no slot, or one an earlier place
-// holds, is passed over, and the slots no place holds run after the others, by number. `get(index)` returns a param
-// value.
+// The effects chain's order as a state from before version 9 holds it: the slot at each of its places, a param a place
+// (fxPositionIndex()), in the order they ran. Empty slots take no part. Any values make an order: a place holding no
+// slot, or one an earlier place holds, is passed over, and the slots no place holds run after the others, by number.
+// `get(index)` returns a param value.
 using FxOrder = std::array<int, kFxSlots>;
 constexpr int fxPositionIndex(int position) { return kFxPositionBase + position; }
 template <class Get>
@@ -1561,6 +1718,27 @@ inline FxOrder fxOrderStarting(std::initializer_list<int> first) {
         if (!taken[slot])
             order[n++] = slot;
     return order;
+}
+
+// The effects graph's wires (their From params) that run `slots` one after another from the input to the output, every
+// other wire taken away: a chain, as the graph has it. With none, the input goes straight out.
+inline std::vector<std::pair<int, double>> fxChainWires(const std::vector<int> &slots) {
+    std::vector<std::pair<int, double>> changes;
+    for (int node = 0; node < kFxNodes; ++node)
+        for (int input = 0; input < fxInputCount(node); ++input)
+            changes.push_back({fxInputIndex(node, input, FxInputField::From), 0.0});
+    auto wire = [&changes](int node, int port) {
+        for (auto &change : changes)
+            if (change.first == fxInputIndex(node, 0, FxInputField::From))
+                change.second = fxPortValue(port);
+    };
+    int port = kFxPortIn;
+    for (int slot : slots) {
+        wire(slot, port);
+        port = fxSlotPort(slot);
+    }
+    wire(kFxOutNode, port);
+    return changes;
 }
 
 // RetiredFxOrder: the order of the first kFirstFxSlots slots as one number, one of their kRetiredFxOrders
@@ -1836,7 +2014,10 @@ enum class ParamKind {
     OpRatio,      // 0..1 on a log curve, shown as a ratio to two places; see ratioFromNorm()
     DynRatio,     // 0..1 for 1:1 to infinity, shown as "4.0:1" or "∞:1"; see dynRatio()
     RouteMode,    // stepped: how a route acts on the operator it goes into (see RouteMode)
+    FxPort,       // stepped: the port a wire of the effects graph comes from (see fxPortValue()), 0 for none
 };
+// A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
+std::string fxPortName(int port);
 
 struct ParamDef {
     clap_id id;

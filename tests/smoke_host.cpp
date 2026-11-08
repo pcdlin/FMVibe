@@ -339,6 +339,11 @@ int main(int argc, char **argv) {
                   listed(paramIndex(0, MacroParam::Value)) &&
                   !listed(paramIndex(GlobalParam::RetiredFxOrder)) && !listed(fxPositionIndex(0)) &&
                   !listed(fxPositionIndex(kFxSlots - 1)) && !listed(paramIndex(kFxSlots - 1, FxParam::Type)) &&
+                  !listed(paramIndex(0, SplitParam::Low)) &&
+                  !listed(fxInputIndex(0, 0, FxInputField::Level)) &&
+                  !listed(fxInputIndex(kFxOutNode, kFxOutInputs - 1, FxInputField::From)) &&
+                  !listed(paramIndex(0, SumParam::Used)) &&
+                  !listed(fxInputIndex(fxSumNode(kFxSums - 1), kFxSumInputs - 1, FxInputField::Level)) &&
                   !listed(shapeCountIndex(0)) &&
                   !listed(partialCountIndex(0)) && !listed(slotAuxIndex(0, 0)) && !listed(slotCurveIndex(0, 0)) &&
                   !listed(slotBypassIndex(0, 0)) && !listed(routeModeIndex(0, 0)) && listed(routeModeIndex(0, 1)) &&
@@ -1457,7 +1462,31 @@ int main(int argc, char **argv) {
     runBlock({&phaseOff.header});
 
     // Sets params in one block, before the next check.
-    auto setParams = [&](const std::vector<std::pair<int, double>> &values) {
+    // The effects as the editor wires them: the slots that hold one, one after another in `fxOrderNow` (by number to
+    // begin with), from the effects graph's input to its output. Setting an effect's type rewires them, as adding or
+    // removing one in the editor does (unless a check wires the graph itself, `fxWired` off); setChainOrder() puts
+    // them in another order.
+    std::array<double, kFxSlots> fxTypes{};
+    FxOrder fxOrderNow = fxOrderStarting({});
+    bool fxWired = true;
+    auto chainWires = [&]() {
+        std::vector<int> chain;
+        for (int slot : fxOrderNow)
+            if (fxTypes[slot] != static_cast<double>(FxType::None))
+                chain.push_back(slot);
+        return fxChainWires(chain);
+    };
+    auto setParams = [&](const std::vector<std::pair<int, double>> &given) {
+        std::vector<std::pair<int, double>> values = given;
+        bool typed = false;
+        for (const auto &[index, value] : given)
+            if (const int slot = fxSlotOf(index); slot >= 0 && index == paramIndex(slot, FxParam::Type)) {
+                fxTypes[slot] = value;
+                typed = true;
+            }
+        if (typed && fxWired)
+            for (const auto &wire : chainWires())
+                values.push_back(wire);
         std::vector<clap_event_param_value_t> evs;
         for (const auto &[index, value] : values)
             evs.push_back(paramEvent(index, value));
@@ -1465,6 +1494,10 @@ int main(int argc, char **argv) {
         for (const clap_event_param_value_t &ev : evs)
             events.push_back(&ev.header);
         runBlock(events);
+    };
+    auto setChainOrder = [&](std::initializer_list<int> first) {
+        fxOrderNow = fxOrderStarting(first);
+        setParams(chainWires());
     };
 
     // Noise slope on A: white noise jumps from sample to sample, pink much less and
@@ -2334,6 +2367,184 @@ int main(int argc, char **argv) {
               "velocity and the note source scale a slot as their aux from a note's first block");
     }
 
+    // The effects graph, on the plain A4. Wires go into the slots, the splits and the output; a split's bands sum back
+    // flat, a band takes only its part of the sound through what it feeds, and the chain's retired places do nothing.
+    {
+        auto from = [](int node, int input) { return fxInputIndex(node, input, FxInputField::From); };
+        auto level = [](int node, int input) { return fxInputIndex(node, input, FxInputField::Level); };
+        auto port = [](int p) { return fxPortValue(p); };
+        // Clears every wire and split: the checks here wire the graph themselves.
+        auto clearGraph = [&]() {
+            fxWired = false;
+            std::vector<std::pair<int, double>> values;
+            for (int node = 0; node < kFxNodes; ++node)
+                for (int input = 0; input < fxInputCount(node); ++input)
+                    values.insert(values.end(), {{from(node, input), 0.0}, {level(node, input), 1.0}});
+            for (int split = 0; split < kFxSplits; ++split)
+                values.push_back({paramIndex(split, SplitParam::Used), 0.0});
+            for (int sum = 0; sum < kFxSums; ++sum)
+                values.push_back({paramIndex(sum, SumParam::Used), 0.0});
+            setParams(values);
+        };
+        auto db = [](double ratio) { return 20.0 * std::log10(ratio); };
+        const double plain = magnitude(play({}), 440.0);
+
+        // In straight to the output: as loud as the chain with nothing in it.
+        clearGraph();
+        setParams({{from(kFxOutNode, 0), port(kFxPortIn)}});
+        const double direct = magnitude(play({}), 440.0);
+        // Two wires at half each: as loud as one at full.
+        setParams({{from(kFxOutNode, 1), port(kFxPortIn)}, {level(kFxOutNode, 0), 0.5}, {level(kFxOutNode, 1), 0.5}});
+        const double halves = magnitude(play({}), 440.0);
+        // Through a split of two bands at 1 kHz and one of three at 200 Hz and 2 kHz, every band to the output.
+        clearGraph();
+        setParams({{paramIndex(0, SplitParam::Used), 1.0},
+                   {paramIndex(0, SplitParam::Bands), 2.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(1000.0)},
+                   {paramIndex(0, SplitParam::Slope), static_cast<double>(kFilterSlopes - 1)}, // 24 dB
+                   {from(fxSplitNode(0), 0), port(kFxPortIn)},
+                   {from(kFxOutNode, 0), port(fxBandPort(0, 0))},
+                   {from(kFxOutNode, 1), port(fxBandPort(0, 2))}});
+        const double twoBands = magnitude(play({}), 440.0);
+        // At 6 and 12 dB the two bands sum back flat too.
+        setParams({{paramIndex(0, SplitParam::Slope), 0.0}});
+        const double twoBands6 = magnitude(play({}), 440.0);
+        setParams({{paramIndex(0, SplitParam::Slope), 1.0}});
+        const double twoBands12 = magnitude(play({}), 440.0);
+        setParams({{paramIndex(0, SplitParam::Slope), static_cast<double>(kFilterSlopes - 1)}});
+        setParams({{paramIndex(0, SplitParam::Bands), 3.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(200.0)},
+                   {paramIndex(0, SplitParam::High), normFromCutoff(2000.0)},
+                   {from(kFxOutNode, 2), port(fxBandPort(0, 1))}});
+        const double threeBands = magnitude(play({}), 440.0);
+        // The three bands meeting in a sum, and the sum out at half: as loud as the A4 at half.
+        setParams({{paramIndex(0, SumParam::Used), 1.0},
+                   {from(fxSumNode(0), 0), port(fxBandPort(0, 0))},
+                   {from(fxSumNode(0), 1), port(fxBandPort(0, 1))},
+                   {from(fxSumNode(0), 2), port(fxBandPort(0, 2))},
+                   {from(kFxOutNode, 0), port(fxSumPort(0))},
+                   {from(kFxOutNode, 1), 0.0},
+                   {from(kFxOutNode, 2), 0.0},
+                   {level(kFxOutNode, 0), 0.5}});
+        const double summed = magnitude(play({}), 440.0);
+        std::printf("      graph: in to out %+.3f dB, two halves %+.3f dB, two bands %+.3f dB (at 6 dB %+.3f, at 12 "
+                    "%+.3f), three %+.3f dB, summed and out at half %+.3f dB\n",
+                    db(direct / plain), db(halves / plain), db(twoBands / plain), db(twoBands6 / plain),
+                    db(twoBands12 / plain), db(threeBands / plain), db(summed / plain));
+        check(std::abs(db(direct / plain)) < 0.1 && std::abs(db(halves / plain)) < 0.1 &&
+                  std::abs(db(twoBands / plain)) < 0.1 && std::abs(db(twoBands6 / plain)) < 0.1 &&
+                  std::abs(db(twoBands12 / plain)) < 0.1 && std::abs(db(threeBands / plain)) < 0.1 &&
+                  std::abs(db(summed / plain) + 6.02) < 0.1,
+              "the effects graph passes its input on, a split's bands sum back flat at every slope, and a sum adds up "
+              "its wires");
+
+        // The low band alone, its crossover two octaves under the A4: at 6 dB about 12 dB down, at 12 about 25, at
+        // 24 about 48.
+        clearGraph();
+        setParams({{paramIndex(0, SplitParam::Used), 1.0},
+                   {paramIndex(0, SplitParam::Bands), 2.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(110.0)},
+                   {from(fxSplitNode(0), 0), port(kFxPortIn)},
+                   {from(kFxOutNode, 0), port(fxBandPort(0, 0))}});
+        double lows[3] = {};
+        const int slopes[] = {0, 1, kFilterSlopes - 1};
+        for (int k = 0; k < 3; ++k) {
+            setParams({{paramIndex(0, SplitParam::Slope), static_cast<double>(slopes[k])}});
+            lows[k] = db(magnitude(play({}), 440.0) / plain);
+        }
+        std::printf("      a split's low band two octaves under the A4: %.1f dB at 6 dB, %.1f at 12, %.1f at 24\n",
+                    lows[0], lows[1], lows[2]);
+        check(std::abs(lows[0] + 12.3) < 2.0 && std::abs(lows[1] + 24.6) < 2.5 && lows[2] < -40.0,
+              "a split's slope sets how steeply its bands part");
+
+        // A join's solos: the A4 split at 1 kHz (24 dB) into a join, its high band on its first input and its low
+        // band on its second. Neither soloed, both play; the low band soloed keeps the A4, the high band soloed takes
+        // it away; both soloed, both play.
+        clearGraph();
+        setParams({{paramIndex(0, SplitParam::Used), 1.0},
+                   {paramIndex(0, SplitParam::Bands), 2.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(1000.0)},
+                   {paramIndex(0, SplitParam::Slope), static_cast<double>(kFilterSlopes - 1)},
+                   {paramIndex(0, SumParam::Used), 1.0},
+                   {from(fxSplitNode(0), 0), port(kFxPortIn)},
+                   {from(fxSumNode(0), 0), port(fxBandPort(0, 2))},
+                   {from(fxSumNode(0), 1), port(fxBandPort(0, 0))},
+                   {from(kFxOutNode, 0), port(fxSumPort(0))}});
+        auto soloed = [&](bool high, bool low) {
+            setParams({{paramIndex(0, SumParam::SoloHigh), high ? 1.0 : 0.0},
+                       {paramIndex(0, SumParam::SoloLow), low ? 1.0 : 0.0}});
+            return db(magnitude(play({}), 440.0) / plain);
+        };
+        const double neither = soloed(false, false), lowOnly = soloed(false, true), highOnly = soloed(true, false),
+                     both = soloed(true, true);
+        soloed(false, false);
+        std::printf("      a join's solos on the A4 split at 1 kHz: neither %+.1f dB, low %+.1f, high %+.1f, both %+.1f\n",
+                    neither, lowOnly, highOnly, both);
+        check(std::abs(neither) < 0.1 && std::abs(lowOnly) < 1.0 && highOnly < -20.0 && std::abs(both) < 0.1,
+              "a join's solo lets only the band soloed through");
+
+        // A hard shaper on the low band of a split: at 2 kHz the A4 goes through it and comes out squared (its 3rd
+        // harmonic), at 200 Hz it is in the high band, which goes straight out, and stays a sine.
+        clearGraph();
+        setParams({{paramIndex(0, FxParam::Type), static_cast<double>(FxType::Shaper)},
+                   {paramIndex(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
+                   {paramIndex(0, FxParam::ShaperLink), 0.0},
+                   {paramIndex(0, FxParam::ShaperDrive), 24.0},
+                   {paramIndex(0, FxParam::ShaperOutput), -6.0},
+                   {paramIndex(0, SplitParam::Used), 1.0},
+                   {paramIndex(0, SplitParam::Bands), 2.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(2000.0)},
+                   {from(fxSplitNode(0), 0), port(kFxPortIn)},
+                   {from(0, 0), port(fxBandPort(0, 0))},
+                   {from(kFxOutNode, 0), port(fxSlotPort(0))},
+                   {from(kFxOutNode, 1), port(fxBandPort(0, 2))}});
+        auto thirdRatio = [&]() {
+            const std::vector<float> signal = play({});
+            return signal.empty() ? NAN : magnitude(signal, 1320.0) / magnitude(signal, 440.0);
+        };
+        const double throughShaper = thirdRatio();
+        setParams({{paramIndex(0, SplitParam::Low), normFromCutoff(200.0)}});
+        const double pastShaper = thirdRatio();
+        std::printf("      hard shaper on a split's low band, 1320/440 Hz: %.4f split at 2 kHz, %.4f at 200 Hz\n",
+                    throughShaper, pastShaper);
+        check(throughShaper > 0.1 && pastShaper < 0.01, "an effect on a split's band takes only that band's sound");
+
+        // The chain's places, retired since the wires put the effects in order, do nothing: the shaper still takes only
+        // the low band, and the A4 above it stays a sine.
+        setParams(fxOrderChanges(fxOrderStarting({1, 2, 0})));
+        const double placed = thirdRatio();
+        setParams(fxOrderChanges(fxOrderStarting({})));
+        check(placed < 0.01, "the chain's retired places do nothing: the wires alone put the effects in order");
+
+        // A loop, which only params can make (the editor refuses it): the shaper fed back into itself stays finite.
+        clearGraph();
+        setParams({{from(0, 0), port(kFxPortIn)},
+                   {from(0, 1), port(fxSlotPort(0))},
+                   {level(0, 1), 1.0},
+                   {from(kFxOutNode, 0), port(fxSlotPort(0))}});
+        const float looped = peakOf(play({}));
+        std::printf("      a shaper fed back into itself: peak %.3f\n", looped);
+        check(std::isfinite(looped) && looped < 2.0f, "a loop in the effects graph stays finite");
+
+        // A macro takes a wire's level down.
+        clearGraph();
+        setParams({{from(kFxOutNode, 0), port(kFxPortIn)},
+                   {slotTargetIndex(kMaxSources, 0), slotTargetValue(level(kFxOutNode, 0))},
+                   {slotAmountIndex(kMaxSources, 0), -1.0},
+                   {paramIndex(0, MacroParam::Value), 1.0}});
+        const float macroed = peakOf(play({}));
+        setParams({{slotTargetIndex(kMaxSources, 0), 0.0},
+                   {slotAmountIndex(kMaxSources, 0), 0.0},
+                   {paramIndex(0, MacroParam::Value), 0.0}});
+        std::printf("      a wire taken down by a macro: peak %.4f\n", macroed);
+        check(macroed < 0.01f, "a wire's level takes modulation");
+
+        // The editor's wiring again: no effects, the input straight out.
+        clearGraph();
+        fxWired = true;
+        setParams({{paramIndex(0, FxParam::Type), static_cast<double>(FxType::None)}});
+    }
+
     // Effects, on the plain sine. Slot 0 holds a shaper, slot 1 a DJ EQ, slot 2
     // a delay, slot 3 a filter, slots 4 and 5 parametric EQs; each starts on.
     {
@@ -2394,9 +2605,9 @@ int main(int argc, char **argv) {
                    {fx(0, FxParam::ShaperOutput), 0.0},
                    {type(1), static_cast<double>(FxType::Eq)},
                    {fx(1, FxParam::EqMid), 1.0}});
-        setParams(fxOrderChanges(fxOrderStarting({0, 1, 2, 3, 4, 5})));
+        setChainOrder({0, 1, 2, 3, 4, 5});
         const float clipThenEq = peakOf(play({}));
-        setParams(fxOrderChanges(fxOrderStarting({1, 0, 2, 3, 4, 5})));
+        setChainOrder({1, 0, 2, 3, 4, 5});
         const float eqThenClip = peakOf(play({}));
         std::printf("      peak %.2f shaper then EQ, %.2f EQ then shaper\n", clipThenEq, eqThenClip);
         check(clipThenEq > 1.5f * eqThenClip, "the FX order changes the result");
@@ -2404,7 +2615,7 @@ int main(int argc, char **argv) {
         // DJ EQ: unity is transparent, killing the mid band removes the 440 Hz sine.
         // An empty slot passes the sound untouched.
         setParams({{type(0), static_cast<double>(FxType::None)}, {fx(1, FxParam::EqMid), 0.0}});
-        setParams(fxOrderChanges(fxOrderStarting({})));
+        setChainOrder({});
         const std::vector<float> flat = play({});
         setParams({{fx(1, FxParam::EqMid), -1.0}});
         const std::vector<float> killed = play({});
@@ -2426,9 +2637,9 @@ int main(int argc, char **argv) {
                    {fx(0, FxParam::ShaperMode), static_cast<double>(ClipMode::Hard)},
                    {fx(0, FxParam::ShaperDrive), 18.0},
                    {fx(0, FxParam::ShaperOutput), 0.0}});
-        setParams(fxOrderChanges(fxOrderStarting({0, last})));
+        setChainOrder({0, last});
         const float shapedThenEq = peakOf(play({}));
-        setParams(fxOrderChanges(fxOrderStarting({last, 0})));
+        setChainOrder({last, 0});
         const float eqThenShaped = peakOf(play({}));
         std::printf("      slot %d's EQ at 440 Hz with the mid killed: %.3f; peak %.2f after the shaper, %.2f before\n",
                     last + 1, lastKill, shapedThenEq, eqThenShaped);
@@ -2437,7 +2648,7 @@ int main(int argc, char **argv) {
         setParams({{type(last), static_cast<double>(FxType::None)},
                    {fx(last, FxParam::EqMid), 0.0},
                    {type(0), static_cast<double>(FxType::None)}});
-        setParams(fxOrderChanges(fxOrderStarting({})));
+        setChainOrder({});
 
         // Compressor: the sine peaks 18 dB over a -30 dB threshold; at 4:1 it comes out
         // 13.5 dB down (x0.21). Makeup brings it back up; at 0 % mix it is untouched.
@@ -3640,8 +3851,10 @@ int main(int argc, char **argv) {
               "glide stops at 6 s, and an earlier state's depth on it swings it as far as before");
     }
 
-    // The chain's order is a param a place since version 8: an earlier state's, the rank of the first 16 slots'
-    // order, loads onto the places, the later slots after them; a version 8 state's retired order does nothing.
+    // The chain's order: a param a place since version 8, the effects graph's wires since version 9. A version 7
+    // state's order, the rank of the first 16 slots' order, loads as the graph's line from the input to the output,
+    // the later slots after them; a version 8 state's retired order does nothing, its places (here as they start)
+    // putting the effects in order.
     {
         RetiredFxOrder swapped{};
         for (int i = 0; i < kFirstFxSlots; ++i)
@@ -3649,11 +3862,14 @@ int main(int argc, char **argv) {
         std::swap(swapped[0], swapped[1]);
         std::swap(swapped[2], swapped[kFirstFxSlots - 1]);
         const int retired = paramIndex(GlobalParam::RetiredFxOrder);
+        const int filled[] = {0, 1, 2, kFirstFxSlots - 1, kFxSlots - 1}; // the slots that hold an effect
         auto loadFrom = [&](uint32_t version) {
-            const std::pair<int, double> stored[] = {
+            std::vector<std::pair<int, double>> stored = {
                 {retired, static_cast<double>(permutationRank<kFirstFxSlots>(swapped))}};
+            for (int slot : filled)
+                stored.push_back({paramIndex(slot, FxParam::Type), static_cast<double>(FxType::Eq)});
             MemoryStream old;
-            const uint32_t header[] = {0x38454C43, version, static_cast<uint32_t>(std::size(stored))};
+            const uint32_t header[] = {0x38454C43, version, static_cast<uint32_t>(stored.size())};
             old.data.assign(reinterpret_cast<const uint8_t *>(header),
                             reinterpret_cast<const uint8_t *>(header) + sizeof(header));
             for (const auto &[index, value] : stored) {
@@ -3663,25 +3879,32 @@ int main(int argc, char **argv) {
                 old.data.insert(old.data.end(), reinterpret_cast<const uint8_t *>(&value),
                                 reinterpret_cast<const uint8_t *>(&value) + sizeof(value));
             }
-            std::vector<double> places(kFxSlots, -1.0);
+            std::vector<int> line; // the slots from the input to the output, back along the wires
             if (state->load(plugin, &old.in)) {
                 plugin->on_main_thread(plugin);
-                for (int place = 0; place < kFxSlots; ++place)
-                    params->get_value(plugin, idOfIndex(fxPositionIndex(place)), &places[place]);
+                auto from = [&](int node) {
+                    double value = 0.0;
+                    params->get_value(plugin, idOfIndex(fxInputIndex(node, 0, FxInputField::From)), &value);
+                    return fxPortOf(value);
+                };
+                for (int port = from(kFxOutNode); fxPortSlot(port) >= 0 && line.size() < kFxSlots;
+                     port = from(fxPortSlot(port)))
+                    line.insert(line.begin(), fxPortSlot(port));
             }
-            return places;
+            return line;
         };
-        const std::vector<double> seven = loadFrom(7), eight = loadFrom(8);
-        bool sevenOk = true, eightOk = true;
-        for (int place = 0; place < kFxSlots; ++place) {
-            const int want = place < kFirstFxSlots ? swapped[place] : place;
-            sevenOk = sevenOk && seven[place] == want;
-            eightOk = eightOk && eight[place] == place;
-        }
-        std::printf("      a version 7 state's order loads as %.0f,%.0f,%.0f ... %.0f,%.0f; version 8's as %.0f,%.0f\n",
-                    seven[0] + 1, seven[1] + 1, seven[2] + 1, seven[kFirstFxSlots - 1] + 1, seven[kFxSlots - 1] + 1,
-                    eight[0] + 1, eight[1] + 1);
-        check(sevenOk && eightOk, "an earlier state's chain order loads onto the places, the later slots after it");
+        const std::vector<int> seven = loadFrom(7), eight = loadFrom(8);
+        const std::vector<int> wantSeven = {1, 0, kFirstFxSlots - 1, 2, kFxSlots - 1};
+        const std::vector<int> wantEight = {0, 1, 2, kFirstFxSlots - 1, kFxSlots - 1};
+        std::printf("      a version 7 state's chain loads as the line");
+        for (int slot : seven)
+            std::printf(" %d", slot + 1);
+        std::printf(", version 8's as");
+        for (int slot : eight)
+            std::printf(" %d", slot + 1);
+        std::printf("\n");
+        check(seven == wantSeven && eight == wantEight,
+              "an earlier state's chain order loads as the effects graph's line, the later slots after it");
     }
 
     // An operator's ratio is one param, Ratio, since version 5: an earlier state's loads from its Coarse and Fine as
@@ -3884,6 +4107,11 @@ int main(int argc, char **argv) {
         }
         layout.insert(layout.end(), {1.0f, 1.0f}); // an LFO's shape drawn in steps, snapping to the grid
         layout.push_back(3.0f);                    // folded cards past the 16th slot
+        layout.push_back(static_cast<float>(kFxSlots)); // the graph's inspector showing the first split
+        layout.push_back(1.0f);                         // the FX view showing the graph
+        for (int split = 0; split < kFxSplits; ++split)
+            layout.push_back(static_cast<float>(split % 2 == 0)); // the band each split shows, some the high one
+        layout.push_back(5.0f);                                   // splits' containers folded
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {

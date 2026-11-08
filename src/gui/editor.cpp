@@ -279,8 +279,19 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         invalidate();
         return 0;
     case WM_TIMER:
-        if (wParam == kPollTimer && view_.poll())
-            invalidate();
+        if (wParam == kPollTimer) {
+            // Ctrl let go, or pressed with the mouse over the editor: while the host has the keyboard no key message
+            // comes here, and only the next mouse move would tell the view (whose grid shows while Ctrl is held). A
+            // press counts only while a window of this process is in front, not Ctrl held in another application.
+            const bool ctrl = GetAsyncKeyState(VK_CONTROL) < 0;
+            DWORD front = 0;
+            if (const HWND foreground = GetForegroundWindow())
+                GetWindowThreadProcessId(foreground, &front);
+            const bool ours = front == GetCurrentProcessId();
+            const bool ctrlChanged = (!ctrl || (trackingLeave_ && ours)) && view_.setCtrl(ctrl);
+            if (view_.poll() || ctrlChanged)
+                invalidate();
+        }
         return 0;
     case kPresetMessage:
         browsePreset(wParam != 0);
@@ -363,17 +374,25 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_GETDLGCODE: // in a host's dialog, Enter, Escape and the arrows still come here
         return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
     case WM_KEYDOWN:
+        if (wParam == VK_CONTROL && view_.setCtrl(true)) // a graph's grid shows while Ctrl is held
+            invalidate();
         if (key(wParam, lParam)) {
             syncFocus();
             invalidate();
             return 0;
         }
         break;
+    case WM_KEYUP:
+        if (wParam == VK_CONTROL && view_.setCtrl(false))
+            invalidate();
+        break;
     case WM_CHAR:
         if (view_.typing())
             return 0; // key() took the character already: not every host translates keys into WM_CHAR
         break;
     case WM_KILLFOCUS:
+        if (view_.setCtrl(false)) // no key-up comes once the keyboard is gone
+            invalidate();
         // Clicked away into the host: the value typed so far counts.
         if (view_.typing()) {
             hasKeyboard_ = false;

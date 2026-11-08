@@ -338,6 +338,48 @@ void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale)
 }
 
 // A small picture of each effect, for its card's title and the ADD EFFECT list.
+void splitIcon(Canvas &c, Rect r, Color color) {
+    const Point from{r.x, r.center().y}, fork{r.x + r.w * 0.4f, r.center().y};
+    c.line(from, fork, color, 1.5f);
+    for (float y : {-0.45f, 0.45f})
+        c.line(fork, {r.right(), r.center().y + y * r.h}, color, 1.5f);
+}
+
+void joinIcon(Canvas &c, Rect r, Color color) {
+    const Point meet{r.x + r.w * 0.6f, r.center().y};
+    c.line({r.x, r.center().y - 0.45f * r.h}, meet, color, 1.5f);
+    c.line({r.x, r.center().y + 0.45f * r.h}, meet, color, 1.5f);
+    c.line(meet, {r.right(), r.center().y}, color, 1.5f);
+}
+
+void binIcon(Canvas &c, Point m, Color color) {
+    c.line({m.x - 6.0f, m.y - 4.5f}, {m.x + 6.0f, m.y - 4.5f}, color, 1.3f); // its lid
+    const Point handle[] = {{m.x - 2.0f, m.y - 4.5f}, {m.x - 2.0f, m.y - 6.5f}, {m.x + 2.0f, m.y - 6.5f},
+                            {m.x + 2.0f, m.y - 4.5f}};
+    c.polyline(handle, 4, color, 1.2f);
+    const Point body[] = {{m.x - 4.5f, m.y - 3.0f}, {m.x - 3.5f, m.y + 6.5f}, {m.x + 3.5f, m.y + 6.5f},
+                          {m.x + 4.5f, m.y - 3.0f}};
+    c.polyline(body, 4, color, 1.3f);
+    for (const float x : {-1.5f, 1.5f})
+        c.line({m.x + x, m.y - 1.0f}, {m.x + x * 0.8f, m.y + 4.5f}, color, 1.1f);
+}
+
+void fxModeIcon(Canvas &c, Point m, bool graph, Color color) {
+    if (!graph) { // three cards in a row
+        for (int i = -1; i <= 1; ++i)
+            c.strokeRect({m.x + i * 6.0f - 2.5f, m.y - 5.0f, 5.0f, 10.0f}, color, 1.2f, 1.0f);
+        return;
+    }
+    // A node forking into two, which meet again
+    const Point a{m.x - 8.0f, m.y}, b{m.x + 8.0f, m.y}, up{m.x, m.y - 5.0f}, down{m.x, m.y + 5.0f};
+    c.line(a, up, color, 1.2f);
+    c.line(a, down, color, 1.2f);
+    c.line(up, b, color, 1.2f);
+    c.line(down, b, color, 1.2f);
+    for (const Point p : {a, b, up, down})
+        c.fillCircle(p, 1.8f, color);
+}
+
 void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
     std::vector<Point> points;
     auto at = [&](float x, float y) { points.push_back({r.x + x * r.w, r.center().y - y * r.h * 0.5f}); };

@@ -46,7 +46,10 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    Glide loads larger by as much as its range shrank, swinging it as far as before.
 // 8: The chain has 32 slots, its order a param a place (see fxOrder()); it was one number, the rank of the first 16
 //    slots' order (RetiredFxOrder), which an earlier state's order loads from.
-constexpr uint32_t kStateVersion = 8;
+// 9: The effects always run as the effects graph, whose wires alone put them in order: the chain is a line of it. An
+//    earlier state that doesn't wire the output (one saved with the effects as a chain) loads its chain's order as the
+//    line from the input to the output (see fxChainWires()), and the chain's places do nothing.
+constexpr uint32_t kStateVersion = 9;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -298,6 +301,12 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.shapeSnap, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
     // The effect cards folded past the first 16 slots, which the 16 bits above don't reach.
     io.number(ui.fxFoldedLater, 0.0f, 65535.0f, rounded<uint32_t>);
+    // The node the effects graph's inspector shows.
+    io.number(ui.fxSelected, -1.0f, kFxNodes - 1.0f, rounded<int>);
+    // Whether the FX view shows the graph, the band each split shows, and the splits' containers folded.
+    io.number(ui.fxGraphView, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    io.numbers(ui.splitBand, 0.0f, 1.0f, rounded<int>);
+    io.number(ui.splitsFolded, 0.0f, 15.0f, rounded<uint32_t>);
 }
 
 } // namespace
@@ -459,6 +468,9 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     for (int i = 0; i < kParamCount; ++i)
         loaded[i] = table[i].def;
     const int volume = paramIndex(GlobalParam::Volume);
+    // Whether the state wires the effects graph's output: before version 9, only one saved with them as a graph does.
+    bool outWired = false;
+    const int outFirst = fxInputIndex(kFxOutNode, 0, FxInputField::From);
     for (uint32_t n = 0; n < header[2]; ++n) {
         uint32_t id;
         double value;
@@ -471,6 +483,9 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
             value -= 12.0; // as loud as it was
         if (i >= 0)
             loaded[i] = std::clamp(value, table[i].min, table[i].max);
+        if (i >= outFirst && i < outFirst + kFxOutInputs * kFxInputFields && (i - outFirst) % kFxInputFields == 0 &&
+            fxPortOf(value) >= 0)
+            outWired = true;
     }
     if (header[1] < 3 && loaded[paramIndex(GlobalParam::Mono)] < 0.5) // as it played
         loaded[paramIndex(GlobalParam::Legato)] = 0.0;
@@ -497,6 +512,18 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         for (const auto &[index, value] : fxOrderChanges(fxOrderFromRetired(loaded[retired])))
             loaded[index] = value;
         loaded[retired] = table[retired].def;
+    }
+    if (header[1] < 9) { // the chain's effects in its order, as the graph's line
+        if (!outWired) {
+            std::vector<int> chain;
+            for (int slot : fxOrder([&loaded](int index) { return loaded[index]; }))
+                if (fxType(loaded[paramIndex(slot, FxParam::Type)]) != FxType::None)
+                    chain.push_back(slot);
+            for (const auto &[index, value] : fxChainWires(chain))
+                loaded[index] = value;
+        }
+        for (int position = 0; position < kFxSlots; ++position)
+            loaded[fxPositionIndex(position)] = table[fxPositionIndex(position)].def;
     }
     return true;
 }

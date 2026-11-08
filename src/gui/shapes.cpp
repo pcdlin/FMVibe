@@ -40,9 +40,7 @@ Rect View::shapeArea(int shape) const {
 
 Rect View::shapeAreaNow(int shape) const {
     if (shape >= 0 && isClipCurve(shape) && shapeEditing() != shape) { // in its card
-        const std::vector<int> chain = fxChainShown();
-        const auto at = std::find(chain.begin(), chain.end(), shape - kMaxSources);
-        return fxDisplay(fxScreen(chain, static_cast<size_t>(at - chain.begin())), FxType::Shaper).inset(8.0f);
+        return fxDisplayIn(fxCardOf(shape - kMaxSources).value_or(Rect{}), FxType::Shaper).inset(8.0f);
     }
     if (shape >= 0 && isShaperCurve(shape) && shapeEditing() != shape) // on its page in the inspector
         return kShaperDisplay.inset(8.0f);

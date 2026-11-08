@@ -26,6 +26,12 @@ using namespace fmvibe;
 
 namespace {
 
+// The effects in `slots` one after another from the input to the output: a chain, as the effects graph wires it.
+void chain(ParamValues &p, const std::vector<int> &slots) {
+    for (const auto &[index, value] : fxChainWires(slots))
+        p[index] = value;
+}
+
 int failures = 0;
 
 void check(bool ok, const char *what) {
@@ -204,6 +210,7 @@ void effectsChainChecks() {
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        chain(p, {0});
         p[paramIndex(0, FxParam::ReverbPreDelay)] = normFromTime(0.2);
         p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(1.0);
         constexpr uint32_t kPiece = 32;
@@ -248,6 +255,7 @@ void effectsChainChecks() {
             auto roughJump = [&jump](uint32_t piece) {
                 Engine e(2);
                 e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(jump.type);
+                chain(e.p, {0});
                 e.p[paramIndex(0, jump.param)] = jump.from;
                 e.noteOn(48);
                 const std::vector<float> before = e.render(4800, piece);
@@ -266,6 +274,7 @@ void effectsChainChecks() {
         // of a C3 away, switched in single frames, under 4 times as rough as the note before it (as a stolen voice).
         Engine e(2);
         e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+        chain(e.p, {0});
         e.p[peqTypeIndex(0, 2)] = static_cast<double>(PeqType::LowCut);
         e.p[peqFreqIndex(0, 2)] = normFromCutoff(5000.0);
         e.p[peqOnIndex(0, 2)] = 0.0;
@@ -291,6 +300,202 @@ void effectsChainChecks() {
               "a parametric EQ band switched on and off fades in and out without a click");
     }
     {
+        // A wire of the effects graph connected and taken away fades rather than clicking: a second wire from the
+        // input to the output, doubling a C3, then gone again, in single frames, under 4 times as rough as the note.
+        Engine e(2);
+        e.p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        e.noteOn(48);
+        const std::vector<float> before = e.render(4800, 1);
+        e.p[fxInputIndex(kFxOutNode, 1, FxInputField::From)] = fxPortValue(kFxPortIn);
+        const std::vector<float> on = e.render(2400, 1);
+        e.p[fxInputIndex(kFxOutNode, 1, FxInputField::From)] = 0.0;
+        const std::vector<float> all = joined(joined(before, on), e.render(2400, 1));
+        const double steady = roughness(all, 2400, before.size());
+        const size_t gone = before.size() + on.size();
+        const double switched =
+            std::max(roughness(all, before.size() - 2, before.size() + 480), roughness(all, gone - 2, gone + 480));
+        double doubled = 0.0, single = 0.0;
+        for (size_t i = before.size() + 480; i < gone; ++i)
+            doubled = std::max(doubled, static_cast<double>(std::abs(all[i])));
+        for (size_t i = 2400; i < before.size(); ++i)
+            single = std::max(single, static_cast<double>(std::abs(all[i])));
+        std::printf("      a wire connected and taken away: %.2fx as rough as the note, doubling it x%.3f\n",
+                    switched / steady, doubled / single);
+        check(switched < 4.0 * steady && std::abs(doubled / single - 2.0) < 0.05,
+              "a wire of the effects graph connected and taken away fades in and out without a click");
+    }
+    {
+        // Editing a graph while a C3 plays: neither a click (under 4 times as rough as the note) nor a dip (each
+        // period's peak at least 90 % of the note's, where a wire fading out before the next fades in would leave a
+        // gap). Each edit is what the editor writes: wires moved, nodes coming and going.
+        auto from = [](int node, int input) { return fxInputIndex(node, input, FxInputField::From); };
+        auto port = [](int p) { return fxPortValue(p); };
+        const size_t period = static_cast<size_t>(kSampleRate / 130.81) + 1;
+        auto steadyEdit = [&](const char *what, auto &&before, auto &&edit) {
+            Engine e(2);
+            before(e.p);
+            e.noteOn(48);
+            const std::vector<float> settled = e.render(9600, 1);
+            edit(e.p);
+            const std::vector<float> all = joined(settled, e.render(2400, 1));
+            const double steady = roughness(all, 4800, settled.size());
+            const double switched = roughness(all, settled.size() - 2, settled.size() + 960);
+            double peak = 0.0, least = 1e9;
+            for (size_t i = 4800; i < settled.size(); ++i)
+                peak = std::max(peak, static_cast<double>(std::abs(all[i])));
+            for (size_t at = settled.size() - period; at + period < all.size(); at += period / 4) {
+                double most = 0.0;
+                for (size_t i = at; i < at + period; ++i)
+                    most = std::max(most, static_cast<double>(std::abs(all[i])));
+                least = std::min(least, most);
+            }
+            std::printf("      %-48s %.2fx as rough, its least period at %.3f\n", what, switched / steady,
+                        least / peak);
+            return switched < 4.0 * steady && least > 0.9 * peak;
+        };
+        // Parametric EQs as they start (every band at 0 dB, passing the note as it is) in slots 0 and 1, as a chain.
+        auto eqs = [](ParamValues &p) {
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+            p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+        };
+        auto line = [&](ParamValues &p) { // IN, the first EQ, OUT
+            eqs(p);
+            p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::None);
+            p[from(0, 0)] = port(kFxPortIn);
+            p[from(kFxOutNode, 0)] = port(fxSlotPort(0));
+        };
+        const bool added = steadyEdit("an effect added at the line's end", line, [&](ParamValues &p) {
+            p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+            p[from(1, 0)] = port(fxSlotPort(0));
+            p[from(kFxOutNode, 0)] = port(fxSlotPort(1));
+        });
+        const bool removed = steadyEdit("an effect taken out of the line", line, [&](ParamValues &p) {
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::None);
+            p[from(0, 0)] = 0.0;
+            p[from(kFxOutNode, 0)] = port(kFxPortIn);
+        });
+        // A split at 2 kHz, the first EQ on its high band and its low band empty, into its join and out.
+        auto split = [&](ParamValues &p) {
+            line(p);
+            p[paramIndex(0, SplitParam::Used)] = 1.0;
+            p[paramIndex(0, SplitParam::Low)] = normFromCutoff(2000.0);
+            p[paramIndex(0, SumParam::Used)] = 1.0;
+            p[from(fxSplitNode(0), 0)] = port(kFxPortIn);
+            p[from(0, 0)] = port(fxBandPort(0, kFxBands - 1));
+            p[from(fxSumNode(0), 0)] = port(fxSlotPort(0));
+            p[from(fxSumNode(0), 1)] = port(fxBandPort(0, 0));
+            p[from(kFxOutNode, 0)] = port(fxSumPort(0));
+        };
+        const bool unsplit = steadyEdit("a split and its join taken out", split, [&](ParamValues &p) {
+            p[paramIndex(0, SplitParam::Used)] = 0.0;
+            p[paramIndex(0, SumParam::Used)] = 0.0;
+            p[from(fxSplitNode(0), 0)] = 0.0;
+            p[from(fxSumNode(0), 0)] = 0.0;
+            p[from(fxSumNode(0), 1)] = 0.0;
+            p[from(0, 0)] = port(kFxPortIn);
+            p[from(kFxOutNode, 0)] = port(fxSlotPort(0));
+        });
+        const bool sloped = steadyEdit("a split's slope from 24 to 6 dB", split, [&](ParamValues &p) {
+            p[paramIndex(0, SplitParam::Slope)] = 0.0;
+        });
+        check(added && removed && unsplit && sloped,
+              "editing the effects graph as a note plays neither clicks nor drops out");
+
+        // The two EQs one after the other, then the other way round, as a card dragged along the row writes it: the
+        // output ducks out and back in around the move (its wires crossfading would loop) rather than clicking.
+        Engine e(2);
+        eqs(e.p);
+        chain(e.p, {0, 1});
+        e.noteOn(48);
+        const std::vector<float> settled = e.render(9600, 1);
+        chain(e.p, {1, 0});
+        const std::vector<float> all = joined(settled, e.render(2400, 1));
+        const double steady = roughness(all, 4800, settled.size());
+        const double switched = roughness(all, settled.size() - 2, settled.size() + 960);
+        double back = 0.0, peak = 0.0;
+        for (size_t i = 4800; i < settled.size(); ++i)
+            peak = std::max(peak, static_cast<double>(std::abs(all[i])));
+        for (size_t i = settled.size() + 960; i < all.size(); ++i)
+            back = std::max(back, static_cast<double>(std::abs(all[i])));
+        std::printf("      two effects swapped along the line: %.2fx as rough as the note, back at %.3f\n",
+                    switched / steady, back / peak);
+        check(switched < 4.0 * steady && back > 0.95 * peak,
+              "two effects swapped along the line duck out and back in without a click");
+    }
+    {
+        // An effect the output doesn't hear doesn't run: a delay fed from IN with nothing reading it neither lights its
+        // port nor keeps the effects ringing on after its echoes would; read by OUT, it runs.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        fx.setAnalyzing(true); // as while the editor is open, which reads the ports
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+        p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        std::vector<float> left(4800), right(4800);
+        auto sine = [&]() {
+            for (int i = 0; i < 4800; ++i)
+                left[i] = right[i] =
+                    static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * i / kSampleRate));
+        };
+        auto silence = [&](int blocks) {
+            for (int k = 0; k < blocks; ++k) {
+                std::fill(left.begin(), left.end(), 0.0f);
+                std::fill(right.begin(), right.end(), 0.0f);
+                fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+            }
+        };
+        sine();
+        fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        const float unheard = fx.portLevel(fxSlotPort(0));
+        silence(2);
+        const bool rings = fx.ringing();
+        p[fxInputIndex(kFxOutNode, 1, FxInputField::From)] = fxPortValue(fxSlotPort(0));
+        sine();
+        fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        const float heard = fx.portLevel(fxSlotPort(0));
+        silence(2);
+        std::printf("      a delay nothing reads: its port %.3f, ringing %d; read by OUT: %.3f, ringing %d\n", unheard,
+                    rings, heard, fx.ringing());
+        check(unheard == 0.0f && !rings && heard > 0.1f && fx.ringing(),
+              "an effect in the graph runs only while the output hears it");
+    }
+    {
+        // The effects graph's ports, as the editor lights its nodes and wires by them: a sine at half scale from IN
+        // through a DJ EQ at its middle to OUT reads half scale at IN and out of the EQ, an effect not in the graph 0;
+        // a second of silence after, every port has fallen about 90 dB. With nothing analyzing (no editor open), the
+        // ports aren't measured and read nothing.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        fx.setAnalyzing(true);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Eq);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Delay);
+        p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(fxSlotPort(0));
+        std::vector<float> left(4800), right(4800);
+        for (int i = 0; i < 4800; ++i)
+            left[i] = right[i] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * i / kSampleRate));
+        fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        const float in = fx.portLevel(kFxPortIn), eq = fx.portLevel(fxSlotPort(0)), apart = fx.portLevel(fxSlotPort(1));
+        for (int k = 0; k < 10; ++k) {
+            std::fill(left.begin(), left.end(), 0.0f);
+            std::fill(right.begin(), right.end(), 0.0f);
+            fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        }
+        const float fallen = fx.portLevel(fxSlotPort(0));
+        fx.setAnalyzing(false);
+        for (int i = 0; i < 4800; ++i)
+            left[i] = right[i] = static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * i / kSampleRate));
+        fx.process(left.data(), right.data(), 4800, p, 120.0, 60.0);
+        const float unmeasured = fx.portLevel(kFxPortIn) + fx.portLevel(fxSlotPort(0));
+        std::printf("      graph ports: IN %.3f, EQ %.3f, apart %.3f, after a second %.1f dB down; not analyzing %.3f\n",
+                    in, eq, apart, 20.0 * std::log10(eq / std::max(fallen, 1e-9f)), unmeasured);
+        check(std::abs(in - 0.5f) < 0.01f && std::abs(eq - 0.5f) < 0.05f && apart == 0.0f &&
+                  std::abs(20.0 * std::log10(eq / fallen) - Effects::kPortFallDb) < 3.0 && unmeasured == 0.0f,
+              "the effects graph tells how loud each of its ports is while the editor analyzes, falling away after");
+    }
+    {
         // A sine at -40 dB and 50 Hz through the shaper effect's drawn curve (as it starts: smooth, here made odd),
         // at unity gain: each sample comes out as the curve has it at the middle of its step, through the DC blocker
         // every drawn curve has.
@@ -298,6 +503,7 @@ void effectsChainChecks() {
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        chain(p, {0});
         p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
         p[paramIndex(0, FxParam::ShaperSymmetric)] = 1.0;
         p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
@@ -338,6 +544,7 @@ void effectsChainChecks() {
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            chain(p, {0});
             p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
             p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
             p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
@@ -373,6 +580,7 @@ void effectsChainChecks() {
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            chain(p, {0});
             p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
             p[paramIndex(0, FxParam::ShaperSymmetric)] = symmetric ? 1.0 : 0.0;
             p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
@@ -454,6 +662,7 @@ void effectsChainChecks() {
         };
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {0});
         // The low and high bands hold only what leaks past the crossovers, quiet: at 1:1 up, they leave it be.
         p[mdUpIndex(0, 0)] = p[mdUpIndex(0, 2)] = normFromDynRatio(1.0);
         const double rms = 20.0 * std::log10(std::sqrt(0.5)); // a sine's RMS level against its peak
@@ -494,6 +703,7 @@ void effectsChainChecks() {
         // each band its own settings, linked or not, so the low band at 1:1 leaves the mid band's loud sine pulled down.
         p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {0});
         p[mdUpIndex(0, 0)] = p[mdDownIndex(0, 0)] = normFromDynRatio(1.0);
         const double unlinked = settled(p, std::pow(10.0, loudDb / 20.0))[0];
         p[paramIndex(0, FxParam::MdLink)] = 1.0;
@@ -506,6 +716,7 @@ void effectsChainChecks() {
         // Above. Its text says so, and reads back.
         p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {0});
         p[mdUpIndex(0, 0)] = p[mdUpIndex(0, 2)] = normFromDynRatio(1.0);
         p[mdDownIndex(0, 1)] = 1.0;
         const auto held = settled(p, std::pow(10.0, loudDb / 20.0));
@@ -528,6 +739,7 @@ void effectsChainChecks() {
         // so the dynamics' bands take the low band's values.
         ParamValues p = defaults();
         p[paramIndex(3, FxParam::Type)] = static_cast<double>(FxType::MultiComp);
+        chain(p, {3});
         p[paramIndex(3, FxParam::McLowFreq)] = normFromCutoff(150.0);
         p[mcThresholdIndex(3, 1)] = -33.0;
         p[mcRatioIndex(3, 2)] = 7.0;
@@ -597,6 +809,7 @@ void effectsChainChecks() {
             fx.prepare(kSampleRate);
             ParamValues p = defaults();
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
+            chain(p, {0});
             p[paramIndex(0, FxParam::FilterCutoff)] = normFromCutoff(80.0);
             p[paramIndex(0, FxParam::FilterResonance)] = 0.9;
             p[paramIndex(0, FxParam::FilterMix)] = 1.0;
@@ -624,6 +837,7 @@ void effectsChainChecks() {
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        chain(p, {0});
         p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
         p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(0.2);
         p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Plate);
@@ -642,6 +856,7 @@ void effectsChainChecks() {
         fx.prepare(kSampleRate);
         ParamValues p = defaults();
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        chain(p, {0});
         p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Asymmetric);
         p[paramIndex(0, FxParam::ShaperDrive)] = 24.0;
         run(fx, p, 0.5, 110.0, 0.5);
@@ -1476,6 +1691,16 @@ int main() {
         const double pan = unexpectedDb(steadyTone(1, key, panMod), partials);
         std::printf("      %-30s %7.1f\n", "LFO on operator Pan", pan);
         check(pan < -80.0, "LFO on an operator's Pan doesn't zipper");
+        // The effects graph's input straight to its output, its wire's level swung like operator Out's above.
+        auto wireMod = [&](ParamValues &p) {
+            const int level = fxInputIndex(kFxOutNode, 0, FxInputField::Level);
+            p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+            p[level] = 0.5;
+            lfoOn(p, level, 0.4, lfo);
+        };
+        const double wire = unexpectedDb(steadyTone(1, key, wireMod), {f0, f0 - lfo, f0 + lfo});
+        std::printf("      %-30s %7.1f\n", "LFO on an effects graph wire", wire);
+        check(wire < -70.0, "LFO on a wire of the effects graph doesn't zipper");
     }
 
     // --- The random LFO: how far its steps go with chaos, and how smoothing glides between them.
@@ -1647,6 +1872,7 @@ int main() {
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
         p[paramIndex(0, FxParam::Type)] = static_cast<double>(type);
+        chain(p, {0});
         p[paramIndex(0, FxParam::DisperserMix)] = 1.0;
         std::vector<float> left(kBlock), right(kBlock);
         size_t t = 0;
@@ -1681,6 +1907,7 @@ int main() {
                 p[i] = paramTable()[i].def;
             const bool phaser = type == FxType::Phaser;
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(type);
+            chain(p, {0});
             p[paramIndex(0, phaser ? FxParam::PhaserRate : FxParam::FlangerRate)] = 0.0;
             p[paramIndex(0, phaser ? FxParam::PhaserSync : FxParam::FlangerSync)] = 1.0;
             p[paramIndex(0, phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision)] = 13.0; // 1/4
@@ -1712,6 +1939,7 @@ int main() {
             for (int i = 0; i < kParamCount; ++i)
                 p[i] = paramTable()[i].def;
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            chain(p, {0});
             p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(type);
             p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(2.5);
             p[paramIndex(0, FxParam::ReverbDamping)] = damping;
@@ -1810,6 +2038,7 @@ int main() {
             for (int i = 0; i < kParamCount; ++i)
                 p[i] = paramTable()[i].def;
             p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            chain(p, {0});
             p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Shimmer);
             p[paramIndex(0, FxParam::ReverbShimmer)] = amount;
             p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(decay);
@@ -2084,6 +2313,7 @@ int main() {
         auto clipped = [](double volume) {
             Engine e(2);
             e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            chain(e.p, {0});
             e.p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Hard);
             e.p[paramIndex(0, FxParam::ShaperDrive)] = 24.0;
             e.p[paramIndex(0, FxParam::ShaperLink)] = 0.0;

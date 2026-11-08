@@ -34,6 +34,13 @@ constexpr Rect kRouting{16.0f, kPanelsTop, 852.0f, 372.0f};
 constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
 constexpr float kBusY = kRouting.y + kRouting.h - 30.0f;
+// Ctrl+drag puts a node of the routing graph on the nearest point of a coarse grid over the area its center may go
+// in: the cells' centers, kRoutingGridCols x kRoutingGridRows.
+constexpr int kRoutingGridCols = 12, kRoutingGridRows = 5;
+inline Point gridPoint(Rect area, int cols, int rows, int col, int row) {
+    return {area.x + (static_cast<float>(col) + 0.5f) / static_cast<float>(cols) * area.w,
+            area.y + (static_cast<float>(row) + 0.5f) / static_cast<float>(rows) * area.h};
+}
 constexpr float kNodeRadius = 24.0f;
 // The node the inspector shows: filled with its color at this strength, and ringed in it this far out.
 constexpr float kSelectedFill = 0.25f;
@@ -169,7 +176,9 @@ constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel'
 constexpr Rect kFxPanel{kRouting.x, kRouting.y, kInspector.x + kInspector.w - kRouting.x, kRouting.h};
 constexpr int kVisibleFx = 6;
 constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
-constexpr float kFxCardW = (kFxPanel.w - 32.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
+// The row's first card starts a gap in from the clip it scrolls in (see fxCardClip()), for the arrow before it.
+constexpr float kFxRowLeft = 8.0f + kFxGap;
+constexpr float kFxCardW = (kFxPanel.w - kFxRowLeft - 16.0f - (kVisibleFx - 1) * kFxGap) / kVisibleFx;
 constexpr float kFxTop = kRouting.y + 48.0f;
 // The MODS view covers them too: a row per modulation under the columns' names (the count at the right of their
 // row), scrolling with a bar at the right. Within a row, from its left: the bypass dot, the source and its polarity
@@ -347,6 +356,35 @@ constexpr float kSourceShadowSpan = (kSourceShadowW + kCardGap) / (kCardW + kCar
 constexpr float kFxIconX = 10.0f; // the icon's left edge, from the card's
 constexpr float kFxIconW = 18.0f;
 constexpr float kFoldedFx = (2.0f * kFxIconX + kFxIconW + kFxGap) / (kFxCardW + kFxGap);
+// A split's container in the row: its controls in a grey column a card place wide, the cards of the band it shows, then
+// a narrow dashed card adding an effect to that band, kFxBoxAddW wide; its grey outline kFxBoxPad outside them all
+// round, so the cards in it line up with the row's. Folded, it is a strip as wide as a folded card. Unfolded, it keeps
+// kFxBoxMargin more room before and after it (kFxBoxEdge in card places), as much as its outline stands out, so the
+// arrows on either side of it are as far from its outline as from any card.
+constexpr float kFxBoxPad = 5.0f;
+constexpr float kFxBoxMargin = kFxBoxPad;
+constexpr float kFxBoxEdge = kFxBoxMargin / (kFxCardW + kFxGap);
+constexpr float kFxBoxRadius = 11.0f; // the outline's corners, the cards' 8 px plus its pad
+constexpr float kFxBoxAddW = 64.0f;
+constexpr float kFxBoxAddSpan = (kFxBoxAddW + kFxGap) / (kFxCardW + kFxGap);
+// A split's controls on a card's place (its container's column, or its card in the graph), top to bottom under the
+// title row: the band tabs (band 0 the low one, at the left), the crossover's display (see View::splitDisplay()), the
+// slope's buttons (6, 12 and 24 dB), the knobs: the low band's level (0), the crossover (1) and the high band's level
+// (2), and the bands' solos under their levels.
+inline Rect splitTab(Rect card, int band) {
+    const float w = (card.w - 28.0f) * 0.5f;
+    return {card.x + 14.0f + static_cast<float>(band) * w, card.y + 38.0f, w, 20.0f};
+}
+inline Rect splitSlopeButton(Rect card, int k) {
+    const float w = (card.w - 28.0f - 6.0f) / 3.0f;
+    return {card.x + 14.0f + static_cast<float>(k) * (w + 3.0f), card.y + 178.0f, w, 22.0f};
+}
+inline Point splitKnob(Rect card, int k) {
+    return {card.x + card.w * static_cast<float>(1 + 2 * k) / 6.0f, card.y + 232.0f};
+}
+inline Rect splitSoloButton(Rect card, int band) {
+    return {splitKnob(card, band == 0 ? 0 : 2).x - 12.0f, card.y + 270.0f, 24.0f, 20.0f};
+}
 
 // The cards are cut off at the row's ends while they scroll.
 inline Rect sourceCardClip() {
@@ -505,10 +543,13 @@ constexpr int fxOfferedPlace(FxType type) {
 // The list's top left is under the button, or (from the shadow card after the effects) given. Its entries are close
 // enough together that it fits in the panel under the button.
 constexpr float kFxMenuPitch = 23.0f;
-inline Rect fxMenu(Point at) {
+// Opened from a + of the effects graph, it has one more entry after the effects, a little apart: a split on the main
+// line, a join on a band (`node`).
+constexpr float kFxMenuNodeGap = 7.0f;
+inline Rect fxMenu(Point at, bool node = false) {
     const Rect button = fxMenuButton();
     return {at.x < 0.0f ? button.x : at.x, at.x < 0.0f ? button.bottom() + 4.0f : at.y, 180.0f,
-            8.0f + kFxTypes * kFxMenuPitch};
+            8.0f + kFxTypes * kFxMenuPitch + (node ? kFxMenuNodeGap + kFxMenuPitch : 0.0f)};
 }
 static_assert(9.0f + 22.0f + 4.0f + 8.0f + kFxTypes * kFxMenuPitch <= kFxPanel.h, // from under the button
               "the list of effects fits in the panel");
@@ -517,6 +558,10 @@ inline Rect fxMenuItem(Point at, FxType type) {
     const Rect menu = fxMenu(at);
     return {menu.x + 4.0f, menu.y + 4.0f + static_cast<float>(fxOfferedPlace(type)) * kFxMenuPitch, menu.w - 8.0f,
             kFxMenuPitch - 2.0f};
+}
+inline Rect fxMenuNodeItem(Point at) {
+    const Rect menu = fxMenu(at, true);
+    return {menu.x + 4.0f, menu.y + 4.0f + kFxTypes * kFxMenuPitch + kFxMenuNodeGap, menu.w - 8.0f, kFxMenuPitch - 2.0f};
 }
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
@@ -559,8 +604,10 @@ inline Rect sourceScrollTrack() {
 }
 
 // The effect cards are cut off at the row's ends while they scroll.
+// Room for a container's outline above and below them too.
 inline Rect fxCardClip() {
-    return {kFxPanel.x + 8.0f, kFxTop - 4.0f, kFxPanel.w - 16.0f, kFxPanel.bottom() - 20.0f - kFxTop + 8.0f};
+    return {kFxPanel.x + 8.0f, kFxTop - kFxBoxPad - 2.0f, kFxPanel.w - 16.0f,
+            kFxPanel.bottom() - 20.0f - kFxTop + 2.0f * kFxBoxPad + 4.0f};
 }
 
 // How many of the usual card places a card takes: the parametric EQ's and the three-band dynamics' are wider, for
@@ -572,7 +619,7 @@ inline float fxSpan(FxType type) {
 // A card's rect by its screen place, in card places from the row's left end (0..kVisibleFx, fractions while
 // it scrolls), and how many places it takes.
 inline Rect fxCard(float position, float span = 1.0f) {
-    return {kFxPanel.x + 16.0f + position * (kFxCardW + kFxGap), kFxTop, span * (kFxCardW + kFxGap) - kFxGap,
+    return {kFxPanel.x + kFxRowLeft + position * (kFxCardW + kFxGap), kFxTop, span * (kFxCardW + kFxGap) - kFxGap,
             kFxPanel.bottom() - 20.0f - kFxTop};
 }
 
@@ -583,8 +630,7 @@ inline Rect fxIconRect(Rect card) {
 
 // Displays sit under a card's buttons, if it has any, and above its knobs: one
 // row of them, or two for the delay, the parametric EQ and the effects with six knobs or so.
-inline Rect fxDisplay(float position, FxType type) {
-    const Rect card = fxCard(position, fxSpan(type));
+inline Rect fxDisplayIn(Rect card, FxType type) {
     if (type == FxType::MultiDyn) // its switches in the title row, its three rows of knobs under it
         return {card.x + 14.0f, card.y + 42.0f, card.w - 28.0f, 72.0f};
     const bool buttons = type == FxType::Shaper || type == FxType::Reverb;
@@ -603,6 +649,58 @@ inline Rect fxDisplay(float position, FxType type) {
                          : type == FxType::Shaper    ? 190.0f
                                                      : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
+}
+inline Rect fxDisplay(float position, FxType type) {
+    return fxDisplayIn(fxCard(position, fxSpan(type)), type);
+}
+
+// The effects graph (UiLayout::fxGraphView) takes the card row's place: at the right the card of the node it shows (an
+// effect's, a split's or a join's), `span` card places wide, and the graph's box left of it, as wide as the card
+// leaves it, so a narrow card gives the graph more room and a wide one takes some. The switch between the chain and
+// the graph sits at the panel's top right.
+inline Rect fxInspectorCard(float span = 1.0f) {
+    const float w = span * (kFxCardW + kFxGap) - kFxGap;
+    return {std::round(kFxPanel.right() - 16.0f - w), kFxTop, w, kFxPanel.bottom() - 20.0f - kFxTop};
+}
+inline Rect fxGraphArea(float span = 1.0f) {
+    const float right = fxInspectorCard(span).x - 16.0f;
+    return {kFxPanel.x + 16.0f, kFxTop, right - kFxPanel.x - 16.0f, kFxPanel.bottom() - 20.0f - kFxTop};
+}
+// Under the graph's box, while it is wider than that: its scrollbar, along the box at the panel's bottom edge.
+inline Rect fxGraphScrollTrack(float span = 1.0f) {
+    const Rect area = fxGraphArea(span);
+    return {area.x + 12.0f, kFxPanel.y + kFxPanel.h - 14.0f, area.w - 24.0f, 6.0f};
+}
+// Left of the switch, a button that removes every effect.
+inline Rect fxClearButton() {
+    return {kFxPanel.right() - 16.0f - 2.0f * 34.0f - 10.0f - 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
+}
+inline Rect fxModeButton(int graph) {
+    return {kFxPanel.right() - 16.0f - 2.0f * 34.0f + graph * 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
+}
+// Its nodes sit on a fixed grid: IN in column 0, then a column a node, the main line in the middle row (0) and a
+// split's high and low bands in the rows above and below it (-1, 1), OUT after the last column. The graph scrolls
+// sideways when its columns reach past the area (`scroll`, in pixels). An effect is a circle, a split a box with its
+// bands' ports on its right edge (the high band on top), a join a smaller box, IN and OUT boxes, and the + where a
+// node can go next a + in a circle.
+constexpr float kFxGridCol = 92.0f, kFxGridRow = 70.0f, kFxGridLeft = 34.0f;
+constexpr float kFxNodeR = 22.0f;
+constexpr float kSoloedOutAlpha = 0.3f; // how strongly a band its join doesn't hear (the other soloed) is drawn
+constexpr float kFxPlusIdleAlpha = 0.4f; // how strongly the graph's +s are drawn while the mouse isn't on them
+constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
+constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
+constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
+constexpr float kFxSlotHalf = 8.5f; // a + where a node can go next: a circle, as on a wire's middle
+inline Point fxGridAt(float col, float row, float scroll) { // fractions of a cell too, as nodes glide
+    const Rect area = fxGraphArea(); // its left edge and middle, whatever its width
+    return {area.x + kFxGridLeft + col * kFxGridCol - scroll, area.center().y + row * kFxGridRow};
+}
+inline Point fxGridCell(int col, int row, float scroll) {
+    return fxGridAt(static_cast<float>(col), static_cast<float>(row), scroll);
+}
+// A split's band port: on its right edge, the high band (2) at the top, the low one (0) at the bottom.
+inline Point fxBandPortAt(Point split, int band) {
+    return {split.x + kFxSplitHalfW, split.y + (1 - band) * (kFxSplitHalfH - 10.0f)};
 }
 
 // The three-band dynamics' display: a level bar a band, the high band on top, each its name on the left and its gain

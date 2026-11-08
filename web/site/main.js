@@ -474,6 +474,8 @@ soundBanner.addEventListener('click', () => {
 const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock', 'Escape']);
 
 window.addEventListener('keydown', (e) => {
+  if (e.key === 'Control' && ui._ui_ctrl(1) !== 0) // a graph's grid shows while Ctrl is held
+    afterInput(true);
   if (!audio && !MODIFIERS.has(e.key))
     startAudio();
   if (!menu.hidden && e.key === 'Escape') {
@@ -552,6 +554,8 @@ document.addEventListener('paste', (e) => {
 });
 
 window.addEventListener('keyup', (e) => {
+  if (e.key === 'Control' && ui._ui_ctrl(0) !== 0)
+    afterInput(true);
   const note = held.get(e.code);
   if (note !== undefined) {
     held.delete(e.code);
@@ -565,6 +569,8 @@ window.addEventListener('keyup', (e) => {
 // No key may hang when the page loses the keyboard; what was being typed counts.
 window.addEventListener('blur', () => {
   releaseAll();
+  if (ui._ui_ctrl(0) !== 0) // no keyup comes once the page has lost the keyboard
+    afterInput(true);
   if (ui._ui_typing()) {
     ui._ui_end_typing(1);
     afterInput();

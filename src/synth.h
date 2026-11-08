@@ -112,6 +112,7 @@ struct Telemetry {
     std::array<Spectrum, kFxSlots> fxSpectrum{};
     std::array<Spectrum, kFilters> filterSpectrum{}; // each voice filter's output, all voices together
     std::array<float, kFxSlots> fxPhases{}; // phasers' and flangers' sweeps, see Effects::sweepPhase()
+    std::array<float, kFxPorts> fxPortLevels{}; // how loud each port of the effects graph is, see Effects::portLevel()
     std::array<float, 2> outPeak{}; // the output's peak level per side (1 is full scale), falling kMeterFallDb a second
     float clipHold = 0.0f;          // seconds the clip light stays on, since the output last went past full scale
     int voices = 0;
@@ -231,8 +232,8 @@ public:
     int activeVoiceCount() const;
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_.ringing(); }
-    // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, and the output
-    // scope captures the output (see kOutScopeBins). Switched off, the scope forgets what it took.
+    // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects
+    // graph's ports, and the output scope captures the output (see kOutScopeBins). Switched off, the scope forgets what it took.
     void setAnalyzing(bool on) {
         if (analyzing_ && !on)
             outScope_ = {};

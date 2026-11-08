@@ -654,13 +654,12 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         // The effects' params with the host's and the macros' modulation, which stay as they are through a
         // render(): as summed, and in their ranges in fxParams_, where each control block adds the newest voice's
         // slot modulation to the params it moves (and puts back those it moved before: fxMoved_, kept while the
-        // params stay). Their drawn curves are read as set; of the rest, the effects read only the chain's places.
+        // params stay). Their drawn curves are read as set.
         for (int i = kFxBase; i < kShapeBase; ++i) {
             fxBase_[i - kFxBase] = params[i] + globalMod_[i] + macroMod_[i];
             fxParams_[i] = std::clamp(fxBase_[i - kFxBase], paramMin_[i], paramMax_[i]);
         }
         fxMovedCount_ = 0;
-        std::copy_n(params.begin() + kFxPositionBase, kFxSlots, fxParams_.begin() + kFxPositionBase);
         std::copy(params.begin() + kClipCurveBase, params.begin() + kSlotBypassBase,
                   fxParams_.begin() + kClipCurveBase);
         sharedSlotsReady_ = false;
@@ -1047,6 +1046,8 @@ void Synth::telemetry(Telemetry &out) const {
             out.fxSpectrum[slot][band] = effects_.spectrum(slot, band);
         out.fxPhases[slot] = effects_.sweepPhase(slot);
     }
+    for (int port = 0; port < kFxPorts; ++port)
+        out.fxPortLevels[port] = effects_.portLevel(port);
     for (int f = 0; f < kFilters; ++f) // and so do the filters' analyzers, as the filters ring out
         out.filterSpectrum[f] = filterAnalyzed_[f].bands;
     const Voice *newest = nullptr;

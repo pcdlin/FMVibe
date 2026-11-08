@@ -5,6 +5,7 @@
 #include "factory.h"
 #include "gui/canvas.h"
 #include "gui/layout.h"
+#include "gui/routing.h"
 #include "gui/view.h"
 #include "uistrings.h"
 
@@ -166,7 +167,8 @@ public:
         CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(wic_.GetAddressOf()));
     }
 
-    bool save(View &view, const std::filesystem::path &path) {
+    // The whole editor, or only the part `crop` covers (in the view's coordinates).
+    bool save(View &view, const std::filesystem::path &path, const Rect *crop = nullptr) {
         const UINT width = static_cast<UINT>(View::kWidth * scale_);
         const UINT height = static_cast<UINT>(view.height() * scale_);
         ComPtr<IWICBitmap> bitmap;
@@ -195,13 +197,18 @@ public:
         ComPtr<IWICBitmapEncoder> encoder;
         ComPtr<IWICBitmapFrameEncode> frame;
         WICPixelFormatGUID format = GUID_WICPixelFormat32bppPBGRA;
+        WICRect part{0, 0, static_cast<INT>(width), static_cast<INT>(height)};
+        if (crop)
+            part = {static_cast<INT>(crop->x * scale_), static_cast<INT>(crop->y * scale_),
+                    static_cast<INT>(crop->w * scale_), static_cast<INT>(crop->h * scale_)};
         return SUCCEEDED(wic_->CreateStream(stream.GetAddressOf())) &&
                SUCCEEDED(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE)) &&
                SUCCEEDED(wic_->CreateEncoder(GUID_ContainerFormatPng, nullptr, encoder.GetAddressOf())) &&
                SUCCEEDED(encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache)) &&
                SUCCEEDED(encoder->CreateNewFrame(frame.GetAddressOf(), nullptr)) &&
-               SUCCEEDED(frame->Initialize(nullptr)) && SUCCEEDED(frame->SetSize(width, height)) &&
-               SUCCEEDED(frame->SetPixelFormat(&format)) && SUCCEEDED(frame->WriteSource(bitmap.Get(), nullptr)) &&
+               SUCCEEDED(frame->Initialize(nullptr)) &&
+               SUCCEEDED(frame->SetSize(static_cast<UINT>(part.Width), static_cast<UINT>(part.Height))) &&
+               SUCCEEDED(frame->SetPixelFormat(&format)) && SUCCEEDED(frame->WriteSource(bitmap.Get(), &part)) &&
                SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit());
     }
 
@@ -235,7 +242,8 @@ public:
     Renderer(const Renderer &) = delete;
     Renderer &operator=(const Renderer &) = delete;
 
-    bool save(View &view, const std::filesystem::path &path) {
+    // The whole editor, or only the part `crop` covers (in the view's coordinates).
+    bool save(View &view, const std::filesystem::path &path, const Rect *crop = nullptr) {
         const int width = static_cast<int>(View::kWidth * scale_);
         const int height = static_cast<int>(view.height() * scale_);
         cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
@@ -254,7 +262,20 @@ public:
         if (last_)
             cairo_surface_destroy(last_);
         last_ = surface;
-        return cairo_surface_write_to_png(surface, path.c_str()) == CAIRO_STATUS_SUCCESS;
+        if (!crop)
+            return cairo_surface_write_to_png(surface, path.c_str()) == CAIRO_STATUS_SUCCESS;
+        cairo_surface_t *part = cairo_surface_create_for_rectangle(surface, crop->x * scale_, crop->y * scale_,
+                                                                   crop->w * scale_, crop->h * scale_);
+        cairo_surface_t *image = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, static_cast<int>(crop->w * scale_),
+                                                            static_cast<int>(crop->h * scale_));
+        cairo_t *copy = cairo_create(image);
+        cairo_set_source_surface(copy, part, 0.0, 0.0);
+        cairo_paint(copy);
+        cairo_destroy(copy);
+        const bool written = cairo_surface_write_to_png(image, path.c_str()) == CAIRO_STATUS_SUCCESS;
+        cairo_surface_destroy(image);
+        cairo_surface_destroy(part);
+        return written;
     }
 
     // The color at `p` (in the view's coordinates) in what was saved last, as 0xRRGGBB.
@@ -400,20 +421,59 @@ std::string nameOf(FakeController &model, int source) {
     return sourceName(model.layout(), [&](int index) { return model.value(index); }, source);
 }
 
-// The slots holding an effect, in chain order.
+// The slots holding an effect, in the line's order as the effects graph's wires make it: the main line's, and each
+// split's high band's then its low band's (as the editor counts them), then any the wires leave out, by number.
 std::vector<int> fxChain(const FakeController &model) {
+    auto inUse = [&](int node) {
+        if (node < kFxSlots)
+            return std::lround(model.value(paramIndex(node, FxParam::Type))) != 0;
+        if (fxNodeSum(node) >= 0)
+            return model.value(paramIndex(fxNodeSum(node), SumParam::Used)) >= 0.5;
+        return node != kFxOutNode && model.value(paramIndex(node - kFxSlots, SplitParam::Used)) >= 0.5;
+    };
+    auto into = [&](int port) { // the node in use, other than the output, that takes it
+        for (int node = 0; node < kFxNodes; ++node)
+            for (int input = 0; input < fxInputCount(node) && node != kFxOutNode && inUse(node); ++input)
+                if (fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From))) == port)
+                    return node;
+        return -1;
+    };
     std::vector<int> chain;
-    for (int slot : fxOrder([&](int index) { return model.value(index); }))
-        if (std::lround(model.value(paramIndex(slot, FxParam::Type))) != 0)
+    auto taken = [&](int slot) { return std::find(chain.begin(), chain.end(), slot) != chain.end(); };
+    for (int port = kFxPortIn, node = into(port); node >= 0; node = into(port)) {
+        if (node < kFxSlots && !taken(node)) {
+            chain.push_back(node);
+            port = fxSlotPort(node);
+        } else if (fxNodeSplit(node)) {
+            const int split = node - kFxSlots;
+            for (int band : {kFxBands - 1, 0})
+                for (int p = fxBandPort(split, band), n = into(p); n >= 0 && n < kFxSlots && !taken(n); n = into(p)) {
+                    chain.push_back(n);
+                    p = fxSlotPort(n);
+                }
+            port = fxSumPort(split);
+        } else {
+            break;
+        }
+    }
+    for (int slot = 0; slot < kFxSlots; ++slot)
+        if (inUse(slot) && !taken(slot))
             chain.push_back(slot);
     return chain;
 }
 
-// FX cards, by position in the chain: 22 apart and 171 wide (spread over the panel's 1136), the parametric EQ's one
-// and a half card places wide, a folded card a strip 38 wide: the icon's place, 18 wide and 10 in from the card's
-// left edge, and as much on its right.
-constexpr float kFxCardW = 171.0f;
-constexpr float kFxStep = kFxCardW + (1136.0f - 6.0f * kFxCardW) / 5.0f;
+// The effects in `slots` one after another from the effects graph's input to its output: a chain, as the editor
+// wires one.
+void setChain(FakeController &model, std::initializer_list<int> slots) {
+    for (const auto &[index, value] : fxChainWires(slots))
+        model.values[index] = value;
+}
+
+// FX cards, by position in the chain: 22 apart and about 169 wide (spread over the panel's 1122 from x 46, a gap in
+// for the arrow before the first), the parametric EQ's one and a half card places wide, a folded card a strip 38
+// wide: the icon's place, 18 wide and 10 in from the card's left edge, and as much on its right.
+constexpr float kFxCardW = (1122.0f - 5.0f * 22.0f) / 6.0f;
+constexpr float kFxStep = kFxCardW + 22.0f;
 constexpr float kFoldedSpan = (38.0f + kFxStep - kFxCardW) / kFxStep;
 float fxSpan(const FakeController &model, int slot) {
     const bool folded = slot < kFirstFxSlots ? (model.ui.fxFolded >> slot) & 1u
@@ -430,7 +490,7 @@ float fxCardX(const FakeController &model, int position) {
     float place = 0.0f;
     for (int i = 0; i < position && i < static_cast<int>(chain.size()); ++i)
         place += fxSpan(model, chain[i]);
-    return 32.0f + (place - fxScrolled) * kFxStep;
+    return 46.0f + (place - fxScrolled) * kFxStep;
 }
 float fxCardW(const FakeController &model, int position) {
     const std::vector<int> chain = fxChain(model);
@@ -607,6 +667,37 @@ int ringLevel(const Renderer &renderer, Point from, float span) {
                          static_cast<int>(color & 255)});
     }
     return most;
+}
+
+// The brightest pixel from `from` to `to`, in what was saved last; and whether a color is amber (the high band's),
+// blue (the low band's) or grey, by how its red and blue differ.
+uint32_t brightestAlong(const Renderer &renderer, Point from, Point to) {
+    uint32_t best = 0;
+    int most = -1;
+    const int steps = std::max(1, static_cast<int>(std::hypot(to.x - from.x, to.y - from.y)));
+    for (int k = 0; k <= steps; ++k) {
+        const float t = static_cast<float>(k) / static_cast<float>(steps);
+        const uint32_t color = renderer.pixel({from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t});
+        const int level = std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                                    static_cast<int>(color & 255)});
+        if (level > most) {
+            most = level;
+            best = color;
+        }
+    }
+    return best;
+}
+int redOverBlue(uint32_t color) {
+    return static_cast<int>(color >> 16 & 255) - static_cast<int>(color & 255);
+}
+bool amber(uint32_t color) {
+    return redOverBlue(color) > 50;
+}
+bool blue(uint32_t color) {
+    return redOverBlue(color) < -50;
+}
+bool grey(uint32_t color) {
+    return std::abs(redOverBlue(color)) < 30 && (color >> 16 & 255) > 60;
 }
 
 // The color of the dot in the top right corner of a node's tab in the inspector, in what was saved last.
@@ -1099,18 +1190,27 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(routeModulated && renderer.save(view, dir / "18b-modulated-route.png"),
           "render a modulated route, its wire swelling and its label showing the range");
     // That route turned down to 0 %: B, sounding, lights up only while its modulation opens the route again, just
-    // above it (read off the rendered pixels).
+    // above it (read off the rendered pixels), with the glow setting at its middle, where it starts, its halo
+    // feathering out past the ring; off, the halo is a plain ring of light (7 px out), nothing beyond it.
     const double routed = model.value(matrixIndex(1, 0));
+    model.glowLevel = 0.5;
     model.set(matrixIndex(1, 0), 0.0);
     model.live.opLevels[1] = 1.0f;
+    struct Above {
+        uint32_t ring, beyond; // in the plain ring's reach, and past it
+    };
     auto aboveB = [&](float offset) {
         model.live.modOffset[matrixIndex(1, 0)] = offset;
         view.poll();
         renderer.save(view, dir / "18b2-modulated-route-glow.png");
-        return renderer.pixel({bNode.x, bNode.y - 28.0f});
+        return Above{renderer.pixel({bNode.x, bNode.y - 28.0f}), renderer.pixel({bNode.x, bNode.y - 33.0f})};
     };
-    const uint32_t shut = aboveB(0.0f), opened = aboveB(0.3f);
-    check(opened != shut, "an operator lights up while modulation opens its route from 0 %");
+    const Above shut = aboveB(0.0f), opened = aboveB(0.3f);
+    model.glowLevel = 0.0;
+    const Above glowOff = aboveB(0.3f);
+    check(opened.ring != shut.ring && opened.beyond != shut.beyond && glowOff.ring != shut.ring &&
+              glowOff.beyond == shut.beyond,
+          "an operator lights up while modulation opens its route from 0 %, a plain ring with the glow setting off");
     model.set(matrixIndex(1, 0), routed);
     model.live = Telemetry{};
     view.poll();
@@ -1633,8 +1733,22 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     click(view, kFxTab);
     view.mouseMove({600.0f, 328.0f}, {});
     shots = shots && renderer.save(view, dir / (prefix + "-fx.png"));
+    // Its effects' panel alone, as a chain and then as a graph, or as a graph only when it comes as one (the
+    // README's, see release.ps1).
+    const Rect panel{detail::kFxPanel.x - 8.0f, detail::kFxPanel.y - 1.0f, detail::kFxPanel.w + 16.0f,
+                     detail::kFxPanel.h + 9.0f}; // not the tabs above it
+    if (!model.ui.fxGraphView) {
+        shots = shots && renderer.save(view, dir / (prefix + "-fx-chain-panel.png"), &panel);
+        const Rect graphSwitch = detail::fxModeButton(1);
+        click(view, {graphSwitch.x + graphSwitch.w * 0.5f, graphSwitch.y + graphSwitch.h * 0.5f});
+    }
+    view.mouseMove({600.0f, 600.0f}, {});
+    shots = shots && model.ui.fxGraphView &&
+            renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
     check(shots && fxChain(model).size() == effects,
-          ("render " + name + "'s routing, matrix and " + std::to_string(effects) + " effects").c_str());
+          ("render " + name + "'s routing, matrix and " + std::to_string(effects) +
+           " effects, and its effects' panel as a chain and as a graph")
+              .c_str());
 }
 
 // A stereo phaser and a flanger mid-sweep (their LFOs where the audio left them), a phase disperser and a filter,
@@ -1642,8 +1756,7 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
 void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    for (const auto &[index, value] : fxOrderChanges(fxOrderStarting({0, 1, 2, 3, 4})))
-        model.values[index] = value;
+    setChain(model, {0, 1, 2, 3, 4});
     const FxType types[] = {FxType::Phaser, FxType::Flanger, FxType::Disperser, FxType::Filter, FxType::Widener};
     for (int slot = 0; slot < 5; ++slot)
         model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(types[slot]);
@@ -1702,7 +1815,7 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     // Its response has a handle for cutoff (sideways) and resonance (up and down), as a voice filter's.
     model.live.fxPitch = 60.0f;
     view.poll();
-    const Rect shown = detail::fxDisplay((fxCardX(model, 3) - 32.0f) / kFxStep, FxType::Filter);
+    const Rect shown = detail::fxDisplay((fxCardX(model, 3) - 46.0f) / kFxStep, FxType::Filter);
     const int fxCutoff = paramIndex(3, FxParam::FilterCutoff), fxReso = paramIndex(3, FxParam::FilterResonance);
     const double fxCutoffBefore = model.value(fxCutoff), fxResoBefore = model.value(fxReso);
     const Point fxHandle{shown.x + 10.0f + static_cast<float>(fxCutoffBefore) * (shown.w - 20.0f),
@@ -1951,8 +2064,7 @@ void testLaterSlots(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
     const int later = kFxSlots - 3;
-    for (const auto &[index, value] : fxOrderChanges(fxOrderStarting({later, 0, kFxSlots - 1})))
-        model.values[index] = value;
+    setChain(model, {later, 0, kFxSlots - 1});
     model.values[paramIndex(later, FxParam::Type)] = static_cast<double>(FxType::Delay);
     model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
     model.values[paramIndex(kFxSlots - 1, FxParam::Type)] = static_cast<double>(FxType::Phaser);
@@ -1976,11 +2088,854 @@ void testLaterSlots(const std::filesystem::path &dir, Renderer &renderer) {
           "an effect in a slot past the 16th folds and moves in the chain like the others");
 }
 
+// The effects graph on its slot grid: switching to it puts the chain on its main line, wired as it ran; the main
+// line's + opens the list of effects with a split after them, which opens two bands with a + each; a band's + puts an
+// effect on its band, and its list joins the bands, the line going on from the join with one + again; the join's card
+// sets its bands' levels, and it can't be taken out while something comes after it; the split's crossover handle
+// drags on its card; + EFFECT with the split picked puts an effect on a band; a split taken out puts its bands'
+// effects on the main line, undoably; a wire's middle puts an effect, or a split with its join, there; a node under
+// the mouse shows an x that removes it; nodes dragged and dropped, the others making room; the mouse along a wire
+// showing its +; and going back to a chain asks first, then leaves the chain in the line's order.
+void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    auto centerOf = [](Rect r) { return Point{r.x + r.w * 0.5f, r.y + r.h * 0.5f}; };
+    click(view, centerOf(detail::fxModeButton(1)));
+    auto from = [&](int node, int input) {
+        return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
+    };
+    check(model.ui.fxGraphView && from(0, 0) == kFxPortIn && from(1, 0) == fxSlotPort(0) &&
+              from(kFxOutNode, 0) == fxSlotPort(1) && from(kFxOutNode, 1) < 0 &&
+              renderer.save(view, dir / "40a-fx-graph.png"),
+          "switching to the effects graph shows the chain as its main line, wired as it runs");
+
+    // The grid, unscrolled: IN in column 0, then a column a node, the high band a row up and the low band a row down.
+    auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
+    // The list a + opens, beside it and kept inside the editor: the effects, then a split or a join a little apart.
+    auto listAtPlus = [&](Point plus) {
+        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+    };
+    auto plusItem = [&](Point plus, FxType type) {
+        const Point at = listAtPlus(plus);
+        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
+    };
+    auto plusNode = [&](Point plus) {
+        const Point at = listAtPlus(plus);
+        return Point{at.x + 90.0f, at.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f};
+    };
+    auto addAt = [&](Point plus, FxType type) {
+        click(view, plus);
+        click(view, plusItem(plus, type));
+    };
+
+    // The main line's + after the reverb: Split into two bands, with its join a column on, each empty band curving
+    // out to a + on its row and into the join.
+    const int split = fxSplitNode(0), join = fxSumNode(0);
+    const int high = fxBandPort(0, kFxBands - 1), low = fxBandPort(0, 0);
+    click(view, cell(3, 0));
+    const bool listed = renderer.save(view, dir / "40b-fx-plus-list.png");
+    click(view, plusNode(cell(3, 0)));
+    view.mouseMove({600.0f, 428.0f}, {});
+    check(listed && model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(split, 0) == fxSlotPort(1) &&
+              model.value(paramIndex(0, SumParam::Used)) == 1.0 && from(join, 0) == high && from(join, 1) == low &&
+              from(kFxOutNode, 0) == fxSumPort(0) && from(kFxOutNode, 1) < 0 && model.ui.fxSelected == split &&
+              renderer.save(view, dir / "40c-fx-split.png"),
+          "the main line's + puts a split there with its join, each band's + on its row between them");
+    // Each + ringed in the color of the wire it is on: the high band's amber, the low band's blue, the main line's
+    // grey after the join (read off the rendered pixels: down through the top of each ring, faint as they are).
+    {
+        auto ring = [&](Point m) { return redOverBlue(brightestAlong(renderer, {m.x, m.y - 11.0f}, {m.x, m.y - 6.0f})); };
+        const int highRing = ring(cell(4, -1)), lowRing = ring(cell(4, 1)), lineRing = ring(cell(6, 0));
+        std::printf("      the +s' rings, red over blue: high band %d, low band %d, main line %d\n", highRing, lowRing,
+                    lineRing);
+        check(highRing > 30 && lowRing < -30 && std::abs(lineRing) < 20,
+              "each + in the graph is ringed in the color of the wire it is on");
+    }
+
+    // A delay on the high band and a compressor on the low one, from their +s; the band's list offers no split.
+    addAt(cell(4, -1), FxType::Delay);
+    addAt(cell(4, 1), FxType::Compressor);
+    check(from(2, 0) == high && from(3, 0) == low && from(join, 0) == fxSlotPort(2) &&
+              from(join, 1) == fxSlotPort(3) && fxChain(model) == std::vector<int>{0, 1, 2, 3} &&
+              renderer.save(view, dir / "40d-fx-join.png"),
+          "a band's + puts an effect on its band");
+
+    // The shaper dropped at the low band's end, on its wire into the join: there; undone.
+    {
+        const Point drop = detail::fxGridAt(4.5f, 0.585f, 0.0f);
+        view.mouseMove(cell(1, 0), {});
+        view.mouseDown(cell(1, 0), {});
+        view.mouseMove({cell(1, 0).x + 8.0f, cell(1, 0).y + 4.0f}, {});
+        view.mouseMove(drop, {});
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+        view.mouseUp(drop, {});
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+        const bool atBandEnd = from(0, 0) == fxSlotPort(3) && from(join, 1) == fxSlotPort(0) &&
+                               from(1, 0) == kFxPortIn;
+        view.undo();
+        view.mouseMove({600.0f, 428.0f}, {});
+        check(atBandEnd && from(0, 0) == kFxPortIn && from(join, 1) == fxSlotPort(3),
+              "a node dropped at a band's end, on its wire into the join, goes there");
+    }
+
+    // A phaser after the join, from the main line's + again.
+    addAt(cell(6, 0), FxType::Phaser);
+    check(from(4, 0) == fxSumPort(0) && from(kFxOutNode, 0) == fxSlotPort(4),
+          "the main line's + after a join puts an effect after it");
+
+    // The join's node shows its split's card, the same as the split's own: its High knob takes the high band's level
+    // down.
+    click(view, cell(5, 0));
+    const Rect card = detail::fxInspectorCard(1.0f);
+    const Point highKnob = detail::splitKnob(card, 2); // Low on the left, the crossover, High on the right
+    drag(view, highKnob, {highKnob.x, highKnob.y + 40.0f});
+    const double highLevel = model.value(fxInputIndex(join, 0, FxInputField::Level));
+    char highText[32] = {};
+    formatParam(fxInputIndex(join, 0, FxInputField::Level), highLevel, highText, sizeof(highText));
+    check(model.ui.fxSelected == join && highLevel < -1.0 &&
+              model.value(fxInputIndex(join, 1, FxInputField::Level)) == 0.0 && model.openEdits == 0 &&
+              std::string(highText).find(" dB") != std::string::npos && renderer.save(view, dir / "40e-fx-join-card.png"),
+          "a join's node shows its split's card, which sets the bands' levels, in dB from 0 dB at the top");
+
+    // Its high band's S, under its knob: soloed, an S in a circle at the split's and the join's top left, and the low
+    // band's compressor and its wires faint, the high band's delay as it was (read off the rendered pixels); undone.
+    {
+        const Rect joinBox{cell(5, 0).x - detail::kFxJoinHalfW, cell(5, 0).y - detail::kFxJoinHalfH,
+                           2.0f * detail::kFxJoinHalfW, 2.0f * detail::kFxJoinHalfH};
+        const Point mark{joinBox.x + 1.0f, joinBox.y - 5.0f}; // inside the circle, above the box
+        const Point splitMark{cell(3, 0).x - detail::kFxSplitHalfW + 1.0f, cell(3, 0).y - detail::kFxSplitHalfH - 5.0f};
+        auto ring = [&](int row) { // the node's ring at its right, on the band's row
+            const Point c = cell(4, row);
+            return ringLevel(renderer, {c.x + detail::kFxNodeR, c.y - 3.0f}, 6.0f);
+        };
+        auto wireInto = [&](int row) { // the band's wire just before its node's arrowhead
+            const Point c = cell(4, row);
+            return ringLevel(renderer, {c.x - detail::kFxNodeR - 16.0f, c.y - 4.0f}, 8.0f);
+        };
+        view.mouseMove({600.0f, 428.0f}, {});
+        renderer.save(view, dir / "40e2-fx-join-unsoloed.png");
+        const uint32_t unsoloed = renderer.pixel(mark), splitUnsoloed = renderer.pixel(splitMark);
+        const int lowRing = ring(1), highRing = ring(-1), lowWire = wireInto(1);
+        // The main line's wires grey, each band's in its color, and the split's and the join's nodes in the bands'
+        // colors, the high band's above, a split's coming in from grey at its left and a join's going out to grey at
+        // its right (read off the rendered pixels: the outline down either edge, near its top and bottom).
+        {
+            const float mainX = 0.5f * (cell(2, 0).x + detail::kFxNodeR + cell(3, 0).x - detail::kFxSplitHalfW - 8.0f);
+            const uint32_t mainWire = brightestAlong(renderer, {mainX, cell(3, 0).y - 3.0f}, {mainX, cell(3, 0).y + 3.0f});
+            auto bandWire = [&](int row) {
+                const Point c = cell(4, row);
+                return brightestAlong(renderer, {c.x - detail::kFxNodeR - 16.0f, c.y - 4.0f},
+                                      {c.x - detail::kFxNodeR - 16.0f, c.y + 4.0f});
+            };
+            // A node's edge at its left or right, 5 px from its top or bottom: clear of where wires meet it.
+            auto edge = [&](int col, bool right, bool top) {
+                const Point c = cell(col, 0);
+                const float x = c.x + (right ? 1.0f : -1.0f) * detail::kFxSplitHalfW;
+                const float y = c.y + (top ? -1.0f : 1.0f) * (detail::kFxSplitHalfH - 5.0f);
+                return brightestAlong(renderer, {x - 3.0f, y}, {x + 3.0f, y});
+            };
+            const bool splitFades = grey(edge(3, false, true)) && grey(edge(3, false, false)) && amber(edge(3, true, true)) &&
+                               blue(edge(3, true, false));
+            const bool joinFades = amber(edge(5, false, true)) && blue(edge(5, false, false)) && grey(edge(5, true, true)) &&
+                              grey(edge(5, true, false));
+            std::printf("      wires: main line %06x, high band %06x, low band %06x; the split's right edge %06x above, "
+                        "%06x below, its left %06x; the join's left edge %06x above, %06x below, its right %06x\n",
+                        mainWire, bandWire(-1), bandWire(1), edge(3, true, true), edge(3, true, false),
+                        edge(3, false, true), edge(5, false, true), edge(5, false, false), edge(5, true, true));
+            check(grey(mainWire) && amber(bandWire(-1)) && blue(bandWire(1)) && splitFades && joinFades,
+                  "the graph's main line is grey, each band's wires and half of the split's and join's nodes in its "
+                  "color, fading in across a split and out across a join");
+        }
+        click(view, centerOf(detail::splitSoloButton(card, 1)));
+        const bool soloed = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
+                            model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
+        view.mouseMove({600.0f, 428.0f}, {});
+        const bool shot = renderer.save(view, dir / "40e2-fx-join-solo.png");
+        const bool marked = renderer.pixel(mark) != unsoloed && renderer.pixel(splitMark) != splitUnsoloed;
+        std::printf("      soloing the high band: the low band's ring %d -> %d, its wire %d -> %d, the high band's ring "
+                    "%d -> %d\n",
+                    lowRing, ring(1), lowWire, wireInto(1), highRing, ring(-1));
+        const bool faint = ring(1) < lowRing - 40 && wireInto(1) < lowWire - 30 && ring(-1) == highRing;
+        // Its low band's S then: the high band's goes off, one at a time; undone, the high band's again.
+        click(view, centerOf(detail::splitSoloButton(card, 0)));
+        const bool swapped = model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
+                             model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
+        view.undo();
+        const bool back = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
+                          model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
+        view.undo();
+        check(soloed && shot && marked && swapped && back && model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0,
+              "the split's card solos a band, one at a time, the split and join nodes marked with an S while it is");
+        check(faint, "a band soloed leaves the other band's nodes and wires faint");
+    }
+
+    // The split's crossover handle, on its card in the inspector, dragged from 250 Hz to 500 Hz.
+    click(view, cell(3, 0));
+    const Rect display{card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, 104.0f};
+    const float handleY = (display.y + 12.0f + display.bottom() - 22.0f) * 0.5f; // where the bands cross, at 12 dB
+    drag(view, {display.x + static_cast<float>(normFromCutoff(250.0)) * display.w, handleY},
+         {display.x + static_cast<float>(normFromCutoff(500.0)) * display.w, handleY});
+    check(model.ui.fxSelected == split &&
+              std::abs(model.value(paramIndex(0, SplitParam::Low)) - normFromCutoff(500.0)) < 0.01 &&
+              model.openEdits == 0 && renderer.save(view, dir / "40f-fx-split-card.png"),
+          "a split's crossover handle drags across its card's display");
+
+    // Its slope under the display, 12 dB to begin with: 24 dB picked, the bands' responses steeper; back to 12,
+    // undoably.
+    const bool startsAt12 = model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
+    click(view, centerOf(detail::splitSlopeButton(card, 2)));
+    const bool steep = model.value(paramIndex(0, SplitParam::Slope)) == kFilterSlopes - 1.0;
+    const bool slopeShot = renderer.save(view, dir / "40f2-fx-split-slope.png");
+    view.undo();
+    check(startsAt12 && steep && slopeShot && model.value(paramIndex(0, SplitParam::Slope)) == 1.0,
+          "a split's card picks its slope, 6, 12 or 24 dB, 12 to begin with");
+
+    // + EFFECT with the split picked: a flanger at the end of its high band, before the join; undone.
+    addFx(view, FxType::Flanger);
+    const bool onBand = from(5, 0) == fxSlotPort(2) && from(join, 0) == fxSlotPort(5);
+    view.undo();
+    check(onBand && from(join, 0) == fxSlotPort(2) && fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},
+          "+ EFFECT with a split picked puts the effect on one of its bands");
+
+    // The split taken out from its card: its bands' effects go on the main line, high band first; undone.
+    click(view, cell(3, 0));
+    click(view, centerOf({card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f}));
+    const bool inRow = model.value(paramIndex(0, SplitParam::Used)) == 0.0 &&
+                       model.value(paramIndex(0, SumParam::Used)) == 0.0 && from(2, 0) == fxSlotPort(1) &&
+                       from(3, 0) == fxSlotPort(2) && from(4, 0) == fxSlotPort(3) &&
+                       from(kFxOutNode, 0) == fxSlotPort(4);
+    const bool rowShot = renderer.save(view, dir / "40g-fx-split-removed.png");
+    view.undo();
+    check(inRow && rowShot && model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(join, 1) == fxSlotPort(3),
+          "a split taken out puts its bands' effects on the main line, undoably");
+
+    // A wire's middle opens the list too, beside it: between the shaper and the reverb, a filter goes in there, and a
+    // split goes in with its join right after it; on the wire from the delay into the join, the list has no split,
+    // and a widener goes on the high band before the join. Each undone.
+    auto middle = [](Point from, Point to) { return Point{(from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f}; };
+    auto gapItem = [&](Point gap, bool withNode, int place) {
+        const Point at = listAt(view, {gap.x + 26.0f, gap.y - 44.0f}, 180.0f,
+                                8.0f + 13.0f * kFxMenuPitch + (withNode ? 7.0f + kFxMenuPitch : 0.0f));
+        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(place) * kFxMenuPitch + (place >= 13 ? 7.0f : 0.0f)};
+    };
+    const Point mainGap = middle({cell(1, 0).x + detail::kFxNodeR, cell(1, 0).y},
+                                 {cell(2, 0).x - detail::kFxNodeR - 8.0f, cell(2, 0).y});
+    view.mouseMove(mainGap, {});
+    const bool gapShot = renderer.save(view, dir / "40i-fx-gap.png");
+    click(view, mainGap);
+    click(view, gapItem(mainGap, true, fxMenuPlace(FxType::Filter)));
+    const bool between = from(5, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(5);
+    view.undo();
+    click(view, mainGap);
+    click(view, gapItem(mainGap, true, 13));
+    const int split2 = fxSplitNode(1), join2 = fxSumNode(1);
+    const bool splitBetween = model.value(paramIndex(1, SplitParam::Used)) == 1.0 &&
+                              model.value(paramIndex(1, SumParam::Used)) == 1.0 && from(split2, 0) == fxSlotPort(0) &&
+                              from(join2, 0) == fxBandPort(1, kFxBands - 1) && from(join2, 1) == fxBandPort(1, 0) &&
+                              from(1, 0) == fxSumPort(1);
+    // Its bands are empty: each shows its + with the mouse away (read off the rendered pixels).
+    view.mouseMove({600.0f, 428.0f}, {});
+    const bool splitShot = renderer.save(view, dir / "40j-fx-gap-split.png");
+    bool emptyPluses = true;
+    for (const int row : {-1, 1}) {
+        const Point plus = cell(3, row);
+        emptyPluses = emptyPluses && renderer.pixel({plus.x + 6.0f, plus.y + 6.0f}) != renderer.pixel({plus.x, plus.y + 30.0f});
+    }
+    view.undo();
+    const Point bandGap = middle({cell(4, -1).x + detail::kFxNodeR, cell(4, -1).y},
+                                 {cell(5, 0).x - detail::kFxJoinHalfW - 8.0f,
+                                  detail::fxBandPortAt(cell(5, 0), kFxBands - 1).y});
+    click(view, bandGap);
+    click(view, gapItem(bandGap, false, fxMenuPlace(FxType::Widener)));
+    const bool onJoinedBand = from(5, 0) == fxSlotPort(2) && from(join, 0) == fxSlotPort(5);
+    view.undo();
+    check(gapShot && between && splitBetween && splitShot && emptyPluses && onJoinedBand && from(1, 0) == fxSlotPort(0) &&
+              model.value(paramIndex(1, SplitParam::Used)) == 0.0 && from(join, 0) == fxSlotPort(2) &&
+              fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},
+          "a wire's middle puts an effect there, or a split with its join right after it, its empty bands showing their +");
+
+    // What goes through a node lights it: the shaper's output at half scale in the telemetry, a halo round it and a
+    // glow along its wire out (read off the rendered pixels), gone again once it is silent.
+    {
+        const Point shaperAt = cell(1, 0);
+        const Point halo{shaperAt.x, shaperAt.y - detail::kFxNodeR - 4.0f};
+        const Point along{(shaperAt.x + detail::kFxNodeR + cell(2, 0).x - detail::kFxNodeR - 8.0f) * 0.5f, shaperAt.y + 3.0f};
+        model.glowLevel = 0.5; // the glow setting where it starts; off, nothing glows
+        view.mouseMove({600.0f, 428.0f}, {});
+        renderer.save(view, dir / "40v-fx-quiet.png");
+        const uint32_t quietHalo = renderer.pixel(halo), quietAlong = renderer.pixel(along);
+        model.live.fxPortLevels[fxSlotPort(0)] = 0.5f;
+        view.poll();
+        const bool shot = renderer.save(view, dir / "40v-fx-glow.png");
+        const bool lit = renderer.pixel(halo) != quietHalo && renderer.pixel(along) != quietAlong;
+        model.glowLevel = 0.0;
+        renderer.save(view, dir / "40v-fx-glow-off.png");
+        const bool offDark = renderer.pixel(halo) == quietHalo;
+        model.live.fxPortLevels[fxSlotPort(0)] = 0.0f;
+        view.poll();
+        renderer.save(view, dir / "40v-fx-quiet.png");
+        check(shot && lit && offDark && renderer.pixel(halo) == quietHalo,
+              "a node of the effects graph and its wire out glow as loud as what comes out of it, unless the glow "
+              "setting is off");
+    }
+
+    // The mouse over the reverb shows an x in a circle at its upper right (read off the rendered pixels: none there
+    // before), whose click removes it, the shaper going on into the split; undone.
+    {
+        const Point reverbAt = cell(2, 0);
+        const Point x{reverbAt.x + 0.72f * detail::kFxNodeR, reverbAt.y - 0.72f * detail::kFxNodeR};
+        view.mouseMove({600.0f, 428.0f}, {});
+        renderer.save(view, dir / "40n-fx-node-plain.png");
+        const uint32_t plain = renderer.pixel({x.x + 7.5f, x.y});
+        view.mouseMove(reverbAt, {});
+        view.mouseMove(x, {});
+        const bool shot = renderer.save(view, dir / "40n-fx-node-x.png");
+        const bool drawn = renderer.pixel({x.x + 7.5f, x.y}) != plain;
+        click(view, x);
+        const bool removed = model.value(paramIndex(1, FxParam::Type)) == static_cast<double>(FxType::None) &&
+                             from(split, 0) == fxSlotPort(0);
+        view.undo();
+        view.mouseMove({600.0f, 428.0f}, {});
+        check(shot && drawn && removed && from(1, 0) == fxSlotPort(0) && from(split, 0) == fxSlotPort(1),
+              "a node under the mouse shows an x at its upper right, which removes it");
+    }
+
+    // Nodes dragged and dropped, the others gliding aside to make room while one is held: the phaser between the
+    // shaper and the reverb, the delay from the high band to the end of the low band, and the split with its bands
+    // and join, by the join, to the line's start. Each one undo step, undone.
+    {
+        auto settle = [&] {
+            for (int k = 0; k < 40; ++k)
+                view.poll();
+        };
+        auto dragNode = [&](Point from, Point to, const char *shot) {
+            view.mouseMove(from, {});
+            view.mouseDown(from, {});
+            view.mouseMove({from.x + 8.0f, from.y + 4.0f}, {});
+            view.mouseMove(to, {});
+            settle(); // the others glide aside
+            const bool saved = shot ? renderer.save(view, dir / shot) : true;
+            view.mouseUp(to, {});
+            settle();
+            return saved;
+        };
+        // A step into the glide, the phaser's placeholder is where it would land already, the wire from the shaper
+        // ending in its arrowhead there, as at a node (read off the rendered pixels: how many pixels down through the
+        // arrowhead are lit, many more than a wire passing by lights).
+        {
+            const Point grab = cell(6, 0), to = detail::fxGridAt(1.5f, 0.0f, 0.0f);
+            view.mouseMove(grab, {});
+            view.mouseDown(grab, {});
+            view.mouseMove({grab.x + 8.0f, grab.y + 4.0f}, {});
+            view.mouseMove(to, {});
+            view.poll();
+            renderer.save(view, dir / "40o0-fx-drag-step.png");
+            const float x = cell(2, 0).x - detail::kFxNodeR - 3.0f;
+            int lit = 0;
+            for (float y = cell(2, 0).y - 8.0f; y <= cell(2, 0).y + 8.0f; y += 1.0f) {
+                const uint32_t color = renderer.pixel({x, y});
+                lit += std::max({color >> 16 & 255, color >> 8 & 255, color & 255}) > 70u;
+            }
+            view.mouseUp(to, {});
+            view.undo();
+            settle();
+            std::printf("      a step into the glide, lit down the arrowhead at the phaser's new place: %d px\n", lit);
+            check(lit >= 5, "a dragged node's wires run to its placeholder where it would land, not along with it");
+        }
+        const bool roomShot = dragNode(cell(6, 0), detail::fxGridAt(1.5f, 0.0f, 0.0f), "40o-fx-drag-room.png");
+        const bool phaserMoved = from(4, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(4) &&
+                                 from(kFxOutNode, 0) == fxSumPort(0);
+        const bool droppedShot = renderer.save(view, dir / "40p-fx-dropped.png");
+        view.undo();
+        const bool phaserBack = from(4, 0) == fxSumPort(0) && from(1, 0) == fxSlotPort(0);
+        dragNode(cell(4, -1), detail::fxGridAt(4.5f, 1.0f, 0.0f), nullptr);
+        const bool delayMoved = from(3, 0) == low && from(2, 0) == fxSlotPort(3) && from(join, 1) == fxSlotPort(2) &&
+                                from(join, 0) == high;
+        view.undo();
+        const bool groupShot = dragNode(cell(5, 0), detail::fxGridAt(0.5f, 0.0f, 0.0f), "40q-fx-drag-group.png");
+        const bool groupMoved = from(split, 0) == kFxPortIn && from(0, 0) == fxSumPort(0) && from(4, 0) == fxSlotPort(1) &&
+                                from(join, 0) == fxSlotPort(2) && from(join, 1) == fxSlotPort(3) &&
+                                from(kFxOutNode, 0) == fxSlotPort(4);
+        view.undo();
+        // The phaser held over that gap, then over the reverb beyond it (where the gap opened pushed it): the place
+        // stays open where it was, and that is where it lands.
+        view.mouseMove(cell(6, 0), {});
+        view.mouseDown(cell(6, 0), {});
+        view.mouseMove({cell(6, 0).x + 8.0f, cell(6, 0).y + 4.0f}, {});
+        view.mouseMove(detail::fxGridAt(1.5f, 0.0f, 0.0f), {});
+        settle();
+        view.mouseMove(detail::fxGridAt(3.0f, 0.0f, 0.0f), {});
+        settle();
+        view.mouseUp(detail::fxGridAt(3.0f, 0.0f, 0.0f), {});
+        settle();
+        const bool held = from(4, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(4);
+        view.undo();
+        view.mouseMove({600.0f, 428.0f}, {});
+        check(held, "a dragged node's place stays open until it is over another gap");
+        check(roomShot && phaserMoved && droppedShot && phaserBack && delayMoved && groupShot && groupMoved &&
+                  from(0, 0) == kFxPortIn && from(split, 0) == fxSlotPort(1) && from(2, 0) == high &&
+                  fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},
+              "a node dragged onto another place moves there, a split with its bands and join, undoably");
+    }
+
+    // The mouse anywhere along a wire shows the + at its middle (read off the rendered pixels), though a click there
+    // does nothing: only the + takes it.
+    {
+        const Point a{cell(1, 0).x + detail::kFxNodeR, cell(1, 0).y}, b{cell(2, 0).x - detail::kFxNodeR - 8.0f, cell(2, 0).y};
+        const Point mid{(a.x + b.x) * 0.5f, a.y};
+        view.mouseMove({600.0f, 428.0f}, {});
+        renderer.save(view, dir / "40r-fx-wire-plain.png");
+        const uint32_t plain = renderer.pixel({mid.x + 6.0f, mid.y + 6.0f});
+        view.mouseMove({a.x + 5.0f, a.y + 1.0f}, {});
+        const bool shot = renderer.save(view, dir / "40r-fx-wire-hover.png");
+        const bool shown = renderer.pixel({mid.x + 6.0f, mid.y + 6.0f}) != plain;
+        // Faint until the mouse is on it, as the + after the last effect (read off the rendered pixels: the brightest
+        // along the +'s bar, with the mouse along the wire and on the +, and away from and on the line's +).
+        auto bar = [&](Point m) {
+            const uint32_t color = brightestAlong(renderer, {m.x - 3.0f, m.y}, {m.x + 3.0f, m.y});
+            return std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                             static_cast<int>(color & 255)});
+        };
+        const int alongWire = bar(mid);
+        view.mouseMove(mid, {});
+        renderer.save(view, dir / "40r2-fx-wire-plus-hot.png");
+        const int onWirePlus = bar(mid);
+        const Point linePlus = cell(7, 0);
+        const int lineIdle = bar(linePlus);
+        view.mouseMove(linePlus, {});
+        renderer.save(view, dir / "40r3-fx-line-plus-hot.png");
+        const int lineHot = bar(linePlus);
+        std::printf("      a wire's +: %d along the wire, %d on it; the line's +: %d away, %d on it\n", alongWire,
+                    onWirePlus, lineIdle, lineHot);
+        check(alongWire + 60 < onWirePlus && lineIdle + 60 < lineHot,
+              "the graph's +s are faint until the mouse is on them");
+        view.mouseMove({a.x + 5.0f, a.y + 1.0f}, {});
+        click(view, {a.x + 5.0f, a.y + 1.0f});
+        // Had that opened the list, this click would only close it.
+        click(view, mid);
+        const Point at = listAt(view, {mid.x + 26.0f, mid.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+        click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Filter)) * kFxMenuPitch});
+        const bool added = from(5, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(5);
+        view.undo();
+        view.mouseMove({600.0f, 428.0f}, {});
+        check(shot && shown && added && from(1, 0) == fxSlotPort(0),
+              "the mouse along a wire shows its +, which alone takes the click");
+    }
+
+    // Back to the row: two views of the same line, so nothing asks and nothing changes; the split shows as its
+    // container there.
+    const std::vector<int> before = fxChain(model);
+    std::vector<double> wires;
+    for (int i = kFxSplitBase; i < kShapeBase; ++i)
+        wires.push_back(model.value(i));
+    click(view, centerOf(detail::fxModeButton(0)));
+    view.mouseMove({600.0f, 600.0f}, {});
+    bool same = fxChain(model) == before;
+    for (int i = kFxSplitBase; i < kShapeBase; ++i)
+        same = same && model.value(i) == wires[i - kFxSplitBase];
+    check(!model.ui.fxGraphView && same && model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
+              renderer.save(view, dir / "40h-fx-to-chain.png"),
+          "going back to the row changes nothing: the split shows there as its container");
+}
+
+// A split in the row (the chain view), the same line the graph shows: the arrow between two cards offers a split,
+// which goes in there as a container, its low band shown and empty; a card dragged onto the band it shows goes on
+// that band; its other tab shows the other band, whose dashed card adds an effect to it (the list offering no
+// split); its knobs set the bands' levels, its S buttons solo one band at a time, and its crossover's handle drags;
+// switching to the graph and back changes nothing; it folds to a strip and back; dragged by its title, it moves along
+// the line with its bands; its x puts its bands' effects on the main line, the high band's first; and a card carried
+// over a tab shows that band, to land on it.
+void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const FxType types[] = {FxType::Shaper, FxType::Widener, FxType::Delay};
+    for (int slot = 0; slot < 3; ++slot)
+        model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(types[slot]);
+    setChain(model, {0, 1, 2});
+    view.poll();
+    click(view, kFxTab);
+    auto centerOf = [](Rect r) { return Point{r.x + r.w * 0.5f, r.y + r.h * 0.5f}; };
+    auto from = [&](int node, int input) {
+        return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
+    };
+    const int split = fxSplitNode(0), join = fxSumNode(0);
+    const int high = fxBandPort(0, kFxBands - 1), low = fxBandPort(0, 0);
+    const Rect column = detail::fxCard(1.0f + detail::kFxBoxEdge); // the container's controls, in the second place
+    auto settle = [&] { // the cards gliding into their places
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+    };
+
+    // The arrow between the shaper and the widener: its list ends with the split, which goes in there.
+    const Point arrow{detail::fxCard(1.0f).x - detail::kFxGap * 0.5f, detail::fxCard(1.0f).center().y};
+    click(view, arrow);
+    const Rect menu = detail::fxMenu({0.0f, 0.0f}, true); // kept inside the panel
+    const float left = detail::kFxPanel.x + 8.0f, right = detail::kFxPanel.right() - 8.0f - menu.w;
+    const Point at{std::clamp(arrow.x - 0.5f * menu.w, left, right),
+                   std::min(detail::kFxTop + 8.0f, detail::kFxPanel.bottom() - 4.0f - menu.h)};
+    const Point splitItem = centerOf(detail::fxMenuNodeItem(at));
+    view.mouseMove(splitItem, {});
+    const bool listShot = renderer.save(view, dir / "41a-fx-row-split-list.png");
+    click(view, splitItem);
+    const bool added = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
+                       model.value(paramIndex(0, SumParam::Used)) == 1.0 && from(split, 0) == fxSlotPort(0) &&
+                       from(join, 0) == high && from(join, 1) == low && from(1, 0) == fxSumPort(0) &&
+                       from(2, 0) == fxSlotPort(1) && model.ui.splitBand[0] == 0 && !model.ui.fxGraphView;
+    view.mouseMove({600.0f, 600.0f}, {});
+    check(listShot && added && renderer.save(view, dir / "41b-fx-row-split.png"),
+          "the arrow between two cards puts a split there: a container, its low band shown, empty");
+
+    // The widener's card, after the container, dragged onto the container's dashed card: onto its low band.
+    const Rect widener = detail::fxCard(2.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge);
+    const Point grip{widener.x + 40.0f, widener.y + 17.0f};
+    const Point into{detail::fxCard(2.0f + detail::kFxBoxEdge).x + 20.0f, grip.y};
+    view.mouseDown(grip, {});
+    view.mouseMove({grip.x - 30.0f, grip.y}, {});
+    view.mouseMove(into, {});
+    settle();
+    const bool dragShot = renderer.save(view, dir / "41c-fx-row-drag-into-band.png");
+    view.mouseUp(into, {});
+    settle();
+    check(dragShot && from(1, 0) == low && from(join, 1) == fxSlotPort(1) && from(join, 0) == high &&
+              from(2, 0) == fxSumPort(0),
+          "a card dragged onto the band a container shows goes on that band");
+
+    // Its HIGH tab shows the high band, empty: its dashed card right after the controls opens the list of effects
+    // (no split), and a reverb goes on that band.
+    click(view, centerOf(detail::splitTab(column, 1)));
+    const bool highShown = model.ui.splitBand[0] == 1;
+    const Rect add = detail::fxCard(2.0f + detail::kFxBoxEdge);
+    const Point addAt{add.x + detail::kFxBoxAddW * 0.5f, add.center().y};
+    click(view, addAt);
+    view.mouseMove(fxListItem(view, addAt, FxType::Reverb), {});
+    const bool bandListShot = renderer.save(view, dir / "41d-fx-row-band-list.png");
+    click(view, fxListItem(view, addAt, FxType::Reverb));
+    check(highShown && bandListShot && from(3, 0) == high && from(join, 0) == fxSlotPort(3) &&
+              model.value(paramIndex(3, FxParam::Type)) == static_cast<double>(FxType::Reverb),
+          "a container's other tab shows that band, whose dashed card adds an effect to it");
+
+    // Its Low knob takes the low band's level down, and the low band's curve on its display with it (read off the
+    // rendered pixels: the bluest pixel at the display's low end); its high band's S solos it, then its low band's S
+    // takes over; both undone. Its crossover's handle drags from 250 Hz to 1 kHz.
+    auto lowCurveY = [&] {
+        const Rect shown{column.x + 14.0f, column.y + 66.0f, column.w - 28.0f, 104.0f};
+        float at = 0.0f;
+        int most = -256;
+        for (float y = shown.y + 4.0f; y < shown.bottom() - 22.0f; y += 1.0f) {
+            const uint32_t color = renderer.pixel({shown.x + 8.0f, y});
+            const int blueness = static_cast<int>(color & 255) - static_cast<int>(color >> 16 & 255);
+            if (blueness > most) {
+                most = blueness;
+                at = y;
+            }
+        }
+        return at;
+    };
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool fullShot = renderer.save(view, dir / "41d2-fx-row-levels-full.png");
+    const float fullY = lowCurveY();
+    // An arrow leads into the reverb on the band, and none into the dashed card after it (read off the rendered pixels:
+    // the brightest pixel where each would be, against the panel's above them).
+    auto brightest = [&](Point m) {
+        int most = 0;
+        for (float x = m.x - 5.0f; x <= m.x + 5.0f; x += 1.0f)
+            for (float y = m.y - 8.0f; y <= m.y + 8.0f; y += 1.0f) {
+                const uint32_t color = renderer.pixel({x, y});
+                most = std::max({most, static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                                 static_cast<int>(color & 255)});
+            }
+        return most;
+    };
+    auto arrowAt = [&](float place) {
+        const Rect next = detail::fxCard(place);
+        return Point{next.x - detail::kFxGap * 0.5f, next.center().y};
+    };
+    const Point intoReverb = arrowAt(2.0f + detail::kFxBoxEdge), intoAdd = arrowAt(3.0f + detail::kFxBoxEdge);
+    const int panel = brightest({intoAdd.x, intoAdd.y - 60.0f});
+    check(fullShot && brightest(intoReverb) > panel + 40 && brightest(intoAdd) <= panel + 10,
+          "a container's band has arrows between its cards, and none into its dashed card");
+    const Rect reverbCard = detail::fxCard(2.0f + detail::kFxBoxEdge);
+    const Point reverbIcon{reverbCard.x + detail::kFxIconX + 0.5f * detail::kFxIconW, reverbCard.y + 17.0f};
+    const int reverbIconHeard = brightest(reverbIcon);
+    const Point lowKnob = detail::splitKnob(column, 0);
+    drag(view, lowKnob, {lowKnob.x, lowKnob.y + 40.0f});
+    const double lowLevel = model.value(fxInputIndex(join, 1, FxInputField::Level));
+    click(view, centerOf(detail::splitSoloButton(column, 1)));
+    const bool soloHigh = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
+                          model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
+    click(view, centerOf(detail::splitSoloButton(column, 0)));
+    const bool soloLow = model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
+                         model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool soloShot = renderer.save(view, dir / "41e-fx-row-solo.png");
+    const float loweredY = lowCurveY();
+    std::printf("      the low band's curve at the display's low end: at %.0f px at full level, %.0f px at %.1f dB\n",
+                fullY, loweredY, lowLevel);
+    check(fullShot && soloShot && loweredY > fullY + 4.0f, "a band's level lowers its curve on the split's display");
+    // With the low band soloed, the high band shown is faint, its reverb's icon dimmer (read off the rendered pixels).
+    const int reverbIconSoloed = brightest(reverbIcon);
+    std::printf("      the high band's reverb icon: %d, with the low band soloed %d\n", reverbIconHeard, reverbIconSoloed);
+    check(reverbIconSoloed < reverbIconHeard - 60, "a container's band shows its cards faint while the other is soloed");
+    view.undo();
+    view.undo();
+    const Rect display{column.x + 14.0f, column.y + 66.0f, column.w - 28.0f, 104.0f};
+    const float handleY = (display.y + 12.0f + display.bottom() - 22.0f) * 0.5f; // where the bands cross, at 12 dB
+    drag(view, {display.x + static_cast<float>(normFromCutoff(250.0)) * display.w, handleY},
+         {display.x + static_cast<float>(normFromCutoff(1000.0)) * display.w, handleY});
+    check(lowLevel < -1.0 && model.value(fxInputIndex(join, 0, FxInputField::Level)) == 0.0 && soloHigh && soloLow &&
+              soloShot && model.value(paramIndex(0, SumParam::SoloLow)) == 0.0 &&
+              std::abs(model.value(paramIndex(0, SplitParam::Low)) - normFromCutoff(1000.0)) < 0.01 &&
+              model.openEdits == 0,
+          "a container's knobs set its bands' levels, its S buttons solo one band at a time, its crossover drags");
+
+    // The graph and back: the same line, nothing changed.
+    std::vector<double> before;
+    for (int i = kFxSplitBase; i < kShapeBase; ++i)
+        before.push_back(model.value(i));
+    click(view, centerOf(detail::fxModeButton(1)));
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool graphShot = model.ui.fxGraphView && renderer.save(view, dir / "41f-fx-row-as-graph.png");
+    click(view, centerOf(detail::fxModeButton(0)));
+    bool same = !model.ui.fxGraphView;
+    for (int i = kFxSplitBase; i < kShapeBase; ++i)
+        same = same && model.value(i) == before[i - kFxSplitBase];
+    check(graphShot && same, "switching to the graph and back leaves the split as it was");
+
+    // Folded to a strip by the chevron left of its x, and unfolded by a click on the strip.
+    click(view, centerOf({column.right() - 48.0f, column.y + 9.0f, 18.0f, 19.0f}));
+    const bool folded = model.ui.splitsFolded == 1u;
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool foldShot = renderer.save(view, dir / "41g-fx-row-folded.png");
+    const Rect strip = detail::fxCard(1.0f, detail::kFoldedFx);
+    click(view, {strip.center().x, strip.y + 150.0f});
+    check(folded && foldShot && model.ui.splitsFolded == 0u, "a container folds to a strip, and unfolds");
+
+    // Dragged by its title past the delay: the split goes after it, with its bands, the delay gliding into its place
+    // (a step on, the row showing neither where they were nor where they go: read off the rendered pixels along the
+    // cards' title row); undone.
+    const Point title{column.x + 60.0f, column.y + 17.0f};
+    auto rowPixels = [&] {
+        std::vector<uint32_t> line;
+        for (float x = detail::kFxPanel.x + 12.0f; x < detail::kFxPanel.right() - 12.0f; x += 2.0f)
+            line.push_back(renderer.pixel({x, title.y}));
+        return line;
+    };
+    view.mouseDown(title, {});
+    view.mouseMove({title.x + 20.0f, title.y}, {});
+    view.mouseMove({detail::fxCard(2.2f).x, title.y}, {});
+    const bool startShot = renderer.save(view, dir / "41h1-fx-row-glide-start.png");
+    const std::vector<uint32_t> atStart = rowPixels();
+    view.poll();
+    const bool stepShot = renderer.save(view, dir / "41h2-fx-row-glide-step.png");
+    const std::vector<uint32_t> aStepOn = rowPixels();
+    settle();
+    const bool carryShot = renderer.save(view, dir / "41h-fx-row-drag-container.png");
+    check(startShot && stepShot && carryShot && aStepOn != atStart && aStepOn != rowPixels(),
+          "cards dragged along the row glide aside, a step at a time");
+    view.mouseUp({detail::fxCard(2.2f).x, title.y}, {});
+    settle();
+    const bool carried = from(2, 0) == fxSlotPort(0) && from(split, 0) == fxSlotPort(2) &&
+                         from(kFxOutNode, 0) == fxSumPort(0) && from(1, 0) == low && from(3, 0) == high;
+    view.undo();
+    check(carryShot && carried && from(split, 0) == fxSlotPort(0) && from(2, 0) == fxSumPort(0),
+          "a container dragged by its title moves along the line with its bands");
+
+    // Its x: the split goes, its bands' effects on the main line in its place, the high band's first; undone.
+    click(view, centerOf({column.right() - 26.0f, column.y + 8.0f, 18.0f, 21.0f}));
+    const bool flattened = model.value(paramIndex(0, SplitParam::Used)) == 0.0 && from(3, 0) == fxSlotPort(0) &&
+                           from(1, 0) == fxSlotPort(3) && from(2, 0) == fxSlotPort(1);
+    view.undo();
+    check(flattened && model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(1, 0) == low,
+          "a container's x puts its bands' effects on the main line, the high band's first");
+
+    // The delay carried over the LOW tab shows the low band, and lands at its end, after the widener.
+    const Rect delay = detail::fxCard(3.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge);
+    const Point delayGrip{delay.x + 40.0f, delay.y + 17.0f};
+    const Point lowTab = centerOf(detail::splitTab(column, 0));
+    view.mouseDown(delayGrip, {});
+    view.mouseMove({delayGrip.x - 30.0f, delayGrip.y}, {});
+    view.mouseMove(lowTab, {});
+    const bool switched = model.ui.splitBand[0] == 0;
+    view.mouseMove({detail::fxCard(3.2f).x, lowTab.y}, {});
+    view.mouseUp({detail::fxCard(3.2f).x, lowTab.y}, {});
+    settle();
+    view.mouseMove({600.0f, 600.0f}, {});
+    check(switched && from(2, 0) == fxSlotPort(1) && from(join, 1) == fxSlotPort(2) &&
+              from(kFxOutNode, 0) == fxSumPort(0) && renderer.save(view, dir / "41i-fx-row-low-band.png"),
+          "a card carried over a container's tab shows that band, and lands on it");
+
+    // An arrow before the first card too (read off the rendered pixels: its brightest pixel against the panel's above
+    // it), whose list puts a phaser at the line's start.
+    {
+        const Point first{detail::fxCard(0.0f).x - detail::kFxGap * 0.5f, detail::fxCard(0.0f).center().y};
+        const bool drawn = brightest(first) > brightest({first.x, first.y - 60.0f}) + 30;
+        // The arrow into the low band's second card, the delay, in the band's color too.
+        const Point intoDelay{detail::fxCard(3.0f + detail::kFxBoxEdge).x - detail::kFxGap * 0.5f, first.y};
+        const bool bandArrow =
+            blue(brightestAlong(renderer, {intoDelay.x - 5.0f, intoDelay.y}, {intoDelay.x + 5.0f, intoDelay.y}));
+        check(bandArrow, "the arrows along a container's band are all in its color");
+        click(view, first);
+        const Rect list = detail::fxMenu({0.0f, 0.0f}, true);
+        const Point listAt{std::clamp(first.x - 0.5f * list.w, detail::kFxPanel.x + 8.0f,
+                                      detail::kFxPanel.right() - 8.0f - list.w),
+                           std::min(detail::kFxTop + 8.0f, detail::kFxPanel.bottom() - 4.0f - list.h)};
+        const Rect phaser = detail::fxMenuItem(listAt, FxType::Phaser);
+        click(view, {phaser.x + 0.5f * phaser.w, phaser.y + 0.5f * phaser.h});
+        check(drawn && model.value(paramIndex(4, FxParam::Type)) == static_cast<double>(FxType::Phaser) &&
+                  from(4, 0) == kFxPortIn && from(0, 0) == fxSlotPort(4),
+              "an arrow goes before the first card, its list putting an effect at the line's start");
+    }
+}
+
+// The graph's box takes the room the inspector's card leaves: beside a card one place wide (a delay's) it reaches
+// further right than beside a wide one (a parametric EQ's), whose card takes some of it (read off the rendered
+// pixels: just inside the wider box's right edge, against the box's empty top left).
+void testFxGraphRoom(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    const Rect mode = detail::fxModeButton(1);
+    click(view, {mode.x + mode.w * 0.5f, mode.y + mode.h * 0.5f});
+    const Rect beside = detail::fxGraphArea(1.0f);
+    const Point probe{beside.right() - 6.0f, beside.y + 20.0f}, empty{beside.x + 20.0f, beside.y + 20.0f};
+    auto boxThere = [&](const char *shot) {
+        view.mouseMove({600.0f, 700.0f}, {});
+        renderer.save(view, dir / shot);
+        return renderer.pixel(probe) == renderer.pixel(empty);
+    };
+    click(view, detail::fxGridCell(1, 0, 0.0f)); // the delay
+    const bool narrow = model.ui.fxSelected == 0 && boxThere("40w-fx-graph-narrow-card.png");
+    click(view, detail::fxGridCell(2, 0, 0.0f)); // the parametric EQ
+    const bool wide = model.ui.fxSelected == 1 && !boxThere("40w2-fx-graph-wide-card.png");
+    check(detail::fxGraphArea(1.5f).right() < beside.right() - 40.0f && narrow && wide,
+          "the graph's box takes the room the inspector's card leaves, more beside a narrow card");
+}
+
+// The effects graph wider than its box: a scrollbar under the box, whose thumb dragged to its end scrolls the graph
+// there, the main line's + at the end then taking a click; with the graph fitting, no scrollbar.
+void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    for (int slot = 0; slot < 10; ++slot)
+        model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    model.values[paramIndex(9, FxParam::Type)] = static_cast<double>(FxType::ParamEq); // a wide card, last
+    setChain(model, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+    view.poll();
+    click(view, kFxTab);
+    const Rect mode = detail::fxModeButton(1);
+    click(view, {mode.x + mode.w * 0.5f, mode.y + mode.h * 0.5f});
+    // IN, ten effects, the + and OUT: as wide as 12 columns and OUT's half and a margin, scrolling as far as the box
+    // beside the widest card needs (so picking a node never moves the graph).
+    const Rect area = detail::fxGraphArea(1.5f);
+    const float most = detail::kFxGridLeft + 12.0f * detail::kFxGridCol + detail::kFxEndHalfW + 16.0f - area.w;
+    const Rect track = detail::fxGraphScrollTrack();
+    // The thumb, at the track's left end, lighter under the mouse than the track (read off the rendered pixels).
+    const float mid = track.y + track.h * 0.5f;
+    auto light = [&](Point p) {
+        const uint32_t px = renderer.pixel(p);
+        return static_cast<int>((px >> 16 & 255) + (px >> 8 & 255) + (px & 255));
+    };
+    view.mouseMove({track.x + 8.0f, mid}, {});
+    const bool barShown = renderer.save(view, dir / "40k-fx-graph-scroll.png") &&
+                          light({track.x + 8.0f, mid}) > light({track.right() - 8.0f, mid}) + 30;
+    drag(view, {track.x + 6.0f, mid}, {track.right() + 60.0f, mid});
+    const bool scrolledShot = renderer.save(view, dir / "40l-fx-graph-scrolled.png");
+    // Scrolled to its end, the Param EQ's node picked (its card wide, the box narrower) and then a delay's (the box
+    // wider again) leave the graph where it is: the + after the last effect still takes the click there.
+    click(view, detail::fxGridCell(10, 0, most));
+    click(view, detail::fxGridCell(9, 0, most));
+    const bool picked = model.ui.fxSelected == 8;
+    const Point plus = detail::fxGridCell(11, 0, most);
+    click(view, plus);
+    const Point at = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+    click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Reverb)) * kFxMenuPitch});
+    const bool added = fxPortOf(model.value(fxInputIndex(kFxOutNode, 0, FxInputField::From))) == fxSlotPort(10) &&
+                       model.value(paramIndex(10, FxParam::Type)) == static_cast<double>(FxType::Reverb);
+    // Down to three effects, the graph fits: no scrollbar, the track's place plain panel again.
+    for (int slot = 3; slot <= 10; ++slot)
+        model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::None);
+    view.poll();
+    view.mouseMove({track.x + 8.0f, mid}, {});
+    const bool gone = renderer.save(view, dir / "40m-fx-graph-fits.png") &&
+                      renderer.pixel({track.x + 8.0f, mid}) == renderer.pixel({track.x - 6.0f, mid});
+    check(most > 0.0f && barShown && scrolledShot && picked && added && gone,
+          "the effects graph wider than its box has a scrollbar under it that scrolls it, picking a node moving it "
+          "nowhere, and none once it fits");
+}
+
+// The bin at the FX panel's top right, in the chain and in the graph: with effects (or a split) it asks first, and a
+// click around the dialog keeps them; going ahead removes every one, a split and its join too, in one undo step;
+// with nothing to remove it asks nothing (read off the rendered pixels: the header isn't dimmed).
+void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    const Rect binRect = detail::fxClearButton();
+    const Point bin{binRect.x + binRect.w * 0.5f, binRect.y + binRect.h * 0.5f};
+    const Rect confirm{420.0f, std::round((view.height() - 150.0f) * 0.5f), 360.0f, 150.0f};
+    const Point ok{confirm.right() - 64.0f, confirm.bottom() - 38.0f};
+    const Point header{600.0f, 20.0f}; // the editor's title bar, which the dialog's backdrop dims
+    renderer.save(view, dir / "40s-fx-clear-before.png");
+    const uint32_t clear = renderer.pixel(header);
+
+    // The chain: asked, kept by a click around the dialog, then removed, and back by undo.
+    click(view, bin);
+    const bool asked = renderer.save(view, dir / "40s-fx-clear-confirm.png") && renderer.pixel(header) != clear;
+    click(view, {40.0f, 40.0f});
+    const bool kept = fxChain(model) == std::vector<int>{0, 1};
+    click(view, bin);
+    click(view, ok);
+    const bool emptied = fxChain(model).empty();
+    view.undo();
+    const bool back = fxChain(model) == std::vector<int>{0, 1};
+
+    // The graph with a split after the effects: all of it goes, IN wired straight out.
+    const Rect mode = detail::fxModeButton(1);
+    click(view, {mode.x + mode.w * 0.5f, mode.y + mode.h * 0.5f});
+    const Point plus = detail::fxGridCell(3, 0, 0.0f);
+    click(view, plus);
+    const Point list = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+    click(view, {list.x + 90.0f, list.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f});
+    const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
+                       model.value(paramIndex(0, SumParam::Used)) == 1.0;
+    click(view, bin);
+    click(view, ok);
+    const bool graphEmptied =
+        fxChain(model).empty() && model.value(paramIndex(0, SplitParam::Used)) == 0.0 &&
+        model.value(paramIndex(0, SumParam::Used)) == 0.0 &&
+        fxPortOf(model.value(fxInputIndex(kFxOutNode, 0, FxInputField::From))) == kFxPortIn &&
+        fxPortOf(model.value(fxInputIndex(kFxOutNode, 1, FxInputField::From))) < 0 && renderer.save(view, dir / "40t-fx-cleared.png");
+
+    // Nothing left: the bin asks nothing.
+    view.mouseMove({600.0f, 428.0f}, {});
+    renderer.save(view, dir / "40t-fx-cleared.png");
+    const uint32_t plain = renderer.pixel(header);
+    click(view, bin);
+    view.mouseMove({600.0f, 428.0f}, {});
+    renderer.save(view, dir / "40u-fx-clear-nothing.png");
+    check(asked && kept && emptied && back && split && graphEmptied && renderer.pixel(header) == plain,
+          "the bin removes every effect and split after asking, and asks nothing with none there");
+}
+
 void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    for (const auto &[index, value] : fxOrderChanges(fxOrderStarting({0, 1, 2})))
-        model.values[index] = value;
+    setChain(model, {0, 1, 2});
     const FxType types[] = {FxType::Delay, FxType::Reverb, FxType::Phaser};
     for (int slot = 0; slot < 3; ++slot)
         model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(types[slot]);
@@ -2002,7 +2957,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     const bool switched = model.value(paramIndex(1, FxParam::Enabled)) < 0.5;
     click(view, {fxCardX(model, 2) + 40.0f, 428.0f}); // the next card, closed up: its own field, no change
     const bool closedUp = model.ui.fxFolded == 1u << 1 &&
-                          std::abs(fxCardX(model, 2) - (32.0f + (1.0f + kFoldedSpan) * kFxStep)) < 0.1f;
+                          std::abs(fxCardX(model, 2) - (46.0f + (1.0f + kFoldedSpan) * kFxStep)) < 0.1f;
     click(view, {strip, 328.0f}); // the strip's name unfolds it
     const bool fxUnfolded = model.ui.fxFolded == 0;
     click(view, fxFold(1));
@@ -2364,9 +3319,9 @@ void testOutScope(const std::filesystem::path &dir, Renderer &renderer) {
           "the output scope's spans too small to draw paint nothing again, and one that draws does");
 }
 
-// The three-band dynamics, alone in the chain: a card one and a half places wide (x 32 to 299.5) whose display (from
-// y 222) has a bar a band, the high band on top (y 229, 246 and 263, 12 tall), levels across from -60 dB at x 84 to
-// 0 dB at x 245.5. A band's row picks the band its knobs set; its threshold lines, on every band, drag across (each
+// The three-band dynamics, alone in the chain: a card one and a half places wide (from x 46) whose display (14 px in,
+// from y 222) has a bar a band, the high band on top (y 229, 246 and 263, 12 tall), levels across from -60 dB at x 98
+// (38 px into the display) to 0 dB 40 px short of its right end. A band's row picks the band its knobs set; its threshold lines, on every band, drag across (each
 // stopping at the other), picking their band, Alt-dragged up they turn its ratio, and a double-click puts the
 // threshold back. LINK makes the knobs and every band's lines set the low band; RMS switches the detector to peaks.
 // Its knobs for which way a threshold or ratio works tell it in a tooltip under their label, and the bars show what the
@@ -2378,10 +3333,10 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     addFx(view, FxType::MultiDyn);
     check(model.value(paramIndex(0, FxParam::Type)) == static_cast<double>(FxType::MultiDyn),
           "the list of effects adds a three-band dynamics");
-    auto x = [](double db) { return 84.0f + static_cast<float>((db + 60.0) / 60.0) * 161.5f; };
+    auto x = [](double db) { return 98.0f + static_cast<float>((db + 60.0) / 60.0) * (1.5f * kFxStep - 22.0f - 106.0f); };
     constexpr float kHighBar = 229.0f, kMidBar = 246.0f;
     const float mid = kMidBar + 6.0f, high = kHighBar + 6.0f; // down the middle of their bars
-    click(view, {60.0f, mid});
+    click(view, {74.0f, mid});
     const Point above = fxKnob(model, 0, 2, 5, 142.0f);
     drag(view, above, {above.x, above.y - 20.0f});
     check(model.value(mdAboveIndex(0, 1)) > -20.0 && model.value(mdAboveIndex(0, 0)) == -20.0,
@@ -2436,7 +3391,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(mdDownIndex(0, 2)) == normFromDynRatio(3.0),
           "a three-band dynamics' zones drag up and down for their ratios, undoably, picking their band");
     // The high band's Above line, dragged while the mid band is picked, picks the high band: the knobs set it now.
-    click(view, {60.0f, mid});
+    click(view, {74.0f, mid});
     drag(view, {x(-20.0), high}, {x(-25.0), high});
     const bool dragged = std::abs(model.value(mdAboveIndex(0, 2)) + 25.0) < 0.5;
     drag(view, above, {above.x, above.y - 20.0f});
@@ -2613,6 +3568,90 @@ void testVelocity(const std::filesystem::path &dir, Renderer &renderer) {
 
 // A wire in the graph bends when dragged sideways (its label following its middle), keeps the bend through a save of
 // the layout and back, goes back to how it bowed with a double-click or Reset Bend, and each is an undo step.
+// A route's start dragged onto another node comes from there, with its amount and mode; an OUT line's start too.
+void testRouteFrom(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(paramIndex(2, OpParam::Enabled), 1.0);
+    model.set(matrixIndex(1, 0), 0.4);
+    model.set(routeModeIndex(1, 0), static_cast<double>(RouteMode::LinearFm));
+    view.poll();
+    const UiLayout &layout = model.layout();
+    const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1), c = nodeCenter(layout, 2);
+    const detail::Wire w = detail::wireBetween(1, b, 0, a, kDefaultWireBend);
+    const float d = std::hypot(w.control.x - w.start.x, w.control.y - w.start.y);
+    // Its grip reaches back along the wire from where it leaves B: 16 px out still takes it.
+    const Point grip{w.start.x + (w.control.x - w.start.x) / d * 16.0f, w.start.y + (w.control.y - w.start.y) / d * 16.0f};
+    view.mouseMove(grip, {});
+    const bool lit = renderer.save(view, dir / "41b-route-start-lit.png");
+    view.mouseDown(grip, {});
+    view.mouseMove({(grip.x + c.x) * 0.5f, (grip.y + c.y) * 0.5f}, {});
+    view.mouseMove(c, {});
+    const bool shot = renderer.save(view, dir / "41a-route-from.png");
+    view.mouseUp(c, {});
+    const bool moved = model.value(matrixIndex(1, 0)) == 0.0 && std::abs(model.value(matrixIndex(2, 0)) - 0.4) < 1e-6 &&
+                       model.value(routeModeIndex(2, 0)) == static_cast<double>(RouteMode::LinearFm) &&
+                       model.value(routeModeIndex(1, 0)) == 0.0;
+    // A's line to OUT, by where it leaves A, onto B: B goes out at A's level, A no longer does.
+    const double out = model.value(paramIndex(0, OpParam::Out));
+    drag(view, {a.x, a.y + 24.0f + 4.0f}, b);
+    const bool outMoved = model.value(paramIndex(0, OpParam::Out)) == 0.0 &&
+                          model.value(paramIndex(1, OpParam::Out)) == out;
+    view.undo();
+    view.undo();
+    check(lit && shot && moved && outMoved && model.value(matrixIndex(1, 0)) == 0.4 && model.value(matrixIndex(2, 0)) == 0.0,
+          "a route's start dragged onto another node comes from there, with its amount and mode, undoably");
+}
+
+// Ctrl+drag puts a node on its graph's grid, the nearest point it fits at: a second one dragged there goes to the next
+// free point. While Ctrl is held over the graph, the grid's points show.
+void testNodeGrid(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    for (int op : {1, 2})
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+    view.poll();
+    UiLayout &layout = model.layout();
+    const Modifiers ctrl{false, true, false};
+    auto onGrid = [&](int node, Point *at) {
+        const Point c = nodeCenter(layout, node);
+        for (int row = 0; row < detail::kRoutingGridRows; ++row)
+            for (int col = 0; col < detail::kRoutingGridCols; ++col) {
+                const Point g = detail::gridPoint(detail::kGraph, detail::kRoutingGridCols, detail::kRoutingGridRows, col, row);
+                if (std::abs(g.x - c.x) < 0.5f && std::abs(g.y - c.y) < 0.5f) {
+                    if (at)
+                        *at = g;
+                    return true;
+                }
+            }
+        return false;
+    };
+    view.mouseMove({400.0f, 300.0f}, ctrl);
+    const bool marks = renderer.save(view, dir / "42a-grid-marks.png");
+    const Point to{430.0f, 230.0f};
+    const Point b = nodeCenter(layout, 1);
+    view.mouseDown(b, ctrl);
+    view.mouseMove({(b.x + to.x) * 0.5f, (b.y + to.y) * 0.5f}, ctrl);
+    view.mouseMove(to, ctrl);
+    const bool dragShot = renderer.save(view, dir / "42b-grid-drag.png");
+    view.mouseUp(to, ctrl);
+    Point bAt{}, cAt{};
+    const bool bSnapped = onGrid(1, &bAt);
+    // C dragged with Ctrl onto where B landed: the next free point.
+    const Point c = nodeCenter(layout, 2);
+    view.mouseDown(c, ctrl);
+    view.mouseMove({(c.x + bAt.x) * 0.5f, (c.y + bAt.y) * 0.5f}, ctrl);
+    view.mouseMove(bAt, ctrl);
+    view.mouseUp(bAt, ctrl);
+    const bool cSnapped = onGrid(2, &cAt) && std::hypot(cAt.x - bAt.x, cAt.y - bAt.y) > 1.0f;
+    // A plain drag leaves a node where it is let go of, off the grid.
+    view.mouseMove({600.0f, 428.0f}, {});
+    drag(view, cAt, {cAt.x + 13.0f, cAt.y + 7.0f});
+    check(marks && dragShot && bSnapped && cSnapped && !onGrid(2, nullptr),
+          "Ctrl+drag puts a node on the grid's nearest free point, and the grid's points show while Ctrl is held");
+}
+
 void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5069,11 +6108,12 @@ void run(const std::filesystem::path &dir, float scale) {
     check(std::lround(model.value(paramIndex(0, FxParam::ShaperMode))) == static_cast<long>(ClipMode::Asymmetric),
           "the shaper's list picks its curve");
     // Custom draws the curve in the card, to edit right there: its plot is the display less 8 px all round
-    // (127 x 100), the full swing 6 px short of its edges. A double-click adds a point, a drag moves it.
+    // (the card less 44 px across, 100 down), the full swing 6 px short of its edges. A double-click adds a point, a
+    // drag moves it.
     click(view, clipButton);
     click(view, clipItem(ClipMode::Custom));
     auto cardAt = [&](double x, double y) {
-        return Point{fxCardX(model, 0) + 22.0f + static_cast<float>(x) * 127.0f,
+        return Point{fxCardX(model, 0) + 22.0f + static_cast<float>(x) * (kFxCardW - 44.0f),
                      312.0f - static_cast<float>(y) * (50.0f - 6.0f)};
     };
     view.doubleClick(cardAt(0.8, 0.4), {}); // under the bend handle of the curve's upper half
@@ -5198,6 +6238,8 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseDown(fxGrip(model, 0), {});
     view.mouseMove({fxGrip(model, 0).x + 200.0f, 212.0f}, {});
     view.mouseMove({fxGrip(model, 0).x + 390.0f, 212.0f}, {});
+    for (int k = 0; k < 40; ++k) // the others gliding aside
+        view.poll();
     check(renderer.save(view, dir / "9-fx-reorder.png"), "render a card being dragged");
     view.mouseUp({fxGrip(model, 0).x + 390.0f, 212.0f}, {});
     check(fxChain(model) == std::vector<int>{1, 2, 0, 3, 4}, "dragging a card's title moves that effect along the chain");
@@ -5247,7 +6289,9 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove(arrow, {});
         const bool hoverShot = renderer.save(view, dir / "8d-fx-insert.png");
         click(view, arrow);
-        const Point delay{arrow.x, 188.0f + 4.0f + kFxMenuPitch * static_cast<float>(fxMenuPlace(FxType::Delay)) + 10.5f};
+        // The list's top: under the title row, or as high as keeps it (a split after the effects) inside the panel.
+        const float top = std::min(188.0f, detail::kFxPanel.bottom() - 4.0f - detail::fxMenu({0.0f, 0.0f}, true).h);
+        const Point delay{arrow.x, top + 4.0f + kFxMenuPitch * static_cast<float>(fxMenuPlace(FxType::Delay)) + 10.5f};
         view.mouseMove(delay, {});
         const bool insertListShot = renderer.save(view, dir / "8e-fx-insert-list.png");
         click(view, delay);
@@ -5723,6 +6767,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kSourcesToggle);
     runMore(dir, renderer);
     renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6);
+    renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4); // its effects as a graph, split low/high
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
     renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
@@ -5731,6 +6776,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testMacros(dir, renderer);
     testVelocity(dir, renderer);
     testWireBend(dir, renderer);
+    testRouteFrom(dir, renderer);
+    testNodeGrid(dir, renderer);
     testRouteModes(dir, renderer);
     testSelectedNode(dir, renderer);
     testModsEmpty(dir, renderer);
@@ -5746,6 +6793,11 @@ void run(const std::filesystem::path &dir, float scale) {
     testShapers(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
+    testFxGraph(dir, renderer);
+    testFxGraphScroll(dir, renderer);
+    testFxGraphRoom(dir, renderer);
+    testFxRow(dir, renderer);
+    testFxClear(dir, renderer);
     testLaterSlots(dir, renderer);
     testSourceShadow(dir, renderer);
     testMultiDyn(dir, renderer);
