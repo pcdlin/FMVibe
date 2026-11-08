@@ -220,8 +220,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   way it replays drags and clicks:
   - the effects graph's slot grid: switching to it showing the chain as its main line, as wired; the main
     line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
-    empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's node showing
-    the split's card (centered in the inspector), its High knob setting the high band's level, in dB, and its S
+    empty bands each curving out to a + on its row, each + ringed in its wire's color (read off the rendered
+    pixels); a band's + putting an effect on its band; the join's node showing
+    the split's card (at the inspector's right), its High knob setting the high band's level, in dB, and its S
     soloing a band, the split and join nodes marked with an S and the other band's node and wires faint, and the
     main line's wires grey, each band's and each half of the split's and join's nodes in its color, a split's coming
     in from grey at its left and a join's going out to grey at its right (read off the rendered pixels), and then
@@ -235,8 +236,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     it is held over a node: an effect along the main line, one onto a band's end by its wire into the join, one from
     the high band to the low band's end, and a split with its bands and join, carried by the join, to the line's
     start, each one undo step, undone; the mouse anywhere along a wire showing its + (read off the rendered pixels), a
-    click there doing nothing and on the + opening the list, and an empty band between a split and its join showing
-    its + always (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
+    click there doing nothing and on the + opening the list, the wire's + and the line's faint until the mouse is on
+    them, and an empty band between a split and its join showing its + always (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
     the row changing nothing, the split showing there as its container;
   - a split in the row: the arrow between two cards offering it after the effects (its list kept inside the panel),
@@ -251,6 +252,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     main line, the high band's first, undone; a card carried over the LOW tab showing the low band and landing at
     its end; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
     pixels), the first's list putting an effect at the line's start;
+  - the effects graph's box taking the room the inspector's card leaves, more beside a narrow card than a wide one
+    (read off the rendered pixels);
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
     the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
     nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the

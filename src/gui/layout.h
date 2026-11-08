@@ -654,21 +654,21 @@ inline Rect fxDisplay(float position, FxType type) {
     return fxDisplayIn(fxCard(position, fxSpan(type)), type);
 }
 
-// The effects graph (UiLayout::fxGraphView) takes the card row's place: the graph at the left, and at the right the
-// card of the node it shows (an effect's, a split's or a join's), centered in an area as wide as the widest cards. The
-// switch between the chain and the graph sits at the panel's top right.
-constexpr float kFxInspectorW = 1.5f * (kFxCardW + kFxGap) - kFxGap;
-inline Rect fxInspectorCard(float span = 1.5f) {
+// The effects graph (UiLayout::fxGraphView) takes the card row's place: at the right the card of the node it shows (an
+// effect's, a split's or a join's), `span` card places wide, and the graph's box left of it, as wide as the card
+// leaves it, so a narrow card gives the graph more room and a wide one takes some. The switch between the chain and
+// the graph sits at the panel's top right.
+inline Rect fxInspectorCard(float span = 1.0f) {
     const float w = span * (kFxCardW + kFxGap) - kFxGap;
-    const float area = kFxPanel.right() - 16.0f - kFxInspectorW;
-    return {std::round(area + 0.5f * (kFxInspectorW - w)), kFxTop, w, kFxPanel.bottom() - 20.0f - kFxTop};
+    return {std::round(kFxPanel.right() - 16.0f - w), kFxTop, w, kFxPanel.bottom() - 20.0f - kFxTop};
 }
-inline Rect fxGraphArea() {
-    return {kFxPanel.x + 16.0f, kFxTop, kFxPanel.w - 32.0f - kFxInspectorW - 16.0f, kFxPanel.bottom() - 20.0f - kFxTop};
+inline Rect fxGraphArea(float span = 1.0f) {
+    const float right = fxInspectorCard(span).x - 16.0f;
+    return {kFxPanel.x + 16.0f, kFxTop, right - kFxPanel.x - 16.0f, kFxPanel.bottom() - 20.0f - kFxTop};
 }
 // Under the graph's box, while it is wider than that: its scrollbar, along the box at the panel's bottom edge.
-inline Rect fxGraphScrollTrack() {
-    const Rect area = fxGraphArea();
+inline Rect fxGraphScrollTrack(float span = 1.0f) {
+    const Rect area = fxGraphArea(span);
     return {area.x + 12.0f, kFxPanel.y + kFxPanel.h - 14.0f, area.w - 24.0f, 6.0f};
 }
 // Left of the switch, a button that removes every effect.
@@ -686,13 +686,14 @@ inline Rect fxModeButton(int graph) {
 constexpr float kFxGridCol = 92.0f, kFxGridRow = 70.0f, kFxGridLeft = 34.0f;
 constexpr float kFxNodeR = 22.0f;
 constexpr float kSoloedOutAlpha = 0.3f; // how strongly a band its join doesn't hear (the other soloed) is drawn
+constexpr float kFxPlusIdleAlpha = 0.4f; // how strongly the graph's +s are drawn while the mouse isn't on them
 constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
 constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
 constexpr float kFxPortR = 5.0f;
 constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
 constexpr float kFxSlotHalf = 8.5f; // a + where a node can go next: a circle, as on a wire's middle
 inline Point fxGridAt(float col, float row, float scroll) { // fractions of a cell too, as nodes glide
-    const Rect area = fxGraphArea();
+    const Rect area = fxGraphArea(); // its left edge and middle, whatever its width
     return {area.x + kFxGridLeft + col * kFxGridCol - scroll, area.center().y + row * kFxGridRow};
 }
 inline Point fxGridCell(int col, int row, float scroll) {

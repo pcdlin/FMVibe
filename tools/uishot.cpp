@@ -2146,6 +2146,16 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               from(kFxOutNode, 0) == fxSumPort(0) && from(kFxOutNode, 1) < 0 && model.ui.fxSelected == split &&
               renderer.save(view, dir / "40c-fx-split.png"),
           "the main line's + puts a split there with its join, each band's + on its row between them");
+    // Each + ringed in the color of the wire it is on: the high band's amber, the low band's blue, the main line's
+    // grey after the join (read off the rendered pixels: down through the top of each ring, faint as they are).
+    {
+        auto ring = [&](Point m) { return redOverBlue(brightestAlong(renderer, {m.x, m.y - 11.0f}, {m.x, m.y - 6.0f})); };
+        const int highRing = ring(cell(4, -1)), lowRing = ring(cell(4, 1)), lineRing = ring(cell(6, 0));
+        std::printf("      the +s' rings, red over blue: high band %d, low band %d, main line %d\n", highRing, lowRing,
+                    lineRing);
+        check(highRing > 30 && lowRing < -30 && std::abs(lineRing) < 20,
+              "each + in the graph is ringed in the color of the wire it is on");
+    }
 
     // A delay on the high band and a compressor on the low one, from their +s; the band's list offers no split.
     addAt(cell(4, -1), FxType::Delay);
@@ -2463,6 +2473,27 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove({a.x + 5.0f, a.y + 1.0f}, {});
         const bool shot = renderer.save(view, dir / "40r-fx-wire-hover.png");
         const bool shown = renderer.pixel({mid.x + 6.0f, mid.y + 6.0f}) != plain;
+        // Faint until the mouse is on it, as the + after the last effect (read off the rendered pixels: the brightest
+        // along the +'s bar, with the mouse along the wire and on the +, and away from and on the line's +).
+        auto bar = [&](Point m) {
+            const uint32_t color = brightestAlong(renderer, {m.x - 3.0f, m.y}, {m.x + 3.0f, m.y});
+            return std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                             static_cast<int>(color & 255)});
+        };
+        const int alongWire = bar(mid);
+        view.mouseMove(mid, {});
+        renderer.save(view, dir / "40r2-fx-wire-plus-hot.png");
+        const int onWirePlus = bar(mid);
+        const Point linePlus = cell(7, 0);
+        const int lineIdle = bar(linePlus);
+        view.mouseMove(linePlus, {});
+        renderer.save(view, dir / "40r3-fx-line-plus-hot.png");
+        const int lineHot = bar(linePlus);
+        std::printf("      a wire's +: %d along the wire, %d on it; the line's +: %d away, %d on it\n", alongWire,
+                    onWirePlus, lineIdle, lineHot);
+        check(alongWire + 60 < onWirePlus && lineIdle + 60 < lineHot,
+              "the graph's +s are faint until the mouse is on them");
+        view.mouseMove({a.x + 5.0f, a.y + 1.0f}, {});
         click(view, {a.x + 5.0f, a.y + 1.0f});
         // Had that opened the list, this click would only close it.
         click(view, mid);
@@ -2738,6 +2769,34 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
                   from(4, 0) == kFxPortIn && from(0, 0) == fxSlotPort(4),
               "an arrow goes before the first card, its list putting an effect at the line's start");
     }
+}
+
+// The graph's box takes the room the inspector's card leaves: beside a card one place wide (a delay's) it reaches
+// further right than beside a wide one (a parametric EQ's), whose card takes some of it (read off the rendered
+// pixels: just inside the wider box's right edge, against the box's empty top left).
+void testFxGraphRoom(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    const Rect mode = detail::fxModeButton(1);
+    click(view, {mode.x + mode.w * 0.5f, mode.y + mode.h * 0.5f});
+    const Rect beside = detail::fxGraphArea(1.0f);
+    const Point probe{beside.right() - 6.0f, beside.y + 20.0f}, empty{beside.x + 20.0f, beside.y + 20.0f};
+    auto boxThere = [&](const char *shot) {
+        view.mouseMove({600.0f, 700.0f}, {});
+        renderer.save(view, dir / shot);
+        return renderer.pixel(probe) == renderer.pixel(empty);
+    };
+    click(view, detail::fxGridCell(1, 0, 0.0f)); // the delay
+    const bool narrow = model.ui.fxSelected == 0 && boxThere("40w-fx-graph-narrow-card.png");
+    click(view, detail::fxGridCell(2, 0, 0.0f)); // the parametric EQ
+    const bool wide = model.ui.fxSelected == 1 && !boxThere("40w2-fx-graph-wide-card.png");
+    check(detail::fxGraphArea(1.5f).right() < beside.right() - 40.0f && narrow && wide,
+          "the graph's box takes the room the inspector's card leaves, more beside a narrow card");
 }
 
 // The effects graph wider than its box: a scrollbar under the box, whose thumb dragged to its end scrolls the graph
@@ -6705,6 +6764,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
     testFxGraphScroll(dir, renderer);
+    testFxGraphRoom(dir, renderer);
     testFxRow(dir, renderer);
     testFxClear(dir, renderer);
     testLaterSlots(dir, renderer);

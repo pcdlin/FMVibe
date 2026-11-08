@@ -470,6 +470,19 @@ Rect View::fxInspector(int node) const {
     return fxInspectorCard(node >= 0 && node < kFxSlots ? fxSpan(fxSlotType(node)) : 1.0f);
 }
 
+float View::fxInspectorSpan() const {
+    const int node = fxSelectedNode();
+    return node >= 0 && node < kFxSlots ? fxSpan(fxSlotType(node)) : 1.0f;
+}
+
+Rect View::fxGraphArea() const {
+    return detail::fxGraphArea(fxInspectorSpan());
+}
+
+Rect View::fxGraphScrollTrack() const {
+    return detail::fxGraphScrollTrack(fxInspectorSpan());
+}
+
 int View::fxSelectedNode() const {
     const int node = controller_.layout().fxSelected;
     if (node >= 0 && node < kFxNodes && node != kFxOutNode && fxNodeShown(node))
@@ -655,14 +668,15 @@ View::FxLine View::fxLineShown() const {
 // --- Widgets
 
 void View::fxGraphWidgets(std::vector<Widget> &list) const {
-    auto add = [&list](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
+    const Rect area = fxGraphArea(); // the graph scrolls inside its area
+    auto add = [&list, area](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
         Widget w;
         w.kind = kind;
         w.rect = rect;
         w.param = param;
         w.a = a;
         w.b = b;
-        w.clip = fxGraphArea(); // the graph scrolls inside its area
+        w.clip = area;
         list.push_back(w);
     };
     const FxLine line = fxLine();
@@ -1547,12 +1561,14 @@ void View::paintFxGraph(Canvas &c) {
             continue;
         const bool onPlus = hover_ && hover_->kind == Kind::FxGap && hover_->a == w.at.lane && hover_->b == b;
         const Point m = wireMiddle(w);
-        // A band's in the accent, as the line's + at its end; the main line's in its wire's color.
-        const Color color = (w.at.lane > 0 ? kAccent : w.color).alpha(w.faint ? kSoloedOutAlpha : 1.0f);
+        // In its wire's color: grey on the main line, a band's color on a band. Faint until the mouse is on it (or its
+        // list is open).
+        const float shown = (w.faint ? kSoloedOutAlpha : 1.0f) * (listed || onPlus ? 1.0f : kFxPlusIdleAlpha);
+        const Color color = w.color.alpha(shown);
         c.fillCircle(m, 8.5f, kDisplayColor);
         c.fillCircle(m, 8.5f, color.alpha(listed ? 0.35f : onPlus ? 0.28f : 0.16f));
         c.strokeCircle(m, 8.5f, color, 1.2f);
-        const Color ink = kText.alpha(w.faint ? kSoloedOutAlpha : 1.0f);
+        const Color ink = kText.alpha(shown);
         c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, ink, 1.5f);
         c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, ink, 1.5f);
     }
@@ -1711,17 +1727,23 @@ void View::paintFxGraph(Canvas &c) {
         c.line({x.x + 3.0f, x.y - 3.0f}, {x.x - 3.0f, x.y + 3.0f}, ink, 1.4f);
     }
 
-    // The +s where a node can go next: a + in a circle, as on a wire's middle, in its lane's color.
+    // The +s where a node can go next: a + in a circle, as on a wire's middle, in the color of the wire it is on (grey
+    // at the main line's end, a band's color at the end of a split left open), faint until the mouse is on it (or its
+    // list is open).
     for (const auto &slot : grid.slots) {
         const Point m = at.slot[slot.lane];
-        const Color color = kAccent; // a band's as the line's
         const bool listed = fxMenuOpen_ && fxSlot_.lane == slot.lane && fxSlot_.item < 0;
         const bool hot = !dragging && hover_ && hover_->kind == Kind::FxSlot && hover_->a == slot.lane;
+        const float shown = listed || hot ? 1.0f : kFxPlusIdleAlpha;
+        const Color color = (slot.lane == 1   ? bandColor(kHighBand)
+                             : slot.lane == 2 ? bandColor(kLowBand)
+                                              : kDim)
+                                .alpha(shown);
         c.fillCircle(m, kFxSlotHalf, kDisplayColor);
         c.fillCircle(m, kFxSlotHalf, color.alpha(listed ? 0.35f : hot ? 0.28f : 0.16f));
         c.strokeCircle(m, kFxSlotHalf, color, 1.2f);
-        c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, kText, 1.5f);
-        c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, kText, 1.5f);
+        c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, kText.alpha(shown), 1.5f);
+        c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, kText.alpha(shown), 1.5f);
     }
 
     // What is being dragged, over everything, with the mouse, faint.

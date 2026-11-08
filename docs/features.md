@@ -691,8 +691,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     undo step: while there is any, it asks first ("Really remove all FX?"); with none, it is faint and does nothing.
 
     The switch at the panel's top right (cards in a row, or a node forking and meeting again) shows the effects as
-    a **graph** instead: the graph at the left, and at the right the card of the node picked, centered in the
-    space a wide card takes, as it would show in the row. Its hint at the top right reads "click node: edit · drag
+    a **graph** instead: at the right the card of the node picked, as it would show in the row, and the graph at the
+    left in the room the card leaves: beside a card one place wide the graph reaches further right, and a wide card
+    (the Param EQ's, the 3-band dynamics') takes some of its room. Its hint at the top right reads "click node: edit · drag
     node: move · click wire: insert". The graph's nodes sit on a fixed grid, a column each, and
     wire themselves: S-shaped wires, grey along the main line, run left to right from the input (IN, a
     box at the left) to the output (OUT, a box after the last column). Each effect is a circle in its color with its
@@ -709,10 +710,12 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     wire along it as loud as what comes out of it (IN, an effect, a split's band, a join), as the operators do in the
     routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops. An empty band curves out to a + on
     its row, a column on from the split, and on into the join, and a click on that + puts an effect on the band (its
-    list offers effects only); the bands' +s are in the accent, as the line's. With the mouse
+    list offers effects only). Each + is ringed in the color of the wire it is on: grey on the main line, a band's
+    color on a band. With the mouse
     anywhere along a wire between two nodes, a + shows at its middle (always on an empty band between a split
-    and its join), and a click on that + opens the list too, the effect picked
-    going in there: on the main line, the list also offers the split, which goes in with its join right after it and
+    and its join), and a click on that + opens the list too. Every + in the graph is faint until the mouse is on it
+    (or its list is open). The list a wire's + opens puts the effect picked
+    in there: on the main line, the list also offers the split, which goes in with its join right after it and
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's
     node and its join's both show the split's card: the same controls as its container in the row (see above), on
     grey, a card place wide, its tabs picking the band its display fills as the row's do (and so the band its

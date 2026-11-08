@@ -727,6 +727,11 @@ private:
     void revealFxNode(int node);                         // scrolls the graph to show that node
     // The card the effects graph's inspector shows the node in.
     Rect fxInspector(int node) const;
+    // How many card places the inspector's card takes: the node picked's (a wide effect's 1.5), else one. The graph's
+    // box and its scrollbar take what is left of them (they hide detail::fxGraphArea() and fxGraphScrollTrack() here).
+    float fxInspectorSpan() const;
+    Rect fxGraphArea() const;
+    Rect fxGraphScrollTrack() const;
     // The card of the effect in `slot` where it shows now: in the row, or in the graph's inspector; none while it
     // doesn't show.
     std::optional<Rect> fxCardOf(int slot) const;
