@@ -821,6 +821,7 @@ STR(MenuSplitThree, "Add 3-band split") // after it: a split in three bands
 STR(MenuResetSettings, "Reset settings")
 STR(MenuOtt, "OTT") // a 3-band dynamics' settings set to those of Ableton's OTT preset
 STR(MenuRemove, "Remove")
+STR(MenuMoveToBand, "Move to {1}") // an effect on a split's band moved to the end of another band of it, {1} its name
 STR(MenuUnipolar, "Unipolar") // a source's, in the menus of its card, handle or knob
 STR(MenuBipolar, "Bipolar")
 STR(MenuResetBend, "Reset Bend") // a wire in the graph, back to how it bows to begin with

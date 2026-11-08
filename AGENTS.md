@@ -269,7 +269,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     container's controls landing at its band's start (not before the split), and on over the other band's tab
     and let go of there landing at that band's end, the band shown left as it was, each undone; its x, kept, putting its bands' effects on the
     main line, the high band's first, undone; a card carried over the LOW tab lighting it (read off the rendered
-    pixels), leaving the band shown, and let go of there landing at the low band's end; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
+    pixels), leaving the band shown, and let go of there landing at the low band's end; its title's menu
+    offering Move to High only (Move to nothing on the main line's cards), which puts it at the high band's end,
+    undone; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
     pixels), the first's list putting an effect at the line's start;
   - the effects graph's box taking the room the inspector's card leaves, more beside a narrow card than a wide one
     (read off the rendered pixels);

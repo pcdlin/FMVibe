@@ -663,7 +663,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     band's color and, let go of there, puts it at that band's end, the container still showing the band it showed;
     let go of, they glide on into place, and a click while they glide puts them in place at once),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings,
-    set a 3-band dynamics as OTT, or remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
+    set a 3-band dynamics as OTT, move it to another band of its split (**Move to Low**, **Move to Mid**, **Move to
+    High**, on a card on a split's band: the split's other bands, the effect going to that band's end, one undo step),
+    or remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
     title's left, so the icon stays where it was: the icon, which still switches the effect and drags the card,
     a grip (six dots) that drags it, its ×, then its name down the strip, which unfolds it. The cards after it close up; folds are saved with the
     patch but not undone. On the Param EQ's display,

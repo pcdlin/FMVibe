@@ -673,6 +673,30 @@ void View::removeFxNode(int node, int effects) {
             removeEffect(slot);
 }
 
+std::vector<int> View::fxOtherBands(int slot) const {
+    const FxLine line = fxLine();
+    const LinePlace at = placeOf(line, slot);
+    std::vector<int> lanes;
+    if (at.item < 0 || at.lane == 0)
+        return lanes;
+    for (int lane : {2, 3, 1}) // low, middle, high
+        if (lane != at.lane && (lane != 3 || line[at.item].three))
+            lanes.push_back(lane);
+    return lanes;
+}
+
+void View::moveFxToBand(int slot, int lane) {
+    FxLine line = fxLine();
+    const LinePlace at = placeOf(line, slot);
+    if (at.item < 0 || at.lane == 0 || at.lane == lane || (lane == 3 && !line[at.item].three))
+        return;
+    const UndoScope step(controller_);
+    std::vector<int> &from = line[at.item].band(at.lane);
+    from.erase(from.begin() + at.at);
+    line[at.item].band(lane).push_back(slot);
+    writeFxLine(line);
+}
+
 bool View::splitThree(int split) const {
     return split >= 0 && split < kFxSplits && std::lround(value(paramIndex(split, SplitParam::Bands))) >= 3;
 }

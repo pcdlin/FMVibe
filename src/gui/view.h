@@ -767,6 +767,10 @@ private:
     // line in its place, high band first (`effects` 0), or go with it, with their modulation (1); with any on its
     // bands, -1 asks which first (kConfirmSplitRemove). One undo step.
     void removeFxNode(int node, int effects = -1);
+    // The other bands of the split whose band holds effect `slot`, low to high by lane (none off a band); and the
+    // effect moved to the end of one of them (`lane` as FxLineItem's), one undo step.
+    std::vector<int> fxOtherBands(int slot) const;
+    void moveFxToBand(int slot, int lane);
     // The FX view showing the effects as a graph, or as the row: only the view changes.
     void setFxGraph(bool on);
     // The node of the graph under the mouse, or whose x is (see Kind::FxNodeDelete), -1 for none; and where its x

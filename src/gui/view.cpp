@@ -9401,9 +9401,11 @@ constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
 constexpr int kResetBendCommand = 14;
 constexpr int kOttCommand = 15;
+// An effect on a split's band moved to another band of it: this plus the band's lane (1 high, 2 low, 3 middle).
+constexpr int kMoveBandCommand = 40;
 // And from here on, each sets the mode of the route the menu was opened on (see RouteMode).
 constexpr int kRouteModeCommand = 16;
-static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= 100);
+static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
 
 // The three-band dynamics' fields set as Ableton's OTT preset for its Multiband Dynamics has them: crossovers at
 // 88.3 Hz and 2.5 kHz, every band pulled down hard above its Above threshold and lifted 4.17:1 below its Below one,
@@ -9464,6 +9466,17 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({8, tr(Str::MenuResetSettings)});
         if (fxSlotType(menuFx_) == FxType::MultiDyn)
             items.push_back({kOttCommand, tr(Str::MenuOtt)});
+        // On a split's band, in the row: the split's other bands it can move to.
+        if (!fxGraph()) {
+            const std::vector<int> bands = fxOtherBands(menuFx_);
+            if (!bands.empty())
+                items.push_back({0, ""});
+            for (int lane : bands)
+                items.push_back({kMoveBandCommand + lane,
+                                 trf(Str::MenuMoveToBand, {tr(lane == 1   ? Str::BandHigh
+                                                              : lane == 3 ? Str::BandMid
+                                                                          : Str::BandLow)})});
+        }
         items.push_back({0, ""});
         items.push_back({7, tr(Str::MenuRemove)});
         return items;
@@ -9642,6 +9655,8 @@ void View::menuCommand(int command) {
         for (int f = 0; f < kShapeParamCount; ++f)
             changes.push_back({clipCurveCountIndex(menuFx_) + f, table_[clipCurveCountIndex(menuFx_) + f].def});
         editMany(changes);
+    } else if (command > kMoveBandCommand && command <= kMoveBandCommand + 3 && menuFx_ >= 0) {
+        moveFxToBand(menuFx_, command - kMoveBandCommand);
     } else if (command == kOttCommand && menuFx_ >= 0 && fxSlotType(menuFx_) == FxType::MultiDyn) {
         editMany(ottSettings(menuFx_));
     } else if (command == 3 && menuParam_ >= 0) {

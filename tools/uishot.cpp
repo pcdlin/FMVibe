@@ -3021,6 +3021,31 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
               "carried over a tab lands on that band");
     }
 
+    // The delay's title menu, on the low band of a split in two, offers to move it to the high band only, which puts
+    // it at that band's end, after the reverb; undone. The shaper's, on the main line, offers no band.
+    {
+        const Rect delayCard = detail::fxCard(3.0f + detail::kFxBoxEdge);
+        const std::string toHigh = trf(Str::MenuMoveToBand, {tr(Str::BandHigh)});
+        const std::string toLow = trf(Str::MenuMoveToBand, {tr(Str::BandLow)});
+        const std::string toMid = trf(Str::MenuMoveToBand, {tr(Str::BandMid)});
+        int command = -1, moves = 0;
+        for (const MenuItem &item : view.contextMenu({delayCard.x + 60.0f, delayCard.y + 17.0f})) {
+            moves += item.label == toHigh || item.label == toLow || item.label == toMid;
+            if (item.label == toHigh)
+                command = item.command;
+        }
+        int shaperMoves = 0;
+        for (const MenuItem &item : view.contextMenu({detail::fxCard(0.0f).x + 60.0f, detail::fxCard(0.0f).y + 17.0f}))
+            shaperMoves += item.label == toHigh || item.label == toLow || item.label == toMid;
+        view.contextMenu({delayCard.x + 60.0f, delayCard.y + 17.0f});
+        view.menuCommand(command);
+        const bool moved = from(2, 0) == fxSlotPort(3) && from(join, 0) == fxSlotPort(2) && from(join, 1) == fxSlotPort(1);
+        view.undo();
+        check(moves == 1 && command >= 0 && shaperMoves == 0 && moved && from(join, 1) == fxSlotPort(2) &&
+                  from(join, 0) == fxSlotPort(3),
+              "a card's menu on a split's band moves it to the end of another band, undoably");
+    }
+
     // An arrow before the first card too (read off the rendered pixels: its brightest pixel against the panel's above
     // it), whose list puts a phaser at the line's start.
     {
