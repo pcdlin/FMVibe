@@ -232,10 +232,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     soloing a band, the split and join nodes marked with an S and the other band's node and wires faint, and the
     main line's wires grey, each band's and each half of the split's and join's nodes in its color, a split's coming
     in from grey at its left and a join's going out to grey at its right (read off the rendered pixels), and then
-    the other band's,
-    unsoloing the first; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its
+    the other band's too,
+    both soloed; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its
     2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
-    crossover two octaves up, an effect put on its + along the main line's row, its S soloing it alone, the row showing
+    crossover two octaves up, an effect put on its + along the main line's row, its S soloing it and the low band's too, the row showing
     the container with it, and back to two asking where its effect goes (onto the low band's end), undone onto the
     middle band again, an empty one going back straight, all undone;
     + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
@@ -256,7 +256,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     putting a container there, its low band shown and empty; a card dragged onto that band landing on it; the HIGH tab
     showing the high band, whose dashed card opens the list of effects (no split) and puts a reverb on it; the
     container's Low knob setting the low band's level, lowering that band's curve on its display (read off the
-    rendered pixels), its S buttons soloing one band at a time, the band shown faint while the other is soloed (read
+    rendered pixels), its S buttons soloing each band on its own, the band shown faint while the other is soloed (read
     off the rendered pixels), both undone, and its crossover handle dragged; the
     graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered

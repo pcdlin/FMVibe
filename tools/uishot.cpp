@@ -2285,16 +2285,16 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                     "%d -> %d\n",
                     lowRing, ring(1), lowWire, wireInto(1), highRing, ring(-1));
         const bool faint = ring(1) < lowRing - 40 && wireInto(1) < lowWire - 30 && ring(-1) == highRing;
-        // Its low band's S then: the high band's goes off, one at a time; undone, the high band's again.
+        // Its low band's S then: both soloed, each on its own; undone, the high band's alone again.
         click(view, centerOf(detail::splitSoloButton(card, 0)));
-        const bool swapped = model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
-                             model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
+        const bool both = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
+                          model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
         view.undo();
         const bool back = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
                           model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
         view.undo();
-        check(soloed && shot && marked && swapped && back && model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0,
-              "the split's card solos a band, one at a time, the split and join nodes marked with an S while it is");
+        check(soloed && shot && marked && both && back && model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0,
+              "the split's card solos bands, each on its own, the split and join nodes marked with an S while one is");
         check(faint, "a band soloed leaves the other band's nodes and wires faint");
     }
 
@@ -2350,11 +2350,13 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                               renderer.save(view, dir / "40f4-fx-split-three-middle.png");
         click(view, cell(3, 0)); // the split's card again, in the effect's place
         click(view, centerOf(detail::splitSoloButton(card, 1)));
+        click(view, centerOf(detail::splitSoloButton(card, 0))); // and the low band's too, the high band left out
         const bool soloMid = model.value(paramIndex(0, SumParam::SoloMid)) == 1.0 &&
                              model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
-                             model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
+                             model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
         view.mouseMove({600.0f, 428.0f}, {});
         const bool soloShot = renderer.save(view, dir / "40f5-fx-split-three-solo.png");
+        view.undo();
         view.undo();
         // The row shows the container with its middle band.
         click(view, centerOf(detail::fxModeButton(0)));
@@ -2761,6 +2763,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, centerOf(detail::splitSoloButton(column, 2)));
     const bool soloHigh = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
                           model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
+    click(view, centerOf(detail::splitSoloButton(column, 2))); // off again, each S on its own
     click(view, centerOf(detail::splitSoloButton(column, 0)));
     const bool soloLow = model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
                          model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
@@ -2776,6 +2779,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     check(reverbIconSoloed < reverbIconHeard - 60, "a container's band shows its cards faint while the other is soloed");
     view.undo();
     view.undo();
+    view.undo();
     const Rect display{column.x + 14.0f, column.y + 66.0f, column.w - 28.0f, 104.0f};
     const float handleY = (display.y + 12.0f + display.bottom() - 22.0f) * 0.5f; // where the bands cross, at 12 dB
     drag(view, {display.x + static_cast<float>(normFromCutoff(250.0)) * display.w, handleY},
@@ -2784,7 +2788,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
               soloShot && model.value(paramIndex(0, SumParam::SoloLow)) == 0.0 &&
               std::abs(model.value(paramIndex(0, SplitParam::Low)) - normFromCutoff(1000.0)) < 0.01 &&
               model.openEdits == 0,
-          "a container's knobs set its bands' levels, its S buttons solo one band at a time, its crossover drags");
+          "a container's knobs set its bands' levels, its S buttons solo its bands, its crossover drags");
 
     // The graph and back: the same line, nothing changed.
     std::vector<double> before;

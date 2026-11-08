@@ -1535,19 +1535,9 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         return true;
     case Kind::FxWire: // only its + takes a click
         return true;
-    case Kind::SplitSolo: { // a join's solos, one at a time: one switched on switches the others off, one undo step
-        const UndoScope step(controller_);
-        if (value(w.param) >= 0.5) {
-            editMany({{w.param, 0.0}});
-            return true;
-        }
-        std::vector<std::pair<int, double>> changes{{w.param, 1.0}};
-        for (const SumParam other : {SumParam::SoloHigh, SumParam::SoloLow, SumParam::SoloMid})
-            if (paramIndex(w.a, other) != w.param)
-                changes.push_back({paramIndex(w.a, other), 0.0});
-        editMany(changes);
+    case Kind::SplitSolo: // a join's solo, on or off, each band's on its own: the join lets every band soloed through
+        edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
         return true;
-    }
     case Kind::SplitBands:
         setSplitBands(w.a, w.b);
         return true;

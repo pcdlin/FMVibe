@@ -276,7 +276,7 @@ private:
         SplitBand,    // a = split, b = band (0 low, 1 high, 2 middle; see View::splitLane()): its tab, which shows that
                       // band
         SplitBands,   // a = split, b = 2 or 3: the BANDS switch's half that splits it in that many bands
-        SplitSolo,    // param = a join's solo, a = split, b = band: the S under its band's level, one band at a time
+        SplitSolo,    // param = a join's solo, a = split, b = lane: the S under its band's level, each band's on its own
         FxBoxGrip,    // a = split's node: its container's title row in the row, which drags it along the line
         FxBoxFold,    // a = split: folds its container to a strip, or unfolds it
         FxBoxAdd,     // a = lane (1 the high band, 2 the low band, 3 the middle band), b = item: a container's dashed

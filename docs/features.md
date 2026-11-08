@@ -258,7 +258,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     the 3-band dynamics does. Each band runs through effects of its own, say the lows through a shaper and a compressor and the
     highs through a delay and a reverb, until a **join** adds them back together, each at a level (0 dB, full, down to
     -60 dB, silence; full to begin with), and the line goes on from it; a split left open at the line's end sends both
-    bands out. The join can **solo** any band, one at a time, letting only it through. The splits
+    bands out. The join can **solo** bands, each on its own, letting only those soloed through. The splits
     and joins don't take any of the 32 effects' places, and modulation moves a split's crossover and a join's levels
     like any knob. The editor shows the line two ways, as a row of cards or as a graph (the FX tab's switch, see the
     editor), and switching between them changes nothing: underneath, the line is the effects graph's wires between
@@ -690,8 +690,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     24 dB faintly and doesn't open, the slope picked coming back with two bands). In two bands, three knobs: the low
     band's level, the Crossover and the high band's level (in dB, 0 dB, full, at the top, down to -60 dB, silence).
     In three, the display is shorter, and a row of two smaller knobs, Low X and High X, the crossovers, goes under
-    it, over the low, the middle and the high band's levels. Under each band's level an **S** solos it, one at a
-    time (soloing one unsolos the others, a click on the lit one unsolos it), lit in its band's color. Switched to
+    it, over the low, the middle and the high band's levels. Under each band's level an **S** solos it, each band's on its
+    own (a click on the lit one unsolos it; with two of three soloed, only the third is left out), lit in its band's color. Switched to
     three bands, as one undo step, an empty middle band opens between the two, shown, its crossover two octaves above
     the low one (or as high as it goes), and its level at the join 0 dB. Switched back to two, an empty middle band
     just goes; one holding effects asks first ("Back to two bands?"): **Onto Low** puts them at the low band's end,
@@ -744,8 +744,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     node and its join's both show the split's card: the same controls as its container in the row (see above), on
     grey, a card place wide, its tabs picking the band its display fills as the row's do (and so the band its
     container shows). While a band is soloed, the split's and the join's nodes show an S in a circle at their top
-    left, in the soloed band's color, and the other bands (their effects' nodes, their wires and their names) are drawn faint,
-    as the join doesn't let it through. Under the mouse, a node shows an x in a circle at its upper
+    left, in the soloed band's color (the accent with more than one soloed), and the bands not soloed (their effects'
+    nodes, their wires and their names) are drawn faint, as the join doesn't let them through. Under the mouse, a node shows an x in a circle at its upper
     right, which removes it as the x on its card does. A node dragged onto
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would
     land in, outlined dotted, which moves only once it is over another gap between two nodes (an effect's anywhere on
