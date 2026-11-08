@@ -522,6 +522,10 @@ enum class FxParam {
     PeqOn2,
     PeqOn3,
     PeqAmount, // the parametric EQ's output against what went in, as a mix: 0 leaves the sound alone
+    // The phaser's and flanger's polarity: negative turns their wet sound over, and their feedback with it, so every
+    // notch moves to where a peak was and the Feedback knob keeps its sense (see sweepPolarity()).
+    PhaserNegative,
+    FlangerNegative,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -867,6 +871,8 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::ShaperSymmetric, FxParam::ShaperSymmetric, FxType::Shaper},
     {FxParam::MdLowFreq, FxParam::MdRms, FxType::MultiDyn},
     {FxParam::PeqFreq3, FxParam::PeqAmount, FxType::ParamEq},
+    {FxParam::PhaserNegative, FxParam::PhaserNegative, FxType::Phaser},
+    {FxParam::FlangerNegative, FxParam::FlangerNegative, FxType::Flanger},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1369,9 +1375,12 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(0, FxParam::PeqFreq3)) == 25024 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::PeqOn3)) == 25630 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::PeqAmount)) == 25631 &&
+                  idOfIndex(paramIndex(0, FxParam::PhaserNegative)) == 25032 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::FlangerNegative)) == 25633 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::Type)) == 26000 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::PhaserStereo)) == 26080 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqAmount)) == 29131,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqAmount)) == 29131 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::FlangerNegative)) == 29133,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
