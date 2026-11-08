@@ -3207,7 +3207,8 @@ void View::paintFx(Canvas &c) {
     c.pushClip(fxCardClip());
     for (size_t i = 1; i + 1 < row.items.size(); ++i)
         chevron(row.items[i], 0, static_cast<int>(i), 0, kFaint);
-    // Each split's container under its cards: its outline round them a little out, its controls on grey at its left,
+    // Each split's container under its cards: its outline round them a little out, its controls on grey at its left
+    // (out to the outline above, below and before them, and only to their card place after them),
     // then the cards of the band it shows (painted below) and its dashed card (a widget).
     for (const FxRowBox &box : row.boxes) {
         const float place = box.place - scroll;
@@ -3232,7 +3233,8 @@ void View::paintFx(Canvas &c) {
         }
         const Rect outer = whole.inset(-kFxBoxPad);
         const Rect column = fxCard(boxColumn(box) - scroll, 1.0f);
-        const float bandX = column.right() + kFxBoxPad;
+        // The grey ends at the controls' card place, so the arrow into the band is as far from it as from a card.
+        const float bandX = column.right();
         c.fillRect(outer, splitFill(), kFxBoxRadius);
         c.fillRect({bandX, outer.y, outer.right() - bandX, outer.h}, kPanel, kFxBoxRadius);
         c.fillRect({bandX, outer.y, kFxBoxRadius, outer.h}, kPanel);
