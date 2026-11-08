@@ -303,6 +303,7 @@ private:
         Rect group{};
         float partLeft = 0.0f, partRight = 0.0f;
         bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
+        bool graph = false;     // a wire's or OUT label in the graph: its ranges above it, its depth handles below
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };

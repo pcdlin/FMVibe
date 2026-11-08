@@ -1049,8 +1049,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor).
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
-    knob (on a matrix cell, in its top right corner; on a wire or OUT label, in its bottom right corner, the ranges
-    running along its top). Drag that dot to set the depth; double-click it
+    knob (on a matrix cell, in its top right corner; on a wire or OUT label in the graph, under its right end, the
+    ranges running over it, so its depth stays readable; on the INPUTS tab's labels, in their bottom right corner,
+    the ranges along their top). The dots stay inside their knob's column, label or cell at each handle size; past
+    what fits, the rest go into a "+n" pill. Drag that dot to set the depth; double-click it
     to remove the modulation, or right-click it for a menu that types its depth, bypasses it, removes its aux (when
     it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
     the bar on a label, cell or depth bar) is drawn wider, over the other modulations' ranges where they overlap,

@@ -1394,6 +1394,7 @@ std::vector<View::Widget> View::widgets() const {
         const LabelPill pill = labelPill(param, mode, idle);
         add(kind, pill.depth, param, from, kind == Kind::OutLabel ? -1 : to);
         list.back().modeGlyph = pill.glyph;
+        list.back().graph = true;
         if (!pill.open)
             return;
         list.back().group = pill.whole;
@@ -2321,14 +2322,23 @@ std::vector<View::Widget> View::widgets() const {
             list.back().disabled = list[i].disabled;
         };
         if (kind != Kind::Knob) {
-            // Leftwards from the corner, 7 px apart on a label and 6 on a cell or depth bar; past what fits, the
-            // pill takes the last two places. A wire's or OUT label has them along its bottom, its ranges along its
-            // top; a cell and a depth bar in their top right corner, their ranges along their bottom.
+            // Leftwards from the corner, 8 px apart on a label and 7 on a cell or depth bar, no further out than
+            // stays inside it at the user's size; past what fits, as many as leave room for the pill. A wire's or
+            // OUT label in the graph has them under it and its ranges over it, so its depth stays readable; on the
+            // operator page's INPUTS tab, along its bottom, its ranges along its top. A cell and a depth bar have
+            // them in their top right corner, their ranges along their bottom.
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
-            const float margin = cell ? 4.0f : 3.0f, step = cell ? 6.0f : 7.0f,
-                        y = cell ? r.y + 4.0f : r.bottom() - 2.0f;
+            const float margin = std::max(cell ? 4.0f : 3.0f, sizes.dotCompact + 1.0f), step = cell ? 7.0f : 8.0f,
+                        y = cell ? r.y + 4.0f : list[i].graph ? r.bottom() + 5.0f : r.bottom() - 2.0f;
             const int fit = static_cast<int>((r.w - 2.0f * margin) / step) + 1;
-            const int shown = n > fit ? std::max(fit - 2, 0) : n;
+            int shown = n;
+            float pillW = 0.0f;
+            if (n > fit) {
+                // The pill's left edge stays 1 px inside: 4.25 px left of the last handle shown, or at the corner.
+                pillW = n - std::max(fit - 2, 0) >= 10 ? sizes.pillWideCompact : sizes.pillCompact;
+                const float room = r.w - margin - 4.25f - pillW - 1.0f;
+                shown = room < 0.0f ? 0 : std::min(static_cast<int>(std::floor(room / step)) + 1, n - 1);
+            }
             for (int k = 0; k < shown; ++k) {
                 const Point c{r.right() - margin - static_cast<float>(k) * step, y};
                 add(Kind::ModDot, {c.x - 3.5f, c.y - 3.5f, 7.0f, 7.0f},
@@ -2337,42 +2347,49 @@ std::vector<View::Widget> View::widgets() const {
                 list.back().clip = list[i].clip; // a depth bar's is cut off with its card
             }
             if (n > fit) {
-                const float w = n - shown >= 10 ? sizes.pillWideCompact : sizes.pillCompact;
                 const float edge =
                     r.right() - margin - static_cast<float>(std::max(shown - 1, 0)) * step - (shown > 0 ? 4.25f : 0.0f);
-                pill({edge - w, y - 0.5f * sizes.pillCompactH, w, sizes.pillCompactH}, shown, true);
+                pill({edge - pillW, y - 0.5f * sizes.pillCompactH, pillW, sizes.pillCompactH}, shown, true);
             }
             continue;
         }
-        // Under a knob, 9 px apart and centered; a header knob's go under its knob, at its left.
+        // Under a knob, 10 px apart and centered; a header knob's go under its knob, at its left.
         // The Ratio readout's go along its box's bottom edge.
         const Point base = isRatioDisplay(list[i]) ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
                            : list[i].compact       ? Point{r.x + 18.0f, r.y + 37.0f}
                                                    : Point{r.center().x, r.y + r.w - 1.0f};
-        // The Ratio readout holds one handle fewer than its width would: eight, then the pill.
+        // The Ratio readout keeps its handles clear of its box's rounded corners.
+        constexpr float kStep = 10.0f;
         const float width = isRatioDisplay(list[i]) ? r.w - 9.0f : list[i].compact ? 34.0f : r.w;
-        const int fit = static_cast<int>((width - 7.0f) / 9.0f) + 1;
+        const float dot = sizes.dot; // the handles stay inside that width at the user's size
+        const int fit = static_cast<int>((width - 2.0f * dot) / kStep) + 1;
+        // Past that, as many as fit beside the pill, 2 px left of it.
+        constexpr float kPillGap = 2.0f;
+        auto beside = [&](float pillW) {
+            const float room = width - pillW - kPillGap - 2.0f * dot;
+            return room < 0.0f ? 0 : std::min(static_cast<int>(std::floor(room / kStep)) + 1, n - 1);
+        };
         int shown = n;
         float pillW = 0.0f;
         if (n > fit) {
             pillW = sizes.pill;
-            shown = static_cast<int>((width - pillW) / 9.0f);
+            shown = beside(pillW);
             if (n - shown >= 10) { // two digits
                 pillW = sizes.pillWide;
-                shown = static_cast<int>((width - pillW) / 9.0f);
+                shown = beside(pillW);
             }
         }
-        const float left =
-            base.x - (n > fit ? static_cast<float>(shown) * 9.0f + pillW : static_cast<float>(n - 1) * 9.0f + 7.0f) * 0.5f;
+        const float handles = shown > 0 ? static_cast<float>(shown - 1) * kStep + 2.0f * dot : 0.0f;
+        const float left = base.x - (n > fit ? handles + (shown > 0 ? kPillGap : 0.0f) + pillW : handles) * 0.5f;
         for (int k = 0; k < shown; ++k) {
-            const float x = left + 3.5f + static_cast<float>(k) * 9.0f;
+            const float x = left + dot + static_cast<float>(k) * kStep;
             add(Kind::ModDot, {x - 5.0f, base.y - 5.0f, 10.0f, 10.0f}, slotAmountIndex(here[k].source, here[k].slot),
                 here[k].source, here[k].slot);
             list.back().clip = list[i].clip;
             list.back().disabled = list[i].disabled;
         }
         if (n > fit)
-            pill({left + static_cast<float>(shown) * 9.0f, base.y - 0.5f * sizes.pillH, pillW, sizes.pillH}, shown, false);
+            pill({left + handles + (shown > 0 ? kPillGap : 0.0f), base.y - 0.5f * sizes.pillH, pillW, sizes.pillH}, shown, false);
     }
 
     // The macros: their knobs, the names under them and their handles.
@@ -5643,10 +5660,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         std::string text = percent(amount);
         if (w.kind == Kind::WireLabel && w.a == w.b)
             text = trf(Str::CaptionFeedback, {text});
-        // A modulated label's text sits a little lower, between its ranges along its top and its handles along its
-        // bottom.
+        // On the INPUTS tab a modulated label's text sits a little lower, between its ranges along its top and its
+        // handles along its bottom; in the graph they are over and under it, and its text stays in the middle.
         bool modulated = false;
-        forEachMod(w.param, [&](const Assignment &) { modulated = true; });
+        if (!w.graph)
+            forEachMod(w.param, [&](const Assignment &) { modulated = true; });
         const float lift = modulated ? 0.0f : -1.0f; // unmodulated, its digits centered in it
         Rect textRect{w.rect.x, w.rect.y + lift, w.rect.w, w.rect.h};
         if (w.modeGlyph) { // its mode, other than Phase, at its left
@@ -5655,7 +5673,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 18.0f, w.rect.h}; // where it sits when open
         }
         c.text(textRect, text, 10.5f, focused ? kText : kDim);
-        paintModRange(c, {w.rect.x + 7.0f, w.rect.y + 2.5f, w.rect.w - 14.0f, 1.5f}, w.param); // the handles go below
+        paintModRange(c, {w.rect.x + 7.0f, w.graph ? w.rect.y - 4.5f : w.rect.y + 2.5f, w.rect.w - 14.0f, 1.5f},
+                      w.param); // the handles go below
         break;
     }
     case Kind::LabelMode: {
@@ -7490,15 +7509,17 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             continue;
         // The line ends at the source's own dot on the target: the one under a knob, or in the corner of a label,
         // cell or depth bar. A param can show twice (an output's knob and its label on the bus), and
-        // each has its dots, so the dot is the one on this widget.
+        // each has its dots, so the dot is the one on this widget (a graph label's under it).
+        Rect area = w.rect.inset(-2.0f);
+        if (w.graph)
+            area.h += 8.0f;
         const auto dot = std::find_if(list.begin(), list.end(), [&](const Widget &d) {
             return d.kind == Kind::ModDot && d.a == source && (slot < 0 || d.b == slot) &&
-                   w.rect.inset(-2.0f).contains(d.rect.center()) &&
-                   slotTarget(value(slotTargetIndex(source, d.b))) == w.param;
+                   area.contains(d.rect.center()) && slotTarget(value(slotTargetIndex(source, d.b))) == w.param;
         });
         // A dot the widget had no room for is in its pill: the line ends there.
         const auto pill = dot != list.end() ? list.end() : std::find_if(list.begin(), list.end(), [&](const Widget &d) {
-            return d.kind == Kind::ModPill && d.a == w.param && w.rect.inset(-2.0f).contains(d.rect.center());
+            return d.kind == Kind::ModPill && d.a == w.param && area.contains(d.rect.center());
         });
         const Point to = dot != list.end()    ? dot->rect.center()
                          : pill != list.end() ? pill->rect.center()

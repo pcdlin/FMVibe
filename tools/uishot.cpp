@@ -4628,10 +4628,10 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shot = renderer.save(view, dir / "40a-pill.png");
     check(shot && beside() == none, "eight modulations on a knob show two handles and a pill, nothing outside its column");
 
-    // The pill sits right of the two handles: 30 px across, centered under the knob, its middle 9 px right of the
-    // knob's. Its list, 265 px wide, centered under it: the rows 24 px apart from 24 px down, as on a card.
+    // The pill sits 2 px right of the two handles: 31 px across, centered under the knob, its middle 9.5 px right of
+    // the knob's. Its list, 265 px wide, centered under it: the rows 24 px apart from 24 px down, as on a card.
     // From the knob's exact middle, as the inspector's knob row places it (kPitchKnob rounds it).
-    const Point pill{884.0f + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.0f, 257.0f};
+    const Point pill{884.0f + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.5f, 257.0f};
     const float listX = pill.x - 132.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
     auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
     view.mouseMove(pill, {});

@@ -13,24 +13,7 @@
 
 ## Issues 
 
-- Check: An envelope with 1ms for Attack, decay and release might last for longer than 3ms total
-
 ## Improvements 
-
-- The shimmer reverb does not sound good
-    - **In one line:** move the pitch shifter out of the reverb's delay lines into a feedback path after it, with
-      jittered windows and diffusion after it, judged by listening to WAV renders.
-    - **Feasible, medium, but needs ears**: this goes by WAV renders compared by listening. Likely causes
-      (`effects.cpp`): the shifting happens inside four of the network's lines, with two read heads over a fixed
-      80 ms window, all moving at the same rate an eighth of a cycle apart. An octave up, that is a 12.5 Hz
-      crossfade flutter, applied again on every pass, with nothing after it to smear the grains.
-        1. Take the shifter out of the tank: the tank's output → a pitch shifter per side (three or four
-           Hann-windowed heads over a longer window, 100–150 ms, each grain's length jittered so the flutter doesn't
-           repeat) → the band-pass → a few all-passes → back into the tank's input, by Shimmer, kept under unity.
-        2. A small tool renders WAVs (a chord into the hall and the shimmer at a few settings) to compare the old
-           and the new.
-        3. Retune the quality and smoke checks (the octaves climbing, the octave about as loud as the note in the
-           second after it ends) and PD Shimmer Pad's level.
 
 ## Architecture
 
