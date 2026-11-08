@@ -433,7 +433,7 @@ std::optional<Rect> View::fxCardOf(int slot) const {
     for (const FxRowCard &card : fxRowShown().cards)
         if (card.slot == slot) {
             const float place = card.place - fxScroll();
-            if (place <= -card.span || place >= static_cast<float>(kVisibleFx))
+            if (card.hidden || place <= -card.span || place >= static_cast<float>(kVisibleFx))
                 return std::nullopt;
             return fxCard(place, card.span);
         }
@@ -765,12 +765,20 @@ float responseY(Rect display, double level) {
 }
 } // namespace
 
+double View::splitBandGain(int split, int band) const {
+    // The high band's wire takes the join's first input, the low band's its second.
+    return sumLevelGain(value(fxInputIndex(fxJoinNode(split), band == kLowBand ? 1 : 0, FxInputField::Level)));
+}
+
 Point View::splitHandle(int split, Rect display) const {
     const double hz =
         splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)))[0];
     const int slope = slopeDb(filterSlope(value(paramIndex(split, SplitParam::Slope))));
     const float x = display.x + static_cast<float>(normFromCutoff(hz)) * display.w;
-    return {std::clamp(x, display.x, display.right()), responseY(display, bandResponse(kLowBand, hz, hz, slope))};
+    // On the louder band's curve, where the bands cross at their full levels.
+    const double at = bandResponse(kLowBand, hz, hz, slope) *
+                      std::max(splitBandGain(split, kLowBand), splitBandGain(split, kHighBand));
+    return {std::clamp(x, display.x, display.right()), responseY(display, at)};
 }
 
 int View::splitLane(int split) const {
@@ -804,8 +812,8 @@ std::optional<Rect> View::splitCardOf(int split) const {
         return std::nullopt;
     }
     for (const FxRowBox &box : fxRowShown().boxes)
-        if (box.split == split && !box.folded) {
-            const float place = box.place - fxScroll();
+        if (box.split == split && !box.folded && !box.hidden) {
+            const float place = boxColumn(box) - fxScroll();
             if (place > -1.0f && place < static_cast<float>(kVisibleFx))
                 return fxCard(place, 1.0f);
         }
@@ -839,11 +847,8 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
     for (int k = 0; k < 3; ++k)
         add(Kind::Choice, splitSlopeButton(card, k), paramIndex(split, SplitParam::Slope), -1, slopes[k]);
     mergeButtons(list, first);
-    // The bands' solos, over their levels, and the knobs: the low band's level, the crossover, the high band's level
-    // (the high band's wire takes the join's first input, the low band's its second).
-    for (int band = 0; band < 2; ++band)
-        add(Kind::SplitSolo, splitSoloButton(card, band),
-            paramIndex(split, band == 0 ? SumParam::SoloLow : SumParam::SoloHigh), split, band);
+    // The knobs: the low band's level, the crossover, the high band's level (the high band's wire takes the join's
+    // first input, the low band's its second); then the bands' solos, under their levels.
     const int params[] = {fxInputIndex(fxJoinNode(split), 1, FxInputField::Level), paramIndex(split, SplitParam::Low),
                           fxInputIndex(fxJoinNode(split), 0, FxInputField::Level)};
     const Str labels[] = {Str::BandLow, Str::LabelCrossover, Str::BandHigh};
@@ -855,6 +860,9 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
         knob.label = tr(labels[k]);
         list.push_back(knob);
     }
+    for (int band = 0; band < 2; ++band)
+        add(Kind::SplitSolo, splitSoloButton(card, band),
+            paramIndex(split, band == 0 ? SumParam::SoloLow : SumParam::SoloHigh), split, band);
 }
 
 // --- The row
@@ -863,10 +871,14 @@ float View::fxBoxSpan(const FxLineItem &item) const {
     const int split = item.node - kFxSlots;
     if (splitFolded(split))
         return kFoldedFx;
-    float span = 1.0f + kFxBoxAddSpan;
+    float span = 2.0f * kFxBoxEdge + 1.0f + kFxBoxAddSpan;
     for (int slot : splitLane(split) == 1 ? item.hi : item.lo)
         span += fxCardSpan(slot);
     return span;
+}
+
+float View::boxColumn(const FxRowBox &box) {
+    return box.place + (box.folded ? 0.0f : kFxBoxEdge);
 }
 
 View::FxRow View::fxRow(const FxLine &line) const {
@@ -884,7 +896,7 @@ View::FxRow View::fxRow(const FxLine &line) const {
         const int split = item.node - kFxSlots;
         FxRowBox box{split, i, splitLane(split), place, fxBoxSpan(item), splitFolded(split), 0.0f};
         if (!box.folded) { // the band it shows, after its controls
-            float at = place + 1.0f;
+            float at = boxColumn(box) + 1.0f;
             const std::vector<int> &band = box.lane == 1 ? item.hi : item.lo;
             for (int k = 0; k < static_cast<int>(band.size()); ++k) {
                 const float span = fxCardSpan(band[k]);
@@ -901,7 +913,123 @@ View::FxRow View::fxRow(const FxLine &line) const {
 }
 
 View::FxRow View::fxRowShown() const {
-    return fxRow(fxLineShown());
+    const FxLine line = fxLineShown();
+    FxRow row = fxRow(line);
+    const FxRowGlide &g = fxRowGlide_;
+    if (!g.on)
+        return row;
+    // The carried one, and what a carried container holds, where it lands; the others where they glide.
+    int carriedItem = -1;
+    for (const FxRowBox &box : row.boxes)
+        if (fxSplitNode(box.split) == g.carried)
+            carriedItem = box.item;
+    auto carried = [&](const FxRowCard &card) {
+        return card.slot == g.carried || (carriedItem >= 0 && card.at.lane != 0 && card.at.item == carriedItem);
+    };
+    float from = 0.0f, to = -1.0f; // where it lands
+    for (const FxRowCard &card : row.cards)
+        if (card.slot == g.carried) {
+            from = card.place;
+            to = card.place + card.span;
+        }
+    for (const FxRowBox &box : row.boxes)
+        if (box.item == carriedItem) {
+            from = box.place;
+            to = box.place + box.span;
+        }
+    for (FxRowCard &card : row.cards)
+        if (g.known[card.slot] && !carried(card))
+            card.place = g.place[card.slot];
+    for (FxRowBox &box : row.boxes)
+        if (const int node = fxSplitNode(box.split); g.known[node] && node != g.carried) { // its dashed card with it
+            box.add += g.place[node] - box.place;
+            box.place = g.place[node];
+        }
+    for (size_t i = 0; i < line.size(); ++i)
+        if (g.known[line[i].node] && line[i].node != g.carried)
+            row.items[i] = g.place[line[i].node];
+    row.items.back() = g.end;
+    // Hidden while another card, or a container that doesn't hold it, overlaps where it lands.
+    constexpr float kTouch = 0.02f;
+    bool overlapped = false;
+    for (const FxRowCard &card : row.cards)
+        overlapped = overlapped || (!carried(card) && card.place < to - kTouch && card.place + card.span > from + kTouch);
+    for (const FxRowBox &box : row.boxes) {
+        const bool holds = row.cards.end() != std::find_if(row.cards.begin(), row.cards.end(), [&](const FxRowCard &c) {
+                               return c.slot == g.carried && c.at.lane != 0 && c.at.item == box.item;
+                           });
+        overlapped = overlapped || (box.item != carriedItem && !holds && box.place < to - kTouch &&
+                                    box.place + box.span > from + kTouch);
+    }
+    if (overlapped) {
+        for (FxRowCard &card : row.cards)
+            card.hidden = carried(card);
+        for (FxRowBox &box : row.boxes)
+            box.hidden = box.item == carriedItem;
+    }
+    return row;
+}
+
+void View::startFxRowGlide() {
+    if (fxRowGlide_.on)
+        return;
+    const FxRow row = fxRow(fxLineShown());
+    FxRowGlide g;
+    g.on = true;
+    for (const FxRowCard &card : row.cards) {
+        g.place[card.slot] = card.place;
+        g.known[card.slot] = true;
+    }
+    for (const FxRowBox &box : row.boxes) {
+        g.place[fxSplitNode(box.split)] = box.place;
+        g.known[fxSplitNode(box.split)] = true;
+    }
+    g.end = row.items.back();
+    g.carried = fxDrag_ ? fxDrag_->item.node : -1;
+    fxRowGlide_ = g;
+}
+
+bool View::glideFxRow() {
+    FxRowGlide &g = fxRowGlide_;
+    if (!g.on)
+        return false;
+    if (fxGraph()) {
+        g.on = false;
+        return true;
+    }
+    // A step of the way to where each goes, a third of what is left.
+    const FxRow row = fxRow(fxLineShown());
+    std::array<bool, kFxNodes> shown{};
+    bool moving = false;
+    auto ease = [&](float &at, float to, bool known) {
+        if (!known || std::abs(to - at) < 0.002f) {
+            at = to;
+            return;
+        }
+        at += (to - at) * 0.3f;
+        moving = true;
+    };
+    // The carried one, and what a carried container holds, goes where it lands at once.
+    int carriedItem = -1;
+    for (const FxRowBox &box : row.boxes)
+        if (fxSplitNode(box.split) == g.carried)
+            carriedItem = box.item;
+    for (const FxRowCard &card : row.cards) {
+        const bool carried =
+            card.slot == g.carried || (carriedItem >= 0 && card.at.lane != 0 && card.at.item == carriedItem);
+        ease(g.place[card.slot], card.place, g.known[card.slot] && !carried);
+        shown[card.slot] = true;
+    }
+    for (const FxRowBox &box : row.boxes) {
+        const int node = fxSplitNode(box.split);
+        ease(g.place[node], box.place, g.known[node] && node != g.carried);
+        shown[node] = true;
+    }
+    ease(g.end, row.items.back(), true);
+    g.known = shown;
+    if (!moving && !(drag_.kind == DragKind::FxMove && fxDrag_))
+        g.on = false;
+    return moving;
 }
 
 void View::revealFxRow(int node) {
@@ -941,9 +1069,9 @@ void View::startRowDrag(int node) {
             d.span = card.span;
         }
     for (const FxRowBox &box : row.boxes)
-        if (fxSplitNode(box.split) == node) {
-            d.startPlace = box.place;
-            d.span = box.span;
+        if (fxSplitNode(box.split) == node) { // its outline, inside the room it keeps
+            d.startPlace = boxColumn(box);
+            d.span = box.span - (box.folded ? 0.0f : 2.0f * kFxBoxEdge);
         }
     if (place.lane == 0) { // off the main line: an effect, or a split with what it holds
         d.item = line[place.item];
@@ -970,7 +1098,7 @@ void View::retargetRowDrag(Point mouse) {
         for (const FxRowBox &box : fxRow(fxLineWith(d.rest, d.item, d.at)).boxes) {
             if (box.folded)
                 continue;
-            const Rect column = fxCard(box.place - fxScroll(), 1.0f);
+            const Rect column = fxCard(boxColumn(box) - fxScroll(), 1.0f);
             for (int band = 0; band < 2; ++band)
                 if (splitTab(column, band).contains(mouse))
                     showSplitBand(box.split, band);
@@ -989,7 +1117,7 @@ void View::retargetRowDrag(Point mouse) {
         to = fxNodeSplit(d.item.node) && !d.item.joined ? n : std::min(to, n - 1);
     FxSlotAt at{0, to, 0};
     for (const FxRowBox &box : row.boxes) {
-        if (!effect || box.folded || middle < box.place + 0.75f || middle > box.place + box.span)
+        if (!effect || box.folded || middle < boxColumn(box) + 0.75f || middle > box.place + box.span)
             continue;
         int k = 0;
         for (const FxRowCard &card : row.cards)
@@ -1523,8 +1651,8 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     splitIcon(c, fxIconRect(card), grabbed ? kText : kDim);
     c.text({card.x + 36.0f, card.y + 6.0f, card.w - 84.0f, 20.0f}, trf(Str::NodeSplit, {std::to_string(split + 1)}),
            11.0f, kText, Align::Left, true);
-    // The bands' responses on the cutoff grid, each in its color, the one shown filled, the crossover's handle where
-    // they cut.
+    // The bands' responses on the cutoff grid, each in its color and lowered by its level, the one shown filled, the
+    // crossover's handle where they cut.
     const Rect display = splitDisplay(card);
     c.fillRect(display, kDisplayColor, 6.0f);
     for (double hz : {100.0, 1000.0, 10000.0}) {
@@ -1536,11 +1664,12 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     const int slope = slopeDb(filterSlope(value(paramIndex(split, SplitParam::Slope))));
     const int shown = splitLane(split) == 1 ? kHighBand : kLowBand;
     for (const int band : {shown == kLowBand ? kHighBand : kLowBand, shown}) {
+        const double gain = splitBandGain(split, band);
         std::vector<Point> points;
         for (int k = 0; k <= 120; ++k) {
             const double norm = k / 120.0;
             points.push_back({display.x + static_cast<float>(norm) * display.w,
-                              responseY(display, bandResponse(band, cutoffFromNorm(norm), hz, slope))});
+                              responseY(display, gain * bandResponse(band, cutoffFromNorm(norm), hz, slope))});
         }
         if (band == shown) {
             std::vector<Point> area = points;

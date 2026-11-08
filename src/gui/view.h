@@ -759,7 +759,8 @@ private:
     struct FxRowCard {
         int slot;
         float place, span;
-        FxSlotAt at; // where it is in the line: the main line's item (lane 0), or a place on a band
+        FxSlotAt at;         // where it is in the line: the main line's item (lane 0), or a place on a band
+        bool hidden = false; // carried, while the others glide out of where it lands (see fxRowShown())
     };
     struct FxRowBox {
         int split, item;
@@ -767,14 +768,32 @@ private:
         float place, span; // the whole container, or its strip folded
         bool folded;
         float add;         // its dashed card's place
+        bool hidden = false;
     };
     struct FxRow {
         std::vector<FxRowCard> cards;
         std::vector<FxRowBox> boxes;
         std::vector<float> items; // each main-line item's place, then where the line ends
     };
+    // Where a container's controls start: past the room it keeps before it (see kFxBoxEdge), a folded strip at once.
+    static float boxColumn(const FxRowBox &box);
     FxRow fxRow(const FxLine &line) const;
-    FxRow fxRowShown() const; // with a card or container being dragged where it would land
+    // With a card or container being dragged where it would land, and the cards and containers gliding there (see
+    // fxRowGlide_). The one carried goes where it would land at once, hidden while any other still overlaps it there:
+    // the others make room for it without crossing it.
+    FxRow fxRowShown() const;
+    // The row's cards (by slot) and containers (by split node) as shown, in card places, and where the line ends: once a
+    // card or container is dragged, each glides a step of the way to where it goes every poll(), until they settle after
+    // it is let go. A node not shown at the last step shows where it goes at once.
+    struct FxRowGlide {
+        bool on = false;
+        std::array<float, kFxNodes> place{};
+        std::array<bool, kFxNodes> known{};
+        float end = 0.0f;
+        int carried = -1; // the node carried: an effect's slot, or a split's node with what it holds
+    };
+    void startFxRowGlide(); // from where everything shows now
+    bool glideFxRow();      // a step of the glide, in poll(): whether anything moved
     float fxBoxSpan(const FxLineItem &item) const;
     void revealFxRow(int node); // scrolls the row to show the card that holds `node`, else its container
     // Dragging a card or container along the row (DragKind::FxMove): taken out of the line, then where it would land
@@ -791,6 +810,7 @@ private:
     // A split's display on its controls' card, and its crossover's handle there.
     static Rect splitDisplay(Rect card);
     Point splitHandle(int split, Rect display) const;
+    double splitBandGain(int split, int band) const; // a band's level at its join, as a gain (kLowBand, kHighBand)
     // Ctrl+drag in the routing graph: where a node dragged to `want` goes on its grid, the nearest point it fits at
     // clear of the other nodes; and whether the grid's points show now.
     Point routingGridPoint(int node, Point want) const;
@@ -1213,6 +1233,7 @@ private:
     FxSlotAt fxSlot_;                        // where in the line the list was opened, if there
     std::optional<FxDrag> fxDrag_;           // a node of the graph, or a card or container of the row, being dragged
     FxGlide fxGlide_;
+    FxRowGlide fxRowGlide_;
     float fxGraphScroll_ = 0.0f;             // how far the effects graph is scrolled sideways, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1

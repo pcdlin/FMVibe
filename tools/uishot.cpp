@@ -2437,7 +2437,11 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     };
     const int split = fxSplitNode(0), join = fxSumNode(0);
     const int high = fxBandPort(0, kFxBands - 1), low = fxBandPort(0, 0);
-    const Rect column = detail::fxCard(1.0f); // the container's controls, in the second card place
+    const Rect column = detail::fxCard(1.0f + detail::kFxBoxEdge); // the container's controls, in the second place
+    auto settle = [&] { // the cards gliding into their places
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+    };
 
     // The arrow between the shaper and the widener: its list ends with the split, which goes in there.
     const Point arrow{detail::fxCard(1.0f).x - detail::kFxGap * 0.5f, detail::fxCard(1.0f).center().y};
@@ -2459,14 +2463,16 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
           "the arrow between two cards puts a split there: a container, its low band shown, empty");
 
     // The widener's card, after the container, dragged onto the container's dashed card: onto its low band.
-    const Rect widener = detail::fxCard(2.0f + detail::kFxBoxAddSpan);
+    const Rect widener = detail::fxCard(2.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge);
     const Point grip{widener.x + 40.0f, widener.y + 17.0f};
-    const Point into{detail::fxCard(2.0f).x + 20.0f, grip.y};
+    const Point into{detail::fxCard(2.0f + detail::kFxBoxEdge).x + 20.0f, grip.y};
     view.mouseDown(grip, {});
     view.mouseMove({grip.x - 30.0f, grip.y}, {});
     view.mouseMove(into, {});
+    settle();
     const bool dragShot = renderer.save(view, dir / "41c-fx-row-drag-into-band.png");
     view.mouseUp(into, {});
+    settle();
     check(dragShot && from(1, 0) == low && from(join, 1) == fxSlotPort(1) && from(join, 0) == high &&
               from(2, 0) == fxSumPort(0),
           "a card dragged onto the band a container shows goes on that band");
@@ -2475,7 +2481,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     // (no split), and a reverb goes on that band.
     click(view, centerOf(detail::splitTab(column, 1)));
     const bool highShown = model.ui.splitBand[0] == 1;
-    const Rect add = detail::fxCard(2.0f);
+    const Rect add = detail::fxCard(2.0f + detail::kFxBoxEdge);
     const Point addAt{add.x + detail::kFxBoxAddW * 0.5f, add.center().y};
     click(view, addAt);
     view.mouseMove(fxListItem(view, addAt, FxType::Reverb), {});
@@ -2485,8 +2491,26 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(paramIndex(3, FxParam::Type)) == static_cast<double>(FxType::Reverb),
           "a container's other tab shows that band, whose dashed card adds an effect to it");
 
-    // Its Low knob takes the low band's level down; its high band's S solos it, then its low band's S takes over;
-    // both undone. Its crossover's handle drags from 250 Hz to 1 kHz.
+    // Its Low knob takes the low band's level down, and the low band's curve on its display with it (read off the
+    // rendered pixels: the bluest pixel at the display's low end); its high band's S solos it, then its low band's S
+    // takes over; both undone. Its crossover's handle drags from 250 Hz to 1 kHz.
+    auto lowCurveY = [&] {
+        const Rect shown{column.x + 14.0f, column.y + 66.0f, column.w - 28.0f, 104.0f};
+        float at = 0.0f;
+        int most = -256;
+        for (float y = shown.y + 4.0f; y < shown.bottom() - 22.0f; y += 1.0f) {
+            const uint32_t color = renderer.pixel({shown.x + 8.0f, y});
+            const int blueness = static_cast<int>(color & 255) - static_cast<int>(color >> 16 & 255);
+            if (blueness > most) {
+                most = blueness;
+                at = y;
+            }
+        }
+        return at;
+    };
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool fullShot = renderer.save(view, dir / "41d2-fx-row-levels-full.png");
+    const float fullY = lowCurveY();
     const Point lowKnob = detail::splitKnob(column, 0);
     drag(view, lowKnob, {lowKnob.x, lowKnob.y + 40.0f});
     const double lowLevel = model.value(fxInputIndex(join, 1, FxInputField::Level));
@@ -2498,6 +2522,10 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
                          model.value(paramIndex(0, SumParam::SoloLow)) == 1.0;
     view.mouseMove({600.0f, 600.0f}, {});
     const bool soloShot = renderer.save(view, dir / "41e-fx-row-solo.png");
+    const float loweredY = lowCurveY();
+    std::printf("      the low band's curve at the display's low end: at %.0f px at full level, %.0f px at %.1f dB\n",
+                fullY, loweredY, lowLevel);
+    check(fullShot && soloShot && loweredY > fullY + 4.0f, "a band's level lowers its curve on the split's display");
     view.undo();
     view.undo();
     const Rect display{column.x + 14.0f, column.y + 66.0f, column.w - 28.0f, 104.0f};
@@ -2532,13 +2560,30 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {strip.center().x, strip.y + 150.0f});
     check(folded && foldShot && model.ui.splitsFolded == 0u, "a container folds to a strip, and unfolds");
 
-    // Dragged by its title past the delay: the split goes after it, with its bands; undone.
+    // Dragged by its title past the delay: the split goes after it, with its bands, the delay gliding into its place
+    // (a step on, the row showing neither where they were nor where they go: read off the rendered pixels along the
+    // cards' title row); undone.
     const Point title{column.x + 60.0f, column.y + 17.0f};
+    auto rowPixels = [&] {
+        std::vector<uint32_t> line;
+        for (float x = detail::kFxPanel.x + 12.0f; x < detail::kFxPanel.right() - 12.0f; x += 2.0f)
+            line.push_back(renderer.pixel({x, title.y}));
+        return line;
+    };
     view.mouseDown(title, {});
     view.mouseMove({title.x + 20.0f, title.y}, {});
     view.mouseMove({detail::fxCard(2.2f).x, title.y}, {});
+    const bool startShot = renderer.save(view, dir / "41h1-fx-row-glide-start.png");
+    const std::vector<uint32_t> atStart = rowPixels();
+    view.poll();
+    const bool stepShot = renderer.save(view, dir / "41h2-fx-row-glide-step.png");
+    const std::vector<uint32_t> aStepOn = rowPixels();
+    settle();
     const bool carryShot = renderer.save(view, dir / "41h-fx-row-drag-container.png");
+    check(startShot && stepShot && carryShot && aStepOn != atStart && aStepOn != rowPixels(),
+          "cards dragged along the row glide aside, a step at a time");
     view.mouseUp({detail::fxCard(2.2f).x, title.y}, {});
+    settle();
     const bool carried = from(2, 0) == fxSlotPort(0) && from(split, 0) == fxSlotPort(2) &&
                          from(kFxOutNode, 0) == fxSumPort(0) && from(1, 0) == low && from(3, 0) == high;
     view.undo();
@@ -2554,7 +2599,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
           "a container's x puts its bands' effects on the main line, the high band's first");
 
     // The delay carried over the LOW tab shows the low band, and lands at its end, after the widener.
-    const Rect delay = detail::fxCard(3.0f + detail::kFxBoxAddSpan);
+    const Rect delay = detail::fxCard(3.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge);
     const Point delayGrip{delay.x + 40.0f, delay.y + 17.0f};
     const Point lowTab = centerOf(detail::splitTab(column, 0));
     view.mouseDown(delayGrip, {});
@@ -2563,6 +2608,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     const bool switched = model.ui.splitBand[0] == 0;
     view.mouseMove({detail::fxCard(3.2f).x, lowTab.y}, {});
     view.mouseUp({detail::fxCard(3.2f).x, lowTab.y}, {});
+    settle();
     view.mouseMove({600.0f, 600.0f}, {});
     check(switched && from(2, 0) == fxSlotPort(1) && from(join, 1) == fxSlotPort(2) &&
               from(kFxOutNode, 0) == fxSumPort(0) && renderer.save(view, dir / "41i-fx-row-low-band.png"),
@@ -5976,6 +6022,8 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseDown(fxGrip(model, 0), {});
     view.mouseMove({fxGrip(model, 0).x + 200.0f, 212.0f}, {});
     view.mouseMove({fxGrip(model, 0).x + 390.0f, 212.0f}, {});
+    for (int k = 0; k < 40; ++k) // the others gliding aside
+        view.poll();
     check(renderer.save(view, dir / "9-fx-reorder.png"), "render a card being dragged");
     view.mouseUp({fxGrip(model, 0).x + 390.0f, 212.0f}, {});
     check(fxChain(model) == std::vector<int>{1, 2, 0, 3, 4}, "dragging a card's title moves that effect along the chain");

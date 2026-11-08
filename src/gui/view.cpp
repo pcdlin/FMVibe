@@ -1286,6 +1286,8 @@ bool View::poll() {
         changed = true;
     if (glideFxGraph()) // the effects graph's nodes making room for one dragged, or settling after
         changed = true;
+    if (glideFxRow()) // the row's cards and containers likewise
+        changed = true;
     if (sourceMenuOpen_ && !sourceShadowCard()) { // its card went: scrolled away, the panel shut, the places full
         sourceMenuOpen_ = false;
         changed = true;
@@ -1820,9 +1822,11 @@ std::vector<View::Widget> View::widgets() const {
             const FxRow row = fxRowShown();
             const float scroll = fxScroll();
             for (const FxRowCard &card : row.cards)
-                if (const float place = card.place - scroll; onScreen(place, kVisibleFx, card.span))
+                if (const float place = card.place - scroll; !card.hidden && onScreen(place, kVisibleFx, card.span))
                     cardWidgets(card.slot, 0, fxCard(place, card.span), false);
             for (const FxRowBox &box : row.boxes) {
+                if (box.hidden)
+                    continue;
                 const float place = box.place - scroll;
                 if (box.folded) { // a strip: the icon and a grip drag it, the cross, then the rest unfolds it
                     if (!onScreen(place, kVisibleFx, box.span))
@@ -1834,8 +1838,8 @@ std::vector<View::Widget> View::widgets() const {
                     add(Kind::FxBoxFold, {strip.x, strip.y + 76.0f, strip.w, strip.h - 76.0f}, -1, box.split);
                     continue;
                 }
-                if (onScreen(place, kVisibleFx))
-                    splitControlWidgets(list, box.split, fxCard(place, 1.0f), true);
+                if (const float column = boxColumn(box) - scroll; onScreen(column, kVisibleFx))
+                    splitControlWidgets(list, box.split, fxCard(column, 1.0f), true);
                 if (const float at = box.add - scroll; fxShadow() && onScreen(at, kVisibleFx, kFxBoxAddSpan)) {
                     const Rect card = fxCard(at);
                     add(Kind::FxBoxAdd, {card.x, card.y, kFxBoxAddW, card.h}, -1, box.lane, box.item);
@@ -1856,7 +1860,7 @@ std::vector<View::Widget> View::widgets() const {
             for (size_t i = 1; i + 1 < row.items.size() && fxShadow(); ++i)
                 insert(row.items[i], 0, static_cast<int>(i), 0);
             for (const FxRowBox &box : row.boxes) {
-                if (box.folded || !fxShadow())
+                if (box.folded || box.hidden || !fxShadow())
                     continue;
                 int k = 0;
                 for (const FxRowCard &card : row.cards)
@@ -2712,7 +2716,8 @@ void View::paint(Canvas &c) {
         c.pushClip(fxCardClip());
         for (const FxRowCard &card : fxRowShown().cards) {
             const float pos = card.place - fxScroll();
-            if (!onScreen(pos, kVisibleFx, card.span) || value(paramIndex(card.slot, FxParam::Enabled)) >= 0.5 ||
+            if (card.hidden || !onScreen(pos, kVisibleFx, card.span) ||
+                value(paramIndex(card.slot, FxParam::Enabled)) >= 0.5 ||
                 fxFolded(card.slot))
                 continue;
             const Rect p = fxCard(pos, card.span);
@@ -3196,9 +3201,11 @@ void View::paintFx(Canvas &c) {
     // then the cards of the band it shows (painted below) and its dashed card (a widget).
     for (const FxRowBox &box : row.boxes) {
         const float place = box.place - scroll;
-        if (!onScreen(place, kVisibleFx, box.span))
+        if (box.hidden || !onScreen(place, kVisibleFx, box.span))
             continue;
-        const Rect whole = fxCard(place, box.span);
+        // Unfolded, inside the room it keeps before and after it.
+        const Rect whole = box.folded ? fxCard(place, box.span)
+                                      : fxCard(boxColumn(box) - scroll, box.span - 2.0f * kFxBoxEdge);
         const bool held = drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
                           drag_.widget.a == fxSplitNode(box.split);
         const bool hot = held || (hover_ && hover_->kind == Kind::FxBoxGrip &&
@@ -3214,7 +3221,7 @@ void View::paintFx(Canvas &c) {
             continue;
         }
         const Rect outer = whole.inset(-kFxBoxPad);
-        const Rect column = fxCard(place, 1.0f);
+        const Rect column = fxCard(boxColumn(box) - scroll, 1.0f);
         const float bandX = column.right() + kFxBoxPad;
         c.fillRect(outer, splitFill(), kFxBoxRadius);
         c.fillRect({bandX, outer.y, outer.right() - bandX, outer.h}, kPanel, kFxBoxRadius);
@@ -3236,7 +3243,7 @@ void View::paintFx(Canvas &c) {
         const int slot = card.slot;
         const FxType type = fxSlotType(slot);
         const float pos = card.place - scroll;
-        if (!onScreen(pos, kVisibleFx, card.span))
+        if (card.hidden || !onScreen(pos, kVisibleFx, card.span))
             continue;
         const Rect r = fxCard(pos, card.span);
         const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
@@ -7833,9 +7840,11 @@ void View::applyDrag(Point p) {
     case DragKind::FxNodeMove:
         fxGraphDrag(p);
         break;
-    case DragKind::FxMove: // where it would land follows the mouse
-        if (drag_.moved)
+    case DragKind::FxMove: // where it would land follows the mouse, the others gliding aside
+        if (drag_.moved) {
+            startFxRowGlide();
             retargetRowDrag(p);
+        }
         break;
     case DragKind::None:
     case DragKind::Connect:
@@ -7913,6 +7922,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         return;
     endTyping(true);
     finishDrag(); // a drag that never saw its button go up
+    fxRowGlide_.on = false; // the row's cards still settling snap into place, where a click means them
     // Before a drag can take a route down to 0 %: the poll timer waits while the mouse moves, and a
     // state load may have replaced the layout since it last ran.
     keepRoutes();
