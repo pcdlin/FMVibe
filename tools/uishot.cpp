@@ -2353,6 +2353,31 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             view.undo();
             threeSlopes = kept12 && refused6 && picked24 && model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
         }
+        // Low X turned up past the high crossover pushes it along, at least a third of an octave above; High X
+        // turned down past the low one pushes that down. Each one undo step, taking both back.
+        bool pushed = false;
+        {
+            const int lowIndex = paramIndex(0, SplitParam::Low), highIndex = paramIndex(0, SplitParam::High);
+            const double lowBefore = model.value(lowIndex), highBefore3 = model.value(highIndex);
+            auto apart = [&] {
+                const double low = cutoffFromNorm(model.value(lowIndex));
+                return model.value(highIndex) >=
+                       normFromCutoff(std::min(low * std::pow(2.0, 1.0 / 3.0), kMaxCutoff)) - 1e-9;
+            };
+            const Point lowKnob = detail::splitCrossKnob(card, 0), highKnob = detail::splitCrossKnob(card, 1);
+            drag(view, lowKnob, {lowKnob.x, lowKnob.y - 120.0f});
+            const bool upPushed = model.value(highIndex) > highBefore3 && apart() && model.openEdits == 0;
+            view.undo();
+            const bool upBack = model.value(lowIndex) == lowBefore && model.value(highIndex) == highBefore3;
+            drag(view, highKnob, {highKnob.x, highKnob.y + 120.0f});
+            const bool downPushed = model.value(lowIndex) < lowBefore && apart() && model.openEdits == 0;
+            view.undo();
+            const bool downBack = model.value(lowIndex) == lowBefore && model.value(highIndex) == highBefore3;
+            std::printf("      a crossover pushing the other: up %d (undone %d), down %d (undone %d)\n", upPushed, upBack,
+                        downPushed, downBack);
+            pushed = upPushed && upBack && downPushed && downBack;
+        }
+        check(pushed, "a three-band split's crossover turned past the other pushes it along, undoably");
         addAt(cell(4, 0), FxType::Widener);
         int widener = -1;
         for (int slot = 0; slot < kFxSlots; ++slot)

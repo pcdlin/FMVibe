@@ -254,7 +254,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     begin with), at a Slope of 6, 12 or 24 dB per octave (12 to begin with, a second-order Linkwitz-Riley crossover; 24 the
     fourth-order one the 3-band dynamics has; 6 a one-pole low-pass with the rest as the high band), so the bands sum
     back flat at each. A split can also cut into **three** bands, low, middle and high, at a low and a high crossover
-    (250 Hz and 2.5 kHz to begin with, the high one kept a third of an octave above the low one), at 12 or 24 dB
+    (250 Hz and 2.5 kHz to begin with, the high one kept a third of an octave above the low one: in the editor, either
+    crossover moved past the other pushes it along, in the same gesture and undo step), at 12 or 24 dB
     (24 as the 3-band dynamics does; at 12 the low band goes through the high crossover's all-pass, so the three still
     sum back flat; set to 6, it plays at 12). Each band runs through effects of its own, say the lows through a shaper and a compressor and the
     highs through a delay and a reverb, until a **join** adds them back together, each at a level (0 dB, full, down to

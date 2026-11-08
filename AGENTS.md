@@ -237,7 +237,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     both soloed; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its title's
     2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
     crossover at 2500 Hz, its slope kept and its list refusing 6 dB and picking 24 (a split at 6 going to 12 as it
-    splits in three), an effect put on its + along the main line's row (and a second one after it, the other bands'
+    splits in three), Low X turned up past the high crossover and High X down past the low one each pushing the
+    other along, undoably, an effect put on its + along the main line's row (and a second one after it, the other bands'
     wires into the join running level along their rows past it and their +s in their next places, read off the
     rendered pixels), its S soloing it and the low band's too, the row showing
     the container with it, and back to two asking where its effect goes (onto the low band's end), undone onto the

@@ -1,6 +1,7 @@
 #include "controller.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace fmvibe::gui {
 
@@ -44,16 +45,41 @@ std::array<int, kMcBands> Controller::linkedBands(int index) const {
     return fields;
 }
 
+int Controller::crossoverPartner(int index) const {
+    const int split = splitOf(index);
+    if (split < 0 || std::lround(value(paramIndex(split, SplitParam::Bands))) < kFxBands)
+        return -1;
+    if (index == paramIndex(split, SplitParam::Low))
+        return paramIndex(split, SplitParam::High);
+    if (index == paramIndex(split, SplitParam::High))
+        return paramIndex(split, SplitParam::Low);
+    return -1;
+}
+
+double Controller::pushedCrossover(int index, double v) const {
+    const int partner = crossoverPartner(index);
+    const double third = std::pow(2.0, 1.0 / 3.0);
+    const double hz = cutoffFromNorm(std::clamp(v, 0.0, 1.0));
+    if (partner > index) // the low crossover moved: the high one at least a third of an octave above it
+        return std::max(value(partner), std::min(normFromCutoff(std::min(hz * third, kMaxCutoff)), 1.0));
+    return std::min(value(partner), std::max(normFromCutoff(hz / third), 0.0)); // the high one: the low one below
+}
+
 void Controller::beginEdit(int index) {
     const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
+    const int partner = applying_ ? -1 : crossoverPartner(index);
     if (!applying_) {
         beginStep();
         for (int field : fields)
             record(field);
+        if (partner >= 0)
+            record(partner);
     }
     for (int field : fields)
         if (field >= 0)
             performBeginEdit(field);
+    if (partner >= 0)
+        performBeginEdit(partner);
 }
 
 void Controller::setValue(int index, double value) {
@@ -63,20 +89,29 @@ void Controller::setValue(int index, double value) {
     }
     // An edit outside a gesture is a step of its own.
     const auto fields = linkedBands(index);
+    const int partner = crossoverPartner(index);
     beginStep();
     for (int field : fields)
         record(field);
+    if (partner >= 0)
+        record(partner);
     for (int field : fields)
         if (field >= 0)
             performSetValue(field, value);
+    if (partner >= 0)
+        if (const double pushed = pushedCrossover(index, value); pushed != this->value(partner))
+            performSetValue(partner, pushed);
     endStep();
 }
 
 void Controller::endEdit(int index) {
     const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
+    const int partner = applying_ ? -1 : crossoverPartner(index);
     for (int field : fields)
         if (field >= 0)
             performEndEdit(field);
+    if (partner >= 0)
+        performEndEdit(partner);
     if (!applying_)
         endStep();
 }
