@@ -2229,7 +2229,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The shaper dropped at the low band's end, on its wire into the join: there; undone.
     {
-        const Point drop = detail::fxGridAt(4.5f, 0.585f, 0.0f);
+        const Point drop = detail::fxGridAt(5.0f, 0.585f, 0.0f); // on its +
         view.mouseMove(cell(1, 0), {});
         view.mouseDown(cell(1, 0), {});
         view.mouseMove({cell(1, 0).x + 8.0f, cell(1, 0).y + 4.0f}, {});
@@ -2247,14 +2247,14 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               "a node dropped at a band's end, on its wire into the join, goes there");
     }
 
-    // A phaser after the join, from the main line's + again.
-    addAt(cell(6, 0), FxType::Phaser);
+    // A phaser after the join (a column on from the bands' +s), from the main line's + again.
+    addAt(cell(7, 0), FxType::Phaser);
     check(from(4, 0) == fxSumPort(0) && from(kFxOutNode, 0) == fxSlotPort(4),
           "the main line's + after a join puts an effect after it");
 
     // The join's node shows its split's card, the same as the split's own: its High knob takes the high band's level
     // down.
-    click(view, cell(5, 0));
+    click(view, cell(6, 0));
     const Rect card = detail::fxInspectorCard(1.0f);
     const Point highKnob = detail::splitKnob(card, 2); // Low on the left, the crossover, High on the right
     drag(view, highKnob, {highKnob.x, highKnob.y + 40.0f});
@@ -2269,7 +2269,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     // Its high band's S, under its knob: soloed, an S in a circle at the split's and the join's top left, and the low
     // band's compressor and its wires faint, the high band's delay as it was (read off the rendered pixels); undone.
     {
-        const Rect joinBox{cell(5, 0).x - detail::kFxJoinHalfW, cell(5, 0).y - detail::kFxJoinHalfH,
+        const Rect joinBox{cell(6, 0).x - detail::kFxJoinHalfW, cell(6, 0).y - detail::kFxJoinHalfH,
                            2.0f * detail::kFxJoinHalfW, 2.0f * detail::kFxJoinHalfH};
         const Point mark{joinBox.x + 1.0f, joinBox.y - 5.0f}; // inside the circle, above the box
         const Point splitMark{cell(3, 0).x - detail::kFxSplitHalfW + 1.0f, cell(3, 0).y - detail::kFxSplitHalfH - 5.0f};
@@ -2305,12 +2305,12 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             };
             const bool splitFades = grey(edge(3, false, true)) && grey(edge(3, false, false)) && amber(edge(3, true, true)) &&
                                blue(edge(3, true, false));
-            const bool joinFades = amber(edge(5, false, true)) && blue(edge(5, false, false)) && grey(edge(5, true, true)) &&
-                              grey(edge(5, true, false));
+            const bool joinFades = amber(edge(6, false, true)) && blue(edge(6, false, false)) && grey(edge(6, true, true)) &&
+                              grey(edge(6, true, false));
             std::printf("      wires: main line %06x, high band %06x, low band %06x; the split's right edge %06x above, "
                         "%06x below, its left %06x; the join's left edge %06x above, %06x below, its right %06x\n",
                         mainWire, bandWire(-1), bandWire(1), edge(3, true, true), edge(3, true, false),
-                        edge(3, false, true), edge(5, false, true), edge(5, false, false), edge(5, true, true));
+                        edge(3, false, true), edge(6, false, true), edge(6, false, false), edge(6, true, true));
             check(grey(mainWire) && amber(bandWire(-1)) && blue(bandWire(1)) && splitFades && joinFades,
                   "the graph's main line is grey, each band's wires and half of the split's and join's nodes in its "
                   "color, fading in across a split and out across a join");
@@ -2439,13 +2439,13 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove({600.0f, 428.0f}, {});
         const bool onMiddle = widener >= 0 && from(join, 2) == fxSlotPort(widener) &&
                               renderer.save(view, dir / "40f4-fx-split-three-middle.png");
-        // A phaser after it, on the wire into the join: the middle band two nodes long, the join a column on. The high
-        // and low bands' wires into it run level along their rows past the phaser's column, bending only in the gap
-        // before the join (read off the rendered pixels: each wire there on its row, not below or above it).
+        // A phaser after it, from its + on the wire into the join: the middle band two nodes long, its + a column on and
+        // the join a column after that. The high and low bands' wires into it run level along their rows past the
+        // phaser's column, bending only in the gap before the join (read off the rendered pixels: each wire there on
+        // its row, not below or above it).
         bool levelWires = false;
         {
-            const float into = (cell(4, 0).x + detail::kFxNodeR + cell(5, 0).x - detail::kFxJoinHalfW - 8.0f) * 0.5f;
-            addAt({into, cell(5, 0).y}, FxType::Phaser);
+            addAt(cell(5, 0), FxType::Phaser);
             view.mouseMove({600.0f, 428.0f}, {});
             const bool longShot = renderer.save(view, dir / "40f4a-fx-split-three-long.png");
             auto onRow = [&](int row) {
@@ -2635,9 +2635,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         emptyPluses = emptyPluses && renderer.pixel({plus.x + 6.0f, plus.y + 6.0f}) != renderer.pixel({plus.x, plus.y + 30.0f});
     }
     view.undo();
-    const Point bandGap = middle({cell(4, -1).x + detail::kFxNodeR, cell(4, -1).y},
-                                 {cell(5, 0).x - detail::kFxJoinHalfW - 8.0f,
-                                  detail::fxBandPortAt(cell(5, 0), kFxBands - 1).y});
+    const Point bandGap = cell(5, -1); // the delay's +, in its band's next place
     click(view, bandGap);
     click(view, gapItem(bandGap, false, fxMenuPlace(FxType::Widener)));
     const bool onJoinedBand = from(5, 0) == fxSlotPort(2) && from(join, 0) == fxSlotPort(5);
@@ -2716,7 +2714,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         // ending in its arrowhead there, as at a node (read off the rendered pixels: how many pixels down through the
         // arrowhead are lit, many more than a wire passing by lights).
         {
-            const Point grab = cell(6, 0), to = detail::fxGridAt(1.5f, 0.0f, 0.0f);
+            const Point grab = cell(7, 0), to = detail::fxGridAt(1.5f, 0.0f, 0.0f);
             view.mouseMove(grab, {});
             view.mouseDown(grab, {});
             view.mouseMove({grab.x + 8.0f, grab.y + 4.0f}, {});
@@ -2735,26 +2733,26 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             std::printf("      a step into the glide, lit down the arrowhead at the phaser's new place: %d px\n", lit);
             check(lit >= 5, "a dragged node's wires run to its placeholder where it would land, not along with it");
         }
-        const bool roomShot = dragNode(cell(6, 0), detail::fxGridAt(1.5f, 0.0f, 0.0f), "40o-fx-drag-room.png");
+        const bool roomShot = dragNode(cell(7, 0), detail::fxGridAt(1.5f, 0.0f, 0.0f), "40o-fx-drag-room.png");
         const bool phaserMoved = from(4, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(4) &&
                                  from(kFxOutNode, 0) == fxSumPort(0);
         const bool droppedShot = renderer.save(view, dir / "40p-fx-dropped.png");
         view.undo();
         const bool phaserBack = from(4, 0) == fxSumPort(0) && from(1, 0) == fxSlotPort(0);
-        dragNode(cell(4, -1), detail::fxGridAt(4.5f, 1.0f, 0.0f), nullptr);
+        dragNode(cell(4, -1), detail::fxGridAt(5.0f, 1.0f, 0.0f), nullptr); // onto the low band's +
         const bool delayMoved = from(3, 0) == low && from(2, 0) == fxSlotPort(3) && from(join, 1) == fxSlotPort(2) &&
                                 from(join, 0) == high;
         view.undo();
-        const bool groupShot = dragNode(cell(5, 0), detail::fxGridAt(0.5f, 0.0f, 0.0f), "40q-fx-drag-group.png");
+        const bool groupShot = dragNode(cell(6, 0), detail::fxGridAt(0.5f, 0.0f, 0.0f), "40q-fx-drag-group.png");
         const bool groupMoved = from(split, 0) == kFxPortIn && from(0, 0) == fxSumPort(0) && from(4, 0) == fxSlotPort(1) &&
                                 from(join, 0) == fxSlotPort(2) && from(join, 1) == fxSlotPort(3) &&
                                 from(kFxOutNode, 0) == fxSlotPort(4);
         view.undo();
         // The phaser held over that gap, then over the reverb beyond it (where the gap opened pushed it): the place
         // stays open where it was, and that is where it lands.
-        view.mouseMove(cell(6, 0), {});
-        view.mouseDown(cell(6, 0), {});
-        view.mouseMove({cell(6, 0).x + 8.0f, cell(6, 0).y + 4.0f}, {});
+        view.mouseMove(cell(7, 0), {});
+        view.mouseDown(cell(7, 0), {});
+        view.mouseMove({cell(7, 0).x + 8.0f, cell(7, 0).y + 4.0f}, {});
         view.mouseMove(detail::fxGridAt(1.5f, 0.0f, 0.0f), {});
         settle();
         view.mouseMove(detail::fxGridAt(3.0f, 0.0f, 0.0f), {});
@@ -2793,7 +2791,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove(mid, {});
         renderer.save(view, dir / "40r2-fx-wire-plus-hot.png");
         const int onWirePlus = bar(mid);
-        const Point linePlus = cell(7, 0);
+        const Point linePlus = cell(8, 0);
         const int lineIdle = bar(linePlus);
         view.mouseMove(linePlus, {});
         renderer.save(view, dir / "40r3-fx-line-plus-hot.png");

@@ -745,7 +745,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Add
     frequency split** and **Add 3-band split**, after the effects: a split, a box its high band leaves from the top of
     its right side, its low band from the bottom and a middle band from the middle, always comes with its join, which
-    adds the bands back together in the column after the longest band; the line goes on from the join. The bands run
+    adds the bands back together a column after the longest band's last + (each band's + has a column of its own); the line goes on from the join. The bands run
     between them, the high one along the row above the main line, the low one along the row below and a middle one
     along the main line's row, named beside the split, each band's wires in its color (the high band amber, the
     middle one sea green, the low band blue) all the way into the join. Splits and joins are boxes as large as
@@ -759,7 +759,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     color on a band. With the mouse
     anywhere along a wire between two nodes on the main line, a + shows at its middle, and a click on that + opens
     the list too. A split's band shows its + at its end always: in its next place, a column on from its last node on
-    its row (on an empty band, a column on from the split), or at the wire's middle where the join comes right after. Every + in the graph is faint until the mouse is on it
+    its row (on an empty band, a column on from the split), the join a column further on. Every + in the graph is faint until the mouse is on it
     (or its list is open). The list a wire's + opens puts the effect picked
     in there: on the main line, the list also offers the split, which goes in with its join right after it and
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's

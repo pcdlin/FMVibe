@@ -446,14 +446,15 @@ View::FxGridLayout View::fxGridLayout(const FxLine &line) {
                 grid.nodes.push_back({band[k], start + static_cast<int>(k), laneRow(lane)});
             longest = std::max(longest, static_cast<int>(band.size()));
         }
-        if (item.joined) { // the join in the column after the longest band, a column on from empty ones
-            grid.nodes.push_back({fxJoinNode(item.node - kFxSlots), start + std::max(longest, 1), 0});
-        } else { // a + at the end of each band
+        // Each band's + in the column after its last node, the longest band's too, and the join (or OUT) after that.
+        if (item.joined) {
+            grid.nodes.push_back({fxJoinNode(item.node - kFxSlots), start + longest + 1, 0});
+        } else {
             for (int lane : item.lanes())
                 grid.slots.push_back({lane, start + static_cast<int>(item.band(lane).size()), laneRow(lane)});
             open = true;
         }
-        col = start + (item.joined ? std::max(longest, 1) : longest) + 1;
+        col = start + longest + 1 + (item.joined ? 1 : 0);
     }
     if (!open) // the main line's +, then OUT
         grid.slots.push_back({0, col++, 0});
@@ -935,10 +936,9 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
                 if (!effects.empty()) {
                     wire(bands[lane], into, true, end);
                     wires.back().faint = faint;
-                    // Its + in the band's next place, a column on from its last node, where the join is further on.
+                    // Its + in the band's next place, a column on from its last node: the join is a column further on.
                     const Point last = at[effects.back()];
-                    if (last.x + kFxGridCol + kFxSlotHalf < into.x - kFxWireBend)
-                        wires.back().plus = Point{last.x + kFxGridCol, last.y};
+                    wires.back().plus = Point{last.x + kFxGridCol, last.y};
                     continue;
                 }
                 // Empty: out to its +, on its row a column on from the split, and from there into the join.
