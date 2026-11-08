@@ -4108,6 +4108,10 @@ int main(int argc, char **argv) {
         layout.insert(layout.end(), {1.0f, 1.0f}); // an LFO's shape drawn in steps, snapping to the grid
         layout.push_back(3.0f);                    // folded cards past the 16th slot
         layout.push_back(static_cast<float>(kFxSlots)); // the graph's inspector showing the first split
+        layout.push_back(1.0f);                         // the FX view showing the graph
+        for (int split = 0; split < kFxSplits; ++split)
+            layout.push_back(static_cast<float>(split % 2 == 0)); // the band each split shows, some the high one
+        layout.push_back(5.0f);                                   // splits' containers folded
 
         MemoryStream big;
         auto put = [&](const void *data, size_t size) {
