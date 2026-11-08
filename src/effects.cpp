@@ -1030,6 +1030,10 @@ void Effects::runSplit(int split, uint32_t n, const ParamValues &p, const float 
         splitCoefs(sp.was, low, high);
     const double fadeStep = 1.0 / (0.005 * sampleRate_);
     auto &out = bandOut_[split];
+    // From two bands to three or back, the middle band comes or goes with its wire into the join, which fades it as
+    // this crossfade would: it plays at full from the filters that have it (two bands' is silent), faded once only.
+    auto isThree = [](int m) { return m == kThree12 || m == kThree24; };
+    const bool midByWire = sp.wasFade > 0.0 && isThree(sp.now.mode) != isThree(sp.was.mode);
     for (uint32_t s = 0; s < n; ++s) {
         const bool crossing = sp.wasFade > 0.0;
         double before = 0.0; // how much of the filters it leaves is heard
@@ -1044,7 +1048,7 @@ void Effects::runSplit(int split, uint32_t n, const ParamValues &p, const float 
                 double was[kFxBands];
                 splitBands(sp.was, ch, mix[ch][s], was);
                 for (int b = 0; b < kFxBands; ++b)
-                    bands[b] += (was[b] - bands[b]) * before;
+                    bands[b] = b == 1 && midByWire ? bands[b] + was[b] : bands[b] + (was[b] - bands[b]) * before;
             }
             for (int b = 0; b < kFxBands; ++b)
                 out[b][ch][s] = static_cast<float>(bands[b]);

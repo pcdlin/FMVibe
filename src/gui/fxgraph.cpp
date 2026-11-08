@@ -145,13 +145,12 @@ std::vector<Point> wirePath(const Wire &w) {
     return points;
 }
 
-// Where a wire's + shows: on its path halfway across, or where it says (an empty band's).
+// Where a wire's + shows: on its path (`points`) halfway across, or where it says (an empty band's).
 template <class Wire>
-Point wireMiddle(const Wire &w) {
+Point wireMiddle(const Wire &w, const std::vector<Point> &points) {
     if (w.plus)
         return *w.plus;
     const float x = (w.from.x + w.to.x) * 0.5f;
-    const std::vector<Point> points = wirePath(w);
     for (size_t k = 1; k < points.size(); ++k)
         if (points[k].x >= x) {
             const Point p = points[k - 1], q = points[k];
@@ -657,6 +656,7 @@ void View::removeFxNode(int node, int effects) {
     if (!held.empty() && effects < 0) { // whether they stay is asked first
         confirm_ = kConfirmSplitRemove;
         confirmSplit_ = split.node - kFxSlots;
+        confirmEffects_ = held.size();
         hover_.reset();
         return;
     }
@@ -715,6 +715,7 @@ void View::setSplitBands(int split, int bands, int midTo) {
     if (!three && !item.mid.empty() && midTo < 0) { // where its effects go is asked first
         confirm_ = kConfirmMidBand;
         confirmSplit_ = split;
+        confirmEffects_ = item.mid.size();
         hover_.reset();
         return;
     }
@@ -841,7 +842,7 @@ void View::fxGraphWidgets(std::vector<Widget> &list) const {
         add(Kind::FxSlot, slotRect(at.slot[slot.lane]).inset(-4.0f), -1, slot.lane);
     for (const FxGraphWire &w : wires) // the +s at their middles, which take the click
         if (w.at.lane >= 0) {
-            const Point m = wireMiddle(w);
+            const Point m = w.middle;
             add(Kind::FxGap, {m.x - 10.0f, m.y - 10.0f, 20.0f, 20.0f}, -1, w.at.lane,
                 w.at.item * kFxGapStride + w.at.place);
         }
@@ -859,7 +860,7 @@ bool View::fxWireHit(const Widget &w, Point p) const {
     }
     for (const FxGraphWire &wire : *kept)
         if (wire.at.lane == w.a && wire.at.item * kFxGapStride + wire.at.place == w.b) {
-            const std::vector<Point> points = wirePath(wire);
+            const std::vector<Point> &points = wire.path;
             for (size_t k = 1; k < points.size(); ++k)
                 if (distanceToSegment(p, points[k - 1], points[k]) <= 6.0f)
                     return true;
@@ -963,6 +964,10 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
         const Point plus = places.slot[0];
         wire(tail, {plus.x - kFxSlotHalf, plus.y}, false);
         wire({{plus.x + kFxSlotHalf, plus.y}, tail.color, tail.port}, {out.x - kFxEndHalfW, out.y}, true);
+    }
+    for (FxGraphWire &w : wires) { // each one's path and its + once, for the widgets, the hit tests and the paint
+        w.path = wirePath(w);
+        w.middle = wireMiddle(w, w.path);
     }
     return wires;
 }
@@ -1749,7 +1754,7 @@ void View::paintFxGraph(Canvas &c) {
     const std::vector<FxGraphWire> wires = fxGraphWires(line, at);
     float outGlow = 0.0f;
     for (const FxGraphWire &w : wires) {
-        const std::vector<Point> points = wirePath(w);
+        const std::vector<Point> &points = w.path;
         const float glow = w.faint ? 0.0f : fxGlow(w.port);
         if (glow > 0.01f) {
             featherLine(c, points.data(), points.size(), 1.6f, 6.0f, w.color.alpha(0.3f * glow));
@@ -1776,7 +1781,7 @@ void View::paintFxGraph(Canvas &c) {
         if (!listed && !hot && !bandEnd)
             continue;
         const bool onPlus = hover_ && hover_->kind == Kind::FxGap && hover_->a == w.at.lane && hover_->b == b;
-        const Point m = wireMiddle(w);
+        const Point m = w.middle;
         // In its wire's color: grey on the main line, a band's color on a band. Faint until the mouse is on it (or its
         // list is open).
         const float shown = (w.faint ? kSoloedOutAlpha : 1.0f) * (listed || onPlus ? 1.0f : kFxPlusIdleAlpha);

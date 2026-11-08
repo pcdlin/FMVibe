@@ -287,9 +287,12 @@ void Canvas::popClip() {
     cairo_restore(target_);
 }
 
-void Canvas::pushLayer(Point offset, float opacity) {
+void Canvas::pushLayer(Point offset, float opacity, Rect bounds) {
     cairo_save(target_);
     cairo_translate(target_, offset.x, offset.y);
+    cairo_new_path(target_);
+    cairo_rectangle(target_, bounds.x, bounds.y, bounds.w, bounds.h);
+    cairo_clip(target_); // the group's surface as small as that
     cairo_push_group(target_);
     opacities_.push_back(opacity);
 }

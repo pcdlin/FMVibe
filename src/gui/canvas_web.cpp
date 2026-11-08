@@ -182,11 +182,13 @@ void Canvas::popClip() {
     js_pop_clip();
 }
 
-void Canvas::pushLayer(Point offset, float opacity) {
+void Canvas::pushLayer(Point offset, float opacity, Rect bounds) {
     js_push_layer(offset.x, offset.y, opacity);
+    js_push_clip(bounds.x, bounds.y, bounds.w, bounds.h); // only what is inside shows, as in the other backends
 }
 
 void Canvas::popLayer() {
+    js_pop_clip();
     js_pop_layer();
 }
 

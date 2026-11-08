@@ -160,8 +160,9 @@ public:
     void pushClip(Rect r);
     void popClip();
     // Everything drawn until the matching popLayer() is moved by `offset` and put down at `opacity` as a whole (a
-    // faint image of a card being carried). A clip pushed inside it moves with it.
-    void pushLayer(Point offset, float opacity);
+    // faint image of a card being carried). A clip pushed inside it moves with it. Only what is drawn inside `bounds`
+    // (before the move) shows, which keeps the layer's surface that small.
+    void pushLayer(Point offset, float opacity, Rect bounds);
     void popLayer();
 
     static Point onCircle(Point center, float radius, float angle);

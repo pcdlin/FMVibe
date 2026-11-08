@@ -83,22 +83,28 @@ void Canvas::popClip() {
     target_->PopAxisAlignedClip();
 }
 
-void Canvas::pushLayer(Point offset, float opacity) {
+void Canvas::pushLayer(Point offset, float opacity, Rect bounds) {
     D2D1_MATRIX_3X2_F before;
     target_->GetTransform(&before);
     transforms_.push_back(before);
     const D2D1::Matrix3x2F base = *D2D1::Matrix3x2F::ReinterpretBaseType(&before);
     target_->SetTransform(D2D1::Matrix3x2F::Translation(offset.x, offset.y) * base);
+    // The layer's surface only as large as `bounds`, not the window. Without a layer (none could be made), what is
+    // drawn is still moved, only not faint.
     ComPtr<ID2D1Layer> layer;
-    target_->CreateLayer(nullptr, layer.GetAddressOf());
-    target_->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
-                                             D2D1::IdentityMatrix(), opacity),
-                       layer.Get());
+    if (SUCCEEDED(target_->CreateLayer(nullptr, layer.GetAddressOf())))
+        target_->PushLayer(D2D1::LayerParameters(D2D1::RectF(bounds.x, bounds.y, bounds.right(), bounds.bottom()),
+                                                 nullptr, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1::IdentityMatrix(),
+                                                 opacity),
+                           layer.Get());
+    else
+        layer.Reset();
     layers_.push_back(layer);
 }
 
 void Canvas::popLayer() {
-    target_->PopLayer();
+    if (layers_.back())
+        target_->PopLayer();
     layers_.pop_back();
     target_->SetTransform(transforms_.back());
     transforms_.pop_back();

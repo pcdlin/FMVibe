@@ -2873,7 +2873,7 @@ void View::paint(Canvas &c) {
         outlined(landing, row, radius, color);
         const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
                            start.y + drag_.now.y - drag_.start.y - landing.y};
-        c.pushLayer(offset, 0.5f);
+        c.pushLayer(offset, 0.5f, landing.inset(-1.0f));
         c.pushClip(landing);
         paintCard();
         for (const Widget &w : list)
@@ -2904,7 +2904,8 @@ void View::paint(Canvas &c) {
             // image painted afresh where it was picked up from, moved under the mouse.
             if (landing)
                 outlined(*landing, fxCardClip(), radius, fxColor(node));
-            c.pushLayer({drag_.now.x - drag_.start.x, drag_.now.y - drag_.start.y}, 0.5f);
+            // Its glow and the knobs' labels reach a little past it.
+            c.pushLayer({drag_.now.x - drag_.start.x, drag_.now.y - drag_.start.y}, 0.5f, start.inset(-24.0f));
             paintFxCard(c, node, start, true);
             for (const Widget &w : carriedWidgets_)
                 paintWidget(c, w);
@@ -2913,7 +2914,7 @@ void View::paint(Canvas &c) {
             if (node >= kFxSlots && landing->w > start.w) // a container's outline stands out round it
                 start = start.inset(-kFxBoxPad);
             carried(*landing, start, fxCardClip(), radius, node < kFxSlots ? fxColor(node) : splitLine(),
-                    [&] { paintFx(c); });
+                    [&] { paintFx(c, *landing); });
         }
     }
     if (drag_.kind == DragKind::SourceMove && drag_.moved) {
@@ -3343,17 +3344,21 @@ void View::paintMatrixLabels(Canvas &c) {
         c.text({kLegendX, y + static_cast<float>(i) * 20.0f, width, 18.0f}, tr(notes[i]), kTextBody, kFaint, Align::Left);
 }
 
-void View::paintFx(Canvas &c) {
-    const std::vector<int> chain = fxChain();
-    // How many of the effects' places are taken, beside ADD EFFECT.
-    const Rect count{fxMenuButton().right() + 10.0f, fxMenuButton().y, 44.0f, fxMenuButton().h};
-    const bool full = chain.size() >= static_cast<size_t>(kFxSlots);
-    c.text(count, std::to_string(chain.size()) + "/" + std::to_string(kFxSlots), kTextBody, full ? kText : kDim,
-           Align::Left, full);
-    const float hintX = count.right() + 8.0f;
-    if (!chain.empty()) // how to work the cards or the graph's nodes, while there are some
-        c.text({hintX, kFxPanel.y + 10.0f, fxClearButton().x - 12.0f - hintX, 22.0f},
-               tr(fxGraph() ? Str::HintFxGraph : Str::HintFx), kTextLabel, kFaint, Align::Right);
+void View::paintFx(Canvas &c, std::optional<Rect> only) {
+    // Left out with `only`: what isn't across from it.
+    auto away = [&](Rect r) { return only && (r.right() <= only->x || r.x >= only->right()); };
+    if (!only) {
+        const std::vector<int> chain = fxChain();
+        // How many of the effects' places are taken, beside ADD EFFECT.
+        const Rect count{fxMenuButton().right() + 10.0f, fxMenuButton().y, 44.0f, fxMenuButton().h};
+        const bool full = chain.size() >= static_cast<size_t>(kFxSlots);
+        c.text(count, std::to_string(chain.size()) + "/" + std::to_string(kFxSlots), kTextBody, full ? kText : kDim,
+               Align::Left, full);
+        const float hintX = count.right() + 8.0f;
+        if (!chain.empty()) // how to work the cards or the graph's nodes, while there are some
+            c.text({hintX, kFxPanel.y + 10.0f, fxClearButton().x - 12.0f - hintX, 22.0f},
+                   tr(fxGraph() ? Str::HintFxGraph : Str::HintFx), kTextLabel, kFaint, Align::Right);
+    }
     if (fxGraph()) {
         paintFxGraph(c);
         return;
@@ -3366,6 +3371,8 @@ void View::paintFx(Canvas &c) {
     auto chevron = [&](float place, int lane, int item, int at, Color color) {
         const Rect next = fxCard(place - scroll);
         const Point m{next.x - kFxGap * 0.5f, next.center().y};
+        if (away({m.x - 8.0f, m.y - 8.0f, 16.0f, 16.0f}))
+            return;
         const int b = item * kFxGapStride + at;
         const bool lit = (hover_ && hover_->kind == Kind::FxInsert && hover_->a == lane && hover_->b == b) ||
                          (fxMenuOpen_ && fxSlot_.lane == lane && fxSlot_.item == item && fxSlot_.place == at);
@@ -3398,6 +3405,8 @@ void View::paintFx(Canvas &c) {
         // Unfolded, inside the room it keeps before and after it.
         const Rect whole = box.folded ? fxCard(place, box.span)
                                       : fxCard(boxColumn(box) - scroll, box.span - 2.0f * kFxBoxEdge);
+        if (away(whole.inset(-kFxBoxPad)))
+            continue;
         const bool held = drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
                           drag_.widget.a == fxSplitNode(box.split);
         const bool hot = held || (hover_ && hover_->kind == Kind::FxBoxGrip &&
@@ -3442,6 +3451,8 @@ void View::paintFx(Canvas &c) {
         if (!onScreen(pos, kVisibleFx, card.span))
             continue;
         const Rect r = fxCard(pos, card.span);
+        if (away(r))
+            continue;
         const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
         // Lit while grabbed by its title; by its icon only once it moves, as a click there only switches it.
         const bool dragged = drag_.kind == DragKind::FxMove && drag_.widget.kind != Kind::FxBoxGrip &&

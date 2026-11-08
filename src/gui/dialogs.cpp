@@ -150,23 +150,12 @@ void View::runPreset(PresetAction action) {
 std::string View::confirmWhat() const {
     if (confirm_ == kConfirmFxClear)
         return tr(Str::ConfirmFxClear);
-    if (confirm_ == kConfirmMidBand) {
-        size_t effects = 0;
-        for (const FxLineItem &item : fxLine())
-            if (item.node == fxSplitNode(confirmSplit_))
-                effects = item.mid.size();
-        return effects == 1 ? std::string(tr(Str::ConfirmMidBandOne))
-                            : trf(Str::ConfirmMidBand, {std::to_string(effects)});
-    }
-    if (confirm_ == kConfirmSplitRemove) {
-        size_t effects = 0;
-        for (const FxLineItem &item : fxLine())
-            if (item.node == fxSplitNode(confirmSplit_))
-                for (int lane : item.lanes())
-                    effects += item.band(lane).size();
-        return effects == 1 ? std::string(tr(Str::ConfirmSplitRemoveOne))
-                            : trf(Str::ConfirmSplitRemove, {std::to_string(effects)});
-    }
+    if (confirm_ == kConfirmMidBand)
+        return confirmEffects_ == 1 ? std::string(tr(Str::ConfirmMidBandOne))
+                                    : trf(Str::ConfirmMidBand, {std::to_string(confirmEffects_)});
+    if (confirm_ == kConfirmSplitRemove)
+        return confirmEffects_ == 1 ? std::string(tr(Str::ConfirmSplitRemoveOne))
+                                    : trf(Str::ConfirmSplitRemove, {std::to_string(confirmEffects_)});
     if (confirm_ == static_cast<int>(PresetAction::Init))
         return tr(Str::ConfirmInit);
     if (confirm_ == static_cast<int>(PresetAction::Save))

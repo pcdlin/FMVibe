@@ -2354,7 +2354,8 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             threeSlopes = kept12 && refused6 && picked24 && model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
         }
         // Low X turned up past the high crossover pushes it along, at least a third of an octave above; High X
-        // turned down past the low one pushes that down. Each one undo step, taking both back.
+        // turned down past the low one pushes that down. Each one undo step, taking both back, a run of wheel notches
+        // too.
         bool pushed = false;
         {
             const int lowIndex = paramIndex(0, SplitParam::Low), highIndex = paramIndex(0, SplitParam::High);
@@ -2373,9 +2374,21 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             const bool downPushed = model.value(lowIndex) < lowBefore && apart() && model.openEdits == 0;
             view.undo();
             const bool downBack = model.value(lowIndex) == lowBefore && model.value(highIndex) == highBefore3;
-            std::printf("      a crossover pushing the other: up %d (undone %d), down %d (undone %d)\n", upPushed, upBack,
-                        downPushed, downBack);
-            pushed = upPushed && upBack && downPushed && downBack;
+            // A run of wheel notches on Low X, pushing High along on its later notches only, is one undo step too.
+            int notches = 0;
+            while (model.value(highIndex) == highBefore3 && notches < 400) {
+                view.wheel(lowKnob, 1.0f, {});
+                ++notches;
+            }
+            for (int n = 0; n < 5; ++n)
+                view.wheel(lowKnob, 1.0f, {});
+            const bool wheelPushed = model.value(highIndex) > highBefore3 && apart() && notches > 1 && notches < 400;
+            view.undo();
+            const bool wheelBack = model.value(lowIndex) == lowBefore && model.value(highIndex) == highBefore3;
+            std::printf("      a crossover pushing the other: up %d (undone %d), down %d (undone %d), by the wheel %d "
+                        "(undone at once %d)\n",
+                        upPushed, upBack, downPushed, downBack, wheelPushed, wheelBack);
+            pushed = upPushed && upBack && downPushed && downBack && wheelPushed && wheelBack;
         }
         check(pushed, "a three-band split's crossover turned past the other pushes it along, undoably");
         addAt(cell(4, 0), FxType::Widener);

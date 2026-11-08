@@ -163,8 +163,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
-    an effect added at the line's end and one taken out, a split taken out with its join and a split's slope
-    changed; and two effects swapped along the line, ducking out and back in without a click;
+    an effect added at the line's end and one taken out, a split taken out with its join, a split's slope
+    changed, and a split going from two bands to three and back at 12 and 24 dB, the note in its middle band; and two effects swapped along the line, ducking out and back in without a click;
   - an effect in the graph that the output doesn't hear not running (its port silent, nothing ringing on after it),
     and running once the output reads it;
   - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
@@ -238,7 +238,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
     crossover at 2500 Hz, its slope kept and its list refusing 6 dB and picking 24 (a split at 6 going to 12 as it
     splits in three), Low X turned up past the high crossover and High X down past the low one each pushing the
-    other along, undoably, an effect put on its + along the main line's row (and a second one after it, the other bands'
+    other along, undoably (a run of wheel notches one undo step), an effect put on its + along the main line's row (and a second one after it, the other bands'
     wires into the join running level along their rows past it and their +s in their next places, read off the
     rendered pixels), its S soloing it and the low band's too, the row showing
     the container with it, and back to two asking where its effect goes (onto the low band's end), undone onto the

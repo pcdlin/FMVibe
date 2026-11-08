@@ -156,15 +156,26 @@ void Controller::endStep() {
     edited_ = step.editedAfter;
 
     // A wheel turn on the param the last one turned joins it, unless something was undone since. The first turn may
-    // have changed the layout (a route it switched on is kept); the turns after it join it as long as they don't.
+    // have changed the layout (a route it switched on is kept); the turns after it join it as long as they don't. The
+    // param turned is the first each records; what it moved along with it (linked bands, a crossover it pushed) joins
+    // too, whichever turns moved it.
     if (step.merges && redo_.empty() && !undo_.empty()) {
         UndoStep &last = undo_.back();
-        if (last.merges && !step.layoutChanged && last.changes.size() == 1 && step.changes.size() == 1 &&
+        if (last.merges && !step.layoutChanged && !last.changes.empty() && !step.changes.empty() &&
             last.changes[0].index == step.changes[0].index) {
-            last.changes[0].after = step.changes[0].after;
+            for (const UndoStep::Change &change : step.changes) {
+                const auto it = std::find_if(last.changes.begin(), last.changes.end(),
+                                             [&](const UndoStep::Change &c) { return c.index == change.index; });
+                if (it != last.changes.end())
+                    it->after = change.after;
+                else
+                    last.changes.push_back(change);
+            }
             last.editedAfter = step.editedAfter;
             // Turned back to where it started: nothing left to undo, unless the layout changed with it.
-            if (last.changes[0].after == last.changes[0].before && !last.layoutChanged) {
+            if (!last.layoutChanged && std::all_of(last.changes.begin(), last.changes.end(), [](const UndoStep::Change &c) {
+                    return c.after == c.before;
+                })) {
                 edited_ = last.editedBefore;
                 undo_.pop_back();
             }

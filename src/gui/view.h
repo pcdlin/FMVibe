@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <utility>
 #include <string>
 #include <vector>
@@ -637,7 +638,10 @@ private:
         std::vector<int> &band(int lane) { return lane == 1 ? hi : lane == 3 ? mid : lo; }
         const std::vector<int> &band(int lane) const { return lane == 1 ? hi : lane == 3 ? mid : lo; }
         // Its bands' lanes, top to bottom as the graph has them: the high band, the middle one, the low one.
-        std::vector<int> lanes() const { return three ? std::vector<int>{1, 3, 2} : std::vector<int>{1, 2}; }
+        std::span<const int> lanes() const {
+            static constexpr int kThreeLanes[] = {1, 3, 2}, kTwoLanes[] = {1, 2};
+            return three ? std::span<const int>(kThreeLanes) : std::span<const int>(kTwoLanes);
+        }
     };
     using FxLine = std::vector<FxLineItem>;
     // Where the grid puts things: each node (row -1 the high band, 0 the main line and a middle band, 1 the low band),
@@ -674,6 +678,8 @@ private:
         int port = -1;             // what it carries: the port it comes from, which lights it as loud as that is
         bool faint = false;        // along a band its join doesn't hear, the other one soloed
         bool bendAtStart = false;  // bending to its row as it leaves (out of a split's band), else as it arrives
+        std::vector<Point> path;   // its points, from `from` to `to` (see wirePath()), worked out once
+        Point middle;              // where its + shows: `plus`, or on its path halfway across
     };
     // Whether the join of a split on the line lets a band of it through (`lane` 1 the high one, 2 the low one, 3 the
     // middle one): not while another band is soloed and it isn't.
@@ -1096,7 +1102,9 @@ private:
     void paintWheel(Canvas &c, const Widget &w, bool hovered, bool active);
     void paintRouting(Canvas &c);
     void paintMatrixLabels(Canvas &c);
-    void paintFx(Canvas &c);
+    // The FX panel; with `only`, just the row's cards, containers and arrows across from it (a carried container's
+    // image), without the panel's header.
+    void paintFx(Canvas &c, std::optional<Rect> only = std::nullopt);
     void paintShapeEditor(Canvas &c, int shape);
     void paintClipCurveEditor(Canvas &c, int shape);
     void paintNoteCurveEditor(Canvas &c);
@@ -1353,6 +1361,7 @@ private:
     static constexpr int kConfirmMidBand = 5; // asking where a split's middle band's effects go, back in two bands
     static constexpr int kConfirmSplitRemove = 6; // asking whether a split's bands' effects stay, as it is removed
     int confirmSplit_ = -1; // the split kConfirmMidBand or kConfirmSplitRemove asks about
+    size_t confirmEffects_ = 0; // how many effects it asks about, counted as it opens
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
     bool browserOpen_ = false;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping
