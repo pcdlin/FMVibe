@@ -6676,6 +6676,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text(w.rect, tr(Str::ButtonOpenFolder), kTextLabel, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ConfirmButton: {
+        if (w.a == 4) { // a split removed with its bands' effects
+            c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+            c.text(w.rect, tr(Str::ButtonSplitDelete), kTextBody, kText, Align::Center);
+            break;
+        }
         if (w.a >= 2) { // a split's middle band's effects onto its low band (2) or its high one (3), in that color
             const Color band = laneColor(w.a == 2 ? 2 : 1);
             c.fillRect(w.rect, band.alpha(hovered ? 0.3f : 0.16f), kRadiusControl);
@@ -6691,6 +6697,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.strokeRect(w.rect, lit ? kAccent : kBorder, 1.0f, kRadiusControl);
         const char *label = tr(!ok                                                ? Str::ButtonCancel
                                : bands                                            ? Str::ButtonMidRemove
+                               : confirm_ == kConfirmSplitRemove                  ? Str::ButtonSplitKeep
                                : confirm_ == kConfirmFxClear                      ? Str::ButtonClearFx
                                : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
                                : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
@@ -8578,9 +8585,14 @@ void View::mouseDown(Point p, Modifiers mods) {
         const auto action = static_cast<PresetAction>(confirm_);
         const bool clear = confirm_ == kConfirmFxClear;
         const bool bands = confirm_ == kConfirmMidBand;
+        const bool split = confirm_ == kConfirmSplitRemove;
         confirm_ = -1;
         hover_.reset();
-        if (bands) { // back in two bands: the middle band's effects removed (1), onto the low band (2), the high one (3)
+        if (split) { // the split removed, its bands' effects kept on the main line (1) or with it (4)
+            if (w.a == 1 || w.a == 4)
+                removeFxNode(fxSplitNode(confirmSplit_), w.a == 4 ? 1 : 0);
+            confirmSplit_ = -1;
+        } else if (bands) { // back in two bands: the middle band's effects removed (1), onto the low band (2), the high one (3)
             if (w.a > 0)
                 setSplitBands(confirmSplit_, 2, w.a == 1 ? 0 : w.a == 2 ? 2 : 1);
             confirmSplit_ = -1;

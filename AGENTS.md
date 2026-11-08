@@ -233,9 +233,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     main line's wires grey, each band's and each half of the split's and join's nodes in its color, a split's coming
     in from grey at its left and a join's going out to grey at its right (read off the rendered pixels), and then
     the other band's too,
-    both soloed; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its
+    both soloed; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its title's
     2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
-    crossover two octaves up, an effect put on its + along the main line's row, its S soloing it and the low band's too, the row showing
+    crossover at 2500 Hz, an effect put on its + along the main line's row, its S soloing it and the low band's too, the row showing
     the container with it, and back to two asking where its effect goes (onto the low band's end), undone onto the
     middle band again, an empty one going back straight, all undone;
     + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
@@ -260,7 +260,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     off the rendered pixels), both undone, and its crossover handle dragged; the
     graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
-    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); its x putting its bands' effects on the
+    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); its x, kept, putting its bands' effects on the
     main line, the high band's first, undone; a card carried over the LOW tab showing the low band and landing at
     its end; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
     pixels), the first's list putting an effect at the line's start;

@@ -676,24 +676,28 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     A **split** shows in the row as a container card holding its bands, its grey outline a little outside the cards
     in it, so they line up with the row's, and as much more room before and after it as the outline stands out, so
     the arrows on either side are as far from its outline as from any card. At its left, on grey, a card place wide: its title (the split's icon and
-    name, SPLIT 1), which drags the split with its bands and its join along the line (between the main line's
+    name, SPLIT 1, then the **2 | 3** switch, which splits it in two bands or three: its tooltip says which, and the
+    wheel switches it too), which drags the split with its bands and its join along the line (between the main line's
     cards only), the chevron left of its × folding the container to a strip as an effect card folds, and its ×
-    taking the split out, its bands' effects going on the main line in its place, the high band's first. Under the
+    taking the split out. With nothing on its bands it just goes; with effects there it asks first ("Remove the
+    split?"): **Keep** puts them on the main line in its place, the high band's first, **Delete** removes them with
+    the split and their modulation, each one undo step, and Cancel, or a click around the dialog, leaves it. (The ×
+    of its card in the graph, of its folded strip, of its node and its join's, and its node's right-click menu ask the
+    same.) Under the
     title, the split's controls: **LOW | HIGH** tabs (**LOW | MID | HIGH** in three bands), as an operator page's
     tabs, the one shown underlined in its band's color (the low band blue, the middle one sea green, the high band
     amber, each theme with band colors of its own; the wheel steps along them too), a hidden band's tab saying how
     many effects it holds after its name and a soloed band's showing an S in its color in its dot's place; the bands'
     responses with a handle on each crossover to drag across, each band's curve lowered as far as its level's knob
-    is turned down (flat at -60 dB), the shown band's filled; under them, at the left, the **2 | 3** switch, which
-    splits it in two bands or three (its tooltip says which, and the wheel switches it too), and at the right the
-    slope's list, as a filter's is, 6, 12 or 24 dB (18 shows faintly and can't be picked; in three bands it shows
+    is turned down (flat at -60 dB), the shown band's filled; under them, at the right, the slope's list, as a filter's is, 6, 12 or 24 dB (18 shows faintly and can't be picked; in three bands it shows
     24 dB faintly and doesn't open, the slope picked coming back with two bands). In two bands, three knobs: the low
     band's level, the Crossover and the high band's level (in dB, 0 dB, full, at the top, down to -60 dB, silence).
     In three, the display is shorter, and a row of two smaller knobs, Low X and High X, the crossovers, goes under
     it, over the low, the middle and the high band's levels. Under each band's level an **S** solos it, each band's on its
     own (a click on the lit one unsolos it; with two of three soloed, only the third is left out), lit in its band's color. Switched to
-    three bands, as one undo step, an empty middle band opens between the two, shown, its crossover two octaves above
-    the low one (or as high as it goes), and its level at the join 0 dB. Switched back to two, an empty middle band
+    three bands, as one undo step, an empty middle band opens between the two, shown, its crossover at 2500 Hz, or two
+    octaves above the low one where that is higher (as high as it goes), so a new split's 250 Hz gives 250 and
+    2500 Hz, and its level at the join 0 dB. Switched back to two, an empty middle band
     just goes; one holding effects asks first ("Back to two bands?"): **Onto Low** puts them at the low band's end,
     **Onto High** at the high band's start, **Remove** removes them with their modulation, each one undo step, and
     Cancel, or a click around the dialog, leaves it in three. To the right of the controls, the

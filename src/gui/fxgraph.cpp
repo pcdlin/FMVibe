@@ -610,7 +610,7 @@ void View::addSplit(int bands) {
     revealFxRow(fxSplitNode(split));
 }
 
-void View::removeFxNode(int node) {
+void View::removeFxNode(int node, int effects) {
     if (node >= 0 && node < kFxSlots) {
         removeEffect(node);
         return;
@@ -619,17 +619,30 @@ void View::removeFxNode(int node) {
     const LinePlace at = placeOf(line, node); // a join's is its split's: it goes with it
     if (at.item < 0)
         return;
-    // A split, or its join: its bands' effects go on the main line in its place, the high band's first (then a middle
-    // band's).
-    const UndoScope step(controller_);
     const FxLineItem split = line[at.item];
-    line.erase(line.begin() + at.item);
-    std::vector<FxLineItem> effects;
+    std::vector<int> held; // its bands' effects: the high band's first (then a middle band's)
     for (int lane : split.lanes())
         for (int slot : split.band(lane))
-            effects.push_back({slot, {}, {}, false});
-    line.insert(line.begin() + at.item, effects.begin(), effects.end());
+            held.push_back(slot);
+    if (!held.empty() && effects < 0) { // whether they stay is asked first
+        confirm_ = kConfirmSplitRemove;
+        confirmSplit_ = split.node - kFxSlots;
+        hover_.reset();
+        return;
+    }
+    // A split, or its join: its bands' effects go on the main line in its place, or with it.
+    const UndoScope step(controller_);
+    line.erase(line.begin() + at.item);
+    if (effects != 1) {
+        std::vector<FxLineItem> kept;
+        for (int slot : held)
+            kept.push_back({slot, {}, {}, false});
+        line.insert(line.begin() + at.item, kept.begin(), kept.end());
+    }
     writeFxLine(line);
+    if (effects == 1)
+        for (int slot : held) // removed, with their modulation
+            removeEffect(slot);
 }
 
 bool View::splitThree(int split) const {
@@ -654,10 +667,13 @@ void View::setSplitBands(int split, int bands, int midTo) {
     const UndoScope step(controller_);
     item.three = three;
     if (three) {
-        // The high crossover two octaves above the low one (as high as it goes), the middle band in at 0 dB, shown.
+        // The high crossover at its 2500 Hz, or two octaves above the low one where that is higher (as high as it
+        // goes), so the low crossover's own 250 Hz gives 250 and 2500; the middle band in at 0 dB, shown.
         const double low =
             splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)))[0];
-        editMany({{paramIndex(split, SplitParam::High), normFromCutoff(std::min(4.0 * low, kMaxCutoff))},
+        const double high =
+            std::max(table_[paramIndex(split, SplitParam::High)].def, normFromCutoff(std::min(4.0 * low, kMaxCutoff)));
+        editMany({{paramIndex(split, SplitParam::High), high},
                   {fxInputIndex(fxJoinNode(split), laneJoinInput(3), FxInputField::Level), 0.0}});
         writeFxLine(line);
         showSplitBand(split, tabOfLane(3));
@@ -1017,10 +1033,11 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
         add(Kind::SplitPoint, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f},
             paramIndex(split, which == 1 ? SplitParam::High : SplitParam::Low), split, which);
     }
-    // Under it, the BANDS switch, and the slope's list as a filter's is: 6, 12 or 24 dB (18, which a filter has, it
-    // doesn't). Three bands always part at 24 dB, so there the list shows that, faint, and doesn't open.
+    // In the title row after its name, the BANDS switch (over the row's grip). Under the display, the slope's list as a
+    // filter's is: 6, 12 or 24 dB (18, which a filter has, it doesn't). Three bands always part at 24 dB, so there the
+    // list shows that, faint, and doesn't open.
     for (int bands : {2, 3})
-        add(Kind::SplitBands, splitBandsButton(display, bands), -1, split, bands);
+        add(Kind::SplitBands, splitBandsButton(card, bands), -1, split, bands);
     add(Kind::ListButton, splitSlopeButton(display), paramIndex(split, SplitParam::Slope));
     // The knobs: the bands' levels (the high band's wire takes the join's first input, the low band's its second, a
     // middle band's its third), with the crossover between them in two bands, and in three the two crossovers' over
@@ -1919,7 +1936,7 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
                          (hover_ && hover_->kind == Kind::FxBoxGrip && hover_->a == fxSplitNode(split) &&
                           drag_.kind == DragKind::None);
     splitIcon(c, fxIconRect(card), grabbed ? kText : kDim, splitThree(split) ? 3 : 2);
-    c.text({card.x + 36.0f, card.y + 6.0f, card.w - 84.0f, 20.0f}, trf(Str::NodeSplit, {std::to_string(split + 1)}),
+    c.text({card.x + 36.0f, card.y + 6.0f, kSplitTitleW - 4.0f, 20.0f}, trf(Str::NodeSplit, {std::to_string(split + 1)}),
            kTextBody, kText, Align::Left, true);
     // The bands' responses on the cutoff grid, each in its color and lowered by its level, the one shown filled, a
     // handle on each crossover where they cut.

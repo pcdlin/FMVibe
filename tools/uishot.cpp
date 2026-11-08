@@ -2326,19 +2326,18 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(paramIndex(0, SplitParam::Slope)) == 1.0,
           "a split's slope list picks 6, 12 or 24 dB (not 18), 12 to begin with");
 
-    // BANDS 3 on its card: an empty middle band opens between the two, shown, into the join's third input, its
-    // crossover two octaves above the low one (500 Hz), the slope's list showing 24 dB. An effect on its +, along the
+    // BANDS 3 in its card's title: an empty middle band opens between the two, shown, into the join's third input, its
+    // crossover at 2500 Hz (more than two octaves above the low one's 500 Hz), the slope's list showing 24 dB. An effect on its +, along the
     // main line's row; its S soloing it alone. BANDS 2 then asks where its effect goes: onto the low band's end. Undone,
     // it is back on the middle band; without it, BANDS 2 asks nothing; undone, as it was.
     {
         const double highBefore = model.value(paramIndex(0, SplitParam::High));
         const int middle = fxBandPort(0, 1);
-        click(view, centerOf(detail::splitBandsButton(display, 3)));
-        const Rect threeDisplay{card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, 70.0f};
+        click(view, centerOf(detail::splitBandsButton(card, 3)));
         view.mouseMove({600.0f, 428.0f}, {});
         const bool three = model.value(paramIndex(0, SplitParam::Bands)) == 3.0 && from(join, 2) == middle &&
                            model.ui.splitBand[0] == 2 &&
-                           std::abs(model.value(paramIndex(0, SplitParam::High)) - normFromCutoff(2000.0)) < 0.01 &&
+                           std::abs(model.value(paramIndex(0, SplitParam::High)) - normFromCutoff(2500.0)) < 0.01 &&
                            renderer.save(view, dir / "40f3-fx-split-three.png");
         addAt(cell(4, 0), FxType::Widener);
         int widener = -1;
@@ -2365,7 +2364,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, centerOf(detail::fxModeButton(1)));
         click(view, cell(3, 0));
         const int lowEnd = from(join, 1); // what the low band ends in
-        click(view, centerOf(detail::splitBandsButton(threeDisplay, 2)));
+        click(view, centerOf(detail::splitBandsButton(card, 2)));
         view.mouseMove({600.0f, 428.0f}, {});
         const bool asked = model.value(paramIndex(0, SplitParam::Bands)) == 3.0 &&
                            renderer.save(view, dir / "40f7-fx-split-three-confirm.png");
@@ -2377,7 +2376,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         const bool backOnMiddle = model.value(paramIndex(0, SplitParam::Bands)) == 3.0 &&
                                   from(join, 2) == fxSlotPort(widener) && from(widener, 0) == middle;
         view.undo(); // the widener gone, the middle band empty
-        click(view, centerOf(detail::splitBandsButton(threeDisplay, 2)));
+        click(view, centerOf(detail::splitBandsButton(card, 2)));
         const bool straight = model.value(paramIndex(0, SplitParam::Bands)) == 2.0 && from(join, 2) < 0;
         view.undo();
         view.undo();
@@ -2397,17 +2396,41 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     check(onBand && from(join, 0) == fxSlotPort(2) && fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},
           "+ EFFECT with a split picked puts the effect on one of its bands");
 
-    // The split taken out from its card: its bands' effects go on the main line, high band first; undone.
+    // The split taken out from its card asks first, its bands holding effects: Cancel keeps it; Keep puts its bands'
+    // effects on the main line, high band first; Delete takes them with it. Each undone.
     click(view, cell(3, 0));
-    click(view, centerOf({card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f}));
+    const Point splitX = centerOf({card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f});
+    const Rect removePanel = detail::confirmPanel(view.height(), true);
+    click(view, splitX);
+    view.mouseMove({600.0f, 428.0f}, {});
+    const bool removeAsked = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
+                             renderer.save(view, dir / "40g0-fx-split-remove-confirm.png");
+    click(view, centerOf(detail::confirmButton(removePanel, 0)));
+    const bool cancelled = model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(join, 1) == fxSlotPort(3);
+    click(view, splitX);
+    click(view, centerOf(detail::confirmButton(removePanel, 1)));
     const bool inRow = model.value(paramIndex(0, SplitParam::Used)) == 0.0 &&
                        model.value(paramIndex(0, SumParam::Used)) == 0.0 && from(2, 0) == fxSlotPort(1) &&
                        from(3, 0) == fxSlotPort(2) && from(4, 0) == fxSlotPort(3) &&
                        from(kFxOutNode, 0) == fxSlotPort(4);
     const bool rowShot = renderer.save(view, dir / "40g-fx-split-removed.png");
     view.undo();
-    check(inRow && rowShot && model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(join, 1) == fxSlotPort(3),
-          "a split taken out puts its bands' effects on the main line, undoably");
+    const bool keptUndone = model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(join, 1) == fxSlotPort(3);
+    click(view, cell(3, 0));
+    click(view, splitX);
+    click(view, centerOf(detail::confirmThirdButton(removePanel)));
+    const bool deleted = model.value(paramIndex(0, SplitParam::Used)) == 0.0 &&
+                         model.value(paramIndex(2, FxParam::Type)) == static_cast<double>(FxType::None) &&
+                         model.value(paramIndex(3, FxParam::Type)) == static_cast<double>(FxType::None) &&
+                         from(4, 0) == fxSlotPort(1) && from(kFxOutNode, 0) == fxSlotPort(4);
+    const bool deleteShot = renderer.save(view, dir / "40g1-fx-split-deleted.png");
+    view.undo();
+    std::printf("      split removed: asked %d, cancelled %d, kept %d, undone %d, deleted %d\n", removeAsked, cancelled,
+                inRow, keptUndone, deleted);
+    check(removeAsked && cancelled && inRow && rowShot && keptUndone && deleted && deleteShot &&
+              model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(join, 1) == fxSlotPort(3) &&
+              model.value(paramIndex(2, FxParam::Type)) != static_cast<double>(FxType::None),
+          "a split taken out asks whether its bands' effects stay: kept on the main line or deleted with it, undoably");
 
     // A wire's middle opens the list too, beside it: between the shaper and the reverb, a filter goes in there, and a
     // split goes in with its join right after it; on the wire from the delay into the join, the list has no split,
@@ -2842,8 +2865,9 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     check(carryShot && carried && from(split, 0) == fxSlotPort(0) && from(2, 0) == fxSumPort(0),
           "a container dragged by its title moves along the line with its bands");
 
-    // Its x: the split goes, its bands' effects on the main line in its place, the high band's first; undone.
+    // Its x, kept: the split goes, its bands' effects on the main line in its place, the high band's first; undone.
     click(view, centerOf({column.right() - 26.0f, column.y + 8.0f, 18.0f, 21.0f}));
+    click(view, centerOf(detail::confirmButton(detail::confirmPanel(view.height(), true), 1)));
     const bool flattened = model.value(paramIndex(0, SplitParam::Used)) == 0.0 && from(3, 0) == fxSlotPort(0) &&
                            from(1, 0) == fxSlotPort(3) && from(2, 0) == fxSlotPort(1);
     view.undo();

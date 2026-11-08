@@ -158,6 +158,15 @@ std::string View::confirmWhat() const {
         return effects == 1 ? std::string(tr(Str::ConfirmMidBandOne))
                             : trf(Str::ConfirmMidBand, {std::to_string(effects)});
     }
+    if (confirm_ == kConfirmSplitRemove) {
+        size_t effects = 0;
+        for (const FxLineItem &item : fxLine())
+            if (item.node == fxSplitNode(confirmSplit_))
+                for (int lane : item.lanes())
+                    effects += item.band(lane).size();
+        return effects == 1 ? std::string(tr(Str::ConfirmSplitRemoveOne))
+                            : trf(Str::ConfirmSplitRemove, {std::to_string(effects)});
+    }
     if (confirm_ == static_cast<int>(PresetAction::Init))
         return tr(Str::ConfirmInit);
     if (confirm_ == static_cast<int>(PresetAction::Save))
@@ -170,7 +179,7 @@ std::string View::confirmWhat() const {
 
 // A line shorter with one line to show: before a file still to be picked loads, or before Save overwrites a preset.
 bool View::confirmShorter() const {
-    return confirmWhat().empty() || confirm_ == static_cast<int>(PresetAction::Save);
+    return confirmWhat().empty() || confirm_ == static_cast<int>(PresetAction::Save) || confirm_ == kConfirmSplitRemove;
 }
 
 std::vector<View::Widget> View::confirmWidgets() const {
@@ -189,6 +198,8 @@ std::vector<View::Widget> View::confirmWidgets() const {
     if (bands)
         for (int choice : {2, 3})
             add(Kind::ConfirmButton, confirmBandButton(panel, choice), choice);
+    if (confirm_ == kConfirmSplitRemove) // the split with its bands' effects
+        add(Kind::ConfirmButton, confirmThirdButton(panel), 4);
     add(Kind::ConfirmButton, confirmButton(panel, 0), 0);
     add(Kind::ConfirmButton, confirmButton(panel, 1), 1);
     return list;
@@ -617,10 +628,12 @@ void View::paintConfirm(Canvas &c) {
     c.fillRect(panel, kPanel, kRadiusPanel);
     c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
-    const bool clear = confirm_ == kConfirmFxClear || bands; // the effects go, which undo brings back
+    const bool split = confirm_ == kConfirmSplitRemove;
+    const bool clear = confirm_ == kConfirmFxClear || bands || split; // the effects go, which undo brings back
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
            overwrite ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()})
                      : std::string(tr(bands   ? Str::ConfirmMidBandTitle
+                                      : split ? Str::ConfirmSplitRemoveTitle
                                       : clear ? Str::ConfirmFxClearTitle
                                               : Str::ConfirmTitle)),
            kTextHeading, kText, Align::Left, true);

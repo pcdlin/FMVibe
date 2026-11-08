@@ -626,6 +626,11 @@ STR(ConfirmMidBandOne, "The middle band holds an effect. Where does it go?")
 STR(ButtonMidToLow, "Onto Low") // the middle band's effects onto the low band's end
 STR(ButtonMidToHigh, "Onto High") // onto the high band's start
 STR(ButtonMidRemove, "Remove")
+STR(ConfirmSplitRemoveTitle, "Remove the split?") // a split removed while its bands hold effects
+STR(ConfirmSplitRemove, "Keep its {1} effects on the main line?")
+STR(ConfirmSplitRemoveOne, "Keep its effect on the main line?")
+STR(ButtonSplitKeep, "Keep") // the split goes, its bands' effects staying on the main line
+STR(ButtonSplitDelete, "Delete") // the split goes with its bands' effects
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")

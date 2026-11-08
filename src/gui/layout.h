@@ -394,9 +394,9 @@ constexpr float kFxBoxAddW = 64.0f;
 constexpr float kFxBoxAddSpan = (kFxBoxAddW + kFxGap) / (kFxCardW + kFxGap);
 // A split's controls on a card's place (its container's column, or its card in the graph), top to bottom under the
 // title row: the band tabs (left to right the low band's, a middle one's, the high one's; see tabPosition()), the
-// crossover's display (see View::splitDisplay()), under it the BANDS switch at the left (2 | 3) and the slope's list at
-// the right, in three bands a row of the two crossovers' knobs, then the bands' levels' knobs with their solos under
-// them. In two bands those knobs are the low band's level (0), the crossover (1) and the high band's level (2); in
+// crossover's display (see View::splitDisplay()), under it at the right the slope's list, in three bands a row of the
+// two crossovers' knobs, then the bands' levels' knobs with their solos under them (the BANDS switch, 2 | 3, is in the
+// title row: see splitBandsButton()). In two bands those knobs are the low band's level (0), the crossover (1) and the high band's level (2); in
 // three, the low, the middle and the high band's levels, and the solos go under each level.
 inline Rect splitTab(Rect card, int position, int count) {
     const float w = (card.w - 28.0f) / static_cast<float>(count);
@@ -411,8 +411,12 @@ inline Point splitCrossKnob(Rect card, int which) {
 inline Rect splitSoloButton(Rect card, int k) {
     return {splitKnob(card, k).x - 12.0f, card.y + 270.0f, 24.0f, 20.0f};
 }
-inline Rect splitBandsButton(Rect display, int bands) {
-    return {display.x + static_cast<float>(bands - 2) * 22.0f, display.bottom() + 4.0f, 22.0f, 18.0f};
+// The BANDS switch (2 | 3) in the title row, right after the split's name, which stops short of it
+// (kSplitTitleW).
+// (kSplitTitleW). It ends short of the fold button in the row's narrower column too.
+constexpr float kSplitTitleW = 46.0f;
+inline Rect splitBandsButton(Rect card, int bands) {
+    return {card.x + 36.0f + kSplitTitleW + static_cast<float>(bands - 2) * 20.0f, card.y + 8.5f, 20.0f, 19.0f};
 }
 inline Rect splitSlopeButton(Rect display) {
     return {display.right() - 64.0f, display.bottom() + 4.0f, 64.0f, 18.0f};
@@ -1008,6 +1012,10 @@ inline Rect confirmPanel(float viewHeight, bool shorter) {
 // 1 goes ahead, 0 cancels.
 inline Rect confirmButton(Rect panel, int ok) {
     return {panel.right() - 24.0f - (ok ? 80.0f : 166.0f), panel.bottom() - 24.0f - 28.0f, 80.0f, 28.0f};
+}
+// A third choice, left of Cancel: a split removed with its bands' effects (Delete), where 1 keeps them (Keep).
+inline Rect confirmThirdButton(Rect panel) {
+    return {panel.right() - 24.0f - 252.0f, panel.bottom() - 24.0f - 28.0f, 80.0f, 28.0f};
 }
 // Asking where a split's middle band's effects go, back in two bands: a row more, of a button for each band they can go
 // onto (2 the low band's end, 3 the high band's start) over Remove (confirmButton()'s 1) and Cancel.

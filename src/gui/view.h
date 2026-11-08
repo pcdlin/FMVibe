@@ -761,9 +761,10 @@ private:
     // effects on it and `midTo` -1, the confirm dialog asks which first.
     void setSplitBands(int split, int bands, int midTo = -1);
     bool splitThree(int split) const; // split in three bands
-    // An effect, a split (its bands' effects going on the main line in its place, high band first) or a join (its
-    // split open again, only while nothing comes after it).
-    void removeFxNode(int node);
+    // An effect, or a split with its join (a join's x removes its split). A split's bands' effects stay on the main
+    // line in its place, high band first (`effects` 0), or go with it, with their modulation (1); with any on its
+    // bands, -1 asks which first (kConfirmSplitRemove). One undo step.
+    void removeFxNode(int node, int effects = -1);
     // The FX view showing the effects as a graph, or as the row: only the view changes.
     void setFxGraph(bool on);
     // The node of the graph under the mouse, or whose x is (see Kind::FxNodeDelete), -1 for none; and where its x
@@ -1341,7 +1342,8 @@ private:
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxClear, or -1
     static constexpr int kConfirmFxClear = 4; // asking before every effect goes
     static constexpr int kConfirmMidBand = 5; // asking where a split's middle band's effects go, back in two bands
-    int confirmSplit_ = -1;                   // the split kConfirmMidBand asks about
+    static constexpr int kConfirmSplitRemove = 6; // asking whether a split's bands' effects stay, as it is removed
+    int confirmSplit_ = -1; // the split kConfirmMidBand or kConfirmSplitRemove asks about
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
     bool browserOpen_ = false;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping
