@@ -222,7 +222,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
     empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's node showing
     the split's card (centered in the inspector), its High knob setting the high band's level, in dB, and its S
-    soloing a band, the join node marked with an S (read off the rendered pixels), and then the other band's,
+    soloing a band, the split and join nodes marked with an S and the other band's node and wires faint (read off
+    the rendered pixels), and then the other band's,
     unsoloing the first; the split's crossover handle dragged on its card, and its slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
     out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire

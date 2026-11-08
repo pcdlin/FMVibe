@@ -2163,21 +2163,35 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               std::string(highText).find(" dB") != std::string::npos && renderer.save(view, dir / "40e-fx-join-card.png"),
           "a join's node shows its split's card, which sets the bands' levels, in dB from 0 dB at the top");
 
-    // Its high band's S, over its knob: soloed, an S in a circle at the join node's top left (read off the rendered
-    // pixels); undone.
+    // Its high band's S, under its knob: soloed, an S in a circle at the split's and the join's top left, and the low
+    // band's compressor and its wires faint, the high band's delay as it was (read off the rendered pixels); undone.
     {
         const Rect joinBox{cell(5, 0).x - detail::kFxJoinHalfW, cell(5, 0).y - detail::kFxJoinHalfH,
                            2.0f * detail::kFxJoinHalfW, 2.0f * detail::kFxJoinHalfH};
         const Point mark{joinBox.x + 1.0f, joinBox.y - 5.0f}; // inside the circle, above the box
+        const Point splitMark{cell(3, 0).x - detail::kFxSplitHalfW + 1.0f, cell(3, 0).y - detail::kFxSplitHalfH - 5.0f};
+        auto ring = [&](int row) { // the node's ring at its right, on the band's row
+            const Point c = cell(4, row);
+            return ringLevel(renderer, {c.x + detail::kFxNodeR, c.y - 3.0f}, 6.0f);
+        };
+        auto wireInto = [&](int row) { // the band's wire just before its node's arrowhead
+            const Point c = cell(4, row);
+            return ringLevel(renderer, {c.x - detail::kFxNodeR - 16.0f, c.y - 4.0f}, 8.0f);
+        };
         view.mouseMove({600.0f, 428.0f}, {});
         renderer.save(view, dir / "40e2-fx-join-unsoloed.png");
-        const uint32_t unsoloed = renderer.pixel(mark);
+        const uint32_t unsoloed = renderer.pixel(mark), splitUnsoloed = renderer.pixel(splitMark);
+        const int lowRing = ring(1), highRing = ring(-1), lowWire = wireInto(1);
         click(view, centerOf(detail::splitSoloButton(card, 1)));
         const bool soloed = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
                             model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
         view.mouseMove({600.0f, 428.0f}, {});
         const bool shot = renderer.save(view, dir / "40e2-fx-join-solo.png");
-        const bool marked = renderer.pixel(mark) != unsoloed;
+        const bool marked = renderer.pixel(mark) != unsoloed && renderer.pixel(splitMark) != splitUnsoloed;
+        std::printf("      soloing the high band: the low band's ring %d -> %d, its wire %d -> %d, the high band's ring "
+                    "%d -> %d\n",
+                    lowRing, ring(1), lowWire, wireInto(1), highRing, ring(-1));
+        const bool faint = ring(1) < lowRing - 40 && wireInto(1) < lowWire - 30 && ring(-1) == highRing;
         // Its low band's S then: the high band's goes off, one at a time; undone, the high band's again.
         click(view, centerOf(detail::splitSoloButton(card, 0)));
         const bool swapped = model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
@@ -2187,7 +2201,8 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                           model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
         view.undo();
         check(soloed && shot && marked && swapped && back && model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0,
-              "the split's card solos a band, one at a time, the join node marked with an S while it is");
+              "the split's card solos a band, one at a time, the split and join nodes marked with an S while it is");
+        check(faint, "a band soloed leaves the other band's nodes and wires faint");
     }
 
     // The split's crossover handle, on its card in the inspector, dragged from 250 Hz to 500 Hz.

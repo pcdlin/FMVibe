@@ -657,7 +657,11 @@ private:
         FxSlotAt at;
         std::optional<Point> plus; // where its + shows, if not at its middle: an empty band's, on the band's row
         int port = -1;             // what it carries: the port it comes from, which lights it as loud as that is
+        bool faint = false;        // along a band its join doesn't hear, the other one soloed
     };
+    // Whether the join of a split on the line lets a band of it through (`lane` 1 the high one, 2 the low one): not
+    // while only the other band is soloed.
+    bool fxBandSoloedOut(const FxLineItem &item, int lane) const;
     // How brightly a port of the effects graph lights what it goes out of and along, 0..1: by its level in the
     // telemetry, in dB from kFxGlowFloorDb up to full scale; 0 while the audio has stopped.
     static constexpr float kFxGlowFloorDb = -48.0f;

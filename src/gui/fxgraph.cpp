@@ -660,6 +660,15 @@ bool View::fxWireHit(const Widget &w, Point p) const {
     return false;
 }
 
+bool View::fxBandSoloedOut(const FxLineItem &item, int lane) const {
+    if (!fxNodeSplit(item.node) || !item.joined)
+        return false;
+    const int sum = item.node - kFxSlots; // a split's join is the sum of its number
+    const bool high = value(paramIndex(sum, SumParam::SoloHigh)) >= 0.5;
+    const bool low = value(paramIndex(sum, SumParam::SoloLow)) >= 0.5;
+    return high != low && (lane == 1 ? low : high);
+}
+
 std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPlaces &places) const {
     auto effectColor = [&](int slot) {
         return value(paramIndex(slot, FxParam::Enabled)) >= 0.5 ? fxTypeColor(fxSlotType(slot)) : kFaint;
@@ -698,6 +707,7 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
             for (size_t k = 0; k < band.size(); ++k) {
                 const Point e = at[band[k]];
                 wire(bands[lane], {e.x - kFxNodeR, e.y}, true, {lane + 1, i, static_cast<int>(k)});
+                wires.back().faint = fxBandSoloedOut(item, lane + 1);
                 bands[lane] = {{e.x + kFxNodeR, e.y}, effectColor(band[k]), fxSlotPort(band[k])};
             }
         }
@@ -708,15 +718,19 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
                 const std::vector<int> &band = lane == 0 ? item.hi : item.lo;
                 const Point into{j.x - kFxJoinHalfW, lane == 0 ? j.y + input : j.y - input};
                 const FxSlotAt end{lane + 1, i, static_cast<int>(band.size())};
+                const bool faint = fxBandSoloedOut(item, lane + 1);
                 if (!band.empty()) {
                     wire(bands[lane], into, true, end);
+                    wires.back().faint = faint;
                     continue;
                 }
                 // Empty: out to its +, on its row a column on from the split, and from there into the join.
                 const Point plus{p.x + kFxGridCol, p.y + (lane == 0 ? -kFxGridRow : kFxGridRow)};
                 wire(bands[lane], {plus.x - kFxSlotHalf, plus.y}, false, end);
                 wires.back().plus = plus;
+                wires.back().faint = faint;
                 wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color, bands[lane].port}, into, true);
+                wires.back().faint = faint;
             }
             tail = {{j.x + kFxJoinHalfW, j.y}, sumColor(), fxSumPort(item.node - kFxSlots)};
             continue;
@@ -1445,20 +1459,22 @@ void View::paintFxGraph(Canvas &c) {
 
     // The wires, S-shaped, each in the color of what it comes from with an arrowhead where it goes into a node; the
     // middle of one under the mouse anywhere along it, or whose list is open, or of an empty band, a + in a circle.
-    // As loud as what goes along it is, a wire glows in its color under it, and an arrowhead into OUT lights OUT.
+    // As loud as what goes along it is, a wire glows in its color under it, and an arrowhead into OUT lights OUT. Along
+    // a band its join doesn't hear, the other one soloed, it is faint and doesn't glow.
     const std::vector<FxGraphWire> wires = fxGraphWires(line, at);
     float outGlow = 0.0f;
     for (const FxGraphWire &w : wires) {
         const std::vector<Point> points = sWire(w.from, w.to);
-        const float glow = fxGlow(w.port);
+        const float glow = w.faint ? 0.0f : fxGlow(w.port);
         if (glow > 0.01f) {
             featherLine(c, points.data(), points.size(), 1.6f, 6.0f, w.color.alpha(0.3f * glow));
         }
         if (w.arrow && std::abs(w.to.x + 8.0f - (at.out.x - kFxEndHalfW)) < 0.5f)
             outGlow = std::max(outGlow, glow);
-        c.polyline(points.data(), points.size(), w.color.alpha(0.8f), 1.6f);
+        const float alpha = w.faint ? kSoloedOutAlpha : 1.0f;
+        c.polyline(points.data(), points.size(), w.color.alpha(0.8f * alpha), 1.6f);
         if (w.arrow)
-            arrowHead(c, w.to, {1.0f, 0.0f}, w.color);
+            arrowHead(c, w.to, {1.0f, 0.0f}, w.color.alpha(alpha));
     }
     for (const FxGraphWire &w : wires) {
         if (w.at.lane < 0 || dragging)
@@ -1476,21 +1492,29 @@ void View::paintFxGraph(Canvas &c) {
         const bool onPlus = hover_ && hover_->kind == Kind::FxGap && hover_->a == w.at.lane && hover_->b == b;
         const Point m = wireMiddle(w);
         // A band's in the accent, as the line's + at its end; the main line's in its wire's color.
-        const Color color = w.at.lane > 0 ? kAccent : w.color;
+        const Color color = (w.at.lane > 0 ? kAccent : w.color).alpha(w.faint ? kSoloedOutAlpha : 1.0f);
         c.fillCircle(m, 8.5f, kDisplayColor);
         c.fillCircle(m, 8.5f, color.alpha(listed ? 0.35f : onPlus ? 0.28f : 0.16f));
         c.strokeCircle(m, 8.5f, color, 1.2f);
-        c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, kText, 1.5f);
-        c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, kText, 1.5f);
+        const Color ink = kText.alpha(w.faint ? kSoloedOutAlpha : 1.0f);
+        c.line({m.x - 4.0f, m.y}, {m.x + 4.0f, m.y}, ink, 1.5f);
+        c.line({m.x, m.y - 4.0f}, {m.x, m.y + 4.0f}, ink, 1.5f);
     }
-    // The bands' names beside each split.
+    // The bands' names beside each split, a band its join doesn't hear faint; and the effects on such a band.
+    std::array<bool, kFxNodes> soloedOut{};
     for (const FxLineItem &item : line)
         if (fxNodeSplit(item.node)) {
             const float x = at.node[item.node].x + 22.0f;
+            const float high = fxBandSoloedOut(item, 1) ? kSoloedOutAlpha : 1.0f;
+            const float low = fxBandSoloedOut(item, 2) ? kSoloedOutAlpha : 1.0f;
             c.text({x, fxGridCell(0, -1, scroll).y - kFxNodeR - 22.0f, 80.0f, 14.0f}, tr(Str::BandHigh), 9.5f,
-                   bandColor(kHighBand), Align::Left, true);
+                   bandColor(kHighBand).alpha(high), Align::Left, true);
             c.text({x, fxGridCell(0, 1, scroll).y + kFxNodeR + 22.0f, 80.0f, 14.0f}, tr(Str::BandLow), 9.5f,
-                   bandColor(kLowBand), Align::Left, true);
+                   bandColor(kLowBand).alpha(low), Align::Left, true);
+            for (int slot : item.hi)
+                soloedOut[slot] = high < 1.0f;
+            for (int slot : item.lo)
+                soloedOut[slot] = low < 1.0f;
         }
 
     // IN and OUT.
@@ -1505,8 +1529,11 @@ void View::paintFxGraph(Canvas &c) {
 
     // A node: an effect a circle with its icon, a split a box with its bands' ports, a join a box as large, each its
     // name under it; or, where a node being dragged would land, its outline dotted.
-    // `alpha` draws it fainter: one being dragged.
-    auto paintNode = [&](int node, Point center, bool ghost, float alpha = 1.0f) {
+    // `alpha` draws it fainter: one being dragged, its fill as faint (`fill` below 0), or one on a band its join
+    // doesn't hear, filled as the others.
+    auto paintNode = [&](int node, Point center, bool ghost, float alpha = 1.0f, float fill = -1.0f) {
+        if (fill < 0.0f)
+            fill = alpha;
         const bool isSelected = node == selected;
         const bool hot = !dragging && hover_ && hover_->kind == Kind::FxNode && hover_->a == node;
         const float width = hot ? 2.4f : 1.6f;
@@ -1528,7 +1555,7 @@ void View::paintFxGraph(Canvas &c) {
                 featherCircle(c, center, kFxNodeR, 16.0f, color.alpha(0.3f * glow));
             if (isSelected)
                 c.strokeCircle(center, kFxNodeR + 5.0f, color.alpha(0.5f), 1.5f);
-            c.fillCircle(center, kFxNodeR, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(alpha));
+            c.fillCircle(center, kFxNodeR, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(fill));
             c.strokeCircle(center, kFxNodeR, color, width);
             fxIcon(c, {center.x - 10.0f, center.y - 7.0f, 20.0f, 14.0f}, fxSlotType(node), color);
             name(kFxNodeR, fxTitle(fxSlotType(node)));
@@ -1550,24 +1577,27 @@ void View::paintFxGraph(Canvas &c) {
         if (join) {
             joinIcon(c, {center.x - 8.0f, center.y - 7.0f, 15.0f, 14.0f}, color);
             name(kFxJoinHalfH, trf(Str::NodeJoin, {std::to_string(fxNodeSum(node) + 1)}));
-            // A band soloed: an S in a circle at its top left, in the soloed band's color (the accent for both).
-            const int sum = fxNodeSum(node);
-            const bool high = value(paramIndex(sum, SumParam::SoloHigh)) >= 0.5;
-            const bool low = value(paramIndex(sum, SumParam::SoloLow)) >= 0.5;
-            if (high || low) {
-                const Color mark = (high && low ? kAccent : bandColor(high ? kHighBand : kLowBand)).alpha(alpha);
-                const Point m{r.x + 1.0f, r.y + 1.0f};
-                c.fillCircle(m, 7.0f, kCardColor.alpha(alpha));
-                c.strokeCircle(m, 7.0f, mark, 1.3f);
-                c.text({m.x - 7.0f, m.y - 7.5f, 14.0f, 14.0f}, tr(Str::SoloMark), 8.5f, mark, Align::Center, true);
-            }
         } else {
             splitIcon(c, {center.x - 8.0f, center.y - 7.0f, 14.0f, 14.0f}, color);
             name(kFxSplitHalfH, trf(Str::NodeSplit, {std::to_string(node - kFxSlots + 1)}));
         }
+        // A band soloed: an S in a circle at the split's and the join's top left, in the soloed band's color (the
+        // accent for both). A split left open, with no join, has no solo.
+        const int sum = join ? fxNodeSum(node) : node - kFxSlots; // a split's join is the sum of its number
+        const bool joined = join || value(paramIndex(sum, SumParam::Used)) >= 0.5;
+        const bool high = value(paramIndex(sum, SumParam::SoloHigh)) >= 0.5;
+        const bool low = value(paramIndex(sum, SumParam::SoloLow)) >= 0.5;
+        if (joined && (high || low)) {
+            const Color mark = (high && low ? kAccent : bandColor(high ? kHighBand : kLowBand)).alpha(alpha);
+            const Point m{r.x + 1.0f, r.y + 1.0f};
+            c.fillCircle(m, 7.0f, kCardColor.alpha(alpha));
+            c.strokeCircle(m, 7.0f, mark, 1.3f);
+            c.text({m.x - 7.0f, m.y - 7.5f, 14.0f, 14.0f}, tr(Str::SoloMark), 8.5f, mark, Align::Center, true);
+        }
     };
     for (const auto &place : grid.nodes)
-        paintNode(place.node, at.node[place.node], carried(place.node));
+        paintNode(place.node, at.node[place.node], carried(place.node),
+                  place.node < kFxSlots && soloedOut[place.node] ? kSoloedOutAlpha : 1.0f, 1.0f);
 
     // The node under the mouse: an x in a circle at its upper right, which removes it; faint on a join that something
     // comes after, which can't go yet.

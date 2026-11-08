@@ -709,8 +709,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's
     node and its join's both show the split's card: the same controls as its container in the row (see above), on
     grey, a card place wide, its tabs picking the band its display fills as the row's do (and so the band its
-    container shows). While a band is soloed, the join's node shows an S in a circle at its top left, in the soloed
-    band's color. Under the mouse, a node shows an x in a circle at its upper
+    container shows). While a band is soloed, the split's and the join's nodes show an S in a circle at their top
+    left, in the soloed band's color, and the other band (its effects' nodes, its wires and its name) is drawn faint,
+    as the join doesn't let it through. Under the mouse, a node shows an x in a circle at its upper
     right, which removes it as the x on its card does. A node dragged onto
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would
     land in, outlined dotted, which moves only once it is over another gap between two nodes (an effect's anywhere on

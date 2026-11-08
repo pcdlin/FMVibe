@@ -683,6 +683,7 @@ inline Rect fxModeButton(int graph) {
 // node can go next a + in a circle.
 constexpr float kFxGridCol = 92.0f, kFxGridRow = 70.0f, kFxGridLeft = 34.0f;
 constexpr float kFxNodeR = 22.0f;
+constexpr float kSoloedOutAlpha = 0.3f; // how strongly a band its join doesn't hear (the other soloed) is drawn
 constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
 constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
 constexpr float kFxPortR = 5.0f;
