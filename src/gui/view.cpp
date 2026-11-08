@@ -8929,6 +8929,8 @@ void View::mouseDown(Point p, Modifiers mods) {
         else
             undo();
         break;
+    default: // the effects graph's own (fxGraphPress()), and the kinds a press does nothing on
+        break;
     }
 }
 
