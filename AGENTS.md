@@ -244,7 +244,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
     into a join, an effect going at its band's end (the list offering no split there), each undone; a node under the
-    mouse showing an x in a circle at its upper right (read off the rendered pixels), whose click removes it, undone;
+    mouse showing an x in a circle at its upper right (read off the rendered pixels), whose click removes it, undone,
+    the inspector's cards having none, an effect's power switch in its corner instead; the split's node's x asking
+    before it takes the split's effects (Cancel, Keep and Delete, each undone);
     nodes dragged and dropped while the others glide aside (polled until they settle), the wires running to the
     place a node would land from the glide's first step (read off the rendered pixels), its place staying open while
     it is held over a node: an effect along the main line, one onto a band's end by its wire into the join, one from

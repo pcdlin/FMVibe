@@ -2437,18 +2437,42 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     check(onBand && from(join, 0) == fxSlotPort(2) && fxChain(model) == std::vector<int>{0, 1, 2, 3, 4},
           "+ EFFECT with a split picked puts the effect on one of its bands");
 
-    // The split taken out from its card asks first, its bands holding effects: Cancel keeps it; Keep puts its bands'
+    // In the graph, a card in the inspector has no x (its node's x removes it): the reverb's power switch sits in the
+    // corner where the x is in the row, switching it off; undone. The split's card has none either.
+    {
+        click(view, cell(2, 0));
+        view.mouseMove({600.0f, 428.0f}, {});
+        const bool powerShot = renderer.save(view, dir / "40f9-fx-inspector-power.png");
+        click(view, centerOf(detail::cardPowerInGraph(card)));
+        const bool off = model.value(paramIndex(1, FxParam::Enabled)) == 0.0 &&
+                         model.value(paramIndex(1, FxParam::Type)) == static_cast<double>(FxType::Reverb);
+        view.undo();
+        click(view, cell(3, 0));
+        click(view, centerOf(detail::cardClose(card)));
+        // Where the dialog's Keep would be: had the corner asked, that would take the split out.
+        click(view, centerOf(detail::confirmButton(detail::confirmPanel(view.height(), true), 1)));
+        check(powerShot && off && model.value(paramIndex(1, FxParam::Enabled)) == 1.0 &&
+                  model.value(paramIndex(0, SplitParam::Used)) == 1.0,
+              "a card in the graph's inspector has its power switch in the corner, and no x");
+    }
+
+    // The split taken out by its node's x asks first, its bands holding effects: Cancel keeps it; Keep puts its bands'
     // effects on the main line, high band first; Delete takes them with it. Each undone.
-    click(view, cell(3, 0));
-    const Point splitX = centerOf({card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f});
+    const Point splitNodeAt = cell(3, 0);
+    const Point splitXAt{splitNodeAt.x + detail::kFxSplitHalfW - 2.0f, splitNodeAt.y - detail::kFxSplitHalfH + 2.0f};
+    auto clickSplitX = [&] {
+        view.mouseMove(splitNodeAt, {});
+        view.mouseMove(splitXAt, {});
+        click(view, splitXAt);
+    };
     const Rect removePanel = detail::confirmPanel(view.height(), true);
-    click(view, splitX);
+    clickSplitX();
     view.mouseMove({600.0f, 428.0f}, {});
     const bool removeAsked = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
                              renderer.save(view, dir / "40g0-fx-split-remove-confirm.png");
     click(view, centerOf(detail::confirmButton(removePanel, 0)));
     const bool cancelled = model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(join, 1) == fxSlotPort(3);
-    click(view, splitX);
+    clickSplitX();
     click(view, centerOf(detail::confirmButton(removePanel, 1)));
     const bool inRow = model.value(paramIndex(0, SplitParam::Used)) == 0.0 &&
                        model.value(paramIndex(0, SumParam::Used)) == 0.0 && from(2, 0) == fxSlotPort(1) &&
@@ -2458,7 +2482,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const bool keptUndone = model.value(paramIndex(0, SplitParam::Used)) == 1.0 && from(join, 1) == fxSlotPort(3);
     click(view, cell(3, 0));
-    click(view, splitX);
+    clickSplitX();
     click(view, centerOf(detail::confirmThirdButton(removePanel)));
     const bool deleted = model.value(paramIndex(0, SplitParam::Used)) == 0.0 &&
                          model.value(paramIndex(2, FxParam::Type)) == static_cast<double>(FxType::None) &&

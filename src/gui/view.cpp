@@ -1641,7 +1641,8 @@ std::vector<View::Widget> View::widgets() const {
             const FxType type = fxSlotType(slot);
             auto at = [slot](FxParam f) { return paramIndex(slot, f); };
             // The title row, as every card's: the icon at the title's left (which also switches the effect on and
-            // off, and drags the card like the title does), then the fold button, the power switch and the cross.
+            // off, and drags the card like the title does), then the fold button, the power switch and the cross. In
+            // the graph, only the power switch, in the cross's corner: the node's own cross removes the effect.
             const Rect icon = fxIconRect(card).inset(-4.0f);
             if (!graph && fxFolded(slot)) { // a strip: the icon, a grip, the switch and cross, then the rest unfolds it
                 add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
@@ -1657,8 +1658,9 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
             if (!graph)
                 add(Kind::FxFold, cardFold(card), -1, slot);
-            add(Kind::Toggle, cardPower(card), at(FxParam::Enabled));
-            add(Kind::FxRemove, cardClose(card), -1, slot);
+            add(Kind::Toggle, graph ? cardPowerInGraph(card) : cardPower(card), at(FxParam::Enabled));
+            if (!graph)
+                add(Kind::FxRemove, cardClose(card), -1, slot);
             const float row = card.y + 44.0f; // mode buttons and switches
             auto knobs = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels,
                              float y = 240.0f) {
@@ -3402,7 +3404,8 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     c.fillRect(card, kCardColor, kRadiusCard);
     c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
     // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
-    const Rect titleRect{card.x + 33.0f, card.y + 6.0f, cardTitleRight(card) - card.x - 33.0f, 20.0f};
+    const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
+    const Rect titleRect{card.x + 33.0f, card.y + 6.0f, titleRight - card.x - 33.0f, 20.0f};
     const char *title = fxTitle(type);
     float titleSize = kTextBody; // smaller for a long name, so it fits beside the icon
     while (titleSize > kTextSmall && c.textWidth(title, titleSize, true) > titleRect.w)

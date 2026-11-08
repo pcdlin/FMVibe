@@ -1050,12 +1050,13 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
         w.b = b;
         list.push_back(w);
     };
-    // The title row: in the row, it drags the container along the line, and folds it; the x removes the split.
+    // The title row: in the row, it drags the container along the line, and folds it, and the x removes the split (in
+    // the graph, its node's x does).
     if (row) {
         add(Kind::FxBoxGrip, {card.x, card.y, cardTitleRight(card, false) - card.x, 34.0f}, -1, fxSplitNode(split));
         add(Kind::FxBoxFold, cardFold(card, false), -1, split);
+        add(Kind::FxNodeRemove, cardClose(card), -1, fxSplitNode(split));
     }
-    add(Kind::FxNodeRemove, cardClose(card), -1, fxSplitNode(split));
     const bool three = splitThree(split);
     const std::vector<int> tabs = three ? std::vector<int>{0, 2, 1} : std::vector<int>{0, 1};
     for (int tab : tabs)

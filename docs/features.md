@@ -681,9 +681,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     cards only), the chevron left of its × folding the container to a strip as an effect card folds, and its ×
     taking the split out. With nothing on its bands it just goes; with effects there it asks first ("Remove the
     split?"): **Keep** puts them on the main line in its place, the high band's first, **Delete** removes them with
-    the split and their modulation, each one undo step, and Cancel, or a click around the dialog, leaves it. (The ×
-    of its card in the graph, of its folded strip, of its node and its join's, and its node's right-click menu ask the
-    same.) Under the
+    the split and their modulation, each one undo step, and Cancel, or a click around the dialog, leaves it. (The × of
+    its folded strip, of its node and its join's in the graph, and its node's right-click menu ask the same.) Under the
     title, the split's controls: **LOW | HIGH** tabs (**LOW | MID | HIGH** in three bands), as an operator page's
     tabs, the one shown underlined in its band's color (the low band blue, the middle one sea green, the high band
     amber, each theme with band colors of its own; the wheel steps along them too), a hidden band's tab saying how
@@ -716,7 +715,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     undo step: while there is any, it asks first ("Really remove all FX?"); with none, it is faint and does nothing.
 
     The switch at the panel's top right (cards in a row, or a node forking and meeting again) shows the effects as
-    a **graph** instead: at the right the card of the node picked, as it would show in the row, and the graph at the
+    a **graph** instead: at the right the card of the node picked, as it would show in the row but without its ×
+    (the node's own × removes it: see below), an effect card's power switch taking the ×'s corner, and the graph at the
     left in the room the card leaves: beside a card one place wide the graph reaches further right, and a wide card
     (the Param EQ's, the 3-band dynamics') takes some of its room. The graph scrolls as far as it needs beside the
     widest card, so picking a node never moves it: scrolled to its end beside a narrow card, a little room shows

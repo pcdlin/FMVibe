@@ -315,6 +315,11 @@ inline Rect cardClose(Rect card) {
 inline Rect cardPower(Rect card) {
     return {card.right() - 44.0f, card.y + 8.5f, 20.0f, 19.0f};
 }
+// An effect card in the effects graph's inspector has no cross (its node's removes it): its power switch takes the
+// cross's corner, and its name goes up to it.
+inline Rect cardPowerInGraph(Rect card) {
+    return {card.right() - 28.0f, card.y + 8.5f, 20.0f, 19.0f};
+}
 inline Rect cardFold(Rect card, bool power = true) {
     return {(power ? cardPower(card).x : cardClose(card).x) - 16.0f, card.y + 9.0f, 14.0f, 19.0f};
 }
