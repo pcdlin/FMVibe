@@ -1828,6 +1828,46 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     };
     const int fillC4 = fillAt(60.0f), fillC7 = fillAt(96.0f);
     check(fillC7 > fillC4 + 10, "the filter effect's response moves with the note its key tracking follows");
+    // The other effects' displays follow their params as modulation takes them, as the filter's does: the
+    // disperser's peak and the widener's spread move with an offset on its Freq and its Width (read off the rendered
+    // pixels: how many pixels of the display change).
+    {
+        auto displayPixels = [&](int slot, FxType type) {
+            view.poll();
+            const Rect shown = detail::fxDisplay((fxCardX(model, slot) - 46.0f) / kFxStep, type);
+            std::vector<uint32_t> pixels;
+            for (float y = shown.y + 20.0f; y < shown.bottom() - 4.0f; y += 1.0f)
+                for (float x = shown.x + 4.0f; x < shown.right() - 4.0f; x += 1.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        auto changed = [](const std::vector<uint32_t> &a, const std::vector<uint32_t> &b) {
+            int n = 0;
+            for (size_t i = 0; i < a.size(); ++i)
+                n += a[i] != b[i];
+            return n;
+        };
+        model.live.voices = 1;
+        model.live.age = 1.0f; // the widener's taps not wavering
+        renderer.save(view, dir / "27b-fx-unmodulated.png");
+        const std::vector<uint32_t> disperser = displayPixels(2, FxType::Disperser);
+        const std::vector<uint32_t> widener = displayPixels(4, FxType::Widener);
+        const int disperserFreq = paramIndex(2, FxParam::DisperserFreq), widenerWidth = paramIndex(4, FxParam::WidenerWidth);
+        model.live.modOffset[disperserFreq] = model.value(disperserFreq) > 0.5 ? -0.3f : 0.3f;
+        model.live.modOffset[widenerWidth] = model.value(widenerWidth) > 0.5 ? -0.4f : 0.4f;
+        view.poll();
+        const bool shot = renderer.save(view, dir / "27c-fx-modulated.png");
+        const int disperserMoved = changed(disperser, displayPixels(2, FxType::Disperser));
+        const int widenerMoved = changed(widener, displayPixels(4, FxType::Widener));
+        model.live.modOffset[disperserFreq] = 0.0f;
+        model.live.modOffset[widenerWidth] = 0.0f;
+        model.live.voices = 0;
+        model.live.age = 0.0f;
+        std::printf("      modulated: %d pixels of the disperser's display change, %d of the widener's\n",
+                    disperserMoved, widenerMoved);
+        check(shot && disperserMoved > 100 && widenerMoved > 100,
+              "the effects' displays follow their params as modulation takes them");
+    }
     // Its response has a handle for cutoff (sideways) and resonance (up and down), as a voice filter's.
     model.live.fxPitch = 60.0f;
     view.poll();
@@ -4260,6 +4300,41 @@ void testModsLive(const std::filesystem::path &dir, Renderer &renderer) {
     const std::vector<uint32_t> turned = shoot("35z-mods-live-macro.png", macroRow);
     check(tickAt(turned, rest, 556.0f + 24.6f) && tickAt(turned, rest, 556.0f),
           "a MODS row's depth bar marks where a macro takes its target, with no note playing");
+}
+
+// The mouse over a node of the routing graph shows an x in a circle at its upper right (read off the rendered pixels:
+// none there before), whose click switches it off, undoably; a filter's box has one at its corner.
+void testNodeDelete(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(paramIndex(0, FilterParam::Enabled), 1.0);
+    view.poll();
+    const Point away{600.0f, 468.0f};
+    auto removes = [&](int node, int enabled, Point x, const char *plainShot, const char *xShot) {
+        view.mouseMove(away, {});
+        renderer.save(view, dir / plainShot);
+        const uint32_t plain = renderer.pixel({x.x + 7.5f, x.y});
+        view.mouseMove(nodeCenter(layout, node), {});
+        view.mouseMove(x, {});
+        const bool shot = renderer.save(view, dir / xShot);
+        const bool drawn = renderer.pixel({x.x + 7.5f, x.y}) != plain;
+        click(view, x);
+        const bool off = model.value(enabled) == 0.0;
+        view.undo();
+        view.mouseMove(away, {});
+        view.poll();
+        return shot && drawn && off && model.value(enabled) == 1.0;
+    };
+    const Point b = nodeCenter(layout, 1);
+    check(removes(1, paramIndex(1, OpParam::Enabled), {b.x + 0.72f * 24.0f, b.y - 0.72f * 24.0f}, "1k-node-plain.png",
+                  "1k-node-x.png"),
+          "an operator under the mouse shows an x at its upper right, which switches it off, undoably");
+    const Point f = nodeCenter(layout, kOps);
+    check(removes(kOps, paramIndex(0, FilterParam::Enabled), {f.x + 33.0f - 2.0f, f.y - 17.0f + 2.0f},
+                  "1l-filter-plain.png", "1l-filter-x.png"),
+          "a filter under the mouse shows an x at its box's corner, which switches it off, undoably");
 }
 
 // A node switched on where another one shown sits comes back clear of it, in the same undo step as the switch; one
@@ -6802,6 +6877,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModsMoveDepth(dir, renderer);
     testModsLive(dir, renderer);
     testNodeSwitchOnPlace(dir, renderer);
+    testNodeDelete(dir, renderer);
     testModsSearch(dir, renderer);
     testMeter(dir, renderer);
     testOutScope(dir, renderer);

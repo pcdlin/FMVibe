@@ -492,7 +492,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   showing faintly under the mouse. While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
 - **Routing panel**: the graph shows only what is switched on, the matrix everything, greyed out where it is off.
-  The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph.
+  The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph, and the
+  x in a circle a node shows at its upper right (a box's corner) while the mouse is over it, as the effects graph's
+  nodes do.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their
     type) and squarer boxes the shapers (with their curve). A colored outline means the node is heard, as its routes are set, and a
     halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off):
@@ -573,7 +575,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter
     purple, compressor green, 3-band dynamics teal, reverb indigo, phaser pink, flanger lime, frequency shifter
     cyan, phase disperser slate, widener fuchsia) and
-    with its icon, which switches it on and off, an × to remove it and a live display:
+    with its icon, which switches it on and off, an × to remove it and a live display, which draws the effect as
+    modulation takes its params now (the newest voice's, or the macros' while nothing plays); the Param EQ's band
+    handles and the 3-band dynamics' threshold lines stay where they are set, as the filter's handle does:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
       it faintly behind and the point under the mouse in numbers; its edit button (a pencil) opens the big editor;
