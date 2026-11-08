@@ -9,8 +9,10 @@
 #include "gui/view.h"
 #include "uistrings.h"
 
+#ifdef _WIN32
 #include <windows.h>
 #include <wincodec.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -18,6 +20,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <numbers>
 #include <string>
@@ -157,6 +160,7 @@ bool setLast(const FakeController &model, int first, int count, int last) {
     return false;
 }
 
+#ifdef _WIN32
 class Renderer {
 public:
     explicit Renderer(float scale) : scale_(scale) {
@@ -226,6 +230,73 @@ private:
     ComPtr<IWICImagingFactory> wic_;
     ComPtr<IWICBitmap> last_;
 };
+#else
+// The Linux development build's: the same over a Cairo image surface (src/gui/canvas_cairo.cpp).
+class Renderer {
+public:
+    explicit Renderer(float scale) : scale_(scale) {}
+    ~Renderer() {
+        if (last_)
+            cairo_surface_destroy(last_);
+    }
+    Renderer(const Renderer &) = delete;
+    Renderer &operator=(const Renderer &) = delete;
+
+    // The whole editor, or only the part `crop` covers (in the view's coordinates).
+    bool save(View &view, const std::filesystem::path &path, const Rect *crop = nullptr) {
+        const int width = static_cast<int>(View::kWidth * scale_);
+        const int height = static_cast<int>(view.height() * scale_);
+        cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(surface);
+            return false;
+        }
+        cairo_t *cr = cairo_create(surface);
+        cairo_scale(cr, scale_, scale_);
+        {
+            Canvas canvas(cr, resources_);
+            view.paint(canvas);
+        }
+        cairo_destroy(cr);
+        cairo_surface_flush(surface);
+        if (last_)
+            cairo_surface_destroy(last_);
+        last_ = surface;
+        if (!crop)
+            return cairo_surface_write_to_png(surface, path.c_str()) == CAIRO_STATUS_SUCCESS;
+        cairo_surface_t *part = cairo_surface_create_for_rectangle(surface, crop->x * scale_, crop->y * scale_,
+                                                                   crop->w * scale_, crop->h * scale_);
+        cairo_surface_t *image = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, static_cast<int>(crop->w * scale_),
+                                                            static_cast<int>(crop->h * scale_));
+        cairo_t *copy = cairo_create(image);
+        cairo_set_source_surface(copy, part, 0.0, 0.0);
+        cairo_paint(copy);
+        cairo_destroy(copy);
+        const bool written = cairo_surface_write_to_png(image, path.c_str()) == CAIRO_STATUS_SUCCESS;
+        cairo_surface_destroy(image);
+        cairo_surface_destroy(part);
+        return written;
+    }
+
+    // The color at `p` (in the view's coordinates) in what was saved last, as 0xRRGGBB.
+    uint32_t pixel(Point p) const {
+        if (!last_)
+            return 0;
+        const int x = static_cast<int>(p.x * scale_), y = static_cast<int>(p.y * scale_);
+        if (x < 0 || y < 0 || x >= cairo_image_surface_get_width(last_) || y >= cairo_image_surface_get_height(last_))
+            return 0;
+        const unsigned char *row = cairo_image_surface_get_data(last_) + y * cairo_image_surface_get_stride(last_);
+        uint32_t argb;
+        std::memcpy(&argb, row + 4 * x, sizeof argb);
+        return argb & 0xFFFFFF;
+    }
+
+private:
+    float scale_;
+    Resources resources_;
+    cairo_surface_t *last_ = nullptr;
+};
+#endif
 
 // Screen positions of a few controls in the default layout (mirrors src/gui/layout.h).
 constexpr Point kOpPhaseKnob{1101.0f, 242.0f}; // an operator's Phase, a plain knob
@@ -1088,22 +1159,27 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(routeModulated && renderer.save(view, dir / "18b-modulated-route.png"),
           "render a modulated route, its wire swelling and its label showing the range");
     // That route turned down to 0 %: B, sounding, lights up only while its modulation opens the route again, just
-    // above it (read off the rendered pixels), with the glow setting at its middle, where it starts; off, no halo.
+    // above it (read off the rendered pixels), with the glow setting at its middle, where it starts, its halo
+    // feathering out past the ring; off, the halo is a plain ring of light (7 px out), nothing beyond it.
     const double routed = model.value(matrixIndex(1, 0));
     model.glowLevel = 0.5;
     model.set(matrixIndex(1, 0), 0.0);
     model.live.opLevels[1] = 1.0f;
+    struct Above {
+        uint32_t ring, beyond; // in the plain ring's reach, and past it
+    };
     auto aboveB = [&](float offset) {
         model.live.modOffset[matrixIndex(1, 0)] = offset;
         view.poll();
         renderer.save(view, dir / "18b2-modulated-route-glow.png");
-        return renderer.pixel({bNode.x, bNode.y - 28.0f});
+        return Above{renderer.pixel({bNode.x, bNode.y - 28.0f}), renderer.pixel({bNode.x, bNode.y - 33.0f})};
     };
-    const uint32_t shut = aboveB(0.0f), opened = aboveB(0.3f);
+    const Above shut = aboveB(0.0f), opened = aboveB(0.3f);
     model.glowLevel = 0.0;
-    const uint32_t glowOff = aboveB(0.3f);
-    check(opened != shut && glowOff == shut,
-          "an operator lights up while modulation opens its route from 0 %, unless the glow setting is off");
+    const Above glowOff = aboveB(0.3f);
+    check(opened.ring != shut.ring && opened.beyond != shut.beyond && glowOff.ring != shut.ring &&
+              glowOff.beyond == shut.beyond,
+          "an operator lights up while modulation opens its route from 0 %, a plain ring with the glow setting off");
     model.set(matrixIndex(1, 0), routed);
     model.live = Telemetry{};
     view.poll();
@@ -1572,8 +1648,8 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Its depth handles, 9 px apart along its bottom edge from x 913, hold eight before a pill: the eighth at x 976,
     // and with a ninth, six handles and the pill (x 966 to 978), which opens their list under it (read off the
-    // rendered pixels).
-    const Point eighth{976.0f, 257.0f}, pill{971.7f, 257.0f}, under{960.0f, 308.0f};
+    // rendered pixels, inside the envelope's display, clear of the tabs above it, whose width follows the font).
+    const Point eighth{976.0f, 257.0f}, pill{971.7f, 257.0f}, under{960.0f, 320.0f};
     const uint32_t noEighth = renderer.pixel(eighth);
     for (int place = 1; place < 9; ++place) {
         model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));
@@ -6475,9 +6551,13 @@ int main(int argc, char **argv) {
     const std::filesystem::path dir = argv[1];
     std::filesystem::create_directories(dir);
     std::setvbuf(stdout, nullptr, _IONBF, 0); // every line out before a crash, if there is one
+#ifdef _WIN32
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+#endif
     run(dir, argc > 2 ? static_cast<float>(std::atof(argv[2])) : 1.0f); // COM objects die before CoUninitialize
+#ifdef _WIN32
     CoUninitialize();
+#endif
     std::printf("%s (images in %s)\n", failures ? "UI CHECKS FAILED" : "all UI checks passed", dir.string().c_str());
     return failures ? 1 : 0;
 }

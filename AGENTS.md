@@ -18,8 +18,9 @@ feature.
 - When a feature changes, update [docs/features.md](docs/features.md); keep `README.md` to its short
   description and the build and install instructions.
 - Don't start Bitwig or another host yourself: the plugin is tried in the host by hand.
-- The editor draws through `Canvas`, which has two backends: Direct2D (`src/gui/canvas.cpp`) and the browser
-  demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`). A new drawing call needs both.
+- The editor draws through `Canvas`, which has three backends: Direct2D (`src/gui/canvas.cpp`), the browser
+  demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`) and Cairo for the Linux development
+  build (`src/gui/canvas_cairo.cpp`). A new drawing call needs all three.
 - Text the plugin shows (labels, tooltips, menus, messages, parameter names, remote control pages) is worded in
   `src/uistrings.inc` and looked up by name: `tr(Str::Name)`, or `trf()` for a wording with `{1}`, `{2}` in it. New
   text gets a line there. Tests that match on text (menu entries, page names) look it up the same way, so a
@@ -473,6 +474,32 @@ More checks:
   DAW it is for a person to start: it waits for its window to be closed. `.\build.ps1 -Run` builds it and starts it
   after the other steps.
 
+## Linux development build
+
+Cloud sessions run on Linux, where the plugins can't be built (Win32, Direct2D, the plugin hosts). What can be
+built there, `./build.sh` builds: the engine and the editor (`fmvibe-core`, drawing through Cairo in
+`src/gui/canvas_cairo.cpp`), the audio quality test, the UI snapshots and the preset tool (`cmake/linux.cmake`, which
+`CMakeLists.txt` takes in on any system but Windows). It needs CMake, Ninja, a C++20 compiler (GCC 13 or Clang 18),
+pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK with a git clone of the tag
+`CMakeLists.txt` pins, since the cloud sessions' proxy refuses GitHub's archive downloads.
+
+```bash
+./build.sh                  # build/linux: build, then ctest (quality, ui); about a minute from scratch
+./build.sh --skip-tests     # build only
+./build.sh --debug          # build/linux-debug
+./build.sh --shots 2        # render the snapshots only, at 2x, into build/linux/ui-shots
+```
+
+- **Looking at the editor**: the snapshots are PNGs in `build/linux/ui-shots`, one or more for each step that
+  `tools/uishot.cpp` replays; an agent can open them as images. To see a change, render the snapshots and open the
+  ones its replay saves, or add a replay that saves one.
+- **What differs from Windows**: the text is drawn in Inter (`FMVIBE_FONT` picks another family), not Segoe UI, so it
+  comes out a little wider, and Cairo's antialiasing isn't Direct2D's. A UI check that reads a pixel should read it
+  clear of text and of edges whose place follows a text's width, so it passes with either font.
+- **Not covered**: the CLAP and VST3 smoke tests, the validators, the editor's window and `fmvibe-uihost` need
+  Windows. A change to `src/plugin.cpp`, `src/vst3plugin.cpp`, `src/plugincore.cpp`, `src/gui/editor.cpp` or
+  `src/gui/canvas.cpp` compiles only there; `build.ps1` on Windows (or the release workflow) is the full check.
+
 ## Factory presets
 
 The factory presets are preset files, `presets/Factory/<name>.fmv`, which the build compiles in:
@@ -611,6 +638,7 @@ breakpoints in `src/` then hit.
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
 | `src/gui/canvas.cpp` | Small Direct2D/DirectWrite drawing layer |
 | `src/gui/canvas_web.cpp` | The same drawing layer over the browser's 2D context, for the demo |
+| `src/gui/canvas_cairo.cpp` | The same drawing layer over Cairo, for the Linux development build |
 | `src/gui/editor.cpp` | Win32 child window that hosts the view in the plugin window |
 | `src/gui/controller.h` | What the editor needs from the plugin (values, edits, telemetry, layout) |
 | `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
@@ -622,6 +650,7 @@ breakpoints in `src/` then hit.
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
 | `tools/uihost.cpp` | `fmvibe-uihost`: a small CLAP host with a window and audio, for trying the editor by hand |
 | `build.ps1` | One-shot configure/build/test/validate/install |
+| `build.sh`, `cmake/linux.cmake` | The Linux development build: the engine, the editor over Cairo, the quality test and the UI snapshots (see [Linux development build](#linux-development-build)) |
 | `web/dsp.cpp`, `web/ui.cpp` | The browser demo's audio and editor modules |
 | `web/site/` | The demo page: the canvas and input (`main.js`), drawing (`canvas2d.js`), the AudioWorklet (`worklet.js`) |
 | `release.ps1` | Cuts a release: version bump, tests and validators, the README screenshots, commit, tag and push (see [Releasing](#releasing)) |

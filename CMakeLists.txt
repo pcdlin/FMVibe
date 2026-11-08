@@ -62,8 +62,10 @@ if (EMSCRIPTEN)
     return()
 endif()
 
+# Elsewhere (Linux): the engine, the editor over Cairo, the quality test and the UI snapshots, without the plugins.
 if (NOT WIN32)
-    message(FATAL_ERROR "FMVibe's editor is built on Win32 and Direct2D; only Windows is supported for now.")
+    include(cmake/linux.cmake)
+    return()
 endif()
 
 # A .clap is a plain DLL with another extension, and so is the DLL in a .vst3 bundle. Link the CRT statically so
