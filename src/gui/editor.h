@@ -42,6 +42,7 @@ private:
     LRESULT handle(UINT message, WPARAM wParam, LPARAM lParam);
     void paint();
     void invalidate();
+    void tick(); // a poll of the view, painting what changed: on the poll timer, or on mouse moves holding it off
     float scale() const;
     Point toView(int x, int y) const;
     void updateCursor();
@@ -60,6 +61,7 @@ private:
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     bool trackingLeave_ = false;
+    ULONGLONG lastPoll_ = 0;       // when tick() last ran (GetTickCount64)
     bool hasKeyboard_ = false;     // taken for typing
     HWND keyboardFrom_ = nullptr;  // who had it before
     WPARAM shortcutKey_ = 0;       // the shortcut's key while it is down, to take its key-up as well

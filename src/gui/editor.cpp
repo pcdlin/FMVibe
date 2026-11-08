@@ -264,6 +264,21 @@ LRESULT CALLBACK Editor::windowProc(HWND hwnd, UINT message, WPARAM wParam, LPAR
     return editor ? editor->handle(message, wParam, lParam) : DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
+void Editor::tick() {
+    lastPoll_ = GetTickCount64();
+    // Ctrl let go, or pressed with the mouse over the editor: while the host has the keyboard no key message comes
+    // here, and only the next mouse move would tell the view (whose grid shows while Ctrl is held). A press counts
+    // only while a window of this process is in front, not Ctrl held in another application.
+    const bool ctrl = GetAsyncKeyState(VK_CONTROL) < 0;
+    DWORD front = 0;
+    if (const HWND foreground = GetForegroundWindow())
+        GetWindowThreadProcessId(foreground, &front);
+    const bool ours = front == GetCurrentProcessId();
+    const bool ctrlChanged = (!ctrl || (trackingLeave_ && ours)) && view_.setCtrl(ctrl);
+    if (view_.poll() || ctrlChanged)
+        invalidate();
+}
+
 LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
     case WM_PAINT:
@@ -279,19 +294,8 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         invalidate();
         return 0;
     case WM_TIMER:
-        if (wParam == kPollTimer) {
-            // Ctrl let go, or pressed with the mouse over the editor: while the host has the keyboard no key message
-            // comes here, and only the next mouse move would tell the view (whose grid shows while Ctrl is held). A
-            // press counts only while a window of this process is in front, not Ctrl held in another application.
-            const bool ctrl = GetAsyncKeyState(VK_CONTROL) < 0;
-            DWORD front = 0;
-            if (const HWND foreground = GetForegroundWindow())
-                GetWindowThreadProcessId(foreground, &front);
-            const bool ours = front == GetCurrentProcessId();
-            const bool ctrlChanged = (!ctrl || (trackingLeave_ && ours)) && view_.setCtrl(ctrl);
-            if (view_.poll() || ctrlChanged)
-                invalidate();
-        }
+        if (wParam == kPollTimer)
+            tick();
         return 0;
     case kPresetMessage:
         browsePreset(wParam != 0);
@@ -305,6 +309,10 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         updateCursor();
         if (changed) // else nothing to paint again: the poll timer paints what animates meanwhile
             invalidate();
+        // Windows sends WM_TIMER only while no other message waits, so a mouse kept moving (cards dragged along the
+        // row, nodes in the graph) holds the poll timer off: the moves poll in its place, as often as it would.
+        if (GetTickCount64() - lastPoll_ >= kPollMs)
+            tick();
         return 0;
     }
     case WM_MOUSELEAVE:

@@ -2879,6 +2879,71 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
 // switching to the graph and back changes nothing; it folds to a strip and back; dragged by its title, it moves along
 // the line with its bands; its x puts its bands' effects on the main line, the high band's first; and a card carried
 // over a tab shows that band, to land on it.
+// A split first in the row, put there by the arrow before the first card, the widener and the delay after it: the
+// delay carried left over the widener, the container's band and its controls lands on the band, and on past the
+// controls' left edge, where the panel's edge is, before the container, at the line's start.
+void testFxRowSplitFirst(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Widener);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    auto centerOf = [](Rect r) { return Point{r.x + r.w * 0.5f, r.y + r.h * 0.5f}; };
+    auto from = [&](int node, int input) {
+        return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
+    };
+    auto settle = [&] {
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+    };
+    const int split = fxSplitNode(0), low = fxBandPort(0, 0);
+    const Point arrow{detail::fxCard(0.0f).x - detail::kFxGap * 0.5f, detail::fxCard(0.0f).center().y};
+    click(view, arrow);
+    const Rect menu = detail::fxMenu({0.0f, 0.0f}, true);
+    const float left = detail::kFxPanel.x + 8.0f, right = detail::kFxPanel.right() - 8.0f - menu.w;
+    const Point at{std::clamp(arrow.x - 0.5f * menu.w, left, right),
+                   std::min(detail::kFxTop + 8.0f, detail::kFxPanel.bottom() - 4.0f - menu.h)};
+    click(view, centerOf(detail::fxMenuNodeItem(at)));
+    view.mouseMove({600.0f, 600.0f}, {});
+    settle();
+    const bool first = from(split, 0) == kFxPortIn && from(0, 0) == fxSumPort(0) && from(1, 0) == fxSlotPort(0);
+
+    const Rect column = detail::fxCard(detail::kFxBoxEdge); // the container's controls
+    const float delayAt = 2.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge;
+    const Rect delayCard = detail::fxCard(delayAt);
+    const Point grip{delayCard.x + 40.0f, delayCard.y + 17.0f};
+    auto carry = [&](std::vector<Point> path) {
+        view.mouseDown(grip, {});
+        view.mouseMove({grip.x - 30.0f, grip.y}, {});
+        for (const Point p : path) {
+            view.mouseMove(p, {});
+            settle();
+        }
+        view.mouseUp(path.back(), {});
+        settle();
+    };
+    const std::vector<Point> over{{detail::fxCard(delayAt - 1.0f).x + 40.0f, grip.y}, // the widener
+                                  {detail::fxCard(1.0f + detail::kFxBoxEdge).x + 20.0f, grip.y}, // the band's card
+                                  {column.x + 100.0f, grip.y}};                                    // its controls
+    carry(over);
+    const bool onBand = from(1, 0) == low && from(0, 0) == fxSumPort(0);
+    view.undo();
+    settle();
+    std::vector<Point> out = over;
+    out.push_back({detail::kFxPanel.x + 4.0f, grip.y}); // past the controls' left edge, at the panel's
+    carry(out);
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool shot = renderer.save(view, dir / "41a1-fx-row-before-first-split.png");
+    const bool before = from(1, 0) == kFxPortIn && from(split, 0) == fxSlotPort(1) && from(0, 0) == fxSumPort(0);
+    view.undo();
+    settle();
+    std::printf("      a split first: put there %d, the delay onto its band %d, before it %d\n", first, onBand, before);
+    check(first && onBand && before && shot && from(split, 0) == kFxPortIn && from(1, 0) == fxSlotPort(0),
+          "a card carried left past a container first in the row, beyond its controls, lands before it");
+}
+
 void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -2899,6 +2964,56 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
         for (int k = 0; k < 40; ++k)
             view.poll();
     };
+    auto carry = [&](Point grip, std::vector<Point> path) { // a card by its title, along `path`, let go of at its end
+        view.mouseDown(grip, {});
+        for (const Point p : path) {
+            view.mouseMove(p, {});
+            settle();
+        }
+        view.mouseUp(path.back(), {});
+        settle();
+    };
+    const Point bandCard{detail::fxCard(2.0f + detail::kFxBoxEdge).x + 20.0f, 0.0f}; // the container's dashed card's x
+
+    // The shaper dragged by its title, near its left, a tenth of a card to the right: nothing moves. Three tenths, the
+    // mouse still over the shaper's own place: it covers that much of the widener, which makes way at once, gliding
+    // from the first step (read off the rendered pixels along the cards' title row: the row as the move left it, its
+    // outline where the shaper would land over the widener, against a step on, the widener coming out from under it),
+    // and let go of there the shaper goes after it. Undone.
+    {
+        const float pitch = detail::kFxCardW + detail::kFxGap;
+        const Rect shaper = detail::fxCard(0.0f);
+        const Point grip{shaper.x + 40.0f, shaper.y + 17.0f};
+        auto rowPixels = [&] {
+            std::vector<uint32_t> line;
+            for (float x = detail::fxCard(0.0f).x; x < detail::fxCard(1.0f).x - 2.0f; x += 2.0f) // clear of the outline
+                line.push_back(renderer.pixel({x, grip.y}));
+            return line;
+        };
+        view.mouseDown(grip, {});
+        view.mouseMove({grip.x + 0.1f * pitch, grip.y}, {});
+        view.mouseUp({grip.x + 0.1f * pitch, grip.y}, {});
+        settle();
+        const bool stayed = fxChain(model) == std::vector<int>{0, 1, 2};
+        view.mouseDown(grip, {});
+        view.mouseMove({grip.x + 0.1f * pitch, grip.y}, {});
+        view.mouseMove({grip.x + 0.3f * pitch, grip.y}, {});
+        renderer.save(view, dir / "41a0-fx-row-nudge-before.png");
+        const std::vector<uint32_t> before = rowPixels();
+        view.poll();
+        const bool shot = renderer.save(view, dir / "41a0-fx-row-nudge.png");
+        const bool gliding = rowPixels() != before;
+        view.mouseUp({grip.x + 0.3f * pitch, grip.y}, {});
+        settle();
+        const bool after = fxChain(model) == std::vector<int>{1, 0, 2};
+        view.undo();
+        settle();
+        view.mouseMove({600.0f, 600.0f}, {});
+        std::printf("      the shaper nudged: a tenth stays %d, three tenths glides %d and lands after %d\n", stayed,
+                    gliding, after);
+        check(stayed && shot && gliding && after && fxChain(model) == std::vector<int>{0, 1, 2},
+              "a card dragged onto its neighbor makes it glide aside at once, a little of the way moving nothing");
+    }
 
     // The arrow between the shaper and the widener: its list ends with the split, which goes in there.
     const Point arrow{detail::fxCard(1.0f).x - detail::kFxGap * 0.5f, detail::fxCard(1.0f).center().y};
@@ -2918,6 +3033,76 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 600.0f}, {});
     check(listShot && added && renderer.save(view, dir / "41b-fx-row-split.png"),
           "the arrow between two cards puts a split there: a container, its low band shown, empty");
+
+    // The widener, after the container, carried left over its band and its controls: let go of over the shaper's right
+    // half it lands between the shaper and the split; carried on over the shaper's left half, before the shaper. Each
+    // undone.
+    {
+        const Rect widenerCard = detail::fxCard(2.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge);
+        const Point grip{widenerCard.x + 40.0f, widenerCard.y + 17.0f};
+        const Rect shaperCard = detail::fxCard(0.0f);
+        auto carryLeft = [&](float along) { // over the band, the controls, then the shaper `along` its width
+            carry(grip, {{grip.x - 30.0f, grip.y}, {bandCard.x, grip.y}, {column.x + 100.0f, grip.y},
+                         {column.x + 10.0f, grip.y}, {shaperCard.x + along * shaperCard.w, grip.y}});
+        };
+        carryLeft(0.75f);
+        const bool beforeSplit = from(1, 0) == fxSlotPort(0) && from(split, 0) == fxSlotPort(1) &&
+                                 from(2, 0) == fxSumPort(0);
+        view.undo();
+        settle();
+        carryLeft(0.25f);
+        const bool first = from(1, 0) == kFxPortIn && from(0, 0) == fxSlotPort(1) && from(split, 0) == fxSlotPort(0);
+        view.undo();
+        settle();
+        view.mouseMove({600.0f, 600.0f}, {});
+        std::printf("      the widener carried left past the container: between it and the shaper %d, before the "
+                    "shaper %d\n",
+                    beforeSplit, first);
+        check(beforeSplit && first && from(1, 0) == fxSumPort(0) && from(split, 0) == fxSlotPort(0),
+              "a card carried left over a container's controls lands before the container, and then before the card "
+              "before it");
+    }
+
+    // The shaper, before the container, carried right. Let go of over the container's controls, near their right edge
+    // too, it stays where it was (the band starting only past them, as the container shows). Carried on over its band
+    // and out of its right side, it lands right after the container, before the widener, until the mouse is past the
+    // widener's middle (where the widener shows, a card on), where it lands after the widener. Each undone.
+    {
+        const Rect shaperCard = detail::fxCard(0.0f);
+        const Point grip{shaperCard.x + 40.0f, shaperCard.y + 17.0f};
+        const float widenerAt = 2.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge; // where it shows
+        auto carryRight = [&](std::vector<Point> path) {
+            path.insert(path.begin(), {grip.x + 30.0f, grip.y});
+            carry(grip, std::move(path));
+        };
+        auto unchanged = [&] { return from(split, 0) == fxSlotPort(0) && from(0, 0) == kFxPortIn; };
+        carryRight({{column.x + 100.0f, grip.y}, {column.right() - 12.0f, grip.y}});
+        const bool overControls = unchanged();
+        if (!overControls) { // moved after all: back, for what follows
+            view.undo();
+            settle();
+        }
+        const Point band{bandCard.x, grip.y};
+        carryRight({{column.x + 100.0f, grip.y}, band, {detail::fxCard(widenerAt).x + 20.0f, grip.y}});
+        const bool afterSplit = from(split, 0) == kFxPortIn && from(0, 0) == fxSumPort(0) && from(1, 0) == fxSlotPort(0);
+        view.undo();
+        settle();
+        carryRight({{column.x + 100.0f, grip.y}, band,
+                    {detail::fxCard(widenerAt).x + 20.0f, grip.y},
+                    {detail::fxCard(widenerAt).x + 0.7f * detail::kFxCardW, grip.y}});
+        const bool afterWidener = from(split, 0) == kFxPortIn && from(1, 0) == fxSumPort(0) &&
+                                  from(0, 0) == fxSlotPort(1) && from(2, 0) == fxSlotPort(0);
+        view.undo();
+        settle();
+        view.mouseMove({600.0f, 600.0f}, {});
+        std::printf("      the shaper carried right: over the controls it stays %d, out of the container right after it "
+                    "%d, past the widener's middle after the widener %d\n",
+                    overControls, afterSplit, afterWidener);
+        check(overControls, "a card carried over a container's controls stays where it was, up to their edge");
+        check(afterSplit && afterWidener && unchanged(),
+              "a card carried right out of a container lands right after it, and past the next card once the mouse is "
+              "past its middle");
+    }
 
     // The widener's card, after the container, dragged onto the container's dashed card: onto its low band.
     const Rect widener = detail::fxCard(2.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge);
@@ -3048,8 +3233,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Dragged by its title past the delay: the split goes after it, with its bands, the delay gliding into its place
     // (a step on, the row showing neither where they were nor where they go: read off the rendered pixels along the
-    // cards' title row); undone. Nothing moves until the mouse is clear of the container's own place (its controls,
-    // its band's card and its dashed card), so it is carried past its end.
+    // cards' title row); undone. Carried past the container's end.
     const Point title{column.x + 60.0f, column.y + 17.0f};
     const float pastBox = detail::fxCard(1.0f + 2.0f * detail::kFxBoxEdge + 2.0f + detail::kFxBoxAddSpan + 0.3f).x;
     auto rowPixels = [&] {
@@ -3115,7 +3299,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
           "band");
 
     // The delay, now the low band's second card, carried freely. Moved within its own place, or straight down over
-    // the modulation panel (the card outlined under the mouse there), nothing moves. Carried left over the widener it
+    // the modulation panel (the card outlined under the mouse there), nothing moves, nothing being after it on its band. Carried left over the widener it
     // goes before it; on over the container's controls it stays there, landing at the low band's start rather than
     // before the split. Carried on to the HIGH tab and let go of there, it lands at the high band's end, after the
     // reverb, the low band still shown. Each undone.
@@ -3163,7 +3347,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
                     withinOwn, straightDown, bandStart, highShown, onHigh);
         check(withinOwn && straightDown && freeShot && bandStart && highShown && onHigh && lowBand() &&
                   model.ui.splitBand[0] == 0,
-              "a card moves nothing until the mouse is clear of its place, waits over a container's controls, and "
+              "a card at its band's end moves nothing carried right or down, waits over a container's controls, and "
               "carried over a tab lands on that band");
     }
 
@@ -7286,6 +7470,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testFxGraphScroll(dir, renderer);
     testFxGraphRoom(dir, renderer);
     testFxRow(dir, renderer);
+    testFxRowSplitFirst(dir, renderer);
     testFxClear(dir, renderer);
     testLaterSlots(dir, renderer);
     testSourceShadow(dir, renderer);

@@ -717,6 +717,7 @@ private:
         std::vector<int> nodes;
         std::array<Point, kFxNodes> from{};
         float startPlace = 0.0f, span = 1.0f; // in the row: where its card or container was, and how wide
+        bool byMouse = false; // in the row: the mouse has been over a container, and where it lands goes by the mouse
     };
     // The nodes' places as shown, in grid cells (fractions while they glide).
     struct FxGlide {

@@ -260,16 +260,23 @@ the plain CMake commands and installing into a host are in the [README](README.m
     them, and a band's + after its last node showing always, an empty band's too (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
     the row changing nothing, the split showing there as its container;
+  - a card dragged a tenth of a card onto its neighbor moving nothing, and three tenths making the neighbor glide aside
+    from the first step (read off the rendered pixels), landing after it, undone;
   - a split in the row: the arrow between two cards offering it after the effects (its list kept inside the panel),
-    putting a container there, its low band shown and empty; a card dragged onto that band landing on it; the HIGH tab
+    putting a container there, its low band shown and empty; a card after it carried left over its band and controls
+    landing between it and the card before it, and on over that card's left half before that card; the card before
+    it carried over its controls staying, and on over its band and out of its right side landing right after it, and
+    past the next card's middle after that card; each undone; with the split first in the row (put there by the arrow
+    before the first card), a card carried left over its band and controls landing on the band, and on past the
+    controls' left edge before the split, undone; a card dragged onto that band landing on it; the HIGH tab
     showing the high band, whose dashed card opens the list of effects (no split) and puts a reverb on it; the
     container's Low knob setting the low band's level, lowering that band's curve on its display (read off the
     rendered pixels), its S buttons soloing each band on its own, the band shown faint while the other is soloed (read
     off the rendered pixels), both undone, and its crossover handle dragged; the
     graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
-    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); a card moved within its own
-    place, or carried straight down out of the panel, moving nothing, carried over its neighbor and then the
+    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); a card at its band's end
+    moved right within its own place, or carried straight down out of the panel, moving nothing, carried over its neighbor and then the
     container's controls landing at its band's start (not before the split), and on over the other band's tab
     and let go of there landing at that band's end, the band shown left as it was, each undone; its x, kept, putting its bands' effects on the
     main line, the high band's first, undone; a card carried over the LOW tab lighting it (read off the rendered

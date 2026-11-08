@@ -1378,42 +1378,89 @@ void View::retargetRowDrag(Point mouse) {
                     }
             }
         }
-    // While the mouse is still across from the card's own place (above or below it too: the card moves freely), it
-    // stays where it was: nothing moves until the mouse is clear of it. Across from a container's controls (on the way
-    // to its tabs), where it would land stays as it is too.
-    const Rect own = fxCard(d.startPlace - fxScroll(), d.span);
-    if (mouse.x >= own.x && mouse.x < own.right()) {
-        d.at = d.was;
-        return;
-    }
-    for (const FxRowBox &box : fxRowShown().boxes)
-        if (!box.folded && fxSplitNode(box.split) != d.item.node) {
-            const Rect column = fxCard(boxColumn(box) - fxScroll(), 1.0f);
-            if (mouse.x >= column.x && mouse.x < column.right())
-                return;
+    // Where the card (or container) carried is along the row, in card places: its left edge where it was picked up,
+    // moved with the mouse, held to the cards on screen while the row scrolls under it; and the mouse.
+    const float pitch = kFxCardW + kFxGap;
+    const float carried =
+        std::clamp(d.startPlace - drag_.scrollStart + (mouse.x - drag_.start.x) / pitch + fxScroll(), fxScroll(),
+                   std::max(fxScroll() + static_cast<float>(kVisibleFx) - d.span, fxScroll()));
+    // The mouse in places, as far as it goes (`over`, beyond the row's ends too: a container at either end of the row
+    // has the panel's edge beyond it), and held to the cards on screen while the row scrolls under it.
+    const float over = (mouse.x - fxCard(0.0f).x) / pitch + fxScroll();
+    const float middle = std::clamp(over, fxScroll(), fxScroll() + kVisibleFx);
+    // Along a run of `count` items (the main line's, or a band's cards) with the card's left edge at `at`, it lands
+    // past each card it covers a fifth of (kRowGive), coming onto it from either side, so the cards make way as soon
+    // as it moves onto them, and past a folded container (`wide`) once its left edge is beyond the container's middle.
+    // `was` is the place along them it came from, if any: before it, it is still where it was; from elsewhere, past
+    // each item's middle.
+    constexpr float kRowGive = 0.2f;
+    auto landing = [&](int count, int was, float at, auto placeOf, auto spanOf, auto wide) {
+        int to = 0;
+        for (int i = 0; i < count; ++i) {
+            const float give = wide(i) || was < 0 ? 0.5f : i < was ? 1.0f - kRowGive : kRowGive;
+            to += placeOf(i) + give * spanOf(i) < at;
         }
-    // Where the mouse is along the row, in card places, held to the cards on screen while the row scrolls under it. It
-    // lands after the main line's items whose middles are left of that; an effect, over the band a container shows,
-    // after that band's cards whose middles are. (A wide card or container would cross its neighbor's middle at once.)
-    const float middle = std::clamp((mouse.x - fxCard(0.0f).x) / (kFxCardW + kFxGap) + fxScroll(), fxScroll(),
-                                    fxScroll() + kVisibleFx);
+        return to;
+    };
     const FxRow row = fxRow(d.rest);
     const int n = static_cast<int>(d.rest.size());
-    int to = 0;
-    for (int i = 0; i < n; ++i)
-        to += 0.5f * (row.items[i] + row.items[i + 1]) < middle;
-    if (openSplit(d.rest) || (fxNodeSplit(d.item.node) && !d.item.joined)) // a split left open ends the line
-        to = fxNodeSplit(d.item.node) && !d.item.joined ? n : std::min(to, n - 1);
-    FxSlotAt at{0, to, 0};
-    for (const FxRowBox &box : row.boxes) {
-        if (!effect || box.folded || middle < boxColumn(box) + 0.75f || middle > box.place + box.span)
+    auto spanAt = [&](int i) { return row.items[i + 1] - row.items[i]; };
+    const bool openCarried = fxNodeSplit(d.item.node) && !d.item.joined; // a split left open, which ends the line
+    // The containers as the row shows them once it has settled, the card where it lands now (wider by it while it is
+    // on a band, after it while it lands before them): the mouse over one, from its controls to its end, it goes by
+    // that, as drawn. Left of its controls is before it, the room it keeps there too.
+    const FxRow landed = fxRow(fxLineShown());
+    for (const FxRowBox &box : landed.boxes) {
+        if (box.folded || fxSplitNode(box.split) == d.item.node || over < boxColumn(box) || over > box.place + box.span)
             continue;
-        int k = 0;
+        d.byMouse = true; // and from now on, the main line goes by the mouse too (see below)
+        // Across from its controls (on the way to its tabs), or a container carried over it, where it would land
+        // stays as it is.
+        const Rect column = fxCard(boxColumn(box) - fxScroll(), 1.0f);
+        if (!effect || mouse.x < column.right())
+            return;
+        // Over the band it shows: along that band, among its cards as they sit in the container.
+        const FxRowBox *restBox = nullptr;
+        for (const FxRowBox &b : row.boxes)
+            if (b.split == box.split)
+                restBox = &b;
+        if (!restBox)
+            return;
+        std::vector<const FxRowCard *> band; // the band, without the card carried
         for (const FxRowCard &card : row.cards)
-            k += card.at.lane == box.lane && card.at.item == box.item && card.place + 0.5f * card.span < middle;
-        at = {box.lane, box.item, k};
+            if (card.at.lane == restBox->lane && card.at.item == restBox->item)
+                band.push_back(&card);
+        const float shift = boxColumn(*restBox) - boxColumn(box); // from where the container shows to the line without it
+        const bool from = d.was.lane == restBox->lane && d.was.item == restBox->item;
+        d.at = {restBox->lane, restBox->item,
+                landing(static_cast<int>(band.size()), from ? d.was.place : -1, carried + shift,
+                        [&](int i) { return band[i]->place; }, [&](int i) { return band[i]->span; },
+                        [](int) { return false; })};
+        return;
     }
-    d.at = at;
+    int to = 0;
+    if (openCarried) {
+        to = n;
+    } else if (d.byMouse) {
+        // Once the mouse has been over a container, by the mouse, as the row shows: out of a container's side it lands
+        // right beside it, and past a card once the mouse is beyond that card's middle where it shows (the items before
+        // where it lands as they are, those after it a card on).
+        to = std::clamp(d.at.item, 0, n);
+        if (d.at.lane != 0 && d.at.item < n) // out of a container's band: on the side the mouse left it
+            for (const FxRowBox &box : landed.boxes)
+                if (fxSplitNode(box.split) == d.rest[d.at.item].node && over > box.place + box.span)
+                    to = d.at.item + 1;
+        while (to > 0 && middle < row.items[to - 1] + 0.5f * spanAt(to - 1))
+            --to;
+        while (to < n && middle > row.items[to] + d.span + 0.5f * spanAt(to))
+            ++to;
+    } else {
+        to = landing(n, d.was.lane == 0 ? d.was.item : -1, carried, [&](int i) { return row.items[i]; }, spanAt,
+                     [&](int i) { return fxNodeSplit(d.rest[i].node); });
+    }
+    if (openSplit(d.rest)) // nothing goes after a split left open, which ends the line
+        to = std::min(to, n - 1);
+    d.at = {0, to, 0};
 }
 
 void View::dropRowDrag() {

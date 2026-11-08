@@ -664,11 +664,15 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     the middle button held (see Everywhere). Drag a card by its
     title to move it along the chain (held at either end of the row, it scrolls the chain along that way; while it
     is held, only its outline shows where it would land, and a faint image of it follows the mouse anywhere, over the
-    other panels too; nothing moves while the mouse is still across from the card's own place, and once it is clear of it the
-    cards glide aside to make room where the mouse is; across from a split container's controls, where it would land
-    stays as it was, so an effect on a band can be carried over them to another band's tab, which lights in that
-    band's color and, let go of there, puts it at that band's end, the container still showing the band it showed;
-    let go of, they glide on into place, and a click while they glide puts them in place at once),
+    other panels too; the cards glide aside to make room as soon as it covers a fifth of one, from either side, and
+    a folded container once its left edge is past the container's middle. Once the mouse has been over a split
+    container, where it lands goes by the mouse, as the row shows: across from the container's controls it stays as
+    it was, so an effect on a band can be carried over them to another band's tab, which lights in that band's color
+    and, let go of there, puts it at that band's end, the container still showing the band it showed; over the
+    container's band it goes along that band; out of either side of the container it lands right beside it (left of
+    its controls is before it, so a container first in the row takes a card before it with the mouse past its
+    controls' left edge); and past the next card once the mouse is beyond that card's middle. Let go of, they glide
+    on into place, and a click while they glide puts them in place at once),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings,
     set a 3-band dynamics as OTT, move it to another band of its split (**Move to Low**, **Move to Mid**, **Move to
     High**, on a card on a split's band: the split's other bands, the effect going to that band's end, one undo step),
