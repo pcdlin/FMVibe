@@ -727,7 +727,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     land in, outlined dotted, which moves only once it is over another gap between two nodes (an effect's anywhere on
     the main line or a band, a split's only on the main line; the line's end reaching on past its + along the wire
     to OUT), and stays where it is
-    while it passes over a node or away from the line; they glide into place once it is let go of. A split or a join
+    while it passes over a node or away from the line. The dotted place goes where it would land at once, and the
+    wires run to it there as to a node, never to the node being carried; let go of, the node takes that place, and
+    the others glide on into theirs. A split or a join
     carries the split with its bands' effects and its join along. Held at the graph's left or right edge, it scrolls
     that way. The x on a card removes its node: an effect closes up the
     line or band it was on, a split puts its bands' effects on the main line in its place (the high band's first),

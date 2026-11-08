@@ -704,7 +704,7 @@ private:
     FxLine fxLineShown() const; // the line, or while a node, card or container is dragged, with it where it would land
     void startFxDrag(int node);
     void retargetFxDrag(Point mouse); // where it would land, for the mouse at `mouse`
-    void dropFxNode(bool take);       // let go of: moved there if `take`, gliding into its place either way
+    void dropFxNode(bool take);       // let go of: moved there if `take`, in its placeholder's place at once
     bool glideFxGraph();              // a step of the glide, in poll(): whether anything moved
     static FxLine fxLineWith(FxLine rest, const FxLineItem &item, FxSlotAt at);
     // Every effect (and every split and join) gone, one undo step, the modulation of their knobs with them; whether

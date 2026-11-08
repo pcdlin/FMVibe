@@ -2426,6 +2426,29 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             settle();
             return saved;
         };
+        // A step into the glide, the phaser's placeholder is where it would land already, the wire from the shaper
+        // ending in its arrowhead there, as at a node (read off the rendered pixels: how many pixels down through the
+        // arrowhead are lit, many more than a wire passing by lights).
+        {
+            const Point grab = cell(6, 0), to = detail::fxGridAt(1.5f, 0.0f, 0.0f);
+            view.mouseMove(grab, {});
+            view.mouseDown(grab, {});
+            view.mouseMove({grab.x + 8.0f, grab.y + 4.0f}, {});
+            view.mouseMove(to, {});
+            view.poll();
+            renderer.save(view, dir / "40o0-fx-drag-step.png");
+            const float x = cell(2, 0).x - detail::kFxNodeR - 3.0f;
+            int lit = 0;
+            for (float y = cell(2, 0).y - 8.0f; y <= cell(2, 0).y + 8.0f; y += 1.0f) {
+                const uint32_t color = renderer.pixel({x, y});
+                lit += std::max({color >> 16 & 255, color >> 8 & 255, color & 255}) > 70u;
+            }
+            view.mouseUp(to, {});
+            view.undo();
+            settle();
+            std::printf("      a step into the glide, lit down the arrowhead at the phaser's new place: %d px\n", lit);
+            check(lit >= 5, "a dragged node's wires run to its placeholder where it would land, not along with it");
+        }
         const bool roomShot = dragNode(cell(6, 0), detail::fxGridAt(1.5f, 0.0f, 0.0f), "40o-fx-drag-room.png");
         const bool phaserMoved = from(4, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(4) &&
                                  from(kFxOutNode, 0) == fxSumPort(0);

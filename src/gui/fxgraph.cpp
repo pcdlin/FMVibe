@@ -649,9 +649,17 @@ View::FxPlaces View::fxPlacesOf(const FxGridLayout &grid, float scroll) const {
 View::FxPlaces View::fxPlacesShown(const FxGridLayout &grid, float scroll) const {
     if (!fxGlide_.on)
         return fxPlacesOf(grid, scroll);
+    // What is being dragged shows its placeholder where it would land at once, as a node there would be: the wires
+    // run to it there, never to it on its way, while the others glide aside.
+    const bool dragging = drag_.kind == DragKind::FxNodeMove && drag_.moved && fxDrag_.has_value();
+    auto carried = [&](int node) {
+        return dragging && std::find(fxDrag_->nodes.begin(), fxDrag_->nodes.end(), node) != fxDrag_->nodes.end();
+    };
     FxPlaces at;
     for (const auto &place : grid.nodes)
-        at.node[place.node] = fxGridAt(fxGlide_.node[place.node].x, fxGlide_.node[place.node].y, scroll);
+        at.node[place.node] = carried(place.node)
+                                  ? fxGridCell(place.col, place.row, scroll)
+                                  : fxGridAt(fxGlide_.node[place.node].x, fxGlide_.node[place.node].y, scroll);
     for (const auto &slot : grid.slots)
         at.slot[slot.lane] = fxGridAt(fxGlide_.slot[slot.lane].x, fxGlide_.slot[slot.lane].y, scroll);
     at.in = fxGridCell(0, 0, scroll);
@@ -1350,20 +1358,17 @@ void View::dropFxNode(bool take) {
     fxDrag_.reset();
     if (!drag_.moved)
         return; // a click picks it only
-    // Its nodes glide from where they were let go of into their places.
-    const FxGridLayout grid = fxGridLayout(fxLine());
-    const float scroll = fxGraphScroll(grid);
-    const Rect area = fxGraphArea();
-    for (int n : d.nodes) {
-        const Point p{d.from[n].x + drag_.now.x - drag_.start.x, d.from[n].y + drag_.now.y - drag_.start.y};
-        fxGlide_.node[n] = {(p.x - area.x - kFxGridLeft + scroll) / kFxGridCol, (p.y - area.center().y) / kFxGridRow};
-    }
+    // Its nodes take their placeholders' places at once (the others glide on into theirs): where it lands, or, let go
+    // of anywhere else, where it was.
     fxGlide_.on = true;
     const bool stays = d.at.lane == d.was.lane && d.at.item == d.was.item && d.at.place == d.was.place;
-    if (!take || stays)
-        return;
-    const UndoScope step(controller_);
-    writeFxLine(fxLineWith(d.rest, d.item, d.at));
+    if (take && !stays) {
+        const UndoScope step(controller_);
+        writeFxLine(fxLineWith(d.rest, d.item, d.at));
+    }
+    for (const auto &p : fxGridLayout(fxLine()).nodes)
+        if (std::find(d.nodes.begin(), d.nodes.end(), p.node) != d.nodes.end())
+            fxGlide_.node[p.node] = {static_cast<float>(p.col), static_cast<float>(p.row)};
 }
 
 bool View::glideFxGraph() {
@@ -1395,8 +1400,13 @@ bool View::glideFxGraph() {
         at.y += (to.y - at.y) * 0.3f;
         moving = true;
     };
-    for (const auto &p : grid.nodes)
-        ease(fxGlide_.node[p.node], {static_cast<float>(p.col), static_cast<float>(p.row)});
+    for (const auto &p : grid.nodes) {
+        const Point to{static_cast<float>(p.col), static_cast<float>(p.row)};
+        if (dragging && std::find(fxDrag_->nodes.begin(), fxDrag_->nodes.end(), p.node) != fxDrag_->nodes.end())
+            fxGlide_.node[p.node] = to; // its placeholder, where it would land at once (see fxPlacesShown())
+        else
+            ease(fxGlide_.node[p.node], to);
+    }
     for (const auto &s : grid.slots)
         ease(fxGlide_.slot[s.lane], {static_cast<float>(s.col), static_cast<float>(s.row)});
     Point out{fxGlide_.outCol, 0.0f};
