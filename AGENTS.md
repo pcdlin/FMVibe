@@ -222,8 +222,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
     empty bands each curving out to a + on its row; a band's + putting an effect on its band; the join's node showing
     the split's card (centered in the inspector), its High knob setting the high band's level, in dB, and its S
-    soloing a band, the split and join nodes marked with an S and the other band's node and wires faint (read off
-    the rendered pixels), and then the other band's,
+    soloing a band, the split and join nodes marked with an S and the other band's node and wires faint, and the
+    main line's wires grey, each band's and each half of the split's and join's nodes in its color, a split's coming
+    in from grey at its left and a join's going out to grey at its right (read off the rendered pixels), and then
+    the other band's,
     unsoloing the first; the split's crossover handle dragged on its card, and its slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
     out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
@@ -247,8 +249,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
     pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); its x putting its bands' effects on the
     main line, the high band's first, undone; a card carried over the LOW tab showing the low band and landing at
-    its end; and an arrow before the first card (read off the rendered pixels), its list putting an effect at the
-    line's start;
+    its end; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
+    pixels), the first's list putting an effect at the line's start;
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
     the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
     nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the

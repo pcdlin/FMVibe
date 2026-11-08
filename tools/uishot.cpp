@@ -669,6 +669,37 @@ int ringLevel(const Renderer &renderer, Point from, float span) {
     return most;
 }
 
+// The brightest pixel from `from` to `to`, in what was saved last; and whether a color is amber (the high band's),
+// blue (the low band's) or grey, by how its red and blue differ.
+uint32_t brightestAlong(const Renderer &renderer, Point from, Point to) {
+    uint32_t best = 0;
+    int most = -1;
+    const int steps = std::max(1, static_cast<int>(std::hypot(to.x - from.x, to.y - from.y)));
+    for (int k = 0; k <= steps; ++k) {
+        const float t = static_cast<float>(k) / static_cast<float>(steps);
+        const uint32_t color = renderer.pixel({from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t});
+        const int level = std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                                    static_cast<int>(color & 255)});
+        if (level > most) {
+            most = level;
+            best = color;
+        }
+    }
+    return best;
+}
+int redOverBlue(uint32_t color) {
+    return static_cast<int>(color >> 16 & 255) - static_cast<int>(color & 255);
+}
+bool amber(uint32_t color) {
+    return redOverBlue(color) > 50;
+}
+bool blue(uint32_t color) {
+    return redOverBlue(color) < -50;
+}
+bool grey(uint32_t color) {
+    return std::abs(redOverBlue(color)) < 30 && (color >> 16 & 255) > 60;
+}
+
 // The color of the dot in the top right corner of a node's tab in the inspector, in what was saved last.
 uint32_t tabDot(const Renderer &renderer, int node) {
     return renderer.pixel({nodeTab(node).x + 7.0f, 146.0f});
@@ -2182,6 +2213,36 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         renderer.save(view, dir / "40e2-fx-join-unsoloed.png");
         const uint32_t unsoloed = renderer.pixel(mark), splitUnsoloed = renderer.pixel(splitMark);
         const int lowRing = ring(1), highRing = ring(-1), lowWire = wireInto(1);
+        // The main line's wires grey, each band's in its color, and the split's and the join's nodes in the bands'
+        // colors, the high band's above, a split's coming in from grey at its left and a join's going out to grey at
+        // its right (read off the rendered pixels: the outline down either edge, near its top and bottom).
+        {
+            const float mainX = 0.5f * (cell(2, 0).x + detail::kFxNodeR + cell(3, 0).x - detail::kFxSplitHalfW - 8.0f);
+            const uint32_t mainWire = brightestAlong(renderer, {mainX, cell(3, 0).y - 3.0f}, {mainX, cell(3, 0).y + 3.0f});
+            auto bandWire = [&](int row) {
+                const Point c = cell(4, row);
+                return brightestAlong(renderer, {c.x - detail::kFxNodeR - 16.0f, c.y - 4.0f},
+                                      {c.x - detail::kFxNodeR - 16.0f, c.y + 4.0f});
+            };
+            // A node's edge at its left or right, 5 px from its top or bottom: clear of where wires meet it.
+            auto edge = [&](int col, bool right, bool top) {
+                const Point c = cell(col, 0);
+                const float x = c.x + (right ? 1.0f : -1.0f) * detail::kFxSplitHalfW;
+                const float y = c.y + (top ? -1.0f : 1.0f) * (detail::kFxSplitHalfH - 5.0f);
+                return brightestAlong(renderer, {x - 3.0f, y}, {x + 3.0f, y});
+            };
+            const bool splitFades = grey(edge(3, false, true)) && grey(edge(3, false, false)) && amber(edge(3, true, true)) &&
+                               blue(edge(3, true, false));
+            const bool joinFades = amber(edge(5, false, true)) && blue(edge(5, false, false)) && grey(edge(5, true, true)) &&
+                              grey(edge(5, true, false));
+            std::printf("      wires: main line %06x, high band %06x, low band %06x; the split's right edge %06x above, "
+                        "%06x below, its left %06x; the join's left edge %06x above, %06x below, its right %06x\n",
+                        mainWire, bandWire(-1), bandWire(1), edge(3, true, true), edge(3, true, false),
+                        edge(3, false, true), edge(5, false, true), edge(5, false, false), edge(5, true, true));
+            check(grey(mainWire) && amber(bandWire(-1)) && blue(bandWire(1)) && splitFades && joinFades,
+                  "the graph's main line is grey, each band's wires and half of the split's and join's nodes in its "
+                  "color, fading in across a split and out across a join");
+        }
         click(view, centerOf(detail::splitSoloButton(card, 1)));
         const bool soloed = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
                             model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
@@ -2660,17 +2721,12 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     // it), whose list puts a phaser at the line's start.
     {
         const Point first{detail::fxCard(0.0f).x - detail::kFxGap * 0.5f, detail::fxCard(0.0f).center().y};
-        auto brightest = [&](Point m) {
-            int most = 0;
-            for (float x = m.x - 5.0f; x <= m.x + 5.0f; x += 1.0f)
-                for (float y = m.y - 8.0f; y <= m.y + 8.0f; y += 1.0f) {
-                    const uint32_t color = renderer.pixel({x, y});
-                    most = std::max({most, static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
-                                     static_cast<int>(color & 255)});
-                }
-            return most;
-        };
         const bool drawn = brightest(first) > brightest({first.x, first.y - 60.0f}) + 30;
+        // The arrow into the low band's second card, the delay, in the band's color too.
+        const Point intoDelay{detail::fxCard(3.0f + detail::kFxBoxEdge).x - detail::kFxGap * 0.5f, first.y};
+        const bool bandArrow =
+            blue(brightestAlong(renderer, {intoDelay.x - 5.0f, intoDelay.y}, {intoDelay.x + 5.0f, intoDelay.y}));
+        check(bandArrow, "the arrows along a container's band are all in its color");
         click(view, first);
         const Rect list = detail::fxMenu({0.0f, 0.0f}, true);
         const Point listAt{std::clamp(first.x - 0.5f * list.w, detail::kFxPanel.x + 8.0f,

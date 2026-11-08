@@ -43,6 +43,62 @@ Rect slotRect(Point c) {
     return boxAround(c, kFxSlotHalf, kFxSlotHalf);
 }
 
+// A split's and a join's nodes show the bands in their halves, parted by a line slanting this far either side of the
+// middle.
+constexpr float kSplitSlant = 4.0f;
+
+// A rounded box's outline, clockwise on screen from its upper left corner, a few points along each corner.
+std::vector<Point> roundedOutline(Rect r, float radius) {
+    constexpr int kSteps = 6;
+    const Point corners[] = {{r.x + radius, r.y + radius},
+                             {r.right() - radius, r.y + radius},
+                             {r.right() - radius, r.bottom() - radius},
+                             {r.x + radius, r.bottom() - radius}};
+    std::vector<Point> points;
+    for (int k = 0; k < 4; ++k)
+        for (int step = 0; step <= kSteps; ++step) { // from the left (180°) round through up (270°), and so on
+            const float angle = std::numbers::pi_v<float> * (1.0f + 0.5f * static_cast<float>(k) +
+                                                             0.5f * static_cast<float>(step) / kSteps);
+            points.push_back({corners[k].x + radius * std::cos(angle), corners[k].y + radius * std::sin(angle)});
+        }
+    return points;
+}
+
+// The part of a closed outline on one side of the line through `a` and `b` (`above`: the side up the screen from a
+// line running left to right), as a path starting and ending on the line, the cut along it left out: filled, it
+// closes along the cut.
+std::vector<Point> outlineSide(const std::vector<Point> &outline, Point a, Point b, bool above) {
+    auto side = [&](Point p) {
+        const float s = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x); // below 0 above the line
+        return above ? -s : s;
+    };
+    struct Vertex {
+        Point p;
+        bool onCut;
+    };
+    std::vector<Vertex> kept;
+    const size_t n = outline.size();
+    for (size_t i = 0; i < n; ++i) {
+        const Point p = outline[i], q = outline[(i + 1) % n];
+        const float sp = side(p), sq = side(q);
+        if (sp >= 0.0f)
+            kept.push_back({p, false});
+        if ((sp >= 0.0f) != (sq >= 0.0f)) {
+            const float t = sp / (sp - sq);
+            kept.push_back({{p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t}, true});
+        }
+    }
+    // The cut runs from where the outline leaves this side to where it comes back: start there, end at the leaving.
+    size_t start = 0;
+    for (size_t i = 0; i < kept.size(); ++i)
+        if (kept[i].onCut && kept[(i + 1) % kept.size()].onCut)
+            start = (i + 1) % kept.size();
+    std::vector<Point> path;
+    for (size_t k = 0; k < kept.size(); ++k)
+        path.push_back(kept[(start + k) % kept.size()].p);
+    return path;
+}
+
 float distanceToSegment(Point p, Point a, Point b) {
     const float dx = b.x - a.x, dy = b.y - a.y;
     const float length = dx * dx + dy * dy;
@@ -670,9 +726,9 @@ bool View::fxBandSoloedOut(const FxLineItem &item, int lane) const {
 }
 
 std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPlaces &places) const {
-    auto effectColor = [&](int slot) {
-        return value(paramIndex(slot, FxParam::Enabled)) >= 0.5 ? fxTypeColor(fxSlotType(slot)) : kFaint;
-    };
+    // The main line's wires grey, a split's bands' in their colors all the way into the join (or out, left open).
+    const Color mainLine = kDim;
+    const Color bandColors[] = {bandColor(kHighBand), bandColor(kLowBand)}; // by lane, the high band's first
     struct Tail {
         Point at;
         Color color;
@@ -687,28 +743,28 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
     };
     const auto &at = places.node;
     const Point in = places.in, out = places.out;
-    Tail tail{{in.x + kFxEndHalfW, in.y}, kDim, kFxPortIn};
+    Tail tail{{in.x + kFxEndHalfW, in.y}, mainLine, kFxPortIn};
     bool open = false;
     for (int i = 0; i < static_cast<int>(line.size()); ++i) {
         const FxLineItem &item = line[i];
         const Point p = at[item.node];
         if (item.node < kFxSlots) {
             wire(tail, {p.x - kFxNodeR, p.y}, true, {0, i, 0});
-            tail = {{p.x + kFxNodeR, p.y}, effectColor(item.node), fxSlotPort(item.node)};
+            tail = {{p.x + kFxNodeR, p.y}, mainLine, fxSlotPort(item.node)};
             continue;
         }
         wire(tail, {p.x - kFxSplitHalfW, p.y}, true, {0, i, 0});
         // Out of the bands' ports in the split's grey.
         const int split = item.node - kFxSlots;
-        Tail bands[] = {{fxBandPortAt(p, kHighBand), splitColor(), fxBandPort(split, kHighBand)},
-                        {fxBandPortAt(p, kLowBand), splitColor(), fxBandPort(split, kLowBand)}};
+        Tail bands[] = {{fxBandPortAt(p, kHighBand), bandColors[0], fxBandPort(split, kHighBand)},
+                        {fxBandPortAt(p, kLowBand), bandColors[1], fxBandPort(split, kLowBand)}};
         for (int lane = 0; lane < 2; ++lane) {
             const std::vector<int> &band = lane == 0 ? item.hi : item.lo;
             for (size_t k = 0; k < band.size(); ++k) {
                 const Point e = at[band[k]];
                 wire(bands[lane], {e.x - kFxNodeR, e.y}, true, {lane + 1, i, static_cast<int>(k)});
                 wires.back().faint = fxBandSoloedOut(item, lane + 1);
-                bands[lane] = {{e.x + kFxNodeR, e.y}, effectColor(band[k]), fxSlotPort(band[k])};
+                bands[lane] = {{e.x + kFxNodeR, e.y}, bandColors[lane], fxSlotPort(band[k])};
             }
         }
         if (item.joined) { // into the join, a node clicked in there going at its band's end
@@ -732,7 +788,7 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
                 wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color, bands[lane].port}, into, true);
                 wires.back().faint = faint;
             }
-            tail = {{j.x + kFxJoinHalfW, j.y}, sumColor(), fxSumPort(item.node - kFxSlots)};
+            tail = {{j.x + kFxJoinHalfW, j.y}, mainLine, fxSumPort(item.node - kFxSlots)};
             continue;
         }
         open = true; // each band on to its +, and from there out
@@ -1572,8 +1628,50 @@ void View::paintFxGraph(Canvas &c) {
             featherRect(c, r, 6.0f, 14.0f, kText.alpha(0.18f * glow));
         if (isSelected)
             c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, 9.0f);
-        c.fillRect(r, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(alpha), 6.0f);
-        c.strokeRect(r, color, width, 6.0f);
+        // Its upper half in the high band's color, its lower half in the low band's, parted by a slight slant (rising
+        // across a split, falling across a join, its mirror). A split's colors come in from grey at its left, where the
+        // main line comes in; a join's go back out to grey at its right, where the main line goes on.
+        c.fillRect(r, kCardColor.alpha(alpha), 6.0f);
+        const Color neutral = join ? sumColor() : splitColor();
+        const std::vector<Point> outline = roundedOutline(r, 6.0f);
+        const float slant = join ? -kSplitSlant : kSplitSlant;
+        const Point a{r.x, center.y + slant}, b{r.right(), center.y - slant};
+        auto across = [&](float x) { // how far the band's color has come in, 0 grey .. 1
+            const float t = std::clamp((x - r.x) / r.w, 0.0f, 1.0f);
+            return join ? 1.0f - t : t;
+        };
+        const float tint = isSelected ? kSelectedFill : 0.1f;
+        for (const int band : {kHighBand, kLowBand}) {
+            const Color ink = bandColor(band);
+            const std::vector<Point> half = outlineSide(outline, a, b, band == kHighBand);
+            // Its tint in slices across, each as far from grey as the color has come in there.
+            constexpr int kSlices = 14;
+            for (int k = 0; k < kSlices; ++k) {
+                const float x0 = r.x + r.w * static_cast<float>(k) / kSlices;
+                const float x1 = r.x + r.w * static_cast<float>(k + 1) / kSlices;
+                const std::vector<Point> slice =
+                    outlineSide(outlineSide(half, {x0, 0.0f}, {x0, 1.0f}, true), {x1, 0.0f}, {x1, 1.0f}, false);
+                if (slice.size() >= 3)
+                    c.fillPolygon(slice.data(), slice.size(),
+                                  mix(neutral, ink, across(0.5f * (x0 + x1))).alpha(alpha * tint));
+            }
+            // Its outline in pieces of 2 px at most, each a mix of grey and the band's color for where it is across.
+            std::vector<Point> path;
+            for (size_t i = 0; i + 1 < half.size(); ++i) {
+                const Point p = half[i], q = half[i + 1];
+                const int pieces = std::max(1, static_cast<int>(std::ceil(std::hypot(q.x - p.x, q.y - p.y) / 2.0f)));
+                for (int k = 0; k < pieces; ++k) {
+                    const float t = static_cast<float>(k) / static_cast<float>(pieces);
+                    path.push_back({p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t});
+                }
+            }
+            path.push_back(half.back());
+            for (size_t i = 0; i + 1 < path.size(); ++i) { // each piece with its neighbor on, so they join seamlessly
+                const Point piece[] = {path[i], path[i + 1], path[std::min(i + 2, path.size() - 1)]};
+                const float x = 0.5f * (path[i].x + path[i + 1].x);
+                c.polyline(piece, i + 2 < path.size() ? 3 : 2, mix(neutral, ink, across(x)).alpha(alpha), width);
+            }
+        }
         if (join) {
             joinIcon(c, {center.x - 8.0f, center.y - 7.0f, 15.0f, 14.0f}, color);
             name(kFxJoinHalfH, trf(Str::NodeJoin, {std::to_string(fxNodeSum(node) + 1)}));

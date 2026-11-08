@@ -676,7 +676,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     6 | 12 | 24 dB; three knobs: the low band's level, the Crossover and the high band's level (in dB, 0 dB, full, at
     the top, down to -60 dB, silence); and an **S** under each band's level that solos it, one at a time (soloing one
     unsolos the other, a click on the lit one unsolos it), lit in its band's color. To the right of the controls, the
-    cards of the band shown (faint, with the arrows between them, while the other band is soloed), then
+    cards of the band shown, the arrows into them in the band's color (faint, cards and arrows, while the other band
+    is soloed), then
     a narrow dashed card that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
@@ -693,15 +694,18 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     a **graph** instead: the graph at the left, and at the right the card of the node picked, centered in the
     space a wide card takes, as it would show in the row. Its hint at the top right reads "click node: edit · drag
     node: move · click wire: insert". The graph's nodes sit on a fixed grid, a column each, and
-    wire themselves: S-shaped wires, each in the color of what it comes from, run left to right from the input (IN, a
+    wire themselves: S-shaped wires, grey along the main line, run left to right from the input (IN, a
     box at the left) to the output (OUT, a box after the last column). Each effect is a circle in its color with its
     icon and name, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Split
     into high/low bands**, after the effects: a split, a box its high band leaves from the top of its right side and
     its low band from the bottom, always comes with its join, which adds the bands back together in the
     column after the longer band; the line goes on from the join. The bands run between them, the high one along the
-    row above the main line and the low one along the row below, named beside the split; splits and joins are grey
-    boxes as large as each other, and the wires out of a split's bands grey too. While sound plays, each node glows round it and each
+    row above the main line and the low one along the row below, named beside the split, each band's wires in its
+    color (the high band amber, the low band blue) all the way into the join. Splits and joins are boxes as large as
+    each other, their upper halves in the high band's color and their lower halves in the low band's, parted by a
+    slightly slanted line (a join's the split's mirror): a split's colors come in from grey at its left, where the
+    main line comes in, and a join's go back out to grey at its right, where the main line goes on. While sound plays, each node glows round it and each
     wire along it as loud as what comes out of it (IN, an effect, a split's band, a join), as the operators do in the
     routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops. An empty band curves out to a + on
     its row, a column on from the split, and on into the join, and a click on that + puts an effect on the band (its

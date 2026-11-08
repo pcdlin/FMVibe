@@ -3249,8 +3249,7 @@ void View::paintFx(Canvas &c) {
         c.fillRect({bandX, outer.y, kFxBoxRadius, outer.h}, kPanel);
         c.strokeRect(outer, outline, held ? 1.6f : 1.3f, kFxBoxRadius);
         paintSplitControls(c, box.split, column, true);
-        // The arrows along its band: into its first card in the band's color, then between its cards; none into its
-        // dashed card.
+        // The arrows along its band, into each of its cards, in the band's color; none into its dashed card.
         // Faint along a band its join doesn't let through, the other band soloed.
         const FxLine line = fxLineShown();
         const float heard = box.item < static_cast<int>(line.size()) && fxBandSoloedOut(line[box.item], box.lane)
@@ -3260,7 +3259,7 @@ void View::paintFx(Canvas &c) {
         int k = 0;
         for (const FxRowCard &card : row.cards)
             if (card.at.lane == box.lane && card.at.item == box.item) {
-                chevron(card.place, box.lane, box.item, k, k == 0 ? band : kFaint.alpha(heard));
+                chevron(card.place, box.lane, box.item, k, band);
                 ++k;
             }
     }
