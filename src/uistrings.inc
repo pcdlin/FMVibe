@@ -798,7 +798,7 @@ STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
 // --- The editor: right-click menus
 
 STR(MenuDuplicate, "Duplicate")
-STR(MenuSplitBands, "Split into high/low bands") // the list a + of the effects graph opens, after the effects
+STR(MenuSplitBands, "Split into high/low bands") // the list of effects on the main line, after the effects
 STR(MenuResetSettings, "Reset settings")
 STR(MenuOtt, "OTT") // a 3-band dynamics' settings set to those of Ableton's OTT preset
 STR(MenuRemove, "Remove")

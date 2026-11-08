@@ -186,7 +186,8 @@ private:
         FxPower,      // param = its switch, a = effect slot, b = position: the icon; a click switches it, a drag moves it
         FxMenuButton, // ADD EFFECT: opens the list of effect types
         FxShadow,     // the dashed card after the effects: opens the list of effect types over itself
-        FxInsert,     // a = place in the chain: the arrow between two cards; opens the list to add an effect there
+        FxInsert,     // a = lane, b = item·kFxGapStride + place (see FxSlotAt): an arrow before a card in the row (the
+                      // first too, and along a container's band), which opens the list to add an effect there
         SourceShadow, // the dashed card after the sources: opens the list of source types over itself
         SourceMenu,   // a = 1 on the open list of source types, 0 around it (a click there closes it)
         SourceMenuItem, // a = SourceType: an entry of the list, adds a source of that type
@@ -263,15 +264,15 @@ private:
         FxNode,       // a = node: a click shows it in the inspector
         FxSlot,       // a = lane (0 the main line, 1 the high band, 2 the low band): a +, which opens the list of effects
         FxGap,        // a = lane, b = item·kFxGapStride + place (see FxSlotAt): a wire's middle, which opens it too
-        FxAddNode,    // a = 0 a split, 1 a join: the list's entry after the effects, opened from a + or a wire
-        FxNodeRemove, // a = node: the x on the inspector's card of a split or a join
+        FxAddNode,    // the list's entry after the effects, a split with its join, opened from the main line
+        FxNodeRemove, // a = node: the x on a split's controls, its container's in the row or its card in the graph
         FxNodeDelete, // a = node: the x in a circle at a node's upper right, while the mouse is over the node
         FxWire,       // a = lane, b = item·kFxGapStride + place: along a wire that takes a node at its middle, its +
         FxClear,      // the button at the FX panel's top right that removes every effect, asking first
         SplitPoint,   // param = the crossover, a = split: its handle on the split's display
         // A split's controls (see splitControlWidgets()), in its container in the row and on its card in the graph.
         SplitBand,    // a = split, b = band (0 low, 1 high): its tab, which shows that band
-        SplitSolo,    // param = a join's solo, a = split, b = band: the S over its band's level, one band at a time
+        SplitSolo,    // param = a join's solo, a = split, b = band: the S under its band's level, one band at a time
         FxBoxGrip,    // a = split's node: its container's title row in the row, which drags it along the line
         FxBoxFold,    // a = split: folds its container to a strip, or unfolds it
         FxBoxAdd,     // a = lane (1 the high band, 2 the low band), b = item: a container's dashed card, for the list
@@ -737,9 +738,10 @@ private:
     std::optional<Rect> fxCardOf(int slot) const;
     int fxSelectedNode() const; // the node the inspector shows, -1 for none
     // An effect just put in `slot`: where the list was opened (see fxSlot_), or, a copy, after the effect it copies.
-    // A split goes at the main line's end, open, or where a wire's middle was clicked with its join right after it.
     void fxPlaceNew(int slot, int copyOf);
-    void addSplit(); // from the main line's + or a wire's middle on it (see fxSlot_)
+    // A split with its join right after it, its bands empty: where the list was opened on the main line (an arrow in
+    // the row, a wire's middle in the graph; see fxSlot_), else at the line's end.
+    void addSplit();
     // An effect, a split (its bands' effects going on the main line in its place, high band first) or a join (its
     // split open again, only while nothing comes after it).
     void removeFxNode(int node);

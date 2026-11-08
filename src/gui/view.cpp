@@ -2446,7 +2446,7 @@ std::vector<View::Widget> View::widgets() const {
         for (FxType type : kFxOffered)
             add(Kind::FxAdd, fxMenuItem(fxMenuAt_, type), -1, static_cast<int>(type));
         if (withNode)
-            add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_), -1, 0);
+            add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_));
     }
     // The open list of an effect's choice (the shaper's curve, the reverb's algorithm), under its button,
     // while that card is on screen and still holds that effect.

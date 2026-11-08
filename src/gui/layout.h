@@ -689,7 +689,6 @@ constexpr float kSoloedOutAlpha = 0.3f; // how strongly a band its join doesn't 
 constexpr float kFxPlusIdleAlpha = 0.4f; // how strongly the graph's +s are drawn while the mouse isn't on them
 constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
 constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
-constexpr float kFxPortR = 5.0f;
 constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
 constexpr float kFxSlotHalf = 8.5f; // a + where a node can go next: a circle, as on a wire's middle
 inline Point fxGridAt(float col, float row, float scroll) { // fractions of a cell too, as nodes glide
