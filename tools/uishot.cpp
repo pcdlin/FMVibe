@@ -2140,7 +2140,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
     // The list a + opens, beside it and kept inside the editor: the effects, then a split or a join a little apart.
     auto listAtPlus = [&](Point plus) {
-        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
     };
     auto plusItem = [&](Point plus, FxType type) {
         const Point at = listAtPlus(plus);
@@ -2275,7 +2275,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                   "the graph's main line is grey, each band's wires and half of the split's and join's nodes in its "
                   "color, fading in across a split and out across a join");
         }
-        click(view, centerOf(detail::splitSoloButton(card, 1)));
+        click(view, centerOf(detail::splitSoloButton(card, 2)));
         const bool soloed = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
                             model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
         view.mouseMove({600.0f, 428.0f}, {});
@@ -2312,7 +2312,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     // Its slope's list under the display, as a filter's is, 12 dB to begin with: 18 dB refused (the list staying
     // open), 24 dB picked, the bands' responses steeper; back to 12, undoably.
     const bool startsAt12 = model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
-    const Rect slopeList = detail::slopeButton(display);
+    const Rect slopeList = detail::splitSlopeButton(display);
     click(view, centerOf(slopeList));
     view.mouseMove(centerOf(detail::listMenuItem(slopeList, kFilterSlopes, 3)), {});
     const bool slopeListShot = renderer.save(view, dir / "40f1-fx-split-slope-list.png");
@@ -2325,6 +2325,68 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     check(startsAt12 && slopeListShot && refused18 && steep && slopeShot &&
               model.value(paramIndex(0, SplitParam::Slope)) == 1.0,
           "a split's slope list picks 6, 12 or 24 dB (not 18), 12 to begin with");
+
+    // BANDS 3 on its card: an empty middle band opens between the two, shown, into the join's third input, its
+    // crossover two octaves above the low one (500 Hz), the slope's list showing 24 dB. An effect on its +, along the
+    // main line's row; its S soloing it alone. BANDS 2 then asks where its effect goes: onto the low band's end. Undone,
+    // it is back on the middle band; without it, BANDS 2 asks nothing; undone, as it was.
+    {
+        const double highBefore = model.value(paramIndex(0, SplitParam::High));
+        const int middle = fxBandPort(0, 1);
+        click(view, centerOf(detail::splitBandsButton(display, 3)));
+        const Rect threeDisplay{card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, 70.0f};
+        view.mouseMove({600.0f, 428.0f}, {});
+        const bool three = model.value(paramIndex(0, SplitParam::Bands)) == 3.0 && from(join, 2) == middle &&
+                           model.ui.splitBand[0] == 2 &&
+                           std::abs(model.value(paramIndex(0, SplitParam::High)) - normFromCutoff(2000.0)) < 0.01 &&
+                           renderer.save(view, dir / "40f3-fx-split-three.png");
+        addAt(cell(4, 0), FxType::Widener);
+        int widener = -1;
+        for (int slot = 0; slot < kFxSlots; ++slot)
+            if (from(slot, 0) == middle)
+                widener = slot;
+        view.mouseMove({600.0f, 428.0f}, {});
+        const bool onMiddle = widener >= 0 && from(join, 2) == fxSlotPort(widener) &&
+                              renderer.save(view, dir / "40f4-fx-split-three-middle.png");
+        click(view, cell(3, 0)); // the split's card again, in the effect's place
+        click(view, centerOf(detail::splitSoloButton(card, 1)));
+        const bool soloMid = model.value(paramIndex(0, SumParam::SoloMid)) == 1.0 &&
+                             model.value(paramIndex(0, SumParam::SoloHigh)) == 0.0 &&
+                             model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
+        view.mouseMove({600.0f, 428.0f}, {});
+        const bool soloShot = renderer.save(view, dir / "40f5-fx-split-three-solo.png");
+        view.undo();
+        // The row shows the container with its middle band.
+        click(view, centerOf(detail::fxModeButton(0)));
+        view.mouseMove({600.0f, 700.0f}, {});
+        const bool rowShot = renderer.save(view, dir / "40f6-fx-row-split-three.png");
+        click(view, centerOf(detail::fxModeButton(1)));
+        click(view, cell(3, 0));
+        const int lowEnd = from(join, 1); // what the low band ends in
+        click(view, centerOf(detail::splitBandsButton(threeDisplay, 2)));
+        view.mouseMove({600.0f, 428.0f}, {});
+        const bool asked = model.value(paramIndex(0, SplitParam::Bands)) == 3.0 &&
+                           renderer.save(view, dir / "40f7-fx-split-three-confirm.png");
+        click(view, centerOf(detail::confirmBandButton(detail::confirmBandsPanel(view.height()), 2)));
+        const bool ontoLow = model.value(paramIndex(0, SplitParam::Bands)) == 2.0 && from(join, 2) < 0 &&
+                             from(widener, 0) == lowEnd && from(join, 1) == fxSlotPort(widener) &&
+                             model.value(paramIndex(widener, FxParam::Type)) == static_cast<double>(FxType::Widener);
+        view.undo();
+        const bool backOnMiddle = model.value(paramIndex(0, SplitParam::Bands)) == 3.0 &&
+                                  from(join, 2) == fxSlotPort(widener) && from(widener, 0) == middle;
+        view.undo(); // the widener gone, the middle band empty
+        click(view, centerOf(detail::splitBandsButton(threeDisplay, 2)));
+        const bool straight = model.value(paramIndex(0, SplitParam::Bands)) == 2.0 && from(join, 2) < 0;
+        view.undo();
+        view.undo();
+        std::printf("      three bands: split %d, an effect on the middle band %d, soloed alone %d, asked %d, onto the "
+                    "low band %d, undone %d, an empty one straight back %d\n",
+                    three, onMiddle, soloMid, asked, ontoLow, backOnMiddle, straight);
+        check(three && onMiddle && soloMid && soloShot && rowShot && asked && ontoLow && backOnMiddle && straight &&
+                  model.value(paramIndex(0, SplitParam::Bands)) == 2.0 && from(join, 2) < 0 &&
+                  model.value(paramIndex(0, SplitParam::High)) == highBefore,
+              "BANDS 3 splits in three, an empty middle band shown between, and BANDS 2 asks where its effects go");
+    }
 
     // + EFFECT with the split picked: a flanger at the end of its high band, before the join; undone.
     addFx(view, FxType::Flanger);
@@ -2351,7 +2413,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     auto middle = [](Point from, Point to) { return Point{(from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f}; };
     auto gapItem = [&](Point gap, bool withNode, int place) {
         const Point at = listAt(view, {gap.x + 26.0f, gap.y - 44.0f}, 180.0f,
-                                8.0f + 13.0f * kFxMenuPitch + (withNode ? 7.0f + kFxMenuPitch : 0.0f));
+                                8.0f + 13.0f * kFxMenuPitch + (withNode ? 7.0f + 2.0f * kFxMenuPitch : 0.0f));
         return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(place) * kFxMenuPitch + (place >= 13 ? 7.0f : 0.0f)};
     };
     const Point mainGap = middle({cell(1, 0).x + detail::kFxNodeR, cell(1, 0).y},
@@ -2549,7 +2611,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, {a.x + 5.0f, a.y + 1.0f});
         // Had that opened the list, this click would only close it.
         click(view, mid);
-        const Point at = listAt(view, {mid.x + 26.0f, mid.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+        const Point at = listAt(view, {mid.x + 26.0f, mid.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
         click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Filter)) * kFxMenuPitch});
         const bool added = from(5, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(5);
         view.undo();
@@ -2638,7 +2700,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Its HIGH tab shows the high band, empty: its dashed card right after the controls opens the list of effects
     // (no split), and a reverb goes on that band.
-    click(view, centerOf(detail::splitTab(column, 1)));
+    click(view, centerOf(detail::splitTab(column, 1, 2)));
     const bool highShown = model.ui.splitBand[0] == 1;
     const Rect add = detail::fxCard(2.0f + detail::kFxBoxEdge);
     const Point addAt{add.x + detail::kFxBoxAddW * 0.5f, add.center().y};
@@ -2696,7 +2758,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     const Point lowKnob = detail::splitKnob(column, 0);
     drag(view, lowKnob, {lowKnob.x, lowKnob.y + 40.0f});
     const double lowLevel = model.value(fxInputIndex(join, 1, FxInputField::Level));
-    click(view, centerOf(detail::splitSoloButton(column, 1)));
+    click(view, centerOf(detail::splitSoloButton(column, 2)));
     const bool soloHigh = model.value(paramIndex(0, SumParam::SoloHigh)) == 1.0 &&
                           model.value(paramIndex(0, SumParam::SoloLow)) == 0.0;
     click(view, centerOf(detail::splitSoloButton(column, 0)));
@@ -2787,7 +2849,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     // The delay carried over the LOW tab shows the low band, and lands at its end, after the widener.
     const Rect delay = detail::fxCard(3.0f + detail::kFxBoxAddSpan + 2.0f * detail::kFxBoxEdge);
     const Point delayGrip{delay.x + 40.0f, delay.y + 17.0f};
-    const Point lowTab = centerOf(detail::splitTab(column, 0));
+    const Point lowTab = centerOf(detail::splitTab(column, 0, 2));
     view.mouseDown(delayGrip, {});
     view.mouseMove({delayGrip.x - 30.0f, delayGrip.y}, {});
     view.mouseMove(lowTab, {});
@@ -2887,7 +2949,7 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
     const bool picked = model.ui.fxSelected == 8;
     const Point plus = detail::fxGridCell(11, 0, most);
     click(view, plus);
-    const Point at = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+    const Point at = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
     click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Reverb)) * kFxMenuPitch});
     const bool added = fxPortOf(model.value(fxInputIndex(kFxOutNode, 0, FxInputField::From))) == fxSlotPort(10) &&
                        model.value(paramIndex(10, FxParam::Type)) == static_cast<double>(FxType::Reverb);
@@ -2938,7 +3000,7 @@ void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {mode.x + mode.w * 0.5f, mode.y + mode.h * 0.5f});
     const Point plus = detail::fxGridCell(3, 0, 0.0f);
     click(view, plus);
-    const Point list = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
+    const Point list = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
     click(view, {list.x + 90.0f, list.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f});
     const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
                        model.value(paramIndex(0, SumParam::Used)) == 1.0;

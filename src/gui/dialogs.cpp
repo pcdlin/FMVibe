@@ -150,6 +150,14 @@ void View::runPreset(PresetAction action) {
 std::string View::confirmWhat() const {
     if (confirm_ == kConfirmFxClear)
         return tr(Str::ConfirmFxClear);
+    if (confirm_ == kConfirmMidBand) {
+        size_t effects = 0;
+        for (const FxLineItem &item : fxLine())
+            if (item.node == fxSplitNode(confirmSplit_))
+                effects = item.mid.size();
+        return effects == 1 ? std::string(tr(Str::ConfirmMidBandOne))
+                            : trf(Str::ConfirmMidBand, {std::to_string(effects)});
+    }
     if (confirm_ == static_cast<int>(PresetAction::Init))
         return tr(Str::ConfirmInit);
     if (confirm_ == static_cast<int>(PresetAction::Save))
@@ -166,7 +174,8 @@ bool View::confirmShorter() const {
 }
 
 std::vector<View::Widget> View::confirmWidgets() const {
-    const Rect panel = confirmPanel(height(), confirmShorter());
+    const bool bands = confirm_ == kConfirmMidBand;
+    const Rect panel = bands ? confirmBandsPanel(height()) : confirmPanel(height(), confirmShorter());
     std::vector<Widget> list;
     auto add = [&](Kind kind, Rect r, int a) {
         Widget w;
@@ -177,6 +186,9 @@ std::vector<View::Widget> View::confirmWidgets() const {
     };
     add(Kind::ConfirmBackdrop, {0.0f, 0.0f, View::kWidth, height()}, 0);
     add(Kind::ConfirmBackdrop, panel, 1);
+    if (bands)
+        for (int choice : {2, 3})
+            add(Kind::ConfirmButton, confirmBandButton(panel, choice), choice);
     add(Kind::ConfirmButton, confirmButton(panel, 0), 0);
     add(Kind::ConfirmButton, confirmButton(panel, 1), 1);
     return list;
@@ -600,14 +612,17 @@ void View::stepPreset(int direction) {
 void View::paintConfirm(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
     const std::string what = confirmWhat();
-    const Rect panel = confirmPanel(height(), confirmShorter());
+    const bool bands = confirm_ == kConfirmMidBand; // where a middle band's effects go (undo brings it back too)
+    const Rect panel = bands ? confirmBandsPanel(height()) : confirmPanel(height(), confirmShorter());
     c.fillRect(panel, kPanel, kRadiusPanel);
     c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
-    const bool clear = confirm_ == kConfirmFxClear; // the effects go, which undo brings back
+    const bool clear = confirm_ == kConfirmFxClear || bands; // the effects go, which undo brings back
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
            overwrite ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()})
-                     : std::string(tr(clear ? Str::ConfirmFxClearTitle : Str::ConfirmTitle)),
+                     : std::string(tr(bands   ? Str::ConfirmMidBandTitle
+                                      : clear ? Str::ConfirmFxClearTitle
+                                              : Str::ConfirmTitle)),
            kTextHeading, kText, Align::Left, true);
     float y = panel.y + 48.0f;
     if (!what.empty()) {

@@ -24,6 +24,11 @@ namespace {
 // The bands of a split the grid uses: the high one along the row above the main line, the low one along the row below.
 constexpr int kHighBand = kFxBands - 1;
 constexpr int kLowBand = 0;
+// The grid's row a band's nodes sit on, by lane: the high band's above the main line, the low band's below, a middle
+// band's on it.
+int laneRow(int lane) {
+    return lane == 1 ? -1 : lane == 2 ? 1 : 0;
+}
 
 Rect boxAround(Point c, float halfW, float halfH) {
     return {c.x - halfW, c.y - halfH, 2.0f * halfW, 2.0f * halfH};
@@ -131,7 +136,7 @@ std::vector<Point> sWire(Point a, Point b) {
 // Where an item of the line sits: on the main line, or along one of a split's bands.
 struct LinePlace {
     int item = -1; // the main line's item it is, or holds it
-    int lane = 0;  // 0 the main line, 1 the high band, 2 the low band
+    int lane = 0;  // 0 the main line, 1 the high band, 2 the low band, 3 the middle band
     int at = 0;    // its place along the band
 };
 
@@ -140,8 +145,8 @@ LinePlace placeOf(const Line &line, int node) {
     for (int i = 0; i < static_cast<int>(line.size()); ++i) {
         if (line[i].node == node)
             return {i, 0, 0};
-        for (int lane = 1; lane <= 2; ++lane) {
-            const std::vector<int> &band = lane == 1 ? line[i].hi : line[i].lo;
+        for (int lane : line[i].lanes()) {
+            const std::vector<int> &band = line[i].band(lane);
             if (const auto it = std::find(band.begin(), band.end(), node); it != band.end())
                 return {i, lane, static_cast<int>(it - band.begin())};
         }
@@ -300,9 +305,11 @@ View::FxLine View::fxLineOfWires() const {
         taken[node] = true;
         const int split = node - kFxSlots;
         FxLineItem item{node, {}, {}, false};
+        item.three = splitThree(split);
         const int high = band(fxBandPort(split, kHighBand), item.hi);
         const int low = band(fxBandPort(split, kLowBand), item.lo);
-        item.joined = high >= 0 && high == low && fxNodeSum(high) >= 0 && !taken[high];
+        const int mid = item.three ? band(fxBandPort(split, 1), item.mid) : high;
+        item.joined = high >= 0 && high == low && high == mid && fxNodeSum(high) >= 0 && !taken[high];
         line.push_back(item);
         if (!item.joined) // open: the line ends here
             break;
@@ -323,20 +330,21 @@ View::FxLine View::fxLineOfWires() const {
 
 void View::writeFxLine(const FxLine &line) {
     std::map<int, double> want;
-    std::array<bool, kFxSplits> used{}, joined{};
+    std::array<bool, kFxSplits> used{}, joined{}, three{};
     for (const FxLineItem &item : line)
         if (fxNodeSplit(item.node)) {
             used[item.node - kFxSlots] = true;
             joined[item.node - kFxSlots] = item.joined;
+            three[item.node - kFxSlots] = item.three;
         }
-    // Every wire goes, at full level, but for a join's two bands, which keep theirs. A level reset loses its
+    // Every wire goes, at full level, but for a join's bands, which keep theirs. A level reset loses its
     // modulation: the grid shows no other wire's level.
     std::vector<int> reset;
     for (int node = 0; node < kFxNodes; ++node)
         for (int input = 0; input < fxInputCount(node); ++input) {
             want[fxInputIndex(node, input, FxInputField::From)] = 0.0;
             const int sum = fxNodeSum(node);
-            if (sum >= 0 && joined[sum] && input < 2)
+            if (sum >= 0 && joined[sum] && input < (three[sum] ? 3 : 2))
                 continue;
             want[fxInputIndex(node, input, FxInputField::Level)] = table_[fxInputIndex(node, input, FxInputField::Level)].def;
             reset.push_back(fxInputIndex(node, input, FxInputField::Level));
@@ -353,34 +361,27 @@ void View::writeFxLine(const FxLine &line) {
         }
         const int split = item.node - kFxSlots;
         wire(item.node, 0, port);
-        int high = fxBandPort(split, kHighBand), low = fxBandPort(split, kLowBand);
-        for (int slot : item.hi) {
-            wire(slot, 0, high);
-            high = fxSlotPort(slot);
+        for (int lane : item.lanes()) { // each band from its port through its effects into the join, or out
+            int band = fxBandPort(split, laneBand(lane));
+            for (int slot : item.band(lane)) {
+                wire(slot, 0, band);
+                band = fxSlotPort(slot);
+            }
+            wire(item.joined ? fxJoinNode(split) : kFxOutNode, laneJoinInput(lane), band);
         }
-        for (int slot : item.lo) {
-            wire(slot, 0, low);
-            low = fxSlotPort(slot);
-        }
-        if (item.joined) {
-            wire(fxJoinNode(split), 0, high);
-            wire(fxJoinNode(split), 1, low);
-            port = fxSumPort(split);
-        } else { // open, the line's last: both bands go out
-            wire(kFxOutNode, 0, high);
-            wire(kFxOutNode, 1, low);
-            port = -1;
-        }
+        port = item.joined ? fxSumPort(split) : -1; // open, the line's last: its bands go out
     }
     if (port >= 0)
         wire(kFxOutNode, 0, port);
     for (int split = 0; split < kFxSplits; ++split) {
         want[paramIndex(split, SplitParam::Used)] = used[split] ? 1.0 : 0.0;
-        want[paramIndex(split, SplitParam::Bands)] = 2.0;
+        want[paramIndex(split, SplitParam::Bands)] = used[split] && three[split] ? 3.0 : 2.0;
         want[paramIndex(split, SumParam::Used)] = joined[split] ? 1.0 : 0.0;
         if (!joined[split]) // a join taken out starts again unsoloed
-            for (const SumParam f : {SumParam::SoloHigh, SumParam::SoloLow})
+            for (const SumParam f : {SumParam::SoloHigh, SumParam::SoloLow, SumParam::SoloMid})
                 want[paramIndex(split, f)] = 0.0;
+        else if (!three[split]) // and a middle band gone takes its solo with it
+            want[paramIndex(split, SumParam::SoloMid)] = 0.0;
     }
     // What modulated a level reset, or the crossover of a split no longer in use, goes.
     for (const Assignment &m : assignments()) {
@@ -408,18 +409,21 @@ View::FxGridLayout View::fxGridLayout(const FxLine &line) {
             ++col;
             continue;
         }
-        // A split's bands start in the column after it, the high band above the main line, the low one below.
+        // A split's bands start in the column after it, the high band above the main line, the low one below, a
+        // middle one along the main line between the split and its join.
         const int start = col + 1;
-        for (size_t k = 0; k < item.hi.size(); ++k)
-            grid.nodes.push_back({item.hi[k], start + static_cast<int>(k), -1});
-        for (size_t k = 0; k < item.lo.size(); ++k)
-            grid.nodes.push_back({item.lo[k], start + static_cast<int>(k), 1});
-        const int longest = static_cast<int>(std::max(item.hi.size(), item.lo.size()));
-        if (item.joined) { // the join in the column after the longer band, a column on from empty ones
+        int longest = 0;
+        for (int lane : item.lanes()) {
+            const std::vector<int> &band = item.band(lane);
+            for (size_t k = 0; k < band.size(); ++k)
+                grid.nodes.push_back({band[k], start + static_cast<int>(k), laneRow(lane)});
+            longest = std::max(longest, static_cast<int>(band.size()));
+        }
+        if (item.joined) { // the join in the column after the longest band, a column on from empty ones
             grid.nodes.push_back({fxJoinNode(item.node - kFxSlots), start + std::max(longest, 1), 0});
         } else { // a + at the end of each band
-            grid.slots.push_back({1, start + static_cast<int>(item.hi.size()), -1});
-            grid.slots.push_back({2, start + static_cast<int>(item.lo.size()), 1});
+            for (int lane : item.lanes())
+                grid.slots.push_back({lane, start + static_cast<int>(item.band(lane).size()), laneRow(lane)});
             open = true;
         }
         col = start + (item.joined ? std::max(longest, 1) : longest) + 1;
@@ -514,10 +518,11 @@ std::optional<Rect> View::fxCardOf(int slot) const {
 void View::fxPlaceNew(int slot, int copyOf) {
     FxLine line = fxLine();
     // The line lists it at its end already, as an effect the wires leave out: it goes where it was asked for instead.
-    for (FxLineItem &item : line) {
-        item.hi.erase(std::remove(item.hi.begin(), item.hi.end(), slot), item.hi.end());
-        item.lo.erase(std::remove(item.lo.begin(), item.lo.end(), slot), item.lo.end());
-    }
+    for (FxLineItem &item : line)
+        for (int lane : {1, 2, 3}) {
+            std::vector<int> &band = item.band(lane);
+            band.erase(std::remove(band.begin(), band.end(), slot), band.end());
+        }
     line.erase(std::remove_if(line.begin(), line.end(), [slot](const FxLineItem &i) { return i.node == slot; }),
                line.end());
     // Into the band at `lane` of item `i`, at `at`, or on the main line at `i`.
@@ -526,7 +531,7 @@ void View::fxPlaceNew(int slot, int copyOf) {
             line.insert(line.begin() + std::clamp(i, 0, static_cast<int>(line.size())), FxLineItem{slot, {}, {}, false});
             return;
         }
-        std::vector<int> &band = lane == 1 ? line[i].hi : line[i].lo;
+        std::vector<int> &band = line[i].band(lane);
         band.insert(band.begin() + std::clamp(at, 0, static_cast<int>(band.size())), slot);
     };
     const bool open = openSplit(line);
@@ -537,22 +542,25 @@ void View::fxPlaceNew(int slot, int copyOf) {
         if (was.lane == 0)
             put(open ? last : last + 1, 0, 0);
         else
-            put(was.item, was.lane, static_cast<int>((was.lane == 1 ? line[was.item].hi : line[was.item].lo).size()));
+            put(was.item, was.lane, static_cast<int>(line[was.item].band(was.lane).size()));
     } else if (fxSlot_.lane >= 0 && fxSlot_.item >= 0) { // a wire's middle
         put(fxSlot_.item, fxSlot_.lane, fxSlot_.place);
     } else if (fxSlot_.lane == 0 || (fxSlot_.lane > 0 && !open)) { // the main line's +
         put(open ? last : last + 1, 0, 0);
     } else if (fxSlot_.lane > 0) { // a band's +
-        put(last, fxSlot_.lane, static_cast<int>((fxSlot_.lane == 1 ? line[last].hi : line[last].lo).size()));
+        put(last, fxSlot_.lane, static_cast<int>(line[last].band(fxSlot_.lane).size()));
     } else if (const int selected = controller_.layout().fxSelected;
                selected >= 0 && selected != slot && placeOf(line, selected).item >= 0) {
         // After the node picked: an effect in its band or on the main line, a join on the main line, a split at the
-        // end of its shorter band (the high one if they are as long).
+        // end of its shortest band (the highest of those as short).
         const LinePlace at = placeOf(line, selected);
         if (fxNodeSplit(selected)) {
             const FxLineItem &item = line[at.item];
-            const int lane = item.lo.size() < item.hi.size() ? 2 : 1;
-            put(at.item, lane, static_cast<int>((lane == 1 ? item.hi : item.lo).size()));
+            int lane = 1;
+            for (int l : item.lanes())
+                if (item.band(l).size() < item.band(lane).size())
+                    lane = l;
+            put(at.item, lane, static_cast<int>(item.band(lane).size()));
         } else {
             put(at.lane == 0 ? at.item + 1 : at.item, at.lane, at.at + 1);
         }
@@ -568,7 +576,7 @@ void View::fxPlaceNew(int slot, int copyOf) {
     revealFxRow(slot);
 }
 
-void View::addSplit() {
+void View::addSplit(int bands) {
     FxLine line = fxLine();
     // With its join right after it, its bands empty: where a wire's middle on the main line was clicked, else at
     // the line's end.
@@ -584,15 +592,17 @@ void View::addSplit() {
         return;
     }
     const UndoScope step(controller_);
-    std::vector<std::pair<int, double>> changes; // a fresh split's crossover
+    std::vector<std::pair<int, double>> changes; // a fresh split's crossovers
     for (const SplitParam f : {SplitParam::Low, SplitParam::High})
         changes.push_back({paramIndex(split, f), table_[paramIndex(split, f)].def});
-    for (int input = 0; input < 2; ++input) // and its join's band levels
+    for (int input = 0; input < 3; ++input) // and its join's band levels
         changes.push_back({fxInputIndex(fxJoinNode(split), input, FxInputField::Level), 0.0}); // 0 dB
     editMany(changes);
+    FxLineItem item{fxSplitNode(split), {}, {}, true};
+    item.three = bands >= 3;
     line.insert(line.begin() + (between ? std::clamp(fxSlot_.item, 0, static_cast<int>(line.size()))
                                         : static_cast<int>(line.size())),
-                FxLineItem{fxSplitNode(split), {}, {}, true});
+                item);
     writeFxLine(line);
     controller_.layout().fxSelected = fxSplitNode(split);
     controller_.layoutChanged();
@@ -609,17 +619,62 @@ void View::removeFxNode(int node) {
     const LinePlace at = placeOf(line, node); // a join's is its split's: it goes with it
     if (at.item < 0)
         return;
-    // A split, or its join: its bands' effects go on the main line in its place, the high band's first.
+    // A split, or its join: its bands' effects go on the main line in its place, the high band's first (then a middle
+    // band's).
     const UndoScope step(controller_);
     const FxLineItem split = line[at.item];
     line.erase(line.begin() + at.item);
     std::vector<FxLineItem> effects;
-    for (int slot : split.hi)
-        effects.push_back({slot, {}, {}, false});
-    for (int slot : split.lo)
-        effects.push_back({slot, {}, {}, false});
+    for (int lane : split.lanes())
+        for (int slot : split.band(lane))
+            effects.push_back({slot, {}, {}, false});
     line.insert(line.begin() + at.item, effects.begin(), effects.end());
     writeFxLine(line);
+}
+
+bool View::splitThree(int split) const {
+    return split >= 0 && split < kFxSplits && std::lround(value(paramIndex(split, SplitParam::Bands))) >= 3;
+}
+
+void View::setSplitBands(int split, int bands, int midTo) {
+    FxLine line = fxLine();
+    const LinePlace at = placeOf(line, fxSplitNode(split));
+    if (at.item < 0)
+        return;
+    FxLineItem &item = line[at.item];
+    const bool three = bands >= 3;
+    if (three == item.three)
+        return;
+    if (!three && !item.mid.empty() && midTo < 0) { // where its effects go is asked first
+        confirm_ = kConfirmMidBand;
+        confirmSplit_ = split;
+        hover_.reset();
+        return;
+    }
+    const UndoScope step(controller_);
+    item.three = three;
+    if (three) {
+        // The high crossover two octaves above the low one (as high as it goes), the middle band in at 0 dB, shown.
+        const double low =
+            splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)))[0];
+        editMany({{paramIndex(split, SplitParam::High), normFromCutoff(std::min(4.0 * low, kMaxCutoff))},
+                  {fxInputIndex(fxJoinNode(split), laneJoinInput(3), FxInputField::Level), 0.0}});
+        writeFxLine(line);
+        showSplitBand(split, tabOfLane(3));
+        return;
+    }
+    const std::vector<int> mid = std::move(item.mid);
+    item.mid.clear();
+    if (midTo == 2)
+        item.lo.insert(item.lo.end(), mid.begin(), mid.end());
+    else if (midTo == 1)
+        item.hi.insert(item.hi.begin(), mid.begin(), mid.end());
+    writeFxLine(line);
+    if (midTo != 1 && midTo != 2)
+        for (int slot : mid) // removed, with their modulation
+            removeEffect(slot);
+    if (splitLane(split) == 2 && controller_.layout().splitBand[split] == tabOfLane(3)) // the middle one was shown
+        showSplitBand(split, midTo == 1 ? tabOfLane(1) : tabOfLane(2));
 }
 
 void View::setFxGraph(bool on) {
@@ -742,15 +797,15 @@ bool View::fxBandSoloedOut(const FxLineItem &item, int lane) const {
     if (!fxNodeSplit(item.node) || !item.joined)
         return false;
     const int sum = item.node - kFxSlots; // a split's join is the sum of its number
-    const bool high = value(paramIndex(sum, SumParam::SoloHigh)) >= 0.5;
-    const bool low = value(paramIndex(sum, SumParam::SoloLow)) >= 0.5;
-    return high != low && (lane == 1 ? low : high);
+    bool any = false;
+    for (int l : item.lanes())
+        any = any || value(paramIndex(sum, laneSolo(l))) >= 0.5;
+    return any && value(paramIndex(sum, laneSolo(lane))) < 0.5;
 }
 
 std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPlaces &places) const {
     // The main line's wires grey, a split's bands' in their colors all the way into the join (or out, left open).
     const Color mainLine = kDim;
-    const Color bandColors[] = {bandColor(kHighBand), bandColor(kLowBand)}; // by lane, the high band's first
     struct Tail {
         Point at;
         Color color;
@@ -776,34 +831,36 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
             continue;
         }
         wire(tail, {p.x - kFxSplitHalfW, p.y}, true, {0, i, 0});
-        // Out of the bands' ports in the split's grey.
+        // Out of the bands' ports in their colors, along their effects.
         const int split = item.node - kFxSlots;
-        Tail bands[] = {{fxBandPortAt(p, kHighBand), bandColors[0], fxBandPort(split, kHighBand)},
-                        {fxBandPortAt(p, kLowBand), bandColors[1], fxBandPort(split, kLowBand)}};
-        for (int lane = 0; lane < 2; ++lane) {
-            const std::vector<int> &band = lane == 0 ? item.hi : item.lo;
-            for (size_t k = 0; k < band.size(); ++k) {
-                const Point e = at[band[k]];
-                wire(bands[lane], {e.x - kFxNodeR, e.y}, true, {lane + 1, i, static_cast<int>(k)});
-                wires.back().faint = fxBandSoloedOut(item, lane + 1);
-                bands[lane] = {{e.x + kFxNodeR, e.y}, bandColors[lane], fxSlotPort(band[k])};
+        std::array<Tail, 4> bands{}; // by lane
+        for (int lane : item.lanes()) {
+            const int band = laneBand(lane);
+            bands[lane] = {fxBandPortAt(p, band), laneColor(lane), fxBandPort(split, band)};
+            const std::vector<int> &effects = item.band(lane);
+            for (size_t k = 0; k < effects.size(); ++k) {
+                const Point e = at[effects[k]];
+                wire(bands[lane], {e.x - kFxNodeR, e.y}, true, {lane, i, static_cast<int>(k)});
+                wires.back().faint = fxBandSoloedOut(item, lane);
+                bands[lane] = {{e.x + kFxNodeR, e.y}, laneColor(lane), fxSlotPort(effects[k])};
             }
         }
         if (item.joined) { // into the join, a node clicked in there going at its band's end
             const Point j = at[fxJoinNode(item.node - kFxSlots)];
             const float input = fxBandPortAt(j, kHighBand).y - j.y; // level with the split's ports
-            for (int lane = 0; lane < 2; ++lane) {
-                const std::vector<int> &band = lane == 0 ? item.hi : item.lo;
-                const Point into{j.x - kFxJoinHalfW, lane == 0 ? j.y + input : j.y - input};
-                const FxSlotAt end{lane + 1, i, static_cast<int>(band.size())};
-                const bool faint = fxBandSoloedOut(item, lane + 1);
-                if (!band.empty()) {
+            for (int lane : item.lanes()) {
+                const std::vector<int> &effects = item.band(lane);
+                const float row = static_cast<float>(laneRow(lane));
+                const Point into{j.x - kFxJoinHalfW, j.y - row * input};
+                const FxSlotAt end{lane, i, static_cast<int>(effects.size())};
+                const bool faint = fxBandSoloedOut(item, lane);
+                if (!effects.empty()) {
                     wire(bands[lane], into, true, end);
                     wires.back().faint = faint;
                     continue;
                 }
                 // Empty: out to its +, on its row a column on from the split, and from there into the join.
-                const Point plus{p.x + kFxGridCol, p.y + (lane == 0 ? -kFxGridRow : kFxGridRow)};
+                const Point plus{p.x + kFxGridCol, p.y + row * kFxGridRow};
                 wire(bands[lane], {plus.x - kFxSlotHalf, plus.y}, false, end);
                 wires.back().plus = plus;
                 wires.back().faint = faint;
@@ -814,11 +871,11 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
             continue;
         }
         open = true; // each band on to its +, and from there out
-        for (int lane = 0; lane < 2; ++lane) {
-            const Point plus = places.slot[lane + 1];
+        for (int lane : item.lanes()) {
+            const Point plus = places.slot[lane];
             wire(bands[lane], {plus.x - kFxSlotHalf, plus.y}, false);
             wire({{plus.x + kFxSlotHalf, plus.y}, bands[lane].color, bands[lane].port},
-                 {out.x - kFxEndHalfW, out.y + (lane == 0 ? -12.0f : 12.0f)}, true);
+                 {out.x - kFxEndHalfW, out.y + 12.0f * static_cast<float>(laneRow(lane))}, true);
         }
     }
     if (!open) {
@@ -840,43 +897,62 @@ float View::fxGlow(int port) const {
 
 // --- A split's controls
 
-Rect View::splitDisplay(Rect card) {
-    return {card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, 104.0f};
+Rect View::splitDisplay(Rect card, bool three) {
+    return {card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, three ? 70.0f : 104.0f};
 }
 
 namespace {
-// The bands' responses on a split's display: how much of each band (0..1) goes through at `hz`, at its slope (a
-// one-pole and the rest, or a Linkwitz-Riley of second or fourth order), and where on the display that shows.
-double bandResponse(int band, double hz, double crossover, int slope) {
-    const double x = band == kLowBand ? hz / crossover : crossover / hz;
+// The bands' responses on a split's display: how much of each band (0..1) goes through at `hz` (by its port's band),
+// at its slope (a one-pole and the rest, or a Linkwitz-Riley of second or fourth order; three bands are always of
+// fourth order), and where on the display that shows.
+double passed(double x, int slope) {
     return slope == 6 ? 1.0 / std::sqrt(1.0 + x * x) : slope == 12 ? 1.0 / (1.0 + x * x) : 1.0 / (1.0 + x * x * x * x);
+}
+double bandResponse(int band, double hz, std::array<double, 2> crossovers, int slope, bool three) {
+    if (!three)
+        return band == kLowBand ? passed(hz / crossovers[0], slope) : passed(crossovers[0] / hz, slope);
+    if (band == kLowBand)
+        return passed(hz / crossovers[0], 24);
+    if (band == kHighBand)
+        return passed(crossovers[1] / hz, 24);
+    return passed(crossovers[0] / hz, 24) * passed(hz / crossovers[1], 24);
 }
 float responseY(Rect display, double level) {
     const float top = display.y + 12.0f, bottom = display.bottom() - 22.0f;
     return bottom - static_cast<float>(level) * (bottom - top);
 }
+// A band's lane by its port's band (0 low, 1 middle, 2 high).
+int bandLane(int band) {
+    return band == kHighBand ? 1 : band == 1 ? 3 : 2;
+}
 } // namespace
 
 double View::splitBandGain(int split, int band) const {
-    // The high band's wire takes the join's first input, the low band's its second. As far along as its knob is, from
-    // silence to 0 dB: as a gain, half the knob would leave a curve at 3 % of its height.
-    const double db = value(fxInputIndex(fxJoinNode(split), band == kLowBand ? 1 : 0, FxInputField::Level));
+    // As far along as its knob is, from silence to 0 dB: as a gain, half the knob would leave a curve at 3 % of its
+    // height.
+    const double db = value(fxInputIndex(fxJoinNode(split), laneJoinInput(bandLane(band)), FxInputField::Level));
     return std::clamp((db - kSumFloorDb) / -kSumFloorDb, 0.0, 1.0);
 }
 
-Point View::splitHandle(int split, Rect display) const {
-    const double hz =
-        splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)))[0];
+Point View::splitHandle(int split, Rect display, int which) const {
+    const bool three = splitThree(split);
+    const std::array<double, 2> crossovers =
+        splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)));
+    const double hz = crossovers[which == 1 && three ? 1 : 0];
     const int slope = slopeDb(filterSlope(value(paramIndex(split, SplitParam::Slope))));
     const float x = display.x + static_cast<float>(normFromCutoff(hz)) * display.w;
-    // On the louder band's curve, where the bands cross at their full levels.
-    const double at = bandResponse(kLowBand, hz, hz, slope) *
-                      std::max(splitBandGain(split, kLowBand), splitBandGain(split, kHighBand));
+    // On the louder curve of the two bands it parts, where they cross.
+    const int below = three ? (which == 1 ? 1 : kLowBand) : kLowBand;
+    const int above = three ? (which == 1 ? kHighBand : 1) : kHighBand;
+    double at = 0.0;
+    for (const int band : {below, above})
+        at = std::max(at, bandResponse(band, hz, crossovers, slope, three) * splitBandGain(split, band));
     return {std::clamp(x, display.x, display.right()), responseY(display, at)};
 }
 
 int View::splitLane(int split) const {
-    return controller_.layout().splitBand[split] == 1 ? 1 : 2;
+    const int tab = controller_.layout().splitBand[split];
+    return tab == 2 && !splitThree(split) ? 2 : laneOfTab(tab);
 }
 
 void View::showSplitBand(int split, int band) {
@@ -930,29 +1006,49 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
         add(Kind::FxBoxFold, cardFold(card, false), -1, split);
     }
     add(Kind::FxNodeRemove, cardClose(card), -1, fxSplitNode(split));
-    for (int band = 0; band < 2; ++band)
-        add(Kind::SplitBand, splitTab(card, band), -1, split, band);
-    // The crossover's handle on the display.
-    const Point h = splitHandle(split, splitDisplay(card));
-    add(Kind::SplitPoint, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f}, paramIndex(split, SplitParam::Low), split);
-    // Its slope's list under the display, as a filter's is: 6, 12 or 24 dB (18, which a filter has, it doesn't).
-    add(Kind::ListButton, slopeButton(splitDisplay(card)), paramIndex(split, SplitParam::Slope));
-    // The knobs: the low band's level, the crossover, the high band's level (the high band's wire takes the join's
-    // first input, the low band's its second); then the bands' solos, under their levels.
-    const int params[] = {fxInputIndex(fxJoinNode(split), 1, FxInputField::Level), paramIndex(split, SplitParam::Low),
-                          fxInputIndex(fxJoinNode(split), 0, FxInputField::Level)};
-    const Str labels[] = {Str::BandLow, Str::LabelCrossover, Str::BandHigh};
-    for (int k = 0; k < 3; ++k) {
-        Widget knob;
-        knob.kind = Kind::Knob;
-        knob.rect = knobRect(splitKnob(card, k), 30.0f);
-        knob.param = params[k];
-        knob.label = tr(labels[k]);
-        list.push_back(knob);
+    const bool three = splitThree(split);
+    const std::vector<int> tabs = three ? std::vector<int>{0, 2, 1} : std::vector<int>{0, 1};
+    for (int tab : tabs)
+        add(Kind::SplitBand, splitTab(card, tabPosition(tab, three), static_cast<int>(tabs.size())), -1, split, tab);
+    // The crossovers' handles on the display.
+    const Rect display = splitDisplay(card, three);
+    for (int which = 0; which < (three ? 2 : 1); ++which) {
+        const Point h = splitHandle(split, display, which);
+        add(Kind::SplitPoint, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f},
+            paramIndex(split, which == 1 ? SplitParam::High : SplitParam::Low), split, which);
     }
-    for (int band = 0; band < 2; ++band)
-        add(Kind::SplitSolo, splitSoloButton(card, band),
-            paramIndex(split, band == 0 ? SumParam::SoloLow : SumParam::SoloHigh), split, band);
+    // Under it, the BANDS switch, and the slope's list as a filter's is: 6, 12 or 24 dB (18, which a filter has, it
+    // doesn't). Three bands always part at 24 dB, so there the list shows that, faint, and doesn't open.
+    for (int bands : {2, 3})
+        add(Kind::SplitBands, splitBandsButton(display, bands), -1, split, bands);
+    add(Kind::ListButton, splitSlopeButton(display), paramIndex(split, SplitParam::Slope));
+    // The knobs: the bands' levels (the high band's wire takes the join's first input, the low band's its second, a
+    // middle band's its third), with the crossover between them in two bands, and in three the two crossovers' over
+    // them; then the bands' solos, under their levels.
+    auto knob = [&](Point at, float size, int param, Str label) {
+        Widget w;
+        w.kind = Kind::Knob;
+        w.rect = knobRect(at, size);
+        w.param = param;
+        w.label = tr(label);
+        list.push_back(w);
+    };
+    auto level = [&](int lane) { return fxInputIndex(fxJoinNode(split), laneJoinInput(lane), FxInputField::Level); };
+    if (three) {
+        knob(splitCrossKnob(card, 0), 24.0f, paramIndex(split, SplitParam::Low), Str::LabelCrossLow);
+        knob(splitCrossKnob(card, 1), 24.0f, paramIndex(split, SplitParam::High), Str::LabelCrossHigh);
+        knob(splitKnob(card, 0), 30.0f, level(2), Str::BandLow);
+        knob(splitKnob(card, 1), 30.0f, level(3), Str::BandMid);
+        knob(splitKnob(card, 2), 30.0f, level(1), Str::BandHigh);
+    } else {
+        knob(splitKnob(card, 0), 30.0f, level(2), Str::BandLow);
+        knob(splitKnob(card, 1), 30.0f, paramIndex(split, SplitParam::Low), Str::LabelCrossover);
+        knob(splitKnob(card, 2), 30.0f, level(1), Str::BandHigh);
+    }
+    const std::pair<int, int> solos[] = {{0, 2}, {1, 3}, {2, 1}}; // knob's place, lane
+    for (const auto &[k, lane] : solos)
+        if (three || lane != 3)
+            add(Kind::SplitSolo, splitSoloButton(card, k), paramIndex(split, laneSolo(lane)), split, lane);
 }
 
 // --- The row
@@ -962,7 +1058,7 @@ float View::fxBoxSpan(const FxLineItem &item) const {
     if (splitFolded(split))
         return kFoldedFx;
     float span = 2.0f * kFxBoxEdge + 1.0f + kFxBoxAddSpan;
-    for (int slot : splitLane(split) == 1 ? item.hi : item.lo)
+    for (int slot : item.band(splitLane(split)))
         span += fxCardSpan(slot);
     return span;
 }
@@ -987,7 +1083,7 @@ View::FxRow View::fxRow(const FxLine &line) const {
         FxRowBox box{split, i, splitLane(split), place, fxBoxSpan(item), splitFolded(split), 0.0f};
         if (!box.folded) { // the band it shows, after its controls
             float at = boxColumn(box) + 1.0f;
-            const std::vector<int> &band = box.lane == 1 ? item.hi : item.lo;
+            const std::vector<int> &band = item.band(box.lane);
             for (int k = 0; k < static_cast<int>(band.size()); ++k) {
                 const float span = fxCardSpan(band[k]);
                 row.cards.push_back({band[k], at, span, {box.lane, i, k}});
@@ -1154,7 +1250,7 @@ void View::startRowDrag(int node) {
         d.was = {0, place.item, 0};
         line.erase(line.begin() + place.item);
     } else { // off a band
-        std::vector<int> &band = place.lane == 1 ? line[place.item].hi : line[place.item].lo;
+        std::vector<int> &band = line[place.item].band(place.lane);
         d.item = {node, {}, {}, false};
         d.was = {place.lane, place.item, place.at};
         band.erase(band.begin() + place.at);
@@ -1175,9 +1271,10 @@ void View::retargetRowDrag(Point mouse) {
             if (box.folded)
                 continue;
             const Rect column = fxCard(boxColumn(box) - fxScroll(), 1.0f);
-            for (int band = 0; band < 2; ++band)
-                if (splitTab(column, band).contains(mouse))
-                    showSplitBand(box.split, band);
+            const bool three = splitThree(box.split);
+            for (int tab = 0; tab < (three ? 3 : 2); ++tab)
+                if (splitTab(column, tabPosition(tab, three), three ? 3 : 2).contains(mouse))
+                    showSplitBand(box.split, tab);
         }
     // Where the mouse is along the row, in card places, held to the cards on screen while the row scrolls under it. It
     // lands after the main line's items whose middles are left of that; an effect, over the band a container shows,
@@ -1221,7 +1318,7 @@ View::FxLine View::fxLineWith(FxLine line, const FxLineItem &item, FxSlotAt at) 
     if (at.lane == 0) {
         line.insert(line.begin() + std::clamp(at.item, 0, static_cast<int>(line.size())), item);
     } else if (at.item >= 0 && at.item < static_cast<int>(line.size())) {
-        std::vector<int> &band = at.lane == 1 ? line[at.item].hi : line[at.item].lo;
+        std::vector<int> &band = line[at.item].band(at.lane);
         band.insert(band.begin() + std::clamp(at.place, 0, static_cast<int>(band.size())), item.node);
     }
     return line;
@@ -1240,7 +1337,7 @@ void View::startFxDrag(int node) {
         d.was = {0, place.item, 0};
         line.erase(line.begin() + place.item);
     } else { // off a band
-        std::vector<int> &band = place.lane == 1 ? line[place.item].hi : line[place.item].lo;
+        std::vector<int> &band = line[place.item].band(place.lane);
         d.item = {taken, {}, {}, false};
         d.was = {place.lane, place.item, place.at};
         band.erase(band.begin() + place.at);
@@ -1250,6 +1347,7 @@ void View::startFxDrag(int node) {
     d.nodes = {d.item.node};
     d.nodes.insert(d.nodes.end(), d.item.hi.begin(), d.item.hi.end());
     d.nodes.insert(d.nodes.end(), d.item.lo.begin(), d.item.lo.end());
+    d.nodes.insert(d.nodes.end(), d.item.mid.begin(), d.item.mid.end());
     if (d.item.joined)
         d.nodes.push_back(fxJoinNode(d.item.node - kFxSlots));
     const FxGridLayout grid = fxGridLayout(fxLine());
@@ -1337,17 +1435,18 @@ void View::retargetFxDrag(Point mouse) {
     for (int i = 0; i < n && !group; ++i) { // an effect onto a band too (a split stays on the main line)
         if (!fxNodeSplit(d.rest[i].node))
             continue;
-        for (int lane = 1; lane <= 2; ++lane) {
-            const std::vector<int> &band = lane == 1 ? d.rest[i].hi : d.rest[i].lo;
+        for (int lane : d.rest[i].lanes()) {
+            const std::vector<int> &band = d.rest[i].band(lane);
             const int size = static_cast<int>(band.size());
             for (int k = 0; k <= size; ++k) {
                 const float prev = k > 0 ? colOf(band[k - 1]) : colOf(d.rest[i].node);
                 const float next = k < size              ? colOf(band[k])
                                    : d.rest[i].joined ? colOf(fxJoinNode(d.rest[i].node - kFxSlots))
                                                       : slotCol(lane);
-                consider({lane, i, k}, prev, next, lane == 1 ? -1.0f : 1.0f);
+                const float row = static_cast<float>(laneRow(lane));
+                consider({lane, i, k}, prev, next, row);
                 if (k == size && !d.rest[i].joined) // an open band's wire bends from its + into OUT
-                    considerOut({lane, i, k}, slotCol(lane), lane == 1 ? -1.0f : 1.0f, lane == 1 ? -0.17f : 0.17f);
+                    considerOut({lane, i, k}, slotCol(lane), row, 0.17f * row);
             }
         }
     }
@@ -1436,15 +1535,22 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         return true;
     case Kind::FxWire: // only its + takes a click
         return true;
-    case Kind::SplitSolo: { // a join's solos, one at a time: one switched on switches the other off, one undo step
-        const int other = paramIndex(w.a, w.b == 0 ? SumParam::SoloHigh : SumParam::SoloLow);
+    case Kind::SplitSolo: { // a join's solos, one at a time: one switched on switches the others off, one undo step
         const UndoScope step(controller_);
-        if (value(w.param) >= 0.5)
+        if (value(w.param) >= 0.5) {
             editMany({{w.param, 0.0}});
-        else
-            editMany({{w.param, 1.0}, {other, 0.0}});
+            return true;
+        }
+        std::vector<std::pair<int, double>> changes{{w.param, 1.0}};
+        for (const SumParam other : {SumParam::SoloHigh, SumParam::SoloLow, SumParam::SoloMid})
+            if (paramIndex(w.a, other) != w.param)
+                changes.push_back({paramIndex(w.a, other), 0.0});
+        editMany(changes);
         return true;
     }
+    case Kind::SplitBands:
+        setSplitBands(w.a, w.b);
+        return true;
     case Kind::SplitBand:
         showSplitBand(w.a, w.b);
         return true;
@@ -1460,7 +1566,7 @@ bool View::fxGraphPress(const Widget &w, Point p) {
     case Kind::FxBoxAdd: { // the list at the mouse, the effect picked going at the end of the band
         const FxLine line = fxLine();
         const int size = w.b < static_cast<int>(line.size())
-                             ? static_cast<int>((w.a == 1 ? line[w.b].hi : line[w.b].lo).size())
+                             ? static_cast<int>(line[w.b].band(w.a).size())
                              : 0;
         fxSlot_ = {w.a, w.b, size};
         fxMenuAt_ = menuAtMouse(p, fxMenu({0.0f, 0.0f}));
@@ -1482,7 +1588,7 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         return true;
     case Kind::FxAddNode: // a split, with its join
         fxMenuOpen_ = false;
-        addSplit();
+        addSplit(w.b);
         fxSlot_ = {};
         return true;
     case Kind::FxNodeRemove:
@@ -1514,7 +1620,7 @@ void View::fxGraphDrag(Point p) {
     const std::optional<Rect> card = splitCardOf(drag_.widget.a);
     if (!card)
         return;
-    const Rect display = splitDisplay(*card);
+    const Rect display = splitDisplay(*card, splitThree(drag_.widget.a));
     controller_.setValue(drag_.widget.param, std::clamp((p.x - display.x) / display.w, 0.0f, 1.0f));
 }
 
@@ -1570,7 +1676,7 @@ void View::paintFxGraph(Canvas &c) {
                          hover_->a == w.at.lane && hover_->b == b;
         // An empty band between a split and its join shows it always.
         const bool empty = w.at.lane > 0 && w.at.item < static_cast<int>(line.size()) &&
-                           (w.at.lane == 1 ? line[w.at.item].hi : line[w.at.item].lo).empty();
+                           line[w.at.item].band(w.at.lane).empty();
         if (!listed && !hot && !empty)
             continue;
         const bool onPlus = hover_ && hover_->kind == Kind::FxGap && hover_->a == w.at.lane && hover_->b == b;
@@ -1591,16 +1697,18 @@ void View::paintFxGraph(Canvas &c) {
     for (const FxLineItem &item : line)
         if (fxNodeSplit(item.node)) {
             const float x = at.node[item.node].x + 22.0f;
-            const float high = fxBandSoloedOut(item, 1) ? kSoloedOutAlpha : 1.0f;
-            const float low = fxBandSoloedOut(item, 2) ? kSoloedOutAlpha : 1.0f;
-            c.text({x, fxGridCell(0, -1, scroll).y - kFxNodeR - 22.0f, 80.0f, 14.0f}, tr(Str::BandHigh), kTextSmall,
-                   bandColor(kHighBand).alpha(high), Align::Left, true);
-            c.text({x, fxGridCell(0, 1, scroll).y + kFxNodeR + 22.0f, 80.0f, 14.0f}, tr(Str::BandLow), kTextSmall,
-                   bandColor(kLowBand).alpha(low), Align::Left, true);
-            for (int slot : item.hi)
-                soloedOut[slot] = high < 1.0f;
-            for (int slot : item.lo)
-                soloedOut[slot] = low < 1.0f;
+            for (int lane : item.lanes()) {
+                const float heard = fxBandSoloedOut(item, lane) ? kSoloedOutAlpha : 1.0f;
+                for (int slot : item.band(lane))
+                    soloedOut[slot] = heard < 1.0f;
+                // The middle band's name over its wire, a little above the main line, clear of the nodes on it.
+                const float y = lane == 1   ? fxGridCell(0, -1, scroll).y - kFxNodeR - 22.0f
+                                : lane == 2 ? fxGridCell(0, 1, scroll).y + kFxNodeR + 22.0f
+                                            : fxGridCell(0, 0, scroll).y - 20.0f;
+                const Str name = lane == 1 ? Str::BandHigh : lane == 2 ? Str::BandLow : Str::BandMid;
+                c.text({lane == 3 ? x + 4.0f : x, y, 80.0f, 14.0f}, tr(name), kTextSmall, laneColor(lane).alpha(heard),
+                       Align::Left, true);
+            }
         }
 
     // IN and OUT.
@@ -1646,32 +1754,47 @@ void View::paintFxGraph(Canvas &c) {
             return;
         }
         const bool join = fxNodeSum(node) >= 0;
+        const int sum = join ? fxNodeSum(node) : node - kFxSlots; // a split's join is the sum of its number
+        const bool three = splitThree(sum);
         const Color color = (join ? sumColor() : splitColor()).alpha(alpha);
         const Rect r = nodeRect(node, center);
         const float glow = alpha < 1.0f ? 0.0f
-                           : join ? fxGlow(fxSumPort(fxNodeSum(node)))
-                                  : std::max(fxGlow(fxBandPort(node - kFxSlots, kHighBand)),
-                                             fxGlow(fxBandPort(node - kFxSlots, kLowBand)));
+                           : join ? fxGlow(fxSumPort(sum))
+                                  : std::max({fxGlow(fxBandPort(sum, kHighBand)), fxGlow(fxBandPort(sum, kLowBand)),
+                                              three ? fxGlow(fxBandPort(sum, 1)) : 0.0f});
         if (glow > 0.01f)
             featherRect(c, r, 6.0f, 14.0f, kText.alpha(0.18f * glow));
         if (isSelected)
             c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, 9.0f);
         // Its upper half in the high band's color, its lower half in the low band's, parted by a slight slant (rising
-        // across a split, falling across a join, its mirror). A split's colors come in from grey at its left, where the
+        // across a split, falling across a join, its mirror); split in three, its thirds, the middle band's between. A split's colors come in from grey at its left, where the
         // main line comes in; a join's go back out to grey at its right, where the main line goes on.
         c.fillRect(r, kCardColor.alpha(alpha), 6.0f);
         const Color neutral = join ? sumColor() : splitColor();
         const std::vector<Point> outline = roundedOutline(r, 6.0f);
         const float slant = join ? -kSplitSlant : kSplitSlant;
-        const Point a{r.x, center.y + slant}, b{r.right(), center.y - slant};
+        const float third = three ? r.h / 6.0f : 0.0f; // the cuts' offsets from the middle
+        const Point a{r.x, center.y - third + slant}, b{r.right(), center.y - third - slant};
+        const Point a2{r.x, center.y + third + slant}, b2{r.right(), center.y + third - slant};
+        auto onCut = [&](Point p, Point q) { // a piece along a cut, where two bands meet: no outline there
+            auto on = [](Point x, Point from, Point to) {
+                const float dx = to.x - from.x, dy = to.y - from.y;
+                return std::abs(dx * (x.y - from.y) - dy * (x.x - from.x)) / std::hypot(dx, dy) < 0.05f;
+            };
+            return (on(p, a, b) && on(q, a, b)) || (three && on(p, a2, b2) && on(q, a2, b2));
+        };
         auto across = [&](float x) { // how far the band's color has come in, 0 grey .. 1
             const float t = std::clamp((x - r.x) / r.w, 0.0f, 1.0f);
             return join ? 1.0f - t : t;
         };
         const float tint = isSelected ? kSelectedFill : 0.1f;
-        for (const int band : {kHighBand, kLowBand}) {
+        for (const int band : {kHighBand, 1, kLowBand}) {
+            if (band == 1 && !three)
+                continue;
             const Color ink = bandColor(band);
-            const std::vector<Point> half = outlineSide(outline, a, b, band == kHighBand);
+            const std::vector<Point> half = band == kHighBand ? outlineSide(outline, a, b, true)
+                                            : band == kLowBand ? outlineSide(outline, a2, b2, false)
+                                                               : outlineSide(outlineSide(outline, a, b, false), a2, b2, true);
             // Its tint in slices across, each as far from grey as the color has come in there.
             constexpr int kSlices = 7;
             for (int k = 0; k < kSlices; ++k) {
@@ -1696,6 +1819,12 @@ void View::paintFxGraph(Canvas &c) {
             };
             for (size_t i = 0; i + 1 < half.size(); ++i) {
                 const Point p = half[i], q = half[i + 1];
+                if (onCut(p, q)) {
+                    flush();
+                    run.clear();
+                    step = -1;
+                    continue;
+                }
                 const int pieces = std::max(1, static_cast<int>(std::ceil(std::abs(q.x - p.x) / 2.0f)));
                 for (int k = 0; k < pieces; ++k) {
                     const Point from{p.x + (q.x - p.x) * k / pieces, p.y + (q.y - p.y) * k / pieces};
@@ -1712,20 +1841,21 @@ void View::paintFxGraph(Canvas &c) {
             flush();
         }
         if (join) {
-            joinIcon(c, {center.x - 8.0f, center.y - 7.0f, 15.0f, 14.0f}, color);
+            joinIcon(c, {center.x - 8.0f, center.y - 7.0f, 15.0f, 14.0f}, color, three ? 3 : 2);
             name(kFxJoinHalfH, trf(Str::NodeJoin, {std::to_string(fxNodeSum(node) + 1)}));
         } else {
-            splitIcon(c, {center.x - 8.0f, center.y - 7.0f, 14.0f, 14.0f}, color);
+            splitIcon(c, {center.x - 8.0f, center.y - 7.0f, 14.0f, 14.0f}, color, three ? 3 : 2);
             name(kFxSplitHalfH, trf(Str::NodeSplit, {std::to_string(node - kFxSlots + 1)}));
         }
         // A band soloed: an S in a circle at the split's and the join's top left, in the soloed band's color (the
-        // accent for both). A split left open, with no join, has no solo.
-        const int sum = join ? fxNodeSum(node) : node - kFxSlots; // a split's join is the sum of its number
+        // accent for more than one). A split left open, with no join, has no solo.
         const bool joined = join || value(paramIndex(sum, SumParam::Used)) >= 0.5;
         const bool high = value(paramIndex(sum, SumParam::SoloHigh)) >= 0.5;
         const bool low = value(paramIndex(sum, SumParam::SoloLow)) >= 0.5;
-        if (joined && (high || low)) {
-            const Color mark = (high && low ? kAccent : bandColor(high ? kHighBand : kLowBand)).alpha(alpha);
+        const bool mid = three && value(paramIndex(sum, SumParam::SoloMid)) >= 0.5;
+        if (joined && (high || low || mid)) {
+            const Color mark = (high + low + mid > 1 ? kAccent : bandColor(high ? kHighBand : mid ? 1 : kLowBand))
+                                   .alpha(alpha);
             const Point m{r.x + 1.0f, r.y + 1.0f};
             c.fillCircle(m, 7.0f, kCardColor.alpha(alpha));
             c.strokeCircle(m, 7.0f, mark, 1.3f);
@@ -1758,10 +1888,7 @@ void View::paintFxGraph(Canvas &c) {
         const bool listed = fxMenuOpen_ && fxSlot_.lane == slot.lane && fxSlot_.item < 0;
         const bool hot = !dragging && hover_ && hover_->kind == Kind::FxSlot && hover_->a == slot.lane;
         const float shown = listed || hot ? 1.0f : kFxPlusIdleAlpha;
-        const Color color = (slot.lane == 1   ? bandColor(kHighBand)
-                             : slot.lane == 2 ? bandColor(kLowBand)
-                                              : kDim)
-                                .alpha(shown);
+        const Color color = (slot.lane > 0 ? laneColor(slot.lane) : kDim).alpha(shown);
         c.fillCircle(m, kFxSlotHalf, kDisplayColor);
         c.fillCircle(m, kFxSlotHalf, color.alpha(listed ? 0.35f : hot ? 0.28f : 0.16f));
         c.strokeCircle(m, kFxSlotHalf, color, 1.2f);
@@ -1801,28 +1928,34 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
                           drag_.widget.a == fxSplitNode(split)) ||
                          (hover_ && hover_->kind == Kind::FxBoxGrip && hover_->a == fxSplitNode(split) &&
                           drag_.kind == DragKind::None);
-    splitIcon(c, fxIconRect(card), grabbed ? kText : kDim);
+    splitIcon(c, fxIconRect(card), grabbed ? kText : kDim, splitThree(split) ? 3 : 2);
     c.text({card.x + 36.0f, card.y + 6.0f, card.w - 84.0f, 20.0f}, trf(Str::NodeSplit, {std::to_string(split + 1)}),
            kTextBody, kText, Align::Left, true);
-    // The bands' responses on the cutoff grid, each in its color and lowered by its level, the one shown filled, the
-    // crossover's handle where they cut.
-    const Rect display = splitDisplay(card);
+    // The bands' responses on the cutoff grid, each in its color and lowered by its level, the one shown filled, a
+    // handle on each crossover where they cut.
+    const bool three = splitThree(split);
+    const Rect display = splitDisplay(card, three);
     c.fillRect(display, kDisplayColor, kRadiusCard);
     for (double hz : {100.0, 1000.0, 10000.0}) {
         const float x = display.x + static_cast<float>(normFromCutoff(hz)) * display.w;
         c.line({x, display.y + 4.0f}, {x, display.bottom() - 4.0f}, kBorder, 1.0f, true);
     }
-    const double hz =
-        splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)))[0];
+    const std::array<double, 2> crossovers =
+        splitCrossovers(value(paramIndex(split, SplitParam::Low)), value(paramIndex(split, SplitParam::High)));
     const int slope = slopeDb(filterSlope(value(paramIndex(split, SplitParam::Slope))));
-    const int shown = splitLane(split) == 1 ? kHighBand : kLowBand;
-    for (const int band : {shown == kLowBand ? kHighBand : kLowBand, shown}) {
+    const int shown = laneBand(splitLane(split));
+    std::vector<int> bands; // the one shown last, over the others
+    for (const int band : {kLowBand, 1, kHighBand})
+        if (band != shown && (three || band != 1))
+            bands.push_back(band);
+    bands.push_back(shown);
+    for (const int band : bands) {
         const double gain = splitBandGain(split, band);
         std::vector<Point> points;
         for (int k = 0; k <= 120; ++k) {
             const double norm = k / 120.0;
             points.push_back({display.x + static_cast<float>(norm) * display.w,
-                              responseY(display, gain * bandResponse(band, cutoffFromNorm(norm), hz, slope))});
+                              responseY(display, gain * bandResponse(band, cutoffFromNorm(norm), crossovers, slope, three))});
         }
         if (band == shown) {
             std::vector<Point> area = points;
@@ -1834,15 +1967,27 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
             c.polyline(points.data(), points.size(), bandColor(band).alpha(0.5f), 1.4f);
         }
     }
-    const Point h = splitHandle(split, display);
-    c.line({h.x, display.y + 2.0f}, {h.x, display.bottom() - 2.0f}, kText.alpha(0.3f), 1.0f);
-    const bool hot = (hover_ && hover_->kind == Kind::SplitPoint && hover_->a == split) ||
-                     (drag_.kind == DragKind::SplitPoint && drag_.widget.a == split);
-    c.fillCircle(h, hot ? 7.0f : 6.0f, kText);
-    c.strokeCircle(h, hot ? 7.0f : 6.0f, kDisplayColor, 1.5f);
-    char text[24];
-    std::snprintf(text, sizeof(text), hz >= 1000.0 ? "%.1f kHz" : "%.0f Hz", hz >= 1000.0 ? hz / 1000.0 : hz);
-    c.text({h.x - 40.0f, display.bottom() - 18.0f, 80.0f, 14.0f}, text, kTextSmall, kText);
+    for (int which = 0; which < (three ? 2 : 1); ++which) {
+        const Point h = splitHandle(split, display, which);
+        c.line({h.x, display.y + 2.0f}, {h.x, display.bottom() - 2.0f}, kText.alpha(0.3f), 1.0f);
+        const bool hot = (hover_ && hover_->kind == Kind::SplitPoint && hover_->a == split && hover_->b == which) ||
+                         (drag_.kind == DragKind::SplitPoint && drag_.widget.a == split && drag_.widget.b == which);
+        c.fillCircle(h, hot ? 7.0f : 6.0f, kText);
+        c.strokeCircle(h, hot ? 7.0f : 6.0f, kDisplayColor, 1.5f);
+        const double hz = crossovers[which];
+        char text[24];
+        std::snprintf(text, sizeof(text), hz >= 1000.0 ? "%.1f kHz" : "%.0f Hz", hz >= 1000.0 ? hz / 1000.0 : hz);
+        // Two readouts kept apart, each on its side of the other.
+        float x = h.x - 40.0f;
+        if (three) {
+            const float other = splitHandle(split, display, 1 - which).x;
+            const float gap = 48.0f - std::abs(other - h.x);
+            if (gap > 0.0f)
+                x += (which == 0 ? -0.5f : 0.5f) * gap;
+        }
+        x = std::clamp(x, display.x - 18.0f, display.right() - 62.0f);
+        c.text({x, display.bottom() - 18.0f, 80.0f, 14.0f}, text, kTextSmall, kText);
+    }
 }
 
 } // namespace fmvibe::gui

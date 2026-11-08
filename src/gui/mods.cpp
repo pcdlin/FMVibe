@@ -605,12 +605,14 @@ View::MenuNode View::cascadeCategories() const {
         MenuNode node = category(trf(Str::NodeSplit, {std::to_string(split + 1)}));
         node.color = splitColor();
         add(node, paramIndex(split, SplitParam::Low), trf(Str::ParamSplit, {std::to_string(split + 1)}));
+        if (item.three) // and its high crossover, split in three
+            add(node, paramIndex(split, SplitParam::High), trf(Str::ParamSplit, {std::to_string(split + 1)}));
         effects.children.push_back(std::move(node));
         if (!item.joined)
             continue;
         MenuNode join = category(trf(Str::NodeJoin, {std::to_string(split + 1)}));
         join.color = sumColor();
-        for (int input = 0; input < 2; ++input)
+        for (int input = 0; input < (item.three ? 3 : 2); ++input) // the high band's, the low one's, a middle one's
             add(join, fxInputIndex(fxJoinNode(split), input, FxInputField::Level),
                 trf(Str::ParamSum, {std::to_string(split + 1)}));
         effects.children.push_back(std::move(join));

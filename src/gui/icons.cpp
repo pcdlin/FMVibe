@@ -344,17 +344,21 @@ void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale)
 }
 
 // A small picture of each effect, for its card's title and the ADD EFFECT list.
-void splitIcon(Canvas &c, Rect r, Color color) {
+void splitIcon(Canvas &c, Rect r, Color color, int bands) {
     const Point from{r.x, r.center().y}, fork{r.x + r.w * 0.4f, r.center().y};
     c.line(from, fork, color, 1.5f);
     for (float y : {-0.45f, 0.45f})
         c.line(fork, {r.right(), r.center().y + y * r.h}, color, 1.5f);
+    if (bands >= 3)
+        c.line(fork, {r.right(), r.center().y}, color, 1.5f);
 }
 
-void joinIcon(Canvas &c, Rect r, Color color) {
+void joinIcon(Canvas &c, Rect r, Color color, int bands) {
     const Point meet{r.x + r.w * 0.6f, r.center().y};
     c.line({r.x, r.center().y - 0.45f * r.h}, meet, color, 1.5f);
     c.line({r.x, r.center().y + 0.45f * r.h}, meet, color, 1.5f);
+    if (bands >= 3)
+        c.line({r.x, r.center().y}, meet, color, 1.5f);
     c.line(meet, {r.right(), r.center().y}, color, 1.5f);
 }
 

@@ -633,8 +633,8 @@ Color View::listColor(int param) const {
 }
 
 int View::listShown(int param) const {
-    if (isSplitSlope(param)) // 18 plays as 24
-        return filterSlope(value(param)) == 2 ? kFilterSlopes - 1 : filterSlope(value(param));
+    if (isSplitSlope(param)) // 18 plays as 24, and three bands always part at 24
+        return filterSlope(value(param)) == 2 || splitThree(splitOf(param)) ? kFilterSlopes - 1 : filterSlope(value(param));
     if (isFilterSlope(param))
         return playedSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), filterSlope(value(param)));
     return static_cast<int>(std::lround(value(param)));
@@ -670,8 +670,8 @@ std::vector<int> View::fxChain() const {
     for (const FxLineItem &item : fxLine()) {
         if (item.node < kFxSlots)
             chain.push_back(item.node);
-        chain.insert(chain.end(), item.hi.begin(), item.hi.end());
-        chain.insert(chain.end(), item.lo.begin(), item.lo.end());
+        for (int lane : item.lanes())
+            chain.insert(chain.end(), item.band(lane).begin(), item.band(lane).end());
     }
     if (derivedDepth_ > 0)
         derived_.chain = chain;
@@ -852,10 +852,11 @@ void View::removeEffect(int slot) {
         shapeEditor_ = -1;
     // Out of the line, which closes up behind it.
     FxLine line = fxLine();
-    for (FxLineItem &item : line) {
-        item.hi.erase(std::remove(item.hi.begin(), item.hi.end(), slot), item.hi.end());
-        item.lo.erase(std::remove(item.lo.begin(), item.lo.end(), slot), item.lo.end());
-    }
+    for (FxLineItem &item : line)
+        for (int lane : {1, 2, 3}) {
+            std::vector<int> &band = item.band(lane);
+            band.erase(std::remove(band.begin(), band.end(), slot), band.end());
+        }
     line.erase(std::remove_if(line.begin(), line.end(), [slot](const FxLineItem &i) { return i.node == slot; }),
                line.end());
     writeFxLine(line);
@@ -2525,7 +2526,8 @@ std::vector<View::Widget> View::widgets() const {
         for (FxType type : kFxOffered)
             add(Kind::FxAdd, fxMenuItem(fxMenuAt_, type), -1, static_cast<int>(type));
         if (withNode)
-            add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_));
+            for (int bands : {2, 3})
+                add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_, bands), -1, -1, bands);
     }
     // The open list of an effect's choice (the shaper's curve, the reverb's algorithm), under its button,
     // while that card is on screen and still holds that effect.
@@ -2548,7 +2550,7 @@ std::vector<View::Widget> View::widgets() const {
     // A split's list of slopes, under its button on its card (in the row's container or the graph's inspector).
     if (const int split = splitOf(listMenu_); split >= 0 && isSplitSlope(listMenu_) && fxWide()) {
         if (const std::optional<Rect> shown = splitCardOf(split)) {
-            const Rect button = slopeButton(splitDisplay(*shown));
+            const Rect button = splitSlopeButton(splitDisplay(*shown, splitThree(split)));
             const int items = listCount(listMenu_);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
@@ -3327,7 +3329,7 @@ void View::paintFx(Canvas &c) {
         if (box.folded) { // a strip: its icon, a grip, its cross, then its name down the rest
             c.fillRect(whole, splitFill(), kRadiusCard);
             c.strokeRect(whole, outline, held ? 1.6f : 1.3f, kRadiusCard);
-            splitIcon(c, fxIconRect(whole), hot ? kText : kDim);
+            splitIcon(c, fxIconRect(whole), hot ? kText : kDim, splitThree(box.split) ? 3 : 2);
             gripDots(whole, hot);
             paintDownward(c, {whole.x, whole.y + 82.0f, whole.w, whole.h - 90.0f},
                           trf(Str::NodeSplit, {std::to_string(box.split + 1)}), kText);
@@ -3348,7 +3350,7 @@ void View::paintFx(Canvas &c) {
                                     fxBandSoloedOut(shownLine[box.item], box.lane)
                                 ? kSoloedOutAlpha
                                 : 1.0f;
-        const Color band = bandColor(box.lane == 1 ? kFxBands - 1 : 0).alpha(heard);
+        const Color band = laneColor(box.lane).alpha(heard);
         int k = 0;
         for (const FxRowCard &card : row.cards)
             if (card.at.lane == box.lane && card.at.item == box.item) {
@@ -6074,39 +6076,44 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::SplitBand: {
         // The band's name on the tabs' line after a dot in its color, the one shown underlined in it, as an operator
-        // page's tabs are in the accent. Beside a band soloed, an S in its color; beside a hidden one, how many effects
-        // it holds.
-        const bool high = w.b == 1;
-        const bool shown = (splitLane(w.a) == 1) == high;
-        const Color band = bandColor(high ? kFxBands - 1 : 0);
-        const char *name = tr(high ? Str::TabBandHigh : Str::TabBandLow);
+        // page's tabs are in the accent. A band soloed has an S in its color in its dot's place; a hidden one, how many
+        // effects it holds after its name.
+        const int lane = laneOfTab(w.b);
+        const bool shown = splitLane(w.a) == lane;
+        const Color band = laneColor(lane);
+        const char *name = tr(lane == 1 ? Str::TabBandHigh : lane == 3 ? Str::TabBandMid : Str::TabBandLow);
         const float width = c.textWidth(name, kTextLabel, true);
-        const float x = w.rect.center().x - 0.5f * width + 4.0f, y = w.rect.center().y;
+        size_t effects = 0;
+        for (const FxLineItem &item : fxLine())
+            if (item.node == fxSplitNode(w.a))
+                effects = item.band(lane).size();
+        const bool soloed = value(paramIndex(w.a, laneSolo(lane))) >= 0.5;
+        // The dot (an S in a circle while soloed), the name and its count centered together, so three tabs keep to
+        // their own.
+        const bool counted = !shown && effects > 0;
+        const float lead = soloed ? 4.0f : 0.0f; // the S's circle wider than the dot
+        const float x = w.rect.center().x - 0.5f * (width + (counted ? 12.0f : 0.0f) - lead) + 4.0f,
+                    y = w.rect.center().y;
         const float base = w.rect.bottom();
         c.line({w.rect.x, base - 0.5f}, {w.rect.right(), base - 0.5f}, mix(kCardColor, kDim, 0.25f), 1.0f);
         if (shown)
             c.line({w.rect.x + 8.0f, base - 1.0f}, {w.rect.right() - 8.0f, base - 1.0f}, band, 2.0f);
-        c.fillCircle({x - 9.0f, y}, 3.0f, band.alpha(shown ? 1.0f : 0.45f));
-        c.text({x, w.rect.y, width + 2.0f, w.rect.h}, name, kTextLabel, shown || hovered ? kText : kDim, Align::Left, true);
-        const bool soloed = value(paramIndex(w.a, high ? SumParam::SoloHigh : SumParam::SoloLow)) >= 0.5;
-        const Point badge{x + width + 9.0f, y};
         if (soloed) {
+            const Point badge{x - 11.0f, y};
             c.fillCircle(badge, 6.0f, band);
             c.text({badge.x - 6.0f, badge.y - 6.5f, 12.0f, 13.0f}, tr(Str::SoloMark), kTextSmall, kDisplayColor,
                    Align::Center, true);
-        } else if (!shown) {
-            size_t effects = 0;
-            for (const FxLineItem &item : fxLine())
-                if (item.node == fxSplitNode(w.a))
-                    effects = (high ? item.hi : item.lo).size();
-            if (effects > 0)
-                c.text({badge.x - 8.0f, w.rect.y, 16.0f, w.rect.h}, std::to_string(effects), kTextSmall, kDim.alpha(0.8f));
+        } else {
+            c.fillCircle({x - 9.0f, y}, 3.0f, band.alpha(shown ? 1.0f : 0.45f));
         }
+        c.text({x, w.rect.y, width + 2.0f, w.rect.h}, name, kTextLabel, shown || hovered ? kText : kDim, Align::Left, true);
+        if (counted)
+            c.text({x + width + 1.0f, w.rect.y, 16.0f, w.rect.h}, std::to_string(effects), kTextSmall, kDim.alpha(0.8f));
         break;
     }
     case Kind::SplitSolo: { // a plain S, filled in its band's color while soloed
         const bool on = value(w.param) >= 0.5;
-        const Color band = bandColor(w.b == 1 ? kFxBands - 1 : 0);
+        const Color band = laneColor(w.b);
         c.fillRect(w.rect, on ? band.alpha(0.22f) : (hovered ? kTrack : kCardColor), kRadiusControl);
         c.strokeRect(w.rect, on ? band : mix(kCardColor, kDim, 0.25f), 1.0f, kRadiusControl);
         c.text(w.rect, tr(Str::SoloMark), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
@@ -6126,7 +6133,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // In capitals, as ADD EFFECT and ADD SOURCE are.
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, upperCase(tr(Str::ButtonAddToBand)), kTextLabel, ink,
                Align::Center, true);
-        c.text({w.rect.x, m.y + arm + 20.0f, w.rect.w, 14.0f}, upperCase(tr(w.a == 1 ? Str::TabBandHigh : Str::TabBandLow)),
+        c.text({w.rect.x, m.y + arm + 20.0f, w.rect.w, 14.0f},
+               upperCase(tr(w.a == 1 ? Str::TabBandHigh : w.a == 3 ? Str::TabBandMid : Str::TabBandLow)),
                kTextLabel, ink, Align::Center, true);
         break;
     }
@@ -6230,15 +6238,18 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, fxName(static_cast<FxType>(w.a)), kTextBody,
                hovered ? kText : kDim, Align::Left);
         break;
-    case Kind::FxAddNode: { // apart from the effects by a line: a split, with its join
+    case Kind::FxAddNode: { // apart from the effects by a line: a split in two bands or three, with its join
         const Color color = splitColor();
-        const float line = w.rect.y - 0.5f * kFxMenuNodeGap - 1.0f;
-        c.line({w.rect.x + 4.0f, line}, {w.rect.right() - 4.0f, line}, kBorder, 1.0f);
+        const bool three = w.b == 3;
+        if (!three) {
+            const float line = w.rect.y - 0.5f * kFxMenuNodeGap - 1.0f;
+            c.line({w.rect.x + 4.0f, line}, {w.rect.right() - 4.0f, line}, kBorder, 1.0f);
+        }
         paintMenuRow(c, w.rect, hovered, false);
         const Rect icon{w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f};
-        splitIcon(c, icon, hovered ? color : kDim);
-        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, tr(Str::MenuSplitBands), kTextBody,
-               hovered ? kText : kDim, Align::Left);
+        splitIcon(c, icon, hovered ? color : kDim, three ? 3 : 2);
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, tr(three ? Str::MenuSplitThree : Str::MenuSplitBands),
+               kTextBody, hovered ? kText : kDim, Align::Left);
         break;
     }
     case Kind::FxRemove:
@@ -6291,7 +6302,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A slope shows as it plays (a band-pass's 6 dB as 12), and faintly for a comb, which has none.
         const int shown = listShown(w.param);
         const bool relevant =
-            !isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
+            (!isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))))) &&
+            !(isSplitSlope(w.param) && splitThree(splitOf(w.param)));
         const bool lit = relevant && (hovered || listMenu_ == w.param);
         const Color color = listColor(w.param);
         c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, kRadiusControl);
@@ -6664,15 +6676,33 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text(w.rect, tr(Str::ButtonOpenFolder), kTextLabel, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ConfirmButton: {
+        if (w.a >= 2) { // a split's middle band's effects onto its low band (2) or its high one (3), in that color
+            const Color band = laneColor(w.a == 2 ? 2 : 1);
+            c.fillRect(w.rect, band.alpha(hovered ? 0.3f : 0.16f), kRadiusControl);
+            c.strokeRect(w.rect, band, 1.0f, kRadiusControl);
+            c.text(w.rect, tr(w.a == 2 ? Str::ButtonMidToLow : Str::ButtonMidToHigh), kTextBody, kText, Align::Center,
+                   true);
+            break;
+        }
+        const bool bands = confirm_ == kConfirmMidBand; // removing them is no more the way ahead than the others
         const bool ok = w.a == 1;
-        c.fillRect(w.rect, ok ? kAccent.alpha(hovered ? 0.35f : 0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
-        c.strokeRect(w.rect, ok ? kAccent : kBorder, 1.0f, kRadiusControl);
+        const bool lit = ok && !bands;
+        c.fillRect(w.rect, lit ? kAccent.alpha(hovered ? 0.35f : 0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
+        c.strokeRect(w.rect, lit ? kAccent : kBorder, 1.0f, kRadiusControl);
         const char *label = tr(!ok                                                ? Str::ButtonCancel
+                               : bands                                            ? Str::ButtonMidRemove
                                : confirm_ == kConfirmFxClear                      ? Str::ButtonClearFx
                                : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
                                : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
                                                                                   : Str::ButtonLoad);
-        c.text(w.rect, label, kTextBody, kText, Align::Center, ok);
+        c.text(w.rect, label, kTextBody, kText, Align::Center, lit);
+        break;
+    }
+    case Kind::SplitBands: { // the BANDS switch: 2 | 3, the one it is lit in the accent
+        const bool on = (w.b == 3) == splitThree(w.a);
+        c.fillRect(w.rect, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
+        c.strokeRect(w.rect, on ? kAccent.alpha(0.8f) : kBorder, 1.0f, kRadiusControl);
+        c.text(w.rect, std::to_string(w.b), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
         break;
     }
     case Kind::SettingsClose: {
@@ -6936,8 +6966,11 @@ void View::paintKnob(Canvas &c, const Widget &w) {
                       (isLfoPhase(w.param) && !lfoPhaseUsed(sourceOf(w.param)));
     // A join's band levels in their bands' colors (the high band's wire takes its first input).
     const int sum = fxSumOfLevel(w.param);
-    const bool highLevel = sum >= 0 && w.param == fxInputIndex(fxSumNode(sum), 0, FxInputField::Level);
-    const Color plain = sum >= 0 ? bandColor(highLevel ? kFxBands - 1 : 0) : kAccent;
+    const int levelOf = sum < 0 ? -1
+                        : w.param == fxInputIndex(fxSumNode(sum), 0, FxInputField::Level) ? 1
+                        : w.param == fxInputIndex(fxSumNode(sum), 1, FxInputField::Level) ? 2
+                                                                                          : 3;
+    const Color plain = sum >= 0 ? laneColor(levelOf) : kAccent;
     const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : plain).alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
@@ -7185,6 +7218,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipSplitBand);
     } else if (hover_->kind == Kind::SplitSolo) {
         text = tr(Str::TipSplitSolo);
+    } else if (hover_->kind == Kind::SplitBands) {
+        text = tr(hover_->b == 3 ? Str::TipSplitThree : Str::TipSplitTwo);
     } else if (hover_->kind == Kind::DynBand) {
         const Str bands[] = {Str::BandLow, Str::BandMid, Str::BandHigh};
         text = trf(value(paramIndex(hover_->a, FxParam::MdLink)) >= 0.5 ? Str::TipMcBandLinked : Str::TipMcBand,
@@ -8417,6 +8452,8 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ListButton:
         if (isFilterSlope(w.param) && !hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param))))))
             break; // a comb has no slope: its list stays shut
+        if (isSplitSlope(w.param) && splitThree(splitOf(w.param)))
+            break; // nor do three bands, which always part at 24 dB
         listMenu_ = listMenu_ == w.param ? -1 : w.param;
         break;
     case Kind::LabelMode:
@@ -8540,9 +8577,14 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ConfirmButton: {
         const auto action = static_cast<PresetAction>(confirm_);
         const bool clear = confirm_ == kConfirmFxClear;
+        const bool bands = confirm_ == kConfirmMidBand;
         confirm_ = -1;
         hover_.reset();
-        if (w.a == 1 && clear)
+        if (bands) { // back in two bands: the middle band's effects removed (1), onto the low band (2), the high one (3)
+            if (w.a > 0)
+                setSplitBands(confirmSplit_, 2, w.a == 1 ? 0 : w.a == 2 ? 2 : 1);
+            confirmSplit_ = -1;
+        } else if (w.a == 1 && clear)
             clearFx();
         else if (w.a == 1)
             runPreset(action);
@@ -9144,9 +9186,24 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             stepShapeGrid(hit->a, whole);
         return;
     }
-    if (hit && hit->kind == Kind::SplitBand) { // a split's tabs: down to the high band at the right, up to the low one
+    if (hit && hit->kind == Kind::SplitBand) { // a split's tabs: down a tab to the right, up one to the left
+        if (steps != 0.0f) {
+            const bool three = splitThree(hit->a);
+            const int count = three ? 3 : 2;
+            const int at = tabPosition(controller_.layout().splitBand[hit->a] == 2 && !three
+                                           ? 0
+                                           : controller_.layout().splitBand[hit->a],
+                                       three);
+            const int to = std::clamp(at + (steps < 0.0f ? 1 : -1), 0, count - 1);
+            for (int tab = 0; tab < count; ++tab)
+                if (tabPosition(tab, three) == to)
+                    showSplitBand(hit->a, tab);
+        }
+        return;
+    }
+    if (hit && hit->kind == Kind::SplitBands) { // the BANDS switch: down for three, up for two
         if (steps != 0.0f)
-            showSplitBand(hit->a, steps < 0.0f ? 1 : 0);
+            setSplitBands(hit->a, steps < 0.0f ? 3 : 2);
         return;
     }
     if ((!hit || hit->param < 0) && modPanel(controller_.layout().sourcesCollapsed).contains(p) && steps != 0.0f) {
@@ -9200,6 +9257,8 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     }
     if (const int split = splitOf(hit->param); split >= 0 && hit->param == paramIndex(split, SplitParam::Slope)) {
+        if (splitThree(split))
+            return; // three bands always part at 24 dB
         const int slopes[] = {0, 1, kFilterSlopes - 1}; // 6, 12 and 24 dB, a notch a step
         int at = 0;
         for (int k = 0; k < 3; ++k)

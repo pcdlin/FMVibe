@@ -2483,6 +2483,31 @@ int main(int argc, char **argv) {
         check(std::abs(neither) < 0.1 && std::abs(lowOnly) < 1.0 && highOnly < -20.0 && std::abs(both) < 0.1,
               "a join's solo lets only the band soloed through");
 
+        // Split in three at 200 Hz and 2 kHz, the A4 in the middle band, which takes the join's third input: soloed,
+        // the A4 plays on; the low band soloed takes it away.
+        clearGraph();
+        setParams({{paramIndex(0, SplitParam::Used), 1.0},
+                   {paramIndex(0, SplitParam::Bands), 3.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(200.0)},
+                   {paramIndex(0, SplitParam::High), normFromCutoff(2000.0)},
+                   {paramIndex(0, SumParam::Used), 1.0},
+                   {from(fxSplitNode(0), 0), port(kFxPortIn)},
+                   {from(fxSumNode(0), 0), port(fxBandPort(0, 2))},
+                   {from(fxSumNode(0), 1), port(fxBandPort(0, 0))},
+                   {from(fxSumNode(0), 2), port(fxBandPort(0, 1))},
+                   {from(kFxOutNode, 0), port(fxSumPort(0))}});
+        auto soloedOf3 = [&](SumParam solo) {
+            setParams({{paramIndex(0, SumParam::SoloHigh), solo == SumParam::SoloHigh ? 1.0 : 0.0},
+                       {paramIndex(0, SumParam::SoloLow), solo == SumParam::SoloLow ? 1.0 : 0.0},
+                       {paramIndex(0, SumParam::SoloMid), solo == SumParam::SoloMid ? 1.0 : 0.0}});
+            return db(magnitude(play({}), 440.0) / plain);
+        };
+        const double midOnly = soloedOf3(SumParam::SoloMid), lowOf3 = soloedOf3(SumParam::SoloLow);
+        soloedOf3(SumParam::Used); // none soloed
+        std::printf("      a join's solos on the A4 split in three at 200 Hz and 2 kHz: middle %+.1f dB, low %+.1f\n",
+                    midOnly, lowOf3);
+        check(std::abs(midOnly) < 1.0 && lowOf3 < -20.0, "a join's solo of a three-band split's middle band lets it alone through");
+
         // A hard shaper on the low band of a split: at 2 kHz the A4 goes through it and comes out squared (its 3rd
         // harmonic), at 200 Hz it is in the high band, which goes straight out, and stays a sine.
         clearGraph();

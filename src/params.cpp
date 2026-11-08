@@ -209,6 +209,8 @@ void buildTable(ParamTable &t) {
             ParamKind::Toggle, 0.0, 1.0, 0.0);
         add(paramIndex(sum, SumParam::SoloLow), name + " " + tr(Str::ParamSoloLow), tr(Str::ModuleFx) + ("/" + name),
             ParamKind::Toggle, 0.0, 1.0, 0.0);
+        add(paramIndex(sum, SumParam::SoloMid), name + " " + tr(Str::ParamSoloMid), tr(Str::ModuleFx) + ("/" + name),
+            ParamKind::Toggle, 0.0, 1.0, 0.0);
     }
     // The input straight out to begin with, no other wire; one connected starts at full level.
     for (int node = 0; node < kFxNodes; ++node) {

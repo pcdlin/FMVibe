@@ -253,10 +253,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     another, which up to four **splits** cut by frequency into two bands at their Crossover (250 Hz to
     begin with), at a Slope of 6, 12 or 24 dB per octave (12 to begin with, a second-order Linkwitz-Riley crossover; 24 the
     fourth-order one the 3-band dynamics has; 6 a one-pole low-pass with the rest as the high band), so the bands sum
-    back flat at each. Each band runs through effects of its own, say the lows through a shaper and a compressor and the
+    back flat at each. A split can also cut into **three** bands, low, middle and high, at a low and a high crossover
+    (250 Hz and 2.5 kHz to begin with, the high one kept a third of an octave above the low one), always at 24 dB, as
+    the 3-band dynamics does. Each band runs through effects of its own, say the lows through a shaper and a compressor and the
     highs through a delay and a reverb, until a **join** adds them back together, each at a level (0 dB, full, down to
     -60 dB, silence; full to begin with), and the line goes on from it; a split left open at the line's end sends both
-    bands out. The join can **solo** either band, one at a time, letting only it through. The splits
+    bands out. The join can **solo** any band, one at a time, letting only it through. The splits
     and joins don't take any of the 32 effects' places, and modulation moves a split's crossover and a join's levels
     like any knob. The editor shows the line two ways, as a row of cards or as a graph (the FX tab's switch, see the
     editor), and switching between them changes nothing: underneath, the line is the effects graph's wires between
@@ -677,21 +679,31 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     name, SPLIT 1), which drags the split with its bands and its join along the line (between the main line's
     cards only), the chevron left of its × folding the container to a strip as an effect card folds, and its ×
     taking the split out, its bands' effects going on the main line in its place, the high band's first. Under the
-    title, the split's controls: **LOW | HIGH** tabs, as an operator page's tabs, the one shown underlined in its
-    band's color (the low band blue, the high band amber; the wheel switches them too), a hidden band's tab saying
-    how many effects it holds and a soloed band's showing an S in its color; the bands' responses with a handle on
-    the crossover to drag across, each band's curve lowered as far as its level's knob is turned down (flat at
-    -60 dB), the shown band's filled; the slope's list under them, as a filter's is, 6, 12 or 24 dB (18 shows
-    faintly and can't be picked); three knobs: the low band's level, the Crossover and the high band's level (in dB, 0 dB, full, at
-    the top, down to -60 dB, silence); and an **S** under each band's level that solos it, one at a time (soloing one
-    unsolos the other, a click on the lit one unsolos it), lit in its band's color. To the right of the controls, the
-    cards of the band shown, the arrows into them in the band's color (faint, cards and arrows, while the other band
+    title, the split's controls: **LOW | HIGH** tabs (**LOW | MID | HIGH** in three bands), as an operator page's
+    tabs, the one shown underlined in its band's color (the low band blue, the middle one sea green, the high band
+    amber, each theme with band colors of its own; the wheel steps along them too), a hidden band's tab saying how
+    many effects it holds after its name and a soloed band's showing an S in its color in its dot's place; the bands'
+    responses with a handle on each crossover to drag across, each band's curve lowered as far as its level's knob
+    is turned down (flat at -60 dB), the shown band's filled; under them, at the left, the **2 | 3** switch, which
+    splits it in two bands or three (its tooltip says which, and the wheel switches it too), and at the right the
+    slope's list, as a filter's is, 6, 12 or 24 dB (18 shows faintly and can't be picked; in three bands it shows
+    24 dB faintly and doesn't open, the slope picked coming back with two bands). In two bands, three knobs: the low
+    band's level, the Crossover and the high band's level (in dB, 0 dB, full, at the top, down to -60 dB, silence).
+    In three, the display is shorter, and a row of two smaller knobs, Low X and High X, the crossovers, goes under
+    it, over the low, the middle and the high band's levels. Under each band's level an **S** solos it, one at a
+    time (soloing one unsolos the others, a click on the lit one unsolos it), lit in its band's color. Switched to
+    three bands, as one undo step, an empty middle band opens between the two, shown, its crossover two octaves above
+    the low one (or as high as it goes), and its level at the join 0 dB. Switched back to two, an empty middle band
+    just goes; one holding effects asks first ("Back to two bands?"): **Onto Low** puts them at the low band's end,
+    **Onto High** at the high band's start, **Remove** removes them with their modulation, each one undo step, and
+    Cancel, or a click around the dialog, leaves it in three. To the right of the controls, the
+    cards of the band shown, the arrows into them in the band's color (faint, cards and arrows, while another band
     is soloed), then
-    a narrow dashed card (ADD TO LOW or ADD TO HIGH, in capitals as ADD EFFECT) that opens the list of effects at the mouse (effects only: a band holds no split), the one
+    a narrow dashed card (ADD TO LOW, ADD TO MID or ADD TO HIGH, in capitals as ADD EFFECT) that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
-    + EFFECT offer **Add frequency split** after the effects, which goes in there (at the line's end from the
-    last two) with its join, its bands empty and its low band shown. A card dragged over the band a container shows
+    + EFFECT offer **Add frequency split** and **Add 3-band split** after the effects, which go in there (at the
+    line's end from the last two) with their join, their bands empty and their low band shown. A card dragged over the band a container shows
     lands on that band, and carried over a container's tab it shows that band, to land on; a card dragged out of a
     band goes onto the main line. A copy of a card on a band goes at the end of that band. The band each split shows
     and which containers are folded are saved with the patch, but not undone.
@@ -710,13 +722,14 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     box at the left) to the output (OUT, a box after the last column). Each effect is a rounded box in its color, as a voice
     filter's node is in the routing graph, its icon in it and its name under it, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Add
-    frequency split**, after the effects: a split, a box its high band leaves from the top of its right side and
-    its low band from the bottom, always comes with its join, which adds the bands back together in the
-    column after the longer band; the line goes on from the join. The bands run between them, the high one along the
-    row above the main line and the low one along the row below, named beside the split, each band's wires in its
-    color (the high band amber, the low band blue) all the way into the join. Splits and joins are boxes as large as
-    each other, their upper halves in the high band's color and their lower halves in the low band's, parted by a
-    slightly slanted line (a join's the split's mirror): a split's colors come in from grey at its left, where the
+    frequency split** and **Add 3-band split**, after the effects: a split, a box its high band leaves from the top of
+    its right side, its low band from the bottom and a middle band from the middle, always comes with its join, which
+    adds the bands back together in the column after the longest band; the line goes on from the join. The bands run
+    between them, the high one along the row above the main line, the low one along the row below and a middle one
+    along the main line's row, named beside the split, each band's wires in its color (the high band amber, the
+    middle one sea green, the low band blue) all the way into the join. Splits and joins are boxes as large as
+    each other, their upper halves in the high band's color and their lower halves in the low band's (in three
+    bands, their thirds, the middle band's between), parted by slightly slanted lines (a join's the split's mirror): a split's colors come in from grey at its left, where the
     main line comes in, and a join's go back out to grey at its right, where the main line goes on. While sound plays, each node glows round it and each
     wire along it as loud as what comes out of it (IN, an effect, a split's band, a join), as the operators do in the
     routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops. An empty band curves out to a + on
@@ -731,7 +744,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     node and its join's both show the split's card: the same controls as its container in the row (see above), on
     grey, a card place wide, its tabs picking the band its display fills as the row's do (and so the band its
     container shows). While a band is soloed, the split's and the join's nodes show an S in a circle at their top
-    left, in the soloed band's color, and the other band (its effects' nodes, its wires and its name) is drawn faint,
+    left, in the soloed band's color, and the other bands (their effects' nodes, their wires and their names) are drawn faint,
     as the join doesn't let it through. Under the mouse, a node shows an x in a circle at its upper
     right, which removes it as the x on its card does. A node dragged onto
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would
@@ -746,7 +759,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     line or band it was on, a split puts its bands' effects on the main line in its place (the high band's first),
     and so does a join, which goes with its split. + EFFECT puts the new
     effect after the node picked: after an effect on its line or band, after a join on the main line, and at the end
-    of a split's shorter band (the high one when they are as long); with nothing picked, at the line's end. A copy goes right after its original. Wider than its box, the graph
+    of a split's shortest band (the highest of those as short); with nothing picked, at the line's end. A copy goes right after its original. Wider than its box, the graph
     has a scrollbar under it (its thumb dragged, or the track clicked to jump there), and scrolls sideways under the
     wheel too or with the middle button held; it shows a node just added. Switching to the
     graph or back changes nothing but the view: both show the same line, splits and all. A click on a node shows it in the card at the right;
@@ -779,8 +792,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
       its params in two columns, under PITCH, LEVEL, PHASE and UNISON, and beside them ENVELOPE and NOISE;
       the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
-      only those in the line, in its order, each with the knobs of its type, then each split's crossover and each
-      join's High and Low levels; and Modulation, each LFO's and
+      only those in the line, in its order, each with the knobs of its type, then each split's crossover (its two
+      in three bands) and each join's High and Low levels (and Mid); and Modulation, each LFO's and
       envelope's own knobs and the depths of its modulations. Picking one moves the modulation there, keeping the
       rest. What the row has now is checked, and the categories it is in have a dot; a click elsewhere closes the
       menu, and so does a second click on what opened it. Atop the target's menu, a **search** takes the keyboard
@@ -1290,7 +1303,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,226 of FMVibe's 18,637 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,226 of FMVibe's 18,641 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
 modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

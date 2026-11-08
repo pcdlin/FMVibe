@@ -393,18 +393,29 @@ constexpr float kFxBoxRadius = kRadiusCard + kFxBoxPad; // the outline's corners
 constexpr float kFxBoxAddW = 64.0f;
 constexpr float kFxBoxAddSpan = (kFxBoxAddW + kFxGap) / (kFxCardW + kFxGap);
 // A split's controls on a card's place (its container's column, or its card in the graph), top to bottom under the
-// title row: the band tabs (band 0 the low one, at the left), the crossover's display (see View::splitDisplay()), the
-// slope's list under it (slopeButton()), the knobs: the low band's level (0), the crossover (1) and the high band's level
-// (2), and the bands' solos under their levels.
-inline Rect splitTab(Rect card, int band) {
-    const float w = (card.w - 28.0f) * 0.5f;
-    return {card.x + 14.0f + static_cast<float>(band) * w, card.y + 38.0f, w, 20.0f};
+// title row: the band tabs (left to right the low band's, a middle one's, the high one's; see tabPosition()), the
+// crossover's display (see View::splitDisplay()), under it the BANDS switch at the left (2 | 3) and the slope's list at
+// the right, in three bands a row of the two crossovers' knobs, then the bands' levels' knobs with their solos under
+// them. In two bands those knobs are the low band's level (0), the crossover (1) and the high band's level (2); in
+// three, the low, the middle and the high band's levels, and the solos go under each level.
+inline Rect splitTab(Rect card, int position, int count) {
+    const float w = (card.w - 28.0f) / static_cast<float>(count);
+    return {card.x + 14.0f + static_cast<float>(position) * w, card.y + 38.0f, w, 20.0f};
 }
 inline Point splitKnob(Rect card, int k) {
     return {card.x + card.w * static_cast<float>(1 + 2 * k) / 6.0f, card.y + 232.0f};
 }
-inline Rect splitSoloButton(Rect card, int band) {
-    return {splitKnob(card, band == 0 ? 0 : 2).x - 12.0f, card.y + 270.0f, 24.0f, 20.0f};
+inline Point splitCrossKnob(Rect card, int which) {
+    return {card.x + card.w * static_cast<float>(1 + 2 * which) / 4.0f, card.y + 180.0f};
+}
+inline Rect splitSoloButton(Rect card, int k) {
+    return {splitKnob(card, k).x - 12.0f, card.y + 270.0f, 24.0f, 20.0f};
+}
+inline Rect splitBandsButton(Rect display, int bands) {
+    return {display.x + static_cast<float>(bands - 2) * 22.0f, display.bottom() + 4.0f, 22.0f, 18.0f};
+}
+inline Rect splitSlopeButton(Rect display) {
+    return {display.right() - 64.0f, display.bottom() + 4.0f, 64.0f, 18.0f};
 }
 
 // The cards are cut off at the row's ends while they scroll.
@@ -567,7 +578,7 @@ constexpr float kFxMenuNodeGap = 7.0f;
 inline Rect fxMenu(Point at, bool node = false) {
     const Rect button = fxMenuButton();
     return {at.x < 0.0f ? button.x : at.x, at.x < 0.0f ? button.bottom() + 4.0f : at.y, 180.0f,
-            8.0f + kFxTypes * kFxMenuPitch + (node ? kFxMenuNodeGap + kFxMenuPitch : 0.0f)};
+            8.0f + kFxTypes * kFxMenuPitch + (node ? kFxMenuNodeGap + 2.0f * kFxMenuPitch : 0.0f)};
 }
 static_assert(9.0f + 22.0f + 4.0f + 8.0f + kFxTypes * kFxMenuPitch <= kFxPanel.h, // from under the button
               "the list of effects fits in the panel");
@@ -577,9 +588,11 @@ inline Rect fxMenuItem(Point at, FxType type) {
     return {menu.x + 4.0f, menu.y + 4.0f + static_cast<float>(fxOfferedPlace(type)) * kFxMenuPitch, menu.w - 8.0f,
             kFxMenuPitch - 2.0f};
 }
-inline Rect fxMenuNodeItem(Point at) {
+// Its entries after the effects, a little apart: a split in two bands, then one in three.
+inline Rect fxMenuNodeItem(Point at, int bands = 2) {
     const Rect menu = fxMenu(at, true);
-    return {menu.x + 4.0f, menu.y + 4.0f + kFxTypes * kFxMenuPitch + kFxMenuNodeGap, menu.w - 8.0f, kFxMenuPitch - 2.0f};
+    return {menu.x + 4.0f, menu.y + 4.0f + (kFxTypes + bands - 2) * kFxMenuPitch + kFxMenuNodeGap, menu.w - 8.0f,
+            kFxMenuPitch - 2.0f};
 }
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
@@ -995,6 +1008,16 @@ inline Rect confirmPanel(float viewHeight, bool shorter) {
 // 1 goes ahead, 0 cancels.
 inline Rect confirmButton(Rect panel, int ok) {
     return {panel.right() - 24.0f - (ok ? 80.0f : 166.0f), panel.bottom() - 24.0f - 28.0f, 80.0f, 28.0f};
+}
+// Asking where a split's middle band's effects go, back in two bands: a row more, of a button for each band they can go
+// onto (2 the low band's end, 3 the high band's start) over Remove (confirmButton()'s 1) and Cancel.
+inline Rect confirmBandsPanel(float viewHeight) {
+    const float h = kConfirmH + 20.0f;
+    return {(View::kWidth - kConfirmW) * 0.5f, std::round((viewHeight - h) * 0.5f), kConfirmW, h};
+}
+inline Rect confirmBandButton(Rect panel, int choice) {
+    const float w = (panel.w - 48.0f - 8.0f) * 0.5f;
+    return {panel.x + 24.0f + (choice == 3 ? w + 8.0f : 0.0f), panel.y + 74.0f, w, 28.0f};
 }
 
 // The preset browser, centered over the editor: a title row, the list, and the folder at the foot.

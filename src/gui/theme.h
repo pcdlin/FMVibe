@@ -46,6 +46,8 @@ struct Palette {
     // blue, DJ EQ amber, parametric EQ orange, filter purple, compressor green, three-band teal, reverb indigo,
     // phaser pink, flanger lime, frequency shifter cyan, phase disperser slate, widener fuchsia.
     Color fxTypes[static_cast<int>(FxType::Count)];
+    // A split's bands, low, middle and high: from cool and darker to warm and lighter, so they part by lightness too.
+    Color bands[3];
 };
 static_assert(static_cast<int>(FxType::Count) == 15, "a color for each effect type in every theme");
 
@@ -68,7 +70,8 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0xFB923C), Color::hex(0xF87171), Color::hex(0x60A5FA), Color::hex(0xFBBF24), Color::hex(0xFB923C),
       Color::hex(0xC084FC), Color::hex(0x34D399), Color::hex(0x2DD4BF), Color::hex(0x818CF8), Color::hex(0xF472B6),
       Color::hex(0xA3E635), Color::hex(0x22D3EE), Color::hex(0xCBD5E1), Color::hex(0xE879F9),
-      Color::hex(0x2DD4BF)}},
+      Color::hex(0x2DD4BF)},
+     {Color::hex(0x6AA3F0), Color::hex(0x4CC9B0), Color::hex(0xEFB46F)}},
     {"Graphite", Str::ThemeGraphite, // neutral grays, without the blue
      Color::hex(0x111111), Color::hex(0x1A1A1A), Color::hex(0x252525), Color::hex(0x2F2F2F), Color::hex(0x363636),
      Color::hex(0x2C2C2C),
@@ -86,7 +89,8 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0xFACC15), Color::hex(0xFCA5A5), Color::hex(0x93C5FD), Color::hex(0xFCD34D), Color::hex(0xFDBA74),
       Color::hex(0xD8B4FE), Color::hex(0x6EE7B7), Color::hex(0x5EEAD4), Color::hex(0xA5B4FC), Color::hex(0xF9A8D4),
       Color::hex(0xBEF264), Color::hex(0x67E8F9), Color::hex(0xE2E8F0), Color::hex(0xF0ABFC),
-      Color::hex(0x5EEAD4)}},
+      Color::hex(0x5EEAD4)},
+     {Color::hex(0x7FB2F0), Color::hex(0x5ED3BE), Color::hex(0xF2C07E)}},
     {"Light", Str::ThemeLight, // crisp: white cards and knob caps on a cool gray, with deep, saturated colors
      Color::hex(0xD5DAE3), Color::hex(0xF3F5F8), Color::hex(0xE4E8EF), Color::hex(0xC3CAD6), Color::hex(0xCDD3DD),
      Color::hex(0xFFFFFF),
@@ -104,7 +108,8 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0xDD4F07), Color::hex(0xD11F1F), Color::hex(0x1F5BE0), Color::hex(0xC26505), Color::hex(0xDD4F07),
       Color::hex(0x8A2BE2), Color::hex(0x04805C), Color::hex(0x0B857A), Color::hex(0x4338CA), Color::hex(0xD0216D),
       Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x475569), Color::hex(0xB01ECA),
-      Color::hex(0x0B857A)}},
+      Color::hex(0x0B857A)},
+     {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xB86E0E)}},
     {"Paper", Str::ThemePaper, // warm: cream cards on sand, ink-brown text and earthy colors
      Color::hex(0xE2DACB), Color::hex(0xF7F2E8), Color::hex(0xEDE6D8), Color::hex(0xD2C7B3), Color::hex(0xDDD3C0),
      Color::hex(0xFFFCF5),
@@ -122,7 +127,8 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0xC0410F), Color::hex(0xB8361B), Color::hex(0x2D55B0), Color::hex(0xB15A0A), Color::hex(0xC0410F),
       Color::hex(0x8E2A9E), Color::hex(0x177A52), Color::hex(0x0E6E68), Color::hex(0x4A3FB8), Color::hex(0xB3284F),
       Color::hex(0x5A7A12), Color::hex(0x1A7287), Color::hex(0x5E554A), Color::hex(0x9B2AA0),
-      Color::hex(0x0E6E68)}},
+      Color::hex(0x0E6E68)},
+     {Color::hex(0x33609E), Color::hex(0x25806C), Color::hex(0xAE6A1E)}},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));
 // A source left out of a theme's list would be drawn black.

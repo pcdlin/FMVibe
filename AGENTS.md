@@ -105,7 +105,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     an effect wired one after another, as the editor wires a chain);
   - the effects graph: its input straight out, two wires at half as one at full, and a split's two bands (at 6, 12
     and 24 dB) and three summing back flat, each slope parting its bands as steeply as it says; a join's solos letting only the band soloed through (both when
-    neither or both are); a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
+    neither or both are), a three-band split's middle one too; a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
     chain's retired places doing nothing; a loop, which only params make, staying finite; and a macro taking a wire's
     level down;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
@@ -233,7 +233,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     main line's wires grey, each band's and each half of the split's and join's nodes in its color, a split's coming
     in from grey at its left and a join's going out to grey at its right (read off the rendered pixels), and then
     the other band's,
-    unsoloing the first; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused;
+    unsoloing the first; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its
+    2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
+    crossover two octaves up, an effect put on its + along the main line's row, its S soloing it alone, the row showing
+    the container with it, and back to two asking where its effect goes (onto the low band's end), undone onto the
+    middle band again, an empty one going back straight, all undone;
     + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
     out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
@@ -749,7 +753,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,226 of the 18,637 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,226 of the 18,641 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

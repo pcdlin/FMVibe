@@ -83,7 +83,7 @@ struct UiLayout {
     // Whether the FX view shows the effects as their graph rather than as a row of cards: two views of the same
     // effects, which switching between changes nothing of. Part of the patch, like the routing view.
     bool fxGraphView = false;
-    // The band each split shows, by split (0 its low band, 1 its high one): the band whose effects its container in
+    // The band each split shows, by split (0 its low band, 1 its high one, 2 its middle one): the band whose effects its container in
     // the row shows, and whose response its card fills. Part of the patch, like the node places.
     std::array<int, kFxSplits> splitBand{};
     // The splits' containers in the row folded to a narrow strip, a bit each; saved with the patch, but not undone.

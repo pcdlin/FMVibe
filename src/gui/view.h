@@ -262,20 +262,25 @@ private:
         // The effects graph (see fxgraph.cpp).
         FxMode,       // b = 0 the chain, 1 the graph: the switch at the FX panel's top right
         FxNode,       // a = node: a click shows it in the inspector
-        FxSlot,       // a = lane (0 the main line, 1 the high band, 2 the low band): a +, which opens the list of effects
+        FxSlot,       // a = lane (0 the main line, 1 the high band, 2 the low band, 3 the middle band): a +, which opens
+                      // the list of effects
         FxGap,        // a = lane, b = item·kFxGapStride + place (see FxSlotAt): a wire's middle, which opens it too
-        FxAddNode,    // the list's entry after the effects, a split with its join, opened from the main line
+        FxAddNode,    // b = its bands, 2 or 3: the list's entries after the effects, a split with its join, opened from
+                      // the main line
         FxNodeRemove, // a = node: the x on a split's controls, its container's in the row or its card in the graph
         FxNodeDelete, // a = node: the x in a circle at a node's upper right, while the mouse is over the node
         FxWire,       // a = lane, b = item·kFxGapStride + place: along a wire that takes a node at its middle, its +
         FxClear,      // the button at the FX panel's top right that removes every effect, asking first
-        SplitPoint,   // param = the crossover, a = split: its handle on the split's display
+        SplitPoint,   // param = the crossover, a = split, b = 0 the low one, 1 the high one: its handle on the display
         // A split's controls (see splitControlWidgets()), in its container in the row and on its card in the graph.
-        SplitBand,    // a = split, b = band (0 low, 1 high): its tab, which shows that band
+        SplitBand,    // a = split, b = band (0 low, 1 high, 2 middle; see View::splitLane()): its tab, which shows that
+                      // band
+        SplitBands,   // a = split, b = 2 or 3: the BANDS switch's half that splits it in that many bands
         SplitSolo,    // param = a join's solo, a = split, b = band: the S under its band's level, one band at a time
         FxBoxGrip,    // a = split's node: its container's title row in the row, which drags it along the line
         FxBoxFold,    // a = split: folds its container to a strip, or unfolds it
-        FxBoxAdd,     // a = lane (1 the high band, 2 the low band), b = item: a container's dashed card, for the list
+        FxBoxAdd,     // a = lane (1 the high band, 2 the low band, 3 the middle band), b = item: a container's dashed
+                      // card, for the list
     };
 
     // Save writes the patch over its preset's file (asking first), and is only on while a preset with a file has
@@ -611,7 +616,7 @@ private:
     void addEffect(FxType type, int copyOf = -1);
     void removeEffect(int slot);
     // The effects (see fxgraph.cpp): a main line of effects and splits from IN to OUT, each split with a high and a low
-    // band of effects, closed by a join (the sum of its number) or, the line's last item, left open into OUT. The FX
+    // band of effects (and, split in three, a middle one between), closed by a join (the sum of its number) or, the line's last item, left open into OUT. The FX
     // view shows it as a row of cards, each split a container holding its bands (fxRow()), or as a graph on a fixed
     // grid: two views of one line, which the editor reads from the wires (fxLine()) and writes the wires from
     // (writeFxLine()), so the engine runs what either shows. Nodes are numbered as the graph's params number them
@@ -621,15 +626,22 @@ private:
         int input; // which of that node's inputs
         int port;  // where it comes from
     };
+    // A split's bands go by lane: 1 the high one, 2 the low one, 3 the middle one, which only a split in three has.
     struct FxLineItem {
         int node;            // an effect's slot, or a split's node
         std::vector<int> hi; // a split's bands: the effects' slots along each, in order
         std::vector<int> lo;
         bool joined = false; // closed by its join
+        std::vector<int> mid;
+        bool three = false; // split in three bands, `mid` between `hi` and `lo`
+        std::vector<int> &band(int lane) { return lane == 1 ? hi : lane == 3 ? mid : lo; }
+        const std::vector<int> &band(int lane) const { return lane == 1 ? hi : lane == 3 ? mid : lo; }
+        // Its bands' lanes, top to bottom as the graph has them: the high band, the middle one, the low one.
+        std::vector<int> lanes() const { return three ? std::vector<int>{1, 3, 2} : std::vector<int>{1, 2}; }
     };
     using FxLine = std::vector<FxLineItem>;
-    // Where the grid puts things: each node (row -1 the high band, 0 the main line, 1 the low band), each + (lane 0
-    // the main line, 1 the high band, 2 the low band) and OUT's column.
+    // Where the grid puts things: each node (row -1 the high band, 0 the main line and a middle band, 1 the low band),
+    // each + (lane 0 the main line, 1 the high band, 2 the low band, 3 the middle band) and OUT's column.
     struct FxGridLayout {
         struct Place {
             int node, col, row;
@@ -643,7 +655,7 @@ private:
     };
     // Where the list of effects puts what it adds when it was opened in the graph: at the end of a lane (a +, `item`
     // -1), or where a wire's middle was clicked: on the main line before item `item`, or on that item's band (lane 1
-    // the high one, 2 the low one) at `place`. Lane -1: neither, the list opened elsewhere.
+    // the high one, 2 the low one, 3 the middle one) at `place`. Lane -1: neither, the list opened elsewhere.
     struct FxSlotAt {
         int lane = -1;
         int item = -1;
@@ -661,8 +673,8 @@ private:
         int port = -1;             // what it carries: the port it comes from, which lights it as loud as that is
         bool faint = false;        // along a band its join doesn't hear, the other one soloed
     };
-    // Whether the join of a split on the line lets a band of it through (`lane` 1 the high one, 2 the low one): not
-    // while only the other band is soloed.
+    // Whether the join of a split on the line lets a band of it through (`lane` 1 the high one, 2 the low one, 3 the
+    // middle one): not while another band is soloed and it isn't.
     bool fxBandSoloedOut(const FxLineItem &item, int lane) const;
     // How brightly a port of the effects graph lights what it goes out of and along, 0..1: by its level in the
     // telemetry, in dB from kFxGlowFloorDb up to full scale; 0 while the audio has stopped.
@@ -672,7 +684,7 @@ private:
     // while a node is dragged and until they settle after, gliding there (fxPlacesShown(), see fxGlide_).
     struct FxPlaces {
         std::array<Point, kFxNodes> node{};
-        std::array<Point, 3> slot{};
+        std::array<Point, 4> slot{};
         Point in, out;
     };
     FxPlaces fxPlacesOf(const FxGridLayout &grid, float scroll) const;
@@ -700,7 +712,7 @@ private:
     struct FxGlide {
         bool on = false;
         std::array<Point, kFxNodes> node{};
-        std::array<Point, 3> slot{};
+        std::array<Point, 4> slot{};
         float outCol = 1.0f;
     };
     FxLine fxLineShown() const; // the line, or while a node, card or container is dragged, with it where it would land
@@ -742,7 +754,13 @@ private:
     void fxPlaceNew(int slot, int copyOf);
     // A split with its join right after it, its bands empty: where the list was opened on the main line (an arrow in
     // the row, a wire's middle in the graph; see fxSlot_), else at the line's end.
-    void addSplit();
+    void addSplit(int bands = 2);
+    // A split in two bands or three (see SplitParam::Bands), one undo step. Three: an empty middle band opens between
+    // the two, shown, its crossover two octaves above the low one, and its join takes it in at 0 dB. Two: the middle
+    // band goes, its effects onto the low band's end (`midTo` 2), the high band's start (1) or removed (0); with
+    // effects on it and `midTo` -1, the confirm dialog asks which first.
+    void setSplitBands(int split, int bands, int midTo = -1);
+    bool splitThree(int split) const; // split in three bands
     // An effect, a split (its bands' effects going on the main line in its place, high band first) or a join (its
     // split open again, only while nothing comes after it).
     void removeFxNode(int node);
@@ -761,8 +779,10 @@ private:
     void splitControlWidgets(std::vector<Widget> &list, int split, Rect card, bool row) const;
     void paintSplitControls(Canvas &c, int split, Rect card, bool row);
     std::optional<Rect> splitCardOf(int split) const; // where a split's controls show now, if they do
-    int splitLane(int split) const;                   // the band it shows: 1 its high band, 2 its low one (FxSlotAt)
-    void showSplitBand(int split, int band);          // 0 its low band, 1 its high one
+    // The band it shows: 1 its high band, 2 its low one, 3 its middle one (FxSlotAt), as its tab says (UiLayout's
+    // splitBand: 0 the low band, 1 the high one, 2 the middle one, the low one while it is split in two).
+    int splitLane(int split) const;
+    void showSplitBand(int split, int band); // 0 its low band, 1 its high one, 2 its middle one
     bool splitFolded(int split) const;
     void setSplitFolded(int split, bool folded);
     // The row (the chain view): the line's items left to right, each an effect's card or a split's container (its
@@ -821,11 +841,12 @@ private:
     void fxGraphDrag(Point p);
     void paintFxGraph(Canvas &c);
     void paintFxCard(Canvas &c, int slot, Rect card, bool dragged);
-    // A split's display on its controls' card, and its crossover's handle there.
-    static Rect splitDisplay(Rect card);
-    Point splitHandle(int split, Rect display) const;
-    // How far a band's level at its join lowers its curve: its knob's position, 0 silent .. 1 at 0 dB (kLowBand,
-    // kHighBand).
+    // A split's display on its controls' card (shorter in three bands, to leave room for the crossovers' knobs under
+    // it), and a crossover's handle there (`which` 0 the low one, 1 the high one, which only three bands have).
+    static Rect splitDisplay(Rect card, bool three);
+    Point splitHandle(int split, Rect display, int which = 0) const;
+    // How far a band's level at its join lowers its curve: its knob's position, 0 silent .. 1 at 0 dB (by its port's
+    // band: 0 low, 1 middle, 2 high).
     double splitBandGain(int split, int band) const;
     // Ctrl+drag in the routing graph: where a node dragged to `want` goes on its grid, the nearest point it fits at
     // clear of the other nodes; and whether the grid's points show now.
@@ -1319,6 +1340,8 @@ private:
     bool ctrlHeld_ = false; // see setCtrl()
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxClear, or -1
     static constexpr int kConfirmFxClear = 4; // asking before every effect goes
+    static constexpr int kConfirmMidBand = 5; // asking where a split's middle band's effects go, back in two bands
+    int confirmSplit_ = -1;                   // the split kConfirmMidBand asks about
     int pendingPreset_ = -1;                 // the library preset a confirmed Load loads, or -1 for a file
     bool browserOpen_ = false;
     int browserScroll_ = 0;                  // rows scrolled past, before clamping

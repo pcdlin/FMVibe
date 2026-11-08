@@ -305,7 +305,7 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.fxSelected, -1.0f, kFxNodes - 1.0f, rounded<int>);
     // Whether the FX view shows the graph, the band each split shows, and the splits' containers folded.
     io.number(ui.fxGraphView, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
-    io.numbers(ui.splitBand, 0.0f, 1.0f, rounded<int>);
+    io.numbers(ui.splitBand, 0.0f, 2.0f, rounded<int>); // 0 low, 1 high, 2 middle
     io.number(ui.splitsFolded, 0.0f, 15.0f, rounded<uint32_t>);
 }
 
