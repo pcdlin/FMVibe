@@ -236,7 +236,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     both soloed; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its title's
     2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
     crossover at 2500 Hz, an effect put on its + along the main line's row (and a second one after it, the other bands'
-    wires into the join running level along their rows past it, read off the rendered pixels), its S soloing it and the low band's too, the row showing
+    wires into the join running level along their rows past it and their +s in their next places, read off the
+    rendered pixels), its S soloing it and the low band's too, the row showing
     the container with it, and back to two asking where its effect goes (onto the low band's end), undone onto the
     middle band again, an empty one going back straight, all undone;
     + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
@@ -250,7 +251,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the high band to the low band's end, and a split with its bands and join, carried by the join, to the line's
     start, each one undo step, undone; the mouse anywhere along a wire showing its + (read off the rendered pixels), a
     click there doing nothing and on the + opening the list, the wire's + and the line's faint until the mouse is on
-    them, and an empty band between a split and its join showing its + always (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
+    them, and a band's + after its last node showing always, an empty band's too (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
     the row changing nothing, the split showing there as its container;
   - a split in the row: the arrow between two cards offering it after the effects (its list kept inside the panel),

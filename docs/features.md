@@ -742,8 +742,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     its row, a column on from the split, and on into the join, and a click on that + puts an effect on the band (its
     list offers effects only). Each + is ringed in the color of the wire it is on: grey on the main line, a band's
     color on a band. With the mouse
-    anywhere along a wire between two nodes, a + shows at its middle (always on an empty band between a split
-    and its join), and a click on that + opens the list too. Every + in the graph is faint until the mouse is on it
+    anywhere along a wire between two nodes on the main line, a + shows at its middle, and a click on that + opens
+    the list too. A split's band shows its + at its end always: in its next place, a column on from its last node on
+    its row (on an empty band, a column on from the split), or at the wire's middle where the join comes right after. Every + in the graph is faint until the mouse is on it
     (or its list is open). The list a wire's + opens puts the effect picked
     in there: on the main line, the list also offers the split, which goes in with its join right after it and
     the bands empty between them; on a band, effects only, so a joined band takes them by the wire into its join. A split's

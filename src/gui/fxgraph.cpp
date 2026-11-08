@@ -853,7 +853,8 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
     struct Tail {
         Point at;
         Color color;
-        int port; // what goes along from there
+        int port;           // what goes along from there
+        bool split = false; // right at a split's band port: a wire from there bends to its row as it leaves
     };
     std::vector<FxGraphWire> wires;
     // From each node's right to the next one's left (`to`, an arrowhead's tip where `arrow`); a node clicked in at its
@@ -861,7 +862,7 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
     auto wire = [&](Tail from, Point to, bool arrow, FxSlotAt where = {}) {
         wires.push_back({from.at, arrow ? Point{to.x - 8.0f, to.y} : to, from.color, arrow, where, std::nullopt,
                          from.port});
-        wires.back().bendAtStart = fxPortSplit(from.port) >= 0; // out of a split's band, next to the main line
+        wires.back().bendAtStart = from.split; // out of a split's band, next to the main line
     };
     const auto &at = places.node;
     const Point in = places.in, out = places.out;
@@ -881,7 +882,7 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
         std::array<Tail, 4> bands{}; // by lane
         for (int lane : item.lanes()) {
             const int band = laneBand(lane);
-            bands[lane] = {fxBandPortAt(p, band), laneColor(lane), fxBandPort(split, band)};
+            bands[lane] = {fxBandPortAt(p, band), laneColor(lane), fxBandPort(split, band), true};
             const std::vector<int> &effects = item.band(lane);
             for (size_t k = 0; k < effects.size(); ++k) {
                 const Point e = at[effects[k]];
@@ -902,6 +903,10 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
                 if (!effects.empty()) {
                     wire(bands[lane], into, true, end);
                     wires.back().faint = faint;
+                    // Its + in the band's next place, a column on from its last node, where the join is further on.
+                    const Point last = at[effects.back()];
+                    if (last.x + kFxGridCol + kFxSlotHalf < into.x - kFxWireBend)
+                        wires.back().plus = Point{last.x + kFxGridCol, last.y};
                     continue;
                 }
                 // Empty: out to its +, on its row a column on from the split, and from there into the join.
@@ -1710,10 +1715,11 @@ void View::paintFxGraph(Canvas &c) {
                             fxSlot_.place == w.at.place;
         const bool hot = hover_ && (hover_->kind == Kind::FxGap || hover_->kind == Kind::FxWire) &&
                          hover_->a == w.at.lane && hover_->b == b;
-        // An empty band between a split and its join shows it always.
-        const bool empty = w.at.lane > 0 && w.at.item < static_cast<int>(line.size()) &&
-                           line[w.at.item].band(w.at.lane).empty();
-        if (!listed && !hot && !empty)
+        // After a split's band's last node (or on an empty band) it shows always, faint until the mouse is on it; on
+        // the other wires only while the mouse is on its wire.
+        const bool bandEnd = w.at.lane > 0 && w.at.item < static_cast<int>(line.size()) &&
+                             w.at.place == static_cast<int>(line[w.at.item].band(w.at.lane).size());
+        if (!listed && !hot && !bandEnd)
             continue;
         const bool onPlus = hover_ && hover_->kind == Kind::FxGap && hover_->a == w.at.lane && hover_->b == b;
         const Point m = wireMiddle(w);

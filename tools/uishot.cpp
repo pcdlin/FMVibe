@@ -2357,14 +2357,37 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             view.mouseMove({600.0f, 428.0f}, {});
             const bool longShot = renderer.save(view, dir / "40f4a-fx-split-three-long.png");
             auto onRow = [&](int row) {
-                const Point p = cell(5, row);
+                const Point p{cell(5, row).x - 20.0f, cell(5, row).y}; // short of the + in the band's next place
                 const uint32_t wire = renderer.pixel(p);
                 return wire != renderer.pixel({p.x, p.y - 10.0f}) && wire != renderer.pixel({p.x, p.y + 10.0f});
             };
-            levelWires = longShot && from(join, 2) != fxSlotPort(widener) && onRow(-1) && onRow(1);
+            // Each band's + shows without the mouse on it, in the band's next place: the high and low bands' a column
+            // on from their last node, on their rows (read off the rendered pixels, clear of the wire: the +'s upright
+            // stroke against its disc beside it, where without a + both are the background).
+            auto plusAt = [&](Point p) {
+                return renderer.pixel({p.x, p.y - 3.0f}) != renderer.pixel({p.x + 6.0f, p.y - 3.0f});
+            };
+            // The wire between the widener and the phaser, inside the middle band, shows none until the mouse is on it.
+            const Point between{(cell(4, 0).x + detail::kFxNodeR + cell(5, 0).x - detail::kFxNodeR - 8.0f) * 0.5f,
+                                cell(5, 0).y};
+            levelWires = longShot && from(join, 2) != fxSlotPort(widener) && onRow(-1) && onRow(1) &&
+                         plusAt(cell(5, -1)) && plusAt(cell(5, 1)) && !plusAt(between);
+            // The delay taken out by its x, the high band empty: its wire on from its + still runs level along its row
+            // past the phaser's column, bending only before the join.
+            const Point delayAt = cell(4, -1);
+            const Point delayX{delayAt.x + detail::kFxNodeR - 2.0f, delayAt.y - detail::kFxNodeHalfH + 2.0f};
+            view.mouseMove(delayAt, {});
+            view.mouseMove(delayX, {});
+            click(view, delayX);
+            view.mouseMove({600.0f, 428.0f}, {});
+            const bool emptyShot = renderer.save(view, dir / "40f4b-fx-split-three-empty-high.png");
+            levelWires = levelWires && emptyShot && from(join, 0) == fxBandPort(0, kFxBands - 1) && onRow(-1) &&
+                         plusAt(cell(4, -1));
+            view.undo();
             view.undo();
         }
-        check(levelWires, "the bands' wires into a join run level along their rows, bending only before it");
+        check(levelWires, "the bands' wires into a join run level along their rows, bending only before it, each "
+                          "band's + showing in its next place, and none between its nodes; an empty band's too");
         click(view, cell(3, 0)); // the split's card again, in the effect's place
         click(view, centerOf(detail::splitSoloButton(card, 1)));
         click(view, centerOf(detail::splitSoloButton(card, 0))); // and the low band's too, the high band left out
