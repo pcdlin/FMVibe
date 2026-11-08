@@ -164,7 +164,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an effect in the graph that the output doesn't hear not running (its port silent, nothing ringing on after it),
     and running once the output reads it;
   - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
-    an effect not in the graph silent, and a second of silence taking them about 90 dB down;
+    an effect not in the graph silent, and a second of silence taking them about 90 dB down; and nothing measured
+    while nothing analyzes (no editor open);
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
@@ -258,8 +259,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
     the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
     nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the
-    rendered pixels) whose thumb dragged to its end scrolls the graph there, the + at the end then taking a click,
-    and no scrollbar once the graph fits (read off the rendered pixels);
+    rendered pixels) whose thumb dragged to its end scrolls the graph there, a wide card's node and then a narrow
+    one's picked there moving nothing, the + at the end then taking a click, and no scrollbar once the graph fits
+    (read off the rendered pixels);
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
   - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
     there only picks the node and a drag from further inside moves it; a filter's edge dragged onto an earlier

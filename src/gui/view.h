@@ -790,6 +790,9 @@ private:
     // With a card or container being dragged where it would land, and the cards and containers gliding there (see
     // fxRowGlide_). The one carried goes where it would land at once, and shows faint there until it is let go of.
     FxRow fxRowShown() const;
+    FxRow fxRowShownOf(const FxLine &line) const; // the same for `line`, worked out
+    // fxRowShown(), kept while a DerivedScope goes on, as fxDerived_ is: every card's display asks for it.
+    mutable std::optional<FxRow> fxRowDerived_;
     // The row's cards (by slot) and containers (by split node) as shown, in card places, and where the line ends: once a
     // card or container is dragged, each glides a step of the way to where it goes every poll(), until they settle after
     // it is let go. A node not shown at the last step shows where it goes at once.

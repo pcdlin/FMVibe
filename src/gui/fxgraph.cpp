@@ -431,8 +431,10 @@ View::FxGridLayout View::fxGridLayout(const FxLine &line) {
 }
 
 float View::fxGraphScrollMost(const FxGridLayout &grid) const {
+    // As far as its narrowest box (beside the widest card) needs: picking a node, which may widen the box, never moves
+    // the graph under the mouse, a box widened leaving a little room after OUT at the scroll's end instead.
     const float width = kFxGridLeft + static_cast<float>(grid.outCol) * kFxGridCol + kFxEndHalfW + 16.0f;
-    return std::max(width - fxGraphArea().w, 0.0f);
+    return std::max(width - detail::fxGraphArea(1.5f).w, 0.0f);
 }
 
 float View::fxGraphScroll(const FxGridLayout &grid) const {
@@ -1007,7 +1009,15 @@ View::FxRow View::fxRow(const FxLine &line) const {
 }
 
 View::FxRow View::fxRowShown() const {
-    const FxLine line = fxLineShown();
+    if (fxRowDerived_) // only kept while a scope goes on
+        return *fxRowDerived_;
+    FxRow row = fxRowShownOf(fxLineShown());
+    if (derivedDepth_ > 0)
+        fxRowDerived_ = row;
+    return row;
+}
+
+View::FxRow View::fxRowShownOf(const FxLine &line) const {
     FxRow row = fxRow(line);
     const FxRowGlide &g = fxRowGlide_;
     if (!g.on)
@@ -1166,8 +1176,8 @@ void View::retargetRowDrag(Point mouse) {
     FxDrag &d = *fxDrag_;
     const bool effect = d.item.node < kFxSlots;
     // Carrying an effect over a container's tab shows that band, to drop it on.
-    if (effect)
-        for (const FxRowBox &box : fxRow(fxLineWith(d.rest, d.item, d.at)).boxes) {
+    if (effect) // the container where it shows, gliding too
+        for (const FxRowBox &box : fxRowShown().boxes) {
             if (box.folded)
                 continue;
             const Rect column = fxCard(boxColumn(box) - fxScroll(), 1.0f);
@@ -1671,7 +1681,7 @@ void View::paintFxGraph(Canvas &c) {
             const Color ink = bandColor(band);
             const std::vector<Point> half = outlineSide(outline, a, b, band == kHighBand);
             // Its tint in slices across, each as far from grey as the color has come in there.
-            constexpr int kSlices = 14;
+            constexpr int kSlices = 7;
             for (int k = 0; k < kSlices; ++k) {
                 const float x0 = r.x + r.w * static_cast<float>(k) / kSlices;
                 const float x1 = r.x + r.w * static_cast<float>(k + 1) / kSlices;
@@ -1681,22 +1691,33 @@ void View::paintFxGraph(Canvas &c) {
                     c.fillPolygon(slice.data(), slice.size(),
                                   mix(neutral, ink, across(0.5f * (x0 + x1))).alpha(alpha * tint));
             }
-            // Its outline in pieces of 2 px at most, each a mix of grey and the band's color for where it is across.
-            std::vector<Point> path;
+            // Its outline in runs of one color each: cut where it goes 2 px across (straight up and down it stays one
+            // piece), each piece's color a mix of grey and the band's for where it is across, in kSteps steps, and
+            // the pieces of a step drawn as one polyline, the next run starting where it ends.
+            constexpr int kSteps = 12;
+            std::vector<Point> run;
+            int step = -1;
+            auto flush = [&] {
+                if (run.size() >= 2)
+                    c.polyline(run.data(), run.size(),
+                               mix(neutral, ink, static_cast<float>(step) / kSteps).alpha(alpha), width);
+            };
             for (size_t i = 0; i + 1 < half.size(); ++i) {
                 const Point p = half[i], q = half[i + 1];
-                const int pieces = std::max(1, static_cast<int>(std::ceil(std::hypot(q.x - p.x, q.y - p.y) / 2.0f)));
+                const int pieces = std::max(1, static_cast<int>(std::ceil(std::abs(q.x - p.x) / 2.0f)));
                 for (int k = 0; k < pieces; ++k) {
-                    const float t = static_cast<float>(k) / static_cast<float>(pieces);
-                    path.push_back({p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t});
+                    const Point from{p.x + (q.x - p.x) * k / pieces, p.y + (q.y - p.y) * k / pieces};
+                    const Point to{p.x + (q.x - p.x) * (k + 1) / pieces, p.y + (q.y - p.y) * (k + 1) / pieces};
+                    const int at = static_cast<int>(std::lround(across(0.5f * (from.x + to.x)) * kSteps));
+                    if (at != step) {
+                        flush();
+                        run = {from};
+                        step = at;
+                    }
+                    run.push_back(to);
                 }
             }
-            path.push_back(half.back());
-            for (size_t i = 0; i + 1 < path.size(); ++i) { // each piece with its neighbor on, so they join seamlessly
-                const Point piece[] = {path[i], path[i + 1], path[std::min(i + 2, path.size() - 1)]};
-                const float x = 0.5f * (path[i].x + path[i + 1].x);
-                c.polyline(piece, i + 2 < path.size() ? 3 : 2, mix(neutral, ink, across(x)).alpha(alpha), width);
-            }
+            flush();
         }
         if (join) {
             joinIcon(c, {center.x - 8.0f, center.y - 7.0f, 15.0f, 14.0f}, color);

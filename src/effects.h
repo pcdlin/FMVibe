@@ -126,8 +126,8 @@ public:
     // Where a phaser's, flanger's or widener's sweep is, in cycles (the widener's first tap's); 0 for other effects.
     float sweepPhase(int slot) const;
     // The effects graph's ports (see fxPortValue()): how loud what comes out of each is, the peak of either side
-    // (1 is full scale), falling kPortFallDb a second; 0 for a port of a node the graph doesn't run. For the editor,
-    // which lights the graph's nodes and wires by them.
+    // (1 is full scale), falling kPortFallDb a second; 0 for a port of a node the graph doesn't run, and for every port
+    // while nothing analyzes (see setAnalyzing()). For the editor, which lights the graph's nodes and wires by them.
     static constexpr double kPortFallDb = 90.0;
     float portLevel(int port) const { return port >= 0 && port < kFxPorts ? portLevel_[port] : 0.0f; }
 

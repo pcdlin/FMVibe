@@ -232,8 +232,8 @@ public:
     int activeVoiceCount() const;
     // Effects still sounding after the voices ended (delay echoes).
     bool effectsRinging() const { return effects_.ringing(); }
-    // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, and the output
-    // scope captures the output (see kOutScopeBins). Switched off, the scope forgets what it took.
+    // Whether the voice filters, parametric EQs and filter effects measure their output for the editor, as do the effects
+    // graph's ports, and the output scope captures the output (see kOutScopeBins). Switched off, the scope forgets what it took.
     void setAnalyzing(bool on) {
         if (analyzing_ && !on)
             outScope_ = {};

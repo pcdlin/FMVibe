@@ -552,7 +552,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       over the area nodes may sit in) where it fits clear of the others, the next free one if that is taken; pressed
       or let go of mid-drag, Ctrl snaps or frees it at once. While Ctrl is held over the graph, a faint + marks each
       of the grid's points, and the one a dragged node sits on is lit. The marks show and go as Ctrl is pressed and
-      let go of, also while the host has the keyboard (with the mouse over the editor for a press).
+      let go of, also while the host has the keyboard (for a press, with the mouse over the editor while a window of
+      the plugin's process is in front, so Ctrl held in another application shows nothing).
   - **Matrix** (grid): each row is a source (an operator, filter or shaper), and its cells say how much of it goes
     to each column: the operators, F1 and F2, S1 and S2, and OUT. It always lists all ten nodes and fills the
     panel's height, as far from its top as from its bottom; every cell is a route; the row and
@@ -693,7 +694,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     The switch at the panel's top right (cards in a row, or a node forking and meeting again) shows the effects as
     a **graph** instead: at the right the card of the node picked, as it would show in the row, and the graph at the
     left in the room the card leaves: beside a card one place wide the graph reaches further right, and a wide card
-    (the Param EQ's, the 3-band dynamics') takes some of its room. Its hint at the top right reads "click node: edit · drag
+    (the Param EQ's, the 3-band dynamics') takes some of its room. The graph scrolls as far as it needs beside the
+    widest card, so picking a node never moves it: scrolled to its end beside a narrow card, a little room shows
+    after OUT. Its hint at the top right reads "click node: edit · drag
     node: move · click wire: insert". The graph's nodes sit on a fixed grid, a column each, and
     wire themselves: S-shaped wires, grey along the main line, run left to right from the input (IN, a
     box at the left) to the output (OUT, a box after the last column). Each effect is a circle in its color with its

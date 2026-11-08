@@ -1043,6 +1043,11 @@ void Effects::processGraph(float *const *io, uint32_t n, const ParamValues &p, d
 }
 
 void Effects::measurePorts(uint32_t n) {
+    // Only the editor reads them: with none analyzing, they read nothing, and start from there when one does.
+    if (!analyzing_) {
+        portLevel_.fill(0.0f);
+        return;
+    }
     // This chunk's peak of each port that ran, against the last level fallen by the chunk's length.
     std::array<float, kFxPorts> peak{};
     auto peakOf = [n](const std::array<std::array<float, kChunk>, 2> &out) {

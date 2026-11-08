@@ -354,6 +354,7 @@ View::DerivedScope::DerivedScope(const View &view) : view_(view) {
     if (view_.derivedDepth_++ == 0) {
         view_.derived_ = Derived{};
         view_.fxDerived_ = FxDerived{};
+        view_.fxRowDerived_.reset();
     }
 }
 
@@ -361,6 +362,7 @@ View::DerivedScope::~DerivedScope() {
     if (--view_.derivedDepth_ == 0) {
         view_.derived_ = Derived{};
         view_.fxDerived_ = FxDerived{};
+        view_.fxRowDerived_.reset();
     }
 }
 
@@ -3188,6 +3190,7 @@ void View::paintFx(Canvas &c) {
         return;
     }
     const FxRow row = fxRowShown();
+    const FxLine shownLine = fxLineShown();
     const float scroll = fxScroll();
     // In the gap before the card at `place`, an arrow: the signal runs left to right. Under the mouse, or with its
     // list open, it is a plus that adds an effect there (in the line, `at` on `lane` of item `item`).
@@ -3251,8 +3254,8 @@ void View::paintFx(Canvas &c) {
         paintSplitControls(c, box.split, column, true);
         // The arrows along its band, into each of its cards, in the band's color; none into its dashed card.
         // Faint along a band its join doesn't let through, the other band soloed.
-        const FxLine line = fxLineShown();
-        const float heard = box.item < static_cast<int>(line.size()) && fxBandSoloedOut(line[box.item], box.lane)
+        const float heard = box.item < static_cast<int>(shownLine.size()) &&
+                                    fxBandSoloedOut(shownLine[box.item], box.lane)
                                 ? kSoloedOutAlpha
                                 : 1.0f;
         const Color band = bandColor(box.lane == 1 ? kFxBands - 1 : 0).alpha(heard);

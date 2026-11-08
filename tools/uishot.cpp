@@ -2829,13 +2829,15 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
     View view(model);
     for (int slot = 0; slot < 10; ++slot)
         model.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    model.values[paramIndex(9, FxParam::Type)] = static_cast<double>(FxType::ParamEq); // a wide card, last
     setChain(model, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
     view.poll();
     click(view, kFxTab);
     const Rect mode = detail::fxModeButton(1);
     click(view, {mode.x + mode.w * 0.5f, mode.y + mode.h * 0.5f});
-    // IN, ten effects, the + and OUT: as wide as 12 columns and OUT's half and a margin.
-    const Rect area = detail::fxGraphArea();
+    // IN, ten effects, the + and OUT: as wide as 12 columns and OUT's half and a margin, scrolling as far as the box
+    // beside the widest card needs (so picking a node never moves the graph).
+    const Rect area = detail::fxGraphArea(1.5f);
     const float most = detail::kFxGridLeft + 12.0f * detail::kFxGridCol + detail::kFxEndHalfW + 16.0f - area.w;
     const Rect track = detail::fxGraphScrollTrack();
     // The thumb, at the track's left end, lighter under the mouse than the track (read off the rendered pixels).
@@ -2849,6 +2851,11 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
                           light({track.x + 8.0f, mid}) > light({track.right() - 8.0f, mid}) + 30;
     drag(view, {track.x + 6.0f, mid}, {track.right() + 60.0f, mid});
     const bool scrolledShot = renderer.save(view, dir / "40l-fx-graph-scrolled.png");
+    // Scrolled to its end, the Param EQ's node picked (its card wide, the box narrower) and then a delay's (the box
+    // wider again) leave the graph where it is: the + after the last effect still takes the click there.
+    click(view, detail::fxGridCell(10, 0, most));
+    click(view, detail::fxGridCell(9, 0, most));
+    const bool picked = model.ui.fxSelected == 8;
     const Point plus = detail::fxGridCell(11, 0, most);
     click(view, plus);
     const Point at = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 14.0f * kFxMenuPitch + 7.0f);
@@ -2862,8 +2869,9 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({track.x + 8.0f, mid}, {});
     const bool gone = renderer.save(view, dir / "40m-fx-graph-fits.png") &&
                       renderer.pixel({track.x + 8.0f, mid}) == renderer.pixel({track.x - 6.0f, mid});
-    check(most > 0.0f && barShown && scrolledShot && added && gone,
-          "the effects graph wider than its box has a scrollbar under it that scrolls it, and none once it fits");
+    check(most > 0.0f && barShown && scrolledShot && picked && added && gone,
+          "the effects graph wider than its box has a scrollbar under it that scrolls it, picking a node moving it "
+          "nowhere, and none once it fits");
 }
 
 // The bin at the FX panel's top right, in the chain and in the graph: with effects (or a split) it asks first, and a

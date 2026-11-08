@@ -281,9 +281,14 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_TIMER:
         if (wParam == kPollTimer) {
             // Ctrl let go, or pressed with the mouse over the editor: while the host has the keyboard no key message
-            // comes here, and only the next mouse move would tell the view (whose grid shows while Ctrl is held).
+            // comes here, and only the next mouse move would tell the view (whose grid shows while Ctrl is held). A
+            // press counts only while a window of this process is in front, not Ctrl held in another application.
             const bool ctrl = GetAsyncKeyState(VK_CONTROL) < 0;
-            const bool ctrlChanged = (!ctrl || trackingLeave_) && view_.setCtrl(ctrl);
+            DWORD front = 0;
+            if (const HWND foreground = GetForegroundWindow())
+                GetWindowThreadProcessId(foreground, &front);
+            const bool ours = front == GetCurrentProcessId();
+            const bool ctrlChanged = (!ctrl || (trackingLeave_ && ours)) && view_.setCtrl(ctrl);
             if (view_.poll() || ctrlChanged)
                 invalidate();
         }
