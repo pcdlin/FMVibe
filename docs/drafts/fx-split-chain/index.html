@@ -66,7 +66,7 @@ ul.dense li::marker { color: var(--ink-dim); }
   <header>
     <span class="eyebrow">FMVibe · FX view · UI drafts · builds on PR #37</span>
     <h1>The frequency split as a container card in the chain: <span class="lo">low</span> / <span class="hi">high</span></h1>
-    <p class="lede">In the chain view, a split from the effects graph shows as one card that holds its bands. A grey column at its left picks the band and sets the crossover and the two band levels. Beside it are the shown band's effect cards and a placeholder that adds an effect to that band. It shows the same data the graph shows, so switching between Chain and Graph keeps every split and join.</p>
+    <p class="lede">In the chain view, a split from the effects graph shows as one card that holds its bands. A grey column at its left picks the band, sets the crossover, solos a band and sets the two band levels. Beside it are the shown band's effect cards and a placeholder that adds an effect to that band. It shows the same data the graph shows, so switching between Chain and Graph keeps every split and join. In the graph view, picking a split or its join shows the same controls as a card of their own.</p>
   </header>
 
   <section id="look">
@@ -85,16 +85,17 @@ ul.dense li::marker { color: var(--ink-dim); }
     <div class="pair">
       <figure>
         <div class="shot tight" id="fig-anatomy"></div>
-        <figcaption><b>3 · The column, top to bottom</b>, as asked, under a title row the cards' titles line up with.</figcaption>
+        <figcaption><b>3 · The column, top to bottom</b>, as asked, under a title row the cards' titles line up with. Shown with the high band soloed.</figcaption>
       </figure>
       <ol class="marks">
         <li><div><h3>Title row (added in this draft)</h3><p>The split's icon, its name (<span class="tag">SPLIT 1</span>, numbered by line order as in the graph), fold and ×. Dragging it moves the whole split, with its bands and join, along the chain. The × removes the split and leaves its bands' effects on the main line, the high band's first, as the graph does. This row isn't in the spec: the container still needs a handle, a name and a way to be removed, and here it lines up with the cards' title rows.</p></div></li>
         <li><div><h3>Band tabs: LOW | HIGH</h3><p>Drawn like the operator page's ENVELOPE / UNISON / SCOPE tabs: names on a line, the shown tab's underline in its band's color (blue for low, amber for high, the graph's band colors). A tab whose band is hidden shows its effect count, faint. The wheel switches tabs, and so does holding a dragged card over a tab.</p></div></li>
-        <li><div><h3>Crossover display</h3><p>The split card's display from the graph view: both bands' responses with the shown band's curve filled, and a handle on the crossover that drags across it. A double-click resets it to 250 Hz.</p></div></li>
+        <li><div><h3>Crossover display</h3><p>Both bands' responses with the shown band's curve filled, and a handle on the crossover that drags across it. A double-click resets it to 250 Hz. It's 104 px tall, shorter than in PR #37's split card, to make room for the solos.</p></div></li>
         <li><div><h3>Slope: 6 | 12 | 24 dB</h3><p>The split card's segmented switch. The wheel steps along it.</p></div></li>
+        <li><div><h3>SOLO LOW | SOLO HIGH</h3><p>The join's solos, one at a time: soloing one band unsolos the other, and a click on the lit one unsolos it. A soloed button fills with its band's color, and its band's tab shows an S in that color, as the graph's join node does. That way a soloed band shows even while the other band's tab is picked.</p></div></li>
         <li><div><h3>Low · Crossover · High</h3><p>Low and High are the join's band levels (0 dB down to −60 dB, silence), so the chain view has no join card. Crossover is the split's knob. All three take modulation and right-click menus like any knob, and the MODS view still lists them as Split 1 Crossover, Join 1 Low and Join 1 High.</p></div></li>
         <li><div><h3>Grey column and outline</h3><p>A neutral grey: splits and joins are already grey in the graph, because they shape the line rather than the sound. The outline's corners are 11 px against the cards' 8, so the gap between them stays even.</p></div></li>
-        <li><div><h3>Add placeholder</h3><p>A narrow dashed card in the shown band's color. A click opens the list of effects (effects only: a split can't go inside a band), and the one picked goes at the band's end.</p></div></li>
+        <li><div><h3>Add placeholder</h3><p>A narrow dashed card in the same neutral grey as the chain's add-effect card. A click opens the list of effects (effects only: a split can't go inside a band), and the one picked goes at the band's end.</p></div></li>
       </ol>
     </div>
     <div class="tablewrap">
@@ -104,7 +105,9 @@ ul.dense li::marker { color: var(--ink-dim); }
           <tr><td>Card inside</td><td><code>171 × 304</code> px, top at <code>kFxTop</code></td><td>Unchanged from the chain, so inner and outer cards share the top, the bottom and the knob rows.</td></tr>
           <tr><td>Container outline</td><td>5 px outside the cards on every side: <code>kFxTop − 5</code> to the cards' bottom <code>+ 5</code></td><td>"Very slightly larger": it fits in the 22 px gap and above the scrollbar.</td></tr>
           <tr><td>Column</td><td>One card place: 171 px of controls plus the 5 px edge</td><td>The first inner card lands on the chain's grid of card places.</td></tr>
-          <tr><td>Placeholder</td><td><code>64 × 304</code> px</td><td>Narrower than the chain's dashed card, so an empty band costs little room.</td></tr>
+          <tr><td>Crossover display</td><td><code>143 × 104</code> px</td><td>Shorter than PR #37's split card's, leaving room for the solo row.</td></tr>
+          <tr><td>Solo row</td><td>Two buttons, <code>69.5 × 20</code> px, 4 px apart, 8 px under the slope</td><td>Left for low and right for high, like the tabs and the knobs.</td></tr>
+          <tr><td>Placeholder</td><td><code>64 × 304</code> px, the add-effect card's dashed <code>kFaint</code> outline</td><td>Narrower than the chain's dashed card, so an empty band costs little room.</td></tr>
           <tr><td>Column knobs</td><td>Centers at card <code>y + 267</code>, labels at <code>+ 293</code></td><td>The same row as the bottom knobs on the compressor, delay and reverb cards.</td></tr>
           <tr><td>Grey</td><td>Fill <code>#252931</code>, outline <code>#565C69</code> (Midnight)</td><td>New palette entries per theme, close to <code>kDim</code>, the split color, at low strength.</td></tr>
         </tbody>
@@ -113,25 +116,31 @@ ul.dense li::marker { color: var(--ink-dim); }
   </section>
 
   <section id="same-data">
-    <h2>One patch, two views</h2>
+    <h2>One patch, two views, one split card</h2>
     <div class="prose">
-      <p>Here is the patch from figures 1 and 2 in the graph view, as PR #37 draws it. Every part of the container maps to something in the graph, so switching views is only a change of drawing. Nothing gets flattened and nobody is asked to confirm, in either direction.</p>
+      <p>In the graph view, picking a split's node or its join's node shows one card at the right: the container's column on its own, with the same controls drawn by the same code. PR #37's separate split and join cards go away. The join's level bars, Low and High knobs and SOLO buttons are all part of this card now.</p>
+      <p>The card's band tabs set the same saved value the chain view's tabs do: which band the display fills and which band the chain shows. Picking a node on a band's row picks that band's tab too.</p>
     </div>
     <figure>
-      <div class="shot"><img src="graph-view-pr37.png" alt="PR #37's effects graph: IN, Shaper, Split 1 with Widener and Delay on the high band and an empty low band, Join 1, 3-Band Dynamics, OUT. The Split 1 card at the right shows the crossover at 180 Hz and 24 dB." width="1184" height="381"></div>
-      <figcaption><b>4 · The same data in Graph (PR #37's <code>docs/fx-graph.png</code>).</b> Its Split 1 card holds what the container's column holds, apart from the band levels, which are on Join 1's card here.</figcaption>
+      <div class="shot" id="fig-graph-split"></div>
+      <figcaption><b>4a · Graph view, Split 1 picked.</b> The patch from figures 1 and 2, as PR #37's graph lays it out, with the split's card at the right. It's grey like the container's column and the size of a usual card.</figcaption>
+    </figure>
+    <figure>
+      <div class="shot" id="fig-graph-join"></div>
+      <figcaption><b>4b · Graph view, Join 1 picked.</b> The same card: a split and its join are one thing in the chain view, and they share one card in the graph.</figcaption>
     </figure>
     <div class="tablewrap">
       <table>
         <thead><tr><th>Chain view</th><th>Graph view</th><th>Data (PR #37)</th></tr></thead>
         <tbody>
           <tr><td>The container card</td><td>A split node, its two band rows and its join node</td><td>The split's and the sum's <code>Used</code>; wires</td></tr>
-          <tr><td>Crossover display, Slope, Crossover knob</td><td>The split's card</td><td><code>SplitParam::Low</code>, <code>SplitParam::Slope</code></td></tr>
-          <tr><td>Low and High knobs</td><td>The join's card: its level bars and Low / High knobs</td><td>The levels of the join's two input wires (dB)</td></tr>
+          <tr><td>The container's grey column</td><td>The card of the split or the join picked: the same component</td><td>All of the rows below</td></tr>
+          <tr><td>Crossover display, Slope, Crossover knob</td><td>The same controls on the card</td><td><code>SplitParam::Low</code>, <code>SplitParam::Slope</code></td></tr>
+          <tr><td>SOLO LOW | SOLO HIGH</td><td>The same buttons; the join node's S badge</td><td><code>SumParam::SoloLow</code>, <code>SoloHigh</code></td></tr>
+          <tr><td>Low and High knobs</td><td>The same knobs on the card</td><td>The levels of the join's two input wires (dB)</td></tr>
           <tr><td>The cards in a band, in order</td><td>The nodes along that band's row</td><td>Wires from the split's band port through the effects into the join</td></tr>
           <tr><td>The cards before and after the container</td><td>The main line</td><td>Wires from IN to OUT</td></tr>
-          <tr><td>The band shown (the tab)</td><td>No equivalent (both rows always show)</td><td>Editor layout: one band per split, saved with the patch like the node picked</td></tr>
-          <tr><td>No control: see the open questions</td><td>The join's SOLO buttons</td><td><code>SumParam::SoloHigh</code>, <code>SoloLow</code></td></tr>
+          <tr><td>The band shown (the tab)</td><td>The card's tab: the band its display fills</td><td>Editor layout: one band per split, saved with the patch like the node picked</td></tr>
         </tbody>
       </table>
     </div>
@@ -176,6 +185,7 @@ ul.dense li::marker { color: var(--ink-dim); }
       <li><b>Chain or Graph becomes an editor layout field,</b> like the routing panel's Graph | Matrix, instead of an engine mode. The engine always runs the graph, so the switch has nothing to do. PR #37's 3 ms duck when switching and its prompt before flattening splits both go away. PR #37 isn't merged yet, so <code>GlobalParam::FxGraph</code> can become a layout field before it ships.</li>
       <li><b>The chain order params (33400 + place) are read only when loading:</b> a state or preset from before the graph becomes a main line of wires in that order, as PR #37 already does when it switches to the graph. After that the order lives only in the wires.</li>
       <li><b>The editor's rules make both views show everything the editor can build:</b> splits only on the main line, bands as straight lines of effects, and every split with its join. Wires aren't given to hosts, so only a hand-edited preset could break those rules. Loading such a preset should repair it, or let the graph view show it and keep it out of the chain view.</li>
+      <li><b>One component for the split's controls:</b> the chain view draws it as the container's column, and the graph view as the card of a split or join node picked. PR #37's split card and join card fold into it.</li>
       <li><b>The band shown is the only new state:</b> one value per split (four splits), saved in the editor layout chunk like the node picked.</li>
     </ul>
   </section>
@@ -183,10 +193,10 @@ ul.dense li::marker { color: var(--ink-dim); }
   <section id="questions">
     <h2>Open questions</h2>
     <div class="qs">
-      <div class="q"><h3>Solo</h3><p>The spec has no solo, and the graph's join card has one. If a band is soloed from the graph and the chain view shows nothing, the other band goes silent with no visible reason.</p><p class="pick">My recommendation: <b>at least mark a soloed band's tab with an S in its color</b>, and offer Solo on the tab's right-click menu.</p></div>
       <div class="q"><h3>Container width</h3><p>The width follows the shown band (as drafted), so the row stays compact and switching tabs moves the cards after it. The alternative sizes the container for the longer band: nothing moves, but a short band leaves empty space.</p><p class="pick">My recommendation: <b>follow the shown band</b>, with the glide the row already has.</p></div>
       <div class="q"><h3>Title row</h3><p>The spec starts the column at the band tabs. This draft adds a title row above them for dragging, removing and naming the container. The alternative is a label set into the top edge of the outline.</p><p class="pick">My recommendation: <b>keep the title row</b>, because it lines up with the cards' titles.</p></div>
       <div class="q"><h3>Which band a new split shows</h3><p>LOW, the first tab, is drafted. The graph puts the high band first when it flattens.</p><p class="pick">My recommendation: <b>LOW</b>, then the band last picked, saved per split.</p></div>
+      <div class="q"><h3>Band tabs on the graph's card</h3><p>The graph shows both band rows at once, so on its card the tabs only pick which curve is filled (and which band the chain shows). They could be hidden in the graph view, at the cost of the card no longer being exactly the same.</p><p class="pick">My recommendation: <b>keep them</b>, and light the picked band's row label in the graph, so the card stays one component.</p></div>
     </div>
   </section>
 </main>
@@ -382,8 +392,54 @@ function crossoverDisplay(x, y, w, h, fc, slope, band) {
   return s;
 }
 
-// The split's container: the outline, the grey column (title, band tabs, crossover, slope, knobs), the shown band's
-// cards and the placeholder. Returns its markup and its right edge.
+// The split's controls, one card's worth: title, band tabs, crossover, slope, solos and knobs. The chain view draws
+// them as its container's grey column; the graph view as the card of a split or join node picked.
+function splitControls(px, o) {
+  const band = o.band;
+  let s = '';
+  s += icon('split', px + 10, Y0 + 10, C.dim);
+  s += T(px + 34, Y0 + 17, o.name || 'SPLIT 1', { size: 11, weight: 700, ls: 0.3 });
+  s += chevronLeft(px + CARD_W - 42, Y0 + 17, C.dim) + cross(px + CARD_W - 20, Y0 + 17, C.faint);
+  // Band tabs.
+  const ty = Y0 + 38, th = 20, tx = px + 14, tw = 143;
+  s += L(tx, ty + th - 0.5, tx + tw, ty + th - 0.5, C.greyRule, 1);
+  [['low', 'LOW'], ['high', 'HIGH']].forEach(([b, name], i) => {
+    const x0 = tx + i * tw / 2, mid = x0 + tw / 4, sel = b === band, n = (o.counts || {})[b] || 0;
+    s += Ci(mid - (b === 'low' ? 17 : 20), ty + 9, 3, { fill: BAND[b], fop: sel ? 1 : 0.45 });
+    s += T(mid + 4, ty + 9, name, { size: 10.5, weight: 700, fill: sel ? C.text : C.dim, anchor: 'middle', ls: 0.4 });
+    if (o.solo === b) { // a soloed band's tab: an S in its color, as the graph's join node shows
+      const sx = mid + (b === 'low' ? 24 : 28);
+      s += Ci(sx, ty + 9, 6, { fill: BAND[b] }) + T(sx, ty + 9.5, 'S', { size: 8.5, weight: 700, fill: '#0b0d11', anchor: 'middle' });
+    } else if (!sel && n) s += T(mid + (b === 'low' ? 22 : 26), ty + 9, String(n), { size: 9.5, fill: C.dim, op: 0.75, anchor: 'middle' });
+    if (sel) s += L(x0 + 8, ty + th - 1, x0 + tw / 2 - 8, ty + th - 1, BAND[b], 2);
+  });
+  // Crossover display (shorter than PR #37's split card's, for the solos), slope, solos, knobs.
+  s += crossoverDisplay(px + 14, Y0 + 66, tw, 104, o.fc || 180, o.slope ?? 2, band);
+  const sy = Y0 + 178, sw = (tw - 6) / 3;
+  ['6 dB', '12 dB', '24 dB'].forEach((t, i) => {
+    const sel = i === (o.slope ?? 2), x0 = tx + i * (sw + 3);
+    s += R(x0, sy, sw, 22, { r: 4, fill: sel ? C.accent : C.greyInset, fop: sel ? 0.22 : 1, stroke: sel ? C.accent : C.greyRule, sw: 1 });
+    s += T(x0 + sw / 2, sy + 11, t, { size: 10.5, fill: sel ? C.text : C.dim, weight: sel ? 700 : 400, anchor: 'middle' });
+  });
+  const oy = Y0 + 208, ow = (tw - 4) / 2;
+  [['low', 'SOLO LOW'], ['high', 'SOLO HIGH']].forEach(([b, t], i) => {
+    const on = o.solo === b, x0 = tx + i * (ow + 4);
+    s += R(x0, oy, ow, 20, { r: 4, fill: on ? BAND[b] : C.greyInset, fop: on ? 0.22 : 1, stroke: on ? BAND[b] : C.greyRule, sw: 1 });
+    s += T(x0 + ow / 2, oy + 10, t, { size: 9.5, weight: 700, fill: on ? C.text : C.dim, anchor: 'middle', ls: 0.4 });
+  });
+  const kv = db => 1 + db / 60;
+  s += knob(third(px, CARD_W, 0), Y0 + 267, 'Low', kv(o.lowDb ?? 0), BAND.low, { body: C.greyInset });
+  s += knob(third(px, CARD_W, 1), Y0 + 267, 'Crossover', Math.log((o.fc || 180) / 20) / Math.log(1000), C.accent, { body: C.greyInset });
+  s += knob(third(px, CARD_W, 2), Y0 + 267, 'High', kv(o.highDb ?? -3), BAND.high, { body: C.greyInset });
+  return s;
+}
+// The same controls as a card of their own, grey, for the graph view.
+function splitCard(px, o) {
+  return R(px, Y0, CARD_W, CARD_H, { r: 8, fill: C.grey, stroke: C.greyLine, sw: 1.3 }) + splitControls(px, o);
+}
+
+// The split's container: the outline, the grey column, the shown band's cards and the placeholder (neutral, like the
+// chain's add card). Returns its markup and its right edge.
 function splitContainer(px, o) {
   const band = o.band, col = BAND[band];
   const cards = o.cards || [];
@@ -396,66 +452,40 @@ function splitContainer(px, o) {
   s += R(ox, oy, ow, oh, { r: rad, fill: '#171A21' });
   s += P(`M${ox + rad} ${oy} H${colR} V${oy + oh} H${ox + rad} A${rad} ${rad} 0 0 1 ${ox} ${oy + oh - rad} V${oy + rad} A${rad} ${rad} 0 0 1 ${ox + rad} ${oy} Z`, { fill: C.grey });
   s += R(ox, oy, ow, oh, { r: rad, stroke: C.greyLine, sw: 1.3 });
-  // Title row.
-  s += icon('split', px + 10, Y0 + 10, C.dim);
-  s += T(px + 34, Y0 + 17, o.name || 'SPLIT 1', { size: 11, weight: 700, ls: 0.3 });
-  s += chevronLeft(px + CARD_W - 42, Y0 + 17, C.dim) + cross(px + CARD_W - 20, Y0 + 17, C.faint);
-  // Band tabs.
-  const ty = Y0 + 38, th = 20, tx = px + 14, tw = 143;
-  s += L(tx, ty + th - 0.5, tx + tw, ty + th - 0.5, C.greyRule, 1);
-  [['low', 'LOW'], ['high', 'HIGH']].forEach(([b, name], i) => {
-    const x0 = tx + i * tw / 2, mid = x0 + tw / 4, sel = b === band, n = (o.counts || {})[b] || 0;
-    const label = T(mid + 4, ty + 9, name, { size: 10.5, weight: 700, fill: sel || o.hoverTab === b ? C.text : C.dim, anchor: 'middle', ls: 0.4 });
-    s += Ci(mid - (b === 'low' ? 17 : 20), ty + 9, 3, { fill: BAND[b], fop: sel ? 1 : 0.45 });
-    s += label;
-    if (!sel && n) s += T(mid + (b === 'low' ? 22 : 26), ty + 9, String(n), { size: 9.5, fill: C.dim, op: 0.75, anchor: 'middle' });
-    if (sel) s += L(x0 + 8, ty + th - 1, x0 + tw / 2 - 8, ty + th - 1, BAND[b], 2);
-    if (o.hoverTab === b) s += R(x0 + 4, ty - 2, tw / 2 - 8, th + 2, { r: 4, fill: BAND[b], fop: 0.12 });
-  });
-  // Crossover display, slope, knobs.
-  s += crossoverDisplay(px + 14, Y0 + 66, tw, 130, o.fc || 180, o.slope ?? 2, band);
-  const sy = Y0 + 206, sw = (tw - 6) / 3;
-  ['6 dB', '12 dB', '24 dB'].forEach((t, i) => {
-    const sel = i === (o.slope ?? 2), x0 = tx + i * (sw + 3);
-    s += R(x0, sy, sw, 22, { r: 4, fill: sel ? C.accent : C.greyInset, fop: sel ? 0.22 : 1, stroke: sel ? C.accent : C.greyRule, sw: 1 });
-    s += T(x0 + sw / 2, sy + 11, t, { size: 10.5, fill: sel ? C.text : C.dim, weight: sel ? 700 : 400, anchor: 'middle' });
-  });
-  const kv = db => 1 + db / 60;
-  s += knob(third(px, CARD_W, 0), Y0 + 267, 'Low', kv(o.lowDb ?? 0), BAND.low, { body: C.greyInset });
-  s += knob(third(px, CARD_W, 1), Y0 + 267, 'Crossover', Math.log((o.fc || 180) / 20) / Math.log(1000), C.accent, { body: C.greyInset });
-  s += knob(third(px, CARD_W, 2), Y0 + 267, 'High', kv(o.highDb ?? -3), BAND.high, { body: C.greyInset });
-  if (o.tooltip) s += o.tooltip;
+  s += splitControls(px, o);
   // Arrows and the band's cards.
   s += arrow(colR + (px + PLACE - colR) / 2, col);
-  placed.forEach((cd, i) => {
+  placed.forEach(cd => {
     if (cd.drop) s += R(cd.x, Y0, cd.w, CARD_H, { r: 8, stroke: col, sw: 1.5, dash: '2 4', fill: col, fop: 0.05 });
     else s += card(cd.x, cd.type, cd.title, cd.w);
     s += arrow(cd.x + cd.w + GAP / 2);
   });
   // Placeholder.
-  const hov = o.placeholderHover;
-  s += R(phX, Y0, phW, CARD_H, { r: 8, stroke: col, sw: 1.3, sop: hov ? 0.95 : 0.55, dash: '4 4', fill: col, fop: hov ? 0.12 : 0.04 });
-  s += Ci(phX + phW / 2, Y0 + 140, 12, { stroke: col, sw: 1.5, sop: hov ? 1 : 0.8, fill: hov ? col : 'none', fop: 0.2 });
-  s += P(`M${phX + phW / 2 - 5} ${Y0 + 140} h10 M${phX + phW / 2} ${Y0 + 135} v10`, { stroke: col, sw: 1.7 });
-  s += T(phX + phW / 2, Y0 + 166, 'Add to', { size: 10, fill: col, anchor: 'middle', op: 0.85 });
-  s += T(phX + phW / 2, Y0 + 180, band.toUpperCase(), { size: 10, fill: col, anchor: 'middle', weight: 700, op: 0.85 });
+  const hov = o.placeholderHover, pcx = phX + phW / 2;
+  s += R(phX, Y0, phW, CARD_H, { r: 8, stroke: hov ? C.dim : C.faint, sw: 1.2, dash: '5 4', fill: C.text, fop: hov ? 0.05 : 0 });
+  s += Ci(pcx, Y0 + 140, 13, { stroke: hov ? C.dim : C.faint, sw: 1.4 });
+  s += P(`M${pcx - 5} ${Y0 + 140} h10 M${pcx} ${Y0 + 135} v10`, { stroke: hov ? C.text : C.dim, sw: 1.6 });
+  s += T(pcx, Y0 + 166, 'Add to', { size: 10.5, fill: hov ? C.dim : C.faint, anchor: 'middle' });
+  s += T(pcx, Y0 + 180, band.toUpperCase(), { size: 10.5, fill: hov ? C.dim : C.faint, anchor: 'middle', weight: 700 });
   return { svg: s, right, phX, phW };
 }
 
 // The FX panel around a row of cards, with its top row (+ EFFECT, the count, the hint, the bin and Chain | Graph).
-function panel(id, content, count, extra = '', viewBox = '0 0 1184 381') {
+function panel(id, content, count, extra = '', viewBox = '0 0 1184 381', graph = false) {
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" role="img" aria-label="FX chain mockup" font-family="'Segoe UI','Noto Sans',system-ui,sans-serif">`;
   s += `<defs><clipPath id="${id}-clip"><rect x="16" y="20" width="1152" height="350"/></clipPath></defs>`;
   s += R(0, 0, 1184, 381, { fill: C.bg }) + R(8, 0, 1168, 372, { r: 10, fill: C.panel, stroke: C.border });
   s += R(24, 9, 116, 22, { r: 5, fill: C.raised, stroke: '#343A47' }) + T(36, 20, '+ EFFECT', { size: 10.5, weight: 600, fill: C.dim, ls: 0.3 }) + chevronDown(127, 20, C.dim);
   s += T(150, 20, count, { size: 11, fill: C.dim });
-  s += T(1036, 20, 'click icon: toggle  ·  drag title: reorder', { size: 10.5, fill: C.faint, anchor: 'end' });
+  if (!graph) s += T(1036, 20, 'click icon: toggle  ·  drag title: reorder', { size: 10.5, fill: C.faint, anchor: 'end' });
   s += R(1048, 9, 34, 22, { r: 5, fill: C.raised, stroke: '#343A47' }) + P('M1059 15 h12 M1061 15 v11 h8 v-11 M1063 13 h4', { stroke: C.dim, sw: 1.3 });
-  s += R(1092, 9, 34, 22, { r: 5, fill: C.accent, fop: 0.22, stroke: C.accent }) + R(1126, 9, 34, 22, { r: 5, fill: C.raised, stroke: '#343A47' });
-  s += R(1100, 15, 5, 10, { r: 1.5, stroke: C.text, sw: 1.2 }) + R(1106.5, 15, 5, 10, { r: 1.5, stroke: C.text, sw: 1.2 }) + R(1113, 15, 5, 10, { r: 1.5, stroke: C.text, sw: 1.2 });
-  s += P('M1133 20 h4 l6 -5 l6 5 h4 M1137 20 l6 5 l6 -5', { stroke: C.dim, sw: 1.3 });
+  const on = { r: 5, fill: C.accent, fop: 0.22, stroke: C.accent }, off = { r: 5, fill: C.raised, stroke: '#343A47' };
+  s += R(1092, 9, 34, 22, graph ? off : on) + R(1126, 9, 34, 22, graph ? on : off);
+  const chainInk = graph ? C.dim : C.text, graphInk = graph ? C.text : C.dim;
+  s += R(1100, 15, 5, 10, { r: 1.5, stroke: chainInk, sw: 1.2 }) + R(1106.5, 15, 5, 10, { r: 1.5, stroke: chainInk, sw: 1.2 }) + R(1113, 15, 5, 10, { r: 1.5, stroke: chainInk, sw: 1.2 });
+  s += P('M1133 20 h4 l6 -5 l6 5 h4 M1137 20 l6 5 l6 -5', { stroke: graphInk, sw: 1.3 });
   s += `<g clip-path="url(#${id}-clip)">${content}</g>`;
-  s += R(24, 360, 1136, 6, { r: 3, fill: C.raised }) + R(24, 360, 520, 6, { r: 3, fill: C.track });
+  if (!graph) s += R(24, 360, 1136, 6, { r: 3, fill: C.raised }) + R(24, 360, 520, 6, { r: 3, fill: C.track });
   s += extra + '</svg>';
   document.getElementById(id).innerHTML = s;
 }
@@ -500,21 +530,56 @@ function hand(x, y) { // a closed hand for a drag
   row += arrow(md + mdw + GAP + CARD_W + 11) + addCard(md + mdw + 2 * GAP + CARD_W);
   panel('fig-low', row, '5/32');
 }
+// 4. The graph view: the split or the join picked shows the same controls as a card.
+function graphView(id, picked) {
+  const g = { split: [243, 200], join: [518, 200] };
+  let s = R(24, 50, 852, 302, { r: 8, fill: '#111318' });
+  for (let cx = 0; cx < 9; cx++) for (let ry = 0; ry < 3; ry++) s += Ci(62 + cx * 92, 130 + ry * 70, 0.9, { fill: C.faint });
+  const head = (x, y, c) => P(`M${x - 7} ${y - 4} L${x} ${y} L${x - 7} ${y + 4} Z`, { fill: c });
+  const wire = (x0, y0, x1, y1, c) => P(`M${x0} ${y0} C${(x0 + x1) / 2} ${y0} ${(x0 + x1) / 2} ${y1} ${x1} ${y1}`, { stroke: c, sw: 1.6 }) + head(x1, y1, c);
+  const node = (cx, cy, type, name) => Ci(cx, cy, 22, { fill: C.card, stroke: FX[type], sw: 1.6 }) + icon(type, cx - 9, cy - 7, FX[type])
+    + T(cx, cy + 34, name, { size: 9.5, weight: 700, fill: C.dim, anchor: 'middle', ls: 0.3 });
+  const box = (x, y, w, h, label) => R(x, y, w, h, { r: 6, fill: C.raised, stroke: C.border }) + T(x + w / 2, y + h / 2, label, { size: 10, weight: 700, fill: C.dim, anchor: 'middle' });
+  const plus = (cx, cy) => Ci(cx, cy, 8, { fill: '#111318', stroke: C.accent, sw: 1.3 }) + P(`M${cx - 4} ${cy} h8 M${cx} ${cy - 4} v8`, { stroke: C.text, sw: 1.4 });
+  const sj = (key, mirror, name) => {
+    const [cx, cy] = g[key], sel = picked === key;
+    let t = '';
+    if (sel) t += R(cx - 22, cy - 29, 44, 58, { r: 9, fill: C.dim, fop: 0.18, stroke: C.dim, sw: 1.5 });
+    t += R(cx - 17, cy - 24, 34, 48, { r: 6, fill: '#2A2F38', stroke: C.dim, sw: 1.3 });
+    t += `<g transform="translate(${cx} ${cy}) scale(${mirror ? -1 : 1} 1) translate(-9 -7)">${P(ICONS.split, { stroke: C.text, sw: 1.6 })}</g>`;
+    return t + T(cx, cy + 38, name, { size: 9.5, weight: 700, fill: sel ? C.text : C.dim, anchor: 'middle', ls: 0.3 });
+  };
+  s += box(42, 171, 32, 58, 'IN') + box(778, 171, 32, 58, 'OUT');
+  s += wire(74, 200, 128, 200, C.dim) + wire(172, 200, 226, 200, FX.shaper);
+  s += wire(260, 188, 312, 130, C.dim) + wire(356, 130, 404, 130, FX.widener) + wire(448, 130, 501, 190, FX.delay);
+  s += P('M260 212 C297 212 297 268 326 268', { stroke: C.dim, sw: 1.6 }) + wire(342, 268, 501, 210, C.dim);
+  s += wire(535, 200, 588, 200, C.dim) + P('M632 200 H694', { stroke: FX.multidyn, sw: 1.6 }) + wire(710, 200, 778, 200, FX.multidyn);
+  s += node(150, 200, 'shaper', 'SHAPER') + node(334, 130, 'widener', 'WIDENER') + node(426, 130, 'delay', 'DELAY') + node(610, 200, 'multidyn', '3-BAND DYNAMICS');
+  s += plus(334, 268) + plus(702, 200);
+  s += sj('split', false, 'SPLIT 1') + sj('join', true, 'JOIN 1');
+  s += T(275, 92, 'High', { size: 10, weight: 700, fill: BAND.high }) + T(275, 320, 'Low', { size: 10, weight: 700, fill: BAND.low, op: 0.7 });
+  s += splitCard(941, { band: 'high', counts: { low: 0, high: 2 } });
+  panel(id, s, '4/32', '', '0 0 1184 381', true);
+}
+graphView('fig-graph-split', 'split');
+graphView('fig-graph-join', 'join');
+
 // 3. Anatomy: the container of figure 1, closer, with its parts marked.
 {
   const px = placeX(1);
-  const sc = splitContainer(px, { band: 'high', counts: { low: 0, high: 2 }, cards: [{ type: 'widener', title: 'WIDENER' }] });
+  const sc = splitContainer(px, { band: 'high', counts: { low: 0, high: 2 }, cards: [{ type: 'widener', title: 'WIDENER' }], solo: 'high' });
   const bx = px - 44;
   const mark = (n, x, y, ty) => L(x, y, bx + 10, ty, C.note, 1.2) + Ci(x, y, 2.5, { fill: C.note }) + Ci(bx, ty, 10, { fill: C.note }) + T(bx, ty + 0.5, String(n), { size: 11, weight: 700, fill: '#0b0d11', anchor: 'middle' });
   let marks = '';
   marks += mark(1, px + 8, Y0 + 17, Y0 + 17);
   marks += mark(2, px + 14, Y0 + 48, Y0 + 52);
-  marks += mark(3, px + 14, Y0 + 130, Y0 + 130);
-  marks += mark(4, px + 14, Y0 + 217, Y0 + 217);
-  marks += mark(5, px + 18, Y0 + 267, Y0 + 262);
-  marks += mark(6, px - 5, Y0 + 290, Y0 + 296);
+  marks += mark(3, px + 14, Y0 + 118, Y0 + 118);
+  marks += mark(4, px + 14, Y0 + 189, Y0 + 184);
+  marks += mark(5, px + 14, Y0 + 218, Y0 + 218);
+  marks += mark(6, px + 18, Y0 + 267, Y0 + 256);
+  marks += mark(7, px - 5, Y0 + 290, Y0 + 294);
   marks += L(sc.phX + sc.phW / 2, Y0 + 196, sc.phX + sc.phW / 2, Y0 + 228, C.note, 1.2) + Ci(sc.phX + sc.phW / 2, Y0 + 196, 2.5, { fill: C.note })
-    + Ci(sc.phX + sc.phW / 2, Y0 + 238, 10, { fill: C.note }) + T(sc.phX + sc.phW / 2, Y0 + 238.5, '7', { size: 11, weight: 700, fill: '#0b0d11', anchor: 'middle' });
+    + Ci(sc.phX + sc.phW / 2, Y0 + 238, 10, { fill: C.note }) + T(sc.phX + sc.phW / 2, Y0 + 238.5, '8', { size: 11, weight: 700, fill: '#0b0d11', anchor: 'middle' });
   // The 5 px the outline stands off the cards.
   const dimX = sc.right + 14;
   marks += L(sc.right - 4, Y0 - 5, dimX + 4, Y0 - 5, C.note, 1, { dash: '2 2' }) + L(sc.phX + sc.phW, Y0, dimX + 4, Y0, C.note, 1, { dash: '2 2' });
