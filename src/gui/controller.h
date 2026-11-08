@@ -148,7 +148,7 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
 
 // The tempo a host that stands in for a transport offers the editor (see Controller::hasTempo()): its range, where it
 // starts, and a tempo held to the range and rounded to hundredths of a BPM (one that isn't a number, to the default).
-constexpr double kMinTempo = 20.0, kMaxTempo = 999.0, kDefaultTempo = 120.0;
+constexpr double kMinTempo = 20.0, kMaxTempo = 999.0, kDefaultTempo = 140.0;
 inline double clampTempo(double bpm) {
     if (std::isnan(bpm))
         return kDefaultTempo;

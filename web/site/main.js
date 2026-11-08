@@ -407,7 +407,7 @@ document.addEventListener('mousedown', (e) => {
 // the theme, which the editor reads it from too.
 const TEMPO_MIN = 20;
 const TEMPO_MAX = 999;
-let tempo = 120;
+let tempo = 140;
 
 function clampTempo(bpm) {
   return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(bpm * 100) / 100));

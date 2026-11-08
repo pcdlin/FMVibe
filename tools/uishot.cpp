@@ -141,7 +141,7 @@ public:
     int handles = 0;
     double links = 0.75;
     bool offersTempo = false; // a host that lets the editor set its tempo (the browser demo, fmvibe-uihost)
-    double bpm = 120.0;
+    double bpm = kDefaultTempo;
     int tempoSets = 0;
     std::string themeName;
     double glowLevel = 0.0;
@@ -1638,20 +1638,20 @@ void testTempo(const std::filesystem::path &dir, Renderer &renderer) {
           "a host that lets the editor set its tempo gets a field for it in the title bar (read off the rendered pixels)");
 
     drag(view, box, {box.x, box.y - 20.0f});
-    const bool dragged = model.bpm == 130.0;
+    const bool dragged = model.bpm == 150.0;
     view.mouseDown(box, {true, false}); // with Shift, a tenth of a BPM every 2 px
     view.mouseMove({box.x, box.y - 10.0f}, {true, false});
     view.mouseUp({box.x, box.y - 10.0f}, {true, false});
-    const bool fine = std::abs(model.bpm - 130.5) < 1e-9;
+    const bool fine = std::abs(model.bpm - 150.5) < 1e-9;
     click(view, box); // a click leaves it be
-    const bool clicked = std::abs(model.bpm - 130.5) < 1e-9;
+    const bool clicked = std::abs(model.bpm - 150.5) < 1e-9;
     check(dragged && fine && clicked, "the tempo is dragged a BPM every 2 px, a tenth of one with Shift");
     view.wheel(box, 1.0f, {});
-    const bool up = model.bpm == 131.0; // onto whole BPM
+    const bool up = model.bpm == 151.0; // onto whole BPM
     view.wheel(box, -2.0f, {});
-    const bool down = model.bpm == 129.0;
+    const bool down = model.bpm == 149.0;
     view.wheel(box, 1.0f, {true, false});
-    check(up && down && std::abs(model.bpm - 129.1) < 1e-9, "the wheel steps the tempo a BPM a notch, a tenth with Shift");
+    check(up && down && std::abs(model.bpm - 149.1) < 1e-9, "the wheel steps the tempo a BPM a notch, a tenth with Shift");
     drag(view, box, {box.x, box.y - 4000.0f});
     const bool top = model.bpm == 999.0;
     drag(view, box, {box.x, box.y + 4000.0f});
@@ -1668,16 +1668,16 @@ void testTempo(const std::filesystem::path &dir, Renderer &renderer) {
     const bool typedShot = renderer.save(view, dir / "43d-tempo-typed.png", &titleBar);
     check(typing && typingShot && typed && typedShot, "a double-click on the tempo types one");
     click(view, box, {false, true}); // Ctrl+Click types too, a unit after the number allowed
-    type(view, "140 BPM");
+    type(view, "160 BPM");
     view.typeKey(View::Key::Enter);
-    const bool ctrlTyped = model.bpm == 140.0;
+    const bool ctrlTyped = model.bpm == 160.0;
     doubleClick(view, box);
     type(view, "fast");
     view.typeKey(View::Key::Enter);
     doubleClick(view, box);
     type(view, "60");
     view.typeKey(View::Key::Escape);
-    const bool kept = model.bpm == 140.0;
+    const bool kept = model.bpm == 160.0;
     doubleClick(view, box);
     type(view, "5000");
     view.typeKey(View::Key::Enter);

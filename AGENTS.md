@@ -512,7 +512,7 @@ More checks:
   keyboard, from the computer keyboard as in the browser demo (A W S E D … from middle C by key position, Z and X
   shifting the octave and C and V stepping the velocity through 1, 20, 40 … 100, 120 and 127, both of which the
   window's title shows; keys the editor takes for typing stay its own) and from every
-  MIDI input it can open, at a tempo of 120 BPM for synced LFOs and effects, its transport playing from its start
+  MIDI input it can open, at a tempo of 140 BPM for synced LFOs and effects, its transport playing from its start
   for anchored LFOs. It offers the plugin FMVibe's own host extension for the tempo (`src/hosttempo.h`), so the
   editor's title bar shows the tempo, to change as it plays. With
   `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and

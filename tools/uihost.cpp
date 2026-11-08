@@ -389,7 +389,7 @@ const clap_host_gui_t kHostGui = {
 
 // The tempo the editor shows and sets (see src/hosttempo.h): the audio thread's transport's.
 const fmvibe::HostTempo kHostTempo = {
-    [](const clap_host_t *) { return app.audio ? app.audio->tempo() : 120.0; },
+    [](const clap_host_t *) { return app.audio ? app.audio->tempo() : 140.0; },
     [](const clap_host_t *, double bpm) {
         if (app.audio)
             app.audio->setTempo(std::clamp(bpm, 20.0, 999.0));
@@ -634,7 +634,7 @@ void usage() {
                 "  The plugin defaults to FMVibe.clap next to this program.\n"
                 "  --silent   run the plugin without an audio device (the meters and scope still move)\n"
                 "  --no-midi  leave the MIDI inputs alone\n"
-                "  --tempo    the tempo synced LFOs and effects follow to begin with (default 120 BPM; the\n"
+                "  --tempo    the tempo synced LFOs and effects follow to begin with (default 140 BPM; the\n"
                 "             editor's title bar shows it, to drag, scroll or type)\n"
                 "  The computer keyboard plays notes: A W S E D ... from middle C, Z and X shift the octave,\n"
                 "  C and V step the velocity (1, 20, 40 ... 127).\n");
@@ -645,7 +645,7 @@ void usage() {
 int wmain(int argc, wchar_t **argv) {
     std::wstring path;
     bool silent = false, midi = true;
-    double tempo = 120.0;
+    double tempo = 140.0;
     for (int i = 1; i < argc; ++i) {
         const std::wstring arg = argv[i];
         if (arg == L"--silent") {
