@@ -2047,6 +2047,12 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::WireStart, startGrip(w.start, w.end), outParam(from), from, kNodes);
             }
         }
+        // The node under the mouse: an x in a circle at its upper right, over its edge, which switches it off.
+        for (int node : on)
+            if (node == routingHoveredNode()) {
+                const Point x = nodeDeleteAt(node, nodeCenter(node));
+                add(Kind::NodeDelete, {x.x - 8.0f, x.y - 8.0f, 16.0f, 16.0f}, -1, node);
+            }
         // The nodes that are off, as dashed ghosts in the graph's top left, over any node moved there.
         float x = kRouting.x + 16.0f;
         for (int node = 0; node < kNodes; ++node) {
@@ -3232,6 +3238,11 @@ double View::liveAmount(int param) const {
     return std::clamp((value(param) + offset - def.min) / (def.max - def.min), 0.0, 1.0);
 }
 
+double View::liveValue(int param) const {
+    const ParamDef &def = table_[param];
+    return std::clamp(value(param) + liveOffset(param), def.min, def.max);
+}
+
 // How far a modulation takes its target from the set value, down and up: bipolar, half its depth either way;
 // unipolar, all of it one way.
 std::pair<double, double> View::modReach(const Assignment &m) const {
@@ -3953,10 +3964,10 @@ void View::paintShaperCurve(Canvas &c, Rect r, int unit) {
     c.line(at(-kRange, -1.0), at(kRange, -1.0), kBorder.alpha(0.7f), 1.0f, true);
     c.line(at(-kRange, -kRange), at(kRange, kRange), kFaint.alpha(0.6f), 1.0f);
 
-    const double drive = std::pow(10.0, value(clip.drive) / 20.0);
+    const double drive = std::pow(10.0, liveValue(clip.drive) / 20.0); // as modulation takes them now
     const double output =
-        std::pow(10.0, clipOutputDb(value(clip.output), value(clip.drive), value(clip.link) >= 0.5) / 20.0);
-    const double mix = value(clip.mix);
+        std::pow(10.0, clipOutputDb(liveValue(clip.output), liveValue(clip.drive), value(clip.link) >= 0.5) / 20.0);
+    const double mix = liveValue(clip.mix);
     auto get = [this](int index) { return value(index); };
     const bool symmetric = curveSymmetric(curve);
     auto shape = [&](double x) { return shaperCurveValue(get, mode, shapeBase(curve), symmetric, x); };
@@ -3997,10 +4008,10 @@ void View::paintClipCurveCard(Canvas &c, Rect r, int unit) {
     c.line(shapeAt(shape, 0.0, -1.0), shapeAt(shape, 1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
-    const double drive = std::pow(10.0, value(clip.drive) / 20.0);
+    const double drive = std::pow(10.0, liveValue(clip.drive) / 20.0); // as modulation takes them now
     const double output =
-        std::pow(10.0, clipOutputDb(value(clip.output), value(clip.drive), value(clip.link) >= 0.5) / 20.0);
-    const double mix = value(clip.mix);
+        std::pow(10.0, clipOutputDb(liveValue(clip.output), liveValue(clip.drive), value(clip.link) >= 0.5) / 20.0);
+    const double mix = liveValue(clip.mix);
     const bool symmetric = curveSymmetric(shape);
     auto curve = [&](double in) { return shaperCurveValue(get, ClipMode::Custom, base, symmetric, in); };
     std::vector<double> key = curveKey(Curve::Drawn, shapeArea(shape));
@@ -4049,7 +4060,7 @@ void View::paintClipCurveCard(Canvas &c, Rect r, int unit) {
 void View::paintDelay(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect inner{r.x + 16.0f, r.y + 20.0f, r.w - 22.0f, r.h - 26.0f};
-    auto at = [&](FxParam f) { return value(paramIndex(slot, f)); };
+    auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
     const bool synced = at(FxParam::DelaySync) >= 0.5;
     const bool linked = at(FxParam::DelayLink) >= 0.5;
     const double divisions[2] = {at(FxParam::DelayDivisionL), at(linked ? FxParam::DelayDivisionL : FxParam::DelayDivisionR)};
@@ -4157,12 +4168,14 @@ void View::paintParamEq(Canvas &c, Rect r, int slot) {
     }
     paintSpectrum(c, area, telemetry_.fxSpectrum[slot]);
     auto on = [&](int band) { return value(peqOnIndex(slot, band)) >= 0.5; };
+    // The bands as modulation takes them now; their handles stay where they are set.
+    auto live = [&](int param) { return liveValue(param); };
     auto curve = [&](int only) { // only one band, or every band that plays (-1)
         std::vector<double> key = curveKey(Curve::ParamEq, area);
         key.push_back(only);
         for (int band = 0; band < kPeqBands; ++band)
-            key.insert(key.end(), {value(peqTypeIndex(slot, band)), value(peqFreqIndex(slot, band)),
-                                   value(peqGainIndex(slot, band)), value(peqQIndex(slot, band)), on(band) ? 1.0 : 0.0});
+            key.insert(key.end(), {value(peqTypeIndex(slot, band)), live(peqFreqIndex(slot, band)),
+                                   live(peqGainIndex(slot, band)), live(peqQIndex(slot, band)), on(band) ? 1.0 : 0.0});
         return curves_.get(key, [&] {
             std::vector<Point> points;
             for (int i = 0; i <= 120; ++i) {
@@ -4171,8 +4184,8 @@ void View::paintParamEq(Canvas &c, Rect r, int slot) {
                 for (int band = 0; band < kPeqBands; ++band)
                     if (only == band || (only < 0 && on(band)))
                         magnitude *= peqResponse(cutoffFromNorm(x), peqType(value(peqTypeIndex(slot, band))),
-                                                 value(peqFreqIndex(slot, band)), value(peqGainIndex(slot, band)),
-                                                 value(peqQIndex(slot, band)));
+                                                 live(peqFreqIndex(slot, band)), live(peqGainIndex(slot, band)),
+                                                 live(peqQIndex(slot, band)));
                 points.push_back(peqAt(area, x, 20.0 * std::log10(std::max(magnitude, 1e-6))));
             }
             return points;
@@ -4227,9 +4240,9 @@ void View::paintEq(Canvas &c, Rect r, int slot) {
     for (double hz : {kEqLowHz, kEqHighHz})
         c.line({xOfHz(hz), inner.y}, {xOfHz(hz), inner.bottom()}, kBorder.alpha(0.8f), 1.0f, true);
 
-    const double low = value(paramIndex(slot, FxParam::EqLow));
-    const double mid = value(paramIndex(slot, FxParam::EqMid));
-    const double high = value(paramIndex(slot, FxParam::EqHigh));
+    const double low = liveValue(paramIndex(slot, FxParam::EqLow));
+    const double mid = liveValue(paramIndex(slot, FxParam::EqMid));
+    const double high = liveValue(paramIndex(slot, FxParam::EqHigh));
     std::vector<double> key = curveKey(Curve::Eq, inner);
     key.insert(key.end(), {low, mid, high});
     const std::vector<Point> points = curves_.get(key, [&] {
@@ -4291,11 +4304,11 @@ void View::paintCompressor(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect plot{r.x + 8.0f, r.y + 8.0f, r.w - 34.0f, r.h - 16.0f};
     c.line({plot.x, plot.bottom()}, {plot.right(), plot.y}, kBorder, 1.0f, true); // no compression
-    const double threshold = value(paramIndex(slot, FxParam::CompThreshold));
+    const double threshold = liveValue(paramIndex(slot, FxParam::CompThreshold));
     const float tx = plot.x + static_cast<float>((threshold + kCompRangeDb) / kCompRangeDb) * plot.w;
     c.line({tx, plot.y}, {tx, plot.bottom()}, fx.alpha(0.3f), 1.0f, true);
-    compressorPlot(c, plot, threshold, value(paramIndex(slot, FxParam::CompRatio)),
-                   value(paramIndex(slot, FxParam::CompKnee)), fx, 2.0f);
+    compressorPlot(c, plot, threshold, liveValue(paramIndex(slot, FxParam::CompRatio)),
+                   liveValue(paramIndex(slot, FxParam::CompKnee)), fx, 2.0f);
     const float reduction = telemetry_.fxReduction[slot][0];
     reductionMeter(c, {r.right() - 18.0f, plot.y, 8.0f, plot.h}, reduction, fx);
     c.text({plot.x + 4.0f, plot.y + 2.0f, plot.w, 14.0f}, trf(Str::CaptionReduction, {number("%.1f", reduction)}),
@@ -4334,20 +4347,24 @@ void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
         c.fillRect(bar, kCardColor, kRadiusMark);
         const double above = value(mdAboveIndex(slot, band)), below = std::min(value(mdBelowIndex(slot, band)), above);
         const float xBelow = mdBarX(bar, below), xAbove = mdBarX(bar, above);
+        // Its zones and ratio lines where modulation takes them now; the threshold lines, its grips, stay where set.
+        const double liveAbove = liveValue(mdAboveIndex(slot, band));
+        const double liveBelow = std::min(liveValue(mdBelowIndex(slot, band)), liveAbove);
+        const float zoneBelow = mdBarX(bar, liveBelow), zoneAbove = mdBarX(bar, liveAbove);
         // The zones, faintly, the one under the mouse or dragged more.
         auto zoneLit = [&](bool lower) {
             return grip && grip->kind == Kind::DynZone && grip->b == 2 * band + (lower ? 1 : 0);
         };
-        c.fillRect({bar.x, bar.y, xBelow - bar.x, bar.h}, fx.alpha((zoneLit(true) ? 0.2f : 0.08f) * alpha), 0.0f);
-        c.fillRect({xAbove, bar.y, bar.right() - xAbove, bar.h}, fx.alpha((zoneLit(false) ? 0.2f : 0.08f) * alpha),
-                   0.0f);
+        c.fillRect({bar.x, bar.y, zoneBelow - bar.x, bar.h}, fx.alpha((zoneLit(true) ? 0.2f : 0.08f) * alpha), 0.0f);
+        c.fillRect({zoneAbove, bar.y, bar.right() - zoneAbove, bar.h},
+                   fx.alpha((zoneLit(false) ? 0.2f : 0.08f) * alpha), 0.0f);
         // The meter, once the band has heard something.
         const float level = telemetry_.fxBandLevel[slot][band];
         double change = 0.0;
         float xIn = -1.0f;
         if (level > 1e-6f) {
             const double inDb = 20.0 * std::log10(level);
-            change = telemetry_.fxBandGain[slot][band] + value(mdGainIndex(slot, band));
+            change = telemetry_.fxBandGain[slot][band] + liveValue(mdGainIndex(slot, band));
             xIn = mdBarX(bar, inDb);
             const float xOut = mdBarX(bar, inDb + change), y = bar.center().y - 0.5f * kMdMeterH;
             const float lo = std::min(xIn, xOut), hi = std::max(xIn, xOut);
@@ -4371,8 +4388,8 @@ void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
                 c.line({x, bar.y}, {x, bar.bottom()}, kText.alpha(0.5f * alpha), 0.8f);
             }
         };
-        ratioLines(above, value(mdDownIndex(slot, band)), 1.0);
-        ratioLines(below, value(mdUpIndex(slot, band)), -1.0);
+        ratioLines(liveAbove, liveValue(mdDownIndex(slot, band)), 1.0);
+        ratioLines(liveBelow, liveValue(mdUpIndex(slot, band)), -1.0);
         if (xIn >= 0.0f) // where the input is, across the bar
             c.line({xIn, bar.y - 1.5f}, {xIn, bar.bottom() + 1.5f}, kText.alpha(alpha), 1.0f);
         for (float x : {xBelow, xAbove})
@@ -4416,7 +4433,7 @@ void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
 void View::paintReverb(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect inner{r.x + 8.0f, r.y + 20.0f, r.w - 16.0f, r.h - 26.0f};
-    auto at = [&](FxParam f) { return value(paramIndex(slot, f)); };
+    auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
     const ReverbType type = reverbType(at(FxParam::ReverbType));
     const double space = reverbSpace(at(FxParam::ReverbSize), type); // the lines' length, 0.11 to 1
     const double decay = reverbDecay(at(FxParam::ReverbDecay));
@@ -4501,7 +4518,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     const Color fx = fxColor(slot);
     const bool phaser = type == FxType::Phaser;
     const Rect inner{r.x + 8.0f, r.y + 20.0f, r.w - 16.0f, r.h - 28.0f};
-    auto at = [&](FxParam f) { return value(paramIndex(slot, f)); };
+    auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
     const double feedback = at(phaser ? FxParam::PhaserFeedback : FxParam::FlangerFeedback);
     const double mix = sweepWet(at(phaser ? FxParam::PhaserMix : FxParam::FlangerMix));
     const double depth = at(phaser ? FxParam::PhaserDepth : FxParam::FlangerDepth);
@@ -4516,7 +4533,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     // last snapshot at its rate), or in the middle while no audio runs. A stereo sweep's right side, a
     // quarter cycle ahead, is the thinner of the two bright curves.
     const bool running = telemetry_.age < 0.5f;
-    const double rateHz = sweepHz([this](int i) { return value(i); }, slot, phaser, telemetry_.tempo);
+    const double rateHz = sweepHz([this](int i) { return liveValue(i); }, slot, phaser, telemetry_.tempo);
     const double phase = telemetry_.fxPhases[slot] + rateHz * std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
     const bool stereo = at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo) >= 0.5;
     struct Response {
@@ -4557,7 +4574,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     const bool synced = at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync) >= 0.5;
     const int rateParam = paramIndex(slot, synced ? (phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision)
                                                   : (phaser ? FxParam::PhaserRate : FxParam::FlangerRate));
-    formatParam(rateParam, value(rateParam), rate, sizeof(rate));
+    formatParam(rateParam, liveValue(rateParam), rate, sizeof(rate));
     if (phaser)
         std::snprintf(shape, sizeof(shape), "%s", trf(Str::CaptionStages, {std::to_string(stages)}).c_str());
     else
@@ -4574,7 +4591,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
 void View::paintDisperser(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect inner{r.x + 8.0f, r.y + 20.0f, r.w - 16.0f, r.h - 28.0f};
-    auto at = [&](FxParam f) { return value(paramIndex(slot, f)); };
+    auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
     const int stages = static_cast<int>(std::lround(at(FxParam::DisperserStages)));
     constexpr double kRate = 48000.0;
     std::vector<double> delays;
@@ -4608,7 +4625,7 @@ void View::paintDisperser(Canvas &c, Rect r, int slot) {
 void View::paintWidener(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect inner{r.x + 18.0f, r.y + 20.0f, r.w - 36.0f, r.h - 26.0f};
-    auto at = [&](FxParam f) { return value(paramIndex(slot, f)); };
+    auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
     const double size = at(FxParam::WidenerSize), width = at(FxParam::WidenerWidth), mix = at(FxParam::WidenerMix);
     const double highPass = at(FxParam::WidenerHighPass);
     const float mid = inner.center().x;
@@ -4722,8 +4739,8 @@ void View::paintShifter(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     const Rect inner{r.x + 8.0f, r.y + 20.0f, r.w - 16.0f, r.h - 26.0f};
     const double hz =
-        shiftHz(value(paramIndex(slot, FxParam::ShiftAmount)), value(paramIndex(slot, FxParam::ShiftRange)));
-    const double spread = value(paramIndex(slot, FxParam::ShiftSpread));
+        shiftHz(liveValue(paramIndex(slot, FxParam::ShiftAmount)), liveValue(paramIndex(slot, FxParam::ShiftRange)));
+    const double spread = liveValue(paramIndex(slot, FxParam::ShiftSpread));
     const double shifts[2] = {hz, hz * (1.0 - 2.0 * spread)};
     const float mid = inner.center().y;
     c.line({inner.x, mid}, {inner.right(), mid}, kBorder, 1.0f);
@@ -4750,7 +4767,7 @@ void View::paintShifter(Canvas &c, Rect r, int slot) {
         std::snprintf(shift, sizeof(shift), "%+.1f Hz", hz);
     else
         std::snprintf(shift, sizeof(shift), "%+.2f kHz", hz / 1000.0);
-    formatParam(paramIndex(slot, FxParam::ShiftRange), value(paramIndex(slot, FxParam::ShiftRange)), range,
+    formatParam(paramIndex(slot, FxParam::ShiftRange), liveValue(paramIndex(slot, FxParam::ShiftRange)), range,
                 sizeof(range));
     std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionShiftOf, {shift, range}).c_str());
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
@@ -5483,6 +5500,19 @@ void View::paintSource(Canvas &c, float card, int s) {
     // Under the display, the button that shows its modulations in the MODS view (a widget).
 }
 
+int View::routingHoveredNode() const {
+    if (drag_.kind != DragKind::None || !hover_) // not while anything is dragged
+        return -1;
+    const Kind k = hover_->kind;
+    return k == Kind::Node || k == Kind::Port || k == Kind::NodeDelete ? hover_->a : -1;
+}
+
+Point View::nodeDeleteAt(int node, Point center) {
+    if (!isBoxNode(node)) // on the circle, up and to the right
+        return {center.x + 0.72f * kNodeRadius, center.y - 0.72f * kNodeRadius};
+    return {center.x + kFilterHalfW - 2.0f, center.y - kFilterHalfH + 2.0f}; // at a box's corner
+}
+
 void View::paintNode(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w) || isActive(w);
     const bool selected = controller_.layout().selectedNode == w.a;
@@ -5620,6 +5650,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::Node:
         paintNode(c, w);
         break;
+    case Kind::NodeDelete: { // as on the effects graph's nodes (see paintFxGraph())
+        const Point x = w.rect.center();
+        const Color ink = hovered ? kText : kDim;
+        c.fillCircle(x, 7.5f, hovered ? kRaised : kCardColor);
+        c.strokeCircle(x, 7.5f, ink, 1.2f);
+        c.line({x.x - 3.0f, x.y - 3.0f}, {x.x + 3.0f, x.y + 3.0f}, ink, 1.4f);
+        c.line({x.x + 3.0f, x.y - 3.0f}, {x.x - 3.0f, x.y + 3.0f}, ink, 1.4f);
+        break;
+    }
     case Kind::NodeGhost: {
         // Dashed, like the cards that add things, and in the node's color while hovered; the one the inspector shows
         // filled with its color, as a node shown in the graph is.
@@ -7255,6 +7294,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::FxInsert && hover_->kind != Kind::DynBand && hover_->kind != Kind::FxMode &&
          hover_->kind != Kind::FxNode && hover_->kind != Kind::FxSlot && hover_->kind != Kind::FxGap &&
          hover_->kind != Kind::FxNodeRemove && hover_->kind != Kind::FxNodeDelete && hover_->kind != Kind::FxClear &&
+         hover_->kind != Kind::NodeDelete &&
          hover_->kind != Kind::WireStart &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
          !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param))) &&
@@ -7297,6 +7337,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(hover_->a < kFxSlots           ? Str::TipFxRemove
                   : fxNodeSum(hover_->a) >= 0   ? Str::TipRemoveJoin
                                                 : Str::TipRemoveSplit);
+    } else if (hover_->kind == Kind::NodeDelete) {
+        text = trf(Str::MenuSwitchOff, {nodeTitle(hover_->a)});
     } else if (hover_->kind == Kind::WireEnd) {
         text = tr(Str::TipWireEnd);
     } else if (hover_->kind == Kind::Port) {
@@ -8273,6 +8315,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Port:
         drag_.kind = DragKind::Connect;
+        break;
+    case Kind::NodeDelete:
+        edit(enabledParam(w.a), 0.0); // switch it off, as its menu does
+        hover_.reset();
         break;
     case Kind::WireEnd:
         drag_.kind = DragKind::Reroute;

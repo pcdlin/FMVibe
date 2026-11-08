@@ -309,6 +309,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     a macro's from its knob (read off the rendered pixels);
   - a node switched on where another one shown sits coming back clear of it, undoably, and one whose place is free
     staying there;
+  - a routing node under the mouse showing an x in a circle at its upper right (a filter's at its box's corner, read
+    off the rendered pixels), whose click switches it off, undoably;
   - the MODS view's filter: its magnifier opening it to take the keyboard, the words typed (every one, in any case)
     narrowing the rows, its × emptying it, Escape and a click elsewhere letting the keyboard go; and the target
     menu's search listing the targets found with their path, the first that can be picked lit (read off the rendered
@@ -402,6 +404,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     too) and the list of effects with their icons;
   - a filter's and the filter effect's responses moving with the note their key tracking follows (read off the
     rendered pixels);
+  - the disperser's and widener's displays following their params as modulation takes them (read off the rendered
+    pixels);
   - switching effects with their cards' power switches and icons (a switched-off one's staying grey under the mouse,
     read off the rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
     too;
