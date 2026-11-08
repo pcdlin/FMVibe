@@ -36,7 +36,7 @@ Rect nodeRect(int node, Point c) {
         return boxAround(c, kFxJoinHalfW, kFxJoinHalfH);
     if (fxNodeSplit(node))
         return boxAround(c, kFxSplitHalfW, kFxSplitHalfH);
-    return boxAround(c, kFxNodeR, kFxNodeR);
+    return boxAround(c, kFxNodeR, kFxNodeHalfH);
 }
 
 Rect slotRect(Point c) {
@@ -462,9 +462,7 @@ int View::fxHoveredNode() const {
 }
 
 Point View::fxDeleteAt(int node, Point center) {
-    if (node < kFxSlots) // on the circle, up and to the right
-        return {center.x + 0.72f * kFxNodeR, center.y - 0.72f * kFxNodeR};
-    const Rect r = nodeRect(node, center); // at a box's corner
+    const Rect r = nodeRect(node, center); // at its box's upper right corner
     return {r.right() - 2.0f, r.y + 2.0f};
 }
 
@@ -928,21 +926,17 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
     };
     // The title row: in the row, it drags the container along the line, and folds it; the x removes the split.
     if (row) {
-        add(Kind::FxBoxGrip, {card.x, card.y, card.w - 52.0f, 34.0f}, -1, fxSplitNode(split));
-        add(Kind::FxBoxFold, {card.right() - 26.0f - 22.0f, card.y + 9.0f, 18.0f, 19.0f}, -1, split);
+        add(Kind::FxBoxGrip, {card.x, card.y, cardTitleRight(card, false) - card.x, 34.0f}, -1, fxSplitNode(split));
+        add(Kind::FxBoxFold, cardFold(card, false), -1, split);
     }
-    add(Kind::FxNodeRemove, {card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f}, -1, fxSplitNode(split));
+    add(Kind::FxNodeRemove, cardClose(card), -1, fxSplitNode(split));
     for (int band = 0; band < 2; ++band)
         add(Kind::SplitBand, splitTab(card, band), -1, split, band);
     // The crossover's handle on the display.
     const Point h = splitHandle(split, splitDisplay(card));
     add(Kind::SplitPoint, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f}, paramIndex(split, SplitParam::Low), split);
-    // Its slope under the display, 6 | 12 | 24 dB (18, which a filter has, it doesn't).
-    const size_t first = list.size();
-    const int slopes[] = {0, 1, kFilterSlopes - 1};
-    for (int k = 0; k < 3; ++k)
-        add(Kind::Choice, splitSlopeButton(card, k), paramIndex(split, SplitParam::Slope), -1, slopes[k]);
-    mergeButtons(list, first);
+    // Its slope's list under the display, as a filter's is: 6, 12 or 24 dB (18, which a filter has, it doesn't).
+    add(Kind::ListButton, slopeButton(splitDisplay(card)), paramIndex(split, SplitParam::Slope));
     // The knobs: the low band's level, the crossover, the high band's level (the high band's wire takes the join's
     // first input, the low band's its second); then the bands' solos, under their levels.
     const int params[] = {fxInputIndex(fxJoinNode(split), 1, FxInputField::Level), paramIndex(split, SplitParam::Low),
@@ -1528,7 +1522,7 @@ void View::fxGraphDrag(Point p) {
 
 void View::paintFxGraph(Canvas &c) {
     const Rect area = fxGraphArea();
-    c.fillRect(area, kDisplayColor, 8.0f);
+    c.fillRect(area, kDisplayColor, kRadiusCard);
     const FxLine line = fxLineShown();
     const FxGridLayout grid = fxGridLayout(line);
     const float scroll = fxGraphScroll(grid);
@@ -1599,9 +1593,9 @@ void View::paintFxGraph(Canvas &c) {
             const float x = at.node[item.node].x + 22.0f;
             const float high = fxBandSoloedOut(item, 1) ? kSoloedOutAlpha : 1.0f;
             const float low = fxBandSoloedOut(item, 2) ? kSoloedOutAlpha : 1.0f;
-            c.text({x, fxGridCell(0, -1, scroll).y - kFxNodeR - 22.0f, 80.0f, 14.0f}, tr(Str::BandHigh), 9.5f,
+            c.text({x, fxGridCell(0, -1, scroll).y - kFxNodeR - 22.0f, 80.0f, 14.0f}, tr(Str::BandHigh), kTextSmall,
                    bandColor(kHighBand).alpha(high), Align::Left, true);
-            c.text({x, fxGridCell(0, 1, scroll).y + kFxNodeR + 22.0f, 80.0f, 14.0f}, tr(Str::BandLow), 9.5f,
+            c.text({x, fxGridCell(0, 1, scroll).y + kFxNodeR + 22.0f, 80.0f, 14.0f}, tr(Str::BandLow), kTextSmall,
                    bandColor(kLowBand).alpha(low), Align::Left, true);
             for (int slot : item.hi)
                 soloedOut[slot] = high < 1.0f;
@@ -1613,14 +1607,14 @@ void View::paintFxGraph(Canvas &c) {
     for (const auto &[p, name] : {std::pair{at.in, Str::NodeFxIn}, std::pair{at.out, Str::NodeFxOut}}) {
         const Rect r = boxAround(p, kFxEndHalfW, kFxEndHalfH);
         if (const float glow = name == Str::NodeFxIn ? fxGlow(kFxPortIn) : outGlow; glow > 0.01f)
-            featherRect(c, r, 6.0f, 12.0f, kText.alpha(0.18f * glow));
-        c.fillRect(r, kCardColor, 6.0f);
-        c.strokeRect(r, kBorder, 1.0f, 6.0f);
-        c.text(r, tr(name), 10.0f, kDim, Align::Center, true);
+            featherRect(c, r, kRadiusControl, 12.0f, kText.alpha(0.18f * glow));
+        c.fillRect(r, kCardColor, kRadiusControl);
+        c.strokeRect(r, kBorder, 1.0f, kRadiusControl);
+        c.text(r, tr(name), kTextLabel, kDim, Align::Center, true);
     }
 
-    // A node: an effect a circle with its icon, a split a box with its bands' ports, a join a box as large, each its
-    // name under it; or, where a node being dragged would land, its outline dotted.
+    // A node: an effect a rounded box with its icon, a split a box with its bands' ports, a join a box as large, each
+    // its name under it; or, where a node being dragged would land, its outline dotted.
     // `alpha` draws it fainter: one being dragged, its fill as faint (`fill` below 0), or one on a band its join
     // doesn't hear, filled as the others.
     auto paintNode = [&](int node, Point center, bool ghost, float alpha = 1.0f, float fill = -1.0f) {
@@ -1630,27 +1624,25 @@ void View::paintFxGraph(Canvas &c) {
         const bool hot = !dragging && hover_ && hover_->kind == Kind::FxNode && hover_->a == node;
         const float width = hot ? 2.4f : 1.6f;
         if (ghost) {
-            if (node < kFxSlots)
-                c.strokeCircleDotted(center, kFxNodeR, kFaint, 1.3f);
-            else
-                c.strokeRect(nodeRect(node, center), kFaint, 1.3f, 6.0f, true);
+            c.strokeRect(nodeRect(node, center), kFaint, 1.3f, node < kFxSlots ? kRadiusControl : 6.0f, true);
             return;
         }
         auto name = [&](float below, const std::string &text) {
-            c.text({center.x - 60.0f, center.y + below + 3.0f, 120.0f, 14.0f}, text, 9.5f, (isSelected ? kText : kDim).alpha(alpha),
+            c.text({center.x - 60.0f, center.y + below + 3.0f, 120.0f, 14.0f}, text, kTextSmall, (isSelected ? kText : kDim).alpha(alpha),
                    Align::Center, true);
         };
         // As loud as what comes out of it is, a node glows in its color around it, as an operator does.
         if (node < kFxSlots) {
             const Color color = effectColor(node).alpha(alpha);
+            const Rect r = nodeRect(node, center);
             if (const float glow = alpha < 1.0f ? 0.0f : fxGlow(fxSlotPort(node)); glow > 0.01f)
-                featherCircle(c, center, kFxNodeR, 16.0f, color.alpha(0.3f * glow));
+                featherRect(c, r, kRadiusControl, 16.0f, color.alpha(0.3f * glow));
             if (isSelected)
-                c.strokeCircle(center, kFxNodeR + 5.0f, color.alpha(0.5f), 1.5f);
-            c.fillCircle(center, kFxNodeR, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(fill));
-            c.strokeCircle(center, kFxNodeR, color, width);
+                c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
+            c.fillRect(r, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(fill), kRadiusControl);
+            c.strokeRect(r, color, width, kRadiusControl);
             fxIcon(c, {center.x - 10.0f, center.y - 7.0f, 20.0f, 14.0f}, fxSlotType(node), color);
-            name(kFxNodeR, fxTitle(fxSlotType(node)));
+            name(kFxNodeHalfH, fxTitle(fxSlotType(node)));
             return;
         }
         const bool join = fxNodeSum(node) >= 0;
@@ -1737,7 +1729,7 @@ void View::paintFxGraph(Canvas &c) {
             const Point m{r.x + 1.0f, r.y + 1.0f};
             c.fillCircle(m, 7.0f, kCardColor.alpha(alpha));
             c.strokeCircle(m, 7.0f, mark, 1.3f);
-            c.text({m.x - 7.0f, m.y - 7.5f, 14.0f, 14.0f}, tr(Str::SoloMark), 8.5f, mark, Align::Center, true);
+            c.text({m.x - 7.0f, m.y - 7.5f, 14.0f, 14.0f}, tr(Str::SoloMark), kTextSmall, mark, Align::Center, true);
         }
     };
     for (const auto &place : grid.nodes)
@@ -1794,16 +1786,16 @@ void View::paintFxGraph(Canvas &c) {
         paintSplitControls(c, fxNodeSum(selected), fxInspector(selected), false);
     else {
         const Rect card = fxInspectorCard();
-        c.strokeRect(card, kBorder, 1.0f, 8.0f, true);
-        c.text(card, tr(Str::HintFxInspector), 10.5f, kFaint);
+        c.strokeRect(card, kBorder, 1.0f, kRadiusCard, true);
+        c.text(card, tr(Str::HintFxInspector), kTextLabel, kFaint);
     }
 }
 
 void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     // On grey: in the row, its container paints it; in the graph, its card.
     if (!row) {
-        c.fillRect(card, splitFill(), 8.0f);
-        c.strokeRect(card, splitLine(), 1.3f, 8.0f);
+        c.fillRect(card, splitFill(), kRadiusCard);
+        c.strokeRect(card, splitLine(), 1.3f, kRadiusCard);
     }
     const bool grabbed = (drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
                           drag_.widget.a == fxSplitNode(split)) ||
@@ -1811,11 +1803,11 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
                           drag_.kind == DragKind::None);
     splitIcon(c, fxIconRect(card), grabbed ? kText : kDim);
     c.text({card.x + 36.0f, card.y + 6.0f, card.w - 84.0f, 20.0f}, trf(Str::NodeSplit, {std::to_string(split + 1)}),
-           11.0f, kText, Align::Left, true);
+           kTextBody, kText, Align::Left, true);
     // The bands' responses on the cutoff grid, each in its color and lowered by its level, the one shown filled, the
     // crossover's handle where they cut.
     const Rect display = splitDisplay(card);
-    c.fillRect(display, kDisplayColor, 6.0f);
+    c.fillRect(display, kDisplayColor, kRadiusCard);
     for (double hz : {100.0, 1000.0, 10000.0}) {
         const float x = display.x + static_cast<float>(normFromCutoff(hz)) * display.w;
         c.line({x, display.y + 4.0f}, {x, display.bottom() - 4.0f}, kBorder, 1.0f, true);
@@ -1850,7 +1842,7 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     c.strokeCircle(h, hot ? 7.0f : 6.0f, kDisplayColor, 1.5f);
     char text[24];
     std::snprintf(text, sizeof(text), hz >= 1000.0 ? "%.1f kHz" : "%.0f Hz", hz >= 1000.0 ? hz / 1000.0 : hz);
-    c.text({h.x - 40.0f, display.bottom() - 18.0f, 80.0f, 14.0f}, text, 9.0f, kText);
+    c.text({h.x - 40.0f, display.bottom() - 18.0f, 80.0f, 14.0f}, text, kTextSmall, kText);
 }
 
 } // namespace fmvibe::gui

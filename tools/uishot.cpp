@@ -347,10 +347,6 @@ float cardX(float card) {
     return 28.0f + card * (kCardW + 12.0f);
 }
 
-// ADD LFO or ADD ENV, after the panel's toggle.
-Point sourceAdd(SourceType type) { // + LFO, + ENV, + RANDOM, + MIDI, 88 px apart
-    return {128.0f + 88.0f * static_cast<float>(static_cast<int>(type) - 1) + 41.0f, 541.0f};
-}
 
 Point sourceGrip(float card) {
     return {cardX(card) + 90.0f, 572.0f}; // over its name
@@ -366,11 +362,11 @@ Point sourceSync(float card) {
 }
 
 Point sourcePower(float card) {
-    return {cardX(card) + kCardW - 50.0f, 573.0f};
+    return detail::sourcePower(card).center();
 }
 
 Point sourceRemove(float card) {
-    return {cardX(card) + kCardW - 17.0f, 573.0f};
+    return detail::sourceRemove(card).center();
 }
 
 // An LFO card's shape list: its button, and a shape in the list it opens.
@@ -508,7 +504,7 @@ Point fxPower(const FakeController &model, int position) {
 }
 
 Point fxRemove(const FakeController &model, int position) {
-    return {fxCardX(model, position) + fxCardW(model, position) - 17.0f, 198.0f};
+    return {fxCardX(model, position) + fxCardW(model, position) - 15.0f, 198.0f};
 }
 
 // Knob `index` of `count` across a card, in the row at `y` within it.
@@ -584,13 +580,13 @@ Point scopeCycleButton(int choice) {
 const Point kMoreWavesButton = waveButton(5);
 
 Point typeButton(int type) {
-    return {900.0f + type * 36.0f + 16.0f, 205.0f};
+    return detail::filterTypeButton(type).center();
 }
 
-// The slope's list button at the end of the type buttons' row, and its entries, 6 to 24 dB, which open under it.
-constexpr Point kSlopeButton{1137.0f, 205.0f};
+// The slope's list button under the filter's response, and its entries, 6 to 24 dB, which open under it.
+const Point kSlopeButton = detail::kFilterSlopeButton.center();
 Point slopeItem(int slope) {
-    return {1137.0f, 235.0f + slope * 22.0f};
+    return detail::listMenuItem(detail::kFilterSlopeButton, kFilterSlopes, slope).center();
 }
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
@@ -708,6 +704,16 @@ uint32_t tabDot(const Renderer &renderer, int node) {
 void click(View &view, Point p, Modifiers mods = {}) {
     view.mouseDown(p, mods);
     view.mouseUp(p, mods);
+}
+
+// + SOURCE, after the modulation panel's toggle, then a type in the list it opens under it.
+Point sourceMenuEntry(SourceType type) {
+    const Rect button = detail::sourceMenuButton();
+    return detail::sourceMenuItem({button.x, button.bottom() + 4.0f}, type).center();
+}
+void addSource(View &view, SourceType type) {
+    click(view, detail::sourceMenuButton().center());
+    click(view, sourceMenuEntry(type));
 }
 
 // Picks `type` from the ADD EFFECT list.
@@ -870,13 +876,13 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
 
     // A random LFO shows Smooth and Chaos beside a preview of what they do.
     check(rateFromNorm(1.0) == 100.0, "LFOs run up to 100 Hz");
-    click(view, sourceAdd(SourceType::Lfo));
+    addSource(view, SourceType::Lfo);
     // Undone with its shape list open, the LFO takes the list along: added again in its place, its button opens the
     // list afresh (rather than the click closing one left open), which picks a shape.
     click(view, shapeButton(0));
     view.undo();
     const bool lfoUndone = model.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::None);
-    click(view, sourceAdd(SourceType::Lfo));
+    addSource(view, SourceType::Lfo);
     click(view, shapeButton(0));
     const bool shapeListShot = renderer.save(view, dir / "17-lfo-shape-list.png");
     // The list reaches past the card's bottom, and shows whole there: its bottom padding, under Custom, is drawn
@@ -1375,7 +1381,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
 
     // Dragging a source's handle to the panel's right end scrolls the cards along.
     for (int n = 0; n < 4; ++n)
-        click(view, sourceAdd(SourceType::Lfo));
+        addSource(view, SourceType::Lfo);
     model.set(paramIndex(4, SourceParam::Sync), 0.0); // the fifth free, its knob a rate rather than a note value
     view.wheel({60.0f, 541.0f}, 10.0f, {}); // back to the first card
     view.mouseDown(sourceHandle(0), {});
@@ -1414,7 +1420,7 @@ void testCardEdgeScroll(const std::filesystem::path &dir, Renderer &renderer) {
           "an effect card held at the row's right end scrolls the row along, and lands at the end");
 
     for (int n = 0; n < 5; ++n)
-        click(view, sourceAdd(SourceType::Lfo));
+        addSource(view, SourceType::Lfo);
     view.wheel({60.0f, 541.0f}, 10.0f, {}); // back to the first card
     view.mouseDown(sourceGrip(0), {});
     view.mouseMove({sourceGrip(0).x + 200.0f, 572.0f}, {});
@@ -1487,7 +1493,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The source cards, a card's width to the left: the second shown takes the first's place.
     for (int n = 0; n < 5; ++n)
-        click(view, sourceAdd(SourceType::Lfo));
+        addSource(view, SourceType::Lfo);
     view.wheel({60.0f, 541.0f}, 10.0f, {}); // back to the first card
     const std::vector<int> sources = shown(model);
     view.middleDown({cardX(1.0f) + 120.0f, 678.0f});
@@ -1559,8 +1565,8 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
 void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    click(view, sourceAdd(SourceType::Lfo));
-    click(view, sourceAdd(SourceType::Env));
+    addSource(view, SourceType::Lfo);
+    addSource(view, SourceType::Env);
     model.set(paramIndex(0, OpParam::Phase), 0.5);
     drag(view, sourceHandle(0), kOpPhaseKnob);
     drag(view, sourceHandle(1), kOpPhaseKnob);
@@ -1643,7 +1649,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     check(typing && typingShot && shown() == 350, "a fraction typed into the Ratio readout sets it");
 
     // A source's handle dropped on the readout modulates it, its reach drawn in its color along the track.
-    click(view, sourceAdd(SourceType::Lfo));
+    addSource(view, SourceType::Lfo);
     const Point track{911.0f, 227.0f}; // on the track over the digits (from x 910), a little below 3.50 (at x 913)
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "3g-ratio-plain.png");
@@ -1914,7 +1920,7 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const int count = shapeCountIndex(0);
     // The power switch of the card at a place, and whose it is: LFO 2's card one place along while LFO 1's is wide.
     auto powerAt = [&](float place, float span) {
-        return Point{cardX(place) + span * (kCardW + 12.0f) - 12.0f - 43.0f, 573.0f};
+        return Point{cardX(place) + span * (kCardW + 12.0f) - 12.0f - 34.0f, 573.0f};
     };
     auto switches = [&](Point at, int lfo) {
         click(view, at);
@@ -1931,9 +1937,9 @@ void testWideLfoCard(const std::filesystem::path &dir, Renderer &renderer) {
     const bool again = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
     // Its normal card's widen button, left of the fold button, widens it too.
     click(view, wideButton(0, 0));
-    view.mouseMove({cardX(0) + kCardW - 96.0f, 574.0f}, {});
+    view.mouseMove({cardX(0) + kCardW - 78.0f, 574.0f}, {});
     const bool button = renderer.save(view, dir / "10d0-lfo-card-widen-button.png") && switches(sourcePower(1), 1);
-    click(view, {cardX(0) + kCardW - 96.0f, 574.0f});
+    click(view, {cardX(0) + kCardW - 78.0f, 574.0f});
     const bool byButton = switches(powerAt(0, 2.0f), 0) && switches(sourcePower(2), 1);
     check(widened && normal && again && button && byButton &&
               model.value(paramIndex(0, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom),
@@ -2087,7 +2093,7 @@ void testLaterSlots(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, kFxTab);
     const float cardTop = 179.5f; // an effect card's
-    click(view, {fxCardX(model, 0) + fxCardW(model, 0) - 39.0f, cardTop + 18.5f}); // its fold chevron
+    click(view, {fxCardX(model, 0) + fxCardW(model, 0) - 53.0f, cardTop + 18.5f}); // its fold chevron
     const bool folded = model.ui.fxFolded == 0 && model.ui.fxFoldedLater == 1u << (later - kFirstFxSlots);
     const float strip = fxCardX(model, 0) + fxCardW(model, 0) * 0.5f;
     drag(view, {strip, cardTop + 38.0f}, {strip + 200.0f, cardTop + 38.0f}); // its grip, past the next card
@@ -2303,15 +2309,22 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               model.openEdits == 0 && renderer.save(view, dir / "40f-fx-split-card.png"),
           "a split's crossover handle drags across its card's display");
 
-    // Its slope under the display, 12 dB to begin with: 24 dB picked, the bands' responses steeper; back to 12,
-    // undoably.
+    // Its slope's list under the display, as a filter's is, 12 dB to begin with: 18 dB refused (the list staying
+    // open), 24 dB picked, the bands' responses steeper; back to 12, undoably.
     const bool startsAt12 = model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
-    click(view, centerOf(detail::splitSlopeButton(card, 2)));
+    const Rect slopeList = detail::slopeButton(display);
+    click(view, centerOf(slopeList));
+    view.mouseMove(centerOf(detail::listMenuItem(slopeList, kFilterSlopes, 3)), {});
+    const bool slopeListShot = renderer.save(view, dir / "40f1-fx-split-slope-list.png");
+    click(view, centerOf(detail::listMenuItem(slopeList, kFilterSlopes, 2)));
+    const bool refused18 = model.value(paramIndex(0, SplitParam::Slope)) == 1.0;
+    click(view, centerOf(detail::listMenuItem(slopeList, kFilterSlopes, 3))); // the list is still open
     const bool steep = model.value(paramIndex(0, SplitParam::Slope)) == kFilterSlopes - 1.0;
     const bool slopeShot = renderer.save(view, dir / "40f2-fx-split-slope.png");
     view.undo();
-    check(startsAt12 && steep && slopeShot && model.value(paramIndex(0, SplitParam::Slope)) == 1.0,
-          "a split's card picks its slope, 6, 12 or 24 dB, 12 to begin with");
+    check(startsAt12 && slopeListShot && refused18 && steep && slopeShot &&
+              model.value(paramIndex(0, SplitParam::Slope)) == 1.0,
+          "a split's slope list picks 6, 12 or 24 dB (not 18), 12 to begin with");
 
     // + EFFECT with the split picked: a flanger at the end of its high band, before the join; undone.
     addFx(view, FxType::Flanger);
@@ -2406,7 +2419,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     // before), whose click removes it, the shaper going on into the split; undone.
     {
         const Point reverbAt = cell(2, 0);
-        const Point x{reverbAt.x + 0.72f * detail::kFxNodeR, reverbAt.y - 0.72f * detail::kFxNodeR};
+        const Point x{reverbAt.x + detail::kFxNodeR - 2.0f, reverbAt.y - detail::kFxNodeHalfH + 2.0f}; // its corner
         view.mouseMove({600.0f, 428.0f}, {});
         renderer.save(view, dir / "40n-fx-node-plain.png");
         const uint32_t plain = renderer.pixel({x.x + 7.5f, x.y});
@@ -2725,7 +2738,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     check(graphShot && same, "switching to the graph and back leaves the split as it was");
 
     // Folded to a strip by the chevron left of its x, and unfolded by a click on the strip.
-    click(view, centerOf({column.right() - 48.0f, column.y + 9.0f, 18.0f, 19.0f}));
+    click(view, centerOf(detail::cardFold(column, false)));
     const bool folded = model.ui.splitsFolded == 1u;
     view.mouseMove({600.0f, 600.0f}, {});
     const bool foldShot = renderer.save(view, dir / "41g-fx-row-folded.png");
@@ -2961,8 +2974,16 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kFxTab);
     const float cardTop = 179.5f; // an effect card's
     auto fxFold = [&](int position) {
-        return Point{fxCardX(model, position) + fxCardW(model, position) - 39.0f, cardTop + 18.5f};
+        return Point{fxCardX(model, position) + fxCardW(model, position) - 53.0f, cardTop + 18.5f};
     };
+    // The power switch in its title row, as on a source card, switches the effect off and on; so does the icon.
+    const Rect reverbCard{fxCardX(model, 1), cardTop, fxCardW(model, 1), 300.0f};
+    click(view, detail::cardPower(reverbCard).center());
+    const bool powerOff = model.value(paramIndex(1, FxParam::Enabled)) < 0.5;
+    renderer.save(view, dir / "28f-fx-power-off.png");
+    click(view, detail::cardPower(reverbCard).center());
+    check(powerOff && model.value(paramIndex(1, FxParam::Enabled)) >= 0.5,
+          "an effect card's power switch, in its title row as a source card's, switches it off and on");
     const Point icon = fxPower(model, 1);
     click(view, fxFold(1));
     const float strip = fxCardX(model, 1) + fxCardW(model, 1) * 0.5f;
@@ -2997,13 +3018,13 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "28c-unfolded-handle.png");
     const std::vector<uint32_t> handleOpen = handlePixels();
-    click(view, {cardX(0) + kCardW - 69.0f, sourceTop + 17.5f}); // the LFO's chevron, left of its switch
+    click(view, {cardX(0) + kCardW - 53.0f, sourceTop + 17.5f}); // the LFO's chevron, left of its switch
     const bool sourceFolded = model.ui.sourcesFolded == 1u << 0;
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "28d-folded-handle.png");
     const bool handleStays = handlePixels() == handleOpen;
     const float envX = cardX(0) + 60.0f; // the envelope's card, closed up after the 48 px strip
-    click(view, {envX + kCardW - 43.0f, sourceTop + 17.5f}); // its switch
+    click(view, {envX + kCardW - 34.0f, sourceTop + 17.5f}); // its switch
     const bool envClosedUp = model.value(sourceEnabledIndex(1)) < 0.5;
     const float lfoStrip = cardX(0) + 24.0f;
     drag(view, {lfoStrip, sourceTop + 38.0f}, {lfoStrip + 300.0f, sourceTop + 38.0f}); // its grip, past the envelope
@@ -3436,7 +3457,8 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
           "a three-band dynamics' bar shows its band's level and gain");
     // LINK: an edit of one band, by its line or its knob, sets every band's same field, as one undo step; RMS off
     // follows peaks.
-    click(view, {230.5f, 198.0f});
+    const Rect mdCard = detail::fxCard(0.0f, detail::fxSpan(FxType::MultiDyn));
+    click(view, detail::mdLinkButton(mdCard).center());
     drag(view, {x(-40.0), mid}, {x(-45.0), mid});
     bool linkedLine = true;
     for (int band = 0; band < kMcBands; ++band)
@@ -3449,7 +3471,7 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     bool undone = true;
     for (int band = 0; band < kMcBands; ++band)
         undone = undone && model.value(mdAboveIndex(0, band)) < raised;
-    click(view, {194.5f, 198.0f});
+    click(view, detail::mdRmsButton(mdCard).center());
     view.mouseMove({600.0f, 628.0f}, {});
     check(linkedLine && linked && undone && model.value(paramIndex(0, FxParam::MdRms)) == 0.0 &&
               renderer.save(view, dir / "9h-3band-dynamics-linked.png"),
@@ -4354,7 +4376,8 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
 // a source leaves it empty, waiting for a target, and picking a target then makes it a modulation of that source,
 // each an undo step. The target menu's Global offers no Mod Wheel. An empty row's x removes it. With no
 // modulations at all, the columns' names show above the button.
-// The title row's last two buttons add a Random and a MIDI source, each a card of its own: Random with no knobs,
+// + SOURCE in the title row opens the list of source types under it (the count of places taken beside it), which
+// adds a Random and a MIDI source, each a card of its own: Random with no knobs,
 // MIDI with its input's list button (where an LFO's shape is: from x 16 of the card, 122 px wide, at y 536 + 42) and
 // right of it its controller (at x 172 of the card, turned up a notch by the wheel, while its input is a controller)
 // and Slew (at x 228). The list opens under the button, an entry 22 px from y 604 + 4: CC, Pressure, Slide. Each
@@ -4362,9 +4385,12 @@ void testModsMoveDepth(const std::filesystem::path &dir, Renderer &renderer) {
 void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
-    click(view, sourceAdd(SourceType::Random));
-    click(view, sourceAdd(SourceType::Midi));
-    click(view, sourceAdd(SourceType::Midi));
+    click(view, detail::sourceMenuButton().center());
+    view.mouseMove(sourceMenuEntry(SourceType::Random), {});
+    const bool menuButtonShot = renderer.save(view, dir / "11d-source-menu-button.png");
+    click(view, sourceMenuEntry(SourceType::Random));
+    addSource(view, SourceType::Midi);
+    addSource(view, SourceType::Midi);
     auto typeOf = [&](int place) {
         return static_cast<SourceType>(std::lround(model.value(paramIndex(place, SourceParam::Type))));
     };
@@ -4402,9 +4428,9 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shot = renderer.save(view, dir / "11e-new-sources.png");
     check(ccTip != away && pressureTip != away && ccTip != pressureTip,
           "a MIDI card's input button shows a tooltip saying what its input follows");
-    check(added && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 && onPressure &&
-              onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
-          "the title row adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
+    check(added && menuButtonShot && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 &&
+              onPressure && onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
+          "+ SOURCE's list adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
@@ -4807,8 +4833,8 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.resets == 1 && model.loads == 1, "Init and Load go ahead at once while the patch is the default");
 
     // ADD LFO and ADD ENV fill the first free places, shown in the order they came.
-    click(view, sourceAdd(SourceType::Lfo));
-    click(view, sourceAdd(SourceType::Env));
+    addSource(view, SourceType::Lfo);
+    addSource(view, SourceType::Env);
     check(shown(model) == std::vector<int>{0, 1} &&
               model.value(paramIndex(0, SourceParam::Type)) == static_cast<double>(SourceType::Lfo) &&
               model.value(paramIndex(1, SourceParam::Type)) == static_cast<double>(SourceType::Env) &&
@@ -5662,8 +5688,10 @@ void run(const std::filesystem::path &dir, float scale) {
           "the slope's list picks 6 to 24 dB, a band-pass's only 12 and 24");
     const int cutoff = paramIndex(0, FilterParam::Cutoff);
     const double cutoffBefore = model.value(cutoff);
-    const Point handle{910.0f + static_cast<float>(cutoffBefore) * 248.0f,
-                       384.0f - static_cast<float>(model.value(paramIndex(0, FilterParam::Resonance))) * 92.0f};
+    const Rect response = detail::kFilterDisplay; // its handle as View places it, 10 px inside the display
+    const Point handle{response.x + 10.0f + static_cast<float>(cutoffBefore) * (response.w - 20.0f),
+                       response.bottom() - 10.0f -
+                           static_cast<float>(model.value(paramIndex(0, FilterParam::Resonance))) * (response.h - 20.0f)};
     drag(view, handle, {handle.x - 50.0f, handle.y - 20.0f});
     check(model.value(cutoff) < cutoffBefore - 0.15, "dragging the response handle moves the cutoff");
     model.set(paramIndex(0, FilterParam::Resonance), 0.55);
@@ -5693,7 +5721,7 @@ void run(const std::filesystem::path &dir, float scale) {
     model.set(paramIndex(4, OpParam::Wave), static_cast<double>(OpWave::HalfSine));
     model.set(matrixIndex(5, 4), 0.45);
     model.set(paramIndex(5, OpParam::Ratio), normFromRatio(3.0));
-    click(view, sourceAdd(SourceType::Lfo)); // LFO 2, in place 2
+    addSource(view, SourceType::Lfo); // LFO 2, in place 2
     model.set(paramIndex(2, SourceParam::Shape), 1.0);
     model.set(slotTargetIndex(2, 0), slotTargetValue(paramIndex(GlobalParam::Pan)));
     model.set(slotAmountIndex(2, 0), 0.4);
@@ -6274,7 +6302,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "9a-fx-icon.png"), "render a card's icon under the mouse, with its tooltip");
 
     // A new Env 2 onto the delay's Mix knob; the delay leads the chain now.
-    click(view, sourceAdd(SourceType::Env));
+    addSource(view, SourceType::Env);
     drag(view, sourceHandle(3), fxKnob(model, 0, 2, 3, 266.0f));
     check(slotTarget(model.value(slotTargetIndex(3, 0))) == paramIndex(1, FxParam::DelayMix),
           "an envelope can modulate an effect knob");
@@ -6478,7 +6506,7 @@ void run(const std::filesystem::path &dir, float scale) {
     view.wheel({60.0f, 541.0f}, 10.0f, {});
 
     // A fifth source scrolls the cards along to show it; the wheel over the panel scrolls back.
-    click(view, sourceAdd(SourceType::Lfo));
+    addSource(view, SourceType::Lfo);
     click(view, sourcePower(3));
     check(shown(model) == std::vector<int>{0, 1, 2, 3, 4} && model.value(sourceEnabledIndex(4)) == 0.0,
           "a new source's card comes into view");
@@ -6556,7 +6584,7 @@ void run(const std::filesystem::path &dir, float scale) {
               model.value(paramIndex(1, SourceParam::Type)) == static_cast<double>(SourceType::None) &&
               slotTarget(model.value(slotTargetIndex(1, 0))) < 0 && slotTarget(model.value(slotTargetIndex(1, 1))) < 0,
           "the x takes a source out with its modulation");
-    click(view, sourceAdd(SourceType::Env));
+    addSource(view, SourceType::Env);
     check(shown(model) == std::vector<int>{0, 2, 5, 3, 4, 1} && slotTarget(model.value(slotTargetIndex(1, 0))) < 0 &&
               model.value(paramIndex(1, SourceParam::Sustain)) == paramTable()[paramIndex(1, SourceParam::Sustain)].def &&
               nameOf(model, 3) == trf(Str::SourceNameEnv, {"1"}) && nameOf(model, 1) == trf(Str::SourceNameEnv, {"2"}),
@@ -6579,7 +6607,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // Up to 16: then the add buttons go.
     for (int n = static_cast<int>(shown(model).size()); n < kMaxSources; ++n)
-        click(view, sourceAdd(n % 2 ? SourceType::Env : SourceType::Lfo));
+        addSource(view, n % 2 ? SourceType::Env : SourceType::Lfo);
     check(shown(model).size() == static_cast<size_t>(kMaxSources), "the panel holds 16 sources");
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "12-sources-full.png"), "render 16 sources");

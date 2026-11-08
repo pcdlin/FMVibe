@@ -534,13 +534,10 @@ STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
-STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
-STR(ButtonEnv, "ENV")
-STR(ButtonRandom, "RANDOM")
-STR(ButtonMidi, "MIDI")
 STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
 STR(HintRandomSource, "Random value per note")
-STR(ButtonEffect, "EFFECT")
+STR(ButtonEffect, "EFFECT") // + EFFECT and + SOURCE, after a drawn plus
+STR(ButtonSource, "SOURCE")
 STR(ButtonOpenFolder, "OPEN FOLDER")
 STR(ButtonCancel, "Cancel")
 STR(ButtonInit, "Discard")
@@ -551,7 +548,7 @@ STR(ButtonOverwrite, "Overwrite")
 
 STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
-STR(HintFx, "click icon: toggle  ·  drag title: reorder")
+STR(HintFx, "drag a title to reorder")
 STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
 // A split's controls: the tabs that pick the band it shows, and its container's dashed card adding to that band.

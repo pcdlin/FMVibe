@@ -21,6 +21,9 @@ feature.
 - The editor draws through `Canvas`, which has three backends: Direct2D (`src/gui/canvas.cpp`), the browser
   demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`) and Cairo for the Linux development
   build (`src/gui/canvas_cairo.cpp`). A new drawing call needs all three.
+- The editor's corners and text sizes keep to the scales in `src/gui/theme.h`: a radius is `kRadiusMark`,
+  `kRadiusControl`, `kRadiusCard` or `kRadiusPanel` (a ring around something takes its radius plus how far out it is),
+  and a text size one of the `kText...` sizes. New drawing uses them rather than literals.
 - Text the plugin shows (labels, tooltips, menus, messages, parameter names, remote control pages) is worded in
   `src/uistrings.inc` and looked up by name: `tr(Str::Name)`, or `trf()` for a wording with `{1}`, `{2}` in it. New
   text gets a line there. Tests that match on text (menu entries, page names) look it up the same way, so a
@@ -230,7 +233,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     main line's wires grey, each band's and each half of the split's and join's nodes in its color, a split's coming
     in from grey at its left and a join's going out to grey at its right (read off the rendered pixels), and then
     the other band's,
-    unsoloing the first; the split's crossover handle dragged on its card, and its slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
+    unsoloing the first; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused;
+    + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
     out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
     into a join, an effect going at its band's end (the list offering no split there), each undone; a node under the
@@ -294,7 +298,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     menu's search listing the targets found with their path, the first that can be picked lit (read off the rendered
     pixels), Up and Down picking one, Enter taking it, Escape emptying it and then closing the menu; an operator's
     targets in two columns, the envelope's beside the pitch's;
-  - the modulation panel's title row adding Random and MIDI sources, each with its card, a MIDI card's knob picking
+  - the modulation panel's + SOURCE opening the list of source types under it, adding Random and MIDI sources, each
+    with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
     following its input;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
@@ -381,8 +386,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     too) and the list of effects with their icons;
   - a filter's and the filter effect's responses moving with the note their key tracking follows (read off the
     rendered pixels);
-  - switching effects with their cards' icons (a switched-off one's staying grey under the mouse, read off the
-    rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
+  - switching effects with their cards' power switches and icons (a switched-off one's staying grey under the mouse,
+    read off the rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
     too;
   - the right-click menu on knobs;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's

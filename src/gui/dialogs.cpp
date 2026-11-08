@@ -53,53 +53,53 @@ std::vector<View::Widget> View::settingsWidgets() const {
 void View::paintSettings(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
     const Rect panel = settingsPanel(height());
-    c.fillRect(panel, kPanel, 10.0f);
-    c.strokeRect(panel, kBorder, 1.0f, 10.0f);
-    c.text({panel.x + 24.0f, panel.y + 14.0f, 200.0f, 24.0f}, tr(Str::SettingsTitle), 14.0f, kText, Align::Left, true);
+    c.fillRect(panel, kPanel, kRadiusPanel);
+    c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
+    c.text({panel.x + 24.0f, panel.y + 14.0f, 200.0f, 24.0f}, tr(Str::SettingsTitle), kTextHeading, kText, Align::Left, true);
     c.line({panel.x + 1.0f, panel.y + 50.5f}, {panel.right() - 1.0f, panel.y + 50.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, panel.y + 60.0f, 200.0f, 16.0f}, tr(Str::SettingsOversampling), 10.5f, kFaint, Align::Left,
+    c.text({panel.x + 24.0f, panel.y + 60.0f, 200.0f, 16.0f}, tr(Str::SettingsOversampling), kTextLabel, kFaint, Align::Left,
            true);
     c.text({panel.x + 24.0f, panel.y + 122.0f, panel.w - 48.0f, 16.0f},
-           tr(Str::SettingsOversamplingWhat), 10.0f, kDim, Align::Left);
+           tr(Str::SettingsOversamplingWhat), kTextLabel, kDim, Align::Left);
     c.text({panel.x + 24.0f, panel.y + 140.0f, panel.w - 48.0f, 16.0f},
-           tr(Str::SettingsOversamplingWhy), 10.0f, kDim, Align::Left);
+           tr(Str::SettingsOversamplingWhy), kTextLabel, kDim, Align::Left);
     c.text({panel.x + 24.0f, panel.y + 158.0f, panel.w - 48.0f, 16.0f},
-           tr(Str::SettingsOversamplingSaved), 10.5f, kFaint, Align::Left);
+           tr(Str::SettingsOversamplingSaved), kTextLabel, kFaint, Align::Left);
     // MPE: Off | On, then BEND and its ranges, and what it does under them.
     const float mpeY = panel.y + kSettingsMpeY;
     c.line({panel.x + 24.0f, mpeY + 0.5f}, {panel.right() - 24.0f, mpeY + 0.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, mpeY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsMpe), 10.5f, kFaint, Align::Left, true);
-    c.text(settingsMpeBendLabel(panel), tr(Str::SettingsMpeBend), 10.5f, controller_.mpe() ? kDim : kFaint,
+    c.text({panel.x + 24.0f, mpeY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsMpe), kTextLabel, kFaint, Align::Left, true);
+    c.text(settingsMpeBendLabel(panel), tr(Str::SettingsMpeBend), kTextLabel, controller_.mpe() ? kDim : kFaint,
            Align::Left, true);
-    c.text({panel.x + 24.0f, mpeY + 66.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhat), 10.0f, kDim,
+    c.text({panel.x + 24.0f, mpeY + 66.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhat), kTextLabel, kDim,
            Align::Left);
-    c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhy), 10.0f, kDim,
+    c.text({panel.x + 24.0f, mpeY + 84.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeWhy), kTextLabel, kDim,
            Align::Left);
-    c.text({panel.x + 24.0f, mpeY + 102.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), 10.5f, kFaint,
+    c.text({panel.x + 24.0f, mpeY + 102.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
            Align::Left);
     // LOOK: the themes, the glow, the sources' lines and the depth handles' size.
     const float lookY = panel.y + kSettingsLookY;
     c.line({panel.x + 24.0f, lookY + 0.5f}, {panel.right() - 24.0f, lookY + 0.5f}, kBorder, 1.0f);
-    c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), 10.5f, kFaint, Align::Left, true);
+    c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), kTextLabel, kFaint, Align::Left, true);
     // A slider's name before it, and its amount after (Off at 0).
     auto slider = [&](Rect track, Str name, float amount) {
-        c.text({panel.x + 24.0f, track.y, 52.0f, track.h}, tr(name), 10.5f, kDim, Align::Left, true);
+        c.text({panel.x + 24.0f, track.y, 52.0f, track.h}, tr(name), kTextLabel, kDim, Align::Left, true);
         char text[16];
         std::snprintf(text, sizeof(text), "%.0f %%", amount * 100.0f);
         c.text({track.right() + 14.0f, track.y, panel.right() - 24.0f - track.right() - 14.0f, track.h},
-               amount > 0.0f ? text : tr(Str::ValueOff), 10.5f, amount > 0.0f ? kText : kDim, Align::Left);
+               amount > 0.0f ? text : tr(Str::ValueOff), kTextLabel, amount > 0.0f ? kText : kDim, Align::Left);
     };
     slider(settingsGlow(panel), Str::SettingsGlow, shownGlow());
     slider(settingsLinks(panel), Str::SettingsLinks, shownLinks());
     const Rect handles = settingsHandles(panel, 0);
-    c.text({panel.x + 24.0f, handles.y, 52.0f, handles.h}, tr(Str::SettingsHandles), 10.5f, kDim, Align::Left, true);
-    c.text({panel.x + 24.0f, lookY + 180.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), 10.5f, kFaint,
+    c.text({panel.x + 24.0f, handles.y, 52.0f, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim, Align::Left, true);
+    c.text({panel.x + 24.0f, lookY + 180.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
            Align::Left);
     // The version and the license, at the bottom.
     c.line({panel.x + 24.0f, lookY + 206.5f}, {panel.right() - 24.0f, lookY + 206.5f}, kBorder, 1.0f);
     const Rect about{panel.x + 24.0f, lookY + 214.0f, panel.w - 48.0f, 16.0f};
-    c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), 10.5f, kFaint, Align::Left, true);
-    c.text(about, tr(Str::SettingsLicense), 10.5f, kDim, Align::Right);
+    c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), kTextLabel, kFaint, Align::Left, true);
+    c.text(about, tr(Str::SettingsLicense), kTextLabel, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())
         paintWidget(c, w);
 }
@@ -373,19 +373,19 @@ void View::clearField(Field f) {
 void View::paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view hint, std::string_view after) {
     TextField &t = field(f);
     const bool focused = fieldTyping() == f;
-    c.fillRect(box, kBackground, 5.0f);
-    c.strokeRect(box, focused || !t.text.empty() ? kAccent : kBorder, 1.0f, 5.0f);
+    c.fillRect(box, kBackground, kRadiusControl);
+    c.strokeRect(box, focused || !t.text.empty() ? kAccent : kBorder, 1.0f, kRadiusControl);
     const Point lens{box.x + 13.0f, box.center().y - 1.0f};
     c.strokeCircle(lens, 4.0f, kDim, 1.3f);
     c.line({lens.x + 3.0f, lens.y + 3.0f}, {lens.x + 6.5f, lens.y + 6.5f}, kDim, 1.5f);
     if (!after.empty()) { // faint at the right end, the text short of it
-        const float w = std::ceil(c.textWidth(after, 10.0f));
-        c.text({typed.right() - w, typed.y, w, typed.h}, after, 10.0f, kFaint, Align::Right);
+        const float w = std::ceil(c.textWidth(after, kTextLabel));
+        c.text({typed.right() - w, typed.y, w, typed.h}, after, kTextLabel, kFaint, Align::Right);
         typed.w = std::max(typed.w - w - 8.0f, 20.0f);
     }
     // Text too long for it scrolls, so the caret stays in sight; where each place between its characters lands is
     // kept for the mouse.
-    constexpr float kSize = 11.0f;
+    constexpr float kSize = kTextBody;
     std::vector<float> stops;
     for (size_t i = 0; i <= t.text.size(); ++i)
         stops.push_back(c.textWidth(std::string_view(t.text).substr(0, i), kSize));
@@ -400,11 +400,11 @@ void View::paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view
     t.stops = stops;
     const auto [from, to] = t.selection();
     if (t.text.empty()) {
-        c.text(typed, hint, 10.5f, kFaint, Align::Left);
+        c.text(typed, hint, kTextLabel, kFaint, Align::Left);
     } else {
         c.pushClip(typed);
         if (from != to)
-            c.fillRect({stops[from], box.y + 5.0f, stops[to] - stops[from], box.h - 10.0f}, kAccent.alpha(0.35f), 2.0f);
+            c.fillRect({stops[from], box.y + 5.0f, stops[to] - stops[from], box.h - 10.0f}, kAccent.alpha(0.35f), kRadiusMark);
         c.text({stops[0], typed.y, stops.back() - stops[0] + 20.0f, typed.h}, t.text, kSize, kText, Align::Left);
         c.popClip();
     }
@@ -519,9 +519,9 @@ std::vector<View::Widget> View::browserWidgets() const {
 void View::paintBrowser(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
     const Rect panel = browserPanel(height());
-    c.fillRect(panel, kPanel, 10.0f);
-    c.strokeRect(panel, kBorder, 1.0f, 10.0f);
-    c.text({panel.x + 24.0f, panel.y + 14.0f, 120.0f, 24.0f}, tr(Str::PresetsTitle), 14.0f, kText, Align::Left, true);
+    c.fillRect(panel, kPanel, kRadiusPanel);
+    c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
+    c.text({panel.x + 24.0f, panel.y + 14.0f, 120.0f, 24.0f}, tr(Str::PresetsTitle), kTextHeading, kText, Align::Left, true);
     const std::vector<std::pair<int, std::string>> rows = browserRows();
     const size_t count = controller_.presets().size();
     const Rect search = browserSearch(panel);
@@ -531,7 +531,7 @@ void View::paintBrowser(Canvas &c) {
         const auto found = std::count_if(rows.begin(), rows.end(), [](const auto &row) { return row.first >= 0; });
         counted = trf(Str::PresetsMatching, {std::to_string(found), std::to_string(count)});
     }
-    c.text({panel.x + 104.0f, panel.y + 16.0f, search.x - 8.0f - panel.x - 104.0f, 20.0f}, counted, 10.5f, kFaint,
+    c.text({panel.x + 104.0f, panel.y + 16.0f, search.x - 8.0f - panel.x - 104.0f, 20.0f}, counted, kTextLabel, kFaint,
            Align::Left);
     // The search field: a magnifier, then what is typed, or how to search.
     paintField(c, Field::Browser, search, browserTyped(panel), tr(Str::PresetsSearchHint));
@@ -539,11 +539,11 @@ void View::paintBrowser(Canvas &c) {
 
     const Rect area = browserList(panel);
     if (rows.empty() && !browserSearch_.text.empty()) {
-        c.text({area.x, area.center().y - 10.0f, area.w, 18.0f}, trf(Str::PresetsNoMatch, {browserSearch_.text}), 12.0f,
+        c.text({area.x, area.center().y - 10.0f, area.w, 18.0f}, trf(Str::PresetsNoMatch, {browserSearch_.text}), kTextValue,
                kDim);
     } else if (rows.empty()) {
-        c.text({area.x, area.center().y - 20.0f, area.w, 18.0f}, tr(Str::PresetsNone), 12.0f, kDim);
-        c.text({area.x, area.center().y, area.w, 18.0f}, tr(Str::PresetsNoneHint), 10.5f, kFaint);
+        c.text({area.x, area.center().y - 20.0f, area.w, 18.0f}, tr(Str::PresetsNone), kTextValue, kDim);
+        c.text({area.x, area.center().y, area.w, 18.0f}, tr(Str::PresetsNoneHint), kTextLabel, kFaint);
     }
     // Subfolders' headers; the presets' rows are widgets.
     const int shown = browserVisibleRows(panel);
@@ -551,12 +551,12 @@ void View::paintBrowser(Canvas &c) {
     for (int row = first; row < std::min(first + shown, static_cast<int>(rows.size())); ++row)
         if (rows[row].first < 0)
             c.text({area.x + 4.0f, area.y + (row - first) * kBrowserRowH + 4.0f, area.w - 8.0f, kBrowserRowH - 4.0f},
-                   rows[row].second, 10.5f, kFaint, Align::Left, true);
+                   rows[row].second, kTextLabel, kFaint, Align::Left, true);
     if (static_cast<int>(rows.size()) > shown) { // where the list is
         const Rect track{area.right() + 4.0f, area.y, 3.0f, area.h};
         const float thumb = track.h * shown / rows.size();
-        c.fillRect(track, kBorder, 1.5f);
-        c.fillRect({track.x, track.y + (track.h - thumb) * first / (rows.size() - shown), track.w, thumb}, kFaint, 1.5f);
+        c.fillRect(track, kBorder, kRadiusMark);
+        c.fillRect({track.x, track.y + (track.h - thumb) * first / (rows.size() - shown), track.w, thumb}, kFaint, kRadiusMark);
     }
 
     // The folder, cut from the left to fit beside its button.
@@ -565,9 +565,9 @@ void View::paintBrowser(Canvas &c) {
         folder += ch < 0x80 ? static_cast<char>(ch) : '?';
     const float room = browserFolder(panel).x - panel.x - 36.0f;
     std::string shownFolder = folder;
-    while (shownFolder.size() > 4 && c.textWidth(shownFolder, 10.5f) > room)
+    while (shownFolder.size() > 4 && c.textWidth(shownFolder, kTextLabel) > room)
         shownFolder = "\xE2\x80\xA6" + folder.substr(folder.size() - (shownFolder.size() - 4));
-    c.text({panel.x + 24.0f, panel.bottom() - 40.0f, room, 26.0f}, shownFolder, 10.5f, kFaint, Align::Left);
+    c.text({panel.x + 24.0f, panel.bottom() - 40.0f, room, 26.0f}, shownFolder, kTextLabel, kFaint, Align::Left);
     for (const Widget &w : browserWidgets())
         paintWidget(c, w);
 }
@@ -601,21 +601,21 @@ void View::paintConfirm(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
     const std::string what = confirmWhat();
     const Rect panel = confirmPanel(height(), confirmShorter());
-    c.fillRect(panel, kPanel, 10.0f);
-    c.strokeRect(panel, kBorder, 1.0f, 10.0f);
+    c.fillRect(panel, kPanel, kRadiusPanel);
+    c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
     const bool clear = confirm_ == kConfirmFxClear; // the effects go, which undo brings back
     c.text({panel.x + 24.0f, panel.y + 18.0f, panel.w - 48.0f, 22.0f},
            overwrite ? trf(Str::ConfirmOverwriteTitle, {controller_.presetName()})
                      : std::string(tr(clear ? Str::ConfirmFxClearTitle : Str::ConfirmTitle)),
-           14.0f, kText, Align::Left, true);
+           kTextHeading, kText, Align::Left, true);
     float y = panel.y + 48.0f;
     if (!what.empty()) {
-        c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, what, 10.5f, kDim, Align::Left);
+        c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, what, kTextLabel, kDim, Align::Left);
         y += kConfirmLine;
     }
     if (!overwrite && !clear) // nothing is thrown away by overwriting but the file, nor by clearing (undo has it)
-        c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst), 10.5f, kDim, Align::Left);
+        c.text({panel.x + 24.0f, y, panel.w - 48.0f, 16.0f}, tr(Str::ConfirmSaveFirst), kTextLabel, kDim, Align::Left);
     for (const Widget &w : confirmWidgets())
         paintWidget(c, w);
 }

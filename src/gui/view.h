@@ -152,7 +152,7 @@ private:
         GridCell,     // param, a = row node, b = column
         SourceHandle, // a = source: drag onto a param to modulate it
         SourceGrip,   // a = source, b = its position among the sources: drag to reorder
-        SourceAdd,    // a = SourceType: fills a free place with a new source of that type
+        SourceMenuButton, // + SOURCE: opens the list of source types under it
         SourceRemove, // a = source
         SourcesToggle, // collapses the modulation panel to its title row, or opens it again
         KeysToggle,    // collapses the keyboard panel to its top row, or opens it again
@@ -857,6 +857,10 @@ private:
     // That dashed card while it is on screen: the list of source types it opens shuts once the card isn't on screen
     // (see poll()).
     std::optional<Rect> sourceShadowCard() const;
+    // Whether the list of source types still has what opened it (+ SOURCE with a place free, or that dashed card on
+    // screen), and its top left there.
+    bool sourceMenuShown() const;
+    Point sourceMenuTopLeft() const;
     // The top left of a list as wide and high as `menu` that opens at the mouse, moved back inside the editor where
     // it would reach past an edge.
     Point menuAtMouse(Point mouse, Rect menu) const;
@@ -1255,7 +1259,7 @@ private:
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1
     bool sourceMenuOpen_ = false;            // the list of source types, opened from the dashed card after the sources
-    Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card
+    Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it

@@ -810,9 +810,9 @@ void View::paintCascade(Canvas &c) {
     for (size_t k = 0; k < levels.size(); ++k) {
         const MenuNode &level = *levels[k];
         const Rect r = rects[k];
-        c.fillRect({r.x + 2.0f, r.y + 4.0f, r.w, r.h}, kBackground.alpha(0.5f), 8.0f); // a shadow
-        c.fillRect(r, kRaised, 8.0f);
-        c.strokeRect(r, kBorder, 1.0f, 8.0f);
+        c.fillRect({r.x + 2.0f, r.y + 4.0f, r.w, r.h}, kBackground.alpha(0.5f), kRadiusCard); // a shadow
+        c.fillRect(r, kRaised, kRadiusCard);
+        c.strokeRect(r, kBorder, 1.0f, kRadiusCard);
         const bool searching = k == 0 && cascadeSearches();
         if (searching) { // its search, and the x that empties it
             const Rect search = cascadeSearchRect(r);
@@ -832,14 +832,14 @@ void View::paintCascade(Canvas &c) {
             const MenuNode &item = level.children[i];
             const Rect at = cascadeItemRect(level, r, static_cast<int>(i), k);
             if (item.heading) {
-                c.text({at.x + 8.0f, at.y + 2.0f, at.w - 16.0f, at.h}, item.label, 9.5f, kDim, Align::Left, true);
+                c.text({at.x + 8.0f, at.y + 2.0f, at.w - 16.0f, at.h}, item.label, kTextSmall, kDim, Align::Left, true);
                 continue;
             }
             const bool opened = k + 1 < levels.size() && cascade_->open[k] == static_cast<int>(i);
             const bool hovered = hover_ && hover_->kind == Kind::CascadeItem && hover_->a == static_cast<int>(k) &&
                                  hover_->b == static_cast<int>(i);
             if (opened || ((hovered || picked == static_cast<int>(i)) && item.enabled))
-                c.fillRect(at, kTrack, 4.0f);
+                c.fillRect(at, kTrack, kRadiusMark);
             const Color ink = item.enabled ? kText : kFaint;
             float x = at.x + 8.0f;
             if (item.color) {
@@ -847,12 +847,12 @@ void View::paintCascade(Canvas &c) {
                 x += 14.0f;
             }
             if (!item.path.empty()) { // dim, before the label
-                const float pathW = std::ceil(c.textWidth(item.path, 11.5f));
-                c.text({x, at.y, at.right() - x - 8.0f, at.h}, item.path, 11.5f, kDim, Align::Left);
+                const float pathW = std::ceil(c.textWidth(item.path, kTextBody));
+                c.text({x, at.y, at.right() - x - 8.0f, at.h}, item.path, kTextBody, kDim, Align::Left);
                 x += pathW;
             }
-            const float labelW = std::ceil(c.textWidth(item.label, 11.5f));
-            c.text({x, at.y, at.right() - x - 8.0f, at.h}, item.label, 11.5f, ink, Align::Left);
+            const float labelW = std::ceil(c.textWidth(item.label, kTextBody));
+            c.text({x, at.y, at.right() - x - 8.0f, at.h}, item.label, kTextBody, ink, Align::Left);
             if (item.holds) // what the row has now is in here
                 c.fillCircle({x + labelW + 7.0f, at.center().y}, 2.5f, kText);
             float right = at.right() - 8.0f;
@@ -869,7 +869,7 @@ void View::paintCascade(Canvas &c) {
                 right -= 14.0f;
             }
             if (!item.note.empty())
-                c.text({x + labelW + 12.0f, at.y, right - x - labelW - 12.0f, at.h}, item.note, 10.5f, kDim,
+                c.text({x + labelW + 12.0f, at.y, right - x - labelW - 12.0f, at.h}, item.note, kTextLabel, kDim,
                        Align::Right);
         }
     }
@@ -893,7 +893,7 @@ void View::paintMods(Canvas &c) {
         {kModsCurve, Str::ModsHeadCurve},   {kModsScale, Str::ModsHeadAmount},
         {kModsAux, Str::ModsHeadAux}};
     for (const auto &[column, name] : columns)
-        c.text({modsCell(head, column).x, head.y, column.w + 20.0f, head.h}, tr(name), 9.5f, kDim, Align::Left, true);
+        c.text({modsCell(head, column).x, head.y, column.w + 20.0f, head.h}, tr(name), kTextSmall, kDim, Align::Left, true);
     // The count, at the right of the names' row after Aux's: what is bypassed, at 0 % and empty goes with it, as much
     // of it as fits.
     std::vector<std::string> parts{modulations == 1 ? tr(Str::ModsCountOne)
@@ -905,23 +905,23 @@ void View::paintMods(Canvas &c) {
     if (empty > 0)
         parts.push_back(trf(Str::ModsEmpty, {std::to_string(empty)}));
     // Left of the filter's magnifier; while the filter is open, it says how many it shows instead.
-    const float countX = modsCell(head, kModsAux).x + c.textWidth(tr(Str::ModsHeadAux), 9.5f, true) + 24.0f;
+    const float countX = modsCell(head, kModsAux).x + c.textWidth(tr(Str::ModsHeadAux), kTextSmall, true) + 24.0f;
     const float countW = modsFilterRect().x - 10.0f - countX;
     std::string count;
     for (;;) {
         count = parts[0];
         for (size_t i = 1; i < parts.size(); ++i)
             count += " \xC2\xB7 " + parts[i];
-        if (parts.size() == 1 || c.textWidth(count, 11.0f) <= countW)
+        if (parts.size() == 1 || c.textWidth(count, kTextBody) <= countW)
             break;
         parts.pop_back();
     }
     if (!modsFilterOpen())
-        c.text({countX, head.y, countW, head.h}, count, 11.0f, kDim, Align::Right);
+        c.text({countX, head.y, countW, head.h}, count, kTextBody, kDim, Align::Right);
     if (rows.empty()) { // only the button that adds one
         const std::string hint =
             modsFilter_.text.empty() ? std::string(tr(Str::HintNoMods)) : trf(Str::ModsNoMatch, {modsFilter_.text});
-        c.text({kFxPanel.x, kModsList.y + 50.0f, kFxPanel.w, 30.0f}, hint, 11.5f, kDim);
+        c.text({kFxPanel.x, kModsList.y + 50.0f, kFxPanel.w, 30.0f}, hint, kTextBody, kDim);
         return;
     }
 
@@ -939,7 +939,7 @@ void View::paintMods(Canvas &c) {
                           hover_->a == m.source && hover_->b == m.slot && kModsList.contains(hoverPoint_) &&
                           drag_.kind == DragKind::None) ||
                          (cascade_ && cascade_->source == m.source && cascade_->slot == m.slot);
-        c.fillRect(r, lit ? kTrack.alpha(0.7f) : kRaised, 5.0f);
+        c.fillRect(r, lit ? kTrack.alpha(0.7f) : kRaised, kRadiusControl);
         const Rect arrow = modsCell(r, kModsArrow);
         const Color faint = kFaint;
         c.line({arrow.x + 1.0f, arrow.center().y}, {arrow.right() - 3.0f, arrow.center().y}, faint, 1.3f);

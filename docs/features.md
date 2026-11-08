@@ -573,7 +573,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter
     purple, compressor green, 3-band dynamics teal, reverb indigo, phaser pink, flanger lime, frequency shifter
     cyan, phase disperser slate, widener fuchsia) and
-    with its icon, which switches it on and off, an × to remove it and a live display:
+    with a title row laid out as every card's (the source cards' too): its icon and its name in capitals at the left, then a
+    chevron that folds it, its power switch and an × to remove it at the right; and under it a live display:
     - the shaper's transfer curve; a Custom curve shows its own points and bends instead, to drag right there
       (double-click adds or deletes a point, Ctrl snaps to the grid), with what the drive, output and mix make of
       it faintly behind and the point under the mouse in numbers; its edit button (a pencil) opens the big editor;
@@ -603,7 +604,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
       up for more, the downward one (right of Above) down for more (the wheel turns them too, and a double-click
       puts them back), showing it where the gain was. Pressing a line or a zone on another band picks that band. Linked, dragging any
       band's line or zone moves every band's the same way, and every band's readout shows the value. RMS and
-      Link sit in the card's title row. The
+      Link sit at the right end of the line over the shared knobs, the title row holding only what every card's
+      does. The
       card is one and a half places wide, like the Param EQ's. The Below, Up, Above and Down knobs, and Range,
       say in a tooltip which way they work ("Downward threshold", "Upward ratio").
     - the reverb's tail: after the pre-delay it builds up (slower in a bigger space, with its early reflections
@@ -625,25 +627,27 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 
     The delay's switches under its display are icons across the card, named on hover: a metronome for Sync, two
     chain links for Link (the right side follows the left) and a ball between two paddles for Ping-Pong. The
-    shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band dynamics' (in
-    its title row), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
+    shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band dynamics' (at
+    the right end of its line over the shared knobs), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
     rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (a button of its own, STEREO
     another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
-    do. The filter's slope is a list under its display, like a voice filter's (see the inspector). The filter's
+    do. The filter's slope is a list under its display, like a voice filter's (see the inspector) and a split's. The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.
 
-    Each effect has an icon, at the left of its card's title and in the list of effects. On the card, the icon
-    is the effect's switch: a click turns it off (the icon turns grey with the card, under the mouse too, and the
-    effect costs nothing) or on again, in its color; dragged, it moves the card like the title. **+ EFFECT** (a drawn plus before the word) at the panel's top left
-    opens a list of the effect types (beside it, how many of the 32
+    Each effect has an icon, at the left of its card's title and in the list of effects. On the card, the power
+    switch in the title row turns the effect off (the icon turns grey with the card, under the mouse too, and the
+    effect costs nothing) or on again, in its color; a click on the icon does the same, and dragged, the icon moves
+    the card like the title. Folded, the strip keeps the icon, a grip, the power switch and the ×. **+ EFFECT** (a
+    drawn plus, the word and a chevron, neutral until the mouse is on it or its list is open, then in the theme's
+    accent, as + SOURCE is) at the panel's top left opens a list of the effect types (beside it, how many of the 32
     places are taken, as in 3/32), and so does a dashed card with a plus after the last effect, at the mouse (moved
     back inside the editor where it would reach past an edge); the
     one picked goes at the end of the chain, which scrolls to show it, and so does a copy. An arrow goes before each
     card, the first too, and turns into a plus under the mouse: a click opens the list over the cards there, and the
     one picked goes in there. While there are effects, a hint at the panel's top right tells how to work the cards
-    ("click icon: toggle · drag title: reorder"). The dashed card takes a
+    ("drag a title to reorder"). The dashed card takes a
     card place at the chain's end while there is room for another effect. Six cards fit across, the Param EQ's
     taking one and a half places for a wider spectrum; with more,
     a scrollbar under them (drag its thumb or click its track; drawn thinner while the mouse is away from it) or the
@@ -677,13 +681,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     band's color (the low band blue, the high band amber; the wheel switches them too), a hidden band's tab saying
     how many effects it holds and a soloed band's showing an S in its color; the bands' responses with a handle on
     the crossover to drag across, each band's curve lowered as far as its level's knob is turned down (flat at
-    -60 dB), the shown band's filled; the slope,
-    6 | 12 | 24 dB; three knobs: the low band's level, the Crossover and the high band's level (in dB, 0 dB, full, at
+    -60 dB), the shown band's filled; the slope's list under them, as a filter's is, 6, 12 or 24 dB (18 shows
+    faintly and can't be picked); three knobs: the low band's level, the Crossover and the high band's level (in dB, 0 dB, full, at
     the top, down to -60 dB, silence); and an **S** under each band's level that solos it, one at a time (soloing one
     unsolos the other, a click on the lit one unsolos it), lit in its band's color. To the right of the controls, the
     cards of the band shown, the arrows into them in the band's color (faint, cards and arrows, while the other band
     is soloed), then
-    a narrow dashed card that opens the list of effects at the mouse (effects only: a band holds no split), the one
+    a narrow dashed card (ADD TO LOW or ADD TO HIGH, in capitals as ADD EFFECT) that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
     + EFFECT offer **Split into high/low bands** after the effects, which goes in there (at the line's end from the
@@ -703,8 +707,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     after OUT. Its hint at the top right reads "click node: edit · drag
     node: move · click wire: insert". The graph's nodes sit on a fixed grid, a column each, and
     wire themselves: S-shaped wires, grey along the main line, run left to right from the input (IN, a
-    box at the left) to the output (OUT, a box after the last column). Each effect is a circle in its color with its
-    icon and name, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
+    box at the left) to the output (OUT, a box after the last column). Each effect is a rounded box in its color, as a voice
+    filter's node is in the routing graph, its icon in it and its name under it, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
     opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Split
     into high/low bands**, after the effects: a split, a box its high band leaves from the top of its right side and
     its low band from the bottom, always comes with its join, which adds the bands back together in the
@@ -978,11 +982,11 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     edit button (a pencil) opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
-    operators it modulates, as a shaper's has), type buttons, each a small picture of its response (named on
-    hover), and the slope's list at the end
-    of their row, 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
-    what plays; for a comb it is faint and doesn't open), cutoff, resonance, key tracking, drive and output, and a live response curve whose
-    handle drags cutoff (sideways) and resonance (up/down). With its cutoff or resonance modulated, faint curves
+    operators it modulates, as a shaper's has), type buttons across the row under it, each a small picture of its
+    response (named on hover), cutoff, resonance, key tracking, drive and output, and a live response curve whose
+    handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it, as the filter effect's and
+    a split's are: 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
+    what plays; for a comb it is faint and doesn't open). With its cutoff or resonance modulated, faint curves
     show how far the modulation takes it either way, and while notes play the curve follows where the newest
     voice is (the handle stays at the set values, the cutoff a C4 has). Key tracking moves all of it with that
     voice's note, an octave per octave at 100 %. The filter effect's display does the same, with a handle of its own for cutoff and resonance, its key tracking
@@ -991,9 +995,10 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
     that is off shows none. Underneath are the send knobs of everything that feeds the filter.
 - **Modulation**: the panel's title row has the **MODULATION** toggle, which collapses the panel to that row and
-  opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ LFO**,
-  **+ ENV**, **+ RANDOM** and **+ MIDI** (a drawn plus, like + EFFECT's) to add a source (which opens a collapsed
-  panel). A Random card says what it does where the others have knobs. A MIDI card has its input's list (CC,
+  opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ SOURCE**,
+  shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
+  one (which opens a collapsed panel), and beside it how many of the 16 places are taken, as in 4/16 (with every
+  place taken it is dimmed, and a click says so). A Random card says what it does where the others have knobs. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -1015,6 +1020,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     envelope follows its knobs, the dot sits where the line meets the curve. Where it doesn't (a note let go
     during the decay releases from above the sustain; modulation moves the sustain), the dot keeps to the curve
     and the line shows the level.
+  - A card's title row is laid out as an effect card's: the handle and the name in capitals ("LFO 2", "ENV 1") at
+    the left, then the fold chevron, the power switch and the × at the right.
   - The power switch turns a source on and off; one that is off has its card dimmed, its name grey (as an effect's is), and its handle and its rings
     on knobs faint (the handle can still be dragged onto targets).
   - The chevron left of the power switch folds the card to a narrow strip, as on the effects: the handle, a grip
@@ -1126,6 +1133,9 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   takes the keyboard while you type and hands it back afterwards; the keys are taken straight off the window's
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
+- **Menus and lists**: every list and menu (the effects', the source types', the waves', a list button's, a Param EQ
+  band's shapes, the MODS view's cascading menus) marks the row under the mouse, and the one picked, in the same
+  neutral tones; only a row's icon takes a color (the effect's, the band's, the source's).
 - **Button rows**: buttons that pick one of a few (Poly | Mono, an operator's waves, a voice filter's and the filter
   effect's types, an LFO's clock modes, the partial counts, Points | Steps, the phaser's and flanger's + | −) and
   switches that sit side by side (the
