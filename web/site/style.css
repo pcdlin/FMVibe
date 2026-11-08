@@ -98,29 +98,6 @@ footer {
   gap: 4px 10px;
 }
 
-#tempo-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-#tempo {
-  width: 4.5em;
-  padding: 1px 4px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--raised);
-  color: var(--text);
-  font: inherit;
-  text-align: right;
-  color-scheme: dark;
-}
-
-#tempo:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 0;
-}
-
 /* The keys that play, laid out as a piano's: the sharps a row up, between the keys they lie between. */
 .piano {
   display: inline-grid;

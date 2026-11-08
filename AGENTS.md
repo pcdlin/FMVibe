@@ -469,7 +469,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an aux's handle hovered drawing a dotted line to the depth handle it scales, and that depth handle hovered
     drawing it from the aux's handle (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
-    pixels).
+    pixels);
+  - the title bar's tempo: none for a plugin host, and for a host that lets the editor set it a field (read off the
+    rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
+    ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
+    text that isn't a tempo and Escape leaving it), none of it touching the patch or its undo history.
 
   Pass a scale to render larger: `build\release\fmvibe-uishot.exe out 2`.
 - **VST3 smoke test** (`tests/vst3_host.cpp`): a small headless VST3 host. It loads `FMVibe.vst3` and checks what the
@@ -515,8 +519,9 @@ More checks:
   keyboard, from the computer keyboard as in the browser demo (A W S E D … from middle C by key position, Z and X
   shifting the octave and C and V stepping the velocity through 1, 20, 40 … 100, 120 and 127, both of which the
   window's title shows; keys the editor takes for typing stay its own) and from every
-  MIDI input it can open, at a tempo of 120 BPM for synced LFOs and effects, its transport playing from its start
-  for anchored LFOs. With
+  MIDI input it can open, at a tempo of 140 BPM for synced LFOs and effects, its transport playing from its start
+  for anchored LFOs. It offers the plugin FMVibe's own host extension for the tempo (`src/hosttempo.h`), so the
+  editor's title bar shows the tempo, to change as it plays. With
   `--silent`, or without a device, it still runs the plugin in real time into silence, so the meters, the scope and
   the analyzers move; `--no-midi` leaves the MIDI inputs alone and `--tempo <bpm>` sets another tempo. It restarts
   the plugin when a higher voice limit asks for it, and runs its main-thread callbacks. It isn't a test, and like a
@@ -594,8 +599,9 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   demo has no files. The theme, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
   the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
-- The page stands in for a host's transport with a Tempo field under the editor (20–999 BPM, kept in the
-  browser's storage), which `dsp_tempo()` hands the synth as `Plugin::process()` does the host's tempo.
+- The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which the editor's
+  title bar then shows to drag, scroll or type (20–999 BPM, kept in the browser's storage), and which `dsp_tempo()`
+  hands the synth as `Plugin::process()` does the host's tempo.
 - The page polls and paints at most about 60 times a second, whatever the display's rate, and, like the plugin
   window, repaints on a mouse move only when what the editor shows changes.
 - The page ships FMVibe's `LICENSE` (as `LICENSE.txt`) and `web/site/THIRD-PARTY-NOTICES.txt`, the licenses of the
@@ -658,6 +664,7 @@ breakpoints in `src/` then hit.
 | --- | --- |
 | `src/plugincore.cpp` | What both plugins are: `PluginCore`, the engine and its param values, the editor's `Controller` (presets, settings), the state and the editor window, telling each host through its hooks |
 | `src/entry.cpp` | The CLAP plugin's exported `clap_entry` and factory |
+| `src/hosttempo.h` | FMVibe's own CLAP host extension for the tempo, which `fmvibe-uihost` offers so the editor can show and set it |
 | `src/plugin.cpp` | The CLAP plugin: the core with its process loop, events and extension tables (ports, params, state, remote controls, voice info, gui) |
 | `src/vst3entry.cpp` | The VST3 plugin's exported `GetPluginFactory` (and `InitDll`, `ExitDll`) and factory |
 | `src/vst3plugin.cpp` | The VST3 plugin: the core as one object that is component, processor and edit controller (buses, process loop, params in units, MIDI mapping, note expressions, state), and its editor view |

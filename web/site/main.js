@@ -14,7 +14,6 @@ const menu = document.getElementById('menu');
 const toast = document.getElementById('toast');
 const octaveLabel = document.getElementById('octave');
 const velocityLabel = document.getElementById('velocity');
-const tempoInput = document.getElementById('tempo');
 const ctx = canvas.getContext('2d');
 const draw = createCanvas2d(ctx);
 
@@ -150,6 +149,9 @@ const host = {
   oversampling(factor) {
     flush();
     send({type: 'oversampling', factor});
+  },
+  tempo(bpm) {
+    setTempo(bpm);
   },
   layoutChanged() {
     resize();
@@ -400,11 +402,12 @@ document.addEventListener('mousedown', (e) => {
 
 // --- Tempo --------------------------------------------------------------------------------------------------
 
-// The page stands in for a host's transport: its tempo is what synced LFOs, delays and sweeps follow, and what
-// the editor shows them at. Kept in the browser's storage like the theme.
+// The page stands in for a host's transport: its tempo is what synced LFOs, delays and sweeps follow. The editor's
+// title bar shows it, to drag, scroll or type (ui.cpp hands it here), and it is kept in the browser's storage like
+// the theme, which the editor reads it from too.
 const TEMPO_MIN = 20;
 const TEMPO_MAX = 999;
-let tempo = 120;
+let tempo = 140;
 
 function clampTempo(bpm) {
   return Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(bpm * 100) / 100));
@@ -422,25 +425,7 @@ function setTempo(bpm) {
   const stored = parseFloat(host.setting('tempo') ?? '');
   if (Number.isFinite(stored))
     tempo = clampTempo(stored);
-  tempoInput.value = String(tempo);
 }
-// A value takes effect when it is stepped, or typed and Enter pressed or the field left (not on each digit, which
-// would pass through other tempos on the way); out of range, it is held to the range, and if it isn't a number,
-// the tempo in use comes back.
-tempoInput.addEventListener('change', () => {
-  setTempo(tempoInput.valueAsNumber);
-  tempoInput.value = String(tempo);
-});
-// Keys typed in the field are the field's, not the piano's or the editor's (a key let go still ends its note).
-// Enter takes the value and Escape puts back the one in use, both handing the keyboard back to the piano.
-tempoInput.addEventListener('keydown', (e) => {
-  e.stopPropagation();
-  if (e.key === 'Enter' || e.key === 'Escape') {
-    if (e.key === 'Escape')
-      tempoInput.value = String(tempo);
-    canvas.focus({preventScroll: true}); // the field, left, sends its change
-  }
-});
 
 // --- Keyboard -----------------------------------------------------------------------------------------------
 

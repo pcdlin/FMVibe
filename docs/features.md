@@ -225,8 +225,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     end, so at 50 % it plays only the second half.
   - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
     dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. The browser demo has no
-    host: its page has a **Tempo** field under the editor instead (20–999 BPM, 120 to begin with, remembered by the
-    browser), which every synced LFO, delay and sweep follows. A new LFO starts synced, in quarter notes. The note
+    host: its editor's title bar has a **tempo** field instead (20–999 BPM, 140 to begin with, remembered by the
+    browser; see Header), which every synced LFO, delay and sweep follows, as does `fmvibe-uihost`'s. A new LFO
+    starts synced, in quarter notes. The note
     value takes modulation like a knob, from the editor's sources, but in steps: it moves from one
     note value to the next along the list (up for faster), never between them, and the dot on its knob stands on
     the one playing.
@@ -923,7 +924,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     brings back every MIDI note and the curve along the dashed line. Velocity's curve opens over the routing panel
     the same way, from its display (see Velocity, under the keyboard strip).
 - **Header**: two rows. The **title bar** holds the name at its left, the preset bar in its middle, and undo and
-  redo, Init, Load, Save, Save As and the settings cog at its right (see Presets and Settings, below). Under it, the
+  redo, Init, Load, Save, Save As and the settings cog at its right (see Presets and Settings, below). In a host that
+  stands in for a transport and lets the editor set its tempo, the browser demo and `fmvibe-uihost`, a **tempo**
+  field sits between the name and the preset bar: a metronome, then the tempo in BPM (20–999, 140 to begin with),
+  which every synced LFO, delay and sweep follows. Dragged up or down it moves a BPM every 2 px, onto whole ones (a
+  tenth of one with Shift); the wheel steps it a BPM a notch (a tenth with Shift); a double-click or Ctrl+Click types
+  one, with or without `BPM` after it, held to the range. It is the host's, not the patch's: presets and undo leave
+  it alone. A plugin host's tempo is its own, so in a DAW the title bar shows none. Under it, the
   **global strip** spreads across the editor, from the output scope under the name to the voice count at its right
   end. First the output scope:
   the output after Volume (its two sides' mean) over two periods of the newest note's pitch (kept once the note has

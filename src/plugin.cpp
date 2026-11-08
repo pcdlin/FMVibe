@@ -1,5 +1,6 @@
 #include "plugin.h"
 
+#include "hosttempo.h"
 #include "params.h"
 #include "plugincore.h"
 #include "remotepages.h"
@@ -93,6 +94,15 @@ protected:
     void hostRequestCallback() override { host_->request_callback(host_); }
     void hostRequestProcess() override { host_->request_process(host_); }
 
+public:
+    // The tempo control, for a host that offers FMVibe's own extension for it (fmvibe-uihost).
+    bool hasTempo() const override { return hostTempo_ != nullptr; }
+    double tempo() const override { return hostTempo_ ? hostTempo_->get(host_) : gui::kDefaultTempo; }
+    void setTempo(double bpm) override {
+        if (hostTempo_)
+            hostTempo_->set(host_, gui::clampTempo(bpm));
+    }
+
 private:
     static Plugin &self(const clap_plugin_t *plugin) { return *static_cast<Plugin *>(plugin->plugin_data); }
     static const void *extension(const char *id);
@@ -123,6 +133,7 @@ private:
     const clap_host_voice_info_t *hostVoiceInfo_ = nullptr;
     const clap_host_remote_controls_t *hostRemoteControls_ = nullptr;
     const clap_host_gui_t *hostGui_ = nullptr;
+    const HostTempo *hostTempo_ = nullptr;
     // Main thread: the remote pages, as the sections were when the host was last told (see sectionsChanged()).
     std::vector<clap_remote_controls_page_t> remotePages_;
     // Presets set every param at once, about three events each.
@@ -166,6 +177,9 @@ bool Plugin::init() {
     hostState_ = static_cast<const clap_host_state_t *>(host_->get_extension(host_, CLAP_EXT_STATE));
     hostVoiceInfo_ = static_cast<const clap_host_voice_info_t *>(host_->get_extension(host_, CLAP_EXT_VOICE_INFO));
     hostGui_ = static_cast<const clap_host_gui_t *>(host_->get_extension(host_, CLAP_EXT_GUI));
+    hostTempo_ = static_cast<const HostTempo *>(host_->get_extension(host_, kExtHostTempo));
+    if (hostTempo_ && (!hostTempo_->get || !hostTempo_->set))
+        hostTempo_ = nullptr;
     hostRemoteControls_ =
         static_cast<const clap_host_remote_controls_t *>(host_->get_extension(host_, CLAP_EXT_REMOTE_CONTROLS));
     if (!hostRemoteControls_)

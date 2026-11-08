@@ -3,6 +3,10 @@
 // notes from the editor's keyboard, the computer's (as in the browser demo) and every MIDI input it can open. Without a device (or with --silent) it
 // still runs the plugin in real time into silence, so the meters, the scope and the analyzers move.
 // Usage: fmvibe-uihost [path\to\FMVibe.clap] [--silent] [--no-midi] [--tempo <bpm>]
+// It offers the plugin FMVibe's own host extension for the tempo (src/hosttempo.h), so the editor's title bar shows
+// the tempo it plays at, to drag, scroll or type.
+
+#include "../src/hosttempo.h"
 
 #include <clap/clap.h>
 
@@ -73,7 +77,7 @@ struct InputEvents {
 
 class Audio {
 public:
-    Audio(const clap_plugin_t *plugin, bool silent, double tempo) : plugin_(plugin), silent_(silent) {
+    Audio(const clap_plugin_t *plugin, bool silent, double tempo) : plugin_(plugin), silent_(silent), tempo_(tempo) {
         transport_.header = {sizeof(transport_), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0};
         // Playing from the moment it starts, as a song would, for anchored LFOs.
         transport_.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_TIME_SIGNATURE | CLAP_TRANSPORT_IS_PLAYING |
@@ -102,6 +106,10 @@ public:
     }
 
     void setActive(bool active) { active_ = active; }
+
+    // Any thread: the tempo the transport plays at, from the next block on.
+    double tempo() const { return tempo_.load(std::memory_order_relaxed); }
+    void setTempo(double bpm) { tempo_.store(bpm, std::memory_order_relaxed); }
 
     // Main thread: the audio thread stops processing and stays out of the plugin until resume().
     void pause() {
@@ -271,10 +279,11 @@ private:
             clap_process_t process{};
             process.steady_time = steadyTime_;
             process.frames_count = n;
+            // The beats go on from where they were at the tempo set now, which the editor may change as it plays.
             const double seconds = static_cast<double>(steadyTime_) / rate_;
+            transport_.tempo = tempo();
             transport_.song_pos_seconds = static_cast<clap_sectime>(std::llround(seconds * CLAP_SECTIME_FACTOR));
-            transport_.song_pos_beats =
-                static_cast<clap_beattime>(std::llround(seconds * transport_.tempo / 60.0 * CLAP_BEATTIME_FACTOR));
+            transport_.song_pos_beats = static_cast<clap_beattime>(std::llround(beats_ * CLAP_BEATTIME_FACTOR));
             process.transport = &transport_;
             process.audio_outputs = &output;
             process.audio_outputs_count = 1;
@@ -289,6 +298,7 @@ private:
                 out[2 * (done + i) + 1] = std::clamp(right_[i], -1.0f, 1.0f);
             }
             steadyTime_ += n;
+            beats_ += n / rate_ * transport_.tempo / 60.0;
             done += n;
         }
     }
@@ -299,10 +309,12 @@ private:
     std::thread thread_;
     double rate_ = kFallbackRate;
     std::atomic<bool> quit_{false}, alive_{true}, active_{false}, stopRequest_{false}, stopped_{false};
+    std::atomic<double> tempo_;
 
     // Audio thread only.
     bool processing_ = false;
     int64_t steadyTime_ = 0;
+    double beats_ = 0.0; // where the transport is, in beats
     clap_event_transport_t transport_{};
     std::vector<float> left_, right_;
     std::vector<clap_event_midi_t> pending_;
@@ -375,6 +387,15 @@ const clap_host_gui_t kHostGui = {
     [](const clap_host_t *, bool) {},          // closed: not floating
 };
 
+// The tempo the editor shows and sets (see src/hosttempo.h): the audio thread's transport's.
+const fmvibe::HostTempo kHostTempo = {
+    [](const clap_host_t *) { return app.audio ? app.audio->tempo() : 140.0; },
+    [](const clap_host_t *, double bpm) {
+        if (app.audio)
+            app.audio->setTempo(std::clamp(bpm, 20.0, 999.0));
+    },
+};
+
 const clap_host_t kHost = {
     CLAP_VERSION_INIT,
     nullptr,
@@ -383,7 +404,9 @@ const clap_host_t kHost = {
     "",
     "0",
     [](const clap_host_t *, const char *id) -> const void * {
-        return std::strcmp(id, CLAP_EXT_GUI) == 0 ? &kHostGui : nullptr;
+        if (std::strcmp(id, CLAP_EXT_GUI) == 0)
+            return &kHostGui;
+        return std::strcmp(id, fmvibe::kExtHostTempo) == 0 ? &kHostTempo : nullptr;
     },
     [](const clap_host_t *) { // request_restart
         if (app.window && !app.restartPosted.exchange(true))
@@ -611,7 +634,8 @@ void usage() {
                 "  The plugin defaults to FMVibe.clap next to this program.\n"
                 "  --silent   run the plugin without an audio device (the meters and scope still move)\n"
                 "  --no-midi  leave the MIDI inputs alone\n"
-                "  --tempo    the tempo synced LFOs and effects follow (default 120 BPM)\n"
+                "  --tempo    the tempo synced LFOs and effects follow to begin with (default 140 BPM; the\n"
+                "             editor's title bar shows it, to drag, scroll or type)\n"
                 "  The computer keyboard plays notes: A W S E D ... from middle C, Z and X shift the octave,\n"
                 "  C and V step the velocity (1, 20, 40 ... 127).\n");
 }
@@ -621,7 +645,7 @@ void usage() {
 int wmain(int argc, wchar_t **argv) {
     std::wstring path;
     bool silent = false, midi = true;
-    double tempo = 120.0;
+    double tempo = 140.0;
     for (int i = 1; i < argc; ++i) {
         const std::wstring arg = argv[i];
         if (arg == L"--silent") {
