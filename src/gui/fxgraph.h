@@ -4,12 +4,40 @@
 
 #include "theme.h"
 
+#include <algorithm>
+
 namespace fmvibe::gui::detail {
 
-// A split's bands: the low one in the delay's blue, the high one in the DJ EQ's amber (and the middle one, which the
-// editor doesn't use, in the flanger's lime).
+// A split's bands by their port's number (0 low, 1 middle, 2 high), in the theme's band colors.
 inline Color bandColor(int band) {
-    return fxTypeColor(band == 0 ? FxType::Delay : band == 1 ? FxType::Flanger : FxType::Eq);
+    return look.bands[std::clamp(band, 0, 2)];
+}
+
+// A split's bands as the line has them, by lane (1 the high band, 2 the low one, 3 the middle one): the port's band
+// each comes out of (fxBandPort()), the join's input each goes into (the high band its first, the low one its second,
+// the middle one its third), the join's solo of it, and its color.
+inline int laneBand(int lane) {
+    return lane == 1 ? 2 : lane == 3 ? 1 : 0;
+}
+inline int laneJoinInput(int lane) {
+    return lane == 1 ? 0 : lane == 3 ? 2 : 1;
+}
+inline SumParam laneSolo(int lane) {
+    return lane == 1 ? SumParam::SoloHigh : lane == 3 ? SumParam::SoloMid : SumParam::SoloLow;
+}
+inline Color laneColor(int lane) {
+    return bandColor(laneBand(lane));
+}
+// A split's tabs by the band they show, as the layout keeps it (0 the low band, 1 the high one, 2 the middle one), and
+// back; and where each tab sits, left to right: the low band's, the middle one's, the high one's.
+inline int laneOfTab(int tab) {
+    return tab == 1 ? 1 : tab == 2 ? 3 : 2;
+}
+inline int tabOfLane(int lane) {
+    return lane == 1 ? 1 : lane == 3 ? 2 : 0;
+}
+inline int tabPosition(int tab, bool three) {
+    return tab == 0 ? 0 : tab == 2 ? 1 : three ? 2 : 1;
 }
 
 // The splits' and joins' color: a neutral grey, as they shape the line rather than the sound.

@@ -2417,6 +2417,10 @@ int main(int argc, char **argv) {
                    {paramIndex(0, SplitParam::High), normFromCutoff(2000.0)},
                    {from(kFxOutNode, 2), port(fxBandPort(0, 1))}});
         const double threeBands = magnitude(play({}), 440.0);
+        // And at 12 dB.
+        setParams({{paramIndex(0, SplitParam::Slope), 1.0}});
+        const double threeBands12 = magnitude(play({}), 440.0);
+        setParams({{paramIndex(0, SplitParam::Slope), static_cast<double>(kFilterSlopes - 1)}});
         // The three bands meeting in a sum, and the sum out at half: as loud as the A4 at half.
         setParams({{paramIndex(0, SumParam::Used), 1.0},
                    {from(fxSumNode(0), 0), port(fxBandPort(0, 0))},
@@ -2428,12 +2432,13 @@ int main(int argc, char **argv) {
                    {level(kFxOutNode, 0), 0.5}});
         const double summed = magnitude(play({}), 440.0);
         std::printf("      graph: in to out %+.3f dB, two halves %+.3f dB, two bands %+.3f dB (at 6 dB %+.3f, at 12 "
-                    "%+.3f), three %+.3f dB, summed and out at half %+.3f dB\n",
+                    "%+.3f), three %+.3f dB (at 12 dB %+.3f), summed and out at half %+.3f dB\n",
                     db(direct / plain), db(halves / plain), db(twoBands / plain), db(twoBands6 / plain),
-                    db(twoBands12 / plain), db(threeBands / plain), db(summed / plain));
+                    db(twoBands12 / plain), db(threeBands / plain), db(threeBands12 / plain), db(summed / plain));
         check(std::abs(db(direct / plain)) < 0.1 && std::abs(db(halves / plain)) < 0.1 &&
                   std::abs(db(twoBands / plain)) < 0.1 && std::abs(db(twoBands6 / plain)) < 0.1 &&
                   std::abs(db(twoBands12 / plain)) < 0.1 && std::abs(db(threeBands / plain)) < 0.1 &&
+                  std::abs(db(threeBands12 / plain)) < 0.1 &&
                   std::abs(db(summed / plain) + 6.02) < 0.1,
               "the effects graph passes its input on, a split's bands sum back flat at every slope, and a sum adds up "
               "its wires");
@@ -2456,6 +2461,19 @@ int main(int argc, char **argv) {
                     lows[0], lows[1], lows[2]);
         check(std::abs(lows[0] + 12.3) < 2.0 && std::abs(lows[1] + 24.6) < 2.5 && lows[2] < -40.0,
               "a split's slope sets how steeply its bands part");
+        // Split in three, the low crossover two octaves under the A4 (the high one at 2 kHz): the low band at 12 dB
+        // about 25 dB down, at 24 more than 40; set to 6 dB, it plays at 12.
+        setParams({{paramIndex(0, SplitParam::Bands), 3.0}, {paramIndex(0, SplitParam::High), normFromCutoff(2000.0)}});
+        double lows3[3] = {};
+        for (int k = 0; k < 3; ++k) {
+            setParams({{paramIndex(0, SplitParam::Slope), static_cast<double>(slopes[k])}});
+            lows3[k] = db(magnitude(play({}), 440.0) / plain);
+        }
+        std::printf("      split in three, its low band two octaves under the A4: %.1f dB at 6 dB, %.1f at 12, %.1f at "
+                    "24\n",
+                    lows3[0], lows3[1], lows3[2]);
+        check(std::abs(lows3[1] + 24.6) < 2.5 && lows3[2] < -40.0 && std::abs(lows3[0] - lows3[1]) < 0.1,
+              "three bands part at 12 or 24 dB as their slope says, 6 dB playing as 12");
 
         // A join's solos: the A4 split at 1 kHz (24 dB) into a join, its high band on its first input and its low
         // band on its second. Neither soloed, both play; the low band soloed keeps the A4, the high band soloed takes
@@ -2482,6 +2500,31 @@ int main(int argc, char **argv) {
                     neither, lowOnly, highOnly, both);
         check(std::abs(neither) < 0.1 && std::abs(lowOnly) < 1.0 && highOnly < -20.0 && std::abs(both) < 0.1,
               "a join's solo lets only the band soloed through");
+
+        // Split in three at 200 Hz and 2 kHz, the A4 in the middle band, which takes the join's third input: soloed,
+        // the A4 plays on; the low band soloed takes it away.
+        clearGraph();
+        setParams({{paramIndex(0, SplitParam::Used), 1.0},
+                   {paramIndex(0, SplitParam::Bands), 3.0},
+                   {paramIndex(0, SplitParam::Low), normFromCutoff(200.0)},
+                   {paramIndex(0, SplitParam::High), normFromCutoff(2000.0)},
+                   {paramIndex(0, SumParam::Used), 1.0},
+                   {from(fxSplitNode(0), 0), port(kFxPortIn)},
+                   {from(fxSumNode(0), 0), port(fxBandPort(0, 2))},
+                   {from(fxSumNode(0), 1), port(fxBandPort(0, 0))},
+                   {from(fxSumNode(0), 2), port(fxBandPort(0, 1))},
+                   {from(kFxOutNode, 0), port(fxSumPort(0))}});
+        auto soloedOf3 = [&](SumParam solo) {
+            setParams({{paramIndex(0, SumParam::SoloHigh), solo == SumParam::SoloHigh ? 1.0 : 0.0},
+                       {paramIndex(0, SumParam::SoloLow), solo == SumParam::SoloLow ? 1.0 : 0.0},
+                       {paramIndex(0, SumParam::SoloMid), solo == SumParam::SoloMid ? 1.0 : 0.0}});
+            return db(magnitude(play({}), 440.0) / plain);
+        };
+        const double midOnly = soloedOf3(SumParam::SoloMid), lowOf3 = soloedOf3(SumParam::SoloLow);
+        soloedOf3(SumParam::Used); // none soloed
+        std::printf("      a join's solos on the A4 split in three at 200 Hz and 2 kHz: middle %+.1f dB, low %+.1f\n",
+                    midOnly, lowOf3);
+        check(std::abs(midOnly) < 1.0 && lowOf3 < -20.0, "a join's solo of a three-band split's middle band lets it alone through");
 
         // A hard shaper on the low band of a split: at 2 kHz the A4 goes through it and comes out squared (its 3rd
         // harmonic), at 200 Hz it is in the high band, which goes straight out, and stays a sine.

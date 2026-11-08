@@ -83,7 +83,7 @@ struct UiLayout {
     // Whether the FX view shows the effects as their graph rather than as a row of cards: two views of the same
     // effects, which switching between changes nothing of. Part of the patch, like the routing view.
     bool fxGraphView = false;
-    // The band each split shows, by split (0 its low band, 1 its high one): the band whose effects its container in
+    // The band each split shows, by split (0 its low band, 1 its high one, 2 its middle one): the band whose effects its container in
     // the row shows, and whose response its card fills. Part of the patch, like the node places.
     std::array<int, kFxSplits> splitBand{};
     // The splits' containers in the row folded to a narrow strip, a bit each; saved with the patch, but not undone.
@@ -177,6 +177,8 @@ public:
     // Edits from the editor. A drag is wrapped in begin/end so the host records it as one gesture.
     // Each gesture is an undo step, unless a beginStep() around it groups it with others. While a three-band
     // dynamics is linked, an edit of one band's threshold, ratio or gain is made to every band's (see linkedBands()).
+    // An edit of a three-band split's crossover that takes it past the other pushes that one along, a third of an
+    // octave away, in the same gesture (see crossoverPartner()).
     void beginEdit(int index);
     void setValue(int index, double value);
     void endEdit(int index);
@@ -281,6 +283,10 @@ private:
     // `index`, and while it is a linked three-band dynamics band's threshold, ratio or gain, the other bands' same
     // field: the params an edit of it sets. -1 for none.
     std::array<int, kMcBands> linkedBands(int index) const;
+    // The other crossover of the three-band split whose crossover `index` is, -1 for any other param.
+    int crossoverPartner(int index) const;
+    // Where the other crossover goes for `index` set to `value`: pushed a third of an octave past it, or as it is.
+    double pushedCrossover(int index, double value) const;
     void apply(const UndoStep &step, bool forward);
 
     std::vector<UndoStep> undo_; // oldest first

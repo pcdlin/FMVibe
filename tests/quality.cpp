@@ -330,11 +330,12 @@ void effectsChainChecks() {
         // gap). Each edit is what the editor writes: wires moved, nodes coming and going.
         auto from = [](int node, int input) { return fxInputIndex(node, input, FxInputField::From); };
         auto port = [](int p) { return fxPortValue(p); };
-        const size_t period = static_cast<size_t>(kSampleRate / 130.81) + 1;
-        auto steadyEdit = [&](const char *what, auto &&before, auto &&edit) {
+        // On a C3, or `note` (whose shorter period shows a dip as short as a 5 ms crossfade).
+        auto steadyEdit = [&](const char *what, auto &&before, auto &&edit, int note = 48) {
+            const size_t period = static_cast<size_t>(kSampleRate / (440.0 * std::pow(2.0, (note - 69) / 12.0))) + 1;
             Engine e(2);
             before(e.p);
-            e.noteOn(48);
+            e.noteOn(note);
             const std::vector<float> settled = e.render(9600, 1);
             edit(e.p);
             const std::vector<float> all = joined(settled, e.render(2400, 1));
@@ -398,7 +399,42 @@ void effectsChainChecks() {
         const bool sloped = steadyEdit("a split's slope from 24 to 6 dB", split, [&](ParamValues &p) {
             p[paramIndex(0, SplitParam::Slope)] = 0.0;
         });
-        check(added && removed && unsplit && sloped,
+        // A split at 60 Hz into its join, an A4 in its high band; split in three, as the editor's 2 | 3 switch writes
+        // it (High at 2 kHz, the middle band into the join's third input), the A4 is in the middle band; and back. The
+        // middle band fades in or out with its wire alone, not again with the split's crossfade.
+        auto twoBands = [&](ParamValues &p, double slope) {
+            p[paramIndex(0, SplitParam::Used)] = 1.0;
+            p[paramIndex(0, SplitParam::Low)] = normFromCutoff(60.0);
+            p[paramIndex(0, SplitParam::Slope)] = slope;
+            p[paramIndex(0, SumParam::Used)] = 1.0;
+            p[from(fxSplitNode(0), 0)] = port(kFxPortIn);
+            p[from(fxSumNode(0), 0)] = port(fxBandPort(0, kFxBands - 1));
+            p[from(fxSumNode(0), 1)] = port(fxBandPort(0, 0));
+            p[from(kFxOutNode, 0)] = port(fxSumPort(0));
+        };
+        auto toThree = [&](ParamValues &p) {
+            p[paramIndex(0, SplitParam::Bands)] = 3.0;
+            p[paramIndex(0, SplitParam::High)] = normFromCutoff(2000.0);
+            p[from(fxSumNode(0), 2)] = port(fxBandPort(0, 1));
+        };
+        auto toTwo = [&](ParamValues &p) {
+            p[paramIndex(0, SplitParam::Bands)] = 2.0;
+            p[from(fxSumNode(0), 2)] = 0.0;
+        };
+        bool banded = true;
+        for (const double slope : {1.0, static_cast<double>(kFilterSlopes - 1)}) {
+            const bool twelve = slope < 2.0;
+            banded = steadyEdit(twelve ? "a split from two bands to three, at 12 dB" : "a split from two bands to three, at 24 dB",
+                                [&](ParamValues &p) { twoBands(p, slope); }, toThree, 69) &&
+                     steadyEdit(twelve ? "a split from three bands to two, at 12 dB" : "a split from three bands to two, at 24 dB",
+                                [&](ParamValues &p) {
+                                    twoBands(p, slope);
+                                    toThree(p);
+                                },
+                                toTwo, 69) &&
+                     banded;
+        }
+        check(added && removed && unsplit && sloped && banded,
               "editing the effects graph as a note plays neither clicks nor drops out");
 
         // The two EQs one after the other, then the other way round, as a card dragged along the row writes it: the

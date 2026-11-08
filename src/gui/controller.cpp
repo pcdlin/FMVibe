@@ -1,6 +1,7 @@
 #include "controller.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace fmvibe::gui {
 
@@ -44,16 +45,41 @@ std::array<int, kMcBands> Controller::linkedBands(int index) const {
     return fields;
 }
 
+int Controller::crossoverPartner(int index) const {
+    const int split = splitOf(index);
+    if (split < 0 || std::lround(value(paramIndex(split, SplitParam::Bands))) < kFxBands)
+        return -1;
+    if (index == paramIndex(split, SplitParam::Low))
+        return paramIndex(split, SplitParam::High);
+    if (index == paramIndex(split, SplitParam::High))
+        return paramIndex(split, SplitParam::Low);
+    return -1;
+}
+
+double Controller::pushedCrossover(int index, double v) const {
+    const int partner = crossoverPartner(index);
+    const double third = std::pow(2.0, 1.0 / 3.0);
+    const double hz = cutoffFromNorm(std::clamp(v, 0.0, 1.0));
+    if (partner > index) // the low crossover moved: the high one at least a third of an octave above it
+        return std::max(value(partner), std::min(normFromCutoff(std::min(hz * third, kMaxCutoff)), 1.0));
+    return std::min(value(partner), std::max(normFromCutoff(hz / third), 0.0)); // the high one: the low one below
+}
+
 void Controller::beginEdit(int index) {
     const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
+    const int partner = applying_ ? -1 : crossoverPartner(index);
     if (!applying_) {
         beginStep();
         for (int field : fields)
             record(field);
+        if (partner >= 0)
+            record(partner);
     }
     for (int field : fields)
         if (field >= 0)
             performBeginEdit(field);
+    if (partner >= 0)
+        performBeginEdit(partner);
 }
 
 void Controller::setValue(int index, double value) {
@@ -63,20 +89,29 @@ void Controller::setValue(int index, double value) {
     }
     // An edit outside a gesture is a step of its own.
     const auto fields = linkedBands(index);
+    const int partner = crossoverPartner(index);
     beginStep();
     for (int field : fields)
         record(field);
+    if (partner >= 0)
+        record(partner);
     for (int field : fields)
         if (field >= 0)
             performSetValue(field, value);
+    if (partner >= 0)
+        if (const double pushed = pushedCrossover(index, value); pushed != this->value(partner))
+            performSetValue(partner, pushed);
     endStep();
 }
 
 void Controller::endEdit(int index) {
     const auto fields = applying_ ? std::array<int, kMcBands>{index, -1, -1} : linkedBands(index);
+    const int partner = applying_ ? -1 : crossoverPartner(index);
     for (int field : fields)
         if (field >= 0)
             performEndEdit(field);
+    if (partner >= 0)
+        performEndEdit(partner);
     if (!applying_)
         endStep();
 }
@@ -121,15 +156,26 @@ void Controller::endStep() {
     edited_ = step.editedAfter;
 
     // A wheel turn on the param the last one turned joins it, unless something was undone since. The first turn may
-    // have changed the layout (a route it switched on is kept); the turns after it join it as long as they don't.
+    // have changed the layout (a route it switched on is kept); the turns after it join it as long as they don't. The
+    // param turned is the first each records; what it moved along with it (linked bands, a crossover it pushed) joins
+    // too, whichever turns moved it.
     if (step.merges && redo_.empty() && !undo_.empty()) {
         UndoStep &last = undo_.back();
-        if (last.merges && !step.layoutChanged && last.changes.size() == 1 && step.changes.size() == 1 &&
+        if (last.merges && !step.layoutChanged && !last.changes.empty() && !step.changes.empty() &&
             last.changes[0].index == step.changes[0].index) {
-            last.changes[0].after = step.changes[0].after;
+            for (const UndoStep::Change &change : step.changes) {
+                const auto it = std::find_if(last.changes.begin(), last.changes.end(),
+                                             [&](const UndoStep::Change &c) { return c.index == change.index; });
+                if (it != last.changes.end())
+                    it->after = change.after;
+                else
+                    last.changes.push_back(change);
+            }
             last.editedAfter = step.editedAfter;
             // Turned back to where it started: nothing left to undo, unless the layout changed with it.
-            if (last.changes[0].after == last.changes[0].before && !last.layoutChanged) {
+            if (!last.layoutChanged && std::all_of(last.changes.begin(), last.changes.end(), [](const UndoStep::Change &c) {
+                    return c.after == c.before;
+                })) {
                 edited_ = last.editedBefore;
                 undo_.pop_back();
             }

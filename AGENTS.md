@@ -21,6 +21,9 @@ feature.
 - The editor draws through `Canvas`, which has three backends: Direct2D (`src/gui/canvas.cpp`), the browser
   demo's 2D context (`src/gui/canvas_web.cpp` with `web/site/canvas2d.js`) and Cairo for the Linux development
   build (`src/gui/canvas_cairo.cpp`). A new drawing call needs all three.
+- The editor's corners and text sizes keep to the scales in `src/gui/theme.h`: a radius is `kRadiusMark`,
+  `kRadiusControl`, `kRadiusCard` or `kRadiusPanel` (a ring around something takes its radius plus how far out it is),
+  and a text size one of the `kText...` sizes. New drawing uses them rather than literals.
 - Text the plugin shows (labels, tooltips, menus, messages, parameter names, remote control pages) is worded in
   `src/uistrings.inc` and looked up by name: `tr(Str::Name)`, or `trf()` for a wording with `{1}`, `{2}` in it. New
   text gets a line there. Tests that match on text (menu entries, page names) look it up the same way, so a
@@ -101,8 +104,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the FX order changing the result, and a slot past the 16th playing at its place in the chain (the slots holding
     an effect wired one after another, as the editor wires a chain);
   - the effects graph: its input straight out, two wires at half as one at full, and a split's two bands (at 6, 12
-    and 24 dB) and three summing back flat, each slope parting its bands as steeply as it says; a join's solos letting only the band soloed through (both when
-    neither or both are); a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
+    and 24 dB) and three (at 12 and 24) summing back flat, each slope parting its bands as steeply as it says (three
+    bands set to 6 playing at 12); a join's solos letting only the band soloed through (both when
+    neither or both are), a three-band split's middle one too; a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
     chain's retired places doing nothing; a loop, which only params make, staying finite; and a macro taking a wire's
     level down;
   - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
@@ -159,8 +163,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
-    an effect added at the line's end and one taken out, a split taken out with its join and a split's slope
-    changed; and two effects swapped along the line, ducking out and back in without a click;
+    an effect added at the line's end and one taken out, a split taken out with its join, a split's slope
+    changed, and a split going from two bands to three and back at 12 and 24 dB, the note in its middle band; and two effects swapped along the line, ducking out and back in without a click;
   - an effect in the graph that the output doesn't hear not running (its port silent, nothing ringing on after it),
     and running once the output reads it;
   - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
@@ -222,39 +226,55 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - the effects graph's slot grid: switching to it showing the chain as its main line, as wired; the main
-    line's + opening the list of effects with Split into high/low bands after them, the split coming with its join, its
+    line's + opening the list of effects with Add 2-band split after them, the split coming with its join, its
     empty bands each curving out to a + on its row, each + ringed in its wire's color (read off the rendered
     pixels); a band's + putting an effect on its band; the join's node showing
     the split's card (at the inspector's right), its High knob setting the high band's level, in dB, and its S
     soloing a band, the split and join nodes marked with an S and the other band's node and wires faint, and the
     main line's wires grey, each band's and each half of the split's and join's nodes in its color, a split's coming
     in from grey at its left and a join's going out to grey at its right (read off the rendered pixels), and then
-    the other band's,
-    unsoloing the first; the split's crossover handle dragged on its card, and its slope picked there; + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
+    the other band's too,
+    both soloed; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its title's
+    2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
+    crossover at 2500 Hz, its slope kept and its list refusing 6 dB and picking 24 (a split at 6 going to 12 as it
+    splits in three), Low X turned up past the high crossover and High X down past the low one each pushing the
+    other along, undoably (a run of wheel notches one undo step), an effect put on its + along the main line's row (and a second one after it, the other bands'
+    wires into the join running level along their rows past it and their +s in their next places, read off the
+    rendered pixels), its S soloing it and the low band's too, the row showing
+    the container with it, and back to two asking where its effect goes (onto the low band's end), undone onto the
+    middle band again, an empty one going back straight, all undone;
+    + EFFECT with the split picked putting an effect at the end of a band, undone; the split taken
     out putting its bands' effects on the main line, undoably; a wire's middle lit under the mouse and opening the
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
     into a join, an effect going at its band's end (the list offering no split there), each undone; a node under the
-    mouse showing an x in a circle at its upper right (read off the rendered pixels), whose click removes it, undone;
+    mouse showing an x in a circle at its upper right (read off the rendered pixels), whose click removes it, undone,
+    the inspector's cards having none, an effect's power switch in its corner instead; the split's node's x asking
+    before it takes the split's effects (Cancel, Keep and Delete, each undone);
     nodes dragged and dropped while the others glide aside (polled until they settle), the wires running to the
     place a node would land from the glide's first step (read off the rendered pixels), its place staying open while
     it is held over a node: an effect along the main line, one onto a band's end by its wire into the join, one from
     the high band to the low band's end, and a split with its bands and join, carried by the join, to the line's
     start, each one undo step, undone; the mouse anywhere along a wire showing its + (read off the rendered pixels), a
     click there doing nothing and on the + opening the list, the wire's + and the line's faint until the mouse is on
-    them, and an empty band between a split and its join showing its + always (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
+    them, and a band's + after its last node showing always, an empty band's too (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
     the row changing nothing, the split showing there as its container;
   - a split in the row: the arrow between two cards offering it after the effects (its list kept inside the panel),
     putting a container there, its low band shown and empty; a card dragged onto that band landing on it; the HIGH tab
     showing the high band, whose dashed card opens the list of effects (no split) and puts a reverb on it; the
     container's Low knob setting the low band's level, lowering that band's curve on its display (read off the
-    rendered pixels), its S buttons soloing one band at a time, the band shown faint while the other is soloed (read
+    rendered pixels), its S buttons soloing each band on its own, the band shown faint while the other is soloed (read
     off the rendered pixels), both undone, and its crossover handle dragged; the
     graph and back leaving every wire as it was; the container folded to a strip and unfolded; dragged by its title
     past the next card, with its bands, the card gliding into its place a step at a time (read off the rendered
-    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); its x putting its bands' effects on the
-    main line, the high band's first, undone; a card carried over the LOW tab showing the low band and landing at
-    its end; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
+    pixels), undone; no arrow into a band's dashed card (read off the rendered pixels); a card moved within its own
+    place, or carried straight down out of the panel, moving nothing, carried over its neighbor and then the
+    container's controls landing at its band's start (not before the split), and on over the other band's tab
+    and let go of there landing at that band's end, the band shown left as it was, each undone; its x, kept, putting its bands' effects on the
+    main line, the high band's first, undone; a card carried over the LOW tab lighting it (read off the rendered
+    pixels), leaving the band shown, and let go of there landing at the low band's end; its title's menu
+    offering Move to High only (Move to nothing on the main line's cards), which puts it at the high band's end,
+    undone; and an arrow before the first card, and the arrows along a band in its color (read off the rendered
     pixels), the first's list putting an effect at the line's start;
   - the effects graph's box taking the room the inspector's card leaves, more beside a narrow card than a wide one
     (read off the rendered pixels);
@@ -296,7 +316,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     menu's search listing the targets found with their path, the first that can be picked lit (read off the rendered
     pixels), Up and Down picking one, Enter taking it, Escape emptying it and then closing the menu; an operator's
     targets in two columns, the envelope's beside the pitch's;
-  - the modulation panel's title row adding Random and MIDI sources, each with its card, a MIDI card's knob picking
+  - the modulation panel's + SOURCE opening the list of source types under it, adding Random and MIDI sources, each
+    with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
     following its input;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
@@ -385,8 +406,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     rendered pixels);
   - the disperser's and widener's displays following their params as modulation takes them (read off the rendered
     pixels);
-  - switching effects with their cards' icons (a switched-off one's staying grey under the mouse, read off the
-    rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
+  - switching effects with their cards' power switches and icons (a switched-off one's staying grey under the mouse,
+    read off the rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
     too;
   - the right-click menu on knobs;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
@@ -425,7 +446,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, a point dragged
     onto its neighbor's time, and
     scrolling the source cards by holding a dragged handle at the panel's edge;
-  - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands;
+  - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands; a
+    source card moved within its own place, or carried out of its panel, moving nothing;
   - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle
     button held: over a knob without turning it, stopping at the row's end and following back from there at once,
     and doing nothing while the left button drags a knob;
@@ -748,7 +770,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,226 of the 18,637 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,226 of the 18,641 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

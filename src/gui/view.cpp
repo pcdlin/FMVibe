@@ -128,6 +128,17 @@ bool isFilterSlope(int param) {
     return slopeTypeParam(param) >= 0;
 }
 
+// A split's slope: 6, 12 or 24 dB (18, which a filter has, it doesn't).
+bool isSplitSlope(int param) {
+    const int split = splitOf(param);
+    return split >= 0 && param == paramIndex(split, SplitParam::Slope);
+}
+
+// Any slope's list: a filter's, the filter effect's or a split's.
+bool isSlopeList(int param) {
+    return isFilterSlope(param) || isSplitSlope(param);
+}
+
 bool isLfoShape(int param) {
     return sourceFieldOf(param) == SourceParam::Shape;
 }
@@ -148,7 +159,7 @@ bool isMidiInput(int param) {
 // algorithm, a filter's slope): which values it has, and their names.
 int listCount(int param) {
     return routeModeFrom(param) >= 0                  ? static_cast<int>(RouteMode::Count)
-           : isFilterSlope(param)                     ? kFilterSlopes
+           : isSlopeList(param)                       ? kFilterSlopes
            : isLfoShape(param)                        ? static_cast<int>(LfoShape::Count)
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
@@ -157,7 +168,7 @@ int listCount(int param) {
 std::string listItemName(int param, int value) {
     if (routeModeFrom(param) >= 0)
         return routeModeName(static_cast<RouteMode>(value));
-    if (isFilterSlope(param))
+    if (isSlopeList(param))
         return std::to_string(slopeDb(value)) + " dB";
     if (isLfoShape(param))
         return lfoShapeName(static_cast<LfoShape>(value));
@@ -314,7 +325,13 @@ Point filterHandle(Rect r, double cutoff, double resonance) {
             r.bottom() - 10.0f - static_cast<float>(resonance) * (r.h - 20.0f)};
 }
 
-// --- The plus before the name on ADD EFFECT, ADD LFO and ADD ENV.
+// A name in capitals, as card titles and the dashed cards' words are.
+std::string upperCase(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
+    return text;
+}
+
+// --- The plus before the name on + EFFECT and + SOURCE.
 
 constexpr float kAddPlusArm = 3.5f;                    // half its width
 constexpr float kAddPlusW = 2.0f * kAddPlusArm + 5.0f; // with the gap before the name
@@ -326,6 +343,28 @@ void paintAddPlus(Canvas &c, Point left, Color color) {
     const Point m{left.x + kAddPlusArm, left.y};
     c.line({m.x - kAddPlusArm, m.y}, {m.x + kAddPlusArm, m.y}, color, 1.5f);
     c.line({m.x, m.y - kAddPlusArm}, {m.x, m.y + kAddPlusArm}, color, 1.5f);
+}
+
+// A menu's row under the mouse, and the one it has picked, as every list and menu marks them: in neutral tones, the
+// row's icon alone taking a color.
+void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected) {
+    if (hovered || selected)
+        c.fillRect(r, hovered ? kTrack : kTrack.alpha(0.5f), kRadiusControl);
+}
+
+// + EFFECT and + SOURCE: a plus and the name, then a chevron for the list it opens. Neutral at rest, in the theme's
+// accent under the mouse and while its list is open; dimmed while every place is taken (`full`).
+void paintMenuButton(Canvas &c, Rect r, const char *name, bool hovered, bool open, bool full) {
+    const bool lit = (hovered || open) && !full;
+    const Color ink = full ? kFaint : (lit ? kText : kDim);
+    c.fillRect(r, lit ? kAccent.alpha(0.18f) : kRaised, kRadiusControl);
+    c.strokeRect(r, lit ? kAccent.alpha(0.9f) : kBorder, 1.0f, kRadiusControl);
+    paintAddPlus(c, {r.x + 10.0f, r.center().y}, ink);
+    c.text({r.x + 10.0f + kAddPlusW, r.y - kAddNameLift, r.w - 30.0f - kAddPlusW, r.h}, name, kTextLabel, ink,
+           Align::Left, true);
+    const Point m{r.right() - 13.0f, r.center().y};
+    const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
+    c.polyline(chevron, 3, ink, 1.5f);
 }
 
 } // namespace
@@ -588,16 +627,24 @@ Color View::listColor(int param) const {
         return routeColor(routeModeFrom(param), routeModeTo(param));
     if (isLfoShape(param) || isMidiInput(param))
         return kSourceColors[sourceOf(param)];
+    if (isSplitSlope(param))
+        return splitColor();
     return shaperOf(param) >= 0 ? kShaperColor : fxSlotOf(param) >= 0 ? fxColor(fxSlotOf(param)) : kFilterColor;
 }
 
 int View::listShown(int param) const {
+    if (isSplitSlope(param)) { // 18 plays as 24; three bands part at 12 or 24, 6 playing as 12
+        const int slope = filterSlope(value(param));
+        return slope == 2 ? kFilterSlopes - 1 : slope == 0 && splitThree(splitOf(param)) ? 1 : slope;
+    }
     if (isFilterSlope(param))
         return playedSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), filterSlope(value(param)));
     return static_cast<int>(std::lround(value(param)));
 }
 
 bool View::listItemFits(int param, int item) const {
+    if (isSplitSlope(param)) // 6, 12 or 24 dB; three bands 12 or 24
+        return item != 2 && !(item == 0 && splitThree(splitOf(param)));
     return !isFilterSlope(param) || slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), item);
 }
 
@@ -625,8 +672,8 @@ std::vector<int> View::fxChain() const {
     for (const FxLineItem &item : fxLine()) {
         if (item.node < kFxSlots)
             chain.push_back(item.node);
-        chain.insert(chain.end(), item.hi.begin(), item.hi.end());
-        chain.insert(chain.end(), item.lo.begin(), item.lo.end());
+        for (int lane : item.lanes())
+            chain.insert(chain.end(), item.band(lane).begin(), item.band(lane).end());
     }
     if (derivedDepth_ > 0)
         derived_.chain = chain;
@@ -700,6 +747,18 @@ float View::scrollLength(ScrollArea area) const {
 
 bool View::fxShadow() const {
     return fxChain().size() < static_cast<size_t>(kFxSlots);
+}
+
+bool View::sourceMenuShown() const {
+    if (sourceMenuAt_.x < 0.0f) // under + SOURCE, while there is a free place
+        return sourceShadow();
+    return sourceShadowCard().has_value();
+}
+
+Point View::sourceMenuTopLeft() const {
+    if (sourceMenuAt_.x < 0.0f)
+        return {sourceMenuButton().x, sourceMenuButton().bottom() + 4.0f};
+    return sourceMenuAt_;
 }
 
 bool View::sourceShadow() const {
@@ -795,10 +854,11 @@ void View::removeEffect(int slot) {
         shapeEditor_ = -1;
     // Out of the line, which closes up behind it.
     FxLine line = fxLine();
-    for (FxLineItem &item : line) {
-        item.hi.erase(std::remove(item.hi.begin(), item.hi.end(), slot), item.hi.end());
-        item.lo.erase(std::remove(item.lo.begin(), item.lo.end(), slot), item.lo.end());
-    }
+    for (FxLineItem &item : line)
+        for (int lane : {1, 2, 3}) {
+            std::vector<int> &band = item.band(lane);
+            band.erase(std::remove(band.begin(), band.end(), slot), band.end());
+        }
     line.erase(std::remove_if(line.begin(), line.end(), [slot](const FxLineItem &i) { return i.node == slot; }),
                line.end());
     writeFxLine(line);
@@ -923,11 +983,14 @@ std::vector<int> View::sourcesMoved() const {
     std::vector<int> shown = sources();
     if (drag_.kind != DragKind::SourceMove || !drag_.moved) // a click on a card's title moves nothing
         return shown;
-    // The dragged card lands after the other cards whose middles are left of its own, among those on screen. It
-    // stays under the mouse while the row scrolls under it.
+    // While the mouse is still across from the card's own place (above or below it too: the card moves freely), nothing
+    // moves. Once it is clear of it, the dragged card lands after the other cards whose middles are left of the mouse,
+    // among those on screen, whatever the row scrolls to.
     const int source = drag_.widget.a;
-    const float moved = (drag_.now.x - drag_.start.x) / (kCardW + kCardGap) + sourceScroll() - drag_.scrollStart;
-    const float middle = sourceOffset(shown, drag_.widget.b) + 0.5f * sourceSpan(source) + moved;
+    const Rect own = sourceCard(sourceOffset(shown, drag_.widget.b) - sourceScroll(), sourceSpan(source));
+    if (drag_.now.x >= own.x && drag_.now.x < own.right())
+        return shown;
+    const float middle = (drag_.now.x - sourceCard(0.0f).x) / (kCardW + kCardGap) + sourceScroll();
     int first = 0, last = 0; // the cards that start on screen
     for (size_t i = 0; i < shown.size(); ++i) {
         const float place = sourceOffset(shown, i) - sourceScroll();
@@ -1290,7 +1353,7 @@ bool View::poll() {
         changed = true;
     if (glideFxRow()) // the row's cards and containers likewise
         changed = true;
-    if (sourceMenuOpen_ && !sourceShadowCard()) { // its card went: scrolled away, the panel shut, the places full
+    if (sourceMenuOpen_ && !sourceMenuShown()) { // its card or button went: scrolled away, the panel shut, the places full
         sourceMenuOpen_ = false;
         changed = true;
     }
@@ -1582,21 +1645,27 @@ std::vector<View::Widget> View::widgets() const {
         auto cardWidgets = [&](int slot, size_t pos, Rect card, bool graph) {
             const FxType type = fxSlotType(slot);
             auto at = [slot](FxParam f) { return paramIndex(slot, f); };
-            // The icon at the title's left switches the effect on and off, and drags the card like the title does.
+            // The title row, as every card's: the icon at the title's left (which also switches the effect on and
+            // off, and drags the card like the title does), then the fold button, the power switch and the cross. In
+            // the graph, only the power switch, in the cross's corner: the node's own cross removes the effect.
             const Rect icon = fxIconRect(card).inset(-4.0f);
-            if (!graph && fxFolded(slot)) { // a strip: the icon, a grip, the cross, then the rest unfolds it
+            if (!graph && fxFolded(slot)) { // a strip: the icon, a grip, the switch and cross, then the rest unfolds it
                 add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
                 add(Kind::FxGrip, {card.x, card.y + 30.0f, card.w, 16.0f}, -1, slot, static_cast<int>(pos));
-                add(Kind::FxRemove, {card.center().x - 9.0f, card.y + 50.0f, 18.0f, 21.0f}, -1, slot);
-                add(Kind::FxFold, {card.x, card.y + 76.0f, card.w, card.h - 76.0f}, -1, slot);
+                add(Kind::Toggle, {card.center().x - 10.0f, card.y + 50.0f, 20.0f, 19.0f}, at(FxParam::Enabled));
+                add(Kind::FxRemove, {card.center().x - 7.0f, card.y + 73.0f, 14.0f, 21.0f}, -1, slot);
+                add(Kind::FxFold, {card.x, card.y + 98.0f, card.w, card.h - 98.0f}, -1, slot);
                 return;
             }
             if (!graph) // in the graph, the card stays in the inspector
-                add(Kind::FxGrip, {card.x, card.y, card.w - 52.0f, 34.0f}, -1, slot, static_cast<int>(pos));
+                add(Kind::FxGrip, {card.x, card.y, cardTitleRight(card) - card.x, 34.0f}, -1, slot,
+                    static_cast<int>(pos));
             add(Kind::FxPower, icon, at(FxParam::Enabled), slot, static_cast<int>(pos));
             if (!graph)
-                add(Kind::FxFold, {card.right() - 26.0f - 22.0f, card.y + 9.0f, 18.0f, 19.0f}, -1, slot);
-            add(Kind::FxRemove, {card.right() - 26.0f, card.y + 8.0f, 18.0f, 21.0f}, -1, slot);
+                add(Kind::FxFold, cardFold(card), -1, slot);
+            add(Kind::Toggle, graph ? cardPowerInGraph(card) : cardPower(card), at(FxParam::Enabled));
+            if (!graph)
+                add(Kind::FxRemove, cardClose(card), -1, slot);
             const float row = card.y + 44.0f; // mode buttons and switches
             auto knobs = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels,
                              float y = 240.0f) {
@@ -1680,7 +1749,7 @@ std::vector<View::Widget> View::widgets() const {
                 for (int t = 0; t < kTypes; ++t)
                     add(Kind::Choice, {card.x + 14.0f + t * w, row, w - 4.0f, 20.0f}, at(FxParam::FilterType), -1, t);
                 merge(types);
-                add(Kind::ListButton, fxSlopeButton(card, fxDisplayIn(card, type)), at(FxParam::FilterSlope));
+                add(Kind::ListButton, slopeButton(fxDisplayIn(card, type)), at(FxParam::FilterSlope));
                 // The response's handle, as a voice filter's: b = 1 marks the effect's.
                 const Point handle = filterHandle(fxDisplayIn(card, type), value(at(FxParam::FilterCutoff)),
                                                   value(at(FxParam::FilterResonance)));
@@ -1699,7 +1768,7 @@ std::vector<View::Widget> View::widgets() const {
                       {tr(Str::LabelAttack), tr(Str::LabelRelease), tr(Str::LabelMakeup), tr(Str::LabelMix)}, 266.0f);
                 break;
             case FxType::MultiDyn: {
-                // RMS and LINK in the title row. Each band's row picks the band its knobs set, its threshold lines
+                // RMS and LINK at the right end of the line over the shared knobs. Each band's row picks the band its knobs set, its threshold lines
                 // drag across and its zones up and down, for their ratios. Linked, an edit of one band sets every
                 // band's (see Controller::linkedBands()).
                 const size_t switches = list.size();
@@ -1832,6 +1901,15 @@ std::vector<View::Widget> View::widgets() const {
             for (const FxRowCard &card : row.cards)
                 if (const float place = card.place - scroll; onScreen(place, kVisibleFx, card.span))
                     cardWidgets(card.slot, 0, fxCard(place, card.span), false);
+            carriedWidgets_.clear();
+            if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && fxDrag_->item.node < kFxSlots &&
+                !fxFolded(fxDrag_->item.node)) {
+                const size_t mark = list.size();
+                cardWidgets(fxDrag_->item.node, 0, fxCard(fxDrag_->startPlace - drag_.scrollStart, fxDrag_->span),
+                            false);
+                carriedWidgets_.assign(list.begin() + static_cast<std::ptrdiff_t>(mark), list.end());
+                list.resize(mark);
+            }
             for (const FxRowBox &box : row.boxes) {
                 const float place = box.place - scroll;
                 if (box.folded) { // a strip: the icon and a grip drag it, the cross, then the rest unfolds it
@@ -1848,7 +1926,7 @@ std::vector<View::Widget> View::widgets() const {
                     splitControlWidgets(list, box.split, fxCard(column, 1.0f), true);
                 if (const float at = box.add - scroll; fxShadow() && onScreen(at, kVisibleFx, kFxBoxAddSpan)) {
                     const Rect card = fxCard(at);
-                    add(Kind::FxBoxAdd, {card.x, card.y, kFxBoxAddW, card.h}, -1, box.lane, box.item);
+                    add(Kind::FxBoxAdd, fxBoxAddCard(card), -1, box.lane, box.item);
                 }
             }
             if (const float place = row.items.back() - scroll; fxShadow() && onScreen(place, kVisibleFx))
@@ -2129,8 +2207,7 @@ std::vector<View::Widget> View::widgets() const {
         const int filter = node - kOps;
         const size_t types = list.size();
         for (int t = 0; t < static_cast<int>(FilterType::Count); ++t)
-            add(Kind::TypeButton, {kInspector.x + 16.0f + t * 36.0f, kInspector.y + 62.0f, 32.0f, 22.0f}, -1, filter,
-                t);
+            add(Kind::TypeButton, filterTypeButton(t), -1, filter, t);
         merge(types);
         add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
         const int params[] = {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance),
@@ -2181,9 +2258,7 @@ std::vector<View::Widget> View::widgets() const {
 
     // Modulation panel: the collapse toggle, the add buttons, the scrollbar, then the cards.
     add(Kind::SourcesToggle, sourcesToggle());
-    if (cardSources.size() < static_cast<size_t>(kMaxSources))
-        for (int type = static_cast<int>(SourceType::Lfo); type < static_cast<int>(SourceType::Count); ++type)
-            add(Kind::SourceAdd, sourceAddButton(static_cast<SourceType>(type)), -1, type);
+    add(Kind::SourceMenuButton, sourceMenuButton());
     if (scrollLength(ScrollArea::Sources) > kVisibleCards + 0.01f && !collapsed)
         add(Kind::Scrollbar, sourceScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::Sources));
     const size_t sourceCardsStart = list.size();
@@ -2194,8 +2269,8 @@ std::vector<View::Widget> View::widgets() const {
             const Rect p = sourceCard(card, kFoldedSource);
             add(Kind::SourceHandle, sourceHandleRect(p), -1, s); // where it is unfolded
             add(Kind::SourceGrip, {p.x, p.y + 30.0f, p.w, 16.0f}, -1, s, position);
-            add(Kind::Toggle, {p.center().x - 13.0f, p.y + 50.0f, 26.0f, 19.0f}, sourceEnabledIndex(s));
-            add(Kind::SourceRemove, {p.center().x - 9.0f, p.y + 73.0f, 18.0f, 21.0f}, -1, s);
+            add(Kind::Toggle, {p.center().x - 10.0f, p.y + 50.0f, 20.0f, 19.0f}, sourceEnabledIndex(s));
+            add(Kind::SourceRemove, {p.center().x - 7.0f, p.y + 73.0f, 14.0f, 21.0f}, -1, s);
             add(Kind::SourceFold, {p.x, p.y + 98.0f, p.w, p.h - 98.0f}, -1, s);
             continue;
         }
@@ -2205,12 +2280,11 @@ std::vector<View::Widget> View::widgets() const {
         const bool widened = s == wideLfo();
         const bool widens = lfo && !widened && std::lround(value(paramIndex(s, SourceParam::Shape))) ==
                                                    static_cast<long>(LfoShape::Custom);
-        const float fold = sourcePower(card, span).x - 4.0f - 18.0f;
         const float gripEnd = widened ? lfoCardButton(card, 1).x - 4.0f // short of the reset, leftmost
                               : widens ? lfoWidenButton(card).x - 4.0f
-                                       : fold - 4.0f;
+                                       : cardTitleRight(p);
         add(Kind::SourceGrip, {p.x, p.y, gripEnd - p.x, 34.0f}, -1, s, position);
-        add(Kind::SourceFold, {fold, p.y + 8.0f, 18.0f, 19.0f}, -1, s);
+        add(Kind::SourceFold, cardFold(p), -1, s);
         add(Kind::SourceHandle, sourceHandleRect(p), -1, s);
         add(Kind::Toggle, sourcePower(card, span), sourceEnabledIndex(s));
         add(Kind::SourceRemove, sourceRemove(card, span), -1, s);
@@ -2457,9 +2531,9 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::PresetButton, toolbarButton(action), -1, action);
     add(Kind::SettingsButton, toolbarButton(4));
 
-    // The list of source types, where the dashed card was clicked, while that card is on screen.
-    if (sourceMenuOpen_ && sourceShadowCard()) {
-        const Point at = sourceMenuAt_;
+    // The list of source types, under + SOURCE or where the dashed card was clicked, while that is on screen.
+    if (sourceMenuOpen_ && sourceMenuShown()) {
+        const Point at = sourceMenuTopLeft();
         add(Kind::SourceMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
         add(Kind::SourceMenu, sourceMenu(at), -1, 1);
         for (int t = 1; t <= kSourceTypes; ++t)
@@ -2474,7 +2548,8 @@ std::vector<View::Widget> View::widgets() const {
         for (FxType type : kFxOffered)
             add(Kind::FxAdd, fxMenuItem(fxMenuAt_, type), -1, static_cast<int>(type));
         if (withNode)
-            add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_));
+            for (int bands : {2, 3})
+                add(Kind::FxAddNode, fxMenuNodeItem(fxMenuAt_, bands), -1, -1, bands);
     }
     // The open list of an effect's choice (the shaper's curve, the reverb's algorithm), under its button,
     // while that card is on screen and still holds that effect.
@@ -2485,8 +2560,19 @@ std::vector<View::Widget> View::widgets() const {
         if (const std::optional<Rect> shown = fxCardOf(listSlot)) {
             const Rect card = *shown;
             const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
-                                : listField == FxParam::FilterSlope ? fxSlopeButton(card, fxDisplayIn(card, FxType::Filter))
+                                : listField == FxParam::FilterSlope ? slopeButton(fxDisplayIn(card, FxType::Filter))
                                                                     : clipModeButton(card);
+            const int items = listCount(listMenu_);
+            add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
+            add(Kind::ListMenu, listMenu(button, items), -1, 1);
+            for (int item = 0; item < items; ++item)
+                add(Kind::ListItem, listMenuItem(button, items, item), listMenu_, -1, item);
+        }
+    }
+    // A split's list of slopes, under its button on its card (in the row's container or the graph's inspector).
+    if (const int split = splitOf(listMenu_); split >= 0 && isSplitSlope(listMenu_) && fxWide()) {
+        if (const std::optional<Rect> shown = splitCardOf(split)) {
+            const Rect button = splitSlopeButton(splitDisplay(*shown, splitThree(split)));
             const int items = listCount(listMenu_);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::ListMenu, listMenu(button, items), -1, 1);
@@ -2707,7 +2793,7 @@ void View::paint(Canvas &c) {
                 c.pushClip(w.clip);
             paintWidget(c, w);
             if (w.disabled) // dimmed as a switched-off node's page is
-                c.fillRect(w.rect.inset(-1.0f), kPanel.alpha(0.6f), 4.0f);
+                c.fillRect(w.rect.inset(-1.0f), kPanel.alpha(0.6f), kRadiusMark);
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
@@ -2729,7 +2815,7 @@ void View::paint(Canvas &c) {
         if (card == kOffScreen || sourceOn(s) || sourceFolded(s))
             continue;
         const Rect p = sourceCard(card, sourceSpan(s));
-        c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kPanel.alpha(0.6f), 7.0f);
+        c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kPanel.alpha(0.6f), kRadiusCard - 1.0f);
     }
     c.popClip();
     // So is a switched-off effect's.
@@ -2737,7 +2823,7 @@ void View::paint(Canvas &c) {
         if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots &&
                                                value(paramIndex(node, FxParam::Enabled)) < 0.5) {
             const Rect p = fxInspector(node);
-            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), 7.0f);
+            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), kRadiusCard - 1.0f);
         }
     } else if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx) {
         c.pushClip(fxCardClip());
@@ -2748,7 +2834,7 @@ void View::paint(Canvas &c) {
                 fxFolded(card.slot))
                 continue;
             const Rect p = fxCard(pos, card.span);
-            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), 7.0f);
+            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), kRadiusCard - 1.0f);
         }
         // The card or container carried, faint where it would land until it is let go of; and the cards of a band a
         // container shows that its join doesn't let through, the other band soloed.
@@ -2758,16 +2844,16 @@ void View::paint(Canvas &c) {
             if (!onScreen(pos, kVisibleFx, card.span))
                 continue;
             if (card.faint)
-                c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(0.65f), 9.0f);
+                c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(0.65f), kRadiusCard + 1.0f);
             else if (card.at.lane != 0 && card.at.item < static_cast<int>(line.size()) &&
                      fxBandSoloedOut(line[card.at.item], card.at.lane))
-                c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(1.0f - kSoloedOutAlpha), 9.0f);
+                c.fillRect(fxCard(pos, card.span).inset(-1.0f), kPanel.alpha(1.0f - kSoloedOutAlpha), kRadiusCard + 1.0f);
         }
         for (const FxRowBox &box : row.boxes) {
             if (!box.faint || !onScreen(box.place - fxScroll(), kVisibleFx, box.span))
                 continue;
             if (box.folded)
-                c.fillRect(fxCard(box.place - fxScroll(), box.span).inset(-1.0f), kPanel.alpha(0.65f), 9.0f);
+                c.fillRect(fxCard(box.place - fxScroll(), box.span).inset(-1.0f), kPanel.alpha(0.65f), kRadiusCard + 1.0f);
             else
                 c.fillRect(fxCard(boxColumn(box) - fxScroll(), box.span - 2.0f * kFxBoxEdge).inset(-kFxBoxPad - 1.0f),
                            kPanel.alpha(0.65f), kFxBoxRadius + 1.0f);
@@ -2777,14 +2863,76 @@ void View::paint(Canvas &c) {
     // And the inspector's page while its operator, filter or shaper is off, below the tabs, summary and switch.
     if (!inspectorCovered() && !nodeOn(controller_.layout().selectedNode))
         c.fillRect({kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f},
-                   kPanel.alpha(0.6f), 9.0f);
+                   kPanel.alpha(0.6f), kRadiusPanel - 1.0f);
     paintWidgets(true);
-    // The card under the mouse while dragging, before it snaps into place.
+    // The card being dragged: where it would land only its outline, and a faint image of it under the mouse wherever
+    // it goes (over every panel, held to none), before it snaps into place: an effect card or a split's container, or
+    // a source's card. The image is the card painted at its landing place, moved, with the widgets on it (not the
+    // row's dashed card, which may glide through there).
+    auto outlined = [&](Rect landing, Rect row, float radius, Color color) {
+        c.pushClip(row);
+        c.fillRect(landing.inset(-1.0f), kPanel, radius + 1.0f);
+        c.strokeRect(landing, color.alpha(0.6f), 1.0f, radius);
+        c.popClip();
+    };
+    auto carried = [&](Rect landing, Rect start, Rect row, float radius, Color color, auto paintCard) {
+        outlined(landing, row, radius, color);
+        const Point offset{start.x + drag_.now.x - drag_.start.x - landing.x,
+                           start.y + drag_.now.y - drag_.start.y - landing.y};
+        c.pushLayer(offset, 0.5f, landing.inset(-1.0f));
+        c.pushClip(landing);
+        paintCard();
+        for (const Widget &w : list)
+            if (!w.popup && w.kind != Kind::FxShadow && w.rect.x < landing.right() && w.rect.right() > landing.x && w.rect.y < landing.bottom() &&
+                w.rect.bottom() > landing.y)
+                paintWidget(c, w);
+        c.popClip();
+        c.popLayer();
+    };
+    if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && !fxGraph()) {
+        const int node = fxDrag_->item.node;
+        const FxRow row = fxRowShown();
+        std::optional<Rect> landing;
+        float radius = kRadiusCard;
+        for (const FxRowCard &card : row.cards)
+            if (card.slot == node)
+                landing = fxCard(card.place - fxScroll(), card.span);
+        for (const FxRowBox &box : row.boxes)
+            if (fxSplitNode(box.split) == node) {
+                landing = box.folded ? fxCard(box.place - fxScroll(), box.span)
+                                     : fxCard(boxColumn(box) - fxScroll(), box.span - 2.0f * kFxBoxEdge)
+                                           .inset(-kFxBoxPad);
+                radius = box.folded ? kRadiusCard : kFxBoxRadius;
+            }
+        Rect start = fxCard(fxDrag_->startPlace - drag_.scrollStart, fxDrag_->span);
+        if (node < kFxSlots && !fxFolded(node)) {
+            // An effect card: its outline where it lands, if that shows (not on a band its container hides), and its
+            // image painted afresh where it was picked up from, moved under the mouse.
+            if (landing)
+                outlined(*landing, fxCardClip(), radius, fxColor(node));
+            // Its glow and the knobs' labels reach a little past it.
+            c.pushLayer({drag_.now.x - drag_.start.x, drag_.now.y - drag_.start.y}, 0.5f, start.inset(-24.0f));
+            paintFxCard(c, node, start, true);
+            for (const Widget &w : carriedWidgets_)
+                paintWidget(c, w);
+            c.popLayer();
+        } else if (landing) { // a container, or a folded card: painted at its landing place, moved
+            if (node >= kFxSlots && landing->w > start.w) // a container's outline stands out round it
+                start = start.inset(-kFxBoxPad);
+            carried(*landing, start, fxCardClip(), radius, node < kFxSlots ? fxColor(node) : splitLine(),
+                    [&] { paintFx(c, *landing); });
+        }
+    }
     if (drag_.kind == DragKind::SourceMove && drag_.moved) {
-        Rect ghost = sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(drag_.widget.a));
-        ghost.x = std::clamp(ghost.x + drag_.now.x - drag_.start.x, kModPanel.x + 4.0f,
-                             kModPanel.right() - 4.0f - ghost.w);
-        c.strokeRect(ghost, kSourceColors[drag_.widget.a].alpha(0.6f), 1.0f, 8.0f);
+        const int source = drag_.widget.a;
+        const std::vector<int> shown = sourcesShown();
+        const auto at = std::find(shown.begin(), shown.end(), source);
+        if (at != shown.end()) {
+            const float place = sourceOffset(shown, static_cast<size_t>(at - shown.begin())) - sourceScroll();
+            carried(sourceCard(place, sourceSpan(source)),
+                    sourceCard(sourceOffset(sources(), drag_.widget.b) - drag_.scrollStart, sourceSpan(source)),
+                    sourceCardClip(), kRadiusCard, kSourceColors[source], [&] { paintSource(c, place, source); });
+        }
     }
 
     if (drag_.kind == DragKind::RerouteFrom && drag_.moved) {
@@ -2806,7 +2954,7 @@ void View::paint(Canvas &c) {
             if (isBoxNode(source))
                 c.strokeRect({center.x - kFilterHalfW - 5.0f, center.y - kFilterHalfH - 5.0f,
                               2.0f * kFilterHalfW + 10.0f, 2.0f * kFilterHalfH + 10.0f},
-                             ring, 2.0f, 10.0f);
+                             ring, 2.0f, kRadiusControl + 5.0f);
             else
                 c.strokeCircle(center, kNodeRadius + 5.0f, ring, 2.0f);
         }
@@ -2837,7 +2985,7 @@ void View::paint(Canvas &c) {
             if (isBoxNode(target))
                 c.strokeRect({center.x - kFilterHalfW - 5.0f, center.y - kFilterHalfH - 5.0f,
                               2.0f * kFilterHalfW + 10.0f, 2.0f * kFilterHalfH + 10.0f},
-                             ring, 2.0f, 10.0f);
+                             ring, 2.0f, kRadiusControl + 5.0f);
             else
                 c.strokeCircle(center, kNodeRadius + 5.0f, ring, 2.0f);
         }
@@ -2870,9 +3018,9 @@ void View::paint(Canvas &c) {
     // Under the preset bar, over the panels' title rows.
     if (flashTicks_ > 0) {
         const Rect toast{View::kWidth * 0.5f - 220.0f, kPanelsTop - 2.0f, 440.0f, 28.0f};
-        c.fillRect(toast, kRaised, 8.0f);
-        c.strokeRect(toast, kBorder, 1.0f, 8.0f);
-        c.text(toast, flash_, 12.0f, kText);
+        c.fillRect(toast, kRaised, kRadiusCard);
+        c.strokeRect(toast, kBorder, 1.0f, kRadiusCard);
+        c.text(toast, flash_, kTextValue, kText);
     }
 }
 
@@ -2899,12 +3047,12 @@ void View::paintHeader(Canvas &c) {
     c.line({0.0f, kHeaderH - 0.5f}, {View::kWidth, kHeaderH - 0.5f}, kBorder, 1.0f);
     // The name, in the title bar: "FM" in the operators' color, then "Vibe".
     const Rect name{24.0f, kTitleRowY + kTopRowH * 0.5f - 20.0f, 40.0f, 40.0f};
-    c.text(name, "FM", 22.0f, kAccent, Align::Left, true);
-    c.text({53.0f, name.y, 100.0f, 40.0f}, "Vibe", 22.0f, kText, Align::Left, true);
+    c.text(name, "FM", kTextLogo, kAccent, Align::Left, true);
+    c.text({53.0f, name.y, 100.0f, 40.0f}, "Vibe", kTextLogo, kText, Align::Left, true);
     // The version, faint and at half the name's height, on the name's baseline (text is centered in its box, so the
     // box sits a quarter of the name's height lower).
-    const float versionX = 53.0f + c.textWidth("Vibe", 22.0f, true) + 5.0f;
-    c.text({versionX, name.y + 4.0f, 60.0f, 40.0f}, FMVIBE_VERSION, 11.0f, kFaint, Align::Left, true);
+    const float versionX = 53.0f + c.textWidth("Vibe", kTextLogo, true) + 5.0f;
+    c.text({versionX, name.y + 4.0f, 60.0f, 40.0f}, FMVIBE_VERSION, kTextBody, kFaint, Align::Left, true);
 
     // The output meter: each side's peak in the theme's color up to full scale, red past it, where the clip light
     // stays on for a while after the output went over.
@@ -2916,22 +3064,22 @@ void View::paintHeader(Canvas &c) {
     const bool clipped = meterClipped(telemetry_);
     for (int side = 0; side < 2; ++side) {
         const Rect bar{kMeter.x + side * 9.0f, kMeter.y, 5.0f, kMeter.h};
-        c.fillRect({bar.x, zero, bar.w, bar.bottom() - zero}, kTrack, 1.5f);
-        c.fillRect({bar.x, bar.y, bar.w, zero - 1.0f - bar.y}, kMeterRed.alpha(clipped ? 1.0f : 0.2f), 1.5f);
+        c.fillRect({bar.x, zero, bar.w, bar.bottom() - zero}, kTrack, kRadiusMark);
+        c.fillRect({bar.x, bar.y, bar.w, zero - 1.0f - bar.y}, kMeterRed.alpha(clipped ? 1.0f : 0.2f), kRadiusMark);
         const float peak = meterPeak(telemetry_, side);
         if (peak <= 0.0f)
             continue;
         const float top = meterY(20.0 * std::log10(peak));
         if (top < bar.bottom())
-            c.fillRect({bar.x, std::max(top, zero), bar.w, bar.bottom() - std::max(top, zero)}, kAccent, 1.5f);
+            c.fillRect({bar.x, std::max(top, zero), bar.w, bar.bottom() - std::max(top, zero)}, kAccent, kRadiusMark);
         if (top < zero - 1.0f)
-            c.fillRect({bar.x, top, bar.w, zero - 1.0f - top}, kMeterRed, 1.5f);
+            c.fillRect({bar.x, top, bar.w, zero - 1.0f - top}, kMeterRed, kRadiusMark);
     }
 
     // The output scope: the last span the audio thread took (see kOutScopeBins), its level (see followScopeLevel()) at
     // the display's edges (but lifted by no more than 24 dB, so a fading tail shrinks away), over a faint middle line.
-    c.fillRect(kOutScope, kDisplayColor, 5.0f);
-    c.strokeRect(kOutScope, kBorder, 1.0f, 5.0f);
+    c.fillRect(kOutScope, kDisplayColor, kRadiusControl);
+    c.strokeRect(kOutScope, kBorder, 1.0f, kRadiusControl);
     const Rect inner{kOutScope.x + 5.0f, kOutScope.y + 4.0f, kOutScope.w - 10.0f, kOutScope.h - 8.0f};
     const float middle = inner.center().y;
     c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
@@ -2950,27 +3098,27 @@ void View::paintHeader(Canvas &c) {
 
     char playing[16];
     std::snprintf(playing, sizeof(playing), "%d", telemetry_.voices);
-    c.text({1110.0f, kStripY + 13.0f, 74.0f, 14.0f}, tr(Str::HeadingPlaying), 10.5f, kDim, Align::Right, true);
-    c.text({1110.0f, kStripY + 28.0f, 74.0f, 22.0f}, playing, 15.0f, telemetry_.voices > 0 ? kText : kFaint, Align::Right,
+    c.text({1110.0f, kStripY + 13.0f, 74.0f, 14.0f}, tr(Str::HeadingPlaying), kTextLabel, kDim, Align::Right, true);
+    c.text({1110.0f, kStripY + 28.0f, 74.0f, 22.0f}, playing, kTextHeading, telemetry_.voices > 0 ? kText : kFaint, Align::Right,
            true);
 }
 
 void View::paintKeyboard(Canvas &c) {
     const float top = keyboardTop(controller_.layout().sourcesCollapsed);
     const Rect handle = wheelHandle(top); // the mod wheel's name, under its handle
-    c.text({handle.x - 30.0f, top + kStripRow + 19.0f, handle.w + 60.0f, 16.0f}, tr(Str::HeadingMod), 10.5f, kFaint,
+    c.text({handle.x - 30.0f, top + kStripRow + 19.0f, handle.w + 60.0f, 16.0f}, tr(Str::HeadingMod), kTextLabel, kFaint,
            Align::Center, true);
     if (controller_.layout().keysCollapsed)
         return;
     const Rect bend = bendWheel(top), mod = modWheel(top);
-    c.text({bend.x - 16.0f, bend.bottom() + 4.0f, bend.w + 32.0f, 14.0f}, tr(Str::HeadingBend), 10.5f, kFaint,
+    c.text({bend.x - 16.0f, bend.bottom() + 4.0f, bend.w + 32.0f, 14.0f}, tr(Str::HeadingBend), kTextLabel, kFaint,
            Align::Center, true);
-    c.text({mod.x - 16.0f, mod.bottom() + 4.0f, mod.w + 32.0f, 14.0f}, tr(Str::HeadingMod), 10.5f, kFaint,
+    c.text({mod.x - 16.0f, mod.bottom() + 4.0f, mod.w + 32.0f, 14.0f}, tr(Str::HeadingMod), kTextLabel, kFaint,
            Align::Center, true);
     const Rect down = octaveButton(-1, top);
     const Rect up = octaveButton(1, top);
     const std::string range = noteName(keyboardBase()) + " \xE2\x80\x93 " + noteName(keyboardBase() + kKeyCount - 1);
-    c.text({down.right() + 2.0f, down.y, up.x - down.right() - 4.0f, down.h}, range, 10.0f, kDim);
+    c.text({down.right() + 2.0f, down.y, up.x - down.right() - 4.0f, down.h}, range, kTextLabel, kDim);
 }
 
 void View::paintKey(Canvas &c, const Widget &w, bool hovered, bool active) {
@@ -2981,10 +3129,10 @@ void View::paintKey(Canvas &c, const Widget &w, bool hovered, bool active) {
     // Lit while held: clicked here, or played by the host.
     if (active || telemetry_.keyDown(keyboardBase() + w.a))
         color = kAccent;
-    c.fillRect(w.rect, color, 3.0f);
-    c.strokeRect(w.rect, kBorder, 1.0f, 3.0f);
+    c.fillRect(w.rect, color, kRadiusMark);
+    c.strokeRect(w.rect, kBorder, 1.0f, kRadiusMark);
     if (!black && w.a % 12 == 0) // label the C keys
-        c.text({w.rect.x, w.rect.bottom() - 24.0f, w.rect.w, 16.0f}, noteName(keyboardBase() + w.a), 10.5f,
+        c.text({w.rect.x, w.rect.bottom() - 24.0f, w.rect.w, 16.0f}, noteName(keyboardBase() + w.a), kTextLabel,
                look.keyLabel);
 }
 
@@ -2993,15 +3141,15 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
     const float inset = 4.0f;
     const float top = r.y + inset;
     const float bottom = r.bottom() - inset;
-    c.fillRect(r, kRaised, 8.0f);
-    c.strokeRect(r, hovered || active ? kDim : kBorder, 1.0f, 8.0f);
+    c.fillRect(r, kRaised, kRadiusCard);
+    c.strokeRect(r, hovered || active ? kDim : kBorder, 1.0f, kRadiusCard);
     if (w.kind == Kind::ModWheel) {
         // Fills up from the bottom with the wheel's value, in the color of its handle; bipolar, from the middle, where
         // it moves nothing.
         const float y = bottom - (bottom - top) * static_cast<float>(value(w.param));
         const float from = sourceBipolar(kWheelSource) ? 0.5f * (top + bottom) : bottom;
         c.fillRect({r.x + inset, std::min(y, from), r.w - 2.0f * inset, std::abs(from - y)},
-                   kSourceColors[kWheelSource].alpha(0.6f), 3.0f);
+                   kSourceColors[kWheelSource].alpha(0.6f), kRadiusMark);
         if (from < bottom)
             c.line({r.x + 3.0f, from}, {r.right() - 3.0f, from}, kFaint, 1.0f);
         c.line({r.x + 3.0f, y}, {r.right() - 3.0f, y}, kText, 2.0f);
@@ -3010,7 +3158,7 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
         const float mid = r.y + r.h * 0.5f;
         const float y = mid - static_cast<float>(bend_) * (r.h * 0.5f - inset);
         c.fillRect({r.x + inset, std::min(mid, y), r.w - 2.0f * inset, std::abs(y - mid)}, kFilterColor.alpha(0.6f),
-                   3.0f);
+                   kRadiusMark);
         c.line({r.x + 3.0f, mid}, {r.right() - 3.0f, mid}, kFaint, 1.0f);
         c.line({r.x + 3.0f, y}, {r.right() - 3.0f, y}, kText, 2.0f);
     }
@@ -3018,7 +3166,7 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
 
 void View::paintRouting(Canvas &c) {
     c.text({kHintX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kHintX, 22.0f},
-           tr(Str::HintRouting), 10.5f, kFaint, Align::Right);
+           tr(Str::HintRouting), kTextLabel, kFaint, Align::Right);
     if (routingGridShown()) { // Ctrl held: the grid's points, under everything, the one a node dragged lands on lit
         const Point target = drag_.kind == DragKind::Node ? nodeCenter(drag_.widget.a) : Point{};
         paintGridMarks(c, kGraph, kRoutingGridCols, kRoutingGridRows, drag_.kind == DragKind::Node ? &target : nullptr);
@@ -3030,7 +3178,7 @@ void View::paintRouting(Canvas &c) {
     const bool busTarget = busParam >= 0 && onBus(drag_.now) &&
                            (drag_.kind == DragKind::Connect || busParam == moving || !wired(busParam));
     c.line({kRouting.x + 48.0f, kBusY}, {kRouting.right() - 20.0f, kBusY}, busTarget ? kAccent : kTrack, 3.0f);
-    c.text({kRouting.x + 14.0f, kBusY - 9.0f, 30.0f, 18.0f}, tr(Str::BusOut), 10.5f, kDim, Align::Left, true);
+    c.text({kRouting.x + 14.0f, kBusY - 9.0f, 30.0f, 18.0f}, tr(Str::BusOut), kTextLabel, kDim, Align::Left, true);
 
     // Modulated routes swell and thin with their modulation while notes play.
     const std::vector<int> on = enabledNodes();
@@ -3127,7 +3275,7 @@ void View::paintModRange(Canvas &c, Rect bar, int param) {
         const float h = focused ? 2.0f * bar.h : bar.h;
         c.fillRect({bar.x + static_cast<float>(from) * bar.w, bar.center().y - 0.5f * h,
                     std::max(static_cast<float>(to - from) * bar.w, 1.5f), h},
-                   kSourceColors[m.source].alpha(alpha), 1.0f);
+                   kSourceColors[m.source].alpha(alpha), kRadiusMark);
     };
     bool any = false;
     std::vector<Assignment> focus;
@@ -3143,7 +3291,7 @@ void View::paintModRange(Canvas &c, Rect bar, int param) {
     for (const Assignment &f : focus)
         range(f, true);
     // Where the set amount is, and where the newest voice (or with no note playing, the macros) takes it now.
-    c.fillRect({bar.x + static_cast<float>(n) * bar.w - 0.75f, bar.y - 1.0f, 1.5f, bar.h + 2.0f}, kDim, 0.5f);
+    c.fillRect({bar.x + static_cast<float>(n) * bar.w - 0.75f, bar.y - 1.0f, 1.5f, bar.h + 2.0f}, kDim, kRadiusMark);
     if (liveOffset(param) != 0.0f)
         c.fillCircle({bar.x + static_cast<float>(liveAmount(param)) * bar.w, bar.center().y}, 2.2f, kText);
 }
@@ -3161,25 +3309,25 @@ void View::paintMatrixLabels(Canvas &c) {
     };
     const Color plate = nodeColor(selected).alpha(nodeOn(selected) ? 0.22f : 0.1f);
     const Rect first = gridCell(selected, 0), top = gridCell(0, selected); // the first cells of its row and column
-    c.fillRect({first.x - 31.0f, first.y + 3.0f, 26.0f, first.h - 6.0f}, plate, 5.0f);
-    c.fillRect({top.x - 1.0f, top.y - kMatrixNamesH, top.w + 2.0f, 18.0f}, plate, 5.0f);
+    c.fillRect({first.x - 31.0f, first.y + 3.0f, 26.0f, first.h - 6.0f}, plate, kRadiusControl);
+    c.fillRect({top.x - 1.0f, top.y - kMatrixNamesH, top.w + 2.0f, 18.0f}, plate, kRadiusControl);
     for (int col = 0; col < kGridCols; ++col) {
         const Rect cell = gridCell(0, col);
         const bool out = col == kGridCols - 1;
         c.text({cell.x - 6.0f, cell.y - kMatrixNamesH, cell.w + 12.0f, 18.0f},
-               out ? tr(Str::BusOut) : kNodeNames[col], 12.0f, out ? kText : nameColor(col), Align::Center, true);
+               out ? tr(Str::BusOut) : kNodeNames[col], kTextValue, out ? kText : nameColor(col), Align::Center, true);
     }
     for (int row = 0; row < kNodes; ++row) {
         const Rect cell = gridCell(row, 0);
-        c.text({cell.x - 32.0f, cell.y, 28.0f, cell.h}, kNodeNames[row], 12.5f, nameColor(row), Align::Center, true);
+        c.text({cell.x - 32.0f, cell.y, 28.0f, cell.h}, kNodeNames[row], kTextValue, nameColor(row), Align::Center, true);
     }
     c.text({kLegendX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kLegendX, 22.0f},
-           tr(Str::HintMatrix), 10.5f, kFaint, Align::Right);
+           tr(Str::HintMatrix), kTextLabel, kFaint, Align::Right);
 
     // Legend beside the grid.
     const float width = kRouting.right() - 16.0f - kLegendX;
     float y = kRouting.y + 72.0f;
-    c.text({kLegendX, y - 22.0f, width, 16.0f}, tr(Str::HeadingHowToRead), 10.5f, kFaint, Align::Left, true);
+    c.text({kLegendX, y - 22.0f, width, 16.0f}, tr(Str::HeadingHowToRead), kTextLabel, kFaint, Align::Left, true);
     struct Entry {
         Color color;
         bool outline;
@@ -3195,29 +3343,33 @@ void View::paintMatrixLabels(Canvas &c) {
     for (const Entry &e : entries) {
         const Rect swatch{kLegendX, y + 3.0f, 14.0f, 14.0f};
         if (e.outline)
-            c.strokeRect(swatch, e.color.alpha(0.6f), 1.0f, 3.0f);
+            c.strokeRect(swatch, e.color.alpha(0.6f), 1.0f, kRadiusMark);
         else
-            c.fillRect(swatch, e.color.alpha(0.45f), 3.0f);
-        c.text({kLegendX + 24.0f, y, width - 24.0f, 20.0f}, e.text, 11.0f, kDim, Align::Left);
+            c.fillRect(swatch, e.color.alpha(0.45f), kRadiusMark);
+        c.text({kLegendX + 24.0f, y, width - 24.0f, 20.0f}, e.text, kTextBody, kDim, Align::Left);
         y += 26.0f;
     }
     y += 10.0f;
     const Str notes[] = {Str::MatrixClick, Str::MatrixClickThen};
     for (size_t i = 0; i < std::size(notes); ++i)
-        c.text({kLegendX, y + static_cast<float>(i) * 20.0f, width, 18.0f}, tr(notes[i]), 11.0f, kFaint, Align::Left);
+        c.text({kLegendX, y + static_cast<float>(i) * 20.0f, width, 18.0f}, tr(notes[i]), kTextBody, kFaint, Align::Left);
 }
 
-void View::paintFx(Canvas &c) {
-    const std::vector<int> chain = fxChain();
-    // How many of the effects' places are taken, beside ADD EFFECT.
-    const Rect count{fxMenuButton().right() + 10.0f, fxMenuButton().y, 44.0f, fxMenuButton().h};
-    const bool full = chain.size() >= static_cast<size_t>(kFxSlots);
-    c.text(count, std::to_string(chain.size()) + "/" + std::to_string(kFxSlots), 11.0f, full ? kText : kDim,
-           Align::Left, full);
-    const float hintX = count.right() + 8.0f;
-    if (!chain.empty()) // how to work the cards or the graph's nodes, while there are some
-        c.text({hintX, kFxPanel.y + 10.0f, fxClearButton().x - 12.0f - hintX, 22.0f},
-               tr(fxGraph() ? Str::HintFxGraph : Str::HintFx), 10.5f, kFaint, Align::Right);
+void View::paintFx(Canvas &c, std::optional<Rect> only) {
+    // Left out with `only`: what isn't across from it.
+    auto away = [&](Rect r) { return only && (r.right() <= only->x || r.x >= only->right()); };
+    if (!only) {
+        const std::vector<int> chain = fxChain();
+        // How many of the effects' places are taken, beside ADD EFFECT.
+        const Rect count{fxMenuButton().right() + 10.0f, fxMenuButton().y, 44.0f, fxMenuButton().h};
+        const bool full = chain.size() >= static_cast<size_t>(kFxSlots);
+        c.text(count, std::to_string(chain.size()) + "/" + std::to_string(kFxSlots), kTextBody, full ? kText : kDim,
+               Align::Left, full);
+        const float hintX = count.right() + 8.0f;
+        if (!chain.empty()) // how to work the cards or the graph's nodes, while there are some
+            c.text({hintX, kFxPanel.y + 10.0f, fxClearButton().x - 12.0f - hintX, 22.0f},
+                   tr(fxGraph() ? Str::HintFxGraph : Str::HintFx), kTextLabel, kFaint, Align::Right);
+    }
     if (fxGraph()) {
         paintFxGraph(c);
         return;
@@ -3230,6 +3382,8 @@ void View::paintFx(Canvas &c) {
     auto chevron = [&](float place, int lane, int item, int at, Color color) {
         const Rect next = fxCard(place - scroll);
         const Point m{next.x - kFxGap * 0.5f, next.center().y};
+        if (away({m.x - 8.0f, m.y - 8.0f, 16.0f, 16.0f}))
+            return;
         const int b = item * kFxGapStride + at;
         const bool lit = (hover_ && hover_->kind == Kind::FxInsert && hover_->a == lane && hover_->b == b) ||
                          (fxMenuOpen_ && fxSlot_.lane == lane && fxSlot_.item == item && fxSlot_.place == at);
@@ -3262,15 +3416,17 @@ void View::paintFx(Canvas &c) {
         // Unfolded, inside the room it keeps before and after it.
         const Rect whole = box.folded ? fxCard(place, box.span)
                                       : fxCard(boxColumn(box) - scroll, box.span - 2.0f * kFxBoxEdge);
+        if (away(whole.inset(-kFxBoxPad)))
+            continue;
         const bool held = drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
                           drag_.widget.a == fxSplitNode(box.split);
         const bool hot = held || (hover_ && hover_->kind == Kind::FxBoxGrip &&
                                   hover_->a == fxSplitNode(box.split) && drag_.kind == DragKind::None);
         const Color outline = held ? kText.alpha(0.7f) : splitLine();
         if (box.folded) { // a strip: its icon, a grip, its cross, then its name down the rest
-            c.fillRect(whole, splitFill(), 8.0f);
-            c.strokeRect(whole, outline, held ? 1.6f : 1.3f, 8.0f);
-            splitIcon(c, fxIconRect(whole), hot ? kText : kDim);
+            c.fillRect(whole, splitFill(), kRadiusCard);
+            c.strokeRect(whole, outline, held ? 1.6f : 1.3f, kRadiusCard);
+            splitIcon(c, fxIconRect(whole), hot ? kText : kDim, splitThree(box.split) ? 3 : 2);
             gripDots(whole, hot);
             paintDownward(c, {whole.x, whole.y + 82.0f, whole.w, whole.h - 90.0f},
                           trf(Str::NodeSplit, {std::to_string(box.split + 1)}), kText);
@@ -3291,7 +3447,7 @@ void View::paintFx(Canvas &c) {
                                     fxBandSoloedOut(shownLine[box.item], box.lane)
                                 ? kSoloedOutAlpha
                                 : 1.0f;
-        const Color band = bandColor(box.lane == 1 ? kFxBands - 1 : 0).alpha(heard);
+        const Color band = laneColor(box.lane).alpha(heard);
         int k = 0;
         for (const FxRowCard &card : row.cards)
             if (card.at.lane == box.lane && card.at.item == box.item) {
@@ -3306,32 +3462,26 @@ void View::paintFx(Canvas &c) {
         if (!onScreen(pos, kVisibleFx, card.span))
             continue;
         const Rect r = fxCard(pos, card.span);
+        if (away(r))
+            continue;
         const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
         // Lit while grabbed by its title; by its icon only once it moves, as a click there only switches it.
         const bool dragged = drag_.kind == DragKind::FxMove && drag_.widget.kind != Kind::FxBoxGrip &&
                              drag_.widget.a == slot && (drag_.moved || drag_.widget.kind != Kind::FxPower);
         if (fxFolded(slot)) {
             const Color fx = fxTypeColor(type);
-            c.fillRect(r, kCardColor, 8.0f);
-            c.strokeRect(r, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f);
+            c.fillRect(r, kCardColor, kRadiusCard);
+            c.strokeRect(r, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
             // its icon and cross (widgets), the grip's dots between, then its name down the strip
             gripDots(r, (hover_ && hover_->kind == Kind::FxGrip && hover_->a == slot && drag_.kind == DragKind::None) ||
                             dragged);
-            paintDownward(c, {r.x, r.y + 82.0f, r.w, r.h - 90.0f}, fxTitle(type), on ? kText : kDim);
+            paintDownward(c, {r.x, r.y + 104.0f, r.w, r.h - 110.0f}, fxTitle(type), on ? kText : kDim);
             continue;
         }
         paintFxCard(c, slot, r, dragged);
     }
     c.popClip();
 
-    // What is being dragged under the mouse, outlined, before it snaps into place.
-    if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_) {
-        Rect ghost = fxCard(fxDrag_->startPlace - drag_.scrollStart, fxDrag_->span);
-        ghost.x = std::clamp(ghost.x + drag_.now.x - drag_.start.x, kFxPanel.x + 4.0f,
-                             std::max(kFxPanel.right() - 4.0f - ghost.w, kFxPanel.x + 4.0f));
-        const int node = fxDrag_->item.node;
-        c.strokeRect(ghost, (node < kFxSlots ? fxColor(node) : splitLine()).alpha(0.6f), 1.0f, 8.0f);
-    }
 }
 
 // A card's frame, title, display and what goes with them, wherever it shows: in the row, or in the effects graph's
@@ -3340,20 +3490,19 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     const FxType type = fxSlotType(slot);
     const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
     const Color fx = fxTypeColor(type); // each type of effect in a color of its own
-    c.fillRect(card, kCardColor, 8.0f);
-    c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f);
-    // Title row: the effect's icon (a widget of its own, which switches it) and its name.
-    // The three-band dynamics' switches sit in the title row too.
-    const Rect titleRect{card.x + 36.0f, card.y + 6.0f, card.w - (type == FxType::MultiDyn ? 162.0f : 84.0f),
-                         20.0f};
+    c.fillRect(card, kCardColor, kRadiusCard);
+    c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+    // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
+    const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
+    const Rect titleRect{card.x + 33.0f, card.y + 6.0f, titleRight - card.x - 33.0f, 20.0f};
     const char *title = fxTitle(type);
-    float titleSize = 11.0f; // smaller for a long name, so it fits beside the icon
-    while (titleSize > 9.0f && c.textWidth(title, titleSize, true) > titleRect.w)
+    float titleSize = kTextBody; // smaller for a long name, so it fits beside the icon
+    while (titleSize > kTextSmall && c.textWidth(title, titleSize, true) > titleRect.w)
         titleSize -= 0.5f;
     c.text(titleRect, title, titleSize, on ? kText : kDim, Align::Left, true);
 
     const Rect display = fxDisplayIn(card, type);
-    c.fillRect(display, kDisplayColor, 6.0f);
+    c.fillRect(display, kDisplayColor, kRadiusCard);
     switch (type) {
     case FxType::Shaper:
         paintShaperCurve(c, display, slot);
@@ -3404,12 +3553,12 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         const bool linked = value(paramIndex(slot, FxParam::MdLink)) >= 0.5;
         const std::string name =
             linked ? std::string(tr(Str::CaptionAllBands)) : trf(Str::CaptionBandKnobs, {tr(kMcBandNames[fxBand_[slot]])});
-        const float y = card.y + kMdLineY, width = std::ceil(c.textWidth(name, 9.0f, true)) + 8.0f;
-        c.line({card.x + 14.0f + width, y}, {card.right() - 14.0f, y}, kBorder, 1.0f);
-        c.text({card.x + 14.0f, y - 7.0f, width, 14.0f}, name, 9.0f, on ? fx : kDim, Align::Left, true);
+        const float y = card.y + kMdLineY, width = std::ceil(c.textWidth(name, kTextSmall, true)) + 8.0f;
+        c.line({card.x + 14.0f + width, y}, {mdRmsButton(card).x - 6.0f, y}, kBorder, 1.0f);
+        c.text({card.x + 14.0f, y - 7.0f, width, 14.0f}, name, kTextSmall, on ? fx : kDim, Align::Left, true);
     }
     if (!on)
-        c.fillRect(display, kPanel.alpha(0.55f), 6.0f); // dimmed while switched off
+        c.fillRect(display, kPanel.alpha(0.55f), kRadiusCard); // dimmed while switched off
 }
 
 void View::paintShapeEditor(Canvas &c, int shape) {
@@ -3428,13 +3577,13 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     const int lfo = shape;
     const Color color = kSourceColors[lfo];
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 104.0f, 22.0f};
-    c.fillRect(title, color.alpha(0.18f), 6.0f);
-    c.text(title, trf(Str::TitleShape, {sourceName(lfo)}), 11.0f, color, Align::Center, true);
+    c.fillRect(title, color.alpha(0.18f), kRadiusControl);
+    c.text(title, trf(Str::TitleShape, {sourceName(lfo)}), kTextBody, color, Align::Center, true);
     c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f},
-           shapeHint(), 10.5f, kFaint, Align::Right);
+           shapeHint(), kTextLabel, kFaint, Align::Right);
 
     const Rect r = shapeArea();
-    c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
+    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
     // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
     const double zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? -1.0 : 0.0;
     paintShapeGrid(c, shapeArea(), zero, false);
@@ -3470,7 +3619,7 @@ void View::paintShapeEditor(Canvas &c, int shape) {
         const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
         const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
         c.text({r.x, r.bottom() + 10.0f, shapeModeButton(0).x - 12.0f - r.x, 16.0f},
-               trf(Str::CaptionShapePoint, {std::to_string(focus->b + 1), cycle, level}), 10.5f, kDim, Align::Left);
+               trf(Str::CaptionShapePoint, {std::to_string(focus->b + 1), cycle, level}), kTextLabel, kDim, Align::Left);
     }
 }
 
@@ -3486,19 +3635,19 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
     const Color fx = clipColor(unit);
     const Rect panel = shapePanel();
     const Rect title{panel.x + 16.0f, panel.y + 9.0f, 132.0f, 22.0f};
-    c.fillRect(title, fx.alpha(0.18f), 6.0f);
+    c.fillRect(title, fx.alpha(0.18f), kRadiusControl);
     c.text(title,
            unit < kFxSlots ? trf(Str::TitleFxShaperCurve, {std::to_string(unit + 1)})
                            : trf(Str::TitleShaperCurve, {std::to_string(unit - kFxSlots + 1)}),
-           11.0f, fx, Align::Center, true);
+           kTextBody, fx, Align::Center, true);
 
     const Rect r = shapeArea();
-    c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
+    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
     paintShapeGrid(c, shapeArea(), 0.0, true);
     paintShapeGridControls(c);
     c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
-    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisInput), 10.5f, kFaint, Align::Right);
-    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOutput), 10.5f, kFaint, Align::Left);
+    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisInput), kTextLabel, kFaint, Align::Right);
+    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOutput), kTextLabel, kFaint, Align::Left);
 
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
@@ -3529,9 +3678,9 @@ void View::paintClipCurveEditor(Canvas &c, int shape) {
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         const std::string in = number("%+.2f", 2.0 * shapePointX(shape, focus->b) - 1.0);
         const std::string out = number("%+.2f", value(shapeIndex(shape, focus->b, PointField::Y)));
-        c.text(below, trf(Str::CaptionCurvePoint, {std::to_string(focus->b + 1), in, out}), 10.5f, kDim, Align::Left);
+        c.text(below, trf(Str::CaptionCurvePoint, {std::to_string(focus->b + 1), in, out}), kTextLabel, kDim, Align::Left);
     } else {
-        c.text(below, shapeHint(), 10.0f, kFaint, Align::Left);
+        c.text(below, shapeHint(), kTextLabel, kFaint, Align::Left);
     }
 }
 
@@ -3543,14 +3692,14 @@ void View::paintNoteCurveEditor(Canvas &c) {
     const int shape = kNoteCurve;
     const Color color = shapeColor(shape);
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
-    c.fillRect(title, color.alpha(0.18f), 6.0f);
-    c.text(title, tr(Str::TitleNoteCurve), 11.0f, color, Align::Center, true);
+    c.fillRect(title, color.alpha(0.18f), kRadiusControl);
+    c.text(title, tr(Str::TitleNoteCurve), kTextBody, color, Align::Center, true);
     const float hintX = kRouting.x + 148.0f + 2.0f * 96.0f + 12.0f; // after Low and High
-    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - 12.0f - hintX, 22.0f}, shapeHint(), 10.5f, kFaint,
+    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - 12.0f - hintX, 22.0f}, shapeHint(), kTextLabel, kFaint,
            Align::Right);
 
     const Rect r = shapeArea();
-    c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
+    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
     paintShapeGrid(c, shapeArea(), -1.0, false);
     paintShapeGridControls(c);
     const double low = value(paramIndex(NoteParam::Low)), high = value(paramIndex(NoteParam::High));
@@ -3568,9 +3717,9 @@ void View::paintNoteCurveEditor(Canvas &c) {
     for (int octave = 0; octave * 12.0 <= kMaxNotePitch; ++octave) {
         const double x = high == low ? -1.0 : (octave * 12.0 - low) / (high - low);
         if (x > 0.03 && x < 0.97)
-            c.text({shapeAt(x, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, noteName(octave * 12), 10.0f, kFaint);
+            c.text({shapeAt(x, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, noteName(octave * 12), kTextLabel, kFaint);
     }
-    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), 10.5f, kFaint, Align::Left);
+    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), kTextLabel, kFaint, Align::Left);
 
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
@@ -3604,9 +3753,9 @@ void View::paintNoteCurveEditor(Canvas &c) {
         char note[32];
         formatParam(paramIndex(NoteParam::Low), low + shapePointX(shape, focus->b) * (high - low), note, sizeof(note));
         const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
-        c.text(below, trf(Str::CaptionNotePoint, {std::to_string(focus->b + 1), note, out}), 10.5f, kDim, Align::Left);
+        c.text(below, trf(Str::CaptionNotePoint, {std::to_string(focus->b + 1), note, out}), kTextLabel, kDim, Align::Left);
     } else {
-        c.text(below, tr(Str::HintNoteAxes), 10.0f, kFaint, Align::Left);
+        c.text(below, tr(Str::HintNoteAxes), kTextLabel, kFaint, Align::Left);
     }
 }
 
@@ -3617,21 +3766,21 @@ void View::paintVelocityCurveEditor(Canvas &c) {
     const int shape = kVelocityCurve;
     const Color color = shapeColor(shape);
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 136.0f, 22.0f};
-    c.fillRect(title, color.alpha(0.18f), 6.0f);
-    c.text(title, tr(Str::TitleVelocityCurve), 11.0f, color, Align::Center, true);
+    c.fillRect(title, color.alpha(0.18f), kRadiusControl);
+    c.text(title, tr(Str::TitleVelocityCurve), kTextBody, color, Align::Center, true);
     c.text({title.right() + 12.0f, kRouting.y + 10.0f, shapeReset().x - title.right() - 24.0f, 22.0f}, shapeHint(),
-           10.5f, kFaint, Align::Right);
+           kTextLabel, kFaint, Align::Right);
 
     const Rect r = shapeArea();
-    c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
+    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
     paintShapeGrid(c, shapeArea(), -1.0, false);
     paintShapeGridControls(c);
     c.line(shapeAt(0.0, -1.0), shapeAt(1.0, 1.0), kFaint.alpha(0.6f), 1.0f, true);
     for (int velocity = 32; velocity < 127; velocity += 32)
         c.text({shapeAt(velocity / 127.0, -1.0).x - 20.0f, r.bottom() - 16.0f, 40.0f, 14.0f}, std::to_string(velocity),
-               10.0f, kFaint);
-    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisVelocity), 10.5f, kFaint, Align::Right);
-    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), 10.5f, kFaint, Align::Left);
+               kTextLabel, kFaint);
+    c.text({r.right() - 120.0f, r.bottom() - 18.0f, 116.0f, 14.0f}, tr(Str::AxisVelocity), kTextLabel, kFaint, Align::Right);
+    c.text({r.x + 6.0f, r.y + 4.0f, 80.0f, 14.0f}, tr(Str::AxisOut), kTextLabel, kFaint, Align::Left);
 
     auto get = [this](int index) { return value(index); };
     const int base = shapeBase(shape);
@@ -3663,10 +3812,10 @@ void View::paintVelocityCurveEditor(Canvas &c) {
     if (focus && focus->kind == Kind::ShapePoint && focus->a == shape) {
         const std::string in = number("%.0f", 127.0 * shapePointX(shape, focus->b));
         const std::string out = number("%.0f", 50.0 * (value(shapeIndex(shape, focus->b, PointField::Y)) + 1.0));
-        c.text(below, trf(Str::CaptionVelocityPoint, {std::to_string(focus->b + 1), in, out}), 10.5f, kDim,
+        c.text(below, trf(Str::CaptionVelocityPoint, {std::to_string(focus->b + 1), in, out}), kTextLabel, kDim,
                Align::Left);
     } else {
-        c.text(below, tr(Str::HintVelocityAxes), 10.0f, kFaint, Align::Left);
+        c.text(below, tr(Str::HintVelocityAxes), kTextLabel, kFaint, Align::Left);
     }
 }
 
@@ -3682,8 +3831,8 @@ int View::partialsShown(int op) const {
 
 void View::paintPartialEditor(Canvas &c, int op) {
     const Rect title{kRouting.x + 16.0f, kRouting.y + 9.0f, 120.0f, 22.0f};
-    c.fillRect(title, kAccent.alpha(0.18f), 6.0f);
-    c.text(title, trf(Str::TitlePartials, {kNodeNames[op]}), 11.0f, kAccent, Align::Center, true);
+    c.fillRect(title, kAccent.alpha(0.18f), kRadiusControl);
+    c.text(title, trf(Str::TitlePartials, {kNodeNames[op]}), kTextBody, kAccent, Align::Center, true);
     // Only the partials the wave plays show; the ones past them keep their values for when there are more again.
     const int count = partialsShown(op);
     // The partial under the mouse in numbers, or how to draw.
@@ -3698,11 +3847,11 @@ void View::paintPartialEditor(Canvas &c, int op) {
                            : trf(Str::CaptionPartialSilent, {partial, phase});
     }
     const float hintX = partialCountButton(static_cast<int>(std::size(kPartialCounts)) - 1).right() + 12.0f;
-    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - hintX - 12.0f, 22.0f}, hint, 10.5f, kFaint, Align::Right);
+    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - hintX - 12.0f, 22.0f}, hint, kTextLabel, kFaint, Align::Right);
 
     // The wave they make, one cycle, at its loudest from top to bottom, as the operator plays it.
     const Rect wave = kPartialWave;
-    c.fillRect(wave.inset(-6.0f), kDisplayColor, 6.0f);
+    c.fillRect(wave.inset(-6.0f), kDisplayColor, kRadiusCard);
     c.line({wave.x, wave.center().y}, {wave.right(), wave.center().y}, kBorder, 1.0f);
     std::vector<double> key = curveKey(Curve::Partials, wave);
     for (int k = 0; k < count; ++k)
@@ -3731,19 +3880,19 @@ void View::paintPartialEditor(Canvas &c, int op) {
     // in different colors; a phase is faint while its partial is silent.
     for (int row = 0; row < 2; ++row) {
         const Rect area = row == 0 ? kPartialLevels : kPartialPhases;
-        c.fillRect(area.inset(-6.0f), kDisplayColor, 6.0f);
-        c.text({area.x - 2.0f, area.y - 22.0f, 80.0f, 12.0f}, tr(row == 0 ? Str::HeadingLevel : Str::HeadingPhase), 10.5f,
+        c.fillRect(area.inset(-6.0f), kDisplayColor, kRadiusCard);
+        c.text({area.x - 2.0f, area.y - 22.0f, 80.0f, 12.0f}, tr(row == 0 ? Str::HeadingLevel : Str::HeadingPhase), kTextLabel,
                kFaint, Align::Left, true);
         for (int k = 0; k < count; ++k) {
             const Rect bar = partialBar(area, k, count);
             const double v = row == 0 ? partialBarFromLevel(value(partialLevelIndex(op, k)))
                                       : value(partialPhaseIndex(op, k));
             const float h = static_cast<float>(v) * bar.h;
-            c.fillRect({bar.x, area.y, bar.w, area.h}, kRaised.alpha(0.5f), 2.0f);
+            c.fillRect({bar.x, area.y, bar.w, area.h}, kRaised.alpha(0.5f), kRadiusMark);
             if (h > 0.5f) {
                 const bool silent = row == 1 && value(partialLevelIndex(op, k)) <= 0.0;
                 const float alpha = (0.35f + 0.5f * static_cast<float>(v)) * (silent ? 0.4f : 1.0f);
-                c.fillRect({bar.x, bar.bottom() - h, bar.w, h}, (row == 0 ? kAccent : kFxColor).alpha(alpha), 2.0f);
+                c.fillRect({bar.x, bar.bottom() - h, bar.w, h}, (row == 0 ? kAccent : kFxColor).alpha(alpha), kRadiusMark);
             }
         }
         if (row == 0)
@@ -3752,7 +3901,7 @@ void View::paintPartialEditor(Canvas &c, int op) {
                 const float y = area.bottom() - static_cast<float>(bar) * area.h;
                 if (db < 0)
                     c.line({area.x, y}, {area.right(), y}, kBorder.alpha(0.5f), 1.0f);
-                c.text({area.x - 38.0f, y - 6.0f, 30.0f, 12.0f}, std::to_string(db), 9.0f, kFaint, Align::Right);
+                c.text({area.x - 38.0f, y - 6.0f, 30.0f, 12.0f}, std::to_string(db), kTextSmall, kFaint, Align::Right);
             }
     }
     // Each partial's number under it; of 64, the first and every fourth, where there is room for them.
@@ -3760,7 +3909,7 @@ void View::paintPartialEditor(Canvas &c, int op) {
         if (count > kFirstPartials && k > 0 && (k + 1) % 4 != 0)
             continue;
         const Rect bar = partialBar(kPartialPhases, k, count);
-        c.text({bar.center().x - 12.0f, kPartialPhases.bottom() + 8.0f, 24.0f, 12.0f}, std::to_string(k + 1), 10.0f,
+        c.text({bar.center().x - 12.0f, kPartialPhases.bottom() + 8.0f, 24.0f, 12.0f}, std::to_string(k + 1), kTextLabel,
                kFaint);
     }
 }
@@ -3788,9 +3937,9 @@ void View::paintShapeGrid(Canvas &c, Rect r, double zero, bool centered) {
 // "GRID - 16 + x - 8 +" under the editor's right end; the buttons and counts are widgets.
 void View::paintShapeGridControls(Canvas &c) {
     const Rect first = shapeGridButton(0, 0);
-    c.text({first.x - 48.0f, first.y, 42.0f, first.h}, tr(Str::HeadingGrid), 10.5f, kFaint, Align::Right, true);
+    c.text({first.x - 48.0f, first.y, 42.0f, first.h}, tr(Str::HeadingGrid), kTextLabel, kFaint, Align::Right, true);
     const Rect across = shapeGridButton(0, 2), upDown = shapeGridButton(1, 0);
-    c.text({across.right(), across.y, upDown.x - across.right(), across.h}, "\xC3\x97", 11.0f, kFaint);
+    c.text({across.right(), across.y, upDown.x - across.right(), across.h}, "\xC3\x97", kTextBody, kFaint);
 }
 
 // Transfer curve: input level across, output up, with the drive, output and mix applied.
@@ -3902,7 +4051,7 @@ void View::paintClipCurveCard(Canvas &c, Rect r, int unit) {
         char text[48];
         std::snprintf(text, sizeof(text), "%+.2f \xE2\x86\x92 %+.2f", 2.0 * shapePointX(shape, focus->b) - 1.0,
                       value(shapeIndex(shape, focus->b, PointField::Y)));
-        c.text({r.x + 6.0f, r.y + 4.0f, r.w - 12.0f, 14.0f}, text, 10.0f, kDim, Align::Left);
+        c.text({r.x + 6.0f, r.y + 4.0f, r.w - 12.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
     }
 }
 
@@ -3926,8 +4075,8 @@ void View::paintDelay(Canvas &c, Rect r, int slot) {
     const float width = static_cast<float>(at(FxParam::DelayWidth));
     const float mid = inner.center().y;
     c.line({inner.x, mid}, {inner.right(), mid}, kBorder, 1.0f);
-    c.text({r.x + 4.0f, inner.y, 10.0f, 12.0f}, "L", 10.5f, kFaint);
-    c.text({r.x + 4.0f, inner.bottom() - 12.0f, 10.0f, 12.0f}, "R", 10.5f, kFaint);
+    c.text({r.x + 4.0f, inner.y, 10.0f, 12.0f}, "L", kTextLabel, kFaint);
+    c.text({r.x + 4.0f, inner.bottom() - 12.0f, 10.0f, 12.0f}, "R", kTextLabel, kFaint);
 
     // Bars reach up for the left side and down for the right; narrower stereo
     // shows as each echo leaking onto the other side.
@@ -3938,7 +4087,7 @@ void View::paintDelay(Canvas &c, Rect r, int slot) {
         const float other = h * (0.5f - 0.5f * width);
         const float up = side == 0 ? own : other;
         const float down = side == 0 ? other : own;
-        c.fillRect({x - 1.5f, mid - up, 3.0f, up + down}, color, 1.5f);
+        c.fillRect({x - 1.5f, mid - up, 3.0f, up + down}, color, kRadiusMark);
     };
     bar(0.0, delayDryLevel(mix), 0, kDim);
     bar(0.0, delayDryLevel(mix), 1, kDim);
@@ -3973,11 +4122,11 @@ void View::paintDelay(Canvas &c, Rect r, int slot) {
         std::snprintf(text, sizeof(text), "%s", sides[0]);
     else
         std::snprintf(text, sizeof(text), "%s  |  %s", sides[0], sides[1]);
-    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
     if (synced) {
         char bpm[16];
         std::snprintf(bpm, sizeof(bpm), "%.0f bpm", telemetry_.tempo);
-        c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, bpm, 10.5f, kFaint, Align::Right);
+        c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, bpm, kTextLabel, kFaint, Align::Right);
     }
 }
 
@@ -4072,7 +4221,7 @@ void View::paintDownward(Canvas &c, Rect r, std::string_view name, Color color) 
     for (size_t i = 0; i < name.size() && (line + 1) * 13.0f <= r.h; ++i, ++line) {
         const size_t length = i == number ? name.size() - i : 1;
         if (name[i] != ' ')
-            c.text({r.x, r.y + line * 13.0f, r.w, 13.0f}, std::string(name.substr(i, length)), 10.5f, color,
+            c.text({r.x, r.y + line * 13.0f, r.w, 13.0f}, std::string(name.substr(i, length)), kTextLabel, color,
                    Align::Center, true);
         i += length - 1;
     }
@@ -4115,7 +4264,7 @@ void View::paintEq(Canvas &c, Rect r, int slot) {
     const float labelY = inner.bottom() + 2.0f;
     const float edges[] = {inner.x, xOfHz(kEqLowHz), xOfHz(kEqHighHz), inner.right()};
     for (int b = 0; b < 3; ++b)
-        c.text({edges[b], labelY, edges[b + 1] - edges[b], 12.0f}, tr(kMcBandNames[b]), 10.5f, kFaint, Align::Center,
+        c.text({edges[b], labelY, edges[b + 1] - edges[b], 12.0f}, tr(kMcBandNames[b]), kTextLabel, kFaint, Align::Center,
                true);
 }
 
@@ -4143,10 +4292,10 @@ void compressorPlot(Canvas &c, Rect plot, double threshold, double ratio, double
 
 // A downward bar for `db` of gain reduction.
 void reductionMeter(Canvas &c, Rect meter, float db, Color color) {
-    c.fillRect(meter, kCardColor, 2.0f);
+    c.fillRect(meter, kCardColor, kRadiusMark);
     const float h = std::clamp(db / kMeterRangeDb, 0.0f, 1.0f) * meter.h;
     if (h > 0.5f)
-        c.fillRect({meter.x, meter.y, meter.w, h}, color, 2.0f);
+        c.fillRect({meter.x, meter.y, meter.w, h}, color, kRadiusMark);
 }
 
 } // namespace
@@ -4163,7 +4312,7 @@ void View::paintCompressor(Canvas &c, Rect r, int slot) {
     const float reduction = telemetry_.fxReduction[slot][0];
     reductionMeter(c, {r.right() - 18.0f, plot.y, 8.0f, plot.h}, reduction, fx);
     c.text({plot.x + 4.0f, plot.y + 2.0f, plot.w, 14.0f}, trf(Str::CaptionReduction, {number("%.1f", reduction)}),
-           10.5f, reduction > 0.05f ? kText : kFaint, Align::Left);
+           kTextLabel, reduction > 0.05f ? kText : kFaint, Align::Left);
 }
 
 // The three-band dynamics: a bar a band, the high band on top, levels across. Left of the Below threshold, where the
@@ -4191,11 +4340,11 @@ void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
                                 drag_.kind == DragKind::None;
         const Rect name{row.x + 1.0f, bar.y - 1.0f, bar.x - row.x - 6.0f, bar.h + 2.0f};
         if (band == shown)
-            c.fillRect(name, kRaised, 4.0f);
-        c.text(name, tr(kMcBandNames[band]), 9.0f, set || rowHovered ? kText : kDim, Align::Center, true);
+            c.fillRect(name, kRaised, kRadiusMark);
+        c.text(name, tr(kMcBandNames[band]), kTextSmall, set || rowHovered ? kText : kDim, Align::Center, true);
 
         const float alpha = set ? 1.0f : 0.5f;
-        c.fillRect(bar, kCardColor, 2.0f);
+        c.fillRect(bar, kCardColor, kRadiusMark);
         const double above = value(mdAboveIndex(slot, band)), below = std::min(value(mdBelowIndex(slot, band)), above);
         const float xBelow = mdBarX(bar, below), xAbove = mdBarX(bar, above);
         // Its zones and ratio lines where modulation takes them now; the threshold lines, its grips, stay where set.
@@ -4262,7 +4411,7 @@ void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
         } else {
             text = std::abs(change) < 0.05 ? "0.0" : number("%+.1f", change);
         }
-        c.text(readout, text, 9.5f, ink, Align::Right, set);
+        c.text(readout, text, kTextSmall, ink, Align::Right, set);
     }
     // The scale under the bars.
     const Rect bar = mdBar(r, 0);
@@ -4271,7 +4420,7 @@ void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
         const float x = mdBarX(bar, db);
         const Align align = db == -60 ? Align::Left : (db == 0 ? Align::Right : Align::Center);
         const float left = align == Align::Left ? x : (align == Align::Right ? x - 24.0f : x - 12.0f);
-        c.text({left, y, 24.0f, 11.0f}, std::to_string(db), 9.0f, kDim, align);
+        c.text({left, y, 24.0f, 11.0f}, std::to_string(db), kTextSmall, kDim, align);
     }
 }
 
@@ -4351,7 +4500,7 @@ void View::paintReverb(Canvas &c, Rect r, int slot) {
                              {x(pre + build), mid + full}, {x(pre), mid}};
     plotLine(c, outline, 5, fx, 1.5f);
     const float dry = static_cast<float>(delayDryLevel(at(FxParam::ReverbMix))) * 0.5f * inner.h;
-    c.fillRect({inner.x - 1.0f, mid - dry, 3.0f, 2.0f * dry}, kDim, 1.5f);
+    c.fillRect({inner.x - 1.0f, mid - dry, 3.0f, 2.0f * dry}, kDim, kRadiusMark);
 
     char decayText[32], preText[32];
     formatParam(paramIndex(slot, FxParam::ReverbDecay), at(FxParam::ReverbDecay), decayText, sizeof(decayText));
@@ -4362,7 +4511,7 @@ void View::paintReverb(Canvas &c, Rect r, int slot) {
         formatParam(paramIndex(slot, FxParam::ReverbShimmerPitch), interval, pitchText, sizeof(pitchText));
         text = trf(Str::CaptionShimmer, {decayText, pitchText});
     }
-    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
 }
 
 void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
@@ -4431,7 +4580,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     else
         formatParam(paramIndex(slot, FxParam::FlangerDelay), at(FxParam::FlangerDelay), shape, sizeof(shape));
     std::snprintf(text, sizeof(text), "%s  \xC2\xB7  %s", shape, rate);
-    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
 }
 
 // The partials of a 220 Hz tone, faint, and where the shifter moves them: the left side above the
@@ -4466,7 +4615,7 @@ void View::paintDisperser(Canvas &c, Rect r, int slot) {
     char freq[32], text[80];
     formatParam(paramIndex(slot, FxParam::DisperserFreq), at(FxParam::DisperserFreq), freq, sizeof(freq));
     std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionDispersion, {freq, number("%.1f", most * 1000.0)}).c_str());
-    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
 }
 
 // The widener's picture of the stereo field: the sound's place across, left to right, and its frequency up, from
@@ -4516,9 +4665,9 @@ void View::paintWidener(Canvas &c, Rect r, int slot) {
     const char *const digits = longest < 10.0 ? "%.1f" : "%.0f";
     std::snprintf(text, sizeof(text), "%s",
                   trf(Str::CaptionWidener, {hp, number(digits, shortest), number(digits, longest)}).c_str());
-    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
-    c.text({r.x + 4.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "L", 10.5f, kFaint);
-    c.text({r.right() - 16.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "R", 10.5f, kFaint);
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
+    c.text({r.x + 4.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "L", kTextLabel, kFaint);
+    c.text({r.right() - 16.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "R", kTextLabel, kFaint);
 }
 
 void View::paintNoteSource(Canvas &c, float top) {
@@ -4529,8 +4678,8 @@ void View::paintNoteSource(Canvas &c, float top) {
     const bool lit = (hover_ && hover_->kind == Kind::NoteDisplay && hover_->a == kNoteSource &&
                       drag_.kind == DragKind::None) ||
                      shapeEditing() == kNoteCurve; // it opens the curve, or has
-    c.fillRect(box, lit ? kTrack : kDisplayColor, 5.0f);
-    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, 5.0f);
+    c.fillRect(box, lit ? kTrack : kDisplayColor, kRadiusControl);
+    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
     // Behind the note, faintly, its curve across the box.
     auto get = [this](int index) { return value(index); };
     std::vector<Point> curve;
@@ -4550,10 +4699,10 @@ void View::paintNoteSource(Canvas &c, float top) {
         if (cents != 0)
             text += (cents > 0 ? " +" : " ") + std::to_string(cents);
     }
-    c.text(box, text, 11.0f, telemetry_.voices > 0 ? kText : kFaint, Align::Center, telemetry_.voices > 0);
-    c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelNote), 10.5f, kDim);
+    c.text(box, text, kTextBody, telemetry_.voices > 0 ? kText : kFaint, Align::Center, telemetry_.voices > 0);
+    c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelNote), kTextLabel, kDim);
     if (sourceBipolar(kNoteSource)) // swings both ways: a sign in its corner
-        c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", 10.0f, color, Align::Center, true);
+        c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", kTextLabel, color, Align::Center, true);
 }
 
 void View::paintVelocitySource(Canvas &c, float top) {
@@ -4563,8 +4712,8 @@ void View::paintVelocitySource(Canvas &c, float top) {
     const bool lit = (hover_ && hover_->kind == Kind::NoteDisplay && hover_->a == kVelocitySource &&
                       drag_.kind == DragKind::None) ||
                      shapeEditing() == kVelocityCurve; // it opens the curve, or has
-    c.fillRect(box, lit ? kTrack : kDisplayColor, 5.0f);
-    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, 5.0f);
+    c.fillRect(box, lit ? kTrack : kDisplayColor, kRadiusControl);
+    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
     // Behind the number, faintly, its curve across the box, with a mark where the newest voice's velocity is.
     auto get = [this](int index) { return value(index); };
     auto at = [&](double x) {
@@ -4580,10 +4729,10 @@ void View::paintVelocitySource(Canvas &c, float top) {
         c.fillCircle(at(telemetry_.noteVelocity), 2.0f, color.alpha(0.6f));
     const double velocity = std::clamp(static_cast<double>(telemetry_.noteVelocity), 0.0, 1.0);
     const std::string text = playing ? std::to_string(std::lround(127.0 * velocity)) : "\xE2\x80\x93";
-    c.text(box, text, 11.0f, playing ? kText : kFaint, Align::Center, playing);
-    c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelVelocitySource), 10.5f, kDim);
+    c.text(box, text, kTextBody, playing ? kText : kFaint, Align::Center, playing);
+    c.text({box.x - 14.0f, top + kStripRow + 19.0f, box.w + 28.0f, 16.0f}, tr(Str::LabelVelocitySource), kTextLabel, kDim);
     if (sourceBipolar(kVelocitySource)) // swings both ways: a sign in its corner
-        c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", 10.0f, color, Align::Center, true);
+        c.text({box.right() - 13.0f, box.y + 1.0f, 11.0f, 11.0f}, "\xC2\xB1", kTextLabel, color, Align::Center, true);
 }
 
 void View::paintShifter(Canvas &c, Rect r, int slot) {
@@ -4621,9 +4770,9 @@ void View::paintShifter(Canvas &c, Rect r, int slot) {
     formatParam(paramIndex(slot, FxParam::ShiftRange), liveValue(paramIndex(slot, FxParam::ShiftRange)), range,
                 sizeof(range));
     std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionShiftOf, {shift, range}).c_str());
-    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, 10.5f, kDim, Align::Left);
-    c.text({r.x + 4.0f, inner.y, 10.0f, 12.0f}, "L", 10.5f, kFaint);
-    c.text({r.x + 4.0f, inner.bottom() - 12.0f, 10.0f, 12.0f}, "R", 10.5f, kFaint);
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
+    c.text({r.x + 4.0f, inner.y, 10.0f, 12.0f}, "L", kTextLabel, kFaint);
+    c.text({r.x + 4.0f, inner.bottom() - 12.0f, 10.0f, 12.0f}, "R", kTextLabel, kFaint);
 }
 
 void View::paintInspector(Canvas &c) {
@@ -4663,7 +4812,7 @@ void View::paintInspector(Canvas &c) {
                 feeds += (feeds.empty() ? "" : ", ") + std::string(kNodeNames[to]);
         if (!feeds.empty())
             summary += dot + trf(Str::SummaryTo, {feeds});
-        c.text(summaryRect, summary, 11.0f, kDim, Align::Left);
+        c.text(summaryRect, summary, kTextBody, kDim, Align::Left);
         // The tabs' line, which the shown one's accent sits on.
         c.line({kInspector.x + 16.0f, kOpTabsY + kOpTabH}, {kInspector.right() - 16.0f, kOpTabsY + kOpTabH}, kBorder,
                1.0f);
@@ -4694,14 +4843,14 @@ void View::paintInspector(Canvas &c) {
     if (hasSlope(type))
         summary += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
                    " dB";
-    c.text(summaryRect, summary + boxRoutes(node), 11.0f, kDim, Align::Left);
+    c.text(summaryRect, summary + boxRoutes(node), kTextBody, kDim, Align::Left);
     // A voice filter tracks the newest voice's note; with none, the curve is back at the knob's C4.
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
                         paramIndex(filter, FilterParam::Slope), paramIndex(filter, FilterParam::Cutoff),
                         paramIndex(filter, FilterParam::Resonance), paramIndex(filter, FilterParam::KeyTrack),
                         telemetry_.voices > 0 ? telemetry_.notePitch : 60.0, kFilterColor,
                         &telemetry_.filterSpectrum[filter]);
-    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), 10.5f, kFaint,
+    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), kTextLabel, kFaint,
            Align::Left, true);
 }
 
@@ -4732,20 +4881,20 @@ std::string View::boxRoutes(int node) const {
 void View::paintShaperPage(Canvas &c, int shaper, Rect summaryRect) {
     const std::string summary = std::string(kNodeNames[kOps + kFilters + shaper]) + "  \xC2\xB7  " +
                                 clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode))));
-    c.text(summaryRect, summary + boxRoutes(kOps + kFilters + shaper), 11.0f, kDim, Align::Left);
-    c.fillRect(kShaperDisplay, kDisplayColor, 6.0f);
+    c.text(summaryRect, summary + boxRoutes(kOps + kFilters + shaper), kTextBody, kDim, Align::Left);
+    c.fillRect(kShaperDisplay, kDisplayColor, kRadiusCard);
     paintShaperCurve(c, kShaperDisplay, kFxSlots + shaper);
-    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), 10.5f, kFaint,
+    c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), kTextLabel, kFaint,
            Align::Left, true);
 }
 
 // Where the unison copies sit: left to right by stereo position, up and down by detune.
 void View::paintUnison(Canvas &c, Rect r, int op) {
-    c.fillRect(r, kDisplayColor, 6.0f);
+    c.fillRect(r, kDisplayColor, kRadiusCard);
     c.line({r.center().x, r.y + 6.0f}, {r.center().x, r.bottom() - 6.0f}, kBorder, 1.0f);
     c.line({r.x + 18.0f, r.center().y}, {r.right() - 18.0f, r.center().y}, kBorder.alpha(0.6f), 1.0f);
-    c.text({r.x + 4.0f, r.bottom() - 14.0f, 12.0f, 12.0f}, "L", 10.5f, kFaint);
-    c.text({r.right() - 16.0f, r.bottom() - 14.0f, 12.0f, 12.0f}, "R", 10.5f, kFaint);
+    c.text({r.x + 4.0f, r.bottom() - 14.0f, 12.0f, 12.0f}, "L", kTextLabel, kFaint);
+    c.text({r.right() - 16.0f, r.bottom() - 14.0f, 12.0f, 12.0f}, "R", kTextLabel, kFaint);
     const int copies = std::clamp(static_cast<int>(std::lround(value(paramIndex(op, OpParam::Unison)))), 1, kMaxUnison);
     const double detune = value(paramIndex(op, OpParam::UnisonDetune)) / 100.0;
     const double spread = value(paramIndex(op, OpParam::UnisonSpread));
@@ -4850,7 +4999,7 @@ void View::paintInputs(Canvas &c, int op) {
     const bool feedback = wired(routeParam(op, op));
     if (inputs.empty() && !feedback) {
         c.text({kInspector.x + 16.0f, kInputsTop, kInspector.w - 32.0f, 40.0f},
-               trf(Str::InputsNone, {nodeTitle(op)}), 11.0f, kDim, Align::Center);
+               trf(Str::InputsNone, {nodeTitle(op)}), kTextBody, kDim, Align::Center);
         return;
     }
     const float step = inputsStep(static_cast<int>(inputs.size()) + (feedback ? 1 : 0));
@@ -4858,15 +5007,15 @@ void View::paintInputs(Canvas &c, int op) {
     for (int from : inputs) {
         const bool hovered = hover_ && hover_->kind == Kind::MatrixLabel && hover_->a == from &&
                              hover_->rect.y == inputsName(y).y;
-        c.text(inputsName(y), kNodeNames[from], 11.0f, hovered ? kText : nodeColor(from), Align::Left, true);
+        c.text(inputsName(y), kNodeNames[from], kTextBody, hovered ? kText : nodeColor(from), Align::Left, true);
         const auto mode = routeMode(value(routeModeParam(from, op)));
-        c.text(inputsModeName(y), routeModeName(mode), 10.5f, kDim, Align::Left);
+        c.text(inputsModeName(y), routeModeName(mode), kTextLabel, kDim, Align::Left);
         y += step;
     }
     if (feedback) {
-        c.text(inputsName(y), kNodeNames[op], 11.0f, nodeColor(op), Align::Left, true);
+        c.text(inputsName(y), kNodeNames[op], kTextBody, nodeColor(op), Align::Left, true);
         c.text({inputsMode(y, 0).x, y, inputsDepth(y).x - inputsMode(y, 0).x - 6.0f, 18.0f},
-               trf(Str::InputsFeedback, {kNodeNames[op]}), 10.5f, kDim, Align::Left);
+               trf(Str::InputsFeedback, {kNodeNames[op]}), kTextLabel, kDim, Align::Left);
     }
 }
 
@@ -4895,7 +5044,7 @@ bool View::opTabModulated(int op, InspectorTab tab) const {
 // picks, at their real level between dashed lines at full scale, the level its peaks follow in the corner. A slow operator's span is drawn as it fills, up to
 // its cursor, the last one's rest faintly after it. With nothing captured, the wave's plain shape is drawn faintly.
 void View::paintScope(Canvas &c, Rect r, int op) {
-    c.fillRect(r, kDisplayColor, 6.0f);
+    c.fillRect(r, kDisplayColor, kRadiusCard);
     const int cycles = controller_.layout().scopeCycles;
     const Rect inner{r.x + 8.0f, r.y + 28.0f, r.w - 16.0f, r.h - 40.0f};
     const float middle = inner.center().y;
@@ -4941,13 +5090,13 @@ void View::paintScope(Canvas &c, Rect r, int op) {
         c.line({x, inner.y - 6.0f}, {x, inner.bottom() + 6.0f}, kDim, 1.0f);
     }
     if (opScopeLevel_ > 1e-4f) // its level, steadier than each span's peak (see followScopeLevel())
-        c.text({r.x + 8.0f, r.y + 6.0f, 100.0f, 16.0f}, number("%.1f dB", 20.0 * std::log10(opScopeLevel_)), 10.5f,
+        c.text({r.x + 8.0f, r.y + 6.0f, 100.0f, 16.0f}, number("%.1f dB", 20.0 * std::log10(opScopeLevel_)), kTextLabel,
                kFaint, Align::Left);
 }
 
 // The noise's spectrum from 20 Hz to 20 kHz, over faint white, pink and brown slopes.
 void View::paintNoiseSlope(Canvas &c, Rect r, int op) {
-    c.fillRect(r, kDisplayColor, 6.0f);
+    c.fillRect(r, kDisplayColor, kRadiusCard);
     const Rect inner{r.x + 10.0f, r.y + 8.0f, r.w - 56.0f, r.h - 16.0f};
     // Every slope starts at the top left, at 20 Hz; brown falls the full height by 20 kHz.
     auto line = [&](double slope, Color color, float width) {
@@ -4957,7 +5106,7 @@ void View::paintNoiseSlope(Canvas &c, Rect r, int op) {
     for (int i = 0; i < 3; ++i) {
         line(i * 0.5, kBorder, 1.0f);
         const float y = inner.y + i * 0.5f * inner.h;
-        c.text({inner.right() + 6.0f, y - 6.0f, 40.0f, 12.0f}, tr(names[i]), 10.5f, kFaint, Align::Left);
+        c.text({inner.right() + 6.0f, y - 6.0f, 40.0f, 12.0f}, tr(names[i]), kTextLabel, kFaint, Align::Left);
     }
     const float drop = static_cast<float>(value(paramIndex(op, OpParam::NoiseSlope))) * inner.h;
     const Point slope[] = {{inner.x, inner.y}, {inner.right(), inner.y + drop}};
@@ -4967,7 +5116,7 @@ void View::paintNoiseSlope(Canvas &c, Rect r, int op) {
 void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam, int cutoffParam,
                                int resonanceParam, int keyTrackParam, double pitch, Color color,
                                const Spectrum *spectrum) {
-    c.fillRect(r, kDisplayColor, 6.0f);
+    c.fillRect(r, kDisplayColor, kRadiusCard);
     const Rect inner{r.x + 10.0f, r.y + 10.0f, r.w - 20.0f, r.h - 20.0f};
     auto yOfDb = [&](float db) {
         const float t = (std::clamp(db, kResponseMinDb, kResponseMaxDb) - kResponseMinDb) /
@@ -5040,7 +5189,7 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
 }
 
 void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
-    c.fillRect(r, kDisplayColor, 6.0f);
+    c.fillRect(r, kDisplayColor, kRadiusCard);
     for (int i = 1; i < 4; ++i)
         c.line({r.x + 8.0f, r.y + r.h * i / 4.0f}, {r.right() - 8.0f, r.y + r.h * i / 4.0f}, kBorder.alpha(0.6f), 1.0f);
 
@@ -5094,7 +5243,7 @@ void View::paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live) {
     if (env >= kOps && sourceBipolar(env - kOps)) {
         const float middle = s.bottom - 0.5f * height;
         c.line({r.x + 8.0f, middle}, {r.right() - 8.0f, middle}, color.alpha(0.45f), 1.0f, true);
-        c.text({r.right() - 20.0f, r.y + 3.0f, 14.0f, 14.0f}, "\xC2\xB1", 11.0f, color, Align::Center, true);
+        c.text({r.right() - 20.0f, r.y + 3.0f, 14.0f, 14.0f}, "\xC2\xB1", kTextBody, color, Align::Center, true);
     }
 }
 
@@ -5123,16 +5272,16 @@ void View::paintEnvReadout(Canvas &c, const Widget &w) {
     // envelope's sign.
     const Rect r = envRect(w.a);
     const float right = r.right() - (w.a >= kOps && sourceBipolar(w.a - kOps) ? 24.0f : 8.0f);
-    const float width = c.textWidth(text, 10.5f);
-    c.fillRect({right - width - 5.0f, r.y + 2.0f, width + 10.0f, 14.0f}, kDisplayColor.alpha(0.85f), 4.0f);
-    c.text({r.x, r.y + 2.0f, right - r.x, 14.0f}, text, 10.5f, kText, Align::Right);
+    const float width = c.textWidth(text, kTextLabel);
+    c.fillRect({right - width - 5.0f, r.y + 2.0f, width + 10.0f, 14.0f}, kDisplayColor.alpha(0.85f), kRadiusMark);
+    c.text({r.x, r.y + 2.0f, right - r.x, 14.0f}, text, kTextLabel, kText, Align::Right);
 }
 
 // How many cycles a random LFO's display shows.
 
 
 void View::paintLfo(Canvas &c, Rect r, int lfo) {
-    c.fillRect(r, kDisplayColor, 6.0f);
+    c.fillRect(r, kDisplayColor, kRadiusCard);
     const Rect inner{r.x + 10.0f, r.y + 8.0f, r.w - 20.0f, r.h - 16.0f};
     // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
     const float zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? inner.bottom() : inner.center().y;
@@ -5212,7 +5361,7 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
 void View::paintLfoCard(Canvas &c, float card, int lfo) {
     const Color color = kSourceColors[lfo];
     const Rect r = lfoCardPlot(card);
-    c.fillRect(r.inset(-8.0f), kDisplayColor, 8.0f);
+    c.fillRect(r.inset(-8.0f), kDisplayColor, kRadiusCard);
     // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
     const double zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? -1.0 : 0.0;
     paintShapeGrid(c, r, zero, false);
@@ -5236,19 +5385,19 @@ void View::paintLfoCard(Canvas &c, float card, int lfo) {
     }
 
     const Rect readout = lfoCardReadout(card);
-    c.fillRect(readout, kDisplayColor, 5.0f);
+    c.fillRect(readout, kDisplayColor, kRadiusControl);
     const Rect text{readout.x + 8.0f, readout.y, readout.w - 16.0f, readout.h};
     const Widget *focus = drag_.kind == DragKind::ShapePoint ? &drag_.widget : (hover_ ? &*hover_ : nullptr);
     if (focus && focus->kind == Kind::ShapePoint && focus->a == lfo && shapeEditing() != lfo) {
         // What the LFO puts out there: a unipolar one maps -1..1 onto 0..1.
         const double y = value(shapePointIndex(lfo, focus->b, PointField::Y));
         const std::string level = zero < 0.0 ? number("%.2f", 0.5 * (y + 1.0)) : number("%+.2f", y);
-        c.text(text, trf(Str::CaptionCardPointNumber, {std::to_string(focus->b + 1)}), 10.5f, kText, Align::Left,
+        c.text(text, trf(Str::CaptionCardPointNumber, {std::to_string(focus->b + 1)}), kTextLabel, kText, Align::Left,
                true);
-        c.text(text, trf(Str::CaptionCardPoint, {number("%.1f", shapePointX(lfo, focus->b) * 100.0), level}), 10.0f,
+        c.text(text, trf(Str::CaptionCardPoint, {number("%.1f", shapePointX(lfo, focus->b) * 100.0), level}), kTextLabel,
                kDim, Align::Right);
     } else {
-        c.text(text, tr(Str::HintCardPoint), 10.0f, kFaint, Align::Left);
+        c.text(text, tr(Str::HintCardPoint), kTextLabel, kFaint, Align::Left);
     }
     for (int axis = 0; axis < 2; ++axis) {
         const Rect down = lfoCardGridButton(card, axis, 0);
@@ -5257,7 +5406,7 @@ void View::paintLfoCard(Canvas &c, float card, int lfo) {
     // While the full-size editor has the shape, this row is greyed out like the rest of the card's editor (whose
     // widgets are dimmed as disabled ones are).
     if (shapeEditing() == lfo)
-        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h}, kPanel.alpha(0.6f), 4.0f);
+        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h}, kPanel.alpha(0.6f), kRadiusMark);
 }
 
 void View::paintSources(Canvas &c) {
@@ -5265,7 +5414,7 @@ void View::paintSources(Canvas &c) {
         return; // the chips and the toggle are widgets
     const std::vector<int> shown = sourcesShown();
     if (shown.empty()) {
-        c.text({kModPanel.x, kCardTop + kCardH * 0.5f - 10.0f, kModPanel.w, 20.0f}, tr(Str::HintNoSources), 12.0f,
+        c.text({kModPanel.x, kCardTop + kCardH * 0.5f - 10.0f, kModPanel.w, 20.0f}, tr(Str::HintNoSources), kTextValue,
                kDim);
         return;
     }
@@ -5281,7 +5430,7 @@ namespace {
 // A slot row's name, drawn smaller to fit its place when it is long, down to 7.5, which the canvas draws at about 9 px;
 // its width is a straight line between the two.
 float slotNameSize(Canvas &c, const std::string &name) {
-    constexpr float kFull = 11.0f, kSmallest = 7.5f;
+    constexpr float kFull = kTextBody, kSmallest = 7.5f; // fitted to its room
     const float full = c.textWidth(name, kFull);
     if (full <= kSlotNameW)
         return kFull;
@@ -5297,8 +5446,8 @@ void View::paintSource(Canvas &c, float card, int s) {
     const Color color = kSourceColors[s];
     const bool lfo = sourceTypeOf(s) == SourceType::Lfo;
     const bool dragged = drag_.kind == DragKind::SourceMove && drag_.widget.a == s;
-    c.fillRect(p, kCardColor, 8.0f);
-    c.strokeRect(p, dragged ? color : (sourceOn(s) ? color.alpha(0.35f) : kBorder), dragged ? 1.5f : 1.0f, 8.0f);
+    c.fillRect(p, kCardColor, kRadiusCard);
+    c.strokeRect(p, dragged ? color : (sourceOn(s) ? color.alpha(0.35f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
     if (sourceFolded(s)) { // the grip's dots under the handle (widgets), then its name down the strip
         const bool grip =
             (hover_ && hover_->kind == Kind::SourceGrip && hover_->a == s && drag_.kind == DragKind::None) || dragged;
@@ -5307,14 +5456,14 @@ void View::paintSource(Canvas &c, float card, int s) {
         std::string name = sourceName(s);
         if (sourceTypeOf(s) == SourceType::Random) // "Random" too long for the strip: its short name, by its number
             name = trf(Str::SourceFoldedRandom, {name.substr(name.find_last_of(' ') + 1)});
-        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return static_cast<char>(std::toupper(ch)); });
-        paintDownward(c, {p.x, p.y + 104.0f, p.w, p.h - 110.0f}, name, sourceOn(s) ? color : kDim);
+        paintDownward(c, {p.x, p.y + 104.0f, p.w, p.h - 110.0f}, upperCase(name), sourceOn(s) ? color : kDim);
         return;
     }
 
     // Title row: the handle (a widget) and the name, grey while the source is off; the row drags the card.
-    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, sourceName(s), 11.5f, sourceOn(s) ? kText : kDim, Align::Left,
-           true);
+    // In capitals, as an effect card's title.
+    c.text({p.x + 40.0f, p.y + 7.0f, 80.0f, 21.0f}, upperCase(sourceName(s)), kTextBody, sourceOn(s) ? kText : kDim,
+           Align::Left, true);
 
     if (s == wideLfo()) {
         paintLfoCard(c, card, s);
@@ -5329,24 +5478,24 @@ void View::paintSource(Canvas &c, float card, int s) {
         // it is bipolar, where its depths swing both ways), and in numbers; Random says what it does over its knobs'
         // row, having none.
         if (sourceTypeOf(s) == SourceType::Random)
-            c.text({p.x + 16.0f, p.y + 40.0f, p.w - 32.0f, 30.0f}, tr(Str::HintRandomSource), 10.5f, kDim);
+            c.text({p.x + 16.0f, p.y + 40.0f, p.w - 32.0f, 30.0f}, tr(Str::HintRandomSource), kTextLabel, kDim);
         const Rect d = sourceDisplay(card);
-        c.fillRect(d, kBackground, 6.0f);
+        c.fillRect(d, kBackground, kRadiusCard);
         const bool live = sourceOn(s) && telemetry_.voices > 0;
         const double out = live ? std::clamp(static_cast<double>(telemetry_.sources[s]), 0.0, 1.0) : 0.0;
         const Rect track{d.x + 12.0f, d.center().y - 3.0f, d.w - 24.0f, 6.0f};
-        c.fillRect(track, kTrack, 3.0f);
+        c.fillRect(track, kTrack, kRadiusMark);
         const bool bipolar = sourceBipolar(s);
         const float from = bipolar ? track.center().x : track.x;
         const float to = track.x + track.w * static_cast<float>(out);
         if (live)
-            c.fillRect({std::min(from, to), track.y, std::abs(to - from), track.h}, color, 3.0f);
+            c.fillRect({std::min(from, to), track.y, std::abs(to - from), track.h}, color, kRadiusMark);
         if (bipolar)
             c.line({track.center().x, track.y - 4.0f}, {track.center().x, track.bottom() + 4.0f}, kFaint, 1.0f);
         char text[16];
         std::snprintf(text, sizeof(text), "%.0f%%", (bipolar ? out * 2.0 - 1.0 : out) * 100.0);
         if (live)
-            c.text({d.x, d.y + 2.0f, d.w - 12.0f, 16.0f}, text, 10.0f, kDim, Align::Right);
+            c.text({d.x, d.y + 2.0f, d.w - 12.0f, 16.0f}, text, kTextLabel, kDim, Align::Right);
     }
     // Under the display, the button that shows its modulations in the MODS view (a widget).
 }
@@ -5371,7 +5520,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
 
     if (isBoxNode(w.a)) { // a filter's box with its type, or a shaper's, squarer, with its curve's name
         const bool shaper = isShaperNode(w.a);
-        const float corner = shaper ? 3.0f : 8.0f;
+        const float corner = shaper ? kRadiusMark : kRadiusControl;
         const Color color = nodeColor(w.a);
         const bool live = boxHasInput(w.a);
         if (live && telemetry_.voices > 0 && reachesOut(w.a))
@@ -5383,13 +5532,13 @@ void View::paintNode(Canvas &c, const Widget &w) {
         c.strokeRect(w.rect, live ? color : kFaint, selected ? 2.0f : 1.5f, corner);
         if (selected)
             c.strokeRect(w.rect.inset(-kSelectedRing), color, 2.0f, corner + kSelectedRing);
-        c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], 12.0f, kText, Align::Center, true);
+        c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], kTextValue, kText, Align::Center, true);
         const int box = w.a - kOps; // the filter, or past them the shaper
         const std::string kind =
             shaper ? clipModeName(clipMode(value(paramIndex(shaperOfNode(w.a), ShaperParam::Mode))))
                    : filterLabel(static_cast<FilterType>(std::lround(value(paramIndex(box, FilterParam::Type)))),
                                  value(paramIndex(box, FilterParam::Slope)));
-        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, 10.5f, selected ? kText.alpha(0.8f) : kDim);
+        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, kTextLabel, selected ? kText.alpha(0.8f) : kDim);
         return;
     }
 
@@ -5425,7 +5574,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
     const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
     const std::vector<Point> glyph = waveIcon(wave, {center.x - 6.0f, center.y - 16.0f, 12.0f, 5.0f});
     c.polyline(glyph.data(), glyph.size(), caption, 1.0f);
-    c.text({center.x - 20.0f, center.y - 11.0f, 40.0f, 20.0f}, kNodeNames[op], 15.0f, kText, Align::Center, true);
+    c.text({center.x - 20.0f, center.y - 11.0f, 40.0f, 20.0f}, kNodeNames[op], kTextHeading, kText, Align::Center, true);
     char ratio[16];
     const double r = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
     std::snprintf(ratio, sizeof(ratio), "\xC3\x97%.2g", r);
@@ -5443,16 +5592,16 @@ void View::paintNode(Canvas &c, const Widget &w) {
         else
             std::snprintf(ratio, sizeof(ratio), "-%.1fdB", db);
     }
-    c.text({center.x - 22.0f, center.y + 5.0f, 44.0f, 14.0f}, ratio, 10.0f, caption); // inside the ring
+    c.text({center.x - 22.0f, center.y + 5.0f, 44.0f, 14.0f}, ratio, kTextLabel, caption); // inside the ring
 }
 
 namespace {
 // An edit button, the same pencil wherever it opens an editor: lit in `color` under the mouse, and outlined in it
 // while what it opens is open.
 void editButton(Canvas &c, Rect r, Color color, bool hovered, bool open) {
-    c.fillRect(r, open ? color.alpha(0.22f) : hovered ? color.alpha(0.3f) : kRaised, 5.0f);
+    c.fillRect(r, open ? color.alpha(0.22f) : hovered ? color.alpha(0.3f) : kRaised, kRadiusControl);
     if (open)
-        c.strokeRect(r, color, 1.0f, 5.0f);
+        c.strokeRect(r, color, 1.0f, kRadiusControl);
     editIcon(c, r.center(), open || hovered ? kText : kDim);
 }
 } // namespace
@@ -5515,11 +5664,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // filled with its color, as a node shown in the graph is.
         const bool selected = controller_.layout().selectedNode == w.a;
         const Color color = hovered || selected ? nodeColor(w.a) : kFaint;
-        const float corner = isShaperNode(w.a) ? 3.0f : isFilterNode(w.a) ? 6.0f : w.rect.h * 0.5f;
+        const float corner = isShaperNode(w.a) ? kRadiusMark : isFilterNode(w.a) ? kRadiusControl : w.rect.h * 0.5f;
         if (selected)
             c.fillRect(w.rect, nodeColor(w.a).alpha(kSelectedFill), corner);
         c.strokeRect(w.rect, color, 1.0f, corner, true);
-        c.text(w.rect, kNodeNames[w.a], 10.5f, selected ? kText : color, Align::Center, true);
+        c.text(w.rect, kNodeNames[w.a], kTextLabel, selected ? kText : color, Align::Center, true);
         break;
     }
     case Kind::Choice:
@@ -5533,12 +5682,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Operators', filters', sources' and effects' on switches show the power symbol rather than a word.
         const bool power = isPowerParam(w.param) || isSourcePower(w.param) || field == FxParam::Enabled;
         const std::string count = std::to_string(w.b); // the partial editor's resolution
-        const bool splitSlope = splitOf(w.param) >= 0; // a split's slope, in dB
-        const std::string slope = std::to_string(slopeDb(w.b)) + " dB";
         const bool modeChoice = routeModeFrom(w.param) >= 0; // an operator's INPUTS row's, as glyphs
         const char *text = power || modeChoice ? ""
                            : isPartialCount(w.param) ? count.c_str()
-                           : splitSlope                ? slope.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
@@ -5557,7 +5703,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             color = kShaperColor;
         if (modeChoice)
             color = routeColor(routeModeFrom(w.param), routeModeTo(w.param));
-        paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, 5.0f);
+        paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, kRadiusControl);
         if (field == FxParam::FilterType) // the filter types show as icons, named in their tooltips
             filterIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 5.0f, 20.0f, w.rect.h - 10.0f},
                        static_cast<FilterType>(w.b), on ? color : kDim);
@@ -5582,7 +5728,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's
             polarityIcon(c, w.rect.center(), false, on ? color : (hovered ? kText : kDim));
         else
-            c.text(w.rect, text, 10.5f, on ? kText : kDim, Align::Center, on);
+            c.text(w.rect, text, kTextLabel, on ? kText : kDim, Align::Center, on);
         break;
     }
     case Kind::ViewTab: {
@@ -5608,7 +5754,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             const std::vector<Point> outline = viewTabOutline({w.rect.x, w.rect.y, w.rect.w, w.rect.h - 0.5f}, 0.0f);
             c.fillPolygon(outline.data(), outline.size(), kPanel.alpha(0.6f));
         }
-        c.text(w.rect, tr(kViewNames[w.a]), 11.0f, selected || hovered ? kText : kDim, Align::Center, true);
+        c.text(w.rect, tr(kViewNames[w.a]), kTextBody, selected || hovered ? kText : kDim, Align::Center, true);
         break;
     }
     case Kind::OpTab: {
@@ -5619,7 +5765,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
                              Str::TabInputs};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
-        c.text(w.rect, tr(names[w.a]), 10.5f, selected || hovered ? kText : kDim, Align::Center, true);
+        c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
         if (selected)
             c.line({w.rect.x + 4.0f, w.rect.bottom() - 1.0f}, {w.rect.right() - 4.0f, w.rect.bottom() - 1.0f},
                    kAccent, 2.0f);
@@ -5629,10 +5775,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::ScopeCycles: {
         const bool selected = controller_.layout().scopeCycles == w.b;
-        c.fillRect(w.rect, selected ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), 4.0f);
+        c.fillRect(w.rect, selected ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusMark);
         if (selected)
-            c.strokeRect(w.rect, kAccent, 1.0f, 4.0f);
-        c.text(w.rect, std::to_string(w.b), 10.5f, selected ? kText : (hovered ? kText : kDim), Align::Center,
+            c.strokeRect(w.rect, kAccent, 1.0f, kRadiusMark);
+        c.text(w.rect, std::to_string(w.b), kTextLabel, selected ? kText : (hovered ? kText : kDim), Align::Center,
                selected);
         break;
     }
@@ -5641,9 +5787,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool enabled = nodeOn(w.a);
         const Color color = nodeColor(w.a);
         c.fillRect(w.rect, selected ? color.alpha(enabled ? 1.0f : 0.35f) : (hovered ? kTrack : kRaised.alpha(enabled ? 1.0f : 0.4f)),
-                   6.0f);
+                   kRadiusControl);
         // An enabled node's name takes a little of its color.
-        c.text(w.rect, kNodeNames[w.a], 11.0f, selected ? kBackground : (enabled ? mix(kDim, color, 0.3f) : kFaint),
+        c.text(w.rect, kNodeNames[w.a], kTextBody, selected ? kBackground : (enabled ? mix(kDim, color, 0.3f) : kFaint),
                Align::Center, true);
         if (soundsOut(w.a))
             c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, selected ? kBackground : color);
@@ -5651,7 +5797,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveButton: {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
-        paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kAccent, 6.0f);
+        paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kAccent, kRadiusControl);
         const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
         c.polyline(points.data(), points.size(), selected ? kAccent : kDim, 1.5f);
         break;
@@ -5659,7 +5805,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::TypeButton: {
         const bool selected = std::lround(value(paramIndex(w.a, FilterParam::Type))) == w.b;
         paintButtonFace(c, w, selected ? kFilterColor.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kFilterColor,
-                        6.0f);
+                        kRadiusControl);
         filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? kFilterColor : kDim);
         break;
     }
@@ -5669,7 +5815,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Color color = nodeColor(w.a);
         const Rect node = w.rect.inset(kEdgeOut);
         if (isBoxNode(w.a)) {
-            const float radius = isShaperNode(w.a) ? 3.0f : 8.0f;
+            const float radius = isShaperNode(w.a) ? kRadiusMark : kRadiusControl;
             c.strokeRect(node.inset(-2.0f), color.alpha(0.35f), 5.0f, radius + 2.0f);
             c.strokeRect(node, color, 2.5f, radius);
         } else {
@@ -5697,10 +5843,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // As a pill, it draws all of it, its parts' lines and its own lit part; its parts draw what is on them.
         const bool pill = w.group.w > 0.0f;
         const Rect body = pill ? w.group : w.rect;
-        c.fillRect(body, kRaised, 9.0f);
+        c.fillRect(body, kRaised, body.h * 0.5f);
         if (pill && focused)
             c.fillRect(w.rect, kText.alpha(0.06f));
-        c.strokeRect(body, focused || pill ? kText : tint, 1.0f, 9.0f);
+        c.strokeRect(body, focused || pill ? kText : tint, 1.0f, body.h * 0.5f);
         if (pill) {
             if (w.group.x < w.rect.x)
                 c.line({w.rect.x, w.rect.y + 3.0f}, {w.rect.x, w.rect.bottom() - 3.0f}, kTrack, 1.0f);
@@ -5721,7 +5867,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             routeModeIcon(c, {w.rect.x + 13.0f, w.rect.center().y}, mode, routeColor(w.a, w.b), 0.85f);
             textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 18.0f, w.rect.h}; // where it sits when open
         }
-        c.text(textRect, text, 10.5f, focused ? kText : kDim);
+        c.text(textRect, text, kTextLabel, focused ? kText : kDim);
         paintModRange(c, {w.rect.x + 7.0f, w.graph ? w.rect.y - 4.5f : w.rect.y + 2.5f, w.rect.w - 14.0f, 1.5f},
                       w.param); // the handles go below
         break;
@@ -5732,7 +5878,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Color tint = routeColor(w.a, w.b);
         if (hovered || open) {
             c.pushClip(w.rect);
-            c.fillRect(w.group.inset(1.0f), tint.alpha(open ? 0.3f : 0.2f), 8.0f);
+            c.fillRect(w.group.inset(1.0f), tint.alpha(open ? 0.3f : 0.2f), kRadiusCard);
             c.popClip();
         }
         const Point m{w.rect.x + 11.0f, w.rect.center().y};
@@ -5746,7 +5892,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::LabelRemove: {
         if (hovered) {
             c.pushClip(w.rect);
-            c.fillRect(w.group.inset(1.0f), kText.alpha(0.1f), 8.0f);
+            c.fillRect(w.group.inset(1.0f), kText.alpha(0.1f), kRadiusCard);
             c.popClip();
         }
         const Point m = w.rect.center();
@@ -5765,15 +5911,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // The row and column of a node that is off are greyed out; their routes keep their amounts.
         const bool off = !nodeOn(w.a) || (!out && !nodeOn(w.b));
         const float dim = off ? 0.35f : 1.0f;
-        c.fillRect(w.rect, (amount > 0.0 ? fill : kRaised).alpha(dim), 5.0f);
+        c.fillRect(w.rect, (amount > 0.0 ? fill : kRaised).alpha(dim), kRadiusControl);
         if (w.a == w.b)
-            c.strokeRect(w.rect, nodeColor(w.a).alpha(0.35f * dim), 1.0f, 5.0f); // feedback diagonal
+            c.strokeRect(w.rect, nodeColor(w.a).alpha(0.35f * dim), 1.0f, kRadiusControl); // feedback diagonal
         if (hovered || active)
-            c.strokeRect(w.rect, kText, 1.5f, 5.0f);
+            c.strokeRect(w.rect, kText, 1.5f, kRadiusControl);
         char text[8];
         std::snprintf(text, sizeof(text), "%.0f", amount * 100.0);
         const bool shown = amount > 0.0 || wired(w.param); // a route kept at 0 % shows its 0, dimmed
-        c.text(w.rect, shown ? text : "\xC2\xB7", 12.0f,
+        c.text(w.rect, shown ? text : "\xC2\xB7", kTextValue,
                off ? kFaint : (amount > 0.0 ? kText : (shown ? kDim : kFaint)), Align::Center, amount > 0.0 && !off);
         // A route that isn't Phase shows its mode's glyph in its top left corner.
         if (const int mode = out ? -1 : routeModeParam(w.a, w.b); mode >= 0 && shown) {
@@ -5785,18 +5931,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintModRange(c, {w.rect.x + 4.0f, w.rect.bottom() - 5.0f, w.rect.w - 8.0f, 1.5f}, w.param);
         break;
     }
-    case Kind::SourceAdd: {
-        // Like ADD EFFECT, without its chevron: these add at once. The plus and the name are centered together.
-        c.fillRect(w.rect, hovered ? kSourceAddColor.alpha(0.18f) : kRaised, 5.0f);
-        c.strokeRect(w.rect, kSourceAddColor.alpha(hovered ? 0.9f : 0.45f), 1.0f, 5.0f);
-        const Str names[] = {Str::ButtonLfo, Str::ButtonLfo, Str::ButtonEnv, Str::ButtonRandom, Str::ButtonMidi};
-        static_assert(std::size(names) == static_cast<size_t>(SourceType::Count));
-        const char *name = tr(names[std::clamp(w.a, 0, static_cast<int>(SourceType::Count) - 1)]);
-        const float width = c.textWidth(name, 10.5f, true);
-        const float x = std::round(w.rect.center().x - (kAddPlusW + width) * 0.5f);
-        const Color ink = hovered ? kText : kDim;
-        paintAddPlus(c, {x, w.rect.center().y}, ink);
-        c.text({x + kAddPlusW, w.rect.y - kAddNameLift, width + 2.0f, w.rect.h}, name, 10.5f, ink, Align::Left, true);
+    case Kind::SourceMenuButton: { // and how many places are taken after it, as the effects' beside + EFFECT
+        const bool full = !sourceShadow();
+        paintMenuButton(c, w.rect, tr(Str::ButtonSource), hovered, sourceMenuOpen_ && sourceMenuAt_.x < 0.0f, full);
+        c.text({w.rect.right() + 10.0f, w.rect.y, 44.0f, w.rect.h},
+               std::to_string(sources().size()) + "/" + std::to_string(kMaxSources), kTextBody, full ? kText : kDim,
+               Align::Left, full);
         break;
     }
     case Kind::Scrollbar: {
@@ -5805,9 +5945,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto area = static_cast<ScrollArea>(w.a);
         const float thin = hovered || active ? 0.0f : 1.0f;
         const Rect track = w.rect.inset(4.0f), thumb = scrollThumb(area);
-        c.fillRect({track.x, track.y + thin, track.w, track.h - 2.0f * thin}, kRaised, 3.0f - thin);
+        c.fillRect({track.x, track.y + thin, track.w, track.h - 2.0f * thin}, kRaised, kRadiusMark - thin);
         c.fillRect({thumb.x, thumb.y + thin, thumb.w, thumb.h - 2.0f * thin}, hovered || active ? kDim : kFaint,
-                   3.0f - thin);
+                   kRadiusMark - thin);
         break;
     }
     case Kind::SourceGrip:
@@ -5833,7 +5973,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Point shut[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.5f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
         c.polyline(collapsed ? shut : open, 3, hovered ? kText : kDim, 1.5f);
         c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h},
-               tr(sources ? Str::HeadingModulation : Str::HeadingKeyboard), 11.0f, hovered ? kText : kDim, Align::Left,
+               tr(sources ? Str::HeadingModulation : Str::HeadingKeyboard), kTextBody, hovered ? kText : kDim, Align::Left,
                true);
         break;
     }
@@ -5855,8 +5995,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const float cy = w.rect.center().y;
         const float mid = w.rect.center().x;
         const float x = mid + static_cast<float>(amount) * w.rect.w * 0.5f;
-        c.fillRect({w.rect.x, cy - 2.0f, w.rect.w, 4.0f}, kTrack, 2.0f);
-        c.fillRect({std::min(mid, x), cy - 2.0f, std::abs(x - mid), 4.0f}, color, 2.0f);
+        c.fillRect({w.rect.x, cy - 2.0f, w.rect.w, 4.0f}, kTrack, kRadiusMark);
+        c.fillRect({std::min(mid, x), cy - 2.0f, std::abs(x - mid), 4.0f}, color, kRadiusMark);
         c.line({mid, cy - 4.0f}, {mid, cy + 4.0f}, kFaint, 1.0f);
         c.fillCircle({x, cy}, hovered || active ? 5.0f : 4.0f, color);
         // Where the modulation takes its target now, on the bar's scale: a tick that swings with its source.
@@ -5869,7 +6009,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintModRange(c, {w.rect.x, cy + 6.0f, w.rect.w, 1.5f}, w.param);
         char text[16];
         std::snprintf(text, sizeof(text), "%+.0f%%", amount * 100.0);
-        c.text({w.rect.right() + 2.0f, w.rect.y, 38.0f, w.rect.h}, text, 10.5f, kDim, Align::Right);
+        c.text({w.rect.right() + 2.0f, w.rect.y, 38.0f, w.rect.h}, text, kTextLabel, kDim, Align::Right);
         break;
     }
     case Kind::SlotRemove: {
@@ -5883,20 +6023,20 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // How many modulations the source has, and MODS with a chevron at the right; with none, an invitation to add
         // one there.
         const size_t count = usedSlots(w.a).size();
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, 6.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, kRadiusControl);
         const Point m{w.rect.right() - 12.0f, w.rect.center().y};
         const Point chevron[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.0f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
         c.polyline(chevron, 3, hovered ? kText : kDim, 1.4f);
         if (count == 0) {
-            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardNoModulations), 11.0f,
+            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 30.0f, w.rect.h}, tr(Str::CardNoModulations), kTextBody,
                    hovered ? kText : kDim, Align::Left);
             break;
         }
         c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 80.0f, w.rect.h},
-               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), 11.0f, kText,
+               count == 1 ? tr(Str::ModsCountOne) : trf(Str::ModsCount, {std::to_string(count)}), kTextBody, kText,
                Align::Left);
-        c.text({w.rect.right() - 80.0f, w.rect.y, 58.0f, w.rect.h}, tr(Str::ViewMods), 10.5f, hovered ? kText : kDim,
+        c.text({w.rect.right() - 80.0f, w.rect.y, 58.0f, w.rect.h}, tr(Str::ViewMods), kTextLabel, hovered ? kText : kDim,
                Align::Right, true);
         break;
     }
@@ -5907,7 +6047,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(w.a, OpParam::Wave))));
         const bool selected = isMoreWave(wave);
         const bool lit = hovered || waveMenu_ == w.a;
-        paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (lit ? kTrack : kRaised), selected, kAccent, 6.0f);
+        paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (lit ? kTrack : kRaised), selected, kAccent, kRadiusControl);
         if (selected) {
             const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
@@ -5923,35 +6063,34 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, 7.0f);
-            c.strokeRect(w.rect, kBorder, 1.0f, 7.0f);
+            c.fillRect(w.rect, kRaised, kRadiusCard);
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
         }
         break;
     case Kind::WaveMenuItem: {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
-        if (hovered || selected)
-            c.fillRect(w.rect, kAccent.alpha(hovered ? 0.18f : 0.1f), 5.0f);
+        paintMenuRow(c, w.rect, hovered, selected);
         const Rect icon{w.rect.x + 8.0f, w.rect.y + 7.0f, 22.0f, w.rect.h - 14.0f};
         const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), icon);
         c.polyline(points.data(), points.size(), selected ? kAccent : kDim, 1.5f);
         c.text({icon.right() + 10.0f, w.rect.y, w.rect.right() - icon.right() - 14.0f, w.rect.h},
-               waveName(static_cast<OpWave>(w.b)), 11.0f, hovered || selected ? kText : kDim, Align::Left, selected);
+               waveName(static_cast<OpWave>(w.b)), kTextBody, hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
     case Kind::ShapeReset:
     case Kind::PartialReset:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         resetIcon(c, w.rect.center(), hovered ? kText : kDim);
         break;
     case Kind::ShapeGrid: {
         const UiLayout &layout = controller_.layout();
         if (w.b == 0) { // the count
-            c.text(w.rect, std::to_string(w.a == 0 ? layout.shapeGridX : layout.shapeGridY), 11.0f,
+            c.text(w.rect, std::to_string(w.a == 0 ? layout.shapeGridX : layout.shapeGridY), kTextBody,
                    hovered ? kText : kDim, Align::Center, true);
             break;
         }
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 5.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;
         c.line({m.x - 3.5f, m.y}, {m.x + 3.5f, m.y}, color, 1.5f);
@@ -5962,8 +6101,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::UndoButton: {
         const bool redo = w.a == 1;
         const bool can = (redo ? controller_.nextRedo() : controller_.nextUndo()) != nullptr;
-        c.fillRect(w.rect, hovered && can ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
+        c.fillRect(w.rect, hovered && can ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         // An arrow curving over the top, its head at the left end (undo) or the right (redo), pointing down.
         const Point m{w.rect.center().x, w.rect.center().y + 2.0f};
         const Color color = !can ? kFaint : (hovered ? kText : kDim);
@@ -6002,7 +6141,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             formatParam(resonance, value(resonance), b, sizeof(b));
             std::snprintf(text, sizeof(text), "%s", trf(Str::CaptionResonance, {a, b}).c_str());
             const Rect shown = w.b == 1 ? fxFilterArea(w.a) : kFilterDisplay;
-            c.text({shown.x, shown.y + 2.0f, shown.w - 8.0f, 14.0f}, text, 10.5f, kText, Align::Right);
+            c.text({shown.x, shown.y + 2.0f, shown.w - 8.0f, 14.0f}, text, kTextLabel, kText, Align::Right);
         }
         break;
     }
@@ -6020,7 +6159,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool grabbed = (drag_.kind == DragKind::FxMove && drag_.widget.a == w.a) ||
                              (hover_ && hover_->kind == Kind::FxGrip && hover_->a == w.a && drag_.kind == DragKind::None);
         if (hovered)
-            c.fillRect(w.rect, kTrack, 5.0f);
+            c.fillRect(w.rect, kTrack, kRadiusControl);
         const bool on = value(w.param) >= 0.5;
         fxIcon(c, w.rect.inset(4.0f), type, !on ? kDim : (hovered || grabbed ? kText : fxTypeColor(type)));
         break;
@@ -6032,7 +6171,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool folded = w.kind == Kind::FxFold ? fxFolded(w.a) : sourceFolded(w.a);
         if (folded) {
             if (hovered)
-                c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), 6.0f);
+                c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
             break;
         }
         const Color color = hovered ? kText : kDim;
@@ -6044,7 +6183,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxBoxFold: { // as an effect card's
         if (splitFolded(w.a)) {
             if (hovered)
-                c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), 6.0f);
+                c.fillRect(w.rect.inset(3.0f), kText.alpha(0.06f), kRadiusControl);
             break;
         }
         const Color color = hovered ? kText : kDim;
@@ -6057,58 +6196,72 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::SplitBand: {
         // The band's name on the tabs' line after a dot in its color, the one shown underlined in it, as an operator
-        // page's tabs are in the accent. Beside a band soloed, an S in its color; beside a hidden one, how many effects
-        // it holds.
-        const bool high = w.b == 1;
-        const bool shown = (splitLane(w.a) == 1) == high;
-        const Color band = bandColor(high ? kFxBands - 1 : 0);
-        const char *name = tr(high ? Str::TabBandHigh : Str::TabBandLow);
-        const float width = c.textWidth(name, 10.5f, true);
-        const float x = w.rect.center().x - 0.5f * width + 4.0f, y = w.rect.center().y;
+        // page's tabs are in the accent. A band soloed has an S in its color in its dot's place; a hidden one, how many
+        // effects it holds after its name.
+        const int lane = laneOfTab(w.b);
+        const bool shown = splitLane(w.a) == lane;
+        const Color band = laneColor(lane);
+        const char *name = tr(lane == 1 ? Str::TabBandHigh : lane == 3 ? Str::TabBandMid : Str::TabBandLow);
+        const float width = c.textWidth(name, kTextLabel, true);
+        size_t effects = 0;
+        for (const FxLineItem &item : fxLine())
+            if (item.node == fxSplitNode(w.a))
+                effects = item.band(lane).size();
+        const bool soloed = value(paramIndex(w.a, laneSolo(lane))) >= 0.5;
+        // The dot (an S in a circle while soloed), the name and its count centered together, so three tabs keep to
+        // their own.
+        const bool counted = !shown && effects > 0;
+        const float lead = soloed ? 4.0f : 0.0f; // the S's circle wider than the dot
+        const float x = w.rect.center().x - 0.5f * (width + (counted ? 12.0f : 0.0f) - lead) + 4.0f,
+                    y = w.rect.center().y;
         const float base = w.rect.bottom();
+        // Lit in its band's color while an effect carried over it would land on that band.
+        if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && fxDrag_->item.node < kFxSlots &&
+            w.rect.contains(drag_.now)) {
+            c.fillRect(w.rect, band.alpha(0.18f), kRadiusControl);
+            c.strokeRect(w.rect, band.alpha(0.8f), 1.2f, kRadiusControl);
+        }
         c.line({w.rect.x, base - 0.5f}, {w.rect.right(), base - 0.5f}, mix(kCardColor, kDim, 0.25f), 1.0f);
         if (shown)
             c.line({w.rect.x + 8.0f, base - 1.0f}, {w.rect.right() - 8.0f, base - 1.0f}, band, 2.0f);
-        c.fillCircle({x - 9.0f, y}, 3.0f, band.alpha(shown ? 1.0f : 0.45f));
-        c.text({x, w.rect.y, width + 2.0f, w.rect.h}, name, 10.5f, shown || hovered ? kText : kDim, Align::Left, true);
-        const bool soloed = value(paramIndex(w.a, high ? SumParam::SoloHigh : SumParam::SoloLow)) >= 0.5;
-        const Point badge{x + width + 9.0f, y};
         if (soloed) {
+            const Point badge{x - 11.0f, y};
             c.fillCircle(badge, 6.0f, band);
-            c.text({badge.x - 6.0f, badge.y - 6.5f, 12.0f, 13.0f}, tr(Str::SoloMark), 8.5f, kDisplayColor,
+            c.text({badge.x - 6.0f, badge.y - 6.5f, 12.0f, 13.0f}, tr(Str::SoloMark), kTextSmall, kDisplayColor,
                    Align::Center, true);
-        } else if (!shown) {
-            size_t effects = 0;
-            for (const FxLineItem &item : fxLine())
-                if (item.node == fxSplitNode(w.a))
-                    effects = (high ? item.hi : item.lo).size();
-            if (effects > 0)
-                c.text({badge.x - 8.0f, w.rect.y, 16.0f, w.rect.h}, std::to_string(effects), 9.5f, kDim.alpha(0.8f));
+        } else {
+            c.fillCircle({x - 9.0f, y}, 3.0f, band.alpha(shown ? 1.0f : 0.45f));
         }
+        c.text({x, w.rect.y, width + 2.0f, w.rect.h}, name, kTextLabel, shown || hovered ? kText : kDim, Align::Left, true);
+        if (counted)
+            c.text({x + width + 1.0f, w.rect.y, 16.0f, w.rect.h}, std::to_string(effects), kTextSmall, kDim.alpha(0.8f));
         break;
     }
     case Kind::SplitSolo: { // a plain S, filled in its band's color while soloed
         const bool on = value(w.param) >= 0.5;
-        const Color band = bandColor(w.b == 1 ? kFxBands - 1 : 0);
-        c.fillRect(w.rect, on ? band.alpha(0.22f) : (hovered ? kTrack : kCardColor), 4.0f);
-        c.strokeRect(w.rect, on ? band : mix(kCardColor, kDim, 0.25f), 1.0f, 4.0f);
-        c.text(w.rect, tr(Str::SoloMark), 10.5f, on || hovered ? kText : kDim, Align::Center, true);
+        const Color band = laneColor(w.b);
+        c.fillRect(w.rect, on ? band.alpha(0.22f) : (hovered ? kTrack : kCardColor), kRadiusControl);
+        c.strokeRect(w.rect, on ? band : mix(kCardColor, kDim, 0.25f), 1.0f, kRadiusControl);
+        c.text(w.rect, tr(Str::SoloMark), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
         break;
     }
     case Kind::FxBoxAdd: {
         // As the dashed card after the effects, narrower: a plus, then which band it adds to.
         const Color color = kAccent;
         if (hovered)
-            c.fillRect(w.rect, color.alpha(0.07f), 8.0f);
-        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, 8.0f, true);
+            c.fillRect(w.rect, color.alpha(0.07f), kRadiusCard);
+        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
         const float arm = 9.0f;
         const Point m{w.rect.center().x, w.rect.center().y - 14.0f};
         const Color ink = hovered ? kText : kFaint.alpha(0.8f);
         c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
         c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
-        c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, tr(Str::ButtonAddToBand), 10.0f, ink, Align::Center);
-        c.text({w.rect.x, m.y + arm + 20.0f, w.rect.w, 14.0f}, tr(w.a == 1 ? Str::TabBandHigh : Str::TabBandLow), 10.0f,
-               ink, Align::Center, true);
+        // In capitals, as ADD EFFECT and ADD SOURCE are.
+        c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, upperCase(tr(Str::ButtonAddToBand)), kTextLabel, ink,
+               Align::Center, true);
+        c.text({w.rect.x, m.y + arm + 20.0f, w.rect.w, 14.0f},
+               upperCase(tr(w.a == 1 ? Str::TabBandHigh : w.a == 3 ? Str::TabBandMid : Str::TabBandLow)),
+               kTextLabel, ink, Align::Center, true);
         break;
     }
     case Kind::MacroName: // the knob draws the name; hovered, a line under it says it can be changed
@@ -6116,44 +6269,33 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.line({w.rect.x + 14.0f, w.rect.bottom() - 1.0f}, {w.rect.right() - 14.0f, w.rect.bottom() - 1.0f},
                    kFaint, 1.0f, true);
         break;
-    case Kind::FxMenuButton: {
-        // A button with a chevron, in the theme's accent; full, it is dimmed.
-        const bool full = fxChain().size() >= static_cast<size_t>(kFxSlots);
-        const bool lit = (hovered || (fxMenuOpen_ && fxMenuAt_.x < 0.0f)) && !full; // its list, not the dashed card's
-        c.fillRect(w.rect, lit ? kAccent.alpha(0.18f) : kRaised, 5.0f);
-        c.strokeRect(w.rect, kAccent.alpha(full ? 0.15f : (lit ? 0.9f : 0.45f)), 1.0f, 5.0f);
-        paintAddPlus(c, {w.rect.x + 10.0f, w.rect.center().y}, full ? kFaint : (lit ? kText : kDim));
-        c.text({w.rect.x + 10.0f + kAddPlusW, w.rect.y - kAddNameLift, w.rect.w - 30.0f - kAddPlusW, w.rect.h},
-               tr(Str::ButtonEffect),
-               10.5f, full ? kFaint : (lit ? kText : kDim), Align::Left, true);
-        const Point m{w.rect.right() - 13.0f, w.rect.center().y};
-        const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-        c.polyline(chevron, 3, full ? kFaint : (lit ? kText : kDim), 1.5f);
+    case Kind::FxMenuButton: // its list, not the dashed card's
+        paintMenuButton(c, w.rect, tr(Str::ButtonEffect), hovered, fxMenuOpen_ && fxMenuAt_.x < 0.0f,
+                        fxChain().size() >= static_cast<size_t>(kFxSlots));
         break;
-    }
     case Kind::FxShadow:
     case Kind::SourceShadow: {
         // A dashed outline with a plus in it and what it adds under that, faint at rest so it stays behind the cards,
-        // lit while hovered (an effect's in the theme's accent, like ADD EFFECT).
+        // lit while hovered in the theme's accent, like + EFFECT and + SOURCE.
         const bool fx = w.kind == Kind::FxShadow;
-        const Color color = fx ? kAccent : kSourceAddColor;
+        const Color color = kAccent;
         if (hovered)
-            c.fillRect(w.rect, color.alpha(0.07f), 8.0f);
-        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, 8.0f, true);
+            c.fillRect(w.rect, color.alpha(0.07f), kRadiusCard);
+        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
         const float arm = 12.0f;
         const Point m{w.rect.center().x, w.rect.center().y - arm};
         const Color ink = hovered ? kText : kFaint.alpha(0.8f);
         c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
         c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
         const char *what = tr(fx ? Str::ButtonAddEffect : Str::ButtonAddSource);
-        c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 16.0f}, what, 10.5f, ink, Align::Center, true);
+        c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 16.0f}, what, kTextLabel, ink, Align::Center, true);
         break;
     }
     case Kind::FxInsert: // drawn with the arrows between the cards
         break;
     case Kind::FxMode: {
         const bool on = fxGraph() == (w.b == 1);
-        paintButtonFace(c, w, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, kAccent, 5.0f);
+        paintButtonFace(c, w, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, kAccent, kRadiusControl);
         fxModeIcon(c, w.rect.center(), w.b == 1, on ? kAccent : (hovered ? kText : kDim));
         break;
     }
@@ -6167,7 +6309,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::FxClear: { // a bin, faint while there is nothing to remove
         const bool any = fxAnyToClear();
-        paintButtonFace(c, w, hovered && any ? kTrack : kRaised, false, kAccent, 5.0f);
+        paintButtonFace(c, w, hovered && any ? kTrack : kRaised, false, kAccent, kRadiusControl);
         binIcon(c, w.rect.center(), !any ? kFaint : hovered ? kText : kDim);
         break;
     }
@@ -6180,21 +6322,20 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::FxMenu:
         if (w.a == 1) { // the list's panel
-            c.fillRect(w.rect, kRaised, 7.0f);
-            c.strokeRect(w.rect, kBorder, 1.0f, 7.0f);
+            c.fillRect(w.rect, kRaised, kRadiusCard);
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
         }
         break;
     case Kind::SourceMenu:
         if (w.a == 1) { // the list's panel
-            c.fillRect(w.rect, kRaised, 7.0f);
-            c.strokeRect(w.rect, kBorder, 1.0f, 7.0f);
+            c.fillRect(w.rect, kRaised, kRadiusCard);
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
         }
         break;
     case Kind::SourceMenuItem: {
         // A small picture of what the type puts out, then its name.
         const auto type = static_cast<SourceType>(w.a);
-        if (hovered)
-            c.fillRect(w.rect, kSourceAddColor.alpha(0.18f), 5.0f);
+        paintMenuRow(c, w.rect, hovered, false);
         const Color ink = hovered ? kText : kDim;
         const Rect icon{w.rect.x + 9.0f, w.rect.y + 6.0f, 18.0f, 12.0f};
         const float l = icon.x, r = icon.right(), t = icon.y, b = icon.bottom();
@@ -6210,30 +6351,31 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.polyline(steps, 8, ink, 1.4f);
         } else { // a fader
             c.line({l + 2.0f, (t + b) * 0.5f}, {r - 2.0f, (t + b) * 0.5f}, ink, 1.4f);
-            c.fillRect({l + 9.0f, t + 1.0f, 4.0f, b - t - 2.0f}, ink, 1.0f);
+            c.fillRect({l + 9.0f, t + 1.0f, 4.0f, b - t - 2.0f}, ink, kRadiusMark);
         }
-        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, sourceTypeName(type), 11.0f, ink,
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, sourceTypeName(type), kTextBody, ink,
                Align::Left);
         break;
     }
     case Kind::FxAdd:
-        if (hovered)
-            c.fillRect(w.rect, fxTypeColor(static_cast<FxType>(w.a)).alpha(0.18f), 5.0f);
+        paintMenuRow(c, w.rect, hovered, false);
         fxIcon(c, {w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f}, static_cast<FxType>(w.a),
                hovered ? fxTypeColor(static_cast<FxType>(w.a)) : kDim);
-        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, fxName(static_cast<FxType>(w.a)), 11.0f,
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, fxName(static_cast<FxType>(w.a)), kTextBody,
                hovered ? kText : kDim, Align::Left);
         break;
-    case Kind::FxAddNode: { // apart from the effects by a line: a split, with its join
+    case Kind::FxAddNode: { // apart from the effects by a line: a split in two bands or three, with its join
         const Color color = splitColor();
-        const float line = w.rect.y - 0.5f * kFxMenuNodeGap - 1.0f;
-        c.line({w.rect.x + 4.0f, line}, {w.rect.right() - 4.0f, line}, kBorder, 1.0f);
-        if (hovered)
-            c.fillRect(w.rect, color.alpha(0.18f), 5.0f);
+        const bool three = w.b == 3;
+        if (!three) {
+            const float line = w.rect.y - 0.5f * kFxMenuNodeGap - 1.0f;
+            c.line({w.rect.x + 4.0f, line}, {w.rect.right() - 4.0f, line}, kBorder, 1.0f);
+        }
+        paintMenuRow(c, w.rect, hovered, false);
         const Rect icon{w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f};
-        splitIcon(c, icon, hovered ? color : kDim);
-        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, tr(Str::MenuSplitBands), 11.0f,
-               hovered ? kText : kDim, Align::Left);
+        splitIcon(c, icon, hovered ? color : kDim, three ? 3 : 2);
+        c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, tr(three ? Str::MenuSplitThree : Str::MenuSplitBands),
+               kTextBody, hovered ? kText : kDim, Align::Left);
         break;
     }
     case Kind::FxRemove:
@@ -6255,7 +6397,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeCircle(center, 10.5f, color.alpha(0.45f), 3.0f);
         c.fillCircle(center, focused ? 7.5f : 6.5f, focused ? color : kPanel);
         c.strokeCircle(center, focused ? 7.5f : 6.5f, color, on ? 1.8f : 1.2f);
-        c.text({center.x - 8.0f, center.y - 7.0f, 16.0f, 14.0f}, std::to_string(w.b + 1), 10.5f,
+        c.text({center.x - 8.0f, center.y - 7.0f, 16.0f, 14.0f}, std::to_string(w.b + 1), kTextLabel,
                focused ? kBackground : (on ? kText : kFaint), Align::Center, true);
         if (focused) {
             char freq[32], gain[32], q[32], text[112];
@@ -6267,7 +6409,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             else
                 std::snprintf(text, sizeof(text), "%s  \xC2\xB7  %s  \xC2\xB7  %s", freq, gain, q);
             const Rect area = peqArea(w.a);
-            c.text({area.x, area.y - 6.0f, area.w, 14.0f}, text, 10.5f, kText, Align::Center);
+            c.text({area.x, area.y - 6.0f, area.w, 14.0f}, text, kTextLabel, kText, Align::Center);
         }
         break;
     }
@@ -6289,8 +6431,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             !isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
         const bool lit = relevant && (hovered || listMenu_ == w.param);
         const Color color = listColor(w.param);
-        c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, 5.0f);
-        c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, 5.0f);
+        c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, kRadiusControl);
         const Color text = !relevant ? kFaint : lit ? kText : kDim;
         // An LFO's shape shows its icon before its name.
         const float indent = isLfoShape(w.param) ? 24.0f : 0.0f;
@@ -6298,7 +6440,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             lfoShapeIcon(c, {w.rect.x + 10.0f, w.rect.center().y - 5.0f, 16.0f, 10.0f}, static_cast<LfoShape>(shown),
                          color);
         c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 30.0f - indent, w.rect.h}, listItemName(w.param, shown),
-               11.0f, text, Align::Left, true);
+               kTextBody, text, Align::Left, true);
         const Point m{w.rect.right() - 13.0f, w.rect.center().y};
         const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
         c.polyline(chevron, 3, text, 1.5f);
@@ -6306,8 +6448,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::ListMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, 7.0f);
-            c.strokeRect(w.rect, kBorder, 1.0f, 7.0f);
+            c.fillRect(w.rect, kRaised, kRadiusCard);
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
         }
         break;
     case Kind::PeqBand: {
@@ -6319,13 +6461,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                  (hover_->kind == Kind::PeqBand || hover_->kind == Kind::PeqBandOn ||
                                   hover_->kind == Kind::PeqTypeButton);
         const Color color = kSourceColors[w.b];
-        c.fillRect(w.rect, picked ? kTrack : (chipHovered ? kRaised : kCardColor), 5.0f);
-        c.strokeRect(w.rect, picked ? color.alpha(on ? 0.9f : 0.5f) : kBorder, 1.0f, 5.0f);
+        c.fillRect(w.rect, picked ? kTrack : (chipHovered ? kRaised : kCardColor), kRadiusControl);
+        c.strokeRect(w.rect, picked ? color.alpha(on ? 0.9f : 0.5f) : kBorder, 1.0f, kRadiusControl);
         // The number midway between the power symbol's edge (its ring 5 px about its middle, and its stroke) and the
         // line, raised 1.5 px so its middle meets the symbol's (whose stroke reaches above its ring).
         const Rect power = peqChipPower(w.rect), shape = peqChipShape(w.rect);
         const float left = power.center().x + 6.0f;
-        c.text({left, w.rect.y - 1.5f, shape.x - left, w.rect.h}, std::to_string(w.b + 1), 14.0f,
+        c.text({left, w.rect.y - 1.5f, shape.x - left, w.rect.h}, std::to_string(w.b + 1), kTextHeading,
                !on ? kFaint : picked ? kText : color, Align::Center, true);
         c.line({shape.x, w.rect.y + 6.0f}, {shape.x, w.rect.bottom() - 6.0f}, kBorder, 1.0f);
         break;
@@ -6340,25 +6482,24 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool lit = hovered || peqMenu_ == w.param;
         const bool on = value(peqOnIndex(w.a, w.b)) >= 0.5;
         if (lit)
-            c.fillRect(w.rect.inset(3.0f), kSourceColors[w.b].alpha(0.18f), 4.0f);
+            c.fillRect(w.rect.inset(3.0f), kSourceColors[w.b].alpha(0.18f), kRadiusMark);
         peqIcon(c, {w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 14.0f, w.rect.h - 14.0f}, peqType(value(w.param)),
                 on ? kSourceColors[w.b] : (lit ? kText : kFaint));
         break;
     }
     case Kind::PeqTypeMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, 7.0f);
-            c.strokeRect(w.rect, kBorder, 1.0f, 7.0f);
+            c.fillRect(w.rect, kRaised, kRadiusCard);
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
         }
         break;
     case Kind::PeqTypeItem: {
         const bool selected = peqType(value(w.param)) == static_cast<PeqType>(w.b);
-        if (hovered || selected)
-            c.fillRect(w.rect, fxColor(fxSlotOf(w.param)).alpha(hovered ? 0.18f : 0.1f), 5.0f);
+        paintMenuRow(c, w.rect, hovered, selected);
         const int band = peqBandOfType(w.param);
         peqIcon(c, {w.rect.x + 8.0f, w.rect.y + 5.0f, 22.0f, w.rect.h - 10.0f}, static_cast<PeqType>(w.b),
                 selected ? kSourceColors[band] : kDim);
-        c.text({w.rect.x + 38.0f, w.rect.y, w.rect.w - 44.0f, w.rect.h}, peqTypeName(static_cast<PeqType>(w.b)), 11.0f,
+        c.text({w.rect.x + 38.0f, w.rect.y, w.rect.w - 44.0f, w.rect.h}, peqTypeName(static_cast<PeqType>(w.b)), kTextBody,
                hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
@@ -6366,8 +6507,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A band-pass's or notch's list shows the 6 and 18 dB slopes it doesn't come in faintly, and can't pick them.
         const bool fits = listItemFits(w.param, w.b);
         const bool selected = listShown(w.param) == w.b;
-        if ((hovered && fits) || selected)
-            c.fillRect(w.rect, listColor(w.param).alpha(hovered && fits ? 0.18f : 0.1f), 5.0f);
+        paintMenuRow(c, w.rect, hovered && fits, selected);
         const bool modeChoice = routeModeFrom(w.param) >= 0;
         const float indent = isLfoShape(w.param) || modeChoice ? 24.0f : 0.0f;
         if (isLfoShape(w.param))
@@ -6377,7 +6517,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             routeModeIcon(c, {w.rect.x + 16.0f, w.rect.center().y}, static_cast<RouteMode>(w.b),
                           selected ? listColor(w.param) : kDim);
         c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h}, listItemName(w.param, w.b),
-               11.0f, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
+               kTextBody, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
         break;
     }
     case Kind::ShapePoint: { // compact: smaller, in a shaper's card
@@ -6404,15 +6544,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::PartialArea:
         break; // drawn with its editor
     case Kind::ShapeDone:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         doneIcon(c, w.rect.center(), kText);
         break;
     case Kind::ShapeCollapse:
     case Kind::ShapeExpand:
     case Kind::ShapeWiden:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         if (w.kind == Kind::ShapeCollapse)
             collapseIcon(c, w.rect.center(), hovered ? kText : kDim);
         else
@@ -6420,7 +6560,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::ShapeTool: { // Paste faint while nothing is copied
         const bool can = w.b != static_cast<int>(ShapeTool::Paste) || shapeCopied();
-        c.fillRect(w.rect, hovered && can ? kTrack : kRaised, 5.0f);
+        c.fillRect(w.rect, hovered && can ? kTrack : kRaised, kRadiusControl);
         shapeToolIcon(c, w.rect.center(), w.b, !can ? kFaint : hovered ? kText : kDim);
         break;
     }
@@ -6428,11 +6568,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const UiLayout &layout = controller_.layout();
         const bool on = w.b == 2 ? layout.shapeSnap : layout.shapeSteps == (w.b == 1);
         const Color color = shapeColor(w.a);
-        paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, 5.0f);
+        paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, kRadiusControl);
         const Color ink = on ? kText : (hovered ? kText : kDim);
         const Str names[] = {Str::SwitchPoints, Str::SwitchSteps, Str::SwitchSnap};
         const char *name = tr(names[w.b]);
-        const float textW = c.textWidth(name, 10.5f, on);
+        const float textW = c.textWidth(name, kTextLabel, on);
         const float left = w.rect.center().x - (16.0f + textW) * 0.5f;
         const Point icon{left + 6.0f, w.rect.center().y};
         if (w.b == 0)
@@ -6441,7 +6581,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             stepsIcon(c, icon, on ? color : ink);
         else
             gridIcon(c, icon, on ? color : ink);
-        c.text({left + 16.0f, w.rect.y, textW + 2.0f, w.rect.h}, name, 10.5f, ink, Align::Left, on);
+        c.text({left + 16.0f, w.rect.y, textW + 2.0f, w.rect.h}, name, kTextLabel, ink, Align::Left, on);
         break;
     }
     case Kind::Key:
@@ -6454,8 +6594,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::PresetButton: {
         // Save and Save As greyed out while they have nothing to save.
         const bool off = !presetActionOn(static_cast<PresetAction>(w.a));
-        c.fillRect(w.rect, hovered && !off ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
+        c.fillRect(w.rect, hovered && !off ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         const Point m = w.rect.center();
         const Color color = off ? kFaint : hovered ? kText : kDim;
         switch (static_cast<PresetAction>(w.a)) {
@@ -6496,8 +6636,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::Octave: {
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 3.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 3.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusMark);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusMark);
         // A minus or a plus, drawn: a glyph this small sits off center.
         const Point m = w.rect.center();
         c.line({m.x - 3.0f, m.y}, {m.x + 3.0f, m.y}, kText, 1.2f);
@@ -6507,8 +6647,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::SettingsButton: {
         const bool open = settingsOpen_;
-        c.fillRect(w.rect, hovered || open ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
+        c.fillRect(w.rect, hovered || open ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         // A cog: eight teeth around a ring.
         const Point center = w.rect.center();
         const Color color = hovered || open ? kText : kDim;
@@ -6541,10 +6681,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
         const Color accent = faint ? kDim : kAccent;
         if (w.group.w > 0.0f) // in its row's pill
-            paintButtonFace(c, w, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, accent, 5.0f);
+            paintButtonFace(c, w, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, accent, kRadiusControl);
         else {
-            c.fillRect(w.rect, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), 5.0f);
-            c.strokeRect(w.rect, on ? accent : kBorder, 1.0f, 5.0f);
+            c.fillRect(w.rect, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
+            c.strokeRect(w.rect, on ? accent : kBorder, 1.0f, kRadiusControl);
         }
         char factor[16];
         std::snprintf(factor, sizeof(factor), "%dx", w.b);
@@ -6555,7 +6695,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                   : w.kind == Kind::SettingsMpe     ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
                                   : w.kind == Kind::SettingsHandles ? std::string(tr(kHandleSizes[w.b]))
                                                                     : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
-        c.text(w.rect, label, 11.0f, on && !faint ? kText : kDim, Align::Center, on);
+        c.text(w.rect, label, kTextBody, on && !faint ? kText : kDim, Align::Center, on);
         break;
     }
     case Kind::SettingsGlow:
@@ -6563,8 +6703,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A track filled up to the amount, and a knob to drag along it.
         const float amount = w.kind == Kind::SettingsLinks ? shownLinks() : shownGlow();
         const float x = w.rect.x + amount * w.rect.w, y = w.rect.center().y;
-        c.fillRect({w.rect.x, y - 2.0f, w.rect.w, 4.0f}, kTrack, 2.0f);
-        c.fillRect({w.rect.x, y - 2.0f, x - w.rect.x, 4.0f}, kAccent, 2.0f);
+        c.fillRect({w.rect.x, y - 2.0f, w.rect.w, 4.0f}, kTrack, kRadiusMark);
+        c.fillRect({w.rect.x, y - 2.0f, x - w.rect.x, 4.0f}, kAccent, kRadiusMark);
         c.fillCircle({x, y}, 7.0f, hovered || active ? kText : kDim);
         c.fillCircle({x, y}, 3.0f, kAccent);
         break;
@@ -6573,9 +6713,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Each theme in its own colors: its panel, its name, and its operator, filter and effect colors.
         const Palette &theme = kThemes[w.b];
         const bool on = themeIndex(controller_.theme()) == w.b;
-        c.fillRect(w.rect, hovered && !on ? theme.raised : theme.panel, 5.0f);
-        c.strokeRect(w.rect, on ? kAccent : (hovered ? kDim : kBorder), on ? 1.5f : 1.0f, 5.0f);
-        c.text({w.rect.x, w.rect.y, w.rect.w, w.rect.h - 4.0f}, tr(theme.label), 10.5f, theme.text, Align::Center, on);
+        c.fillRect(w.rect, hovered && !on ? theme.raised : theme.panel, kRadiusControl);
+        c.strokeRect(w.rect, on ? kAccent : (hovered ? kDim : kBorder), on ? 1.5f : 1.0f, kRadiusControl);
+        c.text({w.rect.x, w.rect.y, w.rect.w, w.rect.h - 4.0f}, tr(theme.label), kTextLabel, theme.text, Align::Center, on);
         const float third = (w.rect.w - 16.0f) / 3.0f;
         const Color stripe[] = {theme.accent, theme.filter, theme.fx};
         for (int i = 0; i < 3; ++i)
@@ -6592,7 +6732,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            modsFilter_.text.empty() ? std::string() : modsFilterCount());
             } else { // a magnifier, to open it
                 if (hovered)
-                    c.fillRect(w.rect, kTrack, 5.0f);
+                    c.fillRect(w.rect, kTrack, kRadiusControl);
                 const Point lens{w.rect.center().x - 1.5f, w.rect.center().y - 1.5f};
                 c.strokeCircle(lens, 4.5f, hovered ? kText : kDim, 1.3f);
                 c.line({lens.x + 3.3f, lens.y + 3.3f}, {lens.x + 7.0f, lens.y + 7.0f}, hovered ? kText : kDim, 1.5f);
@@ -6602,9 +6742,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::PresetNameBox: {
         // The preset's name, a dot while it has changed since it was loaded, and a chevron for the browser.
         const bool lit = hovered || browserOpen_;
-        c.fillRect(w.rect, lit ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text({w.rect.x + 28.0f, w.rect.y, w.rect.w - 56.0f, w.rect.h}, controller_.presetName(), 11.5f, kText,
+        c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        c.text({w.rect.x + 28.0f, w.rect.y, w.rect.w - 56.0f, w.rect.h}, controller_.presetName(), kTextBody, kText,
                Align::Center, true);
         if (controller_.patchEdited())
             c.fillCircle({w.rect.right() - 30.0f, w.rect.center().y}, 2.5f, kAccent);
@@ -6614,8 +6754,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::PresetStep: {
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         const Point m = w.rect.center();
         const float d = w.a < 0 ? 1.5f : -1.5f; // the chevron points the way it steps
         const Point chevron[] = {{m.x + d, m.y - 4.0f}, {m.x - d, m.y}, {m.x + d, m.y + 4.0f}};
@@ -6627,14 +6767,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool current = controller_.presetIndex() == w.a;
         const bool picked = browserPick_ == w.a;
         if (current)
-            c.fillRect(w.rect, kAccent.alpha(0.18f), 5.0f);
+            c.fillRect(w.rect, kAccent.alpha(0.18f), kRadiusControl);
         else if (hovered || picked)
-            c.fillRect(w.rect, kTrack, 5.0f);
+            c.fillRect(w.rect, kTrack, kRadiusControl);
         if (current || picked)
-            c.strokeRect(w.rect, picked ? kText.alpha(0.6f) : kAccent.alpha(0.6f), 1.0f, 5.0f);
+            c.strokeRect(w.rect, picked ? kText.alpha(0.6f) : kAccent.alpha(0.6f), 1.0f, kRadiusControl);
         const std::vector<PresetEntry> &presets = controller_.presets();
         if (w.a < static_cast<int>(presets.size()))
-            c.text({w.rect.x + 14.0f, w.rect.y, w.rect.w - 28.0f, w.rect.h}, presets[w.a].name, 11.5f,
+            c.text({w.rect.x + 14.0f, w.rect.y, w.rect.w - 28.0f, w.rect.h}, presets[w.a].name, kTextBody,
                    current || hovered || picked ? kText : kDim, Align::Left, current);
         break;
     }
@@ -6648,7 +6788,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::BrowserClose: {
-        c.fillRect(w.rect, hovered ? kTrack : kPanel, 5.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kPanel, kRadiusControl);
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;
         c.line({m.x - 5.0f, m.y - 5.0f}, {m.x + 5.0f, m.y + 5.0f}, color, 1.5f);
@@ -6656,24 +6796,49 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     }
     case Kind::BrowserFolder:
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, 6.0f);
-        c.strokeRect(w.rect, kBorder, 1.0f, 6.0f);
-        c.text(w.rect, tr(Str::ButtonOpenFolder), 10.5f, hovered ? kText : kDim, Align::Center, true);
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        c.text(w.rect, tr(Str::ButtonOpenFolder), kTextLabel, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ConfirmButton: {
+        if (w.a == 4) { // a split removed with its bands' effects
+            c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+            c.text(w.rect, tr(Str::ButtonSplitDelete), kTextBody, kText, Align::Center);
+            break;
+        }
+        if (w.a >= 2) { // a split's middle band's effects onto its low band (2) or its high one (3), in that color
+            const Color band = laneColor(w.a == 2 ? 2 : 1);
+            c.fillRect(w.rect, band.alpha(hovered ? 0.3f : 0.16f), kRadiusControl);
+            c.strokeRect(w.rect, band, 1.0f, kRadiusControl);
+            c.text(w.rect, tr(w.a == 2 ? Str::ButtonMidToLow : Str::ButtonMidToHigh), kTextBody, kText, Align::Center,
+                   true);
+            break;
+        }
+        const bool bands = confirm_ == kConfirmMidBand; // removing them is no more the way ahead than the others
         const bool ok = w.a == 1;
-        c.fillRect(w.rect, ok ? kAccent.alpha(hovered ? 0.35f : 0.22f) : (hovered ? kTrack : kRaised), 6.0f);
-        c.strokeRect(w.rect, ok ? kAccent : kBorder, 1.0f, 6.0f);
+        const bool lit = ok && !bands;
+        c.fillRect(w.rect, lit ? kAccent.alpha(hovered ? 0.35f : 0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
+        c.strokeRect(w.rect, lit ? kAccent : kBorder, 1.0f, kRadiusControl);
         const char *label = tr(!ok                                                ? Str::ButtonCancel
+                               : bands                                            ? Str::ButtonMidRemove
+                               : confirm_ == kConfirmSplitRemove                  ? Str::ButtonSplitKeep
                                : confirm_ == kConfirmFxClear                      ? Str::ButtonClearFx
                                : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
                                : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
                                                                                   : Str::ButtonLoad);
-        c.text(w.rect, label, 11.0f, kText, Align::Center, ok);
+        c.text(w.rect, label, kTextBody, kText, Align::Center, lit);
+        break;
+    }
+    case Kind::SplitBands: { // the BANDS switch: 2 | 3, the one it is lit in the accent
+        const bool on = (w.b == 3) == splitThree(w.a);
+        c.fillRect(w.rect, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
+        c.strokeRect(w.rect, on ? kAccent.alpha(0.8f) : kBorder, 1.0f, kRadiusControl);
+        c.text(w.rect, std::to_string(w.b), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
         break;
     }
     case Kind::SettingsClose: {
-        c.fillRect(w.rect, hovered ? kTrack : kPanel, 5.0f);
+        c.fillRect(w.rect, hovered ? kTrack : kPanel, kRadiusControl);
         const Point m = w.rect.center();
         const Color color = hovered ? kText : kDim;
         c.line({m.x - 5.0f, m.y - 5.0f}, {m.x + 5.0f, m.y + 5.0f}, color, 1.5f);
@@ -6716,9 +6881,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             const Point handle{w.rect.x + 7.0f, w.rect.center().y};
             c.strokeCircle(handle, 6.5f, hovered || open ? kDim : kFaint, 1.2f);
             const std::string ask = tr(Str::ModsPickSource);
-            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, ask, 11.5f, hovered || open ? kText : kDim,
+            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, ask, kTextBody, hovered || open ? kText : kDim,
                    Align::Left);
-            const float x = w.rect.x + 24.0f + std::min(c.textWidth(ask, 11.5f), w.rect.w - 40.0f);
+            const float x = w.rect.x + 24.0f + std::min(c.textWidth(ask, kTextBody), w.rect.w - 40.0f);
             const Point m{x + 4.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
             c.polyline(chevron, 3, kDim, 1.3f);
@@ -6731,10 +6896,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillCircle(handle, 7.0f, color);
             c.fillCircle(handle, 2.5f, kPanel);
             const std::string name = sourceName(w.a);
-            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, name, 11.5f, bypassed ? kDim : kText,
+            c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 34.0f, w.rect.h}, name, kTextBody, bypassed ? kDim : kText,
                    Align::Left, true);
             if (hovered || open) {
-                const float x = w.rect.x + 24.0f + std::min(c.textWidth(name, 11.5f, true), w.rect.w - 40.0f);
+                const float x = w.rect.x + 24.0f + std::min(c.textWidth(name, kTextBody, true), w.rect.w - 40.0f);
                 const Point m{x + 4.0f, w.rect.center().y};
                 const Point chevron[] = {{m.x - 3.5f, m.y - 1.5f}, {m.x, m.y + 2.0f}, {m.x + 3.5f, m.y - 1.5f}};
                 c.polyline(chevron, 3, kDim, 1.3f);
@@ -6743,7 +6908,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.line({w.rect.x + 7.0f, w.rect.y - 2.0f}, {w.rect.x + 7.0f, w.rect.bottom() + 2.0f}, color.alpha(0.35f),
                    2.0f);
             if (hovered || open)
-                c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, sourceName(w.a), 11.5f, kDim,
+                c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h}, sourceName(w.a), kTextBody, kDim,
                        Align::Left);
         }
         break;
@@ -6754,9 +6919,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool open = cascade_ && cascade_->kind == CascadeKind::Target && cascade_->source == w.a &&
                           cascade_->slot == w.b;
         if (hovered || open)
-            c.fillRect(w.rect.inset(1.0f), kTrack, 4.0f);
+            c.fillRect(w.rect.inset(1.0f), kTrack, kRadiusMark);
         const std::string name = target >= 0 ? paramName(target) : std::string(tr(Str::ModsPickTarget));
-        c.text({w.rect.x + 6.0f, w.rect.y, w.rect.w - 24.0f, w.rect.h}, name, 11.5f,
+        c.text({w.rect.x + 6.0f, w.rect.y, w.rect.w - 24.0f, w.rect.h}, name, kTextBody,
                target < 0 || (w.b >= 0 && slotBypassed(w.a, w.b)) ? kDim : kText, Align::Left);
         if (hovered || open || target < 0) {
             const Point m{w.rect.right() - 10.0f, w.rect.center().y};
@@ -6770,14 +6935,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const double amount = value(w.param);
         const float cy = w.rect.center().y;
         const Color color = slotBypassed(w.a, w.b) ? kFaint : kDim;
-        c.fillRect({w.rect.x, cy - 1.5f, w.rect.w, 3.0f}, kTrack, 1.5f);
+        c.fillRect({w.rect.x, cy - 1.5f, w.rect.w, 3.0f}, kTrack, kRadiusMark);
         c.fillRect({w.rect.x, cy - 1.5f, static_cast<float>(amount) * w.rect.w, 3.0f}, hovered || active ? kText : color,
-                   1.5f);
+                   kRadiusMark);
         c.fillCircle({w.rect.x + static_cast<float>(amount) * w.rect.w, cy}, hovered || active ? 4.5f : 3.5f,
                      hovered || active ? kText : color);
         char text[16];
         std::snprintf(text, sizeof(text), "%.0f%%", amount * 100.0);
-        c.text({w.rect.right() + 4.0f, w.rect.y, 38.0f, w.rect.h}, text, 10.5f, kDim, Align::Right);
+        c.text({w.rect.right() + 4.0f, w.rect.y, 38.0f, w.rect.h}, text, kTextLabel, kDim, Align::Right);
         break;
     }
     case Kind::ModsCurve: {
@@ -6786,7 +6951,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const double curve = value(w.param);
         const bool bipolar = sourceBipolar(w.a);
         const bool lit = hovered || active;
-        c.fillRect(w.rect, lit ? kTrack : kRaised, 4.0f);
+        c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusMark);
         const Rect box = w.rect.inset(5.0f);
         constexpr int kPoints = 24;
         Point points[kPoints];
@@ -6809,14 +6974,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const float radius = w.rect.h * 0.5f;
         if (aux < 0) {
             c.strokeRect(w.rect, hovered || open ? kDim : kTrack, 1.0f, radius, true);
-            c.text(w.rect, tr(Str::ModsAddAux), 10.5f, hovered || open ? kText : kDim);
+            c.text(w.rect, tr(Str::ModsAddAux), kTextLabel, hovered || open ? kText : kDim);
             break;
         }
         const Rect chip{w.rect.x, w.rect.y, w.rect.w + 22.0f, w.rect.h};
         c.fillRect(chip, hovered || open ? kTrack : kRaised, radius);
         c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
         c.fillCircle({w.rect.x + 11.0f, w.rect.center().y}, 4.0f, kSourceColors[aux]);
-        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 22.0f, w.rect.h}, sourceName(aux), 10.5f, kText, Align::Left,
+        c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 22.0f, w.rect.h}, sourceName(aux), kTextLabel, kText, Align::Left,
                true);
         break;
     }
@@ -6824,7 +6989,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A dashed button, as + Aux: lit under the mouse.
         const float radius = w.rect.h * 0.5f;
         c.strokeRect(w.rect, hovered ? kDim : kTrack, 1.0f, radius, true);
-        c.text(w.rect, tr(Str::ModsAddModulation), 10.5f, hovered ? kText : kDim);
+        c.text(w.rect, tr(Str::ModsAddModulation), kTextLabel, hovered ? kText : kDim);
         break;
     }
     case Kind::ModsAuxClear: {
@@ -6837,8 +7002,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::ModsScroll: {
         const Rect track = modsScrollTrack();
         const bool lit = hovered || active;
-        c.fillRect(track, kTrack.alpha(0.5f), 2.0f);
-        c.fillRect(modsThumb(), lit ? kDim : kFaint, 2.0f);
+        c.fillRect(track, kTrack.alpha(0.5f), kRadiusMark);
+        c.fillRect(modsThumb(), lit ? kDim : kFaint, kRadiusMark);
         break;
     }
     case Kind::CascadeMenu:
@@ -6860,7 +7025,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // How the row's source swings its targets: a wave about its middle line for both ways, or humps up from its
         // baseline for one way.
         if (hovered)
-            c.fillRect(w.rect.inset(1.0f), kTrack, 3.0f);
+            c.fillRect(w.rect.inset(1.0f), kTrack, kRadiusMark);
         polarityIcon(c, w.rect.center(), sourceBipolar(w.a), hovered ? kText : kDim);
         break;
     }
@@ -6880,16 +7045,16 @@ void View::paintHoverTags(Canvas &c, const std::vector<Widget> &list) {
                                : isMoreWave(picked)         ? waveName(picked)
                                                             : tr(Str::TipMoreWaves);
             const Rect tip{w.rect.center().x - 40.0f, w.rect.bottom() + 3.0f, 80.0f, 16.0f};
-            c.fillRect(tip, kRaised, 5.0f);
-            c.text(tip, name, 10.5f, kText);
+            c.fillRect(tip, kRaised, kRadiusControl);
+            c.text(tip, name, kTextLabel, kText);
         } else if (w.kind == Kind::ModDot && (isHovered(w) || isActive(w))) {
             const Point center = w.rect.center();
             const std::string text = modRangeText(w.a, w.b);
-            const float width = std::ceil(c.textWidth(text, 10.5f)) + 16.0f;
+            const float width = std::ceil(c.textWidth(text, kTextLabel)) + 16.0f;
             const float x = std::clamp(center.x - width * 0.5f, 4.0f, View::kWidth - 4.0f - width);
             const Rect tip{x, center.y + 8.0f, width, 18.0f};
-            c.fillRect(tip, kRaised, 5.0f);
-            c.text(tip, text, 10.5f, kText);
+            c.fillRect(tip, kRaised, kRadiusControl);
+            c.text(tip, text, kTextLabel, kText);
         }
     }
 }
@@ -6933,8 +7098,11 @@ void View::paintKnob(Canvas &c, const Widget &w) {
                       (isLfoPhase(w.param) && !lfoPhaseUsed(sourceOf(w.param)));
     // A join's band levels in their bands' colors (the high band's wire takes its first input).
     const int sum = fxSumOfLevel(w.param);
-    const bool highLevel = sum >= 0 && w.param == fxInputIndex(fxSumNode(sum), 0, FxInputField::Level);
-    const Color plain = sum >= 0 ? bandColor(highLevel ? kFxBands - 1 : 0) : kAccent;
+    const int levelOf = sum < 0 ? -1
+                        : w.param == fxInputIndex(fxSumNode(sum), 0, FxInputField::Level) ? 1
+                        : w.param == fxInputIndex(fxSumNode(sum), 1, FxInputField::Level) ? 2
+                                                                                          : 3;
+    const Color plain = sum >= 0 ? laneColor(levelOf) : kAccent;
     const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : plain).alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
@@ -6985,11 +7153,11 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         const float textX = compactTextX(w);
         const float textWidth = w.rect.w - textX;
         const float labelY = w.shrunk ? 2.0f : 3.0f, valueY = w.shrunk ? 15.0f : 18.0f;
-        c.text({w.rect.x + textX, w.rect.y + labelY, textWidth, 16.0f}, w.label, 10.5f, kDim, Align::Left);
-        c.text({w.rect.x + textX, w.rect.y + valueY, textWidth, 18.0f}, shown, 13.0f, kText, Align::Left, true);
+        c.text({w.rect.x + textX, w.rect.y + labelY, textWidth, 16.0f}, w.label, kTextLabel, kDim, Align::Left);
+        c.text({w.rect.x + textX, w.rect.y + valueY, textWidth, 18.0f}, shown, kTextValue, kText, Align::Left, true);
     } else {
         const Rect label{w.rect.x - 14.0f, w.rect.y + w.rect.w + 2.0f, w.rect.w + 28.0f, 16.0f};
-        c.text(label, focused || !w.label ? shown : std::string(w.label), 10.5f,
+        c.text(label, focused || !w.label ? shown : std::string(w.label), kTextLabel,
                focused ? kText : (idle ? kFaint : kDim));
     }
 }
@@ -7036,8 +7204,8 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     const bool dragged = drag_.kind == DragKind::Value && drag_.widget.same(w);
     const bool focused = isHovered(w) || dragged;
     const double n = norm(w.param);
-    c.fillRect(kRatioBox, kDisplayColor, 5.0f);
-    c.strokeRect(kRatioBox, focused ? kFaint : kBorder, 1.0f, 5.0f);
+    c.fillRect(kRatioBox, kDisplayColor, kRadiusControl);
+    c.strokeRect(kRatioBox, focused ? kFaint : kBorder, 1.0f, kRadiusControl);
 
     const long h = ratioHundredths(value(w.param));
     const int digits[kRatioDigits] = {h >= 1000 ? static_cast<int>(h / 1000) : -1, static_cast<int>(h / 100 % 10),
@@ -7048,14 +7216,14 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     for (int k = 0; k < kRatioDigits; ++k) {
         const Rect r = ratioDigitRect(k);
         if (k == lit)
-            c.fillRect(r.inset(-1.5f), kAccent.alpha(0.14f), 2.0f);
+            c.fillRect(r.inset(-1.5f), kAccent.alpha(0.14f), kRadiusMark);
         sevenSegments(c, r, digits[k], kAccent, kAccent.alpha(0.08f));
     }
     const Rect ones = ratioDigitRect(1);
     constexpr float kPoint = 2.6f;
     c.fillRect({ones.right() + (kRatioPointW + 2.0f * kRatioDigitGap - kPoint) * 0.5f - 1.0f, ones.bottom() - kPoint,
                 kPoint, kPoint},
-               kAccent, 0.5f);
+               kAccent, kRadiusMark);
 
     // The track runs in a straight line from 0.5 to 64, the ratio's range, the value `v` (on Ratio's log curve) placed
     // by the ratio it plays. Modulation can take it on to 128 (see kRatioModNorm): a reach past 64 stops at the end,
@@ -7064,7 +7232,7 @@ void View::paintRatio(Canvas &c, const Widget &w) {
         const double ratio = std::min(ratioFromNorm(std::max(v, 0.0)), kMaxRatio);
         return kRatioTrack.x + static_cast<float>((ratio - kMinRatio) / (kMaxRatio - kMinRatio)) * kRatioTrack.w;
     };
-    c.fillRect(kRatioTrack, kTrack, 1.0f);
+    c.fillRect(kRatioTrack, kTrack, kRadiusMark);
     // A switched-off source's reach is faint; the one whose depth handle is under the mouse is wider, over the others.
     auto reach = [&](const Assignment &m, bool wide) {
         const auto [down, up] = modReach(m);
@@ -7073,7 +7241,7 @@ void View::paintRatio(Canvas &c, const Widget &w) {
         const float thick = wide ? 4.0f : 2.0f;
         const Color color = kSourceColors[m.source].alpha(alpha);
         c.fillRect({std::min(a, b), kRatioTrack.center().y - thick * 0.5f, std::max(std::abs(b - a), 1.0f), thick},
-                   color, 1.0f);
+                   color, kRadiusMark);
         if (n + std::max(down, up) > 1.0 + 1e-9) { // on past 64
             const float x = kRatioTrack.right() + 1.0f, y = kRatioTrack.center().y;
             const Point arrow[] = {{x, y - 2.5f}, {x + 3.5f, y}, {x, y + 2.5f}};
@@ -7089,13 +7257,13 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     });
     for (const Assignment &f : focus)
         reach(f, true);
-    c.fillRect({along(n) - 1.0f, kRatioTrack.y - 1.5f, 2.0f, kRatioTrack.h + 3.0f}, kText, 1.0f);
+    c.fillRect({along(n) - 1.0f, kRatioTrack.y - 1.5f, 2.0f, kRatioTrack.h + 3.0f}, kText, kRadiusMark);
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
     const float offset = liveOffset(w.param);
     if (offset != 0.0f)
         c.fillCircle({along(n + offset / (def.max - def.min)), kRatioTrack.center().y}, 2.5f, kText);
 
-    c.text({w.rect.x, kRatioBox.bottom() + 2.0f, w.rect.w, 16.0f}, w.label ? w.label : "", 10.5f,
+    c.text({w.rect.x, kRatioBox.bottom() + 2.0f, w.rect.w, 16.0f}, w.label ? w.label : "", kTextLabel,
            focused ? kText : kDim);
 }
 
@@ -7129,7 +7297,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::NodeDelete &&
          hover_->kind != Kind::WireStart &&
          hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
-         !(hover_->kind == Kind::ListButton && (isFilterSlope(hover_->param) || isMidiInput(hover_->param))) &&
+         !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param))) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
     // A source's handle tells how to use it only until it modulates something.
@@ -7185,6 +7353,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipSplitBand);
     } else if (hover_->kind == Kind::SplitSolo) {
         text = tr(Str::TipSplitSolo);
+    } else if (hover_->kind == Kind::SplitBands) {
+        text = tr(hover_->b == 3 ? Str::TipSplitThree : Str::TipSplitTwo);
     } else if (hover_->kind == Kind::DynBand) {
         const Str bands[] = {Str::BandLow, Str::BandMid, Str::BandHigh};
         text = trf(value(paramIndex(hover_->a, FxParam::MdLink)) >= 0.5 ? Str::TipMcBandLinked : Str::TipMcBand,
@@ -7317,6 +7487,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(value(param) >= 0.5 ? Str::TipFxOn : Str::TipFxOff);
     else if (isLfoSync(param))
         text = tr(Str::TipLfoSync);
+    else if (hover_->kind == Kind::ListButton && isSplitSlope(param))
+        text = tr(Str::TipSlope);
     else if (hover_->kind == Kind::ListButton && isFilterSlope(param))
         text = tr(slopeFits(static_cast<FilterType>(std::lround(value(slopeTypeParam(param)))), 0) ? Str::TipSlope
                                                                                                   : Str::TipSlopeBand);
@@ -7361,12 +7533,12 @@ void View::paintTooltip(Canvas &c) {
     else
         return; // a switch with nothing to say
     // As wide as its text, centered under the widget and kept inside the editor.
-    const float width = std::min(std::ceil(c.textWidth(text, 11.0f)) + 24.0f, View::kWidth - 16.0f);
+    const float width = std::min(std::ceil(c.textWidth(text, kTextBody)) + 24.0f, View::kWidth - 16.0f);
     const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
     const Rect tip{x, hover_->rect.bottom() + 6.0f, width, 22.0f}; // a knob's rect takes in its label
-    c.fillRect(tip, kRaised, 6.0f);
-    c.strokeRect(tip, kBorder, 1.0f, 6.0f);
-    c.text(tip, text, 11.0f, kText);
+    c.fillRect(tip, kRaised, kRadiusCard);
+    c.strokeRect(tip, kBorder, 1.0f, kRadiusCard);
+    c.text(tip, text, kTextBody, kText);
 }
 
 // The pill: in the track's color, the count of what it holds in bold; lighter under the mouse, in the accent while
@@ -7437,25 +7609,25 @@ Rect View::modListPanel(Rect anchor, int rows, bool aux) const {
 }
 
 void View::paintModList(Canvas &c, const Widget &w) {
-    c.fillRect(w.rect.inset(-3.0f), kBackground.alpha(0.35f), 11.0f); // a soft edge against what it covers
-    c.fillRect(w.rect, kPanel, 8.0f);
-    c.strokeRect(w.rect, kBorder, 1.0f, 8.0f);
+    c.fillRect(w.rect.inset(-3.0f), kBackground.alpha(0.35f), kRadiusCard + 3.0f); // a soft edge against what it covers
+    c.fillRect(w.rect, kPanel, kRadiusCard);
+    c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
     int rows = 0;
     forEachMod(w.a, [&](const Assignment &) { ++rows; });
     const Rect title{w.rect.x + kModListPad + 4.0f, w.rect.y + 2.0f, w.rect.w - 2.0f * kModListPad - 8.0f,
                      kModListTitleH - 4.0f};
     const std::string count = rows == 1 ? std::string(tr(Str::ModListCountOne))
                                         : trf(Str::ModListCount, {std::to_string(rows)});
-    const float countW = std::ceil(c.textWidth(count, 10.5f));
-    c.text({title.x, title.y, title.w - countW - 8.0f, title.h}, paramName(w.a), 11.0f, kText, Align::Left, true);
-    c.text({title.right() - countW, title.y, countW, title.h}, count, 10.5f, kDim, Align::Right);
+    const float countW = std::ceil(c.textWidth(count, kTextLabel));
+    c.text({title.x, title.y, title.w - countW - 8.0f, title.h}, paramName(w.a), kTextBody, kText, Align::Left, true);
+    c.text({title.right() - countW, title.y, countW, title.h}, count, kTextLabel, kDim, Align::Right);
 }
 
 // A row: its bypass dot, the source's name (dimmed while bypassed or off), its aux's chip as in the MODS view, its
 // depth bar and its remove.
 void View::paintModListRow(Canvas &c, const Widget &w) {
     const bool lit = hover_ && hover_->popup && hover_->a == w.a && hover_->b == w.b && drag_.kind == DragKind::None;
-    c.fillRect(w.rect, lit ? kTrack : kRaised, 5.0f);
+    c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
     const bool off = slotBypassed(w.a, w.b) || !sourceOn(w.a);
     const std::string name = sourceName(w.a);
     c.text({w.rect.x + 18.0f, w.rect.y, kSlotNameW, w.rect.h}, name, slotNameSize(c, name), off ? kFaint : kText,
@@ -7466,7 +7638,7 @@ void View::paintModListRow(Canvas &c, const Widget &w) {
         c.fillRect(chip, kPanel, radius);
         c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
         c.fillCircle({chip.x + 10.0f, chip.center().y}, 3.5f, kSourceColors[aux]);
-        c.text({chip.x + 18.0f, chip.y, chip.w - 40.0f, chip.h}, sourceName(aux), 10.5f, kText, Align::Left, true);
+        c.text({chip.x + 18.0f, chip.y, chip.w - 40.0f, chip.h}, sourceName(aux), kTextLabel, kText, Align::Left, true);
     }
 }
 
@@ -7487,7 +7659,7 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             continue;
         if (w.kind == Kind::ModListRow && w.a != source) { // so does a row of a pill's list
             const bool over = target && target->popup && target->a == w.a && target->b == w.b;
-            c.strokeRect(w.rect.inset(-1.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, 6.0f);
+            c.strokeRect(w.rect.inset(-1.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, kRadiusControl);
             continue;
         }
         if (w.popup || covered(isRatioDisplay(w)      ? kRatioBox.inset(-4.0f)
@@ -7507,7 +7679,7 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             if (w.clip.w > 0.0f && (w.rect.y < w.clip.y || w.rect.bottom() > w.clip.bottom()))
                 continue;
             const bool over = target && target->same(w);
-            c.strokeRect(w.rect.inset(-2.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, 8.0f);
+            c.strokeRect(w.rect.inset(-2.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, kRadiusCard);
             continue;
         }
         if (!droppable(w, source))
@@ -7523,11 +7695,11 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         const bool over = target && target->same(w);
         const Color ring = color.alpha(over ? 1.0f : 0.35f);
         if (isRatioDisplay(w)) {
-            c.strokeRect(kRatioBox.inset(-4.0f), ring, over ? 2.5f : 1.5f, 8.0f);
+            c.strokeRect(kRatioBox.inset(-4.0f), ring, over ? 2.5f : 1.5f, kRadiusCard);
         } else if (w.kind == Kind::Knob) {
             c.strokeCircle(knobCenter(w), knobRadius(w) + 6.0f, ring, over ? 2.5f : 1.5f);
         } else {
-            c.strokeRect(w.rect.inset(w.kind == Kind::GridCell ? -1.0f : -3.0f), ring, over ? 2.0f : 1.0f, 6.0f);
+            c.strokeRect(w.rect.inset(w.kind == Kind::GridCell ? -1.0f : -3.0f), ring, over ? 2.0f : 1.0f, kRadiusControl);
         }
         if (clipped)
             c.popClip();
@@ -7591,11 +7763,11 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
         else if (pill != list.end()) // or round the pill
             c.strokeRect(pill->rect.inset(-2.0f), color, 1.5f, pill->rect.h * 0.5f + 2.0f);
         if (isRatioDisplay(w))
-            c.strokeRect(kRatioBox.inset(-3.0f), color.alpha(0.5f), 1.0f, 7.0f);
+            c.strokeRect(kRatioBox.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusCard);
         else if (w.kind == Kind::Knob)
             c.strokeCircle(knobCenter(w), knobRadius(w) + 5.0f, color.alpha(0.5f), 1.0f);
         else
-            c.strokeRect(w.rect.inset(w.kind == Kind::GridCell ? -1.0f : -3.0f), color.alpha(0.5f), 1.0f, 6.0f);
+            c.strokeRect(w.rect.inset(w.kind == Kind::GridCell ? -1.0f : -3.0f), color.alpha(0.5f), 1.0f, kRadiusControl);
     }
 }
 
@@ -7644,13 +7816,13 @@ Rect View::typingField() const {
 void View::paintTyping(Canvas &c) {
     const Typing &t = *typing_;
     const Rect field = typingField();
-    c.fillRect(field, kBackground, 4.0f);
-    c.strokeRect(field, kAccent, 1.0f, 4.0f);
-    constexpr float kSize = 11.0f;
+    c.fillRect(field, kBackground, kRadiusControl);
+    c.strokeRect(field, kAccent, 1.0f, kRadiusControl);
+    constexpr float kSize = kTextBody;
     const float width = c.textWidth(t.text, kSize);
     const float x = std::max(field.center().x - width * 0.5f, field.x + 4.0f);
     if (t.selected && !t.text.empty())
-        c.fillRect({x - 1.0f, field.y + 3.0f, width + 2.0f, field.h - 6.0f}, kAccent.alpha(0.35f), 2.0f);
+        c.fillRect({x - 1.0f, field.y + 3.0f, width + 2.0f, field.h - 6.0f}, kAccent.alpha(0.35f), kRadiusMark);
     c.text({x, field.y, field.right() - 2.0f - x, field.h}, t.text, kSize, kText, Align::Left);
     if (caretTicks_ / 32 % 2 == 0) {
         const float caret = x + c.textWidth(std::string_view(t.text).substr(0, t.caret), kSize);
@@ -8237,6 +8409,14 @@ void View::mouseDown(Point p, Modifiers mods) {
         hover_.reset();
         break;
     }
+    case Kind::SourceMenuButton:
+        if (!sourceShadow()) {
+            flash(trf(Str::MsgSourcesFull, {std::to_string(kMaxSources)}));
+        } else {
+            sourceMenuOpen_ = !sourceMenuOpen_ || sourceMenuAt_.x >= 0.0f; // from the dashed card's, to the button's
+            sourceMenuAt_ = {-1.0f, -1.0f}; // collapsed, the panel opens with the source picked (addSource())
+        }
+        break;
     case Kind::SourceShadow: // the list at the mouse, kept inside the editor
         sourceMenuAt_ = menuAtMouse(p, sourceMenu({0.0f, 0.0f}));
         sourceMenuOpen_ = true;
@@ -8327,9 +8507,6 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.scrollStart = sourceScroll();
         drag_.step = true;
         controller_.beginStep();
-        break;
-    case Kind::SourceAdd:
-        addSource(static_cast<SourceType>(w.a));
         break;
     case Kind::SourceRemove:
         removeSource(w.a);
@@ -8537,9 +8714,19 @@ void View::mouseDown(Point p, Modifiers mods) {
     case Kind::ConfirmButton: {
         const auto action = static_cast<PresetAction>(confirm_);
         const bool clear = confirm_ == kConfirmFxClear;
+        const bool bands = confirm_ == kConfirmMidBand;
+        const bool split = confirm_ == kConfirmSplitRemove;
         confirm_ = -1;
         hover_.reset();
-        if (w.a == 1 && clear)
+        if (split) { // the split removed, its bands' effects kept on the main line (1) or with it (4)
+            if (w.a == 1 || w.a == 4)
+                removeFxNode(fxSplitNode(confirmSplit_), w.a == 4 ? 1 : 0);
+            confirmSplit_ = -1;
+        } else if (bands) { // back in two bands: the middle band's effects removed (1), onto the low band (2), the high one (3)
+            if (w.a > 0)
+                setSplitBands(confirmSplit_, 2, w.a == 1 ? 0 : w.a == 2 ? 2 : 1);
+            confirmSplit_ = -1;
+        } else if (w.a == 1 && clear)
             clearFx();
         else if (w.a == 1)
             runPreset(action);
@@ -9141,9 +9328,24 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             stepShapeGrid(hit->a, whole);
         return;
     }
-    if (hit && hit->kind == Kind::SplitBand) { // a split's tabs: down to the high band at the right, up to the low one
+    if (hit && hit->kind == Kind::SplitBand) { // a split's tabs: down a tab to the right, up one to the left
+        if (steps != 0.0f) {
+            const bool three = splitThree(hit->a);
+            const int count = three ? 3 : 2;
+            const int at = tabPosition(controller_.layout().splitBand[hit->a] == 2 && !three
+                                           ? 0
+                                           : controller_.layout().splitBand[hit->a],
+                                       three);
+            const int to = std::clamp(at + (steps < 0.0f ? 1 : -1), 0, count - 1);
+            for (int tab = 0; tab < count; ++tab)
+                if (tabPosition(tab, three) == to)
+                    showSplitBand(hit->a, tab);
+        }
+        return;
+    }
+    if (hit && hit->kind == Kind::SplitBands) { // the BANDS switch: down for three, up for two
         if (steps != 0.0f)
-            showSplitBand(hit->a, steps < 0.0f ? 1 : 0);
+            setSplitBands(hit->a, steps < 0.0f ? 3 : 2);
         return;
     }
     if ((!hit || hit->param < 0) && modPanel(controller_.layout().sourcesCollapsed).contains(p) && steps != 0.0f) {
@@ -9197,12 +9399,13 @@ void View::wheel(Point p, float steps, Modifiers mods) {
         return;
     }
     if (const int split = splitOf(hit->param); split >= 0 && hit->param == paramIndex(split, SplitParam::Slope)) {
-        const int slopes[] = {0, 1, kFilterSlopes - 1}; // 6, 12 and 24 dB, a notch a step
-        int at = 0;
-        for (int k = 0; k < 3; ++k)
+        const int slopes[] = {0, 1, kFilterSlopes - 1}; // 6, 12 and 24 dB, a notch a step (three bands from 12)
+        const int first = splitThree(split) ? 1 : 0;
+        int at = first;
+        for (int k = first; k < 3; ++k)
             at = filterSlope(value(hit->param)) >= slopes[k] ? k : at;
         if (whole != 0)
-            edit(hit->param, slopes[std::clamp(at + whole, 0, 2)]);
+            edit(hit->param, slopes[std::clamp(at + whole, first, 2)]);
         return;
     }
     if (hit->kind == Kind::LabelMode) { // to the next mode along, as the wheel turns, a run of notches one undo step
@@ -9253,9 +9456,11 @@ constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
 constexpr int kResetBendCommand = 14;
 constexpr int kOttCommand = 15;
+// An effect on a split's band moved to another band of it: this plus the band's lane (1 high, 2 low, 3 middle).
+constexpr int kMoveBandCommand = 40;
 // And from here on, each sets the mode of the route the menu was opened on (see RouteMode).
 constexpr int kRouteModeCommand = 16;
-static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= 100);
+static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
 
 // The three-band dynamics' fields set as Ableton's OTT preset for its Multiband Dynamics has them: crossovers at
 // 88.3 Hz and 2.5 kHz, every band pulled down hard above its Above threshold and lifted 4.17:1 below its Below one,
@@ -9316,6 +9521,17 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({8, tr(Str::MenuResetSettings)});
         if (fxSlotType(menuFx_) == FxType::MultiDyn)
             items.push_back({kOttCommand, tr(Str::MenuOtt)});
+        // On a split's band, in the row: the split's other bands it can move to.
+        if (!fxGraph()) {
+            const std::vector<int> bands = fxOtherBands(menuFx_);
+            if (!bands.empty())
+                items.push_back({0, ""});
+            for (int lane : bands)
+                items.push_back({kMoveBandCommand + lane,
+                                 trf(Str::MenuMoveToBand, {tr(lane == 1   ? Str::BandHigh
+                                                              : lane == 3 ? Str::BandMid
+                                                                          : Str::BandLow)})});
+        }
         items.push_back({0, ""});
         items.push_back({7, tr(Str::MenuRemove)});
         return items;
@@ -9494,6 +9710,8 @@ void View::menuCommand(int command) {
         for (int f = 0; f < kShapeParamCount; ++f)
             changes.push_back({clipCurveCountIndex(menuFx_) + f, table_[clipCurveCountIndex(menuFx_) + f].def});
         editMany(changes);
+    } else if (command > kMoveBandCommand && command <= kMoveBandCommand + 3 && menuFx_ >= 0) {
+        moveFxToBand(menuFx_, command - kMoveBandCommand);
     } else if (command == kOttCommand && menuFx_ >= 0 && fxSlotType(menuFx_) == FxType::MultiDyn) {
         editMany(ottSettings(menuFx_));
     } else if (command == 3 && menuParam_ >= 0) {

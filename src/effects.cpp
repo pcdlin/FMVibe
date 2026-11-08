@@ -943,8 +943,24 @@ void Effects::splitCoefs(SplitFilters &f, double lowNorm, double highNorm) const
     f.lowNorm = lowNorm;
     f.highNorm = highNorm;
     const std::array<double, 2> hz = splitCrossovers(lowNorm, highNorm);
-    if (f.mode == 3) {
+    if (f.mode == kThree24) {
         f.coefs = crossoverCoefs(hz[0], hz[1]);
+        return;
+    }
+    // One-poles at `hz`: a low-pass, a high-pass and the all-pass the two make together (low less high).
+    auto onePoles = [this](double hz, BiquadCoefs &low, BiquadCoefs &high, BiquadCoefs *all) {
+        const double k = std::tan(std::numbers::pi * hz / sampleRate_);
+        const double a = (k - 1.0) / (k + 1.0);
+        low = {k / (1.0 + k), k / (1.0 + k), 0.0, a, 0.0};
+        high = {1.0 / (1.0 + k), -1.0 / (1.0 + k), 0.0, a, 0.0};
+        if (all)
+            *all = {a, 1.0, 0.0, a, 0.0};
+    };
+    if (f.mode == kThree12) { // kept as crossoverCoefs() keeps them
+        const double low = std::min(hz[0], 0.3 * sampleRate_);
+        const double high = std::clamp(hz[1], low * 1.26, 0.45 * sampleRate_);
+        onePoles(low, f.onePoleLow, f.onePoleHigh, nullptr);
+        onePoles(high, f.onePoleLow2, f.onePoleHigh2, &f.allPass2);
         return;
     }
     const double low = std::min(hz[0], 0.3 * sampleRate_); // as crossoverCoefs() keeps it
@@ -955,17 +971,25 @@ void Effects::splitCoefs(SplitFilters &f, double lowNorm, double highNorm) const
         f.coefs.hp1 = {hp.b0, hp.b1, hp.b2, hp.a1, hp.a2};
         return;
     }
-    const double k = std::tan(std::numbers::pi * low / sampleRate_);
-    f.onePoleLow = {k / (1.0 + k), k / (1.0 + k), 0.0, (k - 1.0) / (k + 1.0), 0.0};
-    f.onePoleHigh = {1.0 / (1.0 + k), -1.0 / (1.0 + k), 0.0, (k - 1.0) / (k + 1.0), 0.0};
+    onePoles(low, f.onePoleLow, f.onePoleHigh, nullptr);
 }
 
 void Effects::splitBands(SplitFilters &f, int ch, double x, double *bands) {
     // Two bands' slope: 6 dB a one-pole low-pass with the rest as the high band; 12 dB a second-order Linkwitz-Riley
     // (two one-poles each way, the high band turned over so the two sum flat); 24 dB the fourth-order one, as three.
     EqChannel &e = f.channels[ch];
-    if (f.mode == 3) {
+    if (f.mode == kThree24) {
         splitThree(e, x, f.coefs, bands);
+        return;
+    }
+    if (f.mode == kThree12) {
+        // Three at 12 dB: the second-order crossover at the low crossover, then again at the high one on what is above
+        // it, each high side turned over. The middle and high bands sum to the high crossover's all-pass, so the low band
+        // goes through it too: the three sum to the two all-passes, flat.
+        bands[0] = e.lowPhase.process(e.lowB.process(e.lowA.process(x, f.onePoleLow), f.onePoleLow), f.allPass2);
+        const double rest = -e.restB.process(e.restA.process(x, f.onePoleHigh), f.onePoleHigh);
+        bands[1] = e.midB.process(e.midA.process(rest, f.onePoleLow2), f.onePoleLow2);
+        bands[2] = -e.highB.process(e.highA.process(rest, f.onePoleHigh2), f.onePoleHigh2);
         return;
     }
     if (f.mode == 6) {
@@ -985,7 +1009,8 @@ void Effects::runSplit(int split, uint32_t n, const ParamValues &p, const float 
     Split &sp = splits_[split];
     const bool three = std::lround(p[paramIndex(split, SplitParam::Bands)]) >= kFxBands;
     const int asked = slopeDb(filterSlope(p[paramIndex(split, SplitParam::Slope)]));
-    const int mode = three ? 3 : asked > 12 ? 24 : asked; // 18 plays as 24
+    // 18 plays as 24; three bands part at 12 or 24 dB (6 plays as 12).
+    const int mode = three ? (asked > 12 ? kThree24 : kThree12) : asked > 12 ? 24 : asked;
     if (!sp.running) { // taken into the graph: it starts cleared
         sp.now = {};
         sp.now.mode = mode;
@@ -1005,6 +1030,10 @@ void Effects::runSplit(int split, uint32_t n, const ParamValues &p, const float 
         splitCoefs(sp.was, low, high);
     const double fadeStep = 1.0 / (0.005 * sampleRate_);
     auto &out = bandOut_[split];
+    // From two bands to three or back, the middle band comes or goes with its wire into the join, which fades it as
+    // this crossfade would: it plays at full from the filters that have it (two bands' is silent), faded once only.
+    auto isThree = [](int m) { return m == kThree12 || m == kThree24; };
+    const bool midByWire = sp.wasFade > 0.0 && isThree(sp.now.mode) != isThree(sp.was.mode);
     for (uint32_t s = 0; s < n; ++s) {
         const bool crossing = sp.wasFade > 0.0;
         double before = 0.0; // how much of the filters it leaves is heard
@@ -1019,7 +1048,7 @@ void Effects::runSplit(int split, uint32_t n, const ParamValues &p, const float 
                 double was[kFxBands];
                 splitBands(sp.was, ch, mix[ch][s], was);
                 for (int b = 0; b < kFxBands; ++b)
-                    bands[b] += (was[b] - bands[b]) * before;
+                    bands[b] = b == 1 && midByWire ? bands[b] + was[b] : bands[b] + (was[b] - bands[b]) * before;
             }
             for (int b = 0; b < kFxBands; ++b)
                 out[b][ch][s] = static_cast<float>(bands[b]);

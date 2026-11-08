@@ -19,6 +19,7 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <vector>
 
 namespace fmvibe::gui {
 
@@ -158,6 +159,11 @@ public:
     // Everything drawn until the matching popClip() is cut to `r`.
     void pushClip(Rect r);
     void popClip();
+    // Everything drawn until the matching popLayer() is moved by `offset` and put down at `opacity` as a whole (a
+    // faint image of a card being carried). A clip pushed inside it moves with it. Only what is drawn inside `bounds`
+    // (before the move) shows, which keeps the layer's surface that small.
+    void pushLayer(Point offset, float opacity, Rect bounds);
+    void popLayer();
 
     static Point onCircle(Point center, float radius, float angle);
 
@@ -168,6 +174,8 @@ private:
     ID2D1RenderTarget *target_;
     Resources &resources_;
     ComPtr<ID2D1SolidColorBrush> brush_;
+    std::vector<D2D1_MATRIX_3X2_F> transforms_; // each layer's transform before it, put back as it pops
+    std::vector<ComPtr<ID2D1Layer>> layers_;
 #elif defined(FMVIBE_CAIRO)
     void setColor(Color c);
     // Round caps and joins (dashes twice the width, or dots), or the flat caps and mitered joins Direct2D strokes
@@ -176,6 +184,7 @@ private:
     void stroke(Color c, float width, Stroke style);
 
     cairo_t *target_;
+    std::vector<float> opacities_; // each layer's, put down as it pops
 #endif
 };
 

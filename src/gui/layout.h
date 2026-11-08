@@ -29,7 +29,7 @@ constexpr float kTitleRowY = 6.0f; // the preset bar's and the toolbar's top
 constexpr float kHeaderH = 92.0f;
 constexpr float kStripY = 32.0f; // how far the global strip's content sits below where it stood alone (13 to 51 px)
 constexpr float kPanelsTop = 132.0f;
-constexpr float kPanelRadius = 10.0f; // the panels' corners
+constexpr float kPanelRadius = kRadiusPanel; // the panels' corners
 constexpr Rect kRouting{16.0f, kPanelsTop, 852.0f, 372.0f};
 constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
 constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
@@ -126,9 +126,18 @@ constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspecto
 inline Rect scopeCycleButton(int choice) {
     return {kScopeRect.right() - 6.0f - (3 - choice) * 20.0f, kScopeRect.y + 6.0f, 20.0f, 16.0f};
 }
-constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
-// A filter's slope list, at the right end of its row of type buttons.
-constexpr Rect kFilterSlopeButton{kInspector.x + kInspector.w - 16.0f - 62.0f, kInspector.y + 62.0f, 62.0f, 22.0f};
+// Every filter slope's list (a voice filter's, the filter effect's and a split's): a button under the display it goes
+// with, in the middle.
+inline Rect slopeButton(Rect display) {
+    return {display.center().x - 36.0f, display.bottom() + 4.0f, 72.0f, 18.0f};
+}
+// A filter's page: its type buttons across the row under the summary, its response with the slope's list under it.
+inline Rect filterTypeButton(int type) {
+    constexpr float kStep = (kInspector.w - 32.0f + 4.0f) / static_cast<float>(FilterType::Count);
+    return {kInspector.x + 16.0f + type * kStep, kInspector.y + 62.0f, kStep - 4.0f, 22.0f};
+}
+constexpr Rect kFilterDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 90.0f};
+inline const Rect kFilterSlopeButton = slopeButton(kFilterDisplay);
 // A shaper's page: its curve's list and the link switch in the row under the summary, with the symmetric switch
 // between them for a Custom curve, then its transfer curve where a filter's response shows.
 constexpr Rect kShaperLinkButton{kInspector.x + kInspector.w - 16.0f - 44.0f, kInspector.y + 62.0f, 44.0f, 22.0f};
@@ -136,7 +145,7 @@ constexpr Rect kShaperSymButton{kShaperLinkButton.x - 50.0f, kShaperLinkButton.y
 inline Rect shaperModeButton(bool custom) {
     return {kInspector.x + 16.0f, kInspector.y + 62.0f, kInspector.w - 32.0f - (custom ? 100.0f : 50.0f), 22.0f};
 }
-constexpr Rect kShaperDisplay = kFilterDisplay;
+constexpr Rect kShaperDisplay{kInspector.x + 16.0f, kInspector.y + 150.0f, kInspector.w - 32.0f, 112.0f};
 // An operator's wave buttons: the common waves, then "..." with a list of the others.
 constexpr OpWave kCommonWaves[] = {OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWave::Square, OpWave::Noise};
 constexpr OpWave kMoreWaves[] = {OpWave::Pulse,   OpWave::HalfSine, OpWave::AbsSine, OpWave::AltSine,
@@ -169,7 +178,7 @@ constexpr Rect kViewTabs[] = {{16.0f, kTopRowY, 96.0f, kViewTabH},
                                {116.0f, kTopRowY, 88.0f, kViewTabH},
                                {208.0f, kTopRowY, 64.0f, kViewTabH},
                                {276.0f, kTopRowY, 76.0f, kViewTabH}};
-constexpr float kViewTabRadius = 8.0f; // its top corners
+constexpr float kViewTabRadius = kRadiusCard; // its top corners
 constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
 // The FX view covers the routing panel and the inspector: one card per effect,
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
@@ -297,6 +306,27 @@ inline Rect sourcesToggle() {
     return {kModPanel.x + 8.0f, kModPanel.y + 8.0f, 100.0f, 26.0f};
 }
 
+// Every card's title row, an effect's, a source's or a split's: its mark (the effect's icon or the source's handle) and
+// its name at the left; at the right the fold button, the power switch (a split has none) and the cross. Its name
+// stops short of the fold button (cardTitleRight()).
+inline Rect cardClose(Rect card) {
+    return {card.right() - 22.0f, card.y + 8.0f, 14.0f, 21.0f};
+}
+inline Rect cardPower(Rect card) {
+    return {card.right() - 44.0f, card.y + 8.5f, 20.0f, 19.0f};
+}
+// An effect card in the effects graph's inspector has no cross (its node's removes it): its power switch takes the
+// cross's corner, and its name goes up to it.
+inline Rect cardPowerInGraph(Rect card) {
+    return {card.right() - 28.0f, card.y + 8.5f, 20.0f, 19.0f};
+}
+inline Rect cardFold(Rect card, bool power = true) {
+    return {(power ? cardPower(card).x : cardClose(card).x) - 16.0f, card.y + 9.0f, 14.0f, 19.0f};
+}
+inline float cardTitleRight(Rect card, bool power = true) {
+    return cardFold(card, power).x - 3.0f;
+}
+
 // A card by its screen place: 0..3, fractions while it scrolls.
 // `span`: the card places it takes, less than one folded.
 inline Rect sourceCard(float card, float span = 1.0f) {
@@ -364,26 +394,42 @@ constexpr float kFoldedFx = (2.0f * kFxIconX + kFxIconW + kFxGap) / (kFxCardW + 
 constexpr float kFxBoxPad = 5.0f;
 constexpr float kFxBoxMargin = kFxBoxPad;
 constexpr float kFxBoxEdge = kFxBoxMargin / (kFxCardW + kFxGap);
-constexpr float kFxBoxRadius = 11.0f; // the outline's corners, the cards' 8 px plus its pad
+constexpr float kFxBoxRadius = kRadiusCard + kFxBoxPad; // the outline's corners, round the cards' at its pad
 constexpr float kFxBoxAddW = 64.0f;
 constexpr float kFxBoxAddSpan = (kFxBoxAddW + kFxGap) / (kFxCardW + kFxGap);
-// A split's controls on a card's place (its container's column, or its card in the graph), top to bottom under the
-// title row: the band tabs (band 0 the low one, at the left), the crossover's display (see View::splitDisplay()), the
-// slope's buttons (6, 12 and 24 dB), the knobs: the low band's level (0), the crossover (1) and the high band's level
-// (2), and the bands' solos under their levels.
-inline Rect splitTab(Rect card, int band) {
-    const float w = (card.w - 28.0f) * 0.5f;
-    return {card.x + 14.0f + static_cast<float>(band) * w, card.y + 38.0f, w, 20.0f};
+// That dashed card, given the card place it starts (`at`): centered in the room between what comes before it (the last
+// card, or the controls) and the container's outline, kFxGap before it and kFxBoxPad after it.
+inline Rect fxBoxAddCard(Rect at) {
+    return {at.x - 0.5f * (kFxGap - kFxBoxPad), at.y, kFxBoxAddW, at.h};
 }
-inline Rect splitSlopeButton(Rect card, int k) {
-    const float w = (card.w - 28.0f - 6.0f) / 3.0f;
-    return {card.x + 14.0f + static_cast<float>(k) * (w + 3.0f), card.y + 178.0f, w, 22.0f};
+// A split's controls on a card's place (its container's column, or its card in the graph), top to bottom under the
+// title row: the band tabs (left to right the low band's, a middle one's, the high one's; see tabPosition()), the
+// crossover's display (see View::splitDisplay()), under it at the right the slope's list, in three bands a row of the
+// two crossovers' knobs, then the bands' levels' knobs with their solos under them (the BANDS switch, 2 | 3, is in the
+// title row: see splitBandsButton()). In two bands those knobs are the low band's level (0), the crossover (1) and the high band's level (2); in
+// three, the low, the middle and the high band's levels, and the solos go under each level.
+inline Rect splitTab(Rect card, int position, int count) {
+    const float w = (card.w - 28.0f) / static_cast<float>(count);
+    return {card.x + 14.0f + static_cast<float>(position) * w, card.y + 38.0f, w, 20.0f};
 }
 inline Point splitKnob(Rect card, int k) {
     return {card.x + card.w * static_cast<float>(1 + 2 * k) / 6.0f, card.y + 232.0f};
 }
-inline Rect splitSoloButton(Rect card, int band) {
-    return {splitKnob(card, band == 0 ? 0 : 2).x - 12.0f, card.y + 270.0f, 24.0f, 20.0f};
+inline Point splitCrossKnob(Rect card, int which) {
+    return {card.x + card.w * static_cast<float>(1 + 2 * which) / 4.0f, card.y + 180.0f};
+}
+inline Rect splitSoloButton(Rect card, int k) {
+    return {splitKnob(card, k).x - 12.0f, card.y + 270.0f, 24.0f, 20.0f};
+}
+// The BANDS switch (2 | 3) in the title row, right after the split's name, which stops short of it
+// (kSplitTitleW).
+// (kSplitTitleW). It ends short of the fold button in the row's narrower column too.
+constexpr float kSplitTitleW = 46.0f;
+inline Rect splitBandsButton(Rect card, int bands) {
+    return {card.x + 36.0f + kSplitTitleW + static_cast<float>(bands - 2) * 20.0f, card.y + 8.5f, 20.0f, 19.0f};
+}
+inline Rect splitSlopeButton(Rect display) {
+    return {display.right() - 64.0f, display.bottom() + 4.0f, 64.0f, 18.0f};
 }
 
 // The cards are cut off at the row's ends while they scroll.
@@ -397,10 +443,10 @@ inline Rect sourceListClip() {
     return {cards.x, cards.y, cards.w, kModPanel.bottom() - cards.y};
 }
 
-// + LFO, + ENV, + RANDOM and + MIDI, after the toggle; shaped like ADD EFFECT.
-inline Rect sourceAddButton(SourceType type) {
-    const int k = static_cast<int>(type) - static_cast<int>(SourceType::Lfo);
-    return {kAddSourceX + 88.0f * static_cast<float>(k), kModPanel.y + 9.0f, 82.0f, 22.0f};
+// + SOURCE, after the toggle, as + EFFECT is in the FX panel (fxMenuButton()): it opens the list of source types under
+// it. How many places are taken goes after it.
+inline Rect sourceMenuButton() {
+    return {kAddSourceX, kModPanel.y + 9.0f, 116.0f, 22.0f};
 }
 
 // A random LFO's display makes room at its right for the Smooth and Chaos knobs.
@@ -470,21 +516,18 @@ inline Rect lfoModeButton(float card, int mode) {
                     : Rect{d.x + 156.0f, d.y + 28.0f, d.w - 156.0f, 22.0f};
 }
 
-// Title row: handle and name (the row drags the card), then (LFOs) SYNC, the power switch and the remove cross at the
-// right; of a card `span` places wide.
+// A source card's title row, as every card's is (cardClose()): handle and name (the row drags the card), then the fold
+// button, the power switch and the remove cross at the right; of a card `span` places wide.
 inline Rect sourceRemove(float card, float span = 1.0f) {
-    const Rect p = sourceCard(card, span);
-    return {p.right() - 26.0f, p.y + 7.0f, 18.0f, 21.0f};
+    return cardClose(sourceCard(card, span));
 }
 
 inline Rect sourcePower(float card, float span = 1.0f) {
-    const Rect p = sourceCard(card, span);
-    return {p.right() - 30.0f - 26.0f, p.y + 8.0f, 26.0f, 19.0f};
+    return cardPower(sourceCard(card, span));
 }
 // A Custom LFO's normal card: left of the fold button (which is left of the power switch), the button that widens it.
 inline Rect lfoWidenButton(float card) {
-    const float fold = sourcePower(card).x - 4.0f - 18.0f;
-    return {fold - 4.0f - 28.0f, sourceCard(card).y + 7.0f, 28.0f, 22.0f};
+    return {cardFold(sourceCard(card)).x - 4.0f - 28.0f, sourceCard(card).y + 7.0f, 28.0f, 22.0f};
 }
 
 // An LFO's shape list (a button with the shape's icon and name, and the list it opens under it) over its clock modes
@@ -549,7 +592,7 @@ constexpr float kFxMenuNodeGap = 7.0f;
 inline Rect fxMenu(Point at, bool node = false) {
     const Rect button = fxMenuButton();
     return {at.x < 0.0f ? button.x : at.x, at.x < 0.0f ? button.bottom() + 4.0f : at.y, 180.0f,
-            8.0f + kFxTypes * kFxMenuPitch + (node ? kFxMenuNodeGap + kFxMenuPitch : 0.0f)};
+            8.0f + kFxTypes * kFxMenuPitch + (node ? kFxMenuNodeGap + 2.0f * kFxMenuPitch : 0.0f)};
 }
 static_assert(9.0f + 22.0f + 4.0f + 8.0f + kFxTypes * kFxMenuPitch <= kFxPanel.h, // from under the button
               "the list of effects fits in the panel");
@@ -559,9 +602,11 @@ inline Rect fxMenuItem(Point at, FxType type) {
     return {menu.x + 4.0f, menu.y + 4.0f + static_cast<float>(fxOfferedPlace(type)) * kFxMenuPitch, menu.w - 8.0f,
             kFxMenuPitch - 2.0f};
 }
-inline Rect fxMenuNodeItem(Point at) {
+// Its entries after the effects, a little apart: a split in two bands, then one in three.
+inline Rect fxMenuNodeItem(Point at, int bands = 2) {
     const Rect menu = fxMenu(at, true);
-    return {menu.x + 4.0f, menu.y + 4.0f + kFxTypes * kFxMenuPitch + kFxMenuNodeGap, menu.w - 8.0f, kFxMenuPitch - 2.0f};
+    return {menu.x + 4.0f, menu.y + 4.0f + (kFxTypes + bands - 2) * kFxMenuPitch + kFxMenuNodeGap, menu.w - 8.0f,
+            kFxMenuPitch - 2.0f};
 }
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
@@ -578,11 +623,6 @@ inline Rect clipLinkButton(Rect card, bool custom) {
 }
 inline Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
-}
-
-// The filter effect's slope list, under its display in the middle.
-inline Rect fxSlopeButton(Rect card, Rect display) {
-    return {card.center().x - 36.0f, display.bottom() + 4.0f, 72.0f, 18.0f};
 }
 
 inline Rect listMenu(Rect button, int count) {
@@ -680,14 +720,18 @@ inline Rect fxModeButton(int graph) {
 }
 // Its nodes sit on a fixed grid: IN in column 0, then a column a node, the main line in the middle row (0) and a
 // split's high and low bands in the rows above and below it (-1, 1), OUT after the last column. The graph scrolls
-// sideways when its columns reach past the area (`scroll`, in pixels). An effect is a circle, a split a box with its
-// bands' ports on its right edge (the high band on top), a join a smaller box, IN and OUT boxes, and the + where a
-// node can go next a + in a circle.
+// sideways when its columns reach past the area (`scroll`, in pixels). An effect is a rounded box, as a voice filter's
+// or shaper's node is in the routing graph (its icon in it, its name under it), a split a box with its bands' ports on
+// its right edge (the high band on top), a join a box as large, IN and OUT boxes, and the + where a node can go next a
+// + in a circle.
 constexpr float kFxGridCol = 92.0f, kFxGridRow = 70.0f, kFxGridLeft = 34.0f;
-constexpr float kFxNodeR = 22.0f;
+constexpr float kFxNodeR = 22.0f;     // an effect's box's half width, where its wires meet it
+constexpr float kFxNodeHalfH = 16.0f; // and its half height
 constexpr float kSoloedOutAlpha = 0.3f; // how strongly a band its join doesn't hear (the other soloed) is drawn
 constexpr float kFxPlusIdleAlpha = 0.4f; // how strongly the graph's +s are drawn while the mouse isn't on them
 constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
+// How far along a graph wire bends from one row to another: within the gap between two columns' nodes.
+constexpr float kFxWireBend = kFxGridCol - 2.0f * kFxNodeR - 4.0f;
 constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
 constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
 constexpr float kFxSlotHalf = 8.5f; // a + where a node can go next: a circle, as on a wire's middle
@@ -740,10 +784,11 @@ constexpr float kMdMeterH = 6.0f;
 constexpr int kMdRatioLines = 7;
 
 // Its switches in the title row, left of the fold and remove buttons: RMS, then LINK.
-inline Rect mdRmsButton(Rect card) { return {card.right() - 122.0f, card.y + 8.5f, 34.0f, 19.0f}; }
-inline Rect mdLinkButton(Rect card) { return {card.right() - 84.0f, card.y + 8.5f, 30.0f, 19.0f}; }
-// Its rows of knobs: the band's own (Above, Down, Below, Up, Gain), a line, then the shared ones in two rows.
+// Its rows of knobs: the band's own (Above, Down, Below, Up, Gain), a line, then the shared ones in two rows; RMS and
+// LINK at the line's right end (the title row holding only what every card's does).
 constexpr float kMdBandKnobsY = 142.0f, kMdLineY = 186.5f, kMdSharedY1 = 214.0f, kMdSharedY2 = 266.0f;
+inline Rect mdRmsButton(Rect card) { return {card.right() - 14.0f - 30.0f - 34.0f, card.y + kMdLineY - 9.5f, 34.0f, 19.0f}; }
+inline Rect mdLinkButton(Rect card) { return {card.right() - 14.0f - 30.0f, card.y + kMdLineY - 9.5f, 30.0f, 19.0f}; }
 
 // The parametric EQ's plot: frequency across, gain up and down.
 constexpr float kPeqRangeDb = 20.0f;
@@ -979,6 +1024,20 @@ inline Rect confirmPanel(float viewHeight, bool shorter) {
 // 1 goes ahead, 0 cancels.
 inline Rect confirmButton(Rect panel, int ok) {
     return {panel.right() - 24.0f - (ok ? 80.0f : 166.0f), panel.bottom() - 24.0f - 28.0f, 80.0f, 28.0f};
+}
+// A third choice, left of Cancel: a split removed with its bands' effects (Delete), where 1 keeps them (Keep).
+inline Rect confirmThirdButton(Rect panel) {
+    return {panel.right() - 24.0f - 252.0f, panel.bottom() - 24.0f - 28.0f, 80.0f, 28.0f};
+}
+// Asking where a split's middle band's effects go, back in two bands: a row more, of a button for each band they can go
+// onto (2 the low band's end, 3 the high band's start) over Remove (confirmButton()'s 1) and Cancel.
+inline Rect confirmBandsPanel(float viewHeight) {
+    const float h = kConfirmH + 20.0f;
+    return {(View::kWidth - kConfirmW) * 0.5f, std::round((viewHeight - h) * 0.5f), kConfirmW, h};
+}
+inline Rect confirmBandButton(Rect panel, int choice) {
+    const float w = (panel.w - 48.0f - 8.0f) * 0.5f;
+    return {panel.x + 24.0f + (choice == 3 ? w + 8.0f : 0.0f), panel.y + 74.0f, w, 28.0f};
 }
 
 // The preset browser, centered over the editor: a title row, the list, and the folder at the foot.

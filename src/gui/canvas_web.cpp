@@ -74,6 +74,8 @@ EM_JS(float, js_text_width, (const char *utf8, int length, float size, int bold)
       { return Module.fmv2d.textWidth(UTF8ToString(utf8, length), size, bold != 0); });
 EM_JS(void, js_push_clip, (float x, float y, float w, float h), { Module.fmv2d.pushClip(x, y, w, h); });
 EM_JS(void, js_pop_clip, (), { Module.fmv2d.popClip(); });
+EM_JS(void, js_push_layer, (float x, float y, float opacity), { Module.fmv2d.pushLayer(x, y, opacity); });
+EM_JS(void, js_pop_layer, (), { Module.fmv2d.popLayer(); });
 
 Color mix(Color a, Color b, float t) {
     return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t};
@@ -178,6 +180,16 @@ void Canvas::pushClip(Rect r) {
 
 void Canvas::popClip() {
     js_pop_clip();
+}
+
+void Canvas::pushLayer(Point offset, float opacity, Rect bounds) {
+    js_push_layer(offset.x, offset.y, opacity);
+    js_push_clip(bounds.x, bounds.y, bounds.w, bounds.h); // only what is inside shows, as in the other backends
+}
+
+void Canvas::popLayer() {
+    js_pop_clip();
+    js_pop_layer();
 }
 
 } // namespace fmvibe::gui

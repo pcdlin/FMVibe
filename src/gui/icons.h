@@ -93,8 +93,8 @@ void polaritySign(Canvas &c, Point m, bool minus, Color color);
 void routeModeIcon(Canvas &c, Point m, RouteMode mode, Color color, float scale = 1.0f);
 void fxIcon(Canvas &c, Rect r, FxType type, Color color);
 // A split of the effects graph: a line forking into two; and a join, two lines meeting and going on as one.
-void splitIcon(Canvas &c, Rect r, Color color);
-void joinIcon(Canvas &c, Rect r, Color color);
+void splitIcon(Canvas &c, Rect r, Color color, int bands = 2); // a fork into two prongs, or three
+void joinIcon(Canvas &c, Rect r, Color color, int bands = 2);
 // A bin, about 12 x 14 around `m`: removing everything.
 void binIcon(Canvas &c, Point m, Color color);
 // The FX panel's switch between the chain (cards in a row) and the graph (nodes and wires).

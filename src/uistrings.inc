@@ -145,6 +145,7 @@ STR(ParamSplitLow, "Crossover")
 STR(ParamSplitHigh, "High Crossover")
 STR(ParamSoloHigh, "Solo High") // a join's solo of its split's high band, after the join's name
 STR(ParamSoloLow, "Solo Low")
+STR(ParamSoloMid, "Solo Mid") // a join's solo of a three-band split's middle band
 STR(ParamFxOut, "FX Out") // the effects graph's output, as the node its wires go into
 STR(ParamFxInput, "Input {1}") // a wire into a node of the effects graph, by number; its field's name follows
 STR(ParamFxInputFrom, "From")
@@ -479,6 +480,8 @@ STR(LabelMakeup, "Makeup")
 STR(LabelGain, "Gain")
 STR(LabelLowX, "Low X")
 STR(LabelCrossover, "Crossover") // a split's knob
+STR(LabelCrossLow, "Low X") // a three-band split's knob for its low crossover
+STR(LabelCrossHigh, "High X") // and for its high one
 STR(LabelHighX, "High X")
 STR(LabelSize, "Size")
 STR(LabelPreDelay, "Pre-Delay")
@@ -534,13 +537,10 @@ STR(BandButtonMid, "MID")
 STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
-STR(ButtonLfo, "LFO") // the buttons that add, after a drawn plus
-STR(ButtonEnv, "ENV")
-STR(ButtonRandom, "RANDOM")
-STR(ButtonMidi, "MIDI")
 STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
 STR(HintRandomSource, "Random value per note")
-STR(ButtonEffect, "EFFECT")
+STR(ButtonEffect, "EFFECT") // + EFFECT and + SOURCE, after a drawn plus
+STR(ButtonSource, "SOURCE")
 STR(ButtonOpenFolder, "OPEN FOLDER")
 STR(ButtonCancel, "Cancel")
 STR(ButtonInit, "Discard")
@@ -551,12 +551,13 @@ STR(ButtonOverwrite, "Overwrite")
 
 STR(HintRouting, "drag edges to connect")
 STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to toggle")
-STR(HintFx, "click icon: toggle  ·  drag title: reorder")
+STR(HintFx, "drag a title to reorder")
 STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
 // A split's controls: the tabs that pick the band it shows, and its container's dashed card adding to that band.
 STR(TabBandLow, "Low")
 STR(TabBandHigh, "High")
+STR(TabBandMid, "Mid") // a three-band split's middle band
 STR(ButtonAddToBand, "Add to") // over the band's name (TabBandLow or TabBandHigh)
 // What the note source's and velocity's curves show:
 STR(HintNoteAxes, "across: notes from Low to High  ·  up: output")
@@ -619,6 +620,17 @@ STR(ConfirmOverwriteTitle, "Overwrite \"{1}\"?")
 STR(ConfirmOverwrite, "Replaces the preset file with the current patch.")
 STR(ConfirmFxClearTitle, "Really remove all FX?")
 STR(ConfirmFxClear, "All effects are removed.")
+STR(ConfirmMidBandTitle, "Change to two bands?") // a three-band split switched to two, its middle band holding effects
+STR(ConfirmMidBand, "The mid band holds {1} effects. Where should they go?")
+STR(ConfirmMidBandOne, "The mid band holds an effect. Where should it go?")
+STR(ButtonMidToLow, "Onto Low") // the middle band's effects onto the low band's end
+STR(ButtonMidToHigh, "Onto High") // onto the high band's start
+STR(ButtonMidRemove, "Remove")
+STR(ConfirmSplitRemoveTitle, "Remove the split?") // a split removed while its bands hold effects
+STR(ConfirmSplitRemove, "Keep its {1} effects on the main line?")
+STR(ConfirmSplitRemoveOne, "Keep its effect on the main line?")
+STR(ButtonSplitKeep, "Keep") // the split goes, its bands' effects staying on the main line
+STR(ButtonSplitDelete, "Delete") // the split goes with its bands' effects
 
 // Readouts in the displays, with the numbers filled in.
 STR(CaptionShapePoint, "point {1}  ·  {2} % of the cycle  ·  {3}")
@@ -700,6 +712,8 @@ STR(TipFxInsert, "Add an effect or a split here") // the arrow between two effec
 STR(TipSplitGrip, "Drag to move the split with its bands") // a split's container's title row
 STR(TipSplitBand, "Show this band's effects") // a split's band tab
 STR(TipSplitSolo, "Solo this band") // the S over a split's band level
+STR(TipSplitTwo, "Split into two bands") // a split's BANDS switch
+STR(TipSplitThree, "Split into three bands")
 STR(TipWheelHandle, "Drag to assign mod wheel")
 STR(TipNoteHandle, "Drag to assign note pitch modulation")
 STR(TipVelocityHandle, "Drag to assign velocity")
@@ -802,10 +816,12 @@ STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
 // --- The editor: right-click menus
 
 STR(MenuDuplicate, "Duplicate")
-STR(MenuSplitBands, "Split into high/low bands") // the list of effects on the main line, after the effects
+STR(MenuSplitBands, "Add 2-band split") // the list of effects on the main line, after the effects
+STR(MenuSplitThree, "Add 3-band split") // after it: a split in three bands
 STR(MenuResetSettings, "Reset settings")
 STR(MenuOtt, "OTT") // a 3-band dynamics' settings set to those of Ableton's OTT preset
 STR(MenuRemove, "Remove")
+STR(MenuMoveToBand, "Move to {1}") // an effect on a split's band moved to the end of another band of it, {1} its name
 STR(MenuUnipolar, "Unipolar") // a source's, in the menus of its card, handle or knob
 STR(MenuBipolar, "Bipolar")
 STR(MenuResetBend, "Reset Bend") // a wire in the graph, back to how it bows to begin with

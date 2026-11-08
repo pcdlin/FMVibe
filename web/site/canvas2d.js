@@ -265,5 +265,16 @@ export function createCanvas2d(ctx) {
       ctx.restore();
       fill = stroke = font = lineWidth = lineCap = dash = null; // back to whatever was set before the clip
     },
+    // Moved and faint until popLayer(). The 2D context has no layers: each shape is put down at that opacity, so
+    // where shapes overlap the image is a little less faint than Direct2D's or Cairo's.
+    pushLayer(x, y, opacity) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalAlpha *= opacity;
+    },
+    popLayer() {
+      ctx.restore();
+      fill = stroke = font = lineWidth = lineCap = dash = null;
+    },
   };
 }
