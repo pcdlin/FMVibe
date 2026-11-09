@@ -1940,8 +1940,9 @@ void View::paintFxGraph(Canvas &c) {
         const Rect r = boxAround(p, kFxEndHalfW, kFxEndHalfH);
         if (const float glow = name == Str::NodeFxIn ? fxGlow(kFxPortIn) : outGlow; glow > 0.01f)
             featherRect(c, r, kRadiusControl, 12.0f, kText.alpha(0.18f * glow));
-        c.fillRect(r, kCardColor, kRadiusControl);
-        c.strokeRect(r, kBorder, 1.0f, kRadiusControl);
+        c.fillRect(r, look.flatFxNodes ? kTrack : kCardColor, kRadiusControl);
+        if (!look.flatFxNodes)
+            c.strokeRect(r, kBorder, 1.0f, kRadiusControl);
         c.text(r, tr(name), kTextLabel, kDim, Align::Center, true);
     }
 
@@ -1971,8 +1972,13 @@ void View::paintFxGraph(Canvas &c) {
                 featherRect(c, r, kRadiusControl, 16.0f, color.alpha(0.3f * glow));
             if (isSelected)
                 c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
-            c.fillRect(r, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(fill), kRadiusControl);
-            c.strokeRect(r, color, width, kRadiusControl);
+            if (look.flatFxNodes) { // filled with a tint of its color, stronger under the mouse and picked, no outline
+                c.fillRect(r, kCardColor.alpha(fill), kRadiusControl);
+                c.fillRect(r, color.alpha(isSelected ? 0.4f : hot ? 0.3f : 0.18f), kRadiusControl);
+            } else {
+                c.fillRect(r, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(fill), kRadiusControl);
+                c.strokeRect(r, color, width, kRadiusControl);
+            }
             fxIcon(c, {center.x - 10.0f, center.y - 7.0f, 20.0f, 14.0f}, fxSlotType(node), color);
             name(kFxNodeHalfH, fxTitle(fxSlotType(node)));
             return;

@@ -1411,7 +1411,10 @@ may show anywhere, repaints the whole of it.
   colors. Spectrum and Porcelain tint each effect and source card with its own color and draw a knob's arc in the
   color of what it belongs to (its card, its operator, filter or shaper), outline a card only while the mouse is over it (or it is
   dragged), fill an LFO's shape on its card, and draw + EFFECT and + SOURCE as filled pills; Spectrum also fills its list
-  buttons dark and lifts the lists and menus they open on a soft shadow, neither outlined.
+  buttons dark and lifts the lists and menus they open on a soft shadow, neither outlined; fills a lit switch solid with its color
+  (a row of them set in a dark well, the one lit filling its part to the edges, its icon a little smaller); sets its
+  routing nodes on a soft shadow; fills the effects graph's nodes with a tint of their color, without an outline;
+  and keeps the inspector's knobs in the accent.
   Settings that name a theme no longer offered show the nearest one: Graphite as Midnight, Paper as Light.
   **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
   stronger and wider the halo. It sets the halos that sounding operators and the effects graph's nodes and wires

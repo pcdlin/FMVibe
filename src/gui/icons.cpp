@@ -247,41 +247,42 @@ void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color) {
 
 // An LFO's clock modes, named in their tooltips: RETRIGGER a rise that starts again at each dot (a note), FREE an
 // infinity sign, ANCHOR an anchor, ONE-SHOT a single cycle that then stays where it ends.
-void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color) {
-    const std::vector<double> key{static_cast<double>(Curve::ModeIcon), m.x, m.y, static_cast<double>(clock)};
+void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale) {
+    auto at = [&](float x, float y) { return Point{m.x + x * scale, m.y + y * scale}; };
+    const std::vector<double> key{static_cast<double>(Curve::ModeIcon), m.x, m.y, static_cast<double>(clock), scale};
     const std::vector<Point> points = icons.get(key, [&] {
         std::vector<Point> points;
         if (clock == LfoClock::Retrigger) {
             for (int half = 0; half < 2; ++half)
                 for (int i = 0; i <= 12; ++i)
-                    points.push_back({m.x - 10.0f + half * 10.0f + i * (10.0f / 12.0f),
-                                      m.y + 4.0f - 8.0f * std::sin(i / 12.0f * 0.5f * kPi)});
+                    points.push_back(at(-10.0f + half * 10.0f + i * (10.0f / 12.0f),
+                                        4.0f - 8.0f * std::sin(i / 12.0f * 0.5f * kPi)));
         } else if (clock == LfoClock::Free) {
             for (int i = 0; i <= 48; ++i) {
                 const float t = i / 48.0f * 2.0f * kPi, d = 1.0f + std::sin(t) * std::sin(t);
-                points.push_back({m.x + 10.0f * std::cos(t) / d, m.y + 11.0f * std::sin(t) * std::cos(t) / d});
+                points.push_back(at(10.0f * std::cos(t) / d, 11.0f * std::sin(t) * std::cos(t) / d));
             }
         } else if (clock == LfoClock::Anchor) { // its arms, the rest drawn below
             for (int i = 0; i <= 24; ++i) {
                 const float t = (0.1f + 0.8f * i / 24.0f) * kPi;
-                points.push_back({m.x - 5.0f * std::cos(t), m.y + 0.2f + 5.0f * std::sin(t)});
+                points.push_back(at(-5.0f * std::cos(t), 0.2f + 5.0f * std::sin(t)));
             }
         } else {
             for (int i = 0; i <= 24; ++i)
-                points.push_back({m.x - 10.0f + i * 0.5f, m.y - 4.5f * std::sin(i / 24.0f * 2.0f * kPi)});
-            points.push_back({m.x + 10.0f, m.y});
+                points.push_back(at(-10.0f + i * 0.5f, -4.5f * std::sin(i / 24.0f * 2.0f * kPi)));
+            points.push_back(at(10.0f, 0.0f));
         }
         return points;
     });
     if (clock == LfoClock::Retrigger) { // the notes that start it
-        c.fillCircle({m.x - 10.0f, m.y + 4.0f}, 1.6f, color);
-        c.fillCircle({m.x, m.y + 4.0f}, 1.6f, color);
+        c.fillCircle(at(-10.0f, 4.0f), 1.6f * scale, color);
+        c.fillCircle(at(0.0f, 4.0f), 1.6f * scale, color);
     } else if (clock == LfoClock::Anchor) { // its ring, shank and stock, within 6 px of the middle, as the buttons hold
-        c.strokeCircle({m.x, m.y - 4.0f}, 1.4f, color, 1.1f);
-        c.line({m.x, m.y - 2.6f}, {m.x, m.y + 5.2f}, color, 1.4f);
-        c.line({m.x - 2.8f, m.y - 0.8f}, {m.x + 2.8f, m.y - 0.8f}, color, 1.4f);
+        c.strokeCircle(at(0.0f, -4.0f), 1.4f * scale, color, 1.1f);
+        c.line(at(0.0f, -2.6f), at(0.0f, 5.2f), color, 1.4f);
+        c.line(at(-2.8f, -0.8f), at(2.8f, -0.8f), color, 1.4f);
     } else if (clock == LfoClock::OneShot)
-        c.fillCircle(points.back(), 1.7f, color);
+        c.fillCircle(points.back(), 1.7f * scale, color);
     c.polyline(points.data(), points.size(), color, 1.4f);
 }
 
@@ -291,19 +292,20 @@ void polaritySign(Canvas &c, Point m, bool minus, Color color) {
         c.line({m.x, m.y - 4.5f}, {m.x, m.y + 4.5f}, color, 1.6f);
 }
 
-void polarityIcon(Canvas &c, Point m, bool bipolar, Color color) {
-    const std::vector<double> key{static_cast<double>(Curve::PolarityIcon), m.x, m.y, bipolar ? 1.0 : 0.0};
+void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale) {
+    const std::vector<double> key{static_cast<double>(Curve::PolarityIcon), m.x, m.y, bipolar ? 1.0 : 0.0, scale};
     const std::vector<Point> points = icons.get(key, [&] {
         std::vector<Point> points;
         for (int i = 0; i <= 16; ++i) {
             const float t = i / 16.0f;
-            points.push_back({m.x - 5.0f + 10.0f * t, bipolar ? m.y - 3.5f * std::sin(2.0f * kPi * t)
-                                                             : m.y + 3.5f - 3.5f * (1.0f - std::cos(2.0f * kPi * t))});
+            points.push_back({m.x + (-5.0f + 10.0f * t) * scale,
+                              m.y + scale * (bipolar ? -3.5f * std::sin(2.0f * kPi * t)
+                                                     : 3.5f - 3.5f * (1.0f - std::cos(2.0f * kPi * t)))});
         }
         return points;
     });
-    const float base = bipolar ? m.y : m.y + 3.5f;
-    c.line({m.x - 5.5f, base}, {m.x + 5.5f, base}, color.alpha(0.5f), 1.0f);
+    const float base = bipolar ? m.y : m.y + 3.5f * scale;
+    c.line({m.x - 5.5f * scale, base}, {m.x + 5.5f * scale, base}, color.alpha(0.5f), 1.0f);
     c.polyline(points.data(), points.size(), color, 1.3f);
 }
 

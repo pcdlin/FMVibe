@@ -7900,6 +7900,13 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove({600.0f, 328.0f}, {});
         file.insert(file.size() - 4, "-routing");
         themed = themed && renderer.save(view, dir / file);
+        if (std::string_view(View::themeName(i)) == "Spectrum") { // its effects as a graph too
+            click(view, kFxTab);
+            click(view, detail::fxModeButton(1).center());
+            view.mouseMove({600.0f, 328.0f}, {});
+            themed = themed && renderer.save(view, dir / "14d-theme-spectrum-graph.png");
+            click(view, detail::fxModeButton(0).center());
+        }
         click(view, kFxTab);
         click(view, cog);
     }

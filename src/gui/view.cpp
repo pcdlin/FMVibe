@@ -5797,7 +5797,13 @@ void View::paintNode(Canvas &c, const Widget &w) {
         if (live && telemetry_.voices > 0 && reachesOut(w.a))
             c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f), corner + 4.0f);
         // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
+        if (look.embossedNodes) { // raised: shaded from its top down, on a shadow
+            c.fillRect({w.rect.x - 1.0f, w.rect.y + 1.0f, w.rect.w + 2.0f, w.rect.h + 2.0f},
+                       Color{0.0f, 0.0f, 0.0f, 0.3f}, corner + 1.0f);
+            c.fillGradient(w.rect, hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, corner);
+        } else {
+            c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
+        }
         if (selected)
             c.fillRect(w.rect, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill), corner);
         c.strokeRect(w.rect, live ? color : kFaint, selected ? 2.0f : 1.5f, corner);
@@ -5835,7 +5841,13 @@ void View::paintNode(Canvas &c, const Widget &w) {
         c.strokeCircle({center.x + 4.5f, center.y}, kNodeRadius, (heard ? color : kFaint).alpha(0.45f), 1.2f);
     }
     // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
-    c.fillCircle(center, kNodeRadius, hovered ? kTrack : kRaised);
+    if (look.embossedNodes) { // raised: shaded from its top down, on a shadow
+        c.fillCircle({center.x, center.y + 2.0f}, kNodeRadius + 1.0f, Color{0.0f, 0.0f, 0.0f, 0.3f});
+        c.fillGradient({center.x - kNodeRadius, center.y - kNodeRadius, 2.0f * kNodeRadius, 2.0f * kNodeRadius},
+                       hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, kNodeRadius);
+    } else {
+        c.fillCircle(center, kNodeRadius, hovered ? kTrack : kRaised);
+    }
     if (selected)
         c.fillCircle(center, kNodeRadius, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill));
     c.strokeCircle(center, kNodeRadius, heard ? color : kFaint, selected ? 2.0f : 1.5f);
@@ -5879,6 +5891,22 @@ void editButton(Canvas &c, Rect r, Color color, bool hovered, bool open) {
 } // namespace
 
 void View::paintButtonFace(Canvas &c, const Widget &w, Color fill, bool lit, Color color, float radius) {
+    if (look.solidButtons) {
+        // A dark well without an outline, a lit switch filled solid with its color (inset in a row's well), one under
+        // the mouse (its fill the track's) lighter.
+        const bool hoverFill =
+            !lit && fill.r == kTrack.r && fill.g == kTrack.g && fill.b == kTrack.b && fill.a == kTrack.a;
+        if (w.group.w <= 0.0f) {
+            c.fillRect(w.rect, lit ? color : hoverFill ? kTrack : kDisplayColor, radius);
+            return;
+        }
+        // Its part of the row's well, lit to its edges (the well's outer corners rounded), as the well is.
+        c.pushClip({w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
+        c.fillRect(w.group, lit ? color : hoverFill ? kTrack : kDisplayColor, radius);
+        c.popClip();
+        lastPartLit_ = lit;
+        return;
+    }
     if (w.group.w <= 0.0f) {
         c.fillRect(w.rect, fill, radius);
         if (lit)
@@ -5984,29 +6012,30 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, kRadiusControl);
         if (field == FxParam::FilterType) // the filter types show as icons, named in their tooltips
             filterIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 5.0f, 20.0f, w.rect.h - 10.0f},
-                       static_cast<FilterType>(w.b), on ? color : kDim);
+                       static_cast<FilterType>(w.b), on ? litInk(color) : kDim);
         else if (power)
-            powerIcon(c, w.rect.center(), on ? color : (hovered ? kText : kDim));
+            powerIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
         else if (modeChoice)
-            routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? color : (hovered ? kText : kDim));
+            routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
         else if (fixedSwitchOp(w.param) >= 0) // a keyboard, crossed out while the operator doesn't follow it
-            keyboardIcon(c, w.rect.center(), on ? color : (hovered ? kText : kFaint), on);
+            keyboardIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kFaint), on);
         else if (shaperFieldOf(w.param) == ShaperParam::Link) // a voice shaper's link, as the shaper effect's
-            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperLink, on ? color : (hovered ? kText : kDim));
+            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperLink, on ? litInk(color) : (hovered ? kText : kDim));
         else if (shaperFieldOf(w.param) == ShaperParam::Symmetric)
-            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperSymmetric, on ? color : (hovered ? kText : kDim));
+            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperSymmetric, on ? litInk(color) : (hovered ? kText : kDim));
         else if (field == FxParam::PhaserNegative || field == FxParam::FlangerNegative)
-            polaritySign(c, w.rect.center(), w.b == 1, on ? color : (hovered ? kText : kDim));
+            polaritySign(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim));
         else if (isFxIconSwitch(field))
-            fxSwitchIcon(c, w.rect.center(), field, on ? color : (hovered ? kText : kDim));
+            fxSwitchIcon(c, w.rect.center(), field, on ? litInk(color) : (hovered ? kText : kDim));
         else if (isLfoSync(w.param)) // an LFO's SYNC, the effects' metronome
-            fxSwitchIcon(c, w.rect.center(), FxParam::DelaySync, on ? color : (hovered ? kText : kDim));
+            fxSwitchIcon(c, w.rect.center(), FxParam::DelaySync, on ? litInk(color) : (hovered ? kText : kDim));
         else if (clockMode)
-            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? color : (hovered ? kText : kDim));
+            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? litInk(color) : (hovered ? kText : kDim),
+                         switchIconScale());
         else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's
-            polarityIcon(c, w.rect.center(), false, on ? color : (hovered ? kText : kDim));
+            polarityIcon(c, w.rect.center(), false, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else
-            c.text(w.rect, text, kTextLabel, on ? kText : kDim, Align::Center, on);
+            c.text(w.rect, text, kTextLabel, on ? litInk(kText) : kDim, Align::Center, on);
         break;
     }
     case Kind::ViewTab: {
@@ -6077,14 +6106,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
         paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kAccent, kRadiusControl);
         const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
-        c.polyline(points.data(), points.size(), selected ? kAccent : kDim, 1.5f);
+        c.polyline(points.data(), points.size(), selected ? litInk(kAccent) : kDim, 1.5f);
         break;
     }
     case Kind::TypeButton: {
         const bool selected = std::lround(value(paramIndex(w.a, FilterParam::Type))) == w.b;
         paintButtonFace(c, w, selected ? kFilterColor.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kFilterColor,
                         kRadiusControl);
-        filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? kFilterColor : kDim);
+        filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? litInk(kFilterColor) : kDim);
         break;
     }
     case Kind::Port: { // under the mouse, or dragged from, the node's outline glows in its color
@@ -6330,10 +6359,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         if (selected) {
             const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
-            c.polyline(points.data(), points.size(), kAccent, 1.5f);
+            c.polyline(points.data(), points.size(), litInk(kAccent), 1.5f);
             const Point m{w.rect.right() - 8.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.0f, m.y - 1.5f}, {m.x, m.y + 1.5f}, {m.x + 3.0f, m.y - 1.5f}};
-            c.polyline(chevron, 3, lit ? kText : kDim, 1.2f);
+            c.polyline(chevron, 3, look.solidButtons ? litInk(kText) : lit ? kText : kDim, 1.2f);
         } else {
             for (int d = -1; d <= 1; ++d)
                 c.fillCircle({w.rect.center().x + d * 5.0f, w.rect.center().y}, 1.6f, lit ? kText : kDim);
@@ -6574,7 +6603,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxMode: {
         const bool on = fxGraph() == (w.b == 1);
         paintButtonFace(c, w, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, kAccent, kRadiusControl);
-        fxModeIcon(c, w.rect.center(), w.b == 1, on ? kAccent : (hovered ? kText : kDim));
+        fxModeIcon(c, w.rect.center(), w.b == 1, on ? litInk(kAccent) : (hovered ? kText : kDim));
         break;
     }
     case Kind::WireStart: // a circle with a dot where it leaves its node
@@ -6865,18 +6894,18 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool on = w.b == 2 ? layout.shapeSnap : layout.shapeSteps == (w.b == 1);
         const Color color = shapeColor(w.a);
         paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, kRadiusControl);
-        const Color ink = on ? kText : (hovered ? kText : kDim);
+        const Color ink = on ? litInk(kText) : (hovered ? kText : kDim);
         const Str names[] = {Str::SwitchPoints, Str::SwitchSteps, Str::SwitchSnap};
         const char *name = tr(names[w.b]);
         const float textW = c.textWidth(name, kTextLabel, on);
         const float left = w.rect.center().x - (16.0f + textW) * 0.5f;
         const Point icon{left + 6.0f, w.rect.center().y};
         if (w.b == 0)
-            pointsIcon(c, icon, on ? color : ink);
+            pointsIcon(c, icon, on ? litInk(color) : ink);
         else if (w.b == 1)
-            stepsIcon(c, icon, on ? color : ink);
+            stepsIcon(c, icon, on ? litInk(color) : ink);
         else
-            gridIcon(c, icon, on ? color : ink);
+            gridIcon(c, icon, on ? litInk(color) : ink);
         c.text({left + 16.0f, w.rect.y, textW + 2.0f, w.rect.h}, name, kTextLabel, ink, Align::Left, on);
         break;
     }
@@ -6991,7 +7020,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                   : w.kind == Kind::SettingsMpe     ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
                                   : w.kind == Kind::SettingsHandles ? std::string(tr(kHandleSizes[w.b]))
                                                                     : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
-        c.text(w.rect, label, kTextBody, on && !faint ? kText : kDim, Align::Center, on);
+        c.text(w.rect, label, kTextBody, on ? (faint ? litInk(kDim) : litInk(kText)) : kDim, Align::Center, on);
         break;
     }
     case Kind::SettingsGlow:
@@ -7428,6 +7457,8 @@ void View::paintKnob(Canvas &c, const Widget &w) {
             return kSourceColors[s];
         if (const int slot = fxSlotOf(param); slot >= 0)
             return fxTypeColor(fxSlotType(slot));
+        if (look.opColors) // the inspector's knobs all in the accent, the operators' own colors kept for the graph
+            return kAccent;
         if (param >= kOpBase && param < kMatrixBase)
             return opColor((param - kOpBase) / kOpParamCount);
         if (param >= kFilterBase && param < kFilterLinkBase)

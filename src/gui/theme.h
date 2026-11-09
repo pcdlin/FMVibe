@@ -60,6 +60,11 @@ struct Palette {
     bool cardKnobs = false;       // a knob's arc in the color of what it belongs to (its card, its operator), not the accent
     bool pillButtons = false;     // + SOURCE and + EFFECT as filled pills, their names in full text, without an outline
     bool flatMenus = false;       // list buttons filled dark and the lists they open shadowed, neither outlined
+    bool solidButtons = false;    // a lit switch filled solid with its color, what is on it in the background's color,
+                                  // and switches set in a dark well, neither outlined
+    bool embossedNodes = false;   // the routing graph's nodes raised: shaded from nodeTop down to nodeBottom, on a shadow
+    Color nodeTop{}, nodeBottom{};
+    bool flatFxNodes = false;     // the effects graph's nodes filled with a tint of their color, without an outline
 };
 static_assert(static_cast<int>(FxType::Count) == 16, "a color for each effect type in every theme");
 
@@ -145,7 +150,7 @@ inline constexpr Palette kThemes[] = {
      false, {}, {}, true, 0.0f, 0.0f, true,
      {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
       Color::hex(0xA6E05A)},
-     0.10f, true, true, true},
+     0.10f, true, true, true, true, true, Color::hex(0x2A263D), Color::hex(0x211E30), true},
     {"Porcelain", Str::ThemePorcelain, // airy: white panels lifted off a cool gray by soft shadows, one cobalt accent
      Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
      Color::hex(0xFFFFFF),
@@ -203,6 +208,14 @@ Color fxTypeColor(FxType type);
 // An operator's own color in a theme that gives each one its own, else the accent.
 inline Color opColor(int op) {
     return look.opColors && op >= 0 && op < kOps ? look.ops[op] : look.accent;
+}
+// What is drawn on a lit switch: in its color, or on a solid one in the background's.
+inline Color litInk(Color color) {
+    return look.solidButtons ? look.background : color;
+}
+// How large the switches' drawn icons are: a little smaller on solid ones, which fill their switch to its edges.
+inline float switchIconScale() {
+    return look.solidButtons ? 0.8f : 1.0f;
 }
 extern float glowing; // how strongly graphs' curves glow, 0..1, which View::paint() sets from the controller too
 
