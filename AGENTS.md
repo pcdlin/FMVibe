@@ -324,7 +324,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     (read off the rendered pixels);
   - assigning LFOs and envelopes to a knob, a header knob and a wire label, and turning a knob;
   - connecting operators by dragging from a node's edge (lit under the mouse), anywhere around it, while a click
-    there only picks the node and a drag from further inside moves it; a filter's edge dragged onto an earlier
+    there only picks the node and a drag from further inside moves it; a drag held back over its own node once clear of
+    it looping round over its top and back into it, on the ring around it whether it is selected or not, and one only just past its edge showing no loop (read off the rendered pixels), and let go there feeding it back; a filter's edge dragged onto an earlier
     filter feeding it, and a filter's and a shaper's dragged back onto itself feeding it back; a filter going out by its edge dragged onto
     the bus, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
     which goes out in its place, and picking waves and filter types;

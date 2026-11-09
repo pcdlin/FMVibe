@@ -566,7 +566,10 @@ may show anywhere, repaints the whole of it.
       onto the **OUT** bus; from further inside, a drag moves the node, and a click on the edge only picks the node.
       Filters' and shapers' edges work the same way: onto an operator to modulate it, onto a filter or a shaper,
       back onto itself for feedback (starting at 25 %, its loop drawn on its top edge), or onto the bus. Every node
-      can feed every other one, and itself. Operators, filters and
+      can feed every other one, and itself. While the drag (or a route's arrowhead being moved) is held back over
+      the node it comes from, its line loops round in a small circle over the node's top and back into it, an
+      arrow showing the loop letting go there makes (standing on the ring the node is ringed with, selected or not); only once the mouse has been well clear of the node (16 px past its
+      outline), so the loop doesn't flash as a drag leaves the edge. Operators, filters and
       shapers go out alike: each has its line to OUT while it is routed there, whether anything goes into it or not.
       A node that already goes out is moved through a filter or shaper it is connected to rather than doubled, its
       output's modulation going along onto the send, and that goes out in its place unless its sound gets there already (through filter 2, say); so does a filter or
