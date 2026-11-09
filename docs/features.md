@@ -1264,7 +1264,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   never line up, and an Index macro deepening them all); and BA Neon Pluck (a mono saw plucked by FM through a
   resonant low-pass over a sine sub, a two-bar LFO turning its FM and grit, its effects as a graph: a split at
   180 Hz whose high band is widened and echoed while the low band stays tight, then a 3-band dynamics set as OTT;
-  its Timbre, Filter, Grit and Space macros). Then two more for each category, one after the DX7's factory sounds
+  its Timbre, Filter, Grit and Space macros). Then two more for each category, one in the style of 1980s FM synths
   (sine operators only, indexes falling fast and scaled by velocity) and one modern and heavy: BA Eighties Slap (a
   1:1 pair with feedback for the body, a 9:1 click for the thumb and a sub sine) and BA Grind Bass (a fed-back pair
   growled by a sub-octave linear FM through an asymmetric shaper and a driven low-pass, over a clean sub, its effects
@@ -1272,7 +1272,7 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   Width macros); DR Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note) and DR
   Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
   noise click; its Pitch, Distortion, Length and Click macros); FX Jet Takeoff (a modulator at full feedback, driven
-  by an inharmonic one, roaring through its carrier as the DX7 makes noise, a slow pitch envelope lifting it two
+  by an inharmonic one, roaring through its carrier, noise made by FM alone, a slow pitch envelope lifting it two
   octaves under a flanger) and FX Crush Downer (an FM growl folded by a sine-fold shaper and falling three octaves
   onto the note under band-passed noise falling with it); KY Funk Clav (a 1:1 pair with feedback for the nasal buzz
   beside a 2:5 pair for the pluck) and KY Driven Tines (an FM tine piano through an asymmetric shaper, a cabinet's
