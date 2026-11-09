@@ -6628,7 +6628,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::AmpMic: { // a capsule pointing at the cone, its front its color; ringed under the mouse
         const Color color = fxColor(w.a);
-        const Point m{w.rect.x + 9.0f, w.rect.y + 8.0f};
+        Point m{w.rect.x + 9.0f, w.rect.y + 8.0f};
+        if (const std::optional<Rect> card = fxCardOf(w.a)) { // where modulation has it, as the cable is drawn
+            const Rect live = ampMicRect(ampCabDisplay(*card), liveValue(paramIndex(w.a, FxParam::AmpPosition)),
+                                         liveValue(paramIndex(w.a, FxParam::AmpDistance)));
+            m = {live.x + 9.0f, live.y + 8.0f};
+        }
         if (hovered || active)
             c.strokeCircle({m.x + 3.0f, m.y}, 10.0f, color.alpha(0.45f), 3.0f);
         c.line({m.x, m.y}, {m.x + 4.0f, m.y}, kDim, 1.0f);
