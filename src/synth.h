@@ -353,6 +353,9 @@ private:
         // Samples (at the oversampled rate) a filter whose inputs have stopped runs on for, ringing out: a comb's
         // line's length past the last time it put out more than kFilterRingFloor (see renderBlock()).
         std::array<int, kFilters> filterRing{};
+        // Samples (at the oversampled rate) a released voice is kept for after a filter last put out more than the
+        // voice's quiet floor: a comb's line's length, so the gaps between a plucked comb's pulses don't end it.
+        std::array<int, kFilters> filterHeard{};
         std::array<double, kFilters> filterOut{};               // latest mono filter output (what operators hear)
         std::array<std::array<double, 2>, kFilters> filterLast{}; // latest filter output per channel (what shapers and loops hear)
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]
@@ -437,7 +440,7 @@ private:
     double sampleRate_ = 48000.0;
     int oversampling_ = 1;
     double rate_ = 48000.0; // the voices' rate: sampleRate_ * oversampling_
-    int capacity_ = 0;      // voices that may play; voices_ has a few more for stolen ones to fade out in
+    int capacity_ = 0;      // voices that may play; voices_ has as many more (4 to 32) for stolen ones to fade out in
     double bend_ = 0.0;
     double wheelBend_ = 0.0;
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
@@ -490,9 +493,18 @@ private:
     // Each source's slots in use, in order: those with a target that aren't bypassed, and their targets, which no
     // modulation moves. Worked out once a render() whose params changed, when the first voice needs them; the voices
     // look over these rather than every slot (an Amount of 0 they still leave out, as it takes modulation).
+    // What else of a slot is the same for every voice, worked out there too: the curve, the depth's scale (its
+    // Amount, times an aux that is a macro's or the mod wheel's knob), the aux a voice's own source puts out (or -1),
+    // the target's range, and the slot's depth with the host's modulation for every voice (which velocity's and the
+    // note source's slots take, having no voice modulation of their own).
     struct SharedSlot {
         int slot;
         int target;
+        double curve = 0.0;
+        double scale = 1.0;
+        int voiceAux = -1;
+        double range = 0.0;
+        double depth = 0.0;
     };
     std::array<std::array<SharedSlot, kSlots>, kAllSources> sharedSlots_{};
     std::array<int, kAllSources> sharedSlotCount_{};

@@ -73,6 +73,7 @@ struct FilterSettings {
     // a single peak.
     int slope = kDefaultSlope;
     double drive = 1.0; // input gain into the saturator; 1 = clean
+    double driveRoot = 1.0; // its square root, which the saturator's output is divided by
     Svf::Coefs main;
     Svf::Coefs second;
     double combDelay = 2.0; // samples
@@ -87,6 +88,7 @@ inline FilterSettings filterSettings(FilterType type, int slope, double cutoffHz
     s.type = type;
     s.slope = playedSlope(type, slope);
     s.drive = 1.0 + 8.0 * std::clamp(drive, 0.0, 1.0);
+    s.driveRoot = std::sqrt(s.drive);
     switch (type) {
     case FilterType::LowPass:
     case FilterType::HighPass:
@@ -148,7 +150,7 @@ public:
                 y = (lastLogCosh_ - from) / dx;
             }
             lastDriven_ = driven;
-            in = y / std::sqrt(s.drive);
+            in = y / s.driveRoot;
         } else {
             lastDriven_ = in;
             lastKnown_ = false;
@@ -168,10 +170,12 @@ public:
             if (read >= combSize) // a hair below 0 rounds up to the line's end when wrapped: that is its start
                 read -= combSize;
             const int i = static_cast<int>(read);
-            const double delayed = comb[i] + (comb[(i + 1) % combSize] - comb[i]) * (read - i);
+            // The next sample round the line, and the write moving on, wrapped by a compare rather than a division.
+            const int next = i + 1 == combSize ? 0 : i + 1;
+            const double delayed = comb[i] + (comb[next] - comb[i]) * (read - i);
             const double y = in + s.combFeedback * delayed;
             comb[combPos_] = static_cast<float>(y);
-            combPos_ = (combPos_ + 1) % combSize;
+            combPos_ = combPos_ + 1 >= combSize ? 0 : combPos_ + 1;
             return y * s.combGain;
         }
         case FilterType::Count:

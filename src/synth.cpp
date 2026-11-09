@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -38,7 +39,9 @@ double routeLevel(RouteMode mode, double amount, double phaseIndex) {
         return amount * amount * phaseIndex / (2.0 * std::numbers::pi);
     }
 }
-constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in
+constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in, at least
+constexpr int kMaxFadeSlots = 32;    // and at most: as many as the voices, so a chord over them all steals each
+constexpr double kVoiceQuietFloor = 1e-4; // a released voice quieter than this, its operators idle, has ended
 constexpr double kFilterRingFloor = 1e-6; // a voice filter quieter than this, its inputs stopped, has rung out
 constexpr size_t kMaxEndedNotes = 4096; // notes ending in one block that are reported (see reportEnded())
 constexpr double kStealFade = 0.003; // seconds a stolen voice takes to fade out
@@ -171,7 +174,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     globalMod_.fill(0.0);
     sharedStale_ = true;
     capacity_ = std::clamp(capacity, 1, kMaxVoices);
-    voices_.assign(static_cast<size_t>(capacity_ + kFadeSlots), Voice{});
+    voices_.assign(static_cast<size_t>(capacity_ + std::clamp(capacity_, kFadeSlots, kMaxFadeSlots)), Voice{});
     active_.clear();
     active_.reserve(voices_.size()); // never grows past this on the audio thread
     combSize_ = combLength(rate_);
@@ -311,7 +314,9 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         }
 
     Voice &v = allocateVoice();
-    v = Voice{};
+    // As a new one, built in its place: assigning one would build it on the stack first (some 37 KB) and copy it.
+    static_assert(std::is_trivially_destructible_v<Voice>);
+    std::construct_at(&v);
     for (std::array<bool, 2> &dirty : v.combDirty) // cleared once a comb reads them (see renderBlock())
         dirty = {true, true};
     setActive(v, true);
@@ -642,7 +647,7 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             for (int to = 0; to < kOps; ++to)
                 routeModes_[from][to] = from == to ? RouteMode::Phase : routeMode(params[routeModeIndex(from, to)]);
         voiceBaseReady_ = false; // what the voices share is summed again for these params, once a voice needs it
-        for (int op = 0; op < kOps; ++op) // the Custom waves follow their partials, built again when they change
+        for (int op = 0; op < kOps; ++op) // the Custom waves take their partials, built again once played (renderBlock())
             customWaves_[op].update(
                 partialCount(params[partialCountIndex(op)]), [&](int k) { return params[partialLevelIndex(op, k)]; },
                 [&](int k) { return params[partialPhaseIndex(op, k)]; });
@@ -1018,7 +1023,10 @@ void Synth::scopeTake(double phase, double value) {
 }
 
 void Synth::telemetry(Telemetry &out) const {
-    out = Telemetry{};
+    // As a new one, built in its place: assigning one would build it on the stack first (some 45 KB, on the audio
+    // thread about 60 times a second while the editor is open) and copy it.
+    static_assert(std::is_trivially_destructible_v<Telemetry>);
+    std::construct_at(&out);
     if (scope_.op >= 0 && scope_.live) {
         // A slow span (or the first one, before it is whole) shows as it fills; a quick one a whole span at a time.
         const int total = scope_.cycles * kScopeBinsPerCycle;
@@ -1149,10 +1157,13 @@ void Synth::endVoice(Voice &v) {
         v.fading = false;
         return;
     }
-    // A stolen or choked note is over even if its key is still down.
-    for (size_t i = held_.size(); i-- > 0;)
-        if (held_[i].note == v.note)
-            held_.erase(held_.begin() + static_cast<std::ptrdiff_t>(i));
+    // A stolen or choked note is over even if its key is still down. Once its key is up, a key held with the same
+    // note (struck again without note ids while this one rang out) is another note's, and stays down.
+    if (!v.released && !v.sustained) {
+        const auto own = std::find_if(held_.begin(), held_.end(), [&](const HeldNote &h) { return h.note == v.note; });
+        if (own != held_.end())
+            held_.erase(own);
+    }
     reportEnded(v.note);
 }
 
@@ -1178,12 +1189,27 @@ void Synth::clearVoiceMods(Voice &v) {
 }
 
 void Synth::shareSlots(const ParamValues &params) {
+    auto get = [&params](int i) { return params[i]; };
     for (int source = 0; source < kAllSources; ++source) {
         int count = 0;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(params[slotTargetIndex(source, s)]);
-            if (target >= 0 && params[slotBypassIndex(source, s)] < 0.5)
-                sharedSlots_[source][count++] = {s, target};
+            if (target < 0 || params[slotBypassIndex(source, s)] >= 0.5)
+                continue;
+            SharedSlot &slot = sharedSlots_[source][count++];
+            slot.slot = s;
+            slot.target = target;
+            slot.curve = hostValue(params, slotCurveIndex(source, s));
+            slot.scale = hostValue(params, slotScaleIndex(source, s));
+            slot.voiceAux = -1;
+            if (const int aux = slotAux(get, source, s); aux >= 0) {
+                if (runsPerVoice(aux))
+                    slot.voiceAux = aux;
+                else
+                    slot.scale *= hostValue(params, stripKnobIndex(aux));
+            }
+            slot.range = table_[target].max - table_[target].min;
+            slot.depth = hostValue(params, slotAmountIndex(source, s));
         }
         sharedSlotCount_[source] = count;
     }
@@ -1289,18 +1315,22 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         v.auxOut[kNoteSource] = noteSourceValue([&](int i) { return hostValue(params, i); }, pitchNow());
     if (!sharedSlotsReady_)
         shareSlots(params);
+    // A shared slot's depth scale in this voice: what is the same for every voice, times its own source's aux.
+    auto sharedScale = [&](const SharedSlot &slot) {
+        return slot.voiceAux >= 0 ? slot.scale * v.auxOut[slot.voiceAux] : slot.scale;
+    };
     auto collectSlots = [&](int source, double shown, double unipolar, double bipolar, bool bipolarSource) {
         v.sourceValues[source] = shown;
         v.auxOut[source] = unipolar;
         const double swing = bipolarSource ? bipolar : unipolar;
         for (int k = 0; k < sharedSlotCount_[source]; ++k) {
-            const auto [s, target] = sharedSlots_[source][k];
-            const double amount = p[slotAmountIndex(source, s)];
+            const SharedSlot &slot = sharedSlots_[source][k];
+            const double amount = p[slotAmountIndex(source, slot.slot)];
             if (amount != 0.0) {
-                v.slotMods[v.slotModCount++] = {target,
-                                                bent(source, s, swing, bipolarSource) * amount * scaleOf(source, s) *
-                                                    (table_[target].max - table_[target].min),
-                                                source * kSlots + s};
+                v.slotMods[v.slotModCount++] = {slot.target,
+                                                slotCurveValue(swing, slot.curve, bipolarSource) * amount *
+                                                    sharedScale(slot) * slot.range,
+                                                source * kSlots + slot.slot};
             }
         }
     };
@@ -1389,14 +1419,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         const bool bipolar = params[paramIndex(VelocityParam::Bipolar)] >= 0.5;
         const double swing = bipolar ? out - 0.5 : out;
         for (int k = 0; k < sharedSlotCount_[kVelocitySource]; ++k) {
-            const auto [s, target] = sharedSlots_[kVelocitySource][k];
-            const double amount = hostValue(params, slotAmountIndex(kVelocitySource, s));
-            if (amount == 0.0)
+            const SharedSlot &slot = sharedSlots_[kVelocitySource][k];
+            if (slot.depth == 0.0)
                 continue;
-            v.slotMods[v.slotModCount++] = {target,
-                                            bent(kVelocitySource, s, swing, bipolar) * amount *
-                                                scaleOf(kVelocitySource, s) * (table_[target].max - table_[target].min),
-                                            kVelocitySource * kSlots + s};
+            v.slotMods[v.slotModCount++] = {slot.target,
+                                            slotCurveValue(swing, slot.curve, bipolar) * slot.depth *
+                                                sharedScale(slot) * slot.range,
+                                            kVelocitySource * kSlots + slot.slot};
         }
     }
     // The macros' and the mod wheel's slots that an aux of this voice scales (see applyMacros()).
@@ -1461,13 +1490,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const double swing = note - (noteBipolar ? 0.5 : 0.0);
     const int noteModsStart = v.slotModCount;
     for (int k = 0; k < sharedSlotCount_[kNoteSource]; ++k) {
-        const auto [s, target] = sharedSlots_[kNoteSource][k];
-        const double amount = hostValue(params, slotAmountIndex(kNoteSource, s));
-        if (amount != 0.0) {
-            v.slotMods[v.slotModCount++] = {target,
-                                            bent(kNoteSource, s, swing, noteBipolar) * amount *
-                                                scaleOf(kNoteSource, s) * (table_[target].max - table_[target].min),
-                                            kNoteSource * kSlots + s};
+        const SharedSlot &slot = sharedSlots_[kNoteSource][k];
+        if (slot.depth != 0.0) {
+            v.slotMods[v.slotModCount++] = {slot.target,
+                                            slotCurveValue(swing, slot.curve, noteBipolar) * slot.depth *
+                                                sharedScale(slot) * slot.range,
+                                            kNoteSource * kSlots + slot.slot};
         }
     }
     for (int m = noteModsStart; m < v.slotModCount; ++m) {
@@ -1606,6 +1634,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         const double spread = p[paramIndex(i, OpParam::UnisonSpread)];
         // The table suits the highest copy, so none of them reaches past Nyquist.
         const double highest = copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc;
+        if (shape == OpWave::Custom)
+            customWaves_[i].build(); // its tables follow its partials once a voice plays it
         wave[i] = shape == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(shape, highest);
         opShapes[i] = shape;
         highestInc[i] = highest;
@@ -1637,7 +1667,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         });
         // Panned, or still ramping back from a pan, it is stereo too.
         const bool panned = opPan != 0.0 || v.levels.panL[i] != v.levels.panR[i];
-        stereo = stereo || (((copies[i] > 1 || noise[i]) && spread > 0.0) || panned) && heard > 0.0;
+        stereo = stereo || ((((copies[i] > 1 || noise[i]) && spread > 0.0) || panned) && heard > 0.0);
         // The copies' increments move to this block's over its length rather than jumping at its start, so
         // modulated pitch (Ratio most of all) doesn't step every control block.
         if (starting || !op.incKnown || op.incCopies != copies[i])
@@ -1819,6 +1849,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             v.filters[f] = {};
             v.combDirty[f] = {true, true};
             v.filterRing[f] = 0;
+            v.filterHeard[f] = 0;
             v.filterLast[f] = {};
             continue;
         }
@@ -2032,32 +2063,39 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     if (op.phases[k] >= 1.0)
                         op.phases[k] -= 1.0;
                 }
-            } else if (factor == 1.0) {
-                for (int k = 0; k < copies[i]; ++k) {
-                    const double x = WaveTables::read(wave[i], op.phases[k] + offset);
-                    mono += x;
-                    l += x * copyGains[i]->gainL[k];
-                    r += x * copyGains[i]->gainR[k];
-                    op.phases[k] += op.incNow[k];
-                    op.incNow[k] += incStep[i][k];
-                    if (op.phases[k] >= 1.0)
-                        op.phases[k] -= 1.0;
-                }
             } else {
-                // Frequency modulation: each copy's increment scaled, held within Nyquist either way, so the phase
-                // moves less than a cycle a sample and one wrap brings it back.
-                for (int k = 0; k < copies[i]; ++k) {
-                    const double x = WaveTables::read(wave[i], op.phases[k] + offset);
-                    mono += x;
-                    l += x * copyGains[i]->gainL[k];
-                    r += x * copyGains[i]->gainR[k];
-                    op.phases[k] += std::clamp(op.incNow[k] * factor, -0.5, 0.5);
-                    op.incNow[k] += incStep[i][k];
-                    if (op.phases[k] >= 1.0)
-                        op.phases[k] -= 1.0;
-                    else if (op.phases[k] < 0.0)
-                        op.phases[k] += 1.0;
-                }
+                // Each copy read and moved on. Frequency modulation (kFm) scales each copy's increment, held within
+                // Nyquist either way, so the phase moves less than a cycle a sample and one wrap brings it back. Only
+                // an operator heard (out, or into a filter or shaper) sums its copies' sides: one that only modulates
+                // others needs its mono sum alone.
+                auto readCopies = [&]<bool kFm, bool kSides>() {
+                    for (int k = 0; k < copies[i]; ++k) {
+                        const double x = WaveTables::read(wave[i], op.phases[k] + offset);
+                        mono += x;
+                        if constexpr (kSides) {
+                            l += x * copyGains[i]->gainL[k];
+                            r += x * copyGains[i]->gainR[k];
+                        }
+                        if constexpr (kFm) {
+                            op.phases[k] += std::clamp(op.incNow[k] * factor, -0.5, 0.5);
+                            op.incNow[k] += incStep[i][k];
+                            if (op.phases[k] >= 1.0)
+                                op.phases[k] -= 1.0;
+                            else if (op.phases[k] < 0.0)
+                                op.phases[k] += 1.0;
+                        } else {
+                            op.phases[k] += op.incNow[k];
+                            op.incNow[k] += incStep[i][k];
+                            if (op.phases[k] >= 1.0)
+                                op.phases[k] -= 1.0;
+                        }
+                    }
+                };
+                const bool sides = route.out || route.sendCount > 0 || route.shaperSendCount > 0;
+                if (factor == 1.0)
+                    sides ? readCopies.template operator()<false, true>() : readCopies.template operator()<false, false>();
+                else
+                    sides ? readCopies.template operator()<true, true>() : readCopies.template operator()<true, false>();
             }
             if (ring != 1.0) {
                 mono *= ring;
@@ -2146,11 +2184,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (opOn[i] && !noise[i])
             for (int k = 0; k < copies[i]; ++k)
                 v.ops[i].incNow[k] = copy[i]->inc[k];
+    bool filtersHeard = false; // whether a filter heard has put out anything within a comb line
     for (int f = 0; f < kFilters; ++f)
-        if (filterOn[f])
+        if (filterOn[f]) {
             v.filterRing[f] = filterPeak[f] > kFilterRingFloor
                                   ? combSize_
                                   : std::max(0, v.filterRing[f] - static_cast<int>(frames));
+            v.filterHeard[f] = filterPeak[f] * level.filterOut[f] >= kVoiceQuietFloor
+                                   ? combSize_
+                                   : std::max(0, v.filterHeard[f] - static_cast<int>(frames));
+            filtersHeard = filtersHeard || v.filterHeard[f] > 0;
+        }
 
     // Once released, the voice ends when every operator that is heard (directly
     // or through a filter or shaper) has faded and the filters have rung out. A stolen
@@ -2173,7 +2217,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     v.tail = v.released && !sounding;
     if (v.fading && v.fade <= 0.0)
         endVoice(v);
-    else if (v.released && !sounding && blockPeak < 1e-4) {
+    else if (v.released && !sounding && blockPeak < kVoiceQuietFloor && !filtersHeard) {
         if (modEnvReleasing(v, params))
             v.silent = true; // its sound is over, but not its modulation
         else

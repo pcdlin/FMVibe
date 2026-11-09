@@ -39,6 +39,37 @@ void setFont(cairo_t *cr, float size, bool bold) {
     cairo_set_font_size(cr, size);
 }
 
+// `text` with each byte that doesn't start a whole UTF-8 sequence (a macro name a state held, say) as U+FFFD, as
+// Direct2D shows it: Cairo would refuse the whole string, and every drawing after it on the surface.
+std::string validUtf8(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    auto byte = [&](size_t i) { return i < text.size() ? static_cast<unsigned char>(text[i]) : 0u; };
+    auto follows = [&](size_t i) { return (byte(i) & 0xC0u) == 0x80u; };
+    for (size_t i = 0; i < text.size();) {
+        const unsigned b = byte(i);
+        size_t length = 0;
+        if (b < 0x80)
+            length = 1;
+        else if (b >= 0xC2 && b <= 0xDF && follows(i + 1))
+            length = 2;
+        else if (b >= 0xE0 && b <= 0xEF && follows(i + 1) && follows(i + 2) && (b != 0xE0 || byte(i + 1) >= 0xA0) &&
+                 (b != 0xED || byte(i + 1) < 0xA0))
+            length = 3; // not overlong, nor a surrogate
+        else if (b >= 0xF0 && b <= 0xF4 && follows(i + 1) && follows(i + 2) && follows(i + 3) &&
+                 (b != 0xF0 || byte(i + 1) >= 0x90) && (b != 0xF4 || byte(i + 1) < 0x90))
+            length = 4; // not overlong, nor past U+10FFFF
+        if (length == 0) {
+            out += "\xEF\xBF\xBD";
+            ++i;
+        } else {
+            out.append(text.substr(i, length));
+            i += length;
+        }
+    }
+    return out;
+}
+
 double advance(cairo_t *cr, const std::string &utf8) {
     cairo_text_extents_t extents;
     cairo_text_extents(cr, utf8.c_str(), &extents);
@@ -233,7 +264,7 @@ void Canvas::text(Rect r, std::string_view utf8, float size, Color c, Align alig
     if (utf8.empty() || !(r.w > 0.0f && r.h > 0.0f))
         return;
     setFont(target_, liftedSize(size), bold);
-    std::string shown(utf8);
+    std::string shown = validUtf8(utf8);
     double width = advance(target_, shown);
     if (width > r.w) {
         static const std::string kEllipsis = "\xE2\x80\xA6";
@@ -243,7 +274,7 @@ void Canvas::text(Rect r, std::string_view utf8, float size, Color c, Align alig
         std::vector<size_t> starts;
         for (size_t i = 0; i < shown.size(); ++i)
             if ((static_cast<unsigned char>(shown[i]) & 0xC0) != 0x80)
-                starts.push_back(i);
+                starts.push_back(i); // the first among them: valid UTF-8 starts with one
         size_t lo = 0, hi = starts.size() - 1; // the most characters that fit before the ellipsis
         while (lo < hi) {
             const size_t mid = (lo + hi + 1) / 2;
@@ -273,7 +304,7 @@ float Canvas::textWidth(std::string_view utf8, float size, bool bold) {
     if (utf8.empty())
         return 0.0f;
     setFont(target_, liftedSize(size), bold);
-    return static_cast<float>(advance(target_, std::string(utf8)));
+    return static_cast<float>(advance(target_, validUtf8(utf8)));
 }
 
 void Canvas::pushClip(Rect r) {

@@ -120,8 +120,10 @@ public:
         writeUserSettings();
     }
 
-    // Every param's value now. Any thread.
+    // Every param's value now. Any thread. ParamValues is large (about 150 KB): valuesInto() fills one in place, kept
+    // off the stack.
     ParamValues valuesNow() const;
+    void valuesInto(ParamValues &values) const;
     const gui::UiLayout &uiLayout() const { return layout_; }
     const Synth &synth() const { return synth_; }
     // How many voices may sound at once, from the Voices param.
@@ -129,7 +131,7 @@ public:
 
     // Main thread, while inactive: allocates the voices, for the current voice limit and oversampling.
     void activate(double sampleRate);
-    void deactivate() { telemetry_.store(Telemetry{}); }
+    void deactivate() { telemetry_.store(*noTelemetry_); } // from one made ahead, not a 45 KB one on the stack
     // Main thread, while not processing (or the audio thread, between blocks).
     void resetVoices() { synth_.reset(); }
 
@@ -177,6 +179,9 @@ protected:
         if (hostListed(index))
             hostEndEdit(index);
     }
+    void performStepBegin() override;
+    void performStepEnd() override;
+    void requestEditorSize(uint32_t width, uint32_t height) override { hostResizeEditor(width, height); }
 
     // How each format tells its host. Main thread, unless they say otherwise.
     // An edit in the editor (or a preset load) of param `index`, one hosts are given (see hostListed()): a gesture's
@@ -204,7 +209,7 @@ protected:
     // The host was told param `index`'s value just now (see setHostValue()).
     void told(int index, int64_t now) { toldAt_[index].store(now, std::memory_order_relaxed); }
     // Main thread: whether a restart was asked for and not yet done (activate() clears it).
-    bool restartPending() const { return restartRequested_.load(); }
+    bool restartPending() const { return restartAskedFor_.load() != 0; }
 
     // Main thread: tells the host when the remote pages differ.
     void sectionsChanged();
@@ -215,6 +220,9 @@ private:
     void voiceLimitChanged();
     // A new oversampling factor takes a deactivate/activate, like more voices.
     void restartIfNeeded();
+    // Asks the host for a restart when the voices or the oversampling need one, unless it was asked for this
+    // already. Thread-safe.
+    void askRestart();
     // The editor's height follows the modulation panel; asks the host to resize the window.
     void editorFitChanged();
     // Tells the host of every param that changed since `before`, as edits.
@@ -230,9 +238,13 @@ private:
     };
 
     Synth synth_;
-    // Raising the voice limit past the allocated voices, or a new oversampling
-    // factor, needs a deactivate/activate.
-    std::atomic<bool> restartRequested_{false};
+    // Raising the voice limit past the allocated voices, or a new oversampling factor, needs a deactivate/activate:
+    // what the restart was last asked for (the voices times 16, plus the factor), or 0. A host that doesn't restart
+    // is asked again once something else needs one.
+    std::atomic<int> restartAskedFor_{0};
+    // Main thread: an undo or redo step being applied, and whether an edit in it marks the project changed.
+    bool applyingStep_ = false;
+    bool dirtyAfterStep_ = false;
     std::atomic<int> oversampling_{kDefaultOversampling};
     // MPE over MIDI and its member channels' bend range: settings, set on the main thread, read by the audio thread.
     std::atomic<bool> mpe_{false};
@@ -267,6 +279,7 @@ private:
     double telemetryFrames_ = 0.0;
     bool telemetryOpen_ = false;
     std::unique_ptr<Telemetry> telemetryScratch_ = std::make_unique<Telemetry>();
+    const std::unique_ptr<const Telemetry> noTelemetry_ = std::make_unique<const Telemetry>(); // what nothing playing shows
     std::atomic<bool> editorOpen_{false};
     std::atomic<int> scopeOp_{-1}; // what the editor's scope shows (see Controller::setScope())
     std::atomic<int> scopeCycles_{2};

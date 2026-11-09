@@ -61,35 +61,58 @@ const WaveTables &waveTables();
 // whenever the partials change; the synth does that on the audio thread, into memory it holds.
 class CustomWave {
 public:
-    CustomWave() : data_(static_cast<size_t>(WaveTables::kLevels) * (WaveTables::kSize + 1), 0.0f) {}
-    // From the levels and phases of partials 1 to kPartials, alternating (a level of 0 leaves a partial out). True
-    // if they changed.
-    bool update(const double *partials);
-    // The same from the first `count` partials' `level(k)` and `phase(k)`, the rest silent: looked over first, and
-    // only copied out when they changed, since the synth asks for it every time it renders.
+    // The levels at and below kFull hold every partial alike (their room for harmonics is kPartials or more): one
+    // table stands for them all, so it is built once.
+    static constexpr int kFull = [] {
+        int level = 0;
+        while (level + 1 < WaveTables::kLevels && (WaveTables::kHarmonics >> (level + 1)) >= kPartials)
+            ++level;
+        return level;
+    }();
+    static constexpr int kTables = WaveTables::kLevels - kFull;
+
+    CustomWave()
+        : data_(static_cast<size_t>(kTables) * (WaveTables::kSize + 1), 0.0f),
+          sums_(static_cast<size_t>(kTables) * WaveTables::kSize, 0.0) {}
+    // Takes the first `count` partials' `level(k)` and `phase(k)` (a level of 0 leaves a partial out), the rest
+    // silent; true if they changed. Cheap, as the synth asks every time its params change: the tables follow only
+    // at build(), once an operator plays the wave.
     template <class Level, class Phase>
     bool update(int count, const Level &level, const Phase &phase) {
         bool same = true;
         for (int k = 0; k < kPartials && same; ++k)
-            same = partials_[2 * k] == (k < count ? level(k) : 0.0) &&
-                   partials_[2 * k + 1] == (k < count ? phase(k) : 0.0);
+            same = wanted_[2 * k] == (k < count ? level(k) : 0.0) &&
+                   wanted_[2 * k + 1] == (k < count ? phase(k) : 0.0);
         if (same)
             return false;
-        std::array<double, 2 * kPartials> partials{};
-        for (int k = 0; k < count; ++k) {
-            partials[2 * k] = level(k);
-            partials[2 * k + 1] = phase(k);
+        for (int k = 0; k < kPartials; ++k) {
+            wanted_[2 * k] = k < count ? level(k) : 0.0;
+            wanted_[2 * k + 1] = k < count ? phase(k) : 0.0;
         }
-        return update(partials.data());
+        stale_ = true;
+        return true;
     }
+    // The tables for the partials update() took last, built if they changed since: only the partials that changed
+    // are taken out and put in again, while they are few (as a drag in the partial editor moves one).
+    void build();
+    // kSize + 1 samples, as WaveTables::table(); build() first.
     const float *table(double increment) const {
-        return &data_[static_cast<size_t>(WaveTables::level(increment)) * (WaveTables::kSize + 1)];
+        const int level = std::max(WaveTables::level(increment), kFull) - kFull;
+        return &data_[static_cast<size_t>(level) * (WaveTables::kSize + 1)];
     }
 
 private:
-    std::vector<float> data_;
-    std::vector<double> partials_ = std::vector<double>(2 * kPartials, -1.0); // what data_ was built from
-    std::vector<double> sum_ = std::vector<double>(WaveTables::kSize); // the sum being built, kept so update() doesn't allocate
+    void buildAll();
+    // Adds `amount` of partial `n` (from 1) at `phase` into every table that has room for it.
+    void addPartial(int n, double amount, double phase);
+
+    std::vector<float> data_;  // kTables tables, the fullest first, each scaled so the fullest peaks at 1
+    std::vector<double> sums_; // the same unscaled, each level's partials added up, kept for build() to change
+    std::array<double, 2 * kPartials> wanted_{};                    // what update() took: levels and phases
+    std::array<double, 2 * kPartials> built_{};                     // what the tables hold
+    bool stale_ = true;
+    bool everBuilt_ = false;
+    int sinceAll_ = 0; // builds by changes since the last from scratch, which rounding over many would drift from
 };
 
 // The first kPartials partials of `wave` as a Custom wave's, in (level, phase) pairs: levels 0..1 with the

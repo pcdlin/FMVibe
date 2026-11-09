@@ -236,6 +236,219 @@ void effectsChainChecks() {
               "a reverb rings on while its input waits in the pre-delay, until its tail is heard");
     }
     {
+        // A delay switched off and on again plays back nothing it held: after half a second of a sine, its lines part
+        // written, and after five, past their length, written all round.
+        bool clean = true;
+        for (double played : {0.5, 5.0}) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+            p[paramIndex(0, FxParam::DelaySync)] = 0.0;
+            p[paramIndex(0, FxParam::DelayTimeL)] = p[paramIndex(0, FxParam::DelayTimeR)] = normFromTime(1.0);
+            p[paramIndex(0, FxParam::DelayFeedback)] = 0.9;
+            p[paramIndex(0, FxParam::DelayMix)] = 1.0;
+            chain(p, {0});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            size_t t = 0;
+            auto run = [&](double seconds, double amplitude) {
+                float peak = 0.0f;
+                for (const size_t end = t + static_cast<size_t>(seconds * kSampleRate); t < end; t += kPiece) {
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                    fx.process(left, right, kPiece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+                }
+                return peak;
+            };
+            run(played, 0.5);
+            p[paramIndex(0, FxParam::Enabled)] = 0.0;
+            run(0.05, 0.0); // faded out
+            p[paramIndex(0, FxParam::Enabled)] = 1.0;
+            const float after = run(2.0, 0.0);
+            std::printf("      a delay off and on again after %.1f s of a sine: %.0f dB of it after\n", played,
+                        20.0 * std::log10(after + 1e-30));
+            clean = clean && after < 1e-6f;
+        }
+        check(clean, "a delay switched off and on again plays back nothing it held");
+    }
+    {
+        // A sample that isn't a number going into a delay and a reverb, and one louder than any sound (which would
+        // ring on in them for good, or overflow): what comes out stays finite and sane, the tails ring out to silence,
+        // and a sine after them comes out as it should.
+        bool fine = true;
+        for (const float bad : {std::numeric_limits<float>::quiet_NaN(), 3e38f}) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+            p[paramIndex(0, FxParam::DelayFeedback)] = 0.5;
+            p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            chain(p, {0, 1});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            size_t t = 0;
+            bool finite = true;
+            auto run = [&](size_t pieces, double amplitude, float spike) {
+                float peak = 0.0f;
+                for (size_t b = 0; b < pieces; ++b, t += kPiece) {
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                    if (b == 0 && spike != 0.0f)
+                        left[5] = spike;
+                    fx.process(left, right, kPiece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kPiece; ++s) {
+                        finite = finite && std::abs(left[s]) < 100.0f && std::abs(right[s]) < 100.0f;
+                        peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+                    }
+                }
+                return peak;
+            };
+            run(300, 0.5, 0.0f);
+            run(1500, 0.0, bad); // a second
+            for (int k = 0; k < 60 && fx.ringing(); ++k)
+                run(1500, 0.0, 0.0f);
+            const bool rungOut = !fx.ringing();
+            const float after = run(300, 0.5, 0.0f);
+            std::printf("      %s into a delay and a reverb: finite %d, rung out %d, a sine after it %.2f\n",
+                        std::isnan(bad) ? "a NaN" : "3e38", finite, rungOut, after);
+            fine = fine && finite && rungOut && after > 0.1f && after < 2.0f;
+        }
+        check(fine, "a sample that isn't a number or is louder than any sound leaves the effects sane, playing on");
+    }
+    {
+        // A loop, which only params make: the input into a DJ EQ, which feeds a shaper that feeds it back, at half
+        // level, and goes out. The shaper's effect taken away (as a host or a state can, leaving its wires): once it
+        // has faded out, the output plays the EQ on, rather than ducking out for good.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Eq);
+        p[fxInputIndex(1, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        p[fxInputIndex(1, 1, FxInputField::From)] = fxPortValue(fxSlotPort(0));
+        p[fxInputIndex(1, 1, FxInputField::Level)] = 0.5;
+        p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(fxSlotPort(1));
+        p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(fxSlotPort(1));
+        std::vector<float> left(kBlock), right(kBlock), out;
+        size_t t = 0;
+        auto run = [&](double seconds) {
+            out.clear();
+            for (const size_t end = t + static_cast<size_t>(seconds * kSampleRate); t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        0.25 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                out.insert(out.end(), left.begin(), left.end());
+            }
+            // Each period's peak, the quietest and the loudest of them.
+            const size_t period = static_cast<size_t>(kSampleRate / 440.0) + 1;
+            float low = 1e9f, high = 0.0f;
+            for (size_t from = 0; from + period <= out.size(); from += period) {
+                float peak = 0.0f;
+                for (size_t i = from; i < from + period; ++i)
+                    peak = std::max(peak, std::abs(out[i]));
+                low = std::min(low, peak);
+                high = std::max(high, peak);
+            }
+            return std::pair(low, high);
+        };
+        const auto looped = run(0.5);
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::None);
+        run(0.5);
+        const auto [low, high] = run(0.5);
+        std::printf("      a loop through an effect taken away: %.3f with it, %.3f to %.3f once it has gone\n",
+                    looped.second, low, high);
+        check(looped.second > 0.1f && std::abs(low - 0.25f) < 0.02f && std::abs(high - 0.25f) < 0.02f,
+              "an effect taken out of a loop the params make leaves the output playing what is left");
+    }
+    {
+        // A compressor pulling a loud sine down, then silence: it keeps going while its release runs out, rather than
+        // stopping where it was, and a quiet sine after it comes out as it goes in.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Compressor);
+        chain(p, {0});
+        constexpr uint32_t kPiece = 32;
+        float left[kPiece], right[kPiece];
+        size_t t = 0;
+        auto run = [&](double seconds, double amplitude, float *peak) {
+            for (const size_t end = t + static_cast<size_t>(seconds * kSampleRate); t < end; t += kPiece) {
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left, right, kPiece, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kPiece && peak; ++s)
+                    *peak = std::max(*peak, std::abs(left[s]));
+            }
+        };
+        run(0.5, 0.5, nullptr); // -6 dB, some 9 dB over the threshold
+        run(0.2, 0.0, nullptr);
+        const bool releasing = fx.ringing();
+        run(4.0, 0.0, nullptr);
+        const bool released = !fx.ringing();
+        float quiet = 0.0f;
+        run(0.01, 0.03, &quiet); // -30 dB, under the threshold
+        std::printf("      a compressor let go: ringing 0.2 s on %d, after 4 s %d; a quiet sine after it %.2f dB off\n",
+                    releasing, !released, 20.0 * std::log10(quiet / 0.03));
+        check(releasing && released && std::abs(20.0 * std::log10(quiet / 0.03)) < 0.1,
+              "a compressor runs its release out in silence, and a quiet sound after it comes through untouched");
+    }
+    {
+        // Effects with nothing to do: once every tail has rung out, silence costs a small share of what a sound
+        // through them does, and comes out as silence; a sound after it comes through again.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Delay);
+        p[paramIndex(2, FxParam::Type)] = static_cast<double>(FxType::Phaser);
+        chain(p, {0, 1, 2});
+        std::vector<float> left(kBlock), right(kBlock);
+        auto run = [&](double seconds, double amplitude) {
+            float peak = 0.0f;
+            for (size_t t = 0, end = static_cast<size_t>(seconds * kSampleRate); t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+            }
+            return peak;
+        };
+        auto timed = [&](double seconds, double amplitude, float &peak) { // the best of three
+            double best = 1e9;
+            for (int k = 0; k < 3; ++k) {
+                const auto start = std::chrono::steady_clock::now();
+                peak = std::max(peak, run(seconds, amplitude));
+                best = std::min(best, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+            }
+            return best;
+        };
+        run(0.5, 0.5);
+        int waited = 0;
+        while (fx.ringing() && waited++ < 120) // up to a minute for the tails
+            run(0.5, 0.0);
+        float busyPeak = 0.0f, idlePeak = 0.0f, after = 0.0f;
+        const double busy = timed(2.0, 0.01, busyPeak);
+        while (fx.ringing() && waited++ < 240)
+            run(0.5, 0.0);
+        const double idle = timed(2.0, 0.0, idlePeak);
+        after = run(0.1, 0.5);
+        std::printf("      reverb, delay and phaser: 2 s of a quiet sine %.2f ms, of silence once rung out %.3f ms; after "
+                    "it %.2f\n",
+                    busy * 1e3, idle * 1e3, after);
+        check(!fx.ringing() || waited < 240, "the effects' tails ring out");
+        check(idle < 0.25 * busy && idlePeak == 0.0f && busyPeak > 0.0f && after > 0.1f,
+              "silence through effects that have rung out costs little and comes out as silence");
+    }
+    {
         // As Volume's (see the clicks), a jump rendered in single frames ramps as smoothly as in whole blocks.
         struct Jump {
             const char *name;
@@ -268,6 +481,21 @@ void effectsChainChecks() {
             worst = std::max(worst, ratio);
         }
         check(worst < 1.5, "an effect param jump ramps even when events split the block into single frames");
+    }
+    {
+        // So does a wire's level: the output's wire from the input taken from full to a quarter.
+        auto roughJump = [](uint32_t piece) {
+            Engine e(2);
+            e.p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+            e.noteOn(48);
+            const std::vector<float> before = e.render(4800, piece);
+            e.p[fxInputIndex(kFxOutNode, 0, FxInputField::Level)] = 0.25;
+            const std::vector<float> both = joined(before, e.render(2400, piece));
+            return roughness(both, before.size() - 2, both.size());
+        };
+        const double ratio = roughJump(1) / roughJump(kBlock);
+        std::printf("      %-30s %7.1fx in 1-frame blocks\n", "a wire's level to a quarter", ratio);
+        check(ratio < 1.5, "a wire's level jump ramps even when events split the block into single frames");
     }
     {
         // A parametric EQ band switched on and off fades rather than clicking: a low cut at 5 kHz, which takes most
@@ -606,6 +834,54 @@ void effectsChainChecks() {
         const double whole = roughMove(kBlock), single = roughMove(1);
         std::printf("      %-30s %7.1fx, %.1fx in 1-frame blocks\n", "drawn shaper curve moved", whole, single);
         check(whole < 4.0 && single < 4.0, "a drawn shaper curve's moved points glide in instead of clicking");
+    }
+    {
+        // A shaper effect switched off, its drawn curve changed meanwhile (a preset loaded, say), and on again: it
+        // plays the new curve from its start, as a shaper that never ran with the old one does, rather than gliding
+        // in from the old one.
+        auto play = [&defaults](bool before) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            chain(p, {0});
+            p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
+            p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+            p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
+            const int curve = shaperParams(0).curve;
+            std::vector<float> left(kBlock), right(kBlock), out;
+            size_t t = 0;
+            auto run = [&](size_t blocks, bool keep) {
+                for (size_t b = 0; b < blocks; ++b, t += kBlock) {
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * 50.0 * static_cast<double>(t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                    if (keep)
+                        out.insert(out.end(), left.begin(), left.end());
+                }
+            };
+            if (before) { // with the curve as it starts, then switched off
+                run(40, false);
+                p[paramIndex(0, FxParam::Enabled)] = 0.0;
+                run(4, false);
+            } else {
+                p[paramIndex(0, FxParam::Enabled)] = 0.0;
+                run(44, false);
+            }
+            for (int i = 0; i < shapePointCount(p[curve]); ++i)
+                p[shapeFieldIndex(curve, i, PointField::Y)] *= 0.5;
+            p[paramIndex(0, FxParam::Enabled)] = 1.0;
+            run(8, true);
+            return out;
+        };
+        const std::vector<float> restarted = play(true), fresh = play(false);
+        double apart = 0.0;
+        for (size_t i = 0; i < restarted.size(); ++i)
+            apart = std::max(apart, static_cast<double>(std::abs(restarted[i] - fresh[i])));
+        std::printf("      a shaper effect on again with a new curve: %.1f dB from one that never ran the old one\n",
+                    20.0 * std::log10(apart + 1e-30));
+        check(apart < 1e-6, "a shaper effect switched on again plays its curve as it is now, not the one it last had");
     }
     {
         // A drawn curve's points dragged up and down at 2 Hz by a fifth (as its middle point is, which sets what
@@ -989,6 +1265,11 @@ void noteAndVoiceChecks() {
         check(ends[1] == 1 && ends[2] == 0 && e.synth().activeVoiceCount() == 1 &&
                   plain.synth().isActive({-1, 0, 0, 60}),
               "with note ids, a note on a key struck again reports its end, and the new one sounds on");
+        // Without them, the last note's voice ending doesn't let go of the key struck again: it is still down.
+        auto keys = std::make_unique<Telemetry>();
+        plain.synth().telemetry(*keys);
+        check(plain.synth().activeVoiceCount() == 1 && keys->keyDown(60),
+              "without note ids, a note on a key struck again ending leaves the key down");
     }
     {
         // A velocity or a note expression that isn't a number, on an FM pair (where it would reach the phases): the
@@ -1304,6 +1585,42 @@ void noteAndVoiceChecks() {
         std::printf("      a comb whose send went to 0, 20-50 ms on: %.1f dB\n", 20.0 * std::log10(ring + 1e-30));
         check(ring > 1e-3f, "a voice filter whose send goes to 0 rings out");
     }
+    {
+        // A plucked comb: a short burst of noise into a 55 Hz comb at full resonance puts out pulses a period apart,
+        // with silence between them longer than a block. Let go, the voice rings on through those gaps until its
+        // tail has faded, and then ends.
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Noise);
+        e.p[paramIndex(0, OpParam::Attack)] = kMinEnvNorm;
+        e.p[paramIndex(0, OpParam::Decay)] = 0.15; // about 4 ms
+        e.p[paramIndex(0, OpParam::Sustain)] = 0.0;
+        e.p[paramIndex(0, OpParam::Release)] = 0.0;
+        e.p[paramIndex(0, OpParam::Out)] = 0.0;
+        e.p[sendIndex(0, 0)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Comb);
+        e.p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(55.0);
+        e.p[paramIndex(0, FilterParam::KeyTrack)] = 0.0;
+        e.p[paramIndex(0, FilterParam::Resonance)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Out)] = 1.0;
+        e.noteOn(45);
+        e.render(4800);
+        e.noteOff(45);
+        const std::vector<float> tail = e.render(24000); // half a second
+        float late = 0.0f;
+        for (size_t s = 19200; s < tail.size(); ++s) // 400-500 ms after it was let go
+            late = std::max(late, std::abs(tail[s]));
+        const bool ringing = e.synth().activeVoiceCount() == 1;
+        int blocks = 0;
+        while (e.synth().activeVoiceCount() > 0 && blocks < 1200) { // up to 6 s more
+            e.render(kBlock);
+            ++blocks;
+        }
+        std::printf("      a plucked comb let go: %.1f dB 400-500 ms on, ending %.2f s later\n",
+                    20.0 * std::log10(late + 1e-30), blocks * static_cast<double>(kBlock) / kSampleRate);
+        check(ringing && late > 1e-3f && e.synth().activeVoiceCount() == 0,
+              "a plucked comb rings on through the gaps between its pulses once let go, then ends");
+    }
 }
 
 // Whether every (id, value) pair a preset's file stores names a param and holds a value in its range, which loading
@@ -1613,6 +1930,42 @@ int main() {
                     leak = std::max(leak, throughDecimator(factor, hz));
         std::printf("      %dx: passband ripple %.3f, worst alias %.1f\n", factor, ripple, leak);
         check(ripple < 0.1 && leak < -90.0, "the decimator is flat to 20 kHz and keeps aliases below -90 dB");
+    }
+
+    // --- A Custom wave plays its partials: drawn while the operator plays a sine, then taken up as it switches to
+    // Custom (the 1st and the 3rd), and changed partial by partial as it plays (the 3rd out, the 2nd in).
+    std::printf("Custom wave:\n");
+    {
+        Engine e(2);
+        for (int k = 0; k < kPartials; ++k) {
+            e.p[partialLevelIndex(0, k)] = 0.0;
+            e.p[partialPhaseIndex(0, k)] = 0.0;
+        }
+        e.p[partialLevelIndex(0, 0)] = 1.0;
+        e.p[partialLevelIndex(0, 2)] = 0.5;
+        e.noteOn(57); // A3, 220 Hz
+        e.render(4800);
+        e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Custom);
+        e.render(4800);
+        const std::vector<float> first = e.render(kFftSize);
+        e.p[partialLevelIndex(0, 2)] = 0.0;
+        e.p[partialLevelIndex(0, 1)] = 0.5;
+        e.render(4800);
+        const std::vector<float> second = e.render(kFftSize);
+        auto at = [](const std::vector<float> &signal, double hz) { // the loudest bin near it, in dB
+            const std::vector<double> power = powerSpectrum(signal);
+            const long center = std::lround(hz / (kSampleRate / kFftSize));
+            double most = 1e-30;
+            for (long b = center - 3; b <= center + 3; ++b)
+                most = std::max(most, power[static_cast<size_t>(b)]);
+            return 10.0 * std::log10(most);
+        };
+        const double f1 = at(first, 220.0), f2 = at(first, 440.0), f3 = at(first, 660.0);
+        const double s1 = at(second, 220.0), s2 = at(second, 440.0), s3 = at(second, 660.0);
+        std::printf("      1st and 3rd: 2nd %.0f dB, 3rd %.1f dB under the 1st; then 1st and 2nd: 2nd %.1f, 3rd %.0f\n",
+                    f2 - f1, f3 - f1, s2 - s1, s3 - s1);
+        check(std::abs(f3 - f1 + 6.0) < 1.0 && f2 - f1 < -60.0 && std::abs(s2 - s1 + 6.0) < 1.0 && s3 - s1 < -60.0,
+              "a Custom wave plays the partials drawn, taken up as it is picked and changed as it plays");
     }
 
     // --- Aliasing: the energy that isn't a harmonic of the note.
@@ -1929,6 +2282,27 @@ int main() {
               eq ? "the EQ's analyzer shows a sine in its band, at its level"
                  : "the phase disperser's analyzer shows a sine in its band, at its level");
     }
+    {
+        // Once the sound stops, an analyzer's bands fall about 55 dB a second, at 96 kHz as at 48.
+        auto fallen = [](double rate) {
+            Analyzer analyzer;
+            analyzer.prepare(rate);
+            Analyzed signal;
+            Analyzer::prepare(signal);
+            const int band = static_cast<int>(normFromCutoff(1000.0) * kSpectrumBands);
+            for (int i = 0; i < static_cast<int>(0.2 * rate); ++i)
+                analyzer.push(signal, static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 1000.0 * i / rate)));
+            const float loud = signal.bands[band];
+            for (int i = 0; i < static_cast<int>(0.5 * rate); ++i)
+                analyzer.push(signal, 0.0f);
+            return 20.0 * std::log10(loud / signal.bands[band]);
+        };
+        const double at48 = fallen(48000.0), at96 = fallen(96000.0);
+        std::printf("      an analyzer's band half a second after a sine stops: %.1f dB down at 48 kHz, %.1f at 96\n",
+                    at48, at96);
+        check(std::abs(at48 - 27.5) < 3.0 && std::abs(at96 - 27.5) < 3.0,
+              "an analyzer's bands fall away as fast at any sample rate");
+    }
 
     // --- Synced sweeps: the phaser and flanger go round once per note value of the host tempo, whatever their
     // Rate (here standing still). A quarter takes 0.5 s at 120 bpm and 1 s at 60, so a quarter of a second in,
@@ -2235,6 +2609,51 @@ int main() {
         std::printf("      20 s decay, undamped, Shimmer full: 28 s against 5 s %.1f dB\n", 10.0 * std::log10(late / early));
         check(std::isfinite(late) && late < 0.1 * early, "a shimmer's tail dies away at its longest decay, undamped");
     }
+    {
+        // Shimmer turned down to 0, in chunks as short as events cut them, until the reverb has rung out, then up
+        // again: its shifters start from silence, so nothing of the tail before comes back.
+        double worst = 0.0;
+        for (int trial = 0; trial < 8; ++trial) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            fx.setAnalyzing(true); // as with the editor open, so silence still runs the effects
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Shimmer);
+            p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(0.5);
+            p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+            const double amount = 0.4 + 0.07 * trial;
+            p[paramIndex(0, FxParam::ReverbShimmer)] = amount;
+            chain(p, {0});
+            float left[32], right[32];
+            for (int b = 0; b < 750; ++b) { // half a second of an A4
+                for (int s = 0; s < 32; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * (b * 32 + s) / kSampleRate));
+                fx.process(left, right, 32, p, 120.0, 60.0);
+            }
+            p[paramIndex(0, FxParam::ReverbShimmer)] = 0.0;
+            for (int b = 0; b < 4000 && (b < 400 || fx.ringing()); ++b) { // up to 20 s
+                const uint32_t n = 1 + static_cast<uint32_t>((b * 7 + trial * 5) % 32);
+                std::fill_n(left, n, 0.0f);
+                std::fill_n(right, n, 0.0f);
+                fx.process(left, right, n, p, 120.0, 60.0);
+            }
+            p[paramIndex(0, FxParam::ReverbShimmer)] = amount;
+            for (int b = 0; b < 1500; ++b) { // a second
+                std::fill_n(left, 32, 0.0f);
+                std::fill_n(right, 32, 0.0f);
+                fx.process(left, right, 32, p, 120.0, 60.0);
+                for (int s = 0; s < 32; ++s)
+                    worst = std::max({worst, static_cast<double>(std::abs(left[s])), static_cast<double>(std::abs(right[s]))});
+            }
+        }
+        std::printf("      Shimmer down to 0 and up again once rung out: %.0f dB of the tail before\n",
+                    20.0 * std::log10(worst + 1e-30));
+        check(worst < 1e-5, "a shimmer turned down and up again brings back nothing of the tail before");
+    }
 
     // --- The voice filters' analyzers: an A4 sine through filter 1 shows in its band, turned down by a low-pass
     // an octave under it; filter 2, switched off, shows nothing.
@@ -2317,6 +2736,25 @@ int main() {
         }
         std::printf("      %-30s %7.1fx\n", "stolen voice", worst / steady);
         check(worst < 4.0 * steady, "a stolen voice fades out instead of clicking");
+
+        // A chord over voices that are all playing steals as many at once, more than a few: each fades out too.
+        {
+            double chordWorst = 0.0, chordSteady = 0.0;
+            for (int trial = 0; trial < 4; ++trial) {
+                Engine e(2, 8);
+                e.p[paramIndex(0, OpParam::Attack)] = normFromTime(0.005);
+                for (int k = 0; k < 8; ++k)
+                    e.noteOn(36 + 2 * k);
+                const std::vector<float> before = e.render(2400 + 37 * trial);
+                for (int k = 0; k < 6; ++k)
+                    e.noteOn(37 + 2 * k);
+                const std::vector<float> both = joined(before, e.render(2400));
+                chordSteady = std::max(chordSteady, roughness(both, 0, before.size()));
+                chordWorst = std::max(chordWorst, roughness(both, before.size() - 2, both.size()));
+            }
+            std::printf("      %-30s %7.1fx\n", "six voices stolen at once", chordWorst / chordSteady);
+            check(chordWorst < 4.0 * chordSteady, "a chord stealing six voices at once fades them out instead of clicking");
+        }
 
         // Poly legato: a note played over a held one at its sustain joins it there, a square starting at full level;
         // it doesn't step in (it fades in over 5 ms, its gain ramping in over its first block besides).

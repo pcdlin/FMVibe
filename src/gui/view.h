@@ -64,9 +64,18 @@ public:
     static int themeCount();
     static const char *themeName(int index);
 
-    void paint(Canvas &canvas);
+    void paint(Canvas &canvas) { paint(canvas, wholeArea()); }
+    // Paints only what shows in `area` (the editor's coordinates), leaving the rest as the canvas holds it from the
+    // frame before: what lies outside it is skipped, and what reaches into it clipped to it. Within it, the pixels
+    // come out as a whole paint would make them.
+    void paint(Canvas &canvas, Rect area);
+    Rect wholeArea() const { return {0.0f, 0.0f, kWidth, height()}; }
     // Picks up param changes (automation, state loads) and telemetry; true if a repaint is due.
     bool poll();
+    // Where what the last poll() found changed shows: the whole editor, or the places of what moved when only what
+    // keeps to its place did (the output meter and scope and the playing count in the header, the keys, the
+    // operator's scope), which paint() can repaint alone, each apart.
+    const std::vector<Rect> &changedAreas() const { return changedAreas_; }
     // Takes the latest telemetry, so a frame painted between polls animates from
     // where the audio is now rather than from the last poll.
     void refreshTelemetry() { controller_.telemetry(telemetry_); }
@@ -1349,6 +1358,7 @@ private:
         return telemetry_.voices > 0 ? telemetry_.modOffset[index] : macroOffsets_[index];
     }
     bool metering_ = false;                  // the output meter showed something when last polled
+    std::vector<Rect> changedAreas_;         // see changedAreas()
     // The scopes' levels, following their spans' peaks (see followScopeLevel()): the output scope's, which its trace is
     // drawn to, and the operator scope's, which its dB readout shows.
     float outScopeLevel_ = 0.0f;

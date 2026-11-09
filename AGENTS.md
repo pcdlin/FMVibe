@@ -138,7 +138,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
-  value the host hands back right after isn't taken. It saves/loads state
+  value the host hands back right after isn't taken; and that an editor sized at the system's DPI and given a window
+  at another (one not DPI aware) asks the host for the size at the window's, its zoom kept (at the same DPI, for
+  nothing). It saves/loads state
   through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, a version 2
   state's Legato loading off in poly (and as it was in mono), envelope attacks, decays and releases typed down
   to 0 ms through fractions of a millisecond, a stored 0 loading as 1 ms and a version 3 state's depths on them
@@ -158,15 +160,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     feedback and a driven filter;
   - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff and a wire of the
     effects graph;
-  - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
-    LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
-    reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
+  - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
+    (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
+    reverb's Mix, a DJ EQ band, a three-band dynamics' Output, a wire's Level) jumps while events split the block into single frames,
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
     an effect added at the line's end and one taken out, a split taken out with its join, a split's slope
     changed, and a split going from two bands to three and back at 12 and 24 dB, the note in its middle band; and two effects swapped along the line, ducking out and back in without a click;
   - an effect in the graph that the output doesn't hear not running (its port silent, nothing ringing on after it),
-    and running once the output reads it;
+    and running once the output reads it; and an effect taken out of a loop the params make (its wires left as a
+    host or a state can) leaving the output playing what is left, steadily;
   - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
     an effect not in the graph silent, and a second of silence taking them about 90 dB down; and nothing measured
     while nothing analyzes (no editor open);
@@ -179,10 +182,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
     as saved;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
-    until its tail has been heard, and stopping after;
+    until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
+    going into a delay and a reverb leaving them sane, ringing out and playing on; a delay switched off and on again playing back nothing it
+    held, its lines part written or written all round; a compressor running its release out in silence, a quiet
+    sine after it untouched; and effects that have rung out costing little for silence, which comes out as silence;
   - a shimmer's tail after an A4, with Shimmer half and full up: falling 60 dB in about its decay time, its energy
     on the octaves and the first two octaves up narrow lines (not smeared by the shifter's crossfades); and at the
-    longest decay, undamped and full up, still dying away;
+    longest decay, undamped and full up, still dying away; and Shimmer turned down to 0 in short chunks and up again
+    once the reverb has rung out bringing back nothing of the tail before;
+  - a shaper effect switched off, its drawn curve changed and on again playing the new curve from its start;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the
@@ -194,22 +202,24 @@ the plain CMake commands and installing into a host are in the [README](README.m
     turned over mid-sine fading through nothing rather than clicking;
   - the random LFO's steps and glides, a freeform LFO's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), the phaser's and flanger's sweeps synced to the host tempo, the parametric
-    EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
+    EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
-    struck again while it rings, the voices a lower voice limit cuts, a note with an id while its key sounds on
+    struck again while it rings (without them, the key staying down as the last note ends), the voices a lower voice limit cuts, a note with an id while its key sounds on
     without one, mono's all notes off (releasing on the key it plays), a reset and forty notes at once on one voice;
     a chord into voices that have all played taking the oldest, every note of it sounding (and a slow attack's new
-    note not stolen first); a voice filter whose send goes to 0 ringing out; a velocity or note expression that isn't
-    a number staying finite; host modulation of a macro, the mod wheel, the note source's depth and velocity's
+    note not stolen first); a voice filter whose send goes to 0 ringing out, and a plucked comb ringing on through
+    the gaps between its pulses once let go, then ending; a velocity or note expression that isn't a number staying
+    finite; host modulation of a macro, the mod wheel, the note source's depth and velocity's
     moving their targets; a comb never reading past its line; a voice's right channel coming back from mono where
     the left is;
     an envelope's curve bent again after a straight stretch carrying on along it; and a 0 ms attack, decay and
     release taking a sample each, a 0.5 ms and a 1 ms attack their time, a sustain change after a 0 ms decay still
     smoothed, and a voice with a 0 ms attack at full level from its first sample;
+  - a Custom wave playing the partials drawn, taken up as it is picked and changed partial by partial as it plays;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
   - an anchored LFO standing where the transport puts it, from its Phase, by beats when synced and by seconds when
     not (a one-shot not anchored), following it through a block split into pieces, running on from there while the
@@ -260,6 +270,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     them, and a band's + after its last node showing always, an empty band's too (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
     the row changing nothing, the split showing there as its container;
+  - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
+  - the output meter and scope moving repainting the header alone, a key the keyboard alone and an operator's scope
+    the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
+    an LFO moving repainting the whole editor;
+  - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
+    behind the editor's back going at the line's end;
   - a card dragged a tenth of a card onto its neighbor moving nothing, and three tenths making the neighbor glide aside
     from the first step (read off the rendered pixels), landing after it, undone;
   - a split in the row: the arrow between two cards offering it after the effects (its list kept inside the panel),
@@ -854,7 +870,8 @@ itself.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
   allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()` (in VST3, `restartComponent(kLatencyChanged)`, on the main thread), and the host then
-  deactivates and reactivates the plugin. What VST3 only allows on the main thread, and the audio thread may ask for,
+  deactivates and reactivates the plugin (a host that doesn't is asked again once more voices or another
+  oversampling factor need one). What VST3 only allows on the main thread, and the audio thread may ask for,
   goes through a message-only window there. Each voice takes about
   66 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 105 KB, so 512 voices reserve about 54 MB. Voices isn't automatable for the same reason. The comb lines,

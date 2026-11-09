@@ -221,6 +221,60 @@ public:
                SUCCEEDED(frame->Commit()) && SUCCEEDED(encoder->Commit());
     }
 
+    // Paints only `area` of the editor over what was saved last (see View::paint()): into a new bitmap that starts
+    // as a copy of it, as a window's target keeps its frame (a WIC target needn't keep its bitmap's pixels).
+    bool repaint(View &view, Rect area) {
+        UINT width = 0, height = 0;
+        ComPtr<IWICBitmap> bitmap;
+        if (!last_ || FAILED(last_->GetSize(&width, &height)) ||
+            FAILED(wic_->CreateBitmap(width, height, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad,
+                                      bitmap.GetAddressOf())))
+            return false;
+        const D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
+            D2D1_RENDER_TARGET_TYPE_DEFAULT,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96.0f, 96.0f);
+        ComPtr<ID2D1RenderTarget> target;
+        ComPtr<ID2D1Bitmap> before;
+        if (FAILED(resources_.factory()->CreateWicBitmapRenderTarget(bitmap.Get(), props, target.GetAddressOf())) ||
+            FAILED(target->CreateBitmapFromWicBitmap(last_.Get(), before.GetAddressOf())))
+            return false;
+        target->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(0, 0, 0, 0));
+        target->DrawBitmap(before.Get(), nullptr, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
+        target->SetTransform(D2D1::Matrix3x2F::Scale(scale_, scale_));
+        {
+            Canvas canvas(target.Get(), resources_);
+            view.paint(canvas, area);
+        }
+        if (FAILED(target->EndDraw()))
+            return false;
+        last_ = bitmap;
+        return true;
+    }
+
+    // Every pixel of what was saved (or repainted) last, as 0xRRGGBB, row by row.
+    std::vector<uint32_t> image() const {
+        std::vector<uint32_t> out;
+        UINT width = 0, height = 0;
+        if (!last_ || FAILED(last_->GetSize(&width, &height)))
+            return out;
+        const WICRect rect{0, 0, static_cast<INT>(width), static_cast<INT>(height)};
+        ComPtr<IWICBitmapLock> lock;
+        UINT size = 0, stride = 0;
+        BYTE *data = nullptr;
+        if (FAILED(last_->Lock(&rect, WICBitmapLockRead, lock.GetAddressOf())) || FAILED(lock->GetStride(&stride)) ||
+            FAILED(lock->GetDataPointer(&size, &data)))
+            return out;
+        out.reserve(static_cast<size_t>(width) * height);
+        for (UINT y = 0; y < height; ++y)
+            for (UINT x = 0; x < width; ++x) {
+                const BYTE *px = data + y * stride + 4 * x;
+                out.push_back(static_cast<uint32_t>(px[2]) << 16 | static_cast<uint32_t>(px[1]) << 8 | px[0]);
+            }
+        return out;
+    }
+
     // The color at `p` (in the view's coordinates) in what was saved last, as 0xRRGGBB.
     uint32_t pixel(Point p) const {
         const WICRect rect{static_cast<INT>(p.x * scale_), static_cast<INT>(p.y * scale_), 1, 1};
@@ -285,6 +339,39 @@ public:
         cairo_surface_destroy(image);
         cairo_surface_destroy(part);
         return written;
+    }
+
+    // Paints only `area` of the editor over what was saved last (see View::paint()).
+    bool repaint(View &view, Rect area) {
+        if (!last_)
+            return false;
+        cairo_t *cr = cairo_create(last_);
+        cairo_scale(cr, scale_, scale_);
+        {
+            Canvas canvas(cr, resources_);
+            view.paint(canvas, area);
+        }
+        cairo_destroy(cr);
+        cairo_surface_flush(last_);
+        return true;
+    }
+
+    // Every pixel of what was saved (or repainted) last, as 0xRRGGBB, row by row.
+    std::vector<uint32_t> image() const {
+        std::vector<uint32_t> out;
+        if (!last_)
+            return out;
+        const int width = cairo_image_surface_get_width(last_), height = cairo_image_surface_get_height(last_);
+        const int stride = cairo_image_surface_get_stride(last_);
+        const unsigned char *data = cairo_image_surface_get_data(last_);
+        out.reserve(static_cast<size_t>(width) * height);
+        for (int y = 0; y < height; ++y)
+            for (int x = 0; x < width; ++x) {
+                uint32_t argb;
+                std::memcpy(&argb, data + y * stride + 4 * x, sizeof argb);
+                out.push_back(argb & 0xFFFFFF);
+            }
+        return out;
     }
 
     // The color at `p` (in the view's coordinates) in what was saved last, as 0xRRGGBB.
@@ -771,10 +858,6 @@ Point lfoMode(float card, int mode) {
 }
 Point cardShapeAt(float card, double x, double y) {
     return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 659.0f - static_cast<float>(y) * 44.88f};
-}
-Point cardGrid(float card, int axis, int part) {
-    constexpr float kX[] = {14.0f, 32.0f, 54.0f}, kW[] = {18.0f, 22.0f, 18.0f};
-    return {cardX(card) + 273.0f + 128.0f + axis * 76.0f + kX[part] + kW[part] * 0.5f, 737.0f};
 }
 // A random LFO's Smooth (0) and Chaos (1) knobs, right of its narrowed display.
 Point randomKnob(float card, int knob) {
@@ -3492,6 +3575,170 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
                   from(4, 0) == kFxPortIn && from(0, 0) == fxSlotPort(4),
               "an arrow goes before the first card, its list putting an effect at the line's start");
     }
+}
+
+// While only what keeps to its place moves, the editor repaints that place alone: the output meter and scope (the
+// header), and the keys (the keyboard's panel); what a voice's sources move repaints the whole. Painted over the
+// frame before, the part comes out as a whole paint of the same moment does, pixel for pixel.
+void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.live.voices = 1;
+    auto scopeAt = [&](float shift, float level) {
+        for (size_t i = 0; i < model.live.outScope.size(); ++i)
+            model.live.outScope[i] =
+                level * std::sin(6.2831853f * (static_cast<float>(i) / model.live.outScope.size() * 2.0f + shift));
+    };
+    model.live.outPeak = {0.5f, 0.45f};
+    scopeAt(0.0f, 0.5f);
+    view.poll();
+    const bool first = renderer.save(view, dir / "99c-partial-before.png");
+    // Compares a repaint of the areas the last poll found changed, over the last frame, with a whole paint of the same
+    // moment.
+    auto samePixels = [&](const char *name) {
+        bool repainted = true;
+        for (const Rect &area : view.changedAreas())
+            repainted = renderer.repaint(view, area) && repainted;
+        const std::vector<uint32_t> part = renderer.image();
+        const bool saved = renderer.save(view, dir / name);
+        const std::vector<uint32_t> full = renderer.image();
+        size_t differ = part.size() == full.size() ? 0 : full.size();
+        for (size_t i = 0; i < part.size() && i < full.size(); ++i)
+            differ += part[i] != full[i] ? 1 : 0;
+        for (const Rect &area : view.changedAreas())
+            std::printf("      repainting %.0fx%.0f at (%.0f, %.0f)\n", area.w, area.h, area.x, area.y);
+        std::printf("      %zu pixel(s) unlike a whole paint\n", differ);
+        return repainted && saved && differ == 0;
+    };
+    auto sameArea = [](Rect a, Rect b) { return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h; };
+    auto only = [&](Rect r) { return view.changedAreas().size() == 1 && sameArea(view.changedAreas()[0], r); };
+    const Rect header{0.0f, 0.0f, View::kWidth, detail::kHeaderH};
+
+    // The meter falls and the scope takes another span: the header alone.
+    model.live.outPeak = {0.3f, 0.2f};
+    scopeAt(0.1f, 0.3f);
+    const bool meterMoved = view.poll() && only(header);
+    check(first && meterMoved && samePixels("99d-partial-header.png"),
+          "the output meter and scope moving repaint the header alone, as a whole paint would");
+
+    // A key goes down as the meter moves on: the keyboard's panel, and the header apart.
+    model.live.keys[1] |= 1u << 28; // middle C
+    model.live.outPeak = {0.25f, 0.2f};
+    const bool keyMoved = view.poll() && view.changedAreas().size() == 2 &&
+                          std::any_of(view.changedAreas().begin(), view.changedAreas().end(),
+                                      [](Rect r) { return r.y > detail::kRouting.bottom() && r.h < 200.0f; });
+    check(keyMoved && samePixels("99e-partial-keys.png"),
+          "a key going down repaints the keyboard alone (and the header apart), as a whole paint would");
+
+    // Operator A's scope shown: its trace moving repaints the inspector (and the header apart, its meter showing).
+    model.ui.selectedNode = 0;
+    model.ui.opTab = InspectorTab::Scope;
+    model.live.scopeBins = 2 * kScopeBinsPerCycle;
+    for (int bin = 0; bin < model.live.scopeBins; ++bin)
+        model.live.scope[bin] = 0.4f * std::sin(6.2831853f * bin / kScopeBinsPerCycle);
+    view.poll();
+    renderer.save(view, dir / "99f-partial-scope-before.png");
+    for (int bin = 0; bin < model.live.scopeBins; ++bin)
+        model.live.scope[bin] = 0.3f * std::sin(6.2831853f * bin / kScopeBinsPerCycle + 0.5f);
+    const bool scopeMoved = view.poll() && std::any_of(view.changedAreas().begin(), view.changedAreas().end(),
+                                                       [&](Rect r) { return sameArea(r, detail::kInspector); });
+    check(scopeMoved && !only(view.wholeArea()) && samePixels("99g-partial-scope.png"),
+          "an operator's scope moving repaints the inspector alone, as a whole paint would");
+
+    // An LFO moves on: anything may show it, so the whole editor.
+    model.live.lfoPhases[0] = 0.3f;
+    const bool lfoMoved = view.poll();
+    check(lfoMoved && only(view.wholeArea()),
+          "what a voice's sources move repaints the whole editor");
+}
+
+// A macro's name that isn't valid UTF-8 (a state can hold any bytes there) drawn as best it can be, and the rest of
+// the editor drawn as with a valid name: only the name's own pixels differ (read off the rendered pixels).
+void testInvalidText(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    auto grid = [&] {
+        std::vector<uint32_t> pixels;
+        for (float y = 4.0f; y < view.height(); y += 9.0f)
+            for (float x = 4.0f; x < View::kWidth; x += 9.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    model.ui.macroNames[0] = "Bad?";
+    view.poll();
+    const bool plain = renderer.save(view, dir / "99a-macro-name.png");
+    const std::vector<uint32_t> before = grid();
+    model.ui.macroNames[0] = "Bad\xFF";
+    view.poll();
+    const bool invalid = renderer.save(view, dir / "99b-macro-name-invalid.png");
+    const std::vector<uint32_t> after = grid();
+    size_t differ = 0;
+    for (size_t i = 0; i < before.size(); ++i)
+        differ += before[i] != after[i] ? 1 : 0;
+    std::printf("      a macro name that isn't UTF-8: %zu of %zu sampled pixels differ from a valid one's\n", differ,
+                before.size());
+    check(plain && invalid && differ < before.size() / 200,
+          "a name that isn't valid UTF-8 leaves the rest of the editor drawn");
+}
+
+// The list of effects opened on a band's + while the split goes: an undo closes the list, and a split taken away
+// behind the editor's back (as a state load does) with the list still open puts the effect picked at the line's end
+// rather than on a band no longer there.
+void testFxListAfterUndo(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    click(view, detail::fxModeButton(1).center());
+    auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
+    auto listAtPlus = [&](Point plus) {
+        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
+    };
+    auto plusItem = [&](Point plus, FxType type) {
+        const Point at = listAtPlus(plus);
+        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
+    };
+    auto plusNode = [&](Point plus) {
+        const Point at = listAtPlus(plus);
+        return Point{at.x + 90.0f, at.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f};
+    };
+    auto from = [&](int node, int input) {
+        return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
+    };
+    auto delayed = [&] {
+        for (int slot = 0; slot < kFxSlots; ++slot)
+            if (std::lround(model.value(paramIndex(slot, FxParam::Type))) == static_cast<int>(FxType::Delay))
+                return slot;
+        return -1;
+    };
+    click(view, cell(3, 0));
+    click(view, plusNode(cell(3, 0))); // a split after the reverb
+    const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0;
+
+    // Its high band's + opens the list; an undo takes the split away and closes the list, so the click on where its
+    // Delay was adds nothing.
+    click(view, cell(4, -1));
+    view.undo();
+    view.poll();
+    click(view, plusItem(cell(4, -1), FxType::Delay));
+    check(split && model.value(paramIndex(0, SplitParam::Used)) == 0.0 && delayed() < 0 &&
+              renderer.save(view, dir / "40z-fx-list-undo.png"),
+          "an undo closes the list of effects opened on a band's +");
+
+    // Again, the split taken away without the editor's undo: the Delay picked goes at the line's end.
+    view.redo();
+    view.poll();
+    click(view, cell(4, -1));
+    model.undo();
+    view.poll();
+    click(view, plusItem(cell(4, -1), FxType::Delay));
+    const int slot = delayed();
+    check(model.value(paramIndex(0, SplitParam::Used)) == 0.0 && slot >= 0 &&
+              fxChain(model) == std::vector<int>{0, 1, slot} && from(kFxOutNode, 0) == fxSlotPort(slot),
+          "an effect picked from a band's list after its split went goes at the line's end");
 }
 
 // The graph's box takes the room the inspector's card leaves: beside a card one place wide (a delay's) it reaches
@@ -7574,6 +7821,9 @@ void run(const std::filesystem::path &dir, float scale) {
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
+    testFxListAfterUndo(dir, renderer);
+    testInvalidText(dir, renderer);
+    testPartialRepaint(dir, renderer);
     testFxGraphScroll(dir, renderer);
     testFxGraphRoom(dir, renderer);
     testFxRow(dir, renderer);

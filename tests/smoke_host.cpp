@@ -32,6 +32,20 @@ void check(bool ok, const char *what) {
         ++failures;
 }
 
+// The sizes the editor asked the host for (gui's request_resize).
+std::vector<std::pair<uint32_t, uint32_t>> resizeRequests;
+
+const clap_host_gui_t kHostGui = {
+    [](const clap_host_t *) {}, // resize_hints_changed
+    [](const clap_host_t *, uint32_t width, uint32_t height) {
+        resizeRequests.push_back({width, height});
+        return true;
+    },
+    [](const clap_host_t *) { return false; }, // request_show
+    [](const clap_host_t *) { return false; }, // request_hide
+    [](const clap_host_t *, bool) {},          // closed
+};
+
 const clap_host_t kHost = {
     CLAP_VERSION_INIT,
     nullptr,
@@ -39,7 +53,9 @@ const clap_host_t kHost = {
     "",
     "",
     "0",
-    [](const clap_host_t *, const char *) -> const void * { return nullptr; },
+    [](const clap_host_t *, const char *id) -> const void * {
+        return std::strcmp(id, CLAP_EXT_GUI) == 0 ? &kHostGui : nullptr;
+    },
     [](const clap_host_t *) { ++restartRequests; },
     [](const clap_host_t *) {}, // request_process
     [](const clap_host_t *) {}, // request_callback
@@ -3636,6 +3652,39 @@ int main(int argc, char **argv) {
         gui->destroy(plugin);
         DestroyWindow(parent);
         check(!IsWindow(editor), "closing the editor destroys its window");
+
+        // An editor sized at the system's DPI, then given a window at another (here one that isn't DPI aware, at
+        // 96, as a window on a monitor scaled otherwise is at its own), asks the host for the size at the window's,
+        // its zoom kept; at the same DPI, it asks for nothing.
+        const DPI_AWARENESS_CONTEXT before = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+        const UINT systemDpi = GetDpiForSystem();
+        uint32_t systemWidth = 0, systemHeight = 0;
+        bool sized = gui->create(plugin, CLAP_WINDOW_API_WIN32, false) &&
+                     gui->get_size(plugin, &systemWidth, &systemHeight);
+        SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_UNAWARE);
+        HWND unaware = CreateWindowExW(0, L"STATIC", L"host", WS_OVERLAPPEDWINDOW, 0, 0, 1000, 700, nullptr, nullptr,
+                                       nullptr, nullptr);
+        resizeRequests.clear();
+        clap_window_t other{};
+        other.api = CLAP_WINDOW_API_WIN32;
+        other.win32 = unaware;
+        sized = sized && gui->set_parent(plugin, &other);
+        const UINT windowDpi = GetDpiForWindow(GetWindow(unaware, GW_CHILD));
+        const uint32_t atWindowDpi = static_cast<uint32_t>(std::lround(systemWidth * 96.0 / systemDpi));
+        std::printf("      editor at %u DPI: %u px wide; its window at %u DPI: asked for %s\n", systemDpi, systemWidth,
+                    windowDpi,
+                    resizeRequests.empty() ? "nothing"
+                                           : (std::to_string(resizeRequests.back().first) + " x " +
+                                              std::to_string(resizeRequests.back().second) + " px")
+                                                 .c_str());
+        check(sized && (systemDpi == windowDpi ? resizeRequests.empty()
+                                                : !resizeRequests.empty() &&
+                                                      std::abs(static_cast<int>(resizeRequests.back().first) -
+                                                               static_cast<int>(atWindowDpi)) <= 1),
+              "an editor given a window at another DPI asks the host for the size at it, its zoom kept");
+        gui->destroy(plugin);
+        DestroyWindow(unaware);
+        SetThreadDpiAwarenessContext(before);
     }
 
     // --- State: save, change a param through flush(), load, expect the saved value back.

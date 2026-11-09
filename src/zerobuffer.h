@@ -28,10 +28,12 @@ public:
     // Main thread.
     void assign(size_t size, float = 0.0f);
     // Silent again, for a new start: nothing to do while it was never handed out since it was allocated, else every
-    // value set to 0 (which touches every page). Afterwards it counts as written.
-    void zero() {
+    // value set to 0 (which touches every page). Afterwards it counts as written. `used`: how many values from its
+    // start can be other than 0 (a line written a value at a time from its start since it was last silent holds
+    // nothing past as many as were written), so only those need setting.
+    void zero(size_t used = static_cast<size_t>(-1)) {
         if (!pristine_)
-            std::fill_n(data_, size_, 0.0f);
+            std::fill_n(data_, std::min(used, size_), 0.0f);
         pristine_ = false;
     }
 

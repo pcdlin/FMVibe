@@ -169,6 +169,7 @@ private:
     struct Delay {
         std::array<ZeroBuffer, 2> lines;
         int write = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
         std::array<double, 2> length{};   // samples, glide toward the set times
         std::array<double, 2> lowPass{};  // tone filter states
         std::array<double, 2> highPass{};
@@ -245,6 +246,7 @@ private:
         std::array<ZeroBuffer, 2> preDelay;
         std::array<ZeroBuffer, 2> shifter; // a shimmer's band-passed tail, per side, its shifters read
         int lineWrite = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
         int diffuserWrite = 0;
         int preWrite = 0;
         int shiftWrite = 0;
@@ -290,6 +292,7 @@ private:
     struct Flanger {
         std::array<ZeroBuffer, 2> lines;
         int write = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
         std::array<double, 2> last{}; // the delayed sound, fed back
         double phase = 0.0;
         double mix = 0.5;
@@ -320,6 +323,7 @@ private:
     struct Widener {
         ZeroBuffer line;
         int write = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
         Biquad highPass;
         std::array<double, kWidenerTaps> phases{}; // the taps' sweeps, in cycles
         double size = 0.5; // gliding toward the knob
@@ -405,7 +409,18 @@ private:
     // use, the output.
     bool nodeWanted(int node, const ParamValues &p) const;
     void orderGraph(const ParamValues &p, bool asSet);
+    // Whether the params orderGraph() reads (every wire's From, the slots' types, the splits' and sums' Used) differ
+    // from the last call's, which it keeps.
+    bool graphParamsChanged(const ParamValues &p);
+    // Whether a chunk of `n` samples of `io` can go by without running the graph: exact silence going in, nothing
+    // ringing, nobody analyzing, and every effect, wire and split where its params put it, with no fade under way.
+    bool idleChunk(const float *const *io, uint32_t n, const ParamValues &p) const;
+    // The phasers' and flangers' sweeps going round through such a chunk, so a synced one keeps time with the host.
+    void idleSweeps(uint32_t n, const ParamValues &p, double tempo);
     bool loopsAsSet(const ParamValues &p) const; // whether the wires as set make a loop
+    // Where a wire into `node` comes from as set: its From's port, or none (-1) while that port's node isn't in the
+    // graph, so a wire from an effect taken away (which a host or a state can leave) fades out with it.
+    int wirePort(int node, int input, const ParamValues &p) const;
     // A wire's gain as set: a sum's in dB and soloed as a join, every other's a share.
     double wireTarget(int node, int input, const ParamValues &p) const;
     // Every wire of `node` as its params set it, at its level and fully in.
@@ -429,8 +444,9 @@ private:
     void runEq(int slot, float *const *io, uint32_t n, const ParamValues &p);
     void runParamEq(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runFilter(int slot, float *const *io, uint32_t n, const ParamValues &p, double pitch);
-    void runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    void runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p);
+    // These two return whether a gain is still on its way to where the curve puts it (a release running out).
+    bool runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p);
+    bool runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p);
     // These return the loudest sample they put out or took in, so a tail keeps them running.
     double runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runPhaser(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
@@ -466,6 +482,17 @@ private:
     std::array<int, kFxNodes> graphOrder_{};
     int graphOrderCount_ = 0;
     bool looped_ = false;   // orderGraph() found a loop through wires moving (see process())
+    // The graph's order holds until what it is worked out from moves: those params (see graphParamsChanged()), a
+    // fade (a wire's, or a slot's, which keeps an effect taken away in the graph while it fades out), a node starting
+    // or stopping, or the graph cleared. Else ordering it every chunk would only find it as it was.
+    bool orderStale_ = true;
+    static constexpr int kGraphParams = [] {
+        int count = kFxSlots + kFxSplits + kFxSums; // the types and Used switches
+        for (int node = 0; node < kFxNodes; ++node)
+            count += fxInputCount(node);
+        return count;
+    }();
+    std::array<double, kGraphParams> graphParams_{}; // as the last call had them; NaN to begin with
     bool rewiring_ = false; // the output ducking out to put every wire as set at once
     double duck_ = 1.0;     // how far in the output is, 0 .. 1
     std::array<bool, kFxNodes> running_{};   // the nodes the graph runs this process() (see orderGraph())

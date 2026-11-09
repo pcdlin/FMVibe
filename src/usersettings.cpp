@@ -85,13 +85,30 @@ void writeUserSettings() {
 
     std::error_code error;
     std::filesystem::create_directories(file.parent_path(), error);
-    std::ofstream out(file);
-    out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize
-        << "\nlinkIntensity=" << merged.links << '\n';
-    if (merged.zoom > 0.0)
-        out << "zoom=" << merged.zoom << '\n';
-    if (merged.examples >= 0)
-        out << "examples=" << merged.examples << '\n';
+    error.clear(); // a folder that couldn't be made shows as the write failing
+    // Written beside it under this process's own name, then put in its place: another process reading it meanwhile
+    // (Bitwig runs instances in several) finds the old file or the new one, never one cut short, which would read
+    // as no examples given and write them again.
+    std::filesystem::path part = file;
+    part += L"." + std::to_wstring(GetCurrentProcessId()) + L".part";
+    {
+        std::ofstream out(part);
+        out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize
+            << "\nlinkIntensity=" << merged.links << '\n';
+        if (merged.zoom > 0.0)
+            out << "zoom=" << merged.zoom << '\n';
+        if (merged.examples >= 0)
+            out << "examples=" << merged.examples << '\n';
+        out.close();
+        if (!out)
+            error = std::make_error_code(std::errc::io_error);
+    }
+    if (!error)
+        std::filesystem::rename(part, file, error);
+    if (error) {
+        std::error_code ignored;
+        std::filesystem::remove(part, ignored);
+    }
 }
 
 } // namespace fmvibe

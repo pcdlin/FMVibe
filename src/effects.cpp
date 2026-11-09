@@ -96,12 +96,17 @@ double smoothing(double seconds, double sampleRate) {
     return std::exp(-1.0 / (seconds * sampleRate));
 }
 
+// Louder than any sound the effects take in or put out (+120 dB): a sample past it, or one that isn't a number, has
+// gone wrong somewhere.
+constexpr float kBrokenLevel = 1e6f;
+
+constexpr uint32_t kRampShortest = 32; // the fewest samples a ramp of a gain or mix is spread over
+
 // The step that ramps a gain or mix from `from` to `to` over a chunk of `n` samples. The synth hands the effects 32
 // samples at a time; a chunk the host's events cut shorter goes only its share of the way, as the voices' levels
 // do (see Synth::renderBlock()), so a jump ramps as smoothly however the block is split.
 double rampStep(double from, double to, uint32_t n) {
-    constexpr uint32_t kShortest = 32;
-    return (to - from) / std::max(n, kShortest);
+    return (to - from) / std::max(n, kRampShortest);
 }
 
 // The phaser's and flanger's polarity turns over in this long, its wet sound and feedback fading through nothing
@@ -112,19 +117,31 @@ double moveToward(double from, double to, double step) {
     return from < to ? std::min(from + step, to) : std::max(from - step, to);
 }
 
+// A gain (dB) closer than this to where it is going is there: a release would otherwise only arrive as it underflows,
+// a minute and more on, working its gain out every sample until then.
+constexpr double kGainSnapDb = 1e-4;
+
+// One step of a gain (dB) toward `target`, by the attack's coefficient while it has to come down, else the
+// release's; there once within kGainSnapDb.
+double followGain(double gain, double target, double attack, double release) {
+    const double next = target + (gain - target) * (target < gain ? attack : release);
+    return std::abs(next - target) < kGainSnapDb ? target : next;
+}
+
 // Moves a band's gain reduction (dB) toward what the curve asks for at detector
 // level `peak`: at the attack pace while it has to come down, else at the release pace.
 // `quiet`: the level (1 is full scale) below which the curve leaves it alone, under the knee, where the reduction
 // heads for 0 without the logarithm worked out.
-double followReduction(double &reduction, double peak, double thresholdDb, double ratio, double kneeDb,
-                       double attack, double release, double quiet) {
+// Returns whether it is still on its way there.
+bool followReduction(double &reduction, double peak, double thresholdDb, double ratio, double kneeDb, double attack,
+                     double release, double quiet) {
     double target = 0.0;
     if (peak >= quiet) {
         const double inDb = 20.0 * std::log10(std::max(peak, 1e-9));
         target = compressorCurve(inDb, thresholdDb, ratio, kneeDb) - inDb;
     }
-    reduction = target + (reduction - target) * (target < reduction ? attack : release);
-    return reduction;
+    reduction = followGain(reduction, target, attack, release);
+    return reduction != target;
 }
 
 // One-pole smoothing coefficient for a corner at `hz`.
@@ -392,6 +409,8 @@ void Effects::prepare(double sampleRate) {
 
 void Effects::reset() {
     portLevel_.fill(0.0f);
+    graphParams_.fill(std::numeric_limits<double>::quiet_NaN()); // so the first chunk orders the graph
+    orderStale_ = true;
     // Each effect clears its state when it fades in again.
     for (Slot &slot : slots_) {
         slot.fade = 0.0;
@@ -429,6 +448,10 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     case FxType::Shaper: {
         const ShaperSettings settings = shaperSettings([&p](int index) { return p[index]; }, shaperParams(slot));
         s.shaper = Shaper{};
+        // Its drawn curve too, taken at once as it starts rather than gliding in from the one it last ran with (a
+        // patch or two ago, say).
+        s.curve.built = false;
+        s.curve.points.fill(std::numeric_limits<double>::quiet_NaN());
         s.shaper.drive = settings.drive;
         s.shaper.output = settings.output;
         s.shaper.mix = settings.mix;
@@ -436,8 +459,9 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     }
     case FxType::Delay: {
         Delay &d = s.delay;
-        for (ZeroBuffer &line : d.lines)
-            line.zero();
+        for (ZeroBuffer &line : d.lines) // only what it ran through: lines 4 s long would take a while to clear
+            line.zero(d.ran);
+        d.ran = 0;
         d.write = 0;
         d.length = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
         d.lowPass = {};
@@ -477,14 +501,15 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     case FxType::Reverb: {
         Reverb &r = s.reverb;
         for (ZeroBuffer &line : r.lines)
-            line.zero();
+            line.zero(r.ran);
         for (auto &side : r.diffusers)
             for (ZeroBuffer &diffuser : side)
-                diffuser.zero();
+                diffuser.zero(r.ran);
         for (ZeroBuffer &line : r.preDelay)
-            line.zero();
+            line.zero(r.ran);
         for (ZeroBuffer &line : r.shifter)
-            line.zero();
+            line.zero(r.ran);
+        r.ran = 0;
         r.lineWrite = r.diffuserWrite = r.preWrite = r.shiftWrite = 0;
         r.shimmerPhase = 0.0;
         r.shimmerLow = {};
@@ -511,7 +536,8 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::Flanger:
         for (ZeroBuffer &line : s.flanger.lines)
-            line.zero();
+            line.zero(s.flanger.ran);
+        s.flanger.ran = 0;
         s.flanger.write = 0;
         s.flanger.last = {};
         s.flanger.phase = 0.0;
@@ -530,7 +556,8 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::Widener: {
         Widener &e = s.widener;
-        e.line.zero();
+        e.line.zero(e.ran);
+        e.ran = 0;
         e.write = 0;
         e.highPass = Biquad{};
         e.phases = {0.0, 0.25, 0.5, 0.75}; // apart from the start, so the sides never sweep together
@@ -551,7 +578,12 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
     // each read the other) reading a chunk late, as rough as a comb. Instead the graph plays on as it was while the
     // output ducks out over 3 ms, every wire takes its place at once, and the output comes back in over 3 ms.
     if (!rewiring_) {
-        orderGraph(p, true);
+        // Ordered again only when something it reads may have moved (see orderStale_); a loop found last time
+        // (which rewiring then plays out) is looked at again.
+        if (graphParamsChanged(p) || orderStale_ || looped_) {
+            orderStale_ = false;
+            orderGraph(p, true);
+        }
         rewiring_ = looped_;
     }
     if (rewiring_)
@@ -560,6 +592,19 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
     for (uint32_t done = 0; done < frames; done += kChunk) {
         const uint32_t n = std::min(kChunk, frames - done);
         float *const io[2] = {left + done, right + done};
+        // A sample that isn't a number, or is infinite or louder than any sound (see kBrokenLevel), would ring on in
+        // every line and feedback it reaches, for good: it goes in as silence.
+        for (int c = 0; c < 2; ++c)
+            for (uint32_t s = 0; s < n; ++s)
+                if (!(std::abs(io[c][s]) < kBrokenLevel))
+                    io[c][s] = 0.0f;
+        // Silence, with nothing left ringing and nothing on its way: it would come out as silence, so it does without
+        // the effects' work (a host that keeps processing a quiet instance, as VST3 hosts do, pays nothing for them).
+        if (idleChunk(io, n, p)) {
+            idleSweeps(n, p, tempo);
+            measurePorts(n);
+            continue;
+        }
 #ifdef __EMSCRIPTEN__
         // WebAssembly can't flush denormals to zero as the plugin's process() does, and tails decaying into them
         // cost many times the CPU. A signal far below hearing (-300 dB) keeps every state above them: a pulse every
@@ -591,6 +636,17 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
                 orderGraph(p, true);
             }
         }
+        // One that comes out all the same, from inside an effect, has filled its state: every effect starts again
+        // cleared, and the chunk is silence.
+        bool sane = true;
+        for (uint32_t s = 0; s < n && sane; ++s)
+            sane = std::abs(io[0][s]) < kBrokenLevel && std::abs(io[1][s]) < kBrokenLevel;
+        if (!sane) {
+            std::fill_n(io[0], n, 0.0f);
+            std::fill_n(io[1], n, 0.0f);
+            reset();
+            continue;
+        }
         // Whatever still comes out keeps them going too: a DC blocker settling, an EQ's ring, which no check above
         // covers. Stopping there would step the output to silence.
         for (uint32_t s = 0; s < n && keep == 0; ++s)
@@ -602,6 +658,62 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             flushing_ = false;
             clearGraph();
         }
+    }
+}
+
+bool Effects::idleChunk(const float *const *io, uint32_t n, const ParamValues &p) const {
+    if (tail_ > 0 || analyzing_ || flushing_ || rewiring_ || duck_ < 1.0)
+        return false;
+    for (uint32_t s = 0; s < n; ++s)
+        if (io[0][s] != 0.0f || io[1][s] != 0.0f)
+            return false;
+    auto wiresSettled = [&](int node) {
+        for (int input = 0; input < fxInputCount(node); ++input) {
+            const Wire &w = wires_[node][input];
+            const int set = wirePort(node, input, p);
+            if (w.now.port != set || w.was.port >= 0 ||
+                (set >= 0 && (w.now.fade < 1.0 || w.now.level != wireTarget(node, input, p))))
+                return false;
+        }
+        return true;
+    };
+    for (int i = 0; i < graphOrderCount_; ++i) {
+        const int node = graphOrder_[i];
+        if (frozen_[node] || !wiresSettled(node))
+            return false;
+        if (node < kFxSlots) { // fully in while on, fully out while off, as runSlot() takes it
+            const Slot &fx = slots_[node];
+            const FxType type = fxType(p[paramIndex(node, FxParam::Type)]);
+            const FxType running = fx.running != type && fx.fade <= 0.0 ? type : fx.running;
+            const bool on = running == type && type != FxType::None && p[paramIndex(node, FxParam::Enabled)] >= 0.5;
+            if (on ? fx.fade < 1.0 : fx.fade > 0.0)
+                return false;
+        } else if (fxNodeSum(node) < 0) { // a split at its slope
+            const int split = node - kFxSlots;
+            const Split &sp = splits_[split];
+            const bool three = std::lround(p[paramIndex(split, SplitParam::Bands)]) >= kFxBands;
+            const int asked = slopeDb(filterSlope(p[paramIndex(split, SplitParam::Slope)]));
+            const int mode = three ? (asked > 12 ? kThree24 : kThree12) : asked > 12 ? 24 : asked;
+            if (!sp.running || sp.wasFade > 0.0 || sp.now.mode != mode)
+                return false;
+        }
+    }
+    return wiresSettled(kFxOutNode);
+}
+
+void Effects::idleSweeps(uint32_t n, const ParamValues &p, double tempo) {
+    for (int i = 0; i < graphOrderCount_; ++i) {
+        const int slot = graphOrder_[i];
+        if (slot >= kFxSlots || slots_[slot].fade <= 0.0)
+            continue;
+        Slot &fx = slots_[slot];
+        const bool phaser = fx.running == FxType::Phaser;
+        if (!phaser && fx.running != FxType::Flanger)
+            continue;
+        double &phase = phaser ? fx.phaser.phase : fx.flanger.phase;
+        phase += sweepHz([&p](int k) { return p[k]; }, slot, phaser, tempo) / sampleRate_ * n;
+        phase -= std::floor(phase);
+        (phaser ? fx.phaser.coefKnown : fx.flanger.delayKnown) = false; // worked out again where the sweep is now
     }
 }
 
@@ -649,10 +761,10 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         feedAnalyzer(slot, io, n);
         break;
     case FxType::Compressor:
-        runCompressor(slot, io, n, p);
-        break;
     case FxType::MultiDyn:
-        runMultiDyn(slot, io, n, p);
+        // A gain still releasing keeps them going, so the next sound doesn't start where it was left.
+        if (fx.running == FxType::Compressor ? runCompressor(slot, io, n, p) : runMultiDyn(slot, io, n, p))
+            keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
         break;
     case FxType::Reverb:
     case FxType::Phaser:
@@ -682,6 +794,7 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
     }
     if (on && fx.fade >= 1.0)
         return;
+    orderStale_ = true; // fading: an effect taken away is in the graph until it has faded out (see nodeWanted())
     for (uint32_t s = 0; s < n; ++s) {
         fx.fade = std::clamp(fx.fade + (on ? fadeStep : -fadeStep), 0.0, 1.0);
         for (int c = 0; c < 2; ++c)
@@ -718,6 +831,14 @@ bool Effects::nodeWanted(int node, const ParamValues &p) const {
     return p[paramIndex(node - kFxSlots, SplitParam::Used)] >= 0.5;
 }
 
+int Effects::wirePort(int node, int input, const ParamValues &p) const {
+    const int port = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+    if (port < 0)
+        return -1;
+    const int from = fxPortNode(port); // none for the input, which is always there
+    return from < 0 || nodeWanted(from, p) ? port : -1;
+}
+
 double Effects::wireTarget(int node, int input, const ParamValues &p) const {
     const double set = p[fxInputIndex(node, input, FxInputField::Level)];
     const int sum = fxNodeSum(node);
@@ -727,8 +848,9 @@ double Effects::wireTarget(int node, int input, const ParamValues &p) const {
 }
 
 void Effects::setWires(int node, const ParamValues &p) {
+    orderStale_ = true;
     for (int input = 0; input < fxInputCount(node); ++input) {
-        const int port = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+        const int port = wirePort(node, input, p);
         wires_[node][input] = {{port, wireTarget(node, input, p), port >= 0 ? 1.0 : 0.0}, {}};
     }
 }
@@ -739,6 +861,29 @@ void Effects::idleSlot(int slot) {
     bandLevel_[slot] = {};
     bandGain_[slot] = {};
     slots_[slot].analyzed.bands = {};
+}
+
+bool Effects::graphParamsChanged(const ParamValues &p) {
+    bool changed = false;
+    int k = 0;
+    auto take = [&](double value) {
+        // Compared as stored (NaN to begin with never equals): a change is copied in.
+        if (!(graphParams_[k] == value)) {
+            graphParams_[k] = value;
+            changed = true;
+        }
+        ++k;
+    };
+    for (int node = 0; node < kFxNodes; ++node)
+        for (int input = 0; input < fxInputCount(node); ++input)
+            take(p[fxInputIndex(node, input, FxInputField::From)]);
+    for (int slot = 0; slot < kFxSlots; ++slot)
+        take(p[paramIndex(slot, FxParam::Type)]);
+    for (int split = 0; split < kFxSplits; ++split)
+        take(p[paramIndex(split, SplitParam::Used)]);
+    for (int sum = 0; sum < kFxSums; ++sum)
+        take(p[paramIndex(sum, SumParam::Used)]);
+    return changed;
 }
 
 bool Effects::loopsAsSet(const ParamValues &p) const {
@@ -843,8 +988,10 @@ void Effects::orderGraph(const ParamValues &p, bool asSet) {
         frozen_[node] = runs && !readAsSet[node];
         if (runs && !ranBefore_[node]) {
             // Nothing heard it before: its wires start as set, as the wires that now read it fade in.
+            orderStale_ = true; // as it changes the wires, once more next time
             setWires(node, p);
         } else if (!runs && ranBefore_[node]) { // nothing hears it any more
+            orderStale_ = true; // as it changes the wires, once more next time
             wires_[node].fill(Wire{});
             if (node < kFxSlots)
                 idleSlot(node);
@@ -877,12 +1024,14 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
     for (int c = 0; c < 2; ++c)
         std::fill_n(mix[c], n, 0.0f);
     const double fadeStep = 1.0 / (0.005 * sampleRate_);
-    // One end of a wire into the mix, its level gliding to `target` across the chunk as it fades toward `fadeTo`
-    // along a raised cosine over 5 ms, as a parametric EQ band switched does.
+    // One end of a wire into the mix, its level gliding to `target` across the chunk (or, in a chunk shorter than the
+    // shortest ramp, that far toward it) as it fades toward `fadeTo` along a raised cosine over 5 ms, as a
+    // parametric EQ band switched does.
     auto add = [&](WireEnd &e, double target, double fadeTo) {
         if (e.port < 0)
             return;
         if (e.fade <= 0.0 && fadeTo <= 0.0) { // out: free for the next move
+            orderStale_ = orderStale_ || e.port >= 0;
             e.port = -1;
             return;
         }
@@ -890,7 +1039,8 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
             e.level = target;
         const float *from[2] = {nullptr, nullptr};
         const bool heard = portOut(e.port, from); // a node not running reads silence
-        const double step = (target - e.level) / n;
+        const double step = rampStep(e.level, target, n);
+        const double end = n >= kRampShortest ? target : e.level + step * n;
         double level = e.level, fade = e.fade;
         if (fade >= 1.0 && fadeTo >= 1.0) { // in: only its level moves
             for (uint32_t s = 0; s < n && heard; ++s) {
@@ -909,7 +1059,8 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
                 mix[1][s] += static_cast<float>(from[1][s] * gain);
             }
         }
-        e.level = target;
+        e.level = end;
+        orderStale_ = orderStale_ || fade != e.fade; // a fading end keeps what it comes from running
         e.fade = fade;
     };
     for (int input = 0; input < fxInputCount(node); ++input) {
@@ -921,8 +1072,9 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
         }
         // A wire moved or taken away crossfades: what it came from fades out as what it comes from now fades in. Moved
         // again while the one before still fades out, it fades out where it is first and only then takes the move.
-        const int set = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+        const int set = wirePort(node, input, p);
         if (set != w.now.port) {
+            orderStale_ = true;
             if (w.now.fade <= 0.0) {
                 w.now = {set, -1.0, 0.0};
             } else if (w.was.fade <= 0.0) {
@@ -1115,6 +1267,7 @@ void Effects::measurePorts(uint32_t n) {
 }
 
 void Effects::clearGraph() {
+    orderStale_ = true;
     for (auto &out : sumOut_)
         for (auto &side : out)
             side.fill(0.0f);
@@ -1160,6 +1313,7 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
 
 double Effects::runDelay(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
     Delay &d = slots_[slot].delay;
+    d.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const double targets[2] = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
     const double glide = 1.0 - std::exp(-1.0 / (0.02 * sampleRate_)); // time changes glide, like tape
@@ -1342,7 +1496,7 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
     return peak;
 }
 
-void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+bool Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Compressor &c = slots_[slot].comp;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const double threshold = at(FxParam::CompThreshold);
@@ -1358,12 +1512,14 @@ void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamV
     double most = 0.0;
     // The reduction as a gain, worked out again only when it moves: below the threshold it rests at 0 dB.
     double gainOf = std::numeric_limits<double>::quiet_NaN(), reductionGain = 1.0;
+    bool moving = false;
     for (uint32_t s = 0; s < n; ++s) {
         c.makeup += makeupStep;
         c.mix += mixStep;
         // Both sides follow the louder one, so the stereo image stays put.
         const double peak = std::max(std::abs(io[0][s]), std::abs(io[1][s]));
-        const double reduction = followReduction(c.reduction, peak, threshold, ratio, knee, attack, release, quiet);
+        moving = followReduction(c.reduction, peak, threshold, ratio, knee, attack, release, quiet);
+        const double reduction = c.reduction;
         most = std::min(most, reduction);
         if (reduction != gainOf) {
             gainOf = reduction;
@@ -1376,9 +1532,10 @@ void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamV
         }
     }
     reduction_[slot] = {static_cast<float>(-most), 0.0f, 0.0f};
+    return moving;
 }
 
-void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+bool Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     MultiDyn &m = slots_[slot].dyn;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const CrossoverCoefs crossovers = crossoverCoefs(cutoffFromNorm(at(FxParam::MdLowFreq)),
@@ -1409,7 +1566,9 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
     // Each band's gain as a factor, worked out again only when it moves: between the thresholds it rests at 0 dB.
     std::array<double, kMcBands> gainOf, bandFactor{};
     gainOf.fill(std::numeric_limits<double>::quiet_NaN());
+    bool moving = false; // whether a band's gain is still on its way to its curve's, in the chunk's last sample
     for (uint32_t s = 0; s < n; ++s) {
+        moving = false;
         m.mix += mixStep;
         m.output += outputStep;
         double bands[2][kMcBands];
@@ -1429,7 +1588,8 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
                                       ? 0.0
                                       : dynamicsGain(20.0 * std::log10(std::max(level, 1e-9)), above[b], down[b],
                                                      below[b], up[b], knee, range);
-            m.gain[b] = target + (m.gain[b] - target) * (target < m.gain[b] ? attack : release);
+            m.gain[b] = followGain(m.gain[b], target, attack, release);
+            moving = moving || m.gain[b] != target;
             most[b] = std::min(most[b], m.gain[b]);
             if (m.gain[b] != gainOf[b]) {
                 gainOf[b] = m.gain[b];
@@ -1449,17 +1609,19 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
         bandLevel_[slot][b] = static_cast<float>(loudest[b]);
         bandGain_[slot][b] = static_cast<float>(m.gain[b]);
     }
+    return moving;
 }
 
 double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Reverb &r = slots_[slot].reverb;
+    r.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const double glide = 1.0 - std::exp(-1.0 / (0.05 * sampleRate_)); // size and pre-delay changes glide
     const ReverbType type = reverbType(at(FxParam::ReverbType));
     const ReverbStyle style = reverbStyle(type);
     for (int c = 0; c < 2; ++c)
         for (int d = r.diffusersUsed; d < style.diffusers; ++d)
-            r.diffusers[c][d].zero();
+            r.diffusers[c][d].zero(r.ran);
     r.diffusersUsed = style.diffusers;
     const double sizeTarget = reverbSpace(at(FxParam::ReverbSize), type); // a new algorithm's length glides too
     const double preTarget = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
@@ -1504,9 +1666,9 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const double shimmerTarget = std::sqrt(share * rounds / (2.0 * kOutGain * kOutGain));
     const double shimmerStep = rampStep(r.shimmer, shimmerTarget, n);
     const bool shifting = r.shimmer > 0.0 || shimmerTarget > 0.0;
-    if (shifting && r.shimmer == 0.0) { // starting again: nothing from the last time it ran goes back in
+    if (shifting && r.shimmer <= 0.0) { // starting again: nothing from the last time it ran goes back in
         for (ZeroBuffer &line : r.shifter)
-            line.zero();
+            line.zero(r.ran);
         r.shimmerLow = {};
         r.shimmerBass = {};
     }
@@ -1638,7 +1800,9 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     r.reach = style.early > 0.0
                   ? std::min(r.preLength + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1] * echoScale, echoRoom)
                   : r.preLength;
-    if (!style.shimmer && r.shimmer < 1e-9) // faded out (over more than one chunk, if events cut them short)
+    // Faded out (over more than one chunk, if events cut them short), turned down or switched to another algorithm:
+    // the ramp leaves a hair either side of 0, which would keep it shifting or skip clearing its lines next time.
+    if (shimmerTarget == 0.0 && std::abs(r.shimmer) < 1e-9)
         r.shimmer = 0.0;
     // The wavering phasors keep their length.
     for (int i = 0; i < kReverbLines; ++i) {
@@ -1759,6 +1923,7 @@ double widenerSpread(double hz, double highPassNorm) {
 
 double Effects::runWidener(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Widener &e = slots_[slot].widener;
+    e.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const Coefs hp = biquad(BiquadType::HighPass,
                             std::min(cutoffFromNorm(at(FxParam::WidenerHighPass)), 0.45 * sampleRate_), sampleRate_);
@@ -1836,6 +2001,7 @@ double Effects::runDisperser(int slot, float *const *io, uint32_t n, const Param
 
 double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
     Flanger &f = slots_[slot].flanger;
+    f.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam field) { return p[paramIndex(slot, field)]; };
     const double step = sweepHz([&p](int i) { return p[i]; }, slot, false, tempo) / sampleRate_;
     const double delaySeconds = timeFromNorm(at(FxParam::FlangerDelay)); // flangerDelay()'s, the same all chunk
