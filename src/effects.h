@@ -1,5 +1,6 @@
 #pragma once
 
+#include "amp.h"
 #include "analyzer.h"
 #include "clipcurve.h"
 #include "filter.h"
@@ -11,6 +12,7 @@
 #include <complex>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <vector>
 
 namespace fmvibe {
@@ -99,7 +101,7 @@ double widenerSpread(double hz, double highPassNorm);
 
 // The effects on the sum of the voices: kFxSlots slots, each holding a
 // shaper, delay, DJ EQ, parametric EQ, filter, compressor, three-band
-// dynamics, reverb, phaser, flanger, frequency shifter, phase disperser or widener, or nothing, run as the effects
+// dynamics, reverb, phaser, flanger, frequency shifter, phase disperser, widener or amp, or nothing, run as the effects
 // graph's wires take them from the input to the output (a chain is the slots one after another). An empty or
 // switched-off slot costs nothing; switching one fades it in or out over a few milliseconds. Audio thread
 // only, apart from construction and prepare().
@@ -118,7 +120,8 @@ public:
     // milliseconds, as one switched off does, and then starts again cleared, as one switched on does.
     void flush() { flushing_ = true; }
     // How far a compressor or three-band dynamics in `slot` turns band `band` down right now, in dB (0 or more); a
-    // compressor uses band 0. The most of the latest block, for the editor's meters.
+    // compressor uses band 0, and an amp band 0 for how far its stages saturate. The most of the latest block, for the
+    // editor's meters.
     float reduction(int slot, int band) const { return reduction_[slot][band]; }
     // A three-band dynamics' band `band` in `slot`: its detector's level (1 is full scale), the most of the latest
     // block, falling about 26 dB a second, and the gain (dB, below 0 pulling down, above lifting) it applies now.
@@ -336,6 +339,13 @@ private:
 
     // One place in the chain. `running` is the type it processes as; when the
     // slot gets another type, the old one fades out before the new one starts.
+    // The amp: the one running at its setting (model, cabinet, mic, oversampling, ...) and, for 10 ms after the setting
+    // changes, the one it left, fading out as the new one fades in.
+    struct AmpFx {
+        AmpCore now, was;
+        double wasFade = 0.0;           // 1 .. 0
+        double output = 1.0, mix = 1.0; // their gains at the end of the last chunk
+    };
     struct Slot {
         FxType running = FxType::None;
         double fade = 0.0; // 0 = off .. 1 = fully in
@@ -352,6 +362,7 @@ private:
         Shifter shifter;
         Disperser disperser;
         Widener widener;
+        std::unique_ptr<AmpFx> amp; // on the heap, from prepare(): two amps' state is large
         // The parametric EQ's, filter's or phase disperser's output, for its analyzer.
         Analyzed analyzed;
         // The shaper's drawn curve as a table (see runShaper()).
@@ -451,6 +462,7 @@ private:
     void feedAnalyzer(int slot, float *const *io, uint32_t n);
     double runDisperser(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runWidener(int slot, float *const *io, uint32_t n, const ParamValues &p);
+    void runAmp(int slot, float *const *io, uint32_t n, const ParamValues &p);
     bool analyzing_ = false;
     Analyzer analyzer_;
 

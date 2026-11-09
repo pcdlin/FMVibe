@@ -571,7 +571,7 @@ inline Rect fxMenuButton() {
 
 // The effects the list offers, in its order: every type but None and the retired three-band compressor, whose place
 // the three-band dynamics takes.
-constexpr FxType kFxOffered[] = {FxType::Shaper,     FxType::Eq,         FxType::ParamEq,
+constexpr FxType kFxOffered[] = {FxType::Shaper,     FxType::Amp,        FxType::Eq,         FxType::ParamEq,
                                  FxType::Filter,     FxType::Compressor, FxType::MultiDyn, FxType::Delay, FxType::Reverb,
                                  FxType::Phaser,     FxType::Flanger,    FxType::Widener,  FxType::FreqShifter, FxType::Disperser
                                 };
@@ -651,9 +651,9 @@ inline Rect fxCardClip() {
 }
 
 // How many of the usual card places a card takes: the parametric EQ's and the three-band dynamics' are wider, for
-// their displays and knobs.
+// their displays and knobs, and the amp's wider still, its amp and its cabinet side by side.
 inline float fxSpan(FxType type) {
-    return type == FxType::ParamEq || type == FxType::MultiDyn ? 1.5f : 1.0f;
+    return type == FxType::Amp ? 1.75f : type == FxType::ParamEq || type == FxType::MultiDyn ? 1.5f : 1.0f;
 }
 
 // A card's rect by its screen place, in card places from the row's left end (0..kVisibleFx, fractions while

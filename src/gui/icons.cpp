@@ -490,6 +490,18 @@ void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
         }
         break;
     }
+    case FxType::Amp: { // a combo seen from the front: a strip of knobs over a speaker
+        const Rect box{r.x + 0.7f, r.y + 0.7f, r.w - 1.4f, r.h - 1.4f};
+        c.strokeRect(box, color, 1.3f, kRadiusMark);
+        const float strip = box.y + 0.3f * box.h;
+        c.line({box.x, strip}, {box.right(), strip}, color, 1.1f);
+        for (float x : {0.27f, 0.5f, 0.73f})
+            c.fillCircle({box.x + x * box.w, (box.y + strip) * 0.5f}, 0.95f, color);
+        const Point cone{box.center().x, (strip + box.bottom()) * 0.5f};
+        c.strokeCircle(cone, 0.38f * (box.bottom() - strip), color, 1.2f);
+        c.fillCircle(cone, 0.95f, color);
+        break;
+    }
     case FxType::MultiComp: // retired, never offered
     case FxType::None:
     case FxType::Count:

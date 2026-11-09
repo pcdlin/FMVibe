@@ -486,7 +486,9 @@ float fxSpan(const FakeController &model, int slot) {
     if (folded)
         return kFoldedSpan;
     const long type = std::lround(model.value(paramIndex(slot, FxParam::Type)));
-    return type == static_cast<long>(FxType::ParamEq) || type == static_cast<long>(FxType::MultiDyn) ? 1.5f : 1.0f;
+    return type == static_cast<long>(FxType::Amp)                                                        ? 1.75f
+           : type == static_cast<long>(FxType::ParamEq) || type == static_cast<long>(FxType::MultiDyn) ? 1.5f
+                                                                                                         : 1.0f;
 }
 // How far the test has left the chain scrolled, in card places: cards sit that much left of their places.
 float fxScrolled = 0.0f;
@@ -525,8 +527,9 @@ Point fxKnob(const FakeController &model, int position, int index, int count, fl
 // in the order of `kFxOffered` (src/gui/layout.h).
 constexpr Point kFxMenuButton{90.0f, 152.0f};
 constexpr float kFxMenuPitch = 23.0f;
+constexpr int kFxTypeCount = 14; // the effects the list offers, before a split's entries
 int fxMenuPlace(FxType type) {
-    static const FxType offered[] = {FxType::Shaper,     FxType::Eq,         FxType::ParamEq,   FxType::Filter,
+    static const FxType offered[] = {FxType::Shaper,     FxType::Amp,        FxType::Eq,        FxType::ParamEq,   FxType::Filter,
                                      FxType::Compressor, FxType::MultiDyn,   FxType::Delay,     FxType::Reverb,
                                      FxType::Phaser,     FxType::Flanger,    FxType::Widener,   FxType::FreqShifter,
                                      FxType::Disperser};
@@ -543,7 +546,7 @@ Point listAt(const View &view, Point click, float w, float h) {
     return {std::clamp(click.x, 4.0f, View::kWidth - 4.0f - w), std::clamp(click.y, 4.0f, view.height() - 4.0f - h)};
 }
 Point fxListAt(const View &view, Point click) {
-    return listAt(view, click, 180.0f, 8.0f + 13.0f * kFxMenuPitch);
+    return listAt(view, click, 180.0f, 8.0f + kFxTypeCount * kFxMenuPitch);
 }
 Point fxListItem(const View &view, Point click, FxType type) {
     const Point at = fxListAt(view, click);
@@ -2275,7 +2278,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
     // The list a + opens, beside it and kept inside the editor: the effects, then a split or a join a little apart.
     auto listAtPlus = [&](Point plus) {
-        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
+        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
     };
     auto plusItem = [&](Point plus, FxType type) {
         const Point at = listAtPlus(plus);
@@ -2283,7 +2286,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     };
     auto plusNode = [&](Point plus) {
         const Point at = listAtPlus(plus);
-        return Point{at.x + 90.0f, at.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f};
+        return Point{at.x + 90.0f, at.y + 14.5f + kFxTypeCount * kFxMenuPitch + 7.0f};
     };
     auto addAt = [&](Point plus, FxType type) {
         click(view, plus);
@@ -2703,8 +2706,8 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     auto middle = [](Point from, Point to) { return Point{(from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f}; };
     auto gapItem = [&](Point gap, bool withNode, int place) {
         const Point at = listAt(view, {gap.x + 26.0f, gap.y - 44.0f}, 180.0f,
-                                8.0f + 13.0f * kFxMenuPitch + (withNode ? 7.0f + 2.0f * kFxMenuPitch : 0.0f));
-        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(place) * kFxMenuPitch + (place >= 13 ? 7.0f : 0.0f)};
+                                8.0f + kFxTypeCount * kFxMenuPitch + (withNode ? 7.0f + 2.0f * kFxMenuPitch : 0.0f));
+        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(place) * kFxMenuPitch + (place >= kFxTypeCount ? 7.0f : 0.0f)};
     };
     const Point mainGap = middle({cell(1, 0).x + detail::kFxNodeR, cell(1, 0).y},
                                  {cell(2, 0).x - detail::kFxNodeR - 8.0f, cell(2, 0).y});
@@ -2715,7 +2718,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     const bool between = from(5, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(5);
     view.undo();
     click(view, mainGap);
-    click(view, gapItem(mainGap, true, 13));
+    click(view, gapItem(mainGap, true, kFxTypeCount));
     const int split2 = fxSplitNode(1), join2 = fxSumNode(1);
     const bool splitBetween = model.value(paramIndex(1, SplitParam::Used)) == 1.0 &&
                               model.value(paramIndex(1, SumParam::Used)) == 1.0 && from(split2, 0) == fxSlotPort(0) &&
@@ -2942,7 +2945,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, {a.x + 5.0f, a.y + 1.0f});
         // Had that opened the list, this click would only close it.
         click(view, mid);
-        const Point at = listAt(view, {mid.x + 26.0f, mid.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
+        const Point at = listAt(view, {mid.x + 26.0f, mid.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
         click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Filter)) * kFxMenuPitch});
         const bool added = from(5, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(5);
         view.undo();
@@ -3558,7 +3561,7 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
     const bool picked = model.ui.fxSelected == 8;
     const Point plus = detail::fxGridCell(11, 0, most);
     click(view, plus);
-    const Point at = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
+    const Point at = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
     click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Reverb)) * kFxMenuPitch});
     const bool added = fxPortOf(model.value(fxInputIndex(kFxOutNode, 0, FxInputField::From))) == fxSlotPort(10) &&
                        model.value(paramIndex(10, FxParam::Type)) == static_cast<double>(FxType::Reverb);
@@ -3609,8 +3612,8 @@ void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {mode.x + mode.w * 0.5f, mode.y + mode.h * 0.5f});
     const Point plus = detail::fxGridCell(3, 0, 0.0f);
     click(view, plus);
-    const Point list = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
-    click(view, {list.x + 90.0f, list.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f});
+    const Point list = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
+    click(view, {list.x + 90.0f, list.y + 14.5f + kFxTypeCount * kFxMenuPitch + 7.0f});
     const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
                        model.value(paramIndex(0, SumParam::Used)) == 1.0;
     click(view, bin);

@@ -43,12 +43,20 @@ constexpr Str kPeqTypeNames[] = {Str::PeqPeak,   Str::PeqLowShelf, Str::PeqHighS
 static_assert(std::size(kPeqTypeNames) == static_cast<size_t>(PeqType::Count));
 constexpr Str kReverbTypeNames[] = {Str::ReverbHall, Str::ReverbRoom, Str::ReverbPlate, Str::ReverbShimmer};
 static_assert(std::size(kReverbTypeNames) == static_cast<size_t>(ReverbType::Count));
+constexpr Str kAmpModelNames[] = {Str::AmpClean, Str::AmpBlues, Str::AmpCrunch, Str::AmpLead,
+                                  Str::AmpHeavy, Str::AmpBass,  Str::AmpFuzz};
+static_assert(std::size(kAmpModelNames) == static_cast<size_t>(AmpModel::Count));
+constexpr Str kAmpCabNames[] = {Str::CabOpen1x12, Str::CabOpen2x12, Str::CabClosed4x12, Str::CabBass4x10,
+                                Str::CabBass1x15};
+static_assert(std::size(kAmpCabNames) == static_cast<size_t>(AmpCab::Count));
+constexpr Str kAmpMicNames[] = {Str::MicDynamic, Str::MicCondenser, Str::MicRibbon};
+static_assert(std::size(kAmpMicNames) == static_cast<size_t>(AmpMic::Count));
 constexpr Str kRouteModeNames[] = {Str::RoutePhase, Str::RouteLinearFm, Str::RouteExpFm, Str::RouteRing};
 static_assert(std::size(kRouteModeNames) == static_cast<size_t>(RouteMode::Count));
 constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay,      Str::FxDjEq,
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
-                            Str::FxDisperser, Str::FxWidener,   Str::FxMultiDyn};
+                            Str::FxDisperser, Str::FxWidener,   Str::FxMultiDyn,   Str::FxAmp};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
                                     Str::SourceMidi};
@@ -149,7 +157,8 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::FilterSlope || kind == ParamKind::Toggle || kind == ParamKind::SyncDivision ||
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
             kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
-            kind == ParamKind::RouteMode)
+            kind == ParamKind::RouteMode || kind == ParamKind::AmpModel || kind == ParamKind::AmpCab ||
+            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -729,6 +738,29 @@ void buildTable(ParamTable &t) {
         // Stereo to begin with, unlike the phaser: the classic flanger's sides sweep apart.
         fx(FxParam::FlangerStereo, tr(Str::ParamFlangerStereo), ParamKind::Toggle, 0.0, 1.0, 1.0);
         fx(FxParam::FlangerNegative, tr(Str::ParamFlangerNegative), ParamKind::Toggle, 0.0, 1.0, 0.0);
+
+        // A crunchy amp at its middle settings into a closed 4x12, a dynamic mic close to it, a little off its center.
+        fx(FxParam::AmpModel, tr(Str::ParamAmpModel), ParamKind::AmpModel, 0.0,
+           static_cast<double>(AmpModel::Count) - 1.0, static_cast<double>(AmpModel::Crunch));
+        fx(FxParam::AmpGain, tr(Str::ParamAmpGain), ParamKind::AmpDial, 0.0, 1.0, 0.5);
+        fx(FxParam::AmpBass, tr(Str::ParamAmpBass), ParamKind::AmpDial, 0.0, 1.0, 0.5);
+        fx(FxParam::AmpMid, tr(Str::ParamAmpMid), ParamKind::AmpDial, 0.0, 1.0, 0.5);
+        fx(FxParam::AmpTreble, tr(Str::ParamAmpTreble), ParamKind::AmpDial, 0.0, 1.0, 0.5);
+        fx(FxParam::AmpPresence, tr(Str::ParamAmpPresence), ParamKind::AmpDial, 0.0, 1.0, 0.0);
+        fx(FxParam::AmpVolume, tr(Str::ParamAmpVolume), ParamKind::AmpDial, 0.0, 1.0, 0.5);
+        fx(FxParam::AmpOutput, tr(Str::ParamAmpOutput), ParamKind::Decibel, -24.0, 12.0, 0.0);
+        fx(FxParam::AmpMix, tr(Str::ParamAmpMix), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::AmpStereo, tr(Str::ParamAmpStereo), ParamKind::Toggle, 0.0, 1.0, 0.0);
+        fx(FxParam::AmpCabOn, tr(Str::ParamAmpCabOn), ParamKind::Toggle, 0.0, 1.0, 1.0);
+        fx(FxParam::AmpCab, tr(Str::ParamAmpCab), ParamKind::AmpCab, 0.0, static_cast<double>(AmpCab::Count) - 1.0,
+           static_cast<double>(AmpCab::Closed4x12));
+        fx(FxParam::AmpMic, tr(Str::ParamAmpMic), ParamKind::AmpMic, 0.0, static_cast<double>(AmpMic::Count) - 1.0,
+           static_cast<double>(AmpMic::Dynamic));
+        fx(FxParam::AmpPosition, tr(Str::ParamAmpPosition), ParamKind::Percent, 0.0, 1.0, 0.3);
+        fx(FxParam::AmpDistance, tr(Str::ParamAmpDistance), ParamKind::AmpDistance, 0.0, 1.0,
+           normFromAmpDistance(2.0));
+        fx(FxParam::AmpOversampling, tr(Str::ParamAmpOversampling), ParamKind::AmpOversampling, 0.0,
+           kAmpOversamplings - 1.0, kDefaultAmpOversampling);
         // Synced, two bars a sweep.
         fx(FxParam::FlangerSync, tr(Str::ParamFlangerSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::FlangerDivision, tr(Str::ParamFlangerDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
@@ -911,6 +943,18 @@ const char *reverbTypeName(ReverbType type) {
     return nameAt(kReverbTypeNames, static_cast<double>(type));
 }
 
+const char *ampModelName(AmpModel model) {
+    return nameAt(kAmpModelNames, static_cast<double>(model));
+}
+
+const char *ampCabName(AmpCab cab) {
+    return nameAt(kAmpCabNames, static_cast<double>(cab));
+}
+
+const char *ampMicName(AmpMic mic) {
+    return nameAt(kAmpMicNames, static_cast<double>(mic));
+}
+
 const char *routeModeName(RouteMode mode) {
     return nameAt(kRouteModeNames, static_cast<double>(mode));
 }
@@ -1002,7 +1046,8 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::FxPosition || kind == ParamKind::FxPort || kind == ParamKind::FxType || kind == ParamKind::SourceType || kind == ParamKind::ShapeCount ||
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
-           kind == ParamKind::MidiInput || kind == ParamKind::RouteMode;
+           kind == ParamKind::MidiInput || kind == ParamKind::RouteMode || kind == ParamKind::AmpModel ||
+           kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling;
 }
 
 bool isBipolar(ParamKind kind) {
@@ -1152,6 +1197,31 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::ReverbType:
         std::snprintf(out, capacity, "%s", nameAt(kReverbTypeNames, value));
         break;
+    case ParamKind::AmpModel:
+        std::snprintf(out, capacity, "%s", nameAt(kAmpModelNames, value));
+        break;
+    case ParamKind::AmpCab:
+        std::snprintf(out, capacity, "%s", nameAt(kAmpCabNames, value));
+        break;
+    case ParamKind::AmpMic:
+        std::snprintf(out, capacity, "%s", nameAt(kAmpMicNames, value));
+        break;
+    case ParamKind::AmpOversampling:
+        std::snprintf(out, capacity, "%dx", ampOversampling(value));
+        break;
+    case ParamKind::AmpDial:
+        std::snprintf(out, capacity, "%.1f", value * 10.0);
+        break;
+    case ParamKind::AmpDistance: { // by what it rounds to, so 99.96 cm shows as 1.00 m, as typing that gives
+        const double cm = ampDistanceCm(value);
+        if (cm < 9.995)
+            std::snprintf(out, capacity, "%.2f cm", cm);
+        else if (cm < 99.95)
+            std::snprintf(out, capacity, "%.1f cm", cm);
+        else
+            std::snprintf(out, capacity, "%.2f m", cm / 100.0);
+        break;
+    }
     case ParamKind::RouteMode:
         std::snprintf(out, capacity, "%s", nameAt(kRouteModeNames, value));
         break;
@@ -1245,6 +1315,9 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::FilterSlope  ? findName(kFilterSlopeNames, text)
                       : def.kind == ParamKind::PeqType      ? findName(kPeqTypeNames, text)
                       : def.kind == ParamKind::ReverbType   ? findName(kReverbTypeNames, text)
+                      : def.kind == ParamKind::AmpModel     ? findName(kAmpModelNames, text)
+                      : def.kind == ParamKind::AmpCab       ? findName(kAmpCabNames, text)
+                      : def.kind == ParamKind::AmpMic       ? findName(kAmpMicNames, text)
                       : def.kind == ParamKind::MidiInput    ? findName(kMidiInputNames, text)
                       : def.kind == ParamKind::RouteMode    ? findName(kRouteModeNames, text)
                                                             : -1;
@@ -1459,6 +1532,9 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::ClipMode:
     case ParamKind::PeqType:
     case ParamKind::ReverbType:
+    case ParamKind::AmpModel:
+    case ParamKind::AmpCab:
+    case ParamKind::AmpMic:
     case ParamKind::MidiInput:
     case ParamKind::RouteMode:
     case ParamKind::FxOrder:
@@ -1477,6 +1553,15 @@ bool parseParam(int index, const char *text, double *out) {
         break;
     case ParamKind::FilterSlope: // dB per octave, to the nearest slope
         value = std::round(std::abs(value) / 6.0) - 1.0;
+        break;
+    case ParamKind::AmpOversampling: // "4x" or "4": the factor, to the nearest one offered
+        value = std::clamp(std::round(std::log2(std::max(value, 1.0))), 0.0, kAmpOversamplings - 1.0);
+        break;
+    case ParamKind::AmpDial: // 0 to 10
+        value /= 10.0;
+        break;
+    case ParamKind::AmpDistance: // cm, or m with an m
+        value = normFromAmpDistance(*end == 'm' && end[1] != 'm' ? value * 100.0 : value);
         break;
     case ParamKind::ShiftRange: // Hz, or kHz with a k
         value = normFromShiftRange(*end == 'k' || *end == 'K' ? value * 1000.0 : value);
