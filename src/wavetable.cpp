@@ -128,40 +128,100 @@ const WaveTables &waveTables() {
 
 // Like WaveTables: from the thinnest level up, each adding the partials it has room for, then one gain
 // from the fullest, so the octaves match. With every partial at 0, it is silent.
-bool CustomWave::update(const double *partials) {
-    if (std::equal(partials_.begin(), partials_.end(), partials))
-        return false;
-    std::copy_n(partials, partials_.size(), partials_.begin());
+namespace {
+// The levels from 0 up, as WaveTables has them: how many partials each has room for.
+constexpr int customTop(int level) { return std::min(WaveTables::kHarmonics >> level, kPartials); }
+} // namespace
+
+void CustomWave::addPartial(int n, double amount, double phase) {
+    if (amount == 0.0)
+        return;
     constexpr int kSize = WaveTables::kSize;
     const std::vector<double> &sine = sineTable();
-    std::vector<double> &sum = sum_;
-    std::fill(sum.begin(), sum.end(), 0.0);
+    const int shift = static_cast<int>(std::lround(phase * kSize)) % kSize;
+    for (int t = 0; t < kTables && customTop(t + kFull) >= n; ++t) {
+        double *sum = &sums_[static_cast<size_t>(t) * kSize];
+        // From `shift`, n steps a sample round the table, which a mask with its size wraps as % would.
+        for (int i = 0, k = shift & kMask; i < kSize; ++i, k = (k + n) & kMask)
+            sum[i] += amount * sine[k];
+    }
+}
+
+// From scratch, as WaveTables builds its: from the thinnest level up, each the one before with the partials it has
+// room for added (in place, so nothing is allocated on the audio thread).
+void CustomWave::buildAll() {
+    constexpr int kSize = WaveTables::kSize;
+    const std::vector<double> &sine = sineTable();
     int done = 0;
-    for (int level = WaveTables::kLevels - 1; level >= 0; --level) {
-        const int top = std::min(WaveTables::kHarmonics >> level, kPartials);
+    for (int t = kTables - 1; t >= 0; --t) {
+        double *sum = &sums_[static_cast<size_t>(t) * kSize];
+        if (t == kTables - 1)
+            std::fill_n(sum, kSize, 0.0);
+        else
+            std::copy_n(sum + kSize, kSize, sum); // the thinner level's, just built
+        const int top = customTop(t + kFull);
         for (int n = done + 1; n <= top; ++n) {
-            const double amount = partials[2 * (n - 1)];
+            const double amount = built_[2 * (n - 1)];
             if (amount <= 0.0)
                 continue;
-            const int shift = static_cast<int>(std::lround(partials[2 * (n - 1) + 1] * kSize)) % kSize;
-            // From `shift`, n steps a sample round the table, which a mask with its size wraps as % did (the
-            // audio thread builds this whenever the partials move).
+            const int shift = static_cast<int>(std::lround(built_[2 * (n - 1) + 1] * kSize)) % kSize;
             for (int i = 0, k = shift & kMask; i < kSize; ++i, k = (k + n) & kMask)
                 sum[i] += amount * sine[k];
         }
         done = top;
-        float *table = &data_[static_cast<size_t>(level) * (kSize + 1)];
+    }
+}
+
+void CustomWave::build() {
+    if (!stale_)
+        return;
+    stale_ = false;
+    // Partials changed, and what taking them out and putting them in again would cost against adding up every one
+    // that sounds: a table's worth for each level each is in.
+    int changed = 0, cost = 0, sounding = 0;
+    for (int n = 1; n <= kPartials; ++n) {
+        const double was = std::max(built_[2 * (n - 1)], 0.0), now = std::max(wanted_[2 * (n - 1)], 0.0);
+        sounding += now > 0.0 ? 1 : 0;
+        if (was == now && (was == 0.0 || built_[2 * n - 1] == wanted_[2 * n - 1]))
+            continue;
+        ++changed;
+        int levels = 0;
+        for (int t = 0; t < kTables && customTop(t + kFull) >= n; ++t)
+            ++levels;
+        cost += levels * ((was > 0.0) + (now > 0.0));
+    }
+    // With nothing left sounding, from scratch: what rounding left of the partials taken out would else be scaled
+    // up to full level.
+    const bool fromScratch = !everBuilt_ || sounding == 0 || cost >= sounding || ++sinceAll_ > 64;
+    if (fromScratch) {
+        built_ = wanted_;
+        sinceAll_ = 0;
+        buildAll();
+    } else if (changed > 0) {
+        for (int n = 1; n <= kPartials; ++n) {
+            const double wasLevel = built_[2 * (n - 1)], wasPhase = built_[2 * n - 1];
+            const double nowLevel = wanted_[2 * (n - 1)], nowPhase = wanted_[2 * n - 1];
+            if (wasLevel == nowLevel && wasPhase == nowPhase)
+                continue;
+            addPartial(n, -std::max(wasLevel, 0.0), wasPhase);
+            addPartial(n, std::max(nowLevel, 0.0), nowPhase);
+        }
+        built_ = wanted_;
+    }
+    everBuilt_ = true;
+    // Each table as floats, scaled together so the fullest peaks at 1; all silent with every partial at 0.
+    constexpr int kSize = WaveTables::kSize;
+    double peak = 0.0;
+    for (int i = 0; i < kSize; ++i)
+        peak = std::max(peak, std::abs(sums_[i]));
+    const double scale = peak > 0.0 ? 1.0 / peak : 0.0;
+    for (int t = 0; t < kTables; ++t) {
+        float *table = &data_[static_cast<size_t>(t) * (kSize + 1)];
+        const double *sum = &sums_[static_cast<size_t>(t) * kSize];
         for (int i = 0; i < kSize; ++i)
-            table[i] = static_cast<float>(sum[i]);
+            table[i] = static_cast<float>(sum[i] * scale);
         table[kSize] = table[0];
     }
-    float peak = 0.0f;
-    for (int i = 0; i < kSize; ++i)
-        peak = std::max(peak, std::abs(data_[i]));
-    if (peak > 0.0f)
-        for (float &x : data_)
-            x /= peak;
-    return true;
 }
 
 bool wavePartials(OpWave wave, std::array<double, 2 * kPartials> &out) {

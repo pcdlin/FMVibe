@@ -1932,6 +1932,42 @@ int main() {
         check(ripple < 0.1 && leak < -90.0, "the decimator is flat to 20 kHz and keeps aliases below -90 dB");
     }
 
+    // --- A Custom wave plays its partials: drawn while the operator plays a sine, then taken up as it switches to
+    // Custom (the 1st and the 3rd), and changed partial by partial as it plays (the 3rd out, the 2nd in).
+    std::printf("Custom wave:\n");
+    {
+        Engine e(2);
+        for (int k = 0; k < kPartials; ++k) {
+            e.p[partialLevelIndex(0, k)] = 0.0;
+            e.p[partialPhaseIndex(0, k)] = 0.0;
+        }
+        e.p[partialLevelIndex(0, 0)] = 1.0;
+        e.p[partialLevelIndex(0, 2)] = 0.5;
+        e.noteOn(57); // A3, 220 Hz
+        e.render(4800);
+        e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Custom);
+        e.render(4800);
+        const std::vector<float> first = e.render(kFftSize);
+        e.p[partialLevelIndex(0, 2)] = 0.0;
+        e.p[partialLevelIndex(0, 1)] = 0.5;
+        e.render(4800);
+        const std::vector<float> second = e.render(kFftSize);
+        auto at = [](const std::vector<float> &signal, double hz) { // the loudest bin near it, in dB
+            const std::vector<double> power = powerSpectrum(signal);
+            const long center = std::lround(hz / (kSampleRate / kFftSize));
+            double most = 1e-30;
+            for (long b = center - 3; b <= center + 3; ++b)
+                most = std::max(most, power[static_cast<size_t>(b)]);
+            return 10.0 * std::log10(most);
+        };
+        const double f1 = at(first, 220.0), f2 = at(first, 440.0), f3 = at(first, 660.0);
+        const double s1 = at(second, 220.0), s2 = at(second, 440.0), s3 = at(second, 660.0);
+        std::printf("      1st and 3rd: 2nd %.0f dB, 3rd %.1f dB under the 1st; then 1st and 2nd: 2nd %.1f, 3rd %.0f\n",
+                    f2 - f1, f3 - f1, s2 - s1, s3 - s1);
+        check(std::abs(f3 - f1 + 6.0) < 1.0 && f2 - f1 < -60.0 && std::abs(s2 - s1 + 6.0) < 1.0 && s3 - s1 < -60.0,
+              "a Custom wave plays the partials drawn, taken up as it is picked and changed as it plays");
+    }
+
     // --- Aliasing: the energy that isn't a harmonic of the note.
     struct AliasCase {
         const char *name;

@@ -644,7 +644,7 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             for (int to = 0; to < kOps; ++to)
                 routeModes_[from][to] = from == to ? RouteMode::Phase : routeMode(params[routeModeIndex(from, to)]);
         voiceBaseReady_ = false; // what the voices share is summed again for these params, once a voice needs it
-        for (int op = 0; op < kOps; ++op) // the Custom waves follow their partials, built again when they change
+        for (int op = 0; op < kOps; ++op) // the Custom waves take their partials, built again once played (renderBlock())
             customWaves_[op].update(
                 partialCount(params[partialCountIndex(op)]), [&](int k) { return params[partialLevelIndex(op, k)]; },
                 [&](int k) { return params[partialPhaseIndex(op, k)]; });
@@ -1611,6 +1611,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         const double spread = p[paramIndex(i, OpParam::UnisonSpread)];
         // The table suits the highest copy, so none of them reaches past Nyquist.
         const double highest = copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc;
+        if (shape == OpWave::Custom)
+            customWaves_[i].build(); // its tables follow its partials once a voice plays it
         wave[i] = shape == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(shape, highest);
         opShapes[i] = shape;
         highestInc[i] = highest;

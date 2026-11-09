@@ -217,6 +217,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     an envelope's curve bent again after a straight stretch carrying on along it; and a 0 ms attack, decay and
     release taking a sample each, a 0.5 ms and a 1 ms attack their time, a sustain change after a 0 ms decay still
     smoothed, and a voice with a 0 ms attack at full level from its first sample;
+  - a Custom wave playing the partials drawn, taken up as it is picked and changed partial by partial as it plays;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
   - an anchored LFO standing where the transport puts it, from its Phase, by beats when synced and by seconds when
     not (a one-shot not anchored), following it through a block split into pieces, running on from there while the
