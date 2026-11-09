@@ -3181,12 +3181,33 @@ void View::paintPanels(Canvas &c) {
     // A theme with soft shadows lifts its panels off the background with one, instead of an outline.
     if (look.panelShadow > 0.0f) {
         constexpr int kSteps = 5;
-        for (const Rect &p : panels)
+        auto shadow = [&](Rect p, float radius) {
             for (int k = kSteps; k > 0; --k) {
                 const float out = 1.2f * k;
                 c.fillRect({p.x - out, p.y - out + 2.0f, p.w + 2.0f * out, p.h + 2.0f * out},
-                           Color{0.0f, 0.0f, 0.0f, look.panelShadow / kSteps}, kPanelRadius + out);
+                           Color{0.0f, 0.0f, 0.0f, look.panelShadow / kSteps}, radius + out);
             }
+        };
+        // The panel under the tabs, while its first tab is the one shown, has that corner square (see Kind::ViewTab),
+        // so its shadow is too there: round elsewhere, square beside the corner, and above it only the tab's.
+        const bool firstShown = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
+                                partialEditing() < 0;
+        for (const Rect &p : panels) {
+            if (!firstShown || p.x != kRouting.x || p.y != kRouting.y) {
+                shadow(p, kPanelRadius);
+                continue;
+            }
+            const Rect corner{p.x - 12.0f, p.y - 12.0f, kPanelRadius + 12.0f, kPanelRadius + 12.0f};
+            c.pushClip({corner.right(), p.y - 12.0f, p.w + 24.0f, p.h + 24.0f}); // right of the corner
+            shadow(p, kPanelRadius);
+            c.popClip();
+            c.pushClip({p.x - 12.0f, corner.bottom(), corner.w, p.h + 24.0f}); // below it
+            shadow(p, kPanelRadius);
+            c.popClip();
+            c.pushClip({corner.x, p.y, corner.w, corner.bottom() - p.y}); // beside it, under the panel's top
+            shadow(p, 0.0f);
+            c.popClip();
+        }
     }
     for (const Rect &p : panels) {
         c.fillRect(p, kPanel, kPanelRadius);
@@ -5826,8 +5847,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
             c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f), corner + 4.0f);
         // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
         if (look.flat) { // raised: shaded from its top down, on a shadow
-            c.fillRect({w.rect.x - 1.0f, w.rect.y + 1.0f, w.rect.w + 2.0f, w.rect.h + 2.0f},
-                       Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.12f : 0.3f}, corner + 1.0f);
+            paintNodeShadow(c, w.rect, corner);
             c.fillGradient(w.rect, hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, corner);
         } else {
             c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
@@ -6076,13 +6096,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         if (selected) {
             if (look.panelShadow > 0.0f) { // its panel's soft shadow, round its top and sides, above the panel only
                 constexpr int kSteps = 4;
-                c.pushClip({w.rect.x - 12.0f, w.rect.y - 12.0f, w.rect.w + 24.0f, w.rect.h + 12.0f});
-                for (int k = kSteps; k > 0; --k) {
-                    const float out = 1.5f * k;
-                    c.fillRect({w.rect.x - out, w.rect.y - out + 1.0f, w.rect.w + 2.0f * out, w.rect.h + 2.0f * out},
-                               Color{0.0f, 0.0f, 0.0f, look.panelShadow / kSteps}, kRadiusCard + out);
-                }
-                c.popClip();
+                auto shadow = [&](Rect clip, float below) { // its rings, `below` further down than the tab
+                    c.pushClip(clip);
+                    for (int k = kSteps; k > 0; --k) {
+                        const float out = 1.5f * k;
+                        c.fillRect({w.rect.x - out, w.rect.y - out + 1.0f, w.rect.w + 2.0f * out,
+                                    w.rect.h + below + 2.0f * out},
+                                   Color{0.0f, 0.0f, 0.0f, look.panelShadow / kSteps}, kRadiusCard + out);
+                    }
+                    c.popClip();
+                };
+                shadow({w.rect.x - 12.0f, w.rect.y - 12.0f, w.rect.w + 24.0f, w.rect.h + 12.0f}, 0.0f);
             }
             const std::vector<Point> outline =
                 viewTabOutline({w.rect.x + 0.5f, w.rect.y + 0.5f, w.rect.w - 1.0f, w.rect.h}, kViewTabFlare);

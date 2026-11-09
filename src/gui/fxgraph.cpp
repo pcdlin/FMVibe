@@ -1940,6 +1940,7 @@ void View::paintFxGraph(Canvas &c) {
         const Rect r = boxAround(p, kFxEndHalfW, kFxEndHalfH);
         if (const float glow = name == Str::NodeFxIn ? fxGlow(kFxPortIn) : outGlow; glow > 0.01f)
             featherRect(c, r, kRadiusControl, 12.0f, kText.alpha(0.18f * glow));
+        paintNodeShadow(c, r, kRadiusControl);
         c.fillRect(r, look.flat ? kTrack : kCardColor, kRadiusControl);
         if (!look.flat)
             c.strokeRect(r, kBorder, 1.0f, kRadiusControl);
@@ -1973,6 +1974,8 @@ void View::paintFxGraph(Canvas &c) {
             if (isSelected)
                 c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
             if (look.flat) { // filled with a tint of its color, stronger under the mouse and picked, no outline
+                if (alpha >= 1.0f) // on a soft shadow, as the routing graph's nodes (not while it is carried)
+                    paintNodeShadow(c, r, kRadiusControl);
                 c.fillRect(r, kCardColor.alpha(fill), kRadiusControl);
                 c.fillRect(r, color.alpha(isSelected ? 0.4f : hot ? 0.3f : 0.18f), kRadiusControl);
             } else {
@@ -1999,6 +2002,8 @@ void View::paintFxGraph(Canvas &c) {
         // Its upper half in the high band's color, its lower half in the low band's, parted by a slight slant (rising
         // across a split, falling across a join, its mirror); split in three, its thirds, the middle band's between. A split's colors come in from grey at its left, where the
         // main line comes in; a join's go back out to grey at its right, where the main line goes on.
+        if (alpha >= 1.0f)
+            paintNodeShadow(c, r, 6.0f);
         c.fillRect(r, kCardColor.alpha(alpha), 6.0f);
         const Color neutral = join ? sumColor() : splitColor();
         const std::vector<Point> outline = roundedOutline(r, 6.0f);

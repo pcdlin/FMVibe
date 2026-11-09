@@ -75,6 +75,12 @@ void featherLine(Canvas &c, const Point *points, size_t count, float width, floa
     c.polylineStrokes(points, count, colors, widths, kFeatherSteps);
 }
 
+void paintNodeShadow(Canvas &c, Rect r, float radius) {
+    if (look.flat)
+        c.fillRect({r.x - 1.0f, r.y + 1.0f, r.w + 2.0f, r.h + 2.0f}, Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.12f : 0.3f},
+                   radius + 1.0f);
+}
+
 void paintCardShadow(Canvas &c, Rect r) {
     if (look.cardShadow <= 0.0f)
         return;
