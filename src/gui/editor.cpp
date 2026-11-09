@@ -275,8 +275,10 @@ void Editor::tick() {
         GetWindowThreadProcessId(foreground, &front);
     const bool ours = front == GetCurrentProcessId();
     const bool ctrlChanged = (!ctrl || (trackingLeave_ && ours)) && view_.setCtrl(ctrl);
-    if (view_.poll() || ctrlChanged)
+    if (ctrlChanged)
         invalidate();
+    else if (view_.poll())
+        invalidate(view_.changedAreas());
 }
 
 LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
@@ -443,28 +445,76 @@ void Editor::invalidate() {
         InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
+void Editor::invalidate(const std::vector<Rect> &areas) {
+    if (!hwnd_)
+        return;
+    const float s = scale();
+    const float offsetX = (width_ - View::kWidth * s) * 0.5f;
+    const float offsetY = (height_ - view_.height() * s) * 0.5f;
+    for (const Rect &a : areas) { // in whole pixels, out from the area's edges
+        const RECT r{static_cast<LONG>(std::floor(a.x * s + offsetX)), static_cast<LONG>(std::floor(a.y * s + offsetY)),
+                     static_cast<LONG>(std::ceil(a.right() * s + offsetX)),
+                     static_cast<LONG>(std::ceil(a.bottom() * s + offsetY))};
+        InvalidateRect(hwnd_, &r, FALSE);
+    }
+}
+
 void Editor::paint() {
+    // What is to be painted: a few rects of the window (what View::changedAreas() moved), or the whole of it.
+    std::vector<RECT> parts;
+    if (const HRGN region = CreateRectRgn(0, 0, 0, 0)) {
+        if (const int kind = GetUpdateRgn(hwnd_, region, FALSE); kind == SIMPLEREGION || kind == COMPLEXREGION) {
+            const DWORD bytes = GetRegionData(region, 0, nullptr);
+            std::vector<char> buffer(bytes);
+            auto *data = reinterpret_cast<RGNDATA *>(buffer.data());
+            if (bytes >= sizeof(RGNDATAHEADER) && GetRegionData(region, bytes, data) == bytes) {
+                const auto *rects = reinterpret_cast<const RECT *>(data->Buffer);
+                parts.assign(rects, rects + data->rdh.nCount);
+            }
+        }
+        DeleteObject(region);
+    }
     PAINTSTRUCT ps;
     BeginPaint(hwnd_, &ps);
     bool lost = false;
+    bool fresh = false; // a new target holds nothing of the frame before
     if (!target_) {
         const D2D1_RENDER_TARGET_PROPERTIES props =
             D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(), 96.0f, 96.0f);
+        // It keeps each frame once shown, so a frame can repaint only part of it.
         resources_.factory()->CreateHwndRenderTarget(
-            props, D2D1::HwndRenderTargetProperties(hwnd_, D2D1::SizeU(width_, height_)), target_.GetAddressOf());
+            props,
+            D2D1::HwndRenderTargetProperties(hwnd_, D2D1::SizeU(width_, height_), D2D1_PRESENT_OPTIONS_RETAIN_CONTENTS),
+            target_.GetAddressOf());
+        fresh = true;
     }
     if (target_) {
-        // The poll timer only fires once no input is waiting, so while the mouse
-        // moves, frames come from mouse moves alone: give them fresh telemetry.
-        view_.refreshTelemetry();
         const float s = scale();
+        const float offsetX = (width_ - View::kWidth * s) * 0.5f, offsetY = (height_ - view_.height() * s) * 0.5f;
+        // In the view's coordinates; the whole window when there are many parts, or one covers most of it.
+        std::vector<Rect> areas;
+        float covered = 0.0f;
+        for (const RECT &r : parts) {
+            areas.push_back({(r.left - offsetX) / s, (r.top - offsetY) / s, (r.right - r.left) / s,
+                             (r.bottom - r.top) / s});
+            covered += static_cast<float>((r.right - r.left) * (r.bottom - r.top));
+        }
+        const bool whole = fresh || parts.empty() || parts.size() > 8 ||
+                           covered > 0.75f * static_cast<float>(width_) * static_cast<float>(height_);
+        // The poll timer only fires once no input is waiting, so while the mouse moves, frames come from mouse moves
+        // alone: give them fresh telemetry. A part takes the telemetry the poll found it changed by, so what lies
+        // outside it, painted with the telemetry before, is still what the next poll compares with.
+        if (whole)
+            view_.refreshTelemetry();
         target_->BeginDraw();
-        target_->SetTransform(D2D1::Matrix3x2F::Scale(s, s) *
-                              D2D1::Matrix3x2F::Translation((width_ - View::kWidth * s) * 0.5f,
-                                                            (height_ - view_.height() * s) * 0.5f));
+        target_->SetTransform(D2D1::Matrix3x2F::Scale(s, s) * D2D1::Matrix3x2F::Translation(offsetX, offsetY));
         {
             Canvas canvas(target_.Get(), resources_);
-            view_.paint(canvas);
+            if (whole)
+                view_.paint(canvas);
+            else
+                for (const Rect &area : areas)
+                    view_.paint(canvas, area);
         }
         if (target_->EndDraw() == D2DERR_RECREATE_TARGET) {
             target_.Reset(); // device lost; recreated on the next paint, asked for below

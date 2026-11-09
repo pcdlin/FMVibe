@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "canvas.h"
 #include "view.h"
 
@@ -42,6 +44,8 @@ private:
     LRESULT handle(UINT message, WPARAM wParam, LPARAM lParam);
     void paint();
     void invalidate();
+    // Only where these show (the view's coordinates), each apart: see View::changedAreas().
+    void invalidate(const std::vector<Rect> &areas);
     void tick(); // a poll of the view, painting what changed: on the poll timer, or on mouse moves holding it off
     float scale() const;
     Point toView(int x, int y) const;

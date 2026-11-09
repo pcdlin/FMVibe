@@ -1278,6 +1278,16 @@ double View::randomPhaseNow(int lfo) const {
 
 bool View::poll() {
     bool changed = false;
+    // What changed and where it shows: the whole editor for anything that may show anywhere, or the union of the
+    // places of what keeps to its own (see changedAreas()).
+    bool everywhere = false;
+    std::vector<Rect> areas;
+    auto in = [&](Rect r) {
+        for (const Rect &a : areas)
+            if (a.x == r.x && a.y == r.y && a.w == r.w && a.h == r.h)
+                return;
+        areas.push_back(r);
+    };
     for (int i = 0; i < kParamCount; ++i) {
         const double v = controller_.value(i);
         if (v != seen_[i]) {
@@ -1295,21 +1305,49 @@ bool View::poll() {
     controller_.setScope(scope ? layout.selectedNode : -1, layout.scopeCycles);
     Telemetry t;
     controller_.telemetry(t);
-    if (t.voices > 0 || telemetry_.voices > 0 || t.keys != telemetry_.keys)
-        changed = true; // animating
+    everywhere = everywhere || changed; // a param: it may show anywhere
+    const Rect header{0.0f, 0.0f, kWidth, kHeaderH};
+    // While notes play, what they move: the sources, the modulation on the knobs, the envelopes and levels show
+    // anywhere; the playing count in the header, the keys on the keyboard and the operator's scope in the inspector
+    // only. An LFO's dot glides on from its snapshot by the snapshot's age (see lfoPhaseNow()), so it moves even
+    // between snapshots alike.
+    if ((t.voices > 0) != (telemetry_.voices > 0))
+        everywhere = true;
+    else if (t.voices != telemetry_.voices)
+        in(header);
+    if (t.voices > 0 || telemetry_.voices > 0) {
+        const bool moved =
+            t.modOffset != telemetry_.modOffset || t.slotOffset != telemetry_.slotOffset ||
+            t.sources != telemetry_.sources || t.lfoPhases != telemetry_.lfoPhases ||
+            t.lfoRates != telemetry_.lfoRates || t.lfoFrom != telemetry_.lfoFrom || t.lfoTo != telemetry_.lfoTo ||
+            t.notePitch != telemetry_.notePitch || t.noteVelocity != telemetry_.noteVelocity ||
+            t.fxPitch != telemetry_.fxPitch || t.opLevels != telemetry_.opLevels ||
+            t.opEnvLevels != telemetry_.opEnvLevels || t.opEnvPos != telemetry_.opEnvPos ||
+            t.envPos != telemetry_.envPos || t.fxReduction != telemetry_.fxReduction ||
+            t.tempo != telemetry_.tempo ||
+            (t.voices > 0 && std::any_of(t.lfoRates.begin(), t.lfoRates.end(), [](float r) { return r != 0.0f; }));
+        everywhere = everywhere || moved;
+        if (t.scope != telemetry_.scope || t.scopeBins != telemetry_.scopeBins ||
+            t.scopeCursor != telemetry_.scopeCursor)
+            in(kInspector);
+    }
+    if (t.keys != telemetry_.keys) {
+        const bool collapsed = controller_.layout().sourcesCollapsed;
+        in(keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed));
+    }
     // The output meter falls while it shows anything, also once the audio has stopped and the snapshot ages, and
     // is painted once more as it goes.
     const float bottom = static_cast<float>(std::pow(10.0, kMeterFloorDb / 20.0));
     const bool metering = std::max(meterPeak(t, 0), meterPeak(t, 1)) > bottom || meterClipped(t);
     if (metering || metering_)
-        changed = true;
+        in(header);
     metering_ = metering;
     // The output scope took another span, which draws or replaces one that drew; or the level it is drawn to moved.
     const bool outDrawn = outScopePeak(t) > kOutScopeFloor;
     if ((outDrawn || outScopePeak(telemetry_) > kOutScopeFloor) && t.outScope != telemetry_.outScope)
-        changed = true;
+        in(header);
     if (followScopeLevel(outScopeLevel_, outScopePeak(t)) && outDrawn)
-        changed = true;
+        in(header);
     // The operator scope's level, of the part of its span filled so far; none while it captures nothing.
     float opPeak = 0.0f;
     if (t.voices > 0 && t.scopeBins > 0) {
@@ -1322,7 +1360,7 @@ bool View::poll() {
         opScopeLevel_ = 0.0f;
     }
     if (followScopeLevel(opScopeLevel_, opPeak) && opScopeLevel_ > 1e-4f)
-        changed = true;
+        in(kInspector);
     // A three-band dynamics' bars move with its bands' levels and gains, until they settle.
     for (int slot : fxChain())
         if (fxSlotType(slot) == FxType::MultiDyn)
@@ -1330,55 +1368,58 @@ bool View::poll() {
                 if (std::abs(t.fxBandLevel[slot][band] - telemetry_.fxBandLevel[slot][band]) >
                         0.01f * std::max(t.fxBandLevel[slot][band], 1e-5f) ||
                     std::abs(t.fxBandGain[slot][band] - telemetry_.fxBandGain[slot][band]) > 0.05f)
-                    changed = true;
+                    everywhere = true;
     // The effects graph's nodes and wires glow with what goes through them; with the glow off, they show nothing of it.
     if (fxWide() && fxGraph() && shownGlow() > 0.0f)
         for (int port = 0; port < kFxPorts; ++port)
             if (std::abs(t.fxPortLevels[port] - telemetry_.fxPortLevels[port]) > 0.002f * (1.0f + t.fxPortLevels[port]))
-                changed = true;
+                everywhere = true;
     // Phasers, flangers and wideners sweep while the audio runs.
     if (t.age < 0.5f)
         for (int slot : fxChain())
             if (fxSlotType(slot) == FxType::Phaser || fxSlotType(slot) == FxType::Flanger ||
                 fxSlotType(slot) == FxType::Widener)
-                changed = true;
+                everywhere = true;
     // An analyzer's spectrum goes on falling away after the audio stops, until it is gone; while notes play, the
     // filters' move along with them.
     auto showing = [](const Spectrum &spectrum) {
         return std::any_of(spectrum.begin(), spectrum.end(), [](float level) { return level > 1e-4f; });
     };
     if (t.age < 1.5f)
-        changed = changed || std::any_of(t.fxSpectrum.begin(), t.fxSpectrum.end(), showing) ||
+        everywhere = everywhere || std::any_of(t.fxSpectrum.begin(), t.fxSpectrum.end(), showing) ||
                   std::any_of(t.filterSpectrum.begin(), t.filterSpectrum.end(), showing);
     telemetry_ = t;
     traceRandomLfos();
     if (flashTicks_ > 0 && --flashTicks_ == 0)
-        changed = true;
+        everywhere = true;
     if (edgeScroll()) {
-        changed = true;
+        everywhere = true;
         if (drag_.kind == DragKind::FxMove && drag_.moved) // where it lands follows the row scrolling under it
             retargetRowDrag(drag_.now);
     }
     if (glideMods())
-        changed = true;
+        everywhere = true;
     if (glideFxGraph()) // the effects graph's nodes making room for one dragged, or settling after
-        changed = true;
+        everywhere = true;
     if (glideFxRow()) // the row's cards and containers likewise
-        changed = true;
+        everywhere = true;
     if (sourceMenuOpen_ && !sourceMenuShown()) { // its card or button went: scrolled away, the panel shut, the places full
         sourceMenuOpen_ = false;
-        changed = true;
+        everywhere = true;
     }
     if (modList_ && !modListPillShown()) { // its pill went: fewer modulations, or what showed it changed
         modList_.reset();
-        changed = true;
+        everywhere = true;
     }
     if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_ || shownLinks() != links_ ||
         controller_.handleSize() != handles_) // picked in another editor
-        changed = true;
+        everywhere = true;
     if ((typing_ || fieldTyping()) && ++caretTicks_ % 32 == 0)
-        changed = true; // the caret blinks
-    return changed;
+        everywhere = true; // the caret blinks
+    if (everywhere)
+        areas = {wholeArea()};
+    changedAreas_ = std::move(areas);
+    return !changedAreas_.empty();
 }
 
 // --- Geometry.
@@ -2757,7 +2798,23 @@ bool View::isActive(const Widget &w) const {
 
 // --- Painting.
 
-void View::paint(Canvas &c) {
+void View::paint(Canvas &c, Rect area) {
+    // Part of the editor: clipped to it, and what keeps to a band of the editor away from it left out. The header,
+    // the panels' row (the routing panel and the inspector, or what covers them) and what lies under them each
+    // draw within their band; a widget within some way of its rect (its glow, its labels, its depth handles).
+    const Rect whole = wholeArea();
+    const bool partial = area.x > whole.x || area.y > whole.y || area.right() < whole.right() ||
+                         area.bottom() < whole.bottom();
+    auto touches = [&](Rect r) {
+        return !partial || (r.x < area.right() && r.right() > area.x && r.y < area.bottom() && r.bottom() > area.y);
+    };
+    const float lowerTop = kRouting.bottom();
+    const bool headerShown = touches({0.0f, 0.0f, kWidth, kHeaderH});
+    const bool panelsShown = touches({0.0f, kHeaderH, kWidth, lowerTop - kHeaderH});
+    const bool lowerShown = touches({0.0f, lowerTop, kWidth, whole.bottom() - lowerTop});
+    constexpr float kWidgetReach = 64.0f;
+    if (partial)
+        c.pushClip(area);
     const DerivedScope scope(*this);
     const std::vector<Widget> &list = scopedWidgets();
     std::fill(macroOffsets_.begin(), macroOffsets_.end(), 0.0f);
@@ -2773,14 +2830,18 @@ void View::paint(Canvas &c) {
     glow_ = glowing = shownGlow();
     links_ = shownLinks();
     handles_ = controller_.handleSize();
-    c.clear(kBackground);
+    if (partial)
+        c.fillRect(area, kBackground);
+    else
+        c.clear(kBackground);
     paintPanels(c);
-    paintHeader(c);
+    if (headerShown)
+        paintHeader(c);
     if (shapeEditing() >= 0)
         paintShapeEditor(c, shapeEditing());
     else if (partialEditing() >= 0)
         paintPartialEditor(c, partialEditing());
-    else switch (controller_.layout().view) {
+    else if (panelsShown) switch (controller_.layout().view) {
     case RoutingView::Graph:
         paintRouting(c);
         break;
@@ -2794,12 +2855,14 @@ void View::paint(Canvas &c) {
         paintMods(c);
         break;
     }
-    if (!inspectorCovered())
+    if (!inspectorCovered() && panelsShown)
         paintInspector(c);
-    paintKeyboard(c);
-    paintNoteSource(c, keyboardTop(controller_.layout().sourcesCollapsed));
-    paintVelocitySource(c, keyboardTop(controller_.layout().sourcesCollapsed));
-    paintSources(c);
+    if (lowerShown) {
+        paintKeyboard(c);
+        paintNoteSource(c, keyboardTop(controller_.layout().sourcesCollapsed));
+        paintVelocitySource(c, keyboardTop(controller_.layout().sourcesCollapsed));
+        paintSources(c);
+    }
     // The open lists (of effects, curves, EQ shapes, waves) go over everything else, the dimmed cards included.
     auto paintWidgets = [&](bool lists) {
         for (const Widget &w : list) {
@@ -2809,7 +2872,7 @@ void View::paint(Canvas &c) {
                               w.kind == Kind::ListItem || w.kind == Kind::PeqTypeMenu ||
                               w.kind == Kind::PeqTypeItem || w.kind == Kind::WaveMenu ||
                               w.kind == Kind::WaveMenuItem || w.popup;
-            if (open != lists)
+            if (open != lists || !touches(w.rect.inset(-kWidgetReach)))
                 continue;
             if (w.clip.w > 0.0f)
                 c.pushClip(w.clip);
@@ -3044,6 +3107,8 @@ void View::paint(Canvas &c) {
         c.strokeRect(toast, kBorder, 1.0f, kRadiusCard);
         c.text(toast, flash_, kTextValue, kText);
     }
+    if (partial)
+        c.popClip();
 }
 
 void View::paintPanels(Canvas &c) {

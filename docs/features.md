@@ -489,7 +489,10 @@ switching one on and wiring it in is the whole job.
 ## Editor
 
 The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. Collapsing
-the modulation panel or the keyboard strip makes it shorter (the plugin asks the host to resize the window).
+the modulation panel or the keyboard strip makes it shorter (the plugin asks the host to resize the window). While
+only what keeps to its place moves (the output meter and scope and the playing count in the header, the keys, an
+operator's scope in the inspector), it repaints that place alone; what a note's sources and envelopes move, which
+may show anywhere, repaints the whole of it.
 
 - **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panels below them show: the routing graph
   or the matrix (two views of the same connections) next to the inspector, or across both the effects chain or

@@ -269,6 +269,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
     the row changing nothing, the split showing there as its container;
   - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
+  - the output meter and scope moving repainting the header alone, a key the keyboard alone and an operator's scope
+    the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
+    an LFO moving repainting the whole editor;
   - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
     behind the editor's back going at the line's end;
   - a card dragged a tenth of a card onto its neighbor moving nothing, and three tenths making the neighbor glide aside
