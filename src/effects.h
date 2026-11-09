@@ -409,6 +409,9 @@ private:
     // use, the output.
     bool nodeWanted(int node, const ParamValues &p) const;
     void orderGraph(const ParamValues &p, bool asSet);
+    // Whether the params orderGraph() reads (every wire's From, the slots' types, the splits' and sums' Used) differ
+    // from the last call's, which it keeps.
+    bool graphParamsChanged(const ParamValues &p);
     // Whether a chunk of `n` samples of `io` can go by without running the graph: exact silence going in, nothing
     // ringing, nobody analyzing, and every effect, wire and split where its params put it, with no fade under way.
     bool idleChunk(const float *const *io, uint32_t n, const ParamValues &p) const;
@@ -479,6 +482,17 @@ private:
     std::array<int, kFxNodes> graphOrder_{};
     int graphOrderCount_ = 0;
     bool looped_ = false;   // orderGraph() found a loop through wires moving (see process())
+    // The graph's order holds until what it is worked out from moves: those params (see graphParamsChanged()), a
+    // fade (a wire's, or a slot's, which keeps an effect taken away in the graph while it fades out), a node starting
+    // or stopping, or the graph cleared. Else ordering it every chunk would only find it as it was.
+    bool orderStale_ = true;
+    static constexpr int kGraphParams = [] {
+        int count = kFxSlots + kFxSplits + kFxSums; // the types and Used switches
+        for (int node = 0; node < kFxNodes; ++node)
+            count += fxInputCount(node);
+        return count;
+    }();
+    std::array<double, kGraphParams> graphParams_{}; // as the last call had them; NaN to begin with
     bool rewiring_ = false; // the output ducking out to put every wire as set at once
     double duck_ = 1.0;     // how far in the output is, 0 .. 1
     std::array<bool, kFxNodes> running_{};   // the nodes the graph runs this process() (see orderGraph())

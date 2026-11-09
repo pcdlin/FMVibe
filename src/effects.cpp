@@ -409,6 +409,8 @@ void Effects::prepare(double sampleRate) {
 
 void Effects::reset() {
     portLevel_.fill(0.0f);
+    graphParams_.fill(std::numeric_limits<double>::quiet_NaN()); // so the first chunk orders the graph
+    orderStale_ = true;
     // Each effect clears its state when it fades in again.
     for (Slot &slot : slots_) {
         slot.fade = 0.0;
@@ -576,7 +578,12 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
     // each read the other) reading a chunk late, as rough as a comb. Instead the graph plays on as it was while the
     // output ducks out over 3 ms, every wire takes its place at once, and the output comes back in over 3 ms.
     if (!rewiring_) {
-        orderGraph(p, true);
+        // Ordered again only when something it reads may have moved (see orderStale_); a loop found last time
+        // (which rewiring then plays out) is looked at again.
+        if (graphParamsChanged(p) || orderStale_ || looped_) {
+            orderStale_ = false;
+            orderGraph(p, true);
+        }
         rewiring_ = looped_;
     }
     if (rewiring_)
@@ -787,6 +794,7 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
     }
     if (on && fx.fade >= 1.0)
         return;
+    orderStale_ = true; // fading: an effect taken away is in the graph until it has faded out (see nodeWanted())
     for (uint32_t s = 0; s < n; ++s) {
         fx.fade = std::clamp(fx.fade + (on ? fadeStep : -fadeStep), 0.0, 1.0);
         for (int c = 0; c < 2; ++c)
@@ -840,6 +848,7 @@ double Effects::wireTarget(int node, int input, const ParamValues &p) const {
 }
 
 void Effects::setWires(int node, const ParamValues &p) {
+    orderStale_ = true;
     for (int input = 0; input < fxInputCount(node); ++input) {
         const int port = wirePort(node, input, p);
         wires_[node][input] = {{port, wireTarget(node, input, p), port >= 0 ? 1.0 : 0.0}, {}};
@@ -852,6 +861,29 @@ void Effects::idleSlot(int slot) {
     bandLevel_[slot] = {};
     bandGain_[slot] = {};
     slots_[slot].analyzed.bands = {};
+}
+
+bool Effects::graphParamsChanged(const ParamValues &p) {
+    bool changed = false;
+    int k = 0;
+    auto take = [&](double value) {
+        // Compared as stored (NaN to begin with never equals): a change is copied in.
+        if (!(graphParams_[k] == value)) {
+            graphParams_[k] = value;
+            changed = true;
+        }
+        ++k;
+    };
+    for (int node = 0; node < kFxNodes; ++node)
+        for (int input = 0; input < fxInputCount(node); ++input)
+            take(p[fxInputIndex(node, input, FxInputField::From)]);
+    for (int slot = 0; slot < kFxSlots; ++slot)
+        take(p[paramIndex(slot, FxParam::Type)]);
+    for (int split = 0; split < kFxSplits; ++split)
+        take(p[paramIndex(split, SplitParam::Used)]);
+    for (int sum = 0; sum < kFxSums; ++sum)
+        take(p[paramIndex(sum, SumParam::Used)]);
+    return changed;
 }
 
 bool Effects::loopsAsSet(const ParamValues &p) const {
@@ -956,8 +988,10 @@ void Effects::orderGraph(const ParamValues &p, bool asSet) {
         frozen_[node] = runs && !readAsSet[node];
         if (runs && !ranBefore_[node]) {
             // Nothing heard it before: its wires start as set, as the wires that now read it fade in.
+            orderStale_ = true; // as it changes the wires, once more next time
             setWires(node, p);
         } else if (!runs && ranBefore_[node]) { // nothing hears it any more
+            orderStale_ = true; // as it changes the wires, once more next time
             wires_[node].fill(Wire{});
             if (node < kFxSlots)
                 idleSlot(node);
@@ -997,6 +1031,7 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
         if (e.port < 0)
             return;
         if (e.fade <= 0.0 && fadeTo <= 0.0) { // out: free for the next move
+            orderStale_ = orderStale_ || e.port >= 0;
             e.port = -1;
             return;
         }
@@ -1025,6 +1060,7 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
             }
         }
         e.level = end;
+        orderStale_ = orderStale_ || fade != e.fade; // a fading end keeps what it comes from running
         e.fade = fade;
     };
     for (int input = 0; input < fxInputCount(node); ++input) {
@@ -1038,6 +1074,7 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
         // again while the one before still fades out, it fades out where it is first and only then takes the move.
         const int set = wirePort(node, input, p);
         if (set != w.now.port) {
+            orderStale_ = true;
             if (w.now.fade <= 0.0) {
                 w.now = {set, -1.0, 0.0};
             } else if (w.was.fade <= 0.0) {
@@ -1230,6 +1267,7 @@ void Effects::measurePorts(uint32_t n) {
 }
 
 void Effects::clearGraph() {
+    orderStale_ = true;
     for (auto &out : sumOut_)
         for (auto &side : out)
             side.fill(0.0f);
