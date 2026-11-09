@@ -138,7 +138,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
-  value the host hands back right after isn't taken. It saves/loads state
+  value the host hands back right after isn't taken; and that an editor sized at the system's DPI and given a window
+  at another (one not DPI aware) asks the host for the size at the window's, its zoom kept (at the same DPI, for
+  nothing). It saves/loads state
   through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, a version 2
   state's Legato loading off in poly (and as it was in mono), envelope attacks, decays and releases typed down
   to 0 ms through fractions of a millisecond, a stored 0 loading as 1 ms and a version 3 state's depths on them

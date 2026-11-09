@@ -49,6 +49,9 @@ private:
     void tick(); // a poll of the view, painting what changed: on the poll timer, or on mouse moves holding it off
     float scale() const;
     Point toView(int x, int y) const;
+    // The window's DPI, once it has one: where it differs from the one its size was worked out for (the system's,
+    // before the host gave it a parent), the host is asked for the size that keeps the editor's zoom at it.
+    void followDpi();
     void updateCursor();
     void contextMenu(int x, int y);
     void browsePreset(bool save);
@@ -62,6 +65,7 @@ private:
     ComPtr<ID2D1HwndRenderTarget> target_;
     HWND hwnd_ = nullptr;
     bool resized_ = false; // the user changed the size, which new instances then open at
+    float dpiScale_ = 1.0f; // the DPI the size is worked out for, over 96: the system's, then the window's
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     bool trackingLeave_ = false;

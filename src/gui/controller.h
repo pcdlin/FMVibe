@@ -212,6 +212,9 @@ public:
     virtual void telemetry(Telemetry &out) const = 0;
     virtual UiLayout &layout() = 0;
     virtual void layoutChanged() = 0;
+    // The editor's window would be this size (physical pixels): the plugin asks its host to resize it (see
+    // Editor::followDpi()). A host that won't leaves it as it is.
+    virtual void requestEditorSize(uint32_t, uint32_t) {}
 
     // The virtual keyboard: a MIDI note number (60 is middle C), and the bend wheel, -1..1.
     virtual void playNote(int note, bool on) = 0;

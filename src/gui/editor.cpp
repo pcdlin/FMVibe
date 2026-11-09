@@ -4,6 +4,9 @@
 #include "../usersettings.h"
 
 #include <windowsx.h>
+#ifndef WM_DPICHANGED_AFTERPARENT
+#define WM_DPICHANGED_AFTERPARENT 0x02E3 // Windows 10 1703 on; older headers don't name it
+#endif
 
 #include <commdlg.h>
 
@@ -178,8 +181,9 @@ Editor::Editor(Controller &controller) : controller_(controller), view_(controll
     }
     hookedEditors.push_back(this);
 
-    const float dpiScale = GetDpiForSystem() / 96.0f;
-    width_ = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale));
+    // Hosts ask for the size before giving the editor a parent: at the system's DPI until it has one (see followDpi()).
+    dpiScale_ = GetDpiForSystem() / 96.0f;
+    width_ = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
     height_ = 0;
     fit(width_, height_);
 }
@@ -227,7 +231,7 @@ bool Editor::setSize(uint32_t width, uint32_t height) {
     fit(width, height);
     width_ = width;
     height_ = height;
-    const float zoom = width / (View::kWidth * (GetDpiForSystem() / 96.0f));
+    const float zoom = width / (View::kWidth * dpiScale_);
     resized_ = resized_ || std::fabs(zoom - controller_.layout().zoom) > 1e-4f;
     controller_.layout().zoom = zoom;
     if (hwnd_)
@@ -244,7 +248,23 @@ bool Editor::attach(HWND parent) {
     if (!hwnd_)
         return false;
     SetTimer(hwnd_, kPollTimer, kPollMs, nullptr);
+    followDpi(); // on a monitor scaled unlike the primary one, in a host aware of it
     return true;
+}
+
+void Editor::followDpi() {
+    const UINT dpi = hwnd_ ? GetDpiForWindow(hwnd_) : 0;
+    if (dpi == 0)
+        return;
+    const float dpiScale = dpi / 96.0f;
+    if (std::fabs(dpiScale - dpiScale_) < 1e-3f)
+        return;
+    dpiScale_ = dpiScale;
+    uint32_t width = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
+    uint32_t height = 0;
+    fit(width, height);
+    if (width != width_ || height != height_)
+        controller_.requestEditorSize(width, height); // the host then sets it (setSize()), at the same zoom
 }
 
 bool Editor::show(bool visible) {
@@ -298,6 +318,9 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_TIMER:
         if (wParam == kPollTimer)
             tick();
+        return 0;
+    case WM_DPICHANGED_AFTERPARENT: // the host's window went to a monitor scaled otherwise
+        followDpi();
         return 0;
     case kPresetMessage:
         browsePreset(wParam != 0);

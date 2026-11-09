@@ -489,7 +489,9 @@ switching one on and wiring it in is the whole job.
 ## Editor
 
 The editor is drawn with Direct2D and scales freely: hosts can resize it, and it keeps its aspect ratio. Collapsing
-the modulation panel or the keyboard strip makes it shorter (the plugin asks the host to resize the window). While
+the modulation panel or the keyboard strip makes it shorter (the plugin asks the host to resize the window). It keeps
+its size as it is scaled on the monitor its window is on: in a host aware of each monitor's scaling, opened on (or
+moved to) one scaled otherwise than the main one, it asks the host for the size at that scaling. While
 only what keeps to its place moves (the output meter and scope and the playing count in the header, the keys, an
 operator's scope in the inspector), it repaints that place alone; what a note's sources and envelopes move, which
 may show anywhere, repaints the whole of it.

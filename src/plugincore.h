@@ -181,6 +181,7 @@ protected:
     }
     void performStepBegin() override;
     void performStepEnd() override;
+    void requestEditorSize(uint32_t width, uint32_t height) override { hostResizeEditor(width, height); }
 
     // How each format tells its host. Main thread, unless they say otherwise.
     // An edit in the editor (or a preset load) of param `index`, one hosts are given (see hostListed()): a gesture's
