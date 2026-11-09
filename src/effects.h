@@ -124,7 +124,8 @@ public:
     // editor's meters.
     float reduction(int slot, int band) const { return reduction_[slot][band]; }
     // A three-band dynamics' band `band` in `slot`: its detector's level (1 is full scale), the most of the latest
-    // block, falling about 26 dB a second, and the gain (dB, below 0 pulling down, above lifting) it applies now.
+    // block, falling about 26 dB a second, and the gain (dB, below 0 pulling down, above lifting) between that level and
+    // the same through the band's dynamics, held and falling alike: the gain it applies, while the level holds still.
     float bandLevel(int slot, int band) const { return bandLevel_[slot][band]; }
     float bandGain(int slot, int band) const { return bandGain_[slot][band]; }
     // The parametric EQs measure their output only while the editor can show it.
@@ -221,13 +222,19 @@ private:
     };
 
     // Split like the DJ EQ, at crossovers set per chunk; each band's detector follows its peaks (`peak`, falling back slowly
-    // between them), or its RMS level (`power`, a mean square), and its gain (dB) follows dynamicsGain() at the attack pace while it falls, else at the release
-    // pace. `meter` is the detector level the editor shows, falling slowly.
+    // between them), or its RMS level (`power`, a mean square). Its `envelope` follows that level at the attack pace
+    // while it rises, else at the release pace, and its gain (dB) is dynamicsGain() of the envelope. Following the
+    // level rather than the gain, a note out of silence takes the lift away within a few milliseconds, as the level
+    // climbs tens of dB in its first moments, where a gain following at the attack pace would take tens of
+    // milliseconds to come down from the whole Range. `meter` is the detector level the editor shows, falling slowly,
+    // and `outMeter` that level through the band's gain, held and falling alike: the editor draws what the band does
+    // from one to the other, so as a band goes quiet, the gain lifting what is left, both ends fall together rather
+    // than the held level going in taking the lift of the quiet that follows it.
     struct MultiDyn {
         std::array<EqChannel, 2> channels{};
-        std::array<double, kMcBands> peak{}, power{};
+        std::array<double, kMcBands> peak{}, power{}, envelope{};
         std::array<double, kMcBands> gain{};
-        std::array<double, kMcBands> meter{};
+        std::array<double, kMcBands> meter{}, outMeter{};
         std::array<double, kMcBands> gains{1.0, 1.0, 1.0}; // band gains after the dynamics, ramped
         double mix = 1.0;
         double output = 1.0; // gain after the mix, ramped

@@ -357,7 +357,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   - **Compressor**: stereo-linked and peak-sensing, with Threshold (−60–0 dB), Ratio (1:1–20:1), a soft Knee
     (0–24 dB), Attack (1–500 ms), Release (1 ms–2 s), Makeup (0–24 dB) and Mix for parallel compression.
   - **3-Band Dynamics**: upward and downward compression in three bands, which Linkwitz-Riley crossovers (Low X,
-    High X) split the mix into; at 0 % mix the bands just sum back up, so nothing combs. Each band is pulled down above its **Above** threshold by its **Down** ratio, as a compressor does, and
+    High X) split the mix into; at 0 % mix the bands just sum back up, so nothing combs. Each band is pulled down above its **Above** threshold (−80–0 dB, as Below) by its **Down** ratio, as a compressor does, and
     lifted below its **Below** threshold by its **Up** ratio: the gap under the threshold shrinks by the ratio, so
     a level 6 dB under Below at 2:1 comes out 3 dB under it. **Range** (0–36 dB, 12 to begin with) caps the lift,
     so silence and the noise floor aren't raised without end; a ratio of 1:1 leaves its side alone. The ratios run
@@ -366,7 +366,12 @@ What the plugin does and how its editor works, in full. Building and installing 
     away, so 2:1 sits in the middle and 4:1 three quarters of the way. Then comes the
     band's **Gain**. The detector follows each band's RMS level (**RMS**, on to begin with: a 10 ms average) or its
     peaks (held between them, falling back with a 20 ms time constant, so a wave's zero crossings don't read as
-    silence); the gain follows it at the Attack pace while it falls and the Release pace while it rises. Knee
+    silence). An envelope follows that level at the Attack pace while it rises and the Release pace while it falls,
+    and the band's gain is the curve's at the envelope's level: a note coming in out of silence takes the lift away
+    within a few milliseconds, as its level climbs tens of dB in its first moments, and a sound dying away is lifted
+    as its level falls at the Release pace. The lift also stops short of taking the band's peaks, which the peak
+    detector catches the moment they come, more than 12 dB over Below, so a note's first moments after silence aren't
+    lifted by the Range the silence had. Knee
     (both thresholds' soft knees), Attack, Release, Range, Mix and Output are shared. To begin with, each band is
     pulled down 3:1 above −20 dB and lifted 2:1 below −40 dB. **Link** edits the bands together: while it
     is on, changing one band's threshold, ratio or gain in the editor (a knob, a line, a zone, a typed value)
@@ -377,11 +382,15 @@ What the plugin does and how its editor works, in full. Building and installing 
     doing what it did, its crossovers, thresholds (as Above), ratios (as Down), gains, Attack, Release, Mix,
     Output and Link carried over (and the modulation aimed at them), Up at 1:1, a 6 dB knee and the detector on
     peaks; a linked one, whose bands all took the low band's threshold, ratio and gain, gives every band those.
-    **OTT** in its card's right-click menu sets it as the well-known OTT ("over the top") multiband preset has it, as
-    one undo step: crossovers at 88.3 Hz and 2.5 kHz; Above at −33.8, −30.2 and −35.5 dB (low, mid, high), Down
-    at 66.7:1, 66.7:1 and ∞:1; Below at −40.8, −41.8 and −40.8 dB, Up at 4.17:1; gains of +10.3, +5.7 and
-    +10.3 dB; the mid band's 22.4 ms attack and 282 ms release for all three (the preset's are per band); hard knees,
-    Range at 36 dB (the preset's lift has no limit), 100 % mix, 0 dB output, RMS on and Link off.
+    **OTT** in its card's right-click menu sets it after the well-known OTT ("over the top") multiband preset, as one
+    undo step, fitted to what that preset does to a test signal bounced through it: crossovers at 88.3 Hz and 2.5 kHz;
+    Down at 66.7:1, 66.7:1 and ∞:1 (low, mid, high) and Up at 4.17:1, as the preset has them; Above at −40.9, −37.3
+    and −42.6 dB and Below at −47.9, −48.9 and −47.9 dB, each 7.1 dB under the preset's own, whose levels read that
+    much over this detector's; gains of +10.3, +5.7 and +10.3 dB and Output at +5.2 dB; a 21 dB knee, Range at 36 dB
+    (the preset's lift has no limit), RMS on, 100 % mix and Link off. Its curves then come out within a dB of the
+    preset's in every band: a loud saw some 14 dB down, a quiet one some 10 dB up. Its attacks and releases are per
+    band there and shared here: 1 ms and 30 ms follow its level jumps best (its low and mid bands release about as a
+    40 ms one would, its high band as a 15 ms one).
   - **Reverb**: a feedback delay network of sixteen lines (29 to 89 ms at full size, spread evenly on a log
     scale), mixed through a Hadamard matrix, which spreads each line's sound evenly over all of them every time
     round, so the echoes thicken fast. Each line's length wavers slowly (a fraction of a millisecond, each at its
@@ -637,10 +646,13 @@ may show anywhere, repaints the whole of it.
       measures while the editor is open; the Param EQ's and the filter's sit on a grid, dashed every 12 dB with
       0 dB solid, and dashed at 100 Hz, 1 kHz and 10 kHz;
     - the compressor's curve (input level across, output up) with a gain reduction meter;
-    - the 3-band dynamics' levels: a bar a band, the high band on top, from −60 dB at the left to 0 dB at the
+    - the 3-band dynamics' levels: a bar a band, the high band on top, from −80 dB at the left to 0 dB at the
       right, with the band's name at its left and its gain at its right. Down the bar's middle runs a meter half
       its height: in the card's color up to what comes out, then the gain, amber where the band takes some off
       (up to what went in) and in the accent where it adds some; a white tick across the bar marks what goes in.
+      Both ends are held meters falling alike, about 26 dB a second: what goes in, and that through the band's
+      dynamics. The gain at the bar's right is the distance between them, and the band's Gain. So as a band goes
+      quiet, and its lift comes for what is left, the meter falls whole rather than its far end shooting up.
       Left of the Below threshold, where the band lifts, and right of the Above one, where it pulls down, the bar
       is faintly tinted (more under the mouse), and thin lines
       (the text color, at half strength) show the ratio: one for every 6 dB that goes in past the threshold, drawn

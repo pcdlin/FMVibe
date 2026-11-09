@@ -1265,9 +1265,159 @@ void effectsChainChecks() {
               "a three-band dynamics ratio at infinity holds the level at its threshold, and reads as such");
     }
     {
+        // A note out of silence: through silence the upward side lifts as far as Range lets it, and the note that
+        // comes then isn't lifted by that while the detector's level still climbs (see kMdLiftHeadroom). Upward only
+        // (20:1 below -20 dB, Range 36 dB): a -6 dB sine at 1 kHz comes in after half a second of silence, and nothing
+        // in its first 50 ms comes out louder than it went in.
+        auto onset = [](const ParamValues &p, double hz, double level, double ramp) {
+            // A band-limited saw (40 harmonics, or a sine for 1 kHz) after silence, rising over `ramp` seconds: the
+            // loudest sample in its first 50 ms, its peak and RMS level over its 0.5 s to 0.75 s, and the RMS level of
+            // the loudest 5 ms of its first 100 ms, each in dB.
+            Effects fx;
+            fx.prepare(kSampleRate);
+            const int harmonics = hz > 500.0 ? 1 : 40;
+            const size_t start = static_cast<size_t>(0.5 * kSampleRate), end = static_cast<size_t>(1.25 * kSampleRate);
+            std::vector<float> left(kBlock), right(kBlock);
+            double first = 0.0, peak = 0.0, power = 0.0, window = 0.0, loudest = 0.0;
+            const double windowLength = 0.005 * kSampleRate;
+            for (size_t t = 0; t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s) {
+                    const double since = (static_cast<double>(t + s) - static_cast<double>(start)) / kSampleRate;
+                    double x = 0.0;
+                    for (int h = 1; since >= 0.0 && h <= harmonics; ++h)
+                        x += std::sin(2.0 * std::numbers::pi * hz * h * since) / h;
+                    left[s] = right[s] = static_cast<float>(
+                        x * level * (harmonics > 1 ? 2.0 / std::numbers::pi : 1.0) *
+                        (ramp > 0.0 ? std::clamp(since / ramp, 0.0, 1.0) : 1.0));
+                }
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s) {
+                    const double since = (static_cast<double>(t + s) - static_cast<double>(start)) / kSampleRate;
+                    if (since >= 0.0 && since < 0.05)
+                        first = std::max(first, static_cast<double>(std::abs(left[s])));
+                    if (since >= 0.0 && since < 0.1) {
+                        window += left[s] * left[s] / windowLength;
+                        const size_t into = t + s - start;
+                        if ((into + 1) % static_cast<size_t>(windowLength) == 0) {
+                            loudest = std::max(loudest, window);
+                            window = 0.0;
+                        }
+                    }
+                    if (since >= 0.5 && since < 0.75) {
+                        peak = std::max(peak, static_cast<double>(std::abs(left[s])));
+                        power += left[s] * left[s] / (0.25 * kSampleRate);
+                    }
+                }
+            }
+            return std::array<double, 4>{20.0 * std::log10(first + 1e-30), 20.0 * std::log10(peak + 1e-30),
+                                         10.0 * std::log10(power + 1e-30), 10.0 * std::log10(loudest + 1e-30)};
+        };
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {0});
+        for (int band = 0; band < kMcBands; ++band) {
+            p[mdDownIndex(0, band)] = normFromDynRatio(1.0);
+            p[mdUpIndex(0, band)] = normFromDynRatio(20.0);
+            p[mdBelowIndex(0, band)] = -20.0;
+        }
+        p[paramIndex(0, FxParam::MdRange)] = 36.0;
+        const auto lifted = onset(p, 1000.0, 0.5, 0.0);
+        std::printf("      3-band dynamics lifting 36 dB through silence: a -6 dB sine's start peaks at %+.1f dB, the "
+                    "note at %+.1f dB\n",
+                    lifted[0], lifted[1]);
+        check(lifted[0] - lifted[1] < 6.0, "a three-band dynamics doesn't lift a note out of silence by the silence's Range");
+        // OTT, as its card's menu sets it (see mdOttSettings()), against the OTT preset as measured: sines
+        // stepped in level in each band and saws bounced through it. A sine at 40 Hz, 1 kHz and 8 kHz, at four RMS
+        // levels, comes out within a dB of where the preset put it (dB, RMS).
+        p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {0});
+        for (const auto &[index, value] : mdOttSettings(0))
+            p[index] = value;
+        auto steadySine = [&](double hz, double rmsDb) { // the output's RMS level (dB) once settled
+            Effects fx;
+            fx.prepare(kSampleRate);
+            const double amplitude = std::sqrt(2.0) * std::pow(10.0, rmsDb / 20.0);
+            std::vector<float> left(kBlock), right(kBlock);
+            double power = 0.0;
+            const size_t from = static_cast<size_t>(0.75 * kSampleRate), to = static_cast<size_t>(1.0 * kSampleRate);
+            for (size_t t = 0; t < to; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock && t >= from; ++s)
+                    power += left[s] * left[s] / static_cast<double>(to - from);
+            }
+            return 10.0 * std::log10(power + 1e-30);
+        };
+        struct Measured {
+            double hz;
+            std::array<double, 4> out; // at -69, -51, -33 and -15 dB going in
+        };
+        constexpr Measured kPreset[] = {{40.0, {-35.6, -30.6, -24.0, -21.8}},
+                                         {1000.0, {-39.7, -33.1, -24.8, -21.9}},
+                                         {8000.0, {-37.1, -31.1, -26.1, -25.4}}};
+        constexpr double kLevels[] = {-69.0, -51.0, -33.0, -15.0};
+        double worst = 0.0;
+        for (const Measured &m : kPreset) {
+            std::printf("      3-band dynamics as OTT, a sine at %.0f Hz, against the preset's:", m.hz);
+            for (int i = 0; i < 4; ++i) {
+                const double got = steadySine(m.hz, kLevels[i]);
+                worst = std::max(worst, std::abs(got - m.out[i]));
+                std::printf(" %.0f -> %.1f (%.1f)", kLevels[i], got, m.out[i]);
+            }
+            std::printf("\n");
+        }
+        check(worst < 1.0, "a three-band dynamics as OTT follows the curves the OTT preset was measured to have");
+        // A saw at 110 Hz with a 5 ms attack, out of silence: a loud one (-1 dB) comes out some 14 dB down and a
+        // quiet one (-30 dB) some 10 dB up, as the preset did (-14.3 and +10.5 dB), and neither comes out at the lift the
+        // silence had (+41 dB on the low and high bands): its start (the bands' gains apart, so their parts of a
+        // transient no longer cancel, and the downward side still catching up) is louder than the note, as the preset's
+        // was (its loudest 5 ms +6.6 and +2.7 dB over), but no 5 ms of it by more than 15 dB, 6 for the quiet one.
+        const double sawRms = 20.0 * std::log10(1.0 / std::sqrt(3.0)); // a saw's RMS level against its peak
+        const auto loud = onset(p, 110.0, std::pow(10.0, -1.0 / 20.0), 0.005);
+        const auto quiet = onset(p, 110.0, std::pow(10.0, -30.0 / 20.0), 0.005);
+        std::printf("      3-band dynamics as OTT: a -1 dB saw %+.1f dB, a -30 dB one %+.1f dB; their loudest 5 ms as "
+                    "they start %+.1f and %+.1f dB over the note\n",
+                    loud[2] - (-1.0 + sawRms), quiet[2] - (-30.0 + sawRms), loud[3] - loud[2], quiet[3] - quiet[2]);
+        check(std::abs(loud[2] - (-1.0 + sawRms) + 14.3) < 3.0 && std::abs(quiet[2] - (-30.0 + sawRms) - 10.5) < 3.0,
+              "a three-band dynamics as OTT pulls a loud saw down and lifts a quiet one as the OTT preset does");
+        check(loud[3] - loud[2] < 15.0 && quiet[3] - quiet[2] < 6.0,
+              "a three-band dynamics as OTT doesn't pop as a note starts out of silence");
+        // The card's meter for a band runs from its level going in to that level through the band (its gain, and its
+        // Gain): a loud 1 kHz note (-6 dB) for half a second, then a tail at -70 dB. As the tail comes, the band lifts it
+        // by much of its Range while the level meter, held, falls only about 26 dB a second; drawn as that held level
+        // plus the lift, the meter's far end shot up past 0 dB. It stays where the note had it, or under, falling.
+        {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            std::vector<float> left(kBlock), right(kBlock);
+            const double midGain = p[mdGainIndex(0, 1)];
+            double during = -1e9, after = -1e9;
+            for (size_t t = 0; t < static_cast<size_t>(1.1 * kSampleRate); t += kBlock) {
+                const bool tail = t >= static_cast<size_t>(0.5 * kSampleRate);
+                const double amplitude = std::pow(10.0, (tail ? -70.0 : -6.0) / 20.0);
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                const double end = 20.0 * std::log10(fx.bandLevel(0, 1) + 1e-30) + fx.bandGain(0, 1) + midGain;
+                if (t >= static_cast<size_t>(0.25 * kSampleRate))
+                    (tail ? after : during) = std::max(tail ? after : during, end);
+            }
+            std::printf("      3-band dynamics as OTT, the mid band's meter: its far end at %.1f dB during a loud note, "
+                        "at most %.1f dB once a quiet tail follows\n",
+                        during, after);
+            check(after < during + 1.0 && after < 0.0,
+                  "a three-band dynamics' meter doesn't shoot up as a band goes quiet and its lift comes");
+        }
+    }
+    {
         // The retired three-band compressor in a state from before version 6 loads as a three-band dynamics doing what
         // it did: its settings in the dynamics' fields (thresholds as Above, ratios as Down), the upward side at 1:1,
-        // the compressor's knee, peaks; an LFO's modulation of its mid threshold now aims at the mid band's Above; its
+        // the compressor's knee, peaks; an LFO's modulation of its mid threshold now aims at the mid band's Above, as deep
+        // in dB (its range is wider since version 10, see the check after these); its
         // own fields back at their defaults. Linked, its bands all took the low band's threshold, ratio and gain, and
         // so the dynamics' bands take the low band's values.
         ParamValues p = defaults();
@@ -1306,7 +1456,8 @@ void effectsChainChecks() {
         for (int band = 0; band < kMcBands; ++band)
             upward = upward && loaded[mdUpIndex(3, band)] == normFromDynRatio(1.0);
         const bool aimed = slotTarget(loaded[slotTargetIndex(0, 0)]) == mdAboveIndex(3, 1) &&
-                           loaded[slotAmountIndex(0, 0)] == 0.25;
+                           std::abs(loaded[slotAmountIndex(0, 0)] -
+                                    0.25 * kMdRetiredThresholdMinDb / kMdThresholdMinDb) < 1e-12;
         const bool cleared = loaded[mcThresholdIndex(3, 1)] == paramTable()[mcThresholdIndex(3, 1)].def &&
                              loaded[paramIndex(3, FxParam::McLink)] == 0.0;
         check(read && type && moved && upward && aimed && cleared,
@@ -1333,6 +1484,42 @@ void effectsChainChecks() {
         ParamValues kept;
         const bool same = load(6, kept) && std::equal(kept.begin(), kept.end(), p.begin());
         check(same, "a state from version 6 on loads a slot's three-band compressor as it was saved");
+    }
+    {
+        // The three-band dynamics' thresholds reach down to -80 dB since version 10, -60 before, and a modulation's depth
+        // is a share of its target's range: an earlier state's depth on one loads three quarters as deep, swinging it as
+        // far as before, and a version 10 state's as saved. A depth elsewhere is left alone.
+        ParamValues p = defaults();
+        p[paramIndex(2, FxParam::Type)] = static_cast<double>(FxType::MultiDyn);
+        chain(p, {2});
+        p[slotTargetIndex(0, 0)] = static_cast<double>(idOfIndex(mdBelowIndex(2, 1))) + 1.0;
+        p[slotAmountIndex(0, 0)] = 0.4;
+        p[slotTargetIndex(0, 1)] = static_cast<double>(idOfIndex(mdAboveIndex(2, 2))) + 1.0;
+        p[slotAmountIndex(0, 1)] = -0.2;
+        p[slotTargetIndex(0, 2)] = static_cast<double>(idOfIndex(mdGainIndex(2, 1))) + 1.0;
+        p[slotAmountIndex(0, 2)] = 0.4;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues before = load(9), now = load(10);
+        const double range = paramTable()[mdBelowIndex(2, 1)].max - paramTable()[mdBelowIndex(2, 1)].min;
+        std::printf("      3-band dynamics thresholds: %.0f dB of range; depths from version 9 %.2f and %.2f (the Gain's "
+                    "%.2f), from version 10 %.2f and %.2f\n",
+                    range, before[slotAmountIndex(0, 0)], before[slotAmountIndex(0, 1)], before[slotAmountIndex(0, 2)],
+                    now[slotAmountIndex(0, 0)], now[slotAmountIndex(0, 1)]);
+        check(range == 80.0 && std::abs(before[slotAmountIndex(0, 0)] - 0.3) < 1e-12 &&
+                  std::abs(before[slotAmountIndex(0, 1)] + 0.15) < 1e-12 && before[slotAmountIndex(0, 2)] == 0.4 &&
+                  now[slotAmountIndex(0, 0)] == 0.4 && now[slotAmountIndex(0, 1)] == -0.2,
+              "a state before version 10 loads its depths on the three-band dynamics' thresholds as far as they swung");
     }
     {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,

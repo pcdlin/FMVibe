@@ -185,10 +185,15 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
-    reading back), and linked bands still playing their own settings (Link being the editor's); and a
+    reading back), and linked bands still playing their own settings (Link being the editor's); a note out of
+    silence not lifted by the Range the silence had, and OTT's settings following the curves the OTT preset was measured
+    to have (sines in each band at four levels), pulling a loud saw down and lifting a quiet one as it does, and
+    starting neither at the lift the silence had; the band's meter not shooting up as a loud note gives way to a
+    quiet tail that the band lifts; and a
     version 5 state's retired three-band compressor loading as a three-band dynamics doing what it did, its
     modulation along (a linked one's bands taking the low band's settings), while a version 6 state loads one back
-    as saved;
+    as saved; and a version 9 state's depths on its thresholds loading three quarters as deep, as their range grew
+    from 60 dB to 80, a version 10 state's as saved;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
@@ -844,7 +849,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 9: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 10: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -856,7 +861,9 @@ itself.
   `RetiredFxOrder`, the rank of the first 16 slots' order, onto its places, a param a place, since 32! wouldn't fit a
   double; before version 9, a state that doesn't wire the effects graph's output, saved with the effects as a chain,
   loads its chain's order as the graph's line (`fxChainWires()`), since the wires alone put the effects in order now,
-  and the places do nothing), followed by the editor layout:
+  and the places do nothing; before version 10, a modulation's depth on a three-band dynamics' Above or Below threshold
+  loads scaled by `kMdRetiredThresholdMinDb / kMdThresholdMinDb`, since their range now reaches down to -80 dB rather
+  than -60), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

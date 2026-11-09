@@ -622,6 +622,15 @@ constexpr double kMcKnee = 6.0; // dB
 // (its time constant), so a wave's zero crossings don't read as silence to the upward side.
 constexpr double kMdRmsSeconds = 0.01;
 constexpr double kMdPeakSeconds = 0.02;
+// The three-band dynamics' upward side lifts a band only so far that its peaks, which the peak detector catches the
+// moment they come, stay this far (dB) above Below: a note coming in out of silence isn't lifted by the Range the
+// silence before it was, while the detector's level still climbs. A steady sound's peaks sit a few dB over its RMS
+// level, which the lift takes up to Below at most, so it lifts them as its curve says.
+constexpr double kMdLiftHeadroom = 12.0;
+// The three-band dynamics' Above and Below thresholds reach down to here (dB); before state version 10, to
+// kMdRetiredThresholdMinDb, so a modulation's depth on one loads scaled (see readParams()).
+constexpr double kMdThresholdMinDb = -80.0;
+constexpr double kMdRetiredThresholdMinDb = -60.0;
 
 // --- Layout. An *index* is a position in the param table, used by the DSP.
 // An *id* is what hosts store in projects and automation; ids are grouped per
@@ -2026,6 +2035,50 @@ inline double dynamicsGain(double inDb, double aboveDb, double down, double belo
     const double below = std::min(belowDb, aboveDb);
     const double lift = -inDb - compressorCurve(-inDb, -below, up, kneeDb); // the compressor's curve, mirrored
     return downGain + std::clamp(lift, 0.0, std::max(rangeDb, 0.0));
+}
+
+// The three-band dynamics' fields as the OTT item of its card's menu sets them (the changes, as param index and value):
+// the well-known OTT ("over the top") multiband preset, fitted to what it does to a test signal bounced through it
+// (sines stepped in level in each band, level jumps, saws and plucks). Its crossovers (88.3 Hz, 2.5 kHz) and ratios
+// carry over as they are: every band pulled down hard above Above (66.7:1, the high band's ∞:1) and lifted 4.17:1
+// below Below. Its detector reads RMS. Measured, its curves come out as these bands' with:
+// - every threshold 7.1 dB under the one it shows (its levels read that much over this detector's), and its bands'
+//   gains 5.2 dB over theirs, through Output (the bands' Gain stops at 12 dB; at 100 % mix it is the same), so a loud
+//   saw comes out some 14 dB down and a quiet one comes up toward it;
+// - a 21 dB knee, and Range all the way up (its lift has no limit): within 0.3 dB of its curves, every band;
+// - its attacks and releases, per band there (47.8, 22.4 and 13.5 ms; 282, 282 and 132 ms, how long it takes to
+//   settle), shared here: 1 ms and 30 ms follow its jumps best, the low and mid bands' releasing best at 40 ms and the
+//   high band's at 15.
+// Link goes off first, so each band takes its own values.
+inline std::vector<std::pair<int, double>> mdOttSettings(int slot) {
+    struct Band {
+        double above, down, below, up, gain;
+    };
+    constexpr double kInf = std::numeric_limits<double>::infinity();
+    constexpr Band kBands[kMcBands] = {{-33.8, 66.7, -40.8, 4.17, 10.3}, // low, as the preset shows them
+                                       {-30.2, 66.7, -41.8, 4.17, 5.7},  // mid
+                                       {-35.5, kInf, -40.8, 4.17, 10.3}}; // high
+    constexpr double kThresholdShift = -7.1, kMakeup = 5.2; // dB, as measured
+    std::vector<std::pair<int, double>> changes{
+        {paramIndex(slot, FxParam::MdLink), 0.0},
+        {paramIndex(slot, FxParam::MdLowFreq), normFromCutoff(88.3)},
+        {paramIndex(slot, FxParam::MdHighFreq), normFromCutoff(2500.0)},
+    };
+    for (int b = 0; b < kMcBands; ++b) {
+        changes.push_back({mdAboveIndex(slot, b), kBands[b].above + kThresholdShift});
+        changes.push_back({mdDownIndex(slot, b), normFromDynRatio(kBands[b].down)});
+        changes.push_back({mdBelowIndex(slot, b), kBands[b].below + kThresholdShift});
+        changes.push_back({mdUpIndex(slot, b), normFromDynRatio(kBands[b].up)});
+        changes.push_back({mdGainIndex(slot, b), kBands[b].gain});
+    }
+    changes.insert(changes.end(), {{paramIndex(slot, FxParam::MdAttack), normFromTime(0.001)},
+                                   {paramIndex(slot, FxParam::MdRelease), normFromTime(0.03)},
+                                   {paramIndex(slot, FxParam::MdKnee), 21.0},
+                                   {paramIndex(slot, FxParam::MdRange), 36.0},
+                                   {paramIndex(slot, FxParam::MdMix), 1.0},
+                                   {paramIndex(slot, FxParam::MdOutput), kMakeup},
+                                   {paramIndex(slot, FxParam::MdRms), 1.0}});
+    return changes;
 }
 
 // EQ band gain: -1 kills the band, 0 leaves it alone, 1 is +6 dB.
