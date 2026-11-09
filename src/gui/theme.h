@@ -220,9 +220,14 @@ extern float glowing; // how strongly graphs' curves glow, 0..1, which View::pai
 // A graph's curve, glowing as `glowing` says (see theme.cpp).
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width);
 
-// A box node's soft shadow in a flat theme, a little lower than the node (round `r`, its corners `radius`); none in the
-// others. The routing graph's filters and shapers and the effects graph's nodes drop it.
+// A soft shadow round `r` (its corners `radius`): `steps` rings, each `spread` further out and as faint, the whole
+// `drop` lower than `r` and `alpha` dark where they all overlap.
+void softShadow(Canvas &c, Rect r, float radius, int steps, float spread, float drop, float alpha);
+
+// A node's shadow in a flat theme, a little lower than the node; none in the others. A box (`r`, its corners
+// `radius`): the routing graph's filters and shapers and the effects graph's nodes; or a circle: the operators.
 void paintNodeShadow(Canvas &c, Rect r, float radius);
+void paintNodeShadow(Canvas &c, Point center, float radius);
 
 // A card's shadow, in a theme that gives its cards one (see Palette::cardShadow); none in the others.
 void paintCardShadow(Canvas &c, Rect r);

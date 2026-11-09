@@ -75,32 +75,39 @@ void featherLine(Canvas &c, const Point *points, size_t count, float width, floa
     c.polylineStrokes(points, count, colors, widths, kFeatherSteps);
 }
 
+void softShadow(Canvas &c, Rect r, float radius, int steps, float spread, float drop, float alpha) {
+    for (int k = steps; k > 0; --k) {
+        const float out = spread * k;
+        c.fillRect({r.x - out, r.y - out + drop, r.w + 2.0f * out, r.h + 2.0f * out},
+                   Color{0.0f, 0.0f, 0.0f, alpha / steps}, radius + out);
+    }
+}
+
+namespace {
+// How dark a node's shadow is: fainter on a light theme's background.
+Color nodeShadow() {
+    return Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.12f : 0.3f};
+}
+} // namespace
+
 void paintNodeShadow(Canvas &c, Rect r, float radius) {
     if (look.flat)
-        c.fillRect({r.x - 1.0f, r.y + 1.0f, r.w + 2.0f, r.h + 2.0f}, Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.12f : 0.3f},
-                   radius + 1.0f);
+        c.fillRect({r.x - 1.0f, r.y + 1.0f, r.w + 2.0f, r.h + 2.0f}, nodeShadow(), radius + 1.0f);
+}
+
+void paintNodeShadow(Canvas &c, Point center, float radius) {
+    if (look.flat)
+        c.fillCircle({center.x, center.y + 2.0f}, radius + 1.0f, nodeShadow());
 }
 
 void paintCardShadow(Canvas &c, Rect r) {
-    if (look.cardShadow <= 0.0f)
-        return;
-    constexpr int kSteps = 3; // close and faint, a little lower than the card
-    for (int k = kSteps; k > 0; --k) {
-        const float out = 1.0f * k;
-        c.fillRect({r.x - out, r.y - out + 1.5f, r.w + 2.0f * out, r.h + 2.0f * out},
-                   Color{0.0f, 0.0f, 0.0f, look.cardShadow / kSteps}, kRadiusCard + out);
-    }
+    if (look.cardShadow > 0.0f) // close and faint, a little lower than the card
+        softShadow(c, r, kRadiusCard, 3, 1.0f, 1.5f, look.cardShadow);
 }
 
 void paintMenuPanel(Canvas &c, Rect r) {
-    if (look.flat) {
-        constexpr int kSteps = 4; // faint and close: each ring adds a little, about a fifth dark under the panel
-        for (int k = kSteps; k > 0; --k) {
-            const float out = 1.25f * k;
-            c.fillRect({r.x - out, r.y - out + 2.0f, r.w + 2.0f * out, r.h + 2.0f * out}, Color{0.0f, 0.0f, 0.0f, 0.05f},
-                       kRadiusCard + out);
-        }
-    }
+    if (look.flat) // faint and close, about a fifth dark under the panel
+        softShadow(c, r, kRadiusCard, 4, 1.25f, 2.0f, 0.2f);
     c.fillRect(r, kRaised, kRadiusCard);
     if (!look.flat)
         c.strokeRect(r, kBorder, 1.0f, kRadiusCard);

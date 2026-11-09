@@ -1202,7 +1202,7 @@ private:
     static void mergeButtons(std::vector<Widget> &list, size_t from);
     // A button's face: on its own a rounded box, outlined in `color` while lit; merged into a row's pill, its part of
     // the pill (see Widget::group), with a line between it and the next part unless one of them is lit.
-    void paintButtonFace(Canvas &c, const Widget &w, Color fill, bool lit, Color color, float radius);
+    void paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint, float radius);
     bool lastPartLit_ = false; // whether the part of a pill painted last was lit, for the line after it
     void paintNode(Canvas &c, const Widget &w);
     void paintKnob(Canvas &c, const Widget &w);
@@ -1302,6 +1302,7 @@ private:
     void noteCard(int id, Rect card, Rect shown);
     int cardAt(Point p) const;
     bool cardOutlined(int id, bool dragged) const;
+    void paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown);
     Drag drag_;
     // What the last press hit, as it went down, and where: a double-click after it goes with it.
     std::optional<Widget> pressed_;
