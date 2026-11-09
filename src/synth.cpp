@@ -1023,7 +1023,10 @@ void Synth::scopeTake(double phase, double value) {
 }
 
 void Synth::telemetry(Telemetry &out) const {
-    out = Telemetry{};
+    // As a new one, built in its place: assigning one would build it on the stack first (some 45 KB, on the audio
+    // thread about 60 times a second while the editor is open) and copy it.
+    static_assert(std::is_trivially_destructible_v<Telemetry>);
+    std::construct_at(&out);
     if (scope_.op >= 0 && scope_.live) {
         // A slow span (or the first one, before it is whole) shows as it fills; a quick one a whole span at a time.
         const int total = scope_.cycles * kScopeBinsPerCycle;
@@ -1664,7 +1667,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         });
         // Panned, or still ramping back from a pan, it is stereo too.
         const bool panned = opPan != 0.0 || v.levels.panL[i] != v.levels.panR[i];
-        stereo = stereo || (((copies[i] > 1 || noise[i]) && spread > 0.0) || panned) && heard > 0.0;
+        stereo = stereo || ((((copies[i] > 1 || noise[i]) && spread > 0.0) || panned) && heard > 0.0);
         // The copies' increments move to this block's over its length rather than jumping at its start, so
         // modulated pitch (Ratio most of all) doesn't step every control block.
         if (starting || !op.incKnown || op.incCopies != copies[i])

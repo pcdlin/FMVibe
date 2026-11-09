@@ -772,10 +772,6 @@ Point lfoMode(float card, int mode) {
 Point cardShapeAt(float card, double x, double y) {
     return {cardX(card) + 281.0f + static_cast<float>(x) * 264.0f, 659.0f - static_cast<float>(y) * 44.88f};
 }
-Point cardGrid(float card, int axis, int part) {
-    constexpr float kX[] = {14.0f, 32.0f, 54.0f}, kW[] = {18.0f, 22.0f, 18.0f};
-    return {cardX(card) + 273.0f + 128.0f + axis * 76.0f + kX[part] + kW[part] * 0.5f, 737.0f};
-}
 // A random LFO's Smooth (0) and Chaos (1) knobs, right of its narrowed display.
 Point randomKnob(float card, int knob) {
     return {cardX(card) + 186.0f + knob * 50.0f, 677.0f};
