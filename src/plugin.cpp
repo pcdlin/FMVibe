@@ -144,6 +144,7 @@ private:
     size_t openGestures_ = 0;
     // Main thread: an edit didn't fit in the queue, and the host is to read every value again.
     bool rescanValues_ = false;
+    std::atomic<bool> flushAsked_{false}; // the host asked to flush since the edits were last sent (see queueEdit())
 };
 
 Plugin::Plugin(const clap_host_t *host) : host_(host) {
@@ -345,7 +346,8 @@ void Plugin::queueEdit(int index, const EditEvent &ev) {
         }
         return;
     }
-    if (hostParams_)
+    // Once until the host takes the edits: thousands at once (a preset, a large undo) need only the one.
+    if (hostParams_ && !flushAsked_.exchange(true))
         hostParams_->request_flush(host_);
 }
 
@@ -360,6 +362,7 @@ void Plugin::mainThread() {
 
 // Audio thread, or flush() which never runs alongside it.
 void Plugin::sendEdits(const clap_output_events_t *out) {
+    flushAsked_.store(false); // an edit queued from here on asks again; one queued before goes out below
     EditEvent ev;
     int64_t now = -1;
     while (edits_.pop(ev)) {

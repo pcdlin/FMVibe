@@ -289,6 +289,10 @@ protected:
     virtual void performBeginEdit(int index) = 0;
     virtual void performSetValue(int index, double value) = 0;
     virtual void performEndEdit(int index) = 0;
+    // Around an undo or redo step's edits, which may be thousands: what the plugin tells the host once for all of
+    // them (that the project changed) it can tell at the end.
+    virtual void performStepBegin() {}
+    virtual void performStepEnd() {}
     // The preset the patch is: its file ("" for Init, or for a patch from elsewhere), and whether it changed
     // since. Set while an undo step is open (as loading a preset does), it is what that step lands on, so
     // undoing it brings back the preset before; set outside one (saving, the host's state), no step records it.

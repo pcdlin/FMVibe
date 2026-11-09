@@ -863,7 +863,8 @@ itself.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
   allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()` (in VST3, `restartComponent(kLatencyChanged)`, on the main thread), and the host then
-  deactivates and reactivates the plugin. What VST3 only allows on the main thread, and the audio thread may ask for,
+  deactivates and reactivates the plugin (a host that doesn't is asked again once more voices or another
+  oversampling factor need one). What VST3 only allows on the main thread, and the audio thread may ask for,
   goes through a message-only window there. Each voice takes about
   66 KB at 48 kHz, mostly the two comb filters' delay lines, which grow with the oversampling: at the default
   2x, about 105 KB, so 512 voices reserve about 54 MB. Voices isn't automatable for the same reason. The comb lines,

@@ -224,6 +224,7 @@ void Controller::redo() {
 // type is set after its fields, as when it was added.
 void Controller::apply(const UndoStep &step, bool forward) {
     applying_ = true;
+    performStepBegin();
     preset_ = forward ? step.presetAfter : step.presetBefore;
     edited_ = forward ? step.editedAfter : step.editedBefore;
     for (const UndoStep::Change &change : step.changes)
@@ -236,6 +237,7 @@ void Controller::apply(const UndoStep &step, bool forward) {
         restorePatchLayout(layout(), forward ? step.after : step.before);
         layoutChanged();
     }
+    performStepEnd();
     applying_ = false;
 }
 

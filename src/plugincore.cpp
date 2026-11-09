@@ -50,6 +50,8 @@ void PluginCore::performSetValue(int index, double value) {
     storeValue(index, value);
     if (hostListed(index))
         hostEdit(index, value);
+    else if (applyingStep_)
+        dirtyAfterStep_ = true; // once, at the step's end
     else
         hostMarkDirty(); // the host hears of no edit to mark the project by
     if (shapesSections(index))
@@ -64,7 +66,7 @@ void PluginCore::performSetValue(int index, double value) {
 void PluginCore::activate(double sampleRate) {
     sampleRate_ = sampleRate;
     synth_.prepare(sampleRate, voiceLimit(), oversampling_.load());
-    restartRequested_.store(false);
+    restartAskedFor_.store(0);
 }
 
 int PluginCore::voiceLimit() const {
@@ -78,16 +80,35 @@ void PluginCore::applyPlayMode() {
     synth_.setMpe(mpe_.load(std::memory_order_relaxed), mpeBendRange_.load(std::memory_order_relaxed));
 }
 
+void PluginCore::performStepBegin() {
+    applyingStep_ = true;
+    dirtyAfterStep_ = false;
+}
+
+void PluginCore::performStepEnd() {
+    applyingStep_ = false;
+    if (dirtyAfterStep_)
+        hostMarkDirty();
+    dirtyAfterStep_ = false;
+}
+
 // Thread-safe: each format's hostRequestRestart() may be called from any thread.
-void PluginCore::voiceLimitChanged() {
-    if (synth_.capacity() > 0 && voiceLimit() > synth_.capacity() && !restartRequested_.exchange(true))
+void PluginCore::askRestart() {
+    const int capacity = synth_.capacity(), voices = voiceLimit(), factor = oversampling_.load();
+    if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling()))
+        return;
+    const int need = std::max(voices, capacity) * 16 + factor;
+    if (restartAskedFor_.exchange(need) != need)
         hostRequestRestart();
+}
+
+void PluginCore::voiceLimitChanged() {
+    askRestart();
 }
 
 // Main thread.
 void PluginCore::restartIfNeeded() {
-    if (synth_.capacity() > 0 && oversampling_.load() != synth_.oversampling() && !restartRequested_.exchange(true))
-        hostRequestRestart();
+    askRestart();
 }
 
 // Main thread, from the settings dialog.
@@ -189,8 +210,12 @@ void PluginCore::setHostValue(int index, double value, bool inBlock) {
     value = std::clamp(value, paramTable()[index].min, paramTable()[index].max);
     values_[index].store(value);
     if (inBlock) {
-        snapshot_[index] = value; // the rest of the block being processed hears it (see beginBlock())
-        snapshotChanged_ = true;
+        // The rest of the block being processed hears it (see beginBlock()); a value it has already, as a host's
+        // automation often sends, leaves what the synth works out from the params as it is.
+        if (snapshot_[index] != value) {
+            snapshot_[index] = value;
+            snapshotChanged_ = true;
+        }
     } else {
         valuesChanged(); // the next block's snapshot takes it
     }
@@ -210,9 +235,13 @@ void PluginCore::setHostValue(int index, double value, bool inBlock) {
 
 ParamValues PluginCore::valuesNow() const {
     ParamValues values;
+    valuesInto(values);
+    return values;
+}
+
+void PluginCore::valuesInto(ParamValues &values) const {
     for (int i = 0; i < kParamCount; ++i)
         values[i] = values_[i].load(std::memory_order_relaxed);
-    return values;
 }
 
 void PluginCore::sectionsChanged() {
@@ -254,7 +283,9 @@ void PluginCore::closeEditor() {
 }
 
 bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
-    if (!writePatch(stream, valuesNow(), layout_))
+    const auto values = std::make_unique<ParamValues>();
+    valuesInto(*values);
+    if (!writePatch(stream, *values, layout_))
         return false;
     if (!settings)
         return true;
@@ -265,7 +296,8 @@ bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
 }
 
 bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
-    ParamValues loaded;
+    const auto read = std::make_unique<ParamValues>();
+    ParamValues &loaded = *read;
     if (!readParams(stream, loaded))
         return false;
     for (int i = 0; i < kParamCount; ++i)
@@ -299,7 +331,17 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         std::string preset;
         bool edited = false;
         if (readPresetChunk(stream, preset, edited)) {
-            setPreset(widePath(preset), edited);
+            // Save writes the patch over the preset named here, so a project names only a preset file: any other
+            // path (a project made by hand, say) shows as an edited patch with no preset.
+            std::wstring file = widePath(preset);
+            std::wstring extension = std::filesystem::path(file).extension().wstring();
+            for (wchar_t &c : extension)
+                c = c >= L'A' && c <= L'Z' ? static_cast<wchar_t>(c - L'A' + L'a') : c;
+            if (!file.empty() && extension != L".fmv") {
+                file.clear();
+                edited = true;
+            }
+            setPreset(file, edited);
         } else {
             const ParamTable &table = paramTable();
             bool atInit = true;
@@ -345,7 +387,8 @@ void PluginCore::keepEditorLayout(const gui::UiLayout &from) {
 // Init and loading a preset start the undo history over: undo never brings back the patch before.
 // Afterwards the patch is the preset, unchanged.
 void PluginCore::resetPreset() {
-    const auto told = std::make_unique<ParamValues>(valuesNow());
+    const auto told = std::make_unique<ParamValues>();
+    valuesInto(*told);
     const ParamTable &table = paramTable();
     for (int i = 0; i < kParamCount; ++i)
         values_[i].store(table[i].def);
@@ -365,7 +408,8 @@ bool PluginCore::loadPreset(const std::wstring &path) {
     if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
         return false;
     const clap_istream_t stream = fileIn(file);
-    const auto told = std::make_unique<ParamValues>(valuesNow());
+    const auto told = std::make_unique<ParamValues>();
+    valuesInto(*told);
     const bool loaded = loadState(&stream, false);
     if (loaded) {
         notifyParams(*told);
@@ -378,14 +422,24 @@ bool PluginCore::loadPreset(const std::wstring &path) {
 }
 
 bool PluginCore::savePreset(const std::wstring &path) {
+    // Written beside the file first and put in its place once whole, so a write that fails (a full disk, a file
+    // another program holds) leaves the preset it would replace as it was. The scan lists only .fmv files.
+    namespace fs = std::filesystem;
+    const fs::path target(path), part(path + L".part");
     FILE *file = nullptr;
-    if (_wfopen_s(&file, path.c_str(), L"wb") != 0 || !file)
+    if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
         return false;
     const clap_ostream_t stream = fileOut(file);
     const bool saved = saveState(&stream, false);
     const bool closed = std::fclose(file) == 0;
-    if (!saved || !closed)
+    std::error_code error;
+    if (saved && closed)
+        fs::rename(part, target, error); // replacing the file there
+    if (!saved || !closed || error) {
+        std::error_code ignored;
+        fs::remove(part, ignored);
         return false;
+    }
     setPreset(path);
     rescanPresets(); // so the library lists it
     return true;

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <cstring>
 #include <vector>
 
 namespace fmvibe {
@@ -355,13 +356,20 @@ bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const g
     const uint32_t header[] = {kStateMagic, kStateVersion, count};
     if (!writeAll(stream, header, sizeof(header)))
         return false;
+    // The pairs go to the stream in one write rather than two a param: a host's stream may cost a call each.
+    constexpr size_t kPair = sizeof(uint32_t) + sizeof(double);
+    std::vector<unsigned char> pairs(static_cast<size_t>(count) * kPair);
+    unsigned char *at = pairs.data();
     for (int i = 0; i < kParamCount; ++i) {
         if (!written(i))
             continue;
         const uint32_t id = idOfIndex(i);
-        if (!writeAll(stream, &id, sizeof(id)) || !writeAll(stream, &values[i], sizeof(values[i])))
-            return false;
+        std::memcpy(at, &id, sizeof(id));
+        std::memcpy(at + sizeof(id), &values[i], sizeof(values[i]));
+        at += kPair;
     }
+    if (!writeAll(stream, pairs.data(), pairs.size()))
+        return false;
 
     std::vector<float> layout;
     LayoutWriter writer{layout};
@@ -471,11 +479,22 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     // Whether the state wires the effects graph's output: before version 9, only one saved with them as a graph does.
     bool outWired = false;
     const int outFirst = fxInputIndex(kFxOutNode, 0, FxInputField::From);
+    // The pairs come in batches (a host's stream may cost a call each), no more of them than the count says.
+    constexpr size_t kPair = sizeof(uint32_t) + sizeof(double), kBatch = 4096;
+    std::vector<unsigned char> batch(std::min<size_t>(header[2], kBatch) * kPair);
+    size_t inBatch = 0, taken = 0;
     for (uint32_t n = 0; n < header[2]; ++n) {
+        if (taken == inBatch) {
+            inBatch = std::min<size_t>(header[2] - n, kBatch);
+            taken = 0;
+            if (!readAll(stream, batch.data(), inBatch * kPair))
+                return false;
+        }
         uint32_t id;
         double value;
-        if (!readAll(stream, &id, sizeof(id)) || !readAll(stream, &value, sizeof(value)))
-            return false;
+        std::memcpy(&id, batch.data() + taken * kPair, sizeof(id));
+        std::memcpy(&value, batch.data() + taken * kPair + sizeof(id), sizeof(value));
+        ++taken;
         if (!std::isfinite(value))
             continue;
         const int i = indexOfId(id);

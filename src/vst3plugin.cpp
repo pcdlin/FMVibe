@@ -401,8 +401,9 @@ private:
     }
     // Any thread: the wake window's message, unless one is on its way already.
     void wake() {
-        if (wakeWindow_ && !wakePosted_.exchange(true))
-            PostMessageW(wakeWindow_, kWakeMessage, 0, 0);
+        // A post that fails (its queue full) leaves none on its way: the next wake posts again.
+        if (wakeWindow_ && !wakePosted_.exchange(true) && !PostMessageW(wakeWindow_, kWakeMessage, 0, 0))
+            wakePosted_.store(false);
     }
     // Main thread.
     void woken();
