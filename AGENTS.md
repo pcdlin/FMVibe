@@ -437,7 +437,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     band), its
     ratio drawn as up to seven lines moving with the threshold and closing up toward it (6 dB apart at 1:1), the Above knob's tooltip under its label
     and the bars' meters showing the telemetry's levels and gains, in teal, then amber for what is taken off (read
-    off the rendered pixels), and LINK (an edit of one band, by its line or knob, then setting every band's, undoably) and RMS;
+    off the rendered pixels), its band's Gain left out of them (read off the rendered pixels), and LINK (an edit of one
+    band, by its line or knob, then setting every band's, undoably) and RMS;
   - the amp's card: added after the shaper in the list of effects, a Crunch into a closed 4x12 to begin with; its
     model list, cabinet list and mic switch picking, each undoably; its cabinet
     switched off dimming its controls (read off the rendered pixels), which still turn; its mic dragged on its display

@@ -651,8 +651,10 @@ may show anywhere, repaints the whole of it.
       its height: in the card's color up to what comes out, then the gain, amber where the band takes some off
       (up to what went in) and in the accent where it adds some; a white tick across the bar marks what goes in.
       Both ends are held meters falling alike, about 26 dB a second: what goes in, and that through the band's
-      dynamics. The gain at the bar's right is the distance between them, and the band's Gain. So as a band goes
-      quiet, and its lift comes for what is left, the meter falls whole rather than its far end shooting up.
+      dynamics. The gain at the bar's right is the distance between them. Both show what the dynamics do: the
+      band's Gain, which comes after them, is left out, so amber is the band pulled down and the accent the band
+      lifted. So as a band goes quiet, and its lift comes for what is left, the meter falls whole rather than its
+      far end shooting up.
       Left of the Below threshold, where the band lifts, and right of the Above one, where it pulls down, the bar
       is faintly tinted (more under the mouse), and thin lines
       (the text color, at half strength) show the ratio: one for every 6 dB that goes in past the threshold, drawn

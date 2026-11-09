@@ -4512,6 +4512,15 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     const uint32_t past = renderer.pixel({x(-15.0), mid});
     check(levelShot && filled != empty && taken != filled && past != filled && past != taken,
           "a three-band dynamics' bar shows its band's level and gain");
+    // The meter shows the dynamics alone: the band's Gain, after them, at +12 dB leaves the 6 dB taken off in amber
+    // (it would have turned it into 6 dB added, in the accent, past what goes in).
+    model.set(mdGainIndex(0, 1), 12.0);
+    view.poll();
+    const bool gainShot = renderer.save(view, dir / "9g1-3band-dynamics-levels-gain.png");
+    const bool gainLeftOut = gainShot && renderer.pixel({x(-23.0), mid}) == taken && renderer.pixel({x(-15.0), mid}) == past;
+    model.set(mdGainIndex(0, 1), 0.0);
+    view.poll();
+    check(gainLeftOut, "a three-band dynamics' meter shows what its dynamics do, its band's Gain left out");
     // LINK: an edit of one band, by its line or its knob, sets every band's same field, as one undo step; RMS off
     // follows peaks.
     const Rect mdCard = detail::fxCard(0.0f, detail::fxSpan(FxType::MultiDyn));

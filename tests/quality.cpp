@@ -1385,15 +1385,13 @@ void effectsChainChecks() {
               "a three-band dynamics as OTT pulls a loud saw down and lifts a quiet one as the OTT preset does");
         check(loud[3] - loud[2] < 15.0 && quiet[3] - quiet[2] < 6.0,
               "a three-band dynamics as OTT doesn't pop as a note starts out of silence");
-        // The card's meter for a band runs from its level going in to that level through the band (its gain, and its
-        // Gain): a loud 1 kHz note (-6 dB) for half a second, then a tail at -70 dB. As the tail comes, the band lifts it
+        // The card's meter for a band runs from its level going in to that level through the band's dynamics: a loud 1 kHz note (-6 dB) for half a second, then a tail at -70 dB. As the tail comes, the band lifts it
         // by much of its Range while the level meter, held, falls only about 26 dB a second; drawn as that held level
         // plus the lift, the meter's far end shot up past 0 dB. It stays where the note had it, or under, falling.
         {
             Effects fx;
             fx.prepare(kSampleRate);
             std::vector<float> left(kBlock), right(kBlock);
-            const double midGain = p[mdGainIndex(0, 1)];
             double during = -1e9, after = -1e9;
             for (size_t t = 0; t < static_cast<size_t>(1.1 * kSampleRate); t += kBlock) {
                 const bool tail = t >= static_cast<size_t>(0.5 * kSampleRate);
@@ -1402,7 +1400,7 @@ void effectsChainChecks() {
                     left[s] = right[s] = static_cast<float>(
                         amplitude * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(t + s) / kSampleRate));
                 fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
-                const double end = 20.0 * std::log10(fx.bandLevel(0, 1) + 1e-30) + fx.bandGain(0, 1) + midGain;
+                const double end = 20.0 * std::log10(fx.bandLevel(0, 1) + 1e-30) + fx.bandGain(0, 1);
                 if (t >= static_cast<size_t>(0.25 * kSampleRate))
                     (tail ? after : during) = std::max(tail ? after : during, end);
             }

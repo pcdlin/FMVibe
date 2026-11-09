@@ -4504,7 +4504,7 @@ void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
         float xIn = -1.0f;
         if (level > 1e-6f) {
             const double inDb = 20.0 * std::log10(level);
-            change = telemetry_.fxBandGain[slot][band] + liveValue(mdGainIndex(slot, band));
+            change = telemetry_.fxBandGain[slot][band]; // the dynamics alone: the band's Gain comes after them
             xIn = mdBarX(bar, inDb);
             const float xOut = mdBarX(bar, inDb + change), y = bar.center().y - 0.5f * kMdMeterH;
             const float lo = std::min(xIn, xOut), hi = std::max(xIn, xOut);
