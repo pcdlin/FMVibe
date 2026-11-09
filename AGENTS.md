@@ -198,7 +198,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     turned over mid-sine fading through nothing rather than clicking;
   - the random LFO's steps and glides, a freeform LFO's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), the phaser's and flanger's sweeps synced to the host tempo, the parametric
-    EQ's, the phase disperser's and the voice filters' analyzers, and that each example preset holds valid values
+    EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;

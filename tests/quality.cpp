@@ -2155,6 +2155,27 @@ int main() {
               eq ? "the EQ's analyzer shows a sine in its band, at its level"
                  : "the phase disperser's analyzer shows a sine in its band, at its level");
     }
+    {
+        // Once the sound stops, an analyzer's bands fall about 55 dB a second, at 96 kHz as at 48.
+        auto fallen = [](double rate) {
+            Analyzer analyzer;
+            analyzer.prepare(rate);
+            Analyzed signal;
+            Analyzer::prepare(signal);
+            const int band = static_cast<int>(normFromCutoff(1000.0) * kSpectrumBands);
+            for (int i = 0; i < static_cast<int>(0.2 * rate); ++i)
+                analyzer.push(signal, static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * 1000.0 * i / rate)));
+            const float loud = signal.bands[band];
+            for (int i = 0; i < static_cast<int>(0.5 * rate); ++i)
+                analyzer.push(signal, 0.0f);
+            return 20.0 * std::log10(loud / signal.bands[band]);
+        };
+        const double at48 = fallen(48000.0), at96 = fallen(96000.0);
+        std::printf("      an analyzer's band half a second after a sine stops: %.1f dB down at 48 kHz, %.1f at 96\n",
+                    at48, at96);
+        check(std::abs(at48 - 27.5) < 3.0 && std::abs(at96 - 27.5) < 3.0,
+              "an analyzer's bands fall away as fast at any sample rate");
+    }
 
     // --- Synced sweeps: the phaser and flanger go round once per note value of the host tempo, whatever their
     // Rate (here standing still). A quarter takes 0.5 s at 120 bpm and 1 s at 60, so a quarter of a second in,

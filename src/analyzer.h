@@ -24,8 +24,8 @@ struct Analyzed {
 };
 
 // A Hann-windowed FFT of a signal's latest kSize samples every half of that. Each band takes the loudest bin in it
-// (a full-scale sine reads 1); where the sound got quieter, it falls away by about 1.2 dB a measurement, so 55 dB a
-// second at 48 kHz. One analyzer serves any number of signals at its rate.
+// (a full-scale sine reads 1); where the sound got quieter, it falls away by about 55 dB a second (1.2 dB a
+// measurement at 48 kHz), at any rate. One analyzer serves any number of signals at its rate.
 class Analyzer {
 public:
     static constexpr int kSize = 2048;
@@ -50,6 +50,9 @@ private:
     void measure(Analyzed &signal);
 
     double sampleRate_ = 48000.0;
+    float fall_ = 0.87f; // what a band falls by in a measurement where the sound got quieter
+    // Each band's edges, in bins (fractional), from 20 Hz to 20 kHz at this rate.
+    std::array<double, kSpectrumBands + 1> edges_{};
     std::vector<float> window_;
     std::vector<std::complex<float>> twiddles_; // e^(-2 pi i k / N)
     std::vector<std::complex<float>> fft_;      // the transform being worked on
