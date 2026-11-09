@@ -48,6 +48,14 @@ struct Palette {
     Color fxTypes[static_cast<int>(FxType::Count)];
     // A split's bands, low, middle and high: from cool and darker to warm and lighter, so they part by lightness too.
     Color bands[3];
+    // How it draws beyond its colors. A theme leaving these out draws as the first ones do.
+    bool shadedCaps = false;      // knob caps shaded from capTop down to capBottom, rather than flat in knobBody
+    Color capTop{}, capBottom{};
+    bool dotPointer = false;      // a knob's pointer a dot by its cap's rim, rather than a line from its middle
+    float capShadow = 0.0f;       // a shadow under each knob cap, this dark
+    float panelShadow = 0.0f;     // a soft shadow under the panels, this dark, which then go without an outline
+    bool opColors = false;        // each operator in a color of its own (ops), rather than all in the accent
+    Color ops[kOps]{};            // A to F: its node, its tab and the routes it sends
 };
 static_assert(static_cast<int>(FxType::Count) == 16, "a color for each effect type in every theme");
 
@@ -129,6 +137,110 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x5A7A12), Color::hex(0x1A7287), Color::hex(0x5E554A), Color::hex(0x9B2AA0),
       Color::hex(0x0E6E68), Color::hex(0x8C5A1E)},
      {Color::hex(0x33609E), Color::hex(0x25806C), Color::hex(0xAE6A1E)}},
+    {"Machined", Str::ThemeMachined, // hardware: charcoal panels, shaded knob caps and amber readouts
+     Color::hex(0x121315), Color::hex(0x1B1C1F), Color::hex(0x232428), Color::hex(0x2C2D32), Color::hex(0x2E2F34),
+     Color::hex(0x2A2B2F),
+     Color::hex(0xE7E5E0), Color::hex(0x97958F), Color::hex(0x5D5D60),
+     Color::hex(0xF2A93B), Color::hex(0xE8664F), Color::hex(0x5FBFB0),
+     {Color::hex(0x6FB8E8), Color::hex(0xF0745A), Color::hex(0xB8D44A), Color::hex(0xA99BF0),
+      Color::hex(0xF2C94C), Color::hex(0x5FC79A), Color::hex(0xE86A6A), Color::hex(0xD98AD9),
+      Color::hex(0x4FC2B4), Color::hex(0xE8D35C), Color::hex(0x9C8CE0), Color::hex(0xF0A0A8),
+      Color::hex(0x7FD4E0), Color::hex(0x9ED89A), Color::hex(0x6E9BE8), Color::hex(0xF0AA70),
+      Color::hex(0xD9937F), Color::hex(0xD9AE7F), Color::hex(0xCFC77A), Color::hex(0x9FCB8A),
+      Color::hex(0x7FC2B8), Color::hex(0x7FA6D9), Color::hex(0x9A94D9), Color::hex(0xC294D9),
+      Color::hex(0xDDD8CE), Color::hex(0xC9C2A8), Color::hex(0xE8774A)},
+     Color::hex(0x212226), Color::hex(0x0B0B0C), Color::hex(0x1A1B1E), Color::hex(0x131416),
+     Color::hex(0xE9E6DF), Color::hex(0xD6D2C9), Color::hex(0x0F1012), Color::hex(0x2C2D32), Color::hex(0x6E6A62),
+     {Color::hex(0x5FBFB0), Color::hex(0xE86A5A), Color::hex(0x6FA8E0), Color::hex(0xF2B94B), Color::hex(0xF09A4A),
+      Color::hex(0xB98AE8), Color::hex(0x5FC98F), Color::hex(0x4FC2B4), Color::hex(0x8C8FE8), Color::hex(0xE87AB0),
+      Color::hex(0xB8D44A), Color::hex(0x4FC9DF), Color::hex(0xBFC3C9), Color::hex(0xD98AD9),
+      Color::hex(0x4FC2B4), Color::hex(0xE0B878)},
+     {Color::hex(0x6FA3E0), Color::hex(0x5FC2A8), Color::hex(0xF2B46A)},
+     true, Color::hex(0x47484E), Color::hex(0x202125), false, 0.55f},
+    {"Spectrum", Str::ThemeSpectrum, // deep indigo, each operator in a color of its own, its routes too
+     Color::hex(0x0D0C14), Color::hex(0x15131F), Color::hex(0x1D1A2A), Color::hex(0x262238), Color::hex(0x2A2640),
+     Color::hex(0x221F30),
+     Color::hex(0xEBE8F5), Color::hex(0x9590AB), Color::hex(0x5A5570),
+     Color::hex(0x7C8CFF), Color::hex(0xC9A8FF), Color::hex(0xFFB86B),
+     {Color::hex(0x4FC3F7), Color::hex(0xFF7A8A), Color::hex(0xC6E85A), Color::hex(0xB49CFF),
+      Color::hex(0xFFC857), Color::hex(0x4FE0A8), Color::hex(0xFF6B6B), Color::hex(0xF08CE8),
+      Color::hex(0x3ED6C1), Color::hex(0xF5E05A), Color::hex(0x9C8CFF), Color::hex(0xFFA3B5),
+      Color::hex(0x6EE0F0), Color::hex(0x9EF0A0), Color::hex(0x6EA8FF), Color::hex(0xFFB070),
+      Color::hex(0xFF8A5C), Color::hex(0xF5C04A), Color::hex(0xA6E05A), Color::hex(0x3ED6C1),
+      Color::hex(0x4FC3F7), Color::hex(0x7C8CFF), Color::hex(0xB49CFF), Color::hex(0xFF5C9A),
+      Color::hex(0xE0DCF0), Color::hex(0xB8C0FF), Color::hex(0xFF8A5C)},
+     Color::hex(0x1A1726), Color::hex(0x0D0C14), Color::hex(0x15131F), Color::hex(0x100E18),
+     Color::hex(0xD9D5E8), Color::hex(0xC4BFD8), Color::hex(0x1D1A2A), Color::hex(0x34304A), Color::hex(0x5A5570),
+     {Color::hex(0xFFB86B), Color::hex(0xFF6B6B), Color::hex(0x4FC3F7), Color::hex(0xF5C04A), Color::hex(0xFF8A5C),
+      Color::hex(0xC9A8FF), Color::hex(0x4FE0A8), Color::hex(0x3ED6C1), Color::hex(0x7C8CFF), Color::hex(0xFF5C9A),
+      Color::hex(0xA6E05A), Color::hex(0x6EE0F0), Color::hex(0xB8B4CC), Color::hex(0xF08CE8),
+      Color::hex(0x3ED6C1), Color::hex(0xE8C27A)},
+     {Color::hex(0x6E9BFF), Color::hex(0x3ED6C1), Color::hex(0xFFB86B)},
+     false, {}, {}, true, 0.0f, 0.0f, true,
+     {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
+      Color::hex(0xA6E05A)}},
+    {"Spectrum Light", Str::ThemeSpectrum, // Spectrum on a pale lilac, its operators' colors deepened
+     Color::hex(0xE4E1EE), Color::hex(0xF6F4FB), Color::hex(0xEAE7F3), Color::hex(0xD3CEE2), Color::hex(0xDCD8E8),
+     Color::hex(0xFFFFFF),
+     Color::hex(0x16131F), Color::hex(0x4E4866), Color::hex(0x948DAB),
+     Color::hex(0x4A55E0), Color::hex(0x8A3FD6), Color::hex(0xD9541A),
+     {Color::hex(0x0277BD), Color::hex(0xD0213F), Color::hex(0x5C8A0A), Color::hex(0x5B3FD6),
+      Color::hex(0xB86E00), Color::hex(0x06855C), Color::hex(0xC92A2A), Color::hex(0xA21EB8),
+      Color::hex(0x0A8378), Color::hex(0x9C7A00), Color::hex(0x6A35D0), Color::hex(0xC2185B),
+      Color::hex(0x00838F), Color::hex(0x2E7D32), Color::hex(0x1F5BE0), Color::hex(0xD9541A),
+      Color::hex(0xD9541A), Color::hex(0xB07A00), Color::hex(0x4E8A0E), Color::hex(0x0A9488),
+      Color::hex(0x0277BD), Color::hex(0x4A55E0), Color::hex(0x7A4DD6), Color::hex(0xD0236E),
+      Color::hex(0x3F3A55), Color::hex(0x5560E8), Color::hex(0xD9541A)},
+     Color::hex(0xFFFFFF), Color::hex(0xEEEBF6), Color::hex(0xFFFFFF), Color::hex(0xF1EEF8),
+     Color::hex(0xFFFFFF), Color::hex(0xE6E2F0), Color::hex(0x1D1A2A), Color::hex(0x3A3550), Color::hex(0x948DAB),
+     {Color::hex(0xD9541A), Color::hex(0xC92A2A), Color::hex(0x1F5BE0), Color::hex(0xB07A00), Color::hex(0xD9541A),
+      Color::hex(0x8A3FD6), Color::hex(0x06855C), Color::hex(0x0A8378), Color::hex(0x4A55E0), Color::hex(0xD0236E),
+      Color::hex(0x4E8A0E), Color::hex(0x00838F), Color::hex(0x55607A), Color::hex(0xA21EB8),
+      Color::hex(0x0A8378), Color::hex(0x9A6A1C)},
+     {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xB86E0E)},
+     false, {}, {}, true, 0.18f, 0.0f, true,
+     {Color::hex(0x4A55E0), Color::hex(0xD9541A), Color::hex(0x0A9488), Color::hex(0xB07A00), Color::hex(0xD0236E),
+      Color::hex(0x4E8A0E)}},
+    {"Porcelain", Str::ThemePorcelain, // airy: white panels lifted off a cool gray by soft shadows, one cobalt accent
+     Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
+     Color::hex(0xFFFFFF),
+     Color::hex(0x1A1D24), Color::hex(0x5D6472), Color::hex(0x9AA1AD),
+     Color::hex(0x2F5BFF), Color::hex(0x7A4DFF), Color::hex(0xE2546A),
+     {Color::hex(0x0E9BC4), Color::hex(0xE2546A), Color::hex(0x7FA313), Color::hex(0x7A4DFF),
+      Color::hex(0xD98A0B), Color::hex(0x0E8F6E), Color::hex(0xD64545), Color::hex(0xB03FC4),
+      Color::hex(0x0F8F85), Color::hex(0xB08A0B), Color::hex(0x6A45E0), Color::hex(0xD6406A),
+      Color::hex(0x0A8FAA), Color::hex(0x3E8E3E), Color::hex(0x2F5BFF), Color::hex(0xE07B39),
+      Color::hex(0xC26A55), Color::hex(0xB5822F), Color::hex(0x9A9420), Color::hex(0x5E9A4E),
+      Color::hex(0x3E9A90), Color::hex(0x4F7FC2), Color::hex(0x6E68C2), Color::hex(0xA066C2),
+      Color::hex(0x3A404C), Color::hex(0x6A85FF), Color::hex(0xE07B39)},
+     Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xFFFFFF), Color::hex(0xFAFBFC),
+     Color::hex(0xFFFFFF), Color::hex(0xEDF0F5), Color::hex(0x1A1D24), Color::hex(0x3A3F4B), Color::hex(0x8A91A0),
+     {Color::hex(0xE2546A), Color::hex(0xD64545), Color::hex(0x2F5BFF), Color::hex(0xD98A0B), Color::hex(0xE07B39),
+      Color::hex(0x7A4DFF), Color::hex(0x0E8F6E), Color::hex(0x0F8F85), Color::hex(0x4F52E8), Color::hex(0xD6406A),
+      Color::hex(0x7FA313), Color::hex(0x0A8FAA), Color::hex(0x5D6472), Color::hex(0xB03FC4),
+      Color::hex(0x0F8F85), Color::hex(0xA07020)},
+     {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xC27A1E)},
+     false, {}, {}, true, 0.22f, 0.10f},
+    {"Porcelain Dark", Str::ThemePorcelain, // Porcelain's soft panels and single accent on slate
+     Color::hex(0x16181D), Color::hex(0x1E2128), Color::hex(0x262A33), Color::hex(0x2E323C), Color::hex(0x323743),
+     Color::hex(0x2C303A),
+     Color::hex(0xEDEFF3), Color::hex(0x9AA1AD), Color::hex(0x5D6472),
+     Color::hex(0x6E8CFF), Color::hex(0xA98BFF), Color::hex(0xFF7A8C),
+     {Color::hex(0x4FC3E6), Color::hex(0xFF7A8C), Color::hex(0xADD84A), Color::hex(0xA98BFF),
+      Color::hex(0xF2B347), Color::hex(0x3FCFA3), Color::hex(0xF27070), Color::hex(0xD885E8),
+      Color::hex(0x3FC9BE), Color::hex(0xE8CF4F), Color::hex(0x9C85FF), Color::hex(0xFF9CB0),
+      Color::hex(0x5FD6EA), Color::hex(0x8FE08F), Color::hex(0x6E8CFF), Color::hex(0xFFA066),
+      Color::hex(0xE0907A), Color::hex(0xD9B070), Color::hex(0xCFC56A), Color::hex(0x8FC98A),
+      Color::hex(0x6FC2B8), Color::hex(0x7FA0E0), Color::hex(0x9A94E0), Color::hex(0xC994E0),
+      Color::hex(0xD8DCE4), Color::hex(0x9DB0FF), Color::hex(0xFFA066)},
+     Color::hex(0x232731), Color::hex(0x16181D), Color::hex(0x1E2128), Color::hex(0x191B21),
+     Color::hex(0xE4E7EE), Color::hex(0xCDD3DF), Color::hex(0x101216), Color::hex(0x2C303A), Color::hex(0x5D6472),
+     {Color::hex(0xFF7A8C), Color::hex(0xF27070), Color::hex(0x6E8CFF), Color::hex(0xF2B347), Color::hex(0xFFA066),
+      Color::hex(0xA98BFF), Color::hex(0x3FCFA3), Color::hex(0x3FC9BE), Color::hex(0x8C8FFF), Color::hex(0xFF8CC0),
+      Color::hex(0xADD84A), Color::hex(0x5FD6EA), Color::hex(0xC3C8D2), Color::hex(0xD885E8),
+      Color::hex(0x3FC9BE), Color::hex(0xE0B878)},
+     {Color::hex(0x6AA3F0), Color::hex(0x4CC9B0), Color::hex(0xEFB46F)},
+     false, {}, {}, true, 0.45f, 0.35f},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));
 // A source left out of a theme's list would be drawn black.
@@ -140,6 +252,15 @@ constexpr bool everySourceColored() {
     return true;
 }
 static_assert(everySourceColored(), "a color for each source in every theme");
+
+// Where each theme's button sits in the settings dialog: the dark themes along the first row, the light ones along the
+// second, a theme's dark and light versions one above the other.
+struct ThemeCell {
+    int row, column;
+};
+constexpr int kThemeColumns = 5;
+inline constexpr ThemeCell kThemeCells[] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}, {0, 2}, {0, 3}, {1, 3}, {1, 4}, {0, 4}};
+static_assert(std::size(kThemeCells) == std::size(kThemes), "a place in the settings for each theme");
 
 int themeIndex(const std::string &name);
 
@@ -163,6 +284,10 @@ inline const Color (&kSourceColors)[kAllSources] = look.sources;
 inline const Color &kCardColor = look.card;
 inline const Color &kDisplayColor = look.display;
 Color fxTypeColor(FxType type);
+// An operator's own color in a theme that gives each one its own, else the accent.
+inline Color opColor(int op) {
+    return look.opColors && op >= 0 && op < kOps ? look.ops[op] : look.accent;
+}
 extern float glowing; // how strongly graphs' curves glow, 0..1, which View::paint() sets from the controller too
 
 // A graph's curve, glowing as `glowing` says (see theme.cpp).

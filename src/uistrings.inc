@@ -424,6 +424,9 @@ STR(ThemeMidnight, "Midnight")
 STR(ThemeGraphite, "Graphite")
 STR(ThemeLight, "Light")
 STR(ThemePaper, "Paper")
+STR(ThemeMachined, "Machined")
+STR(ThemeSpectrum, "Spectrum")   // its dark and its light version, in the settings' dark and light rows
+STR(ThemePorcelain, "Porcelain") // likewise
 
 // --- The editor: headings, tabs and labels
 

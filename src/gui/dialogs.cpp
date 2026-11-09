@@ -93,11 +93,11 @@ void View::paintSettings(Canvas &c) {
     slider(settingsLinks(panel), Str::SettingsLinks, shownLinks());
     const Rect handles = settingsHandles(panel, 0);
     c.text({panel.x + 24.0f, handles.y, 52.0f, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim, Align::Left, true);
-    c.text({panel.x + 24.0f, lookY + 180.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
+    c.text({panel.x + 24.0f, lookY + kSettingsThemeRowH + 180.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
            Align::Left);
     // The version and the license, at the bottom.
-    c.line({panel.x + 24.0f, lookY + 206.5f}, {panel.right() - 24.0f, lookY + 206.5f}, kBorder, 1.0f);
-    const Rect about{panel.x + 24.0f, lookY + 214.0f, panel.w - 48.0f, 16.0f};
+    c.line({panel.x + 24.0f, lookY + kSettingsThemeRowH + 206.5f}, {panel.right() - 24.0f, lookY + kSettingsThemeRowH + 206.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, lookY + kSettingsThemeRowH + 214.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), kTextLabel, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), kTextLabel, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())

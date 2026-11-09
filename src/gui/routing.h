@@ -34,16 +34,16 @@ inline int shaperOfNode(int node) {
     return node - kOps - kFilters;
 }
 
-// Operators in the accent color, filters and shapers each in their own.
+// Operators in the accent color (or, in a theme that gives each its own, in that), filters and shapers each in theirs.
 inline Color nodeColor(int node) {
-    return isShaperNode(node) ? kShaperColor : isFilterNode(node) ? kFilterColor : kAccent;
+    return isShaperNode(node) ? kShaperColor : isFilterNode(node) ? kFilterColor : opColor(node);
 }
 
-// A route takes the color of the shaper or filter it joins, if any.
+// A route takes the color of the shaper or filter it joins, if any, else its operator's.
 inline Color routeColor(int from, int to) {
     return isShaperNode(from) || isShaperNode(to)   ? kShaperColor
            : isFilterNode(from) || isFilterNode(to) ? kFilterColor
-                                                    : kAccent;
+                                                    : opColor(from);
 }
 
 // Distance from a node's center to its outline in direction `dir`.

@@ -403,6 +403,11 @@ const char *View::themeName(int index) {
     return kThemes[std::clamp(index, 0, kThemeCount - 1)].name;
 }
 
+std::pair<int, int> View::themeCell(int index) {
+    const ThemeCell cell = kThemeCells[std::clamp(index, 0, kThemeCount - 1)];
+    return {cell.row, cell.column};
+}
+
 View::~View() {
     finishDrag();
 }
@@ -3160,9 +3165,20 @@ void View::paintPanels(Canvas &c) {
         panels.push_back(kFxPanel);
     else
         panels.insert(panels.end(), {kRouting, kInspector});
+    // A theme with soft shadows lifts its panels off the background with one, instead of an outline.
+    if (look.panelShadow > 0.0f) {
+        constexpr int kSteps = 6;
+        for (const Rect &p : panels)
+            for (int k = kSteps; k > 0; --k) {
+                const float out = 1.5f * k;
+                c.fillRect({p.x - out, p.y - out + 2.0f, p.w + 2.0f * out, p.h + 2.0f * out},
+                           Color{0.0f, 0.0f, 0.0f, look.panelShadow / kSteps}, kPanelRadius + out);
+            }
+    }
     for (const Rect &p : panels) {
         c.fillRect(p, kPanel, kPanelRadius);
-        c.strokeRect(p, kBorder, 1.0f, kPanelRadius);
+        if (look.panelShadow <= 0.0f)
+            c.strokeRect(p, kBorder, 1.0f, kPanelRadius);
     }
 }
 
@@ -3318,7 +3334,7 @@ void View::paintRouting(Canvas &c) {
             continue;
         const float out = static_cast<float>(liveAmount(param));
         const OutWire w = outWireOf(node, nodeCenter(node));
-        const Color base = isBoxNode(node) ? nodeColor(node) : kText;
+        const Color base = isBoxNode(node) || look.opColors ? nodeColor(node) : kText;
         const Color color = focused(param) ? kText : base.alpha(0.25f + 0.5f * out);
         c.line(w.start, w.end, color, 1.5f + 2.0f * out);
         arrowHead(c, w.end, {0.0f, 1.0f}, color);
@@ -5783,25 +5799,26 @@ void View::paintNode(Canvas &c, const Widget &w) {
         heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
     // Its halo lights up while playing only if it ends up in the output, as brightly as its envelope and the routes
     // that take it there let it through, where modulation takes them now: one an LFO opens from 0 % lights up too.
+    const Color color = nodeColor(op); // the accent, or in a theme that colors each operator its own
     const float level = std::min(telemetry_.opLevels[op], 1.0f) * static_cast<float>(std::sqrt(outLevel(op)));
     if (level > 0.01f) {
         if (glowing > 0.0f) // feathered, as strongly as the glow is set
-            featherCircle(c, center, kNodeRadius, 16.0f, kAccent.alpha(0.3f * level));
+            featherCircle(c, center, kNodeRadius, 16.0f, color.alpha(0.3f * level));
         else // with the glow off, a plain ring of light, so a sounding operator still shows
-            c.fillCircle(center, kNodeRadius + 7.0f, kAccent.alpha(0.22f * level));
+            c.fillCircle(center, kNodeRadius + 7.0f, color.alpha(0.22f * level));
     }
     if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
         // Unison: a stack of rings peeking out on both sides.
-        c.strokeCircle({center.x - 4.5f, center.y}, kNodeRadius, (heard ? kAccent : kFaint).alpha(0.45f), 1.2f);
-        c.strokeCircle({center.x + 4.5f, center.y}, kNodeRadius, (heard ? kAccent : kFaint).alpha(0.45f), 1.2f);
+        c.strokeCircle({center.x - 4.5f, center.y}, kNodeRadius, (heard ? color : kFaint).alpha(0.45f), 1.2f);
+        c.strokeCircle({center.x + 4.5f, center.y}, kNodeRadius, (heard ? color : kFaint).alpha(0.45f), 1.2f);
     }
-    // The node the inspector shows is filled with the accent, like its tab's plate, and ringed in it.
+    // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
     c.fillCircle(center, kNodeRadius, hovered ? kTrack : kRaised);
     if (selected)
-        c.fillCircle(center, kNodeRadius, kAccent.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill));
-    c.strokeCircle(center, kNodeRadius, heard ? kAccent : kFaint, selected ? 2.0f : 1.5f);
+        c.fillCircle(center, kNodeRadius, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill));
+    c.strokeCircle(center, kNodeRadius, heard ? color : kFaint, selected ? 2.0f : 1.5f);
     if (selected)
-        c.strokeCircle(center, kNodeRadius + kSelectedRing, kAccent, 2.0f);
+        c.strokeCircle(center, kNodeRadius + kSelectedRing, color, 2.0f);
     const Color caption = selected ? kText.alpha(0.8f) : kDim; // its wave and ratio, lighter on its fill
     // Wave glyph above the letter, ratio below it.
     const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
@@ -7408,10 +7425,23 @@ void View::paintKnob(Canvas &c, const Widget &w) {
               4.0f);
     }
 
-    c.fillCircle(center, radius - 7.0f, kKnobBody);
-    c.strokeCircle(center, radius - 7.0f, kBorder, 1.0f);
-    c.line(Canvas::onCircle(center, (radius - 7.0f) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle),
-           kText, 2.0f);
+    // The cap: flat, or shaded from its top down as the theme says, over a shadow where it has one; its pointer a
+    // line from the middle, or a dot by its rim.
+    const float cap = radius - 7.0f;
+    if (look.capShadow > 0.0f) {
+        c.fillCircle({center.x, center.y + 1.5f}, cap + 1.0f, Color{0.0f, 0.0f, 0.0f, look.capShadow * 0.5f});
+        c.fillCircle({center.x, center.y + 1.0f}, cap + 0.5f, Color{0.0f, 0.0f, 0.0f, look.capShadow});
+    }
+    if (look.shadedCaps)
+        c.fillGradient({center.x - cap, center.y - cap, 2.0f * cap, 2.0f * cap}, look.capTop, look.capBottom, cap);
+    else
+        c.fillCircle(center, cap, kKnobBody);
+    c.strokeCircle(center, cap, look.panelShadow > 0.0f ? kBorder.alpha(0.6f) : kBorder, 1.0f);
+    if (look.dotPointer)
+        c.fillCircle(Canvas::onCircle(center, cap - 4.0f, angle), 2.0f, kText);
+    else
+        c.line(Canvas::onCircle(center, cap * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle), kText,
+               2.0f);
 
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
     // One modulated in steps stands on the step it plays.
