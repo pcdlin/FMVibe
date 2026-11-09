@@ -96,6 +96,10 @@ double smoothing(double seconds, double sampleRate) {
     return std::exp(-1.0 / (seconds * sampleRate));
 }
 
+// Louder than any sound the effects take in or put out (+120 dB): a sample past it, or one that isn't a number, has
+// gone wrong somewhere.
+constexpr float kBrokenLevel = 1e6f;
+
 constexpr uint32_t kRampShortest = 32; // the fewest samples a ramp of a gain or mix is spread over
 
 // The step that ramps a gain or mix from `from` to `to` over a chunk of `n` samples. The synth hands the effects 32
@@ -581,6 +585,12 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
     for (uint32_t done = 0; done < frames; done += kChunk) {
         const uint32_t n = std::min(kChunk, frames - done);
         float *const io[2] = {left + done, right + done};
+        // A sample that isn't a number, or is infinite or louder than any sound (see kBrokenLevel), would ring on in
+        // every line and feedback it reaches, for good: it goes in as silence.
+        for (int c = 0; c < 2; ++c)
+            for (uint32_t s = 0; s < n; ++s)
+                if (!(std::abs(io[c][s]) < kBrokenLevel))
+                    io[c][s] = 0.0f;
         // Silence, with nothing left ringing and nothing on its way: it would come out as silence, so it does without
         // the effects' work (a host that keeps processing a quiet instance, as VST3 hosts do, pays nothing for them).
         if (idleChunk(io, n, p)) {
@@ -618,6 +628,17 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
                 rewiring_ = false;
                 orderGraph(p, true);
             }
+        }
+        // One that comes out all the same, from inside an effect, has filled its state: every effect starts again
+        // cleared, and the chunk is silence.
+        bool sane = true;
+        for (uint32_t s = 0; s < n && sane; ++s)
+            sane = std::abs(io[0][s]) < kBrokenLevel && std::abs(io[1][s]) < kBrokenLevel;
+        if (!sane) {
+            std::fill_n(io[0], n, 0.0f);
+            std::fill_n(io[1], n, 0.0f);
+            reset();
+            continue;
         }
         // Whatever still comes out keeps them going too: a DC blocker settling, an EQ's ring, which no check above
         // covers. Stopping there would step the output to silence.

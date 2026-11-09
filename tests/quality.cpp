@@ -276,6 +276,51 @@ void effectsChainChecks() {
         check(clean, "a delay switched off and on again plays back nothing it held");
     }
     {
+        // A sample that isn't a number going into a delay and a reverb, and one louder than any sound (which would
+        // ring on in them for good, or overflow): what comes out stays finite and sane, the tails ring out to silence,
+        // and a sine after them comes out as it should.
+        bool fine = true;
+        for (const float bad : {std::numeric_limits<float>::quiet_NaN(), 3e38f}) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+            p[paramIndex(0, FxParam::DelayFeedback)] = 0.5;
+            p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            chain(p, {0, 1});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            size_t t = 0;
+            bool finite = true;
+            auto run = [&](size_t pieces, double amplitude, float spike) {
+                float peak = 0.0f;
+                for (size_t b = 0; b < pieces; ++b, t += kPiece) {
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                    if (b == 0 && spike != 0.0f)
+                        left[5] = spike;
+                    fx.process(left, right, kPiece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kPiece; ++s) {
+                        finite = finite && std::abs(left[s]) < 100.0f && std::abs(right[s]) < 100.0f;
+                        peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+                    }
+                }
+                return peak;
+            };
+            run(300, 0.5, 0.0f);
+            run(1500, 0.0, bad); // a second
+            for (int k = 0; k < 60 && fx.ringing(); ++k)
+                run(1500, 0.0, 0.0f);
+            const bool rungOut = !fx.ringing();
+            const float after = run(300, 0.5, 0.0f);
+            std::printf("      %s into a delay and a reverb: finite %d, rung out %d, a sine after it %.2f\n",
+                        std::isnan(bad) ? "a NaN" : "3e38", finite, rungOut, after);
+            fine = fine && finite && rungOut && after > 0.1f && after < 2.0f;
+        }
+        check(fine, "a sample that isn't a number or is louder than any sound leaves the effects sane, playing on");
+    }
+    {
         // A compressor pulling a loud sine down, then silence: it keeps going while its release runs out, rather than
         // stopping where it was, and a quiet sine after it comes out as it goes in.
         Effects fx;
