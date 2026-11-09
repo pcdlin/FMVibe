@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <optional>
 #include <span>
@@ -313,7 +314,9 @@ void Synth::noteOn(const NoteRef &note, double velocity) {
         }
 
     Voice &v = allocateVoice();
-    v = Voice{};
+    // As a new one, built in its place: assigning one would build it on the stack first (some 37 KB) and copy it.
+    static_assert(std::is_trivially_destructible_v<Voice>);
+    std::construct_at(&v);
     for (std::array<bool, 2> &dirty : v.combDirty) // cleared once a comb reads them (see renderBlock())
         dirty = {true, true};
     setActive(v, true);
