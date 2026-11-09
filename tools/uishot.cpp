@@ -7988,6 +7988,7 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4); // its effects as a graph, split low/high
     renderExample(dir, renderer, "BA Neon Pluck", "40-spectrum-neon", 4, "Spectrum");
     renderExample(dir, renderer, "PD Crystal Motion", "41-spectrum-crystal", 6, "Spectrum");
+    renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
     renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
