@@ -1415,7 +1415,8 @@ may show anywhere, repaints the whole of it.
   bar's buttons, the preset's name, the output scope, the note source's and velocity's curves and the wheels without
   outlines; + EFFECT, + SOURCE and the MODS view's + Aux and + Add modulation as filled pills, and the cards that add
   an effect, a source or a band's effect filled faintly, a disc behind their plus; each operator, its tab and the
-  routes it sends in a color of its own; the routing nodes on a soft shadow; and the effects graph's nodes filled with
+  routes it sends in a color of its own; the routing nodes on a soft shadow (a silent one outlined in a faint tint of
+  its color, and an operator's unison copies tinted discs peeking out on both sides); and the effects graph's nodes filled with
   a tint of their color, without an outline. Settings that name a theme no longer offered show the nearest one:
   Graphite and Machined as Midnight, Paper as Light.
   **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter

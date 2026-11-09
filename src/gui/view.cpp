@@ -5854,7 +5854,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
         }
         if (selected)
             c.fillRect(w.rect, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill), corner);
-        c.strokeRect(w.rect, live ? color : kFaint, selected ? 2.0f : 1.5f, corner);
+        c.strokeRect(w.rect, live ? color : look.flat ? color.alpha(0.35f) : kFaint, selected ? 2.0f : 1.5f, corner);
         if (selected)
             c.strokeRect(w.rect.inset(-kSelectedRing), color, 2.0f, corner + kSelectedRing);
         c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], kTextValue, kText, Align::Center, true);
@@ -5883,10 +5883,23 @@ void View::paintNode(Canvas &c, const Widget &w) {
         else // with the glow off, a plain ring of light, so a sounding operator still shows
             c.fillCircle(center, kNodeRadius + 7.0f, color.alpha(0.22f * level));
     }
+    // A silent one's outline: faint, or in a flat theme a faint tint of its own color, which sits with its fill and ring.
+    const Color quiet = look.flat ? color.alpha(0.35f) : kFaint;
     if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
-        // Unison: a stack of rings peeking out on both sides.
-        c.strokeCircle({center.x - 4.5f, center.y}, kNodeRadius, (heard ? color : kFaint).alpha(0.45f), 1.2f);
-        c.strokeCircle({center.x + 4.5f, center.y}, kNodeRadius, (heard ? color : kFaint).alpha(0.45f), 1.2f);
+        // Unison: a stack of copies peeking out on both sides, rings, or in a flat theme discs tinted with its color,
+        // each on the node's soft shadow.
+        const float spread = look.flat ? 9.0f : 4.5f; // discs further out, to show past the selection ring
+        for (const float dx : {-spread, spread}) {
+            const Point copy{center.x + dx, center.y};
+            if (look.flat) {
+                c.fillCircle({copy.x, copy.y + 2.0f}, kNodeRadius + 1.0f,
+                             Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.12f : 0.3f});
+                c.fillCircle(copy, kNodeRadius, look.nodeBottom);
+                c.fillCircle(copy, kNodeRadius, (heard ? color : kFaint).alpha(0.4f));
+            } else {
+                c.strokeCircle(copy, kNodeRadius, (heard ? color : kFaint).alpha(0.45f), 1.2f);
+            }
+        }
     }
     // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
     if (look.flat) { // raised: shaded from its top down, on a shadow
@@ -5898,7 +5911,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
     }
     if (selected)
         c.fillCircle(center, kNodeRadius, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill));
-    c.strokeCircle(center, kNodeRadius, heard ? color : kFaint, selected ? 2.0f : 1.5f);
+    c.strokeCircle(center, kNodeRadius, heard ? color : quiet, selected ? 2.0f : 1.5f);
     if (selected)
         c.strokeCircle(center, kNodeRadius + kSelectedRing, color, 2.0f);
     const Color caption = selected ? kText.alpha(0.8f) : kDim; // its wave and ratio, lighter on its fill

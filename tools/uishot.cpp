@@ -1709,7 +1709,21 @@ void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(away, {});
     const bool listShot = renderer.save(view, dir / "17j-spectrum-list-open.png");
     click(view, away);
+    // A node playing unison copies: their discs peek out beside it, left of its circle (read off the rendered pixels).
+    click(view, kRoutingTab);
+    const Point node = nodeCenter(model.layout(), 0);
+    const Point beside{node.x - detail::kNodeRadius - 3.0f, node.y};
+    view.mouseMove(away, {});
+    const uint32_t single = renderer.save(view, dir / "17k-flat-unison-off.png") ? renderer.pixel(beside) : 0u;
+    model.set(paramIndex(0, OpParam::Unison), 4.0);
+    view.poll();
+    view.mouseMove(away, {});
+    const uint32_t stacked = renderer.save(view, dir / "17l-flat-unison.png") ? renderer.pixel(beside) : 0u;
+    model.set(paramIndex(0, OpParam::Unison), 1.0);
+    view.poll();
+    click(view, kFxTab);
     model.themeName = "Midnight";
+    check(single != 0u && stacked != 0u && single != stacked, "a Spectrum node's unison copies show beside it");
     check(bare != outlined && bare == bareAgain && bare != 0u && midnight != 0u && listShot,
           "a Spectrum card is outlined only while the mouse is over it");
 }
