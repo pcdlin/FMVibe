@@ -75,6 +75,20 @@ void featherLine(Canvas &c, const Point *points, size_t count, float width, floa
     c.polylineStrokes(points, count, colors, widths, kFeatherSteps);
 }
 
+void paintMenuPanel(Canvas &c, Rect r) {
+    if (look.flatMenus) {
+        constexpr int kSteps = 5;
+        for (int k = kSteps; k > 0; --k) {
+            const float out = 1.5f * k;
+            c.fillRect({r.x - out, r.y - out + 3.0f, r.w + 2.0f * out, r.h + 2.0f * out}, Color{0.0f, 0.0f, 0.0f, 0.1f},
+                       kRadiusCard + out);
+        }
+    }
+    c.fillRect(r, kRaised, kRadiusCard);
+    if (!look.flatMenus)
+        c.strokeRect(r, kBorder, 1.0f, kRadiusCard);
+}
+
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width) {
     if (glowing > 0.0f) {
         const float strength = 2.0f * glowing, radius = 0.5f + glowing;

@@ -59,6 +59,7 @@ struct Palette {
     float cardTint = 0.0f;        // effect and source cards tinted with their own color, this strongly
     bool cardKnobs = false;       // a knob's arc in the color of what it belongs to (its card, its operator), not the accent
     bool pillButtons = false;     // + SOURCE and + EFFECT as filled pills, their names in full text, without an outline
+    bool flatMenus = false;       // list buttons filled dark and the lists they open shadowed, neither outlined
 };
 static_assert(static_cast<int>(FxType::Count) == 16, "a color for each effect type in every theme");
 
@@ -144,7 +145,7 @@ inline constexpr Palette kThemes[] = {
      false, {}, {}, true, 0.0f, 0.0f, true,
      {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
       Color::hex(0xA6E05A)},
-     0.10f, true, true},
+     0.10f, true, true, true},
     {"Porcelain", Str::ThemePorcelain, // airy: white panels lifted off a cool gray by soft shadows, one cobalt accent
      Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
      Color::hex(0xFFFFFF),
@@ -207,6 +208,9 @@ extern float glowing; // how strongly graphs' curves glow, 0..1, which View::pai
 
 // A graph's curve, glowing as `glowing` says (see theme.cpp).
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width);
+
+// An open list's or menu's panel: outlined, or in a theme with flat menus lifted by a soft shadow instead.
+void paintMenuPanel(Canvas &c, Rect r);
 
 // A glow feathering out, as strong as `color`'s alpha where it starts and fading to nothing `spread` further out: round a
 // circle of radius `inner`, round a rounded box, and along a line `width` wide. As the glow setting (`glowing`) is at

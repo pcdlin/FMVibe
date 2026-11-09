@@ -6342,8 +6342,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::WaveMenuItem: {
@@ -6601,14 +6600,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::FxMenu:
         if (w.a == 1) { // the list's panel
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::SourceMenu:
         if (w.a == 1) { // the list's panel
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::SourceMenuItem: {
@@ -6726,8 +6723,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             !isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
         const bool lit = relevant && (hovered || listMenu_ == w.param);
         const Color color = listColor(w.param);
-        c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, kRadiusControl);
+        if (look.flatMenus) { // filled dark, without an outline, tinted with its color under the mouse
+            c.fillRect(w.rect, kDisplayColor, kRadiusControl);
+            if (lit)
+                c.fillRect(w.rect, color.alpha(0.24f), kRadiusControl);
+        } else {
+            c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, kRadiusControl);
+            c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, kRadiusControl);
+        }
         const Color text = !relevant ? kFaint : lit ? kText : kDim;
         // An LFO's shape shows its icon before its name.
         const float indent = isLfoShape(w.param) ? 24.0f : 0.0f;
@@ -6743,8 +6746,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::ListMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::PeqBand: {
@@ -6784,8 +6786,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::PeqTypeMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::PeqTypeItem: {

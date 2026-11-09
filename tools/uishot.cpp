@@ -1704,8 +1704,13 @@ void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
     const uint32_t bare = edgeAt(away, "17g-card-outline-rest.png");
     const uint32_t outlined = edgeAt(inside, "17h-card-outline-hover.png");
     const uint32_t bareAgain = edgeAt(away, "17i-card-outline-left.png");
+    // Its dropdowns: the LFO's shape list button filled without an outline, and its list open on a soft shadow.
+    click(view, detail::lfoShapeButton(0.0f).center());
+    view.mouseMove(away, {});
+    const bool listShot = renderer.save(view, dir / "17j-spectrum-list-open.png");
+    click(view, away);
     model.themeName = "Midnight";
-    check(bare != outlined && bare == bareAgain && bare != 0u && midnight != 0u,
+    check(bare != outlined && bare == bareAgain && bare != 0u && midnight != 0u && listShot,
           "a Spectrum card is outlined only while the mouse is over it");
 }
 
