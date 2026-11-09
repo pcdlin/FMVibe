@@ -1687,6 +1687,28 @@ void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
           "a hovered depth handle draws its range wider, over the others");
 }
 
+// In a theme whose cards go without an outline (Spectrum, Porcelain), a source card outlined only while the mouse is
+// over it, and Midnight's outlined at rest (read off the rendered pixels).
+void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    const Rect card = detail::sourceCard(0.0f);
+    const Point edge{card.x, card.center().y}, inside{card.x + 4.0f, card.center().y}, away{600.0f, 328.0f};
+    auto edgeAt = [&](Point mouse, const char *file) {
+        view.mouseMove(mouse, {});
+        return renderer.save(view, dir / file) ? renderer.pixel(edge) : 0u;
+    };
+    const uint32_t midnight = edgeAt(away, "17f-card-outline-midnight.png");
+    model.themeName = "Spectrum";
+    const uint32_t bare = edgeAt(away, "17g-card-outline-rest.png");
+    const uint32_t outlined = edgeAt(inside, "17h-card-outline-hover.png");
+    const uint32_t bareAgain = edgeAt(away, "17i-card-outline-left.png");
+    model.themeName = "Midnight";
+    check(bare != outlined && bare == bareAgain && bare != 0u && midnight != 0u,
+          "a Spectrum card is outlined only while the mouse is over it");
+}
+
 // An operator's Ratio, a 7-segment readout: each digit dragged on its own, a step of its place every 6 px, carrying
 // into the next and stopping at 64.00; the wheel stepping the digit under the mouse; a double-click rounding to the
 // digit; the hovered digit lit behind (read off the rendered pixels); a typed fraction; and a source's handle dropped
@@ -7984,6 +8006,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testCardEdgeScroll(dir, renderer);
     testMiddleDrag(dir, renderer);
     testModFocus(dir, renderer);
+    testCardOutline(dir, renderer);
     testModPill(dir, renderer);
     testRatioDisplay(dir, renderer);
     testTempo(dir, renderer);

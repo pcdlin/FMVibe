@@ -1293,6 +1293,14 @@ private:
     Telemetry telemetry_{};
     std::optional<Widget> hover_;
     Point hoverPoint_; // where the mouse is
+    // Where the effect and source cards were last painted, as much of each as shows (a source by its number, an effect
+    // by kMaxSources + its slot), and the one the mouse is over (-1 for none): a theme whose cards go without an
+    // outline outlines that one alone.
+    std::vector<std::pair<int, Rect>> cardRects_;
+    int hoverCard_ = -1;
+    void noteCard(int id, Rect card, Rect shown);
+    int cardAt(Point p) const;
+    bool cardOutlined(int id, bool dragged) const;
     Drag drag_;
     // What the last press hit, as it went down, and where: a double-click after it goes with it.
     std::optional<Widget> pressed_;

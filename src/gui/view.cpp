@@ -2875,10 +2875,12 @@ void View::paint(Canvas &c, Rect area) {
     glow_ = glowing = shownGlow();
     links_ = shownLinks();
     handles_ = controller_.handleSize();
-    if (partial)
+    if (partial) {
         c.fillRect(area, kBackground);
-    else
+    } else {
         c.clear(kBackground);
+        cardRects_.clear(); // the cards painted below note where they are again
+    }
     paintPanels(c);
     if (headerShown)
         paintHeader(c);
@@ -3616,8 +3618,9 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
             c.fillRect(r, kCardColor, kRadiusCard);
             if (look.cardTint > 0.0f) // tinted like the card unfolded
                 c.fillRect(r, fx.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
-            const float edge = look.cardTint > 0.0f ? 0.2f : 0.45f;
-            c.strokeRect(r, dragged ? fx : (on ? fx.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+            noteCard(kMaxSources + slot, r, kFxPanel);
+            if (cardOutlined(kMaxSources + slot, dragged))
+                c.strokeRect(r, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
             // its icon and cross (widgets), the grip's dots between, then its name down the strip
             gripDots(r, (hover_ && hover_->kind == Kind::FxGrip && hover_->a == slot && drag_.kind == DragKind::None) ||
                             dragged);
@@ -3639,8 +3642,9 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     c.fillRect(card, kCardColor, kRadiusCard);
     if (look.cardTint > 0.0f) // tinted with its own color, faintly while it is off
         c.fillRect(card, fx.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
-    const float edge = look.cardTint > 0.0f ? 0.2f : 0.45f; // a tinted card needs less of an outline
-    c.strokeRect(card, dragged ? fx : (on ? fx.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+    noteCard(kMaxSources + slot, card, kFxPanel);
+    if (cardOutlined(kMaxSources + slot, dragged))
+        c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
     // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
     const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
     const Rect titleRect{card.x + 33.0f, card.y + 6.0f, titleRight - card.x - 33.0f, 20.0f};
@@ -5711,8 +5715,10 @@ void View::paintSource(Canvas &c, float card, int s) {
     c.fillRect(p, kCardColor, kRadiusCard);
     if (look.cardTint > 0.0f) // tinted with its own color, faintly while it is off
         c.fillRect(p, color.alpha(look.cardTint * (sourceOn(s) ? 1.0f : 0.4f)), kRadiusCard);
-    const float edge = look.cardTint > 0.0f ? 0.2f : 0.35f; // a tinted card needs less of an outline
-    c.strokeRect(p, dragged ? color : (sourceOn(s) ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+    noteCard(s, p, sourceCardClip());
+    if (cardOutlined(s, dragged))
+        c.strokeRect(p, dragged ? color : (sourceOn(s) ? color.alpha(0.35f) : kBorder), dragged ? 1.5f : 1.0f,
+                     kRadiusCard);
     if (sourceFolded(s)) { // the grip's dots under the handle (widgets), then its name down the strip
         const bool grip =
             (hover_ && hover_->kind == Kind::SourceGrip && hover_->a == s && drag_.kind == DragKind::None) || dragged;
@@ -8507,7 +8513,12 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // Ctrl going down or up, or the mouse going in or out of the routing graph with it held, shows or hides its
         // grid.
         const bool gridEdge = ctrlHeld_ && kRouting.contains(before) != kRouting.contains(p);
-        bool changed = ctrlChanged || gridEdge || hit.has_value() != hover_.has_value() || (hit && !same(*hit, *hover_)) ||
+        // The card under the mouse, which a theme without card outlines outlines.
+        const int card = look.cardTint > 0.0f ? cardAt(p) : -1;
+        const bool cardChanged = card != hoverCard_;
+        hoverCard_ = card;
+        bool changed = cardChanged || ctrlChanged || gridEdge || hit.has_value() != hover_.has_value() ||
+                       (hit && !same(*hit, *hover_)) ||
                        (hit && hit->kind == Kind::PartialArea) ||
                        (hit && isRatioDisplay(*hit) && ratioDigit(p.x) != ratioDigit(before.x)); // its lit digit
         hover_ = std::move(hit);
@@ -9443,8 +9454,29 @@ void View::finishDrag() {
 }
 
 void View::mouseLeave() {
-    if (drag_.kind == DragKind::None)
+    if (drag_.kind == DragKind::None) {
         hover_.reset();
+        hoverCard_ = -1;
+    }
+}
+
+void View::noteCard(int id, Rect card, Rect shown) {
+    const float x = std::max(card.x, shown.x), y = std::max(card.y, shown.y);
+    const float right = std::min(card.right(), shown.right()), bottom = std::min(card.bottom(), shown.bottom());
+    if (right > x && bottom > y)
+        cardRects_.push_back({id, {x, y, right - x, bottom - y}});
+}
+
+int View::cardAt(Point p) const {
+    for (auto it = cardRects_.rbegin(); it != cardRects_.rend(); ++it) // the last painted is on top
+        if (it->second.contains(p))
+            return it->first;
+    return -1;
+}
+
+// A card's outline: always, but in a theme whose cards go without one, only while it is dragged or under the mouse.
+bool View::cardOutlined(int id, bool dragged) const {
+    return look.cardTint <= 0.0f || dragged || (hoverCard_ == id && drag_.kind == DragKind::None);
 }
 
 void View::middleDown(Point p) {
