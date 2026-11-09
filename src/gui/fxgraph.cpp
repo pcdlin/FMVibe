@@ -2154,7 +2154,8 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     // On grey: in the row, its container paints it; in the graph, its card.
     if (!row) {
         c.fillRect(card, splitFill(), kRadiusCard);
-        c.strokeRect(card, splitLine(), 1.3f, kRadiusCard);
+        if (look.cardTint <= 0.0f) // in a theme whose cards go without an outline, so does it
+            c.strokeRect(card, splitLine(), 1.3f, kRadiusCard);
     }
     const bool grabbed = (drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
                           drag_.widget.a == fxSplitNode(split)) ||

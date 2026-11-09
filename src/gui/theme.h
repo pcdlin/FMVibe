@@ -59,7 +59,8 @@ struct Palette {
     float cardTint = 0.0f;        // effect and source cards tinted with their own color, this strongly
     bool cardKnobs = false;       // a knob's arc in the color of what it belongs to (its card, its operator), not the accent
     bool pillButtons = false;     // + SOURCE and + EFFECT as filled pills, their names in full text, without an outline
-    bool flatMenus = false;       // list buttons filled dark and the lists they open shadowed, neither outlined
+    bool flatMenus = false;       // list buttons filled dark and the lists they open shadowed, neither outlined, and
+                                  // the other controls (title bar buttons, fields, displays) without outlines too
     bool solidButtons = false;    // a lit switch filled solid with its color, what is on it in the background's color,
                                   // and switches set in a dark well, neither outlined
     bool embossedNodes = false;   // the routing graph's nodes raised: shaded from nodeTop down to nodeBottom, on a shadow
@@ -212,6 +213,10 @@ inline Color opColor(int op) {
 // What is drawn on a lit switch: in its color, or on a solid one in the background's.
 inline Color litInk(Color color) {
     return look.solidButtons ? look.background : color;
+}
+// Whether controls get their 1 px outline: not in a theme with flat menus and controls.
+inline bool outlined() {
+    return !look.flatMenus;
 }
 // How large the switches' drawn icons are: a little smaller on solid ones, which fill their switch to its edges.
 inline float switchIconScale() {

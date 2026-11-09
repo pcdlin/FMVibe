@@ -391,6 +391,16 @@ void paintMenuButton(Canvas &c, Rect r, const char *name, bool hovered, bool ope
     c.polyline(chevron, 3, pill && !lit && !full ? kDim : ink, 1.5f);
 }
 
+// A card that adds one, in a theme with pill buttons: filled faintly without an outline (a little more, with a tint of the
+// accent, under the mouse), its plus, `arm` long each way about `m`, on a disc as + SOURCE's pill is filled.
+void ghostCard(Canvas &c, Rect r, Point m, float arm, bool hovered) {
+    c.fillRect(r, hovered ? kAccent.alpha(0.1f) : kTrack.alpha(0.3f), kRadiusCard);
+    c.fillCircle(m, arm + 7.0f, hovered ? kAccent.alpha(0.3f) : kTrack);
+    const Color ink = hovered ? kText : kDim;
+    c.line({m.x - arm * 0.6f, m.y}, {m.x + arm * 0.6f, m.y}, ink, 2.0f);
+    c.line({m.x, m.y - arm * 0.6f}, {m.x, m.y + arm * 0.6f}, ink, 2.0f);
+}
+
 } // namespace
 
 float View::heightFor(const UiLayout &layout) {
@@ -3224,7 +3234,8 @@ void View::paintHeader(Canvas &c) {
     // The output scope: the last span the audio thread took (see kOutScopeBins), its level (see followScopeLevel()) at
     // the display's edges (but lifted by no more than 24 dB, so a fading tail shrinks away), over a faint middle line.
     c.fillRect(kOutScope, kDisplayColor, kRadiusControl);
-    c.strokeRect(kOutScope, kBorder, 1.0f, kRadiusControl);
+    if (outlined())
+        c.strokeRect(kOutScope, kBorder, 1.0f, kRadiusControl);
     const Rect inner{kOutScope.x + 5.0f, kOutScope.y + 4.0f, kOutScope.w - 10.0f, kOutScope.h - 8.0f};
     const float middle = inner.center().y;
     c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
@@ -3287,7 +3298,10 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
     const float top = r.y + inset;
     const float bottom = r.bottom() - inset;
     c.fillRect(r, kRaised, kRadiusCard);
-    c.strokeRect(r, hovered || active ? kDim : kBorder, 1.0f, kRadiusCard);
+    if (outlined())
+        c.strokeRect(r, hovered || active ? kDim : kBorder, 1.0f, kRadiusCard);
+    else if (hovered || active)
+        c.fillRect(r, kTrack.alpha(0.5f), kRadiusCard);
     if (w.kind == Kind::ModWheel) {
         // Fills up from the bottom with the wheel's value, in the color of its handle; bipolar, from the middle, where
         // it moves nothing.
@@ -3570,7 +3584,8 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
         const Color outline = held ? kText.alpha(0.7f) : splitLine();
         if (box.folded) { // a strip: its icon, a grip, its cross, then its name down the rest
             c.fillRect(whole, splitFill(), kRadiusCard);
-            c.strokeRect(whole, outline, held ? 1.6f : 1.3f, kRadiusCard);
+            if (look.cardTint <= 0.0f || hot)
+                c.strokeRect(whole, outline, held ? 1.6f : 1.3f, kRadiusCard);
             splitIcon(c, fxIconRect(whole), hot ? kText : kDim, splitThree(box.split) ? 3 : 2);
             gripDots(whole, hot);
             paintDownward(c, {whole.x, whole.y + 82.0f, whole.w, whole.h - 90.0f},
@@ -3584,7 +3599,10 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
         c.fillRect(outer, splitFill(), kFxBoxRadius);
         c.fillRect({bandX, outer.y, outer.right() - bandX, outer.h}, kPanel, kFxBoxRadius);
         c.fillRect({bandX, outer.y, kFxBoxRadius, outer.h}, kPanel);
-        c.strokeRect(outer, outline, held ? 1.6f : 1.3f, kFxBoxRadius);
+        // Outlined as a card is: always, or in a theme whose cards go without one, while the mouse is over it.
+        if (look.cardTint <= 0.0f || hot || (drag_.kind == DragKind::None && outer.contains(hoverPoint_)))
+            c.strokeRect(outer, outline, held ? 1.6f : 1.3f, kFxBoxRadius);
+        noteCard(kMaxSources + kFxSlots + box.split, outer, kFxPanel);
         paintSplitControls(c, box.split, column, true);
         // The arrows along its band, into each of its cards, in the band's color; none into its dashed card.
         // Faint along a band its join doesn't let through, the other band soloed.
@@ -4939,7 +4957,8 @@ void View::paintNoteSource(Canvas &c, float top) {
                       drag_.kind == DragKind::None) ||
                      shapeEditing() == kNoteCurve; // it opens the curve, or has
     c.fillRect(box, lit ? kTrack : kDisplayColor, kRadiusControl);
-    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
+    if (outlined())
+        c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
     // Behind the note, faintly, its curve across the box.
     auto get = [this](int index) { return value(index); };
     std::vector<Point> curve;
@@ -4973,7 +4992,8 @@ void View::paintVelocitySource(Canvas &c, float top) {
                       drag_.kind == DragKind::None) ||
                      shapeEditing() == kVelocityCurve; // it opens the curve, or has
     c.fillRect(box, lit ? kTrack : kDisplayColor, kRadiusControl);
-    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
+    if (outlined())
+        c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
     // Behind the number, faintly, its curve across the box, with a mark where the newest voice's velocity is.
     auto get = [this](int index) { return value(index); };
     auto at = [&](double x) {
@@ -6387,7 +6407,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::ShapeReset:
     case Kind::PartialReset:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         resetIcon(c, w.rect.center(), hovered ? kText : kDim);
         break;
     case Kind::ShapeGrid: {
@@ -6409,7 +6430,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool redo = w.a == 1;
         const bool can = (redo ? controller_.nextRedo() : controller_.nextUndo()) != nullptr;
         c.fillRect(w.rect, hovered && can ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         // An arrow curving over the top, its head at the left end (undo) or the right (redo), pointing down.
         const Point m{w.rect.center().x, w.rect.center().y + 2.0f};
         const Color color = !can ? kFaint : (hovered ? kText : kDim);
@@ -6547,6 +6569,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SplitSolo: { // a plain S, filled in its band's color while soloed
         const bool on = value(w.param) >= 0.5;
         const Color band = laneColor(w.b);
+        if (look.solidButtons) { // as the other switches: a dark well, filled solid with its band's color while on
+            c.fillRect(w.rect, on ? band : hovered ? kTrack : kDisplayColor, kRadiusControl);
+            c.text(w.rect, tr(Str::SoloMark), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
+                   true);
+            break;
+        }
         c.fillRect(w.rect, on ? band.alpha(0.22f) : (hovered ? kTrack : kCardColor), kRadiusControl);
         c.strokeRect(w.rect, on ? band : mix(kCardColor, kDim, 0.25f), 1.0f, kRadiusControl);
         c.text(w.rect, tr(Str::SoloMark), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
@@ -6555,14 +6583,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxBoxAdd: {
         // As the dashed card after the effects, narrower: a plus, then which band it adds to.
         const Color color = kAccent;
-        if (hovered)
-            c.fillRect(w.rect, color.alpha(0.07f), kRadiusCard);
-        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
         const float arm = 9.0f;
         const Point m{w.rect.center().x, w.rect.center().y - 14.0f};
-        const Color ink = hovered ? kText : kFaint.alpha(0.8f);
-        c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
-        c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
+        Color ink = hovered ? kText : kFaint.alpha(0.8f);
+        if (look.pillButtons) { // filled faintly, without an outline, its plus on a disc as + SOURCE's pill
+            ghostCard(c, w.rect, m, arm, hovered);
+            ink = hovered ? kText : kDim;
+        } else {
+            if (hovered)
+                c.fillRect(w.rect, color.alpha(0.07f), kRadiusCard);
+            c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
+            c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
+            c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
+        }
         // In capitals, as ADD EFFECT and ADD SOURCE are.
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, upperCase(tr(Str::ButtonAddToBand)), kTextLabel, ink,
                Align::Center, true);
@@ -6586,14 +6619,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // lit while hovered in the theme's accent, like + EFFECT and + SOURCE.
         const bool fx = w.kind == Kind::FxShadow;
         const Color color = kAccent;
-        if (hovered)
-            c.fillRect(w.rect, color.alpha(0.07f), kRadiusCard);
-        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
         const float arm = 12.0f;
         const Point m{w.rect.center().x, w.rect.center().y - arm};
-        const Color ink = hovered ? kText : kFaint.alpha(0.8f);
-        c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
-        c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
+        Color ink = hovered ? kText : kFaint.alpha(0.8f);
+        if (look.pillButtons) { // filled faintly, without an outline, its plus on a disc as + SOURCE's pill
+            ghostCard(c, w.rect, m, arm, hovered);
+            ink = hovered ? kText : kDim;
+        } else {
+            if (hovered)
+                c.fillRect(w.rect, color.alpha(0.07f), kRadiusCard);
+            c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
+            c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
+            c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
+        }
         const char *what = tr(fx ? Str::ButtonAddEffect : Str::ButtonAddSource);
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 16.0f}, what, kTextLabel, ink, Align::Center, true);
         break;
@@ -6870,14 +6908,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break; // drawn with its editor
     case Kind::ShapeDone:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         doneIcon(c, w.rect.center(), kText);
         break;
     case Kind::ShapeCollapse:
     case Kind::ShapeExpand:
     case Kind::ShapeWiden:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         if (w.kind == Kind::ShapeCollapse)
             collapseIcon(c, w.rect.center(), hovered ? kText : kDim);
         else
@@ -6920,7 +6960,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Save and Save As greyed out while they have nothing to save.
         const bool off = !presetActionOn(static_cast<PresetAction>(w.a));
         c.fillRect(w.rect, hovered && !off ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         const Point m = w.rect.center();
         const Color color = off ? kFaint : hovered ? kText : kDim;
         switch (static_cast<PresetAction>(w.a)) {
@@ -6973,7 +7014,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsButton: {
         const bool open = settingsOpen_;
         c.fillRect(w.rect, hovered || open ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         // A cog: eight teeth around a ring.
         const Point center = w.rect.center();
         const Color color = hovered || open ? kText : kDim;
@@ -7068,7 +7110,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // The preset's name, a dot while it has changed since it was loaded, and a chevron for the browser.
         const bool lit = hovered || browserOpen_;
         c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         c.text({w.rect.x + 28.0f, w.rect.y, w.rect.w - 56.0f, w.rect.h}, controller_.presetName(), kTextBody, kText,
                Align::Center, true);
         if (controller_.patchEdited())
@@ -7082,7 +7125,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A metronome, then the tempo and its unit, centered in the room right of it.
         const bool lit = hovered || active;
         c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         const Color ink = lit ? kText : kDim;
         const Point m{w.rect.x + 14.0f, w.rect.center().y};
         const Point body[] = {{m.x - 5.0f, m.y + 6.0f}, {m.x - 2.0f, m.y - 6.0f}, {m.x + 2.0f, m.y - 6.0f},
@@ -7102,7 +7146,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::PresetStep: {
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         const Point m = w.rect.center();
         const float d = w.a < 0 ? 1.5f : -1.5f; // the chevron points the way it steps
         const Point chevron[] = {{m.x + d, m.y - 4.0f}, {m.x - d, m.y}, {m.x + d, m.y + 4.0f}};
@@ -7144,13 +7189,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::BrowserFolder:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         c.text(w.rect, tr(Str::ButtonOpenFolder), kTextLabel, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ConfirmButton: {
         if (w.a == 4) { // a split removed with its bands' effects
             c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+            if (outlined())
+                c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
             c.text(w.rect, tr(Str::ButtonSplitDelete), kTextBody, kText, Align::Center);
             break;
         }
@@ -7320,13 +7367,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                           cascade_->slot == w.b;
         const float radius = w.rect.h * 0.5f;
         if (aux < 0) {
+            if (look.pillButtons) { // a filled pill, as + SOURCE
+                c.fillRect(w.rect, hovered || open ? kAccent.alpha(0.24f) : kTrack, radius);
+                c.text(w.rect, tr(Str::ModsAddAux), kTextLabel, kText, Align::Center, true);
+                break;
+            }
             c.strokeRect(w.rect, hovered || open ? kDim : kTrack, 1.0f, radius, true);
             c.text(w.rect, tr(Str::ModsAddAux), kTextLabel, hovered || open ? kText : kDim);
             break;
         }
         const Rect chip{w.rect.x, w.rect.y, w.rect.w + 22.0f, w.rect.h};
         c.fillRect(chip, hovered || open ? kTrack : kRaised, radius);
-        c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
+        if (outlined())
+            c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
         c.fillCircle({w.rect.x + 11.0f, w.rect.center().y}, 4.0f, kSourceColors[aux]);
         c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 22.0f, w.rect.h}, sourceName(aux), kTextLabel, kText, Align::Left,
                true);
@@ -7335,6 +7388,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::ModsAdd: {
         // A dashed button, as + Aux: lit under the mouse.
         const float radius = w.rect.h * 0.5f;
+        if (look.pillButtons) { // a filled pill, as + SOURCE
+            c.fillRect(w.rect, hovered ? kAccent.alpha(0.24f) : kTrack, radius);
+            c.text(w.rect, tr(Str::ModsAddModulation), kTextLabel, kText, Align::Center, true);
+            break;
+        }
         c.strokeRect(w.rect, hovered ? kDim : kTrack, 1.0f, radius, true);
         c.text(w.rect, tr(Str::ModsAddModulation), kTextLabel, hovered ? kText : kDim);
         break;

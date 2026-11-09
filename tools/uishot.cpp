@@ -1926,8 +1926,10 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 // with their own node places and their name in the preset bar. `prefix` names the images: its routing, matrix
 // and effects.
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
-                   const std::string &prefix, size_t effects) {
+                   const std::string &prefix, size_t effects, const std::string &theme = "") {
     FakeController model;
+    if (!theme.empty())
+        model.themeName = theme;
     View view(model);
     const std::vector<FactoryPreset> &presets = factoryPresets();
     const auto example =
@@ -1959,6 +1961,14 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     view.mouseMove({600.0f, 600.0f}, {});
     shots = shots && model.ui.fxGraphView &&
             renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
+    if (!theme.empty()) { // in another theme, its effects as a row and its MODS view too
+        click(view, detail::fxModeButton(0).center());
+        view.mouseMove({600.0f, 600.0f}, {});
+        shots = shots && renderer.save(view, dir / (prefix + "-fx-row.png"));
+        click(view, {314.0f, 116.0f});
+        view.mouseMove({600.0f, 600.0f}, {});
+        shots = shots && renderer.save(view, dir / (prefix + "-mods.png"));
+    }
     check(shots && fxChain(model).size() == effects,
           ("render " + name + "'s routing, matrix and " + std::to_string(effects) +
            " effects, and its effects' panel as a chain and as a graph")
@@ -7976,6 +7986,8 @@ void run(const std::filesystem::path &dir, float scale) {
     runMore(dir, renderer);
     renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6);
     renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4); // its effects as a graph, split low/high
+    renderExample(dir, renderer, "BA Neon Pluck", "40-spectrum-neon", 4, "Spectrum");
+    renderExample(dir, renderer, "PD Crystal Motion", "41-spectrum-crystal", 6, "Spectrum");
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
     renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
