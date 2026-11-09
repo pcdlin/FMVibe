@@ -33,3 +33,19 @@ KY Temple Gong
 LD Feedback Lead
 PD Six-Op Cascade
 BA Neon Pluck
+BA Eighties Slap
+BA Grind Bass
+DR Log Drum
+DR Hard Kick
+FX Jet Takeoff
+FX Crush Downer
+KY Funk Clav
+KY Driven Tines
+LD Classic Synlead
+LD Screamer
+PD Vintage Strings
+PD Distorted Swell
+PL Koto Pluck
+PL Razor Pluck
+SQ Mallet Steps
+SQ Hammer Gate
