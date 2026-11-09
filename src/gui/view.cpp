@@ -7407,7 +7407,6 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const double n = norm(w.param);
     const float angle = knobAngle(n);
 
-    c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f);
     // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
     const int macro = macroOf(w.param);
     // An LFO's Phase is faint too while notes don't start the LFO there.
@@ -7437,9 +7436,14 @@ void View::paintKnob(Canvas &c, const Widget &w) {
         return kAccent;
     };
     const Color plain = sum >= 0 ? laneColor(levelOf) : owner(w.param);
-    const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : plain).alpha(idle ? 0.3f : 1.0f);
+    const Color own = macro >= 0 ? kSourceColors[kMaxSources + macro] : plain;
+    const Color arc = own.alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
+    // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color, which stands
+    // out on a card tinted with it as the plain track doesn't.
+    const Color track = look.cardKnobs ? own.alpha(focused ? 0.45f : 0.28f) : (focused ? kFaint : kTrack);
+    c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, track, 3.5f);
     c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
 
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
