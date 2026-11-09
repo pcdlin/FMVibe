@@ -371,18 +371,24 @@ void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected) {
 }
 
 // + EFFECT and + SOURCE: a plus and the name, then a chevron for the list it opens. Neutral at rest, in the theme's
-// accent under the mouse and while its list is open; dimmed while every place is taken (`full`).
+// accent under the mouse and while its list is open; dimmed while every place is taken (`full`). In a theme with pill
+// buttons, a filled pill without an outline, its plus and name in full text at rest and its chevron dim.
 void paintMenuButton(Canvas &c, Rect r, const char *name, bool hovered, bool open, bool full) {
     const bool lit = (hovered || open) && !full;
-    const Color ink = full ? kFaint : (lit ? kText : kDim);
-    c.fillRect(r, lit ? kAccent.alpha(0.18f) : kRaised, kRadiusControl);
-    c.strokeRect(r, lit ? kAccent.alpha(0.9f) : kBorder, 1.0f, kRadiusControl);
+    const bool pill = look.pillButtons;
+    const Color ink = full ? kFaint : (lit || pill ? kText : kDim);
+    if (pill) {
+        c.fillRect(r, lit ? kAccent.alpha(0.24f) : kTrack, std::min(kRadiusPanel, r.h * 0.5f)); // round ends
+    } else {
+        c.fillRect(r, lit ? kAccent.alpha(0.18f) : kRaised, kRadiusControl);
+        c.strokeRect(r, lit ? kAccent.alpha(0.9f) : kBorder, 1.0f, kRadiusControl);
+    }
     paintAddPlus(c, {r.x + 10.0f, r.center().y}, ink);
     c.text({r.x + 10.0f + kAddPlusW, r.y - kAddNameLift, r.w - 30.0f - kAddPlusW, r.h}, name, kTextLabel, ink,
            Align::Left, true);
     const Point m{r.right() - 13.0f, r.center().y};
     const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-    c.polyline(chevron, 3, ink, 1.5f);
+    c.polyline(chevron, 3, pill && !lit && !full ? kDim : ink, 1.5f);
 }
 
 } // namespace

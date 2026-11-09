@@ -58,6 +58,7 @@ struct Palette {
     Color ops[kOps]{};            // A to F: its node, its tab and the routes it sends
     float cardTint = 0.0f;        // effect and source cards tinted with their own color, this strongly
     bool cardKnobs = false;       // a knob's arc in the color of what it belongs to (its card, its operator), not the accent
+    bool pillButtons = false;     // + SOURCE and + EFFECT as filled pills, their names in full text, without an outline
 };
 static_assert(static_cast<int>(FxType::Count) == 16, "a color for each effect type in every theme");
 
@@ -143,7 +144,7 @@ inline constexpr Palette kThemes[] = {
      false, {}, {}, true, 0.0f, 0.0f, true,
      {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
       Color::hex(0xA6E05A)},
-     0.10f, true},
+     0.10f, true, true},
     {"Porcelain", Str::ThemePorcelain, // airy: white panels lifted off a cool gray by soft shadows, one cobalt accent
      Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
      Color::hex(0xFFFFFF),
@@ -163,7 +164,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x7FA313), Color::hex(0x0A8FAA), Color::hex(0x5D6472), Color::hex(0xB03FC4),
       Color::hex(0x0F8F85), Color::hex(0xA07020)},
      {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xC27A1E)},
-     false, {}, {}, true, 0.22f, 0.10f, false, {}, 0.07f, true},
+     false, {}, {}, true, 0.22f, 0.10f, false, {}, 0.07f, true, true},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));
 // A source left out of a theme's list would be drawn black.
