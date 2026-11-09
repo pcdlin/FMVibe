@@ -3180,10 +3180,10 @@ void View::paintPanels(Canvas &c) {
         panels.insert(panels.end(), {kRouting, kInspector});
     // A theme with soft shadows lifts its panels off the background with one, instead of an outline.
     if (look.panelShadow > 0.0f) {
-        constexpr int kSteps = 6;
+        constexpr int kSteps = 5;
         for (const Rect &p : panels)
             for (int k = kSteps; k > 0; --k) {
-                const float out = 1.5f * k;
+                const float out = 1.2f * k;
                 c.fillRect({p.x - out, p.y - out + 2.0f, p.w + 2.0f * out, p.h + 2.0f * out},
                            Color{0.0f, 0.0f, 0.0f, look.panelShadow / kSteps}, kPanelRadius + out);
             }
@@ -3599,6 +3599,11 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
         c.fillRect(outer, splitFill(), kFxBoxRadius);
         c.fillRect({bandX, outer.y, outer.right() - bandX, outer.h}, kPanel, kFxBoxRadius);
         c.fillRect({bandX, outer.y, kFxBoxRadius, outer.h}, kPanel);
+        if (look.cardTint > 0.0f) { // without its outline, the band shown faintly behind its cards, in the band's color
+            c.pushClip({bandX, outer.y, outer.right() - bandX, outer.h});
+            c.fillRect(outer, laneColor(box.lane).alpha(look.cardTint * 0.7f), kFxBoxRadius);
+            c.popClip();
+        }
         // Outlined as a card is: always, or in a theme whose cards go without one, while the mouse is over it.
         if (look.cardTint <= 0.0f || hot || (drag_.kind == DragKind::None && outer.contains(hoverPoint_)))
             c.strokeRect(outer, outline, held ? 1.6f : 1.3f, kFxBoxRadius);
@@ -3633,6 +3638,7 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
                              drag_.widget.a == slot && (drag_.moved || drag_.widget.kind != Kind::FxPower);
         if (fxFolded(slot)) {
             const Color fx = fxTypeColor(type);
+            paintCardShadow(c, r);
             c.fillRect(r, kCardColor, kRadiusCard);
             if (look.cardTint > 0.0f) // tinted like the card unfolded
                 c.fillRect(r, fx.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
@@ -3657,6 +3663,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     const FxType type = fxSlotType(slot);
     const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
     const Color fx = fxTypeColor(type); // each type of effect in a color of its own
+    paintCardShadow(c, card);
     c.fillRect(card, kCardColor, kRadiusCard);
     if (look.cardTint > 0.0f) // tinted with its own color, faintly while it is off
         c.fillRect(card, fx.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
@@ -5732,6 +5739,7 @@ void View::paintSource(Canvas &c, float card, int s) {
     const Color color = kSourceColors[s];
     const bool lfo = sourceTypeOf(s) == SourceType::Lfo;
     const bool dragged = drag_.kind == DragKind::SourceMove && drag_.widget.a == s;
+    paintCardShadow(c, p);
     c.fillRect(p, kCardColor, kRadiusCard);
     if (look.cardTint > 0.0f) // tinted with its own color, faintly while it is off
         c.fillRect(p, color.alpha(look.cardTint * (sourceOn(s) ? 1.0f : 0.4f)), kRadiusCard);
@@ -5819,7 +5827,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
         // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
         if (look.embossedNodes) { // raised: shaded from its top down, on a shadow
             c.fillRect({w.rect.x - 1.0f, w.rect.y + 1.0f, w.rect.w + 2.0f, w.rect.h + 2.0f},
-                       Color{0.0f, 0.0f, 0.0f, 0.3f}, corner + 1.0f);
+                       Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.12f : 0.3f}, corner + 1.0f);
             c.fillGradient(w.rect, hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, corner);
         } else {
             c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
@@ -5862,7 +5870,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
     }
     // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
     if (look.embossedNodes) { // raised: shaded from its top down, on a shadow
-        c.fillCircle({center.x, center.y + 2.0f}, kNodeRadius + 1.0f, Color{0.0f, 0.0f, 0.0f, 0.3f});
+        c.fillCircle({center.x, center.y + 2.0f}, kNodeRadius + 1.0f, Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.12f : 0.3f});
         c.fillGradient({center.x - kNodeRadius, center.y - kNodeRadius, 2.0f * kNodeRadius, 2.0f * kNodeRadius},
                        hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, kNodeRadius);
     } else {
@@ -5917,12 +5925,12 @@ void View::paintButtonFace(Canvas &c, const Widget &w, Color fill, bool lit, Col
         const bool hoverFill =
             !lit && fill.r == kTrack.r && fill.g == kTrack.g && fill.b == kTrack.b && fill.a == kTrack.a;
         if (w.group.w <= 0.0f) {
-            c.fillRect(w.rect, lit ? color : hoverFill ? kTrack : kDisplayColor, radius);
+            c.fillRect(w.rect, lit ? color : hoverFill ? wellHover() : wellColor(), radius);
             return;
         }
         // Its part of the row's well, lit to its edges (the well's outer corners rounded), as the well is.
         c.pushClip({w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
-        c.fillRect(w.group, lit ? color : hoverFill ? kTrack : kDisplayColor, radius);
+        c.fillRect(w.group, lit ? color : hoverFill ? wellHover() : wellColor(), radius);
         c.popClip();
         lastPartLit_ = lit;
         return;
@@ -6066,6 +6074,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = controller_.layout().view == static_cast<RoutingView>(w.a) && shapeEditing() < 0 &&
                               partialEditing() < 0;
         if (selected) {
+            if (look.panelShadow > 0.0f) { // its panel's soft shadow, round its top and sides, above the panel only
+                constexpr int kSteps = 4;
+                c.pushClip({w.rect.x - 12.0f, w.rect.y - 12.0f, w.rect.w + 24.0f, w.rect.h + 12.0f});
+                for (int k = kSteps; k > 0; --k) {
+                    const float out = 1.5f * k;
+                    c.fillRect({w.rect.x - out, w.rect.y - out + 1.0f, w.rect.w + 2.0f * out, w.rect.h + 2.0f * out},
+                               Color{0.0f, 0.0f, 0.0f, look.panelShadow / kSteps}, kRadiusCard + out);
+                }
+                c.popClip();
+            }
             const std::vector<Point> outline =
                 viewTabOutline({w.rect.x + 0.5f, w.rect.y + 0.5f, w.rect.w - 1.0f, w.rect.h}, kViewTabFlare);
             std::vector<Point> fill = outline; // down past the panel's border, to open it without a seam left
@@ -6074,7 +6092,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillPolygon(fill.data(), fill.size(), kPanel);
             if (w.rect.x <= kRouting.x) // squaring the panel's corner its side runs down
                 c.fillRect({w.rect.x, w.rect.bottom(), kPanelRadius, kPanelRadius}, kPanel);
-            c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
+            if (look.panelShadow <= 0.0f) // outlined as its panel is
+                c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
             c.line({w.rect.x + kViewTabRadius, w.rect.y + 2.0f}, {w.rect.right() - kViewTabRadius, w.rect.y + 2.0f},
                    kAccent, 2.0f);
         } else if (hovered) {
@@ -6570,7 +6589,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool on = value(w.param) >= 0.5;
         const Color band = laneColor(w.b);
         if (look.solidButtons) { // as the other switches: a dark well, filled solid with its band's color while on
-            c.fillRect(w.rect, on ? band : hovered ? kTrack : kDisplayColor, kRadiusControl);
+            c.fillRect(w.rect, on ? band : hovered ? wellHover() : wellColor(), kRadiusControl);
             c.text(w.rect, tr(Str::SoloMark), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
                    true);
             break;
@@ -6791,7 +6810,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool lit = relevant && (hovered || listMenu_ == w.param);
         const Color color = listColor(w.param);
         if (look.flatMenus) { // filled dark, without an outline, tinted with its color under the mouse
-            c.fillRect(w.rect, kDisplayColor, kRadiusControl);
+            c.fillRect(w.rect, wellColor(), kRadiusControl);
             if (lit)
                 c.fillRect(w.rect, color.alpha(0.24f), kRadiusControl);
         } else {

@@ -66,6 +66,7 @@ struct Palette {
     bool embossedNodes = false;   // the routing graph's nodes raised: shaded from nodeTop down to nodeBottom, on a shadow
     Color nodeTop{}, nodeBottom{};
     bool flatFxNodes = false;     // the effects graph's nodes filled with a tint of their color, without an outline
+    float cardShadow = 0.0f;      // a soft shadow under the effect and source cards, this dark
 };
 static_assert(static_cast<int>(FxType::Count) == 16, "a color for each effect type in every theme");
 
@@ -152,7 +153,7 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
       Color::hex(0xA6E05A)},
      0.10f, true, true, true, true, true, Color::hex(0x2A263D), Color::hex(0x211E30), true},
-    {"Porcelain", Str::ThemePorcelain, // airy: white panels lifted off a cool gray by soft shadows, one cobalt accent
+    {"Porcelain", Str::ThemePorcelain, // Spectrum in light: white panels lifted off a cool gray by soft shadows
      Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
      Color::hex(0xFFFFFF),
      Color::hex(0x1A1D24), Color::hex(0x5D6472), Color::hex(0x9AA1AD),
@@ -171,7 +172,10 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x7FA313), Color::hex(0x0A8FAA), Color::hex(0x5D6472), Color::hex(0xB03FC4),
       Color::hex(0x0F8F85), Color::hex(0xA07020)},
      {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xC27A1E)},
-     false, {}, {}, true, 0.22f, 0.10f, false, {}, 0.07f, true, true},
+     false, {}, {}, true, 0.22f, 0.06f, true,
+     {Color::hex(0x2F5BFF), Color::hex(0xD9541A), Color::hex(0x0A9488), Color::hex(0xB07A00), Color::hex(0xD0236E),
+      Color::hex(0x4E8A0E)},
+     0.07f, true, true, true, true, true, Color::hex(0xFFFFFF), Color::hex(0xF2F4F7), true, 0.07f},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));
 // A source left out of a theme's list would be drawn black.
@@ -210,9 +214,22 @@ Color fxTypeColor(FxType type);
 inline Color opColor(int op) {
     return look.opColors && op >= 0 && op < kOps ? look.ops[op] : look.accent;
 }
-// What is drawn on a lit switch: in its color, or on a solid one in the background's.
+// What is drawn on a lit switch: in its color, or on a solid one in the panels' (dark in a dark theme, white in a
+// light one).
 inline Color litInk(Color color) {
-    return look.solidButtons ? look.background : color;
+    return look.solidButtons ? look.panel : color;
+}
+// Whether the theme is a light one, by its background: shadows are drawn fainter on it.
+inline bool lightTheme() {
+    return look.background.r + look.background.g + look.background.b > 1.5f;
+}
+// The well flat switches and list buttons are set in, and one under the mouse: the displays' color in a dark theme, a
+// faint shade of whatever is under it in a light one (where the displays' color would vanish on a tinted card).
+inline Color wellColor() {
+    return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.06f} : look.display;
+}
+inline Color wellHover() {
+    return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.11f} : look.track;
 }
 // Whether controls get their 1 px outline: not in a theme with flat menus and controls.
 inline bool outlined() {
@@ -226,6 +243,9 @@ extern float glowing; // how strongly graphs' curves glow, 0..1, which View::pai
 
 // A graph's curve, glowing as `glowing` says (see theme.cpp).
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width);
+
+// A card's shadow, in a theme that gives its cards one (see Palette::cardShadow); none in the others.
+void paintCardShadow(Canvas &c, Rect r);
 
 // An open list's or menu's panel: outlined, or in a theme with flat menus lifted by a soft shadow instead.
 void paintMenuPanel(Canvas &c, Rect r);

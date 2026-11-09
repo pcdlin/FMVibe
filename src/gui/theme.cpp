@@ -75,6 +75,17 @@ void featherLine(Canvas &c, const Point *points, size_t count, float width, floa
     c.polylineStrokes(points, count, colors, widths, kFeatherSteps);
 }
 
+void paintCardShadow(Canvas &c, Rect r) {
+    if (look.cardShadow <= 0.0f)
+        return;
+    constexpr int kSteps = 3; // close and faint, a little lower than the card
+    for (int k = kSteps; k > 0; --k) {
+        const float out = 1.0f * k;
+        c.fillRect({r.x - out, r.y - out + 1.5f, r.w + 2.0f * out, r.h + 2.0f * out},
+                   Color{0.0f, 0.0f, 0.0f, look.cardShadow / kSteps}, kRadiusCard + out);
+    }
+}
+
 void paintMenuPanel(Canvas &c, Rect r) {
     if (look.flatMenus) {
         constexpr int kSteps = 4; // faint and close: each ring adds a little, about a fifth dark under the panel
