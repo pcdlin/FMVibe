@@ -184,7 +184,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     sine after it untouched; and effects that have rung out costing little for silence, which comes out as silence;
   - a shimmer's tail after an A4, with Shimmer half and full up: falling 60 dB in about its decay time, its energy
     on the octaves and the first two octaves up narrow lines (not smeared by the shifter's crossfades); and at the
-    longest decay, undamped and full up, still dying away;
+    longest decay, undamped and full up, still dying away; and Shimmer turned down to 0 in short chunks and up again
+    once the reverb has rung out bringing back nothing of the tail before;
+  - a shaper effect switched off, its drawn curve changed and on again playing the new curve from its start;
   - a drawn shaper curve's points moved gliding in rather than clicking, in whole blocks and in single frames, and
     dragged up and down putting out no DC, made symmetric too;
   - a quiet, slow sine through a drawn shaper curve coming out as drawn, without spikes where it crosses the

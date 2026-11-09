@@ -442,6 +442,10 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     case FxType::Shaper: {
         const ShaperSettings settings = shaperSettings([&p](int index) { return p[index]; }, shaperParams(slot));
         s.shaper = Shaper{};
+        // Its drawn curve too, taken at once as it starts rather than gliding in from the one it last ran with (a
+        // patch or two ago, say).
+        s.curve.built = false;
+        s.curve.points.fill(std::numeric_limits<double>::quiet_NaN());
         s.shaper.drive = settings.drive;
         s.shaper.output = settings.output;
         s.shaper.mix = settings.mix;
@@ -1595,7 +1599,7 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const double shimmerTarget = std::sqrt(share * rounds / (2.0 * kOutGain * kOutGain));
     const double shimmerStep = rampStep(r.shimmer, shimmerTarget, n);
     const bool shifting = r.shimmer > 0.0 || shimmerTarget > 0.0;
-    if (shifting && r.shimmer == 0.0) { // starting again: nothing from the last time it ran goes back in
+    if (shifting && r.shimmer <= 0.0) { // starting again: nothing from the last time it ran goes back in
         for (ZeroBuffer &line : r.shifter)
             line.zero(r.ran);
         r.shimmerLow = {};
@@ -1729,7 +1733,9 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     r.reach = style.early > 0.0
                   ? std::min(r.preLength + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1] * echoScale, echoRoom)
                   : r.preLength;
-    if (!style.shimmer && r.shimmer < 1e-9) // faded out (over more than one chunk, if events cut them short)
+    // Faded out (over more than one chunk, if events cut them short), turned down or switched to another algorithm:
+    // the ramp leaves a hair either side of 0, which would keep it shifting or skip clearing its lines next time.
+    if (shimmerTarget == 0.0 && std::abs(r.shimmer) < 1e-9)
         r.shimmer = 0.0;
     // The wavering phasors keep their length.
     for (int i = 0; i < kReverbLines; ++i) {

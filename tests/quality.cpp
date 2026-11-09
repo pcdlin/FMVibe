@@ -745,6 +745,54 @@ void effectsChainChecks() {
         check(whole < 4.0 && single < 4.0, "a drawn shaper curve's moved points glide in instead of clicking");
     }
     {
+        // A shaper effect switched off, its drawn curve changed meanwhile (a preset loaded, say), and on again: it
+        // plays the new curve from its start, as a shaper that never ran with the old one does, rather than gliding
+        // in from the old one.
+        auto play = [&defaults](bool before) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+            chain(p, {0});
+            p[paramIndex(0, FxParam::ShaperMode)] = static_cast<double>(ClipMode::Custom);
+            p[paramIndex(0, FxParam::ShaperDrive)] = 0.0;
+            p[paramIndex(0, FxParam::ShaperMix)] = 1.0;
+            const int curve = shaperParams(0).curve;
+            std::vector<float> left(kBlock), right(kBlock), out;
+            size_t t = 0;
+            auto run = [&](size_t blocks, bool keep) {
+                for (size_t b = 0; b < blocks; ++b, t += kBlock) {
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * 50.0 * static_cast<double>(t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                    if (keep)
+                        out.insert(out.end(), left.begin(), left.end());
+                }
+            };
+            if (before) { // with the curve as it starts, then switched off
+                run(40, false);
+                p[paramIndex(0, FxParam::Enabled)] = 0.0;
+                run(4, false);
+            } else {
+                p[paramIndex(0, FxParam::Enabled)] = 0.0;
+                run(44, false);
+            }
+            for (int i = 0; i < shapePointCount(p[curve]); ++i)
+                p[shapeFieldIndex(curve, i, PointField::Y)] *= 0.5;
+            p[paramIndex(0, FxParam::Enabled)] = 1.0;
+            run(8, true);
+            return out;
+        };
+        const std::vector<float> restarted = play(true), fresh = play(false);
+        double apart = 0.0;
+        for (size_t i = 0; i < restarted.size(); ++i)
+            apart = std::max(apart, static_cast<double>(std::abs(restarted[i] - fresh[i])));
+        std::printf("      a shaper effect on again with a new curve: %.1f dB from one that never ran the old one\n",
+                    20.0 * std::log10(apart + 1e-30));
+        check(apart < 1e-6, "a shaper effect switched on again plays its curve as it is now, not the one it last had");
+    }
+    {
         // A drawn curve's points dragged up and down at 2 Hz by a fifth (as its middle point is, which sets what
         // silence comes out at), under a sound that spends longer above 0 than below: what comes out puts out nothing
         // below the tone, as plain and made symmetric (which then jumps at the middle).
@@ -2412,6 +2460,51 @@ int main() {
         const double early = energy(5.0), late = energy(28.0);
         std::printf("      20 s decay, undamped, Shimmer full: 28 s against 5 s %.1f dB\n", 10.0 * std::log10(late / early));
         check(std::isfinite(late) && late < 0.1 * early, "a shimmer's tail dies away at its longest decay, undamped");
+    }
+    {
+        // Shimmer turned down to 0, in chunks as short as events cut them, until the reverb has rung out, then up
+        // again: its shifters start from silence, so nothing of the tail before comes back.
+        double worst = 0.0;
+        for (int trial = 0; trial < 8; ++trial) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            fx.setAnalyzing(true); // as with the editor open, so silence still runs the effects
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Shimmer);
+            p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(0.5);
+            p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+            const double amount = 0.4 + 0.07 * trial;
+            p[paramIndex(0, FxParam::ReverbShimmer)] = amount;
+            chain(p, {0});
+            float left[32], right[32];
+            for (int b = 0; b < 750; ++b) { // half a second of an A4
+                for (int s = 0; s < 32; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        0.5 * std::sin(2.0 * std::numbers::pi * 440.0 * (b * 32 + s) / kSampleRate));
+                fx.process(left, right, 32, p, 120.0, 60.0);
+            }
+            p[paramIndex(0, FxParam::ReverbShimmer)] = 0.0;
+            for (int b = 0; b < 4000 && (b < 400 || fx.ringing()); ++b) { // up to 20 s
+                const uint32_t n = 1 + static_cast<uint32_t>((b * 7 + trial * 5) % 32);
+                std::fill_n(left, n, 0.0f);
+                std::fill_n(right, n, 0.0f);
+                fx.process(left, right, n, p, 120.0, 60.0);
+            }
+            p[paramIndex(0, FxParam::ReverbShimmer)] = amount;
+            for (int b = 0; b < 1500; ++b) { // a second
+                std::fill_n(left, 32, 0.0f);
+                std::fill_n(right, 32, 0.0f);
+                fx.process(left, right, 32, p, 120.0, 60.0);
+                for (int s = 0; s < 32; ++s)
+                    worst = std::max({worst, static_cast<double>(std::abs(left[s])), static_cast<double>(std::abs(right[s]))});
+            }
+        }
+        std::printf("      Shimmer down to 0 and up again once rung out: %.0f dB of the tail before\n",
+                    20.0 * std::log10(worst + 1e-30));
+        check(worst < 1e-5, "a shimmer turned down and up again brings back nothing of the tail before");
     }
 
     // --- The voice filters' analyzers: an A4 sine through filter 1 shows in its band, turned down by a low-pass
