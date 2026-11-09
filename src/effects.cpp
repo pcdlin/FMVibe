@@ -96,12 +96,13 @@ double smoothing(double seconds, double sampleRate) {
     return std::exp(-1.0 / (seconds * sampleRate));
 }
 
+constexpr uint32_t kRampShortest = 32; // the fewest samples a ramp of a gain or mix is spread over
+
 // The step that ramps a gain or mix from `from` to `to` over a chunk of `n` samples. The synth hands the effects 32
 // samples at a time; a chunk the host's events cut shorter goes only its share of the way, as the voices' levels
 // do (see Synth::renderBlock()), so a jump ramps as smoothly however the block is split.
 double rampStep(double from, double to, uint32_t n) {
-    constexpr uint32_t kShortest = 32;
-    return (to - from) / std::max(n, kShortest);
+    return (to - from) / std::max(n, kRampShortest);
 }
 
 // The phaser's and flanger's polarity turns over in this long, its wet sound and feedback fading through nothing
@@ -877,8 +878,9 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
     for (int c = 0; c < 2; ++c)
         std::fill_n(mix[c], n, 0.0f);
     const double fadeStep = 1.0 / (0.005 * sampleRate_);
-    // One end of a wire into the mix, its level gliding to `target` across the chunk as it fades toward `fadeTo`
-    // along a raised cosine over 5 ms, as a parametric EQ band switched does.
+    // One end of a wire into the mix, its level gliding to `target` across the chunk (or, in a chunk shorter than the
+    // shortest ramp, that far toward it) as it fades toward `fadeTo` along a raised cosine over 5 ms, as a
+    // parametric EQ band switched does.
     auto add = [&](WireEnd &e, double target, double fadeTo) {
         if (e.port < 0)
             return;
@@ -890,7 +892,8 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
             e.level = target;
         const float *from[2] = {nullptr, nullptr};
         const bool heard = portOut(e.port, from); // a node not running reads silence
-        const double step = (target - e.level) / n;
+        const double step = rampStep(e.level, target, n);
+        const double end = n >= kRampShortest ? target : e.level + step * n;
         double level = e.level, fade = e.fade;
         if (fade >= 1.0 && fadeTo >= 1.0) { // in: only its level moves
             for (uint32_t s = 0; s < n && heard; ++s) {
@@ -909,7 +912,7 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
                 mix[1][s] += static_cast<float>(from[1][s] * gain);
             }
         }
-        e.level = target;
+        e.level = end;
         e.fade = fade;
     };
     for (int input = 0; input < fxInputCount(node); ++input) {

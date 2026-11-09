@@ -270,6 +270,21 @@ void effectsChainChecks() {
         check(worst < 1.5, "an effect param jump ramps even when events split the block into single frames");
     }
     {
+        // So does a wire's level: the output's wire from the input taken from full to a quarter.
+        auto roughJump = [](uint32_t piece) {
+            Engine e(2);
+            e.p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+            e.noteOn(48);
+            const std::vector<float> before = e.render(4800, piece);
+            e.p[fxInputIndex(kFxOutNode, 0, FxInputField::Level)] = 0.25;
+            const std::vector<float> both = joined(before, e.render(2400, piece));
+            return roughness(both, before.size() - 2, both.size());
+        };
+        const double ratio = roughJump(1) / roughJump(kBlock);
+        std::printf("      %-30s %7.1fx in 1-frame blocks\n", "a wire's level to a quarter", ratio);
+        check(ratio < 1.5, "a wire's level jump ramps even when events split the block into single frames");
+    }
+    {
         // A parametric EQ band switched on and off fades rather than clicking: a low cut at 5 kHz, which takes most
         // of a C3 away, switched in single frames, under 4 times as rough as the note before it (as a stolen voice).
         Engine e(2);
