@@ -166,7 +166,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     an effect added at the line's end and one taken out, a split taken out with its join, a split's slope
     changed, and a split going from two bands to three and back at 12 and 24 dB, the note in its middle band; and two effects swapped along the line, ducking out and back in without a click;
   - an effect in the graph that the output doesn't hear not running (its port silent, nothing ringing on after it),
-    and running once the output reads it;
+    and running once the output reads it; and an effect taken out of a loop the params make (its wires left as a
+    host or a state can) leaving the output playing what is left, steadily;
   - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
     an effect not in the graph silent, and a second of silence taking them about 90 dB down; and nothing measured
     while nothing analyzes (no editor open);

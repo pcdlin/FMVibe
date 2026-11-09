@@ -663,7 +663,7 @@ bool Effects::idleChunk(const float *const *io, uint32_t n, const ParamValues &p
     auto wiresSettled = [&](int node) {
         for (int input = 0; input < fxInputCount(node); ++input) {
             const Wire &w = wires_[node][input];
-            const int set = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+            const int set = wirePort(node, input, p);
             if (w.now.port != set || w.was.port >= 0 ||
                 (set >= 0 && (w.now.fade < 1.0 || w.now.level != wireTarget(node, input, p))))
                 return false;
@@ -823,6 +823,14 @@ bool Effects::nodeWanted(int node, const ParamValues &p) const {
     return p[paramIndex(node - kFxSlots, SplitParam::Used)] >= 0.5;
 }
 
+int Effects::wirePort(int node, int input, const ParamValues &p) const {
+    const int port = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+    if (port < 0)
+        return -1;
+    const int from = fxPortNode(port); // none for the input, which is always there
+    return from < 0 || nodeWanted(from, p) ? port : -1;
+}
+
 double Effects::wireTarget(int node, int input, const ParamValues &p) const {
     const double set = p[fxInputIndex(node, input, FxInputField::Level)];
     const int sum = fxNodeSum(node);
@@ -833,7 +841,7 @@ double Effects::wireTarget(int node, int input, const ParamValues &p) const {
 
 void Effects::setWires(int node, const ParamValues &p) {
     for (int input = 0; input < fxInputCount(node); ++input) {
-        const int port = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+        const int port = wirePort(node, input, p);
         wires_[node][input] = {{port, wireTarget(node, input, p), port >= 0 ? 1.0 : 0.0}, {}};
     }
 }
@@ -1028,7 +1036,7 @@ void Effects::mixInputs(int node, float (*mix)[kChunk], uint32_t n, const ParamV
         }
         // A wire moved or taken away crossfades: what it came from fades out as what it comes from now fades in. Moved
         // again while the one before still fades out, it fades out where it is first and only then takes the move.
-        const int set = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+        const int set = wirePort(node, input, p);
         if (set != w.now.port) {
             if (w.now.fade <= 0.0) {
                 w.now = {set, -1.0, 0.0};

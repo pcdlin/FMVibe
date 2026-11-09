@@ -415,6 +415,9 @@ private:
     // The phasers' and flangers' sweeps going round through such a chunk, so a synced one keeps time with the host.
     void idleSweeps(uint32_t n, const ParamValues &p, double tempo);
     bool loopsAsSet(const ParamValues &p) const; // whether the wires as set make a loop
+    // Where a wire into `node` comes from as set: its From's port, or none (-1) while that port's node isn't in the
+    // graph, so a wire from an effect taken away (which a host or a state can leave) fades out with it.
+    int wirePort(int node, int input, const ParamValues &p) const;
     // A wire's gain as set: a sum's in dB and soloed as a join, every other's a share.
     double wireTarget(int node, int input, const ParamValues &p) const;
     // Every wire of `node` as its params set it, at its level and fully in.

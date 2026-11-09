@@ -321,6 +321,52 @@ void effectsChainChecks() {
         check(fine, "a sample that isn't a number or is louder than any sound leaves the effects sane, playing on");
     }
     {
+        // A loop, which only params make: the input into a DJ EQ, which feeds a shaper that feeds it back, at half
+        // level, and goes out. The shaper's effect taken away (as a host or a state can, leaving its wires): once it
+        // has faded out, the output plays the EQ on, rather than ducking out for good.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Eq);
+        p[fxInputIndex(1, 0, FxInputField::From)] = fxPortValue(kFxPortIn);
+        p[fxInputIndex(1, 1, FxInputField::From)] = fxPortValue(fxSlotPort(0));
+        p[fxInputIndex(1, 1, FxInputField::Level)] = 0.5;
+        p[fxInputIndex(0, 0, FxInputField::From)] = fxPortValue(fxSlotPort(1));
+        p[fxInputIndex(kFxOutNode, 0, FxInputField::From)] = fxPortValue(fxSlotPort(1));
+        std::vector<float> left(kBlock), right(kBlock), out;
+        size_t t = 0;
+        auto run = [&](double seconds) {
+            out.clear();
+            for (const size_t end = t + static_cast<size_t>(seconds * kSampleRate); t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        0.25 * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                out.insert(out.end(), left.begin(), left.end());
+            }
+            // Each period's peak, the quietest and the loudest of them.
+            const size_t period = static_cast<size_t>(kSampleRate / 440.0) + 1;
+            float low = 1e9f, high = 0.0f;
+            for (size_t from = 0; from + period <= out.size(); from += period) {
+                float peak = 0.0f;
+                for (size_t i = from; i < from + period; ++i)
+                    peak = std::max(peak, std::abs(out[i]));
+                low = std::min(low, peak);
+                high = std::max(high, peak);
+            }
+            return std::pair(low, high);
+        };
+        const auto looped = run(0.5);
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::None);
+        run(0.5);
+        const auto [low, high] = run(0.5);
+        std::printf("      a loop through an effect taken away: %.3f with it, %.3f to %.3f once it has gone\n",
+                    looped.second, low, high);
+        check(looped.second > 0.1f && std::abs(low - 0.25f) < 0.02f && std::abs(high - 0.25f) < 0.02f,
+              "an effect taken out of a loop the params make leaves the output playing what is left");
+    }
+    {
         // A compressor pulling a loud sine down, then silence: it keeps going while its release runs out, rather than
         // stopping where it was, and a quiet sine after it comes out as it goes in.
         Effects fx;
