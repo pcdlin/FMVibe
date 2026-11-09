@@ -119,7 +119,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the filter effect's key tracking putting a cutoff at C4 onto an A4, the frequency shifter moving by its
     Shift's share of its Range, and the Param EQ's third band doing nothing off and playing once on, a band switched
     off left out, its notch taking its frequency away (and leaving an octave off it mostly alone), and its Amount
-    mixing it with what goes in;
+    mixing it with what goes in; and the utility's Gain going from silence up to 0 dB (-18 dB at its middle), its
+    Pan turning the other side down, its Width scaling the sides and keeping the middle, and its Mono Bass making a
+    low note's sides mono and leaving a high one's;
   - unison copies spread across the stereo field (and match when centered);
   - an operator's Pan placing it, equal-power, through a filter too, and a modulator's leaving what it modulates
     alone;
@@ -163,9 +165,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     effects graph;
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
-    reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a wire's Level) jumps
-    while events split the block into single frames,
-    when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
+    reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain, Pan
+    and Width, a wire's Level) jumps while events split the block into single frames,
+    when a Param EQ band is switched on and off, when a utility's Mono Bass is turned on from Off and off again, and
+    when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
     an effect added at the line's end and one taken out, a split taken out with its join, a split's slope
     changed, and a split going from two bands to three and back at 12 and 24 dB, the note in its middle band; and two effects swapped along the line, ducking out and back in without a click;
@@ -446,6 +449,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     setting Position and Distance in one undo step and double-clicked back; its drive meter following the telemetry
     and its display following Treble and the mic's position (read off the rendered pixels); and its title's menu
     picking its oversampling, the one in force checked;
+  - the utility's card: added last from the list of effects, leaving the sound as it is (Mono Bass Off); the handles
+    on its display setting Mono Bass, Pan, Width and Gain, each drag an undo step, the band narrowing into its middle
+    below Mono Bass's line (read off the rendered pixels), and a double-click putting Mono Bass's back to Off;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
     flanger's STEREO and its + | − picking its polarity, the filter's Key Track and the shaper's and delay's LINK
     too) and the list of effects with their icons;

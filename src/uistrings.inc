@@ -108,6 +108,7 @@ STR(FxDisperser, "Phase Disp")
 STR(FxWidener, "Widener")
 STR(FxMultiDyn, "3-Band Dynamics")
 STR(FxAmp, "Amp")
+STR(FxUtility, "Utility")
 
 // What a modulation place holds.
 STR(SourceEmpty, "Empty")
@@ -372,6 +373,10 @@ STR(ParamAmpMic, "Amp Mic")
 STR(ParamAmpPosition, "Amp Mic Position")
 STR(ParamAmpDistance, "Amp Mic Distance")
 STR(ParamAmpOversampling, "Amp Oversampling")
+STR(ParamUtilityGain, "Utility Gain")
+STR(ParamUtilityPan, "Utility Pan")
+STR(ParamUtilityWidth, "Utility Width")
+STR(ParamUtilityMonoBass, "Utility Mono Bass")
 STR(ParamShiftRange, "Shift Range")
 STR(ParamShiftAmount, "Freq Shift")
 STR(ParamShiftSpread, "Shift Spread")
@@ -469,6 +474,7 @@ STR(FxTitleFreqShifter, "FREQ SHIFT")
 STR(FxTitleDisperser, "PHASE DISP")
 STR(FxTitleWidener, "WIDENER")
 STR(FxTitleAmp, "AMP")
+STR(FxTitleUtility, "UTILITY")
 
 // The big editors' titles.
 STR(TitleShape, "{1} SHAPE")
@@ -542,6 +548,7 @@ STR(LabelSpread, "Spread")
 STR(LabelFreq, "Freq")
 STR(LabelPinch, "Pinch")
 STR(LabelHighPass, "High Pass")
+STR(LabelMonoBass, "Mono Bass")
 STR(LabelToOut, "To Out")
 STR(LabelSlope, "Slope")
 STR(LabelOut, "Out")
@@ -698,6 +705,8 @@ STR(CaptionDispersion, "{1}  ·  up to {2} ms")
 STR(CaptionWidener, "HP {1}  ·  {2}–{3} ms")
 STR(CaptionAmpDrive, "drive {1} dB") // how far the amp's stages saturate now
 STR(CaptionAmpMic, "{1}  ·  {2}") // the amp's mic and its distance
+STR(CaptionUtility, "{1}  ·  {2}") // the utility's gain and pan
+STR(CaptionUtilityMonoBass, "mono < {1}") // on the utility's Mono Bass line: below it, the sound is mono
 STR(CaptionShiftOf, "{1}  ·  of {2}")
 STR(CaptionHold, "hold {1}")
 STR(CaptionResonance, "{1}  ·  res {2}")

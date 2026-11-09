@@ -323,6 +323,7 @@ enum class FxType {
     Widener,
     MultiDyn, // three bands, each compressed downward above one threshold and upward below another
     Amp,      // a guitar amp: preamp stages, a tone stack and a power amp, then a cabinet (see src/amp.h)
+    Utility,  // gain, balance, stereo width and the bass in mono
     Count
 };
 // Stored in projects by number: only append. Cubic is x - x^3/3 scaled to reach 1 at 1;
@@ -573,6 +574,13 @@ enum class FxParam {
     AmpPosition,
     AmpDistance,
     AmpOversampling,
+    // Utility: Gain from silence up to 0 dB (see utilityGain()), Pan a balance that turns the other side down, Width
+    // the sides against the middle (0 mono, 1 as it was, 2 twice as wide), and MonoBass a 12 dB per octave high-pass on
+    // the sides, so the bass below it is mono; at 0 it is off (see utilityMonoBassHz()).
+    UtilityGain,
+    UtilityPan,
+    UtilityWidth,
+    UtilityMonoBass,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -615,6 +623,15 @@ inline double clipOutputDb(double outputDb, double driveDb, bool linked) {
 constexpr int kMaxPhaserStages = 12;
 constexpr int kMaxDisperserStages = 64;
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
+constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud
+constexpr double kMaxUtilityMonoBass = 500.0;  // Hz, the top of the utility's Mono Bass knob
+// The utility's Gain knob (0..1) as a gain: its cube, so 0 is silence, the middle -18 dB and the top 0 dB, the knob
+// turning evenly through what is heard. utilityGainNorm() is the knob for a gain.
+inline double utilityGain(double norm) {
+    const double x = std::clamp(norm, 0.0, 1.0);
+    return x * x * x;
+}
+inline double utilityGainNorm(double gain) { return std::cbrt(std::clamp(gain, 0.0, 1.0)); }
 constexpr int kPeqBands = 3;
 constexpr int kMcBands = 3;
 constexpr double kMcKnee = 6.0; // dB
@@ -933,6 +950,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::PhaserNegative, FxParam::PhaserNegative, FxType::Phaser},
     {FxParam::FlangerNegative, FxParam::FlangerNegative, FxType::Flanger},
     {FxParam::AmpModel, FxParam::AmpOversampling, FxType::Amp},
+    {FxParam::UtilityGain, FxParam::UtilityMonoBass, FxType::Utility},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1458,7 +1476,11 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(0, FxParam::AmpVolume)) == 36000 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::AmpOversampling)) == 36309 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::AmpModel)) == 26134 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::AmpOversampling)) == 29149,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::AmpOversampling)) == 29149 &&
+                  idOfIndex(paramIndex(0, FxParam::UtilityGain)) == 36010 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::UtilityMonoBass)) == 36313 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::UtilityGain)) == 26150 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::UtilityMonoBass)) == 29153,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1544,7 +1566,7 @@ static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, Filter
 static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxType::Eq, FxType::ParamEq,
                                FxType::Filter, FxType::Compressor, FxType::MultiComp, FxType::Reverb, FxType::Phaser,
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
-                               FxType::MultiDyn, FxType::Amp, FxType::Count}),
+                               FxType::MultiDyn, FxType::Amp, FxType::Utility, FxType::Count}),
               "FxType is stored by number: only append");
 static_assert(numberedInOrder({AmpModel::Clean, AmpModel::Blues, AmpModel::Crunch, AmpModel::Lead, AmpModel::Heavy,
                                AmpModel::Bass, AmpModel::Fuzz, AmpModel::Count}),
@@ -1640,6 +1662,8 @@ inline double normFromRate(double hz) { return std::log(hz / kMinRate) / std::lo
 inline double sweepRateHz(double norm) { return norm <= 0.0 ? 0.0 : rateFromNorm(norm); }
 inline double cutoffFromNorm(double x) { return kMinCutoff * std::pow(kMaxCutoff / kMinCutoff, x); }
 inline double normFromCutoff(double hz) { return std::log(hz / kMinCutoff) / std::log(kMaxCutoff / kMinCutoff); }
+// The utility's Mono Bass knob: off at its bottom, else on the cutoff curve, up to kMaxUtilityMonoBass.
+inline double utilityMonoBassHz(double norm) { return norm <= 0.0 ? 0.0 : cutoffFromNorm(norm); }
 // A split's crossovers in Hz from its Low and High params, High kept a third of an octave above Low, as the three-band
 // dynamics' are.
 inline std::array<double, 2> splitCrossovers(double lowNorm, double highNorm) {
@@ -2164,6 +2188,8 @@ enum class ParamKind {
     AmpOversampling, // stepped: 1x, 2x, 4x or 8x (see ampOversampling())
     AmpDial,      // 0..1, shown as 0.0 to 10.0, as an amp's knobs are numbered
     AmpDistance,  // 0..1 on a log curve, shown in cm or m; see ampDistanceCm()
+    Fader,        // 0..1, a gain from silence to 0 dB, shown in dB down to -inf dB; see utilityGain()
+    CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
