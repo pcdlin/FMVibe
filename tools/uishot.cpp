@@ -4278,7 +4278,7 @@ void testOutScope(const std::filesystem::path &dir, Renderer &renderer) {
 }
 
 // The three-band dynamics, alone in the chain: a card one and a half places wide (from x 46) whose display (14 px in,
-// from y 222) has a bar a band, the high band on top (y 229, 246 and 263, 12 tall), levels across from -60 dB at x 98
+// from y 222) has a bar a band, the high band on top (y 229, 246 and 263, 12 tall), levels across from -80 dB (-kMdRangeDb) at x 98
 // (38 px into the display) to 0 dB 40 px short of its right end. A band's row picks the band its knobs set; its threshold lines, on every band, drag across (each
 // stopping at the other), picking their band, Alt-dragged up they turn its ratio, and a double-click puts the
 // threshold back. LINK makes the knobs and every band's lines set the low band; RMS switches the detector to peaks.
@@ -4425,7 +4425,9 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     addFx(view, FxType::MultiDyn);
     check(model.value(paramIndex(0, FxParam::Type)) == static_cast<double>(FxType::MultiDyn),
           "the list of effects adds a three-band dynamics");
-    auto x = [](double db) { return 98.0f + static_cast<float>((db + 60.0) / 60.0) * (1.5f * kFxStep - 22.0f - 106.0f); };
+    auto x = [](double db) {
+        return 98.0f + static_cast<float>((db + detail::kMdRangeDb) / detail::kMdRangeDb) * (1.5f * kFxStep - 22.0f - 106.0f);
+    };
     constexpr float kHighBar = 229.0f, kMidBar = 246.0f;
     const float mid = kMidBar + 6.0f, high = kHighBar + 6.0f; // down the middle of their bars
     click(view, {74.0f, mid});
@@ -4510,6 +4512,15 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     const uint32_t past = renderer.pixel({x(-15.0), mid});
     check(levelShot && filled != empty && taken != filled && past != filled && past != taken,
           "a three-band dynamics' bar shows its band's level and gain");
+    // The meter shows the dynamics alone: the band's Gain, after them, at +12 dB leaves the 6 dB taken off in amber
+    // (it would have turned it into 6 dB added, in the accent, past what goes in).
+    model.set(mdGainIndex(0, 1), 12.0);
+    view.poll();
+    const bool gainShot = renderer.save(view, dir / "9g1-3band-dynamics-levels-gain.png");
+    const bool gainLeftOut = gainShot && renderer.pixel({x(-23.0), mid}) == taken && renderer.pixel({x(-15.0), mid}) == past;
+    model.set(mdGainIndex(0, 1), 0.0);
+    view.poll();
+    check(gainLeftOut, "a three-band dynamics' meter shows what its dynamics do, its band's Gain left out");
     // LINK: an edit of one band, by its line or its knob, sets every band's same field, as one undo step; RMS off
     // follows peaks.
     const Rect mdCard = detail::fxCard(0.0f, detail::fxSpan(FxType::MultiDyn));
@@ -4532,8 +4543,8 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
               renderer.save(view, dir / "9h-3band-dynamics-linked.png"),
           "a three-band dynamics' LINK makes an edit of one band set every band's, undoably, and RMS switches to peaks");
 
-    // OTT, from its card's menu (with Link still on): each band set as Ableton's OTT preset has it, Link off, as one
-    // undo step. Another effect's menu doesn't offer it.
+    // OTT, from its card's menu (with Link still on): each band set after the OTT preset (see mdOttSettings()), Link
+    // off, as one undo step. Another effect's menu doesn't offer it.
     auto pick = [&](Point at, Str label) {
         bool offered = false;
         for (const MenuItem &item : view.contextMenu(at))
@@ -4544,22 +4555,22 @@ void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
         return offered;
     };
     const double aboveBefore = model.value(mdAboveIndex(0, 1));
+    const double attackBefore = model.value(paramIndex(0, FxParam::MdAttack));
     const bool offered = pick(fxGrip(model, 0), Str::MenuOtt);
-    const bool ott = offered && model.value(paramIndex(0, FxParam::MdLink)) == 0.0 &&
-                     std::abs(model.value(mdAboveIndex(0, 0)) + 33.8) < 1e-9 &&
-                     std::abs(model.value(mdAboveIndex(0, 1)) + 30.2) < 1e-9 &&
-                     std::abs(model.value(mdBelowIndex(0, 1)) + 41.8) < 1e-9 &&
-                     std::abs(model.value(mdGainIndex(0, 1)) - 5.7) < 1e-9 &&
-                     std::isinf(dynRatio(model.value(mdDownIndex(0, 2)))) &&
-                     std::abs(dynRatio(model.value(mdUpIndex(0, 0))) - 4.17) < 1e-6 &&
-                     std::abs(cutoffFromNorm(model.value(paramIndex(0, FxParam::MdLowFreq))) - 88.3) < 0.01 &&
-                     model.value(paramIndex(0, FxParam::MdRange)) == 36.0 &&
-                     model.value(paramIndex(0, FxParam::MdRms)) == 1.0;
+    bool ott = offered;
+    for (const auto &[index, value] : mdOttSettings(0))
+        ott = ott && model.value(index) == value;
+    ott = ott && model.value(paramIndex(0, FxParam::MdLink)) == 0.0 &&
+          std::abs(model.value(mdAboveIndex(0, 1)) + 37.3) < 1e-9 &&
+          std::isinf(dynRatio(model.value(mdDownIndex(0, 2)))) &&
+          std::abs(dynRatio(model.value(mdUpIndex(0, 0))) - 4.17) < 1e-6 &&
+          std::abs(cutoffFromNorm(model.value(paramIndex(0, FxParam::MdLowFreq))) - 88.3) < 0.01 &&
+          model.value(paramIndex(0, FxParam::MdRange)) == 36.0;
     const bool ottShot = renderer.save(view, dir / "9i-3band-dynamics-ott.png");
     view.undo();
     const bool ottUndone = model.value(paramIndex(0, FxParam::MdLink)) == 1.0 &&
                            model.value(mdAboveIndex(0, 1)) == aboveBefore &&
-                           model.value(paramIndex(0, FxParam::MdRms)) == 0.0;
+                           model.value(paramIndex(0, FxParam::MdAttack)) == attackBefore;
     addFx(view, FxType::Delay);
     check(ott && ottShot && ottUndone && !pick(fxGrip(model, 1), Str::MenuOtt),
           "a three-band dynamics' menu sets it as OTT, undoably, and no other effect's menu offers OTT");

@@ -665,12 +665,12 @@ void buildTable(ParamTable &t) {
         fx(FxParam::MdHighFreq, tr(Str::ParamMdHighCrossover), ParamKind::Cutoff, 0.0, 1.0, normFromCutoff(2500.0));
         for (int band = 0; band < kMcBands; ++band) {
             const std::string b = name + " " + trf(Str::ParamMdBand, {tr(bandNames[band])});
-            add(mdAboveIndex(slot, band), b + " " + tr(Str::ParamAboveThreshold), module, ParamKind::Decibel, -60.0,
-                0.0, -20.0);
+            add(mdAboveIndex(slot, band), b + " " + tr(Str::ParamAboveThreshold), module, ParamKind::Decibel,
+                kMdThresholdMinDb, 0.0, -20.0);
             add(mdDownIndex(slot, band), b + " " + tr(Str::ParamDownRatio), module, ParamKind::DynRatio, 0.0, 1.0,
                 normFromDynRatio(3.0));
-            add(mdBelowIndex(slot, band), b + " " + tr(Str::ParamBelowThreshold), module, ParamKind::Decibel, -60.0,
-                0.0, -40.0);
+            add(mdBelowIndex(slot, band), b + " " + tr(Str::ParamBelowThreshold), module, ParamKind::Decibel,
+                kMdThresholdMinDb, 0.0, -40.0);
             add(mdUpIndex(slot, band), b + " " + tr(Str::ParamUpRatio), module, ParamKind::DynRatio, 0.0, 1.0,
                 normFromDynRatio(2.0));
             add(mdGainIndex(slot, band), b + " " + tr(Str::ParamGain), module, ParamKind::Decibel, -12.0, 12.0, 0.0);

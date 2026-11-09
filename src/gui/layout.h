@@ -818,7 +818,7 @@ inline Point fxBandPortAt(Point split, int band) {
 
 // The three-band dynamics' display: a level bar a band, the high band on top, each its name on the left and its gain
 // on the right, with a scale in dB under them. Levels run from -kMdRangeDb at the left to 0 dB at the right.
-constexpr float kMdRangeDb = 60.0f;
+constexpr float kMdRangeDb = static_cast<float>(-kMdThresholdMinDb);
 inline Rect mdBar(Rect display, int band) {
     const int row = kMcBands - 1 - band;
     return {display.x + 38.0f, display.y + 7.0f + 17.0f * static_cast<float>(row), display.w - 78.0f, 12.0f};

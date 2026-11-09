@@ -50,7 +50,10 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 9: The effects always run as the effects graph, whose wires alone put them in order: the chain is a line of it. An
 //    earlier state that doesn't wire the output (one saved with the effects as a chain) loads its chain's order as the
 //    line from the input to the output (see fxChainWires()), and the chain's places do nothing.
-constexpr uint32_t kStateVersion = 9;
+// 10: The three-band dynamics' Above and Below thresholds reach down to -80 dB (kMdThresholdMinDb) rather than -60.
+//    Their values keep their meaning, but a modulation's depth is a share of its target's range, so an earlier state's
+//    depths on them load smaller, to swing them as far as they did.
+constexpr uint32_t kStateVersion = 10;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -526,6 +529,18 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         ratioFromRetired(loaded);
     if (header[1] < 6)
         loadRetiredMultiComp(loaded);
+    if (header[1] < 10) // as far as they swung the three-band dynamics' thresholds (the retired compressor's, moved
+                        // onto them above, had the same range): their range was kMdRetiredThresholdMinDb to 0 dB then
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot) {
+                const int target = slotTarget(loaded[slotTargetIndex(source, slot)]);
+                const int fx = fxSlotOf(target);
+                bool threshold = false;
+                for (int band = 0; fx >= 0 && band < kMcBands; ++band)
+                    threshold = threshold || target == mdAboveIndex(fx, band) || target == mdBelowIndex(fx, band);
+                if (threshold)
+                    loaded[slotAmountIndex(source, slot)] *= kMdRetiredThresholdMinDb / kMdThresholdMinDb;
+            }
     if (header[1] < 8) { // the chain's order onto its places
         const int retired = paramIndex(GlobalParam::RetiredFxOrder);
         for (const auto &[index, value] : fxOrderChanges(fxOrderFromRetired(loaded[retired])))

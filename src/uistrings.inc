@@ -868,7 +868,7 @@ STR(MenuSplitBands, "Add 2-band split") // the list of effects on the main line,
 STR(MenuSplitThree, "Add 3-band split") // after it: a split in three bands
 STR(MenuResetSettings, "Reset settings")
 STR(MenuOversampling, "Oversampling {1}") // an amp's, {1} the factor ("4x"), the one in force checked
-STR(MenuOtt, "OTT") // a 3-band dynamics' settings set to those of Ableton's OTT preset
+STR(MenuOtt, "OTT") // a 3-band dynamics' settings set after the well-known OTT multiband preset
 STR(MenuRemove, "Remove")
 STR(MenuMoveToBand, "Move to {1}") // an effect on a split's band moved to the end of another band of it, {1} its name
 STR(MenuUnipolar, "Unipolar") // a source's, in the menus of its card, handle or knob

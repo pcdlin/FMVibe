@@ -120,6 +120,10 @@ double moveToward(double from, double to, double step) {
 // A gain (dB) closer than this to where it is going is there: a release would otherwise only arrive as it underflows,
 // a minute and more on, working its gain out every sample until then.
 constexpr double kGainSnapDb = 1e-4;
+// The same, as a share of a level (1e-4 dB), and the level under which a band's curve no longer tells levels apart
+// (-180 dB), for the three-band dynamics' envelopes.
+constexpr double kLevelSnap = 1.1513e-5;
+constexpr double kLevelFloor = 1e-9;
 
 // One step of a gain (dB) toward `target`, by the attack's coefficient while it has to come down, else the
 // release's; there once within kGainSnapDb.
@@ -1619,7 +1623,7 @@ bool Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
     }
     const double mixStep = rampStep(m.mix, at(FxParam::MdMix), n);
     const double outputStep = rampStep(m.output, dbToGain(at(FxParam::MdOutput)), n);
-    std::array<double, kMcBands> most{}, loudest{};
+    std::array<double, kMcBands> most{}, loudest{}, loudestOut{};
     // Each band's gain as a factor, worked out again only when it moves: between the thresholds it rests at 0 dB.
     std::array<double, kMcBands> gainOf, bandFactor{};
     gainOf.fill(std::numeric_limits<double>::quiet_NaN());
@@ -1641,18 +1645,30 @@ bool Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
             const double level = rms ? std::sqrt(m.power[b]) : m.peak[b];
             m.meter[b] = std::max(level, m.meter[b] * fall);
             loudest[b] = std::max(loudest[b], m.meter[b]);
-            const double target = level > flatFrom[b] && level < flatTo[b]
-                                      ? 0.0
-                                      : dynamicsGain(20.0 * std::log10(std::max(level, 1e-9)), above[b], down[b],
-                                                     below[b], up[b], knee, range);
-            m.gain[b] = followGain(m.gain[b], target, attack, release);
-            moving = moving || m.gain[b] != target;
+            // The envelope is there once within kGainSnapDb of the level, or once both are under the curve's floor:
+            // a release would otherwise only arrive as it underflows, working the curve out every sample until then.
+            const double next = level + (m.envelope[b] - level) * (level > m.envelope[b] ? attack : release);
+            m.envelope[b] = std::abs(next - level) <= std::max(level * kLevelSnap, kLevelFloor) ? level : next;
+            const double followed = m.envelope[b];
+            if (followed > flatFrom[b] && followed < flatTo[b]) {
+                m.gain[b] = 0.0;
+            } else {
+                // The lift stops short of taking the band's peaks past kMdLiftHeadroom over Below (see there).
+                const double ceiling = std::min(below[b], above[b]) + kMdLiftHeadroom -
+                                       20.0 * std::log10(std::max(m.peak[b], kLevelFloor));
+                m.gain[b] = dynamicsGain(20.0 * std::log10(std::max(followed, kLevelFloor)), above[b], down[b],
+                                         below[b], up[b], knee, std::clamp(ceiling, 0.0, range));
+            }
+            // Still on its way: the envelope following the level, or the peaks the lift's ceiling reads falling.
+            moving = moving || followed != level || m.peak[b] > kLevelFloor;
             most[b] = std::min(most[b], m.gain[b]);
             if (m.gain[b] != gainOf[b]) {
                 gainOf[b] = m.gain[b];
                 bandFactor[b] = dbToGain(m.gain[b]);
             }
             gain[b] = bandFactor[b] * m.gains[b];
+            m.outMeter[b] = std::max(level * bandFactor[b], m.outMeter[b] * fall);
+            loudestOut[b] = std::max(loudestOut[b], m.outMeter[b]);
         }
         // The dry side is the bands' plain sum, so a partial mix doesn't comb with the crossovers' phase shift.
         for (int ch = 0; ch < 2; ++ch) {
@@ -1664,7 +1680,10 @@ bool Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
     for (int b = 0; b < kMcBands; ++b) {
         reduction_[slot][b] = static_cast<float>(-most[b]);
         bandLevel_[slot][b] = static_cast<float>(loudest[b]);
-        bandGain_[slot][b] = static_cast<float>(m.gain[b]);
+        // What the band does as its meters read it: their two ends held and falling alike (see MultiDyn).
+        bandGain_[slot][b] = static_cast<float>(loudest[b] > kLevelFloor && loudestOut[b] > 0.0
+                                                    ? 20.0 * std::log10(loudestOut[b] / loudest[b])
+                                                    : m.gain[b]);
     }
     return moving;
 }
