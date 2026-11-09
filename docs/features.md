@@ -1312,10 +1312,15 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   mono lead whose oscillator is a self-modulating operator, the mod wheel opening its feedback and index from flute
   to buzzing reed, a mod envelope's bite on each note and a vibrato that a second envelope, as its aux, fades in);
   PD Six-Op Cascade (all six operators in one chain, F down to A, four slow LFOs breathing its links at rates that
-  never line up, and an Index macro deepening them all); and BA Neon Pluck (a mono saw plucked by FM through a
+  never line up, and an Index macro deepening them all); BA Neon Pluck (a mono saw plucked by FM through a
   resonant low-pass over a sine sub, a two-bar LFO turning its FM and grit, its effects as a graph: a split at
   180 Hz whose high band is widened and echoed while the low band stays tight, then a 3-band dynamics set as OTT;
-  its Timbre, Filter, Grit and Space macros). A folder made
+  its Timbre, Filter, Grit and Space macros); PL Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,
+  a feedback modulator for the saw's edge and a short bright one for the pick, velocity digging in, through the
+  Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); LD Overdrive Lead (a mono, gliding
+  lead through the Lead amp into an open 2x12, a vibrato that an envelope fades in as a note holds, the mod wheel
+  turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
+  octave down, through the Bass amp's grit into a 4x10, its lows staying clean). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
   they hold only the params that differ from Init, so their files are small, and load like any other.

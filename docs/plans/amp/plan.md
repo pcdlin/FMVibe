@@ -16,7 +16,7 @@ grit, compression, a midrange voice, and a speaker taking away the fizz.
 - The card is 1.85 places wide (draft A at 1.75 cut "4x12 Closed" short), the cabinet's power switch beside its list
   rather than in it.
 - The engine checks are in `tests/quality.cpp` (which runs on Linux as well as Windows), not the smoke test.
-- The factory preset showing it off is still to come: it needs making by ear in the plugin.
+- Three factory presets use it: PL Crunch Rhythm, LD Overdrive Lead and BA Driven Bass.
 
 [docs/features.md](../../features.md) describes the Amp as it is.
 

@@ -33,3 +33,6 @@ KY Temple Gong
 LD Feedback Lead
 PD Six-Op Cascade
 BA Neon Pluck
+PL Crunch Rhythm
+LD Overdrive Lead
+BA Driven Bass
