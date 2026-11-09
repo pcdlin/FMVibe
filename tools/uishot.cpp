@@ -3494,6 +3494,35 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     }
 }
 
+// A macro's name that isn't valid UTF-8 (a state can hold any bytes there) drawn as best it can be, and the rest of
+// the editor drawn as with a valid name: only the name's own pixels differ (read off the rendered pixels).
+void testInvalidText(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    auto grid = [&] {
+        std::vector<uint32_t> pixels;
+        for (float y = 4.0f; y < view.height(); y += 9.0f)
+            for (float x = 4.0f; x < View::kWidth; x += 9.0f)
+                pixels.push_back(renderer.pixel({x, y}));
+        return pixels;
+    };
+    model.ui.macroNames[0] = "Bad?";
+    view.poll();
+    const bool plain = renderer.save(view, dir / "99a-macro-name.png");
+    const std::vector<uint32_t> before = grid();
+    model.ui.macroNames[0] = "Bad\xFF";
+    view.poll();
+    const bool invalid = renderer.save(view, dir / "99b-macro-name-invalid.png");
+    const std::vector<uint32_t> after = grid();
+    size_t differ = 0;
+    for (size_t i = 0; i < before.size(); ++i)
+        differ += before[i] != after[i] ? 1 : 0;
+    std::printf("      a macro name that isn't UTF-8: %zu of %zu sampled pixels differ from a valid one's\n", differ,
+                before.size());
+    check(plain && invalid && differ < before.size() / 200,
+          "a name that isn't valid UTF-8 leaves the rest of the editor drawn");
+}
+
 // The list of effects opened on a band's + while the split goes: an undo closes the list, and a split taken away
 // behind the editor's back (as a state load does) with the list still open puts the effect picked at the line's end
 // rather than on a band no longer there.
@@ -7635,6 +7664,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
     testFxListAfterUndo(dir, renderer);
+    testInvalidText(dir, renderer);
     testFxGraphScroll(dir, renderer);
     testFxGraphRoom(dir, renderer);
     testFxRow(dir, renderer);

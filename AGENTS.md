@@ -268,6 +268,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     them, and a band's + after its last node showing always, an empty band's too (read off the rendered pixels); a node and its wire out glowing as loud as the telemetry says its
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
     the row changing nothing, the split showing there as its container;
+  - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
   - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
     behind the editor's back going at the line's end;
   - a card dragged a tenth of a card onto its neighbor moving nothing, and three tenths making the neighbor glide aside
