@@ -169,6 +169,7 @@ private:
     struct Delay {
         std::array<ZeroBuffer, 2> lines;
         int write = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
         std::array<double, 2> length{};   // samples, glide toward the set times
         std::array<double, 2> lowPass{};  // tone filter states
         std::array<double, 2> highPass{};
@@ -245,6 +246,7 @@ private:
         std::array<ZeroBuffer, 2> preDelay;
         std::array<ZeroBuffer, 2> shifter; // a shimmer's band-passed tail, per side, its shifters read
         int lineWrite = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
         int diffuserWrite = 0;
         int preWrite = 0;
         int shiftWrite = 0;
@@ -290,6 +292,7 @@ private:
     struct Flanger {
         std::array<ZeroBuffer, 2> lines;
         int write = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
         std::array<double, 2> last{}; // the delayed sound, fed back
         double phase = 0.0;
         double mix = 0.5;
@@ -320,6 +323,7 @@ private:
     struct Widener {
         ZeroBuffer line;
         int write = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
         Biquad highPass;
         std::array<double, kWidenerTaps> phases{}; // the taps' sweeps, in cycles
         double size = 0.5; // gliding toward the knob

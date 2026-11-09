@@ -449,8 +449,9 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     }
     case FxType::Delay: {
         Delay &d = s.delay;
-        for (ZeroBuffer &line : d.lines)
-            line.zero();
+        for (ZeroBuffer &line : d.lines) // only what it ran through: lines 4 s long would take a while to clear
+            line.zero(d.ran);
+        d.ran = 0;
         d.write = 0;
         d.length = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
         d.lowPass = {};
@@ -490,14 +491,15 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     case FxType::Reverb: {
         Reverb &r = s.reverb;
         for (ZeroBuffer &line : r.lines)
-            line.zero();
+            line.zero(r.ran);
         for (auto &side : r.diffusers)
             for (ZeroBuffer &diffuser : side)
-                diffuser.zero();
+                diffuser.zero(r.ran);
         for (ZeroBuffer &line : r.preDelay)
-            line.zero();
+            line.zero(r.ran);
         for (ZeroBuffer &line : r.shifter)
-            line.zero();
+            line.zero(r.ran);
+        r.ran = 0;
         r.lineWrite = r.diffuserWrite = r.preWrite = r.shiftWrite = 0;
         r.shimmerPhase = 0.0;
         r.shimmerLow = {};
@@ -524,7 +526,8 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::Flanger:
         for (ZeroBuffer &line : s.flanger.lines)
-            line.zero();
+            line.zero(s.flanger.ran);
+        s.flanger.ran = 0;
         s.flanger.write = 0;
         s.flanger.last = {};
         s.flanger.phase = 0.0;
@@ -543,7 +546,8 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::Widener: {
         Widener &e = s.widener;
-        e.line.zero();
+        e.line.zero(e.ran);
+        e.ran = 0;
         e.write = 0;
         e.highPass = Biquad{};
         e.phases = {0.0, 0.25, 0.5, 0.75}; // apart from the start, so the sides never sweep together
@@ -1238,6 +1242,7 @@ void Effects::runShaper(int slot, float *const *io, uint32_t n, const ParamValue
 
 double Effects::runDelay(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
     Delay &d = slots_[slot].delay;
+    d.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const double targets[2] = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
     const double glide = 1.0 - std::exp(-1.0 / (0.02 * sampleRate_)); // time changes glide, like tape
@@ -1538,13 +1543,14 @@ bool Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
 
 double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Reverb &r = slots_[slot].reverb;
+    r.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const double glide = 1.0 - std::exp(-1.0 / (0.05 * sampleRate_)); // size and pre-delay changes glide
     const ReverbType type = reverbType(at(FxParam::ReverbType));
     const ReverbStyle style = reverbStyle(type);
     for (int c = 0; c < 2; ++c)
         for (int d = r.diffusersUsed; d < style.diffusers; ++d)
-            r.diffusers[c][d].zero();
+            r.diffusers[c][d].zero(r.ran);
     r.diffusersUsed = style.diffusers;
     const double sizeTarget = reverbSpace(at(FxParam::ReverbSize), type); // a new algorithm's length glides too
     const double preTarget = reverbPreDelay(at(FxParam::ReverbPreDelay)) * sampleRate_;
@@ -1591,7 +1597,7 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const bool shifting = r.shimmer > 0.0 || shimmerTarget > 0.0;
     if (shifting && r.shimmer == 0.0) { // starting again: nothing from the last time it ran goes back in
         for (ZeroBuffer &line : r.shifter)
-            line.zero();
+            line.zero(r.ran);
         r.shimmerLow = {};
         r.shimmerBass = {};
     }
@@ -1844,6 +1850,7 @@ double widenerSpread(double hz, double highPassNorm) {
 
 double Effects::runWidener(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Widener &e = slots_[slot].widener;
+    e.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const Coefs hp = biquad(BiquadType::HighPass,
                             std::min(cutoffFromNorm(at(FxParam::WidenerHighPass)), 0.45 * sampleRate_), sampleRate_);
@@ -1921,6 +1928,7 @@ double Effects::runDisperser(int slot, float *const *io, uint32_t n, const Param
 
 double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
     Flanger &f = slots_[slot].flanger;
+    f.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam field) { return p[paramIndex(slot, field)]; };
     const double step = sweepHz([&p](int i) { return p[i]; }, slot, false, tempo) / sampleRate_;
     const double delaySeconds = timeFromNorm(at(FxParam::FlangerDelay)); // flangerDelay()'s, the same all chunk

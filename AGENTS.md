@@ -179,7 +179,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     as saved;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
-    until its tail has been heard, and stopping after; a compressor running its release out in silence, a quiet
+    until its tail has been heard, and stopping after; a delay switched off and on again playing back nothing it
+    held, its lines part written or written all round; a compressor running its release out in silence, a quiet
     sine after it untouched; and effects that have rung out costing little for silence, which comes out as silence;
   - a shimmer's tail after an A4, with Shimmer half and full up: falling 60 dB in about its decay time, its energy
     on the octaves and the first two octaves up narrow lines (not smeared by the shifter's crossfades); and at the
