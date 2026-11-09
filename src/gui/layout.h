@@ -712,11 +712,6 @@ inline Rect ampModelButton(Rect card) {
     const Rect left = ampLeft(card);
     return {left.x, card.y + 42.0f, left.w, 22.0f};
 }
-// Its list, wider than the button, for each model's few words at the right.
-inline Rect ampModelList(Rect card) {
-    const Rect button = ampModelButton(card);
-    return {button.x, button.y, std::max(button.w, 216.0f), button.h};
-}
 inline Rect ampCabPower(Rect card) {
     const Rect right = ampRight(card);
     return {right.x, card.y + 42.0f, 22.0f, 22.0f};

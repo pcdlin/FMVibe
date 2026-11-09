@@ -4060,12 +4060,12 @@ void testAmp(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(at(FxParam::AmpCab)) == static_cast<double>(AmpCab::Closed4x12),
           "a new amp is a Crunch into a closed 4x12, the cabinet on");
 
-    // The model's list, each model's few words beside it, picking Heavy; undone.
+    // The model's list picking Heavy; undone.
     constexpr int kModels = static_cast<int>(AmpModel::Count), kCabs = static_cast<int>(AmpCab::Count);
     click(view, centerOf(detail::ampModelButton(card)));
     view.mouseMove(away, {});
     const bool modelsShot = renderer.save(view, dir / "9f1-amp-models.png");
-    click(view, centerOf(detail::listMenuItem(detail::ampModelList(card), kModels, static_cast<int>(AmpModel::Heavy))));
+    click(view, centerOf(detail::listMenuItem(detail::ampModelButton(card), kModels, static_cast<int>(AmpModel::Heavy))));
     const bool heavy = model.value(at(FxParam::AmpModel)) == static_cast<double>(AmpModel::Heavy);
     view.undo();
     check(modelsShot && heavy && model.value(at(FxParam::AmpModel)) == static_cast<double>(AmpModel::Crunch),

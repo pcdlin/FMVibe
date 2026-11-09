@@ -2620,7 +2620,7 @@ std::vector<View::Widget> View::widgets() const {
             const Rect card = *shown;
             const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
                                 : listField == FxParam::FilterSlope ? slopeButton(fxDisplayIn(card, FxType::Filter))
-                                : listField == FxParam::AmpModel    ? ampModelList(card)
+                                : listField == FxParam::AmpModel    ? ampModelButton(card)
                                 : listField == FxParam::AmpCab      ? ampCabButton(card)
                                                                     : clipModeButton(card);
             const int items = listCount(listMenu_);
@@ -6703,14 +6703,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                           selected ? listColor(w.param) : kDim);
         c.text({w.rect.x + 10.0f + indent, w.rect.y, w.rect.w - 20.0f - indent, w.rect.h}, listItemName(w.param, w.b),
                kTextBody, !fits ? kFaint : hovered || selected ? kText : kDim, Align::Left, selected);
-        if (fxFieldOf(w.param) == FxParam::AmpModel) { // each model's few words at the right
-            constexpr Str kNotes[] = {Str::AmpNoteClean, Str::AmpNoteBlues, Str::AmpNoteCrunch, Str::AmpNoteLead,
-                                      Str::AmpNoteHeavy, Str::AmpNoteBass,  Str::AmpNoteFuzz};
-            static_assert(std::size(kNotes) == static_cast<size_t>(AmpModel::Count));
-            c.text({w.rect.x + 10.0f, w.rect.y, w.rect.w - 20.0f, w.rect.h},
-                   tr(kNotes[std::clamp(w.b, 0, static_cast<int>(AmpModel::Count) - 1)]), kTextSmall, kDim,
-                   Align::Right);
-        }
         break;
     }
     case Kind::ShapePoint: { // compact: smaller, in a shaper's card

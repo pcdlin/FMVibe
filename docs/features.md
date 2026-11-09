@@ -690,8 +690,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.
 
     The amp's card is 1.85 places wide, the amp on the left and the cabinet on the right with a faint line between, in
-    the order the sound goes through them. The amp's side: the model's list (each model's few words at its right),
-    its display, STEREO under it, and Gain, Volume and Presence over Bass, Mid and Treble. The cabinet's side: its
+    the order the sound goes through them. The amp's side: the model's list, its display, STEREO under it, and Gain,
+    Volume and Presence over Bass, Mid and Treble. The cabinet's side: its
     power symbol, then the cabinets' list, its display, the mic's three (DYN, CND, RIB) under it, and Position and
     Distance over Output and Mix. With the cabinet off, its display, the mic's switch and Position and Distance dim,
     though they still turn and take modulation.

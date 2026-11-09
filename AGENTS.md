@@ -418,7 +418,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and the bars' meters showing the telemetry's levels and gains, in teal, then amber for what is taken off (read
     off the rendered pixels), and LINK (an edit of one band, by its line or knob, then setting every band's, undoably) and RMS;
   - the amp's card: added after the shaper in the list of effects, a Crunch into a closed 4x12 to begin with; its
-    model list (each model's few words beside it), cabinet list and mic switch picking, each undoably; its cabinet
+    model list, cabinet list and mic switch picking, each undoably; its cabinet
     switched off dimming its controls (read off the rendered pixels), which still turn; its mic dragged on its display
     setting Position and Distance in one undo step and double-clicked back; its drive meter following the telemetry
     and its display following Treble and the mic's position (read off the rendered pixels); and its title's menu

@@ -64,7 +64,7 @@ STR(ReverbRoom, "Room")
 STR(ReverbPlate, "Plate")
 STR(ReverbShimmer, "Shimmer")
 
-// The amp's models, with a few words on each for its list; its cabinets; the mics in front of them, with the short
+// The amp's models; its cabinets; the mics in front of them, with the short
 // names its switch shows.
 STR(AmpClean, "Clean")
 STR(AmpBlues, "Blues")
@@ -73,13 +73,6 @@ STR(AmpLead, "Lead")
 STR(AmpHeavy, "Heavy")
 STR(AmpBass, "Bass")
 STR(AmpFuzz, "Fuzz")
-STR(AmpNoteClean, "glassy, lots of headroom")
-STR(AmpNoteBlues, "warm, breaks up early")
-STR(AmpNoteCrunch, "two stages, mid-forward")
-STR(AmpNoteLead, "hot, smooth sustain")
-STR(AmpNoteHeavy, "tight, high gain")
-STR(AmpNoteBass, "deep, grit on top")
-STR(AmpNoteFuzz, "a fuzz pedal, then clean")
 STR(CabOpen1x12, "1x12 Open")
 STR(CabOpen2x12, "2x12 Open")
 STR(CabClosed4x12, "4x12 Closed")
