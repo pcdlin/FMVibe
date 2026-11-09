@@ -778,16 +778,15 @@ void Effects::runAmp(int slot, float *const *io, uint32_t n, const ParamValues &
                 io[c][s] = io[c][s] * (1.0f - w) + old[c][s] * w;
         }
     }
-    // Output and Mix glide sample by sample.
+    // Output and Mix glide sample by sample, the same however the host splits the block.
     const double outputTo = std::pow(10.0, at(FxParam::AmpOutput) / 20.0), mixTo = at(FxParam::AmpMix);
+    const double glide = 1.0 - std::exp(-1.0 / (0.005 * sampleRate_));
     for (uint32_t s = 0; s < n; ++s) {
-        const double t = (s + 1.0) / n;
-        const double output = a.output + (outputTo - a.output) * t, mix = a.mix + (mixTo - a.mix) * t;
+        a.output += (outputTo - a.output) * glide;
+        a.mix += (mixTo - a.mix) * glide;
         for (int c = 0; c < 2; ++c)
-            io[c][s] = static_cast<float>(dry[c][s] * (1.0 - mix) + io[c][s] * output * mix);
+            io[c][s] = static_cast<float>(dry[c][s] * (1.0 - a.mix) + io[c][s] * a.output * a.mix);
     }
-    a.output = outputTo;
-    a.mix = mixTo;
     reduction_[slot][0] = static_cast<float>(drive);
 }
 

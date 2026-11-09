@@ -1,9 +1,5 @@
 ## New Features
 
-- Amp effect: amp models (preamp, tone stack, power amp) with an optional cabinet emulation, like the guitar amp devices DAWs ship.
-    - **Planned:** [docs/plans/amp/plan.md](docs/plans/amp/plan.md), with UI drafts beside it. Open questions at its
-      end (draft A or B, the models and cabinets, oversampling, color).
-
 - Make hard clip shaper stackable. Add a stack setting from 1 to 8 that behaves as if that shaper is repeated that many times in direct succession.
 
 - Remap modifiers for modulation sources

@@ -193,6 +193,224 @@ double throughDecimator(int factor, double hz) {
     return 10.0 * std::log10(2.0 * sum / static_cast<double>(frames - settle) + 1e-30);
 }
 
+// --- The amp: every model about as loud as what goes in; its stages saturating harder the more Gain they get, Heavy
+// harder than Clean; aliasing that falls as the oversampling rises; its tone controls, cabinet and mic moving the
+// spectrum as they should; one amp for both sides in mono, one each in stereo; Mix at 0 leaving the sound alone; no DC
+// out of its lopsided stages; and no click when its setting changes.
+void ampChecks() {
+    std::printf("amp:\n");
+    // An amp in slot 0, alone in the chain, its fields set by `setup`, fed `in` on both sides (or the left only) in
+    // blocks of `piece`; returns the left side, or the right with `right`.
+    struct Run {
+        std::vector<float> left, right;
+    };
+    auto run = [](const std::vector<float> &in, const std::map<FxParam, double> &fields, bool leftOnly = false,
+                  uint32_t piece = kBlock) {
+        auto fx = std::make_unique<Effects>(); // its slots are large: not on the stack
+        fx->prepare(kSampleRate);
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Amp);
+        chain(p, {0});
+        for (const auto &[field, value] : fields)
+            p[paramIndex(0, field)] = value;
+        Run out{in, leftOnly ? std::vector<float>(in.size(), 0.0f) : in};
+        for (size_t done = 0; done < in.size(); done += piece) {
+            const uint32_t n = static_cast<uint32_t>(std::min<size_t>(piece, in.size() - done));
+            fx->process(out.left.data() + done, out.right.data() + done, n, p, 120.0, 60.0);
+        }
+        return out;
+    };
+    auto sine = [](double hz, double level, size_t frames) {
+        std::vector<float> x(frames);
+        for (size_t i = 0; i < frames; ++i)
+            x[i] = static_cast<float>(level * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(i) / kSampleRate));
+        return x;
+    };
+    auto rms = [](const std::vector<float> &x, size_t from) {
+        double sum = 0.0;
+        for (size_t i = from; i < x.size(); ++i)
+            sum += static_cast<double>(x[i]) * x[i];
+        return std::sqrt(sum / static_cast<double>(x.size() - from));
+    };
+    auto db = [](double ratio) { return 20.0 * std::log10(std::max(ratio, 1e-12)); };
+    constexpr int kModels = static_cast<int>(AmpModel::Count);
+    const char *const names[kModels] = {"Clean", "Blues", "Crunch", "Lead", "Heavy", "Bass", "Fuzz"};
+
+    // Levels: a sine at -12 dBFS (as an operator into the effects) at the default knobs, cabinet on, comes out within
+    // 2 dB of its level, every model; and the energy off the note's fundamental grows with Gain.
+    {
+        const std::vector<float> in = sine(220.0, 0.25, kFftSize + 9600);
+        double worst = 0.0;
+        bool saturating = true;
+        std::vector<double> distortion(kModels);
+        for (int m = 0; m < kModels; ++m) {
+            const double level = db(rms(run(in, {{FxParam::AmpModel, m}}).left, 9600) / rms(in, 9600));
+            auto offFundamental = [&](double gain) { // what isn't the note's fundamental, against it
+                const std::vector<float> out = run(in, {{FxParam::AmpModel, m}, {FxParam::AmpGain, gain}}).left;
+                return unexpectedDb(std::vector<float>(out.end() - kFftSize, out.end()), {220.0});
+            };
+            const double low = offFundamental(0.1), high = offFundamental(0.9);
+            distortion[m] = high;
+            std::printf("      %-6s level %+5.1f dB, harmonics %+6.1f dB at Gain 1, %+6.1f dB at Gain 9\n", names[m],
+                        level, low, high);
+            worst = std::max(worst, std::abs(level));
+            saturating = saturating && high > low + 3.0;
+        }
+        check(worst < 2.0, "every amp model at its default knobs comes out about as loud as what goes in");
+        check(saturating && distortion[static_cast<int>(AmpModel::Heavy)] > distortion[static_cast<int>(AmpModel::Clean)],
+              "the amp's stages saturate more the more Gain they get, Heavy more than Clean");
+    }
+    // Aliasing: Heavy at full Gain and Volume on a C7, cabinet off, the energy that isn't a harmonic of the note, at
+    // each oversampling: falling as it rises, and 35 dB down at the 4x it starts with. And its cost.
+    {
+        const double c7 = keyHz(96);
+        const std::vector<float> in = sine(c7, 0.25, kFftSize + 4800);
+        double previous = 0.0, at4 = 0.0;
+        bool falling = true;
+        for (int os = 0; os < kAmpOversamplings; ++os) {
+            const auto start = std::chrono::steady_clock::now();
+            const std::vector<float> out = run(in, {{FxParam::AmpModel, static_cast<double>(AmpModel::Heavy)},
+                                                    {FxParam::AmpGain, 1.0},
+                                                    {FxParam::AmpVolume, 1.0},
+                                                    {FxParam::AmpCabOn, 0.0},
+                                                    {FxParam::AmpOversampling, os}})
+                                               .left;
+            const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            const double alias = unexpectedDb(std::vector<float>(out.end() - kFftSize, out.end()), harmonics(c7));
+            std::printf("      %dx: aliasing %6.1f dB, %.2f %% of a core\n", 1 << os, alias,
+                        100.0 * seconds / (static_cast<double>(in.size()) / kSampleRate));
+            if (os > 0)
+                falling = falling && alias < previous;
+            previous = alias;
+            if (os == kDefaultAmpOversampling)
+                at4 = alias;
+        }
+        check(falling && at4 < -35.0, "the amp's aliasing falls as its oversampling rises, 35 dB down at 4x");
+    }
+    // The tone: Treble up brightens and Bass up darkens (the energy at 3 kHz against 50-130 Hz of a quiet, bright input:
+    // white noise into Clean at Gain 0, nearly linear); the cabinet takes the top away (above 8 kHz, 20 dB at least);
+    // the mic toward the cone's edge is darker than at its center.
+    {
+        std::vector<float> noise(48000);
+        uint32_t seed = 12345;
+        for (float &v : noise) {
+            seed = seed * 1664525u + 1013904223u;
+            v = 0.02f * (static_cast<float>(seed >> 8) / 8388608.0f - 1.0f);
+        }
+        auto band = [&](const std::map<FxParam, double> &fields, double from, double to) {
+            std::map<FxParam, double> all = {{FxParam::AmpModel, static_cast<double>(AmpModel::Clean)},
+                                             {FxParam::AmpGain, 0.0}};
+            for (const auto &[f, v] : fields)
+                all[f] = v;
+            const std::vector<float> out = run(noise, all).left;
+            std::vector<float> padded(kFftSize, 0.0f);
+            std::copy(out.end() - 32768, out.end(), padded.begin());
+            const std::vector<double> power = powerSpectrum(padded);
+            const double binHz = kSampleRate / kFftSize;
+            double sum = 1e-30;
+            for (size_t b = static_cast<size_t>(from / binHz); b < static_cast<size_t>(to / binHz); ++b)
+                sum += power[b];
+            return 10.0 * std::log10(sum);
+        };
+        auto tilt = [&](const std::map<FxParam, double> &fields) {
+            return band(fields, 2500.0, 3500.0) - band(fields, 50.0, 130.0);
+        };
+        const double middle = tilt({});
+        const double treble = tilt({{FxParam::AmpTreble, 1.0}}) - tilt({{FxParam::AmpTreble, 0.0}});
+        const double bass = tilt({{FxParam::AmpBass, 1.0}}) - tilt({{FxParam::AmpBass, 0.0}});
+        const double cabTop = band({}, 8000.0, 16000.0) - band({}, 500.0, 1500.0);
+        const double openTop =
+            band({{FxParam::AmpCabOn, 0.0}}, 8000.0, 16000.0) - band({{FxParam::AmpCabOn, 0.0}}, 500.0, 1500.0);
+        const double center = band({{FxParam::AmpPosition, 0.0}}, 3000.0, 6000.0),
+                     edge = band({{FxParam::AmpPosition, 1.0}}, 3000.0, 6000.0);
+        std::printf("      3 kHz against 50-130 Hz: %+.1f dB, Treble 10 against 0 %+.1f, Bass 10 against 0 %+.1f; the "
+                    "cabinet's top %+.1f dB against none; the mic at the edge %+.1f dB at 3-6 kHz\n",
+                    middle, treble, bass, cabTop - openTop, edge - center);
+        check(treble > 6.0 && bass < -3.0, "the amp's Treble and Bass tilt its tone the right way");
+        check(cabTop < openTop - 20.0 && edge < center - 2.0,
+              "the amp's cabinet takes the top away, and its mic at the cone's edge is darker than at its center");
+    }
+    // Mono and stereo: a sound on the left only comes out on both sides with Stereo off, and on the left alone with it
+    // on. Mix at 0 leaves the sound as it was.
+    {
+        const std::vector<float> in = sine(220.0, 0.25, 9600);
+        const Run mono = run(in, {}, true), stereo = run(in, {{FxParam::AmpStereo, 1.0}}, true);
+        const Run dry = run(in, {{FxParam::AmpMix, 0.0}});
+        double gap = 0.0;
+        for (size_t i = 0; i < in.size(); ++i)
+            gap = std::max(gap, static_cast<double>(std::abs(dry.left[i] - in[i])));
+        // (After the 5 ms the effect fades in over as it starts, while what went in still shows through.)
+        const bool same = std::equal(mono.left.begin() + 4800, mono.left.end(), mono.right.begin() + 4800);
+        check(same && rms(mono.right, 4800) > 0.01 && rms(stereo.right, 0) == 0.0 &&
+                  rms(stereo.left, 4800) > 0.01,
+              "the amp runs once on both sides' sum in mono, and once a side in stereo");
+        check(gap < 1e-6, "the amp's Mix at 0 leaves the sound alone");
+    }
+    // DC: the Fuzz's lopsided stages at full Gain put out none (the mean of a second's output).
+    {
+        const std::vector<float> in = sine(110.0, 0.25, 96000);
+        const std::vector<float> out =
+            run(in, {{FxParam::AmpModel, static_cast<double>(AmpModel::Fuzz)}, {FxParam::AmpGain, 1.0}}).left;
+        double mean = 0.0;
+        for (size_t i = 48000; i < out.size(); ++i)
+            mean += out[i];
+        mean /= 48000.0;
+        std::printf("      the fuzz's DC: %.2e\n", mean);
+        check(std::abs(mean) < 1e-3, "the amp's lopsided stages put out no DC");
+    }
+    // The room: with the mic a metre back, an impulse comes back about 7.7 ms later (its latest reflection), which a
+    // mic up close doesn't hear.
+    {
+        std::vector<float> impulse(4800, 0.0f);
+        impulse[100] = 0.05f;
+        auto echo = [&](double distance) {
+            const std::vector<float> out = run(impulse, {{FxParam::AmpModel, static_cast<double>(AmpModel::Clean)},
+                                                         {FxParam::AmpGain, 0.0},
+                                                         {FxParam::AmpDistance, distance}})
+                                               .left;
+            const size_t lag = 100 + static_cast<size_t>(std::lround(0.0077 * kSampleRate));
+            return rms(std::vector<float>(out.begin() + static_cast<long>(lag) - 4, out.begin() + static_cast<long>(lag) + 20), 0) /
+                   rms(std::vector<float>(out.begin() + static_cast<long>(lag) - 40, out.begin() + static_cast<long>(lag) - 16), 0);
+        };
+        const double far = echo(1.0), near = echo(0.0);
+        std::printf("      the room's last reflection: %.1fx the tail before it a metre back, %.1fx up close\n", far, near);
+        check(far > 1.6 && near < 1.3, "the amp's mic set back hears the room's reflections");
+    }
+    // Clicks: the model, the cabinet, the mic, the cabinet's switch and the oversampling changed under a C3 played in
+    // single frames: each crossfades, no rougher than the note around it.
+    {
+        struct Change {
+            const char *name;
+            FxParam field;
+            double to;
+        };
+        const Change changes[] = {
+            {"model to Heavy", FxParam::AmpModel, static_cast<double>(AmpModel::Heavy)},
+            {"cabinet to 1x12", FxParam::AmpCab, static_cast<double>(AmpCab::Open1x12)},
+            {"mic to ribbon", FxParam::AmpMic, static_cast<double>(AmpMic::Ribbon)},
+            {"cabinet off", FxParam::AmpCabOn, 0.0},
+            {"oversampling to 1x", FxParam::AmpOversampling, 0.0},
+        };
+        double worst = 0.0;
+        for (const Change &change : changes) {
+            Engine e(2);
+            e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Amp);
+            chain(e.p, {0});
+            e.noteOn(48);
+            const std::vector<float> before = e.render(9600, 1);
+            e.p[paramIndex(0, change.field)] = change.to;
+            const std::vector<float> all = joined(before, e.render(2400, 1));
+            const double steady = roughness(all, 4800, before.size());
+            const double switched = roughness(all, before.size(), all.size());
+            std::printf("      %-20s %.2fx as rough as the note\n", change.name, switched / steady);
+            worst = std::max(worst, switched / steady);
+        }
+        check(worst < 2.0, "the amp's setting changed crossfades rather than clicking");
+    }
+}
+
 // --- The effects chain: a reverb rings on while what went in still waits in its pre-delay; a jump in an effect's
 // param ramps however the host's events split the block; a drawn shaper curve passes a quiet, slow sine as drawn.
 void effectsChainChecks() {
@@ -249,6 +467,9 @@ void effectsChainChecks() {
             {"reverb mix 0 to 100 %", FxType::Reverb, FxParam::ReverbMix, 0.0, 1.0},
             {"DJ EQ low band killed", FxType::Eq, FxParam::EqLow, 0.0, -1.0},
             {"3-band dynamics output +12 dB", FxType::MultiDyn, FxParam::MdOutput, 0.0, 12.0},
+            {"amp output +12 dB", FxType::Amp, FxParam::AmpOutput, 0.0, 12.0},
+            {"amp mix 0 to 100 %", FxType::Amp, FxParam::AmpMix, 0.0, 1.0},
+            {"amp gain 5 to 10", FxType::Amp, FxParam::AmpGain, 0.5, 1.0},
         };
         double worst = 0.0;
         for (const Jump &jump : jumps) {
@@ -2400,6 +2621,7 @@ int main() {
     }
 
     effectsChainChecks();
+    ampChecks();
 
     // --- The mod wheel leaves the FM alone until it is assigned: an FM pair sounds the same with it all the way up.
     {

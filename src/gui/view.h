@@ -219,6 +219,8 @@ private:
                        // list of band shapes
         PeqTypeMenu,  // a = 1 on the open list, 0 around it (a click there closes it)
         PeqTypeItem,  // param = the band's type, b = PeqType: an entry of the list
+        AmpMic,       // param = the mic's Position, a = effect slot: the mic on an amp's cabinet display, which drags
+                      // across the cone (Position) and away from it (Distance)
         ShapeArea,    // a = shape (see shapeEditor_): double-click adds a point
         ShapePoint,   // a = shape, b = point
         ShapeCurve,   // param = curve, a = shape, b = point: bends the segment leaving the point
@@ -304,6 +306,7 @@ private:
         bool compact = false; // header knob with its label and number beside it
         bool shrunk = false;  // a compact knob drawn smaller (the bend range, in the keyboard strip's top row)
         bool disabled = false; // dimmed, and takes no input (a fixed operator's Pitch and Detune, their depth handles)
+        bool faint = false;    // dimmed, but takes input still (an amp's cabinet controls while the cabinet is off)
         Rect clip{};          // on a card that may be scrolled partly out: drawn and hit only within this
         bool popup = false;   // in the open list of a pill (its row's bypass, depth and remove): over everything else
         // One of a row of buttons drawn merged into one pill, as Poly | Mono: the pill, and from where to where this
@@ -347,6 +350,7 @@ private:
         SplitPoint, // a split's crossover handle, across
         FxNodeMove, // a node of the effects graph (a split or a join with what it holds), onto another place
         Tempo,      // the title bar's tempo, up and down (drag_.startValue: the tempo it started at)
+        AmpMic,     // an amp's mic, across and away from its cabinet's cone
     };
 
     struct Drag {
@@ -1130,6 +1134,8 @@ private:
     void paintShaperCurve(Canvas &c, Rect r, int unit);
     void paintDisperser(Canvas &c, Rect r, int slot);
     void paintWidener(Canvas &c, Rect r, int slot);
+    void paintAmp(Canvas &c, Rect r, int slot);
+    void paintAmpCab(Canvas &c, Rect r, int slot);
     // The note source in the keyboard strip, right of the macros: the note the newest voice plays, and its name; and
     // velocity, right of it: the velocity the newest voice came with.
     void paintNoteSource(Canvas &c, float top);

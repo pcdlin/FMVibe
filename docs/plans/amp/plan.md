@@ -5,6 +5,21 @@ an optional cabinet emulation after them, as the amp devices DAWs ship do, thoug
 product's names, graphics or tunings. On an FM synth it does what an amp does to a guitar:
 grit, compression, a midrange voice, and a speaker taking away the fizz.
 
+**Status: implemented** (draft A), with these changes from the plan below:
+
+- The models are **Clean, Blues, Crunch, Lead, Heavy, Bass and Fuzz** (a fuzz pedal into a clean amp): Chime is
+  gone. The tone stacks are American (Clean, Fuzz), British (Blues, Crunch, Lead), a deeper-scooped British (Heavy)
+  and Active (Bass); there is no Bright stack.
+- The oversampling (1x, 2x, 4x to begin with, 8x) is a choice in the card's right-click menu, stored as a 16th field
+  (`AmpOversampling`), so the fields take 25034–25039 + 40·slot and 36000–36009 + 20·slot.
+- The cabinet is on to begin with, the five cabinets as planned, and there is no separate cabinet effect.
+- The card is 1.85 places wide (draft A at 1.75 cut "4x12 Closed" short), the cabinet's power switch beside its list
+  rather than in it.
+- The engine checks are in `tests/quality.cpp` (which runs on Linux as well as Windows), not the smoke test.
+- The factory preset showing it off is still to come: it needs making by ear in the plugin.
+
+[docs/features.md](../../features.md) describes the Amp as it is.
+
 UI drafts: [drafts.html](drafts.html) (open it in a browser), rendered at 2x as the PNGs beside it
 (`NODE_PATH=$(npm root -g) node render.js` renders them again, with an installed Playwright and its Chromium).
 

@@ -486,7 +486,7 @@ float fxSpan(const FakeController &model, int slot) {
     if (folded)
         return kFoldedSpan;
     const long type = std::lround(model.value(paramIndex(slot, FxParam::Type)));
-    return type == static_cast<long>(FxType::Amp)                                                        ? 1.75f
+    return type == static_cast<long>(FxType::Amp)                                                        ? 1.85f
            : type == static_cast<long>(FxType::ParamEq) || type == static_cast<long>(FxType::MultiDyn) ? 1.5f
                                                                                                          : 1.0f;
 }
@@ -4037,6 +4037,138 @@ void testOutScope(const std::filesystem::path &dir, Renderer &renderer) {
 // threshold back. LINK makes the knobs and every band's lines set the low band; RMS switches the detector to peaks.
 // Its knobs for which way a threshold or ratio works tell it in a tooltip under their label, and the bars show what the
 // telemetry says.
+// The amp's card: added after the shaper in the list of effects; its model and cabinet lists picking, each an undo
+// step; the cabinet's power switch dimming its controls (read off the rendered pixels), which still turn; the mic
+// dragged on its display setting Position and Distance in one undo step, and double-clicked back; the drive meter
+// following the telemetry and the display's curve moving with Treble and with Position (read off the rendered
+// pixels); and its title's menu offering the oversampling, the one in force checked.
+void testAmp(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    addFx(view, FxType::Amp);
+    auto at = [&](FxParam f) { return paramIndex(0, f); };
+    auto centerOf = [](Rect r) { return Point{r.x + r.w * 0.5f, r.y + r.h * 0.5f}; };
+    check(model.value(at(FxParam::Type)) == static_cast<double>(FxType::Amp) && fxMenuPlace(FxType::Amp) == 1,
+          "the list of effects adds an amp, offered after the shaper");
+    const Rect card = detail::fxCard(0.0f, detail::fxSpan(FxType::Amp));
+    const Point away{600.0f, 628.0f};
+    view.mouseMove(away, {});
+    check(renderer.save(view, dir / "9f-amp.png"), "render the amp's card");
+    check(model.value(at(FxParam::AmpModel)) == static_cast<double>(AmpModel::Crunch) &&
+              model.value(at(FxParam::AmpCabOn)) == 1.0 &&
+              model.value(at(FxParam::AmpCab)) == static_cast<double>(AmpCab::Closed4x12),
+          "a new amp is a Crunch into a closed 4x12, the cabinet on");
+
+    // The model's list, each model's few words beside it, picking Heavy; undone.
+    constexpr int kModels = static_cast<int>(AmpModel::Count), kCabs = static_cast<int>(AmpCab::Count);
+    click(view, centerOf(detail::ampModelButton(card)));
+    view.mouseMove(away, {});
+    const bool modelsShot = renderer.save(view, dir / "9f1-amp-models.png");
+    click(view, centerOf(detail::listMenuItem(detail::ampModelList(card), kModels, static_cast<int>(AmpModel::Heavy))));
+    const bool heavy = model.value(at(FxParam::AmpModel)) == static_cast<double>(AmpModel::Heavy);
+    view.undo();
+    check(modelsShot && heavy && model.value(at(FxParam::AmpModel)) == static_cast<double>(AmpModel::Crunch),
+          "the amp's model list picks a model, undoably");
+    // The cabinet's list picking a 1x15; undone.
+    click(view, centerOf(detail::ampCabButton(card)));
+    view.mouseMove(away, {});
+    const bool cabsShot = renderer.save(view, dir / "9f2-amp-cabinets.png");
+    click(view, centerOf(detail::listMenuItem(detail::ampCabButton(card), kCabs, static_cast<int>(AmpCab::Bass1x15))));
+    const bool bass = model.value(at(FxParam::AmpCab)) == static_cast<double>(AmpCab::Bass1x15);
+    view.undo();
+    check(cabsShot && bass && model.value(at(FxParam::AmpCab)) == static_cast<double>(AmpCab::Closed4x12),
+          "the amp's cabinet list picks a cabinet, undoably");
+    // The mic's three under the cabinet's display.
+    click(view, centerOf(detail::ampMicChoice(card, static_cast<int>(AmpMic::Ribbon))));
+    const bool ribbon = model.value(at(FxParam::AmpMic)) == static_cast<double>(AmpMic::Ribbon);
+    view.undo();
+    check(ribbon && model.value(at(FxParam::AmpMic)) == static_cast<double>(AmpMic::Dynamic),
+          "the amp's mic switch picks its mic, undoably");
+
+    // The cabinet switched off: its display, mic switch and knobs dim (Position's ring, read off the pixels), Output's
+    // doesn't, and Position still turns.
+    const Point position = detail::ampKnob(card, true, 0, 0), output = detail::ampKnob(card, true, 0, 1);
+    const Point ring{position.x - 6.0f, position.y + 6.0f}, outRing{output.x - 6.0f, output.y + 6.0f}; // on the bodies
+    renderer.save(view, dir / "9f-amp.png");
+    const uint32_t ringOn = renderer.pixel(ring), outOn = renderer.pixel(outRing);
+    click(view, centerOf(detail::ampCabPower(card)));
+    view.mouseMove(away, {});
+    const bool offShot = renderer.save(view, dir / "9f3-amp-cabinet-off.png");
+    const bool dimmed = renderer.pixel(ring) != ringOn && renderer.pixel(outRing) == outOn;
+    const double before = model.value(at(FxParam::AmpPosition));
+    drag(view, position, {position.x, position.y - 30.0f});
+    const bool turns = model.value(at(FxParam::AmpPosition)) > before;
+    view.undo();
+    view.undo();
+    check(offShot && dimmed && turns && model.value(at(FxParam::AmpCabOn)) == 1.0,
+          "the amp's cabinet switched off dims its controls, which still turn");
+
+    // The mic dragged up and to the right on its display: Position and Distance both, one undo step; a double-click
+    // puts it back where it starts.
+    const Rect cabDisplay = detail::ampCabDisplay(card);
+    const Point mic = detail::ampMicPoint(cabDisplay, model.value(at(FxParam::AmpPosition)),
+                                          model.value(at(FxParam::AmpDistance)));
+    drag(view, mic, {mic.x + 30.0f, mic.y - 10.0f});
+    const bool moved = model.value(at(FxParam::AmpPosition)) > 0.35 && model.value(at(FxParam::AmpDistance)) > 0.3;
+    view.undo();
+    const bool undone = std::abs(model.value(at(FxParam::AmpPosition)) - 0.3) < 1e-9 &&
+                        std::abs(model.value(at(FxParam::AmpDistance)) - normFromAmpDistance(2.0)) < 1e-9;
+    drag(view, mic, {mic.x + 30.0f, mic.y - 10.0f});
+    const Point movedMic = detail::ampMicPoint(cabDisplay, model.value(at(FxParam::AmpPosition)),
+                                               model.value(at(FxParam::AmpDistance)));
+    doubleClick(view, movedMic);
+    check(moved && undone && std::abs(model.value(at(FxParam::AmpPosition)) - 0.3) < 1e-9,
+          "the amp's mic drags across and away from the cone, one undo step, and a double-click puts it back");
+
+    // The drive meter, at the tone display's right edge, filling with the telemetry.
+    const Rect tone = detail::ampToneDisplay(card);
+    const Point meter{tone.right() - 9.0f, tone.bottom() - 12.0f};
+    renderer.save(view, dir / "9f-amp.png");
+    const uint32_t empty = renderer.pixel(meter);
+    model.live.fxReduction[0] = {18.0f, 0.0f, 0.0f};
+    view.poll();
+    const bool meterShot = renderer.save(view, dir / "9f4-amp-driven.png");
+    const bool filled = renderer.pixel(meter) != empty;
+    model.live.fxReduction[0] = {0.0f, 0.0f, 0.0f};
+    view.poll();
+    check(meterShot && filled, "the amp's drive meter follows the telemetry");
+    // The curve: Treble up lifts its top end, the mic toward the cone's edge takes it down (read off a column at
+    // 3 kHz, where the cabinet's breakup peak sits).
+    auto column = [&] {
+        renderer.save(view, dir / "9f-amp.png");
+        std::vector<uint32_t> out;
+        const float x = tone.x + 6.0f + (tone.w - 26.0f) * static_cast<float>(std::log10(3000.0 / 20.0) / 3.0);
+        for (float y = tone.y + 18.0f; y < tone.bottom() - 6.0f; y += 1.0f)
+            out.push_back(renderer.pixel({x, y}));
+        return out;
+    };
+    const std::vector<uint32_t> flat = column();
+    model.set(at(FxParam::AmpTreble), 1.0);
+    const bool treble = column() != flat;
+    model.set(at(FxParam::AmpTreble), 0.5);
+    model.set(at(FxParam::AmpPosition), 1.0);
+    const bool edge = column() != flat;
+    model.set(at(FxParam::AmpPosition), 0.3);
+    check(treble && edge, "the amp's display follows its Treble and its mic's position");
+
+    // Its title's menu: the oversampling, 4x checked, and 8x picked.
+    const Point title{card.x + 80.0f, card.y + 17.0f};
+    bool checked4 = false;
+    int eight = -1;
+    for (const MenuItem &item : view.contextMenu(title)) {
+        if (item.label == trf(Str::MenuOversampling, {"4x"}))
+            checked4 = item.checked;
+        if (item.label == trf(Str::MenuOversampling, {"8x"}))
+            eight = item.command;
+    }
+    view.menuCommand(eight);
+    const bool set = model.value(at(FxParam::AmpOversampling)) == 3.0;
+    view.undo();
+    check(checked4 && set && model.value(at(FxParam::AmpOversampling)) == 2.0,
+          "the amp's title menu picks its oversampling, the one in force checked");
+}
+
 void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -7585,6 +7717,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testLaterSlots(dir, renderer);
     testSourceShadow(dir, renderer);
     testMultiDyn(dir, renderer);
+    testAmp(dir, renderer);
     testCardEdgeScroll(dir, renderer);
     testMiddleDrag(dir, renderer);
     testModFocus(dir, renderer);
