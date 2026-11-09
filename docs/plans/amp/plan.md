@@ -1,8 +1,8 @@
 # Plan: the Amp effect
 
 A guitar-amp effect for the effects line: a choice of amp models, each a preamp, a tone stack and a power amp, and
-an optional cabinet emulation after them. Ableton's Amp (and its Cabinet device) is the model for what it does,
-though nothing here copies its names, graphics or tunings. On an FM synth it does what an amp does to a guitar:
+an optional cabinet emulation after them, as the amp devices DAWs ship do, though nothing here copies another
+product's names, graphics or tunings. On an FM synth it does what an amp does to a guitar:
 grit, compression, a midrange voice, and a speaker taking away the fizz.
 
 UI drafts: [drafts.html](drafts.html) (open it in a browser), rendered at 2x as the PNGs beside it
@@ -31,16 +31,18 @@ in ─┬───────────────────────�
 
   | Model | Character | Preamp | Tone stack | Power amp |
   | --- | --- | --- | --- | --- |
-  | Clean | glassy, lots of headroom | 1 stage, gentle | American (Fender-style TMB), scooped | big headroom, little sag |
-  | Chime | bright, edge of breakup | 1 stage, bright cap | top-boost style, treble forward | class A feel, early compression |
-  | Blues | warm, breaks up early | 2 stages, loose low end | American TMB, mids up | more sag |
-  | Crunch | British, two stages | 2 stages | British (Marshall-style TMB) | medium |
-  | Lead | hot, smooth sustain | 3 stages, Miller cut between | British TMB | medium, tighter |
-  | Heavy | tight, high gain | 4 stages, input HPF at ~700 Hz | British TMB, deeper scoop | tight, little sag |
-  | Bass | deep, grit on top | 1 stage with a parallel clean low band | Baxandall bass/treble + a mid bell | big headroom |
+  | Clean | glassy, lots of headroom | 1 stage, gentle | American, scooped | big headroom, little sag |
+  | Chime | bright, edge of breakup | 1 stage, bright cap | Bright, treble forward | class A feel, early compression |
+  | Blues | warm, breaks up early | 2 stages, loose low end | American, mids up | more sag |
+  | Crunch | British, two stages | 2 stages | British | medium |
+  | Lead | hot, smooth sustain | 3 stages, Miller cut between | British | medium, tighter |
+  | Heavy | tight, high gain | 4 stages, input HPF at ~700 Hz | British, deeper scoop | tight, little sag |
+  | Bass | deep, grit on top | 1 stage with a parallel clean low band | Active: Baxandall bass/treble + a mid bell | big headroom |
 
-  The names are plain words; Ableton's list (Clean, Boost, Blues, Rock, Lead, Heavy, Bass) is the guide for the
-  range covered, not something to reproduce.
+  The models', stacks', cabinets' and mics' names are plain words: no maker's or product's name appears in the
+  plugin, its docs or its presets. The tone stacks are named for their sound: **American** (a scooped passive
+  three-knob stack), **British** (a mid-forward one), **Bright** (a treble-forward one)
+  and **Active** (the Bass model's).
 - **Gain** (0–10, 5 to begin with): drive into the preamp, over each model's own range (Clean about 0–24 dB,
   Heavy about 12–54 dB).
 - **Bass, Mid, Treble** (0–10, 5): the model's tone stack. In the passive stacks they interact, as in the real
@@ -71,7 +73,8 @@ in ─┬───────────────────────�
 - **Position** (0–100 %, 30 %): where the mic points, from the cone's center (bright, the dust cap's peak) to its edge
   (dark). Continuous, so it modulates, which a three-way switch wouldn't.
 - **Distance** (1 cm – 1 m on a log curve, 2 cm): close in, the mic's proximity effect lifts the lows; farther away the
-  lows even out and the room comes in: a few early reflections (1–8 ms, darkened), as Ableton's Far position does.
+  lows even out and the room comes in: a few early reflections (1–8 ms, darkened), as a mic set back from a cabinet
+  hears.
 
 ### Behavior shared with the other effects
 
@@ -119,9 +122,10 @@ presence corner; and the output trim.
 
 ### Tone stack
 
-The passive three-knob stacks (American, British, top-boost) are the classic Fender/Marshall/Vox circuit, whose
-transfer function from its resistors, capacitors and pot positions is a known third-order analog filter (Yeh and Smith,
-"Discretization of the '59 Fender Bassman tone stack", DAFx 2006). The coefficients come from the model's component
+The passive stacks (American, British, Bright) are the classic three-knob tone stack circuit of the 1950s and 60s,
+whose transfer function from its resistors, capacitors and pot positions is a known third-order analog filter (Yeh and
+Smith's discretization of it, DAFx 2006). Each stack's component values are our own, chosen and tuned by ear on that
+topology rather than copied from a particular amp's schematic. The coefficients come from the model's component
 values and the knobs (with the pots' tapers: the bass pot log), through the bilinear transform with prewarping. It runs
 as a third-order filter in transposed direct form II at the oversampled rate, its coefficients recomputed every 16
 samples while a knob moves (and only then). The Bass model's stack is active: a Baxandall bass and treble shelf and a
@@ -156,7 +160,7 @@ partitioned FFT convolution, and can't move the mic continuously without crossfa
 cabinet is the first step; a "Custom IR" cabinet type that loads a file could follow (it needs file handling and a path
 in the state, as presets have).
 
-**A separate Cabinet effect, considered.** Ableton has the cabinet as a device of its own. Built in, as asked, it is
+**A separate Cabinet effect, considered.** Some DAWs have the cabinet as a device of its own. Built in, as asked, it is
 one card and one place in the line and the amp sounds right on its own. The cabinet's code is its own class
 (`AmpCab`), so a standalone Cabinet effect type would be a small change later if it is wanted (a cabinet after a
 shaper, say).

@@ -1,6 +1,6 @@
 ## New Features
 
-- Amp effect: amp models (preamp, tone stack, power amp) with an optional cabinet emulation, after Ableton's Amp.
+- Amp effect: amp models (preamp, tone stack, power amp) with an optional cabinet emulation, like the guitar amp devices DAWs ship.
     - **Planned:** [docs/plans/amp/plan.md](docs/plans/amp/plan.md), with UI drafts beside it. Open questions at its
       end (draft A or B, the models and cabinets, oversampling, color).
 

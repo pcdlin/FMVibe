@@ -339,11 +339,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     doing what it did, its crossovers, thresholds (as Above), ratios (as Down), gains, Attack, Release, Mix,
     Output and Link carried over (and the modulation aimed at them), Up at 1:1, a 6 dB knee and the detector on
     peaks; a linked one, whose bands all took the low band's threshold, ratio and gain, gives every band those.
-    **OTT** in its card's right-click menu sets it as Ableton's OTT preset for its Multiband Dynamics has it, as
+    **OTT** in its card's right-click menu sets it as the well-known OTT ("over the top") multiband preset has it, as
     one undo step: crossovers at 88.3 Hz and 2.5 kHz; Above at −33.8, −30.2 and −35.5 dB (low, mid, high), Down
     at 66.7:1, 66.7:1 and ∞:1; Below at −40.8, −41.8 and −40.8 dB, Up at 4.17:1; gains of +10.3, +5.7 and
-    +10.3 dB; the mid band's 22.4 ms attack and 282 ms release for all three (OTT's are per band); hard knees,
-    Range at 36 dB (OTT's lift has no limit), 100 % mix, 0 dB output, RMS on and Link off.
+    +10.3 dB; the mid band's 22.4 ms attack and 282 ms release for all three (the preset's are per band); hard knees,
+    Range at 36 dB (the preset's lift has no limit), 100 % mix, 0 dB output, RMS on and Link off.
   - **Reverb**: a feedback delay network of sixteen lines (29 to 89 ms at full size, spread evenly on a log
     scale), mixed through a Hadamard matrix, which spreads each line's sound evenly over all of them every time
     round, so the echoes thicken fast. Each line's length wavers slowly (a fraction of a millisecond, each at its
