@@ -158,8 +158,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     feedback and a driven filter;
   - zipper noise from an LFO on an operator's level and Pan, a matrix amount, a filter cutoff and a wire of the
     effects graph;
-  - clicks when a voice is stolen, when a note joins a held one in poly legato (fading in over 5 ms, its Random
-    LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
+  - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
+    (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output) jumps while events split the block into single frames,
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):

@@ -2359,6 +2359,25 @@ int main() {
         std::printf("      %-30s %7.1fx\n", "stolen voice", worst / steady);
         check(worst < 4.0 * steady, "a stolen voice fades out instead of clicking");
 
+        // A chord over voices that are all playing steals as many at once, more than a few: each fades out too.
+        {
+            double chordWorst = 0.0, chordSteady = 0.0;
+            for (int trial = 0; trial < 4; ++trial) {
+                Engine e(2, 8);
+                e.p[paramIndex(0, OpParam::Attack)] = normFromTime(0.005);
+                for (int k = 0; k < 8; ++k)
+                    e.noteOn(36 + 2 * k);
+                const std::vector<float> before = e.render(2400 + 37 * trial);
+                for (int k = 0; k < 6; ++k)
+                    e.noteOn(37 + 2 * k);
+                const std::vector<float> both = joined(before, e.render(2400));
+                chordSteady = std::max(chordSteady, roughness(both, 0, before.size()));
+                chordWorst = std::max(chordWorst, roughness(both, before.size() - 2, both.size()));
+            }
+            std::printf("      %-30s %7.1fx\n", "six voices stolen at once", chordWorst / chordSteady);
+            check(chordWorst < 4.0 * chordSteady, "a chord stealing six voices at once fades them out instead of clicking");
+        }
+
         // Poly legato: a note played over a held one at its sustain joins it there, a square starting at full level;
         // it doesn't step in (it fades in over 5 ms, its gain ramping in over its first block besides).
         worst = steady = 0.0;

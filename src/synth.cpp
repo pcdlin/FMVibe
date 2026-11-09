@@ -38,7 +38,8 @@ double routeLevel(RouteMode mode, double amount, double phaseIndex) {
         return amount * amount * phaseIndex / (2.0 * std::numbers::pi);
     }
 }
-constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in
+constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in, at least
+constexpr int kMaxFadeSlots = 32;    // and at most: as many as the voices, so a chord over them all steals each
 constexpr double kVoiceQuietFloor = 1e-4; // a released voice quieter than this, its operators idle, has ended
 constexpr double kFilterRingFloor = 1e-6; // a voice filter quieter than this, its inputs stopped, has rung out
 constexpr size_t kMaxEndedNotes = 4096; // notes ending in one block that are reported (see reportEnded())
@@ -172,7 +173,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     globalMod_.fill(0.0);
     sharedStale_ = true;
     capacity_ = std::clamp(capacity, 1, kMaxVoices);
-    voices_.assign(static_cast<size_t>(capacity_ + kFadeSlots), Voice{});
+    voices_.assign(static_cast<size_t>(capacity_ + std::clamp(capacity_, kFadeSlots, kMaxFadeSlots)), Voice{});
     active_.clear();
     active_.reserve(voices_.size()); // never grows past this on the audio thread
     combSize_ = combLength(rate_);

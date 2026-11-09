@@ -440,7 +440,7 @@ private:
     double sampleRate_ = 48000.0;
     int oversampling_ = 1;
     double rate_ = 48000.0; // the voices' rate: sampleRate_ * oversampling_
-    int capacity_ = 0;      // voices that may play; voices_ has a few more for stolen ones to fade out in
+    int capacity_ = 0;      // voices that may play; voices_ has as many more (4 to 32) for stolen ones to fade out in
     double bend_ = 0.0;
     double wheelBend_ = 0.0;
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
