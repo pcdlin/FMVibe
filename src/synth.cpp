@@ -1183,12 +1183,27 @@ void Synth::clearVoiceMods(Voice &v) {
 }
 
 void Synth::shareSlots(const ParamValues &params) {
+    auto get = [&params](int i) { return params[i]; };
     for (int source = 0; source < kAllSources; ++source) {
         int count = 0;
         for (int s = 0; s < kSlots; ++s) {
             const int target = slotTarget(params[slotTargetIndex(source, s)]);
-            if (target >= 0 && params[slotBypassIndex(source, s)] < 0.5)
-                sharedSlots_[source][count++] = {s, target};
+            if (target < 0 || params[slotBypassIndex(source, s)] >= 0.5)
+                continue;
+            SharedSlot &slot = sharedSlots_[source][count++];
+            slot.slot = s;
+            slot.target = target;
+            slot.curve = hostValue(params, slotCurveIndex(source, s));
+            slot.scale = hostValue(params, slotScaleIndex(source, s));
+            slot.voiceAux = -1;
+            if (const int aux = slotAux(get, source, s); aux >= 0) {
+                if (runsPerVoice(aux))
+                    slot.voiceAux = aux;
+                else
+                    slot.scale *= hostValue(params, stripKnobIndex(aux));
+            }
+            slot.range = table_[target].max - table_[target].min;
+            slot.depth = hostValue(params, slotAmountIndex(source, s));
         }
         sharedSlotCount_[source] = count;
     }
@@ -1294,18 +1309,22 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         v.auxOut[kNoteSource] = noteSourceValue([&](int i) { return hostValue(params, i); }, pitchNow());
     if (!sharedSlotsReady_)
         shareSlots(params);
+    // A shared slot's depth scale in this voice: what is the same for every voice, times its own source's aux.
+    auto sharedScale = [&](const SharedSlot &slot) {
+        return slot.voiceAux >= 0 ? slot.scale * v.auxOut[slot.voiceAux] : slot.scale;
+    };
     auto collectSlots = [&](int source, double shown, double unipolar, double bipolar, bool bipolarSource) {
         v.sourceValues[source] = shown;
         v.auxOut[source] = unipolar;
         const double swing = bipolarSource ? bipolar : unipolar;
         for (int k = 0; k < sharedSlotCount_[source]; ++k) {
-            const auto [s, target] = sharedSlots_[source][k];
-            const double amount = p[slotAmountIndex(source, s)];
+            const SharedSlot &slot = sharedSlots_[source][k];
+            const double amount = p[slotAmountIndex(source, slot.slot)];
             if (amount != 0.0) {
-                v.slotMods[v.slotModCount++] = {target,
-                                                bent(source, s, swing, bipolarSource) * amount * scaleOf(source, s) *
-                                                    (table_[target].max - table_[target].min),
-                                                source * kSlots + s};
+                v.slotMods[v.slotModCount++] = {slot.target,
+                                                slotCurveValue(swing, slot.curve, bipolarSource) * amount *
+                                                    sharedScale(slot) * slot.range,
+                                                source * kSlots + slot.slot};
             }
         }
     };
@@ -1394,14 +1413,13 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         const bool bipolar = params[paramIndex(VelocityParam::Bipolar)] >= 0.5;
         const double swing = bipolar ? out - 0.5 : out;
         for (int k = 0; k < sharedSlotCount_[kVelocitySource]; ++k) {
-            const auto [s, target] = sharedSlots_[kVelocitySource][k];
-            const double amount = hostValue(params, slotAmountIndex(kVelocitySource, s));
-            if (amount == 0.0)
+            const SharedSlot &slot = sharedSlots_[kVelocitySource][k];
+            if (slot.depth == 0.0)
                 continue;
-            v.slotMods[v.slotModCount++] = {target,
-                                            bent(kVelocitySource, s, swing, bipolar) * amount *
-                                                scaleOf(kVelocitySource, s) * (table_[target].max - table_[target].min),
-                                            kVelocitySource * kSlots + s};
+            v.slotMods[v.slotModCount++] = {slot.target,
+                                            slotCurveValue(swing, slot.curve, bipolar) * slot.depth *
+                                                sharedScale(slot) * slot.range,
+                                            kVelocitySource * kSlots + slot.slot};
         }
     }
     // The macros' and the mod wheel's slots that an aux of this voice scales (see applyMacros()).
@@ -1466,13 +1484,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const double swing = note - (noteBipolar ? 0.5 : 0.0);
     const int noteModsStart = v.slotModCount;
     for (int k = 0; k < sharedSlotCount_[kNoteSource]; ++k) {
-        const auto [s, target] = sharedSlots_[kNoteSource][k];
-        const double amount = hostValue(params, slotAmountIndex(kNoteSource, s));
-        if (amount != 0.0) {
-            v.slotMods[v.slotModCount++] = {target,
-                                            bent(kNoteSource, s, swing, noteBipolar) * amount *
-                                                scaleOf(kNoteSource, s) * (table_[target].max - table_[target].min),
-                                            kNoteSource * kSlots + s};
+        const SharedSlot &slot = sharedSlots_[kNoteSource][k];
+        if (slot.depth != 0.0) {
+            v.slotMods[v.slotModCount++] = {slot.target,
+                                            slotCurveValue(swing, slot.curve, noteBipolar) * slot.depth *
+                                                sharedScale(slot) * slot.range,
+                                            kNoteSource * kSlots + slot.slot};
         }
     }
     for (int m = noteModsStart; m < v.slotModCount; ++m) {

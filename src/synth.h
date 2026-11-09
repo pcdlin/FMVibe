@@ -493,9 +493,18 @@ private:
     // Each source's slots in use, in order: those with a target that aren't bypassed, and their targets, which no
     // modulation moves. Worked out once a render() whose params changed, when the first voice needs them; the voices
     // look over these rather than every slot (an Amount of 0 they still leave out, as it takes modulation).
+    // What else of a slot is the same for every voice, worked out there too: the curve, the depth's scale (its
+    // Amount, times an aux that is a macro's or the mod wheel's knob), the aux a voice's own source puts out (or -1),
+    // the target's range, and the slot's depth with the host's modulation for every voice (which velocity's and the
+    // note source's slots take, having no voice modulation of their own).
     struct SharedSlot {
         int slot;
         int target;
+        double curve = 0.0;
+        double scale = 1.0;
+        int voiceAux = -1;
+        double range = 0.0;
+        double depth = 0.0;
     };
     std::array<std::array<SharedSlot, kSlots>, kAllSources> sharedSlots_{};
     std::array<int, kAllSources> sharedSlotCount_{};
