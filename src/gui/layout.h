@@ -571,7 +571,7 @@ inline Rect fxMenuButton() {
 
 // The effects the list offers, in its order: every type but None and the retired three-band compressor, whose place
 // the three-band dynamics takes.
-constexpr FxType kFxOffered[] = {FxType::Shaper,     FxType::Eq,         FxType::ParamEq,
+constexpr FxType kFxOffered[] = {FxType::Shaper,     FxType::Amp,        FxType::Eq,         FxType::ParamEq,
                                  FxType::Filter,     FxType::Compressor, FxType::MultiDyn, FxType::Delay, FxType::Reverb,
                                  FxType::Phaser,     FxType::Flanger,    FxType::Widener,  FxType::FreqShifter, FxType::Disperser
                                 };
@@ -651,9 +651,9 @@ inline Rect fxCardClip() {
 }
 
 // How many of the usual card places a card takes: the parametric EQ's and the three-band dynamics' are wider, for
-// their displays and knobs.
+// their displays and knobs, and the amp's wider still, its amp and its cabinet side by side.
 inline float fxSpan(FxType type) {
-    return type == FxType::ParamEq || type == FxType::MultiDyn ? 1.5f : 1.0f;
+    return type == FxType::Amp ? 1.85f : type == FxType::ParamEq || type == FxType::MultiDyn ? 1.5f : 1.0f;
 }
 
 // A card's rect by its screen place, in card places from the row's left end (0..kVisibleFx, fractions while
@@ -670,7 +670,10 @@ inline Rect fxIconRect(Rect card) {
 
 // Displays sit under a card's buttons, if it has any, and above its knobs: one
 // row of them, or two for the delay, the parametric EQ and the effects with six knobs or so.
+inline Rect ampToneDisplay(Rect card);
 inline Rect fxDisplayIn(Rect card, FxType type) {
+    if (type == FxType::Amp) // the amp's; the cabinet's beside it (see ampCabDisplay())
+        return ampToneDisplay(card);
     if (type == FxType::MultiDyn) // its switches in the title row, its three rows of knobs under it
         return {card.x + 14.0f, card.y + 42.0f, card.w - 28.0f, 72.0f};
     const bool buttons = type == FxType::Shaper || type == FxType::Reverb;
@@ -690,6 +693,71 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
                                                      : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
 }
+// The amp's card: the amp on the left, the cabinet on the right, a faint line between. Each side: a list at the top
+// (the model; the cabinet's power switch, then its list), a display, switches under it (STEREO; the mic's three), then
+// two rows of knobs, three on the amp's side (Gain, Volume, Presence over Bass, Mid, Treble) and two on the cabinet's
+// (Position, Distance over Output and Mix).
+constexpr float kAmpGap = 12.0f;
+inline Rect ampLeft(Rect card) {
+    return {card.x + 14.0f, card.y, std::round((card.w - 28.0f - kAmpGap) * 0.53f), card.h};
+}
+inline Rect ampRight(Rect card) {
+    const Rect left = ampLeft(card);
+    return {left.right() + kAmpGap, card.y, card.right() - 14.0f - left.right() - kAmpGap, card.h};
+}
+inline float ampDivider(Rect card) {
+    return ampLeft(card).right() + kAmpGap * 0.5f;
+}
+inline Rect ampModelButton(Rect card) {
+    const Rect left = ampLeft(card);
+    return {left.x, card.y + 42.0f, left.w, 22.0f};
+}
+inline Rect ampCabPower(Rect card) {
+    const Rect right = ampRight(card);
+    return {right.x, card.y + 42.0f, 22.0f, 22.0f};
+}
+inline Rect ampCabButton(Rect card) {
+    const Rect right = ampRight(card);
+    return {right.x + 26.0f, card.y + 42.0f, right.w - 26.0f, 22.0f};
+}
+inline Rect ampToneDisplay(Rect card) {
+    const Rect left = ampLeft(card);
+    return {left.x, card.y + 72.0f, left.w, 76.0f};
+}
+inline Rect ampCabDisplay(Rect card) {
+    const Rect right = ampRight(card);
+    return {right.x, card.y + 72.0f, right.w, 76.0f};
+}
+inline Rect ampStereoButton(Rect card) {
+    return {ampLeft(card).x, card.y + 154.0f, 64.0f, 18.0f};
+}
+inline Rect ampMicChoice(Rect card, int mic) {
+    const Rect right = ampRight(card);
+    const float w = right.w / static_cast<float>(AmpMic::Count);
+    return {right.x + mic * w, card.y + 154.0f, w, 18.0f};
+}
+constexpr float kAmpKnobD = 28.0f, kAmpKnobsY1 = 204.0f, kAmpKnobsY2 = 258.0f;
+inline Point ampKnob(Rect card, bool cab, int column, int row) {
+    const Rect side = cab ? ampRight(card) : ampLeft(card);
+    const float columns = cab ? 2.0f : 3.0f;
+    return {side.x + side.w * (column + 0.5f) / columns, card.y + (row == 0 ? kAmpKnobsY1 : kAmpKnobsY2)};
+}
+// The speaker on the cabinet's display, seen from the side at its left (the baffle, the cone behind it), and where the
+// mic in front of it is: up from the cone's axis to its edge by Position, away to the right by Distance (0..1).
+inline float ampBaffleX(Rect display) { return display.x + 18.0f; }
+inline float ampConeAxis(Rect display) { return display.y + display.h * 0.5f + 5.0f; }
+inline float ampConeRadius(Rect display) { return display.h * 0.36f; }
+inline Point ampMicPoint(Rect display, double position, double distance) {
+    // (Not `near` and `far`: Windows' headers define both as macros.)
+    const float closest = ampBaffleX(display) + 10.0f, farthest = display.right() - 22.0f;
+    return {closest + (farthest - closest) * static_cast<float>(std::clamp(distance, 0.0, 1.0)),
+            ampConeAxis(display) - ampConeRadius(display) * static_cast<float>(std::clamp(position, 0.0, 1.0))};
+}
+inline Rect ampMicRect(Rect display, double position, double distance) {
+    const Point m = ampMicPoint(display, position, distance);
+    return {m.x - 9.0f, m.y - 8.0f, 22.0f, 16.0f};
+}
+
 inline Rect fxDisplay(float position, FxType type) {
     return fxDisplayIn(fxCard(position, fxSpan(type)), type);
 }

@@ -322,6 +322,7 @@ enum class FxType {
     Disperser,
     Widener,
     MultiDyn, // three bands, each compressed downward above one threshold and upward below another
+    Amp,      // a guitar amp: preamp stages, a tone stack and a power amp, then a cabinet (see src/amp.h)
     Count
 };
 // Stored in projects by number: only append. Cubic is x - x^3/3 scaled to reach 1 at 1;
@@ -335,6 +336,31 @@ enum class PeqType { Peak, LowShelf, HighShelf, LowCut, HighCut, Notch, Count };
 // reflections; Plate, denser and brighter; Shimmer, a brighter hall that feeds its own tail back into itself
 // pitch-shifted, so each pass climbs (or falls) another interval. Stored in projects by number: only append.
 enum class ReverbType { Hall, Room, Plate, Shimmer, Count };
+// The amp's models (see kAmpModels in src/amp.h), the cabinets after it and the mics in front of them, and how many
+// times the host rate the amp's stages run at (1x, 2x, 4x or 8x). Stored in projects by number: only append.
+enum class AmpModel { Clean, Blues, Crunch, Lead, Heavy, Bass, Fuzz, Count };
+enum class AmpCab { Open1x12, Open2x12, Closed4x12, Bass4x10, Bass1x15, Count };
+enum class AmpMic { Dynamic, Condenser, Ribbon, Count };
+constexpr int kAmpOversamplings = 4; // 1x, 2x, 4x, 8x: the factor is 1 << the value
+constexpr int kDefaultAmpOversampling = 2;
+template <class E>
+inline E storedEnum(double value) { // a stored list's member, the first for a value out of its range
+    const long t = std::lround(value);
+    return static_cast<E>(t < 0 || t >= static_cast<long>(E::Count) ? 0 : t);
+}
+inline int ampOversampling(double value) { // the factor
+    return 1 << static_cast<int>(std::clamp(std::lround(value), 0L, kAmpOversamplings - 1L));
+}
+// The mic's distance from the speaker: 0..1 on a log curve from 1 cm to 1 m.
+constexpr double kMinAmpDistanceCm = 1.0, kMaxAmpDistanceCm = 100.0;
+inline double ampDistanceCm(double norm) {
+    return kMinAmpDistanceCm * std::pow(kMaxAmpDistanceCm / kMinAmpDistanceCm, std::clamp(norm, 0.0, 1.0));
+}
+inline double normFromAmpDistance(double cm) {
+    return std::clamp(std::log(std::max(cm, kMinAmpDistanceCm) / kMinAmpDistanceCm) /
+                          std::log(kMaxAmpDistanceCm / kMinAmpDistanceCm),
+                      0.0, 1.0);
+}
 constexpr bool isCut(PeqType type) { return type == PeqType::LowCut || type == PeqType::HighCut; }
 // Whether a band's Gain does anything: a cut's and a notch's don't.
 constexpr bool peqHasGain(PeqType type) { return !isCut(type) && type != PeqType::Notch; }
@@ -526,6 +552,27 @@ enum class FxParam {
     // notch moves to where a peak was and the Feedback knob keeps its sense (see sweepPolarity()).
     PhaserNegative,
     FlangerNegative,
+    // Amp: Model picks the preamp stages, the tone stack and the power amp (see AmpModel); Gain drives the preamp,
+    // Bass, Mid and Treble set the tone stack, Presence a shelf into the power amp, which Volume drives. The cabinet
+    // (CabOn, Cab) after it is heard through a mic (Mic) at Position (0 its center, 1 its edge) and Distance (see
+    // ampDistanceCm()). Stereo runs a side an amp; off, one amp runs on their sum. Oversampling is how many times the
+    // host rate the stages run at (see ampOversampling()). Gain to Volume are 0..1, shown as 0 to 10, as on an amp.
+    AmpModel,
+    AmpGain,
+    AmpBass,
+    AmpMid,
+    AmpTreble,
+    AmpPresence,
+    AmpVolume,
+    AmpOutput,
+    AmpMix,
+    AmpStereo,
+    AmpCabOn,
+    AmpCab,
+    AmpMic,
+    AmpPosition,
+    AmpDistance,
+    AmpOversampling,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -876,6 +923,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::PeqFreq3, FxParam::PeqAmount, FxType::ParamEq},
     {FxParam::PhaserNegative, FxParam::PhaserNegative, FxType::Phaser},
     {FxParam::FlangerNegative, FxParam::FlangerNegative, FxType::Flanger},
+    {FxParam::AmpModel, FxParam::AmpOversampling, FxType::Amp},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1147,31 +1195,34 @@ constexpr clap_id kLaterSlotIdBase = 6000, kLaterSlotIdStride = 30;
 static_assert(kSourceFields <= static_cast<int>(kSourceIdStride) &&
               kLaterSlotFields <= static_cast<int>(kLaterSlotIdStride));
 
-// Sections whose fields ran out of room: the first `firstFields` of a block have ids from `base` on, `stride` a
-// block, the next `laterFields` from `laterBase` on, `laterStride` a block, and any past those from `lastBase` on,
-// `lastStride` a block.
+// Sections whose fields ran out of room: a block's fields have ids in one range after another, the first `fields` of
+// them from the first range's `base` on, `stride` a block, the next from the second's, and so on; the last range takes
+// all the rest. A stride of 0 ends the list.
+struct IdRange {
+    int fields;
+    clap_id base, stride;
+};
+constexpr int kMaxIdRanges = 4;
+constexpr int kRestFields = 1 << 20; // the last range's: every field left
 struct SplitSection {
     int firstIndex;
     int blocks;
     int fields;
-    int firstFields;
-    clap_id base, stride;
-    clap_id laterBase, laterStride;
-    int laterFields = 1 << 20; // all the rest, unless a third range follows
-    clap_id lastBase = 0, lastStride = 0;
+    IdRange ranges[kMaxIdRanges];
 };
 
 constexpr SplitSection kSplitSections[] = {
-    // Effect slots: the fields added once the 80 had run out, and those added once the next 20 had too. The slots
-    // past the kFirstFxSlots the chain had at first have every field in a range of their own.
-    {kFxBase, kFirstFxSlots, kFxParamCount, 80, 1400, 80, 12000, 20, 20, 25000, 40},
-    {kFxBase + kFirstFxSlots * kFxParamCount, kFxSlots - kFirstFxSlots, kFxParamCount, 200, 26000, 200, 0, 0, 0},
+    // Effect slots: the fields added once the 80 had run out, those added once the next 20 had too, and those added
+    // once the next 40 had. The slots past the kFirstFxSlots the chain had at first have every field in a range of
+    // their own.
+    {kFxBase, kFirstFxSlots, kFxParamCount, {{80, 1400, 80}, {20, 12000, 20}, {40, 25000, 40}, {kRestFields, 36000, 20}}},
+    {kFxBase + kFirstFxSlots * kFxParamCount, kFxSlots - kFirstFxSlots, kFxParamCount, {{kRestFields, 26000, 200}}},
     // Freeform LFO shapes and shaper curves: the points past the 16 they had at first (33 for an LFO's).
-    {kShapeBase, kMaxSources, kShapeParamCount, 100, 4000, 100, 15000, 100},
-    {kClipCurveBase, kFirstFxSlots, kShapeParamCount, 49, 7000, 50, 17000, 200},
-    {kClipCurveBase + kFirstFxSlots * kShapeParamCount, kFxSlots - kFirstFxSlots, kShapeParamCount, 200, 30000, 200,
-     0, 0, 0},
-    {kShaperCurveBase, kShapers, kShapeParamCount, 49, 13000, 50, 21000, 200},
+    {kShapeBase, kMaxSources, kShapeParamCount, {{100, 4000, 100}, {kRestFields, 15000, 100}}},
+    {kClipCurveBase, kFirstFxSlots, kShapeParamCount, {{49, 7000, 50}, {kRestFields, 17000, 200}}},
+    {kClipCurveBase + kFirstFxSlots * kShapeParamCount, kFxSlots - kFirstFxSlots, kShapeParamCount,
+     {{kRestFields, 30000, 200}}},
+    {kShaperCurveBase, kShapers, kShapeParamCount, {{49, 13000, 50}, {kRestFields, 21000, 200}}},
 };
 
 } // namespace ids
@@ -1182,12 +1233,15 @@ constexpr clap_id idOfIndex(int index) {
         if (local < 0 || local >= s.blocks * s.fields)
             continue;
         const clap_id block = static_cast<clap_id>(local / s.fields);
-        const int field = local % s.fields;
-        if (field < s.firstFields)
-            return s.base + block * s.stride + field;
-        if (field - s.firstFields < s.laterFields)
-            return s.laterBase + block * s.laterStride + (field - s.firstFields);
-        return s.lastBase + block * s.lastStride + (field - s.firstFields - s.laterFields);
+        int field = local % s.fields;
+        for (const ids::IdRange &r : s.ranges) {
+            if (r.stride == 0)
+                break;
+            if (field < r.fields)
+                return r.base + block * r.stride + static_cast<clap_id>(field);
+            field -= r.fields;
+        }
+        return CLAP_INVALID_ID;
     }
     if (const int source = sourceOf(index); source >= 0) {
         const int field = (index - kSourceBase) % kSourceParamCount;
@@ -1208,21 +1262,17 @@ constexpr clap_id idOfIndex(int index) {
 // -1 for ids this version doesn't know.
 constexpr int indexOfId(clap_id id) {
     for (const ids::SplitSection &s : ids::kSplitSections) {
-        if (id >= s.base && id < s.base + static_cast<clap_id>(s.blocks) * s.stride) {
-            const int block = static_cast<int>((id - s.base) / s.stride);
-            const int field = static_cast<int>((id - s.base) % s.stride);
-            return field < std::min(s.firstFields, s.fields) ? s.firstIndex + block * s.fields + field : -1;
-        }
-        if (id >= s.laterBase && id < s.laterBase + static_cast<clap_id>(s.blocks) * s.laterStride) {
-            const int block = static_cast<int>((id - s.laterBase) / s.laterStride);
-            const int later = static_cast<int>((id - s.laterBase) % s.laterStride);
-            const int field = s.firstFields + later;
-            return later < s.laterFields && field < s.fields ? s.firstIndex + block * s.fields + field : -1;
-        }
-        if (s.lastStride > 0 && id >= s.lastBase && id < s.lastBase + static_cast<clap_id>(s.blocks) * s.lastStride) {
-            const int block = static_cast<int>((id - s.lastBase) / s.lastStride);
-            const int field = s.firstFields + s.laterFields + static_cast<int>((id - s.lastBase) % s.lastStride);
-            return field < s.fields ? s.firstIndex + block * s.fields + field : -1;
+        int start = 0; // the first field of the range
+        for (const ids::IdRange &r : s.ranges) {
+            if (r.stride == 0)
+                break;
+            if (id >= r.base && id < r.base + static_cast<clap_id>(s.blocks) * r.stride) {
+                const int block = static_cast<int>((id - r.base) / r.stride);
+                const int field = static_cast<int>((id - r.base) % r.stride);
+                return field < std::min(r.fields, s.fields - start) ? s.firstIndex + block * s.fields + start + field
+                                                                    : -1;
+            }
+            start += std::min(r.fields, s.fields);
         }
     }
     if (id >= ids::kSourceIdBase && id < ids::kSourceIdBase + kMaxSources * ids::kSourceIdStride) {
@@ -1256,10 +1306,15 @@ constexpr bool idsRoundTrip(int from, int to) {
         if (s.fields > static_cast<int>(s.stride))
             return false;
     for (const ids::SplitSection &s : ids::kSplitSections) {
-        const int later = std::min(s.fields - s.firstFields, s.laterFields);
-        const int last = s.fields - s.firstFields - later;
-        if (s.firstFields > static_cast<int>(s.stride) || later > static_cast<int>(s.laterStride) ||
-            last > static_cast<int>(s.lastStride))
+        int start = 0;
+        for (const ids::IdRange &r : s.ranges) {
+            if (r.stride == 0)
+                break;
+            if (std::clamp(s.fields - start, 0, r.fields) > static_cast<int>(r.stride))
+                return false;
+            start += std::min(r.fields, s.fields);
+        }
+        if (start < s.fields) // fields past the last range
             return false;
     }
     for (int i = from; i < to && i < kParamCount; ++i)
@@ -1267,11 +1322,16 @@ constexpr bool idsRoundTrip(int from, int to) {
             return false;
     return true;
 }
-static_assert(kParamCount <= 4 * 6000);
-static_assert(idsRoundTrip(0, 6000), "param id layout overlaps");
-static_assert(idsRoundTrip(6000, 12000), "param id layout overlaps");
-static_assert(idsRoundTrip(12000, 18000), "param id layout overlaps");
-static_assert(idsRoundTrip(18000, 24000), "param id layout overlaps");
+// (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
+static_assert(kParamCount <= 8 * 3000);
+static_assert(idsRoundTrip(0, 3000), "param id layout overlaps");
+static_assert(idsRoundTrip(3000, 6000), "param id layout overlaps");
+static_assert(idsRoundTrip(6000, 9000), "param id layout overlaps");
+static_assert(idsRoundTrip(9000, 12000), "param id layout overlaps");
+static_assert(idsRoundTrip(12000, 15000), "param id layout overlaps");
+static_assert(idsRoundTrip(15000, 18000), "param id layout overlaps");
+static_assert(idsRoundTrip(18000, 21000), "param id layout overlaps");
+static_assert(idsRoundTrip(21000, 24000), "param id layout overlaps");
 // Projects store params by id: effect fields keep theirs as later ones come (the 80th was the last in the
 // first section),
 static_assert(idOfIndex(paramIndex(1, FxParam::ReverbType)) == 1400 + 80 + 79 &&
@@ -1383,7 +1443,13 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::Type)) == 26000 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::PhaserStereo)) == 26080 &&
                   idOfIndex(paramIndex(kFxSlots - 1, FxParam::PeqAmount)) == 29131 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::FlangerNegative)) == 29133,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::FlangerNegative)) == 29133 &&
+                  idOfIndex(paramIndex(0, FxParam::AmpModel)) == 25034 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::AmpPresence)) == 25639 &&
+                  idOfIndex(paramIndex(0, FxParam::AmpVolume)) == 36000 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::AmpOversampling)) == 36309 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::AmpModel)) == 26134 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::AmpOversampling)) == 29149,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1469,8 +1535,16 @@ static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, Filter
 static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxType::Eq, FxType::ParamEq,
                                FxType::Filter, FxType::Compressor, FxType::MultiComp, FxType::Reverb, FxType::Phaser,
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
-                               FxType::MultiDyn, FxType::Count}),
+                               FxType::MultiDyn, FxType::Amp, FxType::Count}),
               "FxType is stored by number: only append");
+static_assert(numberedInOrder({AmpModel::Clean, AmpModel::Blues, AmpModel::Crunch, AmpModel::Lead, AmpModel::Heavy,
+                               AmpModel::Bass, AmpModel::Fuzz, AmpModel::Count}),
+              "AmpModel is stored by number: only append");
+static_assert(numberedInOrder({AmpCab::Open1x12, AmpCab::Open2x12, AmpCab::Closed4x12, AmpCab::Bass4x10,
+                               AmpCab::Bass1x15, AmpCab::Count}),
+              "AmpCab is stored by number: only append");
+static_assert(numberedInOrder({AmpMic::Dynamic, AmpMic::Condenser, AmpMic::Ribbon, AmpMic::Count}),
+              "AmpMic is stored by number: only append");
 static_assert(numberedInOrder({MidiInput::Cc, MidiInput::Pressure, MidiInput::Slide, MidiInput::Count}),
               "MidiInput is stored by number: only append");
 static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Random,
@@ -1502,10 +1576,14 @@ constexpr clap_id maxParamId() {
                                         static_cast<clap_id>(s.fields - 1));
     for (const ids::SplitSection &s : ids::kSplitSections) {
         const clap_id block = static_cast<clap_id>(s.blocks - 1);
-        highest = std::max(highest, s.base + block * s.stride + static_cast<clap_id>(std::min(s.firstFields, s.fields) - 1));
-        if (s.fields > s.firstFields)
-            highest = std::max(highest, s.laterBase + block * s.laterStride +
-                                            static_cast<clap_id>(s.fields - s.firstFields - 1));
+        int start = 0;
+        for (const ids::IdRange &r : s.ranges) {
+            if (r.stride == 0 || start >= s.fields)
+                break;
+            highest = std::max(highest, r.base + block * r.stride +
+                                            static_cast<clap_id>(std::min(r.fields, s.fields - start) - 1));
+            start += r.fields;
+        }
     }
     highest = std::max(highest, ids::kSourceIdBase + (kMaxSources - 1) * ids::kSourceIdStride + ids::kSourceFields - 1);
     return std::max(highest,
@@ -2027,6 +2105,12 @@ enum class ParamKind {
     DynRatio,     // 0..1 for 1:1 to infinity, shown as "4.0:1" or "∞:1"; see dynRatio()
     RouteMode,    // stepped: how a route acts on the operator it goes into (see RouteMode)
     FxPort,       // stepped: the port a wire of the effects graph comes from (see fxPortValue()), 0 for none
+    AmpModel,     // stepped: the amp's model (see AmpModel)
+    AmpCab,       // stepped: the amp's cabinet (see AmpCab)
+    AmpMic,       // stepped: the mic in front of the amp's cabinet (see AmpMic)
+    AmpOversampling, // stepped: 1x, 2x, 4x or 8x (see ampOversampling())
+    AmpDial,      // 0..1, shown as 0.0 to 10.0, as an amp's knobs are numbered
+    AmpDistance,  // 0..1 on a log curve, shown in cm or m; see ampDistanceCm()
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
@@ -2159,6 +2243,9 @@ const char *divisionName(int division);
 const char *clipModeName(ClipMode mode);
 const char *peqTypeName(PeqType type);
 const char *reverbTypeName(ReverbType type);
+const char *ampModelName(AmpModel model);
+const char *ampCabName(AmpCab cab);
+const char *ampMicName(AmpMic mic);
 const char *routeModeName(RouteMode mode);
 const char *midiInputName(MidiInput input);
 const char *sourceTypeName(SourceType type);

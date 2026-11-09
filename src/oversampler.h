@@ -56,6 +56,25 @@ public:
         y_.fill(0.0);
     }
 
+    // One input sample in, two out: up to twice the rate, the same filter run as an interpolator.
+    void processUp(double in, double &first, double &second) {
+        double a = in, b = in;
+        for (int i = 0; i < count_; i += 2) {
+            const double ya = (a - y_[i]) * coefs_[i] + x_[i];
+            x_[i] = a;
+            y_[i] = ya;
+            a = ya;
+            if (i + 1 < count_) {
+                const double yb = (b - y_[i + 1]) * coefs_[i + 1] + x_[i + 1];
+                x_[i + 1] = b;
+                y_[i + 1] = yb;
+                b = yb;
+            }
+        }
+        first = a;
+        second = b;
+    }
+
     // Two input samples in, one out.
     double process(double first, double second) {
         double a = second, b = first; // the even coefficients filter one phase, the odd ones the other
@@ -122,6 +141,47 @@ public:
         }
         for (int i = 0; i < frames; ++i)
             out[i] += static_cast<float>(in[i]);
+    }
+
+private:
+    int stages_ = 0;
+    std::array<HalfBand, 3> stage_{};
+};
+
+// Brings one channel up from the host rate to 2, 4 or 8 times it in half-band steps, the steepest first: the
+// Decimator's steps run the other way.
+class Upsampler {
+public:
+    void prepare(double hostRate, int factor) {
+        stages_ = factor >= 8 ? 3 : factor >= 4 ? 2 : factor >= 2 ? 1 : 0;
+        constexpr double kPassband = 20000.0;
+        static constexpr int kCoefs[] = {12, 6, 4}; // from the step up from the host rate on
+        for (int s = 0; s < stages_; ++s) {
+            const double outputRate = hostRate * (2 << s);
+            const double transition = std::clamp(0.25 - kPassband / outputRate, 0.01, 0.24);
+            stage_[s].design(kCoefs[s], transition);
+        }
+    }
+
+    void reset() {
+        for (HalfBand &s : stage_)
+            s.reset();
+    }
+
+    static constexpr int kMaxSamples = 512; // frames * factor at most
+
+    // `out` gets frames * factor samples.
+    void process(const float *in, double *out, int frames) {
+        double from[kMaxSamples / 2];
+        for (int i = 0; i < frames; ++i)
+            out[i] = in[i];
+        int n = frames;
+        for (int s = 0; s < stages_; ++s) {
+            std::copy_n(out, n, from);
+            for (int i = 0; i < n; ++i)
+                stage_[s].processUp(from[i], out[2 * i], out[2 * i + 1]);
+            n *= 2;
+        }
     }
 
 private:

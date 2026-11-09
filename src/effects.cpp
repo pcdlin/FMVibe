@@ -379,6 +379,10 @@ void Effects::prepare(double sampleRate) {
         for (ZeroBuffer &line : slot.flanger.lines)
             line.assign(static_cast<size_t>(std::ceil(kMaxFlangerDelay * sampleRate)) + 4, 0.0f);
         Analyzer::prepare(slot.analyzed, static_cast<int>(&slot - slots_.data()), kFxSlots + kFilters);
+        if (!slot.amp)
+            slot.amp = std::make_unique<AmpFx>();
+        slot.amp->now.prepare(sampleRate);
+        slot.amp->was.prepare(sampleRate);
     }
     analyzer_.prepare(sampleRate);
     static_assert(std::size(kReverbSeconds) == kReverbLines && std::size(kWanderRates) == kReverbLines &&
@@ -564,6 +568,14 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         e.size = at(FxParam::WidenerSize);
         e.width = at(FxParam::WidenerWidth);
         e.mix = at(FxParam::WidenerMix);
+        break;
+    }
+    case FxType::Amp: {
+        AmpFx &a = *s.amp;
+        a.now.start(ampConfig(p, slot), ampKnobs(p, slot));
+        a.wasFade = 0.0;
+        a.output = std::pow(10.0, at(FxParam::AmpOutput) / 20.0);
+        a.mix = at(FxParam::AmpMix);
         break;
     }
     case FxType::MultiComp: // retired: a state's loads as a three-band dynamics (see readParams())
@@ -766,6 +778,9 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         if (fx.running == FxType::Compressor ? runCompressor(slot, io, n, p) : runMultiDyn(slot, io, n, p))
             keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
         break;
+    case FxType::Amp:
+        runAmp(slot, io, n, p);
+        break;
     case FxType::Reverb:
     case FxType::Phaser:
     case FxType::Flanger:
@@ -853,6 +868,48 @@ void Effects::setWires(int node, const ParamValues &p) {
         const int port = wirePort(node, input, p);
         wires_[node][input] = {{port, wireTarget(node, input, p), port >= 0 ? 1.0 : 0.0}, {}};
     }
+}
+
+void Effects::runAmp(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    AmpFx &a = *slots_[slot].amp;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    const AmpConfig config = ampConfig(p, slot);
+    const AmpKnobs knobs = ampKnobs(p, slot);
+    // A new setting: the amp at the old one fades out as one at the new one, cleared, fades in. One that changes
+    // again meanwhile waits for that to end.
+    if (!(config == a.now.config()) && a.wasFade <= 0.0) {
+        a.was = a.now;
+        a.now.start(config, knobs);
+        a.wasFade = 1.0;
+    }
+    float dry[2][kChunk];
+    std::copy_n(io[0], n, dry[0]);
+    std::copy_n(io[1], n, dry[1]);
+    double drive = a.now.process(io, n, knobs);
+    if (a.wasFade > 0.0) {
+        float old[2][kChunk];
+        std::copy_n(dry[0], n, old[0]);
+        std::copy_n(dry[1], n, old[1]);
+        float *const oldIo[2] = {old[0], old[1]};
+        drive = std::max(drive, a.was.process(oldIo, n, knobs));
+        const double fadeStep = 1.0 / (0.01 * sampleRate_);
+        for (uint32_t s = 0; s < n; ++s) {
+            a.wasFade = std::max(a.wasFade - fadeStep, 0.0);
+            const float w = static_cast<float>(0.5 - 0.5 * std::cos(std::numbers::pi * a.wasFade));
+            for (int c = 0; c < 2; ++c)
+                io[c][s] = io[c][s] * (1.0f - w) + old[c][s] * w;
+        }
+    }
+    // Output and Mix glide sample by sample, the same however the host splits the block.
+    const double outputTo = std::pow(10.0, at(FxParam::AmpOutput) / 20.0), mixTo = at(FxParam::AmpMix);
+    const double glide = 1.0 - std::exp(-1.0 / (0.005 * sampleRate_));
+    for (uint32_t s = 0; s < n; ++s) {
+        a.output += (outputTo - a.output) * glide;
+        a.mix += (mixTo - a.mix) * glide;
+        for (int c = 0; c < 2; ++c)
+            io[c][s] = static_cast<float>(dry[c][s] * (1.0 - a.mix) + io[c][s] * a.output * a.mix);
+    }
+    reduction_[slot][0] = static_cast<float>(drive);
 }
 
 void Effects::idleSlot(int slot) {

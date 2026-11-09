@@ -33,7 +33,7 @@ namespace detail {
 constexpr Str kFxTitles[] = {Str::FxTitleShaper, Str::FxTitleDelay, Str::FxTitleDjEq, Str::FxTitleParamEq,
                              Str::FxTitleFilter, Str::FxTitleCompressor, Str::FxTitleMultiComp, Str::FxTitleReverb,
                              Str::FxTitlePhaser, Str::FxTitleFlanger, Str::FxTitleFreqShifter, Str::FxTitleDisperser,
-                             Str::FxTitleWidener, Str::FxTitleMultiDyn};
+                             Str::FxTitleWidener, Str::FxTitleMultiDyn, Str::FxTitleAmp};
 static_assert(std::size(kFxTitles) == static_cast<size_t>(FxType::Count) - 1);
 const char *fxTitle(FxType type) {
     return type == FxType::None ? "" : tr(kFxTitles[static_cast<int>(type) - 1]);
@@ -175,6 +175,8 @@ int listCount(int param) {
            : isLfoShape(param)                        ? static_cast<int>(LfoShape::Count)
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
+           : fxFieldOf(param) == FxParam::AmpModel   ? static_cast<int>(AmpModel::Count)
+           : fxFieldOf(param) == FxParam::AmpCab     ? static_cast<int>(AmpCab::Count)
                                                       : static_cast<int>(ClipMode::Count);
 }
 std::string listItemName(int param, int value) {
@@ -186,6 +188,10 @@ std::string listItemName(int param, int value) {
         return lfoShapeName(static_cast<LfoShape>(value));
     if (isMidiInput(param))
         return midiInputName(static_cast<MidiInput>(value));
+    if (fxFieldOf(param) == FxParam::AmpModel)
+        return ampModelName(static_cast<AmpModel>(value));
+    if (fxFieldOf(param) == FxParam::AmpCab)
+        return ampCabName(static_cast<AmpCab>(value));
     return fxFieldOf(param) == FxParam::ReverbType ? reverbTypeName(static_cast<ReverbType>(value))
                                                     : clipModeName(static_cast<ClipMode>(value));
 }
@@ -1932,6 +1938,37 @@ std::vector<View::Widget> View::widgets() const {
                        at(FxParam::WidenerMix)},
                       {tr(Str::LabelSize), tr(Str::LabelWidth), tr(Str::LabelHighPass), tr(Str::LabelMix)});
                 break;
+            case FxType::Amp: {
+                // The amp's side: its model's list, STEREO under its display, Gain, Volume and Presence over Bass, Mid
+                // and Treble. The cabinet's: its power switch and list, the mic on its display, the mic's three under
+                // it, Position and Distance over Output and Mix. With the cabinet off, its own controls dim.
+                add(Kind::ListButton, ampModelButton(card), at(FxParam::AmpModel));
+                add(Kind::Toggle, ampStereoButton(card), at(FxParam::AmpStereo));
+                knob(at(FxParam::AmpGain), ampKnob(card, false, 0, 0), kAmpKnobD, tr(Str::LabelGain));
+                knob(at(FxParam::AmpVolume), ampKnob(card, false, 1, 0), kAmpKnobD, tr(Str::LabelVolume));
+                knob(at(FxParam::AmpPresence), ampKnob(card, false, 2, 0), kAmpKnobD, tr(Str::LabelPresence));
+                knob(at(FxParam::AmpBass), ampKnob(card, false, 0, 1), kAmpKnobD, tr(Str::LabelBass));
+                knob(at(FxParam::AmpMid), ampKnob(card, false, 1, 1), kAmpKnobD, tr(Str::LabelMid));
+                knob(at(FxParam::AmpTreble), ampKnob(card, false, 2, 1), kAmpKnobD, tr(Str::LabelTreble));
+                add(Kind::Toggle, ampCabPower(card), at(FxParam::AmpCabOn));
+                add(Kind::ListButton, ampCabButton(card), at(FxParam::AmpCab));
+                const size_t cabControls = list.size();
+                add(Kind::AmpMic,
+                    ampMicRect(ampCabDisplay(card), value(at(FxParam::AmpPosition)), value(at(FxParam::AmpDistance))),
+                    at(FxParam::AmpPosition), slot);
+                const size_t mics = list.size();
+                for (int mic = 0; mic < static_cast<int>(AmpMic::Count); ++mic)
+                    add(Kind::Choice, ampMicChoice(card, mic), at(FxParam::AmpMic), -1, mic);
+                merge(mics);
+                knob(at(FxParam::AmpPosition), ampKnob(card, true, 0, 0), kAmpKnobD, tr(Str::LabelPosition));
+                knob(at(FxParam::AmpDistance), ampKnob(card, true, 1, 0), kAmpKnobD, tr(Str::LabelDistance));
+                if (value(at(FxParam::AmpCabOn)) < 0.5)
+                    for (size_t i = cabControls; i < list.size(); ++i)
+                        list[i].faint = true;
+                knob(at(FxParam::AmpOutput), ampKnob(card, true, 0, 1), kAmpKnobD, tr(Str::LabelOutput));
+                knob(at(FxParam::AmpMix), ampKnob(card, true, 1, 1), kAmpKnobD, tr(Str::LabelMix));
+                break;
+            }
             case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
             case FxType::None:
             case FxType::Count:
@@ -2624,6 +2661,8 @@ std::vector<View::Widget> View::widgets() const {
             const Rect card = *shown;
             const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
                                 : listField == FxParam::FilterSlope ? slopeButton(fxDisplayIn(card, FxType::Filter))
+                                : listField == FxParam::AmpModel    ? ampModelButton(card)
+                                : listField == FxParam::AmpCab      ? ampCabButton(card)
                                                                     : clipModeButton(card);
             const int items = listCount(listMenu_);
             add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
@@ -2877,8 +2916,8 @@ void View::paint(Canvas &c, Rect area) {
             if (w.clip.w > 0.0f)
                 c.pushClip(w.clip);
             paintWidget(c, w);
-            if (w.disabled) // dimmed as a switched-off node's page is
-                c.fillRect(w.rect.inset(-1.0f), kPanel.alpha(0.6f), kRadiusMark);
+            if (w.disabled || w.faint) // dimmed as a switched-off node's page is
+                c.fillRect(w.rect.inset(-1.0f), (w.faint ? kCardColor : kPanel).alpha(0.6f), kRadiusMark);
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
@@ -3631,6 +3670,20 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     case FxType::Widener:
         paintWidener(c, display, slot);
         break;
+    case FxType::Amp: {
+        paintAmp(c, display, slot);
+        // The cabinet's display beside it, dimmed while the cabinet is off, and the line between the two sides.
+        const Rect cab = ampCabDisplay(card);
+        c.fillRect(cab, kDisplayColor, kRadiusCard);
+        paintAmpCab(c, cab, slot);
+        if (value(paramIndex(slot, FxParam::AmpCabOn)) < 0.5)
+            c.fillRect(cab, kCardColor.alpha(0.6f), kRadiusCard);
+        if (!on)
+            c.fillRect(cab, kPanel.alpha(0.55f), kRadiusCard);
+        const float x = ampDivider(card);
+        c.line({x, display.y}, {x, card.bottom() - 12.0f}, kBorder, 1.0f);
+        break;
+    }
     case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
     case FxType::None:
     case FxType::Count:
@@ -4757,6 +4810,98 @@ void View::paintWidener(Canvas &c, Rect r, int slot) {
     c.text({r.right() - 16.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "R", kTextLabel, kFaint);
 }
 
+// The amp's display: the tone's frequency response, 20 Hz to 20 kHz across and +12 to -30 dB up: the model's tone stack
+// with Presence, through the cabinet and mic while the cabinet is on (solid, filled) over the tone stack alone (faint,
+// dashed); with the cabinet off, the tone stack alone, solid. At its right, the drive meter: how far its stages saturate
+// now, up from the bottom, 36 dB at the top; its figure at the top left.
+void View::paintAmp(Canvas &c, Rect r, int slot) {
+    const Color fx = fxColor(slot);
+    auto at = [&](FxParam f) { return std::clamp(liveValue(paramIndex(slot, f)), 0.0, 1.0); }; // as modulation takes them
+    AmpKnobs knobs;
+    knobs.gain = at(FxParam::AmpGain);
+    knobs.bass = at(FxParam::AmpBass);
+    knobs.mid = at(FxParam::AmpMid);
+    knobs.treble = at(FxParam::AmpTreble);
+    knobs.presence = at(FxParam::AmpPresence);
+    knobs.volume = at(FxParam::AmpVolume);
+    knobs.position = at(FxParam::AmpPosition);
+    knobs.distance = at(FxParam::AmpDistance);
+    const AmpModel model = storedEnum<AmpModel>(value(paramIndex(slot, FxParam::AmpModel)));
+    const AmpCab cab = storedEnum<AmpCab>(value(paramIndex(slot, FxParam::AmpCab)));
+    const AmpMic mic = storedEnum<AmpMic>(value(paramIndex(slot, FxParam::AmpMic)));
+    const bool cabOn = value(paramIndex(slot, FxParam::AmpCabOn)) >= 0.5;
+    constexpr double kTopDb = 12.0, kBottomDb = -30.0;
+    const Rect plot{r.x + 6.0f, r.y + 18.0f, r.w - 26.0f, r.h - 24.0f};
+    for (double hz : {100.0, 1000.0, 10000.0}) {
+        const float x = plot.x + plot.w * static_cast<float>(std::log10(hz / 20.0) / 3.0);
+        c.line({x, plot.y}, {x, plot.bottom()}, kBorder, 1.0f);
+    }
+    const float zero = plot.y + plot.h * static_cast<float>(kTopDb / (kTopDb - kBottomDb));
+    c.line({plot.x, zero}, {plot.right(), zero}, kBorder, 1.0f, true);
+    constexpr int kSteps = 80;
+    std::vector<Point> tone, out;
+    for (int i = 0; i <= kSteps; ++i) {
+        const double hz = 20.0 * std::pow(1000.0, static_cast<double>(i) / kSteps);
+        const double t = ampToneResponse(model, knobs, hz);
+        const float x = plot.x + plot.w * static_cast<float>(i) / kSteps;
+        auto y = [&](double gain) {
+            const double db = std::clamp(20.0 * std::log10(std::max(gain, 1e-6)), kBottomDb, kTopDb);
+            return plot.y + plot.h * static_cast<float>((kTopDb - db) / (kTopDb - kBottomDb));
+        };
+        tone.push_back({x, y(t)});
+        out.push_back({x, y(cabOn ? t * ampCabResponse(cab, mic, knobs, hz) : t)});
+    }
+    if (cabOn)
+        c.polyline(tone.data(), tone.size(), fx.alpha(0.45f), 1.2f, true);
+    std::vector<Point> area = out;
+    area.push_back({plot.right(), plot.bottom()});
+    area.push_back({plot.x, plot.bottom()});
+    c.fillPolygon(area.data(), area.size(), fx.alpha(0.12f));
+    plotLine(c, out.data(), out.size(), fx, 1.8f);
+    const float drive = telemetry_.fxReduction[slot][0];
+    constexpr float kDriveRangeDb = 36.0f;
+    const Rect meter{r.right() - 12.0f, r.y + 8.0f, 6.0f, r.h - 16.0f};
+    c.fillRect(meter, kCardColor, kRadiusMark);
+    const float h = std::clamp(drive / kDriveRangeDb, 0.0f, 1.0f) * meter.h;
+    if (h > 0.5f)
+        c.fillRect({meter.x, meter.bottom() - h, meter.w, h}, fx, kRadiusMark);
+    c.text({r.x + 8.0f, r.y + 3.0f, r.w - 28.0f, 14.0f}, trf(Str::CaptionAmpDrive, {number("%.1f", drive)}),
+           kTextSmall, drive > 0.05f ? kText : kDim, Align::Left);
+}
+
+// The cabinet's display: its speaker seen from the side at the left, the baffle and the cone behind it, and the mic in
+// front of it (drawn by its widget), up from the cone's axis to its edge by Position and away to the right by Distance;
+// set back far enough, faint arcs of the room it hears. The mic and its distance at the top left.
+void View::paintAmpCab(Canvas &c, Rect r, int slot) {
+    const Color fx = fxColor(slot);
+    const double position = std::clamp(liveValue(paramIndex(slot, FxParam::AmpPosition)), 0.0, 1.0);
+    const double distance = std::clamp(liveValue(paramIndex(slot, FxParam::AmpDistance)), 0.0, 1.0);
+    const float baffle = ampBaffleX(r), axis = ampConeAxis(r), cone = ampConeRadius(r);
+    c.fillRect({r.x + 4.0f, r.y + 16.0f, baffle - r.x - 10.0f, r.h - 22.0f}, kRaised, kRadiusMark);
+    // The cone's profile, flaring out to the baffle from the voice coil behind it, and its dust cap.
+    const Point coilTop{baffle - 9.0f, axis - 5.0f}, coilBottom{baffle - 9.0f, axis + 5.0f};
+    c.curve({baffle, axis - cone}, {baffle - 3.0f, axis - cone * 0.35f}, coilTop, kDim, 1.3f);
+    c.curve(coilBottom, {baffle - 3.0f, axis + cone * 0.35f}, {baffle, axis + cone}, kDim, 1.3f);
+    c.line(coilTop, coilBottom, kDim, 1.3f);
+    c.curve(coilTop, {baffle - 4.0f, axis}, coilBottom, kDim, 1.2f);
+    c.line({baffle + 1.0f, axis - cone - 3.0f}, {baffle + 1.0f, axis + cone + 3.0f}, kFaint, 1.0f, true);
+    c.line({baffle, axis}, {r.right() - 8.0f, axis}, kBorder, 1.0f, true); // the cone's axis
+    const Point m = ampMicPoint(r, position, distance);
+    const float room = static_cast<float>(std::clamp((distance - 0.59) / 0.41, 0.0, 1.0)); // from about 15 cm on
+    for (int i = 1; i <= 2 && room > 0.0f; ++i) {
+        const float dx = 6.0f + i * 6.0f, dy = 6.0f + i * 3.0f;
+        c.curve({m.x + dx, m.y - dy}, {m.x + dx + 4.0f + i * 2.0f, m.y}, {m.x + dx, m.y + dy}, fx.alpha(0.4f * room),
+                1.0f);
+    }
+    // Its cable, down to the display's bottom right.
+    c.curve({m.x + 10.0f, m.y}, {m.x + 16.0f, r.bottom() - 8.0f}, {r.right() - 4.0f, r.bottom() - 8.0f}, kFaint, 1.0f);
+    char cm[32];
+    formatParam(paramIndex(slot, FxParam::AmpDistance), distance, cm, sizeof(cm));
+    const AmpMic mic = storedEnum<AmpMic>(value(paramIndex(slot, FxParam::AmpMic)));
+    c.text({r.x + 8.0f, r.y + 3.0f, r.w - 12.0f, 14.0f}, trf(Str::CaptionAmpMic, {ampMicName(mic), cm}), kTextSmall,
+           kDim, Align::Left);
+}
+
 void View::paintNoteSource(Canvas &c, float top) {
     // The note the newest voice plays, as the note source follows it (bend and glide included): its name, and
     // how many cents off it is; a dash while nothing plays.
@@ -5765,9 +5910,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                         : w.kind == Kind::Choice ? std::lround(value(w.param)) == w.b
                                                  : value(w.param) >= 0.5;
         const Str clipModes[] = {Str::SwitchHard, Str::SwitchSoft, Str::SwitchAsym};
+        constexpr Str kMicShortNames[] = {Str::MicDynamicShort, Str::MicCondenserShort, Str::MicRibbonShort};
+        static_assert(std::size(kMicShortNames) == static_cast<size_t>(AmpMic::Count));
         const FxParam field = fxFieldOf(w.param);
         // Operators', filters', sources' and effects' on switches show the power symbol rather than a word.
-        const bool power = isPowerParam(w.param) || isSourcePower(w.param) || field == FxParam::Enabled;
+        const bool power =
+            isPowerParam(w.param) || isSourcePower(w.param) || field == FxParam::Enabled || field == FxParam::AmpCabOn;
         const std::string count = std::to_string(w.b); // the partial editor's resolution
         const bool modeChoice = routeModeFrom(w.param) >= 0; // an operator's INPUTS row's, as glyphs
         const char *text = power || modeChoice ? ""
@@ -5776,7 +5924,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
                            : field == FxParam::FilterType ? filterTypeShortName(static_cast<FilterType>(w.b))
-                           : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ? tr(Str::SwitchStereo)
+                           : field == FxParam::PhaserStereo || field == FxParam::FlangerStereo ||
+                                     field == FxParam::AmpStereo
+                               ? tr(Str::SwitchStereo)
+                           : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
                                                                                                : tr(Str::SwitchAlways);
@@ -6473,6 +6624,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Color color = hovered ? kText : kFaint;
         c.line({center.x - 4.0f, center.y - 4.0f}, {center.x + 4.0f, center.y + 4.0f}, color, 1.5f);
         c.line({center.x - 4.0f, center.y + 4.0f}, {center.x + 4.0f, center.y - 4.0f}, color, 1.5f);
+        break;
+    }
+    case Kind::AmpMic: { // a capsule pointing at the cone, its front its color; ringed under the mouse
+        const Color color = fxColor(w.a);
+        const Point m{w.rect.x + 9.0f, w.rect.y + 8.0f};
+        if (hovered || active)
+            c.strokeCircle({m.x + 3.0f, m.y}, 10.0f, color.alpha(0.45f), 3.0f);
+        c.line({m.x, m.y}, {m.x + 4.0f, m.y}, kDim, 1.0f);
+        c.fillRect({m.x - 3.0f, m.y - 3.5f, 13.0f, 7.0f}, color.alpha(0.3f), kRadiusMark);
+        c.strokeRect({m.x - 3.0f, m.y - 3.5f, 13.0f, 7.0f}, color, 1.3f, kRadiusMark);
+        c.fillCircle({m.x - 3.0f, m.y}, 3.5f, color);
         break;
     }
     case Kind::PeqPoint: {
@@ -8113,6 +8275,16 @@ void View::applyDrag(Point p) {
             set(above, std::max(db, value(below)));
         break;
     }
+    case DragKind::AmpMic: { // up across the cone for its position, right away from it for its distance
+        const std::optional<Rect> card = fxCardOf(w.a);
+        if (!card)
+            break;
+        const Rect display = ampCabDisplay(*card);
+        const Point lo = ampMicPoint(display, 0.0, 0.0), hi = ampMicPoint(display, 1.0, 1.0);
+        set(paramIndex(w.a, FxParam::AmpPosition), std::clamp((lo.y - p.y) / (lo.y - hi.y), 0.0f, 1.0f));
+        set(paramIndex(w.a, FxParam::AmpDistance), std::clamp((p.x - lo.x) / (hi.x - lo.x), 0.0f, 1.0f));
+        break;
+    }
     case DragKind::PeqPoint: {
         const Rect area = peqArea(w.a);
         set(peqFreqIndex(w.a, w.b), (p.x - area.x) / area.w);
@@ -8491,6 +8663,11 @@ void View::mouseDown(Point p, Modifiers mods) {
         }
         drag_.kind = DragKind::DynGrip;
         controller_.beginEdit(mdThreshold(w.a, w.b));
+        break;
+    case Kind::AmpMic:
+        drag_.kind = DragKind::AmpMic;
+        controller_.beginEdit(paramIndex(w.a, FxParam::AmpPosition));
+        controller_.beginEdit(paramIndex(w.a, FxParam::AmpDistance));
         break;
     case Kind::PeqPoint:
         fxBand_[w.a] = w.b; // its knobs show
@@ -9090,6 +9267,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::EnvCurve:
     case DragKind::FilterPoint:
     case DragKind::PeqPoint:
+    case DragKind::AmpMic:
     case DragKind::DynGrip:
     case DragKind::ShapePoint:
     case DragKind::ShapeCurve:
@@ -9141,6 +9319,10 @@ void View::finishDrag() {
     case DragKind::PeqPoint:
         for (int index : peqPointParams(w.a, w.b))
             controller_.endEdit(index);
+        break;
+    case DragKind::AmpMic:
+        controller_.endEdit(paramIndex(w.a, FxParam::AmpPosition));
+        controller_.endEdit(paramIndex(w.a, FxParam::AmpDistance));
         break;
     case DragKind::DynGrip:
         controller_.endEdit(mdThreshold(w.a, w.b));
@@ -9334,6 +9516,12 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && (hit->kind == Kind::MacroName || hit->kind == Kind::TempoBox)) {
         startTyping(*hit);
+        return;
+    }
+    if (hit && hit->kind == Kind::AmpMic) { // back where it starts, in one undo step
+        const UndoScope step(controller_);
+        for (FxParam f : {FxParam::AmpPosition, FxParam::AmpDistance})
+            edit(paramIndex(hit->a, f), table_[paramIndex(hit->a, f)].def);
         return;
     }
     if (hit && hit->kind == Kind::Wire) { // back to how it bows to begin with
@@ -9601,11 +9789,14 @@ constexpr int kUnipolarCommand = 12;
 constexpr int kBipolarCommand = 13;
 constexpr int kResetBendCommand = 14;
 constexpr int kOttCommand = 15;
+// And from here on, each sets an amp's oversampling (see ampOversampling()).
+constexpr int kAmpOversamplingCommand = 30;
 // An effect on a split's band moved to another band of it: this plus the band's lane (1 high, 2 low, 3 middle).
 constexpr int kMoveBandCommand = 40;
 // And from here on, each sets the mode of the route the menu was opened on (see RouteMode).
 constexpr int kRouteModeCommand = 16;
-static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
+static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kAmpOversamplingCommand &&
+              kAmpOversamplingCommand + kAmpOversamplings <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
 
 // The three-band dynamics' fields set as Ableton's OTT preset for its Multiband Dynamics has them: crossovers at
 // 88.3 Hz and 2.5 kHz, every band pulled down hard above its Above threshold and lifted 4.17:1 below its Below one,
@@ -9666,6 +9857,13 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({8, tr(Str::MenuResetSettings)});
         if (fxSlotType(menuFx_) == FxType::MultiDyn)
             items.push_back({kOttCommand, tr(Str::MenuOtt)});
+        if (fxSlotType(menuFx_) == FxType::Amp) { // how many times the host rate its stages run at, the one in force checked
+            items.push_back({0, ""});
+            const long now = std::lround(value(paramIndex(menuFx_, FxParam::AmpOversampling)));
+            for (int i = 0; i < kAmpOversamplings; ++i)
+                items.push_back({kAmpOversamplingCommand + i, trf(Str::MenuOversampling, {std::to_string(1 << i) + "x"}),
+                                 now == i});
+        }
         // On a split's band, in the row: the split's other bands it can move to.
         if (!fxGraph()) {
             const std::vector<int> bands = fxOtherBands(menuFx_);
@@ -9859,6 +10057,9 @@ void View::menuCommand(int command) {
         moveFxToBand(menuFx_, command - kMoveBandCommand);
     } else if (command == kOttCommand && menuFx_ >= 0 && fxSlotType(menuFx_) == FxType::MultiDyn) {
         editMany(ottSettings(menuFx_));
+    } else if (command >= kAmpOversamplingCommand && command < kAmpOversamplingCommand + kAmpOversamplings &&
+               menuFx_ >= 0 && fxSlotType(menuFx_) == FxType::Amp) {
+        edit(paramIndex(menuFx_, FxParam::AmpOversampling), command - kAmpOversamplingCommand);
     } else if (command == 3 && menuParam_ >= 0) {
         disconnect(menuParam_);
     } else if (command == 4 && menuParam_ >= 0) {
@@ -10170,6 +10371,7 @@ CursorKind View::cursor() const {
     case Kind::EnvPoint:
     case Kind::FilterPoint:
     case Kind::PeqPoint:
+    case Kind::AmpMic:
     case Kind::FxGrip:
     case Kind::FxBoxGrip:
     case Kind::SourceGrip:

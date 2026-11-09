@@ -49,3 +49,6 @@ PL Koto Pluck
 PL Razor Pluck
 SQ Mallet Steps
 SQ Hammer Gate
+PL Crunch Rhythm
+LD Overdrive Lead
+BA Driven Bass

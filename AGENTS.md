@@ -7,7 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, filter type, effect type, source type and fixed Mult lists, and the state layout are
+- Parameter ids, the wave, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult lists, and
+  the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
@@ -162,7 +163,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     effects graph;
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
-    reverb's Mix, a DJ EQ band, a three-band dynamics' Output, a wire's Level) jumps while events split the block into single frames,
+    reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a wire's Level) jumps
+    while events split the block into single frames,
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
     an effect added at the line's end and one taken out, a split taken out with its join, a split's slope
@@ -173,6 +175,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the effects graph's ports telling the editor how loud each is: IN and an effect on the line at the sine's level,
     an effect not in the graph silent, and a second of silence taking them about 90 dB down; and nothing measured
     while nothing analyzes (no editor open);
+  - the amp: every model at its middle knobs about as loud as a sine at -12 dBFS going in (the cabinet on), the
+    energy off the fundamental growing with Gain (Heavy's more than Clean's), Heavy's aliasing at full Gain and
+    Volume on a C7 falling as the oversampling rises (35 dB down at 4x) and the cost of each, Treble and Bass tilting
+    the tone their ways, the cabinet taking the top away and the mic at the cone's edge darker than at its center,
+    one amp on both sides' sum in mono and one a side in stereo, Mix at 0 leaving the sound alone, the Fuzz putting out
+    no DC, the mic a metre back hearing the room's last reflection, and the model, cabinet, mic, cabinet switch and
+    oversampling changed under a note crossfading rather than clicking;
   - the three-band dynamics on a sine in its mid band: a quiet one lifted and a loud one pulled down as its
     thresholds and ratios say (the band telling the editor its level and gain), the lift capped by Range, peaks
     followed with RMS off, 1:1 both ways leaving the level alone, ∞:1 holding a loud one at Above (its text
@@ -424,6 +433,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     ratio drawn as up to seven lines moving with the threshold and closing up toward it (6 dB apart at 1:1), the Above knob's tooltip under its label
     and the bars' meters showing the telemetry's levels and gains, in teal, then amber for what is taken off (read
     off the rendered pixels), and LINK (an edit of one band, by its line or knob, then setting every band's, undoably) and RMS;
+  - the amp's card: added after the shaper in the list of effects, a Crunch into a closed 4x12 to begin with; its
+    model list, cabinet list and mic switch picking, each undoably; its cabinet
+    switched off dimming its controls (read off the rendered pixels), which still turn; its mic dragged on its display
+    setting Position and Distance in one undo step and double-clicked back; its drive meter following the telemetry
+    and its display following Treble and the mic's position (read off the rendered pixels); and its title's menu
+    picking its oversampling, the one in force checked;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
     flanger's STEREO and its + | − picking its polarity, the filter's Key Track and the shaper's and delay's LINK
     too) and the list of effects with their icons;
@@ -699,6 +714,7 @@ breakpoints in `src/` then hit.
 | `src/zerobuffer.h`, `src/zerobuffer.cpp` | Delay lines allocated as zero pages that only take memory once written |
 | `src/filter.h` | State-variable and comb filters, plus their response curves for the editor |
 | `src/clipcurve.h` | The shapers' curves, anti-aliasing and running, shared by the shaper effect and the voices' shapers |
+| `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
 | `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
@@ -761,7 +777,8 @@ itself.
   400 + 10·from + to, filter modulation
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past
-  the 80th 12000 + 20·slot, and past the 100th 25000 + 40·slot; the slots past the first 16 every field
+  the 80th 12000 + 20·slot, past the 100th 25000 + 40·slot, and past the 140th 36000 + 20·slot; the slots past the
+  first 16 every field
   26000 + 200·(slot - 16)), source places
   2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
@@ -788,7 +805,7 @@ itself.
   read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field, split field, wire field, port and fixed Mult lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic and fixed Mult lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -802,7 +819,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,226 of the 18,641 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,226 of the 19,153 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

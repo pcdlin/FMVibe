@@ -300,6 +300,41 @@ What the plugin does and how its editor works, in full. Building and installing 
     stays silent). The switch shows only while the curve is
     Custom, and the other curves ignore it. The curves are anti-aliased (first-order antiderivative), so
     high drive stays clean without oversampling, though folding at the highest drives gets duller for it.
+  - **Amp**: a guitar amp, then a speaker cabinet heard through a mic. **Model** picks the amp: its preamp stages
+    (each a coupling high-pass, a gain, a curve with a bias whose lower side is softer, which adds even harmonics, and
+    a low-pass), its tone stack and its power amp. **Clean** (one gentle stage, lots of headroom), **Blues** (two
+    stages, a loose low end, breaking up early, and plenty of sag), **Crunch** (two stages, tighter and mid-forward;
+    the one a new amp starts as), **Lead** (three stages, each cutting a little more top, for a smooth sustain),
+    **Heavy** (four stages behind an input that lets nothing below about 500 Hz through, high gain, little sag),
+    **Bass** (one stage for grit, the lows under 250 Hz blended in clean under it) and **Fuzz** (a fuzz pedal, two
+    hard, lopsided stages, into a clean amp). **Gain** drives the preamp over its model's range (Clean about −6 to
+    +20 dB, Heavy +18 to +50 dB). **Bass**, **Mid** and **Treble** set the tone stack: for every model but Bass the
+    classic passive three-knob circuit, worked out from its parts (our own values) as a third-order filter, so the
+    knobs interact as an amp's do (Mid at 0 scoops; the bass pot's taper is log); its loudest at the middle knobs is
+    0 dB. Clean's and the Fuzz's amp's are scooped, Blues', Crunch's and Lead's mid-forward, Heavy's scooped deeper;
+    Bass has an active stack instead, a ±15 dB shelf at 90 Hz, a ±12 dB bell at 600 Hz and a ±15 dB shelf at 3 kHz.
+    **Presence** lifts a shelf around 3–4 kHz into the power amp, up to 10 dB. **Volume** drives the power amp, whose
+    headroom sags as it works (falling over 5 ms, coming back over 150 ms, by as much as its model has) for a bloom.
+    The knobs from Gain to Volume read 0 to 10, as an amp's; their coefficients follow them every block, gliding over
+    20 ms. Each model is trimmed so that at its middle knobs a sine at −12 dBFS comes out as loud as it went in (with
+    the cabinet), and as Gain rises the level grows less and less, the stages clipping. The stages run at 1, 2, 4
+    (to begin with) or 8 times the host rate, picked in the card's right-click menu (**Oversampling**), and come back
+    down through the same half-band filters as the voices, with no latency: at 4x, Heavy at full Gain and Volume on a
+    C7 keeps what isn't a harmonic of the note about 42 dB down (20 dB at 1x, 63 dB at 8x). **Stereo** (off to begin
+    with) runs an amp for each side; off, one amp runs on their sum, at half the cost, and puts it out on both.
+    The **cabinet** (on to begin with) comes after it, at the host rate: **1x12 Open**, **2x12 Open**, **4x12 Closed**
+    (to begin with), **4x10 Bass** or **1x15 Bass**, each a resonant low end (open backs looser, closed ones tighter,
+    the bass cabinets lower), a low-mid bump, the cone's breakup peak and a dip below it, and a low-pass at 24 dB an
+    octave (3 to 5 kHz). The **mic** in front of it is **Dynamic** (a presence peak, a little low cut; to begin
+    with), **Condenser** (flatter, more air) or **Ribbon** (dark and smooth, more low end); **Position** moves it from
+    the cone's center (0 %, bright) to its edge (100 %, the top and the breakup peak down), 30 % to begin with, and
+    **Distance** from 1 cm to 1 m (2 cm to begin with): close in, its proximity effect lifts the lows; from about
+    15 cm on the room comes in, three early reflections (1.3, 3.1 and 7.7 ms, darkened), all of them at 1 m. Off,
+    the amp goes straight on. The cabinet and mic are filters, not recordings, so they move smoothly as Position and
+    Distance are turned or modulated. **Output** (−24 to +12 dB) and **Mix** come last, gliding sample by sample.
+    Changing the model, the cabinet, the mic, switching the cabinet on or off, Stereo or the oversampling crossfades
+    from the amp as it was to one at the new setting over 10 ms, so it neither clicks nor dips (another change during
+    those 10 ms waits for them to end).
   - **Delay**: separate times for the left and right side (1 ms–2 s each) or, synced, a note value of the host
     tempo for each (up to 4 s); Feedback (up to 95 %); Tone, a low-pass below the middle (20 kHz down to 200 Hz)
     and a high-pass above it (20 Hz up to 4 kHz), applied to every repeat; Width, from the echoes' full stereo
@@ -342,11 +377,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     doing what it did, its crossovers, thresholds (as Above), ratios (as Down), gains, Attack, Release, Mix,
     Output and Link carried over (and the modulation aimed at them), Up at 1:1, a 6 dB knee and the detector on
     peaks; a linked one, whose bands all took the low band's threshold, ratio and gain, gives every band those.
-    **OTT** in its card's right-click menu sets it as Ableton's OTT preset for its Multiband Dynamics has it, as
+    **OTT** in its card's right-click menu sets it as the well-known OTT ("over the top") multiband preset has it, as
     one undo step: crossovers at 88.3 Hz and 2.5 kHz; Above at −33.8, −30.2 and −35.5 dB (low, mid, high), Down
     at 66.7:1, 66.7:1 and ∞:1; Below at −40.8, −41.8 and −40.8 dB, Up at 4.17:1; gains of +10.3, +5.7 and
-    +10.3 dB; the mid band's 22.4 ms attack and 282 ms release for all three (OTT's are per band); hard knees,
-    Range at 36 dB (OTT's lift has no limit), 100 % mix, 0 dB output, RMS on and Link off.
+    +10.3 dB; the mid band's 22.4 ms attack and 282 ms release for all three (the preset's are per band); hard knees,
+    Range at 36 dB (the preset's lift has no limit), 100 % mix, 0 dB output, RMS on and Link off.
   - **Reverb**: a feedback delay network of sixteen lines (29 to 89 ms at full size, spread evenly on a log
     scale), mixed through a Hadamard matrix, which spreads each line's sound evenly over all of them every time
     round, so the echoes thicken fast. Each line's length wavers slowly (a fraction of a millisecond, each at its
@@ -587,7 +622,7 @@ may show anywhere, repaints the whole of it.
   - **FX**: takes the place of both the routing panel and the inspector. It shows a card per effect, left to right
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter
     purple, compressor green, 3-band dynamics teal, reverb indigo, phaser pink, flanger lime, frequency shifter
-    cyan, phase disperser slate, widener fuchsia) and
+    cyan, phase disperser slate, widener fuchsia, amp tweed gold) and
     with a title row laid out as every card's (the source cards' too): its icon and its name in capitals at the left, then a
     chevron that folds it, its power switch and an × to remove it at the right; and under it a live display, which
     draws the effect as modulation takes its params now (the newest voice's, or the macros' while nothing plays); the
@@ -641,7 +676,15 @@ may show anywhere, repaints the whole of it.
     - the widener's stereo field: left to right across, frequency up (20 Hz to 20 kHz), the dry sound a line
       down the middle and the sides it adds spreading out above the high-pass (a dashed line), as far as Width
       and Mix take them, wavering with the sweep while the audio runs; what Width leaves in the middle thickens
-      the line. Above it, the high-pass and the taps' delays.
+      the line. Above it, the high-pass and the taps' delays;
+    - the amp's two displays, side by side. The amp's: the tone's frequency response (20 Hz to 20 kHz, +12 to
+      −30 dB), its tone stack and Presence through the cabinet and mic while the cabinet is on (solid, filled) over
+      the tone stack alone (faint, dashed), or the tone stack alone with the cabinet off; at its right, a drive meter
+      rising with how far its stages saturate now (in dB, 36 at the top), and the figure at its top left. The
+      cabinet's: the speaker seen from the side, the baffle and the cone behind it, and the mic in front of it, which
+      drags up across the cone for Position and away to the right for Distance, in one undo step (a double-click
+      puts it back where it starts); set back far enough, faint arcs of the room it hears; the mic and its distance
+      at its top left.
 
     The delay's switches under its display are icons across the card, named on hover: a metronome for Sync, two
     chain links for Link (the right side follows the left) and a ball between two paddles for Ping-Pong. The
@@ -653,6 +696,13 @@ may show anywhere, repaints the whole of it.
     do. The filter's slope is a list under its display, like a voice filter's (see the inspector) and a split's. The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.
+
+    The amp's card is 1.85 places wide, the amp on the left and the cabinet on the right with a faint line between, in
+    the order the sound goes through them. The amp's side: the model's list, its display, STEREO under it, and Gain,
+    Volume and Presence over Bass, Mid and Treble. The cabinet's side: its
+    power symbol, then the cabinets' list, its display, the mic's three (DYN, CND, RIB) under it, and Position and
+    Distance over Output and Mix. With the cabinet off, its display, the mic's switch and Position and Distance dim,
+    though they still turn and take modulation.
 
     Each effect has an icon, at the left of its card's title and in the list of effects. On the card, the power
     switch in the title row turns the effect off (the icon turns grey with the card, under the mouse too, and the
@@ -667,7 +717,7 @@ may show anywhere, repaints the whole of it.
     one picked goes in there. While there are effects, a hint at the panel's top right tells how to work the cards
     ("drag a title to reorder"). The dashed card takes a
     card place at the chain's end while there is room for another effect. Six cards fit across, the Param EQ's
-    taking one and a half places for a wider spectrum; with more,
+    taking one and a half places for a wider spectrum (the 3-band dynamics' too, and the amp's 1.85); with more,
     a scrollbar under them (drag its thumb or click its track; drawn thinner while the mouse is away from it) or the
     mouse wheel over the panel scrolls the chain smoothly, cutting off the cards at the ends, and so does a drag with
     the middle button held (see Everywhere). Drag a card by its
@@ -683,7 +733,8 @@ may show anywhere, repaints the whole of it.
     controls' left edge); and past the next card once the mouse is beyond that card's middle. Let go of, they glide
     on into place, and a click while they glide puts them in place at once),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings,
-    set a 3-band dynamics as OTT, move it to another band of its split (**Move to Low**, **Move to Mid**, **Move to
+    set a 3-band dynamics as OTT, pick an amp's oversampling (**Oversampling 1x** to **8x**, the one in force
+    checked), move it to another band of its split (**Move to Low**, **Move to Mid**, **Move to
     High**, on a card on a split's band: the split's other bands, the effect going to that band's end, one undo step),
     or remove it. The chevron left of a card's × folds it to a narrow strip, as wide as the icon's place at the
     title's left, so the icon stays where it was: the icon, which still switches the effect and drags the card,
@@ -1269,7 +1320,7 @@ may show anywhere, repaints the whole of it.
   mono lead whose oscillator is a self-modulating operator, the mod wheel opening its feedback and index from flute
   to buzzing reed, a mod envelope's bite on each note and a vibrato that a second envelope, as its aux, fades in);
   PD Six-Op Cascade (all six operators in one chain, F down to A, four slow LFOs breathing its links at rates that
-  never line up, and an Index macro deepening them all); and BA Neon Pluck (a mono saw plucked by FM through a
+  never line up, and an Index macro deepening them all); BA Neon Pluck (a mono saw plucked by FM through a
   resonant low-pass over a sine sub, a two-bar LFO turning its FM and grit, its effects as a graph: a split at
   180 Hz whose high band is widened and echoed while the low band stays tight, then a 3-band dynamics set as OTT;
   its Timbre, Filter, Grit and Space macros). Then two more for each category, one in the style of 1980s FM synths
@@ -1296,7 +1347,13 @@ may show anywhere, repaints the whole of it.
   carrier knocked by a 4:1 modulator, struck every sixteenth by a drawn LFO with its own accent each step while a
   second steps the pitch through octaves, fifths and sevenths; its Melody macro flattens the tune) and SQ Hammer Gate
   (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper whose
-  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff). A folder made
+  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff).
+  Then three that play through the Amp: PL Crunch Rhythm (a string-like FM pluck, two carriers a few cents apart,
+  a feedback modulator for the saw's edge and a short bright one for the pick, velocity digging in, through the
+  Crunch amp into a closed 4x12 and a small room: a rhythm guitar for chords); LD Overdrive Lead (a mono, gliding
+  lead through the Lead amp into an open 2x12, a vibrato that an envelope fades in as a note holds, the mod wheel
+  turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
+  octave down, through the Bass amp's grit into a 4x10, its lows staying clean). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
   they hold only the params that differ from Init, so their files are small, and load like any other.
@@ -1370,7 +1427,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,226 of FMVibe's 18,641 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,226 of FMVibe's 19,153 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
 modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

@@ -17,6 +17,8 @@ FetchContent_MakeAvailable(clap)
 
 # The sound engine, independent of the plugin formats and Windows: the plugins and the browser demo share it.
 set(FMVIBE_ENGINE_SOURCES
+    src/amp.cpp
+    src/amp.h
     src/analyzer.cpp
     src/analyzer.h
     src/effects.cpp
@@ -24,6 +26,7 @@ set(FMVIBE_ENGINE_SOURCES
     src/envelope.h
     src/filter.h
     src/noise.h
+    src/oversampler.h
     src/params.cpp
     src/params.h
     src/uistrings.cpp
