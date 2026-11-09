@@ -1233,8 +1233,8 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 - **Presets**: presets are `.fmv` files in `Documents\FMVibe\presets` and its subfolders. The first time the
   library is used (the browser, the arrows or a file dialog), FMVibe makes that folder with its factory presets in the
   `Factory` subfolder. Each name starts with two letters for its category, so the library lists them in groups:
-  BA bass, FX effect, KY keys (bells and organs too), LD lead (brass too), PD pad (moving textures too), PL pluck
-  and SQ sequence (rhythmic, gated). They are KY Electric Piano, BA FM Bass, KY Glass Bell, PD Warm Pad, KY Drawbar
+  BA bass, DR drum, FX effect, KY keys (bells and organs too), LD lead (brass too), PD pad (moving textures too),
+  PL pluck and SQ sequence (rhythmic, gated). They are KY Electric Piano, BA FM Bass, KY Glass Bell, PD Warm Pad, KY Drawbar
   Organ, PL Pluck Delay; PD Crystal Motion, which uses everything at once (all six operators in three layers, two
   filters, four LFOs and a mod envelope, and six effects); BA Reese Bass, a heavy drum and bass reese (two stacks
   of detuned saws through a driven low-pass, a clean sub, clipping and three-band compression); BA Wobble Bass (an
@@ -1264,7 +1264,31 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
   never line up, and an Index macro deepening them all); and BA Neon Pluck (a mono saw plucked by FM through a
   resonant low-pass over a sine sub, a two-bar LFO turning its FM and grit, its effects as a graph: a split at
   180 Hz whose high band is widened and echoed while the low band stays tight, then a 3-band dynamics set as OTT;
-  its Timbre, Filter, Grit and Space macros). A folder made
+  its Timbre, Filter, Grit and Space macros). Then two more for each category, one in the style of 1980s FM synths
+  (sine operators only, indexes falling fast and scaled by velocity) and one modern and heavy: BA Eighties Slap (a
+  1:1 pair with feedback for the body, a 9:1 click for the thumb and a sub sine) and BA Grind Bass (a fed-back pair
+  growled by a sub-octave linear FM through an asymmetric shaper and a driven low-pass, over a clean sub, its effects
+  as a graph that keeps the lows below 140 Hz tight while the highs are clipped and widened; its Growl, Drive and
+  Width macros); DR Log Drum (a tuned log drum, a 3:1 knock dying in a blink as its pitch drops into the note) and DR
+  Hard Kick (a fixed-pitch sine swept down from about 600 Hz into an asymmetric shaper whose tail distorts, under a
+  noise click; its Pitch, Distortion, Length and Click macros); FX Jet Takeoff (a modulator at full feedback, driven
+  by an inharmonic one, roaring through its carrier, noise made by FM alone, a slow pitch envelope lifting it two
+  octaves under a flanger) and FX Crush Downer (an FM growl folded by a sine-fold shaper and falling three octaves
+  onto the note under band-passed noise falling with it); KY Funk Clav (a 1:1 pair with feedback for the nasal buzz
+  beside a 2:5 pair for the pluck) and KY Driven Tines (an FM tine piano through an asymmetric shaper, a cabinet's
+  band and a stereo phaser, velocity driving the amp too); LD Classic Synlead (a fed-back 1:1 pair's saw beside a
+  2:1 pair's square, detuned, with a bite on each note and a delayed vibrato the mod wheel deepens) and LD Screamer (a
+  square swept by a 2:1 modulator and unison saws, sine-folded and torn through a driven low-pass, the mod wheel
+  screaming the fold and feedback up); PD Vintage Strings (three fed-back pairs bowing in behind their carriers, an
+  octave on top, a slow drift on the indexes, chorused into a hall) and PD Distorted Swell (wide unison saws growled
+  by a sub-octave modulator through a driven low-pass into a sine-fold shaper, a slow LFO and a long envelope
+  opening it as it is held); PL Koto Pluck (a fed-back 1:1 pair and a 7:1 snap on one carrier, a 2:3 pair ringing an
+  octave up) and PL Razor Pluck (a fed-back pair driven by a 2:1 modulator through a snapping resonant low-pass over
+  a sub and a noise click, hard-clipped, squashed OTT-style and echoed); and SQ Mallet Steps (a marimba, a 1:1
+  carrier knocked by a 4:1 modulator, struck every sixteenth by a drawn LFO with its own accent each step while a
+  second steps the pitch through octaves, fifths and sevenths; its Melody macro flattens the tune) and SQ Hammer Gate
+  (a fed-back pair growled by a sub-octave linear FM through a driven, resonant low-pass into a hard clipper whose
+  output a drawn LFO gates in accented sixteenths, a second jumping octaves in the riff). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
   given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
   they hold only the params that differ from Init, so their files are small, and load like any other.
