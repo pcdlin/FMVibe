@@ -113,19 +113,31 @@ double moveToward(double from, double to, double step) {
     return from < to ? std::min(from + step, to) : std::max(from - step, to);
 }
 
+// A gain (dB) closer than this to where it is going is there: a release would otherwise only arrive as it underflows,
+// a minute and more on, working its gain out every sample until then.
+constexpr double kGainSnapDb = 1e-4;
+
+// One step of a gain (dB) toward `target`, by the attack's coefficient while it has to come down, else the
+// release's; there once within kGainSnapDb.
+double followGain(double gain, double target, double attack, double release) {
+    const double next = target + (gain - target) * (target < gain ? attack : release);
+    return std::abs(next - target) < kGainSnapDb ? target : next;
+}
+
 // Moves a band's gain reduction (dB) toward what the curve asks for at detector
 // level `peak`: at the attack pace while it has to come down, else at the release pace.
 // `quiet`: the level (1 is full scale) below which the curve leaves it alone, under the knee, where the reduction
 // heads for 0 without the logarithm worked out.
-double followReduction(double &reduction, double peak, double thresholdDb, double ratio, double kneeDb,
-                       double attack, double release, double quiet) {
+// Returns whether it is still on its way there.
+bool followReduction(double &reduction, double peak, double thresholdDb, double ratio, double kneeDb, double attack,
+                     double release, double quiet) {
     double target = 0.0;
     if (peak >= quiet) {
         const double inDb = 20.0 * std::log10(std::max(peak, 1e-9));
         target = compressorCurve(inDb, thresholdDb, ratio, kneeDb) - inDb;
     }
-    reduction = target + (reduction - target) * (target < reduction ? attack : release);
-    return reduction;
+    reduction = followGain(reduction, target, attack, release);
+    return reduction != target;
 }
 
 // One-pole smoothing coefficient for a corner at `hz`.
@@ -561,6 +573,13 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
     for (uint32_t done = 0; done < frames; done += kChunk) {
         const uint32_t n = std::min(kChunk, frames - done);
         float *const io[2] = {left + done, right + done};
+        // Silence, with nothing left ringing and nothing on its way: it would come out as silence, so it does without
+        // the effects' work (a host that keeps processing a quiet instance, as VST3 hosts do, pays nothing for them).
+        if (idleChunk(io, n, p)) {
+            idleSweeps(n, p, tempo);
+            measurePorts(n);
+            continue;
+        }
 #ifdef __EMSCRIPTEN__
         // WebAssembly can't flush denormals to zero as the plugin's process() does, and tails decaying into them
         // cost many times the CPU. A signal far below hearing (-300 dB) keeps every state above them: a pulse every
@@ -603,6 +622,62 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
             flushing_ = false;
             clearGraph();
         }
+    }
+}
+
+bool Effects::idleChunk(const float *const *io, uint32_t n, const ParamValues &p) const {
+    if (tail_ > 0 || analyzing_ || flushing_ || rewiring_ || duck_ < 1.0)
+        return false;
+    for (uint32_t s = 0; s < n; ++s)
+        if (io[0][s] != 0.0f || io[1][s] != 0.0f)
+            return false;
+    auto wiresSettled = [&](int node) {
+        for (int input = 0; input < fxInputCount(node); ++input) {
+            const Wire &w = wires_[node][input];
+            const int set = fxPortOf(p[fxInputIndex(node, input, FxInputField::From)]);
+            if (w.now.port != set || w.was.port >= 0 ||
+                (set >= 0 && (w.now.fade < 1.0 || w.now.level != wireTarget(node, input, p))))
+                return false;
+        }
+        return true;
+    };
+    for (int i = 0; i < graphOrderCount_; ++i) {
+        const int node = graphOrder_[i];
+        if (frozen_[node] || !wiresSettled(node))
+            return false;
+        if (node < kFxSlots) { // fully in while on, fully out while off, as runSlot() takes it
+            const Slot &fx = slots_[node];
+            const FxType type = fxType(p[paramIndex(node, FxParam::Type)]);
+            const FxType running = fx.running != type && fx.fade <= 0.0 ? type : fx.running;
+            const bool on = running == type && type != FxType::None && p[paramIndex(node, FxParam::Enabled)] >= 0.5;
+            if (on ? fx.fade < 1.0 : fx.fade > 0.0)
+                return false;
+        } else if (fxNodeSum(node) < 0) { // a split at its slope
+            const int split = node - kFxSlots;
+            const Split &sp = splits_[split];
+            const bool three = std::lround(p[paramIndex(split, SplitParam::Bands)]) >= kFxBands;
+            const int asked = slopeDb(filterSlope(p[paramIndex(split, SplitParam::Slope)]));
+            const int mode = three ? (asked > 12 ? kThree24 : kThree12) : asked > 12 ? 24 : asked;
+            if (!sp.running || sp.wasFade > 0.0 || sp.now.mode != mode)
+                return false;
+        }
+    }
+    return wiresSettled(kFxOutNode);
+}
+
+void Effects::idleSweeps(uint32_t n, const ParamValues &p, double tempo) {
+    for (int i = 0; i < graphOrderCount_; ++i) {
+        const int slot = graphOrder_[i];
+        if (slot >= kFxSlots || slots_[slot].fade <= 0.0)
+            continue;
+        Slot &fx = slots_[slot];
+        const bool phaser = fx.running == FxType::Phaser;
+        if (!phaser && fx.running != FxType::Flanger)
+            continue;
+        double &phase = phaser ? fx.phaser.phase : fx.flanger.phase;
+        phase += sweepHz([&p](int k) { return p[k]; }, slot, phaser, tempo) / sampleRate_ * n;
+        phase -= std::floor(phase);
+        (phaser ? fx.phaser.coefKnown : fx.flanger.delayKnown) = false; // worked out again where the sweep is now
     }
 }
 
@@ -650,10 +725,10 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         feedAnalyzer(slot, io, n);
         break;
     case FxType::Compressor:
-        runCompressor(slot, io, n, p);
-        break;
     case FxType::MultiDyn:
-        runMultiDyn(slot, io, n, p);
+        // A gain still releasing keeps them going, so the next sound doesn't start where it was left.
+        if (fx.running == FxType::Compressor ? runCompressor(slot, io, n, p) : runMultiDyn(slot, io, n, p))
+            keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
         break;
     case FxType::Reverb:
     case FxType::Phaser:
@@ -1345,7 +1420,7 @@ double Effects::runFilter(int slot, float *const *io, uint32_t n, const ParamVal
     return peak;
 }
 
-void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+bool Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     Compressor &c = slots_[slot].comp;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const double threshold = at(FxParam::CompThreshold);
@@ -1361,12 +1436,14 @@ void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamV
     double most = 0.0;
     // The reduction as a gain, worked out again only when it moves: below the threshold it rests at 0 dB.
     double gainOf = std::numeric_limits<double>::quiet_NaN(), reductionGain = 1.0;
+    bool moving = false;
     for (uint32_t s = 0; s < n; ++s) {
         c.makeup += makeupStep;
         c.mix += mixStep;
         // Both sides follow the louder one, so the stereo image stays put.
         const double peak = std::max(std::abs(io[0][s]), std::abs(io[1][s]));
-        const double reduction = followReduction(c.reduction, peak, threshold, ratio, knee, attack, release, quiet);
+        moving = followReduction(c.reduction, peak, threshold, ratio, knee, attack, release, quiet);
+        const double reduction = c.reduction;
         most = std::min(most, reduction);
         if (reduction != gainOf) {
             gainOf = reduction;
@@ -1379,9 +1456,10 @@ void Effects::runCompressor(int slot, float *const *io, uint32_t n, const ParamV
         }
     }
     reduction_[slot] = {static_cast<float>(-most), 0.0f, 0.0f};
+    return moving;
 }
 
-void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+bool Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p) {
     MultiDyn &m = slots_[slot].dyn;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
     const CrossoverCoefs crossovers = crossoverCoefs(cutoffFromNorm(at(FxParam::MdLowFreq)),
@@ -1412,7 +1490,9 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
     // Each band's gain as a factor, worked out again only when it moves: between the thresholds it rests at 0 dB.
     std::array<double, kMcBands> gainOf, bandFactor{};
     gainOf.fill(std::numeric_limits<double>::quiet_NaN());
+    bool moving = false; // whether a band's gain is still on its way to its curve's, in the chunk's last sample
     for (uint32_t s = 0; s < n; ++s) {
+        moving = false;
         m.mix += mixStep;
         m.output += outputStep;
         double bands[2][kMcBands];
@@ -1432,7 +1512,8 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
                                       ? 0.0
                                       : dynamicsGain(20.0 * std::log10(std::max(level, 1e-9)), above[b], down[b],
                                                      below[b], up[b], knee, range);
-            m.gain[b] = target + (m.gain[b] - target) * (target < m.gain[b] ? attack : release);
+            m.gain[b] = followGain(m.gain[b], target, attack, release);
+            moving = moving || m.gain[b] != target;
             most[b] = std::min(most[b], m.gain[b]);
             if (m.gain[b] != gainOf[b]) {
                 gainOf[b] = m.gain[b];
@@ -1452,6 +1533,7 @@ void Effects::runMultiDyn(int slot, float *const *io, uint32_t n, const ParamVal
         bandLevel_[slot][b] = static_cast<float>(loudest[b]);
         bandGain_[slot][b] = static_cast<float>(m.gain[b]);
     }
+    return moving;
 }
 
 double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p) {

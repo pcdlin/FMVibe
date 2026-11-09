@@ -405,6 +405,11 @@ private:
     // use, the output.
     bool nodeWanted(int node, const ParamValues &p) const;
     void orderGraph(const ParamValues &p, bool asSet);
+    // Whether a chunk of `n` samples of `io` can go by without running the graph: exact silence going in, nothing
+    // ringing, nobody analyzing, and every effect, wire and split where its params put it, with no fade under way.
+    bool idleChunk(const float *const *io, uint32_t n, const ParamValues &p) const;
+    // The phasers' and flangers' sweeps going round through such a chunk, so a synced one keeps time with the host.
+    void idleSweeps(uint32_t n, const ParamValues &p, double tempo);
     bool loopsAsSet(const ParamValues &p) const; // whether the wires as set make a loop
     // A wire's gain as set: a sum's in dB and soloed as a join, every other's a share.
     double wireTarget(int node, int input, const ParamValues &p) const;
@@ -429,8 +434,9 @@ private:
     void runEq(int slot, float *const *io, uint32_t n, const ParamValues &p);
     void runParamEq(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runFilter(int slot, float *const *io, uint32_t n, const ParamValues &p, double pitch);
-    void runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p);
-    void runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p);
+    // These two return whether a gain is still on its way to where the curve puts it (a release running out).
+    bool runCompressor(int slot, float *const *io, uint32_t n, const ParamValues &p);
+    bool runMultiDyn(int slot, float *const *io, uint32_t n, const ParamValues &p);
     // These return the loudest sample they put out or took in, so a tail keeps them running.
     double runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runPhaser(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);

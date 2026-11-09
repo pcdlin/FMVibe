@@ -112,8 +112,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
   far the cutoff follows the note from C4 on, an octave per octave at 100 %; 0 to begin with, on every filter) and
   Drive (saturation before the filter, anti-aliased like the shapers). A voice only ends once its filters have
-  rung out (a plucked comb through the silences between its pulses too), and a filter whose sends go to 0 rings out too; when they come back, or its type or slope takes up a
-  stage it left out, that starts from silence.
+  rung out (a plucked comb through the silences between its pulses too), and a filter whose sends go to 0 rings
+  out too; when they come back, or its type or slope takes up a stage it left out, that starts from silence.
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
   voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
   effect's, the S it starts as included), its Drive (0–36 dB), Output, Mix, Link (on to begin with) and Symmetric
@@ -249,7 +249,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     [CLAP and VST3](#clap-and-vst3)).
 - **Effects**, after the voices: everything the operators and filters send to the output runs through up to 32
   effects. A new instance starts with none. Any effect can be added more than once, switched on and off, reordered and
-  removed. A patch saved while the chain held 16 loads its effects in the order they had.
+  removed. A patch saved while the chain held 16 loads its effects in the order they had. Once nothing goes in and
+  every tail has rung out (a compressor's or a 3-band dynamics' release run out too), the effects rest, costing
+  next to nothing, while no editor is open; a phaser's or flanger's sweep goes round meanwhile, so a synced one
+  keeps time.
   - **A line with splits**: the effects run along a line from the voices to the output, a chain of them one after
     another, which up to four **splits** cut by frequency into two bands at their Crossover (250 Hz to
     begin with), at a Slope of 6, 12 or 24 dB per octave (12 to begin with, a second-order Linkwitz-Riley crossover; 24 the

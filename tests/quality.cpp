@@ -236,6 +236,88 @@ void effectsChainChecks() {
               "a reverb rings on while its input waits in the pre-delay, until its tail is heard");
     }
     {
+        // A compressor pulling a loud sine down, then silence: it keeps going while its release runs out, rather than
+        // stopping where it was, and a quiet sine after it comes out as it goes in.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Compressor);
+        chain(p, {0});
+        constexpr uint32_t kPiece = 32;
+        float left[kPiece], right[kPiece];
+        size_t t = 0;
+        auto run = [&](double seconds, double amplitude, float *peak) {
+            for (const size_t end = t + static_cast<size_t>(seconds * kSampleRate); t < end; t += kPiece) {
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left, right, kPiece, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kPiece && peak; ++s)
+                    *peak = std::max(*peak, std::abs(left[s]));
+            }
+        };
+        run(0.5, 0.5, nullptr); // -6 dB, some 9 dB over the threshold
+        run(0.2, 0.0, nullptr);
+        const bool releasing = fx.ringing();
+        run(4.0, 0.0, nullptr);
+        const bool released = !fx.ringing();
+        float quiet = 0.0f;
+        run(0.01, 0.03, &quiet); // -30 dB, under the threshold
+        std::printf("      a compressor let go: ringing 0.2 s on %d, after 4 s %d; a quiet sine after it %.2f dB off\n",
+                    releasing, !released, 20.0 * std::log10(quiet / 0.03));
+        check(releasing && released && std::abs(20.0 * std::log10(quiet / 0.03)) < 0.1,
+              "a compressor runs its release out in silence, and a quiet sound after it comes through untouched");
+    }
+    {
+        // Effects with nothing to do: once every tail has rung out, silence costs a small share of what a sound
+        // through them does, and comes out as silence; a sound after it comes through again.
+        Effects fx;
+        fx.prepare(kSampleRate);
+        ParamValues p = defaults();
+        p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Delay);
+        p[paramIndex(2, FxParam::Type)] = static_cast<double>(FxType::Phaser);
+        chain(p, {0, 1, 2});
+        std::vector<float> left(kBlock), right(kBlock);
+        auto run = [&](double seconds, double amplitude) {
+            float peak = 0.0f;
+            for (size_t t = 0, end = static_cast<size_t>(seconds * kSampleRate); t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+            }
+            return peak;
+        };
+        auto timed = [&](double seconds, double amplitude, float &peak) { // the best of three
+            double best = 1e9;
+            for (int k = 0; k < 3; ++k) {
+                const auto start = std::chrono::steady_clock::now();
+                peak = std::max(peak, run(seconds, amplitude));
+                best = std::min(best, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+            }
+            return best;
+        };
+        run(0.5, 0.5);
+        int waited = 0;
+        while (fx.ringing() && waited++ < 120) // up to a minute for the tails
+            run(0.5, 0.0);
+        float busyPeak = 0.0f, idlePeak = 0.0f, after = 0.0f;
+        const double busy = timed(2.0, 0.01, busyPeak);
+        while (fx.ringing() && waited++ < 240)
+            run(0.5, 0.0);
+        const double idle = timed(2.0, 0.0, idlePeak);
+        after = run(0.1, 0.5);
+        std::printf("      reverb, delay and phaser: 2 s of a quiet sine %.2f ms, of silence once rung out %.3f ms; after "
+                    "it %.2f\n",
+                    busy * 1e3, idle * 1e3, after);
+        check(!fx.ringing() || waited < 240, "the effects' tails ring out");
+        check(idle < 0.25 * busy && idlePeak == 0.0f && busyPeak > 0.0f && after > 0.1f,
+              "silence through effects that have rung out costs little and comes out as silence");
+    }
+    {
         // As Volume's (see the clicks), a jump rendered in single frames ramps as smoothly as in whole blocks.
         struct Jump {
             const char *name;
