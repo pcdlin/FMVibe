@@ -4089,7 +4089,9 @@ void testAmp(const std::filesystem::path &dir, Renderer &renderer) {
     // The cabinet switched off: its display, mic switch and knobs dim (Position's ring, read off the pixels), Output's
     // doesn't, and Position still turns.
     const Point position = detail::ampKnob(card, true, 0, 0), output = detail::ampKnob(card, true, 0, 1);
-    const Point ring{position.x - 6.0f, position.y + 6.0f}, outRing{output.x - 6.0f, output.y + 6.0f}; // on the bodies
+    // On the rings (radius 12 of the 28 px knobs, whose middles are left unfilled), a little past where they start at
+    // the lower left, inside Position's value arc.
+    const Point ring{position.x - 11.5f, position.y + 3.5f}, outRing{output.x - 11.5f, output.y + 3.5f};
     renderer.save(view, dir / "9f-amp.png");
     const uint32_t ringOn = renderer.pixel(ring), outOn = renderer.pixel(outRing);
     click(view, centerOf(detail::ampCabPower(card)));

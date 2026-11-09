@@ -748,8 +748,9 @@ inline float ampBaffleX(Rect display) { return display.x + 18.0f; }
 inline float ampConeAxis(Rect display) { return display.y + display.h * 0.5f + 5.0f; }
 inline float ampConeRadius(Rect display) { return display.h * 0.36f; }
 inline Point ampMicPoint(Rect display, double position, double distance) {
-    const float near = ampBaffleX(display) + 10.0f, far = display.right() - 22.0f;
-    return {near + (far - near) * static_cast<float>(std::clamp(distance, 0.0, 1.0)),
+    // (Not `near` and `far`: Windows' headers define both as macros.)
+    const float closest = ampBaffleX(display) + 10.0f, farthest = display.right() - 22.0f;
+    return {closest + (farthest - closest) * static_cast<float>(std::clamp(distance, 0.0, 1.0)),
             ampConeAxis(display) - ampConeRadius(display) * static_cast<float>(std::clamp(position, 0.0, 1.0))};
 }
 inline Rect ampMicRect(Rect display, double position, double distance) {

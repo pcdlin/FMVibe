@@ -8215,9 +8215,9 @@ void View::applyDrag(Point p) {
         if (!card)
             break;
         const Rect display = ampCabDisplay(*card);
-        const Point near = ampMicPoint(display, 0.0, 0.0), far = ampMicPoint(display, 1.0, 1.0);
-        set(paramIndex(w.a, FxParam::AmpPosition), std::clamp((near.y - p.y) / (near.y - far.y), 0.0f, 1.0f));
-        set(paramIndex(w.a, FxParam::AmpDistance), std::clamp((p.x - near.x) / (far.x - near.x), 0.0f, 1.0f));
+        const Point lo = ampMicPoint(display, 0.0, 0.0), hi = ampMicPoint(display, 1.0, 1.0);
+        set(paramIndex(w.a, FxParam::AmpPosition), std::clamp((lo.y - p.y) / (lo.y - hi.y), 0.0f, 1.0f));
+        set(paramIndex(w.a, FxParam::AmpDistance), std::clamp((p.x - lo.x) / (hi.x - lo.x), 0.0f, 1.0f));
         break;
     }
     case DragKind::PeqPoint: {

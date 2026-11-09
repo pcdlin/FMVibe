@@ -1322,11 +1322,16 @@ constexpr bool idsRoundTrip(int from, int to) {
             return false;
     return true;
 }
-static_assert(kParamCount <= 4 * 6000);
-static_assert(idsRoundTrip(0, 6000), "param id layout overlaps");
-static_assert(idsRoundTrip(6000, 12000), "param id layout overlaps");
-static_assert(idsRoundTrip(12000, 18000), "param id layout overlaps");
-static_assert(idsRoundTrip(18000, 24000), "param id layout overlaps");
+// (MSVC allows an expression 1,048,576 steps, fewer than GCC, so the parts are small.)
+static_assert(kParamCount <= 8 * 3000);
+static_assert(idsRoundTrip(0, 3000), "param id layout overlaps");
+static_assert(idsRoundTrip(3000, 6000), "param id layout overlaps");
+static_assert(idsRoundTrip(6000, 9000), "param id layout overlaps");
+static_assert(idsRoundTrip(9000, 12000), "param id layout overlaps");
+static_assert(idsRoundTrip(12000, 15000), "param id layout overlaps");
+static_assert(idsRoundTrip(15000, 18000), "param id layout overlaps");
+static_assert(idsRoundTrip(18000, 21000), "param id layout overlaps");
+static_assert(idsRoundTrip(21000, 24000), "param id layout overlaps");
 // Projects store params by id: effect fields keep theirs as later ones come (the 80th was the last in the
 // first section),
 static_assert(idOfIndex(paramIndex(1, FxParam::ReverbType)) == 1400 + 80 + 79 &&
