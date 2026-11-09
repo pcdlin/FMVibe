@@ -250,6 +250,37 @@ inline Wire wireBetween(int fromNode, Point a, int toNode, Point b, float bend) 
     return bentWire(fromNode, a, toNode, b, fitBend(fromNode, a, toNode, b, bend));
 }
 
+// A route held over the node it comes from, while it is dragged: most of a small circle standing on the node's top,
+// out of the ring around it on the left, round over the top and back into the ring on the right, so it reads as the
+// loop letting go there makes (its feedback). The ring is where the node's selection ring goes, and where a route held
+// over a node rings it. Its angles run clockwise on screen (y down) from `from` to `to`, where it meets the ring.
+struct LoopArc {
+    Point center;
+    float radius, from, to;
+    Point at(float angle) const { return {center.x + radius * std::cos(angle), center.y + radius * std::sin(angle)}; }
+};
+inline LoopArc loopbackArc(int node, Point center) {
+    constexpr float r = 14.0f, pi = 3.14159265f, ring = kSelectedRing;
+    float d, below; // how far the loop's center is above the node's, and how far below its own it meets the outline
+    if (isBoxNode(node)) {
+        below = 0.6f * r;
+        d = kFilterHalfH + ring + below; // across the box's straight top edge
+    } else {
+        const float outline = kNodeRadius + ring;
+        d = outline + 0.5f * r;
+        below = (d * d + r * r - outline * outline) / (2.0f * d); // where the two circles cross
+    }
+    const float beta = std::asin(std::clamp(below / r, -1.0f, 1.0f));
+    return {{center.x, center.y - d}, r, pi - beta, 2.0f * pi + beta};
+}
+
+// Whether `p` is well clear of a node's outline: a route dragged from it shows its loop back into it only once the
+// mouse has been out here, so it doesn't flash as the drag leaves its edge.
+inline bool clearOfNode(int node, Point center, Point p) {
+    const Point dir = normalize({p.x - center.x, p.y - center.y});
+    return std::hypot(p.x - center.x, p.y - center.y) - nodeExtent(node, dir) > 16.0f;
+}
+
 // How far `p` is from a wire, along its curve between the nodes (its arrowhead's base included).
 inline float distanceToWire(const Wire &w, Point p) {
     constexpr int kSteps = 24;

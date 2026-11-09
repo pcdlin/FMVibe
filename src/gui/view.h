@@ -369,6 +369,7 @@ private:
         Point now;
         double startValue = 0.0;
         bool moved = false;
+        bool leftNode = false; // a route being dragged has been well clear of the node it comes from
         bool fine = false;
         bool snap = false; // shape points snap to a grid
         float envScale = 0.0f; // an envelope's zoom, held while one of its handles is dragged

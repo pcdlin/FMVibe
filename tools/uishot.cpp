@@ -6352,6 +6352,64 @@ void run(const std::filesystem::path &dir, float scale) {
         click(view, {c.x, c.y - 22.0f});
         check(layout.selectedNode == 2 && model.value(matrixIndex(2, 2)) == 0.0,
               "a click on a node's edge picks it, without feedback");
+        // Held back over its own node, once it has been well clear of it, the route being dragged loops round over its
+        // top in a small circle and back into it, where letting go makes its feedback; standing on the ring around it
+        // whether the node is selected or not. A drag only just past its edge and back shows no loop (read off the
+        // rendered pixels, over the node's top, clear of its ring).
+        {
+            auto level = [](uint32_t color) {
+                return std::max({static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
+                                 static_cast<int>(color & 255)});
+            };
+            auto overTop = [&] {
+                int most = 0;
+                for (float dx = -12.0f; dx <= 12.0f; dx += 3.0f)
+                    most = std::max(most, level(brightestAlong(renderer, {c.x + dx, c.y - 36.0f},
+                                                               {c.x + dx, c.y - 60.0f})));
+                return most;
+            };
+            // The highest row over the node's middle that something bright is drawn on: the loop's top.
+            auto loopTop = [&](int idle) {
+                for (float y = c.y - 60.0f; y <= c.y - 36.0f; y += 1.0f)
+                    for (float dx = -3.0f; dx <= 3.0f; dx += 1.0f)
+                        if (level(renderer.pixel({c.x + dx, y})) > idle + 60)
+                            return y - c.y;
+                return 0.0f;
+            };
+            auto holdOverItself = [&](const char *shot) {
+                view.mouseDown({c.x - 22.0f, c.y}, {});
+                view.mouseMove({c.x - 40.0f, c.y - 30.0f}, {});
+                view.mouseMove({c.x + 4.0f, c.y + 2.0f}, {});
+                renderer.save(view, dir / shot);
+            };
+            renderer.save(view, dir / "3-edge-picked.png");
+            const int idle = overTop();
+            view.mouseDown({c.x - 22.0f, c.y}, {});
+            view.mouseMove({c.x - 34.0f, c.y}, {}); // 10 px past its edge
+            view.mouseMove({c.x + 4.0f, c.y + 2.0f}, {});
+            renderer.save(view, dir / "3-connecting-near.png");
+            const int edgeOnly = overTop();
+            view.cancelDrag();
+            holdOverItself("3-connecting-itself.png"); // C selected, by the click on its edge
+            const int looped = overTop();
+            const float selectedTop = loopTop(idle);
+            view.mouseUp({c.x + 4.0f, c.y + 2.0f}, {});
+            const bool fed = model.value(matrixIndex(2, 2)) == 0.25;
+            view.undo();
+            model.ui.selectedNode = 0;
+            holdOverItself("3-connecting-itself-unselected.png");
+            const float plainTop = loopTop(idle);
+            view.cancelDrag();
+            model.ui.selectedNode = 2;
+            std::printf("      over the node's top: %d idle, %d back from just past its edge, %d held over itself; "
+                        "the loop's top %.0f px over it selected, %.0f not\n",
+                        idle, edgeOnly, looped, -selectedTop, -plainTop);
+            check(edgeOnly < idle + 20 && fed && looped > idle + 60 && model.value(matrixIndex(2, 2)) == 0.0,
+                  "a route held back over its own node once clear of it loops into it, and let go there feeds it "
+                  "back; one only just past its edge shows no loop");
+            check(selectedTop <= -48.0f && selectedTop >= -54.0f && plainTop == selectedTop,
+                  "the loop stands on the ring around its node, selected or not");
+        }
         drag(view, {c.x - 22.0f, c.y}, b);
         check(model.value(matrixIndex(2, 1)) > 0.0, "dragging from a node's left edge onto another connects them");
         view.undo();

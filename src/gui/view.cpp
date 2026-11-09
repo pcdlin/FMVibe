@@ -3090,7 +3090,19 @@ void View::paint(Canvas &c, Rect area) {
         // The route leaves its node toward the mouse; a moving one has its arrowhead under it.
         const Point origin = nodeCenter(from);
         const Point start = outlineToward(from, origin, drag_.now);
-        if (drag_.kind == DragKind::Connect) {
+        if (nodeAt(drag_.now) == from && drag_.leftNode) {
+            // Held back over its own node, once it has been away from it, it loops back into it: let go of there,
+            // the node feeds itself.
+            const LoopArc loop = loopbackArc(from, origin); // on the ring that rings the node it is held over
+            const float end = loop.to - 8.0f / loop.radius; // an arrowhead's length short of the outline
+            std::array<Point, 33> points;
+            for (size_t i = 0; i < points.size(); ++i)
+                points[i] = loop.at(loop.from + (end - loop.from) * static_cast<float>(i) /
+                                                    static_cast<float>(points.size() - 1));
+            c.polyline(points.data(), points.size(), color, 2.0f, true);
+            const Point tip = loop.at(loop.to);
+            arrowHead(c, points.back(), normalize({tip.x - points.back().x, tip.y - points.back().y}), color);
+        } else if (drag_.kind == DragKind::Connect) {
             if (drag_.moved)
                 c.line(start, drag_.now, color, 2.0f, true);
         } else {
@@ -8479,6 +8491,8 @@ bool View::mouseMove(Point p, Modifiers mods) {
     drag_.now = p;
     if (std::hypot(p.x - drag_.start.x, p.y - drag_.start.y) > 3.0f)
         drag_.moved = true;
+    if ((drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute) && !drag_.leftNode)
+        drag_.leftNode = clearOfNode(drag_.widget.a, nodeCenter(drag_.widget.a), p);
     // A value moves only once the mouse has: the jitter of a click, or between a double-click's presses, leaves it
     // (and what a matrix cell joins) as it was.
     if ((drag_.kind == DragKind::Value || drag_.kind == DragKind::Tempo) && !drag_.moved)
