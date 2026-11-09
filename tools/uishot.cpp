@@ -3698,7 +3698,7 @@ void testFxListAfterUndo(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, detail::fxModeButton(1).center());
     auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
     auto listAtPlus = [&](Point plus) {
-        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
+        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
     };
     auto plusItem = [&](Point plus, FxType type) {
         const Point at = listAtPlus(plus);
@@ -3706,7 +3706,7 @@ void testFxListAfterUndo(const std::filesystem::path &dir, Renderer &renderer) {
     };
     auto plusNode = [&](Point plus) {
         const Point at = listAtPlus(plus);
-        return Point{at.x + 90.0f, at.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f};
+        return Point{at.x + 90.0f, at.y + 14.5f + kFxTypeCount * kFxMenuPitch + 7.0f};
     };
     auto from = [&](int node, int input) {
         return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
