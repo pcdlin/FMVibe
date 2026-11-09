@@ -3608,7 +3608,10 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
         if (fxFolded(slot)) {
             const Color fx = fxTypeColor(type);
             c.fillRect(r, kCardColor, kRadiusCard);
-            c.strokeRect(r, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+            if (look.cardTint > 0.0f) // tinted like the card unfolded
+                c.fillRect(r, fx.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
+            const float edge = look.cardTint > 0.0f ? 0.2f : 0.45f;
+            c.strokeRect(r, dragged ? fx : (on ? fx.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
             // its icon and cross (widgets), the grip's dots between, then its name down the strip
             gripDots(r, (hover_ && hover_->kind == Kind::FxGrip && hover_->a == slot && drag_.kind == DragKind::None) ||
                             dragged);
@@ -3628,7 +3631,10 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
     const Color fx = fxTypeColor(type); // each type of effect in a color of its own
     c.fillRect(card, kCardColor, kRadiusCard);
-    c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+    if (look.cardTint > 0.0f) // tinted with its own color, faintly while it is off
+        c.fillRect(card, fx.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
+    const float edge = look.cardTint > 0.0f ? 0.2f : 0.45f; // a tinted card needs less of an outline
+    c.strokeRect(card, dragged ? fx : (on ? fx.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
     // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
     const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
     const Rect titleRect{card.x + 33.0f, card.y + 6.0f, titleRight - card.x - 33.0f, 20.0f};
@@ -5572,6 +5578,12 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
         });
     }
     const Color color = kSourceColors[lfo];
+    if (look.cardTint > 0.0f && points.size() > 1) { // filled toward its zero line, as a widened card's shape is
+        std::vector<Point> area = points;
+        area.push_back({points.back().x, zero});
+        area.push_back({points.front().x, zero});
+        c.fillPolygon(area.data(), area.size(), color.alpha(0.14f));
+    }
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
     // Running, a random LFO's last cycles as they came, swept across: each new cycle takes the next quarter,
@@ -5691,7 +5703,10 @@ void View::paintSource(Canvas &c, float card, int s) {
     const bool lfo = sourceTypeOf(s) == SourceType::Lfo;
     const bool dragged = drag_.kind == DragKind::SourceMove && drag_.widget.a == s;
     c.fillRect(p, kCardColor, kRadiusCard);
-    c.strokeRect(p, dragged ? color : (sourceOn(s) ? color.alpha(0.35f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+    if (look.cardTint > 0.0f) // tinted with its own color, faintly while it is off
+        c.fillRect(p, color.alpha(look.cardTint * (sourceOn(s) ? 1.0f : 0.4f)), kRadiusCard);
+    const float edge = look.cardTint > 0.0f ? 0.2f : 0.35f; // a tinted card needs less of an outline
+    c.strokeRect(p, dragged ? color : (sourceOn(s) ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
     if (sourceFolded(s)) { // the grip's dots under the handle (widgets), then its name down the strip
         const bool grip =
             (hover_ && hover_->kind == Kind::SourceGrip && hover_->a == s && drag_.kind == DragKind::None) || dragged;
@@ -7392,7 +7407,24 @@ void View::paintKnob(Canvas &c, const Widget &w) {
                         : w.param == fxInputIndex(fxSumNode(sum), 0, FxInputField::Level) ? 1
                         : w.param == fxInputIndex(fxSumNode(sum), 1, FxInputField::Level) ? 2
                                                                                           : 3;
-    const Color plain = sum >= 0 ? laneColor(levelOf) : kAccent;
+    // In a theme that colors knobs by what they belong to: a source's or an effect's in its card's color, an
+    // operator's, a filter's or a shaper's in its node's.
+    auto owner = [&](int param) {
+        if (!look.cardKnobs)
+            return kAccent;
+        if (const int s = sourceOf(param); s >= 0)
+            return kSourceColors[s];
+        if (const int slot = fxSlotOf(param); slot >= 0)
+            return fxTypeColor(fxSlotType(slot));
+        if (param >= kOpBase && param < kMatrixBase)
+            return opColor((param - kOpBase) / kOpParamCount);
+        if (param >= kFilterBase && param < kFilterLinkBase)
+            return kFilterColor;
+        if (shaperOf(param) >= 0)
+            return kShaperColor;
+        return kAccent;
+    };
+    const Color plain = sum >= 0 ? laneColor(levelOf) : owner(w.param);
     const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : plain).alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));

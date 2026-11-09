@@ -1408,7 +1408,9 @@ may show anywhere, repaints the whole of it.
   Machined (hardware: charcoal panels, shaded knob caps and amber readouts), Spectrum (deep indigo, each operator,
   its tab and the routes it sends in a color of its own) or Porcelain (white panels lifted off a cool gray by soft
   shadows rather than outlined, knobs with a dot for a pointer, one blue accent), each button shown in its own
-  colors. Settings that name a theme no longer offered show the nearest one: Graphite as Midnight, Paper as Light.
+  colors. Spectrum and Porcelain tint each effect and source card with its own color and draw a knob's arc in the
+  color of what it belongs to (its card, its operator, filter or shaper), and fill an LFO's shape on its card.
+  Settings that name a theme no longer offered show the nearest one: Graphite as Midnight, Paper as Light.
   **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
   stronger and wider the halo. It sets the halos that sounding operators and the effects graph's nodes and wires
   feather out with too: as they are drawn at 75 %, stronger and wider above it, fainter below. At Off the effects
