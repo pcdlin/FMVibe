@@ -989,6 +989,11 @@ void noteAndVoiceChecks() {
         check(ends[1] == 1 && ends[2] == 0 && e.synth().activeVoiceCount() == 1 &&
                   plain.synth().isActive({-1, 0, 0, 60}),
               "with note ids, a note on a key struck again reports its end, and the new one sounds on");
+        // Without them, the last note's voice ending doesn't let go of the key struck again: it is still down.
+        auto keys = std::make_unique<Telemetry>();
+        plain.synth().telemetry(*keys);
+        check(plain.synth().activeVoiceCount() == 1 && keys->keyDown(60),
+              "without note ids, a note on a key struck again ending leaves the key down");
     }
     {
         // A velocity or a note expression that isn't a number, on an FM pair (where it would reach the phases): the

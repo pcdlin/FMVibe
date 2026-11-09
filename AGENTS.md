@@ -200,7 +200,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
-    struck again while it rings, the voices a lower voice limit cuts, a note with an id while its key sounds on
+    struck again while it rings (without them, the key staying down as the last note ends), the voices a lower voice limit cuts, a note with an id while its key sounds on
     without one, mono's all notes off (releasing on the key it plays), a reset and forty notes at once on one voice;
     a chord into voices that have all played taking the oldest, every note of it sounding (and a slow attack's new
     note not stolen first); a voice filter whose send goes to 0 ringing out; a velocity or note expression that isn't

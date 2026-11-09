@@ -1149,10 +1149,13 @@ void Synth::endVoice(Voice &v) {
         v.fading = false;
         return;
     }
-    // A stolen or choked note is over even if its key is still down.
-    for (size_t i = held_.size(); i-- > 0;)
-        if (held_[i].note == v.note)
-            held_.erase(held_.begin() + static_cast<std::ptrdiff_t>(i));
+    // A stolen or choked note is over even if its key is still down. Once its key is up, a key held with the same
+    // note (struck again without note ids while this one rang out) is another note's, and stays down.
+    if (!v.released && !v.sustained) {
+        const auto own = std::find_if(held_.begin(), held_.end(), [&](const HeldNote &h) { return h.note == v.note; });
+        if (own != held_.end())
+            held_.erase(own);
+    }
     reportEnded(v.note);
 }
 
