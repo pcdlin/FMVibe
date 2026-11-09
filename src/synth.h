@@ -353,6 +353,9 @@ private:
         // Samples (at the oversampled rate) a filter whose inputs have stopped runs on for, ringing out: a comb's
         // line's length past the last time it put out more than kFilterRingFloor (see renderBlock()).
         std::array<int, kFilters> filterRing{};
+        // Samples (at the oversampled rate) a released voice is kept for after a filter last put out more than the
+        // voice's quiet floor: a comb's line's length, so the gaps between a plucked comb's pulses don't end it.
+        std::array<int, kFilters> filterHeard{};
         std::array<double, kFilters> filterOut{};               // latest mono filter output (what operators hear)
         std::array<std::array<double, 2>, kFilters> filterLast{}; // latest filter output per channel (what shapers and loops hear)
         std::array<std::array<ClipState, 2>, kShapers> shapers{}; // [shaper][channel]

@@ -1309,6 +1309,42 @@ void noteAndVoiceChecks() {
         std::printf("      a comb whose send went to 0, 20-50 ms on: %.1f dB\n", 20.0 * std::log10(ring + 1e-30));
         check(ring > 1e-3f, "a voice filter whose send goes to 0 rings out");
     }
+    {
+        // A plucked comb: a short burst of noise into a 55 Hz comb at full resonance puts out pulses a period apart,
+        // with silence between them longer than a block. Let go, the voice rings on through those gaps until its
+        // tail has faded, and then ends.
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Noise);
+        e.p[paramIndex(0, OpParam::Attack)] = kMinEnvNorm;
+        e.p[paramIndex(0, OpParam::Decay)] = 0.15; // about 4 ms
+        e.p[paramIndex(0, OpParam::Sustain)] = 0.0;
+        e.p[paramIndex(0, OpParam::Release)] = 0.0;
+        e.p[paramIndex(0, OpParam::Out)] = 0.0;
+        e.p[sendIndex(0, 0)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Enabled)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Type)] = static_cast<double>(FilterType::Comb);
+        e.p[paramIndex(0, FilterParam::Cutoff)] = normFromCutoff(55.0);
+        e.p[paramIndex(0, FilterParam::KeyTrack)] = 0.0;
+        e.p[paramIndex(0, FilterParam::Resonance)] = 1.0;
+        e.p[paramIndex(0, FilterParam::Out)] = 1.0;
+        e.noteOn(45);
+        e.render(4800);
+        e.noteOff(45);
+        const std::vector<float> tail = e.render(24000); // half a second
+        float late = 0.0f;
+        for (size_t s = 19200; s < tail.size(); ++s) // 400-500 ms after it was let go
+            late = std::max(late, std::abs(tail[s]));
+        const bool ringing = e.synth().activeVoiceCount() == 1;
+        int blocks = 0;
+        while (e.synth().activeVoiceCount() > 0 && blocks < 1200) { // up to 6 s more
+            e.render(kBlock);
+            ++blocks;
+        }
+        std::printf("      a plucked comb let go: %.1f dB 400-500 ms on, ending %.2f s later\n",
+                    20.0 * std::log10(late + 1e-30), blocks * static_cast<double>(kBlock) / kSampleRate);
+        check(ringing && late > 1e-3f && e.synth().activeVoiceCount() == 0,
+              "a plucked comb rings on through the gaps between its pulses once let go, then ends");
+    }
 }
 
 // Whether every (id, value) pair a preset's file stores names a param and holds a value in its range, which loading

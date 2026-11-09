@@ -203,8 +203,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     struck again while it rings (without them, the key staying down as the last note ends), the voices a lower voice limit cuts, a note with an id while its key sounds on
     without one, mono's all notes off (releasing on the key it plays), a reset and forty notes at once on one voice;
     a chord into voices that have all played taking the oldest, every note of it sounding (and a slow attack's new
-    note not stolen first); a voice filter whose send goes to 0 ringing out; a velocity or note expression that isn't
-    a number staying finite; host modulation of a macro, the mod wheel, the note source's depth and velocity's
+    note not stolen first); a voice filter whose send goes to 0 ringing out, and a plucked comb ringing on through
+    the gaps between its pulses once let go, then ending; a velocity or note expression that isn't a number staying
+    finite; host modulation of a macro, the mod wheel, the note source's depth and velocity's
     moving their targets; a comb never reading past its line; a voice's right channel coming back from mono where
     the left is;
     an envelope's curve bent again after a straight stretch carrying on along it; and a 0 ms attack, decay and

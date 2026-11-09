@@ -39,6 +39,7 @@ double routeLevel(RouteMode mode, double amount, double phaseIndex) {
     }
 }
 constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out in
+constexpr double kVoiceQuietFloor = 1e-4; // a released voice quieter than this, its operators idle, has ended
 constexpr double kFilterRingFloor = 1e-6; // a voice filter quieter than this, its inputs stopped, has rung out
 constexpr size_t kMaxEndedNotes = 4096; // notes ending in one block that are reported (see reportEnded())
 constexpr double kStealFade = 0.003; // seconds a stolen voice takes to fade out
@@ -1822,6 +1823,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             v.filters[f] = {};
             v.combDirty[f] = {true, true};
             v.filterRing[f] = 0;
+            v.filterHeard[f] = 0;
             v.filterLast[f] = {};
             continue;
         }
@@ -2149,11 +2151,17 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (opOn[i] && !noise[i])
             for (int k = 0; k < copies[i]; ++k)
                 v.ops[i].incNow[k] = copy[i]->inc[k];
+    bool filtersHeard = false; // whether a filter heard has put out anything within a comb line
     for (int f = 0; f < kFilters; ++f)
-        if (filterOn[f])
+        if (filterOn[f]) {
             v.filterRing[f] = filterPeak[f] > kFilterRingFloor
                                   ? combSize_
                                   : std::max(0, v.filterRing[f] - static_cast<int>(frames));
+            v.filterHeard[f] = filterPeak[f] * level.filterOut[f] >= kVoiceQuietFloor
+                                   ? combSize_
+                                   : std::max(0, v.filterHeard[f] - static_cast<int>(frames));
+            filtersHeard = filtersHeard || v.filterHeard[f] > 0;
+        }
 
     // Once released, the voice ends when every operator that is heard (directly
     // or through a filter or shaper) has faded and the filters have rung out. A stolen
@@ -2176,7 +2184,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     v.tail = v.released && !sounding;
     if (v.fading && v.fade <= 0.0)
         endVoice(v);
-    else if (v.released && !sounding && blockPeak < 1e-4) {
+    else if (v.released && !sounding && blockPeak < kVoiceQuietFloor && !filtersHeard) {
         if (modEnvReleasing(v, params))
             v.silent = true; // its sound is over, but not its modulation
         else

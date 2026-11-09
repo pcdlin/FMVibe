@@ -112,7 +112,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
   far the cutoff follows the note from C4 on, an octave per octave at 100 %; 0 to begin with, on every filter) and
   Drive (saturation before the filter, anti-aliased like the shapers). A voice only ends once its filters have
-  rung out, and a filter whose sends go to 0 rings out too; when they come back, or its type or slope takes up a
+  rung out (a plucked comb through the silences between its pulses too), and a filter whose sends go to 0 rings out too; when they come back, or its type or slope takes up a
   stage it left out, that starts from silence.
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
   voice, with its curves (Hard, Soft, Asymmetric, Cubic, Gentle, Sine Fold, Fold, or a Custom curve drawn like the
