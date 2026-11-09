@@ -63,8 +63,6 @@ public:
     // The color themes, by the names Controller::theme() takes; the first is the default.
     static int themeCount();
     static const char *themeName(int index);
-    // Where the theme's button sits in the settings dialog: its row (the dark themes', then the light ones') and column.
-    static std::pair<int, int> themeCell(int index);
 
     void paint(Canvas &canvas) { paint(canvas, wholeArea()); }
     // Paints only what shows in `area` (the editor's coordinates), leaving the rest as the canvas holds it from the

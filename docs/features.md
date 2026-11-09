@@ -1404,14 +1404,12 @@ may show anywhere, repaints the whole of it.
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,
   and aren't undo steps.
-  **Theme**, the dark themes along the first row and the light ones along the second, a theme's dark and light
-  versions one above the other: Midnight (the default), Graphite (neutral grays), Machined (hardware: charcoal
-  panels, shaded knob caps and amber readouts), Spectrum (deep indigo, each operator, its tab and the routes it sends
-  in a color of its own) and Porcelain (soft panels lifted by shadows rather than outlined, knobs with a dot for a
-  pointer, one blue accent) in the dark row; Light (crisp: white cards and knob caps on a cool gray, with deep
-  colors), Paper (warm: cream on sand, with ink-brown text and earthy colors), Spectrum on a pale lilac and Porcelain
-  on a cool gray in the light row; each button shown in its own colors. **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the
-  graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
+  **Theme**: Midnight (the default), Light (crisp: white cards and knob caps on a cool gray, with deep colors),
+  Machined (hardware: charcoal panels, shaded knob caps and amber readouts), Spectrum (deep indigo, each operator,
+  its tab and the routes it sends in a color of its own) or Porcelain (white panels lifted off a cool gray by soft
+  shadows rather than outlined, knobs with a dot for a pointer, one blue accent), each button shown in its own
+  colors. Settings that name a theme no longer offered show the nearest one: Graphite as Midnight, Paper as Light.
+  **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
   stronger and wider the halo. It sets the halos that sounding operators and the effects graph's nodes and wires
   feather out with too: as they are drawn at 75 %, stronger and wider above it, fainter below. At Off the effects
   graph shows no level (and the editor doesn't repaint for it), and an operator's halo is a plain ring.

@@ -6,8 +6,16 @@
 namespace fmvibe::gui::detail {
 
 int themeIndex(const std::string &name) {
+    // A theme no longer offered, kept in a user's settings, shows as the one nearest it.
+    static constexpr struct {
+        const char *retired, *now;
+    } kRetired[] = {{"Graphite", "Midnight"}, {"Paper", "Light"}};
+    std::string shown = name;
+    for (const auto &r : kRetired)
+        if (name == r.retired)
+            shown = r.now;
     for (int i = 0; i < kThemeCount; ++i)
-        if (name == kThemes[i].name)
+        if (shown == kThemes[i].name)
             return i;
     return 0;
 }

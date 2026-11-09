@@ -7828,15 +7828,13 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;
-    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 598.0f) * 0.5f), 380.0f, 598.0f};
-    constexpr float themeRow = 36.0f; // the themes' second row, the light ones, pushing what follows down
+    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 562.0f) * 0.5f), 380.0f, 562.0f};
     auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
     auto mpeSwitch = [&](int on) { return Point{dialog.x + 24.0f + on * 56.0f + 26.0f, dialog.y + 228.0f}; };
     auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
     auto theme = [&](int i) {
-        const float w = (dialog.w - 48.0f + 6.0f) / 5.0f;
-        const auto [row, column] = View::themeCell(i);
-        return Point{dialog.x + 24.0f + column * w + (w - 6.0f) * 0.5f, dialog.y + 357.0f + row * themeRow};
+        const float w = (dialog.w - 48.0f + 6.0f) / View::themeCount();
+        return Point{dialog.x + 24.0f + i * w + (w - 6.0f) * 0.5f, dialog.y + 357.0f};
     };
     const Point closeDialog{dialog.right() - 26.0f, dialog.y + 26.0f};
     click(view, cog);
@@ -7881,7 +7879,7 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, theme(0));
     check(themed && model.themeName == View::themeName(0), "the settings dialog picks the theme");
     // The GLOW slider sets how strongly the graphs' curves glow, on both pages, once it is let go.
-    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + themeRow + 397.0f}; };
+    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 397.0f}; };
     view.mouseDown(glowAt(0.2f), {});
     view.mouseMove(glowAt(0.75f), {});
     const bool kept = model.glowLevel == 0.0; // only once it is let go
@@ -7904,7 +7902,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.glowLevel == 0.0, "the GLOW slider's left end turns it off");
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
     // LINES, under GLOW, sets how strongly a source's dashed lines are drawn, 75 % to begin with, once it is let go.
-    auto linesAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + themeRow + 312.0f + 117.0f}; };
+    auto linesAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 117.0f}; };
     const bool linesStart = model.links == 0.75;
     view.mouseDown(linesAt(0.75f), {});
     view.mouseMove(linesAt(0.4f), {});
@@ -7919,7 +7917,7 @@ void run(const std::filesystem::path &dir, float scale) {
           "the settings dialog's LINES slider sets how strongly the sources' lines are drawn, and only that");
     model.links = 0.75;
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
-    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + themeRow + 312.0f + 152.0f}; };
+    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 152.0f}; };
     const ParamValues handlesBefore = model.values;
     const bool startsSmall = model.handles == 0;
     click(view, handlesButton(2));

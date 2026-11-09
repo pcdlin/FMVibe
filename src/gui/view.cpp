@@ -403,11 +403,6 @@ const char *View::themeName(int index) {
     return kThemes[std::clamp(index, 0, kThemeCount - 1)].name;
 }
 
-std::pair<int, int> View::themeCell(int index) {
-    const ThemeCell cell = kThemeCells[std::clamp(index, 0, kThemeCount - 1)];
-    return {cell.row, cell.column};
-}
-
 View::~View() {
     finishDrag();
 }
