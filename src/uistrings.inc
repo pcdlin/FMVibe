@@ -422,7 +422,6 @@ STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
 
 STR(ThemeMidnight, "Midnight")
 STR(ThemeLight, "Light")
-STR(ThemeMachined, "Machined")
 STR(ThemeSpectrum, "Spectrum")
 STR(ThemePorcelain, "Porcelain")
 

@@ -9,7 +9,7 @@ int themeIndex(const std::string &name) {
     // A theme no longer offered, kept in a user's settings, shows as the one nearest it.
     static constexpr struct {
         const char *retired, *now;
-    } kRetired[] = {{"Graphite", "Midnight"}, {"Paper", "Light"}};
+    } kRetired[] = {{"Graphite", "Midnight"}, {"Paper", "Light"}, {"Machined", "Midnight"}};
     std::string shown = name;
     for (const auto &r : kRetired)
         if (name == r.retired)
@@ -87,7 +87,7 @@ void paintCardShadow(Canvas &c, Rect r) {
 }
 
 void paintMenuPanel(Canvas &c, Rect r) {
-    if (look.flatMenus) {
+    if (look.flat) {
         constexpr int kSteps = 4; // faint and close: each ring adds a little, about a fifth dark under the panel
         for (int k = kSteps; k > 0; --k) {
             const float out = 1.25f * k;
@@ -96,7 +96,7 @@ void paintMenuPanel(Canvas &c, Rect r) {
         }
     }
     c.fillRect(r, kRaised, kRadiusCard);
-    if (!look.flatMenus)
+    if (!look.flat)
         c.strokeRect(r, kBorder, 1.0f, kRadiusCard);
 }
 

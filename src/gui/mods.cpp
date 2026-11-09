@@ -812,7 +812,7 @@ void View::paintCascade(Canvas &c) {
     for (size_t k = 0; k < levels.size(); ++k) {
         const MenuNode &level = *levels[k];
         const Rect r = rects[k];
-        if (!look.flatMenus) // a flat menu's panel brings its own, softer one
+        if (!look.flat) // a flat menu's panel brings its own, softer one
             c.fillRect({r.x + 2.0f, r.y + 4.0f, r.w, r.h}, kBackground.alpha(0.5f), kRadiusCard); // a shadow
         paintMenuPanel(c, r);
         const bool searching = k == 0 && cascadeSearches();

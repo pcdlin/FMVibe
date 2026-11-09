@@ -48,25 +48,21 @@ struct Palette {
     Color fxTypes[static_cast<int>(FxType::Count)];
     // A split's bands, low, middle and high: from cool and darker to warm and lighter, so they part by lightness too.
     Color bands[3];
-    // How it draws beyond its colors. A theme leaving these out draws as the first ones do.
-    bool shadedCaps = false;      // knob caps shaded from capTop down to capBottom, rather than flat in knobBody
-    Color capTop{}, capBottom{};
-    bool dotPointer = false;      // a knob's pointer a dot by its cap's rim, rather than a line from its middle
-    float capShadow = 0.0f;       // a shadow under each knob cap, this dark
-    float panelShadow = 0.0f;     // a soft shadow under the panels, this dark, which then go without an outline
-    bool opColors = false;        // each operator in a color of its own (ops), rather than all in the accent
-    Color ops[kOps]{};            // A to F: its node, its tab and the routes it sends
-    float cardTint = 0.0f;        // effect and source cards tinted with their own color, this strongly
-    bool cardKnobs = false;       // a knob's arc in the color of what it belongs to (its card, its operator), not the accent
-    bool pillButtons = false;     // + SOURCE and + EFFECT as filled pills, their names in full text, without an outline
-    bool flatMenus = false;       // list buttons filled dark and the lists they open shadowed, neither outlined, and
-                                  // the other controls (title bar buttons, fields, displays) without outlines too
-    bool solidButtons = false;    // a lit switch filled solid with its color, what is on it in the background's color,
-                                  // and switches set in a dark well, neither outlined
-    bool embossedNodes = false;   // the routing graph's nodes raised: shaded from nodeTop down to nodeBottom, on a shadow
+    // How it draws beyond its colors. Left out, a theme draws as Midnight and Light do: outlined cards and controls,
+    // the accent for every knob and operator, switches lit with a tint.
+    // `flat` is Spectrum's and Porcelain's look: cards tinted with their own color and outlined only under the mouse,
+    // a knob's arc (and its track, faintly) in the color of the card it is on and its pointer a dot; switches filled
+    // solid with their color when lit, set in a well; list buttons, menus and the other controls without outlines;
+    // + SOURCE and the other add buttons as filled pills, the cards that add one filled faintly; each operator in a
+    // color of its own (ops); routing nodes on a soft shadow (nodeTop down to nodeBottom), the effects graph's
+    // filled with a tint of their color.
+    bool flat = false;
+    Color ops[kOps]{};         // A to F: its node, its tab and the routes it sends
+    float cardTint = 0.0f;     // how strongly a card takes its color
     Color nodeTop{}, nodeBottom{};
-    bool flatFxNodes = false;     // the effects graph's nodes filled with a tint of their color, without an outline
-    float cardShadow = 0.0f;      // a soft shadow under the effect and source cards, this dark
+    float capShadow = 0.0f;    // a shadow under each knob cap, this dark
+    float panelShadow = 0.0f;  // a soft shadow under the panels and the tab shown, this dark, which then go unoutlined
+    float cardShadow = 0.0f;   // a soft shadow under the effect and source cards, this dark
 };
 static_assert(static_cast<int>(FxType::Count) == 16, "a color for each effect type in every theme");
 
@@ -110,27 +106,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x475569), Color::hex(0xB01ECA),
       Color::hex(0x0B857A), Color::hex(0x9A6A1C)},
      {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xB86E0E)}},
-    {"Machined", Str::ThemeMachined, // hardware: charcoal panels, shaded knob caps and amber readouts
-     Color::hex(0x121315), Color::hex(0x1B1C1F), Color::hex(0x232428), Color::hex(0x2C2D32), Color::hex(0x2E2F34),
-     Color::hex(0x2A2B2F),
-     Color::hex(0xE7E5E0), Color::hex(0x97958F), Color::hex(0x5D5D60),
-     Color::hex(0xF2A93B), Color::hex(0xE8664F), Color::hex(0x5FBFB0),
-     {Color::hex(0x6FB8E8), Color::hex(0xF0745A), Color::hex(0xB8D44A), Color::hex(0xA99BF0),
-      Color::hex(0xF2C94C), Color::hex(0x5FC79A), Color::hex(0xE86A6A), Color::hex(0xD98AD9),
-      Color::hex(0x4FC2B4), Color::hex(0xE8D35C), Color::hex(0x9C8CE0), Color::hex(0xF0A0A8),
-      Color::hex(0x7FD4E0), Color::hex(0x9ED89A), Color::hex(0x6E9BE8), Color::hex(0xF0AA70),
-      Color::hex(0xD9937F), Color::hex(0xD9AE7F), Color::hex(0xCFC77A), Color::hex(0x9FCB8A),
-      Color::hex(0x7FC2B8), Color::hex(0x7FA6D9), Color::hex(0x9A94D9), Color::hex(0xC294D9),
-      Color::hex(0xDDD8CE), Color::hex(0xC9C2A8), Color::hex(0xE8774A)},
-     Color::hex(0x212226), Color::hex(0x0B0B0C), Color::hex(0x1A1B1E), Color::hex(0x131416),
-     Color::hex(0xE9E6DF), Color::hex(0xD6D2C9), Color::hex(0x0F1012), Color::hex(0x2C2D32), Color::hex(0x6E6A62),
-     {Color::hex(0x5FBFB0), Color::hex(0xE86A5A), Color::hex(0x6FA8E0), Color::hex(0xF2B94B), Color::hex(0xF09A4A),
-      Color::hex(0xB98AE8), Color::hex(0x5FC98F), Color::hex(0x4FC2B4), Color::hex(0x8C8FE8), Color::hex(0xE87AB0),
-      Color::hex(0xB8D44A), Color::hex(0x4FC9DF), Color::hex(0xBFC3C9), Color::hex(0xD98AD9),
-      Color::hex(0x4FC2B4), Color::hex(0xE0B878)},
-     {Color::hex(0x6FA3E0), Color::hex(0x5FC2A8), Color::hex(0xF2B46A)},
-     true, Color::hex(0x47484E), Color::hex(0x202125), false, 0.55f},
-    {"Spectrum", Str::ThemeSpectrum, // deep indigo, each operator in a color of its own, its routes too
+    {"Spectrum", Str::ThemeSpectrum, // flat on deep indigo, each operator in a color of its own
      Color::hex(0x0D0C14), Color::hex(0x15131F), Color::hex(0x1D1A2A), Color::hex(0x262238), Color::hex(0x2A2640),
      Color::hex(0x221F30),
      Color::hex(0xEBE8F5), Color::hex(0x9590AB), Color::hex(0x5A5570),
@@ -149,10 +125,10 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xA6E05A), Color::hex(0x6EE0F0), Color::hex(0xB8B4CC), Color::hex(0xF08CE8),
       Color::hex(0x3ED6C1), Color::hex(0xE8C27A)},
      {Color::hex(0x6E9BFF), Color::hex(0x3ED6C1), Color::hex(0xFFB86B)},
-     false, {}, {}, true, 0.0f, 0.0f, true,
+     true,
      {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
       Color::hex(0xA6E05A)},
-     0.10f, true, true, true, true, true, Color::hex(0x2A263D), Color::hex(0x211E30), true},
+     0.10f, Color::hex(0x2A263D), Color::hex(0x211E30)},
     {"Porcelain", Str::ThemePorcelain, // Spectrum in light: white panels lifted off a cool gray by soft shadows
      Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
      Color::hex(0xFFFFFF),
@@ -172,10 +148,10 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x7FA313), Color::hex(0x0A8FAA), Color::hex(0x5D6472), Color::hex(0xB03FC4),
       Color::hex(0x0F8F85), Color::hex(0xA07020)},
      {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xC27A1E)},
-     false, {}, {}, true, 0.22f, 0.06f, true,
+     true,
      {Color::hex(0x2F5BFF), Color::hex(0xD9541A), Color::hex(0x0A9488), Color::hex(0xB07A00), Color::hex(0xD0236E),
       Color::hex(0x4E8A0E)},
-     0.07f, true, true, true, true, true, Color::hex(0xFFFFFF), Color::hex(0xF2F4F7), true, 0.07f},
+     0.07f, Color::hex(0xFFFFFF), Color::hex(0xF2F4F7), 0.22f, 0.06f, 0.07f},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));
 // A source left out of a theme's list would be drawn black.
@@ -210,20 +186,20 @@ inline const Color (&kSourceColors)[kAllSources] = look.sources;
 inline const Color &kCardColor = look.card;
 inline const Color &kDisplayColor = look.display;
 Color fxTypeColor(FxType type);
-// An operator's own color in a theme that gives each one its own, else the accent.
+// An operator's own color in a flat theme, else the accent.
 inline Color opColor(int op) {
-    return look.opColors && op >= 0 && op < kOps ? look.ops[op] : look.accent;
+    return look.flat && op >= 0 && op < kOps ? look.ops[op] : look.accent;
 }
-// What is drawn on a lit switch: in its color, or on a solid one in the panels' (dark in a dark theme, white in a
-// light one).
+// What is drawn on a lit switch: in its color, or on a flat theme's, filled solid with it, in the panels' (dark in a
+// dark theme, white in a light one).
 inline Color litInk(Color color) {
-    return look.solidButtons ? look.panel : color;
+    return look.flat ? look.panel : color;
 }
 // Whether the theme is a light one, by its background: shadows are drawn fainter on it.
 inline bool lightTheme() {
     return look.background.r + look.background.g + look.background.b > 1.5f;
 }
-// The well flat switches and list buttons are set in, and one under the mouse: the displays' color in a dark theme, a
+// The well a flat theme's switches and list buttons are set in, and one under the mouse: the displays' color in a dark theme, a
 // faint shade of whatever is under it in a light one (where the displays' color would vanish on a tinted card).
 inline Color wellColor() {
     return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.06f} : look.display;
@@ -231,13 +207,13 @@ inline Color wellColor() {
 inline Color wellHover() {
     return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.11f} : look.track;
 }
-// Whether controls get their 1 px outline: not in a theme with flat menus and controls.
+// Whether controls get their 1 px outline: not in a flat theme.
 inline bool outlined() {
-    return !look.flatMenus;
+    return !look.flat;
 }
-// How large the switches' drawn icons are: a little smaller on solid ones, which fill their switch to its edges.
+// How large the switches' drawn icons are: a little smaller in a flat theme, whose lit switches are filled to the edges.
 inline float switchIconScale() {
-    return look.solidButtons ? 0.8f : 1.0f;
+    return look.flat ? 0.8f : 1.0f;
 }
 extern float glowing; // how strongly graphs' curves glow, 0..1, which View::paint() sets from the controller too
 
@@ -247,7 +223,7 @@ void plotLine(Canvas &c, const Point *points, size_t count, Color color, float w
 // A card's shadow, in a theme that gives its cards one (see Palette::cardShadow); none in the others.
 void paintCardShadow(Canvas &c, Rect r);
 
-// An open list's or menu's panel: outlined, or in a theme with flat menus lifted by a soft shadow instead.
+// An open list's or menu's panel: outlined, or in a flat theme lifted by a soft shadow instead.
 void paintMenuPanel(Canvas &c, Rect r);
 
 // A glow feathering out, as strong as `color`'s alpha where it starts and fading to nothing `spread` further out: round a

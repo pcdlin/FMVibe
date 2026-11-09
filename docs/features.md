@@ -1405,22 +1405,21 @@ may show anywhere, repaints the whole of it.
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,
   and aren't undo steps.
   **Theme**: Midnight (the default), Light (crisp: white cards and knob caps on a cool gray, with deep colors),
-  Machined (hardware: charcoal panels, shaded knob caps and amber readouts), Spectrum (deep indigo, each operator,
-  its tab and the routes it sends in a color of its own) or Porcelain (white panels lifted off a cool gray by soft
-  shadows rather than outlined, knobs with a dot for a pointer, one blue accent), each button shown in its own
-  colors. Spectrum and Porcelain tint each effect and source card with its own color and draw a knob's arc in the
-  color of what it belongs to (its card, its operator, filter or shaper), outline a card only while the mouse is over it (or it is
-  dragged), fill an LFO's shape on its card, and draw + EFFECT, + SOURCE and the MODS view's + Aux and
-  + Add modulation as filled pills and the cards that add an effect, a source or a band's effect filled faintly, a
-  disc behind their plus, without a dashed outline; a split's container and card go without an outline, as the cards do; Spectrum also fills its list
-  buttons dark and lifts the lists and menus they open on a soft shadow, neither outlined; fills a lit switch solid with its color
-  (a row of them set in a dark well, the one lit filling its part to the edges, its icon a little smaller); sets its
-  routing nodes on a soft shadow; fills the effects graph's nodes with a tint of their color, without an outline;
-  keeps the inspector's knobs in the accent; and draws the title bar's buttons, the preset's name, the output scope,
-  the note source's and velocity's curves and the wheels without outlines.
-  Settings that name a theme no longer offered show the nearest one: Graphite as Midnight, Paper as Light.
-  **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter and effect responses) glow, drawing them a little thinner: the higher, the
-  stronger and wider the halo. It sets the halos that sounding operators and the effects graph's nodes and wires
+  Spectrum (deep indigo) or Porcelain (Spectrum in light: white panels lifted off a cool gray by soft shadows, their
+  cards with a slight one too), each button shown in its own colors. Spectrum and Porcelain share a flat look: each
+  effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
+  a split's container likewise, the band it shows faintly in its color behind its cards; a knob's arc, and faintly its
+  track, in the color of what it belongs to (its card's, in the inspector the accent) and its pointer a dot; an LFO's
+  shape filled on its card; a lit switch filled solid with its color, rows of them set in a well (the LFO's clock and
+  polarity icons a little smaller there); list buttons, the lists and menus they open (on a soft shadow), the title
+  bar's buttons, the preset's name, the output scope, the note source's and velocity's curves and the wheels without
+  outlines; + EFFECT, + SOURCE and the MODS view's + Aux and + Add modulation as filled pills, and the cards that add
+  an effect, a source or a band's effect filled faintly, a disc behind their plus; each operator, its tab and the
+  routes it sends in a color of its own; the routing nodes on a soft shadow; and the effects graph's nodes filled with
+  a tint of their color, without an outline. Settings that name a theme no longer offered show the nearest one:
+  Graphite and Machined as Midnight, Paper as Light.
+  **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter
+  and effect responses) glow, drawing them a little thinner: the higher, the stronger and wider the halo. It sets the halos that sounding operators and the effects graph's nodes and wires
   feather out with too: as they are drawn at 75 %, stronger and wider above it, fainter below. At Off the effects
   graph shows no level (and the editor doesn't repaint for it), and an operator's halo is a plain ring.
   The editor shows it while it is dragged and keeps it when it is let go. **Lines**, a slider like it from Off to

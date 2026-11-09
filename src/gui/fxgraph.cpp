@@ -1940,8 +1940,8 @@ void View::paintFxGraph(Canvas &c) {
         const Rect r = boxAround(p, kFxEndHalfW, kFxEndHalfH);
         if (const float glow = name == Str::NodeFxIn ? fxGlow(kFxPortIn) : outGlow; glow > 0.01f)
             featherRect(c, r, kRadiusControl, 12.0f, kText.alpha(0.18f * glow));
-        c.fillRect(r, look.flatFxNodes ? kTrack : kCardColor, kRadiusControl);
-        if (!look.flatFxNodes)
+        c.fillRect(r, look.flat ? kTrack : kCardColor, kRadiusControl);
+        if (!look.flat)
             c.strokeRect(r, kBorder, 1.0f, kRadiusControl);
         c.text(r, tr(name), kTextLabel, kDim, Align::Center, true);
     }
@@ -1972,7 +1972,7 @@ void View::paintFxGraph(Canvas &c) {
                 featherRect(c, r, kRadiusControl, 16.0f, color.alpha(0.3f * glow));
             if (isSelected)
                 c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
-            if (look.flatFxNodes) { // filled with a tint of its color, stronger under the mouse and picked, no outline
+            if (look.flat) { // filled with a tint of its color, stronger under the mouse and picked, no outline
                 c.fillRect(r, kCardColor.alpha(fill), kRadiusControl);
                 c.fillRect(r, color.alpha(isSelected ? 0.4f : hot ? 0.3f : 0.18f), kRadiusControl);
             } else {
@@ -2154,7 +2154,7 @@ void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     // On grey: in the row, its container paints it; in the graph, its card.
     if (!row) {
         c.fillRect(card, splitFill(), kRadiusCard);
-        if (look.cardTint <= 0.0f) // in a theme whose cards go without an outline, so does it
+        if (!look.flat) // in a theme whose cards go without an outline, so does it
             c.strokeRect(card, splitLine(), 1.3f, kRadiusCard);
     }
     const bool grabbed = (drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
