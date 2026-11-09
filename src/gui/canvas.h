@@ -76,6 +76,9 @@ public:
     IDWriteTextFormat *textFormat(float size, bool bold, Align align);
     // The widths Canvas::textWidth() measured, by text format and text (see there): measuring one lays the text out.
     std::unordered_map<std::string, float> &textWidths() { return widths_; }
+    // The layouts Canvas::text() draws, by text format, box size and text (see there). Like the text formats, they
+    // don't belong to a device or a target, so they outlive a lost device and serve every target.
+    std::unordered_map<std::string, ComPtr<IDWriteTextLayout>> &textLayouts() { return layouts_; }
 
     // A path geometry made from a few numbers (an arc's, a curve's), kept for the next frame, which mostly draws the
     // same ones again (knobs at rest, wires): `build` fills the sink of a path made for a key not kept yet.
@@ -120,6 +123,7 @@ private:
     ComPtr<ID2D1StrokeStyle> dotted_;
     std::map<std::tuple<int, bool, Align>, ComPtr<IDWriteTextFormat>> formats_;
     std::unordered_map<std::string, float> widths_;
+    std::unordered_map<std::string, ComPtr<IDWriteTextLayout>> layouts_;
 #endif
 };
 

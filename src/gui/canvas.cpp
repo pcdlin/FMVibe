@@ -273,14 +273,42 @@ std::wstring_view widen(std::string_view utf8, wchar_t (&buffer)[256], std::wstr
 } // namespace
 
 void Canvas::text(Rect r, std::string_view utf8, float size, Color c, Align align, bool bold) {
-    wchar_t buffer[256];
-    std::wstring longer;
-    const std::wstring_view wide = widen(utf8, buffer, longer);
-    if (wide.empty())
+    if (utf8.empty())
         return;
-    target_->DrawText(wide.data(), static_cast<UINT32>(wide.size()),
-                      resources_.textFormat(liftedSize(size), bold, align), rc(r), brush(c),
-                      D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    const float lifted = liftedSize(size);
+    // Laid out once for its format, box size and text, and drawn at the box's corner as DrawText() would draw it:
+    // most text is drawn alike frame after frame, and DrawText() lays it out on every call, which took about a third
+    // of a whole paint.
+    const int format = (static_cast<int>(lifted * 10.0f) * 2 + (bold ? 1 : 0)) * 3 + static_cast<int>(align);
+    const float box[2] = {r.w, r.h};
+    std::string key(sizeof format + sizeof box + utf8.size(), '\0');
+    std::memcpy(key.data(), &format, sizeof format);
+    std::memcpy(key.data() + sizeof format, box, sizeof box);
+    std::memcpy(key.data() + sizeof format + sizeof box, utf8.data(), utf8.size());
+    std::unordered_map<std::string, ComPtr<IDWriteTextLayout>> &layouts = resources_.textLayouts();
+    IDWriteTextLayout *layout = nullptr;
+    if (const auto known = layouts.find(key); known != layouts.end())
+        layout = known->second.Get();
+    else {
+        wchar_t buffer[256];
+        std::wstring longer;
+        const std::wstring_view wide = widen(utf8, buffer, longer);
+        if (wide.empty())
+            return;
+        IDWriteTextFormat *textFormat = resources_.textFormat(lifted, bold, align);
+        ComPtr<IDWriteTextLayout> made;
+        if (r.w < 0.0f || r.h < 0.0f ||
+            FAILED(resources_.writeFactory()->CreateTextLayout(wide.data(), static_cast<UINT32>(wide.size()),
+                                                               textFormat, r.w, r.h, made.GetAddressOf()))) {
+            target_->DrawText(wide.data(), static_cast<UINT32>(wide.size()), textFormat, rc(r), brush(c),
+                              D2D1_DRAW_TEXT_OPTIONS_CLIP);
+            return;
+        }
+        if (layouts.size() >= 1024) // a frame draws a hundred or so; texts that keep changing don't pile up
+            layouts.clear();
+        layout = layouts.emplace(std::move(key), std::move(made)).first->second.Get();
+    }
+    target_->DrawTextLayout(pt({r.x, r.y}), layout, brush(c), D2D1_DRAW_TEXT_OPTIONS_CLIP);
 }
 
 // A text is measured once in each format (textFormat() tells them apart by a tenth of their size, and boldness): the
