@@ -555,6 +555,13 @@ void View::fxPlaceNew(int slot, int copyOf) {
                line.end());
     // Into the band at `lane` of item `i`, at `at`, or on the main line at `i`.
     auto put = [&](int i, int lane, int at) {
+        // A band asked for that the line no longer has (the list stayed open while an undo or a state load took
+        // the split away): at the line's end instead.
+        if (lane != 0 && (i < 0 || i >= static_cast<int>(line.size()) || !fxNodeSplit(line[i].node) ||
+                          (lane == 3 && !line[i].three) || lane < 0 || lane > 3)) {
+            lane = 0;
+            i = static_cast<int>(line.size()) - (openSplit(line) ? 1 : 0);
+        }
         if (lane == 0) {
             line.insert(line.begin() + std::clamp(i, 0, static_cast<int>(line.size())), FxLineItem{slot, {}, {}, false});
             return;

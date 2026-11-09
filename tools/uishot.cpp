@@ -3494,6 +3494,66 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     }
 }
 
+// The list of effects opened on a band's + while the split goes: an undo closes the list, and a split taken away
+// behind the editor's back (as a state load does) with the list still open puts the effect picked at the line's end
+// rather than on a band no longer there.
+void testFxListAfterUndo(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    click(view, detail::fxModeButton(1).center());
+    auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
+    auto listAtPlus = [&](Point plus) {
+        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + 15.0f * kFxMenuPitch + 7.0f);
+    };
+    auto plusItem = [&](Point plus, FxType type) {
+        const Point at = listAtPlus(plus);
+        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
+    };
+    auto plusNode = [&](Point plus) {
+        const Point at = listAtPlus(plus);
+        return Point{at.x + 90.0f, at.y + 14.5f + 13.0f * kFxMenuPitch + 7.0f};
+    };
+    auto from = [&](int node, int input) {
+        return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
+    };
+    auto delayed = [&] {
+        for (int slot = 0; slot < kFxSlots; ++slot)
+            if (std::lround(model.value(paramIndex(slot, FxParam::Type))) == static_cast<int>(FxType::Delay))
+                return slot;
+        return -1;
+    };
+    click(view, cell(3, 0));
+    click(view, plusNode(cell(3, 0))); // a split after the reverb
+    const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0;
+
+    // Its high band's + opens the list; an undo takes the split away and closes the list, so the click on where its
+    // Delay was adds nothing.
+    click(view, cell(4, -1));
+    view.undo();
+    view.poll();
+    click(view, plusItem(cell(4, -1), FxType::Delay));
+    check(split && model.value(paramIndex(0, SplitParam::Used)) == 0.0 && delayed() < 0 &&
+              renderer.save(view, dir / "40z-fx-list-undo.png"),
+          "an undo closes the list of effects opened on a band's +");
+
+    // Again, the split taken away without the editor's undo: the Delay picked goes at the line's end.
+    view.redo();
+    view.poll();
+    click(view, cell(4, -1));
+    model.undo();
+    view.poll();
+    click(view, plusItem(cell(4, -1), FxType::Delay));
+    const int slot = delayed();
+    check(model.value(paramIndex(0, SplitParam::Used)) == 0.0 && slot >= 0 &&
+              fxChain(model) == std::vector<int>{0, 1, slot} && from(kFxOutNode, 0) == fxSlotPort(slot),
+          "an effect picked from a band's list after its split went goes at the line's end");
+}
+
 // The graph's box takes the room the inspector's card leaves: beside a card one place wide (a delay's) it reaches
 // further right than beside a wide one (a parametric EQ's), whose card takes some of it (read off the rendered
 // pixels: just inside the wider box's right edge, against the box's empty top left).
@@ -7574,6 +7634,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);
     testFxGraph(dir, renderer);
+    testFxListAfterUndo(dir, renderer);
     testFxGraphScroll(dir, renderer);
     testFxGraphRoom(dir, renderer);
     testFxRow(dir, renderer);

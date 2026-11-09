@@ -9830,6 +9830,8 @@ void View::undo() {
         cascade_.reset(); // what its menu was opened on may change, or go
         listMenu_ = -1;
         peqMenu_ = -1;
+        fxMenuOpen_ = false; // so is the place in the line the list of effects was opened at
+        fxSlot_ = {};
         controller_.undo();
         menuLive_ = false;
     }
@@ -9840,6 +9842,8 @@ void View::redo() {
         cascade_.reset(); // what its menu was opened on may change, or go
         listMenu_ = -1;
         peqMenu_ = -1;
+        fxMenuOpen_ = false; // so is the place in the line the list of effects was opened at
+        fxSlot_ = {};
         controller_.redo();
         menuLive_ = false;
     }
