@@ -1466,9 +1466,10 @@ may show anywhere, repaints the whole of it.
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
   faint while MPE is off (see MPE, above). Like Oversampling, they are saved with the project but not with presets,
   and aren't undo steps.
-  **Theme**: Midnight (the default), Light (crisp: white cards and knob caps on a cool gray, with deep colors),
-  Spectrum (deep indigo) or Porcelain (Spectrum in light: white panels lifted off a cool gray by soft shadows, their
-  cards with a slight one too), each button shown in its own colors. Spectrum and Porcelain share a flat look: each
+  **Theme**: Spectrum (deep indigo, the default), Porcelain (Spectrum in light: white panels lifted off a cool gray
+  by soft shadows, their cards with a slight one too), Midnight or Light (crisp: white cards and knob caps on a cool
+  gray, with deep colors), each button shown in its own colors. The browser demo's page around the editor is in
+  Spectrum's colors. Spectrum and Porcelain share a flat look: each
   effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
   band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it

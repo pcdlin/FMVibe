@@ -145,7 +145,9 @@ public:
     bool offersTempo = false; // a host that lets the editor set its tempo (the browser demo, fmvibe-uihost)
     double bpm = kDefaultTempo;
     int tempoSets = 0;
-    std::string themeName;
+    // Midnight, the theme the pixel checks were written in (an editor given no theme, or one it doesn't know, shows
+    // the default, Spectrum).
+    std::string themeName = "Midnight";
     double glowLevel = 0.0;
     Telemetry live{};
     int scopeOp = -1; // what the view last asked the scope to capture
@@ -2509,7 +2511,7 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     view.mouseMove({600.0f, 600.0f}, {});
     shots = shots && model.ui.fxGraphView &&
             renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
-    if (!theme.empty()) { // in another theme, its effects as a row and its MODS view too
+    if (!theme.empty()) { // in a theme other than the checks' Midnight, its effects as a row and its MODS view too
         click(view, detail::fxModeButton(0).center());
         view.mouseMove({600.0f, 600.0f}, {});
         shots = shots && renderer.save(view, dir / (prefix + "-fx-row.png"));
@@ -8743,9 +8745,13 @@ void run(const std::filesystem::path &dir, float scale) {
           "the settings dialog switches MPE and picks its bend range, leaving the patch alone");
     view.mouseMove(option(3), {});
     check(renderer.save(view, dir / "14-settings.png"), "render the settings dialog");
-    // Its theme buttons repaint the whole editor in another theme.
-    bool themed = true;
-    for (int i = 1; i < View::themeCount(); ++i) {
+    // Its theme buttons repaint the whole editor in another theme. The first is the default.
+    const int midnight = detail::themeIndex("Midnight");
+    bool themed = detail::themeIndex("") == 0 && std::string_view(View::themeName(0)) == "Spectrum" &&
+                  std::string_view(View::themeName(1)) == "Porcelain";
+    for (int i = 0; i < View::themeCount(); ++i) {
+        if (i == midnight)
+            continue;
         click(view, theme(i));
         themed = themed && model.themeName == View::themeName(i);
         if (std::string_view(View::themeName(i)) == "Light")
@@ -8770,8 +8776,9 @@ void run(const std::filesystem::path &dir, float scale) {
         click(view, kFxTab);
         click(view, cog);
     }
-    click(view, theme(0));
-    check(themed && model.themeName == View::themeName(0), "the settings dialog picks the theme");
+    click(view, theme(midnight));
+    check(themed && model.themeName == "Midnight",
+          "the settings dialog lists Spectrum (the default) and Porcelain first, and picks the theme");
     // The GLOW slider sets how strongly the graphs' curves glow, on both pages, once it is let go.
     auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 397.0f}; };
     view.mouseDown(glowAt(0.2f), {});
@@ -8834,10 +8841,9 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.sourcesCollapsed, "once it is closed, the editor takes clicks again");
     click(view, kSourcesToggle);
     runMore(dir, renderer);
-    renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6);
-    renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4); // its effects as a graph, split low/high
-    renderExample(dir, renderer, "BA Neon Pluck", "40-spectrum-neon", 4, "Spectrum");
-    renderExample(dir, renderer, "PD Crystal Motion", "41-spectrum-crystal", 6, "Spectrum");
+    // The README's, in the default theme (see release.ps1); Neon Pluck's effects as a graph, split low and high.
+    renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6, "Spectrum");
+    renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4, "Spectrum");
     renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
     renderExample(dir, renderer, "BA Neon Pluck", "43-porcelain-neon", 4, "Porcelain");
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
