@@ -1694,6 +1694,34 @@ void noteAndVoiceChecks() {
               "mono: a note taken over in its release ends once, and so does the next");
     }
     {
+        // Notes held in poly as mono turns on: a key let go doesn't move its voice onto a key the mono voice already
+        // plays (which two voices would then play, one of them taken over without its end reported), and every note
+        // ends once, through a lower voice limit and a later note too.
+        Engine e(2, 2);
+        e.synth().setPlayMode(false, false, false);
+        int ends[10] = {};
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        e.synth().noteOn({2, 0, 0, 62}, 1.0);
+        play(e, 4, ends);
+        e.synth().setPlayMode(true, false, false);
+        e.synth().noteOn({3, 0, 0, 64}, 1.0);
+        play(e, 4, ends);
+        e.synth().noteOff({1, 0, 0, 60});
+        play(e, 4, ends);
+        const bool playing3 = e.synth().isActive({3, 0, 0, 64});
+        e.synth().setVoiceLimit(1);
+        play(e, 10, ends);
+        e.synth().noteOn({4, 0, 0, 65}, 1.0);
+        play(e, 4, ends);
+        e.synth().noteOff({-1, -1, -1, -1});
+        play(e, 800, ends);
+        std::printf("      poly to mono with keys held: ends %d %d %d %d, %d voice(s) left\n", ends[1], ends[2], ends[3],
+                    ends[4], e.synth().activeVoiceCount());
+        check(playing3 && ends[1] == 1 && ends[2] == 1 && ends[3] == 1 && ends[4] == 1 &&
+                  e.synth().activeVoiceCount() == 0,
+              "notes held as mono turns on, a key let go, a lower voice limit and a later note: each ends once");
+    }
+    {
         // A key struck again while its last note still rings: with note ids, the last note's end is reported once it
         // is over, though the key sounds on; without them, the host keeps one voice per key, which the new note keeps.
         auto strikeAgain = [&play](Engine &e, int32_t first, int32_t second, int (&ends)[10]) {
