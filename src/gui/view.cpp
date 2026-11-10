@@ -3488,7 +3488,7 @@ void View::paintModRange(Canvas &c, Rect bar, int param) {
                     std::max(static_cast<float>(to - from) * bar.w, 1.5f), h},
                    color, kRadiusMark);
         // Where its reach runs past the bar's end, so that it is cut off there, a line across it marks the end.
-        const float half = 0.5f * h + 1.25f;
+        const float half = 0.5f * h + 0.75f; // 3 px tall on a plain bar
         if (n + down < 0.0)
             c.line({bar.x, bar.center().y - half}, {bar.x, bar.center().y + half}, color, 1.5f);
         if (n + up > 1.0)
