@@ -446,7 +446,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     from 1 Hz to 5 kHz on a log curve (100 Hz to begin with), so a narrow one gives slow beating the knob's
     whole travel; Spread takes the right side the other
     way, Feedback sends the shifted sound round again for spiraling sweeps, and Mix. A pair of all-pass chains makes
-    the 90-degree copy it needs, which keeps what is left at the old frequency around 50 dB down.
+    the 90-degree copy it needs, which keeps the mirror image (as far below the old frequency as the shift moves it
+    above) 45 dB down or more from 50 Hz up; its chains are worked out for the sample rate, longer at higher ones,
+    so it holds at 96 and 192 kHz too.
 
   The phaser and flanger keep their feedback from ringing louder: what they send round is scaled so their level
   across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and

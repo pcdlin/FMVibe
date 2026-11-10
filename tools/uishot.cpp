@@ -3640,6 +3640,21 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     const bool lfoMoved = view.poll();
     check(lfoMoved && only(view.wholeArea()),
           "what a voice's sources move repaints the whole editor");
+
+    // The notes end while a tail drives a compressor on: its meter moving repaints it, and so does the host's tempo.
+    model.live.voices = 0;
+    model.live.outPeak = {0.0f, 0.0f};
+    model.live.scopeBins = 0;
+    for (int i = 0; i < 20 && view.poll(); ++i) // the scopes' levels easing down
+        ;
+    const bool settled = !view.poll();
+    model.live.fxReduction[0][0] = 3.0f;
+    const bool reductionMoved = view.poll() && only(view.wholeArea());
+    model.live.tempo = 96.0f;
+    const bool tempoMoved = view.poll() && only(view.wholeArea());
+    const bool still = !view.poll();
+    check(settled && reductionMoved && tempoMoved && still,
+          "with no notes playing, a compressor's meter and the host's tempo moving repaint the editor");
 }
 
 // A macro's name that isn't valid UTF-8 (a state can hold any bytes there) drawn as best it can be, and the rest of

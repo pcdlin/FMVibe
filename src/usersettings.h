@@ -23,4 +23,9 @@ void readUserSettings();
 // have changed the others (and the examples count only goes up); userSettings then holds what was written.
 void writeUserSettings();
 
+// Puts the file written at part in target's place, waiting out another process that reads target meanwhile (another
+// instance's process, a virus scanner, the search indexer), which keeps it from being replaced for a moment. If it
+// can't, part is removed and target is left as it was.
+bool replaceFile(const std::wstring &part, const std::wstring &target);
+
 } // namespace fmvibe

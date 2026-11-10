@@ -363,10 +363,11 @@ void Synth::noteOff(const NoteRef &match) {
             continue;
         }
         // Back to the most recent key still down, as a legato move: one this note-off doesn't let go of too (all
-        // notes off leaves none, and the voice releases where it is).
+        // notes off leaves none, and the voice releases where it is). A key another voice plays already (notes held
+        // in poly as mono came on) isn't played twice: this voice releases instead.
         const auto down = std::find_if(held_.rbegin(), held_.rend(),
                                        [&](const HeldNote &held) { return !matches(match, held.note); });
-        if (mono_ && down != held_.rend()) {
+        if (mono_ && down != held_.rend() && !voicePlaying(down->note)) {
             reportEnded(note);
             moveVoice(*v, *down, !legato_, true);
         }
@@ -767,13 +768,20 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
 }
 
 void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32_t frames, uint32_t end) {
+    // Each param read below would look through all of the newest voice's slots: those on the sources' params, usually
+    // none, are gathered once instead.
+    int sourceModCount = 0;
+    if (newest)
+        for (int m = 0; m < newest->slotModCount; ++m)
+            if (sourceOf(newest->slotMods[m].index) >= 0)
+                sourceMods_[sourceModCount++] = newest->slotMods[m];
     auto shared = [&](int i) {
         double value = params[i] + globalMod_[i] + macroMod_[i];
         if (newest) {
             value += newest->mod[i];
-            for (int m = 0; m < newest->slotModCount; ++m)
-                if (newest->slotMods[m].index == i)
-                    value += newest->slotMods[m].offset;
+            for (int m = 0; m < sourceModCount; ++m)
+                if (sourceMods_[m].index == i)
+                    value += sourceMods_[m].offset;
         }
         return std::clamp(value, table_[i].min, table_[i].max);
     };
@@ -1673,7 +1681,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (starting || !op.incKnown || op.incCopies != copies[i])
             for (int k = 0; k < copies[i]; ++k)
                 op.incNow[k] = copy[i]->inc[k];
-        op.incKnown = true;
+        op.incKnown = !noise[i]; // noise moves no increment along: back to a wave, it starts at its own
         op.incCopies = copies[i];
         for (int k = 0; k < copies[i]; ++k)
             incStep[i][k] = (copy[i]->inc[k] - op.incNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));

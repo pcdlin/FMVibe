@@ -98,7 +98,7 @@ struct Telemetry {
     float noteVelocity = 0.0f;                  // its velocity, what the velocity source follows: 0..1
     float fxPitch = 60.0f; // what the effects' key tracking follows: that pitch, kept once the voice has ended
     float age = 0.0f;                           // seconds since the audio thread took this snapshot
-    std::array<float, kOps> opLevels{};         // operator envelope x amplitude
+    std::array<float, kOps> opLevels{};         // operator envelope (the editor scales it by the Out)
     std::array<float, kOps> opEnvLevels{};      // operator envelope alone (0..1)
     // Where each operator's and mod envelope is, see Envelope::position(); -1 idle (or not an envelope).
     std::array<float, kOps> opEnvPos{};
@@ -534,6 +534,8 @@ private:
     // The clocks free LFOs follow instead of their own: they run at the newest
     // voice's rate, like the effects, and keep going between notes.
     std::array<Lfo, kMaxSources> freeLfos_{};
+    // The newest voice's slots that modulate the sources' own params, gathered for runSharedLfos() once a call.
+    std::array<SlotMod, kAllSources * kSlots> sourceMods_{};
     uint32_t freeRng_ = 1;
     std::vector<Voice> voices_;
     // The active voices (Voice::active), in their places' order, so going over them adds them up as going over every
