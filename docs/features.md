@@ -617,7 +617,9 @@ may show anywhere, repaints the whole of it.
     - A wire between two nodes bows to its left as it starts, so two running opposite ways between the same nodes
       don't overlap. To keep wires apart where they would, drag one sideways anywhere along it (it lights up under
       the mouse, apart from its label and arrowhead): its middle follows the mouse, out to either side or straight,
-      its label and arrowhead going along. A wire that would spill out of the routing panel bows only as far as
+      its label and arrowhead going along. A label that would sit over a node (one placed where the wire's middle
+      runs) slides along its wire, either way, as little as clears every node, and goes back to the middle once
+      that is clear; a line's label to OUT does the same. A wire that would spill out of the routing panel bows only as far as
       keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
       once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
       the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
@@ -772,7 +774,12 @@ may show anywhere, repaints the whole of it.
     container's band it goes along that band; out of either side of the container it lands right beside it (left of
     its controls is before it, so a container first in the row takes a card before it with the mouse past its
     controls' left edge); and past the next card once the mouse is beyond that card's middle. Let go of, they glide
-    on into place, and a click while they glide puts them in place at once),
+    on into place, and a click while they glide puts them in place at once). Hold Ctrl as a card or container starts
+    to move to carry a copy of it instead (with its settings, but not its modulation; a container with its join and a
+    copy of each effect on its bands, its crossovers, slope, band levels and solos): the original stays where it is,
+    the copy's place opens right after it, and the copy lands where it is let go of, the copy and its place one undo
+    step. A drag called off leaves nothing. With too few free slots or splits it says so, and moves the card instead;
+    so does a split left open at the line's end, which the line has room for only one of),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings,
     set a 3-band dynamics as OTT, pick an amp's oversampling (**Oversampling 1x** to **8x**, the one in force
     checked), move it to another band of its split (**Move to Low**, **Move to Mid**, **Move to
@@ -874,7 +881,9 @@ may show anywhere, repaints the whole of it.
     container shows). While a band is soloed, the split's and the join's nodes show an S in a circle at their top
     left, in the soloed band's color (the accent with more than one soloed), and the bands not soloed (their effects'
     nodes, their wires and their names) are drawn faint, as the join doesn't let them through. Under the mouse, a node shows an x in a circle at its upper
-    right, which removes it as the x on its card does. A node dragged onto
+    right, which removes it as the x on its card does, and an effect's node a power symbol in a circle at its upper
+    left (in the effect's color while it is on), which switches the effect on and off as its card's power switch
+    does, an undo step each. A node dragged onto
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would
     land in, outlined dotted, which moves only once it is over another gap between two nodes (an effect's anywhere on
     the main line or a band, a split's only on the main line; the line's end reaching on past its + along the wire
@@ -883,7 +892,9 @@ may show anywhere, repaints the whole of it.
     while it passes over a node or away from the line. The dotted place goes where it would land at once, and the
     wires run to it there as to a node, never to the node being carried; let go of, the node takes that place, and
     the others glide on into theirs. A split or a join
-    carries the split with its bands' effects and its join along. Held at the graph's left or right edge, it scrolls
+    carries the split with its bands' effects and its join along. With Ctrl held as it starts to move, a node carries
+    a copy instead, as a card in the row does (a split's or a join's: the split with its join and copies of its bands'
+    effects), its place opening right after the original and the copy shown in the card at the right. Held at the graph's left or right edge, it scrolls
     that way. The x on a card removes its node: an effect closes up the
     line or band it was on, a split puts its bands' effects on the main line in its place (the high band's first),
     and so does a join, which goes with its split. + EFFECT puts the new
@@ -1100,7 +1111,8 @@ may show anywhere, repaints the whole of it.
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
       wire's. Its feedback comes last, with its depth and "phase only". With nothing routed into it, a line says
-      so. The rows close up when there are many.
+      so. The rows sit 30 px apart, room for a modulated depth's dots under it; past the six the tab holds, they
+      scroll, by the wheel over them, by dragging with the middle button held, or by the scrollbar at their right.
     - **SCOPE**: the operator's output in the newest voice as it plays, with its unison copies together and
       everything that moves it (the FM it gets, its envelope, the modulation on its level and pitch), before it
       reaches the filters, shapers or the output. It is caught at the operator's own phase, so a span starts where a
@@ -1146,7 +1158,9 @@ may show anywhere, repaints the whole of it.
   opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ SOURCE**,
   shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one (which opens a collapsed panel), and beside it how many of the 16 places are taken, as in 4/16 (with every
-  place taken it is dimmed, and a click says so). A Random card says what it does where the others have knobs. A MIDI card has its input's list (CC,
+  place taken it is dimmed, and a click says so). A Random card says what it does where the others have knobs, and
+  under that has **Unipolar** | **Bipolar** (as icons, where an LFO's clock modes are), one of them lit, which sets
+  which way its depths swing, as the polarity in its title's menu does. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -1158,8 +1172,10 @@ may show anywhere, repaints the whole of it.
   scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
   them along. Sources are numbered by type in the order they show ("LFO 2", "Env 1", "Random 1", "MIDI 1").
   - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way. A faint image of it follows the mouse anywhere, over the other panels too, and only its outline shows where it would land; the other cards make room only once the mouse is clear of the card's own place, where the mouse is.
+    With Ctrl held as it starts to move, it carries a copy instead, as Duplicate makes one (no targets), which
+    stays right after the original while the mouse is over it and lands where it is let go of: one undo step.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its
-    settings and targets), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
+    settings and shape, but none of its targets: the copy modulates nothing until it is given some), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
     remove it; the × removes it too, together with its modulation and whatever modulates its knobs. A bipolar
     envelope's display has a dashed line at
     its middle level and ± in its corner. While notes play, an envelope's display has a dashed line across at the
@@ -1209,9 +1225,9 @@ may show anywhere, repaints the whole of it.
     display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor).
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
-    knob (on a matrix cell, in its top right corner; on a wire or OUT label in the graph, centered just under it,
-    the ranges running along its outline's top, so its depth stays readable; on the INPUTS tab's labels, in their bottom right corner,
-    the ranges along their top). Where a range runs past its target's end, cut off there, a short line across the
+    knob (on a matrix cell, centered along its foot, the ranges along its top, right of a mode's glyph; on a wire or OUT label in the
+    graph and on the INPUTS tab's labels, centered just under it, the ranges running along its outline's top, so
+    its depth stays readable). Where a range runs past its target's end, cut off there, a short line across the
     ring or bar marks that end (in every theme; the Ratio readout's track has its arrow instead). The dots stay
     inside their knob's column, label or cell at each handle size; past
     what fits, the rest go into a "+n" pill. Drag that dot to set the depth; double-click it
@@ -1233,7 +1249,9 @@ may show anywhere, repaints the whole of it.
     column for them: a chip in the aux's color with its name and an × that takes it away), its depth bar and its
     remove (right-clicking a row gives the depth handle's menu; hovering a row draws its range
     wider; a source's name too long for its row is drawn smaller to fit, down to about 9 px, and past that ends in
-    "…"). A click anywhere else closes it, but not
+    "…"). It shows six rows at most; past that, it is 8 px wider for a scrollbar at its right, and the rows scroll by
+    the wheel over them (off the depth bars, which the wheel turns), by dragging with the middle button held, or by
+    the bar. A click anywhere else closes it, but not
     on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a pill opens
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
@@ -1272,10 +1290,23 @@ may show anywhere, repaints the whole of it.
   view or no longer holds that type. A drag the editor loses the mouse during (another window taking it, or the
   browser demo's page its focus) ends where it is, its edit one undo step, but drops nothing: no route moves or goes,
   no modulation is assigned, no card moves. Hold the middle button and drag over a
-  panel that scrolls (the effects chain, the source cards, the MODS view's rows, the preset browser's list) to drag
-  what it shows along with the mouse, whatever is under it; past either end the row stops, and dragged back it
-  follows at once. A middle press on an open list or menu does nothing, and one that starts a drag closes it;
-  while the left button drags something, the middle one does nothing. A double-click whose first click closed the
+  panel that scrolls (the effects chain, the source cards, the MODS view's rows, an operator's INPUTS rows, the
+  preset browser's list, a pill's open list) to drag what it shows along with the mouse, whatever is under it; past
+  either end the row stops, and dragged back it follows at once. A middle press on another open list or menu does
+  nothing, and one that starts a drag closes it;
+  while the left button drags something, the middle one does nothing. Two fingers on a touchscreen pan the same
+  panels as the middle button, along with them (in the browser demo, on a phone too): what the first finger pressed
+  ends as they land, nothing dropped, and over a dialog they pan nothing. A precision touchpad's two-finger
+  scrolling comes as the wheel, up and down as above and sideways as a tilted wheel does, which scrolls what scrolls
+  sideways under the mouse (the effects' row and graph, the source cards) and turns nothing. In the browser demo on
+  a phone (or any touchscreen), one finger works the editor too: where nothing scrolls it is the mouse at once;
+  over a panel that scrolls it waits until it moves or lifts, so that dragged on something that drags (a knob, a
+  depth bar, a card's title or icon, a handle, a node) it drags it, dragged anywhere else it pans the panel, and
+  lifted without moving it is a click where it landed (two quick taps a double-click, so a double tap sets a knob
+  back). A long press opens the menu a right-click would. Every dialog (the
+  confirm dialogs and the settings) takes the keyboard while it is open: Enter presses its button lit in the accent
+  (Load, Init, Overwrite, Clear FX, Keep), Escape cancels it as a click around it does, and both close the settings;
+  the dialog asking where a middle band's effects go lights none, and Enter leaves it open. A double-click whose first click closed the
   preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a
@@ -1419,8 +1450,9 @@ may show anywhere, repaints the whole of it.
     characters in all). A search longer than the field scrolls to keep the caret in sight. A value typed into a
     knob copies and pastes too, while all of it is selected.
   - **Init** sets every param and the routing layout back to their defaults (the zoom stays). **Load** and
-    **Save As** (a disk with a plus) read and write a `.fmv` file through the standard file dialog, which starts in
-    the preset folder; Save As suggests the current preset's name. The file holds the same data as the host's
+    **Save As** (a disk with a plus) read and write a `.fmv` file through the standard file dialog, which always
+    starts in the preset folder, wherever the host's last file dialog was left; Save As suggests the current
+    preset's name. The file holds the same data as the host's
     saved state, apart from the settings.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
     tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) from a file that has

@@ -283,6 +283,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
     into a join, an effect going at its band's end (the list offering no split there), each undone; a node under the
     mouse showing an x in a circle at its upper right (read off the rendered pixels), whose click removes it, undone,
+    and an effect's a power symbol in a circle at its upper left (read off the rendered pixels), whose clicks switch
+    it off and on, each undone,
     the inspector's cards having none, an effect's power switch in its corner instead; the split's node's x asking
     before it takes the split's effects (Cancel, Keep and Delete, each undone);
     nodes dragged and dropped while the others glide aside (polled until they settle), the wires running to the
@@ -361,6 +363,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     staying there;
   - a routing node under the mouse showing an x in a circle at its upper right (a filter's at its box's corner, read
     off the rendered pixels), whose click switches it off, undoably;
+  - a wire's label sliding along its wire off a node sitting at its middle (the wheel there turning nothing);
   - the MODS view's filter: its magnifier opening it to take the keyboard, the words typed (every one, in any case)
     narrowing the rows, its × emptying it, Escape and a click elsewhere letting the keyboard go; and the target
     menu's search listing the targets found with their path, the first that can be picked lit (read off the rendered
@@ -369,7 +372,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the modulation panel's + SOURCE opening the list of source types under it, adding Random and MIDI sources, each
     with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input;
+    following its input; a Random card's Unipolar | Bipolar setting its polarity (read off the rendered pixels),
+    undoably;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -389,6 +393,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator lighting up while modulation opens its route from 0 %, and not with the glow setting off (read off
     the rendered pixels), and modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
+  - the INPUTS tab's rows: a modulated depth's handles under it and its ranges on its top line, its number left as it
+    was (read off the rendered pixels), and eight rows scrolling under the wheel, the scrollbar's thumb and the
+    middle button;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
     one's ghost filled while it is shown (read off the rendered pixels);
   - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
@@ -512,12 +519,23 @@ the plain CMake commands and installing into a host are in the [README](README.m
     scrolling the source cards by holding a dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands; a
     source card moved within its own place, or carried out of its panel, moving nothing;
+  - two fingers panning the effects' row (the knob the first finger pressed left alone), the source cards, the
+    preset browser's list and the effects graph, and nothing over a dialog; the wheel turned sideways scrolling the
+    row, the source cards and the graph; one finger turning a knob it lands on (on a card in the row too, a double
+    tap setting it back), tapping an effect's icon, and elsewhere panning the row, the source cards and the
+    browser's list (loading nothing it went down on, a tap then loading one);
+  - Ctrl-dragging an effect card along the row, an effect's node and a split's (its join and its band's effect along)
+    in the graph and a source card, each leaving a copy where it lands with the original's settings, one undo step;
+    a plain drag moving instead, and a Ctrl-drag called off leaving nothing, not even an undo step;
+  - Enter and Escape on the bin's dialog, the settings and the preset arrows' and the browser's "load anyway?"
+    (over the browser, its search letting the keyboard go): Escape cancelling or closing, Enter going ahead;
   - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle
     button held: over a knob without turning it, stopping at the row's end and following back from there at once,
     and doing nothing while the left button drags a knob;
   - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
     nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
-    bypassing, setting the depth of and removing its modulations and closing at a click elsewhere, opening under a
+    showing six rows (read off the rendered pixels), scrolling under the wheel and the middle button, bypassing,
+    setting the depth of and removing its modulations and closing at a click elsewhere, opening under a
     macro's handle held over the pill and taking it as a row's aux, widening for an aux column whose chip (read off
     the rendered pixels) and its × take the aux away, and a source's line ending at the pill holding its handle;
   - a depth handle's right-click menu removing its aux, undoably, offered only while it has one;
@@ -662,6 +680,8 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   demo has no files. The theme, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
   the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
+- On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
+  what scrolls, and taps) and two (`View::touchPanBegin()` and on: a pan), with its own slop and double tap.
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which the editor's
   title bar then shows to drag, scroll or type (20–999 BPM, kept in the browser's storage), and which `dsp_tempo()`
   hands the synth as `Plugin::process()` does the host's tempo.
@@ -929,7 +949,7 @@ itself.
   (`src/zerobuffer.h`): pages Windows hands out as zeros once they are first written, so the lines no voice or
   effect uses take address space, not memory, and allocating them fills nothing.
 - The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
-  user32, Direct2D, DirectWrite, and ole32 for the VST3 one), not on the VC++ redistributable. The `.vst3` is a
+  user32, Direct2D, DirectWrite, and ole32 and shell32 for the preset file dialogs), not on the VC++ redistributable. The `.vst3` is a
   bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`.
 
 ## Updating the CLAP and VST3 SDKs

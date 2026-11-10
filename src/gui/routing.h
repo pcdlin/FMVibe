@@ -281,6 +281,15 @@ inline bool clearOfNode(int node, Point center, Point p) {
     return std::hypot(p.x - center.x, p.y - center.y) - nodeExtent(node, dir) > 16.0f;
 }
 
+// Whether `r`, a label's chip, comes within `gap` of a node's outline, the node centered at `center`.
+inline bool overNode(int node, Point center, Rect r, float gap) {
+    if (isBoxNode(node))
+        return r.x < center.x + kFilterHalfW + gap && r.right() > center.x - kFilterHalfW - gap &&
+               r.y < center.y + kFilterHalfH + gap && r.bottom() > center.y - kFilterHalfH - gap;
+    const float x = std::clamp(center.x, r.x, r.right()), y = std::clamp(center.y, r.y, r.bottom());
+    return std::hypot(center.x - x, center.y - y) < kNodeRadius + gap;
+}
+
 // How far `p` is from a wire, along its curve between the nodes (its arrowhead's base included).
 inline float distanceToWire(const Wire &w, Point p) {
     constexpr int kSteps = 24;

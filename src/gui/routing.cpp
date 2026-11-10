@@ -182,6 +182,37 @@ void View::switchOnRoute(int from, int to) {
             edit(enabledParam(node), 1.0);
 }
 
+Point View::labelAlong(Point start, Point control, Point end, Point middle, float width) const {
+    constexpr float kClear = kSelectedRing + 1.0f; // clear of a selected node's ring too
+    constexpr float kStep = 0.035f;                // along the curve, either way from its middle
+    constexpr int kSteps = 8;                      // and no further than a fifth of it from either end
+    const std::vector<int> nodes = enabledNodes();
+    std::vector<Point> centers;
+    centers.reserve(nodes.size());
+    for (int node : nodes)
+        centers.push_back(nodeCenter(node));
+    auto clear = [&](Point p) {
+        const Rect r = chip(p, width);
+        for (size_t i = 0; i < nodes.size(); ++i)
+            if (overNode(nodes[i], centers[i], r, kClear))
+                return false;
+        return true;
+    };
+    if (clear(middle))
+        return middle;
+    const Rect inside{kRouting.x + 0.5f * width + 4.0f, kRouting.y + 12.0f, kRouting.w - width - 8.0f,
+                      kRouting.h - 24.0f}; // where its center keeps the chip in the panel, as wireInside() has it
+    for (int k = 1; k <= kSteps; ++k)
+        for (const float side : {-1.0f, 1.0f}) {
+            const float t = 0.5f + side * kStep * static_cast<float>(k), s = 1.0f - t;
+            const Point p{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
+                          s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
+            if (inside.contains(p) && clear(p))
+                return p;
+        }
+    return middle;
+}
+
 std::vector<int> View::enabledNodes() const {
     std::vector<int> nodes;
     for (int node = 0; node < kNodes; ++node)

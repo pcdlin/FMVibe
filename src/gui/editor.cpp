@@ -9,10 +9,12 @@
 #endif
 
 #include <commdlg.h>
+#include <shobjidl.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -253,6 +255,15 @@ bool Editor::attach(HWND parent) {
     if (!hwnd_)
         return false;
     SetTimer(hwnd_, kPollTimer, kPollMs, nullptr);
+    // Two fingers on a touchscreen pan what scrolls under them (WM_GESTURE); one finger stays the mouse, and pinching
+    // and turning are left to the host.
+    GESTURECONFIG gestures[] = {
+        {GID_PAN, GC_PAN | GC_PAN_WITH_INERTIA,
+         GC_PAN_WITH_SINGLE_FINGER_VERTICALLY | GC_PAN_WITH_SINGLE_FINGER_HORIZONTALLY | GC_PAN_WITH_GUTTER},
+        {GID_ZOOM, 0, GC_ZOOM},
+        {GID_ROTATE, 0, GC_ROTATE},
+    };
+    SetGestureConfig(hwnd_, 0, static_cast<UINT>(std::size(gestures)), gestures, sizeof(GESTURECONFIG));
     followDpi(); // on a monitor scaled unlike the primary one, in a host aware of it
     return true;
 }
@@ -412,6 +423,39 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         invalidate();
         return 0;
     }
+    case WM_MOUSEHWHEEL: { // a tilted wheel, or a touchpad swiped across: to the right for more than 0
+        POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        ScreenToClient(hwnd_, &p);
+        view_.wheelAcross(toView(p.x, p.y), GET_WHEEL_DELTA_WPARAM(wParam) / static_cast<float>(WHEEL_DELTA));
+        syncFocus();
+        invalidate();
+        return 0;
+    }
+    case WM_GESTURE: { // a touchscreen's two-finger pan (a precision touchpad's comes as the wheel instead)
+        GESTUREINFO info{};
+        info.cbSize = sizeof(info);
+        const auto handle = reinterpret_cast<HGESTUREINFO>(lParam);
+        if (!GetGestureInfo(handle, &info) || info.dwID != GID_PAN)
+            break;
+        POINT p{info.ptsLocation.x, info.ptsLocation.y}; // between the fingers, on the screen
+        ScreenToClient(hwnd_, &p);
+        const Point at = toView(p.x, p.y);
+        if (info.dwFlags & GF_BEGIN) {
+            if (GetCapture() == hwnd_) // what the first finger pressed ends (WM_CAPTURECHANGED), dropping nothing
+                ReleaseCapture();
+            touchPan_ = view_.touchPanBegin(at);
+        } else if (touchPan_) {
+            view_.touchPanMove(at);
+        }
+        if ((info.dwFlags & GF_END) && touchPan_) {
+            view_.touchPanEnd(at);
+            touchPan_ = false;
+        }
+        CloseGestureInfoHandle(handle);
+        updateCursor();
+        invalidate();
+        return 0;
+    }
     case WM_GETDLGCODE: // in a host's dialog, Enter, Escape and the arrows still come here
         return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
     case WM_KEYDOWN:
@@ -434,10 +478,11 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_KILLFOCUS:
         if (view_.setCtrl(false)) // no key-up comes once the keyboard is gone
             invalidate();
-        // Clicked away into the host: the value typed so far counts.
+        // Clicked away into the host: the value typed so far counts. (A dialog stays open, its keys taken off the
+        // queue by the message hook.)
+        hasKeyboard_ = false;
+        keyboardFrom_ = nullptr;
         if (view_.typing()) {
-            hasKeyboard_ = false;
-            keyboardFrom_ = nullptr;
             view_.endTyping(true);
             invalidate();
         }
@@ -645,6 +690,9 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         }
         }
     }
+    // A dialog open over the editor: Enter confirms it, Escape cancels it. Other keys go on to the host.
+    if (view_.dialogOpen() && (key == VK_RETURN || key == VK_ESCAPE))
+        return view_.dialogKey(key == VK_RETURN ? View::Key::Enter : View::Key::Escape);
     if (ctrl && (key == 'Y' || (key == 'Z' && GetKeyState(VK_SHIFT) < 0))) {
         view_.redo();
         return true;
@@ -692,7 +740,8 @@ bool Editor::typedKey(const MSG &msg) {
     const auto code = static_cast<uint8_t>(msg.wParam);
     switch (msg.message) {
     case WM_KEYDOWN:
-        if (!view_.typing() || isModifier(msg.wParam))
+        if (!(view_.typing() || (view_.dialogOpen() && (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE))) ||
+            isModifier(msg.wParam))
             return false;
         typedKeys_.set(code);
         key(msg.wParam, msg.lParam);
@@ -714,10 +763,10 @@ bool Editor::typedKey(const MSG &msg) {
 void Editor::syncFocus() {
     if (!hwnd_)
         return;
-    if (view_.typing() && !hasKeyboard_) {
+    if (wantsKeyboard() && !hasKeyboard_) {
         keyboardFrom_ = SetFocus(hwnd_);
         hasKeyboard_ = GetFocus() == hwnd_;
-    } else if (!view_.typing() && hasKeyboard_) {
+    } else if (!wantsKeyboard() && hasKeyboard_) {
         hasKeyboard_ = false;
         // Back to whoever had it, or else to the host's window around the editor.
         HWND to = keyboardFrom_ && IsWindow(keyboardFrom_) ? keyboardFrom_ : GetAncestor(hwnd_, GA_ROOT);
@@ -732,43 +781,98 @@ void Editor::choosePreset(bool save) {
         PostMessageW(hwnd_, kPresetMessage, save ? 1 : 0, 0);
 }
 
+namespace {
+
+// The shell's file dialog, opened in `folder` every time. (An OPENFILENAME's initial folder gives way to the folder the
+// host's last file dialog was left in, whatever plugin opened it.) The path picked, empty if the user cancels; nullopt
+// where the dialog can't run on this thread (COM set up for another apartment, say), for the older one instead.
+std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::wstring &folder, const std::wstring &name,
+                                            const std::wstring &title, const std::wstring &presets,
+                                            const std::wstring &all) {
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(com))
+        return std::nullopt;
+    struct Uninit {
+        ~Uninit() { CoUninitialize(); }
+    } uninit;
+    IFileDialog *dialog = nullptr;
+    if (FAILED(CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&dialog))))
+        return std::nullopt;
+    const COMDLG_FILTERSPEC types[] = {{presets.c_str(), L"*.fmv"}, {all.c_str(), L"*.*"}};
+    dialog->SetFileTypes(2, types);
+    dialog->SetDefaultExtension(L"fmv");
+    dialog->SetTitle(title.c_str());
+    FILEOPENDIALOGOPTIONS options = 0;
+    dialog->GetOptions(&options);
+    options |= FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR |
+               (save ? FOS_OVERWRITEPROMPT : FOS_FILEMUSTEXIST);
+    dialog->SetOptions(options);
+    if (!folder.empty()) {
+        IShellItem *start = nullptr;
+        if (SUCCEEDED(SHCreateItemFromParsingName(folder.c_str(), nullptr, IID_PPV_ARGS(&start)))) {
+            dialog->SetFolder(start);
+            start->Release();
+        }
+    }
+    if (!name.empty())
+        dialog->SetFileName(name.c_str());
+    std::wstring path;
+    if (SUCCEEDED(dialog->Show(owner))) {
+        IShellItem *result = nullptr;
+        if (SUCCEEDED(dialog->GetResult(&result))) {
+            PWSTR picked = nullptr;
+            if (SUCCEEDED(result->GetDisplayName(SIGDN_FILESYSPATH, &picked))) {
+                path = picked;
+                CoTaskMemFree(picked);
+            }
+            result->Release();
+        }
+    }
+    dialog->Release();
+    return path;
+}
+
+} // namespace
+
 void Editor::browsePreset(bool save) {
     const ModalGuard guard(alive_); // the dialogs below run modal loops
-    // Filter pairs are NUL-separated, and the list ends with a double NUL (the last one the string's own).
-    const std::wstring filter = widen(tr(Str::DialogPresetFiles)) + L'\0' + L"*.fmv" + L'\0' +
-                                widen(tr(Str::DialogAllFiles)) + L'\0' + L"*.*" + L'\0';
     // Both start in the preset folder (the scan makes it if need be); saving suggests the preset's name.
     controller_.rescanPresets();
     const std::wstring folder = controller_.presetFolder();
-    wchar_t path[MAX_PATH] = L"";
-    if (save && controller_.presetIndex() >= 0) {
-        const std::wstring name = widen(controller_.presetName());
-        wcsncpy_s(path, name.c_str(), _TRUNCATE);
-    }
-    OPENFILENAMEW dialog{};
-    dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = hwnd_;
-    dialog.lpstrFilter = filter.c_str();
-    dialog.lpstrFile = path;
-    dialog.nMaxFile = MAX_PATH;
-    dialog.lpstrInitialDir = folder.empty() ? nullptr : folder.c_str();
-    dialog.lpstrDefExt = L"fmv";
-    dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    const std::wstring name = save && controller_.presetIndex() >= 0 ? widen(controller_.presetName()) : std::wstring();
     const std::wstring title = widen(tr(save ? Str::DialogSavePreset : Str::DialogLoadPreset));
+    const std::wstring presets = widen(tr(Str::DialogPresetFiles)), all = widen(tr(Str::DialogAllFiles));
+    std::optional<std::wstring> picked = shellFileDialog(hwnd_, save, folder, name, title, presets, all);
+    if (!guard.alive())
+        return;
+    if (!picked) { // the older dialog, which starts there unless the host's last dialog was left elsewhere
+        // Filter pairs are NUL-separated, and the list ends with a double NUL (the last one the string's own).
+        const std::wstring filter = presets + L'\0' + L"*.fmv" + L'\0' + all + L'\0' + L"*.*" + L'\0';
+        wchar_t path[MAX_PATH] = L"";
+        wcsncpy_s(path, name.c_str(), _TRUNCATE);
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize = sizeof(dialog);
+        dialog.hwndOwner = hwnd_;
+        dialog.lpstrFilter = filter.c_str();
+        dialog.lpstrFile = path;
+        dialog.nMaxFile = MAX_PATH;
+        dialog.lpstrInitialDir = folder.empty() ? nullptr : folder.c_str();
+        dialog.lpstrDefExt = L"fmv";
+        dialog.lpstrTitle = title.c_str();
+        dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
+        const bool ok = save ? GetSaveFileNameW(&dialog) : GetOpenFileNameW(&dialog);
+        if (!guard.alive())
+            return;
+        picked = ok ? std::wstring(path) : std::wstring();
+    }
+    if (picked->empty())
+        return;
     if (save) {
-        dialog.lpstrTitle = title.c_str();
-        dialog.Flags |= OFN_OVERWRITEPROMPT;
-        if (!GetSaveFileNameW(&dialog) || !guard.alive())
-            return;
-        if (!controller_.savePreset(path))
+        if (!controller_.savePreset(*picked))
             MessageBoxW(hwnd_, widen(tr(Str::DialogWriteFailed)).c_str(), L"FMVibe", MB_ICONWARNING);
-    } else {
-        dialog.lpstrTitle = title.c_str();
-        dialog.Flags |= OFN_FILEMUSTEXIST;
-        if (!GetOpenFileNameW(&dialog) || !guard.alive())
-            return;
-        if (!controller_.loadPreset(path))
-            MessageBoxW(hwnd_, widen(tr(Str::DialogNotPreset)).c_str(), L"FMVibe", MB_ICONWARNING);
+    } else if (!controller_.loadPreset(*picked)) {
+        MessageBoxW(hwnd_, widen(tr(Str::DialogNotPreset)).c_str(), L"FMVibe", MB_ICONWARNING);
     }
     if (guard.alive())
         invalidate();

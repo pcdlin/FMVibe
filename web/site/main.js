@@ -335,17 +335,123 @@ canvas.addEventListener('mouseleave', () => {
   afterInput();
 });
 
+// A wheel's delta in notches, down (or to the right) for more than 0.
+function notchesOf(e, delta) {
+  return e.deltaMode === 1 ? delta / 3 : e.deltaMode === 2 ? delta : delta / 100;
+}
+
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault(); // neither the page scrolls nor the browser zooms
-  // Browsers turn Shift+wheel sideways.
+  // Browsers turn Shift+wheel sideways, which stays the wheel turned (with Shift, finely). Without Shift, a sideways
+  // part (a touchpad swiped across, a tilted wheel) scrolls what scrolls sideways.
   const delta = e.deltaY !== 0 ? e.deltaY : e.shiftKey ? e.deltaX : 0;
-  if (delta === 0)
+  const across = e.shiftKey ? 0 : e.deltaX;
+  if (delta === 0 && across === 0)
     return;
-  const notches = e.deltaMode === 1 ? -delta / 3 : e.deltaMode === 2 ? -delta : -delta / 100;
   const [x, y] = viewPoint(e);
-  ui._ui_wheel(x, y, notches, e.shiftKey, ctrlOf(e));
+  if (delta !== 0)
+    ui._ui_wheel(x, y, -notchesOf(e, delta), e.shiftKey, ctrlOf(e));
+  if (across !== 0)
+    ui._ui_wheel_across(x, y, notchesOf(e, across));
   afterInput();
 }, {passive: false});
+
+// --- Touch --------------------------------------------------------------------------------------------------
+
+// One finger works the editor: on something that drags (a knob, a card's title, a handle) it drags it, elsewhere
+// over a panel that scrolls (the effects, the source cards, the MODS view's rows, a list) it pans it, and a tap is a
+// click, two quick ones a double-click (see View::touchDown()). Two fingers pan what scrolls between them, as the
+// middle button drags it. A long press opens the menu a right-click would.
+const TOUCH_SLOP = 10;         // CSS pixels a finger may jitter and still tap
+const DOUBLE_TAP_MS = 400;
+let touchMode = null;          // 'one', 'two', or 'done' until the fingers left over are lifted
+let touchId = null;            // the one finger's
+let touchStart = [0, 0];       // where it landed, in CSS pixels
+let touchMoved = false;
+let touchPoint = [0, 0];       // where it, or the middle of two, last was, in the editor's units
+let lastTap = null;            // {time, x, y}: the tap before, for a double one
+
+function touchMiddle(e) {
+  const [a, b] = [e.touches[0], e.touches[1]];
+  return viewPoint({clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2});
+}
+
+function touchOf(list) {
+  for (const t of list)
+    if (t.identifier === touchId)
+      return t;
+  return null;
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  closeMenu();
+  if (touchMode === null && e.touches.length === 1) {
+    const t = e.changedTouches[0];
+    touchId = t.identifier;
+    touchStart = [t.clientX, t.clientY];
+    touchMoved = false;
+    const [x, y] = touchPoint = viewPoint(t);
+    const second = lastTap !== null && performance.now() - lastTap.time < DOUBLE_TAP_MS &&
+                   Math.hypot(x - lastTap.x, y - lastTap.y) < 2 * TOUCH_SLOP * viewWidth / canvas.getBoundingClientRect().width;
+    const slop = TOUCH_SLOP * viewWidth / canvas.getBoundingClientRect().width;
+    touchMode = 'one';
+    ui._ui_touch_down(x, y, second ? 1 : 0, slop);
+    afterInput();
+    return;
+  }
+  if (e.touches.length >= 2 && touchMode !== 'two' && touchMode !== 'done') {
+    e.preventDefault(); // no mouse events made up from it
+    touchMode = 'two';
+    lastTap = null;
+    const [x, y] = touchPoint = touchMiddle(e);
+    ui._ui_touch_pan_begin(x, y);
+    afterInput();
+  }
+}, {passive: false});
+
+canvas.addEventListener('touchmove', (e) => {
+  if (touchMode === null)
+    return;
+  e.preventDefault();
+  if (touchMode === 'one') {
+    const t = touchOf(e.touches);
+    if (!t)
+      return;
+    touchMoved ||= Math.hypot(t.clientX - touchStart[0], t.clientY - touchStart[1]) > TOUCH_SLOP;
+    const [x, y] = touchPoint = viewPoint(t);
+    afterInput(ui._ui_touch_move(x, y) !== 0);
+  } else if (touchMode === 'two' && e.touches.length >= 2) {
+    const [x, y] = touchPoint = touchMiddle(e);
+    afterInput(ui._ui_touch_pan_move(x, y) !== 0);
+  }
+}, {passive: false});
+
+canvas.addEventListener('touchend', (e) => {
+  if (touchMode === 'one' && touchOf(e.changedTouches)) {
+    e.preventDefault(); // no mouse events made up from it: the editor has it already
+    canvas.focus({preventScroll: true});
+    startAudio();
+    ui._ui_touch_up(touchPoint[0], touchPoint[1]);
+    lastTap = touchMoved ? null : {time: performance.now(), x: touchPoint[0], y: touchPoint[1]};
+    afterInput();
+    touchMode = e.touches.length > 0 ? 'done' : null;
+  } else if (touchMode === 'two' && e.touches.length < 2) {
+    ui._ui_touch_pan_end(touchPoint[0], touchPoint[1]);
+    afterInput();
+    touchMode = e.touches.length > 0 ? 'done' : null;
+  } else if (e.touches.length === 0) {
+    touchMode = null;
+  }
+}, {passive: false});
+
+canvas.addEventListener('touchcancel', (e) => {
+  if (touchMode === 'one')
+    ui._ui_touch_cancel();
+  else if (touchMode === 'two')
+    ui._ui_touch_pan_end(touchPoint[0], touchPoint[1]);
+  afterInput();
+  touchMode = e.touches.length > 0 ? 'done' : null;
+});
 
 // --- Context menu -------------------------------------------------------------------------------------------
 
@@ -353,6 +459,11 @@ canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   if (dragging)
     return;
+  if (touchMode === 'one') { // a long press: its menu, and nothing more from that finger
+    ui._ui_touch_cancel();
+    touchMode = 'done';
+    lastTap = null;
+  }
   closeMenu();
   const [x, y] = viewPoint(e);
   const count = ui._ui_context_menu(x, y);
@@ -465,6 +576,13 @@ window.addEventListener('keydown', (e) => {
     startAudio();
   if (!menu.hidden && e.key === 'Escape') {
     closeMenu();
+    return;
+  }
+  // A dialog over the editor takes Enter, which confirms it, and Escape, which cancels it.
+  if (!ui._ui_typing() && ui._ui_dialog_open() && (e.key === 'Enter' || e.key === 'Escape')) {
+    e.preventDefault();
+    ui._ui_dialog_key(TYPING_KEYS[e.key]);
+    afterInput();
     return;
   }
   // While a value is typed, every key goes to it; copying, cutting and pasting come as their own events.

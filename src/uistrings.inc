@@ -839,6 +839,7 @@ STR(TipFree, "Free")
 STR(TipOneShot, "One shot")
 STR(TipAnchor, "Anchor to song position") // an LFO's switch: its phase follows the host's transport
 STR(TipUnipolar, "Unipolar")
+STR(TipBipolar, "Bipolar") // a Random card's switch, beside Unipolar
 STR(TipDelaySync, "Sync times to tempo")
 STR(TipSweepSync, "Sync sweep to tempo")
 STR(TipPingPong, "Alternate echoes between sides")

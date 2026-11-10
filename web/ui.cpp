@@ -340,6 +340,53 @@ EMSCRIPTEN_KEEPALIVE void ui_wheel(float x, float y, float steps, int shift, int
     view->wheel({x, y}, steps, mods(shift, ctrl));
 }
 
+// The wheel turned sideways (a touchpad swiped across): to the right for more than 0.
+EMSCRIPTEN_KEEPALIVE void ui_wheel_across(float x, float y, float steps) {
+    view->wheelAcross({x, y}, steps);
+}
+
+// Two fingers on a touchscreen, at the point between them: a pan of what scrolls there (1 if there was something to
+// pan), along with them until they go up.
+EMSCRIPTEN_KEEPALIVE int ui_touch_pan_begin(float x, float y) {
+    return view->touchPanBegin({x, y}) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE int ui_touch_pan_move(float x, float y) {
+    return view->touchPanMove({x, y}) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE void ui_touch_pan_end(float x, float y) {
+    view->touchPanEnd({x, y});
+}
+
+// One finger on the canvas (see View::touchDown()): `second` for a tap right after a tap there, `slop` how far it
+// moves before it drags or pans, in the editor's units.
+EMSCRIPTEN_KEEPALIVE void ui_touch_down(float x, float y, int second, float slop) {
+    view->touchDown({x, y}, second != 0, slop);
+}
+
+EMSCRIPTEN_KEEPALIVE int ui_touch_move(float x, float y) {
+    return view->touchMove({x, y}) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE void ui_touch_up(float x, float y) {
+    view->touchUp({x, y});
+}
+
+EMSCRIPTEN_KEEPALIVE void ui_touch_cancel() {
+    view->touchCancel();
+}
+
+// A dialog open over the editor, which takes Enter and Escape (View::Key, as ui_type_key() takes them): 1 if it took
+// the key.
+EMSCRIPTEN_KEEPALIVE int ui_dialog_open() {
+    return view->dialogOpen() ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE int ui_dialog_key(int key) {
+    return view->dialogKey(static_cast<View::Key>(key)) ? 1 : 0;
+}
+
 // The menu for a right-click there: how many items, then each item's command (0 for a separator) and label.
 EMSCRIPTEN_KEEPALIVE int ui_context_menu(float x, float y) {
     menu = view->contextMenu({x, y});

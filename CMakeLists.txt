@@ -141,7 +141,7 @@ add_library(fmvibe-plugin STATIC
     src/gui/editor.cpp
     src/gui/editor.h
 )
-target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core)
+target_link_libraries(fmvibe-plugin PUBLIC fmvibe-core ole32 shell32 uuid) # ole32 and shell32: the file dialogs
 fmvibe_options(fmvibe-plugin)
 
 add_library(FMVibe MODULE

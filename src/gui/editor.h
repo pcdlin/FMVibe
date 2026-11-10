@@ -57,7 +57,8 @@ private:
     void updateCursor();
     void contextMenu(int x, int y);
     void browsePreset(bool save);
-    // The editor takes the keyboard while a value is typed, and hands it back after.
+    // The editor takes the keyboard while a value is typed or a dialog is open, and hands it back after.
+    bool wantsKeyboard() const { return view_.typing() || view_.dialogOpen(); }
     void syncFocus();
     bool key(WPARAM key, LPARAM flags);
 
@@ -72,6 +73,7 @@ private:
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     bool trackingLeave_ = false;
+    bool touchPan_ = false;        // two fingers panning what scrolls under them (WM_GESTURE)
     ULONGLONG lastPoll_ = 0;       // when tick() last ran (GetTickCount64)
     bool hasKeyboard_ = false;     // taken for typing
     HWND keyboardFrom_ = nullptr;  // who had it before

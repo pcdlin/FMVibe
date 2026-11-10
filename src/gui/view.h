@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -92,11 +93,31 @@ public:
     void mouseLeave();
     void doubleClick(Point p, Modifiers mods);
     void wheel(Point p, float steps, Modifiers mods);
+    // The wheel turned sideways (a tilting wheel, a touchpad swiped across): what scrolls sideways under the mouse (the
+    // effects' row and graph, the source cards) scrolls `steps` notches on, to the right for more than 0. Nothing
+    // turns.
+    void wheelAcross(Point p, float steps);
     // The middle button held over a panel that scrolls (the effects, the source cards, the MODS view's rows, the
     // preset browser's list) grabs what it shows: until it goes up, mouseMove() drags that along with the mouse.
     // Elsewhere, or while the left button drags something, it does nothing.
     void middleDown(Point p);
     void middleUp(Point p);
+    // Two fingers on a touchscreen or touchpad, at `p` between them: a pan of whatever the middle button would drag
+    // there, along with them, until they go up. A drag the first finger started ends first, as cancelDrag() ends it.
+    // Whether there was something there to pan; moves return whether a repaint is due.
+    bool touchPanBegin(Point p);
+    bool touchPanMove(Point p);
+    void touchPanEnd(Point p);
+    // One finger on a touchscreen (a phone in the browser demo). Landing where nothing scrolls, it is the left button
+    // going down there. Over a panel that scrolls, it waits: lifted without moving, it is a click where it landed (with
+    // `secondTap`, a double-click's second click); moved further than `slop` (a finger's jitter, in the editor's
+    // units), it drags what it landed on if that drags (a knob, a card by
+    // its title, a handle, a node), and else pans what scrolls there, as two fingers do. touchMove() returns whether
+    // a repaint is due; touchCancel() ends it all as cancelDrag() does (the browser taking the touch for its menu, say).
+    void touchDown(Point p, bool secondTap, float slop);
+    bool touchMove(Point p);
+    void touchUp(Point p);
+    void touchCancel();
     std::vector<MenuItem> contextMenu(Point p);
     void menuCommand(int command);
     CursorKind cursor() const;
@@ -120,6 +141,11 @@ public:
     void pasteText(std::string_view text);
     // Commits the value typed, if it reads as one, or drops it.
     void endTyping(bool commit);
+    // A dialog over the editor (a confirm dialog, the settings) takes Enter, which presses its lit button, and Escape,
+    // which cancels it or closes the settings. While one is open the window should send it those keys: true if one
+    // was taken.
+    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0; }
+    bool dialogKey(Key key);
     // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
     // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
     bool setCtrl(bool held);
@@ -181,7 +207,9 @@ private:
         ModsAux,      // a = source, b = slot: a MODS row's aux, or + Aux; a click opens the menu of auxes
         ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
         ModsScroll,   // the MODS view's scrollbar: drag the thumb, or click the track to jump there
-        CascadeMenu,  // a = 1 on a level of the open cascading menu (b = the level), 0 around it (a click closes it)
+        InputsScroll, // the operator page's INPUTS tab's scrollbar, as the MODS view's
+        ModListScroll, // a pill's open list's scrollbar, as the MODS view's
+        CascadeMenu, // a = 1 on a level of the open cascading menu (b = the level), 0 around it (a click closes it)
         CascadeItem,  // a = level, b = entry: an entry of the open cascading menu
         SourceMods,   // a = source: the button on its card that shows its modulations in the MODS view
         ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
@@ -285,6 +313,8 @@ private:
                       // the main line
         FxNodeRemove, // a = node: the x on a split's controls, its container's in the row or its card in the graph
         FxNodeDelete, // a = node: the x in a circle at a node's upper right, while the mouse is over the node
+        FxNodePower,  // a = node, param = its Enabled: the power symbol in a circle at an effect's node's upper left,
+                      // while the mouse is over the node
         FxWire,       // a = lane, b = item·kFxGapStride + place: along a wire that takes a node at its middle, its +
         FxClear,      // the button at the FX panel's top right that removes every effect, asking first
         SplitPoint,   // param = the crossover, a = split, b = 0 the low one, 1 the high one: its handle on the display
@@ -325,7 +355,6 @@ private:
         Rect group{};
         float partLeft = 0.0f, partRight = 0.0f;
         bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
-        bool graph = false;     // a wire's or OUT label in the graph: its ranges above it, its depth handles below
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };
@@ -357,6 +386,8 @@ private:
         TextSelect, // across a text field (drag_.widget.a: its Field)
         Bend,       // a wire, sideways: how far it bows
         ModsScroll, // the MODS view's thumb
+        InputsScroll, // the INPUTS tab's thumb
+        ModListScroll, // a pill's open list's thumb
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
         SplitPoint, // a split's crossover handle, across
         FxNodeMove, // a node of the effects graph (a split or a join with what it holds), onto another place
@@ -380,6 +411,10 @@ private:
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
         std::vector<double> shapeBefore; // drawing a step: the shape's params before it
+        // A card or node Ctrl-dragged, which carries a copy (see copyDragged()): every param and the layout before the
+        // copy was made, which a drag called off goes back to.
+        std::vector<double> copyBefore;
+        std::optional<UiLayout> copyLayout;
     };
 
     struct Typing {
@@ -635,6 +670,9 @@ private:
     // Fills an empty slot with a fresh effect of `type`, or a copy of slot `copyOf`, and puts it in the line: a copy
     // right after its original, a new one where the list was opened (see fxSlot_).
     void addEffect(FxType type, int copyOf = -1);
+    // The first slot without an effect, or -1; and that slot filled (fresh, or as `copyOf`), unfolded, not in the line.
+    int freeFxSlot() const;
+    void fillEffect(int slot, FxType type, int copyOf);
     void removeEffect(int slot);
     // The effects (see fxgraph.cpp): a main line of effects and splits from IN to OUT, each split with a high and a low
     // band of effects (and, split in three, a middle one between), closed by a join (the sum of its number) or, the line's last item, left open into OUT. The FX
@@ -737,7 +775,16 @@ private:
         std::array<Point, kFxNodes> from{};
         float startPlace = 0.0f, span = 1.0f; // in the row: where its card or container was, and how wide
         bool byMouse = false; // in the row: the mouse has been over a container, and where it lands goes by the mouse
+        bool copy = false;    // a copy carried, the original left in `rest`: let go of anywhere, it lands
     };
+    // Ctrl held as a card or node starts to move: what is carried becomes a copy of it, the original staying where it
+    // is, made as the drag's undo step opens (an effect into a free slot, a split with its join and its bands'
+    // effects, a source into a free place). Too few free, it stays a move, with a message.
+    void copyDragged();
+    // A copy of `item` (an effect, or a split with its join and the effects on its bands): its settings, not its
+    // modulation, in free slots and a free split, shown folded as the original; `copies` maps each node to its copy.
+    // None, with a message, where there aren't enough.
+    std::optional<FxLineItem> copyFxItem(const FxLineItem &item, std::map<int, int> &copies);
     // The nodes' places as shown, in grid cells (fractions while they glide).
     struct FxGlide {
         bool on = false;
@@ -801,13 +848,14 @@ private:
     void moveFxToBand(int slot, int lane);
     // The FX view showing the effects as a graph, or as the row: only the view changes.
     void setFxGraph(bool on);
-    // The node of the graph under the mouse, or whose x is (see Kind::FxNodeDelete), -1 for none; and where its x
-    // goes, at its upper right.
+    // The node of the graph under the mouse, or whose x or power switch is (see Kind::FxNodeDelete and FxNodePower),
+    // -1 for none; and where its x goes, at its upper right, and an effect's power switch, at its upper left.
     int fxHoveredNode() const;
     // The same for the routing graph's nodes, whose x switches the node off (see Kind::NodeDelete).
     int routingHoveredNode() const;
     static Point nodeDeleteAt(int node, Point center);
     static Point fxDeleteAt(int node, Point center);
+    static Point fxPowerAt(int node, Point center);
     // The graph's widgets: its nodes and +s, and the inspector's split or join card.
     void fxGraphWidgets(std::vector<Widget> &list) const;
     // A split's controls on a card's place (`card`): in its container in the row (`row`, where its title drags it and
@@ -909,8 +957,20 @@ private:
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
-    enum class PanArea { Fx, Sources, Mods, Browser };
+    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList };
     void applyPan(Point p);
+    // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
+    // open list or menu that doesn't scroll, or while a drag goes on.
+    std::optional<std::pair<PanArea, float>> panAt(Point p) const;
+    // A finger landed over a panel that scrolls, waiting to see whether it taps, drags or pans (see touchDown()).
+    struct TouchPress {
+        Point at;
+        bool second = false;
+        float slop = 0.0f;
+    };
+    std::optional<TouchPress> touchPress_;
+    // What a finger moving on it drags rather than pans past: knobs, handles, cards' titles, nodes and the like.
+    bool dragsOnTouch(const Widget &w) const;
     float scrollLength(ScrollArea area) const;
     // While there is room for more, a dashed card after the last effect (a card place wide) and two after the last
     // source (LFO above ENV, square) add one.
@@ -1070,7 +1130,7 @@ private:
     float cardOf(int source) const;
     void revealSource(int source);
     // Fills a free place with a fresh source of `type`, or a copy of `copyOf`, shown after the others or the original.
-    void addSource(SourceType type, int copyOf = -1);
+    int addSource(SourceType type, int copyOf = -1); // the place it fills, or -1 with none free
     // Takes it out with its modulation, and whatever modulates its knobs.
     void removeSource(int source);
     // Shows the sources in the order `shown`, the free places after them.
@@ -1095,6 +1155,10 @@ private:
     Point nodePlace(int node, Point want, bool *found = nullptr) const;
     void placeSwitchedOn(int node); // moves a node just switched on off the others shown, as part of the edit
     int nodeAt(Point p) const;
+    // Where a label `width` wide goes on a wire, a quadratic curve from `start` by `control` to `end` whose middle is
+    // `middle`: there, unless that puts it over a node; then slid along the wire, either way, as little as clears
+    // every node shown, staying inside the panel. Where nowhere does, at the middle.
+    Point labelAlong(Point start, Point control, Point end, Point middle, float width) const;
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
     // An operator's Ratio, a knob drawn as a 7-segment readout (see kRatioBox).
@@ -1200,6 +1264,13 @@ private:
     LabelPill labelPill(int param, int mode, Rect idle) const;
     // The nodes whose routes into operator `op` its INPUTS tab lists, in the graph's order, and that tab's picture.
     std::vector<int> inputsOf(int op) const;
+    // Its rows (the feedback's among them), how far they scroll at most and where they are scrolled to, in rows; the
+    // place a row is drawn at, and the scrollbar's thumb.
+    int inputsRows(int op) const;
+    float inputsEnd(int op) const;
+    float inputsFirst(int op) const;
+    float inputsRowY(int op, int row) const;
+    Rect inputsThumb(int op) const;
     void paintInputs(Canvas &c, int op);
     bool opTabModulated(int op, InspectorTab tab) const;
     void paintNoiseSlope(Canvas &c, Rect r, int op);
@@ -1233,7 +1304,14 @@ private:
         bool sprung = false; // opened under a dragged handle
     };
     bool modListOn(const Widget &pill) const;
+    // It shows kModListRows rows at most; past that, they scroll (the wheel, the middle button, the bar at its right),
+    // and the panel is that much wider for the bar.
     Rect modListPanel(Rect anchor, int rows, bool aux) const;
+    int modListRowCount() const;
+    float modListEnd() const;
+    float modListFirst() const;
+    Rect modListScrollTrack(Rect panel) const;
+    Rect modListThumb(Rect track) const;
     // Whether the pill the open list belongs to still shows; if not, the list closes.
     bool modListPillShown() const;
     void openModList(const Widget &pill, bool sprung);
@@ -1253,6 +1331,8 @@ private:
     // The settings dialog: while it is open it takes every click.
     std::vector<Widget> settingsWidgets() const;
     std::vector<Widget> confirmWidgets() const;
+    // The confirm dialog's button `button` pressed (0 Cancel, 1 the way ahead, 2 to 4 the bands' and the split's others).
+    void answerConfirm(int button);
     std::string confirmWhat() const;
     bool confirmShorter() const;
     // The preset browser: while it is open it takes every click, and the confirm dialog goes over it.
@@ -1345,6 +1425,8 @@ private:
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
+    float inputsScroll_ = 0.0f;              // rows the INPUTS tab is scrolled to, before clamping
+    float modListScroll_ = 0.0f;             // rows a pill's open list is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it
     std::array<int, kFxSlots> fxBand_{};     // the band each three-band dynamics' or parametric EQ's card shows
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1

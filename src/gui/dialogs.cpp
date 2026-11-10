@@ -176,6 +176,46 @@ std::string View::confirmWhat() const {
                : std::string();
 }
 
+void View::answerConfirm(int button) {
+    const auto action = static_cast<PresetAction>(confirm_);
+    const bool clear = confirm_ == kConfirmFxClear;
+    const bool bands = confirm_ == kConfirmMidBand;
+    const bool split = confirm_ == kConfirmSplitRemove;
+    confirm_ = -1;
+    hover_.reset();
+    if (split) { // the split removed, its bands' effects kept on the main line (1) or with it (4)
+        if (button == 1 || button == 4)
+            removeFxNode(fxSplitNode(confirmSplit_), button == 4 ? 1 : 0);
+        confirmSplit_ = -1;
+    } else if (bands) { // back in two bands: the middle band's effects removed (1), onto the low band (2), the high one (3)
+        if (button > 0)
+            setSplitBands(confirmSplit_, 2, button == 1 ? 0 : button == 2 ? 2 : 1);
+        confirmSplit_ = -1;
+    } else if (button == 1 && clear) {
+        clearFx();
+    } else if (button == 1) {
+        runPreset(action);
+    }
+    pendingPreset_ = -1;
+}
+
+bool View::dialogKey(Key key) {
+    if (typing_ || !dialogOpen() || (key != Key::Enter && key != Key::Escape))
+        return false;
+    if (settingsOpen_) { // nothing in it waits to be confirmed: either key closes it
+        settingsOpen_ = false;
+        hover_.reset();
+        return true;
+    }
+    // Enter presses the button lit in the accent; the middle band's dialog lights none, as no way ahead is more
+    // likely than the others, and Enter leaves it open. Escape cancels, as a click around the dialog does.
+    if (key == Key::Escape)
+        answerConfirm(0);
+    else if (confirm_ != kConfirmMidBand)
+        answerConfirm(1);
+    return true;
+}
+
 // A line shorter with one line to show: before a file still to be picked loads, or before Save overwrites a preset.
 bool View::confirmShorter() const {
     return confirmWhat().empty() || confirm_ == static_cast<int>(PresetAction::Save) || confirm_ == kConfirmSplitRemove;

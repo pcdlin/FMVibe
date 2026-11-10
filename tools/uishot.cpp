@@ -1554,6 +1554,352 @@ void testCardEdgeScroll(const std::filesystem::path &dir, Renderer &renderer) {
           "an LFO card held at either end of the row scrolls the row along, and lands at that end");
 }
 
+// The editor's dialogs take Enter and Escape: the bin's, the preset arrows' and the browser's "changed, load anyway?"
+// (over the browser, whose search lets the keyboard go meanwhile) and the settings. Escape cancels or closes, Enter
+// goes ahead; other keys and no dialog take nothing.
+void testDialogKeys(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const bool none = !view.dialogOpen() && !view.dialogKey(View::Key::Escape);
+    // The bin's dialog: Escape keeps the effects, Enter removes them (one undo step).
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    const Point bin = rectCenter(detail::fxClearButton());
+    click(view, bin);
+    const bool asked = view.dialogOpen() && !view.typing() && !view.dialogKey(View::Key::Up);
+    const bool escaped =
+        view.dialogKey(View::Key::Escape) && !view.dialogOpen() && fxChain(model) == std::vector<int>{0, 1};
+    click(view, bin);
+    const bool entered = view.dialogKey(View::Key::Enter) && !view.dialogOpen() && fxChain(model).empty();
+    view.undo();
+    check(none && asked && escaped && entered && fxChain(model) == std::vector<int>{0, 1},
+          "Escape cancels the bin's dialog and Enter goes ahead");
+
+    // The settings dialog: Escape closes it, and Enter too, nothing in it waiting to be confirmed.
+    click(view, kSettingsButton);
+    const bool settingsOpen = view.dialogOpen() && renderer.save(view, dir / "14h-settings-keys.png");
+    const bool settingsEscaped = view.dialogKey(View::Key::Escape) && !view.dialogOpen();
+    click(view, kSettingsButton);
+    const bool settingsEntered = view.dialogKey(View::Key::Enter) && !view.dialogOpen();
+    check(settingsOpen && settingsEscaped && settingsEntered, "Escape and Enter close the settings dialog");
+
+    // The next-preset arrow on a changed patch asks first: Escape stays on Init, Enter loads the first preset.
+    drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    const Point nextPreset{787.0f, 18.0f}, presetBox{600.0f, 18.0f};
+    click(view, nextPreset);
+    const bool presetAsked = view.dialogOpen() && model.presetIndex() == -1;
+    view.dialogKey(View::Key::Escape);
+    const bool stayed = !view.dialogOpen() && model.presetIndex() == -1 && model.patchEdited();
+    click(view, nextPreset);
+    view.dialogKey(View::Key::Enter);
+    const bool loaded = !view.dialogOpen() && model.presetIndex() == 0;
+    // From the browser: Enter in its search loads the preset found, asking first over it, where the search lets the
+    // keyboard go; Enter there loads it and closes the browser.
+    drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    click(view, presetBox);
+    type(view, "bell");
+    view.typeKey(View::Key::Enter);
+    const bool overBrowser = view.dialogOpen() && !view.typing() && model.presetIndex() == 0 &&
+                             renderer.save(view, dir / "22j-preset-confirm-keys.png");
+    view.dialogKey(View::Key::Enter);
+    check(presetAsked && stayed && loaded && overBrowser && model.presetName() == "Bell" && !view.typing() &&
+              !view.dialogOpen(),
+          "Escape cancels the preset dialog and Enter loads the preset, over the browser too");
+}
+
+// Ctrl held as a card or node starts to move carries a copy of it, the original staying: an effect card in the row,
+// an effect's node and a split's (with its join and its bands' effects) in the graph, and a source card. The copy
+// lands where it is let go of, with the original's settings, one undo step; a drag called off leaves nothing.
+void testCtrlCopy(const std::filesystem::path &dir, Renderer &renderer) {
+    const Modifiers ctrl{false, true, false};
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(0, FxParam::ShaperDrive)] = 0.8;
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    fxScrolled = 0.0f;
+    auto copied = [&](int copy, int original) {
+        return model.value(paramIndex(copy, FxParam::Type)) == model.value(paramIndex(original, FxParam::Type)) &&
+               model.value(paramIndex(copy, FxParam::ShaperDrive)) ==
+                   model.value(paramIndex(original, FxParam::ShaperDrive));
+    };
+    // The row: the shaper carried past the reverb, its copy landing after it.
+    const Point grip = fxGrip(model, 0), past{grip.x + 1.5f * kFxStep, grip.y};
+    view.mouseDown(grip, ctrl);
+    view.mouseMove({grip.x + 8.0f, grip.y}, ctrl);
+    view.mouseMove(past, ctrl);
+    for (int n = 0; n < 20; ++n)
+        view.poll();
+    const bool rowShot = renderer.save(view, dir / "8e-fx-ctrl-copy.png");
+    view.mouseUp(past, ctrl);
+    const bool rowCopy = fxChain(model) == std::vector<int>{0, 1, 2} && copied(2, 0);
+    view.undo();
+    const bool rowUndone =
+        fxChain(model) == std::vector<int>{0, 1} && model.value(paramIndex(2, FxParam::Type)) == 0.0;
+    // Without Ctrl it moves; called off, the copy goes again and leaves no undo step.
+    drag(view, grip, past);
+    const bool moved = fxChain(model) == std::vector<int>{1, 0};
+    view.undo();
+    const UndoStep *last = model.nextUndo();
+    view.mouseDown(grip, ctrl);
+    view.mouseMove({grip.x + 8.0f, grip.y}, ctrl);
+    view.mouseMove(past, ctrl);
+    view.cancelDrag();
+    const bool calledOff = fxChain(model) == std::vector<int>{0, 1} &&
+                           model.value(paramIndex(2, FxParam::Type)) == 0.0 && model.nextUndo() == last;
+    check(rowShot && rowCopy && rowUndone && moved && calledOff,
+          "an effect card Ctrl-dragged along the row leaves a copy where it is let go of, one undo step");
+
+    // The graph: the shaper's node, then a split holding a delay on its high band, each copied onto the line.
+    click(view, rectCenter(detail::fxModeButton(1)));
+    auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
+    auto settle = [&] {
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+    };
+    auto dragNode = [&](Point from, Point to, Modifiers mods) {
+        view.mouseMove(from, {});
+        view.mouseDown(from, mods);
+        view.mouseMove({from.x + 8.0f, from.y + 4.0f}, mods);
+        view.mouseMove(to, mods);
+        settle();
+        view.mouseUp(to, mods);
+        settle();
+    };
+    // Its copy's place opens right after it as it starts to move, so past the reverb is a column further on.
+    dragNode(cell(1, 0), detail::fxGridAt(3.5f, 0.0f, 0.0f), ctrl);
+    const bool nodeCopy = fxChain(model) == std::vector<int>{0, 1, 2} && copied(2, 0) && model.ui.fxSelected == 2;
+    view.undo();
+    settle();
+    const Point plus = cell(3, 0);
+    click(view, plus);
+    click(view, fxListSplit(view, besidePlus(plus)));
+    const Point high = cell(4, -1);
+    click(view, high);
+    click(view, fxListItem(view, besidePlus(high), FxType::Delay, true));
+    model.values[paramIndex(0, SplitParam::Low)] = 0.3;
+    view.poll();
+    settle();
+    const bool split =
+        fxChain(model) == std::vector<int>{0, 1, 2} && model.value(paramIndex(0, SplitParam::Used)) == 1.0;
+    dragNode(cell(3, 0), detail::fxGridAt(0.5f, 0.0f, 0.0f), ctrl);
+    view.mouseMove({600.0f, 428.0f}, {});
+    const bool splitShot = renderer.save(view, dir / "40v-fx-graph-ctrl-copy.png");
+    const bool splitCopy = fxChain(model) == std::vector<int>{3, 0, 1, 2} &&
+                           model.value(paramIndex(1, SplitParam::Used)) == 1.0 &&
+                           model.value(paramIndex(1, SumParam::Used)) == 1.0 &&
+                           model.value(paramIndex(1, SplitParam::Low)) == 0.3 &&
+                           model.value(paramIndex(3, FxParam::Type)) == static_cast<double>(FxType::Delay) &&
+                           model.value(paramIndex(0, SplitParam::Used)) == 1.0;
+    view.undo();
+    settle();
+    check(nodeCopy && split && splitShot && splitCopy && fxChain(model) == std::vector<int>{0, 1, 2} &&
+              model.value(paramIndex(1, SplitParam::Used)) == 0.0 && model.value(paramIndex(3, FxParam::Type)) == 0.0,
+          "a node Ctrl-dragged in the effects graph leaves a copy where it is let go of, a split with its join and "
+          "its bands' effects, one undo step");
+
+    // A source card: LFO 1 carried past LFO 2, its copy (rate and all, modulating nothing) landing after it.
+    FakeController sources;
+    View sourceView(sources);
+    addSource(sourceView, SourceType::Lfo);
+    addSource(sourceView, SourceType::Lfo);
+    sources.values[paramIndex(0, SourceParam::Rate)] = 0.7;
+    sources.values[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(GlobalParam::FmAmount));
+    sources.values[slotAmountIndex(0, 0)] = 0.3;
+    sourceView.poll();
+    sourceView.wheel({60.0f, 541.0f}, 10.0f, {}); // the first card
+    const Point sourceAt = sourceGrip(0), sourceTo{cardX(1.0f) + 250.0f, 572.0f};
+    sourceView.mouseDown(sourceAt, ctrl);
+    sourceView.mouseMove({sourceAt.x + 8.0f, sourceAt.y}, ctrl);
+    sourceView.mouseMove(sourceTo, ctrl);
+    const bool sourceShot = renderer.save(sourceView, dir / "11g-source-ctrl-copy.png");
+    sourceView.mouseUp(sourceTo, ctrl);
+    const bool sourceCopy = shown(sources) == std::vector<int>{0, 1, 2} &&
+                            sources.value(paramIndex(2, SourceParam::Type)) == static_cast<double>(SourceType::Lfo) &&
+                            sources.value(paramIndex(2, SourceParam::Rate)) == 0.7 &&
+                            slotTarget(sources.value(slotTargetIndex(2, 0))) < 0 &&
+                            slotTarget(sources.value(slotTargetIndex(0, 0))) == paramIndex(GlobalParam::FmAmount);
+    sourceView.undo();
+    check(sourceShot && sourceCopy && shown(sources) == std::vector<int>{0, 1} &&
+              sources.value(paramIndex(2, SourceParam::Type)) == 0.0,
+          "a source card Ctrl-dragged leaves a copy where it is let go of, one undo step");
+}
+
+// Two fingers pan what the middle button drags (the effects' row, the source cards, the preset browser's list),
+// ending what the first finger pressed without dropping anything, and doing nothing over a dialog; the wheel turned
+// sideways scrolls the row, the source cards and the effects graph. One finger turns a knob it lands on (a double tap
+// setting it back), taps what it lands on, and elsewhere pans the row, the source cards and the browser's list
+// without picking what it went down on.
+void testTouchPan(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    for (FxType type : {FxType::Delay, FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::Compressor,
+                        FxType::Widener, FxType::Disperser, FxType::FreqShifter})
+        addFx(view, type);
+    view.wheel({600.0f, 153.0f}, 10.0f, {}); // back to the start
+    const std::vector<int> chain = fxChain(model);
+    auto fxAt = [&](float scrolled, int position) { // switched off and on again by its icon there
+        fxScrolled = scrolled;
+        click(view, fxPower(model, position));
+        const bool off = model.value(paramIndex(chain[position], FxParam::Enabled)) == 0.0;
+        click(view, fxPower(model, position));
+        fxScrolled = 0.0f;
+        return off;
+    };
+    // The first finger on a knob, the second beside it: the knob stays as it was, and the row goes along.
+    const ParamValues before = model.values;
+    const Point grab{700.0f, 328.0f};
+    view.mouseDown(grab, {});
+    const bool began = view.touchPanBegin(grab);
+    view.touchPanMove({grab.x - kFxStep, grab.y + 6.0f});
+    view.touchPanMove({grab.x - 2.0f * kFxStep, grab.y + 6.0f});
+    const bool fxShot = renderer.save(view, dir / "8f-fx-touch-pan.png");
+    view.touchPanEnd({grab.x - 2.0f * kFxStep, grab.y + 6.0f});
+    view.mouseUp({grab.x - 2.0f * kFxStep, grab.y + 6.0f}, {}); // the first finger's, after
+    check(began && fxShot && model.values == before && fxAt(2.0f, 2),
+          "two fingers pan the effects' row, leaving the knob the first one went down on");
+    // Sideways, the wheel scrolls the row: back two places, then on two.
+    view.wheelAcross(grab, -5.0f);
+    const bool back = fxAt(0.0f, 2);
+    view.wheelAcross(grab, 5.0f);
+    check(back && fxAt(2.0f, 2), "the wheel turned sideways scrolls the effects' row");
+
+    // One finger: on a card's knob it turns it (the row staying), and a double tap puts it back.
+    constexpr float kSlop = 6.0f;
+    auto tap = [&](View &on, Point p, bool second = false) {
+        on.touchDown(p, second, kSlop);
+        on.touchMove({p.x + 2.0f, p.y + 1.0f}); // a finger's jitter
+        on.touchUp(p);
+    };
+    fxScrolled = 2.0f; // the phaser's Rate, first on the first card shown
+    const Point rate = fxKnob(model, 2, 0, 3, 205.0f);
+    fxScrolled = 0.0f;
+    view.touchDown(rate, false, kSlop);
+    view.touchMove({rate.x + 1.0f, rate.y - 15.0f});
+    view.touchMove({rate.x + 1.0f, rate.y - 30.0f});
+    view.touchUp({rate.x + 1.0f, rate.y - 30.0f});
+    const bool turned = model.values != before && fxAt(2.0f, 2);
+    tap(view, rate);
+    tap(view, rate, true);
+    const bool reset = model.values == before;
+    // Off the knobs, near a card's foot, it pans the row (two places back to the start), turning nothing; a tap on an
+    // effect's icon switches it.
+    const Point foot{700.0f, 476.0f};
+    view.touchDown(foot, false, kSlop);
+    view.touchMove({foot.x + kFxStep, foot.y + 3.0f});
+    view.touchMove({foot.x + 2.0f * kFxStep, foot.y + 3.0f});
+    const bool oneShot = renderer.save(view, dir / "8g-fx-one-finger-pan.png");
+    view.touchUp({foot.x + 2.0f * kFxStep, foot.y + 3.0f});
+    const bool panned = model.values == before && fxAt(0.0f, 2);
+    tap(view, fxPower(model, 2));
+    const bool tappedOff = model.value(paramIndex(chain[2], FxParam::Enabled)) == 0.0;
+    tap(view, fxPower(model, 2));
+    check(turned && reset && oneShot && panned && tappedOff &&
+              model.value(paramIndex(chain[2], FxParam::Enabled)) == 1.0,
+          "one finger turns a knob it lands on, a double tap putting it back, pans the effects' row off the knobs and "
+          "taps an effect's icon");
+    // Where nothing scrolls, it is the mouse at once: the header's FM Amount turns.
+    const double fmAmount = model.value(paramIndex(GlobalParam::FmAmount));
+    view.touchDown(kFmAmountKnob, false, kSlop);
+    view.touchMove({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    view.touchUp({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    check(model.value(paramIndex(GlobalParam::FmAmount)) != fmAmount, "one finger turns a knob where nothing scrolls");
+
+    // The source cards, a card's width to the left by two fingers, then back by the wheel sideways.
+    for (int n = 0; n < 5; ++n)
+        addSource(view, SourceType::Lfo);
+    view.wheel({60.0f, 541.0f}, 10.0f, {});
+    const std::vector<int> sources = shown(model);
+    auto firstShown = [&] { // which card shows first: switched off and on again by its power switch
+        click(view, sourcePower(0));
+        int off = -1;
+        for (int s : sources)
+            off = model.value(sourceEnabledIndex(s)) == 0.0 ? s : off;
+        click(view, sourcePower(0));
+        return off;
+    };
+    view.touchPanBegin({cardX(1) + 120.0f, 678.0f});
+    view.touchPanMove({cardX(0) + 120.0f, 678.0f});
+    view.touchPanEnd({cardX(0) + 120.0f, 678.0f});
+    const bool sourcesPanned = sources.size() >= 5 && firstShown() == sources[1];
+    view.wheelAcross({cardX(1) + 120.0f, 678.0f}, -2.5f);
+    check(sourcesPanned && firstShown() == sources[0],
+          "two fingers pan the source cards, and the wheel turned sideways scrolls them");
+    // One finger on a card's foot, under its display, pans them too.
+    view.touchDown({cardX(1) + 120.0f, 748.0f}, false, kSlop);
+    view.touchMove({cardX(0) + 120.0f, 748.0f});
+    view.touchUp({cardX(0) + 120.0f, 748.0f});
+    const bool onePanned = firstShown() == sources[1];
+    view.wheelAcross({cardX(1) + 120.0f, 678.0f}, -2.5f);
+    check(onePanned && firstShown() == sources[0], "one finger pans the source cards");
+
+    // Over a dialog, nothing pans.
+    click(view, kSettingsButton);
+    const bool refused = !view.touchPanBegin(grab);
+    view.dialogKey(View::Key::Escape);
+    check(refused && !view.dialogOpen(), "two fingers pan nothing over a dialog");
+
+    // The preset browser's list of forty, five rows up.
+    FakeController presets;
+    View presetView(presets);
+    presets.library.clear();
+    for (int n = 0; n < 40; ++n)
+        presets.library.push_back({"Preset " + std::to_string(n), ""});
+    presets.loadPresetAt(0);
+    click(presetView, {600.0f, 18.0f});
+    const float browserTop = std::round((presetView.height() - 560.0f) * 0.5f);
+    auto browserRow = [&](int row) { return Point{600.0f, browserTop + 58.0f + row * 24.0f + 11.0f}; };
+    presetView.touchPanBegin(browserRow(10));
+    presetView.touchPanMove({600.0f, browserRow(5).y});
+    presetView.touchPanEnd({600.0f, browserRow(5).y});
+    click(presetView, browserRow(0));
+    check(presets.presetIndex() == 5, "two fingers pan the preset browser's list");
+    // One finger: dragged up the list it loads nothing, and a tap then loads the preset tapped.
+    FakeController browsed;
+    View browsedView(browsed);
+    browsed.library = presets.library;
+    browsed.loadPresetAt(0);
+    click(browsedView, {600.0f, 18.0f});
+    browsedView.touchDown(browserRow(10), false, kSlop);
+    browsedView.touchMove({600.0f, browserRow(8).y});
+    browsedView.touchMove({600.0f, browserRow(5).y});
+    browsedView.touchUp({600.0f, browserRow(5).y});
+    const bool nothingLoaded = browsed.presetIndex() == 0 && browsedView.typing(); // still open, its search typing
+    tap(browsedView, browserRow(0));
+    check(nothingLoaded && browsed.presetIndex() == 5,
+          "one finger pans the preset browser's list without loading what it went down on, and a tap loads one");
+
+    // The effects graph, wider than its box: the wheel sideways to its end, where the Param EQ's node takes a click,
+    // and two fingers back to its start.
+    FakeController graph;
+    View graphView(graph);
+    for (int slot = 0; slot < 10; ++slot)
+        graph.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    graph.values[paramIndex(9, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+    setChain(graph, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+    graphView.poll();
+    click(graphView, kFxTab);
+    click(graphView, rectCenter(detail::fxModeButton(1)));
+    const Rect area = detail::fxGraphArea(1.5f);
+    const float most = detail::kFxGridLeft + 12.0f * detail::kFxGridCol + detail::kFxEndHalfW + 16.0f - area.w;
+    graphView.wheelAcross(area.center(), 100.0f);
+    click(graphView, detail::fxGridCell(10, 0, most));
+    const bool atEnd = graph.ui.fxSelected == 9;
+    graphView.touchPanBegin(area.center());
+    graphView.touchPanMove({area.center().x + 2000.0f, area.center().y});
+    graphView.touchPanEnd({area.center().x + 2000.0f, area.center().y});
+    click(graphView, detail::fxGridCell(1, 0, 0.0f));
+    check(most > 0.0f && atEnd && graph.ui.fxSelected == 0,
+          "the wheel turned sideways and two fingers scroll the effects graph");
+}
+
 // The middle button held and dragged over a panel that scrolls drags what it shows along with the mouse, without
 // turning what it went down on: the effects and the source cards across, the MODS view's rows and the preset browser's
 // list up and down. Past either end the row stops there, and dragged back it follows again at once. While the left
@@ -3096,6 +3442,32 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         view.mouseMove({600.0f, 428.0f}, {});
         check(shot && drawn && removed && from(1, 0) == fxSlotPort(0) && from(split, 0) == fxSlotPort(1),
               "a node under the mouse shows an x at its upper right, which removes it");
+    }
+
+    // And a power symbol in a circle at its upper left (read off the rendered pixels: none there before), whose click
+    // switches the effect off and on again, each an undo step.
+    {
+        const Point reverbAt = cell(2, 0);
+        const Point on{reverbAt.x - detail::kFxNodeR + 2.0f, reverbAt.y - detail::kFxNodeHalfH + 2.0f}; // its corner
+        const int enabled = paramIndex(1, FxParam::Enabled);
+        view.mouseMove({600.0f, 428.0f}, {});
+        renderer.save(view, dir / "40n-fx-node-plain.png");
+        const uint32_t plain = renderer.pixel({on.x - 7.5f, on.y});
+        view.mouseMove(reverbAt, {});
+        view.mouseMove(on, {});
+        const bool shot = renderer.save(view, dir / "40n-fx-node-power.png");
+        const bool drawn = renderer.pixel({on.x - 7.5f, on.y}) != plain;
+        click(view, on);
+        const bool off = model.value(enabled) == 0.0 && fxChain(model) == std::vector<int>{0, 1, 2, 3, 4};
+        const bool offShot = renderer.save(view, dir / "40n-fx-node-off.png");
+        click(view, on);
+        const bool backOn = model.value(enabled) == 1.0;
+        view.undo();
+        const bool undone = model.value(enabled) == 0.0;
+        view.undo();
+        view.mouseMove({600.0f, 428.0f}, {});
+        check(shot && drawn && off && offShot && backOn && undone && model.value(enabled) == 1.0,
+              "an effect's node under the mouse shows a power switch at its upper left, which switches it off and on");
     }
 
     // Nodes dragged and dropped, the others gliding aside to make room while one is held: the phaser between the
@@ -5153,6 +5525,73 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
 // right-click menus of its label and its matrix cell (whose corner shows the glyph), and from the operator page's
 // INPUTS tab; each pick an undo step. Moved onto another operator by its arrowhead, a route keeps its mode;
 // disconnected, it starts as Phase.
+// The INPUTS tab's rows 30 px apart: a modulated depth showing its handles under it and its ranges on its top line,
+// its number left as it was (read off the rendered pixels); past the six rows the tab holds, the wheel scrolls the
+// rows and its scrollbar's thumb dragged brings them back.
+void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    // B..F, F1 and F2 into A, and A's feedback: eight rows.
+    for (int op = 1; op < kOps; ++op) {
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+        model.set(detail::routeParam(op, 0), 0.5);
+    }
+    for (int filter = 0; filter < kFilters; ++filter) {
+        model.set(paramIndex(filter, FilterParam::Enabled), 1.0);
+        model.set(detail::routeParam(kOps + filter, 0), 0.5);
+    }
+    model.set(detail::routeParam(0, 0), 0.3);
+    model.ui.selectedNode = 0;
+    view.poll();
+    click(view, opTabPoint(InspectorTab::Inputs));
+    view.mouseMove({600.0f, 468.0f}, {});
+    // The first row's depth, 48 px wide at the inspector's right, and the rows' place in it.
+    const Rect depth{884.0f + 300.0f - 16.0f - 48.0f, 132.0f + 186.0f, 48.0f, 18.0f};
+    auto pixels = [&](float top, float bottom) {
+        std::vector<uint32_t> found;
+        for (float y = top; y < bottom; y += 1.0f)
+            for (float x = depth.x + 4.0f; x < depth.right() - 4.0f; x += 1.0f)
+                found.push_back(renderer.pixel({x, y}));
+        return found;
+    };
+    renderer.save(view, dir / "5l-op-inputs-many.png");
+    const std::vector<uint32_t> number = pixels(depth.y + 4.0f, depth.bottom() - 4.0f);
+    const std::vector<uint32_t> under = pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f);
+    const std::vector<uint32_t> top = pixels(depth.y - 1.0f, depth.y + 1.0f);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(detail::routeParam(1, 0)));
+    model.set(slotAmountIndex(0, 0), 0.3);
+    view.poll();
+    const bool modShot = renderer.save(view, dir / "5m-op-inputs-modulated.png");
+    check(modShot && pixels(depth.y + 4.0f, depth.bottom() - 4.0f) == number &&
+              pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 1.0f, depth.y + 1.0f) != top,
+          "an INPUTS row's modulated depth has its handles under it and its ranges on its top line, its number as it was");
+
+    // The sixth row's depth is F1's; two notches down over the names, the eighth's, the feedback's, is there.
+    const Point sixth{depth.center().x, depth.center().y + 5.0f * 30.0f};
+    view.wheel({900.0f, 330.0f}, -2.0f, {});
+    view.poll();
+    const bool scrolledShot = renderer.save(view, dir / "5n-op-inputs-scrolled.png");
+    drag(view, sixth, {sixth.x, sixth.y - 20.0f});
+    const bool feedback = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
+    view.undo();
+    // The thumb, at the bar's foot now, dragged up to its top: the first row is B's again.
+    const Point thumb{884.0f + 300.0f - 9.0f, 132.0f + 372.0f - 20.0f};
+    drag(view, thumb, {thumb.x, thumb.y - 200.0f});
+    view.poll();
+    drag(view, depth.center(), {depth.center().x, depth.center().y - 20.0f});
+    const bool back = model.value(detail::routeParam(1, 0)) > 0.5;
+    view.undo();
+    // Dragged up 60 px with the middle button over the names, the rows follow: the feedback's is the sixth again.
+    view.middleDown({900.0f, 420.0f});
+    view.mouseMove({900.0f, 360.0f}, {});
+    view.middleUp({900.0f, 360.0f});
+    drag(view, sixth, {sixth.x, sixth.y - 20.0f});
+    const bool panned = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
+    check(scrolledShot && feedback && back && panned,
+          "the INPUTS tab's rows scroll under the wheel, the middle button and their scrollbar's thumb");
+}
+
 void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5675,6 +6114,42 @@ void testNodeDelete(const std::filesystem::path &dir, Renderer &renderer) {
           "a filter under the mouse shows an x at its box's corner, which switches it off, undoably");
 }
 
+// A wire's label slides along its wire, off a node sitting at the wire's middle: A modulates B across the panel, C
+// sitting where A -> B's label would be. The wheel over C's middle then turns nothing (on the label, which is drawn over
+// the nodes, it would turn the route's amount); the snapshot shows where the label went.
+void testLabelClearOfNode(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(paramIndex(2, OpParam::Enabled), 1.0);
+    const int route = matrixIndex(0, 1);
+    model.set(route, 0.5);
+    layout.nodeX[0] = 0.2f;
+    layout.nodeX[1] = 0.8f;
+    layout.nodeY[0] = layout.nodeY[1] = 0.35f;
+    const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1);
+    // The wire bowed as in view.cpp, its start 24 px off A toward the bow's control point and its end 32 px off B.
+    const float span = std::hypot(b.x - a.x, b.y - a.y);
+    const Point left{-(b.y - a.y) / span, (b.x - a.x) / span};
+    const Point control{(a.x + b.x) * 0.5f + left.x * span * kDefaultWireBend,
+                        (a.y + b.y) * 0.5f + left.y * span * kDefaultWireBend};
+    auto toward = [&](Point from, float by) {
+        const float d = std::hypot(control.x - from.x, control.y - from.y);
+        return Point{from.x + (control.x - from.x) / d * by, from.y + (control.y - from.y) / d * by};
+    };
+    const Point start = toward(a, 24.0f), end = toward(b, 32.0f);
+    const Point middle{0.25f * start.x + 0.5f * control.x + 0.25f * end.x,
+                       0.25f * start.y + 0.5f * control.y + 0.25f * end.y};
+    layout.nodeX[2] = (middle.x - 56.0f) / 772.0f;
+    layout.nodeY[2] = (middle.y - 202.0f) / 226.0f;
+    view.poll();
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool shot = renderer.save(view, dir / "1m-label-clear-of-node.png");
+    view.wheel(middle, 1.0f, {});
+    check(shot && model.value(route) == 0.5, "a wire's label slides along its wire, clear of a node at its middle");
+}
+
 // A node switched on where another one shown sits comes back clear of it, in the same undo step as the switch; one
 // whose place is free stays there. B was left on top of A; a filter in the middle of A, B and E too.
 void testNodeSwitchOnPlace(const std::filesystem::path &dir, Renderer &renderer) {
@@ -5822,6 +6297,31 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     check(added && menuButtonShot && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 &&
               onPressure && onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "+ SOURCE's list adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
+
+    // A Random card's Unipolar | Bipolar, centered under what it does (level with an LFO's clock modes, 30.5 px each,
+    // at y 564 + 72): unipolar to begin with, Bipolar lit by a click (read off the rendered pixels, clear of its icon),
+    // Unipolar again by the other; each an undo step.
+    {
+        auto polarity = [](int bipolar) {
+            return Point{cardX(0) + 0.5f * kCardW + 30.5f * (static_cast<float>(bipolar) - 0.5f), 564.0f + 72.0f + 8.0f};
+        };
+        const int bipolarParam = paramIndex(0, SourceParam::Bipolar);
+        const Point clearOfIcon{polarity(1).x - 11.0f, polarity(1).y + 5.0f};
+        const bool startsUnipolar = model.value(bipolarParam) == 0.0;
+        view.mouseMove({600.0f, 328.0f}, {});
+        renderer.save(view, dir / "11j-random-unipolar.png");
+        const uint32_t unlit = renderer.pixel(clearOfIcon);
+        click(view, polarity(1));
+        const bool bipolar = model.value(bipolarParam) == 1.0;
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool polarShot = renderer.save(view, dir / "11j-random-bipolar.png");
+        const bool lit = renderer.pixel(clearOfIcon) != unlit;
+        click(view, polarity(0));
+        const bool unipolar = model.value(bipolarParam) == 0.0;
+        view.undo();
+        check(startsUnipolar && bipolar && polarShot && lit && unipolar && model.value(bipolarParam) == 1.0,
+              "a Random card's Unipolar | Bipolar switch sets its polarity, undoably");
+    }
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
@@ -6062,29 +6562,45 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     check(shot && beside() == none, "eight modulations on a knob show two handles and a pill, nothing outside its column");
 
     // The pill sits 2 px right of the two handles: 31 px across, centered under the knob, its middle 9.5 px right of
-    // the knob's. Its list, 265 px wide, centered under it: the rows 24 px apart from 24 px down, as on a card.
-    // From the knob's exact middle, as the inspector's knob row places it (kPitchKnob rounds it).
+    // the knob's. Its list, 265 px wide and 8 more for its scrollbar, centered under it: the rows 24 px apart from
+    // 24 px down, as on a card, six of them shown. From the knob's exact middle, as the inspector's knob row places it
+    // (kPitchKnob rounds it).
     const Point pill{884.0f + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.5f, 257.0f};
-    const float listX = pill.x - 132.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
+    const float listX = pill.x - 136.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
     auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
     view.mouseMove(pill, {});
     const bool hoverShot = renderer.save(view, dir / "40b-pill-hover.png");
+    const uint32_t seventhAway = renderer.pixel(row(6, 60.0f));
     click(view, pill);
     view.mouseMove(row(3, 60.0f), {}); // on LFO 4's name: its ring is drawn wider
     const bool listShot = renderer.save(view, dir / "40c-pill-list.png");
     const uint32_t open = renderer.pixel(row(5, 60.0f));
-    click(view, row(7, 9.0f)); // LFO 8's bypass dot
-    const bool bypassed = model.value(slotBypassIndex(7, 0)) == 1.0;
+    const bool sixShown = renderer.pixel(row(6, 60.0f)) == seventhAway; // no seventh row under the sixth
     drag(view, row(0, 116.0f + 38.0f), row(0, 116.0f + 57.0f)); // LFO 1's depth bar, to half way right: +50 %
     const bool deep = std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6;
-    click(view, row(6, 243.0f)); // LFO 7's remove
+    // Two notches down over the names: LFO 7 and 8 are the fifth and sixth rows shown.
+    view.wheel(row(3, 60.0f), -2.0f, {});
+    view.mouseMove(row(3, 60.0f), {});
+    const bool scrolledShot = renderer.save(view, dir / "40c2-pill-list-scrolled.png");
+    click(view, row(5, 9.0f)); // LFO 8's bypass dot
+    const bool bypassed = model.value(slotBypassIndex(7, 0)) == 1.0;
+    click(view, row(4, 243.0f)); // LFO 7's remove
     const bool removed = slotTarget(model.value(slotTargetIndex(6, 0))) < 0;
+    // Dragged down with the middle button, the rows follow back to the top: the first is LFO 1's again.
+    view.middleDown(row(2, 60.0f));
+    view.mouseMove(row(4, 60.0f), {});
+    view.middleUp(row(4, 60.0f));
+    click(view, row(0, 9.0f));
+    const bool panned = model.value(slotBypassIndex(0, 0)) == 1.0;
+    click(view, row(0, 9.0f));
     click(view, {600.0f, 328.0f}); // elsewhere: the list closes
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40d-pill-closed.png");
     const uint32_t closed = renderer.pixel(row(5, 60.0f));
-    check(hoverShot && listShot && bypassed && deep && removed && open != closed,
-          "a pill's list bypasses, sets the depth of and removes its modulations, and closes at a click elsewhere");
+    check(hoverShot && listShot && sixShown && scrolledShot && bypassed && deep && removed && panned &&
+              model.value(slotBypassIndex(0, 0)) == 0.0 && open != closed,
+          "a pill's list shows six rows, scrolls by the wheel and the middle button, bypasses, sets the depth of and "
+          "removes its modulations, and closes at a click elsewhere");
 
     // Macro 2's handle held over the pill opens the list; let go of on LFO 4's row, Macro 2 becomes its aux.
     const float strip = view.height() - 179.0f;
@@ -6115,7 +6631,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // list narrowing again.
     click(view, pill);
     view.mouseMove({600.0f, 328.0f}, {});
-    const float wideX = std::min(pill.x - 180.5f, 1200.0f - 4.0f - 361.0f) + 6.0f; // held inside the window
+    const float wideX = std::min(pill.x - 184.5f, 1200.0f - 4.0f - 369.0f) + 6.0f; // held inside the window
     auto wideRow = [&](int k, float x) { return Point{wideX + x, rowsY + k * 24.0f + 10.0f}; };
     const bool chipShot = renderer.save(view, dir / "40g2-pill-aux-chip.png");
     const bool chip = renderer.pixel(wideRow(3, 126.0f)) != renderer.pixel(wideRow(2, 126.0f));
@@ -6137,7 +6653,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     const Point cell = gridCellCenter(1, 2), left = gridCellCenter(1, 1);
     auto corner = [&] {
         std::vector<uint32_t> pixels;
-        for (float y = cell.y - 14.3f; y < cell.y - 6.0f; y += 1.0f)
+        for (float y = cell.y + 6.0f; y < cell.y + 14.3f; y += 1.0f)
             for (float x = left.x; x < left.x + 15.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
@@ -6159,7 +6675,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // rendered pixels round them), and Small draws them as before.
     auto handles = [&] {
         std::vector<uint32_t> pixels;
-        for (float y = cell.y - 22.0f; y < cell.y - 4.0f; y += 1.0f)
+        for (float y = cell.y + 4.0f; y < cell.y + 22.0f; y += 1.0f)
             for (float x = cell.x - 16.0f; x < cell.x + 20.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
@@ -6524,12 +7040,12 @@ void run(const std::filesystem::path &dir, float scale) {
     check(panned && model.value(paramIndex(0, OpParam::Pan)) == 0.0 && model.value(paramIndex(0, OpParam::Out)) == 1.0,
           "an operator's Pan knob turns from the middle and resets to it, its output left alone");
     // Modulation dropped on a silent operator's OUT cell in the matrix shows its wire to OUT; Disconnect takes both
-    // away.
+    // away. (Its arrowhead's menu has Disconnect too; its label has slid down the line, off E under B.)
     click(view, b);
     click(view, kMatrixTab);
     drag(view, sourceHandle(0), gridCellCenter(1, kNodes));
     click(view, kRoutingTab);
-    const Point bOut = outLabelOf(layout, 1);
+    const Point bOut = outArrowOf(layout, 1);
     check(slotTarget(model.value(slotTargetIndex(0, 1))) == paramIndex(1, OpParam::Out) &&
               model.value(paramIndex(1, OpParam::Out)) == 0.0 && outDisconnect(bOut) >= 0,
           "modulating an operator's output at 0 % shows its wire to OUT");
@@ -7240,7 +7756,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(tabJoined && renderer.save(view, dir / "6a-view-tab-hovered.png") &&
               renderer.pixel({kFxTab.x, 104.0f}) != fxTabAlone,
           "the tab shown opens its panel's edge, and a hovered one shows a tab's shape");
-    view.doubleClick({gridCellCenter(1, 0).x + 10.0f, gridCellCenter(1, 0).y - 10.0f}, {}); // Env 1's dot on B -> A
+    view.doubleClick({gridCellCenter(1, 0).x, gridCellCenter(1, 0).y + 10.0f}, {}); // Env 1's dot on B -> A, centered
     check(slotTarget(model.value(slotTargetIndex(1, 1))) < 0 &&
               slotTarget(model.value(slotTargetIndex(1, 0))) == fmAmount,
           "double-clicking a modulation dot removes that modulation");
@@ -8034,19 +8550,28 @@ void run(const std::filesystem::path &dir, float scale) {
     check(shown(model) == std::vector<int>{0, 2, 1, 3, 4} && nameOf(model, 2) == trf(Str::SourceNameLfo, {"2"}),
           "dragging a card's title moves that source along");
 
-    // Duplicate LFO 2 from its title's menu: the copy, with its targets and shape, follows it.
+    // Duplicate LFO 2 from its title's menu: the copy, with its settings and shape but none of its targets, follows it.
     model.sets.clear();
     for (const MenuItem &item : view.contextMenu(sourceGrip(1)))
         if (item.label == tr(Str::MenuDuplicate))
             view.menuCommand(item.command);
-    check(shown(model) == std::vector<int>{0, 2, 5, 1, 3, 4} &&
-              sameFields(model, paramIndex(5, SourceParam::Type), paramIndex(2, SourceParam::Type), kSourceParamCount) &&
-              sameFields(model, shapeCountIndex(5), shapeCountIndex(2), kShapeParamCount) &&
-              setLast(model, paramIndex(5, SourceParam::Type), kSourceParamCount, paramIndex(5, SourceParam::Type)) &&
-              slotTarget(model.value(slotTargetIndex(5, 0))) == paramIndex(GlobalParam::Pan) &&
-              model.value(paramIndex(5, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom) &&
-              nameOf(model, 5) == trf(Str::SourceNameLfo, {"3"}),
-          "Duplicate copies a source in right after it");
+    {
+        const int settings = paramIndex(0, SourceParam::Shape) - paramIndex(0, SourceParam::Type);
+        bool noTargets = true;
+        for (int slot = 0; slot < kSlots; ++slot)
+            noTargets = noTargets && model.value(slotTargetIndex(5, slot)) == 0.0 &&
+                        model.value(slotAmountIndex(5, slot)) == 0.0 && model.value(slotAuxIndex(5, slot)) == 0.0;
+        check(shown(model) == std::vector<int>{0, 2, 5, 1, 3, 4} &&
+                  sameFields(model, paramIndex(5, SourceParam::Enabled), paramIndex(2, SourceParam::Enabled), 1) &&
+                  sameFields(model, paramIndex(5, SourceParam::Shape), paramIndex(2, SourceParam::Shape),
+                             kSourceParamCount - settings) &&
+                  sameFields(model, shapeCountIndex(5), shapeCountIndex(2), kShapeParamCount) &&
+                  setLast(model, paramIndex(5, SourceParam::Type), kSourceParamCount, paramIndex(5, SourceParam::Type)) &&
+                  slotTarget(model.value(slotTargetIndex(2, 0))) == paramIndex(GlobalParam::Pan) && noTargets &&
+                  model.value(paramIndex(5, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom) &&
+                  nameOf(model, 5) == trf(Str::SourceNameLfo, {"3"}),
+              "Duplicate copies a source in right after it, without its targets");
+    }
 
     // A card's title menu picks the source's polarity, the one in force checked: an envelope (Env 1, the fourth
     // card) turns bipolar, and an LFO (the first, made unipolar by its switch earlier) bipolar and back.
@@ -8326,6 +8851,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testRouteFrom(dir, renderer);
     testNodeGrid(dir, renderer);
     testRouteModes(dir, renderer);
+    testInputsScroll(dir, renderer);
     testSelectedNode(dir, renderer);
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
@@ -8334,6 +8860,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModsLive(dir, renderer);
     testNodeSwitchOnPlace(dir, renderer);
     testNodeDelete(dir, renderer);
+    testLabelClearOfNode(dir, renderer);
     testModsSearch(dir, renderer);
     testMeter(dir, renderer);
     testOutScope(dir, renderer);
@@ -8357,6 +8884,9 @@ void run(const std::filesystem::path &dir, float scale) {
     testUtility(dir, renderer);
     testCardEdgeScroll(dir, renderer);
     testMiddleDrag(dir, renderer);
+    testTouchPan(dir, renderer);
+    testCtrlCopy(dir, renderer);
+    testDialogKeys(dir, renderer);
     testModFocus(dir, renderer);
     testCardOutline(dir, renderer);
     testFlatModulatedKnob(dir, renderer);

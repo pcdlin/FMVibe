@@ -104,12 +104,14 @@ inline Rect opTab(int tab) {
     return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
 }
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
-// the rows closer together when there are many.
+// with room under the depth for its modulations' handles. Past the rows the tab holds, they scroll, with a bar at
+// their right; drawn and hit within kInputsList, which leaves room for the ranges on the first row's depth's top.
 constexpr float kInputsTop = kInspector.y + 186.0f;
-constexpr float kInputsBottom = kInspector.y + kInspector.h - 10.0f;
-inline float inputsStep(int rows) {
-    return std::min(22.0f, (kInputsBottom - kInputsTop) / static_cast<float>(std::max(rows, 1)));
-}
+constexpr float kInputsBottom = kInspector.y + kInspector.h - 8.0f;
+constexpr float kInputsStep = 30.0f;
+constexpr float kInputsRowSpan = 28.0f; // a row and the handles under its depth
+constexpr Rect kInputsList{kInspector.x + 8.0f, kInputsTop - 3.0f, kInspector.w - 16.0f, kInputsBottom - kInputsTop + 3.0f};
+inline Rect inputsScrollTrack() { return {kInspector.right() - 11.0f, kInputsTop + 1.0f, 4.0f, kInputsBottom - kInputsTop - 2.0f}; }
 inline Rect inputsName(float y) { return {kInspector.x + 16.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsMode(float y, int mode) { return {kInspector.x + 48.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
 inline Rect inputsModeName(float y) { return {kInspector.x + 158.0f, y, 74.0f, 18.0f}; }
@@ -489,6 +491,8 @@ inline const ModHandleSize &modHandleSize(int size) {
 constexpr float kModListPad = 6.0f;
 constexpr float kModListTitleH = 24.0f;
 constexpr float kModListRowStep = 24.0f; // a row is 20 px high
+constexpr int kModListRows = 6;          // shown at once; more scroll
+constexpr float kModListBarW = 8.0f;     // the room its scrollbar takes at its right
 constexpr float kModListAuxW = 96.0f;    // the aux column: its chip and a gap
 
 // A row's aux chip, after its source's name, its x at its right end.
@@ -536,6 +540,13 @@ constexpr int kLfoModes = static_cast<int>(LfoClock::Count);
 inline Rect lfoModeSwitch(float card, int mode) {
     const Rect p = sourceCard(card);
     return {p.x + 16.0f + mode * 30.5f, p.y + 72.0f, 30.5f, 16.0f};
+}
+
+// A Random card's polarity, Unipolar (0) | Bipolar (1), centered under what the card says it does, level with an
+// LFO's clock modes and as wide as two of them.
+inline Rect randomPolaritySwitch(float card, int bipolar) {
+    const Rect mode = lfoModeSwitch(card, bipolar);
+    return {sourceCard(card).center().x + (static_cast<float>(bipolar) - 1.0f) * mode.w, mode.y, mode.w, mode.h};
 }
 
 inline Rect lfoShapeButton(float card) {
