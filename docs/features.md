@@ -176,6 +176,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   let go, a mod envelope that modulates something runs its release out even after the operators have faded: the
   voice keeps running its modulation alone (rendering no sound) until the release is over, so what it moves, an
   effect's knob for one, follows it down instead of jumping back, and only then reports its note's end to the host.
+  Once the last voice has ended, its modulation of the effects (and of Volume) runs on while they ring out, so an
+  LFO on a filter after a long reverb keeps sweeping the reverb's tail: a Free or Anchor LFO along its shared clock,
+  a Retrigger or One-Shot one carrying on from where the voice left it, its own params as every voice has them
+  (what is set, with the host's and the macros' modulation); the other sources' modulations keep what they last
+  gave. Once the effects have put out silence (below -100 dB) for a second, the effects' params go back to their
+  knobs, where nothing is heard, and a new note takes over from its first block. The voice itself still ends, and
+  reports its note's end, as it did.
   - **Macros**: eight knobs (0–100 %) that hosts can automate, each with 16 slots like a source's. A macro's
     value times each slot's depth is added to its target for every voice and the effects alike, so a macro can
     also move effect params, which per-voice sources can't. Their names are part of the patch.
@@ -1276,11 +1283,13 @@ may show anywhere, repaints the whole of it.
   - A modulation's ring on a knob, and the bar on a label, cell or depth bar, show the range it swings through: both
     ways of the set value while its source is bipolar, or one way while it is unipolar.
   - While notes play, a white dot on each modulated knob shows where the newest voice currently is; with no note
-    playing, it shows where the macros and the mod wheel take it, as they apply with or without notes.
+    playing, it shows where the macros and the mod wheel take it, as they apply with or without notes, and on an
+    effect's knob and Volume, while the effects ring out after the last note, where its voice's modulation takes it.
   - Each depth bar (in the MODS view and a pill's list) has a white tick where its modulation takes its target now,
     on the bar's own scale, so a unipolar one at the top of its swing reaches the depth's handle: the newest voice's
     while notes play, and a macro's or the mod wheel's from its knob, notes or not. A modulation another source
-    must run per voice shows none with no note playing, nor does a bypassed one or one whose source is off.
+    must run per voice shows none with no note playing (but on an effect's param or Volume while the effects ring
+    out after the last note), nor does a bypassed one or one whose source is off.
   - A modulated route shows it too: its wire (or its line to OUT), in its own color as any other,
     swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
     its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.

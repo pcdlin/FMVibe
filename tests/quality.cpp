@@ -3562,6 +3562,67 @@ int main() {
               "a mod envelope releases after the note, its voice running on until it is done");
     }
 
+    // --- An LFO on an effect runs on through the effects' tail once the note's voice has ended: a square LFO on a
+    // utility's Gain after a long reverb keeps the tail stepping up and down, retriggered or free.
+    std::printf("effects' modulation after the last voice:\n");
+    for (const bool free : {false, true}) {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.01);
+        e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        e.p[paramIndex(0, FxParam::ReverbDecay)] = 1.0; // its longest
+        e.p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+        e.p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Utility);
+        chain(e.p, {0, 1});
+        lfoOn(e.p, paramIndex(1, FxParam::UtilityGain), 0.5, 4.0);
+        e.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Square);
+        e.p[paramIndex(0, SourceParam::Free)] = free ? 1.0 : 0.0;
+        e.noteOn(57);
+        e.render(14400);
+        e.noteOff(57);
+        e.render(9600);
+        Telemetry t;
+        e.synth().telemetry(t);
+        const int voices = t.voices;
+        const bool reported = t.fxTail && t.modOffset[paramIndex(1, FxParam::UtilityGain)] != 0.0f;
+        // The steps between sixteenths of a second: an eighth of a second each way, the LFO's half cycle.
+        const std::vector<float> tail = e.render(48000);
+        constexpr size_t kWindow = 3000;
+        std::vector<double> levels;
+        for (size_t at = 0; at + kWindow <= tail.size(); at += kWindow) {
+            double sum = 0.0;
+            for (size_t i = at; i < at + kWindow; ++i)
+                sum += static_cast<double>(tail[i]) * tail[i];
+            levels.push_back(10.0 * std::log10(sum / kWindow + 1e-30));
+        }
+        double step = 0.0;
+        for (size_t k = 1; k < levels.size(); ++k)
+            step = std::max(step, std::abs(levels[k] - levels[k - 1]));
+        std::printf("      %-10s LFO on a utility after a reverb: %d voice(s), tail steps up to %.1f dB\n",
+                    free ? "free" : "retrigger", voices, step);
+        check(voices == 0 && step > 12.0, "an LFO keeps modulating the effects through their tail once the voice ends");
+        check(reported, "the editor is told where the tail's modulation takes the effects");
+    }
+    // With a short reverb, the tail's modulation stops once the effects have been silent for a second.
+    {
+        Engine e(2);
+        e.p[paramIndex(0, OpParam::Release)] = normFromTime(0.01);
+        e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+        e.p[paramIndex(0, FxParam::ReverbDecay)] = normFromTime(0.3);
+        chain(e.p, {0});
+        lfoOn(e.p, paramIndex(0, FxParam::ReverbMix), 0.5, 4.0);
+        e.noteOn(57);
+        e.render(4800);
+        e.noteOff(57);
+        e.render(4800);
+        Telemetry t;
+        e.synth().telemetry(t);
+        const bool running = t.voices == 0 && t.fxTail;
+        e.render(static_cast<size_t>(6.0 * kSampleRate));
+        e.synth().telemetry(t);
+        check(running && !t.fxTail && t.modOffset[paramIndex(0, FxParam::ReverbMix)] == 0.0f,
+              "the effects' modulation stops once they have rung out");
+    }
+
     // --- The output meter: each side's peak, falling 24 dB a second once the sound stops; past full scale (six
     // sines in step, 6 dB down) its clip light comes on and stays on.
     std::printf("output meter:\n");

@@ -43,6 +43,10 @@ constexpr int kFadeSlots = 4;        // extra voices for stolen ones to fade out
 constexpr int kMaxFadeSlots = 32;    // and at most: as many as the voices, so a chord over them all steals each
 constexpr double kVoiceQuietFloor = 1e-4; // a released voice quieter than this, its operators idle, has ended
 constexpr double kFilterRingFloor = 1e-6; // a voice filter quieter than this, its inputs stopped, has rung out
+// Once the last voice has ended, the effects' modulation runs on until they have put out less than this (-100 dB,
+// before Volume) for kFxTailHold seconds.
+constexpr float kFxTailFloor = 1e-5f;
+constexpr double kFxTailHold = 1.0;
 constexpr size_t kMaxEndedNotes = 4096; // notes ending in one block that are reported (see reportEnded())
 constexpr double kStealFade = 0.003; // seconds a stolen voice takes to fade out
 constexpr double kJoinFade = 0.005;  // seconds a note joining a held one in poly legato takes to fade in
@@ -102,6 +106,18 @@ double lfoHz(const Get &get, int source, double tempo) {
     return get(paramIndex(source, SourceParam::Sync)) >= 0.5
                ? 1.0 / divisionSeconds(get(paramIndex(source, SourceParam::Division)), tempo)
                : rateFromNorm(get(paramIndex(source, SourceParam::Rate)));
+}
+
+// What the LFO in place `source` puts out where `lfo` stands, -1..1, reading its params through `get` and a Custom
+// shape's points from `params`.
+template <class Get, class Lfo>
+double lfoOutput(const Get &get, const ParamValues &params, int source, const Lfo &lfo) {
+    const auto shape = static_cast<LfoShape>(
+        stepped(get(paramIndex(source, SourceParam::Shape)), static_cast<int>(LfoShape::Count) - 1));
+    return shape == LfoShape::Custom ? shapeValue([&params](int i) { return params[i]; }, source, lfo.phase)
+           : shape == LfoShape::Random
+               ? randomGlide(lfo.from, lfo.held, lfo.phase, get(paramIndex(source, SourceParam::RandomSmooth)))
+               : lfoValue(shape, lfo.phase, lfo.held);
 }
 
 } // namespace
@@ -230,6 +246,8 @@ void Synth::reset() {
     }
     effects_.reset();
     fxPitch_ = 60.0;
+    fxTail_.on = false;
+    fxLast_ = nullptr;
     volumeGain_ = -1.0; // set at once, the first time round
     outPeak_ = {};
     clipHold_ = 0.0;
@@ -711,43 +729,69 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
             analyzeFilters(n, sounding, params);
 
         // The effects are shared by all voices, so LFOs and envelopes reach them
-        // through the newest voice, like the editor shows; a filter's key tracking follows its pitch.
+        // through the newest voice, like the editor shows; a filter's key tracking follows its pitch. Once the last
+        // voice has ended, its modulation runs on as the effects ring out (see fxTailBlock()).
         const Voice *newest = newestVoice();
-        // The params the last block's slots moved go back as they were; then each param the newest voice's slots
-        // move takes its slots' offsets in their order, and its range.
+        const SlotMod *fxMods = nullptr;
+        int fxModCount = 0;
+        if (newest) {
+            fxTail_.on = false;
+            fxLast_ = newest;
+            fxLastOrder_ = newest->order;
+            fxMods = newest->slotMods.data();
+            fxModCount = newest->slotModCount;
+            fxPitch_ = newest->pitch;
+        } else {
+            // The voice newest a block ago has ended (in this block's render, or between two): its data is as it left
+            // it, unless a note has taken it over since.
+            if (fxLast_ && fxLast_->order == fxLastOrder_ && !fxLast_->active)
+                startFxTail(*fxLast_, params);
+            fxLast_ = nullptr;
+            if (fxTail_.on) {
+                fxMods = fxTailMods_.data();
+                fxModCount = fxTailModCount_ = fxTailBlock(params, n);
+            }
+        }
+        // The params the last block's slots moved go back as they were; then each param the slots move takes their
+        // offsets in their order, and its range.
         auto inRange = [this](int i, double value) { return std::clamp(value, paramMin_[i], paramMax_[i]); };
         for (int k = 0; k < fxMovedCount_; ++k)
             fxParams_[fxMoved_[k]] = inRange(fxMoved_[k], fxBase_[fxMoved_[k] - kFxBase]);
         fxMovedCount_ = 0;
-        if (newest) {
-            for (int m = 0; m < newest->slotModCount; ++m) {
-                const int i = newest->slotMods[m].index;
-                if (i >= kFxBase && i < kShapeBase) { // a param moved twice is listed twice: that does no harm
-                    fxParams_[i] = fxBase_[i - kFxBase];
-                    fxMoved_[fxMovedCount_++] = i;
-                }
+        for (int m = 0; m < fxModCount; ++m) {
+            const int i = fxMods[m].index;
+            if (i >= kFxBase && i < kShapeBase) { // a param moved twice is listed twice: that does no harm
+                fxParams_[i] = fxBase_[i - kFxBase];
+                fxMoved_[fxMovedCount_++] = i;
             }
-            for (int m = 0; m < newest->slotModCount; ++m)
-                if (newest->slotMods[m].index >= kFxBase && newest->slotMods[m].index < kShapeBase)
-                    fxParams_[newest->slotMods[m].index] += newest->slotMods[m].offset;
-            for (int k = 0; k < fxMovedCount_; ++k)
-                fxParams_[fxMoved_[k]] = inRange(fxMoved_[k], fxParams_[fxMoved_[k]]);
-            fxPitch_ = newest->pitch;
         }
+        for (int m = 0; m < fxModCount; ++m)
+            if (fxMods[m].index >= kFxBase && fxMods[m].index < kShapeBase)
+                fxParams_[fxMods[m].index] += fxMods[m].offset;
+        for (int k = 0; k < fxMovedCount_; ++k)
+            fxParams_[fxMoved_[k]] = inRange(fxMoved_[k], fxParams_[fxMoved_[k]]);
 
         // So are the free and anchored LFOs' clocks, which run even while no voice listens.
         runSharedLfos(params, newest, n, done + n);
         effects_.process(left + done, right + done, n, fxParams_, tempo_, fxPitch_);
+        // The tail's modulation stops once the effects have been silent for a while: the params then go back to
+        // their knobs where nothing is heard, and the effects can rest.
+        if (fxTail_.on) {
+            float peak = 0.0f;
+            for (uint32_t s = done; s < done + n; ++s)
+                peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+            fxTail_.silent = peak < kFxTailFloor ? fxTail_.silent + n / sampleRate_ : 0.0;
+            if (fxTail_.silent >= kFxTailHold)
+                fxTail_.on = false;
+        }
 
-        // Volume, after the effects: what is set, host and macro modulation, and the newest voice's LFOs and
-        // envelopes, as the effects take theirs. It glides to a new level sample by sample, however the block is
-        // split.
+        // Volume, after the effects: what is set, host and macro modulation, and the slots' modulation, as the
+        // effects take theirs. It glides to a new level sample by sample, however the block is split.
         const int volume = paramIndex(GlobalParam::Volume);
         double db = params[volume] + globalMod_[volume] + macroMod_[volume];
-        if (newest)
-            for (int m = 0; m < newest->slotModCount; ++m)
-                if (newest->slotMods[m].index == volume)
-                    db += newest->slotMods[m].offset;
+        for (int m = 0; m < fxModCount; ++m)
+            if (fxMods[m].index == volume)
+                db += fxMods[m].offset;
         const double gain =
             std::pow(10.0, std::clamp(db, table_[volume].min, table_[volume].max) / 20.0) / kVoiceLevel;
         if (volumeGain_ < 0.0)
@@ -765,6 +809,65 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
         songSeconds_ += frames / sampleRate_;
         songBeats_ += frames / sampleRate_ * tempo_ / 60.0;
     }
+}
+
+void Synth::startFxTail(const Voice &v, const ParamValues &params) {
+    fxTail_.on = true;
+    fxTail_.silent = 0.0;
+    fxTail_.lfos = v.lfos;
+    fxTail_.auxOut = v.auxOut;
+    fxTail_.rng = v.rng;
+    // The LFOs' slots are worked out again each block; the other sources' keep what they gave last.
+    fxTail_.heldCount = 0;
+    const int volume = paramIndex(GlobalParam::Volume);
+    for (int m = 0; m < v.slotModCount; ++m) {
+        const SlotMod &mod = v.slotMods[m];
+        if ((mod.index < kFxBase || mod.index >= kShapeBase) && mod.index != volume)
+            continue;
+        const int source = mod.slot / kSlots;
+        if (source < kMaxSources && sourceType(params[paramIndex(source, SourceParam::Type)]) == SourceType::Lfo)
+            continue;
+        fxTail_.held[fxTail_.heldCount++] = mod;
+    }
+}
+
+int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
+    // The sources' params as every voice has them: what is set, with the host's and the macros' modulation.
+    auto get = [&](int i) { return std::clamp(params[i] + globalMod_[i] + macroMod_[i], table_[i].min, table_[i].max); };
+    if (!sharedSlotsReady_)
+        shareSlots(params);
+    const int volume = paramIndex(GlobalParam::Volume);
+    int count = fxTail_.heldCount;
+    std::copy_n(fxTail_.held.begin(), count, fxTailMods_.begin());
+    for (int s = 0; s < kMaxSources; ++s) {
+        if (sourceType(params[paramIndex(s, SourceParam::Type)]) != SourceType::Lfo ||
+            params[sourceEnabledIndex(s)] < 0.5)
+            continue;
+        // A free or anchored LFO goes on along its shared clock, as a voice's would; another from where it stood.
+        Lfo &lfo = fxTail_.lfos[s];
+        const bool free = lfoShared(get, s);
+        if (free)
+            lfo = freeLfos_[s];
+        const double value = lfoOutput(get, params, s, lfo);
+        const bool bipolar = get(paramIndex(s, SourceParam::Unipolar)) < 0.5;
+        fxTail_.auxOut[s] = 0.5 * (value + 1.0);
+        const double swing = bipolar ? 0.5 * value : 0.5 * (value + 1.0);
+        for (int k = 0; k < sharedSlotCount_[s]; ++k) {
+            const SharedSlot &slot = sharedSlots_[s][k];
+            if ((slot.target < kFxBase || slot.target >= kShapeBase) && slot.target != volume)
+                continue;
+            const double amount = hostValue(params, slotAmountIndex(s, slot.slot));
+            if (amount == 0.0)
+                continue;
+            const double scale = slot.voiceAux >= 0 ? slot.scale * fxTail_.auxOut[slot.voiceAux] : slot.scale;
+            fxTailMods_[count++] = {slot.target, slotCurveValue(swing, slot.curve, bipolar) * amount * scale * slot.range,
+                                    s * kSlots + slot.slot};
+        }
+        if (!free)
+            advanceLfo(lfo, lfoHz(get, s, tempo_), frames, fxTail_.rng,
+                       get(paramIndex(s, SourceParam::OneShot)) >= 0.5, get(paramIndex(s, SourceParam::RandomChaos)));
+    }
+    return count;
 }
 
 void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32_t frames, uint32_t end) {
@@ -1082,6 +1185,17 @@ void Synth::telemetry(Telemetry &out) const {
             out.lfoFrom[s] = static_cast<float>(freeLfos_[s].from);
             out.lfoTo[s] = static_cast<float>(freeLfos_[s].held);
         }
+        // What the last voice's modulation adds to the effects as they ring out, where the editor's knobs show it.
+        if (fxTail_.on) {
+            out.fxTail = true;
+            for (int m = 0; m < fxTailModCount_; ++m) {
+                const SlotMod &mod = fxTailMods_[m];
+                out.modOffset[mod.index] += static_cast<float>(mod.offset);
+                if (mod.slot >= 0)
+                    out.slotOffset[mod.slot] =
+                        static_cast<float>(mod.offset / (table_[mod.index].max - table_[mod.index].min));
+            }
+        }
         return;
     }
     for (int m = 0; m < newest->slotModCount; ++m) {
@@ -1380,11 +1494,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 lfo.phase = start - std::floor(start);
             }
             lfo.restart = false;
-            const double value =
-                shape == LfoShape::Custom ? shapeValue([&params](int i) { return params[i]; }, s, lfo.phase)
-                : shape == LfoShape::Random
-                    ? randomGlide(lfo.from, lfo.held, lfo.phase, p[paramIndex(s, SourceParam::RandomSmooth)])
-                    : lfoValue(shape, lfo.phase, lfo.held);
+            const double value = lfoOutput(get, params, s, lfo);
             const bool lfoUnipolar = p[paramIndex(s, SourceParam::Unipolar)] >= 0.5;
             collectSlots(s, lfoUnipolar ? 0.5 * (value + 1.0) : value, 0.5 * (value + 1.0), 0.5 * value, !lfoUnipolar);
             if (!free)

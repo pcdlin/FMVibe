@@ -231,6 +231,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - each factory preset's file being sparse, as the preset tool writes it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
+  - an LFO on an effect, retriggered or free, still modulating it through a reverb's tail once the note's voice has
+    ended, the editor told where it takes the effect, and stopping once the effects have rung out;
   - every note reporting its end once: in mono a note taken over in its release, notes held in poly as mono turns
     on (a key let go not moving its voice onto a key another voice plays), with note ids a note on a key
     struck again while it rings (without them, the key staying down as the last note ends), the voices a lower voice limit cuts, a note with an id while its key sounds on
@@ -407,6 +409,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the dot on a filter's and a shaper's tab while it sounds out, the output meter and its clip light, and the
     output scope beside it, empty with nothing captured and drawing a span at its peak (read off the rendered
     pixels), its height easing down to a quieter span, and its spans too small to draw painting nothing again;
+  - with no note playing, Volume's knob showing the last voice's modulation while the effects ring out, and not
+    after (read off the rendered pixels);
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs, its Custom curve drawn on the page and in the big editor;

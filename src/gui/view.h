@@ -1470,11 +1470,14 @@ private:
     std::array<float, kAllSources * kSlots> macroSlotOffsets_{}; // their slots', as a share of each target's range
     std::optional<double> liveSlotOffset(int source, int slot) const;
     // Where modulation takes param `index` for the newest voice, against its set value, or with no note playing
-    // where the macros take it; nothing for the params that can't be modulated, such as the macros' own knobs.
+    // where the macros take it, and the last voice's modulation of the effects as they ring out; nothing for the
+    // params that can't be modulated, such as the macros' own knobs.
     float liveOffset(int index) const {
         if (index < 0 || index >= kModulatedCount)
             return 0.0f;
-        return telemetry_.voices > 0 ? telemetry_.modOffset[index] : macroOffsets_[index];
+        if (telemetry_.voices > 0)
+            return telemetry_.modOffset[index];
+        return macroOffsets_[index] + (telemetry_.fxTail ? telemetry_.modOffset[index] : 0.0f);
     }
     bool metering_ = false;                  // the output meter showed something when last polled
     std::vector<Rect> changedAreas_;         // see changedAreas()

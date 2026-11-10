@@ -4657,6 +4657,34 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     std::printf("      FM Amount's knob with no note: %d pixels change with the macro turned to 0\n", dotPixels);
     check(model.live.voices == 0 && dotPixels > 8 && dotPixels < 120,
           "with no note playing, a knob shows where a macro takes it");
+    // Once the last voice has ended, the effects' and Volume's knobs show where its modulation takes them as the
+    // effects ring out: Volume's dot comes with the tail, and goes with it (read off the rendered pixels).
+    {
+        const Point volumeKnob{kFmAmountKnob.x - detail::kHeaderKnobW, kFmAmountKnob.y};
+        auto volumePixels = [&] {
+            view.poll();
+            renderer.save(view, dir / "26a4-volume-tail.png");
+            std::vector<uint32_t> pixels;
+            for (float dy = -30.0f; dy <= 30.0f; dy += 1.0f)
+                for (float dx = -40.0f; dx <= 40.0f; dx += 1.0f)
+                    pixels.push_back(renderer.pixel({volumeKnob.x + dx, volumeKnob.y + dy}));
+            return pixels;
+        };
+        const int volume = paramIndex(GlobalParam::Volume);
+        const std::vector<uint32_t> before = volumePixels();
+        model.live.modOffset[volume] = -12.0f;
+        model.live.fxTail = true;
+        const std::vector<uint32_t> tail = volumePixels();
+        model.live.fxTail = false;
+        const std::vector<uint32_t> after = volumePixels();
+        model.live.modOffset[volume] = 0.0f;
+        int tailPixels = 0;
+        for (size_t i = 0; i < before.size(); ++i)
+            tailPixels += before[i] != tail[i];
+        std::printf("      Volume's knob in the effects' tail: %d pixels change with its modulation\n", tailPixels);
+        check(tailPixels > 8 && tailPixels < 120 && after == before,
+              "with no note playing, a knob shows the last voice's modulation while the effects ring out");
+    }
     doubleClick(view, {macroKnob(0).x, y + 26.0f});
     type(view, "Bright");
     view.typeKey(View::Key::Enter);

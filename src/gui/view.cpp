@@ -1384,6 +1384,10 @@ bool View::poll() {
             t.scopeCursor != telemetry_.scopeCursor)
             in(kInspector);
     }
+    // The last voice's modulation of the effects, moving their knobs on as they ring out.
+    if ((t.fxTail || telemetry_.fxTail) && (t.fxTail != telemetry_.fxTail || t.modOffset != telemetry_.modOffset ||
+                                            t.slotOffset != telemetry_.slotOffset))
+        everywhere = true;
     // A compressor's and an amp's meters move on while a tail drives them once the notes have ended, and the host's
     // tempo shows in the synced effects' captions whether notes play or not.
     if (t.fxReduction != telemetry_.fxReduction || t.tempo != telemetry_.tempo)
@@ -3503,16 +3507,20 @@ void View::paintRouting(Canvas &c) {
 }
 
 // What slot `slot` of `source` adds to its target now, as a share of the target's range: a macro's or the mod wheel's
-// from its knob, notes playing or not; another source's in the newest voice, while one plays. None while it modulates
-// nothing: bypassed, or its source switched off.
+// from its knob, notes playing or not; another source's in the newest voice, while one plays, and on an effect's param
+// as the effects ring out after the last one. None while it modulates nothing: bypassed, or its source switched off.
 std::optional<double> View::liveSlotOffset(int source, int slot) const {
     if (source < 0 || slot < 0 || slotBypassed(source, slot) || !sourceOn(source))
         return std::nullopt;
     const int aux = slotAux([this](int i) { return value(i); }, source, slot);
     if (!runsPerVoice(source) && (aux < 0 || !runsPerVoice(aux)))
         return macroSlotOffsets_[source * kSlots + slot];
-    if (telemetry_.voices <= 0)
-        return std::nullopt;
+    if (telemetry_.voices <= 0) {
+        const int target = slotTarget(value(slotTargetIndex(source, slot)));
+        const bool effect = (target >= kFxBase && target < kShapeBase) || target == paramIndex(GlobalParam::Volume);
+        if (!telemetry_.fxTail || !effect)
+            return std::nullopt;
+    }
     return telemetry_.slotOffset[source * kSlots + slot];
 }
 

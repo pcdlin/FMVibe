@@ -116,6 +116,9 @@ struct Telemetry {
     std::array<float, 2> outPeak{}; // the output's peak level per side (1 is full scale), falling kMeterFallDb a second
     float clipHold = 0.0f;          // seconds the clip light stays on, since the output last went past full scale
     int voices = 0;
+    // With no voice left, whether the last one's modulation of the effects runs on through their tail (see
+    // Synth::render()): modOffset and slotOffset then hold what it adds to the effects' params and Volume.
+    bool fxTail = false;
     float tempo = 120.0f; // host tempo, for showing synced times
     std::array<uint32_t, 4> keys{}; // keys held down, one bit per MIDI key (key 0 is bit 0 of keys[0])
     // The scope's operator in that voice (see Synth::setScope()): its output (unison copies together, as other
@@ -592,6 +595,26 @@ private:
     std::array<int, kAllSources * kSlots> fxMoved_{};
     int fxMovedCount_ = 0;
     double fxPitch_ = 60.0;  // the newest voice's pitch, for the effects' key tracking; kept once it has ended
+    // The effects' modulation once the last voice has ended (see render()): the LFOs run on, the free and anchored
+    // ones on their shared clocks and the others from where the last voice left them, and the other sources' slots
+    // keep what they last gave; until the effects have been silent for a while.
+    struct FxTail {
+        bool on = false;
+        std::array<Lfo, kMaxSources> lfos{};
+        std::array<double, kAllSources> auxOut{};
+        std::array<SlotMod, kAllSources * kSlots> held{}; // the slots of sources other than the LFOs
+        int heldCount = 0;
+        double silent = 0.0; // seconds the effects have put out silence
+        uint32_t rng = 1;
+    };
+    FxTail fxTail_;
+    std::array<SlotMod, kAllSources * kSlots> fxTailMods_{};
+    int fxTailModCount_ = 0; // fxTailMods_ in use, as of the last control block
+    const Voice *fxLast_ = nullptr; // the newest voice in the last control block, and its note-on number
+    uint64_t fxLastOrder_ = 0;
+    // Starts the tail from the voice that was newest, which has just ended; and its modulation for this block.
+    void startFxTail(const Voice &v, const ParamValues &params);
+    int fxTailBlock(const ParamValues &params, uint32_t frames);
     double volumeGain_ = -1.0; // Volume's gain after the effects, gliding toward the knob (-1: not yet set)
     double volumeGlide_ = 0.0;
     // The output meter's peaks and clip light (see Telemetry), taken off what render() puts out.
