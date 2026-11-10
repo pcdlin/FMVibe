@@ -181,7 +181,9 @@ private:
         ModsAux,      // a = source, b = slot: a MODS row's aux, or + Aux; a click opens the menu of auxes
         ModsAuxClear, // a = source, b = slot: the x on a MODS row's aux
         ModsScroll,   // the MODS view's scrollbar: drag the thumb, or click the track to jump there
-        CascadeMenu,  // a = 1 on a level of the open cascading menu (b = the level), 0 around it (a click closes it)
+        InputsScroll, // the operator page's INPUTS tab's scrollbar, as the MODS view's
+        ModListScroll, // a pill's open list's scrollbar, as the MODS view's
+        CascadeMenu, // a = 1 on a level of the open cascading menu (b = the level), 0 around it (a click closes it)
         CascadeItem,  // a = level, b = entry: an entry of the open cascading menu
         SourceMods,   // a = source: the button on its card that shows its modulations in the MODS view
         ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
@@ -327,7 +329,6 @@ private:
         Rect group{};
         float partLeft = 0.0f, partRight = 0.0f;
         bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
-        bool graph = false;     // a wire's or OUT label in the graph: its ranges above it, its depth handles below
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };
@@ -359,6 +360,8 @@ private:
         TextSelect, // across a text field (drag_.widget.a: its Field)
         Bend,       // a wire, sideways: how far it bows
         ModsScroll, // the MODS view's thumb
+        InputsScroll, // the INPUTS tab's thumb
+        ModListScroll, // a pill's open list's thumb
         Pan,        // the middle button: what a panel that scrolls shows, along with the mouse (a = PanArea)
         SplitPoint, // a split's crossover handle, across
         FxNodeMove, // a node of the effects graph (a split or a join with what it holds), onto another place
@@ -912,7 +915,7 @@ private:
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
-    enum class PanArea { Fx, Sources, Mods, Browser };
+    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList };
     void applyPan(Point p);
     float scrollLength(ScrollArea area) const;
     // While there is room for more, a dashed card after the last effect (a card place wide) and two after the last
@@ -1207,6 +1210,13 @@ private:
     LabelPill labelPill(int param, int mode, Rect idle) const;
     // The nodes whose routes into operator `op` its INPUTS tab lists, in the graph's order, and that tab's picture.
     std::vector<int> inputsOf(int op) const;
+    // Its rows (the feedback's among them), how far they scroll at most and where they are scrolled to, in rows; the
+    // place a row is drawn at, and the scrollbar's thumb.
+    int inputsRows(int op) const;
+    float inputsEnd(int op) const;
+    float inputsFirst(int op) const;
+    float inputsRowY(int op, int row) const;
+    Rect inputsThumb(int op) const;
     void paintInputs(Canvas &c, int op);
     bool opTabModulated(int op, InspectorTab tab) const;
     void paintNoiseSlope(Canvas &c, Rect r, int op);
@@ -1240,7 +1250,14 @@ private:
         bool sprung = false; // opened under a dragged handle
     };
     bool modListOn(const Widget &pill) const;
+    // It shows kModListRows rows at most; past that, they scroll (the wheel, the middle button, the bar at its right),
+    // and the panel is that much wider for the bar.
     Rect modListPanel(Rect anchor, int rows, bool aux) const;
+    int modListRowCount() const;
+    float modListEnd() const;
+    float modListFirst() const;
+    Rect modListScrollTrack(Rect panel) const;
+    Rect modListThumb(Rect track) const;
     // Whether the pill the open list belongs to still shows; if not, the list closes.
     bool modListPillShown() const;
     void openModList(const Widget &pill, bool sprung);
@@ -1342,6 +1359,8 @@ private:
     Point sourceMenuAt_{0.0f, 0.0f};         // its top left: where the mouse clicked that card; x < 0 under + SOURCE
     std::optional<Cascade> cascade_;         // a MODS row's cascading menu, while it is open
     float modsScroll_ = 0.0f;                // rows the MODS view is scrolled to, before clamping
+    float inputsScroll_ = 0.0f;              // rows the INPUTS tab is scrolled to, before clamping
+    float modListScroll_ = 0.0f;             // rows a pill's open list is scrolled to, before clamping
     float modsGlide_ = 0.0f;                 // and where it shows, gliding after it
     std::array<int, kFxSlots> fxBand_{};     // the band each three-band dynamics' or parametric EQ's card shows
     int octave_ = 0;                         // the keyboard's shift, -2..2 octaves from C1

@@ -393,6 +393,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator lighting up while modulation opens its route from 0 %, and not with the glow setting off (read off
     the rendered pixels), and modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
+  - the INPUTS tab's rows: a modulated depth's handles under it and its ranges on its top line, its number left as it
+    was (read off the rendered pixels), and eight rows scrolling under the wheel, the scrollbar's thumb and the
+    middle button;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
     one's ghost filled while it is shown (read off the rendered pixels);
   - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
@@ -521,7 +524,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and doing nothing while the left button drags a knob;
   - eight modulations on a knob and six on a matrix cell showing as many depth handles as fit and a "+n" pill,
     nothing drawn outside the knob's column or in the next cell (read off the rendered pixels); the pill's list
-    bypassing, setting the depth of and removing its modulations and closing at a click elsewhere, opening under a
+    showing six rows (read off the rendered pixels), scrolling under the wheel and the middle button, bypassing,
+    setting the depth of and removing its modulations and closing at a click elsewhere, opening under a
     macro's handle held over the pill and taking it as a row's aux, widening for an aux column whose chip (read off
     the rendered pixels) and its × take the aux away, and a source's line ending at the pill holding its handle;
   - a depth handle's right-click menu removing its aux, undoably, offered only while it has one;

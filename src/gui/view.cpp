@@ -1523,7 +1523,6 @@ std::vector<View::Widget> View::widgets() const {
         const LabelPill pill = labelPill(param, mode, idle);
         add(kind, pill.depth, param, from, kind == Kind::OutLabel ? -1 : to);
         list.back().modeGlyph = pill.glyph;
-        list.back().graph = true;
         if (!pill.open)
             return;
         list.back().group = pill.whole;
@@ -2298,21 +2297,31 @@ std::vector<View::Widget> View::widgets() const {
         if (tab == InspectorTab::Inputs) {
             // A row per route into it: the name shows its node, the buttons pick its mode, the label sets its
             // depth as a wire's does. Its feedback comes last, always Phase.
+            // Past what the tab holds they scroll, cut off at the list's ends.
             const std::vector<int> inputs = inputsOf(op);
             const bool feedback = wired(routeParam(op, op));
-            const float step = inputsStep(static_cast<int>(inputs.size()) + (feedback ? 1 : 0));
-            float y = kInputsTop;
-            for (int from : inputs) {
+            auto shown = [](float y) { return y + kInputsRowSpan > kInputsList.y && y < kInputsList.bottom(); };
+            for (size_t row = 0; row < inputs.size(); ++row) {
+                const int from = inputs[row];
+                const float y = inputsRowY(op, static_cast<int>(row));
+                if (!shown(y))
+                    continue;
+                const size_t start = list.size();
                 add(Kind::MatrixLabel, inputsName(y), -1, from);
                 const size_t buttons = list.size();
                 for (int m = 0; m < static_cast<int>(RouteMode::Count); ++m)
                     add(Kind::Choice, inputsMode(y, m), routeModeParam(from, op), from, m);
                 merge(buttons);
                 add(Kind::WireLabel, inputsDepth(y), routeParam(from, op), from, op);
-                y += step;
+                for (size_t i = start; i < list.size(); ++i)
+                    list[i].clip = kInputsList;
             }
-            if (feedback)
+            if (const float y = inputsRowY(op, static_cast<int>(inputs.size())); feedback && shown(y)) {
                 add(Kind::WireLabel, inputsDepth(y), routeParam(op, op), op, op);
+                list.back().clip = kInputsList;
+            }
+            if (inputsEnd(op) > 0.0f)
+                add(Kind::InputsScroll, inputsScrollTrack().inset(-3.0f));
         }
         if (tab == InspectorTab::Envelope) {
             const EnvIndices e = envIndices(op);
@@ -2534,12 +2543,14 @@ std::vector<View::Widget> View::widgets() const {
         if (kind != Kind::Knob) {
             // Leftwards from the corner, 8 px apart on a label and 7 on a cell or depth bar, no further out than
             // stays inside it at the user's size; past what fits, as many as leave room for the pill. A wire's or
-            // OUT label in the graph has them centered just under it and its ranges on its outline's top, so its
-            // depth stays readable; on the operator page's INPUTS tab, along its bottom, its ranges along its top. A
-            // cell and a depth bar have them in their top right corner, their ranges along their bottom.
+            // OUT label, in the graph and on the operator page's INPUTS tab, has them centered just under it and its
+            // ranges on its outline's top, so its depth stays readable. A matrix cell has them centered along its
+            // foot, its ranges along its top; a depth bar in its top right corner, its ranges along its bottom.
             const bool cell = kind == Kind::GridCell || kind == Kind::SlotBar;
             const float margin = std::max(cell ? 4.0f : 3.0f, sizes.dotCompact + 1.0f), step = cell ? 7.0f : 8.0f,
-                        y = cell ? r.y + 4.0f : list[i].graph ? r.bottom() + 0.75f + sizes.dotCompact : r.bottom() - 2.0f;
+                        y = kind == Kind::GridCell ? r.bottom() - 4.0f
+                            : cell                 ? r.y + 4.0f
+                                                   : r.bottom() + 0.75f + sizes.dotCompact;
             const int fit = static_cast<int>((r.w - 2.0f * margin) / step) + 1;
             int shown = n;
             float pillW = 0.0f;
@@ -2549,9 +2560,10 @@ std::vector<View::Widget> View::widgets() const {
                 const float room = r.w - margin - 4.25f - pillW - 1.0f;
                 shown = room < 0.0f ? 0 : std::min(static_cast<int>(std::floor(room / step)) + 1, n - 1);
             }
-            // The first handle's center; in the graph, the handles and pill as a group centered under the label.
+            // The first handle's center; under a label and along a matrix cell's foot, the handles and pill as a
+            // group centered on it.
             float first = r.right() - margin;
-            if (list[i].graph) {
+            if (kind != Kind::SlotBar) {
                 const float span = static_cast<float>(std::max(shown - 1, 0)) * step;
                 const float right = shown > 0 ? sizes.dotCompact : 0.0f;
                 const float left = n > fit ? -(shown > 0 ? span + 4.25f : 0.0f) - pillW : -span - sizes.dotCompact;
@@ -2811,11 +2823,17 @@ std::vector<View::Widget> View::widgets() const {
         const float shift = auxes ? kModListAuxW : 0.0f; // the depth bar on, past the aux column
         add(Kind::ModList, panel, -1, modList_->target);
         list.back().popup = true;
+        // Past kModListRows rows they scroll, cut off under the title and at the panel's foot.
+        const Rect rowsArea{panel.x, panel.y + kModListTitleH - 2.0f, panel.w, panel.bottom() - 2.0f - (panel.y + kModListTitleH - 2.0f)};
+        const float scrolled = modListFirst();
         for (size_t k = 0; k < rows.size(); ++k) {
             const int s = rows[k].source, slot = rows[k].slot;
             const size_t first = list.size();
-            const Rect r{panel.x + kModListPad, panel.y + kModListTitleH + static_cast<float>(k) * kModListRowStep,
+            const Rect r{panel.x + kModListPad,
+                         panel.y + kModListTitleH + (static_cast<float>(k) - scrolled) * kModListRowStep,
                          kCardW - 24.0f + shift, 20.0f};
+            if (r.bottom() <= rowsArea.y || r.y >= rowsArea.bottom())
+                continue;
             add(Kind::ModListRow, r, -1, s, slot);
             add(Kind::SlotBypass, {r.x + 1.0f, r.y, 16.0f, r.h}, slotBypassIndex(s, slot), s, slot);
             if (auxOf(rows[k]) >= 0) { // the x at the end of its chip (see paintModListRow())
@@ -2825,8 +2843,16 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::SlotBar, {r.x + 116.0f + shift, r.y, 76.0f, r.h}, slotAmountIndex(s, slot), s, slot);
             add(Kind::ValueText, {r.x + 194.0f + shift, r.y, 38.0f, r.h}, slotAmountIndex(s, slot), s, slot);
             add(Kind::SlotRemove, {r.right() - 20.0f, r.y, 20.0f, r.h}, -1, s, slot);
-            for (size_t i = first; i < list.size(); ++i)
+            for (size_t i = first; i < list.size(); ++i) {
                 list[i].popup = true;
+                if (modListEnd() > 0.0f)
+                    list[i].clip = rowsArea;
+            }
+        }
+        if (modListEnd() > 0.0f) {
+            const Rect track = modListScrollTrack(panel);
+            add(Kind::ModListScroll, {track.x - 3.0f, track.y, track.w + 5.0f, track.h});
+            list.back().popup = true;
         }
     }
     return list;
@@ -5358,8 +5384,36 @@ std::vector<int> View::inputsOf(int op) const {
     return inputs;
 }
 
+int View::inputsRows(int op) const {
+    return static_cast<int>(inputsOf(op).size()) + (wired(routeParam(op, op)) ? 1 : 0);
+}
+
+float View::inputsEnd(int op) const {
+    const int rows = inputsRows(op);
+    if (rows == 0)
+        return 0.0f;
+    const float length = static_cast<float>(rows - 1) * kInputsStep + kInputsRowSpan;
+    return std::max((length - (kInputsBottom - kInputsTop)) / kInputsStep, 0.0f);
+}
+
+float View::inputsFirst(int op) const {
+    return std::clamp(inputsScroll_, 0.0f, inputsEnd(op));
+}
+
+float View::inputsRowY(int op, int row) const {
+    return kInputsTop + (static_cast<float>(row) - inputsFirst(op)) * kInputsStep;
+}
+
+Rect View::inputsThumb(int op) const {
+    const Rect track = inputsScrollTrack();
+    const float rows = static_cast<float>(std::max(inputsRows(op), 1));
+    const float shown = (kInputsBottom - kInputsTop) / kInputsStep;
+    const float h = std::max(track.h * std::min(shown / rows, 1.0f), 16.0f);
+    return {track.x, track.y + (track.h - h) * inputsFirst(op) / std::max(inputsEnd(op), 0.001f), track.w, h};
+}
+
 // The names of the nodes routed into the operator and their modes' names, its feedback's row, or a line saying nothing
-// is routed into it yet; the buttons and labels draw themselves.
+// is routed into it yet; the buttons and labels draw themselves, cut off at the list's ends as they scroll.
 void View::paintInputs(Canvas &c, int op) {
     const std::vector<int> inputs = inputsOf(op);
     const bool feedback = wired(routeParam(op, op));
@@ -5368,21 +5422,23 @@ void View::paintInputs(Canvas &c, int op) {
                trf(Str::InputsNone, {nodeTitle(op)}), kTextBody, kDim, Align::Center);
         return;
     }
-    const float step = inputsStep(static_cast<int>(inputs.size()) + (feedback ? 1 : 0));
-    float y = kInputsTop;
-    for (int from : inputs) {
+    c.pushClip(kInputsList);
+    for (size_t row = 0; row < inputs.size(); ++row) {
+        const int from = inputs[row];
+        const float y = inputsRowY(op, static_cast<int>(row));
         const bool hovered = hover_ && hover_->kind == Kind::MatrixLabel && hover_->a == from &&
                              hover_->rect.y == inputsName(y).y;
         c.text(inputsName(y), kNodeNames[from], kTextBody, hovered ? kText : nodeColor(from), Align::Left, true);
         const auto mode = routeMode(value(routeModeParam(from, op)));
         c.text(inputsModeName(y), routeModeName(mode), kTextLabel, kDim, Align::Left);
-        y += step;
     }
     if (feedback) {
+        const float y = inputsRowY(op, static_cast<int>(inputs.size()));
         c.text(inputsName(y), kNodeNames[op], kTextBody, nodeColor(op), Align::Left, true);
         c.text({inputsMode(y, 0).x, y, inputsDepth(y).x - inputsMode(y, 0).x - 6.0f, 18.0f},
                trf(Str::InputsFeedback, {kNodeNames[op]}), kTextLabel, kDim, Align::Left);
     }
+    c.popClip();
 }
 
 InspectorTab View::opTabShown(int op) const {
@@ -6229,12 +6285,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         std::string text = percent(amount);
         if (w.kind == Kind::WireLabel && w.a == w.b)
             text = trf(Str::CaptionFeedback, {text});
-        // On the INPUTS tab a modulated label's text sits a little lower, between its ranges along its top and its
-        // handles along its bottom; in the graph they are over and under it, and its text stays in the middle.
-        bool modulated = false;
-        if (!w.graph)
-            forEachMod(w.param, [&](const Assignment &) { modulated = true; });
-        const float lift = modulated ? 0.0f : -1.0f; // unmodulated, its digits centered in it
+        // Its ranges and handles are over and under it, and its text stays in the middle, its digits centered.
+        constexpr float lift = -1.0f;
         Rect textRect{w.rect.x, w.rect.y + lift, w.rect.w, w.rect.h};
         if (w.modeGlyph) { // its mode, other than Phase, at its left
             const auto mode = routeMode(value(routeModeParam(w.a, w.b)));
@@ -6242,9 +6294,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 18.0f, w.rect.h}; // where it sits when open
         }
         c.text(textRect, text, kTextLabel, focused ? kText : kDim);
-        // In the graph, on its outline's top line (the line's middle half a pixel in); the handles go below.
-        paintModRange(c, {w.rect.x + 7.0f, w.graph ? w.rect.y - 0.25f : w.rect.y + 2.5f, w.rect.w - 14.0f, 1.5f},
-                      w.param);
+        // On its outline's top line (the line's middle half a pixel in); the handles go below.
+        paintModRange(c, {w.rect.x + 7.0f, w.rect.y - 0.25f, w.rect.w - 14.0f, 1.5f}, w.param);
         break;
     }
     case Kind::LabelMode: {
@@ -6297,13 +6348,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text(w.rect, shown ? text : "\xC2\xB7", kTextValue,
                off ? kFaint : (amount > 0.0 ? kText : (shown ? kDim : kFaint)), Align::Center, amount > 0.0 && !off);
         // A route that isn't Phase shows its mode's glyph in its top left corner.
+        float rangeLeft = 4.0f;
         if (const int mode = out ? -1 : routeModeParam(w.a, w.b); mode >= 0 && shown) {
             const auto m = routeMode(value(mode));
-            if (m != RouteMode::Phase)
-                routeModeIcon(c, {w.rect.x + 6.5f, w.rect.y + 6.5f}, m, (amount > 0.0 ? kText : kDim).alpha(off ? 0.35f : 0.85f),
-                              0.6f);
+            if (m != RouteMode::Phase) {
+                routeModeIcon(c, {w.rect.x + 6.5f, w.rect.y + 6.5f}, m,
+                              (amount > 0.0 ? kText : kDim).alpha(off ? 0.35f : 0.85f), 0.6f);
+                rangeLeft = 12.0f;
+            }
         }
-        paintModRange(c, {w.rect.x + 4.0f, w.rect.bottom() - 5.0f, w.rect.w - 8.0f, 1.5f}, w.param);
+        // Its ranges along its top (right of the glyph), its handles centered along its foot.
+        paintModRange(c, {w.rect.x + rangeLeft, w.rect.y + 3.5f, w.rect.w - rangeLeft - 4.0f, 1.5f}, w.param);
         break;
     }
     case Kind::SourceMenuButton: { // and how many places are taken after it, as the effects' beside + EFFECT
@@ -7449,6 +7504,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillRect(modsThumb(), lit ? kDim : kFaint, kRadiusMark);
         break;
     }
+    case Kind::InputsScroll: {
+        const bool lit = hovered || active;
+        c.fillRect(inputsScrollTrack(), kTrack.alpha(0.5f), kRadiusMark);
+        c.fillRect(inputsThumb(controller_.layout().selectedNode), lit ? kDim : kFaint, kRadiusMark);
+        break;
+    }
+    case Kind::ModListScroll: { // the track is 3 px in from the widget's left, 4 px wide
+        const bool lit = hovered || active;
+        const Rect track{w.rect.x + 3.0f, w.rect.y, 4.0f, w.rect.h};
+        c.fillRect(track, kTrack.alpha(0.5f), kRadiusMark);
+        c.fillRect(modListThumb(track), lit ? kDim : kFaint, kRadiusMark);
+        break;
+    }
     case Kind::CascadeMenu:
     case Kind::CascadeItem:
         break; // drawn with their menu, over everything (see paintCascade())
@@ -8032,6 +8100,7 @@ void View::closeGoneLists() {
 
 void View::openModList(const Widget &pill, bool sprung) {
     modList_ = ModListOpen{pill.a, pill.rect, sprung};
+    modListScroll_ = 0.0f;
     listMenu_ = -1; // one open list at a time
     fxMenuOpen_ = false;
     cascade_.reset();
@@ -8047,9 +8116,37 @@ bool View::modListOn(const Widget &pill) const {
            modList_->anchor.y == pill.rect.y;
 }
 
+int View::modListRowCount() const {
+    int rows = 0;
+    if (modList_)
+        forEachMod(modList_->target, [&](const Assignment &) { ++rows; });
+    return rows;
+}
+
+float View::modListEnd() const {
+    return static_cast<float>(std::max(modListRowCount() - kModListRows, 0));
+}
+
+float View::modListFirst() const {
+    return std::clamp(modListScroll_, 0.0f, modListEnd());
+}
+
+Rect View::modListScrollTrack(Rect panel) const {
+    const float top = panel.y + kModListTitleH;
+    return {panel.right() - kModListPad - 4.0f, top, 4.0f, panel.bottom() - kModListPad + 4.0f - top - 4.0f};
+}
+
+Rect View::modListThumb(Rect track) const {
+    const float rows = static_cast<float>(std::max(modListRowCount(), 1));
+    const float h = std::max(track.h * std::min(static_cast<float>(kModListRows) / rows, 1.0f), 16.0f);
+    return {track.x, track.y + (track.h - h) * modListFirst() / std::max(modListEnd(), 0.001f), track.w, h};
+}
+
 Rect View::modListPanel(Rect anchor, int rows, bool aux) const {
-    const float w = kCardW - 24.0f + (aux ? kModListAuxW : 0.0f) + 2.0f * kModListPad;
-    const float h = kModListTitleH + static_cast<float>(rows) * kModListRowStep + kModListPad - 4.0f;
+    const bool scrolls = rows > kModListRows;
+    const float w = kCardW - 24.0f + (aux ? kModListAuxW : 0.0f) + 2.0f * kModListPad + (scrolls ? kModListBarW : 0.0f);
+    const float h =
+        kModListTitleH + static_cast<float>(std::min(rows, kModListRows)) * kModListRowStep + kModListPad - 4.0f;
     const float x = std::clamp(anchor.center().x - w * 0.5f, 4.0f, View::kWidth - 4.0f - w);
     float y = anchor.bottom() + 6.0f; // under the pill; over it when there is no room below
     if (y + h > height() - 4.0f)
@@ -8184,9 +8281,9 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             continue;
         // The line ends at the source's own dot on the target: the one under a knob, or in the corner of a label,
         // cell or depth bar. A param can show twice (an output's knob and its label on the bus), and
-        // each has its dots, so the dot is the one on this widget (a graph label's under it).
+        // each has its dots, so the dot is the one on this widget (a label's under it).
         Rect area = w.rect.inset(-2.0f);
-        if (w.graph)
+        if (w.kind == Kind::WireLabel || w.kind == Kind::OutLabel)
             area.h += 8.0f;
         const auto dot = std::find_if(list.begin(), list.end(), [&](const Widget &d) {
             return d.kind == Kind::ModDot && d.a == source && (slot < 0 || d.b == slot) &&
@@ -8579,6 +8676,22 @@ void View::applyDrag(Point p) {
             scrollMods(static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * modsEnd(), false);
         break;
     }
+    case DragKind::InputsScroll: { // the INPUTS tab's rows follow its thumb
+        const int op = controller_.layout().selectedNode;
+        const float room = inputsScrollTrack().h - inputsThumb(op).h;
+        if (room > 0.0f)
+            inputsScroll_ = std::clamp(static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * inputsEnd(op),
+                                       0.0f, inputsEnd(op));
+        break;
+    }
+    case DragKind::ModListScroll: { // a pill's list's rows follow its thumb
+        const Rect track{w.rect.x + 3.0f, w.rect.y, 4.0f, w.rect.h};
+        const float room = track.h - modListThumb(track).h;
+        if (room > 0.0f)
+            modListScroll_ = std::clamp(
+                static_cast<float>(drag_.startValue) + (p.y - drag_.start.y) / room * modListEnd(), 0.0f, modListEnd());
+        break;
+    }
     case DragKind::Bend: {
         // The wire's middle follows the mouse sideways, from where it was grabbed: it lies half as far out as the
         // curve's control point.
@@ -8800,6 +8913,26 @@ void View::mouseDown(Point p, Modifiers mods) {
             scrollMods((p.y - thumb.h * 0.5f - track.y) / std::max(track.h - thumb.h, 1.0f) * modsEnd(), false);
         drag_.kind = DragKind::ModsScroll;
         drag_.startValue = modsFirst();
+        break;
+    }
+    case Kind::InputsScroll: { // as the MODS view's
+        const int op = layout.selectedNode;
+        const Rect track = inputsScrollTrack();
+        const Rect thumb = inputsThumb(op);
+        if (p.y < thumb.y || p.y >= thumb.bottom())
+            inputsScroll_ = (p.y - thumb.h * 0.5f - track.y) / std::max(track.h - thumb.h, 1.0f) * inputsEnd(op);
+        drag_.kind = DragKind::InputsScroll;
+        drag_.startValue = inputsFirst(op);
+        break;
+    }
+    case Kind::ModListScroll: { // as the MODS view's
+        const Rect track{w.rect.x + 3.0f, w.rect.y, 4.0f, w.rect.h};
+        const Rect thumb = modListThumb(track);
+        if (p.y < thumb.y || p.y >= thumb.bottom())
+            modListScroll_ = std::clamp((p.y - thumb.h * 0.5f - track.y) / std::max(track.h - thumb.h, 1.0f) * modListEnd(),
+                                        0.0f, modListEnd());
+        drag_.kind = DragKind::ModListScroll;
+        drag_.startValue = modListFirst();
         break;
     }
     case Kind::Node:
@@ -9486,6 +9619,8 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::TextSelect:
     case DragKind::Bend: // each move set it already
     case DragKind::ModsScroll:
+    case DragKind::InputsScroll:
+    case DragKind::ModListScroll:
     case DragKind::Pan: // the left button let go of mid-pan ends it too
     case DragKind::None:
         break; // finishDrag() ends what they hold
@@ -9561,6 +9696,8 @@ void View::finishDrag() {
     case DragKind::Node:
     case DragKind::Bend:
     case DragKind::ModsScroll:
+    case DragKind::InputsScroll:
+    case DragKind::ModListScroll:
     case DragKind::Connect:
     case DragKind::Reroute:
     case DragKind::RerouteFrom:
@@ -9597,9 +9734,22 @@ void View::middleDown(Point p) {
         area = PanArea::Browser;
         first = static_cast<float>(std::clamp(browserScroll_, 0, most));
     } else {
-        // On an open list or menu, it does nothing; elsewhere they close as a click there closes them, since what
-        // they were opened on may scroll away.
-        if (const auto hit = hitTest(p)) {
+        // On a pill's open list, it moves the rows when they scroll. On another open list or menu, it does nothing;
+        // elsewhere they close as a click there closes them, since what they were opened on may scroll away.
+        const auto hit = hitTest(p);
+        if (hit && hit->popup && modList_) {
+            if (modListEnd() <= 0.0f)
+                return;
+            menuLive_ = false;
+            endTyping(true);
+            drag_ = Drag{};
+            drag_.kind = DragKind::Pan;
+            drag_.widget.a = static_cast<int>(PanArea::ModList);
+            drag_.start = drag_.now = p;
+            drag_.startValue = modListFirst();
+            return;
+        }
+        if (hit) {
             const Kind k = hit->kind;
             if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd || k == Kind::FxAddNode ||
                 k == Kind::SourceMenuItem ||
@@ -9616,6 +9766,11 @@ void View::middleDown(Point p) {
         } else if (modsWide() && kFxPanel.contains(p)) {
             area = PanArea::Mods;
             first = modsFirst();
+        } else if (const int op = controller_.layout().selectedNode;
+                   op >= 0 && op < kOps && !inspectorCovered() && opTabShown(op) == InspectorTab::Inputs &&
+                   kInputsList.contains(p) && inputsEnd(op) > 0.0f) {
+            area = PanArea::Inputs;
+            first = inputsFirst(op);
         } else if (fxWide() && fxGraph() && fxGraphArea().contains(p)) { // the graph, by pixels
             area = PanArea::Fx;
             first = fxGraphScroll(fxGridLayout(fxLine()));
@@ -9678,6 +9833,14 @@ void View::applyPan(Point p) {
         break;
     case PanArea::Mods:
         scrollMods(hold(first - down / kModsRowStep, modsEnd()), false);
+        break;
+    case PanArea::Inputs: {
+        const int op = controller_.layout().selectedNode;
+        inputsScroll_ = hold(first - down / kInputsStep, op >= 0 && op < kOps ? inputsEnd(op) : 0.0f);
+        break;
+    }
+    case PanArea::ModList:
+        modListScroll_ = hold(first - down / kModListRowStep, modListEnd());
         break;
     case PanArea::Browser: { // in whole rows
         const int rows = static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height()));
@@ -9848,9 +10011,13 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     }
     keepRoutes(); // as in mouseDown(): scrolling can take a route down to 0 % too
     const auto hit = hitTest(p);
-    // Over a pill's list, only its depth bars take the wheel: nothing under the list scrolls.
-    if (hit && (hit->popup || hit->kind == Kind::ModPill) && hit->kind != Kind::SlotBar && hit->kind != Kind::ValueText)
+    // Over a pill's list, its depth bars take the wheel and elsewhere it scrolls the rows, a row a notch, when they are
+    // more than it shows: nothing under the list scrolls.
+    if (hit && (hit->popup || hit->kind == Kind::ModPill) && hit->kind != Kind::SlotBar && hit->kind != Kind::ValueText) {
+        if (hit->popup && modList_ && steps != 0.0f)
+            modListScroll_ = std::clamp(modListFirst() - steps, 0.0f, modListEnd());
         return;
+    }
     // What moves in whole steps (the grid, a stepped param, an operator's pitch, a note) moves by whole notches.
     const int target = hit && hit->kind == Kind::ShapeGrid  ? kWheelGrid + hit->a
                        : hit && hit->kind == Kind::TempoBox ? kWheelTempo
@@ -9895,6 +10062,13 @@ void View::wheel(Point p, float steps, Modifiers mods) {
     if ((!hit || hit->param < 0) && modPanel(controller_.layout().sourcesCollapsed).contains(p) && steps != 0.0f) {
         setScroll(ScrollArea::Sources, sourceScroll() - steps * 0.4f);
         closeGoneLists(); // an LFO's list scrolled out with its card
+        return;
+    }
+    // Over an operator's INPUTS rows (but not on a depth or a mode's button), a notch scrolls them a row.
+    if (const int op = controller_.layout().selectedNode;
+        (!hit || hit->param < 0) && op >= 0 && op < kOps && !inspectorCovered() &&
+        opTabShown(op) == InspectorTab::Inputs && kInputsList.contains(p) && steps != 0.0f) {
+        inputsScroll_ = std::clamp(inputsFirst(op) - steps, 0.0f, inputsEnd(op));
         return;
     }
     // Over the MODS view's rows (but not on a bar), a notch scrolls them a row, gliding there.

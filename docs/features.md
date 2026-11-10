@@ -1104,7 +1104,8 @@ may show anywhere, repaints the whole of it.
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
       wire's. Its feedback comes last, with its depth and "phase only". With nothing routed into it, a line says
-      so. The rows close up when there are many.
+      so. The rows sit 30 px apart, room for a modulated depth's dots under it; past the six the tab holds, they
+      scroll, by the wheel over them, by dragging with the middle button held, or by the scrollbar at their right.
     - **SCOPE**: the operator's output in the newest voice as it plays, with its unison copies together and
       everything that moves it (the FM it gets, its envelope, the modulation on its level and pitch), before it
       reaches the filters, shapers or the output. It is caught at the operator's own phase, so a span starts where a
@@ -1215,9 +1216,9 @@ may show anywhere, repaints the whole of it.
     display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor).
   - A new modulation starts at +30 %, upward, whatever the target's setting. The target then shows a colored ring
     for the modulation range, plus a small dot of the same color under the
-    knob (on a matrix cell, in its top right corner; on a wire or OUT label in the graph, centered just under it,
-    the ranges running along its outline's top, so its depth stays readable; on the INPUTS tab's labels, in their bottom right corner,
-    the ranges along their top). The dots stay inside their knob's column, label or cell at each handle size; past
+    knob (on a matrix cell, centered along its foot, the ranges along its top, right of a mode's glyph; on a wire or OUT label in the
+    graph and on the INPUTS tab's labels, centered just under it, the ranges running along its outline's top, so
+    its depth stays readable). The dots stay inside their knob's column, label or cell at each handle size; past
     what fits, the rest go into a "+n" pill. Drag that dot to set the depth; double-click it
     to remove the modulation, or right-click it for a menu that types its depth, bypasses it, removes its aux (when
     it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
@@ -1237,7 +1238,9 @@ may show anywhere, repaints the whole of it.
     column for them: a chip in the aux's color with its name and an × that takes it away), its depth bar and its
     remove (right-clicking a row gives the depth handle's menu; hovering a row draws its range
     wider; a source's name too long for its row is drawn smaller to fit, down to about 9 px, and past that ends in
-    "…"). A click anywhere else closes it, but not
+    "…"). It shows six rows at most; past that, it is 8 px wider for a scrollbar at its right, and the rows scroll by
+    the wheel over them (off the depth bars, which the wheel turns), by dragging with the middle button held, or by
+    the bar. A click anywhere else closes it, but not
     on a source's handle, so a handle can be dragged onto one of its rows. A source's handle held over a pill opens
     its list too; let go of on a row, the source becomes that modulation's aux (see below), and anywhere else the
     list closes again. The list closes with its pill, when the modulations come down to what fits. While every
@@ -1276,9 +1279,10 @@ may show anywhere, repaints the whole of it.
   view or no longer holds that type. A drag the editor loses the mouse during (another window taking it, or the
   browser demo's page its focus) ends where it is, its edit one undo step, but drops nothing: no route moves or goes,
   no modulation is assigned, no card moves. Hold the middle button and drag over a
-  panel that scrolls (the effects chain, the source cards, the MODS view's rows, the preset browser's list) to drag
-  what it shows along with the mouse, whatever is under it; past either end the row stops, and dragged back it
-  follows at once. A middle press on an open list or menu does nothing, and one that starts a drag closes it;
+  panel that scrolls (the effects chain, the source cards, the MODS view's rows, an operator's INPUTS rows, the
+  preset browser's list, a pill's open list) to drag what it shows along with the mouse, whatever is under it; past
+  either end the row stops, and dragged back it follows at once. A middle press on another open list or menu does
+  nothing, and one that starts a drag closes it;
   while the left button drags something, the middle one does nothing. A double-click whose first click closed the
   preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the

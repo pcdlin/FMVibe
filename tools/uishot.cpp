@@ -4955,6 +4955,73 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
 // right-click menus of its label and its matrix cell (whose corner shows the glyph), and from the operator page's
 // INPUTS tab; each pick an undo step. Moved onto another operator by its arrowhead, a route keeps its mode;
 // disconnected, it starts as Phase.
+// The INPUTS tab's rows 30 px apart: a modulated depth showing its handles under it and its ranges on its top line,
+// its number left as it was (read off the rendered pixels); past the six rows the tab holds, the wheel scrolls the
+// rows and its scrollbar's thumb dragged brings them back.
+void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    // B..F, F1 and F2 into A, and A's feedback: eight rows.
+    for (int op = 1; op < kOps; ++op) {
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+        model.set(detail::routeParam(op, 0), 0.5);
+    }
+    for (int filter = 0; filter < kFilters; ++filter) {
+        model.set(paramIndex(filter, FilterParam::Enabled), 1.0);
+        model.set(detail::routeParam(kOps + filter, 0), 0.5);
+    }
+    model.set(detail::routeParam(0, 0), 0.3);
+    model.ui.selectedNode = 0;
+    view.poll();
+    click(view, opTabPoint(InspectorTab::Inputs));
+    view.mouseMove({600.0f, 468.0f}, {});
+    // The first row's depth, 48 px wide at the inspector's right, and the rows' place in it.
+    const Rect depth{884.0f + 300.0f - 16.0f - 48.0f, 132.0f + 186.0f, 48.0f, 18.0f};
+    auto pixels = [&](float top, float bottom) {
+        std::vector<uint32_t> found;
+        for (float y = top; y < bottom; y += 1.0f)
+            for (float x = depth.x + 4.0f; x < depth.right() - 4.0f; x += 1.0f)
+                found.push_back(renderer.pixel({x, y}));
+        return found;
+    };
+    renderer.save(view, dir / "5l-op-inputs-many.png");
+    const std::vector<uint32_t> number = pixels(depth.y + 4.0f, depth.bottom() - 4.0f);
+    const std::vector<uint32_t> under = pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f);
+    const std::vector<uint32_t> top = pixels(depth.y - 1.0f, depth.y + 1.0f);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(detail::routeParam(1, 0)));
+    model.set(slotAmountIndex(0, 0), 0.3);
+    view.poll();
+    const bool modShot = renderer.save(view, dir / "5m-op-inputs-modulated.png");
+    check(modShot && pixels(depth.y + 4.0f, depth.bottom() - 4.0f) == number &&
+              pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 1.0f, depth.y + 1.0f) != top,
+          "an INPUTS row's modulated depth has its handles under it and its ranges on its top line, its number as it was");
+
+    // The sixth row's depth is F1's; two notches down over the names, the eighth's, the feedback's, is there.
+    const Point sixth{depth.center().x, depth.center().y + 5.0f * 30.0f};
+    view.wheel({900.0f, 330.0f}, -2.0f, {});
+    view.poll();
+    const bool scrolledShot = renderer.save(view, dir / "5n-op-inputs-scrolled.png");
+    drag(view, sixth, {sixth.x, sixth.y - 20.0f});
+    const bool feedback = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
+    view.undo();
+    // The thumb, at the bar's foot now, dragged up to its top: the first row is B's again.
+    const Point thumb{884.0f + 300.0f - 9.0f, 132.0f + 372.0f - 20.0f};
+    drag(view, thumb, {thumb.x, thumb.y - 200.0f});
+    view.poll();
+    drag(view, depth.center(), {depth.center().x, depth.center().y - 20.0f});
+    const bool back = model.value(detail::routeParam(1, 0)) > 0.5;
+    view.undo();
+    // Dragged up 60 px with the middle button over the names, the rows follow: the feedback's is the sixth again.
+    view.middleDown({900.0f, 420.0f});
+    view.mouseMove({900.0f, 360.0f}, {});
+    view.middleUp({900.0f, 360.0f});
+    drag(view, sixth, {sixth.x, sixth.y - 20.0f});
+    const bool panned = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
+    check(scrolledShot && feedback && back && panned,
+          "the INPUTS tab's rows scroll under the wheel, the middle button and their scrollbar's thumb");
+}
+
 void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5925,29 +5992,45 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     check(shot && beside() == none, "eight modulations on a knob show two handles and a pill, nothing outside its column");
 
     // The pill sits 2 px right of the two handles: 31 px across, centered under the knob, its middle 9.5 px right of
-    // the knob's. Its list, 265 px wide, centered under it: the rows 24 px apart from 24 px down, as on a card.
-    // From the knob's exact middle, as the inspector's knob row places it (kPitchKnob rounds it).
+    // the knob's. Its list, 265 px wide and 8 more for its scrollbar, centered under it: the rows 24 px apart from
+    // 24 px down, as on a card, six of them shown. From the knob's exact middle, as the inspector's knob row places it
+    // (kPitchKnob rounds it).
     const Point pill{884.0f + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.5f, 257.0f};
-    const float listX = pill.x - 132.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
+    const float listX = pill.x - 136.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
     auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
     view.mouseMove(pill, {});
     const bool hoverShot = renderer.save(view, dir / "40b-pill-hover.png");
+    const uint32_t seventhAway = renderer.pixel(row(6, 60.0f));
     click(view, pill);
     view.mouseMove(row(3, 60.0f), {}); // on LFO 4's name: its ring is drawn wider
     const bool listShot = renderer.save(view, dir / "40c-pill-list.png");
     const uint32_t open = renderer.pixel(row(5, 60.0f));
-    click(view, row(7, 9.0f)); // LFO 8's bypass dot
-    const bool bypassed = model.value(slotBypassIndex(7, 0)) == 1.0;
+    const bool sixShown = renderer.pixel(row(6, 60.0f)) == seventhAway; // no seventh row under the sixth
     drag(view, row(0, 116.0f + 38.0f), row(0, 116.0f + 57.0f)); // LFO 1's depth bar, to half way right: +50 %
     const bool deep = std::abs(model.value(slotAmountIndex(0, 0)) - 0.5) < 1e-6;
-    click(view, row(6, 243.0f)); // LFO 7's remove
+    // Two notches down over the names: LFO 7 and 8 are the fifth and sixth rows shown.
+    view.wheel(row(3, 60.0f), -2.0f, {});
+    view.mouseMove(row(3, 60.0f), {});
+    const bool scrolledShot = renderer.save(view, dir / "40c2-pill-list-scrolled.png");
+    click(view, row(5, 9.0f)); // LFO 8's bypass dot
+    const bool bypassed = model.value(slotBypassIndex(7, 0)) == 1.0;
+    click(view, row(4, 243.0f)); // LFO 7's remove
     const bool removed = slotTarget(model.value(slotTargetIndex(6, 0))) < 0;
+    // Dragged down with the middle button, the rows follow back to the top: the first is LFO 1's again.
+    view.middleDown(row(2, 60.0f));
+    view.mouseMove(row(4, 60.0f), {});
+    view.middleUp(row(4, 60.0f));
+    click(view, row(0, 9.0f));
+    const bool panned = model.value(slotBypassIndex(0, 0)) == 1.0;
+    click(view, row(0, 9.0f));
     click(view, {600.0f, 328.0f}); // elsewhere: the list closes
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "40d-pill-closed.png");
     const uint32_t closed = renderer.pixel(row(5, 60.0f));
-    check(hoverShot && listShot && bypassed && deep && removed && open != closed,
-          "a pill's list bypasses, sets the depth of and removes its modulations, and closes at a click elsewhere");
+    check(hoverShot && listShot && sixShown && scrolledShot && bypassed && deep && removed && panned &&
+              model.value(slotBypassIndex(0, 0)) == 0.0 && open != closed,
+          "a pill's list shows six rows, scrolls by the wheel and the middle button, bypasses, sets the depth of and "
+          "removes its modulations, and closes at a click elsewhere");
 
     // Macro 2's handle held over the pill opens the list; let go of on LFO 4's row, Macro 2 becomes its aux.
     const float strip = view.height() - 179.0f;
@@ -5978,7 +6061,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // list narrowing again.
     click(view, pill);
     view.mouseMove({600.0f, 328.0f}, {});
-    const float wideX = std::min(pill.x - 180.5f, 1200.0f - 4.0f - 361.0f) + 6.0f; // held inside the window
+    const float wideX = std::min(pill.x - 184.5f, 1200.0f - 4.0f - 369.0f) + 6.0f; // held inside the window
     auto wideRow = [&](int k, float x) { return Point{wideX + x, rowsY + k * 24.0f + 10.0f}; };
     const bool chipShot = renderer.save(view, dir / "40g2-pill-aux-chip.png");
     const bool chip = renderer.pixel(wideRow(3, 126.0f)) != renderer.pixel(wideRow(2, 126.0f));
@@ -6000,7 +6083,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     const Point cell = gridCellCenter(1, 2), left = gridCellCenter(1, 1);
     auto corner = [&] {
         std::vector<uint32_t> pixels;
-        for (float y = cell.y - 14.3f; y < cell.y - 6.0f; y += 1.0f)
+        for (float y = cell.y + 6.0f; y < cell.y + 14.3f; y += 1.0f)
             for (float x = left.x; x < left.x + 15.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
@@ -6022,7 +6105,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // rendered pixels round them), and Small draws them as before.
     auto handles = [&] {
         std::vector<uint32_t> pixels;
-        for (float y = cell.y - 22.0f; y < cell.y - 4.0f; y += 1.0f)
+        for (float y = cell.y + 4.0f; y < cell.y + 22.0f; y += 1.0f)
             for (float x = cell.x - 16.0f; x < cell.x + 20.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
@@ -7103,7 +7186,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(tabJoined && renderer.save(view, dir / "6a-view-tab-hovered.png") &&
               renderer.pixel({kFxTab.x, 104.0f}) != fxTabAlone,
           "the tab shown opens its panel's edge, and a hovered one shows a tab's shape");
-    view.doubleClick({gridCellCenter(1, 0).x + 10.0f, gridCellCenter(1, 0).y - 10.0f}, {}); // Env 1's dot on B -> A
+    view.doubleClick({gridCellCenter(1, 0).x, gridCellCenter(1, 0).y + 10.0f}, {}); // Env 1's dot on B -> A, centered
     check(slotTarget(model.value(slotTargetIndex(1, 1))) < 0 &&
               slotTarget(model.value(slotTargetIndex(1, 0))) == fmAmount,
           "double-clicking a modulation dot removes that modulation");
@@ -8187,6 +8270,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testRouteFrom(dir, renderer);
     testNodeGrid(dir, renderer);
     testRouteModes(dir, renderer);
+    testInputsScroll(dir, renderer);
     testSelectedNode(dir, renderer);
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
