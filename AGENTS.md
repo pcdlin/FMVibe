@@ -200,7 +200,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
     going into a delay and a reverb leaving them sane, ringing out and playing on; a delay switched off and on again playing back nothing it
     held, its lines part written or written all round; a compressor running its release out in silence, a quiet
-    sine after it untouched; and effects that have rung out costing little for silence, which comes out as silence;
+    sine after it untouched; a comb as long as its line ringing on between its pulses and, once rung out, bringing
+    nothing back; and effects that have rung out costing little for silence, which comes out as silence;
   - a shimmer's tail after an A4, with Shimmer half and full up: falling 60 dB in about its decay time, its energy
     on the octaves and the first two octaves up narrow lines (not smeared by the shifter's crossfades); and at the
     longest decay, undamped and full up, still dying away; and Shimmer turned down to 0 in short chunks and up again

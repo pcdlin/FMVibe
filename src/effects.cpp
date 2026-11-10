@@ -771,9 +771,10 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         runParamEq(slot, io, n, p);
         break;
     case FxType::Filter:
-        // A resonant comb rings on; keep going while it does.
+        // A resonant comb rings on; keep going while it does, also through the gap between two of its pulses, which
+        // is as long as its line at the most.
         if (runFilter(slot, io, n, p, pitch) > 1e-5)
-            keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_));
+            keep = std::max(keep, static_cast<int64_t>(0.05 * sampleRate_) + combLength(sampleRate_));
         feedAnalyzer(slot, io, n);
         break;
     case FxType::Compressor:

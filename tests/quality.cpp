@@ -618,6 +618,49 @@ void effectsChainChecks() {
               "a compressor runs its release out in silence, and a quiet sound after it comes through untouched");
     }
     {
+        // A resonant comb as long as its line (its cutoff below 20 Hz, key tracking on a low note) struck once: it
+        // rings on between its pulses, however they fall in the pieces, and once it has rung out, a quiet sound after
+        // it brings none of its ring back.
+        for (int at : {0, 31}) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
+            p[paramIndex(0, FxParam::FilterType)] = static_cast<double>(FilterType::Comb);
+            p[paramIndex(0, FxParam::FilterCutoff)] = 0.0;
+            p[paramIndex(0, FxParam::FilterResonance)] = 1.0;
+            p[paramIndex(0, FxParam::FilterKeyTrack)] = 1.0;
+            p[paramIndex(0, FxParam::FilterMix)] = 1.0;
+            chain(p, {0});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            auto piece = [&](float level, size_t t, int impulse) {
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    left[s] = right[s] = t + s == static_cast<size_t>(impulse) ? 0.5f : level;
+                fx.process(left, right, kPiece, p, 120.0, 36.0); // C2
+            };
+            for (int k = 0; k < 100; ++k)
+                piece(0.0f, 0, -1);
+            int pulses = 0;
+            for (size_t t = 0; t < static_cast<size_t>(20.0 * kSampleRate); t += kPiece) {
+                piece(0.0f, t, at);
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    pulses += std::abs(left[s]) > 0.01f ? 1 : 0;
+            }
+            const bool rungOut = !fx.ringing();
+            float ghost = 0.0f;
+            for (size_t t = 0; t < static_cast<size_t>(0.2 * kSampleRate); t += kPiece) {
+                piece(1e-7f, t, -1);
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    ghost = std::max(ghost, std::abs(left[s]));
+            }
+            std::printf("      a comb as long as its line struck at %d: %d pulses heard, rung out %d, %.1e after it\n", at,
+                        pulses, rungOut, ghost);
+            check(pulses > 20 && rungOut && ghost < 1e-4f,
+                  "a comb as long as its line rings on between its pulses, and brings nothing back once rung out");
+        }
+    }
+    {
         // Effects with nothing to do: once every tail has rung out, silence costs a small share of what a sound
         // through them does, and comes out as silence; a sound after it comes through again.
         Effects fx;
