@@ -353,6 +353,8 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         }
     }
     editorFitChanged();
+    if (editor_)
+        editor_->repaint(); // a layout alone may have changed, which the editor's poll doesn't see
     hostRequestCallback(); // sectionsChanged(), once the host is done loading
     return true;
 }

@@ -1329,14 +1329,17 @@ bool View::poll() {
             t.notePitch != telemetry_.notePitch || t.noteVelocity != telemetry_.noteVelocity ||
             t.fxPitch != telemetry_.fxPitch || t.opLevels != telemetry_.opLevels ||
             t.opEnvLevels != telemetry_.opEnvLevels || t.opEnvPos != telemetry_.opEnvPos ||
-            t.envPos != telemetry_.envPos || t.fxReduction != telemetry_.fxReduction ||
-            t.tempo != telemetry_.tempo ||
+            t.envPos != telemetry_.envPos ||
             (t.voices > 0 && std::any_of(t.lfoRates.begin(), t.lfoRates.end(), [](float r) { return r != 0.0f; }));
         everywhere = everywhere || moved;
         if (t.scope != telemetry_.scope || t.scopeBins != telemetry_.scopeBins ||
             t.scopeCursor != telemetry_.scopeCursor)
             in(kInspector);
     }
+    // A compressor's and an amp's meters move on while a tail drives them once the notes have ended, and the host's
+    // tempo shows in the synced effects' captions whether notes play or not.
+    if (t.fxReduction != telemetry_.fxReduction || t.tempo != telemetry_.tempo)
+        everywhere = true;
     if (t.keys != telemetry_.keys) {
         const bool collapsed = controller_.layout().sourcesCollapsed;
         in(keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed));
@@ -2743,7 +2746,8 @@ std::vector<View::Widget> View::widgets() const {
     }
     // A MODS row's cascading menu, over everything: around it, a click closes it.
     if (cascade_ && modsWide()) {
-        const MenuNode root = cascadeTree();
+        const std::shared_ptr<const MenuNode> tree = cascadeTree();
+        const MenuNode &root = *tree;
         const std::vector<const MenuNode *> levels = cascadeLevels(root);
         const std::vector<Rect> rects = cascadeRects(root);
         add(Kind::CascadeMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
@@ -8463,7 +8467,8 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // In a cascading menu, the mouse over a category opens it beside it, and over an entry closes what is open
         // past its level.
         if (changed && cascade_ && hover_ && hover_->kind == Kind::CascadeItem) {
-            const MenuNode root = cascadeTree();
+            const std::shared_ptr<const MenuNode> tree = cascadeTree();
+            const MenuNode &root = *tree;
             const std::vector<const MenuNode *> levels = cascadeLevels(root);
             const auto level = static_cast<size_t>(hover_->a);
             if (level < levels.size() && hover_->b < static_cast<int>(levels[level]->children.size())) {

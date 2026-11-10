@@ -302,9 +302,10 @@ void Editor::tick() {
         GetWindowThreadProcessId(foreground, &front);
     const bool ours = front == GetCurrentProcessId();
     const bool ctrlChanged = (!ctrl || (trackingLeave_ && ours)) && view_.setCtrl(ctrl);
+    const bool polled = view_.poll(); // whatever Ctrl did, so params, the scope and the glides move on this tick
     if (ctrlChanged)
         invalidate();
-    else if (view_.poll())
+    else if (polled)
         invalidate(view_.changedAreas());
 }
 

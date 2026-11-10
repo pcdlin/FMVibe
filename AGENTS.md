@@ -134,8 +134,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     a note played over a held one joins that one's envelopes (at its sustain, or swelling along with it); glide
     slides between
     overlapping notes and skips detached ones unless Always is on (checked by tracking the pitch);
-  - a lower voice limit applies immediately, while a higher one requests a restart and is reported through
-    voice-info after reactivation, and a state with a higher one, loaded while active, requests one too.
+  - a lower voice limit applies immediately, while a higher one requests a restart (again once lowered and raised
+    before the host restarts) and is reported through voice-info after reactivation, and a state with a higher one,
+    loaded while active, requests one too.
 
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
@@ -287,7 +288,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
   - the output meter and scope moving repainting the header alone, a key the keyboard alone and an operator's scope
     the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
-    an LFO moving repainting the whole editor;
+    an LFO moving repainting the whole editor, as a compressor's meter and the host's tempo do with no notes playing;
   - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
     behind the editor's back going at the line's end;
   - a card dragged a tenth of a card onto its neighbor moving nothing, and three tenths making the neighbor glide aside

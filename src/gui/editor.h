@@ -38,6 +38,8 @@ public:
     // A message the host's loop took off the queue, which the editor's message hook passes on: true if it was
     // a key for a value being typed here, which the host then doesn't see.
     bool typedKey(const MSG &msg);
+    // The whole editor painted again: the layout changed under it (a state loaded), which its poll doesn't watch.
+    void repaint() { invalidate(); }
 
 private:
     static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
