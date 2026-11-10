@@ -617,7 +617,9 @@ may show anywhere, repaints the whole of it.
     - A wire between two nodes bows to its left as it starts, so two running opposite ways between the same nodes
       don't overlap. To keep wires apart where they would, drag one sideways anywhere along it (it lights up under
       the mouse, apart from its label and arrowhead): its middle follows the mouse, out to either side or straight,
-      its label and arrowhead going along. A wire that would spill out of the routing panel bows only as far as
+      its label and arrowhead going along. A label that would sit over a node (one placed where the wire's middle
+      runs) slides along its wire, either way, as little as clears every node, and goes back to the middle once
+      that is clear; a line's label to OUT does the same. A wire that would spill out of the routing panel bows only as far as
       keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
       once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
       the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
@@ -874,7 +876,9 @@ may show anywhere, repaints the whole of it.
     container shows). While a band is soloed, the split's and the join's nodes show an S in a circle at their top
     left, in the soloed band's color (the accent with more than one soloed), and the bands not soloed (their effects'
     nodes, their wires and their names) are drawn faint, as the join doesn't let them through. Under the mouse, a node shows an x in a circle at its upper
-    right, which removes it as the x on its card does. A node dragged onto
+    right, which removes it as the x on its card does, and an effect's node a power symbol in a circle at its upper
+    left (in the effect's color while it is on), which switches the effect on and off as its card's power switch
+    does, an undo step each. A node dragged onto
     another place moves there, one undo step: while it is held, the others glide aside to open the place it would
     land in, outlined dotted, which moves only once it is over another gap between two nodes (an effect's anywhere on
     the main line or a band, a split's only on the main line; the line's end reaching on past its + along the wire
@@ -1146,7 +1150,9 @@ may show anywhere, repaints the whole of it.
   opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ SOURCE**,
   shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one (which opens a collapsed panel), and beside it how many of the 16 places are taken, as in 4/16 (with every
-  place taken it is dimmed, and a click says so). A Random card says what it does where the others have knobs. A MIDI card has its input's list (CC,
+  place taken it is dimmed, and a click says so). A Random card says what it does where the others have knobs, and
+  under that has **Unipolar** | **Bipolar** (as icons, where an LFO's clock modes are), one of them lit, which sets
+  which way its depths swing, as the polarity in its title's menu does. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -1159,7 +1165,7 @@ may show anywhere, repaints the whole of it.
   them along. Sources are numbered by type in the order they show ("LFO 2", "Env 1", "Random 1", "MIDI 1").
   - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way. A faint image of it follows the mouse anywhere, over the other panels too, and only its outline shows where it would land; the other cards make room only once the mouse is clear of the card's own place, where the mouse is.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its
-    settings and targets), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
+    settings and shape, but none of its targets: the copy modulates nothing until it is given some), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
     remove it; the × removes it too, together with its modulation and whatever modulates its knobs. A bipolar
     envelope's display has a dashed line at
     its middle level and ± in its corner. While notes play, an envelope's display has a dashed line across at the
@@ -1417,8 +1423,9 @@ may show anywhere, repaints the whole of it.
     characters in all). A search longer than the field scrolls to keep the caret in sight. A value typed into a
     knob copies and pastes too, while all of it is selected.
   - **Init** sets every param and the routing layout back to their defaults (the zoom stays). **Load** and
-    **Save As** (a disk with a plus) read and write a `.fmv` file through the standard file dialog, which starts in
-    the preset folder; Save As suggests the current preset's name. The file holds the same data as the host's
+    **Save As** (a disk with a plus) read and write a `.fmv` file through the standard file dialog, which always
+    starts in the preset folder, wherever the host's last file dialog was left; Save As suggests the current
+    preset's name. The file holds the same data as the host's
     saved state, apart from the settings.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
     tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) from a file that has

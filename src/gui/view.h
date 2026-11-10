@@ -285,6 +285,8 @@ private:
                       // the main line
         FxNodeRemove, // a = node: the x on a split's controls, its container's in the row or its card in the graph
         FxNodeDelete, // a = node: the x in a circle at a node's upper right, while the mouse is over the node
+        FxNodePower,  // a = node, param = its Enabled: the power symbol in a circle at an effect's node's upper left,
+                      // while the mouse is over the node
         FxWire,       // a = lane, b = item·kFxGapStride + place: along a wire that takes a node at its middle, its +
         FxClear,      // the button at the FX panel's top right that removes every effect, asking first
         SplitPoint,   // param = the crossover, a = split, b = 0 the low one, 1 the high one: its handle on the display
@@ -801,13 +803,14 @@ private:
     void moveFxToBand(int slot, int lane);
     // The FX view showing the effects as a graph, or as the row: only the view changes.
     void setFxGraph(bool on);
-    // The node of the graph under the mouse, or whose x is (see Kind::FxNodeDelete), -1 for none; and where its x
-    // goes, at its upper right.
+    // The node of the graph under the mouse, or whose x or power switch is (see Kind::FxNodeDelete and FxNodePower),
+    // -1 for none; and where its x goes, at its upper right, and an effect's power switch, at its upper left.
     int fxHoveredNode() const;
     // The same for the routing graph's nodes, whose x switches the node off (see Kind::NodeDelete).
     int routingHoveredNode() const;
     static Point nodeDeleteAt(int node, Point center);
     static Point fxDeleteAt(int node, Point center);
+    static Point fxPowerAt(int node, Point center);
     // The graph's widgets: its nodes and +s, and the inspector's split or join card.
     void fxGraphWidgets(std::vector<Widget> &list) const;
     // A split's controls on a card's place (`card`): in its container in the row (`row`, where its title drags it and
@@ -1095,6 +1098,10 @@ private:
     Point nodePlace(int node, Point want, bool *found = nullptr) const;
     void placeSwitchedOn(int node); // moves a node just switched on off the others shown, as part of the edit
     int nodeAt(Point p) const;
+    // Where a label `width` wide goes on a wire, a quadratic curve from `start` by `control` to `end` whose middle is
+    // `middle`: there, unless that puts it over a node; then slid along the wire, either way, as little as clears
+    // every node shown, staying inside the panel. Where nowhere does, at the middle.
+    Point labelAlong(Point start, Point control, Point end, Point middle, float width) const;
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
     // An operator's Ratio, a knob drawn as a 7-segment readout (see kRatioBox).

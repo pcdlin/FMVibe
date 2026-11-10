@@ -538,6 +538,13 @@ inline Rect lfoModeSwitch(float card, int mode) {
     return {p.x + 16.0f + mode * 30.5f, p.y + 72.0f, 30.5f, 16.0f};
 }
 
+// A Random card's polarity, Unipolar (0) | Bipolar (1), centered under what the card says it does, level with an
+// LFO's clock modes and as wide as two of them.
+inline Rect randomPolaritySwitch(float card, int bipolar) {
+    const Rect mode = lfoModeSwitch(card, bipolar);
+    return {sourceCard(card).center().x + (static_cast<float>(bipolar) - 1.0f) * mode.w, mode.y, mode.w, mode.h};
+}
+
 inline Rect lfoShapeButton(float card) {
     const Rect p = sourceCard(card);
     return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, kLfoModes - 1).right() - p.x - 16.0f, 22.0f};

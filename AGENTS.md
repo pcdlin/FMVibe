@@ -283,6 +283,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     list, an effect going in between two effects, a split going in with its join right after it, and, from the wire
     into a join, an effect going at its band's end (the list offering no split there), each undone; a node under the
     mouse showing an x in a circle at its upper right (read off the rendered pixels), whose click removes it, undone,
+    and an effect's a power symbol in a circle at its upper left (read off the rendered pixels), whose clicks switch
+    it off and on, each undone,
     the inspector's cards having none, an effect's power switch in its corner instead; the split's node's x asking
     before it takes the split's effects (Cancel, Keep and Delete, each undone);
     nodes dragged and dropped while the others glide aside (polled until they settle), the wires running to the
@@ -361,6 +363,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     staying there;
   - a routing node under the mouse showing an x in a circle at its upper right (a filter's at its box's corner, read
     off the rendered pixels), whose click switches it off, undoably;
+  - a wire's label sliding along its wire off a node sitting at its middle (the wheel there turning nothing);
   - the MODS view's filter: its magnifier opening it to take the keyboard, the words typed (every one, in any case)
     narrowing the rows, its × emptying it, Escape and a click elsewhere letting the keyboard go; and the target
     menu's search listing the targets found with their path, the first that can be picked lit (read off the rendered
@@ -369,7 +372,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the modulation panel's + SOURCE opening the list of source types under it, adding Random and MIDI sources, each
     with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input;
+    following its input; a Random card's Unipolar | Bipolar setting its polarity (read off the rendered pixels),
+    undoably;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -922,7 +926,7 @@ itself.
   (`src/zerobuffer.h`): pages Windows hands out as zeros once they are first written, so the lines no voice or
   effect uses take address space, not memory, and allocating them fills nothing.
 - The CRT is linked statically. The `.clap` and the `.vst3`'s DLL depend only on Windows system DLLs (kernel32,
-  user32, Direct2D, DirectWrite, and ole32 for the VST3 one), not on the VC++ redistributable. The `.vst3` is a
+  user32, Direct2D, DirectWrite, and ole32 and shell32 for the preset file dialogs), not on the VC++ redistributable. The `.vst3` is a
   bundle: `FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3`.
 
 ## Updating the CLAP and VST3 SDKs

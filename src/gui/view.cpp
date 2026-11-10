@@ -1134,25 +1134,29 @@ void View::addSource(SourceType type, int copyOf) {
         flash(trf(Str::MsgSourcesFull, {std::to_string(kMaxSources)}));
         return;
     }
-    // Every field, its slots and its freeform shape: fresh, or as in the original.
-    // The type comes last, as in addEffect().
+    // Every field and its freeform shape: fresh, or as in the original. Its slots start empty either way: a copy
+    // modulates nothing until it is given targets of its own. The type comes last, as in addEffect().
     std::vector<std::pair<int, double>> changes;
+    auto fresh = [&](int index) { changes.push_back({index, table_[index].def}); };
     auto take = [&](int index, int from) {
         changes.push_back({index, copyOf >= 0 ? value(from) : table_[index].def});
     };
-    for (int f = 0; f < kSourceParamCount; ++f)
-        if (static_cast<SourceParam>(f) != SourceParam::Type)
-            take(paramIndex(source, static_cast<SourceParam>(f)),
-                 paramIndex(std::max(copyOf, 0), static_cast<SourceParam>(f)));
+    for (int f = 0; f < kSourceParamCount; ++f) {
+        const auto field = static_cast<SourceParam>(f);
+        if (field == SourceParam::Type)
+            continue;
+        if (f >= static_cast<int>(SourceParam::Slots) && f < static_cast<int>(SourceParam::Slots) + 2 * kSlots)
+            fresh(paramIndex(source, field)); // a slot's target and depth
+        else
+            take(paramIndex(source, field), paramIndex(std::max(copyOf, 0), field));
+    }
     for (int f = 0; f < kShapeParamCount; ++f)
         take(shapeCountIndex(source) + f, shapeCountIndex(std::max(copyOf, 0)) + f);
     for (int slot = 0; slot < kSlots; ++slot) {
-        take(slotBypassIndex(source, slot), slotBypassIndex(std::max(copyOf, 0), slot));
-        take(slotScaleIndex(source, slot), slotScaleIndex(std::max(copyOf, 0), slot));
-        take(slotCurveIndex(source, slot), slotCurveIndex(std::max(copyOf, 0), slot));
-        // A copy's aux is the original's, unless that is the original itself (which can't scale its copy's own).
-        const double aux = copyOf >= 0 ? value(slotAuxIndex(copyOf, slot)) : 0.0;
-        changes.push_back({slotAuxIndex(source, slot), slotAuxSource(aux) == source ? 0.0 : aux});
+        fresh(slotBypassIndex(source, slot));
+        fresh(slotScaleIndex(source, slot));
+        fresh(slotCurveIndex(source, slot));
+        fresh(slotAuxIndex(source, slot));
     }
     changes.push_back({paramIndex(source, SourceParam::Type), static_cast<double>(type)});
     const auto at = copyOf >= 0 ? std::find(shown.begin(), shown.end(), copyOf) + 1 : shown.end();
@@ -2116,15 +2120,22 @@ std::vector<View::Widget> View::widgets() const {
                     idle = chip({loop.x + 32.0f, loop.y}, 44.0f);
                 } else {
                     const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
-                    idle = chip(w.label);
+                    idle = chip(labelAlong(w.start, w.control, w.end, w.label, 38.0f));
                 }
                 labelWidgets(Kind::WireLabel, param, routeModeParam(from, to), idle, from, to);
             }
         }
         for (int node : on)
-            if (goesOut(node) && outParam(node) != moving)
-                labelWidgets(Kind::OutLabel, outParam(node), -1, chip(outWireOf(node, nodeCenter(node)).label, 40.0f),
-                             node, kNodes);
+            if (goesOut(node) && outParam(node) != moving) {
+                const OutWire w = outWireOf(node, nodeCenter(node));
+                // Beside the line where it is too short for the label to fit along it; else along it, clear of the
+                // nodes.
+                const Point at = w.label.x != w.start.x
+                                     ? w.label
+                                     : labelAlong(w.start, {0.5f * (w.start.x + w.end.x), 0.5f * (w.start.y + w.end.y)},
+                                                  w.end, w.label, 40.0f);
+                labelWidgets(Kind::OutLabel, outParam(node), -1, chip(at, 40.0f), node, kNodes);
+            }
         // The arrowheads, over the labels: dragged onto another node or the bus, they move their routes there.
         for (int from : on) {
             for (int to : on) {
@@ -2479,6 +2490,12 @@ std::vector<View::Widget> View::widgets() const {
             if (std::lround(value(input)) == static_cast<long>(MidiInput::Cc))
                 knob(paramIndex(s, SourceParam::CcNumber), {p.x + 172.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelCc));
             knob(paramIndex(s, SourceParam::Slew), {p.x + 228.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelSlew));
+        } else if (sourceTypeOf(s) == SourceType::Random) {
+            // Unipolar | Bipolar under what it does, one of them lit, as an LFO's clock modes are.
+            const size_t polarity = list.size();
+            for (int bipolar = 0; bipolar < 2; ++bipolar)
+                add(Kind::Choice, randomPolaritySwitch(card, bipolar), paramIndex(s, SourceParam::Bipolar), s, bipolar);
+            merge(polarity);
         }
         // Its modulations are listed in the MODS view, which the button under its display shows.
         add(Kind::SourceMods, sourceModsButton(card), -1, s);
@@ -2731,7 +2748,8 @@ std::vector<View::Widget> View::widgets() const {
         from >= 0 && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0 &&
         nodeOn(from) && nodeOn(to) && wired(routeParam(from, to)) && rerouting() != routeParam(from, to)) {
         const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(routeParam(from, to)));
-        const Rect part = labelPill(routeParam(from, to), listMenu_, chip(w.label)).mode;
+        const Rect part =
+            labelPill(routeParam(from, to), listMenu_, chip(labelAlong(w.start, w.control, w.end, w.label, 38.0f))).mode;
         const Rect button{part.x, part.y, 112.0f, part.h};
         const int items = listCount(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
@@ -6081,6 +6099,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? color : (hovered ? kText : kDim));
         else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's
             polarityIcon(c, w.rect.center(), false, on ? color : (hovered ? kText : kDim));
+        else if (sourceFieldOf(w.param) == SourceParam::Bipolar) // a Random card's: either one, as a MODS row's
+            polarityIcon(c, w.rect.center(), w.b == 1, on ? color : (hovered ? kText : kDim));
         else
             c.text(w.rect, text, kTextLabel, on ? kText : kDim, Align::Center, on);
         break;
@@ -6673,6 +6693,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxSlot:
     case Kind::FxGap:
     case Kind::FxNodeDelete:
+    case Kind::FxNodePower:
     case Kind::SplitPoint:
         break;
     case Kind::FxMenu:
@@ -7711,7 +7732,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::ModsTarget && hover_->kind != Kind::ModsAux && hover_->kind != Kind::ModsAuxClear &&
          hover_->kind != Kind::ModsScale && hover_->kind != Kind::ModsCurve && hover_->kind != Kind::SearchField &&
          hover_->kind != Kind::MacroHandle && hover_->kind != Kind::SourceHandle &&
-         hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower &&
+         hover_->kind != Kind::MatrixLabel && hover_->kind != Kind::FxPower && hover_->kind != Kind::FxNodePower &&
          hover_->kind != Kind::NoteDisplay && hover_->kind != Kind::WireEnd && hover_->kind != Kind::Port &&
          hover_->kind != Kind::FxInsert && hover_->kind != Kind::DynBand && hover_->kind != Kind::FxMode &&
          hover_->kind != Kind::FxNode && hover_->kind != Kind::FxSlot && hover_->kind != Kind::FxGap &&
@@ -7759,6 +7780,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(hover_->a < kFxSlots           ? Str::TipFxRemove
                   : fxNodeSum(hover_->a) >= 0   ? Str::TipRemoveJoin
                                                 : Str::TipRemoveSplit);
+    } else if (hover_->kind == Kind::FxNodePower) { // only switches, unlike the card's icon, which also drags
+        text = trf(value(param) >= 0.5 ? Str::TipSwitchNodeOff : Str::TipSwitchNodeOn, {fxName(fxSlotType(hover_->a))});
     } else if (hover_->kind == Kind::NodeDelete) {
         text = trf(Str::MenuSwitchOff, {nodeTitle(hover_->a)});
     } else if (hover_->kind == Kind::WireEnd) {
@@ -7922,6 +7945,8 @@ void View::paintTooltip(Canvas &c) {
     }
     else if (sourceFieldOf(param) == SourceParam::Unipolar)
         text = tr(Str::TipUnipolar);
+    else if (sourceFieldOf(param) == SourceParam::Bipolar) // a Random card's Unipolar | Bipolar
+        text = tr(hover_->b == 1 ? Str::TipBipolar : Str::TipUnipolar);
     else if (field == FxParam::DelaySync)
         text = tr(Str::TipDelaySync);
     else if (field == FxParam::PhaserSync || field == FxParam::FlangerSync)
@@ -9674,7 +9699,7 @@ void View::doubleClick(Point p, Modifiers mods) {
         !(hit && (hit->kind == Kind::Key || drawsStep(*hit, mods))))
         return;
     if (hit && (hit->kind == Kind::Key || hit->kind == Kind::Octave || hit->kind == Kind::UndoButton ||
-                hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower ||
+                hit->kind == Kind::PresetStep || hit->kind == Kind::FxPower || hit->kind == Kind::FxNodePower ||
                 hit->kind == Kind::SlotBypass || (hit->kind == Kind::ShapeGrid && hit->b != 0) ||
                 hit->kind == Kind::ShapeTool || drawsStep(*hit, mods))) {
         // Windows turns a quick second click into a double-click instead of a press:
@@ -10001,7 +10026,8 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({7, tr(Str::MenuRemove)});
         return items;
     }
-    if (hit->kind == Kind::FxGrip || hit->kind == Kind::FxPower || hit->kind == Kind::FxNode) {
+    if (hit->kind == Kind::FxGrip || hit->kind == Kind::FxPower || hit->kind == Kind::FxNode ||
+        hit->kind == Kind::FxNodePower) {
         menuFx_ = hit->a;
         if (fxChain().size() < static_cast<size_t>(kFxSlots))
             items.push_back({6, tr(Str::MenuDuplicate)});

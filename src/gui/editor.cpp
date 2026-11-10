@@ -9,10 +9,12 @@
 #endif
 
 #include <commdlg.h>
+#include <shobjidl.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -732,43 +734,98 @@ void Editor::choosePreset(bool save) {
         PostMessageW(hwnd_, kPresetMessage, save ? 1 : 0, 0);
 }
 
+namespace {
+
+// The shell's file dialog, opened in `folder` every time. (An OPENFILENAME's initial folder gives way to the folder the
+// host's last file dialog was left in, whatever plugin opened it.) The path picked, empty if the user cancels; nullopt
+// where the dialog can't run on this thread (COM set up for another apartment, say), for the older one instead.
+std::optional<std::wstring> shellFileDialog(HWND owner, bool save, const std::wstring &folder, const std::wstring &name,
+                                            const std::wstring &title, const std::wstring &presets,
+                                            const std::wstring &all) {
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(com))
+        return std::nullopt;
+    struct Uninit {
+        ~Uninit() { CoUninitialize(); }
+    } uninit;
+    IFileDialog *dialog = nullptr;
+    if (FAILED(CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&dialog))))
+        return std::nullopt;
+    const COMDLG_FILTERSPEC types[] = {{presets.c_str(), L"*.fmv"}, {all.c_str(), L"*.*"}};
+    dialog->SetFileTypes(2, types);
+    dialog->SetDefaultExtension(L"fmv");
+    dialog->SetTitle(title.c_str());
+    FILEOPENDIALOGOPTIONS options = 0;
+    dialog->GetOptions(&options);
+    options |= FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR |
+               (save ? FOS_OVERWRITEPROMPT : FOS_FILEMUSTEXIST);
+    dialog->SetOptions(options);
+    if (!folder.empty()) {
+        IShellItem *start = nullptr;
+        if (SUCCEEDED(SHCreateItemFromParsingName(folder.c_str(), nullptr, IID_PPV_ARGS(&start)))) {
+            dialog->SetFolder(start);
+            start->Release();
+        }
+    }
+    if (!name.empty())
+        dialog->SetFileName(name.c_str());
+    std::wstring path;
+    if (SUCCEEDED(dialog->Show(owner))) {
+        IShellItem *result = nullptr;
+        if (SUCCEEDED(dialog->GetResult(&result))) {
+            PWSTR picked = nullptr;
+            if (SUCCEEDED(result->GetDisplayName(SIGDN_FILESYSPATH, &picked))) {
+                path = picked;
+                CoTaskMemFree(picked);
+            }
+            result->Release();
+        }
+    }
+    dialog->Release();
+    return path;
+}
+
+} // namespace
+
 void Editor::browsePreset(bool save) {
     const ModalGuard guard(alive_); // the dialogs below run modal loops
-    // Filter pairs are NUL-separated, and the list ends with a double NUL (the last one the string's own).
-    const std::wstring filter = widen(tr(Str::DialogPresetFiles)) + L'\0' + L"*.fmv" + L'\0' +
-                                widen(tr(Str::DialogAllFiles)) + L'\0' + L"*.*" + L'\0';
     // Both start in the preset folder (the scan makes it if need be); saving suggests the preset's name.
     controller_.rescanPresets();
     const std::wstring folder = controller_.presetFolder();
-    wchar_t path[MAX_PATH] = L"";
-    if (save && controller_.presetIndex() >= 0) {
-        const std::wstring name = widen(controller_.presetName());
-        wcsncpy_s(path, name.c_str(), _TRUNCATE);
-    }
-    OPENFILENAMEW dialog{};
-    dialog.lStructSize = sizeof(dialog);
-    dialog.hwndOwner = hwnd_;
-    dialog.lpstrFilter = filter.c_str();
-    dialog.lpstrFile = path;
-    dialog.nMaxFile = MAX_PATH;
-    dialog.lpstrInitialDir = folder.empty() ? nullptr : folder.c_str();
-    dialog.lpstrDefExt = L"fmv";
-    dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    const std::wstring name = save && controller_.presetIndex() >= 0 ? widen(controller_.presetName()) : std::wstring();
     const std::wstring title = widen(tr(save ? Str::DialogSavePreset : Str::DialogLoadPreset));
+    const std::wstring presets = widen(tr(Str::DialogPresetFiles)), all = widen(tr(Str::DialogAllFiles));
+    std::optional<std::wstring> picked = shellFileDialog(hwnd_, save, folder, name, title, presets, all);
+    if (!guard.alive())
+        return;
+    if (!picked) { // the older dialog, which starts there unless the host's last dialog was left elsewhere
+        // Filter pairs are NUL-separated, and the list ends with a double NUL (the last one the string's own).
+        const std::wstring filter = presets + L'\0' + L"*.fmv" + L'\0' + all + L'\0' + L"*.*" + L'\0';
+        wchar_t path[MAX_PATH] = L"";
+        wcsncpy_s(path, name.c_str(), _TRUNCATE);
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize = sizeof(dialog);
+        dialog.hwndOwner = hwnd_;
+        dialog.lpstrFilter = filter.c_str();
+        dialog.lpstrFile = path;
+        dialog.nMaxFile = MAX_PATH;
+        dialog.lpstrInitialDir = folder.empty() ? nullptr : folder.c_str();
+        dialog.lpstrDefExt = L"fmv";
+        dialog.lpstrTitle = title.c_str();
+        dialog.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | (save ? OFN_OVERWRITEPROMPT : OFN_FILEMUSTEXIST);
+        const bool ok = save ? GetSaveFileNameW(&dialog) : GetOpenFileNameW(&dialog);
+        if (!guard.alive())
+            return;
+        picked = ok ? std::wstring(path) : std::wstring();
+    }
+    if (picked->empty())
+        return;
     if (save) {
-        dialog.lpstrTitle = title.c_str();
-        dialog.Flags |= OFN_OVERWRITEPROMPT;
-        if (!GetSaveFileNameW(&dialog) || !guard.alive())
-            return;
-        if (!controller_.savePreset(path))
+        if (!controller_.savePreset(*picked))
             MessageBoxW(hwnd_, widen(tr(Str::DialogWriteFailed)).c_str(), L"FMVibe", MB_ICONWARNING);
-    } else {
-        dialog.lpstrTitle = title.c_str();
-        dialog.Flags |= OFN_FILEMUSTEXIST;
-        if (!GetOpenFileNameW(&dialog) || !guard.alive())
-            return;
-        if (!controller_.loadPreset(path))
-            MessageBoxW(hwnd_, widen(tr(Str::DialogNotPreset)).c_str(), L"FMVibe", MB_ICONWARNING);
+    } else if (!controller_.loadPreset(*picked)) {
+        MessageBoxW(hwnd_, widen(tr(Str::DialogNotPreset)).c_str(), L"FMVibe", MB_ICONWARNING);
     }
     if (guard.alive())
         invalidate();

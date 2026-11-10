@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <numbers>
 
 namespace fmvibe::gui {
 
@@ -490,12 +491,20 @@ void View::revealFxNode(int node) {
 int View::fxHoveredNode() const {
     if (drag_.kind == DragKind::FxNodeMove) // not while one is held
         return -1;
-    return hover_ && (hover_->kind == Kind::FxNode || hover_->kind == Kind::FxNodeDelete) ? hover_->a : -1;
+    return hover_ && (hover_->kind == Kind::FxNode || hover_->kind == Kind::FxNodeDelete ||
+                      hover_->kind == Kind::FxNodePower)
+               ? hover_->a
+               : -1;
 }
 
 Point View::fxDeleteAt(int node, Point center) {
     const Rect r = nodeRect(node, center); // at its box's upper right corner
     return {r.right() - 2.0f, r.y + 2.0f};
+}
+
+Point View::fxPowerAt(int node, Point center) {
+    const Rect r = nodeRect(node, center); // at its box's upper left corner, mirroring the x
+    return {r.x + 2.0f, r.y + 2.0f};
 }
 
 Rect View::fxInspector(int node) const {
@@ -845,6 +854,11 @@ void View::fxGraphWidgets(std::vector<Widget> &list) const {
         if (place.node == fxHoveredNode()) {
             const Point x = fxDeleteAt(place.node, at.node[place.node]);
             add(Kind::FxNodeDelete, {x.x - 8.0f, x.y - 8.0f, 16.0f, 16.0f}, -1, place.node);
+            if (place.node < kFxSlots) { // an effect's, not a split's or a join's
+                const Point on = fxPowerAt(place.node, at.node[place.node]);
+                add(Kind::FxNodePower, {on.x - 8.0f, on.y - 8.0f, 16.0f, 16.0f},
+                    paramIndex(place.node, FxParam::Enabled), place.node);
+            }
         }
     for (const auto &slot : grid.slots)
         add(Kind::FxSlot, slotRect(at.slot[slot.lane]).inset(-4.0f), -1, slot.lane);
@@ -1818,6 +1832,9 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         removeFxNode(w.a);
         hover_.reset();
         return true;
+    case Kind::FxNodePower: // the effect on or off; the mouse stays over its node
+        flipSwitch(w.param);
+        return true;
     case Kind::SplitPoint:
         drag_.kind = DragKind::SplitPoint;
         drag_.startValue = value(w.param);
@@ -2102,6 +2119,18 @@ void View::paintFxGraph(Canvas &c) {
         c.strokeCircle(x, 7.5f, ink, 1.2f);
         c.line({x.x - 3.0f, x.y - 3.0f}, {x.x + 3.0f, x.y + 3.0f}, ink, 1.4f);
         c.line({x.x + 3.0f, x.y - 3.0f}, {x.x - 3.0f, x.y + 3.0f}, ink, 1.4f);
+        // An effect's power symbol in a circle at its upper left, as the x: in its color while it is on.
+        if (place.node >= kFxSlots)
+            continue;
+        const Point o = fxPowerAt(place.node, at.node[place.node]);
+        const bool hotPower = hover_->kind == Kind::FxNodePower;
+        const bool on = value(paramIndex(place.node, FxParam::Enabled)) >= 0.5;
+        const Color mark = on ? fxTypeColor(fxSlotType(place.node)) : hotPower ? kText : kDim;
+        c.fillCircle(o, 7.5f, hotPower ? kRaised : kCardColor);
+        c.strokeCircle(o, 7.5f, hotPower ? kText : kDim, 1.2f);
+        constexpr float kRadius = 3.2f, kGap = 0.75f; // the power symbol, small enough for the circle
+        c.arc(o, kRadius, kGap, 2.0f * std::numbers::pi_v<float> - kGap, mark, 1.3f);
+        c.line({o.x, o.y - kRadius - 1.0f}, {o.x, o.y - 0.3f}, mark, 1.3f);
     }
 
     // The +s where a node can go next: a + in a circle, as on a wire's middle, in the color of the wire it is on (grey

@@ -2874,6 +2874,32 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
               "a node under the mouse shows an x at its upper right, which removes it");
     }
 
+    // And a power symbol in a circle at its upper left (read off the rendered pixels: none there before), whose click
+    // switches the effect off and on again, each an undo step.
+    {
+        const Point reverbAt = cell(2, 0);
+        const Point on{reverbAt.x - detail::kFxNodeR + 2.0f, reverbAt.y - detail::kFxNodeHalfH + 2.0f}; // its corner
+        const int enabled = paramIndex(1, FxParam::Enabled);
+        view.mouseMove({600.0f, 428.0f}, {});
+        renderer.save(view, dir / "40n-fx-node-plain.png");
+        const uint32_t plain = renderer.pixel({on.x - 7.5f, on.y});
+        view.mouseMove(reverbAt, {});
+        view.mouseMove(on, {});
+        const bool shot = renderer.save(view, dir / "40n-fx-node-power.png");
+        const bool drawn = renderer.pixel({on.x - 7.5f, on.y}) != plain;
+        click(view, on);
+        const bool off = model.value(enabled) == 0.0 && fxChain(model) == std::vector<int>{0, 1, 2, 3, 4};
+        const bool offShot = renderer.save(view, dir / "40n-fx-node-off.png");
+        click(view, on);
+        const bool backOn = model.value(enabled) == 1.0;
+        view.undo();
+        const bool undone = model.value(enabled) == 0.0;
+        view.undo();
+        view.mouseMove({600.0f, 428.0f}, {});
+        check(shot && drawn && off && offShot && backOn && undone && model.value(enabled) == 1.0,
+              "an effect's node under the mouse shows a power switch at its upper left, which switches it off and on");
+    }
+
     // Nodes dragged and dropped, the others gliding aside to make room while one is held: the phaser between the
     // shaper and the reverb, the delay from the high band to the end of the low band, and the split with its bands
     // and join, by the join, to the line's start. Each one undo step, undone.
@@ -5451,6 +5477,42 @@ void testNodeDelete(const std::filesystem::path &dir, Renderer &renderer) {
           "a filter under the mouse shows an x at its box's corner, which switches it off, undoably");
 }
 
+// A wire's label slides along its wire, off a node sitting at the wire's middle: A modulates B across the panel, C
+// sitting where A -> B's label would be. The wheel over C's middle then turns nothing (on the label, which is drawn over
+// the nodes, it would turn the route's amount); the snapshot shows where the label went.
+void testLabelClearOfNode(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    model.set(paramIndex(1, OpParam::Enabled), 1.0);
+    model.set(paramIndex(2, OpParam::Enabled), 1.0);
+    const int route = matrixIndex(0, 1);
+    model.set(route, 0.5);
+    layout.nodeX[0] = 0.2f;
+    layout.nodeX[1] = 0.8f;
+    layout.nodeY[0] = layout.nodeY[1] = 0.35f;
+    const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1);
+    // The wire bowed as in view.cpp, its start 24 px off A toward the bow's control point and its end 32 px off B.
+    const float span = std::hypot(b.x - a.x, b.y - a.y);
+    const Point left{-(b.y - a.y) / span, (b.x - a.x) / span};
+    const Point control{(a.x + b.x) * 0.5f + left.x * span * kDefaultWireBend,
+                        (a.y + b.y) * 0.5f + left.y * span * kDefaultWireBend};
+    auto toward = [&](Point from, float by) {
+        const float d = std::hypot(control.x - from.x, control.y - from.y);
+        return Point{from.x + (control.x - from.x) / d * by, from.y + (control.y - from.y) / d * by};
+    };
+    const Point start = toward(a, 24.0f), end = toward(b, 32.0f);
+    const Point middle{0.25f * start.x + 0.5f * control.x + 0.25f * end.x,
+                       0.25f * start.y + 0.5f * control.y + 0.25f * end.y};
+    layout.nodeX[2] = (middle.x - 56.0f) / 772.0f;
+    layout.nodeY[2] = (middle.y - 202.0f) / 226.0f;
+    view.poll();
+    view.mouseMove({600.0f, 468.0f}, {});
+    const bool shot = renderer.save(view, dir / "1m-label-clear-of-node.png");
+    view.wheel(middle, 1.0f, {});
+    check(shot && model.value(route) == 0.5, "a wire's label slides along its wire, clear of a node at its middle");
+}
+
 // A node switched on where another one shown sits comes back clear of it, in the same undo step as the switch; one
 // whose place is free stays there. B was left on top of A; a filter in the middle of A, B and E too.
 void testNodeSwitchOnPlace(const std::filesystem::path &dir, Renderer &renderer) {
@@ -5598,6 +5660,31 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
     check(added && menuButtonShot && shot && listShot && model.value(paramIndex(1, SourceParam::CcNumber)) == 2.0 &&
               onPressure && onSlide && model.value(paramIndex(2, SourceParam::CcNumber)) == 1.0,
           "+ SOURCE's list adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
+
+    // A Random card's Unipolar | Bipolar, centered under what it does (level with an LFO's clock modes, 30.5 px each,
+    // at y 564 + 72): unipolar to begin with, Bipolar lit by a click (read off the rendered pixels, clear of its icon),
+    // Unipolar again by the other; each an undo step.
+    {
+        auto polarity = [](int bipolar) {
+            return Point{cardX(0) + 0.5f * kCardW + 30.5f * (static_cast<float>(bipolar) - 0.5f), 564.0f + 72.0f + 8.0f};
+        };
+        const int bipolarParam = paramIndex(0, SourceParam::Bipolar);
+        const Point clearOfIcon{polarity(1).x - 11.0f, polarity(1).y + 5.0f};
+        const bool startsUnipolar = model.value(bipolarParam) == 0.0;
+        view.mouseMove({600.0f, 328.0f}, {});
+        renderer.save(view, dir / "11j-random-unipolar.png");
+        const uint32_t unlit = renderer.pixel(clearOfIcon);
+        click(view, polarity(1));
+        const bool bipolar = model.value(bipolarParam) == 1.0;
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool polarShot = renderer.save(view, dir / "11j-random-bipolar.png");
+        const bool lit = renderer.pixel(clearOfIcon) != unlit;
+        click(view, polarity(0));
+        const bool unipolar = model.value(bipolarParam) == 0.0;
+        view.undo();
+        check(startsUnipolar && bipolar && polarShot && lit && unipolar && model.value(bipolarParam) == 1.0,
+              "a Random card's Unipolar | Bipolar switch sets its polarity, undoably");
+    }
 }
 
 void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
@@ -6300,12 +6387,12 @@ void run(const std::filesystem::path &dir, float scale) {
     check(panned && model.value(paramIndex(0, OpParam::Pan)) == 0.0 && model.value(paramIndex(0, OpParam::Out)) == 1.0,
           "an operator's Pan knob turns from the middle and resets to it, its output left alone");
     // Modulation dropped on a silent operator's OUT cell in the matrix shows its wire to OUT; Disconnect takes both
-    // away.
+    // away. (Its arrowhead's menu has Disconnect too; its label has slid down the line, off E under B.)
     click(view, b);
     click(view, kMatrixTab);
     drag(view, sourceHandle(0), gridCellCenter(1, kNodes));
     click(view, kRoutingTab);
-    const Point bOut = outLabelOf(layout, 1);
+    const Point bOut = outArrowOf(layout, 1);
     check(slotTarget(model.value(slotTargetIndex(0, 1))) == paramIndex(1, OpParam::Out) &&
               model.value(paramIndex(1, OpParam::Out)) == 0.0 && outDisconnect(bOut) >= 0,
           "modulating an operator's output at 0 % shows its wire to OUT");
@@ -7810,19 +7897,28 @@ void run(const std::filesystem::path &dir, float scale) {
     check(shown(model) == std::vector<int>{0, 2, 1, 3, 4} && nameOf(model, 2) == trf(Str::SourceNameLfo, {"2"}),
           "dragging a card's title moves that source along");
 
-    // Duplicate LFO 2 from its title's menu: the copy, with its targets and shape, follows it.
+    // Duplicate LFO 2 from its title's menu: the copy, with its settings and shape but none of its targets, follows it.
     model.sets.clear();
     for (const MenuItem &item : view.contextMenu(sourceGrip(1)))
         if (item.label == tr(Str::MenuDuplicate))
             view.menuCommand(item.command);
-    check(shown(model) == std::vector<int>{0, 2, 5, 1, 3, 4} &&
-              sameFields(model, paramIndex(5, SourceParam::Type), paramIndex(2, SourceParam::Type), kSourceParamCount) &&
-              sameFields(model, shapeCountIndex(5), shapeCountIndex(2), kShapeParamCount) &&
-              setLast(model, paramIndex(5, SourceParam::Type), kSourceParamCount, paramIndex(5, SourceParam::Type)) &&
-              slotTarget(model.value(slotTargetIndex(5, 0))) == paramIndex(GlobalParam::Pan) &&
-              model.value(paramIndex(5, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom) &&
-              nameOf(model, 5) == trf(Str::SourceNameLfo, {"3"}),
-          "Duplicate copies a source in right after it");
+    {
+        const int settings = paramIndex(0, SourceParam::Shape) - paramIndex(0, SourceParam::Type);
+        bool noTargets = true;
+        for (int slot = 0; slot < kSlots; ++slot)
+            noTargets = noTargets && model.value(slotTargetIndex(5, slot)) == 0.0 &&
+                        model.value(slotAmountIndex(5, slot)) == 0.0 && model.value(slotAuxIndex(5, slot)) == 0.0;
+        check(shown(model) == std::vector<int>{0, 2, 5, 1, 3, 4} &&
+                  sameFields(model, paramIndex(5, SourceParam::Enabled), paramIndex(2, SourceParam::Enabled), 1) &&
+                  sameFields(model, paramIndex(5, SourceParam::Shape), paramIndex(2, SourceParam::Shape),
+                             kSourceParamCount - settings) &&
+                  sameFields(model, shapeCountIndex(5), shapeCountIndex(2), kShapeParamCount) &&
+                  setLast(model, paramIndex(5, SourceParam::Type), kSourceParamCount, paramIndex(5, SourceParam::Type)) &&
+                  slotTarget(model.value(slotTargetIndex(2, 0))) == paramIndex(GlobalParam::Pan) && noTargets &&
+                  model.value(paramIndex(5, SourceParam::Shape)) == static_cast<double>(LfoShape::Custom) &&
+                  nameOf(model, 5) == trf(Str::SourceNameLfo, {"3"}),
+              "Duplicate copies a source in right after it, without its targets");
+    }
 
     // A card's title menu picks the source's polarity, the one in force checked: an envelope (Env 1, the fourth
     // card) turns bipolar, and an LFO (the first, made unipolar by its switch earlier) bipolar and back.
@@ -8099,6 +8195,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModsLive(dir, renderer);
     testNodeSwitchOnPlace(dir, renderer);
     testNodeDelete(dir, renderer);
+    testLabelClearOfNode(dir, renderer);
     testModsSearch(dir, renderer);
     testMeter(dir, renderer);
     testOutScope(dir, renderer);
