@@ -486,7 +486,9 @@ public:
         if (gui::Editor *editor = owns() ? plugin_.editor() : nullptr) {
             editor->size(width, height);
         } else {
-            width = static_cast<uint32_t>(std::lround(gui::View::kWidth * plugin_.uiLayout().zoom));
+            // As an editor opens: at the system's DPI, which it then follows to its window's
+            width = static_cast<uint32_t>(
+                std::lround(gui::View::kWidth * plugin_.uiLayout().zoom * (GetDpiForSystem() / 96.0f)));
             gui::Editor::constrain(width, height, gui::View::heightFor(plugin_.uiLayout()));
         }
         *size = ViewRect(0, 0, static_cast<int32>(width), static_cast<int32>(height));

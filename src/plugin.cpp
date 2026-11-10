@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace fmvibe {
@@ -72,7 +73,7 @@ protected:
             hostParams_->rescan(host_, CLAP_PARAM_RESCAN_VALUES);
     }
     void hostSectionsChanged() override {
-        remotePages_ = buildRemotePages(valuesNow(), uiLayout());
+        rebuildRemotePages();
         if (hostRemoteControls_)
             hostRemoteControls_->changed(host_);
     }
@@ -117,6 +118,11 @@ private:
     void mainThread();
     void sendEdits(const clap_output_events_t *out);
     void reportEndedNotes(const clap_output_events_t *out, uint32_t frames);
+    void rebuildRemotePages() { // main thread; the values (about 150 KB) on the heap rather than its stack
+        auto values = std::make_unique<ParamValues>();
+        valuesInto(*values);
+        remotePages_ = buildRemotePages(*values, uiLayout());
+    }
 
     static const clap_plugin_audio_ports_t kAudioPorts;
     static const clap_plugin_note_ports_t kNotePorts;
@@ -148,7 +154,7 @@ private:
 };
 
 Plugin::Plugin(const clap_host_t *host) : host_(host) {
-    remotePages_ = buildRemotePages(valuesNow(), uiLayout());
+    rebuildRemotePages();
 
     plugin_ = {
         &kDescriptor,

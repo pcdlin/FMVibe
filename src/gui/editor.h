@@ -66,6 +66,7 @@ private:
     HWND hwnd_ = nullptr;
     bool resized_ = false; // the user changed the size, which new instances then open at
     float dpiScale_ = 1.0f; // the DPI the size is worked out for, over 96: the system's, then the window's
+    uint32_t dpiWidth_ = 0; // the width followDpi() asked the host for, until it sets it: the zoom stays as it was
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     bool trackingLeave_ = false;

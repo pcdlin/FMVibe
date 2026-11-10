@@ -95,8 +95,10 @@ void PluginCore::performStepEnd() {
 // Thread-safe: each format's hostRequestRestart() may be called from any thread.
 void PluginCore::askRestart() {
     const int capacity = synth_.capacity(), voices = voiceLimit(), factor = oversampling_.load();
-    if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling()))
+    if (capacity <= 0 || (voices <= capacity && factor == synth_.oversampling())) {
+        restartAskedFor_.store(0); // so the same need, should it come back, asks again
         return;
+    }
     const int need = std::max(voices, capacity) * 16 + factor;
     if (restartAskedFor_.exchange(need) != need)
         hostRequestRestart();
@@ -432,14 +434,13 @@ bool PluginCore::savePreset(const std::wstring &path) {
     const clap_ostream_t stream = fileOut(file);
     const bool saved = saveState(&stream, false);
     const bool closed = std::fclose(file) == 0;
-    std::error_code error;
-    if (saved && closed)
-        fs::rename(part, target, error); // replacing the file there
-    if (!saved || !closed || error) {
+    if (!saved || !closed) {
         std::error_code ignored;
         fs::remove(part, ignored);
         return false;
     }
+    if (!replaceFile(part.wstring(), target.wstring()))
+        return false;
     setPreset(path);
     rescanPresets(); // so the library lists it
     return true;

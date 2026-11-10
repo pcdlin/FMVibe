@@ -231,9 +231,14 @@ bool Editor::setSize(uint32_t width, uint32_t height) {
     fit(width, height);
     width_ = width;
     height_ = height;
-    const float zoom = width / (View::kWidth * dpiScale_);
-    resized_ = resized_ || std::fabs(zoom - controller_.layout().zoom) > 1e-4f;
-    controller_.layout().zoom = zoom;
+    // The size asked for to follow the DPI keeps the zoom, even where the size is held to its limits: moved back to
+    // the monitor it came from, the editor then comes back at the size it had.
+    if (width != dpiWidth_) {
+        const float zoom = width / (View::kWidth * dpiScale_);
+        resized_ = resized_ || std::fabs(zoom - controller_.layout().zoom) > 1e-4f;
+        controller_.layout().zoom = zoom;
+    }
+    dpiWidth_ = 0;
     if (hwnd_)
         SetWindowPos(hwnd_, nullptr, 0, 0, static_cast<int>(width), static_cast<int>(height),
                      SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE);
@@ -263,8 +268,10 @@ void Editor::followDpi() {
     uint32_t width = static_cast<uint32_t>(std::lround(View::kWidth * controller_.layout().zoom * dpiScale_));
     uint32_t height = 0;
     fit(width, height);
-    if (width != width_ || height != height_)
+    if (width != width_ || height != height_) {
+        dpiWidth_ = width;
         controller_.requestEditorSize(width, height); // the host then sets it (setSize()), at the same zoom
+    }
 }
 
 bool Editor::show(bool visible) {
