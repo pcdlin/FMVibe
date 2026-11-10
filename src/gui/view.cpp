@@ -6573,9 +6573,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SplitPoint:
         break;
     case Kind::FxMenu:
-        if (w.a == 1) { // the list's panel
+        if (w.a == 1) { // the list's panel, with each group's name over its effects
+            static constexpr Str kGroups[] = {Str::MenuFxDrive, Str::MenuFxEqFilter,   Str::MenuFxDynamics,
+                                              Str::MenuFxSpace, Str::MenuFxModulation, Str::MenuFxStereo};
+            static_assert(std::size(kGroups) == kFxMenuGroupCount, "each group of the list of effects has its name");
             c.fillRect(w.rect, kRaised, kRadiusCard);
             c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            for (int g = 0; g < kFxMenuGroupCount; ++g) {
+                const Rect head = fxMenuHead(fxMenuAt_, g);
+                c.text({head.x + 8.0f, head.y + 2.0f, head.w - 16.0f, head.h}, tr(kGroups[g]), kTextSmall, kDim,
+                       Align::Left, true);
+            }
         }
         break;
     case Kind::SourceMenu:
@@ -6616,12 +6624,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, fxName(static_cast<FxType>(w.a)), kTextBody,
                hovered ? kText : kDim, Align::Left);
         break;
-    case Kind::FxAddNode: { // apart from the effects by a line: a split in two bands or three, with its join
+    case Kind::FxAddNode: { // apart from the effects by a line across the list: a split in two bands or three
         const Color color = splitColor();
         const bool three = w.b == 3;
         if (!three) {
+            const Rect menu = fxMenu(fxMenuAt_, true);
             const float line = w.rect.y - 0.5f * kFxMenuNodeGap - 1.0f;
-            c.line({w.rect.x + 4.0f, line}, {w.rect.right() - 4.0f, line}, kBorder, 1.0f);
+            c.line({menu.x + 8.0f, line}, {menu.right() - 8.0f, line}, kBorder, 1.0f);
         }
         paintMenuRow(c, w.rect, hovered, false);
         const Rect icon{w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f};
