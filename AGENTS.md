@@ -464,7 +464,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Bass's back to Off;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
     flanger's STEREO and its + | − picking its polarity, the filter's Key Track and the shaper's and delay's LINK
-    too) and the list of effects with their icons;
+    too) and the list of effects with their icons, each group's name on a strip, the splits' SPLIT group from the main line
+    only (read off the rendered pixels);
   - a filter's and the filter effect's responses moving with the note their key tracking follows (read off the
     rendered pixels);
   - the disperser's and widener's displays following their params as modulation takes them (read off the rendered

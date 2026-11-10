@@ -636,6 +636,16 @@ Point fxListItem(const View &view, Point click, FxType type, bool node = false) 
 Point fxListSplit(const View &view, Point click, int bands = 2) {
     return rectCenter(detail::fxMenuNodeItem(fxListAt(view, click, true), bands));
 }
+// Whether a list of effects at `at` (x < 0: under + EFFECT) shows group `group`'s name on its strip, darker than the
+// list just over it, read at the strip's right end, clear of the name, in what was saved last.
+bool fxGroupStrip(const Renderer &renderer, Point at, int group) {
+    const Rect head = detail::fxMenuHead(at, group);
+    auto level = [&](Point p) {
+        const uint32_t color = renderer.pixel(p);
+        return static_cast<int>(color >> 16 & 255) + static_cast<int>(color >> 8 & 255) + static_cast<int>(color & 255);
+    };
+    return level({head.right() - 6.0f, head.y + 9.0f}) + 15 < level({head.right() - 6.0f, head.y - 2.0f});
+}
 // Where a list opened from the effects graph's + (or a wire's) goes: beside it, up a little.
 Point besidePlus(Point plus) {
     return {plus.x + 26.0f, plus.y - 44.0f};
@@ -1236,6 +1246,10 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kFxMenuButton);
     view.mouseMove(fxMenuItem(FxType::Phaser), {});
     check(renderer.save(view, dir / "21-fx-menu.png"), "render the ADD EFFECT list with its icons");
+    bool strips = true;
+    for (int group = 0; group <= detail::kFxMenuSplitGroup; ++group)
+        strips = strips && fxGroupStrip(renderer, {-1.0f, -1.0f}, group);
+    check(strips, "the ADD EFFECT list shows each group's name on a strip, the splits' too (read off the rendered pixels)");
     click(view, {600.0f, 428.0f});
     for (FxType type : {FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::FreqShifter})
         addFx(view, type);
@@ -3296,6 +3310,9 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, addAt);
     view.mouseMove(fxListItem(view, addAt, FxType::Reverb), {});
     const bool bandListShot = renderer.save(view, dir / "41d-fx-row-band-list.png");
+    check(fxGroupStrip(renderer, fxListAt(view, addAt), detail::kFxMenuLeftGroups - 1) &&
+              !fxGroupStrip(renderer, fxListAt(view, addAt), detail::kFxMenuSplitGroup),
+          "a band's list of effects has no SPLIT group (read off the rendered pixels)");
     click(view, fxListItem(view, addAt, FxType::Reverb));
     check(highShown && bandListShot && from(3, 0) == high && from(join, 0) == fxSlotPort(3) &&
               model.value(paramIndex(3, FxParam::Type)) == static_cast<double>(FxType::Reverb),

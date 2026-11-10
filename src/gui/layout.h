@@ -600,25 +600,37 @@ constexpr int fxMenuGroupsTotal() {
 }
 static_assert(fxMenuGroupsTotal() == kFxTypes, "every effect the list offers is in one of its groups");
 // The list's top left is under the button, or (from the shadow card after the effects) given. A row every 23 px, a
-// group's name over its rows, two columns side by side.
+// group's name on a strip over its rows, the groups a little apart down two columns side by side.
 constexpr float kFxMenuPitch = 23.0f;
 constexpr float kFxMenuHead = 20.0f;
+constexpr float kFxMenuGroupGap = 5.0f;
 constexpr float kFxMenuColumn = 170.0f;
-// From the main line, two more entries under the columns, a little apart: a split in two bands under the left one, in
-// three under the right one.
-constexpr float kFxMenuNodeGap = 7.0f;
-// How far down its column group `group` starts (its name, then its rows), and how tall the columns are.
+// From the main line, one more group under the left column's: the splits, in two bands over three, under a name too.
+constexpr int kFxMenuSplitGroup = kFxMenuGroupCount;
+constexpr int kFxMenuSplitRows = 2;
+constexpr float fxMenuGroupH(int group) {
+    const int rows = group == kFxMenuSplitGroup ? kFxMenuSplitRows : kFxMenuGroups[group];
+    return kFxMenuHead + static_cast<float>(rows) * kFxMenuPitch;
+}
+// How far down its column group `group` starts (its name, then its rows): the left column's groups, then the splits',
+// and the right column's.
 constexpr float fxMenuGroupTop(int group) {
+    const bool left = group < kFxMenuLeftGroups || group == kFxMenuSplitGroup;
+    const int first = left ? 0 : kFxMenuLeftGroups, end = left ? std::min(group, kFxMenuLeftGroups) : group;
     float y = 0.0f;
-    for (int g = group < kFxMenuLeftGroups ? 0 : kFxMenuLeftGroups; g < group; ++g)
-        y += kFxMenuHead + static_cast<float>(kFxMenuGroups[g]) * kFxMenuPitch;
+    for (int g = first; g < end; ++g)
+        y += fxMenuGroupH(g) + kFxMenuGroupGap;
     return y;
 }
-constexpr float kFxMenuColumnsH = fxMenuGroupTop(kFxMenuLeftGroups) > fxMenuGroupTop(kFxMenuGroupCount)
-                                      ? fxMenuGroupTop(kFxMenuLeftGroups)
-                                      : fxMenuGroupTop(kFxMenuGroupCount);
+// How tall the columns are, the left one with the splits from the main line (`node`).
+constexpr float fxMenuColumnsH(bool node) {
+    const int lastLeft = node ? kFxMenuSplitGroup : kFxMenuLeftGroups - 1;
+    const float left = fxMenuGroupTop(lastLeft) + fxMenuGroupH(lastLeft);
+    const float right = fxMenuGroupTop(kFxMenuGroupCount - 1) + fxMenuGroupH(kFxMenuGroupCount - 1);
+    return left > right ? left : right;
+}
 constexpr float fxMenuHeight(bool node) {
-    return 8.0f + kFxMenuColumnsH + (node ? kFxMenuNodeGap + kFxMenuPitch : 0.0f);
+    return 8.0f + fxMenuColumnsH(node);
 }
 inline Rect fxMenu(Point at, bool node = false) {
     const Rect button = fxMenuButton();
@@ -628,11 +640,13 @@ inline Rect fxMenu(Point at, bool node = false) {
 static_assert(9.0f + 22.0f + 4.0f + fxMenuHeight(true) <= kFxPanel.h, // from under the button
               "the list of effects fits in the panel");
 
-// A group's name, over its rows.
+// A group's name, over its rows (kFxMenuSplitGroup the splits'). Its strip is drawn 2 px short of the first row, as
+// the rows are apart.
 inline Rect fxMenuHead(Point at, int group) {
     const Rect menu = fxMenu(at);
-    const float column = group < kFxMenuLeftGroups ? 0.0f : kFxMenuColumn;
-    return {menu.x + 4.0f + column, menu.y + 4.0f + fxMenuGroupTop(group), kFxMenuColumn - 2.0f, kFxMenuHead};
+    const bool right = group >= kFxMenuLeftGroups && group != kFxMenuSplitGroup;
+    return {menu.x + 4.0f + (right ? kFxMenuColumn : 0.0f), menu.y + 4.0f + fxMenuGroupTop(group), kFxMenuColumn - 2.0f,
+            kFxMenuHead};
 }
 inline Rect fxMenuItem(Point at, FxType type) {
     int group = 0, row = fxOfferedPlace(type);
@@ -641,11 +655,10 @@ inline Rect fxMenuItem(Point at, FxType type) {
     const Rect head = fxMenuHead(at, group);
     return {head.x, head.bottom() + static_cast<float>(row) * kFxMenuPitch, head.w, kFxMenuPitch - 2.0f};
 }
-// Its entries under the columns, a little apart: a split in two bands at the left, in three at the right.
+// Its entries in the splits' group: a split in two bands, and under it one in three.
 inline Rect fxMenuNodeItem(Point at, int bands = 2) {
-    const Rect menu = fxMenu(at, true);
-    return {menu.x + 4.0f + (bands == 3 ? kFxMenuColumn : 0.0f), menu.y + 4.0f + kFxMenuColumnsH + kFxMenuNodeGap,
-            kFxMenuColumn - 2.0f, kFxMenuPitch - 2.0f};
+    const Rect head = fxMenuHead(at, kFxMenuSplitGroup);
+    return {head.x, head.bottom() + (bands == 3 ? kFxMenuPitch : 0.0f), head.w, kFxMenuPitch - 2.0f};
 }
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;

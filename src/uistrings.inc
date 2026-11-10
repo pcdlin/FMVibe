@@ -873,8 +873,8 @@ STR(TipMidiSlide, "Per-note slide (MPE CC 74)")
 // --- The editor: right-click menus
 
 STR(MenuDuplicate, "Duplicate")
-STR(MenuSplitBands, "2-band split") // the list of effects on the main line, under the effects
-STR(MenuSplitThree, "3-band split") // beside it: a split in three bands
+STR(MenuSplitBands, "2-band split") // the list of effects on the main line, in its SPLIT group (MenuFxSplit)
+STR(MenuSplitThree, "3-band split") // under it: a split in three bands
 // The list of effects' groups, each over its effects, in capitals as the target menu's headings.
 STR(MenuFxDrive, "DRIVE") // the shaper and the amp
 STR(MenuFxEqFilter, "EQ & FILTER")
@@ -882,6 +882,7 @@ STR(MenuFxDynamics, "DYNAMICS")
 STR(MenuFxSpace, "SPACE") // the delay and the reverb
 STR(MenuFxModulation, "MODULATION") // the phaser, the flanger and the frequency shifter
 STR(MenuFxStereo, "STEREO & PHASE") // the widener, the phase disperser and the utility
+STR(MenuFxSplit, "SPLIT") // from the main line: a split in two bands and in three (MenuSplitBands, MenuSplitThree)
 STR(MenuResetSettings, "Reset settings")
 STR(MenuOversampling, "Oversampling {1}") // an amp's, {1} the factor ("4x"), the one in force checked
 STR(MenuOtt, "OTT") // a 3-band dynamics' settings set after the well-known OTT multiband preset
