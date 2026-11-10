@@ -10356,7 +10356,30 @@ CursorKind View::cursor() const {
     case Kind::SettingsBackdrop:
     case Kind::ConfirmBackdrop:
     case Kind::BrowserBackdrop:
+    // An open list's own panel and what is around it, where a click picks nothing (though around it, it closes it),
+    // and a pill's list's rows, which only take a source's handle dropped on them.
+    case Kind::WaveMenu:
+    case Kind::SourceMenu:
+    case Kind::FxMenu:
+    case Kind::ListMenu:
+    case Kind::PeqTypeMenu:
+    case Kind::CascadeMenu:
+    case Kind::ModList:
+    case Kind::ModListRow:
         return CursorKind::Arrow;
+    case Kind::ListItem: // a band-pass's 6 and 18 dB slopes can't be picked
+        return listItemFits(w->param, w->b) ? CursorKind::Hand : CursorKind::Arrow;
+    case Kind::CascadeItem: { // a category opens; an entry that can't be picked does nothing
+        const std::shared_ptr<const MenuNode> tree = cascade_ ? cascadeTree() : nullptr;
+        if (!tree)
+            return CursorKind::Arrow;
+        const std::vector<const MenuNode *> levels = cascadeLevels(*tree);
+        if (w->a < 0 || w->a >= static_cast<int>(levels.size()) || w->b < 0 ||
+            w->b >= static_cast<int>(levels[w->a]->children.size()))
+            return CursorKind::Arrow;
+        const MenuNode &item = levels[w->a]->children[w->b];
+        return !item.children.empty() || (!item.heading && item.enabled) ? CursorKind::Hand : CursorKind::Arrow;
+    }
     case Kind::SearchField: // the MODS view's filter a button until it opens
         return w->a == static_cast<int>(Field::ModsFilter) && !modsFilterOpen() ? CursorKind::Hand
                                                                                        : CursorKind::Text;

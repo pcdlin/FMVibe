@@ -6840,6 +6840,17 @@ void run(const std::filesystem::path &dir, float scale) {
     click(view, kSlopeButton);
     view.mouseMove(slopeItem(2), {});
     const bool bandListShot = renderer.save(view, dir / "4b-slope-list-band.png");
+    // The hand only over an entry it can pick: not over 18 dB, the list's own edge or around the list.
+    const bool refusedArrow = view.cursor() == CursorKind::Arrow;
+    view.mouseMove(slopeItem(3), {});
+    const bool pickHand = view.cursor() == CursorKind::Hand;
+    const Rect slopeList = detail::listMenu(detail::kFilterSlopeButton, kFilterSlopes);
+    view.mouseMove({slopeList.center().x, slopeList.y + 2.0f}, {});
+    const bool edgeArrow = view.cursor() == CursorKind::Arrow;
+    view.mouseMove({slopeList.center().x, slopeList.bottom() + 12.0f}, {});
+    const bool aroundArrow = view.cursor() == CursorKind::Arrow;
+    check(refusedArrow && pickHand && edgeArrow && aroundArrow,
+          "an open list shows the hand only over an entry it can pick");
     click(view, slopeItem(2));
     const bool refused = model.value(slope) == 0.0;
     click(view, slopeItem(3)); // the list is still open

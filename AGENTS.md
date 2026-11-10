@@ -404,7 +404,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell: undone, its
     route (or one the wheel switched on) not kept at 0 %, and a press drifting a pixel setting nothing; a shaper's
     row routing it into the other shaper and, on the diagonal, into itself;
-  - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused;
+  - picking a filter's slope from its list, a band-pass's 6 and 18 dB refused, the hand cursor showing only over
+    an entry it can pick (not over a refused one, the list's edge or around it);
   - Points | Steps and Snap in the other big shape editors: Steps drawing a step in the note source's curve with a
     plain click, and Snap snapping a shaper effect's curve point in its editor;
   - making sources unipolar and bipolar from their menus (an envelope's and an LFO's card, a macro's knob and
