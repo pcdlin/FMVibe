@@ -1156,9 +1156,15 @@ private:
     void placeSwitchedOn(int node); // moves a node just switched on off the others shown, as part of the edit
     int nodeAt(Point p) const;
     // Where a label `width` wide goes on a wire, a quadratic curve from `start` by `control` to `end` whose middle is
-    // `middle`: there, unless that puts it over a node; then slid along the wire, either way, as little as clears
-    // every node shown, staying inside the panel. Where nowhere does, at the middle.
-    Point labelAlong(Point start, Point control, Point end, Point middle, float width) const;
+    // `middle`: there, unless that puts it over a node or one of the labels `taken`; then slid along the wire, either
+    // way, as little as clears every node shown and those labels, staying inside the panel. Where nowhere does, as
+    // little as clears the nodes alone; where nowhere does that, at the middle.
+    Point labelAlong(Point start, Point control, Point end, Point middle, float width,
+                     const std::vector<Rect> &taken = {}) const;
+    // Where the graph's labels rest, by route (and OUT line): the feedback loops' first, then each wire's and each OUT
+    // line's along it, clear of the labels before it as labelAlong() has it. Each is the label as labelPill() takes
+    // it, before a mode's glyph widens it. The route being dragged has none.
+    std::vector<std::pair<int, Rect>> routeLabels() const;
     Rect envRect(int env) const;
     static Point knobCenter(const Widget &w);
     // An operator's Ratio, a knob drawn as a 7-segment readout (see kRatioBox).

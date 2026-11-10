@@ -618,8 +618,12 @@ may show anywhere, repaints the whole of it.
       don't overlap. To keep wires apart where they would, drag one sideways anywhere along it (it lights up under
       the mouse, apart from its label and arrowhead): its middle follows the mouse, out to either side or straight,
       its label and arrowhead going along. A label that would sit over a node (one placed where the wire's middle
-      runs) slides along its wire, either way, as little as clears every node, and goes back to the middle once
-      that is clear; a line's label to OUT does the same. A wire that would spill out of the routing panel bows only as far as
+      runs) or over another label slides along its wire, either way, as little as clears every node and the labels
+      placed before it (the feedback loops' first, then the wires' in the graph's order, then the lines' to OUT), and
+      goes back to the middle once that is clear; a line's label to OUT does the same. Where no place along its wire
+      clears the other labels too, it clears the nodes alone. A feedback loop's label sits on the loop's right, or,
+      where that would meet another node, another loop's label or where a wire's label rests, on its left, above it
+      or at an upper corner, inside the panel. A wire that would spill out of the routing panel bows only as far as
       keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
       once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
       the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is

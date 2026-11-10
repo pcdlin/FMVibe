@@ -2140,33 +2140,23 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::Port, r.inset(-kEdgeOut), -1, node);
         }
         const int moving = rerouting(); // follows the mouse, without its label
+        // The labels, clear of the nodes and of each other (see routeLabels()), in the order the loops above go.
+        const std::vector<std::pair<int, Rect>> labels = routeLabels();
+        auto labelOf = [&](int param) {
+            const auto it = std::find_if(labels.begin(), labels.end(), [&](const auto &l) { return l.first == param; });
+            return it != labels.end() ? it->second : Rect{};
+        };
         for (int from : on) {
             for (int to : on) {
                 const int param = routeParam(from, to);
                 if (!wired(param) || param == moving)
                     continue;
-                Rect idle;
-                if (from == to) {
-                    const Point loop = loopCenter(from, nodeCenter(from));
-                    idle = chip({loop.x + 32.0f, loop.y}, 44.0f);
-                } else {
-                    const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
-                    idle = chip(labelAlong(w.start, w.control, w.end, w.label, 38.0f));
-                }
-                labelWidgets(Kind::WireLabel, param, routeModeParam(from, to), idle, from, to);
+                labelWidgets(Kind::WireLabel, param, routeModeParam(from, to), labelOf(param), from, to);
             }
         }
         for (int node : on)
-            if (goesOut(node) && outParam(node) != moving) {
-                const OutWire w = outWireOf(node, nodeCenter(node));
-                // Beside the line where it is too short for the label to fit along it; else along it, clear of the
-                // nodes.
-                const Point at = w.label.x != w.start.x
-                                     ? w.label
-                                     : labelAlong(w.start, {0.5f * (w.start.x + w.end.x), 0.5f * (w.start.y + w.end.y)},
-                                                  w.end, w.label, 40.0f);
-                labelWidgets(Kind::OutLabel, outParam(node), -1, chip(at, 40.0f), node, kNodes);
-            }
+            if (goesOut(node) && outParam(node) != moving)
+                labelWidgets(Kind::OutLabel, outParam(node), -1, labelOf(outParam(node)), node, kNodes);
         // The arrowheads, over the labels: dragged onto another node or the bus, they move their routes there.
         for (int from : on) {
             for (int to : on) {
@@ -2791,9 +2781,11 @@ std::vector<View::Widget> View::widgets() const {
     if (const int from = routeModeFrom(listMenu_), to = routeModeTo(listMenu_);
         from >= 0 && controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0 &&
         nodeOn(from) && nodeOn(to) && wired(routeParam(from, to)) && rerouting() != routeParam(from, to)) {
-        const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(routeParam(from, to)));
-        const Rect part =
-            labelPill(routeParam(from, to), listMenu_, chip(labelAlong(w.start, w.control, w.end, w.label, 38.0f))).mode;
+        Rect idle;
+        for (const auto &[param, rect] : routeLabels())
+            if (param == routeParam(from, to))
+                idle = rect;
+        const Rect part = labelPill(routeParam(from, to), listMenu_, idle).mode;
         const Rect button{part.x, part.y, 112.0f, part.h};
         const int items = listCount(listMenu_);
         add(Kind::ListMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);

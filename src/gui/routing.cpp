@@ -182,7 +182,18 @@ void View::switchOnRoute(int from, int to) {
             edit(enabledParam(node), 1.0);
 }
 
-Point View::labelAlong(Point start, Point control, Point end, Point middle, float width) const {
+// Whether a label's chip `r` comes within 2 px of any of the labels `taken`.
+static bool meetsLabel(Rect r, const std::vector<Rect> &taken) {
+    constexpr float kGap = 2.0f;
+    for (const Rect &other : taken)
+        if (r.x < other.right() + kGap && other.x < r.right() + kGap && r.y < other.bottom() + kGap &&
+            other.y < r.bottom() + kGap)
+            return true;
+    return false;
+}
+
+Point View::labelAlong(Point start, Point control, Point end, Point middle, float width,
+                       const std::vector<Rect> &taken) const {
     constexpr float kClear = kSelectedRing + 1.0f; // clear of a selected node's ring too
     constexpr float kStep = 0.035f;                // along the curve, either way from its middle
     constexpr int kSteps = 8;                      // and no further than a fifth of it from either end
@@ -191,26 +202,103 @@ Point View::labelAlong(Point start, Point control, Point end, Point middle, floa
     centers.reserve(nodes.size());
     for (int node : nodes)
         centers.push_back(nodeCenter(node));
-    auto clear = [&](Point p) {
+    auto clear = [&](Point p, bool ofLabels) {
         const Rect r = chip(p, width);
         for (size_t i = 0; i < nodes.size(); ++i)
             if (overNode(nodes[i], centers[i], r, kClear))
                 return false;
-        return true;
+        return !ofLabels || !meetsLabel(r, taken);
     };
-    if (clear(middle))
-        return middle;
     const Rect inside{kRouting.x + 0.5f * width + 4.0f, kRouting.y + 12.0f, kRouting.w - width - 8.0f,
                       kRouting.h - 24.0f}; // where its center keeps the chip in the panel, as wireInside() has it
-    for (int k = 1; k <= kSteps; ++k)
-        for (const float side : {-1.0f, 1.0f}) {
-            const float t = 0.5f + side * kStep * static_cast<float>(k), s = 1.0f - t;
-            const Point p{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
-                          s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
-            if (inside.contains(p) && clear(p))
-                return p;
-        }
+    for (const bool ofLabels : {true, false}) {
+        if (clear(middle, ofLabels))
+            return middle;
+        for (int k = 1; k <= kSteps; ++k)
+            for (const float side : {-1.0f, 1.0f}) {
+                const float t = 0.5f + side * kStep * static_cast<float>(k), s = 1.0f - t;
+                const Point p{s * s * start.x + 2.0f * s * t * control.x + t * t * end.x,
+                              s * s * start.y + 2.0f * s * t * control.y + t * t * end.y};
+                if (inside.contains(p) && clear(p, ofLabels))
+                    return p;
+            }
+    }
     return middle;
+}
+
+std::vector<std::pair<int, Rect>> View::routeLabels() const {
+    const std::vector<int> on = enabledNodes();
+    const int moving = rerouting();
+    std::vector<std::pair<int, Rect>> labels;
+    std::vector<Rect> taken; // each at rest, a mode's glyph widening it about its middle (see labelPill())
+    struct Between {
+        int param;
+        Wire wire;
+        float width;
+    };
+    std::vector<Between> wires;
+    for (int from : on)
+        for (int to : on) {
+            const int param = routeParam(from, to);
+            if (from == to || !wired(param) || param == moving)
+                continue;
+            const int mode = routeModeParam(from, to);
+            const bool glyph = mode >= 0 && routeMode(value(mode)) != RouteMode::Phase;
+            wires.push_back({param, wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param)),
+                             glyph ? 38.0f + 18.0f : 38.0f});
+        }
+    // A loop's label goes beside it on the right, or else on its left, above it or at an upper corner: the first
+    // of these clear of the other nodes, the loops' labels before it and where the wires' labels would rest with
+    // no other label about, inside the panel. Where none is, the first clear of the loops' labels alone; where none
+    // is, on the right.
+    std::vector<Rect> wished;
+    for (const Between &b : wires)
+        wished.push_back(chip(labelAlong(b.wire.start, b.wire.control, b.wire.end, b.wire.label, b.width), b.width));
+    constexpr float kLoopLabelW = 44.0f;
+    const Rect inside{kRouting.x + 4.0f, kRouting.y + 3.0f, kRouting.w - 8.0f, kRouting.h - 6.0f};
+    for (int node : on)
+        if (const int param = routeParam(node, node); wired(param) && param != moving) {
+            const Point loop = loopCenter(node, nodeCenter(node));
+            const Point offsets[] = {{32.0f, 0.0f}, {-32.0f, 0.0f}, {0.0f, -21.0f}, {32.0f, -20.0f}, {-32.0f, -20.0f}};
+            auto clearOf = [&](Rect r, bool all) {
+                if (!inside.contains({r.x, r.y}) || !inside.contains({r.right(), r.bottom()}) || meetsLabel(r, taken))
+                    return false;
+                if (!all)
+                    return true;
+                for (int other : on)
+                    if (other != node && overNode(other, nodeCenter(other), r, 1.0f))
+                        return false;
+                return !meetsLabel(r, wished);
+            };
+            Rect idle = chip({loop.x + offsets[0].x, loop.y + offsets[0].y}, kLoopLabelW);
+            bool found = false;
+            for (const bool all : {true, false})
+                for (const Point o : offsets)
+                    if (const Rect r = chip({loop.x + o.x, loop.y + o.y}, kLoopLabelW); !found && clearOf(r, all)) {
+                        idle = r;
+                        found = true;
+                    }
+            labels.emplace_back(param, idle);
+            taken.push_back(idle);
+        }
+    for (const Between &b : wires) {
+        const Point at = labelAlong(b.wire.start, b.wire.control, b.wire.end, b.wire.label, b.width, taken);
+        labels.emplace_back(b.param, chip(at, 38.0f));
+        taken.push_back(chip(at, b.width));
+    }
+    for (int node : on)
+        if (goesOut(node) && outParam(node) != moving) {
+            const OutWire w = outWireOf(node, nodeCenter(node));
+            // Beside the line where it is too short for the label to fit along it; else along it, clear of the nodes
+            // and the labels before it.
+            const Point at = w.label.x != w.start.x
+                                 ? w.label
+                                 : labelAlong(w.start, {0.5f * (w.start.x + w.end.x), 0.5f * (w.start.y + w.end.y)},
+                                              w.end, w.label, 40.0f, taken);
+            labels.emplace_back(outParam(node), chip(at, 40.0f));
+            taken.push_back(chip(at, 40.0f));
+        }
+    return labels;
 }
 
 std::vector<int> View::enabledNodes() const {

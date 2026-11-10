@@ -6152,6 +6152,92 @@ void testLabelClearOfNode(const std::filesystem::path &dir, Renderer &renderer) 
     check(shot && model.value(route) == 0.5, "a wire's label slides along its wire, clear of a node at its middle");
 }
 
+// Labels clear of each other: A -> B across the panel and C -> D down it, both straight, crossing at their middles.
+// A -> B's label, placed first, stays at the crossing; C -> D's slides along its wire, off it. Where a label is is
+// read off the right-click menu (a label's has Edit value, a wire's not), and whose by its Reset to default.
+void testLabelsClearOfEachOther(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    for (int op = 1; op < 4; ++op)
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+    const int across = matrixIndex(0, 1), down = matrixIndex(2, 3);
+    model.set(across, 0.5);
+    model.set(down, 0.3);
+    layout.nodeX[0] = 0.2f;
+    layout.nodeX[1] = 0.8f;
+    layout.nodeY[0] = layout.nodeY[1] = 0.5f;
+    layout.nodeX[2] = layout.nodeX[3] = 0.5f;
+    layout.nodeY[2] = 0.05f;
+    layout.nodeY[3] = 0.95f;
+    layout.wireBends = {{across, 0.0f}, {down, 0.0f}};
+    view.poll();
+    const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1);
+    const Point middle{0.5f * (a.x + b.x), a.y};
+    const bool shot = renderer.save(view, dir / "1m-labels-clear.png");
+    auto labelAt = [&](Point p) {
+        for (const MenuItem &item : view.contextMenu(p))
+            if (item.label == tr(Str::MenuEditValue))
+                return true;
+        return false;
+    };
+    const bool crossing = labelAt(middle);
+    // C -> D's label, beyond A -> B's (9 px either way of its middle) and the gap between them.
+    std::optional<Point> slid;
+    for (float d = 20.0f; d <= 60.0f && !slid; d += 1.0f)
+        for (const float side : {-1.0f, 1.0f})
+            if (!slid && labelAt({middle.x, middle.y + side * d}))
+                slid = Point{middle.x, middle.y + side * d};
+    bool its = false;
+    if (slid) {
+        for (const MenuItem &item : view.contextMenu(*slid))
+            if (item.label == tr(Str::MenuResetDefault)) {
+                view.menuCommand(item.command);
+                break;
+            }
+        its = model.value(across) == 0.5 && model.value(down) != 0.3;
+    }
+    check(shot && crossing && slid && its,
+          "wire labels that would overlap slide apart along their wires, the first placed staying at its middle");
+}
+
+// A feedback loop's label moves off a wire's label: B feeds itself back, and A -> C runs straight above B, its label
+// resting up and to the right of B's loop, where the loop's label would sit. The loop's label goes to the loop's left;
+// the wire's stays at its middle. Labels are found and told apart by their right-click menus, as above.
+void testLoopLabelClear(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    UiLayout &layout = model.ui;
+    for (int op = 1; op < 3; ++op)
+        model.set(paramIndex(op, OpParam::Enabled), 1.0);
+    const int feedback = matrixIndex(1, 1), wire = matrixIndex(0, 2);
+    model.set(feedback, 0.4);
+    model.set(wire, 0.5);
+    layout.nodeX[1] = 0.5f;
+    layout.nodeY[1] = 0.6f;
+    const Point b = nodeCenter(layout, 1);
+    const Point middle{b.x + 52.0f, b.y - 47.0f}; // the wire's label, clear of B but over where the loop's would be
+    layout.nodeX[0] = (middle.x - 200.0f - 56.0f) / 772.0f;
+    layout.nodeX[2] = (middle.x + 200.0f - 56.0f) / 772.0f;
+    layout.nodeY[0] = layout.nodeY[2] = (middle.y - 202.0f) / 226.0f;
+    layout.wireBends = {{wire, 0.0f}};
+    view.poll();
+    const bool shot = renderer.save(view, dir / "1m-loop-label-clear.png");
+    auto reset = [&](Point p) { // Reset to default on the label there, if there is one
+        for (const MenuItem &item : view.contextMenu(p))
+            if (item.label == tr(Str::MenuResetDefault)) {
+                view.menuCommand(item.command);
+                return;
+            }
+    };
+    const Point loop{b.x, b.y - 24.0f - 9.0f}; // on B's outline, 24 px out
+    reset({loop.x - 32.0f, loop.y});
+    const bool left = model.value(feedback) != 0.4 && model.value(wire) == 0.5;
+    reset({middle.x + 5.0f, middle.y});
+    const bool stays = model.value(wire) != 0.5;
+    check(shot && left && stays, "a feedback loop's label moves to the loop's left, off a wire's label on its right");
+}
+
 // A node switched on where another one shown sits comes back clear of it, in the same undo step as the switch; one
 // whose place is free stays there. B was left on top of A; a filter in the middle of A, B and E too.
 void testNodeSwitchOnPlace(const std::filesystem::path &dir, Renderer &renderer) {
@@ -8867,6 +8953,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testNodeSwitchOnPlace(dir, renderer);
     testNodeDelete(dir, renderer);
     testLabelClearOfNode(dir, renderer);
+    testLabelsClearOfEachOther(dir, renderer);
+    testLoopLabelClear(dir, renderer);
     testModsSearch(dir, renderer);
     testMeter(dir, renderer);
     testOutScope(dir, renderer);

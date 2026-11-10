@@ -364,7 +364,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     staying there;
   - a routing node under the mouse showing an x in a circle at its upper right (a filter's at its box's corner, read
     off the rendered pixels), whose click switches it off, undoably;
-  - a wire's label sliding along its wire off a node sitting at its middle (the wheel there turning nothing);
+  - a wire's label sliding along its wire off a node sitting at its middle (the wheel there turning nothing), and
+    two wires crossing at their middles, the second's label sliding along its wire off the first's, and a feedback
+    loop's label going to the loop's left off a wire's label on its right;
   - the MODS view's filter: its magnifier opening it to take the keyboard, the words typed (every one, in any case)
     narrowing the rows, its × emptying it, Escape and a click elsewhere letting the keyboard go; and the target
     menu's search listing the targets found with their path, the first that can be picked lit (read off the rendered
