@@ -1458,6 +1458,7 @@ private:
     };
     std::array<RandomTrace, kMaxSources> randomTraces_{};
     void traceRandomLfos();         // takes in the newest telemetry's glides
+    bool idleLfosShown_ = false;    // what the controller was last told (see Controller::setIdleLfosShown())
     bool randomSweep(int lfo) const; // whether its display shows what it ran, rather than a made-up run
     // Where a running random LFO is in its newest traced cycle: like lfoPhaseNow(), but it stays at the end of
     // the cycle until a snapshot brings the next one, rather than wrap round to the start of the same quarter.

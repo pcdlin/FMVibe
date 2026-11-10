@@ -258,8 +258,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   effects. A new instance starts with none. Any effect can be added more than once, switched on and off, reordered and
   removed. A patch saved while the chain held 16 loads its effects in the order they had. Once nothing goes in and
   every tail has rung out (a compressor's or a 3-band dynamics' release run out too), the effects rest, costing
-  next to nothing, while no editor is open; a phaser's or flanger's sweep goes round meanwhile, so a synced one
-  keeps time.
+  next to nothing, with the editor open too (the analyzers taking in the silence, so their spectra fall away and
+  the graph's glow fades); a phaser's or flanger's sweep goes round meanwhile, so a synced one keeps time.
   - **A line with splits**: the effects run along a line from the voices to the output, a chain of them one after
     another, which up to four **splits** cut by frequency into two bands at their Crossover (250 Hz to
     begin with), at a Slope of 6, 12 or 24 dB per octave (12 to begin with, a second-order Linkwitz-Riley crossover; 24 the
@@ -1221,7 +1221,9 @@ may show anywhere, repaints the whole of it.
     at its right end (at the end of a cycle, it waits there until the next one comes in). A Free or Anchor LFO
     runs on one clock whether notes play or not, so its card shows its dot moving (and a random one its cycles
     scrolling) with no note playing too; a Retrigger or One-Shot one, which notes start, shows none until one
-    plays. Without a note it modulates nothing, so only the card moves, and only the card repaints. An LFO picks its shape from a list, like a
+    plays. Without a note it modulates nothing, so only the card moves, and only the card repaints. While the editor
+    is open with one switched on, the CLAP plugin keeps processing with nothing sounding, where a host would let it
+    sleep and the clock would stand still. An LFO picks its shape from a list, like a
     shaper's curve, its button and each entry showing the shape's icon before its name. Under the shape list, as
     wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
     (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an

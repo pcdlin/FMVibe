@@ -142,7 +142,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
-  value the host hands back right after isn't taken; and that an editor sized at the system's DPI and given a window
+  value the host hands back right after isn't taken; that with nothing sounding processing sleeps, but not while the
+  editor shows a free LFO running (the plugin asking the host to process again as one comes on); and that an editor
+  sized at the system's DPI and given a window
   at another (one not DPI aware) asks the host for the size at the window's, its zoom kept (at the same DPI, for
   nothing). It saves/loads state
   through a stream that only moves 5 bytes per call, a version 1 state's Volume loading 12 dB lower, a version 2
@@ -207,7 +209,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     reverb at its largest and longest pre-delay plays back nothing it held), though its lines are cleared only as they
     are read; a compressor running its release out in silence, a quiet
     sine after it untouched; a comb as long as its line ringing on between its pulses and, once rung out, bringing
-    nothing back; and effects that have rung out costing little for silence, which comes out as silence;
+    nothing back; and effects that have rung out costing little for silence, which comes out as silence, also while
+    the editor analyzes them (an analyzer's spectrum falling away through it as it would);
   - a shimmer's tail after an A4, with Shimmer half and full up: falling 60 dB in about its decay time, its energy
     on the octaves and the first two octaves up narrow lines (not smeared by the shifter's crossfades); and at the
     longest decay, undamped and full up, still dying away; and Shimmer turned down to 0 in short chunks and up again
@@ -304,6 +307,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the output meter and scope moving repainting the header alone, a key the keyboard alone and an operator's scope
     the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
     an LFO moving repainting the whole editor, as a compressor's meter and the host's tempo do with no notes playing;
+    with none playing, a free LFO's dot moving repainting its card alone, and the editor telling the plugin while one
+    runs (so it keeps processing);
   - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
     behind the editor's back going at the line's end;
   - a card dragged a tenth of a card onto its neighbor moving nothing, and three tenths making the neighbor glide aside

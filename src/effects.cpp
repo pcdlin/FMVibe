@@ -673,7 +673,8 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
         // the effects' work (a host that keeps processing a quiet instance, as VST3 hosts do, pays nothing for them).
         if (idleChunk(io, n, p)) {
             idleSweeps(n, p, tempo);
-            measurePorts(n);
+            idleAnalyzers(n);
+            measurePorts(n, true);
             continue;
         }
 #ifdef __EMSCRIPTEN__
@@ -733,7 +734,7 @@ void Effects::process(float *left, float *right, uint32_t frames, const ParamVal
 }
 
 bool Effects::idleChunk(const float *const *io, uint32_t n, const ParamValues &p) const {
-    if (tail_ > 0 || analyzing_ || flushing_ || rewiring_ || duck_ < 1.0)
+    if (tail_ > 0 || flushing_ || rewiring_ || duck_ < 1.0)
         return false;
     for (uint32_t s = 0; s < n; ++s)
         if (io[0][s] != 0.0f || io[1][s] != 0.0f)
@@ -785,6 +786,21 @@ void Effects::idleSweeps(uint32_t n, const ParamValues &p, double tempo) {
         phase += sweepHz([&p](int k) { return p[k]; }, slot, phaser, tempo) / sampleRate_ * n;
         phase -= std::floor(phase);
         (phaser ? fx.phaser.coefKnown : fx.flanger.delayKnown) = false; // worked out again where the sweep is now
+    }
+}
+
+void Effects::idleAnalyzers(uint32_t n) {
+    if (!analyzing_)
+        return;
+    float silence[2][kChunk]{};
+    float *const io[2] = {silence[0], silence[1]};
+    for (int i = 0; i < graphOrderCount_; ++i) {
+        const int slot = graphOrder_[i];
+        if (slot >= kFxSlots || slots_[slot].fade <= 0.0)
+            continue;
+        const FxType type = slots_[slot].running;
+        if (type == FxType::ParamEq || type == FxType::Filter || type == FxType::Disperser)
+            feedAnalyzer(slot, io, n);
     }
 }
 
@@ -1353,13 +1369,14 @@ void Effects::processGraph(float *const *io, uint32_t n, const ParamValues &p, d
     std::copy_n(mix[1], n, io[1]);
 }
 
-void Effects::measurePorts(uint32_t n) {
+void Effects::measurePorts(uint32_t n, bool silent) {
     // Only the editor reads them: with none analyzing, they read nothing, and start from there when one does.
     if (!analyzing_) {
         portLevel_.fill(0.0f);
         return;
     }
-    // This chunk's peak of each port that ran, against the last level fallen by the chunk's length.
+    // This chunk's peak of each port that ran, against the last level fallen by the chunk's length; in a chunk that
+    // went by idle, every port's is 0 (what the ports hold is the last chunk that ran).
     std::array<float, kFxPorts> peak{};
     auto peakOf = [n](const std::array<std::array<float, kChunk>, 2> &out) {
         float most = 0.0f;
@@ -1368,8 +1385,9 @@ void Effects::measurePorts(uint32_t n) {
                 most = std::max(most, std::abs(side[s]));
         return most;
     };
-    peak[kFxPortIn] = peakOf(input_);
-    for (int i = 0; i < graphOrderCount_; ++i) {
+    if (!silent)
+        peak[kFxPortIn] = peakOf(input_);
+    for (int i = 0; i < graphOrderCount_ && !silent; ++i) {
         const int node = graphOrder_[i];
         if (node < kFxSlots) {
             peak[fxSlotPort(node)] = peakOf(slotOut_[node]);

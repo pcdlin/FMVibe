@@ -248,7 +248,9 @@ clap_process_status Plugin::process(const clap_process_t *process) {
 
     reportEndedNotes(process->out_events, frames);
     endBlock();
-    return synth().activeVoiceCount() > 0 || synth().effectsRinging() ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_SLEEP;
+    // Asleep, the host stops calling until its next event: also not while the editor shows an LFO running on its own.
+    return synth().activeVoiceCount() > 0 || synth().effectsRinging() || editorWantsProcessing() ? CLAP_PROCESS_CONTINUE
+                                                                                                : CLAP_PROCESS_SLEEP;
 }
 
 void Plugin::applyTransport(const clap_event_transport_t &transport) {

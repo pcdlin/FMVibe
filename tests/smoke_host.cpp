@@ -25,6 +25,7 @@ namespace {
 
 int failures = 0;
 int restartRequests = 0;
+int processRequests = 0;
 
 void check(bool ok, const char *what) {
     std::printf("%s  %s\n", ok ? "ok  " : "FAIL", what);
@@ -57,7 +58,7 @@ const clap_host_t kHost = {
         return std::strcmp(id, CLAP_EXT_GUI) == 0 ? &kHostGui : nullptr;
     },
     [](const clap_host_t *) { ++restartRequests; },
-    [](const clap_host_t *) {}, // request_process
+    [](const clap_host_t *) { ++processRequests; },
     [](const clap_host_t *) {}, // request_callback
 };
 
@@ -3723,6 +3724,58 @@ int main(int argc, char **argv) {
         check(volumeKept == volumeAfter, "a value from the host just after the plugin told it one is not taken");
         in.events.clear();
         Sleep(600); // and once that moment has passed, the host's values are taken again (checked below)
+
+        // With nothing sounding, processing sleeps; but not while the editor shows a free LFO running on its own,
+        // whose clock and card move on: switched on, the plugin asks the host to process again and keeps it going,
+        // and switched back to retrigger, it sleeps. The sources' clocks are put back as they were after.
+        {
+            std::vector<std::pair<int, double>> clocksWere;
+            for (int s = 0; s < kMaxSources; ++s)
+                for (const int index : {paramIndex(s, SourceParam::Type), sourceEnabledIndex(s),
+                                        paramIndex(s, SourceParam::Free), paramIndex(s, SourceParam::Anchor),
+                                        paramIndex(s, SourceParam::OneShot)}) {
+                    double was = 0.0;
+                    params->get_value(plugin, idOfIndex(index), &was);
+                    clocksWere.push_back({index, was});
+                }
+            auto send = [&](const std::vector<std::pair<int, double>> &values) {
+                std::vector<clap_event_param_value_t> evs;
+                for (const auto &[index, value] : values)
+                    evs.push_back(paramEvent(index, value));
+                std::vector<const clap_event_header_t *> events;
+                for (const clap_event_param_value_t &ev : evs)
+                    events.push_back(&ev.header);
+                runBlock(events);
+            };
+            plugin->activate(plugin, kSampleRate, 1, kBlock);
+            plugin->start_processing(plugin);
+            std::vector<std::pair<int, double>> retrigger;
+            for (int s = 0; s < kMaxSources; ++s)
+                for (const SourceParam f : {SourceParam::Free, SourceParam::Anchor, SourceParam::OneShot})
+                    retrigger.push_back({paramIndex(s, f), 0.0});
+            send(retrigger);
+            pumpMessages(100); // the editor polls
+            runBlocks(4);
+            const bool sleptFirst = status == CLAP_PROCESS_SLEEP;
+            const int asked = processRequests;
+            send({{paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo)},
+                  {sourceEnabledIndex(0), 1.0},
+                  {paramIndex(0, SourceParam::Free), 1.0}});
+            pumpMessages(100);
+            runBlocks(4);
+            const bool kept = status == CLAP_PROCESS_CONTINUE && processRequests > asked;
+            send({{paramIndex(0, SourceParam::Free), 0.0}});
+            pumpMessages(100);
+            runBlocks(4);
+            const bool sleptAgain = status == CLAP_PROCESS_SLEEP;
+            send(clocksWere);
+            in.events.clear(); // send()'s events are gone
+            plugin->stop_processing(plugin);
+            plugin->deactivate(plugin);
+            check(sleptFirst && kept && sleptAgain,
+                  "a free LFO the editor shows with nothing sounding keeps the host processing, and a retrigger one "
+                  "lets it sleep");
+        }
 
         gui->hide(plugin);
         gui->destroy(plugin);

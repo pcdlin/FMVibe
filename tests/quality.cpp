@@ -762,6 +762,81 @@ void effectsChainChecks() {
         check(!fx.ringing() || waited < 240, "the effects' tails ring out");
         check(idle < 0.25 * busy && idlePeak == 0.0f && busyPeak > 0.0f && after > 0.1f,
               "silence through effects that have rung out costs little and comes out as silence");
+
+        // So with the editor open, analyzing (a parametric EQ after them, whose analyzer takes in the silence as
+        // running it would): the plugin then keeps processing with nothing sounding while a free LFO shows.
+        Effects open;
+        open.prepare(kSampleRate);
+        open.setAnalyzing(true);
+        p[paramIndex(3, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+        chain(p, {0, 1, 2, 3});
+        auto runOpen = [&](double seconds, double amplitude) {
+            float peak = 0.0f;
+            for (size_t t = 0, end = static_cast<size_t>(seconds * kSampleRate); t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                open.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+            }
+            return peak;
+        };
+        auto timedOpen = [&](double seconds, double amplitude, float &peak) {
+            double best = 1e9;
+            for (int k = 0; k < 3; ++k) {
+                const auto start = std::chrono::steady_clock::now();
+                peak = std::max(peak, runOpen(seconds, amplitude));
+                best = std::min(best, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+            }
+            return best;
+        };
+        runOpen(0.5, 0.5);
+        int openWaited = 0;
+        while (open.ringing() && openWaited++ < 120)
+            runOpen(0.5, 0.0);
+        float openBusyPeak = 0.0f, openIdlePeak = 0.0f;
+        const double openBusy = timedOpen(2.0, 0.01, openBusyPeak);
+        while (open.ringing() && openWaited++ < 240)
+            runOpen(0.5, 0.0);
+        const double openIdle = timedOpen(2.0, 0.0, openIdlePeak);
+        std::printf("      the same and a parametric EQ, analyzing: a quiet sine %.2f ms, silence once rung out %.3f ms\n",
+                    openBusy * 1e3, openIdle * 1e3);
+        check(openIdle < 0.25 * openBusy && openIdlePeak == 0.0f && openBusyPeak > 0.0f,
+              "silence through effects that have rung out costs little while the editor analyzes them too");
+
+        // The EQ alone, rung out at once: its spectrum goes on falling through the silence that goes by idle.
+        Effects eqOnly;
+        eqOnly.prepare(kSampleRate);
+        eqOnly.setAnalyzing(true);
+        ParamValues q = defaults();
+        q[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+        chain(q, {0});
+        auto runEq = [&](double seconds, double amplitude) {
+            for (size_t t = 0, end = static_cast<size_t>(seconds * kSampleRate); t < end; t += kBlock) {
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] = static_cast<float>(
+                        amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                eqOnly.process(left.data(), right.data(), kBlock, q, 120.0, 60.0);
+            }
+        };
+        auto loudestBand = [&] {
+            float most = 0.0f;
+            for (int band = 0; band < kSpectrumBands; ++band)
+                most = std::max(most, eqOnly.spectrum(0, band));
+            return most;
+        };
+        runEq(0.5, 0.5);
+        int eqWaited = 0;
+        while (eqOnly.ringing() && eqWaited++ < 100)
+            runEq(0.01, 0.0);
+        const float rungOut = loudestBand();
+        runEq(0.5, 0.0);
+        const float halfSecond = loudestBand();
+        std::printf("      a parametric EQ's spectrum through idle silence: %.1f dB down in half a second\n",
+                    20.0 * std::log10(std::max(halfSecond, 1e-30f) / std::max(rungOut, 1e-30f)));
+        check(!eqOnly.ringing() && rungOut > 1e-3f && halfSecond < 0.1f * rungOut,
+              "an analyzer's spectrum falls away through silence that goes by without running the effects");
     }
     {
         // As Volume's (see the clicks), a jump rendered in single frames ramps as smoothly as in whole blocks.

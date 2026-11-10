@@ -1468,6 +1468,15 @@ bool View::poll() {
     }
     telemetry_ = t;
     traceRandomLfos();
+    // A free or anchored LFO switched on runs whether notes play or not, and its card shows it: the plugin keeps
+    // processing for it while a host would let it sleep.
+    bool idleLfos = false;
+    for (int s = 0; s < kMaxSources && !idleLfos; ++s)
+        idleLfos = lfoRunsIdle(s);
+    if (idleLfos != idleLfosShown_) {
+        idleLfosShown_ = idleLfos;
+        controller_.setIdleLfosShown(idleLfos);
+    }
     if (flashTicks_ > 0 && --flashTicks_ == 0)
         everywhere = true;
     if (edgeScroll()) {

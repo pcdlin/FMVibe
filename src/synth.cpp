@@ -2190,38 +2190,41 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                         op.phases[k] -= 1.0;
                 }
             } else {
-                // Each copy read and moved on. Frequency modulation (kFm) scales each copy's increment, held within
-                // Nyquist either way, so the phase moves less than a cycle a sample and one wrap brings it back. Only
-                // an operator heard (out, or into a filter or shaper) sums its copies' sides: one that only modulates
-                // others needs its mono sum alone.
-                auto readCopies = [&]<bool kFm, bool kSides>() {
+                // Each copy read and moved on; only an operator heard (out, or into a filter or shaper) sums its
+                // copies' sides, one that only modulates others needing its mono sum alone. Plain loops with a branch
+                // the predictor learns: a templated lambda per case measured a tenth slower here with one copy.
+                const bool sides = route.out || route.sendCount > 0 || route.shaperSendCount > 0;
+                if (factor == 1.0) {
                     for (int k = 0; k < copies[i]; ++k) {
                         const double x = WaveTables::read(wave[i], op.phases[k] + offset);
                         mono += x;
-                        if constexpr (kSides) {
+                        if (sides) {
                             l += x * copyGains[i]->gainL[k];
                             r += x * copyGains[i]->gainR[k];
                         }
-                        if constexpr (kFm) {
-                            op.phases[k] += std::clamp(op.incNow[k] * factor, -0.5, 0.5);
-                            op.incNow[k] += incStep[i][k];
-                            if (op.phases[k] >= 1.0)
-                                op.phases[k] -= 1.0;
-                            else if (op.phases[k] < 0.0)
-                                op.phases[k] += 1.0;
-                        } else {
-                            op.phases[k] += op.incNow[k];
-                            op.incNow[k] += incStep[i][k];
-                            if (op.phases[k] >= 1.0)
-                                op.phases[k] -= 1.0;
-                        }
+                        op.phases[k] += op.incNow[k];
+                        op.incNow[k] += incStep[i][k];
+                        if (op.phases[k] >= 1.0)
+                            op.phases[k] -= 1.0;
                     }
-                };
-                const bool sides = route.out || route.sendCount > 0 || route.shaperSendCount > 0;
-                if (factor == 1.0)
-                    sides ? readCopies.template operator()<false, true>() : readCopies.template operator()<false, false>();
-                else
-                    sides ? readCopies.template operator()<true, true>() : readCopies.template operator()<true, false>();
+                } else {
+                    // Frequency modulation: each copy's increment scaled, held within Nyquist either way, so the phase
+                    // moves less than a cycle a sample and one wrap brings it back.
+                    for (int k = 0; k < copies[i]; ++k) {
+                        const double x = WaveTables::read(wave[i], op.phases[k] + offset);
+                        mono += x;
+                        if (sides) {
+                            l += x * copyGains[i]->gainL[k];
+                            r += x * copyGains[i]->gainR[k];
+                        }
+                        op.phases[k] += std::clamp(op.incNow[k] * factor, -0.5, 0.5);
+                        op.incNow[k] += incStep[i][k];
+                        if (op.phases[k] >= 1.0)
+                            op.phases[k] -= 1.0;
+                        else if (op.phases[k] < 0.0)
+                            op.phases[k] += 1.0;
+                    }
+                }
             }
             if (ring != 1.0) {
                 mono *= ring;

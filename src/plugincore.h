@@ -82,6 +82,7 @@ public:
         scopeOp_.store(op, std::memory_order_relaxed);
         scopeCycles_.store(cycles, std::memory_order_relaxed);
     }
+    void setIdleLfosShown(bool shown) override;
     void resetPreset() override;
     bool loadPreset(const std::wstring &path) override;
     bool savePreset(const std::wstring &path) override;
@@ -143,6 +144,11 @@ public:
     void render(float *left, float *right, uint32_t frames);
     void endBlock();
     Synth &synth() { return synth_; }
+    // Audio thread: whether the open editor shows an LFO running with no note playing (see setIdleLfosShown()), so a
+    // host is to keep processing though nothing sounds.
+    bool editorWantsProcessing() const {
+        return editorOpen_.load(std::memory_order_relaxed) && idleLfosShown_.load(std::memory_order_relaxed);
+    }
 
     // A param's value from the host, which a block being processed hears from here on (`inBlock`: the audio thread,
     // or the main thread while no block is processed). For a moment after the plugin told the host a value, the
@@ -281,6 +287,7 @@ private:
     std::unique_ptr<Telemetry> telemetryScratch_ = std::make_unique<Telemetry>();
     const std::unique_ptr<const Telemetry> noTelemetry_ = std::make_unique<const Telemetry>(); // what nothing playing shows
     std::atomic<bool> editorOpen_{false};
+    std::atomic<bool> idleLfosShown_{false}; // see setIdleLfosShown()
     std::atomic<int> scopeOp_{-1}; // what the editor's scope shows (see Controller::setScope())
     std::atomic<int> scopeCycles_{2};
     unsigned int csr_ = 0; // the audio thread's floating-point control word, while a block is processed

@@ -222,6 +222,9 @@ public:
     // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
     // over how many of its cycles.
     virtual void setScope(int op, int cycles) = 0;
+    // Whether the editor shows a free or anchored LFO running with no note playing, so the plugin keeps its clock
+    // going (and the telemetry coming) while a host would otherwise let it sleep.
+    virtual void setIdleLfosShown(bool) {}
 
     // Presets: the whole patch, as a file. Init sets every param and the layout back to their defaults.
     virtual void resetPreset() = 0;

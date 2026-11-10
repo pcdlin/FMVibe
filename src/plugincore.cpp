@@ -281,7 +281,15 @@ bool PluginCore::openEditor() {
 
 void PluginCore::closeEditor() {
     editorOpen_.store(false);
+    idleLfosShown_.store(false);
     editor_.reset();
+}
+
+// Main thread. A host that let the plugin sleep (CLAP's, once nothing sounds) is asked to run it again, so the clock
+// moves on and the editor sees it.
+void PluginCore::setIdleLfosShown(bool shown) {
+    if (!idleLfosShown_.exchange(shown) && shown)
+        hostRequestProcess();
 }
 
 bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {

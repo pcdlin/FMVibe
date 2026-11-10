@@ -62,6 +62,8 @@ public:
         scopeOp = op;
         scopeCycles = cycles;
     }
+    void setIdleLfosShown(bool shown) override { idleLfosShown = shown; }
+    bool idleLfosShown = false; // what the view said last (see Controller::setIdleLfosShown())
     void resetPreset() override { ++resets; }
     bool loadPreset(const std::wstring &) override { return false; }
     // As the plugin does: a preset saved is the patch's preset, unchanged. Unless writing is to fail.
@@ -4285,12 +4287,15 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     // With no notes playing, a free LFO's shared clock runs on: its dot moving repaints its card alone, as a whole
     // paint would. Switched to retrigger it shows no dot (the card's pixels change) and moving repaints nothing.
     model.live.fxReduction[0][0] = 0.0f;
+    const bool idleBefore = model.idleLfosShown;
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(paramIndex(0, SourceParam::Free), 1.0);
     model.live.lfoPhases[0] = 0.2f;
     model.live.lfoRates[0] = 2.0f;
     model.live.age = 0.01f;
     view.poll();
+    // The view tells the plugin, which keeps processing for it while a host would let it sleep.
+    const bool idleTold = !idleBefore && model.idleLfosShown;
     renderer.save(view, dir / "99h-idle-lfo-before.png");
     model.live.lfoPhases[0] = 0.6f;
     const bool idleMoved = view.poll() && only(detail::sourceCard(0.0f));
@@ -4302,6 +4307,8 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     const bool noDot = renderer.save(view, dir / "99j-idle-lfo-retrigger.png") && renderer.image() != withDot;
     model.live.lfoPhases[0] = 0.9f;
     check(noDot && !view.poll(), "a retrigger LFO shows no dot with no notes playing, and repaints nothing");
+    check(idleTold && !model.idleLfosShown,
+          "the editor tells the plugin while a free LFO runs with no notes playing, and once none does");
 }
 
 // A macro's name that isn't valid UTF-8 (a state can hold any bytes there) drawn as best it can be, and the rest of

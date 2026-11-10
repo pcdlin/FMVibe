@@ -457,10 +457,13 @@ private:
     // from the last call's, which it keeps.
     bool graphParamsChanged(const ParamValues &p);
     // Whether a chunk of `n` samples of `io` can go by without running the graph: exact silence going in, nothing
-    // ringing, nobody analyzing, and every effect, wire and split where its params put it, with no fade under way.
+    // ringing, and every effect, wire and split where its params put it, with no fade under way.
     bool idleChunk(const float *const *io, uint32_t n, const ParamValues &p) const;
     // The phasers' and flangers' sweeps going round through such a chunk, so a synced one keeps time with the host.
     void idleSweeps(uint32_t n, const ParamValues &p, double tempo);
+    // While the editor is open, the analyzers taking in such a chunk's silence, as running the effects would give
+    // them, so their spectra fall away as they would.
+    void idleAnalyzers(uint32_t n);
     bool loopsAsSet(const ParamValues &p) const; // whether the wires as set make a loop
     // Where a wire into `node` comes from as set: its From's port, or none (-1) while that port's node isn't in the
     // graph, so a wire from an effect taken away (which a host or a state can leave) fades out with it.
@@ -523,7 +526,8 @@ private:
     std::array<std::array<std::array<std::array<float, kChunk>, 2>, kFxBands>, kFxSplits> bandOut_{};
     std::array<std::array<std::array<float, kChunk>, 2>, kFxSums> sumOut_{};
     std::array<float, kFxPorts> portLevel_{}; // see portLevel()
-    void measurePorts(uint32_t n);
+    // `silent`: a chunk that went by idle, whose ports all read 0.
+    void measurePorts(uint32_t n, bool silent = false);
     std::array<std::array<Wire, kFxSumInputs>, kFxNodes> wires_{}; // as many as a node takes at most
     static_assert(kFxSumInputs >= kFxInputs && kFxSumInputs >= kFxOutInputs);
     std::array<Split, kFxSplits> splits_{};
