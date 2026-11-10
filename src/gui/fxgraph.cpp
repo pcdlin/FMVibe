@@ -1941,11 +1941,14 @@ void View::paintFxGraph(Canvas &c) {
             }
         }
 
+    // How strongly the nodes glow as loud as they are: a quarter less in a flat theme, on its tinted nodes.
+    const float nodeGlow = look.flat ? 0.75f : 1.0f;
+
     // IN and OUT.
     for (const auto &[p, name] : {std::pair{at.in, Str::NodeFxIn}, std::pair{at.out, Str::NodeFxOut}}) {
         const Rect r = boxAround(p, kFxEndHalfW, kFxEndHalfH);
         if (const float glow = name == Str::NodeFxIn ? fxGlow(kFxPortIn) : outGlow; glow > 0.01f)
-            featherRect(c, r, kRadiusControl, 12.0f, kText.alpha(0.18f * glow));
+            featherRect(c, r, kRadiusControl, 12.0f, kText.alpha(0.18f * glow * nodeGlow));
         paintNodeShadow(c, r, kRadiusControl);
         c.fillRect(r, look.flat ? kTrack : kCardColor, kRadiusControl);
         if (!look.flat)
@@ -1976,7 +1979,7 @@ void View::paintFxGraph(Canvas &c) {
             const Color color = effectColor(node).alpha(alpha);
             const Rect r = nodeRect(node, center);
             if (const float glow = alpha < 1.0f ? 0.0f : fxGlow(fxSlotPort(node)); glow > 0.01f)
-                featherRect(c, r, kRadiusControl, 16.0f, color.alpha(0.3f * glow));
+                featherRect(c, r, kRadiusControl, 16.0f, color.alpha(0.3f * glow * nodeGlow));
             if (isSelected)
                 c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
             if (look.flat) { // filled with a tint of its color, stronger under the mouse and picked, no outline
@@ -2002,7 +2005,7 @@ void View::paintFxGraph(Canvas &c) {
                                   : std::max({fxGlow(fxBandPort(sum, kHighBand)), fxGlow(fxBandPort(sum, kLowBand)),
                                               three ? fxGlow(fxBandPort(sum, 1)) : 0.0f});
         if (glow > 0.01f)
-            featherRect(c, r, kRadiusControl, 14.0f, kText.alpha(0.18f * glow));
+            featherRect(c, r, kRadiusControl, 14.0f, kText.alpha(0.18f * glow * nodeGlow));
         if (isSelected) // as an effect's: its ring 5 px out, its corners as much rounder
             c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
         // Its upper half in the high band's color, its lower half in the low band's, parted by a slight slant (rising
