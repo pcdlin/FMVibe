@@ -7,6 +7,7 @@
 #include <cstring>
 #include <limits>
 #include <numbers>
+#include <utility>
 
 namespace fmvibe {
 
@@ -193,6 +194,17 @@ double readBehind(const ZeroBuffer &line, int write, double delay) {
     const int i0 = std::min(static_cast<int>(pos), size - 1);
     const int i1 = i0 + 1 == size ? 0 : i0 + 1;
     return line[i0] + (line[i1] - line[i0]) * (pos - i0);
+}
+
+// Where a chunk of `n` samples reads a line `size` long behind its start, written from `write` on, with a delay
+// from `shortest` to `longest` samples: the stretch to clear of what it held before it started (see
+// ZeroBuffer::clearStale()), a sample further either way for the interpolation and the delay's fraction.
+std::pair<size_t, size_t> readsBehind(int size, int write, uint32_t n, double shortest, double longest) {
+    if (longest + 2.0 >= size) // round the line and more: anywhere along it
+        return {0, static_cast<size_t>(size)};
+    const double from = size + write - longest - 2.0, to = size + write + n - shortest + 2.0;
+    return {static_cast<size_t>(std::clamp(from, 0.0, static_cast<double>(size))),
+            static_cast<size_t>(std::clamp(to, 0.0, static_cast<double>(size)))};
 }
 
 // The reverb's size knob: from a quarter of the lines' full length to all of it.
@@ -467,8 +479,8 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
     }
     case FxType::Delay: {
         Delay &d = s.delay;
-        for (ZeroBuffer &line : d.lines) // only what it ran through: lines 4 s long would take a while to clear
-            line.zero(d.ran);
+        for (ZeroBuffer &line : d.lines) // cleared as the echoes reach: lines 4 s long would take a while to clear
+            line.restart(d.ran);
         d.ran = 0;
         d.write = 0;
         d.length = {delayTarget(slot, 0, p, tempo), delayTarget(slot, 1, p, tempo)};
@@ -508,13 +520,13 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         break;
     case FxType::Reverb: {
         Reverb &r = s.reverb;
-        for (ZeroBuffer &line : r.lines)
-            line.zero(r.ran);
+        for (ZeroBuffer &line : r.lines) // these two cleared as they are read, the longest
+            line.restart(r.ran);
+        for (ZeroBuffer &line : r.preDelay)
+            line.restart(r.ran);
         for (auto &side : r.diffusers)
             for (ZeroBuffer &diffuser : side)
                 diffuser.zero(r.ran);
-        for (ZeroBuffer &line : r.preDelay)
-            line.zero(r.ran);
         for (ZeroBuffer &line : r.shifter)
             line.zero(r.ran);
         r.ran = 0;
@@ -1392,6 +1404,13 @@ double Effects::runDelay(int slot, float *const *io, uint32_t n, const ParamValu
     const double highPass = onePole(tone.highPassHz, sampleRate_);
     const bool pingPong = at(FxParam::DelayPingPong) >= 0.5;
     const int size = static_cast<int>(d.lines[0].size());
+    // What the lines held before the delay started is cleared only where this chunk's echoes read it, behind its
+    // start: each length is on its way to its target (see ZeroBuffer::restart()).
+    for (int c = 0; c < 2; ++c) {
+        const auto [from, to] = readsBehind(size, d.write, n, std::min(d.length[c], targets[c]),
+                                            std::max(d.length[c], targets[c]));
+        d.lines[c].clearStale(d.ran - n, n + 1, from, to);
+    }
 
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {
@@ -1773,6 +1792,23 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
     const int lineSize = static_cast<int>(r.lines[0].size());
     const int diffuserSize = static_cast<int>(r.diffusers[0][0].size());
     const int preSize = static_cast<int>(r.preDelay[0].size());
+    // What the lines and the pre-delay held before the reverb started is cleared only where this chunk reads them,
+    // behind its start (see ZeroBuffer::restart()): each line at the sizes it glides between, wavering, and the
+    // pre-delay at the lengths it glides between, out to a room's latest reflection.
+    const uint64_t written = r.ran - n;
+    const double sizes[2] = {std::min(r.size, sizeTarget), std::max(r.size, sizeTarget)};
+    for (int i = 0; i < kReverbLines; ++i) {
+        const auto [from, to] = readsBehind(lineSize, r.lineWrite, n, reverbLengths_[i] * sizes[0],
+                                            reverbLengths_[i] * sizes[1] + 2.0 * wander);
+        r.lines[i].clearStale(written, n + 1, from, to);
+    }
+    const double preShortest = std::min(r.preLength, preTarget), preLongest = std::max(r.preLength, preTarget);
+    const auto [preFrom, preTo] = readsBehind(
+        preSize, r.preWrite, n, preShortest,
+        style.early > 0.0 ? std::min(preLongest + kRoomEchoSeconds[std::size(kRoomEchoSeconds) - 1] * echoScale, echoRoom)
+                          : preLongest);
+    for (ZeroBuffer &line : r.preDelay)
+        line.clearStale(written, n + 2, preFrom, preTo);
 
     double peak = 0.0;
     for (uint32_t s = 0; s < n; ++s) {

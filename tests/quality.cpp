@@ -455,7 +455,8 @@ void effectsChainChecks() {
     }
     {
         // A delay switched off and on again plays back nothing it held: after half a second of a sine, its lines part
-        // written, and after five, past their length, written all round.
+        // written, and after five, past their length, written all round; also with its times then turned to the
+        // longest and the shortest, reading anywhere along its lines (which it clears only as they are read).
         bool clean = true;
         for (double played : {0.5, 5.0}) {
             Effects fx;
@@ -486,12 +487,65 @@ void effectsChainChecks() {
             p[paramIndex(0, FxParam::Enabled)] = 0.0;
             run(0.05, 0.0); // faded out
             p[paramIndex(0, FxParam::Enabled)] = 1.0;
-            const float after = run(2.0, 0.0);
+            float after = run(0.3, 0.0);
+            p[paramIndex(0, FxParam::DelayTimeL)] = p[paramIndex(0, FxParam::DelayTimeR)] = 1.0; // as long as it goes
+            after = std::max(after, run(4.5, 0.0));
+            p[paramIndex(0, FxParam::DelayTimeL)] = p[paramIndex(0, FxParam::DelayTimeR)] = 0.0;
+            after = std::max(after, run(0.5, 0.0));
             std::printf("      a delay off and on again after %.1f s of a sine: %.0f dB of it after\n", played,
                         20.0 * std::log10(after + 1e-30));
             clean = clean && after < 1e-6f;
         }
         check(clean, "a delay switched off and on again plays back nothing it held");
+    }
+    {
+        // A reverb likewise, its lines and its pre-delay (a room's, which reads its early reflections from it too): off
+        // and on again after a sine, then at its largest size and longest pre-delay, it plays back nothing it held.
+        bool clean = true;
+        for (double played : {0.05, 3.0}) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Room);
+            p[paramIndex(0, FxParam::ReverbSize)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+            chain(p, {0});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            size_t t = 0;
+            auto run = [&](double seconds, double amplitude) {
+                float peak = 0.0f;
+                for (const size_t end = t + static_cast<size_t>(seconds * kSampleRate); t < end; t += kPiece) {
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                    fx.process(left, right, kPiece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+                }
+                return peak;
+            };
+            // Played at its largest first, so its lines and pre-delay hold sound all along them.
+            p[paramIndex(0, FxParam::ReverbSize)] = 1.0;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 1.0;
+            run(played, 0.5);
+            p[paramIndex(0, FxParam::ReverbSize)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 0.0;
+            run(0.5, 0.5);
+            p[paramIndex(0, FxParam::Enabled)] = 0.0;
+            run(0.05, 0.0);
+            p[paramIndex(0, FxParam::Enabled)] = 1.0;
+            float after = run(0.2, 0.0);
+            p[paramIndex(0, FxParam::ReverbSize)] = 1.0;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 1.0;
+            after = std::max(after, run(1.0, 0.0));
+            std::printf("      a reverb off and on again after %.2f s of a sine: %.0f dB of it after\n", played + 0.5,
+                        20.0 * std::log10(after + 1e-30));
+            clean = clean && after < 1e-6f;
+        }
+        check(clean, "a reverb switched off and on again plays back nothing it held, at any size or pre-delay");
     }
     {
         // A sample that isn't a number going into a delay and a reverb, and one louder than any sound (which would

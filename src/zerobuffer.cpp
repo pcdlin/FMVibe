@@ -42,6 +42,7 @@ void ZeroBuffer::assign(size_t size, float) {
     }
     size_ = size;
     pristine_ = true;
+    stale_ = cleanFrom_ = cleanTo_ = 0;
 }
 
 void ZeroBuffer::release() {
@@ -59,6 +60,7 @@ void ZeroBuffer::release() {
     size_ = 0;
     paged_ = false;
     pristine_ = true;
+    stale_ = cleanFrom_ = cleanTo_ = 0;
 }
 
 } // namespace fmvibe

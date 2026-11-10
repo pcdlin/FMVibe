@@ -199,7 +199,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
     going into a delay and a reverb leaving them sane, ringing out and playing on; a delay switched off and on again playing back nothing it
-    held, its lines part written or written all round; a compressor running its release out in silence, a quiet
+    held, its lines part written or written all round, and its times then turned to their longest and shortest (as a
+    reverb at its largest and longest pre-delay plays back nothing it held), though its lines are cleared only as they
+    are read; a compressor running its release out in silence, a quiet
     sine after it untouched; a comb as long as its line ringing on between its pulses and, once rung out, bringing
     nothing back; and effects that have rung out costing little for silence, which comes out as silence;
   - a shimmer's tail after an A4, with Shimmer half and full up: falling 60 dB in about its decay time, its energy
