@@ -51,7 +51,8 @@ struct Palette {
     // How it draws beyond its colors. Left out, a theme draws as Midnight and Light do: outlined cards and controls,
     // the accent for every knob and operator, switches lit with a tint.
     // `flat` is Spectrum's and Porcelain's look: cards tinted with their own color and outlined only under the mouse,
-    // a knob's arc (and its track, faintly) in the color of the card it is on and its pointer a dot; switches filled
+    // a knob's arc (and its track, faintly) in the color of the card it is on (a modulated one's in the text's color,
+    // apart from its modulation rings) and its pointer a dot; switches filled
     // solid with their color when lit, set in a well; list buttons, menus and the other controls without outlines;
     // + SOURCE and the other add buttons as filled pills, the cards that add one filled faintly; each operator in a
     // color of its own (ops); routing nodes on a soft shadow (nodeTop down to nodeBottom), the effects graph's

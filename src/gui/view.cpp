@@ -7550,12 +7550,19 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     };
     const Color plain = sum >= 0 ? laneColor(levelOf) : owner(w.param);
     const Color own = macro >= 0 ? kSourceColors[kMaxSources + macro] : plain;
-    const Color arc = own.alpha(idle ? 0.3f : 1.0f);
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
     // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color, which stands
     // out on a card tinted with it as the plain track doesn't.
-    const Color track = look.flat ? own.alpha(focused ? 0.45f : 0.28f) : (focused ? kFaint : kTrack);
+    // There, a modulated knob's arc and track go neutral, in the text's color: its modulation rings, just outside, are
+    // in their sources' colors, and one in the card's color (or one like it) would melt into the arc.
+    bool modulated = false;
+    forEachMod(w.param, [&](const Assignment &) { modulated = true; });
+    const bool neutral = look.flat && modulated;
+    const Color arc = neutral ? kText.alpha(idle ? 0.3f : 0.9f) : own.alpha(idle ? 0.3f : 1.0f);
+    const Color track = neutral     ? kText.alpha(focused ? 0.22f : 0.12f)
+                        : look.flat ? own.alpha(focused ? 0.45f : 0.28f)
+                                    : (focused ? kFaint : kTrack);
     c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, track, 3.5f);
     c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
 
@@ -7601,9 +7608,13 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     float offset = liveOffset(w.param);
     if (offset != 0.0f && modulatedInSteps(w.param))
         offset = static_cast<float>(std::clamp(std::round(value(w.param) + offset), def.min, def.max) - value(w.param));
-    if (offset != 0.0f)
-        c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))),
-                     2.5f, kText);
+    // On a neutral arc, which is in the text's color too, the dot is ringed in the cap's color to stand out.
+    if (offset != 0.0f) {
+        const Point dot = Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min)));
+        if (neutral)
+            c.fillCircle(dot, 3.75f, kKnobBody);
+        c.fillCircle(dot, 2.5f, kText);
+    }
 
     char text[64];
     formatParam(w.param, value(w.param), text, sizeof(text));

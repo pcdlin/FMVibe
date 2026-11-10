@@ -1412,7 +1412,9 @@ may show anywhere, repaints the whole of it.
   cards with a slight one too), each button shown in its own colors. Spectrum and Porcelain share a flat look: each
   effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
   a split's container likewise, the band it shows faintly in its color behind its cards; a knob's arc, and faintly its
-  track, in the color of what it belongs to (its card's, in the inspector the accent) and its pointer a dot; an LFO's
+  track, in the color of what it belongs to (its card's, in the inspector the accent), or in the text's color once
+  something modulates it, so its modulation rings stand apart from it whatever their sources' colors, and its pointer
+  a dot (on a modulated knob, the dot showing where modulation takes it ringed in the cap's color); an LFO's
   shape filled on its card; a lit switch filled solid with its color, rows of them set in a well (the LFO's clock and
   polarity icons a little smaller there); list buttons, the lists and menus they open (on a soft shadow), the title
   bar's buttons, the preset's name, the output scope, the note source's and velocity's curves and the wheels without

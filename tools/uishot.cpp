@@ -6,6 +6,7 @@
 #include "gui/canvas.h"
 #include "gui/layout.h"
 #include "gui/routing.h"
+#include "gui/theme.h"
 #include "gui/view.h"
 #include "uistrings.h"
 
@@ -1726,6 +1727,64 @@ void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
     check(single != 0u && stacked != 0u && single != stacked, "a Spectrum node's unison copies show beside it");
     check(bare != outlined && bare == bareAgain && bare != 0u && midnight != 0u && listShot,
           "a Spectrum card is outlined only while the mouse is over it");
+}
+
+// In a theme that colors knobs by their card (Spectrum, Porcelain), a modulated knob's arc goes neutral, in the text's
+// color, so its modulation rings in their sources' colors stand apart from it; Midnight's stays in the accent (read
+// off the rendered pixels, the upper half of Op A's Phase knob, set to its middle, where its arc runs).
+void testFlatModulatedKnob(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    model.set(paramIndex(0, OpParam::Phase), 0.5);
+    view.poll();
+    const Point away{600.0f, 328.0f};
+    // The pixels near the accent, and the ones near the text's color, in the knob's upper half.
+    auto count = [&](const char *file, uint32_t accent, uint32_t text) {
+        view.mouseMove(away, {});
+        std::pair<int, int> counts{0, 0};
+        if (!renderer.save(view, dir / file))
+            return counts;
+        auto near = [](uint32_t a, uint32_t b) {
+            for (int shift = 0; shift < 24; shift += 8)
+                if (std::abs(static_cast<int>((a >> shift) & 0xFF) - static_cast<int>((b >> shift) & 0xFF)) > 40)
+                    return false;
+            return true;
+        };
+        for (float y = kOpPhaseKnob.y - 22.0f; y < kOpPhaseKnob.y - 8.0f; y += 1.0f)
+            for (float x = kOpPhaseKnob.x - 22.0f; x < kOpPhaseKnob.x + 22.0f; x += 1.0f) {
+                const uint32_t p = renderer.pixel({x, y});
+                counts.first += near(p, accent);
+                counts.second += near(p, text);
+            }
+        return counts;
+    };
+    auto rgb = [](const Color &c) {
+        return static_cast<uint32_t>(c.r * 255.0f + 0.5f) << 16 | static_cast<uint32_t>(c.g * 255.0f + 0.5f) << 8 |
+               static_cast<uint32_t>(c.b * 255.0f + 0.5f);
+    };
+    const detail::Palette &spectrum = detail::kThemes[detail::themeIndex("Spectrum")],
+                          &midnight = detail::kThemes[detail::themeIndex("Midnight")];
+    model.themeName = "Spectrum";
+    const auto plain = count("17m-flat-knob.png", rgb(spectrum.accent), rgb(spectrum.text));
+    drag(view, sourceHandle(0), kOpPhaseKnob);
+    const bool assigned = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Phase);
+    const auto modulated = count("17n-flat-knob-modulated.png", rgb(spectrum.accent), rgb(spectrum.text));
+    model.themeName = "Midnight";
+    const auto midnightModulated = count("17o-midnight-knob-modulated.png", rgb(midnight.accent), rgb(midnight.text));
+    // Where a macro takes it with no note playing, a dot ringed in the cap's color on the neutral arc.
+    model.themeName = "Spectrum";
+    const float strip = view.height() - 179.0f;
+    drag(view, {188.0f - 32.0f, strip}, kOpPhaseKnob); // Macro 1's handle
+    model.set(paramIndex(0, MacroParam::Value), 1.0);
+    view.poll();
+    view.mouseMove(away, {});
+    const bool macroShot = renderer.save(view, dir / "17p-flat-knob-macro.png");
+    std::printf("      Phase's arc: Spectrum %d accent / %d text, modulated %d / %d; Midnight modulated %d accent\n",
+                plain.first, plain.second, modulated.first, modulated.second, midnightModulated.first);
+    check(assigned && plain.first > 30 && modulated.first < 5 && modulated.second > plain.second + 30 &&
+              midnightModulated.first > 30 && macroShot,
+          "in Spectrum a modulated knob's arc goes neutral, and in Midnight it keeps the accent");
 }
 
 // An operator's Ratio, a 7-segment readout: each digit dragged on its own, a step of its place every 6 px, carrying
@@ -8105,6 +8164,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testMiddleDrag(dir, renderer);
     testModFocus(dir, renderer);
     testCardOutline(dir, renderer);
+    testFlatModulatedKnob(dir, renderer);
     testModPill(dir, renderer);
     testRatioDisplay(dir, renderer);
     testTempo(dir, renderer);
