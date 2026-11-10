@@ -230,6 +230,8 @@ private:
         PeqTypeItem,  // param = the band's type, b = PeqType: an entry of the list
         AmpMic,       // param = the mic's Position, a = effect slot: the mic on an amp's cabinet display, which drags
                       // across the cone (Position) and away from it (Distance)
+        UtilityHandle, // param = the knob it sets, a = effect slot, b = which (see kUtilityHandleParams): a handle on
+                       // the utility's display
         ShapeArea,    // a = shape (see shapeEditor_): double-click adds a point
         ShapePoint,   // a = shape, b = point
         ShapeCurve,   // param = curve, a = shape, b = point: bends the segment leaving the point
@@ -360,6 +362,7 @@ private:
         FxNodeMove, // a node of the effects graph (a split or a join with what it holds), onto another place
         Tempo,      // the title bar's tempo, up and down (drag_.startValue: the tempo it started at)
         AmpMic,     // an amp's mic, across and away from its cabinet's cone
+        UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
     };
 
     struct Drag {
@@ -1144,6 +1147,10 @@ private:
     void paintShaperCurve(Canvas &c, Rect r, int unit);
     void paintDisperser(Canvas &c, Rect r, int slot);
     void paintWidener(Canvas &c, Rect r, int slot);
+    void paintUtility(Canvas &c, Rect r, int slot);
+    // Where the utility's handle `handle` sits on its display `r`: at the params' values, or (`live`) where modulation
+    // has them now.
+    Point utilityHandlePoint(Rect r, int handle, bool live, int slot) const;
     void paintAmp(Canvas &c, Rect r, int slot);
     void paintAmpCab(Canvas &c, Rect r, int slot);
     // The note source in the keyboard strip, right of the macros: the note the newest voice plays, and its name; and

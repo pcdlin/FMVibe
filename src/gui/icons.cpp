@@ -504,6 +504,19 @@ void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
         c.fillCircle(cone, 0.95f, color);
         break;
     }
+    case FxType::Utility: { // the stereo field as its display draws it: wide at the top, the bass narrowed to the middle
+        const float cx = r.center().x, waist = r.y + 0.62f * r.h;
+        for (float side : {-1.0f, 1.0f}) {
+            std::vector<Point> edge;
+            for (int i = 0; i <= 8; ++i) {
+                const float t = i / 8.0f; // from the top down to the waist
+                edge.push_back({cx + side * 0.46f * r.w * (1.0f - t * t), r.y + 0.08f * r.h + t * (waist - r.y - 0.08f * r.h)});
+            }
+            c.polyline(edge.data(), edge.size(), color, 1.4f);
+        }
+        c.line({cx, waist}, {cx, r.bottom() - 0.04f * r.h}, color, 1.4f);
+        break;
+    }
     case FxType::MultiComp: // retired, never offered
     case FxType::None:
     case FxType::Count:

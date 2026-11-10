@@ -577,7 +577,7 @@ constexpr FxType kFxOffered[] = {
     FxType::Compressor, FxType::MultiDyn,                        // dynamics
     FxType::Delay,      FxType::Reverb,                          // space
     FxType::Phaser,     FxType::Flanger,   FxType::FreqShifter,  // modulation
-    FxType::Widener,    FxType::Disperser,                       // stereo and phase
+    FxType::Widener,    FxType::Disperser, FxType::Utility,      // stereo and phase
 };
 constexpr int kFxTypes = static_cast<int>(std::size(kFxOffered));
 static_assert(kFxTypes == static_cast<int>(FxType::Count) - 2, "a new effect type goes in the list of effects");
@@ -589,7 +589,7 @@ constexpr int fxOfferedPlace(FxType type) {
 }
 // How many effects each group holds, in the list's order. The first kFxMenuLeftGroups go down its left column, the
 // others down its right one.
-constexpr int kFxMenuGroups[] = {2, 3, 2, 2, 3, 2};
+constexpr int kFxMenuGroups[] = {2, 3, 2, 2, 3, 3};
 constexpr int kFxMenuGroupCount = static_cast<int>(std::size(kFxMenuGroups));
 constexpr int kFxMenuLeftGroups = 3;
 constexpr int fxMenuGroupsTotal() {
@@ -720,7 +720,7 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
     const float top = buttonRow ? 74.0f : 44.0f;
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
                          type == FxType::Reverb || type == FxType::Phaser || type == FxType::Flanger ||
-                         type == FxType::Filter || type == FxType::FreqShifter;
+                         type == FxType::Filter || type == FxType::FreqShifter || type == FxType::Utility;
     // The filter's slope switch, the delay's SYNC, LINK and PING-PONG and the phaser's and flanger's SYNC, STEREO and
     // polarity go under their displays.
     const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Filter ||
@@ -796,6 +796,27 @@ inline Rect ampMicRect(Rect display, double position, double distance) {
     const Point m = ampMicPoint(display, position, distance);
     return {m.x - 9.0f, m.y - 8.0f, 22.0f, 16.0f};
 }
+
+// The utility's display: at its left the Gain strip, from silence at the bottom to 0 dB at the top, and beside it the
+// stereo field, left to right, its frequency up from 20 Hz at the bottom to 20 kHz at the top. The sound's middle is
+// across it by Pan, and it spreads either way a quarter of the field's width at 100 % Width.
+constexpr int kUtilityHandles = 4;
+constexpr FxParam kUtilityHandleParams[kUtilityHandles] = {FxParam::UtilityGain, FxParam::UtilityPan,
+                                                           FxParam::UtilityWidth, FxParam::UtilityMonoBass};
+inline Rect utilityStrip(Rect display) {
+    return {display.x + 9.0f, display.y + 24.0f, 4.0f, display.h - 34.0f};
+}
+inline Rect utilityField(Rect display) {
+    return {display.x + 26.0f, display.y + 24.0f, display.w - 36.0f, display.h - 34.0f};
+}
+inline float utilityMiddle(Rect field, double pan) {
+    return field.center().x + static_cast<float>(std::clamp(pan, -1.0, 1.0)) * field.w * 0.5f;
+}
+inline float utilitySpread(Rect field, double width) { // how far the band reaches either way of the middle
+    return field.w * 0.25f * static_cast<float>(std::max(width, 0.0));
+}
+// Width's handle sits on the band's edge on the side with more room, this far down the field, where the sound is wide.
+constexpr float kUtilityWidthHandleY = 0.3f;
 
 inline Rect fxDisplay(float position, FxType type) {
     return fxDisplayIn(fxCard(position, fxSpan(type)), type);
