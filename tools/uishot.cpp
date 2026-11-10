@@ -1745,9 +1745,10 @@ void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
           "a Spectrum card is outlined only while the mouse is over it");
 }
 
-// In a theme that colors knobs by their card (Spectrum, Porcelain), a modulated knob's arc goes neutral, in the text's
-// color, so its modulation rings in their sources' colors stand apart from it; Midnight's stays in the accent (read
-// off the rendered pixels, the upper half of Op A's Phase knob, set to its middle, where its arc runs).
+// In a theme that colors knobs by their card (Spectrum, Porcelain), a modulated knob's arc keeps its color, and a
+// modulation ring whose source's color is like it is drawn lighter (on a dark theme) to stand apart: Spectrum's LFO 1,
+// a blue near its accent, on an operator's knob, in the accent. Midnight draws the ring in the LFO's own color (read off
+// the rendered pixels, the upper half of Op A's Phase knob, set to its middle, where its arc and the ring run).
 void testFlatModulatedKnob(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -1755,7 +1756,7 @@ void testFlatModulatedKnob(const std::filesystem::path &dir, Renderer &renderer)
     model.set(paramIndex(0, OpParam::Phase), 0.5);
     view.poll();
     const Point away{600.0f, 328.0f};
-    // The pixels near the accent, and the ones near the text's color, in the knob's upper half.
+    // The pixels near each of two colors, in the knob's upper half.
     auto count = [&](const char *file, uint32_t accent, uint32_t text) {
         view.mouseMove(away, {});
         std::pair<int, int> counts{0, 0};
@@ -1782,13 +1783,20 @@ void testFlatModulatedKnob(const std::filesystem::path &dir, Renderer &renderer)
     const detail::Palette &spectrum = detail::kThemes[detail::themeIndex("Spectrum")],
                           &midnight = detail::kThemes[detail::themeIndex("Midnight")];
     model.themeName = "Spectrum";
-    const auto plain = count("17m-flat-knob.png", rgb(spectrum.accent), rgb(spectrum.text));
+    // A bipolar LFO's ring is drawn at 60 %, over the inspector's panel.
+    auto ringOn = [&](const detail::Palette &theme, Color color) { return rgb(mix(theme.panel, color, 0.6f)); };
+    const Color lfo = spectrum.sources[0];
+    const uint32_t raw = ringOn(spectrum, lfo);
+    const uint32_t lifted = ringOn(spectrum, mix(lfo, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f)); // told from the accent
+    const auto plain = count("17m-flat-knob.png", rgb(spectrum.accent), raw);
     drag(view, sourceHandle(0), kOpPhaseKnob);
     const bool assigned = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Phase);
-    const auto modulated = count("17n-flat-knob-modulated.png", rgb(spectrum.accent), rgb(spectrum.text));
+    const auto modulated = count("17n-flat-knob-modulated.png", rgb(spectrum.accent), raw);
+    const auto ring = count("17n-flat-knob-modulated.png", lifted, rgb(spectrum.text));
     model.themeName = "Midnight";
-    const auto midnightModulated = count("17o-midnight-knob-modulated.png", rgb(midnight.accent), rgb(midnight.text));
-    // Where a macro takes it with no note playing, a dot ringed in the cap's color on the neutral arc.
+    const auto midnightModulated =
+        count("17o-midnight-knob-modulated.png", rgb(midnight.accent), ringOn(midnight, midnight.sources[0]));
+    // Where a macro takes it with no note playing, its dot on the arc.
     model.themeName = "Spectrum";
     const float strip = view.height() - 179.0f;
     drag(view, {188.0f - 32.0f, strip}, kOpPhaseKnob); // Macro 1's handle
@@ -1796,11 +1804,14 @@ void testFlatModulatedKnob(const std::filesystem::path &dir, Renderer &renderer)
     view.poll();
     view.mouseMove(away, {});
     const bool macroShot = renderer.save(view, dir / "17p-flat-knob-macro.png");
-    std::printf("      Phase's arc: Spectrum %d accent / %d text, modulated %d / %d; Midnight modulated %d accent\n",
-                plain.first, plain.second, modulated.first, modulated.second, midnightModulated.first);
-    check(assigned && plain.first > 30 && modulated.first < 5 && modulated.second > plain.second + 30 &&
-              midnightModulated.first > 30 && macroShot,
-          "in Spectrum a modulated knob's arc goes neutral, and in Midnight it keeps the accent");
+    std::printf("      Phase's arc: Spectrum %d accent, modulated %d accent / %d LFO / %d lighter ring; Midnight "
+                "modulated %d accent / %d LFO\n",
+                plain.first, modulated.first, modulated.second, ring.first, midnightModulated.first,
+                midnightModulated.second);
+    check(assigned && plain.first > 30 && modulated.first > 30 && ring.first > 30 && 2 * modulated.second < ring.first &&
+              midnightModulated.first > 30 && midnightModulated.second > 10 && macroShot,
+          "in Spectrum a modulated knob keeps its arc's color and a ring of a like color is drawn lighter, and in "
+          "Midnight the ring keeps its source's color");
 }
 
 // In the flat themes (Spectrum, Porcelain): no two sources in one color, and no effect in the dim text's color (which

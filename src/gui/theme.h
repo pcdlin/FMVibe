@@ -6,6 +6,7 @@
 
 #include "view.h"
 
+#include <cmath>
 #include <cstddef>
 #include <iterator>
 #include <string>
@@ -52,8 +53,8 @@ struct Palette {
     // How it draws beyond its colors. Left out, a theme draws as Midnight and Light do: outlined cards and controls,
     // the accent for every knob and operator, switches lit with a tint.
     // `flat` is Spectrum's and Porcelain's look: cards tinted with their own color and outlined only under the mouse,
-    // a knob's arc (and its track, faintly) in the color of the card it is on (a modulated one's in the text's color,
-    // apart from its modulation rings) and its pointer a dot; switches filled
+    // a knob's arc (and its track, faintly) in the color of the card it is on (a modulation ring of a like color told
+    // apart from it, see ringColor()) and its pointer a dot; switches filled
     // solid with their color when lit, set in a well; list buttons, menus and the other controls without outlines;
     // + SOURCE and the other add buttons as filled pills, the cards that add one filled faintly; each operator in a
     // color of its own (ops); routing nodes on a soft shadow (nodeTop down to nodeBottom), the effects graph's
@@ -215,6 +216,16 @@ inline Color meterWell() {
     if (!look.flat)
         return look.card;
     return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.07f} : Color{1.0f, 1.0f, 1.0f, 0.07f};
+}
+// A knob's modulation ring in its source's color, beside the knob's arc in `arc`. In a flat theme, where the arc takes
+// its card's color, a source of a like color (its channels apart by less than kRingClash all told) would melt into the
+// arc: its ring is drawn lighter on a dark theme, darker on a light one, keeping its hue.
+constexpr float kRingClash = 120.0f / 255.0f;
+inline Color ringColor(Color source, Color arc) {
+    const float apart = std::abs(source.r - arc.r) + std::abs(source.g - arc.g) + std::abs(source.b - arc.b);
+    if (!look.flat || apart >= kRingClash)
+        return source;
+    return lightTheme() ? mix(source, Color{0.0f, 0.0f, 0.0f, 1.0f}, 0.45f) : mix(source, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f);
 }
 // Whether controls get their 1 px outline: not in a flat theme.
 inline bool outlined() {

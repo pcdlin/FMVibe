@@ -1439,9 +1439,9 @@ may show anywhere, repaints the whole of it.
   a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
   band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it
   belongs to (its card's; in the inspector a filter's and a shaper's, and the routes into them on its INPUTS tab, in
-  that node's color, as its switches are, an operator's in the accent), or in the text's color once something
-  modulates it, so its modulation rings stand apart from it whatever their sources' colors, and its pointer a dot (on
-  a modulated knob, the dot showing where modulation takes it ringed in the cap's color); an LFO's shape filled on
+  that node's color, as its switches are, an operator's in the accent), modulated or not: a modulation ring whose
+  source's color is like the arc's is drawn lighter (in Spectrum) or darker (in Porcelain), keeping its hue, so it
+  stands apart from the arc, while the others keep their sources' colors; and its pointer a dot; an LFO's shape filled on
   its card; a lit switch filled solid with its color, rows of them set in a well (the LFO's clock and polarity icons
   a little smaller there), and so the split's 2 | 3, the scope's cycle counts, the Param EQ's band chips (the picked
   one tinted with its band's color), the octave buttons and the dialogs' buttons; list buttons, a source card's MODS
