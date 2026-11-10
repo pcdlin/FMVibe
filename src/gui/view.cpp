@@ -1264,6 +1264,15 @@ void View::setLfoClock(int lfo, LfoClock clock) {
         editMany(changes);
 }
 
+bool View::lfoRunsIdle(int lfo) const {
+    return sourceTypeOf(lfo) == SourceType::Lfo && sourceOn(lfo) &&
+           lfoShared([this](int i) { return value(i); }, lfo);
+}
+
+bool View::lfoRunning(int lfo) const {
+    return telemetry_.voices > 0 ? sourceOn(lfo) : lfoRunsIdle(lfo);
+}
+
 bool View::lfoPhaseUsed(int lfo) const {
     // An anchored LFO stood at its Phase at the song's start.
     auto get = [this](int i) { return value(i); };
@@ -1275,6 +1284,9 @@ double View::lfoValueNow(int lfo) const {
     const auto shape = static_cast<LfoShape>(std::clamp(
         static_cast<int>(std::lround(value(paramIndex(lfo, SourceParam::Shape)))), 0, static_cast<int>(LfoShape::Count) - 1));
     if (shape == LfoShape::Random) { // can't be told ahead
+        if (telemetry_.voices == 0) // the shared clock's glide, which no voice puts out
+            return randomGlide(telemetry_.lfoFrom[lfo], telemetry_.lfoTo[lfo], randomPhaseNow(lfo),
+                               value(paramIndex(lfo, SourceParam::RandomSmooth)));
         const double out = telemetry_.sources[lfo];
         return value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? out * 2.0 - 1.0 : out;
     }
@@ -1289,18 +1301,18 @@ void View::traceRandomLfos() {
         RandomTrace &trace = randomTraces_[s];
         const bool random = sourceTypeOf(s) == SourceType::Lfo &&
                             std::lround(value(paramIndex(s, SourceParam::Shape))) == static_cast<long>(LfoShape::Random);
-        if (!random || telemetry_.voices == 0 || !sourceOn(s)) {
+        if (!random || !lfoRunning(s)) {
             trace.count = 0;
             continue;
         }
         const std::pair glide{telemetry_.lfoFrom[s], telemetry_.lfoTo[s]};
         const float phase = telemetry_.lfoPhases[s];
-        if (trace.count > 0 && trace.glides[(trace.count - 1) % kRandomCycles] == glide) {
+        if (trace.count > 0 && trace.glides[(trace.count - 1) % kRandomGlides] == glide) {
             trace.ended = trace.ended || phase < trace.phase;
             trace.phase = phase;
             continue;
         }
-        trace.glides[trace.count % kRandomCycles] = glide;
+        trace.glides[trace.count % kRandomGlides] = glide;
         ++trace.count;
         trace.phase = phase;
         trace.ended = false;
@@ -1308,7 +1320,7 @@ void View::traceRandomLfos() {
 }
 
 bool View::randomSweep(int lfo) const {
-    return telemetry_.voices > 0 && sourceOn(lfo) && randomTraces_[lfo].count > 0;
+    return lfoRunning(lfo) && randomTraces_[lfo].count > 0;
 }
 
 double View::randomPhaseNow(int lfo) const {
@@ -1433,6 +1445,23 @@ bool View::poll() {
     if (t.age < 1.5f)
         everywhere = everywhere || std::any_of(t.fxSpectrum.begin(), t.fxSpectrum.end(), showing) ||
                   std::any_of(t.filterSpectrum.begin(), t.filterSpectrum.end(), showing);
+    // With no note playing, a free or anchored LFO's dot runs on along its card's display alone (or the full-size
+    // shape editor showing it), gliding between snapshots while the audio runs.
+    if (t.voices == 0 && telemetry_.voices == 0) {
+        const std::vector<int> shown = sourcesShown();
+        for (int position = 0; position < static_cast<int>(shown.size()); ++position) {
+            const int s = shown[position];
+            if (!lfoRunsIdle(s) || (t.lfoPhases[s] == telemetry_.lfoPhases[s] && (t.lfoRates[s] == 0.0f || t.age > 0.15f)))
+                continue;
+            if (shapeEditing() == s) {
+                everywhere = true;
+            } else if (!controller_.layout().sourcesCollapsed && !sourceFolded(s)) {
+                const float card = sourceOffset(shown, position) - sourceScroll();
+                if (onScreen(card, kVisibleCards, sourceSpan(s)))
+                    in(sourceCard(card, sourceSpan(s)));
+            }
+        }
+    }
     telemetry_ = t;
     traceRandomLfos();
     if (flashTicks_ > 0 && --flashTicks_ == 0)
@@ -3905,7 +3934,7 @@ void View::paintShapeEditor(Canvas &c, int shape) {
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
-    if (telemetry_.voices > 0 && sourceOn(lfo)) {
+    if (lfoRunning(lfo)) {
         const Point dot = shapeAt(lfoPhaseNow(lfo), lfoValueNow(lfo));
         c.fillCircle(dot, 8.0f, color.alpha(0.25f));
         c.fillCircle(dot, 3.5f, kText);
@@ -5804,7 +5833,25 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     auto at = [&](double x, double y) {
         points.push_back({inner.x + static_cast<float>(x) * inner.w, inner.center().y - static_cast<float>(y) * inner.h * 0.5f});
     };
-    if (shape != LfoShape::Random || !randomSweep(lfo)) {
+    const bool sweep = shape == LfoShape::Random && randomSweep(lfo);
+    if (sweep) {
+        // Running, a random LFO's own last cycles as they came, as one line scrolling left: the live dot at its right
+        // end, the display four cycles wide.
+        const RandomTrace &trace = randomTraces_[lfo];
+        const double smooth = value(paramIndex(lfo, SourceParam::RandomSmooth));
+        const double phase = randomPhaseNow(lfo);
+        const int newest = trace.count - 1;
+        for (int j = std::max(newest - (kRandomGlides - 1), 0); j <= newest; ++j) {
+            const auto [from, to] = trace.glides[j % kRandomGlides];
+            const double start = (kRandomCycles + (j - newest) - phase) / kRandomCycles; // where its cycle starts
+            const double first = std::max(0.0, -start * kRandomCycles);                 // clipped at the left edge
+            const double last = j == newest ? phase : 1.0;
+            for (int i = points.empty() ? 0 : 1; i <= 24; ++i) {
+                const double u = first + (last - first) * i / 24.0;
+                at(start + u / kRandomCycles, randomGlide(from, to, u, smooth));
+            }
+        }
+    } else {
         std::vector<double> key = curveKey(Curve::Lfo, inner);
         key.push_back(static_cast<double>(shape));
         if (shape == LfoShape::Custom)
@@ -5843,26 +5890,10 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     }
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
-    // Running, a random LFO's last cycles as they came, swept across: each new cycle takes the next quarter,
-    // round from the right end to the left, the older ones fainter, and the live dot rides the newest.
-    const RandomTrace &trace = randomTraces_[lfo];
-    const int newest = std::max(trace.count - 1, 0) % kRandomCycles;
-    if (shape == LfoShape::Random && randomSweep(lfo)) {
-        const double smooth = value(paramIndex(lfo, SourceParam::RandomSmooth));
-        for (int k = 0; k < std::min(trace.count, kRandomCycles); ++k) {
-            const int age = (newest - k + kRandomCycles) % kRandomCycles; // 0 for the newest
-            const auto [from, to] = trace.glides[k];
-            points.clear();
-            for (int i = 0; i <= 24; ++i)
-                at((k + i / 24.0) / kRandomCycles, randomGlide(from, to, i / 24.0, smooth));
-            plotLine(c, points.data(), points.size(), color.alpha(1.0f - 0.2f * age), 2.0f);
-        }
-    }
-
-    if (telemetry_.voices > 0 && sourceOn(lfo)) {
-        const double x = shape == LfoShape::Random ? (newest + randomPhaseNow(lfo)) / kRandomCycles : lfoPhaseNow(lfo);
-        const Point dot{inner.x + static_cast<float>(x) * inner.w,
-                        inner.center().y - static_cast<float>(lfoValueNow(lfo)) * inner.h * 0.5f};
+    if (lfoRunning(lfo) && (sweep || shape != LfoShape::Random)) {
+        const Point dot = sweep ? points.back()
+                                : Point{inner.x + static_cast<float>(lfoPhaseNow(lfo)) * inner.w,
+                                        inner.center().y - static_cast<float>(lfoValueNow(lfo)) * inner.h * 0.5f};
         c.fillCircle(dot, 7.0f, color.alpha(0.25f));
         c.fillCircle(dot, 3.5f, kText);
     }
@@ -5891,7 +5922,7 @@ void View::paintLfoCard(Canvas &c, float card, int lfo) {
     area.push_back(areaAt(r, 0.0, zero));
     c.fillPolygon(area.data(), area.size(), color.alpha(0.12f));
     plotLine(c, points.data(), points.size(), color, 2.0f);
-    if (telemetry_.voices > 0 && sourceOn(lfo)) {
+    if (lfoRunning(lfo)) {
         const Point dot = areaAt(r, lfoPhaseNow(lfo), lfoValueNow(lfo));
         c.fillCircle(dot, 7.0f, color.alpha(0.25f));
         c.fillCircle(dot, 3.5f, kText);

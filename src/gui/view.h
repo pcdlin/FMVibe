@@ -1135,9 +1135,14 @@ private:
     void removeSource(int source);
     // Shows the sources in the order `shown`, the free places after them.
     void setSourceOrder(const std::vector<int> &shown);
-    // Where an LFO of the newest voice is now, and its output there.
+    // Where an LFO of the newest voice is now, and its output there; with no voice, a free or anchored one's shared
+    // clock.
     double lfoPhaseNow(int lfo) const;
     double lfoValueNow(int lfo) const;
+    // Whether an LFO's dot shows where it is: while a note plays, or, free or anchored, while none does too.
+    bool lfoRunning(int lfo) const;
+    // Whether an LFO runs on with no note playing and shows it: switched on, free or anchored.
+    bool lfoRunsIdle(int lfo) const;
     // Whether notes start an LFO at its Phase: not while it is free (and not a one-shot), nor Random.
     bool lfoPhaseUsed(int lfo) const;
     // An LFO's clock mode, as its Free, Anchor and One-Shot make it, and setting them for one.
@@ -1439,12 +1444,14 @@ private:
     bool settingsOpen_ = false;
     int theme_ = 0;                          // the theme painted last
     // A running random LFO's last cycles, for its display: each one's glide (from, to) at its place in a
-    // round of kRandomCycles, and how many have come since it started running (the newest is the last). The
+    // round of kRandomGlides, and how many have come since it started running (the newest is the last). The
     // phase the newest was last seen at, and whether it has ended without a snapshot bringing the next glide yet
-    // (its phase went back: one that wraps before the glide changes, half written).
+    // (its phase went back: one that wraps before the glide changes, half written). The display is kRandomCycles
+    // wide and ends part way through the newest, so it reaches into one cycle more.
     static constexpr int kRandomCycles = 4;
+    static constexpr int kRandomGlides = kRandomCycles + 1;
     struct RandomTrace {
-        std::array<std::pair<float, float>, kRandomCycles> glides{};
+        std::array<std::pair<float, float>, kRandomGlides> glides{};
         int count = 0;
         float phase = 0.0f;
         bool ended = false;

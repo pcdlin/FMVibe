@@ -1012,8 +1012,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
           "a random LFO's Smooth and Chaos knobs set them");
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed random LFO");
-    // Running, it shows its own last cycles instead, swept across: six cycles in, the newest is in the second
-    // quarter, where the live dot rides it.
+    // Running, it shows its own last cycles instead, as one line scrolling left, the live dot at its right end.
     model.live.voices = 1;
     const float glides[] = {0.3f, -0.4f, 0.5f, 0.1f, -0.6f, 0.2f, 0.7f};
     for (int cycle = 0; cycle < 6; ++cycle) {
@@ -1023,11 +1022,23 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         model.live.sources[0] = glides[cycle + 1];
         view.poll();
     }
-    check(renderer.save(view, dir / "17a-random-sweep.png"), "render a running random LFO's own cycles, swept across");
-    // Between snapshots the dot moves on at the LFO's rate; run past the end of the cycle before a snapshot brings
-    // the next one, it waits there rather than jump back to the start of the same quarter, and so it does when a
-    // snapshot's phase has wrapped round ahead of its glide.
-    const Point held{cardX(0) + 26.0f + 0.5f * 125.0f, 688.0f - 0.7f * 18.0f}; // the end of the second quarter
+    check(renderer.save(view, dir / "17a-random-sweep.png"), "render a running random LFO's own cycles, scrolling");
+    // Four cycles wide and ending 0.7 into the newest, the line reaches back into the fifth newest cycle, and on to
+    // the display's left edge (read off the rendered pixels: the line is bright, the display and zero line dark).
+    auto lineIn = [&](float x) {
+        for (float y = 666.0f; y <= 710.0f; y += 1.0f) {
+            const uint32_t color = renderer.pixel({x, y});
+            if (std::max({color >> 16 & 255, color >> 8 & 255, color & 255}) > 150)
+                return true;
+        }
+        return false;
+    };
+    check(lineIn(cardX(0) + 27.0f) && lineIn(cardX(0) + 26.0f + 0.05f * 125.0f),
+          "a running random LFO's line reaches the left edge of its display");
+    // Between snapshots the line scrolls on at the LFO's rate; run past the end of the cycle before a snapshot brings
+    // the next one, it waits there with the dot on the glide's end rather than jump back to the start of the same
+    // cycle, and so it does when a snapshot's phase has wrapped round ahead of its glide.
+    const Point held{cardX(0) + 26.0f + 125.0f, 688.0f - 0.7f * 18.0f}; // the right end, at the glide's end
     auto dotAt = [&](Point p) {
         const uint32_t color = renderer.pixel(p);
         return (color >> 16 & 255) > 190 && (color >> 8 & 255) > 190 && (color & 255) > 190;
@@ -4270,6 +4281,27 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     const bool still = !view.poll();
     check(settled && reductionMoved && tempoMoved && still,
           "with no notes playing, a compressor's meter and the host's tempo moving repaint the editor");
+
+    // With no notes playing, a free LFO's shared clock runs on: its dot moving repaints its card alone, as a whole
+    // paint would. Switched to retrigger it shows no dot (the card's pixels change) and moving repaints nothing.
+    model.live.fxReduction[0][0] = 0.0f;
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(paramIndex(0, SourceParam::Free), 1.0);
+    model.live.lfoPhases[0] = 0.2f;
+    model.live.lfoRates[0] = 2.0f;
+    model.live.age = 0.01f;
+    view.poll();
+    renderer.save(view, dir / "99h-idle-lfo-before.png");
+    model.live.lfoPhases[0] = 0.6f;
+    const bool idleMoved = view.poll() && only(detail::sourceCard(0.0f));
+    check(idleMoved && samePixels("99i-idle-lfo.png"),
+          "a free LFO's dot moving with no notes playing repaints its card alone, as a whole paint would");
+    const std::vector<uint32_t> withDot = renderer.image();
+    model.set(paramIndex(0, SourceParam::Free), 0.0);
+    view.poll();
+    const bool noDot = renderer.save(view, dir / "99j-idle-lfo-retrigger.png") && renderer.image() != withDot;
+    model.live.lfoPhases[0] = 0.9f;
+    check(noDot && !view.poll(), "a retrigger LFO shows no dot with no notes playing, and repaints nothing");
 }
 
 // A macro's name that isn't valid UTF-8 (a state can hold any bytes there) drawn as best it can be, and the rest of

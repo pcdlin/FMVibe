@@ -1074,8 +1074,16 @@ void Synth::telemetry(Telemetry &out) const {
         if (!newest || v.order > newest->order)
             newest = &v;
     }
-    if (!newest)
+    if (!newest) {
+        // The free and anchored LFOs' shared clocks run on with no voice, and the editor's cards show them running.
+        for (int s = 0; s < kMaxSources; ++s) {
+            out.lfoPhases[s] = static_cast<float>(freeLfos_[s].phase);
+            out.lfoRates[s] = static_cast<float>(freeLfos_[s].hz);
+            out.lfoFrom[s] = static_cast<float>(freeLfos_[s].from);
+            out.lfoTo[s] = static_cast<float>(freeLfos_[s].held);
+        }
         return;
+    }
     for (int m = 0; m < newest->slotModCount; ++m) {
         const SlotMod &mod = newest->slotMods[m];
         out.modOffset[mod.index] += static_cast<float>(mod.offset);

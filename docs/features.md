@@ -1210,9 +1210,11 @@ may show anywhere, repaints the whole of it.
     with its target's menu open.
     A random
     LFO has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
-    while notes play it shows the LFO's own last four cycles instead, swept across: each new cycle takes the next
-    quarter, round from the right end to the left, the older ones fainter, with the live dot on the newest (at
-    the end of a cycle, it waits there until the next one comes in). An LFO picks its shape from a list, like a
+    while notes play it shows the LFO's own last four cycles instead, as one line scrolling left with the live dot
+    at its right end (at the end of a cycle, it waits there until the next one comes in). A Free or Anchor LFO
+    runs on one clock whether notes play or not, so its card shows its dot moving (and a random one its cycles
+    scrolling) with no note playing too; a Retrigger or One-Shot one, which notes start, shows none until one
+    plays. Without a note it modulates nothing, so only the card moves, and only the card repaints. An LFO picks its shape from a list, like a
     shaper's curve, its button and each entry showing the shape's icon before its name. Under the shape list, as
     wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
     (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
