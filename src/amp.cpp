@@ -169,21 +169,23 @@ double toneAnalogGain(const AmpToneParts &t, const AmpKnobs &k, double hz) {
 }
 
 // The passive stack's loudest at the middle knobs, which its output is scaled by so it is about 1 there: worked
-// out once a model.
+// out once a model, as the plugin loads, so neither the audio thread nor the editor works it out (or waits on the
+// other doing so) the first time an amp runs.
+const std::array<double, static_cast<size_t>(AmpModel::Count)> kToneNorms = [] {
+    std::array<double, static_cast<size_t>(AmpModel::Count)> out{};
+    for (size_t m = 0; m < out.size(); ++m) {
+        const AmpToneParts &t = kAmpModels[m].tone;
+        double most = 1e-6;
+        if (!t.active)
+            for (int i = 0; i <= 60; ++i)
+                most = std::max(most, toneAnalogGain(t, AmpKnobs{}, 20.0 * std::pow(1000.0, i / 60.0)));
+        out[m] = t.active ? 1.0 : 1.0 / most;
+    }
+    return out;
+}();
+
 double toneNorm(AmpModel model) {
-    static const std::array<double, static_cast<size_t>(AmpModel::Count)> norms = [] {
-        std::array<double, static_cast<size_t>(AmpModel::Count)> out{};
-        for (size_t m = 0; m < out.size(); ++m) {
-            const AmpToneParts &t = kAmpModels[m].tone;
-            double most = 1e-6;
-            if (!t.active)
-                for (int i = 0; i <= 60; ++i)
-                    most = std::max(most, toneAnalogGain(t, AmpKnobs{}, 20.0 * std::pow(1000.0, i / 60.0)));
-            out[m] = t.active ? 1.0 : 1.0 / most;
-        }
-        return out;
-    }();
-    return norms[std::clamp(static_cast<size_t>(model), size_t{0}, norms.size() - 1)];
+    return kToneNorms[std::clamp(static_cast<size_t>(model), size_t{0}, kToneNorms.size() - 1)];
 }
 
 std::array<AmpCoefs, 3> activeCoefs(const AmpKnobs &k, double rate) {

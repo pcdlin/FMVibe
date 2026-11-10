@@ -134,8 +134,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     a note played over a held one joins that one's envelopes (at its sustain, or swelling along with it); glide
     slides between
     overlapping notes and skips detached ones unless Always is on (checked by tracking the pitch);
-  - a lower voice limit applies immediately, while a higher one requests a restart and is reported through
-    voice-info after reactivation, and a state with a higher one, loaded while active, requests one too.
+  - a lower voice limit applies immediately, while a higher one requests a restart (again once lowered and raised
+    before the host restarts) and is reported through voice-info after reactivation, and a state with a higher one,
+    loaded while active, requests one too.
 
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
@@ -164,7 +165,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a wire's Level) jumps
-    while events split the block into single frames,
+    while events split the block into single frames (and a delay's Mix and a wire's Level ramping no faster at 96 and
+    192 kHz than at 48),
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
     an effect added at the line's end and one taken out, a split taken out with its join, a split's slope
@@ -198,8 +200,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
     going into a delay and a reverb leaving them sane, ringing out and playing on; a delay switched off and on again playing back nothing it
-    held, its lines part written or written all round; a compressor running its release out in silence, a quiet
-    sine after it untouched; and effects that have rung out costing little for silence, which comes out as silence;
+    held, its lines part written or written all round, and its times then turned to their longest and shortest (as a
+    reverb at its largest and longest pre-delay plays back nothing it held), though its lines are cleared only as they
+    are read; a compressor running its release out in silence, a quiet
+    sine after it untouched; a comb as long as its line ringing on between its pulses and, once rung out, bringing
+    nothing back; and effects that have rung out costing little for silence, which comes out as silence;
   - a shimmer's tail after an A4, with Shimmer half and full up: falling 60 dB in about its decay time, its energy
     on the octaves and the first two octaves up narrow lines (not smeared by the shifter's crossfades); and at the
     longest decay, undamped and full up, still dying away; and Shimmer turned down to 0 in short chunks and up again
@@ -214,6 +219,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
+  - a frequency shifter's mirror image 40 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
+    192 kHz;
   - the random LFO's steps and glides, a freeform LFO's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
@@ -221,7 +228,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - each factory preset's file being sparse, as the preset tool writes it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
-  - every note reporting its end once: in mono a note taken over in its release, with note ids a note on a key
+  - every note reporting its end once: in mono a note taken over in its release, notes held in poly as mono turns
+    on (a key let go not moving its voice onto a key another voice plays), with note ids a note on a key
     struck again while it rings (without them, the key staying down as the last note ends), the voices a lower voice limit cuts, a note with an id while its key sounds on
     without one, mono's all notes off (releasing on the key it plays), a reset and forty notes at once on one voice;
     a chord into voices that have all played taking the oldest, every note of it sounding (and a slow attack's new
@@ -250,7 +258,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
   way it replays drags and clicks:
   - the effects graph's slot grid: switching to it showing the chain as its main line, as wired; the main
-    line's + opening the list of effects with Add 2-band split after them, the split coming with its join, its
+    line's + opening the list of effects with 2-band split under them, the split coming with its join, its
     empty bands each curving out to a + on its row, each + ringed in its wire's color (read off the rendered
     pixels); a band's + putting an effect on its band; the join's node showing
     the split's card (at the inspector's right), its High knob setting the high band's level, in dB, and its S
@@ -287,7 +295,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
   - the output meter and scope moving repainting the header alone, a key the keyboard alone and an operator's scope
     the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
-    an LFO moving repainting the whole editor;
+    an LFO moving repainting the whole editor, as a compressor's meter and the host's tempo do with no notes playing;
   - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
     behind the editor's back going at the line's end;
   - a card dragged a tenth of a card onto its neighbor moving nothing, and three tenths making the neighbor glide aside

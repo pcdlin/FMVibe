@@ -338,12 +338,12 @@ void View::removeEmptyMod(int row) {
 
 // While the target menu's search holds something, its first level lists what it finds in the categories, flat, each
 // with its path.
-View::MenuNode View::cascadeTree() const {
+std::shared_ptr<const View::MenuNode> View::cascadeTree() const {
     if (derived_.cascade) // only kept while a scope goes on
-        return *derived_.cascade;
-    MenuNode tree = cascadeTreeNow();
+        return derived_.cascade;
+    auto tree = std::make_shared<const MenuNode>(cascadeTreeNow());
     if (derivedDepth_ > 0)
-        derived_.cascade = std::make_shared<const MenuNode>(tree);
+        derived_.cascade = tree;
     return tree;
 }
 
@@ -750,7 +750,8 @@ void View::cascadeKey(Key key) {
     }
     if (cascadeSearch_.text.empty() || (key != Key::Up && key != Key::Down && key != Key::Enter))
         return;
-    const MenuNode root = cascadeTree();
+    const std::shared_ptr<const MenuNode> tree = cascadeTree();
+    const MenuNode &root = *tree;
     std::vector<int> picks; // the matches that can be picked
     for (size_t i = 0; i < root.children.size(); ++i)
         if (root.children[i].enabled)
@@ -768,7 +769,8 @@ void View::cascadeKey(Key key) {
 void View::pickCascade(int level, int index) {
     if (!cascade_)
         return;
-    const MenuNode root = cascadeTree();
+    const std::shared_ptr<const MenuNode> tree = cascadeTree();
+    const MenuNode &root = *tree;
     const std::vector<const MenuNode *> levels = cascadeLevels(root);
     if (level >= static_cast<int>(levels.size()) || index < 0 ||
         index >= static_cast<int>(levels[level]->children.size()))
@@ -806,7 +808,8 @@ void View::pickCascade(int level, int index) {
 void View::paintCascade(Canvas &c) {
     if (!cascade_)
         return;
-    const MenuNode root = cascadeTree();
+    const std::shared_ptr<const MenuNode> tree = cascadeTree();
+    const MenuNode &root = *tree;
     const std::vector<const MenuNode *> levels = cascadeLevels(root);
     const std::vector<Rect> rects = cascadeRects(root);
     for (size_t k = 0; k < levels.size(); ++k) {

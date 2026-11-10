@@ -1352,14 +1352,17 @@ bool View::poll() {
             t.notePitch != telemetry_.notePitch || t.noteVelocity != telemetry_.noteVelocity ||
             t.fxPitch != telemetry_.fxPitch || t.opLevels != telemetry_.opLevels ||
             t.opEnvLevels != telemetry_.opEnvLevels || t.opEnvPos != telemetry_.opEnvPos ||
-            t.envPos != telemetry_.envPos || t.fxReduction != telemetry_.fxReduction ||
-            t.tempo != telemetry_.tempo ||
+            t.envPos != telemetry_.envPos ||
             (t.voices > 0 && std::any_of(t.lfoRates.begin(), t.lfoRates.end(), [](float r) { return r != 0.0f; }));
         everywhere = everywhere || moved;
         if (t.scope != telemetry_.scope || t.scopeBins != telemetry_.scopeBins ||
             t.scopeCursor != telemetry_.scopeCursor)
             in(kInspector);
     }
+    // A compressor's and an amp's meters move on while a tail drives them once the notes have ended, and the host's
+    // tempo shows in the synced effects' captions whether notes play or not.
+    if (t.fxReduction != telemetry_.fxReduction || t.tempo != telemetry_.tempo)
+        everywhere = true;
     if (t.keys != telemetry_.keys) {
         const bool collapsed = controller_.layout().sourcesCollapsed;
         in(keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed));
@@ -2766,7 +2769,8 @@ std::vector<View::Widget> View::widgets() const {
     }
     // A MODS row's cascading menu, over everything: around it, a click closes it.
     if (cascade_ && modsWide()) {
-        const MenuNode root = cascadeTree();
+        const std::shared_ptr<const MenuNode> tree = cascadeTree();
+        const MenuNode &root = *tree;
         const std::vector<const MenuNode *> levels = cascadeLevels(root);
         const std::vector<Rect> rects = cascadeRects(root);
         add(Kind::CascadeMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
@@ -6707,8 +6711,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SplitPoint:
         break;
     case Kind::FxMenu:
-        if (w.a == 1) { // the list's panel
+        if (w.a == 1) { // the list's panel, with each group's name over its effects
+            static constexpr Str kGroups[] = {Str::MenuFxDrive, Str::MenuFxEqFilter,   Str::MenuFxDynamics,
+                                              Str::MenuFxSpace, Str::MenuFxModulation, Str::MenuFxStereo};
+            static_assert(std::size(kGroups) == kFxMenuGroupCount, "each group of the list of effects has its name");
             paintMenuPanel(c, w.rect);
+            for (int g = 0; g < kFxMenuGroupCount; ++g) {
+                const Rect head = fxMenuHead(fxMenuAt_, g);
+                c.text({head.x + 8.0f, head.y + 2.0f, head.w - 16.0f, head.h}, tr(kGroups[g]), kTextSmall, kDim,
+                       Align::Left, true);
+            }
         }
         break;
     case Kind::SourceMenu:
@@ -6748,12 +6760,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text({w.rect.x + 36.0f, w.rect.y, w.rect.w - 46.0f, w.rect.h}, fxName(static_cast<FxType>(w.a)), kTextBody,
                hovered ? kText : kDim, Align::Left);
         break;
-    case Kind::FxAddNode: { // apart from the effects by a line: a split in two bands or three, with its join
+    case Kind::FxAddNode: { // apart from the effects by a line across the list: a split in two bands or three
         const Color color = splitColor();
         const bool three = w.b == 3;
         if (!three) {
+            const Rect menu = fxMenu(fxMenuAt_, true);
             const float line = w.rect.y - 0.5f * kFxMenuNodeGap - 1.0f;
-            c.line({w.rect.x + 4.0f, line}, {w.rect.right() - 4.0f, line}, kBorder, 1.0f);
+            // In a flat theme a shade of the text, which shows on the popup's fill where the border's color wouldn't.
+            c.line({menu.x + 8.0f, line}, {menu.right() - 8.0f, line}, look.flat ? kText.alpha(0.12f) : kBorder, 1.0f);
         }
         paintMenuRow(c, w.rect, hovered, false);
         const Rect icon{w.rect.x + 9.0f, w.rect.center().y - 7.0f, 18.0f, 14.0f};
@@ -8713,7 +8727,8 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // In a cascading menu, the mouse over a category opens it beside it, and over an entry closes what is open
         // past its level.
         if (changed && cascade_ && hover_ && hover_->kind == Kind::CascadeItem) {
-            const MenuNode root = cascadeTree();
+            const std::shared_ptr<const MenuNode> tree = cascadeTree();
+            const MenuNode &root = *tree;
             const std::vector<const MenuNode *> levels = cascadeLevels(root);
             const auto level = static_cast<size_t>(hover_->a);
             if (level < levels.size() && hover_->b < static_cast<int>(levels[level]->children.size())) {

@@ -3464,6 +3464,11 @@ int main(int argc, char **argv) {
         const clap_event_param_value_t forty = paramEvent(paramIndex(GlobalParam::Voices), 40.0);
         runBlock({&forty.header});
         check(restartRequests == 1, "raising the voice limit requests a restart");
+        // Lowered within the voices allocated and raised again before the host restarts, it asks again.
+        const clap_event_param_value_t four = paramEvent(paramIndex(GlobalParam::Voices), 4.0);
+        runBlock({&four.header});
+        runBlock({&forty.header});
+        check(restartRequests == 2, "a voice limit lowered and raised again requests a restart again");
         plugin->stop_processing(plugin);
         plugin->deactivate(plugin);
         plugin->activate(plugin, kSampleRate, 1, kBlock);

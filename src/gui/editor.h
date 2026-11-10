@@ -38,6 +38,8 @@ public:
     // A message the host's loop took off the queue, which the editor's message hook passes on: true if it was
     // a key for a value being typed here, which the host then doesn't see.
     bool typedKey(const MSG &msg);
+    // The whole editor painted again: the layout changed under it (a state loaded), which its poll doesn't watch.
+    void repaint() { invalidate(); }
 
 private:
     static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -66,6 +68,7 @@ private:
     HWND hwnd_ = nullptr;
     bool resized_ = false; // the user changed the size, which new instances then open at
     float dpiScale_ = 1.0f; // the DPI the size is worked out for, over 96: the system's, then the window's
+    uint32_t dpiWidth_ = 0; // the width followDpi() asked the host for, until it sets it: the zoom stays as it was
     uint32_t width_ = 0;
     uint32_t height_ = 0;
     bool trackingLeave_ = false;

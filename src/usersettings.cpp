@@ -104,11 +104,24 @@ void writeUserSettings() {
             error = std::make_error_code(std::errc::io_error);
     }
     if (!error)
-        std::filesystem::rename(part, file, error);
-    if (error) {
+        replaceFile(part.wstring(), file.wstring());
+    else {
         std::error_code ignored;
         std::filesystem::remove(part, ignored);
     }
+}
+
+bool replaceFile(const std::wstring &part, const std::wstring &target) {
+    for (int attempt = 0;; ++attempt) {
+        if (MoveFileExW(part.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            return true;
+        const DWORD error = GetLastError();
+        if (attempt >= 20 || (error != ERROR_SHARING_VIOLATION && error != ERROR_ACCESS_DENIED))
+            break;
+        Sleep(10);
+    }
+    DeleteFileW(part.c_str());
+    return false;
 }
 
 } // namespace fmvibe
