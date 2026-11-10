@@ -3005,6 +3005,77 @@ int main(int argc, char **argv) {
                   highSides / highSum < 0.3 * wideSides / wideSum,
               "the widener widens above its high-pass and keeps the mono sum dry at full width");
 
+        // The utility on a sine panned left: Gain from silence up to +12 dB, 0 dB to begin with and -6 dB at its middle
+        // (its cube, scaled to the top); Pan a balance, which
+        // turns the other side down; Width the sides against the middle, which stays; and Mono Bass high-passing the
+        // sides, so a low note comes out in the middle while a high one stays where it was.
+        {
+            const int aPan = paramIndex(0, OpParam::Pan);
+            setParams({{type(7), static_cast<double>(FxType::Utility)}, {aPan, -0.5}});
+            const auto levels = [&](int16_t key) { // the RMS of the left, the right, the middle and the sides
+                const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 81, key);
+                runBlock({&on.header});
+                runBlocks(8);
+                std::array<double, 4> sums{};
+                for (int b = 0; b < 16; ++b) {
+                    runBlock();
+                    for (uint32_t i = 0; i < kBlock; ++i) {
+                        sums[0] += std::pow(left[i], 2.0);
+                        sums[1] += std::pow(right[i], 2.0);
+                        sums[2] += std::pow(0.5 * (left[i] + right[i]), 2.0);
+                        sums[3] += std::pow(0.5 * (left[i] - right[i]), 2.0);
+                    }
+                }
+                runBlock({&chokeAll.header});
+                runBlocks(4);
+                for (double &sum : sums)
+                    sum = std::sqrt(sum);
+                return sums;
+            };
+            const auto asIs = levels(69);
+            setParams({{fx(7, FxParam::UtilityGain), 0.5}});
+            const auto quieter = levels(69);
+            setParams({{fx(7, FxParam::UtilityGain), 1.0}});
+            const auto louder = levels(69);
+            setParams({{fx(7, FxParam::UtilityGain), 0.0}});
+            const auto silent = levels(69);
+            setParams({{fx(7, FxParam::UtilityGain), utilityGainNorm(1.0)}, {fx(7, FxParam::UtilityPan), 1.0}});
+            const auto toRight = levels(69);
+            setParams({{fx(7, FxParam::UtilityPan), -0.5}});
+            const auto halfLeft = levels(69);
+            setParams({{fx(7, FxParam::UtilityPan), 0.0}, {fx(7, FxParam::UtilityWidth), 0.0}});
+            const auto narrow = levels(69);
+            setParams({{fx(7, FxParam::UtilityWidth), 2.0}});
+            const auto wide = levels(69);
+            setParams({{fx(7, FxParam::UtilityWidth), 1.0}, {fx(7, FxParam::UtilityMonoBass), normFromCutoff(500.0)}});
+            const auto lowMono = levels(45), highMono = levels(93); // A2 and A6 around a high-pass at 500 Hz
+            setParams({{fx(7, FxParam::UtilityMonoBass), 0.0}});
+            const auto lowAsIs = levels(45), highAsIs = levels(93);
+            setParams({{type(7), static_cast<double>(FxType::None)}, {aPan, 0.0}});
+            std::printf("      utility on a sine panned left: gain at its middle x%.4f, at its top x%.3f, at 0 %.2g; panned right "
+                        "L %.2g R x%.3f, "
+                        "half left R x%.3f; sides x%.2g at 0 %% width, x%.3f at 200 %%; mono bass at 500 Hz: A2's "
+                        "sides x%.3f, A6's x%.3f\n",
+                        quieter[0] / asIs[0], louder[0] / asIs[0], silent[0] + silent[1], toRight[0], toRight[1] / asIs[1],
+                        halfLeft[1] / asIs[1], narrow[3] / asIs[3], wide[3] / asIs[3], lowMono[3] / lowAsIs[3],
+                        highMono[3] / highAsIs[3]);
+            const double middle = 0.125 * kMaxUtilityGain; // -6 dB
+            check(std::abs(quieter[0] / asIs[0] / middle - 1.0) < 0.01 &&
+                      std::abs(quieter[1] / asIs[1] / middle - 1.0) < 0.01 &&
+                      std::abs(louder[0] / asIs[0] / kMaxUtilityGain - 1.0) < 0.01 && silent[0] < 1e-6 &&
+                      silent[1] < 1e-6,
+                  "the utility's Gain goes from silence up to +12 dB, 0 dB to begin with and -6 dB at its middle");
+            check(toRight[0] < 1e-6 && std::abs(toRight[1] / asIs[1] - 1.0) < 0.01 &&
+                      std::abs(halfLeft[0] / asIs[0] - 1.0) < 0.01 && std::abs(halfLeft[1] / asIs[1] - 0.5) < 0.01,
+                  "the utility's Pan turns the other side down");
+            check(narrow[3] < 1e-4 * narrow[2] && std::abs(narrow[2] / asIs[2] - 1.0) < 0.01 &&
+                      std::abs(wide[3] / asIs[3] - 2.0) < 0.02 && std::abs(wide[2] / asIs[2] - 1.0) < 0.01,
+                  "the utility's Width scales the sides and keeps the middle");
+            check(lowMono[3] / lowAsIs[3] < 0.1 && std::abs(lowMono[2] / lowAsIs[2] - 1.0) < 0.01 &&
+                      std::abs(highMono[3] / highAsIs[3] - 1.0) < 0.05,
+                  "the utility's Mono Bass makes the bass mono and leaves the highs as they were");
+        }
+
         // The flanger's sides sweep apart while it is stereo, as it starts, and together, the same on both sides,
         // when it isn't.
         setParams({{type(7), static_cast<double>(FxType::Flanger)},

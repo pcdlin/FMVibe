@@ -618,6 +618,17 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         e.mix = at(FxParam::WidenerMix);
         break;
     }
+    case FxType::Utility: {
+        Utility &u = s.utility;
+        u.highPass = Biquad{};
+        const UtilityGains g = utilityGains(at(FxParam::UtilityGain), at(FxParam::UtilityPan));
+        u.gainL = g.left;
+        u.gainR = g.right;
+        u.width = at(FxParam::UtilityWidth);
+        u.hz = utilityMonoBassHz(at(FxParam::UtilityMonoBass));
+        u.mono = u.hz > 0.0 ? 1.0 : 0.0;
+        break;
+    }
     case FxType::Amp: {
         AmpFx &a = *s.amp;
         a.now.start(ampConfig(p, slot), ampKnobs(p, slot));
@@ -829,6 +840,9 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         break;
     case FxType::Amp:
         runAmp(slot, io, n, p);
+        break;
+    case FxType::Utility:
+        runUtility(slot, io, n, p);
         break;
     case FxType::Reverb:
     case FxType::Phaser:
@@ -2057,6 +2071,12 @@ float Effects::sweepPhase(int slot) const {
                                                               : 0.0);
 }
 
+UtilityGains utilityGains(double gainNorm, double pan) {
+    const double gain = utilityGain(gainNorm);
+    const double p = std::clamp(pan, -1.0, 1.0);
+    return {gain * std::min(1.0 - p, 1.0), gain * std::min(1.0 + p, 1.0)};
+}
+
 double widenerTap(int tap, double size, double lfo) {
     return kWidenerDelays[tap] * (0.2 + 0.8 * std::clamp(size, 0.0, 1.0)) * (1.0 + kWidenerSweep * lfo);
 }
@@ -2116,6 +2136,39 @@ double Effects::runWidener(int slot, float *const *io, uint32_t n, const ParamVa
         peak = std::max({peak, std::abs(x[0]), std::abs(x[1]), std::abs(taps[0]), std::abs(taps[3])});
     }
     return peak;
+}
+
+void Effects::runUtility(int slot, float *const *io, uint32_t n, const ParamValues &p) {
+    Utility &u = slots_[slot].utility;
+    auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    // Switched off, the high-pass keeps the corner it had while it fades out; switched on from silence, it starts
+    // cleared, at the corner asked for.
+    const double asked = utilityMonoBassHz(at(FxParam::UtilityMonoBass));
+    if (asked > 0.0) {
+        if (u.mono <= 0.0)
+            u.highPass = Biquad{};
+        u.hz = asked;
+    }
+    const Coefs hp = biquad(BiquadType::HighPass, std::clamp(u.hz, kMinCutoff, 0.45 * sampleRate_), sampleRate_);
+    const BiquadCoefs highPass{hp.b0, hp.b1, hp.b2, hp.a1, hp.a2};
+    const UtilityGains g = utilityGains(at(FxParam::UtilityGain), at(FxParam::UtilityPan));
+    const double leftStep = rampStep(u.gainL, g.left, n, rampShortest_),
+                 rightStep = rampStep(u.gainR, g.right, n, rampShortest_);
+    const double widthStep = rampStep(u.width, at(FxParam::UtilityWidth), n, rampShortest_);
+    // Mono Bass switching on or off fades between the sides as they are and high-passed, as the polarity turns over.
+    const double monoTarget = asked > 0.0 ? 1.0 : 0.0, monoStep = 1.0 / (kPolaritySeconds * sampleRate_);
+    for (uint32_t s = 0; s < n; ++s) {
+        u.gainL += leftStep;
+        u.gainR += rightStep;
+        u.width += widthStep;
+        u.mono = moveToward(u.mono, monoTarget, monoStep);
+        const double mid = 0.5 * (io[0][s] + io[1][s]);
+        double side = 0.5 * (io[0][s] - io[1][s]);
+        const double high = u.mono > 0.0 ? u.highPass.process(side, highPass) : side; // off, it needn't run
+        side = (side + (high - side) * u.mono) * u.width;
+        io[0][s] = static_cast<float>((mid + side) * u.gainL);
+        io[1][s] = static_cast<float>((mid - side) * u.gainR);
+    }
 }
 
 double Effects::runDisperser(int slot, float *const *io, uint32_t n, const ParamValues &p) {
