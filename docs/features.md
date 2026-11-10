@@ -774,7 +774,12 @@ may show anywhere, repaints the whole of it.
     container's band it goes along that band; out of either side of the container it lands right beside it (left of
     its controls is before it, so a container first in the row takes a card before it with the mouse past its
     controls' left edge); and past the next card once the mouse is beyond that card's middle. Let go of, they glide
-    on into place, and a click while they glide puts them in place at once),
+    on into place, and a click while they glide puts them in place at once). Hold Ctrl as a card or container starts
+    to move to carry a copy of it instead (with its settings, but not its modulation; a container with its join and a
+    copy of each effect on its bands, its crossovers, slope, band levels and solos): the original stays where it is,
+    the copy's place opens right after it, and the copy lands where it is let go of, the copy and its place one undo
+    step. A drag called off leaves nothing. With too few free slots or splits it says so, and moves the card instead;
+    so does a split left open at the line's end, which the line has room for only one of),
     and right-click the title (or the icon) to duplicate the effect (with its settings), reset its settings,
     set a 3-band dynamics as OTT, pick an amp's oversampling (**Oversampling 1x** to **8x**, the one in force
     checked), move it to another band of its split (**Move to Low**, **Move to Mid**, **Move to
@@ -887,7 +892,9 @@ may show anywhere, repaints the whole of it.
     while it passes over a node or away from the line. The dotted place goes where it would land at once, and the
     wires run to it there as to a node, never to the node being carried; let go of, the node takes that place, and
     the others glide on into theirs. A split or a join
-    carries the split with its bands' effects and its join along. Held at the graph's left or right edge, it scrolls
+    carries the split with its bands' effects and its join along. With Ctrl held as it starts to move, a node carries
+    a copy instead, as a card in the row does (a split's or a join's: the split with its join and copies of its bands'
+    effects), its place opening right after the original and the copy shown in the card at the right. Held at the graph's left or right edge, it scrolls
     that way. The x on a card removes its node: an effect closes up the
     line or band it was on, a split puts its bands' effects on the main line in its place (the high band's first),
     and so does a join, which goes with its split. + EFFECT puts the new
@@ -1165,6 +1172,8 @@ may show anywhere, repaints the whole of it.
   scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
   them along. Sources are numbered by type in the order they show ("LFO 2", "Env 1", "Random 1", "MIDI 1").
   - Drag a card by its title (anywhere in the row but its handle and buttons) to move it along; held at either end of the row, it scrolls the row along that way. A faint image of it follows the mouse anywhere, over the other panels too, and only its outline shows where it would land; the other cards make room only once the mouse is clear of the card's own place, where the mouse is.
+    With Ctrl held as it starts to move, it carries a copy instead, as Duplicate makes one (no targets), which
+    stays right after the original while the mouse is over it and lands where it is let go of: one undo step.
     The order is saved with the patch. Right-click the title (or the handle) to duplicate the source (with its
     settings and shape, but none of its targets: the copy modulates nothing until it is given some), clear its targets, make it **Unipolar** or **Bipolar** (the one in force checked) or
     remove it; the × removes it too, together with its modulation and whatever modulates its knobs. A bipolar
@@ -1283,7 +1292,19 @@ may show anywhere, repaints the whole of it.
   preset browser's list, a pill's open list) to drag what it shows along with the mouse, whatever is under it; past
   either end the row stops, and dragged back it follows at once. A middle press on another open list or menu does
   nothing, and one that starts a drag closes it;
-  while the left button drags something, the middle one does nothing. A double-click whose first click closed the
+  while the left button drags something, the middle one does nothing. Two fingers on a touchscreen pan the same
+  panels as the middle button, along with them (in the browser demo, on a phone too): what the first finger pressed
+  ends as they land, nothing dropped, and over a dialog they pan nothing. A precision touchpad's two-finger
+  scrolling comes as the wheel, up and down as above and sideways as a tilted wheel does, which scrolls what scrolls
+  sideways under the mouse (the effects' row and graph, the source cards) and turns nothing. In the browser demo on
+  a phone (or any touchscreen), one finger works the editor too: where nothing scrolls it is the mouse at once;
+  over a panel that scrolls it waits until it moves or lifts, so that dragged on something that drags (a knob, a
+  depth bar, a card's title or icon, a handle, a node) it drags it, dragged anywhere else it pans the panel, and
+  lifted without moving it is a click where it landed (two quick taps a double-click, so a double tap sets a knob
+  back). A long press opens the menu a right-click would. Every dialog (the
+  confirm dialogs and the settings) takes the keyboard while it is open: Enter presses its button lit in the accent
+  (Load, Init, Overwrite, Clear FX, Keep), Escape cancels it as a click around it does, and both close the settings;
+  the dialog asking where a middle band's effects go lights none, and Enter leaves it open. A double-click whose first click closed the
   preset browser, a dialog or a list doesn't act on what was under it. Double-click the number a knob or a target's depth shows (under
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a

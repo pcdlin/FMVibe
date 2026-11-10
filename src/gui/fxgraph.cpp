@@ -1490,10 +1490,69 @@ void View::dropRowDrag() {
     const FxDrag d = std::move(*fxDrag_);
     fxDrag_.reset();
     const bool stays = d.at.lane == d.was.lane && d.at.item == d.was.item && d.at.place == d.was.place;
-    if (!drag_.moved || stays)
+    if (!drag_.moved || (stays && !d.copy)) // a copy lands even beside its original
         return;
     const UndoScope step(controller_);
     writeFxLine(fxLineWith(d.rest, d.item, d.at));
+}
+
+std::optional<View::FxLineItem> View::copyFxItem(const FxLineItem &item, std::map<int, int> &copies) {
+    const bool split = fxNodeSplit(item.node);
+    if (split && !item.joined) // a split left open ends the line, which has room for one
+        return std::nullopt;
+    std::vector<int> effects; // what it holds, the high band's first
+    if (!split)
+        effects.push_back(item.node);
+    for (int lane : split ? item.lanes() : std::span<const int>())
+        effects.insert(effects.end(), item.band(lane).begin(), item.band(lane).end());
+    size_t free = 0;
+    for (int s = 0; s < kFxSlots; ++s)
+        free += fxSlotType(s) == FxType::None;
+    if (free < effects.size()) {
+        flash(trf(Str::MsgChainFull, {std::to_string(kFxSlots)}));
+        return std::nullopt;
+    }
+    int to = -1; // a split the line doesn't use
+    if (split) {
+        const FxLine line = fxLine();
+        for (int s = 0; s < kFxSplits && to < 0; ++s)
+            if (placeOf(line, fxSplitNode(s)).item < 0)
+                to = s;
+        if (to < 0) {
+            flash(trf(Str::MsgSplitsFull, {std::to_string(kFxSplits)}));
+            return std::nullopt;
+        }
+    }
+    for (int slot : effects) {
+        const int copy = freeFxSlot();
+        fillEffect(copy, fxSlotType(slot), slot);
+        setFolded(true, copy, fxFolded(slot));
+        copies[slot] = copy;
+    }
+    if (!split)
+        return FxLineItem{copies[item.node], {}, {}, false};
+    // Its crossovers and slope, and its join's band levels and solos (which the line keeps for a joined split).
+    const int from = item.node - kFxSlots;
+    std::vector<std::pair<int, double>> changes;
+    for (const SplitParam f : {SplitParam::Low, SplitParam::High, SplitParam::Slope})
+        changes.push_back({paramIndex(to, f), value(paramIndex(from, f))});
+    for (const SumParam f : {SumParam::SoloHigh, SumParam::SoloLow, SumParam::SoloMid})
+        changes.push_back({paramIndex(to, f), value(paramIndex(from, f))});
+    for (int input = 0; input < 3; ++input)
+        changes.push_back({fxInputIndex(fxJoinNode(to), input, FxInputField::Level),
+                           value(fxInputIndex(fxJoinNode(from), input, FxInputField::Level))});
+    editMany(changes);
+    controller_.layout().splitBand[to] = controller_.layout().splitBand[from];
+    controller_.layoutChanged();
+    setSplitFolded(to, splitFolded(from));
+    copies[item.node] = fxSplitNode(to);
+    copies[fxJoinNode(from)] = fxJoinNode(to);
+    FxLineItem copy = item;
+    copy.node = fxSplitNode(to);
+    for (int lane : copy.lanes())
+        for (int &slot : copy.band(lane))
+            slot = copies[slot];
+    return copy;
 }
 
 // --- Dragging nodes
@@ -1711,7 +1770,7 @@ void View::dropFxNode(bool take) {
     // of anywhere else, where it was.
     fxGlide_.on = true;
     const bool stays = d.at.lane == d.was.lane && d.at.item == d.was.item && d.at.place == d.was.place;
-    if (take && !stays) {
+    if (take && (!stays || d.copy)) { // a copy lands even beside its original
         const UndoScope step(controller_);
         writeFxLine(fxLineWith(d.rest, d.item, d.at));
     }

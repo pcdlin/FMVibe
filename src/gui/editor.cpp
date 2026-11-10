@@ -255,6 +255,15 @@ bool Editor::attach(HWND parent) {
     if (!hwnd_)
         return false;
     SetTimer(hwnd_, kPollTimer, kPollMs, nullptr);
+    // Two fingers on a touchscreen pan what scrolls under them (WM_GESTURE); one finger stays the mouse, and pinching
+    // and turning are left to the host.
+    GESTURECONFIG gestures[] = {
+        {GID_PAN, GC_PAN | GC_PAN_WITH_INERTIA,
+         GC_PAN_WITH_SINGLE_FINGER_VERTICALLY | GC_PAN_WITH_SINGLE_FINGER_HORIZONTALLY | GC_PAN_WITH_GUTTER},
+        {GID_ZOOM, 0, GC_ZOOM},
+        {GID_ROTATE, 0, GC_ROTATE},
+    };
+    SetGestureConfig(hwnd_, 0, static_cast<UINT>(std::size(gestures)), gestures, sizeof(GESTURECONFIG));
     followDpi(); // on a monitor scaled unlike the primary one, in a host aware of it
     return true;
 }
@@ -414,6 +423,39 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
         invalidate();
         return 0;
     }
+    case WM_MOUSEHWHEEL: { // a tilted wheel, or a touchpad swiped across: to the right for more than 0
+        POINT p{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        ScreenToClient(hwnd_, &p);
+        view_.wheelAcross(toView(p.x, p.y), GET_WHEEL_DELTA_WPARAM(wParam) / static_cast<float>(WHEEL_DELTA));
+        syncFocus();
+        invalidate();
+        return 0;
+    }
+    case WM_GESTURE: { // a touchscreen's two-finger pan (a precision touchpad's comes as the wheel instead)
+        GESTUREINFO info{};
+        info.cbSize = sizeof(info);
+        const auto handle = reinterpret_cast<HGESTUREINFO>(lParam);
+        if (!GetGestureInfo(handle, &info) || info.dwID != GID_PAN)
+            break;
+        POINT p{info.ptsLocation.x, info.ptsLocation.y}; // between the fingers, on the screen
+        ScreenToClient(hwnd_, &p);
+        const Point at = toView(p.x, p.y);
+        if (info.dwFlags & GF_BEGIN) {
+            if (GetCapture() == hwnd_) // what the first finger pressed ends (WM_CAPTURECHANGED), dropping nothing
+                ReleaseCapture();
+            touchPan_ = view_.touchPanBegin(at);
+        } else if (touchPan_) {
+            view_.touchPanMove(at);
+        }
+        if ((info.dwFlags & GF_END) && touchPan_) {
+            view_.touchPanEnd(at);
+            touchPan_ = false;
+        }
+        CloseGestureInfoHandle(handle);
+        updateCursor();
+        invalidate();
+        return 0;
+    }
     case WM_GETDLGCODE: // in a host's dialog, Enter, Escape and the arrows still come here
         return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
     case WM_KEYDOWN:
@@ -436,10 +478,11 @@ LRESULT Editor::handle(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_KILLFOCUS:
         if (view_.setCtrl(false)) // no key-up comes once the keyboard is gone
             invalidate();
-        // Clicked away into the host: the value typed so far counts.
+        // Clicked away into the host: the value typed so far counts. (A dialog stays open, its keys taken off the
+        // queue by the message hook.)
+        hasKeyboard_ = false;
+        keyboardFrom_ = nullptr;
         if (view_.typing()) {
-            hasKeyboard_ = false;
-            keyboardFrom_ = nullptr;
             view_.endTyping(true);
             invalidate();
         }
@@ -647,6 +690,9 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         }
         }
     }
+    // A dialog open over the editor: Enter confirms it, Escape cancels it. Other keys go on to the host.
+    if (view_.dialogOpen() && (key == VK_RETURN || key == VK_ESCAPE))
+        return view_.dialogKey(key == VK_RETURN ? View::Key::Enter : View::Key::Escape);
     if (ctrl && (key == 'Y' || (key == 'Z' && GetKeyState(VK_SHIFT) < 0))) {
         view_.redo();
         return true;
@@ -694,7 +740,8 @@ bool Editor::typedKey(const MSG &msg) {
     const auto code = static_cast<uint8_t>(msg.wParam);
     switch (msg.message) {
     case WM_KEYDOWN:
-        if (!view_.typing() || isModifier(msg.wParam))
+        if (!(view_.typing() || (view_.dialogOpen() && (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE))) ||
+            isModifier(msg.wParam))
             return false;
         typedKeys_.set(code);
         key(msg.wParam, msg.lParam);
@@ -716,10 +763,10 @@ bool Editor::typedKey(const MSG &msg) {
 void Editor::syncFocus() {
     if (!hwnd_)
         return;
-    if (view_.typing() && !hasKeyboard_) {
+    if (wantsKeyboard() && !hasKeyboard_) {
         keyboardFrom_ = SetFocus(hwnd_);
         hasKeyboard_ = GetFocus() == hwnd_;
-    } else if (!view_.typing() && hasKeyboard_) {
+    } else if (!wantsKeyboard() && hasKeyboard_) {
         hasKeyboard_ = false;
         // Back to whoever had it, or else to the host's window around the editor.
         HWND to = keyboardFrom_ && IsWindow(keyboardFrom_) ? keyboardFrom_ : GetAncestor(hwnd_, GA_ROOT);

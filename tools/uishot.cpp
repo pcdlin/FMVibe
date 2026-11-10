@@ -1552,6 +1552,352 @@ void testCardEdgeScroll(const std::filesystem::path &dir, Renderer &renderer) {
           "an LFO card held at either end of the row scrolls the row along, and lands at that end");
 }
 
+// The editor's dialogs take Enter and Escape: the bin's, the preset arrows' and the browser's "changed, load anyway?"
+// (over the browser, whose search lets the keyboard go meanwhile) and the settings. Escape cancels or closes, Enter
+// goes ahead; other keys and no dialog take nothing.
+void testDialogKeys(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const bool none = !view.dialogOpen() && !view.dialogKey(View::Key::Escape);
+    // The bin's dialog: Escape keeps the effects, Enter removes them (one undo step).
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    const Point bin = rectCenter(detail::fxClearButton());
+    click(view, bin);
+    const bool asked = view.dialogOpen() && !view.typing() && !view.dialogKey(View::Key::Up);
+    const bool escaped =
+        view.dialogKey(View::Key::Escape) && !view.dialogOpen() && fxChain(model) == std::vector<int>{0, 1};
+    click(view, bin);
+    const bool entered = view.dialogKey(View::Key::Enter) && !view.dialogOpen() && fxChain(model).empty();
+    view.undo();
+    check(none && asked && escaped && entered && fxChain(model) == std::vector<int>{0, 1},
+          "Escape cancels the bin's dialog and Enter goes ahead");
+
+    // The settings dialog: Escape closes it, and Enter too, nothing in it waiting to be confirmed.
+    click(view, kSettingsButton);
+    const bool settingsOpen = view.dialogOpen() && renderer.save(view, dir / "14h-settings-keys.png");
+    const bool settingsEscaped = view.dialogKey(View::Key::Escape) && !view.dialogOpen();
+    click(view, kSettingsButton);
+    const bool settingsEntered = view.dialogKey(View::Key::Enter) && !view.dialogOpen();
+    check(settingsOpen && settingsEscaped && settingsEntered, "Escape and Enter close the settings dialog");
+
+    // The next-preset arrow on a changed patch asks first: Escape stays on Init, Enter loads the first preset.
+    drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    const Point nextPreset{787.0f, 18.0f}, presetBox{600.0f, 18.0f};
+    click(view, nextPreset);
+    const bool presetAsked = view.dialogOpen() && model.presetIndex() == -1;
+    view.dialogKey(View::Key::Escape);
+    const bool stayed = !view.dialogOpen() && model.presetIndex() == -1 && model.patchEdited();
+    click(view, nextPreset);
+    view.dialogKey(View::Key::Enter);
+    const bool loaded = !view.dialogOpen() && model.presetIndex() == 0;
+    // From the browser: Enter in its search loads the preset found, asking first over it, where the search lets the
+    // keyboard go; Enter there loads it and closes the browser.
+    drag(view, kFmAmountKnob, {kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    click(view, presetBox);
+    type(view, "bell");
+    view.typeKey(View::Key::Enter);
+    const bool overBrowser = view.dialogOpen() && !view.typing() && model.presetIndex() == 0 &&
+                             renderer.save(view, dir / "22j-preset-confirm-keys.png");
+    view.dialogKey(View::Key::Enter);
+    check(presetAsked && stayed && loaded && overBrowser && model.presetName() == "Bell" && !view.typing() &&
+              !view.dialogOpen(),
+          "Escape cancels the preset dialog and Enter loads the preset, over the browser too");
+}
+
+// Ctrl held as a card or node starts to move carries a copy of it, the original staying: an effect card in the row,
+// an effect's node and a split's (with its join and its bands' effects) in the graph, and a source card. The copy
+// lands where it is let go of, with the original's settings, one undo step; a drag called off leaves nothing.
+void testCtrlCopy(const std::filesystem::path &dir, Renderer &renderer) {
+    const Modifiers ctrl{false, true, false};
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    model.values[paramIndex(0, FxParam::ShaperDrive)] = 0.8;
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    setChain(model, {0, 1});
+    view.poll();
+    click(view, kFxTab);
+    fxScrolled = 0.0f;
+    auto copied = [&](int copy, int original) {
+        return model.value(paramIndex(copy, FxParam::Type)) == model.value(paramIndex(original, FxParam::Type)) &&
+               model.value(paramIndex(copy, FxParam::ShaperDrive)) ==
+                   model.value(paramIndex(original, FxParam::ShaperDrive));
+    };
+    // The row: the shaper carried past the reverb, its copy landing after it.
+    const Point grip = fxGrip(model, 0), past{grip.x + 1.5f * kFxStep, grip.y};
+    view.mouseDown(grip, ctrl);
+    view.mouseMove({grip.x + 8.0f, grip.y}, ctrl);
+    view.mouseMove(past, ctrl);
+    for (int n = 0; n < 20; ++n)
+        view.poll();
+    const bool rowShot = renderer.save(view, dir / "8e-fx-ctrl-copy.png");
+    view.mouseUp(past, ctrl);
+    const bool rowCopy = fxChain(model) == std::vector<int>{0, 1, 2} && copied(2, 0);
+    view.undo();
+    const bool rowUndone =
+        fxChain(model) == std::vector<int>{0, 1} && model.value(paramIndex(2, FxParam::Type)) == 0.0;
+    // Without Ctrl it moves; called off, the copy goes again and leaves no undo step.
+    drag(view, grip, past);
+    const bool moved = fxChain(model) == std::vector<int>{1, 0};
+    view.undo();
+    const UndoStep *last = model.nextUndo();
+    view.mouseDown(grip, ctrl);
+    view.mouseMove({grip.x + 8.0f, grip.y}, ctrl);
+    view.mouseMove(past, ctrl);
+    view.cancelDrag();
+    const bool calledOff = fxChain(model) == std::vector<int>{0, 1} &&
+                           model.value(paramIndex(2, FxParam::Type)) == 0.0 && model.nextUndo() == last;
+    check(rowShot && rowCopy && rowUndone && moved && calledOff,
+          "an effect card Ctrl-dragged along the row leaves a copy where it is let go of, one undo step");
+
+    // The graph: the shaper's node, then a split holding a delay on its high band, each copied onto the line.
+    click(view, rectCenter(detail::fxModeButton(1)));
+    auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
+    auto settle = [&] {
+        for (int k = 0; k < 40; ++k)
+            view.poll();
+    };
+    auto dragNode = [&](Point from, Point to, Modifiers mods) {
+        view.mouseMove(from, {});
+        view.mouseDown(from, mods);
+        view.mouseMove({from.x + 8.0f, from.y + 4.0f}, mods);
+        view.mouseMove(to, mods);
+        settle();
+        view.mouseUp(to, mods);
+        settle();
+    };
+    // Its copy's place opens right after it as it starts to move, so past the reverb is a column further on.
+    dragNode(cell(1, 0), detail::fxGridAt(3.5f, 0.0f, 0.0f), ctrl);
+    const bool nodeCopy = fxChain(model) == std::vector<int>{0, 1, 2} && copied(2, 0) && model.ui.fxSelected == 2;
+    view.undo();
+    settle();
+    const Point plus = cell(3, 0);
+    click(view, plus);
+    click(view, fxListSplit(view, besidePlus(plus)));
+    const Point high = cell(4, -1);
+    click(view, high);
+    click(view, fxListItem(view, besidePlus(high), FxType::Delay, true));
+    model.values[paramIndex(0, SplitParam::Low)] = 0.3;
+    view.poll();
+    settle();
+    const bool split =
+        fxChain(model) == std::vector<int>{0, 1, 2} && model.value(paramIndex(0, SplitParam::Used)) == 1.0;
+    dragNode(cell(3, 0), detail::fxGridAt(0.5f, 0.0f, 0.0f), ctrl);
+    view.mouseMove({600.0f, 428.0f}, {});
+    const bool splitShot = renderer.save(view, dir / "40v-fx-graph-ctrl-copy.png");
+    const bool splitCopy = fxChain(model) == std::vector<int>{3, 0, 1, 2} &&
+                           model.value(paramIndex(1, SplitParam::Used)) == 1.0 &&
+                           model.value(paramIndex(1, SumParam::Used)) == 1.0 &&
+                           model.value(paramIndex(1, SplitParam::Low)) == 0.3 &&
+                           model.value(paramIndex(3, FxParam::Type)) == static_cast<double>(FxType::Delay) &&
+                           model.value(paramIndex(0, SplitParam::Used)) == 1.0;
+    view.undo();
+    settle();
+    check(nodeCopy && split && splitShot && splitCopy && fxChain(model) == std::vector<int>{0, 1, 2} &&
+              model.value(paramIndex(1, SplitParam::Used)) == 0.0 && model.value(paramIndex(3, FxParam::Type)) == 0.0,
+          "a node Ctrl-dragged in the effects graph leaves a copy where it is let go of, a split with its join and "
+          "its bands' effects, one undo step");
+
+    // A source card: LFO 1 carried past LFO 2, its copy (rate and all, modulating nothing) landing after it.
+    FakeController sources;
+    View sourceView(sources);
+    addSource(sourceView, SourceType::Lfo);
+    addSource(sourceView, SourceType::Lfo);
+    sources.values[paramIndex(0, SourceParam::Rate)] = 0.7;
+    sources.values[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(GlobalParam::FmAmount));
+    sources.values[slotAmountIndex(0, 0)] = 0.3;
+    sourceView.poll();
+    sourceView.wheel({60.0f, 541.0f}, 10.0f, {}); // the first card
+    const Point sourceAt = sourceGrip(0), sourceTo{cardX(1.0f) + 250.0f, 572.0f};
+    sourceView.mouseDown(sourceAt, ctrl);
+    sourceView.mouseMove({sourceAt.x + 8.0f, sourceAt.y}, ctrl);
+    sourceView.mouseMove(sourceTo, ctrl);
+    const bool sourceShot = renderer.save(sourceView, dir / "11g-source-ctrl-copy.png");
+    sourceView.mouseUp(sourceTo, ctrl);
+    const bool sourceCopy = shown(sources) == std::vector<int>{0, 1, 2} &&
+                            sources.value(paramIndex(2, SourceParam::Type)) == static_cast<double>(SourceType::Lfo) &&
+                            sources.value(paramIndex(2, SourceParam::Rate)) == 0.7 &&
+                            slotTarget(sources.value(slotTargetIndex(2, 0))) < 0 &&
+                            slotTarget(sources.value(slotTargetIndex(0, 0))) == paramIndex(GlobalParam::FmAmount);
+    sourceView.undo();
+    check(sourceShot && sourceCopy && shown(sources) == std::vector<int>{0, 1} &&
+              sources.value(paramIndex(2, SourceParam::Type)) == 0.0,
+          "a source card Ctrl-dragged leaves a copy where it is let go of, one undo step");
+}
+
+// Two fingers pan what the middle button drags (the effects' row, the source cards, the preset browser's list),
+// ending what the first finger pressed without dropping anything, and doing nothing over a dialog; the wheel turned
+// sideways scrolls the row, the source cards and the effects graph. One finger turns a knob it lands on (a double tap
+// setting it back), taps what it lands on, and elsewhere pans the row, the source cards and the browser's list
+// without picking what it went down on.
+void testTouchPan(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    for (FxType type : {FxType::Delay, FxType::Reverb, FxType::Phaser, FxType::Flanger, FxType::Compressor,
+                        FxType::Widener, FxType::Disperser, FxType::FreqShifter})
+        addFx(view, type);
+    view.wheel({600.0f, 153.0f}, 10.0f, {}); // back to the start
+    const std::vector<int> chain = fxChain(model);
+    auto fxAt = [&](float scrolled, int position) { // switched off and on again by its icon there
+        fxScrolled = scrolled;
+        click(view, fxPower(model, position));
+        const bool off = model.value(paramIndex(chain[position], FxParam::Enabled)) == 0.0;
+        click(view, fxPower(model, position));
+        fxScrolled = 0.0f;
+        return off;
+    };
+    // The first finger on a knob, the second beside it: the knob stays as it was, and the row goes along.
+    const ParamValues before = model.values;
+    const Point grab{700.0f, 328.0f};
+    view.mouseDown(grab, {});
+    const bool began = view.touchPanBegin(grab);
+    view.touchPanMove({grab.x - kFxStep, grab.y + 6.0f});
+    view.touchPanMove({grab.x - 2.0f * kFxStep, grab.y + 6.0f});
+    const bool fxShot = renderer.save(view, dir / "8f-fx-touch-pan.png");
+    view.touchPanEnd({grab.x - 2.0f * kFxStep, grab.y + 6.0f});
+    view.mouseUp({grab.x - 2.0f * kFxStep, grab.y + 6.0f}, {}); // the first finger's, after
+    check(began && fxShot && model.values == before && fxAt(2.0f, 2),
+          "two fingers pan the effects' row, leaving the knob the first one went down on");
+    // Sideways, the wheel scrolls the row: back two places, then on two.
+    view.wheelAcross(grab, -5.0f);
+    const bool back = fxAt(0.0f, 2);
+    view.wheelAcross(grab, 5.0f);
+    check(back && fxAt(2.0f, 2), "the wheel turned sideways scrolls the effects' row");
+
+    // One finger: on a card's knob it turns it (the row staying), and a double tap puts it back.
+    constexpr float kSlop = 6.0f;
+    auto tap = [&](View &on, Point p, bool second = false) {
+        on.touchDown(p, second, kSlop);
+        on.touchMove({p.x + 2.0f, p.y + 1.0f}); // a finger's jitter
+        on.touchUp(p);
+    };
+    fxScrolled = 2.0f; // the phaser's Rate, first on the first card shown
+    const Point rate = fxKnob(model, 2, 0, 3, 205.0f);
+    fxScrolled = 0.0f;
+    view.touchDown(rate, false, kSlop);
+    view.touchMove({rate.x + 1.0f, rate.y - 15.0f});
+    view.touchMove({rate.x + 1.0f, rate.y - 30.0f});
+    view.touchUp({rate.x + 1.0f, rate.y - 30.0f});
+    const bool turned = model.values != before && fxAt(2.0f, 2);
+    tap(view, rate);
+    tap(view, rate, true);
+    const bool reset = model.values == before;
+    // Off the knobs, near a card's foot, it pans the row (two places back to the start), turning nothing; a tap on an
+    // effect's icon switches it.
+    const Point foot{700.0f, 476.0f};
+    view.touchDown(foot, false, kSlop);
+    view.touchMove({foot.x + kFxStep, foot.y + 3.0f});
+    view.touchMove({foot.x + 2.0f * kFxStep, foot.y + 3.0f});
+    const bool oneShot = renderer.save(view, dir / "8g-fx-one-finger-pan.png");
+    view.touchUp({foot.x + 2.0f * kFxStep, foot.y + 3.0f});
+    const bool panned = model.values == before && fxAt(0.0f, 2);
+    tap(view, fxPower(model, 2));
+    const bool tappedOff = model.value(paramIndex(chain[2], FxParam::Enabled)) == 0.0;
+    tap(view, fxPower(model, 2));
+    check(turned && reset && oneShot && panned && tappedOff &&
+              model.value(paramIndex(chain[2], FxParam::Enabled)) == 1.0,
+          "one finger turns a knob it lands on, a double tap putting it back, pans the effects' row off the knobs and "
+          "taps an effect's icon");
+    // Where nothing scrolls, it is the mouse at once: the header's FM Amount turns.
+    const double fmAmount = model.value(paramIndex(GlobalParam::FmAmount));
+    view.touchDown(kFmAmountKnob, false, kSlop);
+    view.touchMove({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    view.touchUp({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
+    check(model.value(paramIndex(GlobalParam::FmAmount)) != fmAmount, "one finger turns a knob where nothing scrolls");
+
+    // The source cards, a card's width to the left by two fingers, then back by the wheel sideways.
+    for (int n = 0; n < 5; ++n)
+        addSource(view, SourceType::Lfo);
+    view.wheel({60.0f, 541.0f}, 10.0f, {});
+    const std::vector<int> sources = shown(model);
+    auto firstShown = [&] { // which card shows first: switched off and on again by its power switch
+        click(view, sourcePower(0));
+        int off = -1;
+        for (int s : sources)
+            off = model.value(sourceEnabledIndex(s)) == 0.0 ? s : off;
+        click(view, sourcePower(0));
+        return off;
+    };
+    view.touchPanBegin({cardX(1) + 120.0f, 678.0f});
+    view.touchPanMove({cardX(0) + 120.0f, 678.0f});
+    view.touchPanEnd({cardX(0) + 120.0f, 678.0f});
+    const bool sourcesPanned = sources.size() >= 5 && firstShown() == sources[1];
+    view.wheelAcross({cardX(1) + 120.0f, 678.0f}, -2.5f);
+    check(sourcesPanned && firstShown() == sources[0],
+          "two fingers pan the source cards, and the wheel turned sideways scrolls them");
+    // One finger on a card's foot, under its display, pans them too.
+    view.touchDown({cardX(1) + 120.0f, 748.0f}, false, kSlop);
+    view.touchMove({cardX(0) + 120.0f, 748.0f});
+    view.touchUp({cardX(0) + 120.0f, 748.0f});
+    const bool onePanned = firstShown() == sources[1];
+    view.wheelAcross({cardX(1) + 120.0f, 678.0f}, -2.5f);
+    check(onePanned && firstShown() == sources[0], "one finger pans the source cards");
+
+    // Over a dialog, nothing pans.
+    click(view, kSettingsButton);
+    const bool refused = !view.touchPanBegin(grab);
+    view.dialogKey(View::Key::Escape);
+    check(refused && !view.dialogOpen(), "two fingers pan nothing over a dialog");
+
+    // The preset browser's list of forty, five rows up.
+    FakeController presets;
+    View presetView(presets);
+    presets.library.clear();
+    for (int n = 0; n < 40; ++n)
+        presets.library.push_back({"Preset " + std::to_string(n), ""});
+    presets.loadPresetAt(0);
+    click(presetView, {600.0f, 18.0f});
+    const float browserTop = std::round((presetView.height() - 560.0f) * 0.5f);
+    auto browserRow = [&](int row) { return Point{600.0f, browserTop + 58.0f + row * 24.0f + 11.0f}; };
+    presetView.touchPanBegin(browserRow(10));
+    presetView.touchPanMove({600.0f, browserRow(5).y});
+    presetView.touchPanEnd({600.0f, browserRow(5).y});
+    click(presetView, browserRow(0));
+    check(presets.presetIndex() == 5, "two fingers pan the preset browser's list");
+    // One finger: dragged up the list it loads nothing, and a tap then loads the preset tapped.
+    FakeController browsed;
+    View browsedView(browsed);
+    browsed.library = presets.library;
+    browsed.loadPresetAt(0);
+    click(browsedView, {600.0f, 18.0f});
+    browsedView.touchDown(browserRow(10), false, kSlop);
+    browsedView.touchMove({600.0f, browserRow(8).y});
+    browsedView.touchMove({600.0f, browserRow(5).y});
+    browsedView.touchUp({600.0f, browserRow(5).y});
+    const bool nothingLoaded = browsed.presetIndex() == 0 && browsedView.typing(); // still open, its search typing
+    tap(browsedView, browserRow(0));
+    check(nothingLoaded && browsed.presetIndex() == 5,
+          "one finger pans the preset browser's list without loading what it went down on, and a tap loads one");
+
+    // The effects graph, wider than its box: the wheel sideways to its end, where the Param EQ's node takes a click,
+    // and two fingers back to its start.
+    FakeController graph;
+    View graphView(graph);
+    for (int slot = 0; slot < 10; ++slot)
+        graph.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    graph.values[paramIndex(9, FxParam::Type)] = static_cast<double>(FxType::ParamEq);
+    setChain(graph, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+    graphView.poll();
+    click(graphView, kFxTab);
+    click(graphView, rectCenter(detail::fxModeButton(1)));
+    const Rect area = detail::fxGraphArea(1.5f);
+    const float most = detail::kFxGridLeft + 12.0f * detail::kFxGridCol + detail::kFxEndHalfW + 16.0f - area.w;
+    graphView.wheelAcross(area.center(), 100.0f);
+    click(graphView, detail::fxGridCell(10, 0, most));
+    const bool atEnd = graph.ui.fxSelected == 9;
+    graphView.touchPanBegin(area.center());
+    graphView.touchPanMove({area.center().x + 2000.0f, area.center().y});
+    graphView.touchPanEnd({area.center().x + 2000.0f, area.center().y});
+    click(graphView, detail::fxGridCell(1, 0, 0.0f));
+    check(most > 0.0f && atEnd && graph.ui.fxSelected == 0,
+          "the wheel turned sideways and two fingers scroll the effects graph");
+}
+
 // The middle button held and dragged over a panel that scrolls drags what it shows along with the mouse, without
 // turning what it went down on: the effects and the source cards across, the MODS view's rows and the preset browser's
 // list up and down. Past either end the row stops there, and dragged back it follows again at once. While the left
@@ -8303,6 +8649,9 @@ void run(const std::filesystem::path &dir, float scale) {
     testUtility(dir, renderer);
     testCardEdgeScroll(dir, renderer);
     testMiddleDrag(dir, renderer);
+    testTouchPan(dir, renderer);
+    testCtrlCopy(dir, renderer);
+    testDialogKeys(dir, renderer);
     testModFocus(dir, renderer);
     testModPill(dir, renderer);
     testRatioDisplay(dir, renderer);

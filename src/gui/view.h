@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -92,11 +93,31 @@ public:
     void mouseLeave();
     void doubleClick(Point p, Modifiers mods);
     void wheel(Point p, float steps, Modifiers mods);
+    // The wheel turned sideways (a tilting wheel, a touchpad swiped across): what scrolls sideways under the mouse (the
+    // effects' row and graph, the source cards) scrolls `steps` notches on, to the right for more than 0. Nothing
+    // turns.
+    void wheelAcross(Point p, float steps);
     // The middle button held over a panel that scrolls (the effects, the source cards, the MODS view's rows, the
     // preset browser's list) grabs what it shows: until it goes up, mouseMove() drags that along with the mouse.
     // Elsewhere, or while the left button drags something, it does nothing.
     void middleDown(Point p);
     void middleUp(Point p);
+    // Two fingers on a touchscreen or touchpad, at `p` between them: a pan of whatever the middle button would drag
+    // there, along with them, until they go up. A drag the first finger started ends first, as cancelDrag() ends it.
+    // Whether there was something there to pan; moves return whether a repaint is due.
+    bool touchPanBegin(Point p);
+    bool touchPanMove(Point p);
+    void touchPanEnd(Point p);
+    // One finger on a touchscreen (a phone in the browser demo). Landing where nothing scrolls, it is the left button
+    // going down there. Over a panel that scrolls, it waits: lifted without moving, it is a click where it landed (with
+    // `secondTap`, a double-click's second click); moved further than `slop` (a finger's jitter, in the editor's
+    // units), it drags what it landed on if that drags (a knob, a card by
+    // its title, a handle, a node), and else pans what scrolls there, as two fingers do. touchMove() returns whether
+    // a repaint is due; touchCancel() ends it all as cancelDrag() does (the browser taking the touch for its menu, say).
+    void touchDown(Point p, bool secondTap, float slop);
+    bool touchMove(Point p);
+    void touchUp(Point p);
+    void touchCancel();
     std::vector<MenuItem> contextMenu(Point p);
     void menuCommand(int command);
     CursorKind cursor() const;
@@ -120,6 +141,11 @@ public:
     void pasteText(std::string_view text);
     // Commits the value typed, if it reads as one, or drops it.
     void endTyping(bool commit);
+    // A dialog over the editor (a confirm dialog, the settings) takes Enter, which presses its lit button, and Escape,
+    // which cancels it or closes the settings. While one is open the window should send it those keys: true if one
+    // was taken.
+    bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0; }
+    bool dialogKey(Key key);
     // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
     // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
     bool setCtrl(bool held);
@@ -385,6 +411,10 @@ private:
         float scrollStart = 0.0f; // moving a card: where its row was scrolled to when it was grabbed
         int lastPartial = -1; // drawing partials: the one the last move was over, and its value in startValue
         std::vector<double> shapeBefore; // drawing a step: the shape's params before it
+        // A card or node Ctrl-dragged, which carries a copy (see copyDragged()): every param and the layout before the
+        // copy was made, which a drag called off goes back to.
+        std::vector<double> copyBefore;
+        std::optional<UiLayout> copyLayout;
     };
 
     struct Typing {
@@ -640,6 +670,9 @@ private:
     // Fills an empty slot with a fresh effect of `type`, or a copy of slot `copyOf`, and puts it in the line: a copy
     // right after its original, a new one where the list was opened (see fxSlot_).
     void addEffect(FxType type, int copyOf = -1);
+    // The first slot without an effect, or -1; and that slot filled (fresh, or as `copyOf`), unfolded, not in the line.
+    int freeFxSlot() const;
+    void fillEffect(int slot, FxType type, int copyOf);
     void removeEffect(int slot);
     // The effects (see fxgraph.cpp): a main line of effects and splits from IN to OUT, each split with a high and a low
     // band of effects (and, split in three, a middle one between), closed by a join (the sum of its number) or, the line's last item, left open into OUT. The FX
@@ -742,7 +775,16 @@ private:
         std::array<Point, kFxNodes> from{};
         float startPlace = 0.0f, span = 1.0f; // in the row: where its card or container was, and how wide
         bool byMouse = false; // in the row: the mouse has been over a container, and where it lands goes by the mouse
+        bool copy = false;    // a copy carried, the original left in `rest`: let go of anywhere, it lands
     };
+    // Ctrl held as a card or node starts to move: what is carried becomes a copy of it, the original staying where it
+    // is, made as the drag's undo step opens (an effect into a free slot, a split with its join and its bands'
+    // effects, a source into a free place). Too few free, it stays a move, with a message.
+    void copyDragged();
+    // A copy of `item` (an effect, or a split with its join and the effects on its bands): its settings, not its
+    // modulation, in free slots and a free split, shown folded as the original; `copies` maps each node to its copy.
+    // None, with a message, where there aren't enough.
+    std::optional<FxLineItem> copyFxItem(const FxLineItem &item, std::map<int, int> &copies);
     // The nodes' places as shown, in grid cells (fractions while they glide).
     struct FxGlide {
         bool on = false;
@@ -917,6 +959,18 @@ private:
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
     enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList };
     void applyPan(Point p);
+    // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
+    // open list or menu that doesn't scroll, or while a drag goes on.
+    std::optional<std::pair<PanArea, float>> panAt(Point p) const;
+    // A finger landed over a panel that scrolls, waiting to see whether it taps, drags or pans (see touchDown()).
+    struct TouchPress {
+        Point at;
+        bool second = false;
+        float slop = 0.0f;
+    };
+    std::optional<TouchPress> touchPress_;
+    // What a finger moving on it drags rather than pans past: knobs, handles, cards' titles, nodes and the like.
+    bool dragsOnTouch(const Widget &w) const;
     float scrollLength(ScrollArea area) const;
     // While there is room for more, a dashed card after the last effect (a card place wide) and two after the last
     // source (LFO above ENV, square) add one.
@@ -1076,7 +1130,7 @@ private:
     float cardOf(int source) const;
     void revealSource(int source);
     // Fills a free place with a fresh source of `type`, or a copy of `copyOf`, shown after the others or the original.
-    void addSource(SourceType type, int copyOf = -1);
+    int addSource(SourceType type, int copyOf = -1); // the place it fills, or -1 with none free
     // Takes it out with its modulation, and whatever modulates its knobs.
     void removeSource(int source);
     // Shows the sources in the order `shown`, the free places after them.
@@ -1277,6 +1331,8 @@ private:
     // The settings dialog: while it is open it takes every click.
     std::vector<Widget> settingsWidgets() const;
     std::vector<Widget> confirmWidgets() const;
+    // The confirm dialog's button `button` pressed (0 Cancel, 1 the way ahead, 2 to 4 the bands' and the split's others).
+    void answerConfirm(int button);
     std::string confirmWhat() const;
     bool confirmShorter() const;
     // The preset browser: while it is open it takes every click, and the confirm dialog goes over it.

@@ -519,6 +519,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     scrolling the source cards by holding a dragged handle at the panel's edge;
   - scrolling the effects and the sources by holding a card being moved at either end of its row, where it lands; a
     source card moved within its own place, or carried out of its panel, moving nothing;
+  - two fingers panning the effects' row (the knob the first finger pressed left alone), the source cards, the
+    preset browser's list and the effects graph, and nothing over a dialog; the wheel turned sideways scrolling the
+    row, the source cards and the graph; one finger turning a knob it lands on (on a card in the row too, a double
+    tap setting it back), tapping an effect's icon, and elsewhere panning the row, the source cards and the
+    browser's list (loading nothing it went down on, a tap then loading one);
+  - Ctrl-dragging an effect card along the row, an effect's node and a split's (its join and its band's effect along)
+    in the graph and a source card, each leaving a copy where it lands with the original's settings, one undo step;
+    a plain drag moving instead, and a Ctrl-drag called off leaving nothing, not even an undo step;
+  - Enter and Escape on the bin's dialog, the settings and the preset arrows' and the browser's "load anyway?"
+    (over the browser, its search letting the keyboard go): Escape cancelling or closing, Enter going ahead;
   - dragging the effects, the source cards, the MODS view's rows and the preset browser's list with the middle
     button held: over a knob without turning it, stopping at the row's end and following back from there at once,
     and doing nothing while the left button drags a knob;
@@ -663,6 +673,8 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   demo has no files. The theme, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
   the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
+- On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
+  what scrolls, and taps) and two (`View::touchPanBegin()` and on: a pan), with its own slop and double tap.
 - The page stands in for a host's transport: its `Controller` offers the tempo (`hasTempo()`), which the editor's
   title bar then shows to drag, scroll or type (20–999 BPM, kept in the browser's storage), and which `dsp_tempo()`
   hands the synth as `Plugin::process()` does the host's tempo.

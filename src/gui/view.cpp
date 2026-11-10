@@ -827,16 +827,27 @@ Rect View::scrollThumb(ScrollArea area) const {
             track.h};
 }
 
+int View::freeFxSlot() const {
+    for (int s = 0; s < kFxSlots; ++s)
+        if (fxSlotType(s) == FxType::None)
+            return s;
+    return -1;
+}
+
 void View::addEffect(FxType type, int copyOf) {
     const UndoScope step(controller_); // with its wires
-    int slot = -1;
-    for (int s = 0; s < kFxSlots && slot < 0; ++s)
-        if (fxSlotType(s) == FxType::None)
-            slot = s;
+    const int slot = freeFxSlot();
     if (slot < 0) {
         flash(trf(Str::MsgChainFull, {std::to_string(kFxSlots)}));
         return;
     }
+    fillEffect(slot, type, copyOf);
+    // Where the list was opened, after the node the graph shows, or a copy after its original; either view scrolls to
+    // show it.
+    fxPlaceNew(slot, copyOf);
+}
+
+void View::fillEffect(int slot, FxType type, int copyOf) {
     // The slot gets its settings, the original's for a copy, then its type last: that makes the host rescan
     // the slot's fields, which by then hold what they should.
     std::vector<std::pair<int, double>> changes;
@@ -856,9 +867,6 @@ void View::addEffect(FxType type, int copyOf) {
         shapeEditor_ = -1;
     editMany(changes);
     fxBand_[slot] = copyOf >= 0 ? fxBand_[copyOf] : 0;
-    // Where the list was opened, after the node the graph shows, or a copy after its original; either view scrolls to
-    // show it.
-    fxPlaceNew(slot, copyOf);
 }
 
 void View::removeEffect(int slot) {
@@ -1123,7 +1131,7 @@ void View::setSourceOrder(const std::vector<int> &shown) {
     controller_.layoutChanged();
 }
 
-void View::addSource(SourceType type, int copyOf) {
+int View::addSource(SourceType type, int copyOf) {
     const UndoScope step(controller_); // with where it shows
     std::vector<int> shown = sources();
     int source = -1;
@@ -1132,7 +1140,7 @@ void View::addSource(SourceType type, int copyOf) {
             source = s;
     if (source < 0) {
         flash(trf(Str::MsgSourcesFull, {std::to_string(kMaxSources)}));
-        return;
+        return -1;
     }
     // Every field and its freeform shape: fresh, or as in the original. Its slots start empty either way: a copy
     // modulates nothing until it is given targets of its own. The type comes last, as in addEffect().
@@ -1173,6 +1181,7 @@ void View::addSource(SourceType type, int copyOf) {
         controller_.layoutChanged();
     }
     revealSource(source);
+    return source;
 }
 
 void View::removeSource(int source) {
@@ -8783,8 +8792,11 @@ bool View::mouseMove(Point p, Modifiers mods) {
                      ? shapeSnaps(drag_.widget.a, mods.ctrl)
                      : mods.ctrl;
     drag_.now = p;
-    if (std::hypot(p.x - drag_.start.x, p.y - drag_.start.y) > 3.0f)
+    if (!drag_.moved && std::hypot(p.x - drag_.start.x, p.y - drag_.start.y) > 3.0f) {
         drag_.moved = true;
+        if (mods.ctrl) // a card or node carried with Ctrl held: a copy of it
+            copyDragged();
+    }
     if ((drag_.kind == DragKind::Connect || drag_.kind == DragKind::Reroute) && !drag_.leftNode)
         drag_.leftNode = clearOfNode(drag_.widget.a, nodeCenter(drag_.widget.a), p);
     // A value moves only once the mouse has: the jitter of a click, or between a double-click's presses, leaves it
@@ -9352,28 +9364,9 @@ void View::mouseDown(Point p, Modifiers mods) {
             pendingPreset_ = -1;
         }
         break;
-    case Kind::ConfirmButton: {
-        const auto action = static_cast<PresetAction>(confirm_);
-        const bool clear = confirm_ == kConfirmFxClear;
-        const bool bands = confirm_ == kConfirmMidBand;
-        const bool split = confirm_ == kConfirmSplitRemove;
-        confirm_ = -1;
-        hover_.reset();
-        if (split) { // the split removed, its bands' effects kept on the main line (1) or with it (4)
-            if (w.a == 1 || w.a == 4)
-                removeFxNode(fxSplitNode(confirmSplit_), w.a == 4 ? 1 : 0);
-            confirmSplit_ = -1;
-        } else if (bands) { // back in two bands: the middle band's effects removed (1), onto the low band (2), the high one (3)
-            if (w.a > 0)
-                setSplitBands(confirmSplit_, 2, w.a == 1 ? 0 : w.a == 2 ? 2 : 1);
-            confirmSplit_ = -1;
-        } else if (w.a == 1 && clear)
-            clearFx();
-        else if (w.a == 1)
-            runPreset(action);
-        pendingPreset_ = -1;
+    case Kind::ConfirmButton:
+        answerConfirm(w.a);
         break;
-    }
     case Kind::SettingsButton:
         settingsOpen_ = true;
         hover_.reset();
@@ -9640,8 +9633,66 @@ void View::cancelDrag() {
         dropFxNode(false);
     if (drag_.kind == DragKind::FxMove) // a card or container stays where it was
         fxDrag_.reset();
+    if (drag_.copyLayout) { // a copy made for it goes again, its undo step left empty
+        std::vector<std::pair<int, double>> back;
+        for (int i = 0; i < kParamCount; ++i)
+            if (value(i) != drag_.copyBefore[i])
+                back.push_back({i, drag_.copyBefore[i]});
+        editMany(back);
+        controller_.layout() = *drag_.copyLayout;
+        controller_.layoutChanged();
+    }
     finishDrag();
     hover_.reset();
+}
+
+void View::copyDragged() {
+    const bool fx = (drag_.kind == DragKind::FxMove || drag_.kind == DragKind::FxNodeMove) && fxDrag_;
+    if (!fx && drag_.kind != DragKind::SourceMove)
+        return;
+    std::vector<double> before(kParamCount);
+    for (int i = 0; i < kParamCount; ++i)
+        before[i] = value(i);
+    UiLayout layout = controller_.layout();
+    if (!drag_.step) { // the copy and where it lands one undo step
+        controller_.beginStep();
+        drag_.step = true;
+    }
+    if (drag_.kind == DragKind::SourceMove) {
+        // Made right after its original, which the mouse stays over until it carries it elsewhere.
+        const int source = drag_.widget.a;
+        const float scroll = sourceScroll();
+        const int copy = addSource(sourceTypeOf(source), source);
+        if (copy < 0)
+            return;
+        setFolded(false, copy, sourceFolded(source));
+        setScroll(ScrollArea::Sources, scroll); // as it was grabbed, not scrolled to show the copy
+        drag_.widget.a = copy;
+    } else {
+        std::map<int, int> copies;
+        const std::optional<FxLineItem> item = copyFxItem(fxDrag_->item, copies);
+        if (!item)
+            return;
+        // The original back where it was, and the copy carried from right after it.
+        FxDrag &d = *fxDrag_;
+        d.rest = fxLineWith(d.rest, d.item, d.was);
+        d.was = d.was.lane == 0 ? FxSlotAt{0, d.was.item + 1, 0} : FxSlotAt{d.was.lane, d.was.item, d.was.place + 1};
+        d.at = d.was;
+        d.item = *item;
+        for (int &node : d.nodes) {
+            d.from[copies[node]] = d.from[node];
+            node = copies[node];
+        }
+        d.copy = true;
+        if (const auto grabbed = copies.find(drag_.widget.a); grabbed != copies.end())
+            drag_.widget.a = grabbed->second;
+        if (drag_.kind == DragKind::FxNodeMove) { // the copy's card in the inspector
+            controller_.layout().fxSelected = drag_.widget.a;
+            controller_.layoutChanged();
+        }
+    }
+    drag_.copyBefore = std::move(before);
+    drag_.copyLayout = std::move(layout);
 }
 
 void View::finishDrag() {
@@ -9722,64 +9773,52 @@ void View::mouseLeave() {
         hover_.reset();
 }
 
-void View::middleDown(Point p) {
+std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {
     if (drag_.kind != DragKind::None || settingsOpen_ || confirm_ >= 0) // a left-button drag, or a dialog, goes on
-        return;
-    std::optional<PanArea> area;
-    float first = 0.0f;
+        return std::nullopt;
     if (browserOpen_) { // only its list, over everything else
         if (!browserList(browserPanel(height())).contains(p))
-            return;
+            return std::nullopt;
         const int most = std::max(static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height())), 0);
-        area = PanArea::Browser;
-        first = static_cast<float>(std::clamp(browserScroll_, 0, most));
-    } else {
-        // On a pill's open list, it moves the rows when they scroll. On another open list or menu, it does nothing;
-        // elsewhere they close as a click there closes them, since what they were opened on may scroll away.
-        const auto hit = hitTest(p);
-        if (hit && hit->popup && modList_) {
-            if (modListEnd() <= 0.0f)
-                return;
-            menuLive_ = false;
-            endTyping(true);
-            drag_ = Drag{};
-            drag_.kind = DragKind::Pan;
-            drag_.widget.a = static_cast<int>(PanArea::ModList);
-            drag_.start = drag_.now = p;
-            drag_.startValue = modListFirst();
-            return;
-        }
-        if (hit) {
-            const Kind k = hit->kind;
-            if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd || k == Kind::FxAddNode ||
-                k == Kind::SourceMenuItem ||
-                k == Kind::ListItem || k == Kind::PeqTypeItem || k == Kind::WaveMenuItem || k == Kind::CascadeItem ||
-                ((k == Kind::FxMenu || k == Kind::SourceMenu || k == Kind::ListMenu || k == Kind::PeqTypeMenu ||
-                  k == Kind::WaveMenu ||
-                  k == Kind::CascadeMenu) &&
-                 hit->a != 0))
-                return;
-        }
-        if (!controller_.layout().sourcesCollapsed && modPanel(false).contains(p)) {
-            area = PanArea::Sources;
-            first = sourceScroll();
-        } else if (modsWide() && kFxPanel.contains(p)) {
-            area = PanArea::Mods;
-            first = modsFirst();
-        } else if (const int op = controller_.layout().selectedNode;
-                   op >= 0 && op < kOps && !inspectorCovered() && opTabShown(op) == InspectorTab::Inputs &&
-                   kInputsList.contains(p) && inputsEnd(op) > 0.0f) {
-            area = PanArea::Inputs;
-            first = inputsFirst(op);
-        } else if (fxWide() && fxGraph() && fxGraphArea().contains(p)) { // the graph, by pixels
-            area = PanArea::Fx;
-            first = fxGraphScroll(fxGridLayout(fxLine()));
-        } else if (fxWide() && !fxGraph() && kFxPanel.contains(p)) {
-            area = PanArea::Fx;
-            first = fxScroll();
-        }
-        if (!area)
-            return;
+        return std::pair{PanArea::Browser, static_cast<float>(std::clamp(browserScroll_, 0, most))};
+    }
+    // A pill's open list moves its rows when they scroll. Another open list or menu takes nothing.
+    const auto hit = hitTest(p);
+    if (hit && hit->popup && modList_)
+        return modListEnd() > 0.0f ? std::optional(std::pair{PanArea::ModList, modListFirst()}) : std::nullopt;
+    if (hit) {
+        const Kind k = hit->kind;
+        if (hit->popup || k == Kind::ModList || k == Kind::ModListRow || k == Kind::FxAdd || k == Kind::FxAddNode ||
+            k == Kind::SourceMenuItem || k == Kind::ListItem || k == Kind::PeqTypeItem || k == Kind::WaveMenuItem ||
+            k == Kind::CascadeItem ||
+            ((k == Kind::FxMenu || k == Kind::SourceMenu || k == Kind::ListMenu || k == Kind::PeqTypeMenu ||
+              k == Kind::WaveMenu || k == Kind::CascadeMenu) &&
+             hit->a != 0))
+            return std::nullopt;
+    }
+    if (!controller_.layout().sourcesCollapsed && modPanel(false).contains(p))
+        return std::pair{PanArea::Sources, sourceScroll()};
+    if (modsWide() && kFxPanel.contains(p))
+        return std::pair{PanArea::Mods, modsFirst()};
+    if (const int op = controller_.layout().selectedNode;
+        op >= 0 && op < kOps && !inspectorCovered() && opTabShown(op) == InspectorTab::Inputs &&
+        kInputsList.contains(p) && inputsEnd(op) > 0.0f)
+        return std::pair{PanArea::Inputs, inputsFirst(op)};
+    if (fxWide() && fxGraph() && fxGraphArea().contains(p)) // the graph, by pixels
+        return std::pair{PanArea::Fx, fxGraphScroll(fxGridLayout(fxLine()))};
+    if (fxWide() && !fxGraph() && kFxPanel.contains(p))
+        return std::pair{PanArea::Fx, fxScroll()};
+    return std::nullopt;
+}
+
+void View::middleDown(Point p) {
+    const auto pan = panAt(p);
+    if (!pan)
+        return;
+    const auto [area, first] = *pan;
+    // Open lists and menus close as a click there closes them, since what they were opened on may scroll away; but
+    // not a pill's list that is being scrolled.
+    if (area != PanArea::Browser && area != PanArea::ModList) {
         modList_.reset();
         cascade_.reset();
         fxMenuOpen_ = false;
@@ -9790,11 +9829,11 @@ void View::middleDown(Point p) {
     }
     menuLive_ = false;
     endTyping(true);
-    if (*area == PanArea::Mods)
+    if (area == PanArea::Mods)
         scrollMods(first, false); // a glide the wheel started stops where it shows
     drag_ = Drag{};
     drag_.kind = DragKind::Pan;
-    drag_.widget.a = static_cast<int>(*area);
+    drag_.widget.a = static_cast<int>(area);
     drag_.start = drag_.now = p;
     drag_.startValue = first;
 }
@@ -9804,6 +9843,159 @@ void View::middleUp(Point p) {
         return; // a left-button drag goes on
     finishDrag();
     hover_ = hitTest(p);
+}
+
+bool View::touchPanBegin(Point p) {
+    // What the first finger pressed, or panned, ends, nothing dropped, and the pan starts over from between the two.
+    touchPress_.reset();
+    if (drag_.kind == DragKind::Pan)
+        finishDrag();
+    else
+        cancelDrag();
+    middleDown(p);
+    return drag_.kind == DragKind::Pan;
+}
+
+bool View::dragsOnTouch(const Widget &w) const {
+    switch (w.kind) {
+    case Kind::Knob:
+    case Kind::WireLabel:
+    case Kind::OutLabel:
+    case Kind::GridCell:
+    case Kind::ModDot:
+    case Kind::SlotBar:
+    case Kind::ModsScale:
+    case Kind::ModsCurve:
+    case Kind::ModsScroll:
+    case Kind::InputsScroll:
+    case Kind::ModListScroll:
+    case Kind::Scrollbar:
+    case Kind::Node:
+    case Kind::Port:
+    case Kind::WireEnd:
+    case Kind::WireStart:
+    case Kind::Wire:
+    case Kind::SourceHandle:
+    case Kind::MacroHandle:
+    case Kind::EnvPoint:
+    case Kind::EnvCurve:
+    case Kind::FilterPoint:
+    case Kind::DynZone:
+    case Kind::DynGrip:
+    case Kind::AmpMic:
+    case Kind::UtilityHandle:
+    case Kind::PeqPoint:
+    case Kind::SourceGrip:
+    case Kind::FxGrip:
+    case Kind::FxPower:
+    case Kind::FxNode:
+    case Kind::FxBoxGrip:
+    case Kind::SplitPoint:
+    case Kind::Key:
+    case Kind::TempoBox:
+    case Kind::SearchField:
+    case Kind::SettingsGlow:
+    case Kind::SettingsLinks:
+    case Kind::ModWheel:
+    case Kind::BendWheel:
+    case Kind::ShapeArea:
+    case Kind::ShapePoint:
+    case Kind::ShapeCurve:
+    case Kind::PartialArea:
+        return true;
+    default:
+        return drawsStep(w, {});
+    }
+}
+
+void View::touchDown(Point p, bool secondTap, float slop) {
+    touchPress_.reset();
+    hoverPoint_ = p;
+    if (panAt(p)) { // what it does waits until it moves or lifts
+        touchPress_ = TouchPress{p, secondTap, slop};
+        return;
+    }
+    if (secondTap)
+        doubleClick(p, {});
+    else
+        mouseDown(p, {});
+}
+
+bool View::touchMove(Point p) {
+    if (touchPress_) {
+        const TouchPress press = *touchPress_;
+        if (std::hypot(p.x - press.at.x, p.y - press.at.y) <= press.slop)
+            return false;
+        touchPress_.reset();
+        // Off what drags, it pans what scrolls there; on it, it drags it, as the mouse would from where it landed.
+        if (const auto hit = hitTest(press.at); !(hit && dragsOnTouch(*hit))) {
+            middleDown(press.at);
+            if (drag_.kind == DragKind::Pan)
+                return mouseMove(p, {});
+        }
+        mouseDown(press.at, {});
+    }
+    return mouseMove(p, {});
+}
+
+void View::touchUp(Point p) {
+    if (touchPress_) { // a tap: a click where it landed
+        const TouchPress press = *touchPress_;
+        touchPress_.reset();
+        if (press.second)
+            doubleClick(press.at, {});
+        else
+            mouseDown(press.at, {});
+        mouseUp(press.at, {});
+    } else if (drag_.kind == DragKind::Pan) {
+        middleUp(p);
+    } else {
+        mouseUp(p, {});
+    }
+    hover_.reset(); // a finger lifted hovers over nothing
+}
+
+void View::touchCancel() {
+    touchPress_.reset();
+    cancelDrag();
+    hover_.reset();
+}
+
+bool View::touchPanMove(Point p) {
+    if (drag_.kind != DragKind::Pan)
+        return false;
+    hoverPoint_ = p;
+    drag_.now = p;
+    applyPan(p);
+    return true;
+}
+
+void View::touchPanEnd(Point p) {
+    middleUp(p);
+}
+
+void View::wheelAcross(Point p, float steps) {
+    if ((drag_.kind != DragKind::None && drag_.kind != DragKind::Key) || settingsOpen_ || confirm_ >= 0 ||
+        browserOpen_ || steps == 0.0f)
+        return;
+    menuLive_ = false;
+    endTyping(true);
+    const auto hit = hitTest(p);
+    if (hit && (hit->popup || hit->kind == Kind::ModPill)) // a pill's list scrolls only up and down
+        return;
+    // As the wheel scrolls them, the other way round: a notch to the right moves on as a notch down does.
+    if (modPanel(controller_.layout().sourcesCollapsed).contains(p)) {
+        setScroll(ScrollArea::Sources, sourceScroll() + steps * 0.4f);
+        closeGoneLists();
+    } else if (fxWide() && fxGraph() && (fxGraphArea().contains(p) || (hit && hit->kind == Kind::Scrollbar))) {
+        const FxGridLayout grid = fxGridLayout(fxLine());
+        fxGraphScroll_ = std::clamp(fxGraphScroll(grid) + steps * 0.5f * kFxGridCol, 0.0f, fxGraphScrollMost(grid));
+        if (fxSlot_.lane >= 0)
+            fxMenuOpen_ = false;
+    } else if (fxWide() && !fxGraph() && kFxPanel.contains(p)) {
+        setScroll(ScrollArea::Fx, fxScroll() + steps * 0.4f);
+        closeGoneLists();
+    }
 }
 
 void View::applyPan(Point p) {
