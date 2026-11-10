@@ -574,7 +574,7 @@ enum class FxParam {
     AmpPosition,
     AmpDistance,
     AmpOversampling,
-    // Utility: Gain from silence up to 0 dB (see utilityGain()), Pan a balance that turns the other side down, Width
+    // Utility: Gain from silence up to +12 dB (see utilityGain()), Pan a balance that turns the other side down, Width
     // the sides against the middle (0 mono, 1 as it was, 2 twice as wide), and MonoBass a 12 dB per octave high-pass on
     // the sides, so the bass below it is mono; at 0 it is off (see utilityMonoBassHz()).
     UtilityGain,
@@ -625,13 +625,16 @@ constexpr int kMaxDisperserStages = 64;
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
 constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud
 constexpr double kMaxUtilityMonoBass = 500.0;  // Hz, the top of the utility's Mono Bass knob
-// The utility's Gain knob (0..1) as a gain: its cube, so 0 is silence, the middle -18 dB and the top 0 dB, the knob
-// turning evenly through what is heard. utilityGainNorm() is the knob for a gain.
+// The utility's Gain knob (0..1) as a gain: its cube, scaled so the top is kMaxUtilityGainDb, so 0 is silence, the
+// middle about -6 dB and 0.63 0 dB (where it starts), the knob turning evenly through what is heard.
+// utilityGainNorm() is the knob for a gain.
+constexpr double kMaxUtilityGainDb = 12.0;
+constexpr double kMaxUtilityGain = 3.9810717055349722; // +12 dB
 inline double utilityGain(double norm) {
     const double x = std::clamp(norm, 0.0, 1.0);
-    return x * x * x;
+    return x * x * x * kMaxUtilityGain;
 }
-inline double utilityGainNorm(double gain) { return std::cbrt(std::clamp(gain, 0.0, 1.0)); }
+inline double utilityGainNorm(double gain) { return std::cbrt(std::clamp(gain / kMaxUtilityGain, 0.0, 1.0)); }
 constexpr int kPeqBands = 3;
 constexpr int kMcBands = 3;
 constexpr double kMcKnee = 6.0; // dB
@@ -2188,7 +2191,7 @@ enum class ParamKind {
     AmpOversampling, // stepped: 1x, 2x, 4x or 8x (see ampOversampling())
     AmpDial,      // 0..1, shown as 0.0 to 10.0, as an amp's knobs are numbered
     AmpDistance,  // 0..1 on a log curve, shown in cm or m; see ampDistanceCm()
-    Fader,        // 0..1, a gain from silence to 0 dB, shown in dB down to -inf dB; see utilityGain()
+    Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
     CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.

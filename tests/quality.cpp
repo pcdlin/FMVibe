@@ -683,7 +683,7 @@ void effectsChainChecks() {
             {"amp output +12 dB", FxType::Amp, FxParam::AmpOutput, 0.0, 12.0},
             {"amp mix 0 to 100 %", FxType::Amp, FxParam::AmpMix, 0.0, 1.0},
             {"amp gain 5 to 10", FxType::Amp, FxParam::AmpGain, 0.5, 1.0},
-            {"utility gain 0 to -18 dB", FxType::Utility, FxParam::UtilityGain, 1.0, 0.5},
+            {"utility gain 0 to +12 dB", FxType::Utility, FxParam::UtilityGain, utilityGainNorm(1.0), 1.0},
             {"utility pan C to R50", FxType::Utility, FxParam::UtilityPan, 0.0, 0.5},
             {"utility width 100 to 0 %", FxType::Utility, FxParam::UtilityWidth, 1.0, 0.0},
         };

@@ -453,8 +453,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     they are and high-passed over 10 ms. **Width** scales the sides against the middle, which stays as it was: 0 %
     is mono, 100 % (to begin with) leaves the sound as it is, 200 % makes the sides twice as loud. **Pan** is a
     balance: turned right it turns the left side down, all the way to silence at R100, and leaves the right as it
-    is, and the other way round. **Gain** comes last, from −inf up to 0 dB (to begin with), the knob's cube as a
-    gain so it turns evenly through what is heard: −18 dB at its middle. Its levels ramp like the other effects'.
+    is, and the other way round. **Gain** comes last, from −inf up to +12 dB, 0 dB to begin with (about two thirds of
+    the way up), the knob's cube as a gain so it turns evenly through what is heard: about −6 dB at its middle. Its levels ramp like the other effects'.
     Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
 
   The phaser and flanger keep their feedback from ringing louder: what they send round is scaled so their level
@@ -705,9 +705,9 @@ may show anywhere, repaints the whole of it.
       the line. Above it, the high-pass and the taps' delays;
     - the utility's stereo field, as the widener's: left to right across, frequency up, the sound a band about its
       middle, which Pan moves across and Width widens (a quarter of the field either way at 100 %), narrowing into
-      its middle below Mono Bass's line (dashed, its corner over it: `mono < 120 Hz`), and fading as Gain goes down,
-      gone at −inf. At its left, a strip shows Gain, and above it Gain and Pan (`-6.0 dB · L30`). Each knob has a
-      handle there: Gain's a cap across the strip, which drags up and down; Pan's a dot at the top of the middle
+      its middle below Mono Bass's line (dashed, its corner over it: `mono < 120 Hz`), and fading as Gain goes down
+      below 0 dB, gone at −inf. At its left, a strip shows Gain, a tick across it at 0 dB, and above it Gain and Pan
+      (`-6.0 dB · L30`). Each knob has a handle there: Gain's a cap across the strip, which drags up and down; Pan's a dot at the top of the middle
       line, which drags across; Width's a dot on the band's edge, on the side with more room, which drags out and
       in; and Mono Bass's a dot at the right end of its line (at the bottom, faint, while it is Off), which drags up
       and down, back to Off at the bottom. Each drag is one undo step, and a double-click puts a handle back where

@@ -119,7 +119,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the filter effect's key tracking putting a cutoff at C4 onto an A4, the frequency shifter moving by its
     Shift's share of its Range, and the Param EQ's third band doing nothing off and playing once on, a band switched
     off left out, its notch taking its frequency away (and leaving an octave off it mostly alone), and its Amount
-    mixing it with what goes in; and the utility's Gain going from silence up to 0 dB (-18 dB at its middle), its
+    mixing it with what goes in; and the utility's Gain going from silence up to +12 dB (0 dB to begin with, -6 dB at its middle), its
     Pan turning the other side down, its Width scaling the sides and keeping the middle, and its Mono Bass making a
     low note's sides mono and leaving a high one's;
   - unison copies spread across the stereo field (and match when centered);
@@ -165,8 +165,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     effects graph;
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
-    reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain, Pan
-    and Width, a wire's Level) jumps while events split the block into single frames,
+    reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain (0 to
+    +12 dB), Pan and Width, a wire's Level) jumps while events split the block into single frames,
     when a Param EQ band is switched on and off, when a utility's Mono Bass is turned on from Off and off again, and
     when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):

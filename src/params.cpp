@@ -764,7 +764,7 @@ void buildTable(ParamTable &t) {
            kAmpOversamplings - 1.0, kDefaultAmpOversampling);
         // The utility leaves the sound as it is to begin with: full level, centered, as wide as it was, the bass not
         // made mono.
-        fx(FxParam::UtilityGain, tr(Str::ParamUtilityGain), ParamKind::Fader, 0.0, 1.0, 1.0);
+        fx(FxParam::UtilityGain, tr(Str::ParamUtilityGain), ParamKind::Fader, 0.0, 1.0, utilityGainNorm(1.0));
         fx(FxParam::UtilityPan, tr(Str::ParamUtilityPan), ParamKind::Pan, -1.0, 1.0, 0.0);
         fx(FxParam::UtilityWidth, tr(Str::ParamUtilityWidth), ParamKind::Percent, 0.0, kMaxUtilityWidth, 1.0);
         fx(FxParam::UtilityMonoBass, tr(Str::ParamUtilityMonoBass), ParamKind::CutoffOrOff, 0.0,
@@ -1150,8 +1150,8 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
         const double gain = utilityGain(value);
         if (gain <= 0.0)
             std::snprintf(out, capacity, "-inf dB");
-        else // rounded first, so just under the top shows as "0.0 dB", never "-0.0 dB"
-            std::snprintf(out, capacity, "%.1f dB", std::round(std::min(20.0 * std::log10(gain), 0.0) * 10.0) / 10.0 + 0.0);
+        else // rounded first, so just under 0 dB shows as "0.0 dB", never "-0.0 dB"
+            std::snprintf(out, capacity, "%.1f dB", std::round(20.0 * std::log10(gain) * 10.0) / 10.0 + 0.0);
         break;
     }
     case ParamKind::DelayTone: {
@@ -1547,8 +1547,8 @@ bool parseParam(int index, const char *text, double *out) {
         value = std::max(normFromCutoff(std::max(hz, kMinCutoff)), kLeastNorm);
         break;
     }
-    case ParamKind::Fader: // dB, 0 at most
-        value = utilityGainNorm(std::pow(10.0, std::min(value, 0.0) / 20.0));
+    case ParamKind::Fader: // dB, the top at most
+        value = utilityGainNorm(std::pow(10.0, std::min(value, kMaxUtilityGainDb) / 20.0));
         break;
     case ParamKind::Ratio:
         value = value < 0.75 ? 0.0 : std::round(value);

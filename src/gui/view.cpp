@@ -4843,7 +4843,8 @@ void View::paintWidener(Canvas &c, Rect r, int slot) {
 
 // The utility's picture of the stereo field, as the widener's: the sound's place across, left to right, and its
 // frequency up. The band is the sound, its middle where Pan puts it and as wide as Width makes it; below Mono Bass's
-// line it narrows into its middle, mono. It fades as Gain goes down, gone at -inf, and the strip at its left shows Gain.
+// line it narrows into its middle, mono. It fades as Gain goes down below 0 dB, gone at -inf, and the strip at its left
+// shows Gain, a tick across it at 0 dB.
 void View::paintUtility(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
@@ -4854,10 +4855,13 @@ void View::paintUtility(Canvas &c, Rect r, int slot) {
     c.fillRect(strip, kTrack, kRadiusMark);
     if (const float level = strip.bottom() - static_cast<float>(gainNorm) * strip.h; gainNorm > 0.0)
         c.fillRect({strip.x, level, strip.w, strip.bottom() - level}, fx.alpha(0.8f), kRadiusMark);
+    const double unity = utilityGainNorm(1.0);
+    const float zeroDb = strip.bottom() - static_cast<float>(unity) * strip.h;
+    c.line({strip.x - 3.0f, zeroDb}, {strip.right() + 3.0f, zeroDb}, kDim, 1.0f);
 
     const float middle = utilityMiddle(field, pan), spread = utilitySpread(field, width);
     auto yOf = [&](double norm) { return field.bottom() - static_cast<float>(norm) * field.h; };
-    const float shown = static_cast<float>(gainNorm);
+    const float shown = static_cast<float>(std::min(gainNorm / unity, 1.0));
     std::vector<Point> left, right;
     for (int i = 0; i <= 64; ++i) {
         const double y = i / 64.0;
