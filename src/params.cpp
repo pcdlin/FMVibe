@@ -56,7 +56,8 @@ static_assert(std::size(kRouteModeNames) == static_cast<size_t>(RouteMode::Count
 constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay,      Str::FxDjEq,
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
-                            Str::FxDisperser, Str::FxWidener,   Str::FxMultiDyn,   Str::FxAmp};
+                            Str::FxDisperser, Str::FxWidener,   Str::FxMultiDyn,   Str::FxAmp,
+                            Str::FxUtility};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
                                     Str::SourceMidi};
@@ -761,6 +762,13 @@ void buildTable(ParamTable &t) {
            normFromAmpDistance(2.0));
         fx(FxParam::AmpOversampling, tr(Str::ParamAmpOversampling), ParamKind::AmpOversampling, 0.0,
            kAmpOversamplings - 1.0, kDefaultAmpOversampling);
+        // The utility leaves the sound as it is to begin with: full level, centered, as wide as it was, the bass not
+        // made mono.
+        fx(FxParam::UtilityGain, tr(Str::ParamUtilityGain), ParamKind::Fader, 0.0, 1.0, utilityGainNorm(1.0));
+        fx(FxParam::UtilityPan, tr(Str::ParamUtilityPan), ParamKind::Pan, -1.0, 1.0, 0.0);
+        fx(FxParam::UtilityWidth, tr(Str::ParamUtilityWidth), ParamKind::Percent, 0.0, kMaxUtilityWidth, 1.0);
+        fx(FxParam::UtilityMonoBass, tr(Str::ParamUtilityMonoBass), ParamKind::CutoffOrOff, 0.0,
+           normFromCutoff(kMaxUtilityMonoBass), 0.0);
         // Synced, two bars a sweep.
         fx(FxParam::FlangerSync, tr(Str::ParamFlangerSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::FlangerDivision, tr(Str::ParamFlangerDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
@@ -1132,6 +1140,20 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::Cutoff:
         formatHz(cutoffFromNorm(value), out, capacity);
         break;
+    case ParamKind::CutoffOrOff:
+        if (value <= 0.0)
+            std::snprintf(out, capacity, "%s", tr(Str::ValueOff));
+        else
+            formatHz(utilityMonoBassHz(value), out, capacity);
+        break;
+    case ParamKind::Fader: {
+        const double gain = utilityGain(value);
+        if (gain <= 0.0)
+            std::snprintf(out, capacity, "-inf dB");
+        else // rounded first, so just under 0 dB shows as "0.0 dB", never "-0.0 dB"
+            std::snprintf(out, capacity, "%.1f dB", std::round(20.0 * std::log10(gain) * 10.0) / 10.0 + 0.0);
+        break;
+    }
     case ParamKind::DelayTone: {
         // Within 1 % of the middle, neither filter is noticeable.
         if (std::abs(value) < 0.01) {
@@ -1333,12 +1355,14 @@ bool parseParam(int index, const char *text, double *out) {
             }
         return false;
     }
-    if (def.kind == ParamKind::Toggle || def.kind == ParamKind::SlotBypass || def.kind == ParamKind::TimeOrOff) {
+    if (def.kind == ParamKind::Toggle || def.kind == ParamKind::SlotBypass || def.kind == ParamKind::TimeOrOff ||
+        def.kind == ParamKind::CutoffOrOff) {
         if (equalsIgnoreCase(text, tr(Str::ValueOff))) {
             *out = 0.0;
             return true;
         }
-        if (def.kind != ParamKind::TimeOrOff && equalsIgnoreCase(text, tr(Str::ValueOn))) {
+        if ((def.kind == ParamKind::Toggle || def.kind == ParamKind::SlotBypass) &&
+            equalsIgnoreCase(text, tr(Str::ValueOn))) {
             *out = 1.0;
             return true;
         }
@@ -1451,6 +1475,12 @@ bool parseParam(int index, const char *text, double *out) {
         }
     }
 
+    if (def.kind == ParamKind::Fader && // "-inf dB" or "-inf" is silence
+        (std::strncmp(text, "-inf", 4) == 0 || std::strncmp(text, "-Inf", 4) == 0 ||
+         std::strncmp(text, "-\xE2\x88\x9E", 4) == 0)) {
+        *out = 0.0;
+        return true;
+    }
     if (def.kind == ParamKind::DynRatio && // "∞", "∞:1" or "inf" is the top of the range
         (std::strncmp(text, "\xE2\x88\x9E", 3) == 0 || std::strncmp(text, "inf", 3) == 0 ||
          std::strncmp(text, "Inf", 3) == 0)) {
@@ -1512,6 +1542,14 @@ bool parseParam(int index, const char *text, double *out) {
         value = normFromCutoff(std::max(hz, kMinCutoff));
         break;
     }
+    case ParamKind::CutoffOrOff: { // a frequency typed is at least the lowest, not Off
+        const double hz = *end == 'k' || *end == 'K' ? value * 1000.0 : value;
+        value = std::max(normFromCutoff(std::max(hz, kMinCutoff)), kLeastNorm);
+        break;
+    }
+    case ParamKind::Fader: // dB, the top at most
+        value = utilityGainNorm(std::pow(10.0, std::min(value, kMaxUtilityGainDb) / 20.0));
+        break;
     case ParamKind::Ratio:
         value = value < 0.75 ? 0.0 : std::round(value);
         break;

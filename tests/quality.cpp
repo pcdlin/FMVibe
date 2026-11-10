@@ -780,6 +780,9 @@ void effectsChainChecks() {
             {"amp output +12 dB", FxType::Amp, FxParam::AmpOutput, 0.0, 12.0},
             {"amp mix 0 to 100 %", FxType::Amp, FxParam::AmpMix, 0.0, 1.0},
             {"amp gain 5 to 10", FxType::Amp, FxParam::AmpGain, 0.5, 1.0},
+            {"utility gain 0 to +12 dB", FxType::Utility, FxParam::UtilityGain, utilityGainNorm(1.0), 1.0},
+            {"utility pan C to R50", FxType::Utility, FxParam::UtilityPan, 0.0, 0.5},
+            {"utility width 100 to 0 %", FxType::Utility, FxParam::UtilityWidth, 1.0, 0.0},
         };
         double worst = 0.0;
         for (const Jump &jump : jumps) {
@@ -787,6 +790,8 @@ void effectsChainChecks() {
                 Engine e(2);
                 e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(jump.type);
                 chain(e.p, {0});
+                if (jump.type == FxType::Utility) // a side to the utility's width
+                    e.p[paramIndex(0, OpParam::Pan)] = -0.7;
                 e.p[paramIndex(0, jump.param)] = jump.from;
                 e.noteOn(48);
                 const std::vector<float> before = e.render(4800, piece);
@@ -930,6 +935,34 @@ void effectsChainChecks() {
                     switched / steady, level / dryLevel);
         check(switched < 4.0 * steady && level < 0.1 * dryLevel,
               "a parametric EQ band switched on and off fades in and out without a click");
+    }
+    {
+        // The utility's Mono Bass turned on from Off and off again fades between the sides as they are and
+        // high-passed rather than clicking: at 500 Hz on a C3 panned hard left, which it takes half the left side of,
+        // in single frames, under 4 times as rough as the note before it.
+        Engine e(2);
+        e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Utility);
+        chain(e.p, {0});
+        e.p[paramIndex(0, OpParam::Pan)] = -1.0;
+        e.noteOn(48);
+        const std::vector<float> before = e.render(4800, 1);
+        e.p[paramIndex(0, FxParam::UtilityMonoBass)] = normFromCutoff(500.0);
+        const std::vector<float> on = e.render(2400, 1);
+        e.p[paramIndex(0, FxParam::UtilityMonoBass)] = 0.0;
+        const std::vector<float> all = joined(joined(before, on), e.render(2400, 1));
+        const double steady = roughness(all, 2400, before.size());
+        const size_t switchedOff = before.size() + on.size();
+        const double switched = std::max(roughness(all, before.size() - 2, before.size() + 960),
+                                         roughness(all, switchedOff - 2, switchedOff + 960));
+        double level = 0.0, dryLevel = 0.0;
+        for (size_t i = before.size() + 960; i < switchedOff; ++i)
+            level = std::max(level, static_cast<double>(std::abs(all[i])));
+        for (size_t i = 2400; i < before.size(); ++i)
+            dryLevel = std::max(dryLevel, static_cast<double>(std::abs(all[i])));
+        std::printf("      utility mono bass switched on and off: %.2fx as rough as the note, the left side x%.3f\n",
+                    switched / steady, level / dryLevel);
+        check(switched < 4.0 * steady && std::abs(level / dryLevel - 0.5) < 0.05,
+              "the utility's Mono Bass switched on and off fades in and out without a click");
     }
     {
         // A wire of the effects graph connected and taken away fades rather than clicking: a second wire from the

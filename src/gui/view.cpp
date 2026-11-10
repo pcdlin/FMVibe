@@ -33,7 +33,7 @@ namespace detail {
 constexpr Str kFxTitles[] = {Str::FxTitleShaper, Str::FxTitleDelay, Str::FxTitleDjEq, Str::FxTitleParamEq,
                              Str::FxTitleFilter, Str::FxTitleCompressor, Str::FxTitleMultiComp, Str::FxTitleReverb,
                              Str::FxTitlePhaser, Str::FxTitleFlanger, Str::FxTitleFreqShifter, Str::FxTitleDisperser,
-                             Str::FxTitleWidener, Str::FxTitleMultiDyn, Str::FxTitleAmp};
+                             Str::FxTitleWidener, Str::FxTitleMultiDyn, Str::FxTitleAmp, Str::FxTitleUtility};
 static_assert(std::size(kFxTitles) == static_cast<size_t>(FxType::Count) - 1);
 const char *fxTitle(FxType type) {
     return type == FxType::None ? "" : tr(kFxTitles[static_cast<int>(type) - 1]);
@@ -1941,6 +1941,21 @@ std::vector<View::Widget> View::widgets() const {
                        at(FxParam::WidenerMix)},
                       {tr(Str::LabelSize), tr(Str::LabelWidth), tr(Str::LabelHighPass), tr(Str::LabelMix)});
                 break;
+            case FxType::Utility: {
+                // On its display, a handle for each knob: Gain's on the strip at its left, Pan's at the top of the
+                // sound's middle line, Width's on the band's edge and Mono Bass's at the end of its line.
+                const Rect display = fxDisplayIn(card, type);
+                for (int handle = 0; handle < kUtilityHandles; ++handle) {
+                    const Point h = utilityHandlePoint(display, handle, false, slot);
+                    add(Kind::UtilityHandle, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f}, at(kUtilityHandleParams[handle]),
+                        slot, handle);
+                }
+                knobs({at(FxParam::UtilityGain), at(FxParam::UtilityPan)}, {tr(Str::LabelGain), tr(Str::LabelPan)},
+                      206.0f);
+                knobs({at(FxParam::UtilityWidth), at(FxParam::UtilityMonoBass)},
+                      {tr(Str::LabelWidth), tr(Str::LabelMonoBass)}, 266.0f);
+                break;
+            }
             case FxType::Amp: {
                 // The amp's side: its model's list, STEREO under its display, Gain, Volume and Presence over Bass, Mid
                 // and Treble. The cabinet's: its power switch and list, the mic on its display, the mic's three under
@@ -3686,6 +3701,9 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     case FxType::Widener:
         paintWidener(c, display, slot);
         break;
+    case FxType::Utility:
+        paintUtility(c, display, slot);
+        break;
     case FxType::Amp: {
         paintAmp(c, display, slot);
         // The cabinet's display beside it, dimmed while the cabinet is off, and the line between the two sides.
@@ -4825,6 +4843,87 @@ void View::paintWidener(Canvas &c, Rect r, int slot) {
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
     c.text({r.x + 4.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "L", kTextLabel, kFaint);
     c.text({r.right() - 16.0f, inner.bottom() - 12.0f, 12.0f, 12.0f}, "R", kTextLabel, kFaint);
+}
+
+// The utility's picture of the stereo field, as the widener's: the sound's place across, left to right, and its
+// frequency up. The band is the sound, its middle where Pan puts it and as wide as Width makes it; below Mono Bass's
+// line it narrows into its middle, mono. It fades as Gain goes down below 0 dB, gone at -inf, and the strip at its left
+// shows Gain, a tick across it at 0 dB.
+void View::paintUtility(Canvas &c, Rect r, int slot) {
+    const Color fx = fxColor(slot);
+    auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
+    const double gainNorm = std::clamp(at(FxParam::UtilityGain), 0.0, 1.0), pan = at(FxParam::UtilityPan);
+    const double width = std::clamp(at(FxParam::UtilityWidth), 0.0, kMaxUtilityWidth);
+    const double mono = at(FxParam::UtilityMonoBass);
+    const Rect strip = utilityStrip(r), field = utilityField(r);
+    c.fillRect(strip, kTrack, kRadiusMark);
+    if (const float level = strip.bottom() - static_cast<float>(gainNorm) * strip.h; gainNorm > 0.0)
+        c.fillRect({strip.x, level, strip.w, strip.bottom() - level}, fx.alpha(0.8f), kRadiusMark);
+    const double unity = utilityGainNorm(1.0);
+    const float zeroDb = strip.bottom() - static_cast<float>(unity) * strip.h;
+    c.line({strip.x - 3.0f, zeroDb}, {strip.right() + 3.0f, zeroDb}, kDim, 1.0f);
+
+    const float middle = utilityMiddle(field, pan), spread = utilitySpread(field, width);
+    auto yOf = [&](double norm) { return field.bottom() - static_cast<float>(norm) * field.h; };
+    const float shown = static_cast<float>(std::min(gainNorm / unity, 1.0));
+    std::vector<Point> left, right;
+    for (int i = 0; i <= 64; ++i) {
+        const double y = i / 64.0;
+        const float half = spread * static_cast<float>(mono > 0.0 ? widenerSpread(cutoffFromNorm(y), mono) : 1.0);
+        left.push_back({std::max(field.x, middle - half), yOf(y)});
+        right.push_back({std::min(field.right(), middle + half), yOf(y)});
+    }
+    std::vector<Point> area = left;
+    area.insert(area.end(), right.rbegin(), right.rend());
+    if (shown > 0.0f)
+        c.fillPolygon(area.data(), area.size(), fx.alpha(0.16f * shown));
+    c.line({field.center().x, field.y}, {field.center().x, field.bottom()}, kFaint, 1.0f, true);
+    if (shown > 0.0f) {
+        plotLine(c, left.data(), left.size(), fx.alpha(shown), 1.6f);
+        plotLine(c, right.data(), right.size(), fx.alpha(shown), 1.6f);
+    }
+    c.line({middle, field.y}, {middle, field.bottom()}, shown > 0.0f ? fx.alpha(0.3f + 0.7f * shown) : kDim, 1.6f);
+    if (mono > 0.0) { // below it, the sides are high-passed away: the bass in the middle; its corner over it
+        const float y = yOf(mono);
+        c.line({field.x, y}, {field.right(), y}, kDim, 1.0f, true);
+        char hz[32];
+        formatParam(paramIndex(slot, FxParam::UtilityMonoBass), mono, hz, sizeof(hz));
+        c.text({field.x + 2.0f, y - 13.0f, field.w - 16.0f, 12.0f}, trf(Str::CaptionUtilityMonoBass, {hz}).c_str(),
+               kTextSmall, kDim, Align::Left);
+    }
+
+    char gain[32], panText[32];
+    formatParam(paramIndex(slot, FxParam::UtilityGain), gainNorm, gain, sizeof(gain));
+    formatParam(paramIndex(slot, FxParam::UtilityPan), pan, panText, sizeof(panText));
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, trf(Str::CaptionUtility, {gain, panText}).c_str(), kTextLabel,
+           kDim, Align::Left);
+    c.text({field.x - 2.0f, field.bottom() - 12.0f, 12.0f, 12.0f}, "L", kTextLabel, kFaint);
+    c.text({field.right() - 10.0f, field.bottom() - 12.0f, 12.0f, 12.0f}, "R", kTextLabel, kFaint);
+}
+
+Point View::utilityHandlePoint(Rect r, int handle, bool live, int slot) const {
+    auto at = [&](FxParam f) {
+        const int index = paramIndex(slot, f);
+        return live ? liveValue(index) : value(index);
+    };
+    const Rect strip = utilityStrip(r), field = utilityField(r);
+    const double pan = at(FxParam::UtilityPan);
+    const float middle = utilityMiddle(field, pan);
+    switch (handle) {
+    case 0: // across the Gain strip, at its level
+        return {strip.center().x,
+                strip.bottom() - static_cast<float>(std::clamp(at(FxParam::UtilityGain), 0.0, 1.0)) * strip.h};
+    case 1: // at the top of the sound's middle line
+        return {middle, field.y + 4.0f};
+    case 2: { // on the band's edge, on the side with more room
+        const float reach = utilitySpread(field, std::clamp(at(FxParam::UtilityWidth), 0.0, kMaxUtilityWidth));
+        return {std::clamp(middle + (pan > 0.0 ? -reach : reach), field.x, field.right()),
+                field.y + kUtilityWidthHandleY * field.h};
+    }
+    default: // at the end of Mono Bass's line; off, at the bottom
+        return {field.right() - 6.0f,
+                field.bottom() - static_cast<float>(std::max(at(FxParam::UtilityMonoBass), 0.0)) * field.h};
+    }
 }
 
 // The amp's display: the tone's frequency response, 20 Hz to 20 kHz across and +12 to -30 dB up: the model's tone stack
@@ -6668,6 +6767,26 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillCircle({m.x - 3.0f, m.y}, 3.5f, color);
         break;
     }
+    case Kind::UtilityHandle: { // where modulation has it; a cap across the Gain strip, a dot for the others
+        const Color color = fxColor(w.a);
+        Point h = w.rect.center();
+        if (const std::optional<Rect> card = fxCardOf(w.a))
+            h = utilityHandlePoint(fxDisplayIn(*card, FxType::Utility), w.b, true, w.a);
+        const bool focused = hovered || active;
+        const Color edge = w.b == 3 && value(w.param) <= 0.0 ? kDim : color; // Mono Bass off
+        if (w.b == 0) {
+            const Rect cap{h.x - 6.0f, h.y - 2.5f, 12.0f, 5.0f};
+            if (focused)
+                c.strokeRect(cap.inset(-3.0f), edge.alpha(0.45f), 3.0f, kRadiusMark + 3.0f);
+            c.fillRect(cap, focused ? edge : kText, kRadiusMark);
+            break;
+        }
+        if (focused)
+            c.strokeCircle(h, 9.0f, edge.alpha(0.45f), 3.0f);
+        c.fillCircle(h, 4.5f, focused ? edge : kDisplayColor);
+        c.strokeCircle(h, 4.5f, edge, 1.5f);
+        break;
+    }
     case Kind::PeqPoint: {
         const Point center = w.rect.center();
         // Ringed for the band whose knobs show; faint for one switched off, which can still be moved.
@@ -8316,6 +8435,29 @@ void View::applyDrag(Point p) {
         set(paramIndex(w.a, FxParam::AmpDistance), std::clamp((p.x - lo.x) / (hi.x - lo.x), 0.0f, 1.0f));
         break;
     }
+    case DragKind::UtilityHandle: {
+        const std::optional<Rect> card = fxCardOf(w.a);
+        if (!card)
+            break;
+        const Rect display = fxDisplayIn(*card, FxType::Utility);
+        const Rect strip = utilityStrip(display), field = utilityField(display);
+        switch (w.b) {
+        case 0: // Gain up the strip
+            set(w.param, (strip.bottom() - p.y) / strip.h);
+            break;
+        case 1: // Pan across the field
+            set(w.param, (p.x - field.center().x) / (field.w * 0.5f));
+            break;
+        case 2: // Width out from the middle, either way
+            set(w.param, std::abs(p.x - utilityMiddle(field, value(paramIndex(w.a, FxParam::UtilityPan)))) /
+                             utilitySpread(field, 1.0));
+            break;
+        default: // Mono Bass up the field; off at its bottom
+            set(w.param, std::max((field.bottom() - p.y) / field.h, 0.0f));
+            break;
+        }
+        break;
+    }
     case DragKind::PeqPoint: {
         const Rect area = peqArea(w.a);
         set(peqFreqIndex(w.a, w.b), (p.x - area.x) / area.w);
@@ -8702,6 +8844,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.kind = DragKind::AmpMic;
         controller_.beginEdit(paramIndex(w.a, FxParam::AmpPosition));
         controller_.beginEdit(paramIndex(w.a, FxParam::AmpDistance));
+        break;
+    case Kind::UtilityHandle:
+        drag_.kind = DragKind::UtilityHandle;
+        controller_.beginEdit(w.param);
         break;
     case Kind::PeqPoint:
         fxBand_[w.a] = w.b; // its knobs show
@@ -9302,6 +9448,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::FilterPoint:
     case DragKind::PeqPoint:
     case DragKind::AmpMic:
+    case DragKind::UtilityHandle:
     case DragKind::DynGrip:
     case DragKind::ShapePoint:
     case DragKind::ShapeCurve:
@@ -9348,6 +9495,7 @@ void View::finishDrag() {
     case DragKind::ShapeCurve:
     case DragKind::ModWheel:
     case DragKind::SplitPoint:
+    case DragKind::UtilityHandle:
         controller_.endEdit(w.param);
         break;
     case DragKind::PeqPoint:
@@ -9550,6 +9698,10 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && (hit->kind == Kind::MacroName || hit->kind == Kind::TempoBox)) {
         startTyping(*hit);
+        return;
+    }
+    if (hit && hit->kind == Kind::UtilityHandle) { // back where it starts
+        edit(hit->param, table_[hit->param].def);
         return;
     }
     if (hit && hit->kind == Kind::AmpMic) { // back where it starts, in one undo step
@@ -10371,6 +10523,7 @@ CursorKind View::cursor() const {
     case Kind::FilterPoint:
     case Kind::PeqPoint:
     case Kind::AmpMic:
+    case Kind::UtilityHandle:
     case Kind::FxGrip:
     case Kind::FxBoxGrip:
     case Kind::SourceGrip:

@@ -99,11 +99,18 @@ double widenerTap(int tap, double size, double lfo);
 // response of its high-pass, 12 dB per octave.
 double widenerSpread(double hz, double highPassNorm);
 
+// The utility's gain on each side, from its Gain knob (0..1, see utilityGain()) and its Pan (-1..1): a balance, which
+// turns the side it pans away from down and leaves the other as it is.
+struct UtilityGains {
+    double left, right;
+};
+UtilityGains utilityGains(double gainNorm, double pan);
+
 // The effects on the sum of the voices: kFxSlots slots, each holding a
 // shaper, delay, DJ EQ, parametric EQ, filter, compressor, three-band
-// dynamics, reverb, phaser, flanger, frequency shifter, phase disperser, widener or amp, or nothing, run as the effects
-// graph's wires take them from the input to the output (a chain is the slots one after another). An empty or
-// switched-off slot costs nothing; switching one fades it in or out over a few milliseconds. Audio thread
+// dynamics, reverb, phaser, flanger, frequency shifter, phase disperser, widener, amp or utility, or nothing, run as
+// the effects graph's wires take them from the input to the output (a chain is the slots one after another). An
+// empty or switched-off slot costs nothing; switching one fades it in or out over a few milliseconds. Audio thread
 // only, apart from construction and prepare().
 class Effects {
 public:
@@ -350,6 +357,15 @@ private:
         double mix = 0.5;
     };
 
+    // The utility: the sides through a high-pass for its Mono Bass, then scaled by Width, and each side's gain (Gain
+    // and the balance), ramped.
+    struct Utility {
+        Biquad highPass;
+        double gainL = 1.0, gainR = 1.0, width = 1.0;
+        double mono = 0.0; // how much of the high-passed sides is heard, 0 (Mono Bass off) .. 1, faded
+        double hz = 0.0;   // the high-pass's corner: Mono Bass's, the last one set while it fades out
+    };
+
     struct Shifter {
         std::array<Hilbert, 2> hilbert{};
         std::array<double, 2> phase{}; // the oscillators, in cycles
@@ -382,6 +398,7 @@ private:
         Shifter shifter;
         Disperser disperser;
         Widener widener;
+        Utility utility;
         std::unique_ptr<AmpFx> amp; // on the heap, from prepare(): two amps' state is large
         // The parametric EQ's, filter's or phase disperser's output, for its analyzer.
         Analyzed analyzed;
@@ -497,6 +514,7 @@ private:
     double runDisperser(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runWidener(int slot, float *const *io, uint32_t n, const ParamValues &p);
     void runAmp(int slot, float *const *io, uint32_t n, const ParamValues &p);
+    void runUtility(int slot, float *const *io, uint32_t n, const ParamValues &p);
     bool analyzing_ = false;
     Analyzer analyzer_;
 

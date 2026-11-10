@@ -4409,6 +4409,64 @@ void testAmp(const std::filesystem::path &dir, Renderer &renderer) {
           "the amp's title menu picks its oversampling, the one in force checked");
 }
 
+// The utility: added last from the list of effects, leaving the sound as it is (0 dB, centered, 100 % wide, Mono Bass
+// Off), its Gain at 0 dB below the strip's top (+12 dB); the handles on its display: Mono Bass's dragged up from Off, Pan's across, Width's out along the band's edge and
+// Gain's down its strip, each one undo step; the band narrowing into its middle below Mono Bass's line (read off the
+// rendered pixels); and Mono Bass's handle double-clicked back to Off.
+void testUtility(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    addFx(view, FxType::Utility);
+    auto at = [&](FxParam f) { return paramIndex(0, f); };
+    check(model.value(at(FxParam::Type)) == static_cast<double>(FxType::Utility) &&
+              detail::fxOfferedPlace(FxType::Utility) == detail::kFxTypes - 1,
+          "the list of effects adds a utility, offered last, in its stereo and phase group");
+    const double unity = utilityGainNorm(1.0); // Gain at 0 dB
+    check(model.value(at(FxParam::UtilityGain)) == unity && model.value(at(FxParam::UtilityPan)) == 0.0 &&
+              model.value(at(FxParam::UtilityWidth)) == 1.0 && model.value(at(FxParam::UtilityMonoBass)) == 0.0,
+          "a new utility leaves the sound as it is, its Mono Bass Off");
+    const Rect display = detail::fxDisplayIn(detail::fxCard(0.0f), FxType::Utility);
+    const Rect strip = detail::utilityStrip(display), field = detail::utilityField(display);
+    const Point away{600.0f, 628.0f};
+
+    // Mono Bass's handle, at the field's bottom while it is Off, up to a third of the way.
+    drag(view, {field.right() - 6.0f, field.bottom()}, {field.right() - 6.0f, field.bottom() - 0.3f * field.h});
+    const double mono = model.value(at(FxParam::UtilityMonoBass));
+    // Pan's, at the top of the middle line, a third of the way to the left.
+    drag(view, {field.x + 0.5f * field.w, field.y + 4.0f}, {field.x + 0.35f * field.w, field.y + 4.0f});
+    const double pan = model.value(at(FxParam::UtilityPan));
+    // Width's, on the band's right edge (the side with more room), out to half as wide again.
+    const float middle = detail::utilityMiddle(field, pan);
+    const float widthY = field.y + detail::kUtilityWidthHandleY * field.h;
+    drag(view, {middle + 0.25f * field.w, widthY}, {middle + 0.375f * field.w, widthY});
+    const double width = model.value(at(FxParam::UtilityWidth));
+    // Gain's, at 0 dB on the strip, down to its middle: -6 dB.
+    drag(view, {strip.center().x, strip.bottom() - static_cast<float>(unity) * strip.h},
+         {strip.center().x, strip.y + 0.5f * strip.h});
+    const double gain = model.value(at(FxParam::UtilityGain));
+    std::printf("      utility's handles: mono bass %.3f, pan %.3f, width %.3f, gain %.3f\n", mono, pan, width, gain);
+    check(std::abs(mono - 0.3) < 0.02 && std::abs(pan + 0.3) < 0.02 && std::abs(width - 1.5) < 0.03 &&
+              std::abs(gain - 0.5) < 0.02,
+          "the utility's display handles set Mono Bass, Pan, Width and Gain");
+    view.undo();
+    const bool gainUndone = model.value(at(FxParam::UtilityGain)) == unity && model.value(at(FxParam::UtilityWidth)) == width;
+    view.redo();
+    check(gainUndone && model.value(at(FxParam::UtilityGain)) == gain, "each drag of a utility handle is one undo step");
+
+    // The band: wide above Mono Bass's line, gone into its middle below it, where the display shows through.
+    view.mouseMove(away, {});
+    const bool shot = renderer.save(view, dir / "9g-utility.png");
+    const float spread = detail::utilitySpread(field, width), x = middle + 0.6f * spread;
+    auto bandAt = [&](float y) { return renderer.pixel({x, y}) != renderer.pixel({field.right() - 14.0f, y}); };
+    const bool high = bandAt(field.y + 0.2f * field.h), low = bandAt(field.bottom() - 0.04f * field.h);
+    check(shot && high && !low, "the utility's band narrows into its middle below Mono Bass's line");
+
+    // Mono Bass's handle double-clicked: Off again.
+    doubleClick(view, {field.right() - 6.0f, field.bottom() - static_cast<float>(mono) * field.h});
+    check(model.value(at(FxParam::UtilityMonoBass)) == 0.0, "a double-click puts a utility handle back where it starts");
+}
+
 void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -8033,6 +8091,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testSourceShadow(dir, renderer);
     testMultiDyn(dir, renderer);
     testAmp(dir, renderer);
+    testUtility(dir, renderer);
     testCardEdgeScroll(dir, renderer);
     testMiddleDrag(dir, renderer);
     testModFocus(dir, renderer);
