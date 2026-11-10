@@ -446,7 +446,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     from 1 Hz to 5 kHz on a log curve (100 Hz to begin with), so a narrow one gives slow beating the knob's
     whole travel; Spread takes the right side the other
     way, Feedback sends the shifted sound round again for spiraling sweeps, and Mix. A pair of all-pass chains makes
-    the 90-degree copy it needs, which keeps what is left at the old frequency around 50 dB down.
+    the 90-degree copy it needs, which keeps the mirror image (as far below the old frequency as the shift moves it
+    above) 45 dB down or more from 50 Hz up; its chains are worked out for the sample rate, longer at higher ones,
+    so it holds at 96 and 192 kHz too.
   - **Utility**: the level and the stereo image, in the order the sound goes through them. **Mono Bass** high-passes
     the sides (left minus right) at 12 dB an octave, so the sound below it comes out in the middle: Off at the
     knob's bottom (where a new utility starts), then 20–500 Hz; switched on or off, it fades between the sides as
@@ -454,7 +456,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     is mono, 100 % (to begin with) leaves the sound as it is, 200 % makes the sides twice as loud. **Pan** is a
     balance: turned right it turns the left side down, all the way to silence at R100, and leaves the right as it
     is, and the other way round. **Gain** comes last, from −inf up to +12 dB, 0 dB to begin with (about two thirds of
-    the way up), the knob's cube as a gain so it turns evenly through what is heard: about −6 dB at its middle. Its levels ramp like the other effects'.
+    the way up), the knob's cube as a gain so it turns evenly through what is heard: about −6 dB at its middle.
+    Its levels ramp like the other effects'.
     Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
 
   The phaser and flanger keep their feedback from ringing louder: what they send round is scaled so their level
@@ -746,7 +749,10 @@ may show anywhere, repaints the whole of it.
     drawn plus, the word and a chevron, neutral until the mouse is on it or its list is open, then in the theme's
     accent, as + SOURCE is) at the panel's top left opens a list of the effect types (beside it, how many of the 32
     places are taken, as in 3/32), and so does a dashed card with a plus after the last effect, at the mouse (moved
-    back inside the editor where it would reach past an edge); the
+    back inside the editor where it would reach past an edge). The list groups the effects by kind in two columns,
+    each group under its name in capitals: DRIVE (Shaper, Amp), EQ & FILTER (DJ EQ, Param EQ, Filter) and DYNAMICS
+    (Compressor, 3-Band Dynamics) down the left one, SPACE (Delay, Reverb), MODULATION (Phaser, Flanger, Freq Shifter)
+    and STEREO & PHASE (Widener, Phase Disp, Utility) down the right one. The
     one picked goes at the end of the chain, which scrolls to show it, and so does a copy. An arrow goes before each
     card, the first too, and turns into a plus under the mouse: a click opens the list over the cards there, and the
     one picked goes in there. While there are effects, a hint at the panel's top right tells how to work the cards
@@ -818,7 +824,8 @@ may show anywhere, repaints the whole of it.
     a narrow dashed card (ADD TO LOW, ADD TO MID or ADD TO HIGH, in capitals as ADD EFFECT) that opens the list of effects at the mouse (effects only: a band holds no split), the one
     picked going at the end of that band, with no arrow before it. The arrows inside the container add an effect to
     its band there (the first, after its controls, at the band's start). The main line's arrows, the dashed card at the row's end and
-    + EFFECT offer **Add 2-band split** and **Add 3-band split** after the effects, which go in there (at the
+    + EFFECT offer **2-band split** and **3-band split** under the effects, side by side under a line across the
+    list, which go in there (at the
     line's end from the last two) with their join, their bands empty and their low band shown. A card dragged over the band a container shows
     lands on that band, and let go of on a container's tab it goes to the end of that band (the tab lit while it is
     over it; the band shown stays as it is); a card dragged out of a
@@ -841,8 +848,8 @@ may show anywhere, repaints the whole of it.
     far as it can and bends S-shaped only within the gap between two columns' nodes, so it never crosses a node: out
     of a split's band right as it leaves the split, into a join (or OUT) just before it. Each effect is a rounded box in its color, as a voice
     filter's node is in the routing graph, its icon in it and its name under it, on the main line across the middle. A **+** in a circle marks where a node can go next; a click on it
-    opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **Add
-    frequency split** and **Add 3-band split**, after the effects: a split, a box its high band leaves from the top of
+    opens the list of effects beside it, and the effect picked goes there. The main line's list also offers **2-band
+    split** and **3-band split**, under the effects: a split, a box its high band leaves from the top of
     its right side, its low band from the bottom and a middle band from the middle, always comes with its join, which
     adds the bands back together a column after the longest band's last + (each band's + has a column of its own); the line goes on from the join. The bands run
     between them, the high one along the row above the main line, the low one along the row below and a middle one

@@ -455,7 +455,8 @@ void effectsChainChecks() {
     }
     {
         // A delay switched off and on again plays back nothing it held: after half a second of a sine, its lines part
-        // written, and after five, past their length, written all round.
+        // written, and after five, past their length, written all round; also with its times then turned to the
+        // longest and the shortest, reading anywhere along its lines (which it clears only as they are read).
         bool clean = true;
         for (double played : {0.5, 5.0}) {
             Effects fx;
@@ -486,12 +487,65 @@ void effectsChainChecks() {
             p[paramIndex(0, FxParam::Enabled)] = 0.0;
             run(0.05, 0.0); // faded out
             p[paramIndex(0, FxParam::Enabled)] = 1.0;
-            const float after = run(2.0, 0.0);
+            float after = run(0.3, 0.0);
+            p[paramIndex(0, FxParam::DelayTimeL)] = p[paramIndex(0, FxParam::DelayTimeR)] = 1.0; // as long as it goes
+            after = std::max(after, run(4.5, 0.0));
+            p[paramIndex(0, FxParam::DelayTimeL)] = p[paramIndex(0, FxParam::DelayTimeR)] = 0.0;
+            after = std::max(after, run(0.5, 0.0));
             std::printf("      a delay off and on again after %.1f s of a sine: %.0f dB of it after\n", played,
                         20.0 * std::log10(after + 1e-30));
             clean = clean && after < 1e-6f;
         }
         check(clean, "a delay switched off and on again plays back nothing it held");
+    }
+    {
+        // A reverb likewise, its lines and its pre-delay (a room's, which reads its early reflections from it too): off
+        // and on again after a sine, then at its largest size and longest pre-delay, it plays back nothing it held.
+        bool clean = true;
+        for (double played : {0.05, 3.0}) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+            p[paramIndex(0, FxParam::ReverbType)] = static_cast<double>(ReverbType::Room);
+            p[paramIndex(0, FxParam::ReverbSize)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
+            chain(p, {0});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            size_t t = 0;
+            auto run = [&](double seconds, double amplitude) {
+                float peak = 0.0f;
+                for (const size_t end = t + static_cast<size_t>(seconds * kSampleRate); t < end; t += kPiece) {
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            amplitude * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(t + s) / kSampleRate));
+                    fx.process(left, right, kPiece, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        peak = std::max({peak, std::abs(left[s]), std::abs(right[s])});
+                }
+                return peak;
+            };
+            // Played at its largest first, so its lines and pre-delay hold sound all along them.
+            p[paramIndex(0, FxParam::ReverbSize)] = 1.0;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 1.0;
+            run(played, 0.5);
+            p[paramIndex(0, FxParam::ReverbSize)] = 0.0;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 0.0;
+            run(0.5, 0.5);
+            p[paramIndex(0, FxParam::Enabled)] = 0.0;
+            run(0.05, 0.0);
+            p[paramIndex(0, FxParam::Enabled)] = 1.0;
+            float after = run(0.2, 0.0);
+            p[paramIndex(0, FxParam::ReverbSize)] = 1.0;
+            p[paramIndex(0, FxParam::ReverbPreDelay)] = 1.0;
+            after = std::max(after, run(1.0, 0.0));
+            std::printf("      a reverb off and on again after %.2f s of a sine: %.0f dB of it after\n", played + 0.5,
+                        20.0 * std::log10(after + 1e-30));
+            clean = clean && after < 1e-6f;
+        }
+        check(clean, "a reverb switched off and on again plays back nothing it held, at any size or pre-delay");
     }
     {
         // A sample that isn't a number going into a delay and a reverb, and one louder than any sound (which would
@@ -618,6 +672,49 @@ void effectsChainChecks() {
               "a compressor runs its release out in silence, and a quiet sound after it comes through untouched");
     }
     {
+        // A resonant comb as long as its line (its cutoff below 20 Hz, key tracking on a low note) struck once: it
+        // rings on between its pulses, however they fall in the pieces, and once it has rung out, a quiet sound after
+        // it brings none of its ring back.
+        for (int at : {0, 31}) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Filter);
+            p[paramIndex(0, FxParam::FilterType)] = static_cast<double>(FilterType::Comb);
+            p[paramIndex(0, FxParam::FilterCutoff)] = 0.0;
+            p[paramIndex(0, FxParam::FilterResonance)] = 1.0;
+            p[paramIndex(0, FxParam::FilterKeyTrack)] = 1.0;
+            p[paramIndex(0, FxParam::FilterMix)] = 1.0;
+            chain(p, {0});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            auto piece = [&](float level, size_t t, int impulse) {
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    left[s] = right[s] = t + s == static_cast<size_t>(impulse) ? 0.5f : level;
+                fx.process(left, right, kPiece, p, 120.0, 36.0); // C2
+            };
+            for (int k = 0; k < 100; ++k)
+                piece(0.0f, 0, -1);
+            int pulses = 0;
+            for (size_t t = 0; t < static_cast<size_t>(20.0 * kSampleRate); t += kPiece) {
+                piece(0.0f, t, at);
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    pulses += std::abs(left[s]) > 0.01f ? 1 : 0;
+            }
+            const bool rungOut = !fx.ringing();
+            float ghost = 0.0f;
+            for (size_t t = 0; t < static_cast<size_t>(0.2 * kSampleRate); t += kPiece) {
+                piece(1e-7f, t, -1);
+                for (uint32_t s = 0; s < kPiece; ++s)
+                    ghost = std::max(ghost, std::abs(left[s]));
+            }
+            std::printf("      a comb as long as its line struck at %d: %d pulses heard, rung out %d, %.1e after it\n", at,
+                        pulses, rungOut, ghost);
+            check(pulses > 20 && rungOut && ghost < 1e-4f,
+                  "a comb as long as its line rings on between its pulses, and brings nothing back once rung out");
+        }
+    }
+    {
         // Effects with nothing to do: once every tail has rung out, silence costs a small share of what a sound
         // through them does, and comes out as silence; a sound after it comes through again.
         Effects fx;
@@ -722,6 +819,92 @@ void effectsChainChecks() {
         const double ratio = roughJump(1) / roughJump(kBlock);
         std::printf("      %-30s %7.1fx in 1-frame blocks\n", "a wire's level to a quarter", ratio);
         check(ratio < 1.5, "a wire's level jump ramps even when events split the block into single frames");
+    }
+    {
+        // At a high rate, a jump ramps over as long a time as at 48 kHz, not as few samples: a delay's Mix taken from
+        // 0 to 100 % and a wire's level to a quarter, on a steady level, change no faster in time at 96 or 192 kHz.
+        auto steepest = [&](double rate, bool wire) { // the most the output moves in a second, at its steepest
+            Effects fx;
+            fx.prepare(rate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+            p[paramIndex(0, FxParam::DelayMix)] = 0.0;
+            chain(p, {0});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            float last = 0.0f, most = 0.0f;
+            const size_t before = static_cast<size_t>(0.05 * rate), after = static_cast<size_t>(0.01 * rate);
+            for (size_t t = 0; t < before + after; t += kPiece) {
+                if (t == before / kPiece * kPiece) {
+                    if (wire)
+                        p[fxInputIndex(kFxOutNode, 0, FxInputField::Level)] = 0.25;
+                    else
+                        p[paramIndex(0, FxParam::DelayMix)] = 1.0;
+                }
+                std::fill_n(left, kPiece, 0.5f);
+                std::fill_n(right, kPiece, 0.5f);
+                fx.process(left, right, kPiece, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kPiece; ++s) {
+                    if (t + s > before / 2)
+                        most = std::max(most, std::abs(left[s] - last));
+                    last = left[s];
+                }
+            }
+            return most * rate;
+        };
+        bool even = true;
+        for (bool wire : {false, true}) {
+            const double at48 = steepest(48000.0, wire);
+            for (double rate : {96000.0, 192000.0}) {
+                const double ratio = steepest(rate, wire) / at48;
+                std::printf("      %s at %.0f kHz: %.2fx as steep in time as at 48 kHz\n",
+                            wire ? "a wire's level to a quarter" : "a delay's Mix 0 to 100 %", rate / 1000.0, ratio);
+                even = even && ratio < 1.1 && ratio > 0.5;
+            }
+        }
+        check(even, "a jump ramps over as long a time at 96 and 192 kHz as at 48 kHz");
+    }
+    {
+        // A frequency shifter moves a note up without its mirror image: 50 Hz to 10 kHz shifted up 30 Hz, the image 30
+        // Hz below each at least 40 dB under it, at every common rate (its Hilbert pair worked out for the rate).
+        auto level = [](const std::vector<float> &x, double hz, double rate) { // Hann-windowed
+            std::complex<double> sum = 0.0;
+            for (size_t i = 0; i < x.size(); ++i) {
+                const double w = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / x.size());
+                sum += x[i] * w * std::polar(1.0, -2.0 * std::numbers::pi * hz * static_cast<double>(i) / rate);
+            }
+            return std::abs(sum);
+        };
+        double worst = 1e9;
+        for (double rate : {44100.0, 48000.0, 96000.0, 192000.0}) {
+            double rateWorst = 1e9;
+            for (double hz : {50.0, 100.0, 1000.0, 10000.0}) {
+                Effects fx;
+                fx.prepare(rate);
+                ParamValues p = defaults();
+                p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::FreqShifter);
+                p[paramIndex(0, FxParam::ShiftAmount)] = 0.3; // 30 Hz of its 100 Hz range
+                p[paramIndex(0, FxParam::ShiftMix)] = 1.0;
+                chain(p, {0});
+                constexpr uint32_t kPiece = 32;
+                float left[kPiece], right[kPiece];
+                std::vector<float> out;
+                for (size_t t = 0; t < static_cast<size_t>(1.5 * rate); t += kPiece) {
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(t + s) / rate));
+                    fx.process(left, right, kPiece, p, 120.0, 60.0);
+                    if (t >= static_cast<size_t>(0.5 * rate))
+                        out.insert(out.end(), left, left + kPiece);
+                }
+                rateWorst = std::min(rateWorst, 20.0 * std::log10(level(out, hz + 30.0, rate) /
+                                                                  std::max(level(out, hz - 30.0, rate), 1e-30)));
+            }
+            std::printf("      a frequency shifter at %.1f kHz: the image at least %.1f dB under the shifted note\n",
+                        rate / 1000.0, rateWorst);
+            worst = std::min(worst, rateWorst);
+        }
+        check(worst > 40.0, "a frequency shifter's mirror image stays 40 dB down from 50 Hz up, at 44.1 to 192 kHz");
     }
     {
         // A parametric EQ band switched on and off fades rather than clicking: a low cut at 5 kHz, which takes most
@@ -1682,6 +1865,34 @@ void noteAndVoiceChecks() {
         std::printf("      mono, a note taken over in its release: ends %d time(s), the next %d\n", ends[1], ends[2]);
         check(ends[1] == 1 && ends[2] == 1 && e.synth().activeVoiceCount() == 0,
               "mono: a note taken over in its release ends once, and so does the next");
+    }
+    {
+        // Notes held in poly as mono turns on: a key let go doesn't move its voice onto a key the mono voice already
+        // plays (which two voices would then play, one of them taken over without its end reported), and every note
+        // ends once, through a lower voice limit and a later note too.
+        Engine e(2, 2);
+        e.synth().setPlayMode(false, false, false);
+        int ends[10] = {};
+        e.synth().noteOn({1, 0, 0, 60}, 1.0);
+        e.synth().noteOn({2, 0, 0, 62}, 1.0);
+        play(e, 4, ends);
+        e.synth().setPlayMode(true, false, false);
+        e.synth().noteOn({3, 0, 0, 64}, 1.0);
+        play(e, 4, ends);
+        e.synth().noteOff({1, 0, 0, 60});
+        play(e, 4, ends);
+        const bool playing3 = e.synth().isActive({3, 0, 0, 64});
+        e.synth().setVoiceLimit(1);
+        play(e, 10, ends);
+        e.synth().noteOn({4, 0, 0, 65}, 1.0);
+        play(e, 4, ends);
+        e.synth().noteOff({-1, -1, -1, -1});
+        play(e, 800, ends);
+        std::printf("      poly to mono with keys held: ends %d %d %d %d, %d voice(s) left\n", ends[1], ends[2], ends[3],
+                    ends[4], e.synth().activeVoiceCount());
+        check(playing3 && ends[1] == 1 && ends[2] == 1 && ends[3] == 1 && ends[4] == 1 &&
+                  e.synth().activeVoiceCount() == 0,
+              "notes held as mono turns on, a key let go, a lower voice limit and a later note: each ends once");
     }
     {
         // A key struck again while its last note still rings: with note ids, the last note's end is reported once it

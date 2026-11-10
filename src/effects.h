@@ -319,16 +319,25 @@ private:
         bool delayKnown = false;
     };
 
-    // Two all-pass chains whose outputs stay 90 degrees apart across the audio band (Olli
-    // Niemitalo's design): a signal and its Hilbert transform.
+    // Two all-pass chains whose outputs stay 90 degrees apart across the audio band, from kHilbertLowHz up: a signal
+    // and its Hilbert transform. Their coefficients are worked out for the rate (see hilbertCoefs()), with more
+    // sections the higher it is, since the band then spans more octaves; at 44.1 and 48 kHz, four a chain as in Olli
+    // Niemitalo's design.
+    static constexpr int kMaxHilbertSections = 7;
+    struct HilbertCoefs {
+        int sections = 0; // per chain
+        std::array<double, kMaxHilbertSections> a{}; // the chain heard a sample late
+        std::array<double, kMaxHilbertSections> b{};
+    };
     struct Hilbert {
-        std::array<std::array<double, 4>, 4> a{}; // per section: x[n-1], x[n-2], y[n-1], y[n-2]
-        std::array<std::array<double, 4>, 4> b{};
+        std::array<std::array<double, 4>, kMaxHilbertSections> a{}; // per section: x[n-1], x[n-2], y[n-1], y[n-2]
+        std::array<std::array<double, 4>, kMaxHilbertSections> b{};
         double delayed = 0.0; // the first chain's output, one sample late
 
         // The in-phase and quadrature parts of `x`.
-        std::array<double, 2> process(double x);
+        std::array<double, 2> process(double x, const HilbertCoefs &coefs);
     };
+    static HilbertCoefs hilbertCoefs(double sampleRate);
 
     // The phase disperser's all-passes, per side; those past Stages wait cleared, so more start clean.
     struct Disperser {
@@ -489,6 +498,8 @@ private:
     double runShifter(int slot, float *const *io, uint32_t n, const ParamValues &p);
 
     double sampleRate_ = 48000.0;
+    uint32_t rampShortest_ = 32; // the fewest samples a gain's or mix's ramp is spread over, at this rate
+    HilbertCoefs hilbert_ = hilbertCoefs(48000.0); // the frequency shifters', for this rate
     std::array<double, kReverbLines> reverbLengths_{}; // at full size, in samples
     double reverbMeanLength_ = 0.0; // how long the lines are on average, for their rounds per second (harmonic mean)
     std::array<std::array<int, kDiffusers>, 2> diffuserLengths_{};

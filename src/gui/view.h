@@ -567,7 +567,7 @@ private:
     bool cascadeSearches() const { return cascade_ && cascade_->kind == CascadeKind::Target; }
     // Where the search goes in the first level, and so where that level's entries start.
     Rect cascadeSearchRect(Rect level) const;
-    MenuNode cascadeTree() const;
+    std::shared_ptr<const MenuNode> cascadeTree() const;
     MenuNode cascadeTreeNow() const; // cascadeTree() worked out
     MenuNode cascadeCategories() const; // cascadeTree() before its search narrows it
     // The open menu's levels, from the first: their entries, and where they show.

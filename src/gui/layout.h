@@ -570,11 +570,15 @@ inline Rect fxMenuButton() {
 }
 
 // The effects the list offers, in its order: every type but None and the retired three-band compressor, whose place
-// the three-band dynamics takes.
-constexpr FxType kFxOffered[] = {FxType::Shaper,     FxType::Amp,        FxType::Eq,         FxType::ParamEq,
-                                 FxType::Filter,     FxType::Compressor, FxType::MultiDyn, FxType::Delay, FxType::Reverb,
-                                 FxType::Phaser,     FxType::Flanger,    FxType::Widener,  FxType::FreqShifter, FxType::Disperser,
-                                 FxType::Utility};
+// the three-band dynamics takes. They go by kind in six groups (kFxMenuGroups), each under its name.
+constexpr FxType kFxOffered[] = {
+    FxType::Shaper,     FxType::Amp,                             // drive
+    FxType::Eq,         FxType::ParamEq,   FxType::Filter,       // EQ and filter
+    FxType::Compressor, FxType::MultiDyn,                        // dynamics
+    FxType::Delay,      FxType::Reverb,                          // space
+    FxType::Phaser,     FxType::Flanger,   FxType::FreqShifter,  // modulation
+    FxType::Widener,    FxType::Disperser, FxType::Utility,      // stereo and phase
+};
 constexpr int kFxTypes = static_cast<int>(std::size(kFxOffered));
 static_assert(kFxTypes == static_cast<int>(FxType::Count) - 2, "a new effect type goes in the list of effects");
 constexpr int fxOfferedPlace(FxType type) {
@@ -583,30 +587,65 @@ constexpr int fxOfferedPlace(FxType type) {
             return i;
     return 0;
 }
-// The list's top left is under the button, or (from the shadow card after the effects) given. Its entries are close
-// enough together that it fits in the panel under the button.
-constexpr float kFxMenuPitch = 21.0f;
-// Opened from a + of the effects graph, it has one more entry after the effects, a little apart: a split on the main
-// line, a join on a band (`node`).
+// How many effects each group holds, in the list's order. The first kFxMenuLeftGroups go down its left column, the
+// others down its right one.
+constexpr int kFxMenuGroups[] = {2, 3, 2, 2, 3, 3};
+constexpr int kFxMenuGroupCount = static_cast<int>(std::size(kFxMenuGroups));
+constexpr int kFxMenuLeftGroups = 3;
+constexpr int fxMenuGroupsTotal() {
+    int n = 0;
+    for (int g : kFxMenuGroups)
+        n += g;
+    return n;
+}
+static_assert(fxMenuGroupsTotal() == kFxTypes, "every effect the list offers is in one of its groups");
+// The list's top left is under the button, or (from the shadow card after the effects) given. A row every 23 px, a
+// group's name over its rows, two columns side by side.
+constexpr float kFxMenuPitch = 23.0f;
+constexpr float kFxMenuHead = 20.0f;
+constexpr float kFxMenuColumn = 170.0f;
+// From the main line, two more entries under the columns, a little apart: a split in two bands under the left one, in
+// three under the right one.
 constexpr float kFxMenuNodeGap = 7.0f;
+// How far down its column group `group` starts (its name, then its rows), and how tall the columns are.
+constexpr float fxMenuGroupTop(int group) {
+    float y = 0.0f;
+    for (int g = group < kFxMenuLeftGroups ? 0 : kFxMenuLeftGroups; g < group; ++g)
+        y += kFxMenuHead + static_cast<float>(kFxMenuGroups[g]) * kFxMenuPitch;
+    return y;
+}
+constexpr float kFxMenuColumnsH = fxMenuGroupTop(kFxMenuLeftGroups) > fxMenuGroupTop(kFxMenuGroupCount)
+                                      ? fxMenuGroupTop(kFxMenuLeftGroups)
+                                      : fxMenuGroupTop(kFxMenuGroupCount);
+constexpr float fxMenuHeight(bool node) {
+    return 8.0f + kFxMenuColumnsH + (node ? kFxMenuNodeGap + kFxMenuPitch : 0.0f);
+}
 inline Rect fxMenu(Point at, bool node = false) {
     const Rect button = fxMenuButton();
-    return {at.x < 0.0f ? button.x : at.x, at.x < 0.0f ? button.bottom() + 4.0f : at.y, 180.0f,
-            8.0f + kFxTypes * kFxMenuPitch + (node ? kFxMenuNodeGap + 2.0f * kFxMenuPitch : 0.0f)};
+    return {at.x < 0.0f ? button.x : at.x, at.x < 0.0f ? button.bottom() + 4.0f : at.y, 8.0f + 2.0f * kFxMenuColumn,
+            fxMenuHeight(node)};
 }
-static_assert(9.0f + 22.0f + 4.0f + 8.0f + kFxTypes * kFxMenuPitch <= kFxPanel.h, // from under the button
+static_assert(9.0f + 22.0f + 4.0f + fxMenuHeight(true) <= kFxPanel.h, // from under the button
               "the list of effects fits in the panel");
 
-inline Rect fxMenuItem(Point at, FxType type) {
+// A group's name, over its rows.
+inline Rect fxMenuHead(Point at, int group) {
     const Rect menu = fxMenu(at);
-    return {menu.x + 4.0f, menu.y + 4.0f + static_cast<float>(fxOfferedPlace(type)) * kFxMenuPitch, menu.w - 8.0f,
-            kFxMenuPitch - 2.0f};
+    const float column = group < kFxMenuLeftGroups ? 0.0f : kFxMenuColumn;
+    return {menu.x + 4.0f + column, menu.y + 4.0f + fxMenuGroupTop(group), kFxMenuColumn - 2.0f, kFxMenuHead};
 }
-// Its entries after the effects, a little apart: a split in two bands, then one in three.
+inline Rect fxMenuItem(Point at, FxType type) {
+    int group = 0, row = fxOfferedPlace(type);
+    while (row >= kFxMenuGroups[group])
+        row -= kFxMenuGroups[group++];
+    const Rect head = fxMenuHead(at, group);
+    return {head.x, head.bottom() + static_cast<float>(row) * kFxMenuPitch, head.w, kFxMenuPitch - 2.0f};
+}
+// Its entries under the columns, a little apart: a split in two bands at the left, in three at the right.
 inline Rect fxMenuNodeItem(Point at, int bands = 2) {
     const Rect menu = fxMenu(at, true);
-    return {menu.x + 4.0f, menu.y + 4.0f + (kFxTypes + bands - 2) * kFxMenuPitch + kFxMenuNodeGap, menu.w - 8.0f,
-            kFxMenuPitch - 2.0f};
+    return {menu.x + 4.0f + (bands == 3 ? kFxMenuColumn : 0.0f), menu.y + 4.0f + kFxMenuColumnsH + kFxMenuNodeGap,
+            kFxMenuColumn - 2.0f, kFxMenuPitch - 2.0f};
 }
 
 // A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;

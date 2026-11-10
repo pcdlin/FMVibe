@@ -610,34 +610,35 @@ Point fxKnob(const FakeController &model, int position, int index, int count, fl
     return {fxCardX(model, position) + fxCardW(model, position) / count * (index + 0.5f), 180.0f + y};
 }
 
-// ADD EFFECT at the FX panel's top left, and the entry for `type` in the list it opens: 21 px a type, from y 139 + 4,
-// in the order of `kFxOffered` (src/gui/layout.h).
+// ADD EFFECT at the FX panel's top left, and the middle of the entry for `type` in the list it opens (its groups in
+// two columns, as src/gui/layout.h places them).
 constexpr Point kFxMenuButton{90.0f, 152.0f};
-constexpr float kFxMenuPitch = 21.0f;
-constexpr int kFxTypeCount = 15; // the effects the list offers, before a split's entries
-int fxMenuPlace(FxType type) {
-    static const FxType offered[] = {FxType::Shaper,     FxType::Amp,        FxType::Eq,        FxType::ParamEq,   FxType::Filter,
-                                     FxType::Compressor, FxType::MultiDyn,   FxType::Delay,     FxType::Reverb,
-                                     FxType::Phaser,     FxType::Flanger,    FxType::Widener,   FxType::FreqShifter,
-                                     FxType::Disperser,  FxType::Utility};
-    return static_cast<int>(std::find(std::begin(offered), std::end(offered), type) - std::begin(offered));
+Point rectCenter(Rect r) {
+    return {r.x + r.w * 0.5f, r.y + r.h * 0.5f};
 }
 Point fxMenuItem(FxType type) {
-    return {122.0f, 181.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
+    return rectCenter(detail::fxMenuItem({-1.0f, -1.0f}, type));
 }
 
 // A list a dashed card opens: its top left where the card was clicked, moved back inside the editor (4 px in) where
-// it would reach past an edge. The effects' is 180 px wide, a type every 21 px from 4 px down; the sources' 150 px,
-// a type every 26 px.
+// it would reach past an edge. The effects' is as large as src/gui/layout.h makes it (taller from the main line, with
+// a split's entries); the sources' 150 px wide, a type every 26 px.
 Point listAt(const View &view, Point click, float w, float h) {
     return {std::clamp(click.x, 4.0f, View::kWidth - 4.0f - w), std::clamp(click.y, 4.0f, view.height() - 4.0f - h)};
 }
-Point fxListAt(const View &view, Point click) {
-    return listAt(view, click, 180.0f, 8.0f + kFxTypeCount * kFxMenuPitch);
+Point fxListAt(const View &view, Point click, bool node = false) {
+    const Rect menu = detail::fxMenu({0.0f, 0.0f}, node);
+    return listAt(view, click, menu.w, menu.h);
 }
-Point fxListItem(const View &view, Point click, FxType type) {
-    const Point at = fxListAt(view, click);
-    return {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
+Point fxListItem(const View &view, Point click, FxType type, bool node = false) {
+    return rectCenter(detail::fxMenuItem(fxListAt(view, click, node), type));
+}
+Point fxListSplit(const View &view, Point click, int bands = 2) {
+    return rectCenter(detail::fxMenuNodeItem(fxListAt(view, click, true), bands));
+}
+// Where a list opened from the effects graph's + (or a wire's) goes: beside it, up a little.
+Point besidePlus(Point plus) {
+    return {plus.x + 26.0f, plus.y - 44.0f};
 }
 Point sourceListItem(const View &view, Point click, SourceType type) {
     const Point at = listAt(view, click, 150.0f, 8.0f + 4.0f * 26.0f);
@@ -2360,17 +2361,8 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     // The grid, unscrolled: IN in column 0, then a column a node, the high band a row up and the low band a row down.
     auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
     // The list a + opens, beside it and kept inside the editor: the effects, then a split or a join a little apart.
-    auto listAtPlus = [&](Point plus) {
-        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
-    };
-    auto plusItem = [&](Point plus, FxType type) {
-        const Point at = listAtPlus(plus);
-        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
-    };
-    auto plusNode = [&](Point plus) {
-        const Point at = listAtPlus(plus);
-        return Point{at.x + 90.0f, at.y + 14.5f + kFxTypeCount * kFxMenuPitch + 7.0f};
-    };
+    auto plusItem = [&](Point plus, FxType type) { return fxListItem(view, besidePlus(plus), type, true); };
+    auto plusNode = [&](Point plus) { return fxListSplit(view, besidePlus(plus)); };
     auto addAt = [&](Point plus, FxType type) {
         click(view, plus);
         click(view, plusItem(plus, type));
@@ -2787,21 +2779,17 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     // split goes in with its join right after it; on the wire from the delay into the join, the list has no split,
     // and a widener goes on the high band before the join. Each undone.
     auto middle = [](Point from, Point to) { return Point{(from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f}; };
-    auto gapItem = [&](Point gap, bool withNode, int place) {
-        const Point at = listAt(view, {gap.x + 26.0f, gap.y - 44.0f}, 180.0f,
-                                8.0f + kFxTypeCount * kFxMenuPitch + (withNode ? 7.0f + 2.0f * kFxMenuPitch : 0.0f));
-        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(place) * kFxMenuPitch + (place >= kFxTypeCount ? 7.0f : 0.0f)};
-    };
+    auto gapItem = [&](Point gap, bool withNode, FxType type) { return fxListItem(view, besidePlus(gap), type, withNode); };
     const Point mainGap = middle({cell(1, 0).x + detail::kFxNodeR, cell(1, 0).y},
                                  {cell(2, 0).x - detail::kFxNodeR - 8.0f, cell(2, 0).y});
     view.mouseMove(mainGap, {});
     const bool gapShot = renderer.save(view, dir / "40i-fx-gap.png");
     click(view, mainGap);
-    click(view, gapItem(mainGap, true, fxMenuPlace(FxType::Filter)));
+    click(view, gapItem(mainGap, true, FxType::Filter));
     const bool between = from(5, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(5);
     view.undo();
     click(view, mainGap);
-    click(view, gapItem(mainGap, true, kFxTypeCount));
+    click(view, fxListSplit(view, besidePlus(mainGap)));
     const int split2 = fxSplitNode(1), join2 = fxSumNode(1);
     const bool splitBetween = model.value(paramIndex(1, SplitParam::Used)) == 1.0 &&
                               model.value(paramIndex(1, SumParam::Used)) == 1.0 && from(split2, 0) == fxSlotPort(0) &&
@@ -2818,7 +2806,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     view.undo();
     const Point bandGap = cell(5, -1); // the delay's +, in its band's next place
     click(view, bandGap);
-    click(view, gapItem(bandGap, false, fxMenuPlace(FxType::Widener)));
+    click(view, gapItem(bandGap, false, FxType::Widener));
     const bool onJoinedBand = from(5, 0) == fxSlotPort(2) && from(join, 0) == fxSlotPort(5);
     view.undo();
     check(gapShot && between && splitBetween && splitShot && emptyPluses && onJoinedBand && from(1, 0) == fxSlotPort(0) &&
@@ -3028,8 +3016,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, {a.x + 5.0f, a.y + 1.0f});
         // Had that opened the list, this click would only close it.
         click(view, mid);
-        const Point at = listAt(view, {mid.x + 26.0f, mid.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
-        click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Filter)) * kFxMenuPitch});
+        click(view, fxListItem(view, besidePlus(mid), FxType::Filter, true));
         const bool added = from(5, 0) == fxSlotPort(0) && from(1, 0) == fxSlotPort(5);
         view.undo();
         view.mouseMove({600.0f, 428.0f}, {});
@@ -3653,6 +3640,21 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     const bool lfoMoved = view.poll();
     check(lfoMoved && only(view.wholeArea()),
           "what a voice's sources move repaints the whole editor");
+
+    // The notes end while a tail drives a compressor on: its meter moving repaints it, and so does the host's tempo.
+    model.live.voices = 0;
+    model.live.outPeak = {0.0f, 0.0f};
+    model.live.scopeBins = 0;
+    for (int i = 0; i < 20 && view.poll(); ++i) // the scopes' levels easing down
+        ;
+    const bool settled = !view.poll();
+    model.live.fxReduction[0][0] = 3.0f;
+    const bool reductionMoved = view.poll() && only(view.wholeArea());
+    model.live.tempo = 96.0f;
+    const bool tempoMoved = view.poll() && only(view.wholeArea());
+    const bool still = !view.poll();
+    check(settled && reductionMoved && tempoMoved && still,
+          "with no notes playing, a compressor's meter and the host's tempo moving repaint the editor");
 }
 
 // A macro's name that isn't valid UTF-8 (a state can hold any bytes there) drawn as best it can be, and the rest of
@@ -3697,17 +3699,8 @@ void testFxListAfterUndo(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, kFxTab);
     click(view, detail::fxModeButton(1).center());
     auto cell = [](int col, int row) { return detail::fxGridCell(col, row, 0.0f); };
-    auto listAtPlus = [&](Point plus) {
-        return listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
-    };
-    auto plusItem = [&](Point plus, FxType type) {
-        const Point at = listAtPlus(plus);
-        return Point{at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(type)) * kFxMenuPitch};
-    };
-    auto plusNode = [&](Point plus) {
-        const Point at = listAtPlus(plus);
-        return Point{at.x + 90.0f, at.y + 14.5f + kFxTypeCount * kFxMenuPitch + 7.0f};
-    };
+    auto plusItem = [&](Point plus, FxType type) { return fxListItem(view, besidePlus(plus), type, true); };
+    auto plusNode = [&](Point plus) { return fxListSplit(view, besidePlus(plus)); };
     auto from = [&](int node, int input) {
         return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
     };
@@ -3808,8 +3801,7 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
     const bool picked = model.ui.fxSelected == 8;
     const Point plus = detail::fxGridCell(11, 0, most);
     click(view, plus);
-    const Point at = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
-    click(view, {at.x + 90.0f, at.y + 14.5f + static_cast<float>(fxMenuPlace(FxType::Reverb)) * kFxMenuPitch});
+    click(view, fxListItem(view, besidePlus(plus), FxType::Reverb, true));
     const bool added = fxPortOf(model.value(fxInputIndex(kFxOutNode, 0, FxInputField::From))) == fxSlotPort(10) &&
                        model.value(paramIndex(10, FxParam::Type)) == static_cast<double>(FxType::Reverb);
     // Down to three effects, the graph fits: no scrollbar, the track's place plain panel again.
@@ -3859,8 +3851,7 @@ void testFxClear(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {mode.x + mode.w * 0.5f, mode.y + mode.h * 0.5f});
     const Point plus = detail::fxGridCell(3, 0, 0.0f);
     click(view, plus);
-    const Point list = listAt(view, {plus.x + 26.0f, plus.y - 44.0f}, 180.0f, 8.0f + (kFxTypeCount + 2) * kFxMenuPitch + 7.0f);
-    click(view, {list.x + 90.0f, list.y + 14.5f + kFxTypeCount * kFxMenuPitch + 7.0f});
+    click(view, fxListSplit(view, besidePlus(plus)));
     const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
                        model.value(paramIndex(0, SumParam::Used)) == 1.0;
     click(view, bin);
@@ -4296,7 +4287,7 @@ void testAmp(const std::filesystem::path &dir, Renderer &renderer) {
     addFx(view, FxType::Amp);
     auto at = [&](FxParam f) { return paramIndex(0, f); };
     auto centerOf = [](Rect r) { return Point{r.x + r.w * 0.5f, r.y + r.h * 0.5f}; };
-    check(model.value(at(FxParam::Type)) == static_cast<double>(FxType::Amp) && fxMenuPlace(FxType::Amp) == 1,
+    check(model.value(at(FxParam::Type)) == static_cast<double>(FxType::Amp) && detail::fxOfferedPlace(FxType::Amp) == 1,
           "the list of effects adds an amp, offered after the shaper");
     const Rect card = detail::fxCard(0.0f, detail::fxSpan(FxType::Amp));
     const Point away{600.0f, 628.0f};
@@ -4429,8 +4420,8 @@ void testUtility(const std::filesystem::path &dir, Renderer &renderer) {
     addFx(view, FxType::Utility);
     auto at = [&](FxParam f) { return paramIndex(0, f); };
     check(model.value(at(FxParam::Type)) == static_cast<double>(FxType::Utility) &&
-              fxMenuPlace(FxType::Utility) == kFxTypeCount - 1,
-          "the list of effects adds a utility, offered last");
+              detail::fxOfferedPlace(FxType::Utility) == detail::kFxTypes - 1,
+          "the list of effects adds a utility, offered last, in its stereo and phase group");
     const double unity = utilityGainNorm(1.0); // Gain at 0 dB
     check(model.value(at(FxParam::UtilityGain)) == unity && model.value(at(FxParam::UtilityPan)) == 0.0 &&
               model.value(at(FxParam::UtilityWidth)) == 1.0 && model.value(at(FxParam::UtilityMonoBass)) == 0.0,
@@ -7213,9 +7204,9 @@ void run(const std::filesystem::path &dir, float scale) {
     // The dashed card at the chain's end (its first place, while it is empty) opens the list where it is clicked.
     const Point shadowClick{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 268.0f};
     click(view, shadowClick);
-    view.mouseMove(fxListItem(view, shadowClick, FxType::Shaper), {});
+    view.mouseMove(fxListItem(view, shadowClick, FxType::Shaper, true), {});
     check(renderer.save(view, dir / "8a2-fx-shadow-list.png"), "render the list of effects at the mouse");
-    click(view, fxListItem(view, shadowClick, FxType::Shaper));
+    click(view, fxListItem(view, shadowClick, FxType::Shaper, true));
     check(fxChain(model) == std::vector<int>{0} &&
               model.value(paramIndex(0, FxParam::Type)) == static_cast<double>(FxType::Shaper),
           "the dashed card at the chain's end adds an effect");
@@ -7235,9 +7226,9 @@ void run(const std::filesystem::path &dir, float scale) {
     // pixels: the list looks the same over it either way).
     {
         const Point rightClick{std::min(fxCardX(model, 5) + fxCardW(model, 5), 32.0f + 1136.0f) - 6.0f, 328.0f};
-        const Point at = fxListAt(view, rightClick);
+        const Point at = fxListAt(view, rightClick, true);
         click(view, rightClick);
-        const Point inList{at.x + 8.0f, 358.0f}; // over the second delay's card
+        const Point inList{std::max(at.x, fxCardX(model, 4)) + 8.0f, 358.0f}; // over the second delay's card
         std::printf("      list at %.0f (clicked at %.0f), the second delay's card %.0f to %.0f\n", at.x, rightClick.x,
                     fxCardX(model, 4), fxCardX(model, 4) + fxCardW(model, 4));
         const bool moved = at.x + 8.0f < rightClick.x && inList.x > fxCardX(model, 4) &&
@@ -7563,8 +7554,11 @@ void run(const std::filesystem::path &dir, float scale) {
         const bool hoverShot = renderer.save(view, dir / "8d-fx-insert.png");
         click(view, arrow);
         // The list's top: under the title row, or as high as keeps it (a split after the effects) inside the panel.
-        const float top = std::min(188.0f, detail::kFxPanel.bottom() - 4.0f - detail::fxMenu({0.0f, 0.0f}, true).h);
-        const Point delay{arrow.x, top + 4.0f + kFxMenuPitch * static_cast<float>(fxMenuPlace(FxType::Delay)) + 10.5f};
+        const Rect menu = detail::fxMenu({0.0f, 0.0f}, true); // its middle at the arrow, kept inside the panel
+        const float top = std::min(188.0f, detail::kFxPanel.bottom() - 4.0f - menu.h);
+        const float left = std::clamp(arrow.x - 0.5f * menu.w, detail::kFxPanel.x + 8.0f,
+                                      detail::kFxPanel.right() - 8.0f - menu.w);
+        const Point delay = rectCenter(detail::fxMenuItem({left, top}, FxType::Delay));
         view.mouseMove(delay, {});
         const bool insertListShot = renderer.save(view, dir / "8e-fx-insert-list.png");
         click(view, delay);
