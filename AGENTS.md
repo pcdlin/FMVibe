@@ -219,6 +219,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     playing nothing their stages held before; and the effects running on until a shaper's DC blocker has settled;
   - the phaser's and flanger's polarity: negative moving their notches to where the positive peaks were, and
     turned over mid-sine fading through nothing rather than clicking;
+  - a frequency shifter's mirror image 40 dB under the shifted note from 50 Hz to 10 kHz, at 44.1, 48, 96 and
+    192 kHz;
   - the random LFO's steps and glides, a freeform LFO's points at one time (a vertical line, its last
     counting, and a point at the cycle's end holding a one-shot there), the phaser's and flanger's sweeps synced to the host tempo, the parametric
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values

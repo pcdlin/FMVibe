@@ -316,14 +316,31 @@ double reverbSpace(double sizeNorm, ReverbType type) {
     return reverbScale(sizeNorm) * reverbStyle(type).length;
 }
 
-std::array<double, 2> Effects::Hilbert::process(double x) {
-    constexpr double kA[] = {0.6923878, 0.9360654322959, 0.9882295226860, 0.9987488452737};
-    constexpr double kB[] = {0.4021921162426, 0.8561710882420, 0.9722909545651, 0.9952884791278};
-    // Each section is y[n] = c^2 (x[n] + y[n-2]) - x[n-2].
-    auto chain = [](std::array<std::array<double, 4>, 4> &sections, const double (&c)[4], double in) {
-        for (int i = 0; i < 4; ++i) {
+// Where the shifters' Hilbert pair keeps 90 degrees from: where Niemitalo's coefficients put it at 48 kHz.
+constexpr double kHilbertLowHz = 43.68;
+
+Effects::HilbertCoefs Effects::hilbertCoefs(double sampleRate) {
+    // Up to 48 kHz, four sections a chain keep their sides within about 0.7 degrees of 90 (the other sideband 44 dB
+    // down); at higher rates, two more for each octave the band grows by keep them as close.
+    const int sections = sampleRate <= 50000.0 ? 4 : sampleRate <= 100000.0 ? 5 : sampleRate <= 200000.0 ? 6 : 7;
+    std::array<double, 2 * kMaxHilbertSections> coefs{};
+    halfBandCoefs(2 * sections, std::min(kHilbertLowHz / sampleRate, 0.1), coefs.data());
+    HilbertCoefs out;
+    out.sections = sections;
+    for (int i = 0; i < sections; ++i) { // the smallest goes to the chain heard at once, and on alternately
+        out.b[i] = coefs[2 * i];
+        out.a[i] = coefs[2 * i + 1];
+    }
+    return out;
+}
+
+std::array<double, 2> Effects::Hilbert::process(double x, const HilbertCoefs &coefs) {
+    // Each section is y[n] = c (x[n] + y[n-2]) - x[n-2].
+    auto chain = [&coefs](std::array<std::array<double, 4>, kMaxHilbertSections> &sections,
+                          const std::array<double, kMaxHilbertSections> &c, double in) {
+        for (int i = 0; i < coefs.sections; ++i) {
             std::array<double, 4> &s = sections[i];
-            const double y = c[i] * c[i] * (in + s[3]) - s[1];
+            const double y = c[i] * (in + s[3]) - s[1];
             s[1] = s[0];
             s[0] = in;
             s[3] = s[2];
@@ -332,8 +349,8 @@ std::array<double, 2> Effects::Hilbert::process(double x) {
         }
         return in;
     };
-    const double first = chain(a, kA, x);
-    const double second = chain(b, kB, x);
+    const double first = chain(a, coefs.a, x);
+    const double second = chain(b, coefs.b, x);
     const double inPhase = delayed;
     delayed = first;
     return {inPhase, -second}; // the second chain runs 90 degrees ahead: turned round, it lags like a Hilbert transform
@@ -380,6 +397,7 @@ double peqResponse(double hz, PeqType type, double freq, double gainDb, double q
 void Effects::prepare(double sampleRate) {
     sampleRate_ = sampleRate;
     rampShortest_ = rampShortest(sampleRate);
+    hilbert_ = hilbertCoefs(sampleRate);
     const size_t length = static_cast<size_t>(std::ceil(kMaxDelay * sampleRate)) + 4;
     for (Slot &slot : slots_) {
         for (ZeroBuffer &line : slot.delay.lines)
@@ -2210,7 +2228,7 @@ double Effects::runShifter(int slot, float *const *io, uint32_t n, const ParamVa
             sh.phase[ch] += steps[ch];
             sh.phase[ch] -= std::floor(sh.phase[ch]);
             const double x = io[ch][s];
-            const std::array<double, 2> parts = sh.hilbert[ch].process(x + feedback * sh.last[ch]);
+            const std::array<double, 2> parts = sh.hilbert[ch].process(x + feedback * sh.last[ch], hilbert_);
             // The analytic signal turned by the oscillator: every partial moves up by `hz` (down if negative).
             const double y = parts[0] * cosNow[ch] - parts[1] * sinNow[ch];
             const double c = cosNow[ch];

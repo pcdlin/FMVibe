@@ -860,6 +860,48 @@ void effectsChainChecks() {
         check(even, "a jump ramps over as long a time at 96 and 192 kHz as at 48 kHz");
     }
     {
+        // A frequency shifter moves a note up without its mirror image: 50 Hz to 10 kHz shifted up 30 Hz, the image 30
+        // Hz below each at least 40 dB under it, at every common rate (its Hilbert pair worked out for the rate).
+        auto level = [](const std::vector<float> &x, double hz, double rate) { // Hann-windowed
+            std::complex<double> sum = 0.0;
+            for (size_t i = 0; i < x.size(); ++i) {
+                const double w = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / x.size());
+                sum += x[i] * w * std::polar(1.0, -2.0 * std::numbers::pi * hz * static_cast<double>(i) / rate);
+            }
+            return std::abs(sum);
+        };
+        double worst = 1e9;
+        for (double rate : {44100.0, 48000.0, 96000.0, 192000.0}) {
+            double rateWorst = 1e9;
+            for (double hz : {50.0, 100.0, 1000.0, 10000.0}) {
+                Effects fx;
+                fx.prepare(rate);
+                ParamValues p = defaults();
+                p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::FreqShifter);
+                p[paramIndex(0, FxParam::ShiftAmount)] = 0.3; // 30 Hz of its 100 Hz range
+                p[paramIndex(0, FxParam::ShiftMix)] = 1.0;
+                chain(p, {0});
+                constexpr uint32_t kPiece = 32;
+                float left[kPiece], right[kPiece];
+                std::vector<float> out;
+                for (size_t t = 0; t < static_cast<size_t>(1.5 * rate); t += kPiece) {
+                    for (uint32_t s = 0; s < kPiece; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(t + s) / rate));
+                    fx.process(left, right, kPiece, p, 120.0, 60.0);
+                    if (t >= static_cast<size_t>(0.5 * rate))
+                        out.insert(out.end(), left, left + kPiece);
+                }
+                rateWorst = std::min(rateWorst, 20.0 * std::log10(level(out, hz + 30.0, rate) /
+                                                                  std::max(level(out, hz - 30.0, rate), 1e-30)));
+            }
+            std::printf("      a frequency shifter at %.1f kHz: the image at least %.1f dB under the shifted note\n",
+                        rate / 1000.0, rateWorst);
+            worst = std::min(worst, rateWorst);
+        }
+        check(worst > 40.0, "a frequency shifter's mirror image stays 40 dB down from 50 Hz up, at 44.1 to 192 kHz");
+    }
+    {
         // A parametric EQ band switched on and off fades rather than clicking: a low cut at 5 kHz, which takes most
         // of a C3 away, switched in single frames, under 4 times as rough as the note before it (as a stolen voice).
         Engine e(2);

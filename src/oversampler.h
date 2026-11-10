@@ -7,6 +7,41 @@
 
 namespace fmvibe {
 
+// The coefficients of a half-band's first-order allpasses, `count` of them, for a transition band `transition` wide
+// as a fraction of the rate (the elliptic design, after Laurent de Soras' HIIR), from the smallest up: they alternate
+// between the two chains. The same pair of chains, run on every other sample, keeps two signals 90 degrees apart
+// from `transition` of the rate up to as far short of half of it (see Effects::Hilbert).
+inline void halfBandCoefs(int count, double transition, double *coefs) {
+    // Elliptic modulus and nome of the transition band.
+    double k = std::tan((1.0 - 2.0 * transition) * std::numbers::pi / 4.0);
+    k *= k;
+    const double kk = std::pow(1.0 - k * k, 0.25);
+    const double e = 0.5 * (1.0 - kk) / (1.0 + kk);
+    const double e4 = e * e * e * e;
+    const double q = e * (1.0 + e4 * (2.0 + e4 * (15.0 + 150.0 * e4)));
+    const int order = 2 * count + 1;
+    for (int i = 0; i < count; ++i) {
+        const int c = i + 1;
+        double num = 0.0, den = 0.0;
+        for (int n = 0;; ++n) {
+            const double term = std::pow(q, n * (n + 1)) * std::sin((2 * n + 1) * c * std::numbers::pi / order);
+            num += n % 2 ? -term : term;
+            if (std::abs(term) < 1e-100 || n > 100)
+                break;
+        }
+        for (int n = 1;; ++n) {
+            const double term = std::pow(q, n * n) * std::cos(2 * n * c * std::numbers::pi / order);
+            den += n % 2 ? -term : term;
+            if (std::abs(term) < 1e-100 || n > 100)
+                break;
+        }
+        const double w = num * std::pow(q, 0.25) / (den + 0.5);
+        const double w2 = w * w;
+        const double x = std::sqrt((1.0 - w2 * k) * (1.0 - w2 / k)) / (1.0 + w2);
+        coefs[i] = (1.0 - x) / (1.0 + x);
+    }
+}
+
 // Half-band low-pass that halves the sample rate: two parallel chains of
 // first-order allpasses (polyphase IIR, after Laurent de Soras' HIIR). The
 // coefficients come from the elliptic design for a given number of allpasses
@@ -20,34 +55,7 @@ public:
     // input rate: the passband ends at (0.25 - transition) of it.
     void design(int coefCount, double transition) {
         count_ = std::clamp(coefCount, 1, kMaxCoefs);
-        // Elliptic modulus and nome of the transition band.
-        double k = std::tan((1.0 - 2.0 * transition) * std::numbers::pi / 4.0);
-        k *= k;
-        const double kk = std::pow(1.0 - k * k, 0.25);
-        const double e = 0.5 * (1.0 - kk) / (1.0 + kk);
-        const double e4 = e * e * e * e;
-        const double q = e * (1.0 + e4 * (2.0 + e4 * (15.0 + 150.0 * e4)));
-        const int order = 2 * count_ + 1;
-        for (int i = 0; i < count_; ++i) {
-            const int c = i + 1;
-            double num = 0.0, den = 0.0;
-            for (int n = 0;; ++n) {
-                const double term = std::pow(q, n * (n + 1)) * std::sin((2 * n + 1) * c * std::numbers::pi / order);
-                num += n % 2 ? -term : term;
-                if (std::abs(term) < 1e-100 || n > 100)
-                    break;
-            }
-            for (int n = 1;; ++n) {
-                const double term = std::pow(q, n * n) * std::cos(2 * n * c * std::numbers::pi / order);
-                den += n % 2 ? -term : term;
-                if (std::abs(term) < 1e-100 || n > 100)
-                    break;
-            }
-            const double w = num * std::pow(q, 0.25) / (den + 0.5);
-            const double w2 = w * w;
-            const double x = std::sqrt((1.0 - w2 * k) * (1.0 - w2 / k)) / (1.0 + w2);
-            coefs_[i] = (1.0 - x) / (1.0 + x);
-        }
+        halfBandCoefs(count_, transition, coefs_.data());
         reset();
     }
 
