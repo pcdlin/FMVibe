@@ -3483,9 +3483,16 @@ void View::paintModRange(Canvas &c, Rect bar, int param) {
         const double to = std::clamp(n + up, 0.0, 1.0);
         const float alpha = sourceOn(m.source) && !m.bypassed ? 1.0f : (focused ? 0.4f : 0.3f);
         const float h = focused ? 2.0f * bar.h : bar.h;
+        const Color color = kSourceColors[m.source].alpha(alpha);
         c.fillRect({bar.x + static_cast<float>(from) * bar.w, bar.center().y - 0.5f * h,
                     std::max(static_cast<float>(to - from) * bar.w, 1.5f), h},
-                   kSourceColors[m.source].alpha(alpha), kRadiusMark);
+                   color, kRadiusMark);
+        // Where its reach runs past the bar's end, so that it is cut off there, a line across it marks the end.
+        const float half = 0.5f * h + 2.25f;
+        if (n + down < 0.0)
+            c.line({bar.x, bar.center().y - half}, {bar.x, bar.center().y + half}, color, 1.5f);
+        if (n + up > 1.0)
+            c.line({bar.right(), bar.center().y - half}, {bar.right(), bar.center().y + half}, color, 1.5f);
     };
     bool any = false;
     std::vector<Assignment> focus;
@@ -7751,23 +7758,27 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
     // mouse is wider, over the others.
     // (A hovered pill focuses all of those it holds.)
+    // Where a ring's reach runs past the knob's end, so that it is cut off there, a line across it marks the end.
+    auto ring = [&](const Assignment &m, float r, float width, float alpha) {
+        const auto [down, up] = modReach(m);
+        const Color color = ringColor(kSourceColors[m.source], own).alpha(alpha);
+        c.arc(center, r, knobAngle(n + down), knobAngle(n + up), color, width);
+        const float half = 0.5f * width + 1.75f;
+        for (const double end : {n + down < 0.0 ? 0.0 : -1.0, n + up > 1.0 ? 1.0 : -1.0})
+            if (end >= 0.0)
+                c.line(Canvas::onCircle(center, r - half, knobAngle(end)), Canvas::onCircle(center, r + half, knobAngle(end)),
+                       color, 1.5f);
+    };
     std::vector<Assignment> focus;
     forEachMod(w.param, [&](const Assignment &m) {
         if (modFocused(m)) {
             focus.push_back(m);
             return;
         }
-        const auto [down, up] = modReach(m);
-        const float alpha = (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
-        c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up),
-              ringColor(kSourceColors[m.source], own).alpha(alpha), 2.5f);
+        ring(m, radius + 2.5f, 2.5f, (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f));
     });
-    for (const Assignment &f : focus) {
-        const auto [down, up] = modReach(f);
-        const float alpha = sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f;
-        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up),
-              ringColor(kSourceColors[f.source], own).alpha(alpha), 4.0f);
-    }
+    for (const Assignment &f : focus)
+        ring(f, radius + 3.0f, 4.0f, sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f);
 
     // The cap, over a shadow where the theme has one; its pointer a line from the middle, or in a flat theme a dot by
     // its rim.

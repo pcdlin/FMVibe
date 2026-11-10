@@ -1745,6 +1745,51 @@ void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
           "a Spectrum card is outlined only while the mouse is over it");
 }
 
+// A modulation ring whose reach runs past its knob's end, cut off there, ends in a line across it: at the knob's end
+// angle something is drawn further out than the ring reaches inside its range, while a reach that stays inside draws
+// nothing there past the knob's track (read off the rendered pixels, along rays out from Op A's Phase knob).
+void testModEndMarks(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    model.set(paramIndex(0, OpParam::Phase), 0.5);
+    view.poll();
+    drag(view, sourceHandle(0), kOpPhaseKnob);
+    const bool assigned = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Phase);
+    const Color panel = detail::kThemes[detail::themeIndex("Midnight")].panel;
+    const auto bg = static_cast<uint32_t>(panel.r * 255.0f + 0.5f) << 16 |
+                    static_cast<uint32_t>(panel.g * 255.0f + 0.5f) << 8 | static_cast<uint32_t>(panel.b * 255.0f + 0.5f);
+    auto drawn = [&](uint32_t p) {
+        for (int shift = 0; shift < 24; shift += 8)
+            if (std::abs(static_cast<int>((p >> shift) & 0xFF) - static_cast<int>((bg >> shift) & 0xFF)) > 24)
+                return true;
+        return false;
+    };
+    // How far out from the knob's middle something is drawn along the ray at `angle`.
+    auto farthest = [&](float angle) {
+        float last = 0.0f;
+        for (float d = 8.0f; d <= 26.0f; d += 0.5f)
+            if (drawn(renderer.pixel(Canvas::onCircle(kOpPhaseKnob, d, angle))))
+                last = d;
+        return last;
+    };
+    auto at = [&](double phase, const char *file) {
+        model.set(paramIndex(0, OpParam::Phase), phase);
+        view.poll();
+        view.mouseMove({600.0f, 328.0f}, {});
+        return renderer.save(view, dir / file);
+    };
+    const float top = detail::knobAngle(1.0), inside = detail::knobAngle(0.9);
+    const bool cutShot = at(0.97, "17q-mod-end-mark.png");
+    const float cutEnd = farthest(top), cutInside = farthest(inside);
+    const bool freeShot = at(0.5, "17r-mod-no-end-mark.png");
+    const float freeEnd = farthest(top), freeRing = farthest(detail::knobAngle(0.6));
+    std::printf("      end mark: cut off %.1f px out at the end, %.1f inside; within range %.1f at the end, ring %.1f\n",
+                cutEnd, cutInside, freeEnd, freeRing);
+    check(assigned && cutShot && freeShot && cutEnd > cutInside + 1.0f && freeEnd + 2.0f < freeRing,
+          "a modulation ring cut off at its knob's end ends in a line across it, and one within range doesn't");
+}
+
 // In a theme that colors knobs by their card (Spectrum, Porcelain), a modulated knob's arc keeps its color, and a
 // modulation ring whose source's color is like it is drawn lighter (on a dark theme) to stand apart: Spectrum's LFO 1,
 // a blue near its accent, on an operator's knob, in the accent. Midnight draws the ring in the LFO's own color (read off
@@ -8315,6 +8360,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModFocus(dir, renderer);
     testCardOutline(dir, renderer);
     testFlatModulatedKnob(dir, renderer);
+    testModEndMarks(dir, renderer);
     testFlatThemes(dir, renderer);
     testModPill(dir, renderer);
     testRatioDisplay(dir, renderer);

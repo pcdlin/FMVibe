@@ -522,6 +522,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels) and its × take the aux away, and a source's line ending at the pill holding its handle;
   - a depth handle's right-click menu removing its aux, undoably, offered only while it has one;
   - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels);
+  - a knob's modulation ring cut off at the knob's end ending in a line across it, and one within range not (read
+    off the rendered pixels);
   - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
   - in Spectrum, a modulated knob's arc keeping the accent and a ring from a source of a like color (LFO 1's) drawn
     lighter, and Midnight's ring in its source's own color (read off the rendered pixels);

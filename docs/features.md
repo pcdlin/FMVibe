@@ -1211,7 +1211,9 @@ may show anywhere, repaints the whole of it.
     for the modulation range, plus a small dot of the same color under the
     knob (on a matrix cell, in its top right corner; on a wire or OUT label in the graph, centered just under it,
     the ranges running along its outline's top, so its depth stays readable; on the INPUTS tab's labels, in their bottom right corner,
-    the ranges along their top). The dots stay inside their knob's column, label or cell at each handle size; past
+    the ranges along their top). Where a range runs past its target's end, cut off there, a short line across the
+    ring or bar marks that end (in every theme; the Ratio readout's track has its arrow instead). The dots stay
+    inside their knob's column, label or cell at each handle size; past
     what fits, the rest go into a "+n" pill. Drag that dot to set the depth; double-click it
     to remove the modulation, or right-click it for a menu that types its depth, bypasses it, removes its aux (when
     it has one) or removes it. While the dot is under the mouse or dragged, its range (the ring, or
