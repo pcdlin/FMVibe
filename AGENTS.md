@@ -712,7 +712,9 @@ raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Versio
 PD Crystal Motion's routing view over `docs/editor.png` and its effects' panel as a chain over `docs/fx-chain.png`, and
 BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
-Any other answer puts those files back as they were.
+Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
+branch: it builds and runs `fmvibe-uishot` and copies its renders over the three, leaving the version, the other tests
+and git alone.
 
 By hand, instead:
 
