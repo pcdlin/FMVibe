@@ -508,6 +508,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
   - in Spectrum, a modulated knob's arc in the text's color rather than the accent, and Midnight's in the accent
     still (read off the rendered pixels);
+  - in the flat themes, every source in a color of its own and no effect in the dim text's, and an aux that is set
+    a chip tinted with its source's color, standing out from its MODS row (read off the rendered pixels);
   - an aux's handle hovered drawing a dotted line to the depth handle it scales, and that depth handle hovered
     drawing it from the aux's handle (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered

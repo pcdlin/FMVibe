@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <map>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -1785,6 +1786,63 @@ void testFlatModulatedKnob(const std::filesystem::path &dir, Renderer &renderer)
     check(assigned && plain.first > 30 && modulated.first < 5 && modulated.second > plain.second + 30 &&
               midnightModulated.first > 30 && macroShot,
           "in Spectrum a modulated knob's arc goes neutral, and in Midnight it keeps the accent");
+}
+
+// In the flat themes (Spectrum, Porcelain): no two sources in one color, and no effect in the dim text's color (which
+// would make one that is on look switched off); and an aux that is set a chip tinted with its source's color, which
+// stands out from its MODS row where + Aux is a filled pill (read off the rendered pixels).
+void testFlatThemes(const std::filesystem::path &dir, Renderer &renderer) {
+    auto same = [](const Color &a, const Color &b) { return a.r == b.r && a.g == b.g && a.b == b.b; };
+    bool distinct = true, lively = true;
+    for (const detail::Palette &theme : detail::kThemes) {
+        if (!theme.flat)
+            continue;
+        for (int i = 0; i < kAllSources; ++i)
+            for (int j = i + 1; j < kAllSources; ++j)
+                if (same(theme.sources[i], theme.sources[j])) {
+                    std::printf("      %s: sources %d and %d share a color\n", theme.name, i, j);
+                    distinct = false;
+                }
+        for (int type = 0; type < static_cast<int>(FxType::Count); ++type)
+            if (same(theme.fxTypes[type], theme.dim)) {
+                std::printf("      %s: effect type %d is in the dim text's color\n", theme.name, type);
+                lively = false;
+            }
+    }
+    check(distinct && lively, "a flat theme gives every source a color of its own, and no effect the dim text's");
+
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    model.set(slotAuxIndex(0, 0), slotAuxValue(kMaxSources + 1)); // Macro 2
+    view.poll();
+    click(view, {314.0f, 116.0f}); // the MODS tab
+    const Rect row = detail::modsRow(0.0f), cell = detail::modsCell(row, detail::kModsAux);
+    const float y = row.center().y + 6.0f; // under the name's letters
+    // How much of the chip's first 120 px is the row's own fill, its most common color along it.
+    auto plain = [&](const char *theme, const char *file) {
+        model.themeName = theme;
+        view.mouseMove({600.0f, 600.0f}, {});
+        if (!renderer.save(view, dir / file))
+            return 1.0f;
+        std::map<uint32_t, int> seen;
+        for (float x = row.x + 2.0f; x < row.right() - 2.0f; x += 1.0f)
+            ++seen[renderer.pixel({x, y})];
+        const uint32_t fill =
+            std::max_element(seen.begin(), seen.end(), [](auto &a, auto &b) { return a.second < b.second; })->first;
+        int matching = 0, all = 0;
+        for (float x = cell.x + 4.0f; x < cell.x + 124.0f; x += 1.0f, ++all)
+            matching += renderer.pixel({x, y}) == fill;
+        return static_cast<float>(matching) / static_cast<float>(all);
+    };
+    const float spectrum = plain("Spectrum", "17q-flat-aux-chip.png");
+    const float porcelain = plain("Porcelain", "17r-flat-aux-chip-light.png");
+    model.themeName = "Midnight";
+    std::printf("      an aux chip's share in its row's own fill: Spectrum %.2f, Porcelain %.2f\n", spectrum, porcelain);
+    check(model.value(slotAuxIndex(0, 0)) == slotAuxValue(kMaxSources + 1) && spectrum < 0.2f && porcelain < 0.2f,
+          "in a flat theme an aux that is set shows as a chip tinted with its source's color");
 }
 
 // An operator's Ratio, a 7-segment readout: each digit dragged on its own, a step of its place every 6 px, carrying
@@ -8165,6 +8223,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testModFocus(dir, renderer);
     testCardOutline(dir, renderer);
     testFlatModulatedKnob(dir, renderer);
+    testFlatThemes(dir, renderer);
     testModPill(dir, renderer);
     testRatioDisplay(dir, renderer);
     testTempo(dir, renderer);

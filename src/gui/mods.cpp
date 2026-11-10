@@ -840,8 +840,7 @@ void View::paintCascade(Canvas &c) {
             const bool opened = k + 1 < levels.size() && cascade_->open[k] == static_cast<int>(i);
             const bool hovered = hover_ && hover_->kind == Kind::CascadeItem && hover_->a == static_cast<int>(k) &&
                                  hover_->b == static_cast<int>(i);
-            if (opened || ((hovered || picked == static_cast<int>(i)) && item.enabled))
-                c.fillRect(at, kTrack, kRadiusMark);
+            paintMenuRow(c, at, opened || ((hovered || picked == static_cast<int>(i)) && item.enabled), false);
             const Color ink = item.enabled ? kText : kFaint;
             float x = at.x + 8.0f;
             if (item.color) {

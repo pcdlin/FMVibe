@@ -100,17 +100,40 @@ void paintNodeShadow(Canvas &c, Point center, float radius) {
         c.fillCircle({center.x, center.y + 2.0f}, radius + 1.0f, nodeShadow());
 }
 
-void paintCardShadow(Canvas &c, Rect r) {
+void paintCardShadow(Canvas &c, Rect r, float radius) {
     if (look.cardShadow > 0.0f) // close and faint, a little lower than the card
-        softShadow(c, r, kRadiusCard, 3, 1.0f, 1.5f, look.cardShadow);
+        softShadow(c, r, radius, 3, 1.0f, 1.5f, look.cardShadow);
 }
 
-void paintMenuPanel(Canvas &c, Rect r) {
-    if (look.flat) // faint and close, about a fifth dark under the panel
-        softShadow(c, r, kRadiusCard, 4, 1.25f, 2.0f, 0.2f);
-    c.fillRect(r, kRaised, kRadiusCard);
+Color popupFill() {
     if (!look.flat)
-        c.strokeRect(r, kBorder, 1.0f, kRadiusCard);
+        return kRaised;
+    // A light theme's white, as its panels, lifted off them by the shadow; a dark one's a step lighter than the raised
+    // rows it may sit on, which a shadow on a dark ground alone wouldn't part it from.
+    return lightTheme() ? kPanel : mix(kRaised, kText, 0.05f);
+}
+
+void paintMenuPanel(Canvas &c, Rect r, float radius) {
+    if (look.flat) {
+        // Dropped a little below it and tight at the sides, so it reads as lifted rather than as a halo; darker on a
+        // dark theme's ground, where a faint one wouldn't show.
+        if (lightTheme())
+            softShadow(c, r, radius, 4, 1.0f, 3.0f, 0.16f);
+        else
+            softShadow(c, r, radius, 4, 1.25f, 3.0f, 0.5f);
+    }
+    c.fillRect(r, popupFill(), radius);
+    if (!look.flat)
+        c.strokeRect(r, kBorder, 1.0f, radius);
+}
+
+void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected) {
+    if (!hovered && !selected)
+        return;
+    if (look.flat) // a shade of the text over the popup's fill, which shows on its white or its lighter dark alike
+        c.fillRect(r, kText.alpha(hovered ? 0.09f : 0.05f), kRadiusControl);
+    else
+        c.fillRect(r, hovered ? kTrack : kTrack.alpha(0.5f), kRadiusControl);
 }
 
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width) {

@@ -44,7 +44,7 @@ struct Palette {
     Color whiteKey, whiteKeyHover, blackKey, blackKeyHover, keyLabel;
     // Each type of effect in a color of its own, by FxType (None: the effects' color): shaper red, delay
     // blue, DJ EQ amber, parametric EQ orange, filter purple, compressor green, three-band teal, reverb indigo,
-    // phaser pink, flanger lime, frequency shifter cyan, phase disperser slate, widener fuchsia, amp tweed gold.
+    // phaser pink, flanger lime, frequency shifter cyan, phase disperser slate blue, widener fuchsia, amp tweed gold.
     Color fxTypes[static_cast<int>(FxType::Count)];
     // A split's bands, low, middle and high: from cool and darker to warm and lighter, so they part by lightness too.
     Color bands[3];
@@ -78,7 +78,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xFBBF24), Color::hex(0x34D399), Color::hex(0xF87171), Color::hex(0xE879F9),
       Color::hex(0x2DD4BF), Color::hex(0xFDE047), Color::hex(0xA78BFA), Color::hex(0xFDA4AF),
       Color::hex(0x67E8F9), Color::hex(0x86EFAC), Color::hex(0x60A5FA), Color::hex(0xFDBA74),
-      Color::hex(0xFDA4AF), Color::hex(0xFDBA74), Color::hex(0xFDE68A), Color::hex(0xBEF264),
+      Color::hex(0xFDB09A), Color::hex(0xFDBA74), Color::hex(0xFDE68A), Color::hex(0xBEF264),
       Color::hex(0x6EE7B7), Color::hex(0x67E8F9), Color::hex(0xA5B4FC), Color::hex(0xF0ABFC),
       Color::hex(0xE2E8F0), Color::hex(0xB8C4FF), Color::hex(0xFF9E7A)},
      Color::hex(0x1A1D25), Color::hex(0x101217), Color::hex(0x1A1E26), Color::hex(0x12151B),
@@ -97,14 +97,14 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xC26505), Color::hex(0x04805C), Color::hex(0xD11F1F), Color::hex(0xB01ECA),
       Color::hex(0x0B857A), Color::hex(0xA87103), Color::hex(0x6D28D9), Color::hex(0xD0163F),
       Color::hex(0x0780A0), Color::hex(0x138A3F), Color::hex(0x1F5BE0), Color::hex(0xDD4F07),
-      Color::hex(0xD0163F), Color::hex(0xDD4F07), Color::hex(0xA87103), Color::hex(0x4F8A0B),
+      Color::hex(0x9A3412), Color::hex(0xDD4F07), Color::hex(0xA87103), Color::hex(0x4F8A0B),
       Color::hex(0x04805C), Color::hex(0x0780A0), Color::hex(0x4338CA), Color::hex(0xB01ECA),
       Color::hex(0x3F4A5C), Color::hex(0x4F52E8), Color::hex(0xC2410C)},
      Color::hex(0xFFFFFF), Color::hex(0xE8ECF2), Color::hex(0xFFFFFF), Color::hex(0xEDF0F5),
      Color::hex(0xFFFFFF), Color::hex(0xDDE3EC), Color::hex(0x1A1F29), Color::hex(0x3A4252), Color::hex(0x878FA0),
      {Color::hex(0xDD4F07), Color::hex(0xD11F1F), Color::hex(0x1F5BE0), Color::hex(0xC26505), Color::hex(0xDD4F07),
       Color::hex(0x8A2BE2), Color::hex(0x04805C), Color::hex(0x0B857A), Color::hex(0x4338CA), Color::hex(0xD0216D),
-      Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x475569), Color::hex(0xB01ECA),
+      Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x3B6A8C), Color::hex(0xB01ECA),
       Color::hex(0x0B857A), Color::hex(0x9A6A1C)},
      {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xB86E0E)}},
     {"Spectrum", Str::ThemeSpectrum, // flat on deep indigo, each operator in a color of its own
@@ -116,39 +116,39 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xFFC857), Color::hex(0x4FE0A8), Color::hex(0xFF6B6B), Color::hex(0xF08CE8),
       Color::hex(0x3ED6C1), Color::hex(0xF5E05A), Color::hex(0x9C8CFF), Color::hex(0xFFA3B5),
       Color::hex(0x6EE0F0), Color::hex(0x9EF0A0), Color::hex(0x6EA8FF), Color::hex(0xFFB070),
-      Color::hex(0xFF8A5C), Color::hex(0xF5C04A), Color::hex(0xA6E05A), Color::hex(0x3ED6C1),
-      Color::hex(0x4FC3F7), Color::hex(0x7C8CFF), Color::hex(0xB49CFF), Color::hex(0xFF5C9A),
-      Color::hex(0xE0DCF0), Color::hex(0xB8C0FF), Color::hex(0xFF8A5C)},
+      Color::hex(0xFF9F4A), Color::hex(0xE8A33A), Color::hex(0xA6E05A), Color::hex(0x2FBF9A),
+      Color::hex(0x8FD3FF), Color::hex(0x7C8CFF), Color::hex(0xDDB0FF), Color::hex(0xFF5C9A),
+      Color::hex(0xE0DCF0), Color::hex(0xB8C0FF), Color::hex(0xE2B59C)},
      Color::hex(0x1A1726), Color::hex(0x0D0C14), Color::hex(0x15131F), Color::hex(0x100E18),
      Color::hex(0xD9D5E8), Color::hex(0xC4BFD8), Color::hex(0x1D1A2A), Color::hex(0x34304A), Color::hex(0x5A5570),
      {Color::hex(0xFFB86B), Color::hex(0xFF6B6B), Color::hex(0x4FC3F7), Color::hex(0xF5C04A), Color::hex(0xFF8A5C),
       Color::hex(0xC9A8FF), Color::hex(0x4FE0A8), Color::hex(0x3ED6C1), Color::hex(0x7C8CFF), Color::hex(0xFF5C9A),
-      Color::hex(0xA6E05A), Color::hex(0x6EE0F0), Color::hex(0xB8B4CC), Color::hex(0xF08CE8),
+      Color::hex(0xA6E05A), Color::hex(0x6EE0F0), Color::hex(0x8FB0D6), Color::hex(0xF08CE8),
       Color::hex(0x3ED6C1), Color::hex(0xE8C27A)},
-     {Color::hex(0x6E9BFF), Color::hex(0x3ED6C1), Color::hex(0xFFB86B)},
+     {Color::hex(0x6E9BFF), Color::hex(0x7FD87F), Color::hex(0xFFB86B)},
      true,
      {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
       Color::hex(0xA6E05A)},
      0.10f, Color::hex(0x2A263D), Color::hex(0x211E30)},
     {"Porcelain", Str::ThemePorcelain, // Spectrum in light: white panels lifted off a cool gray by soft shadows
-     Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
+     Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xEEF1F5), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
      Color::hex(0xFFFFFF),
-     Color::hex(0x1A1D24), Color::hex(0x5D6472), Color::hex(0x9AA1AD),
-     Color::hex(0x2F5BFF), Color::hex(0x7A4DFF), Color::hex(0xE2546A),
-     {Color::hex(0x0E9BC4), Color::hex(0xE2546A), Color::hex(0x7FA313), Color::hex(0x7A4DFF),
-      Color::hex(0xD98A0B), Color::hex(0x0E8F6E), Color::hex(0xD64545), Color::hex(0xB03FC4),
+     Color::hex(0x1A1D24), Color::hex(0x5D6472), Color::hex(0x8E95A2),
+     Color::hex(0x2F5BFF), Color::hex(0x7A4DFF), Color::hex(0xD46E2C),
+     {Color::hex(0x0E9BC4), Color::hex(0xE2546A), Color::hex(0x759612), Color::hex(0x7A4DFF),
+      Color::hex(0xCF8400), Color::hex(0x0E8F6E), Color::hex(0xD64545), Color::hex(0xB03FC4),
       Color::hex(0x0F8F85), Color::hex(0xB08A0B), Color::hex(0x6A45E0), Color::hex(0xD6406A),
-      Color::hex(0x0A8FAA), Color::hex(0x3E8E3E), Color::hex(0x2F5BFF), Color::hex(0xE07B39),
-      Color::hex(0xC26A55), Color::hex(0xB5822F), Color::hex(0x9A9420), Color::hex(0x5E9A4E),
+      Color::hex(0x0A8FAA), Color::hex(0x3E8E3E), Color::hex(0x2F5BFF), Color::hex(0xD46E2C),
+      Color::hex(0xB86A3E), Color::hex(0xB5822F), Color::hex(0x9A9420), Color::hex(0x5E9A4E),
       Color::hex(0x3E9A90), Color::hex(0x4F7FC2), Color::hex(0x6E68C2), Color::hex(0xA066C2),
-      Color::hex(0x3A404C), Color::hex(0x6A85FF), Color::hex(0xE07B39)},
-     Color::hex(0xFFFFFF), Color::hex(0xF3F5F8), Color::hex(0xFFFFFF), Color::hex(0xFAFBFC),
+      Color::hex(0x3A404C), Color::hex(0x6A85FF), Color::hex(0x8A6A4A)},
+     Color::hex(0xFFFFFF), Color::hex(0xF0F2F6), Color::hex(0xFFFFFF), Color::hex(0xFAFBFC),
      Color::hex(0xFFFFFF), Color::hex(0xEDF0F5), Color::hex(0x1A1D24), Color::hex(0x3A3F4B), Color::hex(0x8A91A0),
-     {Color::hex(0xE2546A), Color::hex(0xD64545), Color::hex(0x2F5BFF), Color::hex(0xD98A0B), Color::hex(0xE07B39),
+     {Color::hex(0xD46E2C), Color::hex(0xD64545), Color::hex(0x2F5BFF), Color::hex(0xCF8400), Color::hex(0xD46E2C),
       Color::hex(0x7A4DFF), Color::hex(0x0E8F6E), Color::hex(0x0F8F85), Color::hex(0x4F52E8), Color::hex(0xD6406A),
-      Color::hex(0x7FA313), Color::hex(0x0A8FAA), Color::hex(0x5D6472), Color::hex(0xB03FC4),
+      Color::hex(0x759612), Color::hex(0x0A8FAA), Color::hex(0x3F6E99), Color::hex(0xB03FC4),
       Color::hex(0x0F8F85), Color::hex(0xA07020)},
-     {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xC27A1E)},
+     {Color::hex(0x2F67D0), Color::hex(0x3C9A4C), Color::hex(0xC27A1E)},
      true,
      {Color::hex(0x2F5BFF), Color::hex(0xD9541A), Color::hex(0x0A9488), Color::hex(0xB07A00), Color::hex(0xD0236E),
       Color::hex(0x4E8A0E)},
@@ -208,6 +208,13 @@ inline Color wellColor() {
 inline Color wellHover() {
     return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.11f} : look.track;
 }
+// What a meter's or a bar's empty part is filled with: the cards' color, or in a flat theme a shade of whatever it sits
+// on (a tinted card, a display), which keeps that one's tint.
+inline Color meterWell() {
+    if (!look.flat)
+        return look.card;
+    return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.07f} : Color{1.0f, 1.0f, 1.0f, 0.07f};
+}
 // Whether controls get their 1 px outline: not in a flat theme.
 inline bool outlined() {
     return !look.flat;
@@ -230,11 +237,21 @@ void softShadow(Canvas &c, Rect r, float radius, int steps, float spread, float 
 void paintNodeShadow(Canvas &c, Rect r, float radius);
 void paintNodeShadow(Canvas &c, Point center, float radius);
 
-// A card's shadow, in a theme that gives its cards one (see Palette::cardShadow); none in the others.
-void paintCardShadow(Canvas &c, Rect r);
+// A card's shadow (its corners `radius`), in a theme that gives its cards one (see Palette::cardShadow); none in the
+// others.
+void paintCardShadow(Canvas &c, Rect r, float radius = kRadiusCard);
 
-// An open list's or menu's panel: outlined, or in a flat theme lifted by a soft shadow instead.
-void paintMenuPanel(Canvas &c, Rect r);
+// What a popup is filled with: an open list or menu, a tooltip, a tag, a toast. Raised, or in a flat theme the panels'
+// white in a light one and a step lighter than the raised rows in a dark one.
+Color popupFill();
+
+// A popup's panel (an open list or menu, a tooltip, a tag, a toast; its corners `radius`): outlined, or in a flat theme
+// lifted by a soft shadow instead.
+void paintMenuPanel(Canvas &c, Rect r, float radius = kRadiusCard);
+
+// A menu's row under the mouse, and the one it has picked, as every list and menu marks them: in neutral tones, the
+// row's icon alone taking a color.
+void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected);
 
 // A glow feathering out, as strong as `color`'s alpha where it starts and fading to nothing `spread` further out: round a
 // circle of radius `inner`, round a rounded box, and along a line `width` wide. As the glow setting (`glowing`) is at

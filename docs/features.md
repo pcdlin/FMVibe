@@ -1411,23 +1411,35 @@ may show anywhere, repaints the whole of it.
   Spectrum (deep indigo) or Porcelain (Spectrum in light: white panels lifted off a cool gray by soft shadows, their
   cards with a slight one too), each button shown in its own colors. Spectrum and Porcelain share a flat look: each
   effect and source card tinted with its own color and outlined only while the mouse is over it (or it is dragged),
-  a split's container likewise, the band it shows faintly in its color behind its cards; a knob's arc, and faintly its
-  track, in the color of what it belongs to (its card's, in the inspector the accent), or in the text's color once
-  something modulates it, so its modulation rings stand apart from it whatever their sources' colors, and its pointer
-  a dot (on a modulated knob, the dot showing where modulation takes it ringed in the cap's color); an LFO's
-  shape filled on its card; a lit switch filled solid with its color, rows of them set in a well (the LFO's clock and
-  polarity icons a little smaller there); list buttons, the lists and menus they open (on a soft shadow), the title
-  bar's buttons, the preset's name, the output scope, the note source's and velocity's curves and the wheels without
-  outlines; + EFFECT, + SOURCE and the MODS view's + Aux and + Add modulation as filled pills, and the cards that add
-  an effect, a source or a band's effect filled faintly, a disc behind their plus; each operator, its tab and the
-  routes it sends in a color of its own; the routing nodes on a soft shadow (a silent one outlined in a faint tint of
-  its color, and an operator's unison copies tinted discs peeking out on both sides); and the effects graph's nodes filled with
-  a tint of their color, without an outline. Settings that name a theme no longer offered show the nearest one:
-  Graphite and Machined as Midnight, Paper as Light.
+  a split's container and its card in the effects graph likewise, on the same shadow as the cards beside them, the
+  band it shows faintly in its color behind its cards; a knob's arc, and faintly its track, in the color of what it
+  belongs to (its card's; in the inspector a filter's and a shaper's, and the routes into them on its INPUTS tab, in
+  that node's color, as its switches are, an operator's in the accent), or in the text's color once something
+  modulates it, so its modulation rings stand apart from it whatever their sources' colors, and its pointer a dot (on
+  a modulated knob, the dot showing where modulation takes it ringed in the cap's color); an LFO's shape filled on
+  its card; a lit switch filled solid with its color, rows of them set in a well (the LFO's clock and polarity icons
+  a little smaller there), and so the split's 2 | 3, the scope's cycle counts, the Param EQ's band chips (the picked
+  one tinted with its band's color), the octave buttons and the dialogs' buttons; list buttons, a source card's MODS
+  button, the lists and menus they open, tooltips, the name tags and the messages (on a soft shadow, white in
+  Porcelain and a step lighter than the rows in Spectrum, their rows shaded under the mouse), the title bar's
+  buttons, the preset's name, the output scope, the Ratio readout (outlined under the mouse), the note source's and
+  velocity's curves and the wheels without outlines, and search fields outlined only while typed in or holding
+  words; the dialogs lifted by a shadow in Porcelain, as its panels are; + EFFECT, + SOURCE and the MODS view's + Aux
+  and + Add modulation as filled pills, an aux that is set a chip tinted with its source's color, and the cards that
+  add an effect, a source or a band's effect filled faintly, a disc behind their plus; each operator, its tab, its
+  names in the matrix (whose legend shows the operators' colors side by side) and the routes it sends to another
+  operator in a color of its own (a route into or out of a filter or a shaper takes that node's color, as in every
+  theme); the routing nodes on a soft shadow (a silent one outlined in a faint tint of its color, and an operator's
+  unison copies tinted discs peeking out on both sides); the effects graph's nodes, a split and a join too, filled
+  with a tint of their color, without an outline; and meters and a dimmed control taking the tint of the card they are on. Settings
+  that name a theme no longer offered show the nearest one: Graphite and Machined as Midnight, Paper as Light.
   **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter
-  and effect responses) glow, drawing them a little thinner: the higher, the stronger and wider the halo. It sets the halos that sounding operators and the effects graph's nodes and wires
-  feather out with too: as they are drawn at 75 %, stronger and wider above it, fainter below. At Off the effects
-  graph shows no level (and the editor doesn't repaint for it), and an operator's halo is a plain ring.
+  and effect responses) glow, drawing them a little thinner: the higher, the stronger and wider the halo. It sets the
+  halos that sounding operators and the effects graph's nodes and wires feather out with too: as they are drawn at 75
+  %, stronger and wider above it, fainter below. In a light theme (Light, Porcelain) a grey wire of the effects graph
+  glows in the color of the effect it comes out of (or the accent), since a grey glow would read as a shadow there. At
+  Off the effects graph shows no level (and the editor doesn't repaint for it), and an operator's halo is a plain
+  ring.
   The editor shows it while it is dragged and keeps it when it is let go. **Lines**, a slider like it from Off to
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
   one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Handles**, Small (to begin

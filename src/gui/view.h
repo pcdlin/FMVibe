@@ -1302,6 +1302,7 @@ private:
     void noteCard(int id, Rect card, Rect shown);
     int cardAt(Point p) const;
     bool cardOutlined(int id, bool dragged) const;
+    Color cardFaceUnder(const Widget &w) const;
     void paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown);
     Drag drag_;
     // What the last press hit, as it went down, and where: a double-click after it goes with it.

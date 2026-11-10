@@ -1879,7 +1879,13 @@ void View::paintFxGraph(Canvas &c) {
         const std::vector<Point> &points = w.path;
         const float glow = w.faint ? 0.0f : fxGlow(w.port);
         if (glow > 0.01f) {
-            featherLine(c, points.data(), points.size(), 1.6f, 6.0f, w.color.alpha(0.3f * glow));
+            // A grey wire's glow would darken a light theme's ground like a shadow: there it glows in the color of the
+            // effect it comes out of, or in the accent.
+            Color halo = w.color;
+            if (lightTheme() && std::max({w.color.r, w.color.g, w.color.b}) - std::min({w.color.r, w.color.g, w.color.b}) < 0.1f)
+                halo = w.port >= fxSlotPort(0) && w.port < fxSlotPort(kFxSlots) ? effectColor(w.port - fxSlotPort(0))
+                                                                                  : kAccent;
+            featherLine(c, points.data(), points.size(), 1.6f, 6.0f, halo.alpha(0.3f * glow));
         }
         if (w.arrow && std::abs(w.to.x + 8.0f - (at.out.x - kFxEndHalfW)) < 0.5f)
             outGlow = std::max(outGlow, glow);
@@ -1958,7 +1964,7 @@ void View::paintFxGraph(Canvas &c) {
         const bool hot = !dragging && hover_ && hover_->kind == Kind::FxNode && hover_->a == node;
         const float width = hot ? 2.4f : 1.6f;
         if (ghost) {
-            c.strokeRect(nodeRect(node, center), kFaint, 1.3f, node < kFxSlots ? kRadiusControl : 6.0f, true);
+            c.strokeRect(nodeRect(node, center), kFaint, 1.3f, kRadiusControl, true);
             return;
         }
         auto name = [&](float below, const std::string &text) {
@@ -1996,17 +2002,19 @@ void View::paintFxGraph(Canvas &c) {
                                   : std::max({fxGlow(fxBandPort(sum, kHighBand)), fxGlow(fxBandPort(sum, kLowBand)),
                                               three ? fxGlow(fxBandPort(sum, 1)) : 0.0f});
         if (glow > 0.01f)
-            featherRect(c, r, 6.0f, 14.0f, kText.alpha(0.18f * glow));
-        if (isSelected)
-            c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, 9.0f);
+            featherRect(c, r, kRadiusControl, 14.0f, kText.alpha(0.18f * glow));
+        if (isSelected) // as an effect's: its ring 5 px out, its corners as much rounder
+            c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
         // Its upper half in the high band's color, its lower half in the low band's, parted by a slight slant (rising
         // across a split, falling across a join, its mirror); split in three, its thirds, the middle band's between. A split's colors come in from grey at its left, where the
-        // main line comes in; a join's go back out to grey at its right, where the main line goes on.
+        // main line comes in; a join's go back out to grey at its right, where the main line goes on. In a flat theme,
+        // as the effects' nodes: filled with its tints more strongly, under the mouse and picked more still, without an
+        // outline.
         if (alpha >= 1.0f)
-            paintNodeShadow(c, r, 6.0f);
-        c.fillRect(r, kCardColor.alpha(alpha), 6.0f);
+            paintNodeShadow(c, r, kRadiusControl);
+        c.fillRect(r, kCardColor.alpha(alpha), kRadiusControl);
         const Color neutral = join ? sumColor() : splitColor();
-        const std::vector<Point> outline = roundedOutline(r, 6.0f);
+        const std::vector<Point> outline = roundedOutline(r, kRadiusControl);
         const float slant = join ? -kSplitSlant : kSplitSlant;
         const float third = three ? r.h / 6.0f : 0.0f; // the cuts' offsets from the middle
         const Point a{r.x, center.y - third + slant}, b{r.right(), center.y - third - slant};
@@ -2022,7 +2030,7 @@ void View::paintFxGraph(Canvas &c) {
             const float t = std::clamp((x - r.x) / r.w, 0.0f, 1.0f);
             return join ? 1.0f - t : t;
         };
-        const float tint = isSelected ? kSelectedFill : 0.1f;
+        const float tint = look.flat ? (isSelected ? 0.4f : hot ? 0.3f : 0.18f) : isSelected ? kSelectedFill : 0.1f;
         for (const int band : {kHighBand, 1, kLowBand}) {
             if (band == 1 && !three)
                 continue;
@@ -2041,6 +2049,8 @@ void View::paintFxGraph(Canvas &c) {
                     c.fillPolygon(slice.data(), slice.size(),
                                   mix(neutral, ink, across(0.5f * (x0 + x1))).alpha(alpha * tint));
             }
+            if (look.flat)
+                continue;
             // Its outline in runs of one color each: cut where it goes 2 px across (straight up and down it stays one
             // piece), each piece's color a mix of grey and the band's for where it is across, in kSteps steps, and
             // the pieces of a step drawn as one polyline, the next run starting where it ends.
@@ -2157,9 +2167,10 @@ void View::paintFxGraph(Canvas &c) {
 
 void View::paintSplitControls(Canvas &c, int split, Rect card, bool row) {
     // On grey: in the row, its container paints it; in the graph, its card.
-    if (!row) {
+    if (!row) { // on a shadow and outlined as an effect's card is: in a flat theme only while the mouse is over it
+        paintCardShadow(c, card);
         c.fillRect(card, splitFill(), kRadiusCard);
-        if (!look.flat) // in a theme whose cards go without an outline, so does it
+        if (!look.flat || (drag_.kind == DragKind::None && card.contains(hoverPoint_)))
             c.strokeRect(card, splitLine(), 1.3f, kRadiusCard);
     }
     const bool grabbed = (drag_.kind == DragKind::FxMove && drag_.widget.kind == Kind::FxBoxGrip &&
