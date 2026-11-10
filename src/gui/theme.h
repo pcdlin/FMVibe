@@ -6,6 +6,7 @@
 
 #include "view.h"
 
+#include <cmath>
 #include <cstddef>
 #include <iterator>
 #include <string>
@@ -44,16 +45,78 @@ struct Palette {
     Color whiteKey, whiteKeyHover, blackKey, blackKeyHover, keyLabel;
     // Each type of effect in a color of its own, by FxType (None: the effects' color): shaper red, delay
     // blue, DJ EQ amber, parametric EQ orange, filter purple, compressor green, three-band teal, reverb indigo,
-    // phaser pink, flanger lime, frequency shifter cyan, phase disperser slate, widener fuchsia, amp tweed gold,
+    // phaser pink, flanger lime, frequency shifter cyan, phase disperser slate blue, widener fuchsia, amp tweed gold,
     // utility a neutral gray.
     Color fxTypes[static_cast<int>(FxType::Count)];
     // A split's bands, low, middle and high: from cool and darker to warm and lighter, so they part by lightness too.
     Color bands[3];
+    // How it draws beyond its colors. Left out, a theme draws as Midnight and Light do: outlined cards and controls,
+    // the accent for every knob and operator, switches lit with a tint.
+    // `flat` is Spectrum's and Porcelain's look: cards tinted with their own color and outlined only under the mouse,
+    // a knob's arc (and its track, faintly) in the color of the card it is on (a modulation ring of a like color told
+    // apart from it, see ringColor()) and its pointer a dot; switches filled
+    // solid with their color when lit, set in a well; list buttons, menus and the other controls without outlines;
+    // + SOURCE and the other add buttons as filled pills, the cards that add one filled faintly; each operator in a
+    // color of its own (ops); routing nodes on a soft shadow (nodeTop down to nodeBottom), the effects graph's
+    // filled with a tint of their color.
+    bool flat = false;
+    Color ops[kOps]{};         // A to F: its node, its tab and the routes it sends
+    float cardTint = 0.0f;     // how strongly a card takes its color
+    Color nodeTop{}, nodeBottom{};
+    float capShadow = 0.0f;    // a shadow under each knob cap, this dark
+    float panelShadow = 0.0f;  // a soft shadow under the panels and the tab shown, this dark, which then go unoutlined
+    float cardShadow = 0.0f;   // a soft shadow under the effect and source cards, this dark
 };
 static_assert(static_cast<int>(FxType::Count) == 17, "a color for each effect type in every theme");
 
 // The themes the settings pick from, by name; the first is the default.
 inline constexpr Palette kThemes[] = {
+    {"Spectrum", Str::ThemeSpectrum, // flat on a deep blue indigo, each operator in a color of its own
+     Color::hex(0x0C0E14), Color::hex(0x14151E), Color::hex(0x1C1D28), Color::hex(0x242736), Color::hex(0x282C3E),
+     Color::hex(0x21232E),
+     Color::hex(0xE9EBF4), Color::hex(0x9297A9), Color::hex(0x575C6E),
+     Color::hex(0x7C8CFF), Color::hex(0xC9A8FF), Color::hex(0xFFB86B),
+     {Color::hex(0x4FC3F7), Color::hex(0xFF7A8A), Color::hex(0xC6E85A), Color::hex(0xB49CFF),
+      Color::hex(0xFFC857), Color::hex(0x4FE0A8), Color::hex(0xFF6B6B), Color::hex(0xF08CE8),
+      Color::hex(0x3ED6C1), Color::hex(0xF5E05A), Color::hex(0x9C8CFF), Color::hex(0xFFA3B5),
+      Color::hex(0x6EE0F0), Color::hex(0x9EF0A0), Color::hex(0x6EA8FF), Color::hex(0xFFB070),
+      Color::hex(0xFF9F4A), Color::hex(0xE8A33A), Color::hex(0xA6E05A), Color::hex(0x2FBF9A),
+      Color::hex(0x8FD3FF), Color::hex(0x7C8CFF), Color::hex(0xDDB0FF), Color::hex(0xFF5C9A),
+      Color::hex(0xDEE1EE), Color::hex(0xB8C0FF), Color::hex(0xE2B59C)},
+     Color::hex(0x191A24), Color::hex(0x0C0E14), Color::hex(0x14151E), Color::hex(0x0E1018),
+     Color::hex(0xD7D9E6), Color::hex(0xC1C4D6), Color::hex(0x1C1D28), Color::hex(0x323648), Color::hex(0x575C6E),
+     {Color::hex(0xFFB86B), Color::hex(0xFF6B6B), Color::hex(0x4FC3F7), Color::hex(0xF5C04A), Color::hex(0xFF8A5C),
+      Color::hex(0xC9A8FF), Color::hex(0x4FE0A8), Color::hex(0x3ED6C1), Color::hex(0x7C8CFF), Color::hex(0xFF5C9A),
+      Color::hex(0xA6E05A), Color::hex(0x6EE0F0), Color::hex(0x8FB0D6), Color::hex(0xF08CE8),
+      Color::hex(0x3ED6C1), Color::hex(0xE8C27A), Color::hex(0xA8ABB8)},
+     {Color::hex(0x6E9BFF), Color::hex(0x7FD87F), Color::hex(0xFFB86B)},
+     true,
+     {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
+      Color::hex(0xA6E05A)},
+     0.10f, Color::hex(0x282B3B), Color::hex(0x20222E)},
+    {"Porcelain", Str::ThemePorcelain, // Spectrum in light: white panels lifted off a cool gray by soft shadows
+     Color::hex(0xECEEF2), Color::hex(0xFFFFFF), Color::hex(0xEEF1F5), Color::hex(0xE3E6EB), Color::hex(0xE7EAEF),
+     Color::hex(0xFFFFFF),
+     Color::hex(0x1A1D24), Color::hex(0x5D6472), Color::hex(0x8E95A2),
+     Color::hex(0x2F5BFF), Color::hex(0x7A4DFF), Color::hex(0xD46E2C),
+     {Color::hex(0x0E9BC4), Color::hex(0xE2546A), Color::hex(0x759612), Color::hex(0x7A4DFF),
+      Color::hex(0xCF8400), Color::hex(0x0E8F6E), Color::hex(0xD64545), Color::hex(0xB03FC4),
+      Color::hex(0x0F8F85), Color::hex(0xB08A0B), Color::hex(0x6A45E0), Color::hex(0xD6406A),
+      Color::hex(0x0A8FAA), Color::hex(0x3E8E3E), Color::hex(0x2F5BFF), Color::hex(0xD46E2C),
+      Color::hex(0xB86A3E), Color::hex(0xB5822F), Color::hex(0x9A9420), Color::hex(0x5E9A4E),
+      Color::hex(0x3E9A90), Color::hex(0x4F7FC2), Color::hex(0x6E68C2), Color::hex(0xA066C2),
+      Color::hex(0x3A404C), Color::hex(0x6A85FF), Color::hex(0x8A6A4A)},
+     Color::hex(0xFFFFFF), Color::hex(0xF0F2F6), Color::hex(0xFFFFFF), Color::hex(0xFAFBFC),
+     Color::hex(0xFFFFFF), Color::hex(0xEDF0F5), Color::hex(0x1A1D24), Color::hex(0x3A3F4B), Color::hex(0x8A91A0),
+     {Color::hex(0xD46E2C), Color::hex(0xD64545), Color::hex(0x2F5BFF), Color::hex(0xCF8400), Color::hex(0xD46E2C),
+      Color::hex(0x7A4DFF), Color::hex(0x0E8F6E), Color::hex(0x0F8F85), Color::hex(0x4F52E8), Color::hex(0xD6406A),
+      Color::hex(0x759612), Color::hex(0x0A8FAA), Color::hex(0x3F6E99), Color::hex(0xB03FC4),
+      Color::hex(0x0F8F85), Color::hex(0xA07020), Color::hex(0x6A707C)},
+     {Color::hex(0x2F67D0), Color::hex(0x3C9A4C), Color::hex(0xC27A1E)},
+     true,
+     {Color::hex(0x2F5BFF), Color::hex(0xD9541A), Color::hex(0x0A9488), Color::hex(0xB07A00), Color::hex(0xD0236E),
+      Color::hex(0x4E8A0E)},
+     0.07f, Color::hex(0xFFFFFF), Color::hex(0xF2F4F7), 0.22f, 0.06f, 0.07f},
     {"Midnight", Str::ThemeMidnight,
      Color::hex(0x0D0F13), Color::hex(0x161920), Color::hex(0x1F232C), Color::hex(0x272C36), Color::hex(0x2D323D),
      Color::hex(0x252A35),
@@ -63,7 +126,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xFBBF24), Color::hex(0x34D399), Color::hex(0xF87171), Color::hex(0xE879F9),
       Color::hex(0x2DD4BF), Color::hex(0xFDE047), Color::hex(0xA78BFA), Color::hex(0xFDA4AF),
       Color::hex(0x67E8F9), Color::hex(0x86EFAC), Color::hex(0x60A5FA), Color::hex(0xFDBA74),
-      Color::hex(0xFDA4AF), Color::hex(0xFDBA74), Color::hex(0xFDE68A), Color::hex(0xBEF264),
+      Color::hex(0xFDB09A), Color::hex(0xFDBA74), Color::hex(0xFDE68A), Color::hex(0xBEF264),
       Color::hex(0x6EE7B7), Color::hex(0x67E8F9), Color::hex(0xA5B4FC), Color::hex(0xF0ABFC),
       Color::hex(0xE2E8F0), Color::hex(0xB8C4FF), Color::hex(0xFF9E7A)},
      Color::hex(0x1A1D25), Color::hex(0x101217), Color::hex(0x1A1E26), Color::hex(0x12151B),
@@ -73,25 +136,6 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xA3E635), Color::hex(0x22D3EE), Color::hex(0xCBD5E1), Color::hex(0xE879F9),
       Color::hex(0x2DD4BF), Color::hex(0xE0B878), Color::hex(0xA8A8AD)},
      {Color::hex(0x6AA3F0), Color::hex(0x4CC9B0), Color::hex(0xEFB46F)}},
-    {"Graphite", Str::ThemeGraphite, // neutral grays, without the blue
-     Color::hex(0x111111), Color::hex(0x1A1A1A), Color::hex(0x252525), Color::hex(0x2F2F2F), Color::hex(0x363636),
-     Color::hex(0x2C2C2C),
-     Color::hex(0xEDEDED), Color::hex(0x9C9C9C), Color::hex(0x575757),
-     Color::hex(0x5EEAD4), Color::hex(0xF0ABFC), Color::hex(0xFACC15),
-     {Color::hex(0x7DD3FC), Color::hex(0xF9A8D4), Color::hex(0xBEF264), Color::hex(0xA5B4FC),
-      Color::hex(0xFCD34D), Color::hex(0x6EE7B7), Color::hex(0xFCA5A5), Color::hex(0xF0ABFC),
-      Color::hex(0x5EEAD4), Color::hex(0xFEF08A), Color::hex(0xC4B5FD), Color::hex(0xFECDD3),
-      Color::hex(0xA5F3FC), Color::hex(0xBBF7D0), Color::hex(0x93C5FD), Color::hex(0xFED7AA),
-      Color::hex(0xFECDD3), Color::hex(0xFED7AA), Color::hex(0xFEF3C7), Color::hex(0xD9F99D),
-      Color::hex(0xA7F3D0), Color::hex(0xA5F3FC), Color::hex(0xC7D2FE), Color::hex(0xF5D0FE),
-      Color::hex(0xE5E7EB), Color::hex(0x99F6E4), Color::hex(0xFFB59A)},
-     Color::hex(0x1E1E1E), Color::hex(0x141414), Color::hex(0x202020), Color::hex(0x171717),
-     Color::hex(0xE6E6E6), Color::hex(0xCFCFCF), Color::hex(0x0A0A0A), Color::hex(0x2C2C2C), Color::hex(0x575757),
-     {Color::hex(0xFACC15), Color::hex(0xFCA5A5), Color::hex(0x93C5FD), Color::hex(0xFCD34D), Color::hex(0xFDBA74),
-      Color::hex(0xD8B4FE), Color::hex(0x6EE7B7), Color::hex(0x5EEAD4), Color::hex(0xA5B4FC), Color::hex(0xF9A8D4),
-      Color::hex(0xBEF264), Color::hex(0x67E8F9), Color::hex(0xE2E8F0), Color::hex(0xF0ABFC),
-      Color::hex(0x5EEAD4), Color::hex(0xE8C98F), Color::hex(0xB8B8B8)},
-     {Color::hex(0x7FB2F0), Color::hex(0x5ED3BE), Color::hex(0xF2C07E)}},
     {"Light", Str::ThemeLight, // crisp: white cards and knob caps on a cool gray, with deep, saturated colors
      Color::hex(0xD5DAE3), Color::hex(0xF3F5F8), Color::hex(0xE4E8EF), Color::hex(0xC3CAD6), Color::hex(0xCDD3DD),
      Color::hex(0xFFFFFF),
@@ -101,35 +145,16 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0xC26505), Color::hex(0x04805C), Color::hex(0xD11F1F), Color::hex(0xB01ECA),
       Color::hex(0x0B857A), Color::hex(0xA87103), Color::hex(0x6D28D9), Color::hex(0xD0163F),
       Color::hex(0x0780A0), Color::hex(0x138A3F), Color::hex(0x1F5BE0), Color::hex(0xDD4F07),
-      Color::hex(0xD0163F), Color::hex(0xDD4F07), Color::hex(0xA87103), Color::hex(0x4F8A0B),
+      Color::hex(0x9A3412), Color::hex(0xDD4F07), Color::hex(0xA87103), Color::hex(0x4F8A0B),
       Color::hex(0x04805C), Color::hex(0x0780A0), Color::hex(0x4338CA), Color::hex(0xB01ECA),
       Color::hex(0x3F4A5C), Color::hex(0x4F52E8), Color::hex(0xC2410C)},
      Color::hex(0xFFFFFF), Color::hex(0xE8ECF2), Color::hex(0xFFFFFF), Color::hex(0xEDF0F5),
      Color::hex(0xFFFFFF), Color::hex(0xDDE3EC), Color::hex(0x1A1F29), Color::hex(0x3A4252), Color::hex(0x878FA0),
      {Color::hex(0xDD4F07), Color::hex(0xD11F1F), Color::hex(0x1F5BE0), Color::hex(0xC26505), Color::hex(0xDD4F07),
       Color::hex(0x8A2BE2), Color::hex(0x04805C), Color::hex(0x0B857A), Color::hex(0x4338CA), Color::hex(0xD0216D),
-      Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x475569), Color::hex(0xB01ECA),
+      Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x3B6A8C), Color::hex(0xB01ECA),
       Color::hex(0x0B857A), Color::hex(0x9A6A1C), Color::hex(0x5F6066)},
      {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xB86E0E)}},
-    {"Paper", Str::ThemePaper, // warm: cream cards on sand, ink-brown text and earthy colors
-     Color::hex(0xE2DACB), Color::hex(0xF7F2E8), Color::hex(0xEDE6D8), Color::hex(0xD2C7B3), Color::hex(0xDDD3C0),
-     Color::hex(0xFFFCF5),
-     Color::hex(0x2A231C), Color::hex(0x695D4E), Color::hex(0xA19582),
-     Color::hex(0x0E6E68), Color::hex(0x8E2A9E), Color::hex(0xC0410F),
-     {Color::hex(0x0E6E68), Color::hex(0xB3284F), Color::hex(0x5A7A12), Color::hex(0x4A3FB8),
-      Color::hex(0xB15A0A), Color::hex(0x177A52), Color::hex(0xB8361B), Color::hex(0x9B2AA0),
-      Color::hex(0x1A7287), Color::hex(0x9A7410), Color::hex(0x6A3DB8), Color::hex(0xB82848),
-      Color::hex(0x235F7A), Color::hex(0x3E7D2C), Color::hex(0x2D55B0), Color::hex(0x9C4A1A),
-      Color::hex(0xB82848), Color::hex(0xC0410F), Color::hex(0x9A7410), Color::hex(0x5A7A12),
-      Color::hex(0x177A52), Color::hex(0x1A7287), Color::hex(0x4A3FB8), Color::hex(0x9B2AA0),
-      Color::hex(0x5E554A), Color::hex(0x6A3DB8), Color::hex(0xA0522D)},
-     Color::hex(0xFFFCF6), Color::hex(0xEFE8DA), Color::hex(0xFCF8F0), Color::hex(0xF1EBDF),
-     Color::hex(0xFFFDF8), Color::hex(0xEDE4D3), Color::hex(0x2E2722), Color::hex(0x4C433B), Color::hex(0xA19582),
-     {Color::hex(0xC0410F), Color::hex(0xB8361B), Color::hex(0x2D55B0), Color::hex(0xB15A0A), Color::hex(0xC0410F),
-      Color::hex(0x8E2A9E), Color::hex(0x177A52), Color::hex(0x0E6E68), Color::hex(0x4A3FB8), Color::hex(0xB3284F),
-      Color::hex(0x5A7A12), Color::hex(0x1A7287), Color::hex(0x5E554A), Color::hex(0x9B2AA0),
-      Color::hex(0x0E6E68), Color::hex(0x8C5A1E), Color::hex(0x6E6A64)},
-     {Color::hex(0x33609E), Color::hex(0x25806C), Color::hex(0xAE6A1E)}},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));
 // A source left out of a theme's list would be drawn black.
@@ -164,10 +189,81 @@ inline const Color (&kSourceColors)[kAllSources] = look.sources;
 inline const Color &kCardColor = look.card;
 inline const Color &kDisplayColor = look.display;
 Color fxTypeColor(FxType type);
+// An operator's own color in a flat theme, else the accent.
+inline Color opColor(int op) {
+    return look.flat && op >= 0 && op < kOps ? look.ops[op] : look.accent;
+}
+// What is drawn on a lit switch: in its color, or on a flat theme's, filled solid with it, in the panels' (dark in a
+// dark theme, white in a light one).
+inline Color litInk(Color color) {
+    return look.flat ? look.panel : color;
+}
+// Whether the theme is a light one, by its background: shadows are drawn fainter on it.
+inline bool lightTheme() {
+    return look.background.r + look.background.g + look.background.b > 1.5f;
+}
+// The well a flat theme's switches and list buttons are set in, and one under the mouse: the displays' color in a dark theme, a
+// faint shade of whatever is under it in a light one (where the displays' color would vanish on a tinted card).
+inline Color wellColor() {
+    return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.06f} : look.display;
+}
+inline Color wellHover() {
+    return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.11f} : look.track;
+}
+// What a meter's or a bar's empty part is filled with: the cards' color, or in a flat theme a shade of whatever it sits
+// on (a tinted card, a display), which keeps that one's tint.
+inline Color meterWell() {
+    if (!look.flat)
+        return look.card;
+    return lightTheme() ? Color{0.0f, 0.0f, 0.0f, 0.07f} : Color{1.0f, 1.0f, 1.0f, 0.07f};
+}
+// A knob's modulation ring in its source's color, beside the knob's arc in `arc`. In a flat theme, where the arc takes
+// its card's color, a source of a like color (its channels apart by less than kRingClash all told) would melt into the
+// arc: its ring is drawn lighter on a dark theme, darker on a light one, keeping its hue.
+constexpr float kRingClash = 120.0f / 255.0f;
+inline Color ringColor(Color source, Color arc) {
+    const float apart = std::abs(source.r - arc.r) + std::abs(source.g - arc.g) + std::abs(source.b - arc.b);
+    if (!look.flat || apart >= kRingClash)
+        return source;
+    return lightTheme() ? mix(source, Color{0.0f, 0.0f, 0.0f, 1.0f}, 0.45f) : mix(source, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f);
+}
+// Whether controls get their 1 px outline: not in a flat theme.
+inline bool outlined() {
+    return !look.flat;
+}
+// How large the switches' drawn icons are: a little smaller in a flat theme, whose lit switches are filled to the edges.
+inline float switchIconScale() {
+    return look.flat ? 0.8f : 1.0f;
+}
 extern float glowing; // how strongly graphs' curves glow, 0..1, which View::paint() sets from the controller too
 
 // A graph's curve, glowing as `glowing` says (see theme.cpp).
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width);
+
+// A soft shadow round `r` (its corners `radius`): `steps` rings, each `spread` further out and as faint, the whole
+// `drop` lower than `r` and `alpha` dark where they all overlap.
+void softShadow(Canvas &c, Rect r, float radius, int steps, float spread, float drop, float alpha);
+
+// A node's shadow in a flat theme, a little lower than the node; none in the others. A box (`r`, its corners
+// `radius`): the routing graph's filters and shapers and the effects graph's nodes; or a circle: the operators.
+void paintNodeShadow(Canvas &c, Rect r, float radius);
+void paintNodeShadow(Canvas &c, Point center, float radius);
+
+// A card's shadow (its corners `radius`), in a theme that gives its cards one (see Palette::cardShadow); none in the
+// others.
+void paintCardShadow(Canvas &c, Rect r, float radius = kRadiusCard);
+
+// What a popup is filled with: an open list or menu, a tooltip, a tag, a toast. Raised, or in a flat theme the panels'
+// white in a light one and a step lighter than the raised rows in a dark one.
+Color popupFill();
+
+// A popup's panel (an open list or menu, a tooltip, a tag, a toast; its corners `radius`): outlined, or in a flat theme
+// lifted by a soft shadow instead.
+void paintMenuPanel(Canvas &c, Rect r, float radius = kRadiusCard);
+
+// A menu's row under the mouse, and the one it has picked, as every list and menu marks them: in neutral tones, the
+// row's icon alone taking a color.
+void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected);
 
 // A glow feathering out, as strong as `color`'s alpha where it starts and fading to nothing `spread` further out: round a
 // circle of radius `inner`, round a rounded box, and along a line `width` wide. As the glow setting (`glowing`) is at

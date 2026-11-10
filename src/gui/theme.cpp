@@ -6,8 +6,16 @@
 namespace fmvibe::gui::detail {
 
 int themeIndex(const std::string &name) {
+    // A theme no longer offered, kept in a user's settings, shows as the one nearest it.
+    static constexpr struct {
+        const char *retired, *now;
+    } kRetired[] = {{"Graphite", "Midnight"}, {"Paper", "Light"}, {"Machined", "Midnight"}};
+    std::string shown = name;
+    for (const auto &r : kRetired)
+        if (name == r.retired)
+            shown = r.now;
     for (int i = 0; i < kThemeCount; ++i)
-        if (name == kThemes[i].name)
+        if (shown == kThemes[i].name)
             return i;
     return 0;
 }
@@ -65,6 +73,67 @@ void featherLine(Canvas &c, const Point *points, size_t count, float width, floa
         widths[k] = width + 2.0f * spread * (1.0f - static_cast<float>(k) / kFeatherSteps);
     }
     c.polylineStrokes(points, count, colors, widths, kFeatherSteps);
+}
+
+void softShadow(Canvas &c, Rect r, float radius, int steps, float spread, float drop, float alpha) {
+    for (int k = steps; k > 0; --k) {
+        const float out = spread * k;
+        c.fillRect({r.x - out, r.y - out + drop, r.w + 2.0f * out, r.h + 2.0f * out},
+                   Color{0.0f, 0.0f, 0.0f, alpha / steps}, radius + out);
+    }
+}
+
+namespace {
+// How dark a node's shadow is: fainter on a light theme's background.
+Color nodeShadow() {
+    return Color{0.0f, 0.0f, 0.0f, lightTheme() ? 0.12f : 0.3f};
+}
+} // namespace
+
+void paintNodeShadow(Canvas &c, Rect r, float radius) {
+    if (look.flat)
+        c.fillRect({r.x - 1.0f, r.y + 1.0f, r.w + 2.0f, r.h + 2.0f}, nodeShadow(), radius + 1.0f);
+}
+
+void paintNodeShadow(Canvas &c, Point center, float radius) {
+    if (look.flat)
+        c.fillCircle({center.x, center.y + 2.0f}, radius + 1.0f, nodeShadow());
+}
+
+void paintCardShadow(Canvas &c, Rect r, float radius) {
+    if (look.cardShadow > 0.0f) // close and faint, a little lower than the card
+        softShadow(c, r, radius, 3, 1.0f, 1.5f, look.cardShadow);
+}
+
+Color popupFill() {
+    if (!look.flat)
+        return kRaised;
+    // A light theme's white, as its panels, lifted off them by the shadow; a dark one's a step lighter than the raised
+    // rows it may sit on, which a shadow on a dark ground alone wouldn't part it from.
+    return lightTheme() ? kPanel : mix(kRaised, kText, 0.05f);
+}
+
+void paintMenuPanel(Canvas &c, Rect r, float radius) {
+    if (look.flat) {
+        // Dropped a little below it and tight at the sides, so it reads as lifted rather than as a halo; darker on a
+        // dark theme's ground, where a faint one wouldn't show.
+        if (lightTheme())
+            softShadow(c, r, radius, 4, 1.0f, 3.0f, 0.16f);
+        else
+            softShadow(c, r, radius, 4, 1.25f, 3.0f, 0.5f);
+    }
+    c.fillRect(r, popupFill(), radius);
+    if (!look.flat)
+        c.strokeRect(r, kBorder, 1.0f, radius);
+}
+
+void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected) {
+    if (!hovered && !selected)
+        return;
+    if (look.flat) // a shade of the text over the popup's fill, which shows on its white or its lighter dark alike
+        c.fillRect(r, kText.alpha(hovered ? 0.09f : 0.05f), kRadiusControl);
+    else
+        c.fillRect(r, hovered ? kTrack : kTrack.alpha(0.5f), kRadiusControl);
 }
 
 void plotLine(Canvas &c, const Point *points, size_t count, Color color, float width) {

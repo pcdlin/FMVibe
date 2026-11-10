@@ -81,11 +81,11 @@ void axisIcon(Canvas &c, Point center, int axis, Color color);
 void filterIcon(Canvas &c, Rect r, FilterType type, Color color);
 bool isFxIconSwitch(FxParam field);
 void fxSwitchIcon(Canvas &c, Point m, FxParam field, Color color);
-void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color);
+void lfoClockIcon(Canvas &c, Point m, LfoClock clock, Color color, float scale = 1.0f);
 void lfoModeIcon(Canvas &c, Point m, SourceParam mode, Color color);
 // A modulation's polarity, about 10 x 8 around `m`: a wave about a middle line for bipolar, humps up from a
 // baseline for unipolar, like the LFO's UNIPOLAR switch.
-void polarityIcon(Canvas &c, Point m, bool bipolar, Color color);
+void polarityIcon(Canvas &c, Point m, bool bipolar, Color color, float scale = 1.0f);
 // A plus, or a minus: the phaser's and flanger's polarity.
 void polaritySign(Canvas &c, Point m, bool minus, Color color);
 // How a route acts on the operator it goes into, about 10 x 10 around `m` (times `scale`): Phase a phi (a ring with a stroke through

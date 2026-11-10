@@ -363,26 +363,49 @@ void paintAddPlus(Canvas &c, Point left, Color color) {
     c.line({m.x, m.y - kAddPlusArm}, {m.x, m.y + kAddPlusArm}, color, 1.5f);
 }
 
-// A menu's row under the mouse, and the one it has picked, as every list and menu marks them: in neutral tones, the
-// row's icon alone taking a color.
-void paintMenuRow(Canvas &c, Rect r, bool hovered, bool selected) {
-    if (hovered || selected)
-        c.fillRect(r, hovered ? kTrack : kTrack.alpha(0.5f), kRadiusControl);
+// A flat theme's add button: a filled pill, round at its ends, tinted with the accent while `lit`.
+void paintPill(Canvas &c, Rect r, bool lit) {
+    c.fillRect(r, lit ? kAccent.alpha(0.24f) : kTrack, std::min(kRadiusPanel, r.h * 0.5f));
 }
 
 // + EFFECT and + SOURCE: a plus and the name, then a chevron for the list it opens. Neutral at rest, in the theme's
-// accent under the mouse and while its list is open; dimmed while every place is taken (`full`).
+// accent under the mouse and while its list is open; dimmed while every place is taken (`full`). In a theme with pill
+// buttons, a filled pill without an outline, its plus and name in full text at rest and its chevron dim.
 void paintMenuButton(Canvas &c, Rect r, const char *name, bool hovered, bool open, bool full) {
     const bool lit = (hovered || open) && !full;
-    const Color ink = full ? kFaint : (lit ? kText : kDim);
-    c.fillRect(r, lit ? kAccent.alpha(0.18f) : kRaised, kRadiusControl);
-    c.strokeRect(r, lit ? kAccent.alpha(0.9f) : kBorder, 1.0f, kRadiusControl);
+    const bool pill = look.flat;
+    const Color ink = full ? kFaint : (lit || pill ? kText : kDim);
+    if (pill) {
+        paintPill(c, r, lit);
+    } else {
+        c.fillRect(r, lit ? kAccent.alpha(0.18f) : kRaised, kRadiusControl);
+        c.strokeRect(r, lit ? kAccent.alpha(0.9f) : kBorder, 1.0f, kRadiusControl);
+    }
     paintAddPlus(c, {r.x + 10.0f, r.center().y}, ink);
     c.text({r.x + 10.0f + kAddPlusW, r.y - kAddNameLift, r.w - 30.0f - kAddPlusW, r.h}, name, kTextLabel, ink,
            Align::Left, true);
     const Point m{r.right() - 13.0f, r.center().y};
     const Point chevron[] = {{m.x - 4.0f, m.y - 2.0f}, {m.x, m.y + 2.5f}, {m.x + 4.0f, m.y - 2.0f}};
-    c.polyline(chevron, 3, ink, 1.5f);
+    c.polyline(chevron, 3, pill && !lit && !full ? kDim : ink, 1.5f);
+}
+
+// A card that adds one, its plus `arm` long each way about `m`: dashed and faint at rest, lit in the accent under the
+// mouse; or in a flat theme filled faintly without an outline (a tint of the accent under the mouse), its plus on a
+// disc as + SOURCE's pill is filled. Gives the ink for what it says under the plus.
+Color paintAddCard(Canvas &c, Rect r, Point m, float arm, bool hovered) {
+    if (look.flat) {
+        c.fillRect(r, hovered ? kAccent.alpha(0.1f) : kTrack.alpha(0.3f), kRadiusCard);
+        c.fillCircle(m, arm + 7.0f, hovered ? kAccent.alpha(0.3f) : kTrack);
+        arm *= 0.6f;
+    } else {
+        if (hovered)
+            c.fillRect(r, kAccent.alpha(0.07f), kRadiusCard);
+        c.strokeRect(r, hovered ? kAccent.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
+    }
+    const Color ink = hovered ? kText : look.flat ? kDim : kFaint.alpha(0.8f);
+    c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
+    c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
+    return ink;
 }
 
 } // namespace
@@ -2941,10 +2964,12 @@ void View::paint(Canvas &c, Rect area) {
     glow_ = glowing = shownGlow();
     links_ = shownLinks();
     handles_ = controller_.handleSize();
-    if (partial)
+    if (partial) {
         c.fillRect(area, kBackground);
-    else
+    } else {
         c.clear(kBackground);
+        cardRects_.clear(); // the cards painted below note where they are again
+    }
     paintPanels(c);
     if (headerShown)
         paintHeader(c);
@@ -2988,8 +3013,8 @@ void View::paint(Canvas &c, Rect area) {
             if (w.clip.w > 0.0f)
                 c.pushClip(w.clip);
             paintWidget(c, w);
-            if (w.disabled || w.faint) // dimmed as a switched-off node's page is
-                c.fillRect(w.rect.inset(-1.0f), (w.faint ? kCardColor : kPanel).alpha(0.6f), kRadiusMark);
+            if (w.disabled || w.faint) // dimmed as a switched-off node's page is, in the face of what it is on
+                c.fillRect(w.rect.inset(-1.0f), (w.faint ? cardFaceUnder(w) : kPanel).alpha(0.6f), kRadiusControl + 1.0f);
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
@@ -3226,8 +3251,7 @@ void View::paint(Canvas &c, Rect area) {
     // Under the preset bar, over the panels' title rows.
     if (flashTicks_ > 0) {
         const Rect toast{View::kWidth * 0.5f - 220.0f, kPanelsTop - 2.0f, 440.0f, 28.0f};
-        c.fillRect(toast, kRaised, kRadiusCard);
-        c.strokeRect(toast, kBorder, 1.0f, kRadiusCard);
+        paintMenuPanel(c, toast);
         c.text(toast, flash_, kTextValue, kText);
     }
     if (partial)
@@ -3244,9 +3268,34 @@ void View::paintPanels(Canvas &c) {
         panels.push_back(kFxPanel);
     else
         panels.insert(panels.end(), {kRouting, kInspector});
+    // A theme with soft shadows lifts its panels off the background with one, instead of an outline.
+    if (look.panelShadow > 0.0f) {
+        auto shadow = [&](Rect p, float radius) { softShadow(c, p, radius, 5, 1.2f, 2.0f, look.panelShadow); };
+        // The panel under the tabs, while its first tab is the one shown, has that corner square (see Kind::ViewTab),
+        // so its shadow is too there: round elsewhere, square beside the corner, and above it only the tab's.
+        const bool firstShown = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
+                                partialEditing() < 0;
+        for (const Rect &p : panels) {
+            if (!firstShown || p.x != kRouting.x || p.y != kRouting.y) {
+                shadow(p, kPanelRadius);
+                continue;
+            }
+            const Rect corner{p.x - 12.0f, p.y - 12.0f, kPanelRadius + 12.0f, kPanelRadius + 12.0f};
+            c.pushClip({corner.right(), p.y - 12.0f, p.w + 24.0f, p.h + 24.0f}); // right of the corner
+            shadow(p, kPanelRadius);
+            c.popClip();
+            c.pushClip({p.x - 12.0f, corner.bottom(), corner.w, p.h + 24.0f}); // below it
+            shadow(p, kPanelRadius);
+            c.popClip();
+            c.pushClip({corner.x, p.y, corner.w, corner.bottom() - p.y}); // beside it, under the panel's top
+            shadow(p, 0.0f);
+            c.popClip();
+        }
+    }
     for (const Rect &p : panels) {
         c.fillRect(p, kPanel, kPanelRadius);
-        c.strokeRect(p, kBorder, 1.0f, kPanelRadius);
+        if (look.panelShadow <= 0.0f)
+            c.strokeRect(p, kBorder, 1.0f, kPanelRadius);
     }
 }
 
@@ -3289,7 +3338,8 @@ void View::paintHeader(Canvas &c) {
     // The output scope: the last span the audio thread took (see kOutScopeBins), its level (see followScopeLevel()) at
     // the display's edges (but lifted by no more than 24 dB, so a fading tail shrinks away), over a faint middle line.
     c.fillRect(kOutScope, kDisplayColor, kRadiusControl);
-    c.strokeRect(kOutScope, kBorder, 1.0f, kRadiusControl);
+    if (outlined())
+        c.strokeRect(kOutScope, kBorder, 1.0f, kRadiusControl);
     const Rect inner{kOutScope.x + 5.0f, kOutScope.y + 4.0f, kOutScope.w - 10.0f, kOutScope.h - 8.0f};
     const float middle = inner.center().y;
     c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
@@ -3352,7 +3402,10 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
     const float top = r.y + inset;
     const float bottom = r.bottom() - inset;
     c.fillRect(r, kRaised, kRadiusCard);
-    c.strokeRect(r, hovered || active ? kDim : kBorder, 1.0f, kRadiusCard);
+    if (outlined())
+        c.strokeRect(r, hovered || active ? kDim : kBorder, 1.0f, kRadiusCard);
+    else if (hovered || active)
+        c.fillRect(r, kTrack.alpha(0.5f), kRadiusCard);
     if (w.kind == Kind::ModWheel) {
         // Fills up from the bottom with the wheel's value, in the color of its handle; bipolar, from the middle, where
         // it moves nothing.
@@ -3402,7 +3455,7 @@ void View::paintRouting(Canvas &c) {
             continue;
         const float out = static_cast<float>(liveAmount(param));
         const OutWire w = outWireOf(node, nodeCenter(node));
-        const Color base = isBoxNode(node) ? nodeColor(node) : kText;
+        const Color base = isBoxNode(node) || look.flat ? nodeColor(node) : kText;
         const Color color = focused(param) ? kText : base.alpha(0.25f + 0.5f * out);
         c.line(w.start, w.end, color, 1.5f + 2.0f * out);
         arrowHead(c, w.end, {0.0f, 1.0f}, color);
@@ -3483,9 +3536,16 @@ void View::paintModRange(Canvas &c, Rect bar, int param) {
         const double to = std::clamp(n + up, 0.0, 1.0);
         const float alpha = sourceOn(m.source) && !m.bypassed ? 1.0f : (focused ? 0.4f : 0.3f);
         const float h = focused ? 2.0f * bar.h : bar.h;
+        const Color color = kSourceColors[m.source].alpha(alpha);
         c.fillRect({bar.x + static_cast<float>(from) * bar.w, bar.center().y - 0.5f * h,
                     std::max(static_cast<float>(to - from) * bar.w, 1.5f), h},
-                   kSourceColors[m.source].alpha(alpha), kRadiusMark);
+                   color, kRadiusMark);
+        // Where its reach runs past the bar's end, so that it is cut off there, a line across it marks the end.
+        const float half = 0.5f * h + 0.75f; // 3 px tall on a plain bar
+        if (n + down < 0.0)
+            c.line({bar.x, bar.center().y - half}, {bar.x, bar.center().y + half}, color, 1.5f);
+        if (n + up > 1.0)
+            c.line({bar.right(), bar.center().y - half}, {bar.right(), bar.center().y + half}, color, 1.5f);
     };
     bool any = false;
     std::vector<Assignment> focus;
@@ -3514,7 +3574,8 @@ void View::paintMatrixLabels(Canvas &c) {
     auto nameColor = [&](int node) {
         if (hover_ && hover_->kind == Kind::MatrixLabel && hover_->a == node)
             return kText;
-        const Color color = isBoxNode(node) ? nodeColor(node) : (node == selected ? kText : kDim);
+        // In a flat theme an operator's name takes its own color too, as its cells, its tab and its plate do.
+        const Color color = isBoxNode(node) || look.flat ? nodeColor(node) : (node == selected ? kText : kDim);
         return nodeOn(node) ? color : (isBoxNode(node) ? color.alpha(0.35f) : kFaint);
     };
     const Color plate = nodeColor(selected).alpha(nodeOn(selected) ? 0.22f : 0.1f);
@@ -3542,20 +3603,31 @@ void View::paintMatrixLabels(Canvas &c) {
         Color color;
         bool outline;
         const char *text;
+        bool operators = false; // in a flat theme, in the operators' colors, a strip each, as their cells are
     };
     const Entry entries[] = {
-        {kAccent, false, tr(Str::LegendFm)},
-        {kAccent, true, tr(Str::LegendFeedback)},
+        {kAccent, false, tr(Str::LegendFm), true},
+        {kAccent, true, tr(Str::LegendFeedback), true},
         {kFilterColor, false, tr(Str::LegendFilter)},
         {kShaperColor, false, tr(Str::LegendShaper)},
         {kText, false, tr(Str::LegendOut)},
     };
     for (const Entry &e : entries) {
         const Rect swatch{kLegendX, y + 3.0f, 14.0f, 14.0f};
-        if (e.outline)
-            c.strokeRect(swatch, e.color.alpha(0.6f), 1.0f, kRadiusMark);
-        else
-            c.fillRect(swatch, e.color.alpha(0.45f), kRadiusMark);
+        const int strips = e.operators && look.flat ? kOps : 1;
+        for (int k = 0; k < strips; ++k) {
+            const Color color = strips > 1 ? opColor(k) : e.color;
+            const float x0 = swatch.x + swatch.w * static_cast<float>(k) / static_cast<float>(strips);
+            const float x1 = swatch.x + swatch.w * static_cast<float>(k + 1) / static_cast<float>(strips);
+            if (strips > 1)
+                c.pushClip({x0, swatch.y - 1.0f, x1 - x0, swatch.h + 2.0f});
+            if (e.outline)
+                c.strokeRect(swatch, color.alpha(0.6f), 1.0f, kRadiusMark);
+            else
+                c.fillRect(swatch, color.alpha(0.45f), kRadiusMark);
+            if (strips > 1)
+                c.popClip();
+        }
         c.text({kLegendX + 24.0f, y, width - 24.0f, 20.0f}, e.text, kTextBody, kDim, Align::Left);
         y += 26.0f;
     }
@@ -3634,8 +3706,11 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
                                   hover_->a == fxSplitNode(box.split) && drag_.kind == DragKind::None);
         const Color outline = held ? kText.alpha(0.7f) : splitLine();
         if (box.folded) { // a strip: its icon, a grip, its cross, then its name down the rest
+            // On a shadow and outlined as a folded card is: always, or in a flat theme while the mouse is over it.
+            paintCardShadow(c, whole);
             c.fillRect(whole, splitFill(), kRadiusCard);
-            c.strokeRect(whole, outline, held ? 1.6f : 1.3f, kRadiusCard);
+            if (!look.flat || hot || (drag_.kind == DragKind::None && whole.contains(hoverPoint_)))
+                c.strokeRect(whole, outline, held ? 1.6f : 1.3f, kRadiusCard);
             splitIcon(c, fxIconRect(whole), hot ? kText : kDim, splitThree(box.split) ? 3 : 2);
             gripDots(whole, hot);
             paintDownward(c, {whole.x, whole.y + 82.0f, whole.w, whole.h - 90.0f},
@@ -3646,10 +3721,19 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
         const Rect column = fxCard(boxColumn(box) - scroll, 1.0f);
         // The grey ends at the controls' card place, so the arrow into the band is as far from it as from a card.
         const float bandX = column.right();
+        paintCardShadow(c, outer, kFxBoxRadius); // as the cards beside it
         c.fillRect(outer, splitFill(), kFxBoxRadius);
         c.fillRect({bandX, outer.y, outer.right() - bandX, outer.h}, kPanel, kFxBoxRadius);
         c.fillRect({bandX, outer.y, kFxBoxRadius, outer.h}, kPanel);
-        c.strokeRect(outer, outline, held ? 1.6f : 1.3f, kFxBoxRadius);
+        if (look.flat) { // without its outline, the band shown faintly behind its cards, in the band's color
+            c.pushClip({bandX, outer.y, outer.right() - bandX, outer.h});
+            c.fillRect(outer, laneColor(box.lane).alpha(look.cardTint * 0.7f), kFxBoxRadius);
+            c.popClip();
+        }
+        // Outlined as a card is: always, or in a theme whose cards go without one, while the mouse is over it.
+        if (!look.flat || hot || (drag_.kind == DragKind::None && outer.contains(hoverPoint_)))
+            c.strokeRect(outer, outline, held ? 1.6f : 1.3f, kFxBoxRadius);
+        noteCard(kMaxSources + kFxSlots + box.split, outer, kFxPanel);
         paintSplitControls(c, box.split, column, true);
         // The arrows along its band, into each of its cards, in the band's color; none into its dashed card.
         // Faint along a band its join doesn't let through, the other band soloed.
@@ -3680,8 +3764,7 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
                              drag_.widget.a == slot && (drag_.moved || drag_.widget.kind != Kind::FxPower);
         if (fxFolded(slot)) {
             const Color fx = fxTypeColor(type);
-            c.fillRect(r, kCardColor, kRadiusCard);
-            c.strokeRect(r, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+            paintCardFace(c, r, fx, on, kMaxSources + slot, dragged, 0.45f, kFxPanel);
             // its icon and cross (widgets), the grip's dots between, then its name down the strip
             gripDots(r, (hover_ && hover_->kind == Kind::FxGrip && hover_->a == slot && drag_.kind == DragKind::None) ||
                             dragged);
@@ -3700,8 +3783,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     const FxType type = fxSlotType(slot);
     const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
     const Color fx = fxTypeColor(type); // each type of effect in a color of its own
-    c.fillRect(card, kCardColor, kRadiusCard);
-    c.strokeRect(card, dragged ? fx : (on ? fx.alpha(0.45f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+    paintCardFace(c, card, fx, on, kMaxSources + slot, dragged, 0.45f, kFxPanel);
     // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
     const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
     const Rect titleRect{card.x + 33.0f, card.y + 6.0f, titleRight - card.x - 33.0f, 20.0f};
@@ -4519,7 +4601,7 @@ void compressorPlot(Canvas &c, Rect plot, double threshold, double ratio, double
 
 // A downward bar for `db` of gain reduction.
 void reductionMeter(Canvas &c, Rect meter, float db, Color color) {
-    c.fillRect(meter, kCardColor, kRadiusMark);
+    c.fillRect(meter, meterWell(), kRadiusMark);
     const float h = std::clamp(db / kMeterRangeDb, 0.0f, 1.0f) * meter.h;
     if (h > 0.5f)
         c.fillRect({meter.x, meter.y, meter.w, h}, color, kRadiusMark);
@@ -4571,7 +4653,7 @@ void View::paintMultiDyn(Canvas &c, Rect r, int slot) {
         c.text(name, tr(kMcBandNames[band]), kTextSmall, set || rowHovered ? kText : kDim, Align::Center, true);
 
         const float alpha = set ? 1.0f : 0.5f;
-        c.fillRect(bar, kCardColor, kRadiusMark);
+        c.fillRect(bar, meterWell(), kRadiusMark);
         const double above = value(mdAboveIndex(slot, band)), below = std::min(value(mdBelowIndex(slot, band)), above);
         const float xBelow = mdBarX(bar, below), xAbove = mdBarX(bar, above);
         // Its zones and ratio lines where modulation takes them now; the threshold lines, its grips, stay where set.
@@ -5030,7 +5112,7 @@ void View::paintAmp(Canvas &c, Rect r, int slot) {
     const float drive = telemetry_.fxReduction[slot][0];
     constexpr float kDriveRangeDb = 36.0f;
     const Rect meter{r.right() - 12.0f, r.y + 8.0f, 6.0f, r.h - 16.0f};
-    c.fillRect(meter, kCardColor, kRadiusMark);
+    c.fillRect(meter, meterWell(), kRadiusMark);
     const float h = std::clamp(drive / kDriveRangeDb, 0.0f, 1.0f) * meter.h;
     if (h > 0.5f)
         c.fillRect({meter.x, meter.bottom() - h, meter.w, h}, fx, kRadiusMark);
@@ -5080,7 +5162,8 @@ void View::paintNoteSource(Canvas &c, float top) {
                       drag_.kind == DragKind::None) ||
                      shapeEditing() == kNoteCurve; // it opens the curve, or has
     c.fillRect(box, lit ? kTrack : kDisplayColor, kRadiusControl);
-    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
+    if (outlined())
+        c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
     // Behind the note, faintly, its curve across the box.
     auto get = [this](int index) { return value(index); };
     std::vector<Point> curve;
@@ -5114,7 +5197,8 @@ void View::paintVelocitySource(Canvas &c, float top) {
                       drag_.kind == DragKind::None) ||
                      shapeEditing() == kVelocityCurve; // it opens the curve, or has
     c.fillRect(box, lit ? kTrack : kDisplayColor, kRadiusControl);
-    c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
+    if (outlined())
+        c.strokeRect(box, color.alpha(lit ? 0.9f : 0.45f), 1.0f, kRadiusControl);
     // Behind the number, faintly, its curve across the box, with a mark where the newest voice's velocity is.
     auto get = [this](int index) { return value(index); };
     auto at = [&](double x) {
@@ -5759,6 +5843,12 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
         });
     }
     const Color color = kSourceColors[lfo];
+    if (look.flat && points.size() > 1) { // filled toward its zero line, as a widened card's shape is
+        std::vector<Point> area = points;
+        area.push_back({points.back().x, zero});
+        area.push_back({points.front().x, zero});
+        c.fillPolygon(area.data(), area.size(), color.alpha(0.14f));
+    }
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
     // Running, a random LFO's last cycles as they came, swept across: each new cycle takes the next quarter,
@@ -5877,8 +5967,7 @@ void View::paintSource(Canvas &c, float card, int s) {
     const Color color = kSourceColors[s];
     const bool lfo = sourceTypeOf(s) == SourceType::Lfo;
     const bool dragged = drag_.kind == DragKind::SourceMove && drag_.widget.a == s;
-    c.fillRect(p, kCardColor, kRadiusCard);
-    c.strokeRect(p, dragged ? color : (sourceOn(s) ? color.alpha(0.35f) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+    paintCardFace(c, p, color, sourceOn(s), s, dragged, 0.35f, sourceCardClip());
     if (sourceFolded(s)) { // the grip's dots under the handle (widgets), then its name down the strip
         const bool grip =
             (hover_ && hover_->kind == Kind::SourceGrip && hover_->a == s && drag_.kind == DragKind::None) || dragged;
@@ -5957,10 +6046,15 @@ void View::paintNode(Canvas &c, const Widget &w) {
         if (live && telemetry_.voices > 0 && reachesOut(w.a))
             c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f), corner + 4.0f);
         // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
+        if (look.flat) { // raised: shaded from its top down, on a shadow
+            paintNodeShadow(c, w.rect, corner);
+            c.fillGradient(w.rect, hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, corner);
+        } else {
+            c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
+        }
         if (selected)
             c.fillRect(w.rect, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill), corner);
-        c.strokeRect(w.rect, live ? color : kFaint, selected ? 2.0f : 1.5f, corner);
+        c.strokeRect(w.rect, live ? color : look.flat ? color.alpha(0.35f) : kFaint, selected ? 2.0f : 1.5f, corner);
         if (selected)
             c.strokeRect(w.rect.inset(-kSelectedRing), color, 2.0f, corner + kSelectedRing);
         c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], kTextValue, kText, Align::Center, true);
@@ -5981,25 +6075,44 @@ void View::paintNode(Canvas &c, const Widget &w) {
         heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
     // Its halo lights up while playing only if it ends up in the output, as brightly as its envelope and the routes
     // that take it there let it through, where modulation takes them now: one an LFO opens from 0 % lights up too.
+    const Color color = nodeColor(op); // the accent, or in a theme that colors each operator its own
     const float level = std::min(telemetry_.opLevels[op], 1.0f) * static_cast<float>(std::sqrt(outLevel(op)));
     if (level > 0.01f) {
         if (glowing > 0.0f) // feathered, as strongly as the glow is set
-            featherCircle(c, center, kNodeRadius, 16.0f, kAccent.alpha(0.3f * level));
+            featherCircle(c, center, kNodeRadius, 16.0f, color.alpha(0.3f * level));
         else // with the glow off, a plain ring of light, so a sounding operator still shows
-            c.fillCircle(center, kNodeRadius + 7.0f, kAccent.alpha(0.22f * level));
+            c.fillCircle(center, kNodeRadius + 7.0f, color.alpha(0.22f * level));
     }
+    // A silent one's outline: faint, or in a flat theme a faint tint of its own color, which sits with its fill and ring.
+    const Color quiet = look.flat ? color.alpha(0.35f) : kFaint;
     if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
-        // Unison: a stack of rings peeking out on both sides.
-        c.strokeCircle({center.x - 4.5f, center.y}, kNodeRadius, (heard ? kAccent : kFaint).alpha(0.45f), 1.2f);
-        c.strokeCircle({center.x + 4.5f, center.y}, kNodeRadius, (heard ? kAccent : kFaint).alpha(0.45f), 1.2f);
+        // Unison: a stack of copies peeking out on both sides, rings, or in a flat theme discs tinted with its color,
+        // each on the node's soft shadow.
+        const float spread = look.flat ? 9.0f : 4.5f; // discs further out, to show past the selection ring
+        for (const float dx : {-spread, spread}) {
+            const Point copy{center.x + dx, center.y};
+            if (look.flat) {
+                paintNodeShadow(c, copy, kNodeRadius);
+                c.fillCircle(copy, kNodeRadius, look.nodeBottom);
+                c.fillCircle(copy, kNodeRadius, (heard ? color : kFaint).alpha(0.4f));
+            } else {
+                c.strokeCircle(copy, kNodeRadius, (heard ? color : kFaint).alpha(0.45f), 1.2f);
+            }
+        }
     }
-    // The node the inspector shows is filled with the accent, like its tab's plate, and ringed in it.
-    c.fillCircle(center, kNodeRadius, hovered ? kTrack : kRaised);
+    // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
+    if (look.flat) { // raised: shaded from its top down, on a shadow
+        paintNodeShadow(c, center, kNodeRadius);
+        c.fillGradient({center.x - kNodeRadius, center.y - kNodeRadius, 2.0f * kNodeRadius, 2.0f * kNodeRadius},
+                       hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, kNodeRadius);
+    } else {
+        c.fillCircle(center, kNodeRadius, hovered ? kTrack : kRaised);
+    }
     if (selected)
-        c.fillCircle(center, kNodeRadius, kAccent.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill));
-    c.strokeCircle(center, kNodeRadius, heard ? kAccent : kFaint, selected ? 2.0f : 1.5f);
+        c.fillCircle(center, kNodeRadius, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill));
+    c.strokeCircle(center, kNodeRadius, heard ? color : quiet, selected ? 2.0f : 1.5f);
     if (selected)
-        c.strokeCircle(center, kNodeRadius + kSelectedRing, kAccent, 2.0f);
+        c.strokeCircle(center, kNodeRadius + kSelectedRing, color, 2.0f);
     const Color caption = selected ? kText.alpha(0.8f) : kDim; // its wave and ratio, lighter on its fill
     // Wave glyph above the letter, ratio below it.
     const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
@@ -6037,7 +6150,23 @@ void editButton(Canvas &c, Rect r, Color color, bool hovered, bool open) {
 }
 } // namespace
 
-void View::paintButtonFace(Canvas &c, const Widget &w, Color fill, bool lit, Color color, float radius) {
+// A switch's face: lit, a tint of `color` (`tint` strong) outlined in it; hot (under the mouse, say), the track's; else
+// raised. In a flat theme, a well without an outline, lit filled solid with `color`, hot a little darker or lighter.
+void View::paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint, float radius) {
+    if (look.flat) {
+        const Color face = lit ? color : hot ? wellHover() : wellColor();
+        if (w.group.w <= 0.0f) {
+            c.fillRect(w.rect, face, radius);
+            return;
+        }
+        // Its part of the row's well, lit to its edges (the well's outer corners rounded), as the well is.
+        c.pushClip({w.partLeft, w.group.y, w.partRight - w.partLeft, w.group.h});
+        c.fillRect(w.group, face, radius);
+        c.popClip();
+        lastPartLit_ = lit;
+        return;
+    }
+    const Color fill = lit ? color.alpha(tint) : hot ? kTrack : kRaised;
     if (w.group.w <= 0.0f) {
         c.fillRect(w.rect, fill, radius);
         if (lit)
@@ -6138,36 +6267,39 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             color = fxColor(fxSlotOf(w.param));
         if (shaperOf(w.param) >= 0)
             color = kShaperColor;
+        if (w.param >= kFilterBase && w.param < kFilterLinkBase) // a filter's, as its type switches
+            color = kFilterColor;
         if (modeChoice)
             color = routeColor(routeModeFrom(w.param), routeModeTo(w.param));
-        paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, kRadiusControl);
+        paintButtonFace(c, w, on, hovered, color, 0.22f, kRadiusControl);
         if (field == FxParam::FilterType) // the filter types show as icons, named in their tooltips
             filterIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 5.0f, 20.0f, w.rect.h - 10.0f},
-                       static_cast<FilterType>(w.b), on ? color : kDim);
+                       static_cast<FilterType>(w.b), on ? litInk(color) : kDim);
         else if (power)
-            powerIcon(c, w.rect.center(), on ? color : (hovered ? kText : kDim));
+            powerIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
         else if (modeChoice)
-            routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? color : (hovered ? kText : kDim));
+            routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
         else if (fixedSwitchOp(w.param) >= 0) // a keyboard, crossed out while the operator doesn't follow it
-            keyboardIcon(c, w.rect.center(), on ? color : (hovered ? kText : kFaint), on);
+            keyboardIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kFaint), on);
         else if (shaperFieldOf(w.param) == ShaperParam::Link) // a voice shaper's link, as the shaper effect's
-            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperLink, on ? color : (hovered ? kText : kDim));
+            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperLink, on ? litInk(color) : (hovered ? kText : kDim));
         else if (shaperFieldOf(w.param) == ShaperParam::Symmetric)
-            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperSymmetric, on ? color : (hovered ? kText : kDim));
+            fxSwitchIcon(c, w.rect.center(), FxParam::ShaperSymmetric, on ? litInk(color) : (hovered ? kText : kDim));
         else if (field == FxParam::PhaserNegative || field == FxParam::FlangerNegative)
-            polaritySign(c, w.rect.center(), w.b == 1, on ? color : (hovered ? kText : kDim));
+            polaritySign(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim));
         else if (isFxIconSwitch(field))
-            fxSwitchIcon(c, w.rect.center(), field, on ? color : (hovered ? kText : kDim));
+            fxSwitchIcon(c, w.rect.center(), field, on ? litInk(color) : (hovered ? kText : kDim));
         else if (isLfoSync(w.param)) // an LFO's SYNC, the effects' metronome
-            fxSwitchIcon(c, w.rect.center(), FxParam::DelaySync, on ? color : (hovered ? kText : kDim));
+            fxSwitchIcon(c, w.rect.center(), FxParam::DelaySync, on ? litInk(color) : (hovered ? kText : kDim));
         else if (clockMode)
-            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? color : (hovered ? kText : kDim));
+            lfoClockIcon(c, w.rect.center(), static_cast<LfoClock>(w.b), on ? litInk(color) : (hovered ? kText : kDim),
+                         switchIconScale());
         else if (sourceFieldOf(w.param) == SourceParam::Unipolar) // humps on a baseline, as a MODS row's
-            polarityIcon(c, w.rect.center(), false, on ? color : (hovered ? kText : kDim));
+            polarityIcon(c, w.rect.center(), false, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else if (sourceFieldOf(w.param) == SourceParam::Bipolar) // a Random card's: either one, as a MODS row's
-            polarityIcon(c, w.rect.center(), w.b == 1, on ? color : (hovered ? kText : kDim));
+            polarityIcon(c, w.rect.center(), w.b == 1, on ? litInk(color) : (hovered ? kText : kDim), switchIconScale());
         else
-            c.text(w.rect, text, kTextLabel, on ? kText : kDim, Align::Center, on);
+            c.text(w.rect, text, kTextLabel, on ? litInk(kText) : kDim, Align::Center, on);
         break;
     }
     case Kind::ViewTab: {
@@ -6178,6 +6310,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = controller_.layout().view == static_cast<RoutingView>(w.a) && shapeEditing() < 0 &&
                               partialEditing() < 0;
         if (selected) {
+            if (look.panelShadow > 0.0f) { // its panel's soft shadow, round its top and sides, above the panel only
+                c.pushClip({w.rect.x - 12.0f, w.rect.y - 12.0f, w.rect.w + 24.0f, w.rect.h + 12.0f});
+                softShadow(c, w.rect, kRadiusCard, 4, 1.5f, 1.0f, look.panelShadow);
+                c.popClip();
+            }
             const std::vector<Point> outline =
                 viewTabOutline({w.rect.x + 0.5f, w.rect.y + 0.5f, w.rect.w - 1.0f, w.rect.h}, kViewTabFlare);
             std::vector<Point> fill = outline; // down past the panel's border, to open it without a seam left
@@ -6186,7 +6323,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.fillPolygon(fill.data(), fill.size(), kPanel);
             if (w.rect.x <= kRouting.x) // squaring the panel's corner its side runs down
                 c.fillRect({w.rect.x, w.rect.bottom(), kPanelRadius, kPanelRadius}, kPanel);
-            c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
+            if (look.panelShadow <= 0.0f) // outlined as its panel is
+                c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
             c.line({w.rect.x + kViewTabRadius, w.rect.y + 2.0f}, {w.rect.right() - kViewTabRadius, w.rect.y + 2.0f},
                    kAccent, 2.0f);
         } else if (hovered) {
@@ -6214,11 +6352,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::ScopeCycles: {
         const bool selected = controller_.layout().scopeCycles == w.b;
-        c.fillRect(w.rect, selected ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusMark);
-        if (selected)
-            c.strokeRect(w.rect, kAccent, 1.0f, kRadiusMark);
-        c.text(w.rect, std::to_string(w.b), kTextLabel, selected ? kText : (hovered ? kText : kDim), Align::Center,
-               selected);
+        paintButtonFace(c, w, selected, hovered, kAccent, 0.22f, kRadiusControl);
+        c.text(w.rect, std::to_string(w.b), kTextLabel, selected ? litInk(kText) : (hovered ? kText : kDim),
+               Align::Center, selected);
         break;
     }
     case Kind::NodeTab: {
@@ -6228,24 +6364,25 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillRect(w.rect, selected ? color.alpha(enabled ? 1.0f : 0.35f) : (hovered ? kTrack : kRaised.alpha(enabled ? 1.0f : 0.4f)),
                    kRadiusControl);
         // An enabled node's name takes a little of its color.
-        c.text(w.rect, kNodeNames[w.a], kTextBody, selected ? kBackground : (enabled ? mix(kDim, color, 0.3f) : kFaint),
+        // On its solid fill, in the ink a flat theme's lit switches take.
+        const Color ink = look.flat ? litInk(kText) : kBackground;
+        c.text(w.rect, kNodeNames[w.a], kTextBody, selected ? ink : (enabled ? mix(kDim, color, 0.3f) : kFaint),
                Align::Center, true);
         if (soundsOut(w.a))
-            c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, selected ? kBackground : color);
+            c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, selected ? ink : color);
         break;
     }
     case Kind::WaveButton: {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
-        paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kAccent, kRadiusControl);
+        paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, kRadiusControl);
         const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
-        c.polyline(points.data(), points.size(), selected ? kAccent : kDim, 1.5f);
+        c.polyline(points.data(), points.size(), selected ? litInk(kAccent) : kDim, 1.5f);
         break;
     }
     case Kind::TypeButton: {
         const bool selected = std::lround(value(paramIndex(w.a, FilterParam::Type))) == w.b;
-        paintButtonFace(c, w, selected ? kFilterColor.alpha(0.18f) : (hovered ? kTrack : kRaised), selected, kFilterColor,
-                        kRadiusControl);
-        filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? kFilterColor : kDim);
+        paintButtonFace(c, w, selected, hovered, kFilterColor, 0.18f, kRadiusControl);
+        filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? litInk(kFilterColor) : kDim);
         break;
     }
     case Kind::Port: { // under the mouse, or dragged from, the node's outline glows in its color
@@ -6462,8 +6599,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // How many modulations the source has, and MODS with a chevron at the right; with none, an invitation to add
         // one there.
         const size_t count = usedSlots(w.a).size();
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, kRadiusControl);
+        if (look.flat) { // as the list buttons on the card: in a well, without an outline, tinted with its color under the mouse
+            c.fillRect(w.rect, wellColor(), kRadiusControl);
+            if (hovered)
+                c.fillRect(w.rect, kSourceColors[w.a].alpha(0.24f), kRadiusControl);
+        } else {
+            c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+            c.strokeRect(w.rect, hovered ? kSourceColors[w.a].alpha(0.6f) : kBorder, 1.0f, kRadiusControl);
+        }
         const Point m{w.rect.right() - 12.0f, w.rect.center().y};
         const Point chevron[] = {{m.x - 2.0f, m.y - 4.0f}, {m.x + 2.0f, m.y}, {m.x - 2.0f, m.y + 4.0f}};
         c.polyline(chevron, 3, hovered ? kText : kDim, 1.4f);
@@ -6486,14 +6629,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(w.a, OpParam::Wave))));
         const bool selected = isMoreWave(wave);
         const bool lit = hovered || waveMenu_ == w.a;
-        paintButtonFace(c, w, selected ? kAccent.alpha(0.18f) : (lit ? kTrack : kRaised), selected, kAccent, kRadiusControl);
+        paintButtonFace(c, w, selected, lit, kAccent, 0.18f, kRadiusControl);
         if (selected) {
             const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
-            c.polyline(points.data(), points.size(), kAccent, 1.5f);
+            c.polyline(points.data(), points.size(), litInk(kAccent), 1.5f);
             const Point m{w.rect.right() - 8.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.0f, m.y - 1.5f}, {m.x, m.y + 1.5f}, {m.x + 3.0f, m.y - 1.5f}};
-            c.polyline(chevron, 3, lit ? kText : kDim, 1.2f);
+            c.polyline(chevron, 3, look.flat ? litInk(kText) : lit ? kText : kDim, 1.2f);
         } else {
             for (int d = -1; d <= 1; ++d)
                 c.fillCircle({w.rect.center().x + d * 5.0f, w.rect.center().y}, 1.6f, lit ? kText : kDim);
@@ -6502,8 +6645,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::WaveMenuItem: {
@@ -6519,7 +6661,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::ShapeReset:
     case Kind::PartialReset:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         resetIcon(c, w.rect.center(), hovered ? kText : kDim);
         break;
     case Kind::ShapeGrid: {
@@ -6541,7 +6684,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool redo = w.a == 1;
         const bool can = (redo ? controller_.nextRedo() : controller_.nextUndo()) != nullptr;
         c.fillRect(w.rect, hovered && can ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         // An arrow curving over the top, its head at the left end (undo) or the right (redo), pointing down.
         const Point m{w.rect.center().x, w.rect.center().y + 2.0f};
         const Color color = !can ? kFaint : (hovered ? kText : kDim);
@@ -6679,6 +6823,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SplitSolo: { // a plain S, filled in its band's color while soloed
         const bool on = value(w.param) >= 0.5;
         const Color band = laneColor(w.b);
+        if (look.flat) { // as the other switches: a dark well, filled solid with its band's color while on
+            c.fillRect(w.rect, on ? band : hovered ? wellHover() : wellColor(), kRadiusControl);
+            c.text(w.rect, tr(Str::SoloMark), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
+                   true);
+            break;
+        }
         c.fillRect(w.rect, on ? band.alpha(0.22f) : (hovered ? kTrack : kCardColor), kRadiusControl);
         c.strokeRect(w.rect, on ? band : mix(kCardColor, kDim, 0.25f), 1.0f, kRadiusControl);
         c.text(w.rect, tr(Str::SoloMark), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
@@ -6686,15 +6836,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::FxBoxAdd: {
         // As the dashed card after the effects, narrower: a plus, then which band it adds to.
-        const Color color = kAccent;
-        if (hovered)
-            c.fillRect(w.rect, color.alpha(0.07f), kRadiusCard);
-        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
         const float arm = 9.0f;
         const Point m{w.rect.center().x, w.rect.center().y - 14.0f};
-        const Color ink = hovered ? kText : kFaint.alpha(0.8f);
-        c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
-        c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
+        const Color ink = paintAddCard(c, w.rect, m, arm, hovered);
         // In capitals, as ADD EFFECT and ADD SOURCE are.
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 14.0f}, upperCase(tr(Str::ButtonAddToBand)), kTextLabel, ink,
                Align::Center, true);
@@ -6717,15 +6861,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A dashed outline with a plus in it and what it adds under that, faint at rest so it stays behind the cards,
         // lit while hovered in the theme's accent, like + EFFECT and + SOURCE.
         const bool fx = w.kind == Kind::FxShadow;
-        const Color color = kAccent;
-        if (hovered)
-            c.fillRect(w.rect, color.alpha(0.07f), kRadiusCard);
-        c.strokeRect(w.rect, hovered ? color.alpha(0.8f) : kFaint.alpha(0.5f), 1.2f, kRadiusCard, true);
         const float arm = 12.0f;
         const Point m{w.rect.center().x, w.rect.center().y - arm};
-        const Color ink = hovered ? kText : kFaint.alpha(0.8f);
-        c.line({m.x - arm, m.y}, {m.x + arm, m.y}, ink, 2.0f);
-        c.line({m.x, m.y - arm}, {m.x, m.y + arm}, ink, 2.0f);
+        const Color ink = paintAddCard(c, w.rect, m, arm, hovered);
         const char *what = tr(fx ? Str::ButtonAddEffect : Str::ButtonAddSource);
         c.text({w.rect.x, m.y + arm + 6.0f, w.rect.w, 16.0f}, what, kTextLabel, ink, Align::Center, true);
         break;
@@ -6734,8 +6872,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::FxMode: {
         const bool on = fxGraph() == (w.b == 1);
-        paintButtonFace(c, w, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, kAccent, kRadiusControl);
-        fxModeIcon(c, w.rect.center(), w.b == 1, on ? kAccent : (hovered ? kText : kDim));
+        paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
+        fxModeIcon(c, w.rect.center(), w.b == 1, on ? litInk(kAccent) : (hovered ? kText : kDim));
         break;
     }
     case Kind::WireStart: // a circle with a dot where it leaves its node
@@ -6748,7 +6886,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::FxClear: { // a bin, faint while there is nothing to remove
         const bool any = fxAnyToClear();
-        paintButtonFace(c, w, hovered && any ? kTrack : kRaised, false, kAccent, kRadiusControl);
+        // As the other icon buttons (the title bar's, the shape editor's): raised, outlined where controls are.
+        c.fillRect(w.rect, hovered && any ? kTrack : kRaised, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         binIcon(c, w.rect.center(), !any ? kFaint : hovered ? kText : kDim);
         break;
     }
@@ -6767,8 +6908,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                               Str::MenuFxSpace, Str::MenuFxModulation, Str::MenuFxStereo,
                                               Str::MenuFxSplit};
             static_assert(std::size(kGroups) == kFxMenuSplitGroup + 1, "each group of the list of effects has its name");
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
             const int groups = fxSlot_.lane == 0 ? kFxMenuSplitGroup + 1 : kFxMenuGroupCount;
             for (int g = 0; g < groups; ++g) {
                 const Rect head = fxMenuHead(fxMenuAt_, g);
@@ -6781,8 +6921,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break;
     case Kind::SourceMenu:
         if (w.a == 1) { // the list's panel
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::SourceMenuItem: {
@@ -6916,8 +7055,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             !isFilterSlope(w.param) || hasSlope(static_cast<FilterType>(std::lround(value(slopeTypeParam(w.param)))));
         const bool lit = relevant && (hovered || listMenu_ == w.param);
         const Color color = listColor(w.param);
-        c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, kRadiusControl);
+        if (look.flat) { // filled dark, without an outline, tinted with its color under the mouse
+            c.fillRect(w.rect, wellColor(), kRadiusControl);
+            if (lit)
+                c.fillRect(w.rect, color.alpha(0.24f), kRadiusControl);
+        } else {
+            c.fillRect(w.rect, lit ? color.alpha(0.18f) : kRaised, kRadiusControl);
+            c.strokeRect(w.rect, color.alpha(lit ? 0.9f : relevant ? 0.45f : 0.2f), 1.0f, kRadiusControl);
+        }
         const Color text = !relevant ? kFaint : lit ? kText : kDim;
         // An LFO's shape shows its icon before its name.
         const float indent = isLfoShape(w.param) ? 24.0f : 0.0f;
@@ -6933,8 +7078,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::ListMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::PeqBand: {
@@ -6946,8 +7090,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                  (hover_->kind == Kind::PeqBand || hover_->kind == Kind::PeqBandOn ||
                                   hover_->kind == Kind::PeqTypeButton);
         const Color color = kSourceColors[w.b];
-        c.fillRect(w.rect, picked ? kTrack : (chipHovered ? kRaised : kCardColor), kRadiusControl);
-        c.strokeRect(w.rect, picked ? color.alpha(on ? 0.9f : 0.5f) : kBorder, 1.0f, kRadiusControl);
+        if (look.flat) { // as the switches: in a well without an outline, the picked one tinted with its band's color
+            c.fillRect(w.rect, chipHovered && !picked ? wellHover() : wellColor(), kRadiusControl);
+            if (picked)
+                c.fillRect(w.rect, color.alpha(on ? 0.3f : 0.15f), kRadiusControl);
+        } else {
+            c.fillRect(w.rect, picked ? kTrack : (chipHovered ? kRaised : kCardColor), kRadiusControl);
+            c.strokeRect(w.rect, picked ? color.alpha(on ? 0.9f : 0.5f) : kBorder, 1.0f, kRadiusControl);
+        }
         // The number midway between the power symbol's edge (its ring 5 px about its middle, and its stroke) and the
         // line, raised 1.5 px so its middle meets the symbol's (whose stroke reaches above its ring).
         const Rect power = peqChipPower(w.rect), shape = peqChipShape(w.rect);
@@ -6974,8 +7124,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::PeqTypeMenu:
         if (w.a == 1) {
-            c.fillRect(w.rect, kRaised, kRadiusCard);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+            paintMenuPanel(c, w.rect);
         }
         break;
     case Kind::PeqTypeItem: {
@@ -7030,14 +7179,16 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         break; // drawn with its editor
     case Kind::ShapeDone:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         doneIcon(c, w.rect.center(), kText);
         break;
     case Kind::ShapeCollapse:
     case Kind::ShapeExpand:
     case Kind::ShapeWiden:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         if (w.kind == Kind::ShapeCollapse)
             collapseIcon(c, w.rect.center(), hovered ? kText : kDim);
         else
@@ -7053,19 +7204,19 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const UiLayout &layout = controller_.layout();
         const bool on = w.b == 2 ? layout.shapeSnap : layout.shapeSteps == (w.b == 1);
         const Color color = shapeColor(w.a);
-        paintButtonFace(c, w, on ? color.alpha(0.22f) : (hovered ? kTrack : kRaised), on, color, kRadiusControl);
-        const Color ink = on ? kText : (hovered ? kText : kDim);
+        paintButtonFace(c, w, on, hovered, color, 0.22f, kRadiusControl);
+        const Color ink = on ? litInk(kText) : (hovered ? kText : kDim);
         const Str names[] = {Str::SwitchPoints, Str::SwitchSteps, Str::SwitchSnap};
         const char *name = tr(names[w.b]);
         const float textW = c.textWidth(name, kTextLabel, on);
         const float left = w.rect.center().x - (16.0f + textW) * 0.5f;
         const Point icon{left + 6.0f, w.rect.center().y};
         if (w.b == 0)
-            pointsIcon(c, icon, on ? color : ink);
+            pointsIcon(c, icon, on ? litInk(color) : ink);
         else if (w.b == 1)
-            stepsIcon(c, icon, on ? color : ink);
+            stepsIcon(c, icon, on ? litInk(color) : ink);
         else
-            gridIcon(c, icon, on ? color : ink);
+            gridIcon(c, icon, on ? litInk(color) : ink);
         c.text({left + 16.0f, w.rect.y, textW + 2.0f, w.rect.h}, name, kTextLabel, ink, Align::Left, on);
         break;
     }
@@ -7080,7 +7231,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // Save and Save As greyed out while they have nothing to save.
         const bool off = !presetActionOn(static_cast<PresetAction>(w.a));
         c.fillRect(w.rect, hovered && !off ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         const Point m = w.rect.center();
         const Color color = off ? kFaint : hovered ? kText : kDim;
         switch (static_cast<PresetAction>(w.a)) {
@@ -7120,9 +7272,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         }
         break;
     }
-    case Kind::Octave: {
-        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusMark);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusMark);
+    case Kind::Octave: { // in a flat theme in a well, without an outline, as its switches
+        if (look.flat) {
+            c.fillRect(w.rect, hovered ? wellHover() : wellColor(), kRadiusMark);
+        } else {
+            c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusMark);
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusMark);
+        }
         // A minus or a plus, drawn: a glyph this small sits off center.
         const Point m = w.rect.center();
         c.line({m.x - 3.0f, m.y}, {m.x + 3.0f, m.y}, kText, 1.2f);
@@ -7133,7 +7289,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::SettingsButton: {
         const bool open = settingsOpen_;
         c.fillRect(w.rect, hovered || open ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         // A cog: eight teeth around a ring.
         const Point center = w.rect.center();
         const Color color = hovered || open ? kText : kDim;
@@ -7166,7 +7323,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool faint = w.kind == Kind::SettingsMpeRange && !controller_.mpe();
         const Color accent = faint ? kDim : kAccent;
         if (w.group.w > 0.0f) // in its row's pill
-            paintButtonFace(c, w, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), on, accent, kRadiusControl);
+            paintButtonFace(c, w, on, hovered, accent, 0.22f, kRadiusControl);
         else {
             c.fillRect(w.rect, on ? accent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
             c.strokeRect(w.rect, on ? accent : kBorder, 1.0f, kRadiusControl);
@@ -7180,7 +7337,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                   : w.kind == Kind::SettingsMpe     ? std::string(tr(w.b ? Str::ValueOn : Str::ValueOff))
                                   : w.kind == Kind::SettingsHandles ? std::string(tr(kHandleSizes[w.b]))
                                                                     : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
-        c.text(w.rect, label, kTextBody, on && !faint ? kText : kDim, Align::Center, on);
+        c.text(w.rect, label, kTextBody, on ? (faint ? litInk(kDim) : litInk(kText)) : kDim, Align::Center, on);
         break;
     }
     case Kind::SettingsGlow:
@@ -7228,7 +7385,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // The preset's name, a dot while it has changed since it was loaded, and a chevron for the browser.
         const bool lit = hovered || browserOpen_;
         c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         c.text({w.rect.x + 28.0f, w.rect.y, w.rect.w - 56.0f, w.rect.h}, controller_.presetName(), kTextBody, kText,
                Align::Center, true);
         if (controller_.patchEdited())
@@ -7242,7 +7400,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // A metronome, then the tempo and its unit, centered in the room right of it.
         const bool lit = hovered || active;
         c.fillRect(w.rect, lit ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         const Color ink = lit ? kText : kDim;
         const Point m{w.rect.x + 14.0f, w.rect.center().y};
         const Point body[] = {{m.x - 5.0f, m.y + 6.0f}, {m.x - 2.0f, m.y - 6.0f}, {m.x + 2.0f, m.y - 6.0f},
@@ -7262,7 +7421,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::PresetStep: {
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         const Point m = w.rect.center();
         const float d = w.a < 0 ? 1.5f : -1.5f; // the chevron points the way it steps
         const Point chevron[] = {{m.x + d, m.y - 4.0f}, {m.x - d, m.y}, {m.x + d, m.y + 4.0f}};
@@ -7273,12 +7433,18 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // The preset loaded in the accent; the one picked from the keyboard, like a hovered one, outlined.
         const bool current = controller_.presetIndex() == w.a;
         const bool picked = browserPick_ == w.a;
-        if (current)
-            c.fillRect(w.rect, kAccent.alpha(0.18f), kRadiusControl);
-        else if (hovered || picked)
-            c.fillRect(w.rect, kTrack, kRadiusControl);
-        if (current || picked)
-            c.strokeRect(w.rect, picked ? kText.alpha(0.6f) : kAccent.alpha(0.6f), 1.0f, kRadiusControl);
+        if (look.flat) { // without outlines, as the menus' rows: the picked one, like a hovered one, shaded
+            if (current)
+                c.fillRect(w.rect, kAccent.alpha(0.18f), kRadiusControl);
+            paintMenuRow(c, w.rect, hovered || picked, false);
+        } else {
+            if (current)
+                c.fillRect(w.rect, kAccent.alpha(0.18f), kRadiusControl);
+            else if (hovered || picked)
+                c.fillRect(w.rect, kTrack, kRadiusControl);
+            if (current || picked)
+                c.strokeRect(w.rect, picked ? kText.alpha(0.6f) : kAccent.alpha(0.6f), 1.0f, kRadiusControl);
+        }
         const std::vector<PresetEntry> &presets = controller_.presets();
         if (w.a < static_cast<int>(presets.size()))
             c.text({w.rect.x + 14.0f, w.rect.y, w.rect.w - 28.0f, w.rect.h}, presets[w.a].name, kTextBody,
@@ -7304,29 +7470,37 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::BrowserFolder:
         c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         c.text(w.rect, tr(Str::ButtonOpenFolder), kTextLabel, hovered ? kText : kDim, Align::Center, true);
         break;
     case Kind::ConfirmButton: {
+        // A button's face: lit in `color` (the way ahead, or a band's), else plain; in a flat theme, as its switches, filled
+        // solid with the color or set in a well, without an outline. Gives the ink for its label.
+        auto face = [&](bool lit, Color color) {
+            if (look.flat) {
+                c.fillRect(w.rect, lit ? (hovered ? mix(color, kText, 0.15f) : color) : hovered ? wellHover() : wellColor(),
+                           kRadiusControl);
+                return lit ? litInk(kText) : kText;
+            }
+            c.fillRect(w.rect, lit ? color.alpha(hovered ? 0.35f : 0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
+            c.strokeRect(w.rect, lit ? color : kBorder, 1.0f, kRadiusControl);
+            return kText;
+        };
         if (w.a == 4) { // a split removed with its bands' effects
-            c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
-            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
-            c.text(w.rect, tr(Str::ButtonSplitDelete), kTextBody, kText, Align::Center);
+            c.text(w.rect, tr(Str::ButtonSplitDelete), kTextBody, face(false, kAccent), Align::Center);
             break;
         }
         if (w.a >= 2) { // a split's middle band's effects onto its low band (2) or its high one (3), in that color
-            const Color band = laneColor(w.a == 2 ? 2 : 1);
-            c.fillRect(w.rect, band.alpha(hovered ? 0.3f : 0.16f), kRadiusControl);
-            c.strokeRect(w.rect, band, 1.0f, kRadiusControl);
-            c.text(w.rect, tr(w.a == 2 ? Str::ButtonMidToLow : Str::ButtonMidToHigh), kTextBody, kText, Align::Center,
+            const Color ink = face(true, laneColor(w.a == 2 ? 2 : 1));
+            c.text(w.rect, tr(w.a == 2 ? Str::ButtonMidToLow : Str::ButtonMidToHigh), kTextBody, ink, Align::Center,
                    true);
             break;
         }
         const bool bands = confirm_ == kConfirmMidBand; // removing them is no more the way ahead than the others
         const bool ok = w.a == 1;
         const bool lit = ok && !bands;
-        c.fillRect(w.rect, lit ? kAccent.alpha(hovered ? 0.35f : 0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
-        c.strokeRect(w.rect, lit ? kAccent : kBorder, 1.0f, kRadiusControl);
+        const Color ink = face(lit, kAccent);
         const char *label = tr(!ok                                                ? Str::ButtonCancel
                                : bands                                            ? Str::ButtonMidRemove
                                : confirm_ == kConfirmSplitRemove                  ? Str::ButtonSplitKeep
@@ -7334,11 +7508,17 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                : confirm_ == static_cast<int>(PresetAction::Init) ? Str::ButtonInit
                                : confirm_ == static_cast<int>(PresetAction::Save) ? Str::ButtonOverwrite
                                                                                   : Str::ButtonLoad);
-        c.text(w.rect, label, kTextBody, kText, Align::Center, lit);
+        c.text(w.rect, label, kTextBody, ink, Align::Center, lit);
         break;
     }
     case Kind::SplitBands: { // the BANDS switch: 2 | 3, the one it is lit in the accent
         const bool on = (w.b == 3) == splitThree(w.a);
+        if (look.flat) { // as the S beside it and the other switches: a well, filled solid with the accent while lit
+            c.fillRect(w.rect, on ? kAccent : hovered ? wellHover() : wellColor(), kRadiusControl);
+            c.text(w.rect, std::to_string(w.b), kTextLabel, on ? litInk(kText) : hovered ? kText : kDim, Align::Center,
+                   true);
+            break;
+        }
         c.fillRect(w.rect, on ? kAccent.alpha(0.22f) : (hovered ? kTrack : kRaised), kRadiusControl);
         c.strokeRect(w.rect, on ? kAccent.alpha(0.8f) : kBorder, 1.0f, kRadiusControl);
         c.text(w.rect, std::to_string(w.b), kTextLabel, on || hovered ? kText : kDim, Align::Center, true);
@@ -7480,13 +7660,22 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                           cascade_->slot == w.b;
         const float radius = w.rect.h * 0.5f;
         if (aux < 0) {
+            if (look.flat) { // a filled pill, as + SOURCE
+                paintPill(c, w.rect, hovered || open);
+                c.text(w.rect, tr(Str::ModsAddAux), kTextLabel, kText, Align::Center, true);
+                break;
+            }
             c.strokeRect(w.rect, hovered || open ? kDim : kTrack, 1.0f, radius, true);
             c.text(w.rect, tr(Str::ModsAddAux), kTextLabel, hovered || open ? kText : kDim);
             break;
         }
         const Rect chip{w.rect.x, w.rect.y, w.rect.w + 22.0f, w.rect.h};
-        c.fillRect(chip, hovered || open ? kTrack : kRaised, radius);
-        c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
+        if (look.flat) { // tinted with its source's color, without an outline, more strongly than + Aux is filled
+            c.fillRect(chip, kSourceColors[aux].alpha(hovered || open ? 0.32f : 0.22f), radius);
+        } else {
+            c.fillRect(chip, hovered || open ? kTrack : kRaised, radius);
+            c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
+        }
         c.fillCircle({w.rect.x + 11.0f, w.rect.center().y}, 4.0f, kSourceColors[aux]);
         c.text({w.rect.x + 20.0f, w.rect.y, w.rect.w - 22.0f, w.rect.h}, sourceName(aux), kTextLabel, kText, Align::Left,
                true);
@@ -7495,6 +7684,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::ModsAdd: {
         // A dashed button, as + Aux: lit under the mouse.
         const float radius = w.rect.h * 0.5f;
+        if (look.flat) { // a filled pill, as + SOURCE
+            paintPill(c, w.rect, hovered);
+            c.text(w.rect, tr(Str::ModsAddModulation), kTextLabel, kText, Align::Center, true);
+            break;
+        }
         c.strokeRect(w.rect, hovered ? kDim : kTrack, 1.0f, radius, true);
         c.text(w.rect, tr(Str::ModsAddModulation), kTextLabel, hovered ? kText : kDim);
         break;
@@ -7565,7 +7759,7 @@ void View::paintHoverTags(Canvas &c, const std::vector<Widget> &list) {
                                : isMoreWave(picked)         ? waveName(picked)
                                                             : tr(Str::TipMoreWaves);
             const Rect tip{w.rect.center().x - 40.0f, w.rect.bottom() + 3.0f, 80.0f, 16.0f};
-            c.fillRect(tip, kRaised, kRadiusControl);
+            paintMenuPanel(c, tip, kRadiusControl); // as a tooltip, which stands apart from a raised row too
             c.text(tip, name, kTextLabel, kText);
         } else if (w.kind == Kind::ModDot && (isHovered(w) || isActive(w))) {
             const Point center = w.rect.center();
@@ -7573,7 +7767,7 @@ void View::paintHoverTags(Canvas &c, const std::vector<Widget> &list) {
             const float width = std::ceil(c.textWidth(text, kTextLabel)) + 16.0f;
             const float x = std::clamp(center.x - width * 0.5f, 4.0f, View::kWidth - 4.0f - width);
             const Rect tip{x, center.y + 8.0f, width, 18.0f};
-            c.fillRect(tip, kRaised, kRadiusControl);
+            paintMenuPanel(c, tip, kRadiusControl);
             c.text(tip, text, kTextLabel, kText);
         }
     }
@@ -7610,7 +7804,6 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const double n = norm(w.param);
     const float angle = knobAngle(n);
 
-    c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, focused ? kFaint : kTrack, 3.5f);
     // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
     const int macro = macroOf(w.param);
     // An LFO's Phase is faint too while notes don't start the LFO there.
@@ -7622,38 +7815,83 @@ void View::paintKnob(Canvas &c, const Widget &w) {
                         : w.param == fxInputIndex(fxSumNode(sum), 0, FxInputField::Level) ? 1
                         : w.param == fxInputIndex(fxSumNode(sum), 1, FxInputField::Level) ? 2
                                                                                           : 3;
-    const Color plain = sum >= 0 ? laneColor(levelOf) : kAccent;
-    const Color arc = (macro >= 0 ? kSourceColors[kMaxSources + macro] : plain).alpha(idle ? 0.3f : 1.0f);
+    // In a theme that colors knobs by what they belong to: a source's or an effect's in its card's color, a filter's
+    // or a shaper's in its node's, as the switches on its page are; an operator's in the accent, as its page's switches
+    // are, its own color kept for the graph.
+    auto owner = [&](int param) {
+        if (!look.flat)
+            return kAccent;
+        if (const int s = sourceOf(param); s >= 0)
+            return kSourceColors[s];
+        if (const int slot = fxSlotOf(param); slot >= 0)
+            return fxTypeColor(fxSlotType(slot));
+        // A filter's, and the depths of the routes into or out of one (an operator's send, another filter's link,
+        // its modulation of an operator), which its INPUTS tab shows, as the routes take its color.
+        if (param >= kFilterModBase && param < kShaperBase)
+            return kFilterColor;
+        if (shaperOf(param) >= 0)
+            return kShaperColor;
+        if (param >= kOpBase && param < kMatrixBase) {
+            const int field = (param - kOpBase) % kOpParamCount;
+            if (field >= static_cast<int>(OpParam::Sends) && field < static_cast<int>(OpParam::ShaperSends))
+                return kFilterColor;
+            if (field >= static_cast<int>(OpParam::ShaperSends) && field < static_cast<int>(OpParam::Fixed))
+                return kShaperColor;
+        }
+        return kAccent;
+    };
+    const Color plain = sum >= 0 ? laneColor(levelOf) : owner(w.param);
+    const Color own = macro >= 0 ? kSourceColors[kMaxSources + macro] : plain;
     // A bipolar macro moves nothing at the knob's middle, so its arc starts there.
     const bool fromMiddle = isBipolar(def.kind) || (macro >= 0 && sourceBipolar(kMaxSources + macro));
+    // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color, which stands
+    // out on a card tinted with it as the plain track doesn't.
+    // Modulated, it keeps them: a modulation ring in a color like its own is told apart from it instead (ringColor()).
+    const Color arc = own.alpha(idle ? 0.3f : 1.0f);
+    const Color track = look.flat ? own.alpha(focused ? 0.45f : 0.28f) : (focused ? kFaint : kTrack);
+    c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, track, 3.5f);
     c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
 
     // Modulation ranges just outside the track, one ring per source. Bipolar sources swing both ways.
     // A switched-off source's ring is faint: it is kept, but does nothing. The one whose depth handle is under the
     // mouse is wider, over the others.
     // (A hovered pill focuses all of those it holds.)
+    // Where a ring's reach runs past the knob's end, so that it is cut off there, a line across it marks the end.
+    auto ring = [&](const Assignment &m, float r, float width, float alpha) {
+        const auto [down, up] = modReach(m);
+        const Color color = ringColor(kSourceColors[m.source], own).alpha(alpha);
+        c.arc(center, r, knobAngle(n + down), knobAngle(n + up), color, width);
+        const float half = 0.5f * width + 1.75f;
+        for (const double end : {n + down < 0.0 ? 0.0 : -1.0, n + up > 1.0 ? 1.0 : -1.0})
+            if (end >= 0.0)
+                c.line(Canvas::onCircle(center, r - half, knobAngle(end)), Canvas::onCircle(center, r + half, knobAngle(end)),
+                       color, 1.5f);
+    };
     std::vector<Assignment> focus;
     forEachMod(w.param, [&](const Assignment &m) {
         if (modFocused(m)) {
             focus.push_back(m);
             return;
         }
-        const auto [down, up] = modReach(m);
-        const float alpha = (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f);
-        c.arc(center, radius + 2.5f, knobAngle(n + down), knobAngle(n + up), kSourceColors[m.source].alpha(alpha),
-              2.5f);
+        ring(m, radius + 2.5f, 2.5f, (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f));
     });
-    for (const Assignment &f : focus) {
-        const auto [down, up] = modReach(f);
-        const float alpha = sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f;
-        c.arc(center, radius + 3.0f, knobAngle(n + down), knobAngle(n + up), kSourceColors[f.source].alpha(alpha),
-              4.0f);
-    }
+    for (const Assignment &f : focus)
+        ring(f, radius + 3.0f, 4.0f, sourceOn(f.source) && !f.bypassed ? 1.0f : 0.4f);
 
-    c.fillCircle(center, radius - 7.0f, kKnobBody);
-    c.strokeCircle(center, radius - 7.0f, kBorder, 1.0f);
-    c.line(Canvas::onCircle(center, (radius - 7.0f) * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle),
-           kText, 2.0f);
+    // The cap, over a shadow where the theme has one; its pointer a line from the middle, or in a flat theme a dot by
+    // its rim.
+    const float cap = radius - 7.0f;
+    if (look.capShadow > 0.0f) {
+        c.fillCircle({center.x, center.y + 1.5f}, cap + 1.0f, Color{0.0f, 0.0f, 0.0f, look.capShadow * 0.5f});
+        c.fillCircle({center.x, center.y + 1.0f}, cap + 0.5f, Color{0.0f, 0.0f, 0.0f, look.capShadow});
+    }
+    c.fillCircle(center, cap, kKnobBody);
+    c.strokeCircle(center, cap, look.panelShadow > 0.0f ? kBorder.alpha(0.6f) : kBorder, 1.0f);
+    if (look.flat)
+        c.fillCircle(Canvas::onCircle(center, cap - 4.0f, angle), 2.0f, kText);
+    else
+        c.line(Canvas::onCircle(center, cap * 0.3f, angle), Canvas::onCircle(center, radius - 9.5f, angle), kText,
+               2.0f);
 
     // Where modulation currently takes the newest voice, or with no note playing where the macros take it.
     // One modulated in steps stands on the step it plays.
@@ -7661,8 +7899,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     if (offset != 0.0f && modulatedInSteps(w.param))
         offset = static_cast<float>(std::clamp(std::round(value(w.param) + offset), def.min, def.max) - value(w.param));
     if (offset != 0.0f)
-        c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))),
-                     2.5f, kText);
+        c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))), 2.5f, kText);
 
     char text[64];
     formatParam(w.param, value(w.param), text, sizeof(text));
@@ -7725,7 +7962,8 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     const bool focused = isHovered(w) || dragged;
     const double n = norm(w.param);
     c.fillRect(kRatioBox, kDisplayColor, kRadiusControl);
-    c.strokeRect(kRatioBox, focused ? kFaint : kBorder, 1.0f, kRadiusControl);
+    if (outlined() || focused) // in a flat theme, as its other displays, outlined only under the mouse
+        c.strokeRect(kRatioBox, focused ? kFaint : kBorder, 1.0f, kRadiusControl);
 
     const long h = ratioHundredths(value(w.param));
     const int digits[kRatioDigits] = {h >= 1000 ? static_cast<int>(h / 1000) : -1, static_cast<int>(h / 100 % 10),
@@ -8062,8 +8300,7 @@ void View::paintTooltip(Canvas &c) {
     const float width = std::min(std::ceil(c.textWidth(text, kTextBody)) + 24.0f, View::kWidth - 16.0f);
     const float x = std::clamp(hover_->rect.center().x - width * 0.5f, 8.0f, View::kWidth - 8.0f - width);
     const Rect tip{x, hover_->rect.bottom() + 6.0f, width, 22.0f}; // a knob's rect takes in its label
-    c.fillRect(tip, kRaised, kRadiusCard);
-    c.strokeRect(tip, kBorder, 1.0f, kRadiusCard);
+    paintMenuPanel(c, tip);
     c.text(tip, text, kTextBody, kText);
 }
 
@@ -8164,9 +8401,13 @@ Rect View::modListPanel(Rect anchor, int rows, bool aux) const {
 }
 
 void View::paintModList(Canvas &c, const Widget &w) {
-    c.fillRect(w.rect.inset(-3.0f), kBackground.alpha(0.35f), kRadiusCard + 3.0f); // a soft edge against what it covers
-    c.fillRect(w.rect, kPanel, kRadiusCard);
-    c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+    if (look.flat) {
+        paintMenuPanel(c, w.rect); // as the other lists
+    } else {
+        c.fillRect(w.rect.inset(-3.0f), kBackground.alpha(0.35f), kRadiusCard + 3.0f); // a soft edge against what it covers
+        c.fillRect(w.rect, kPanel, kRadiusCard);
+        c.strokeRect(w.rect, kBorder, 1.0f, kRadiusCard);
+    }
     int rows = 0;
     forEachMod(w.a, [&](const Assignment &) { ++rows; });
     const Rect title{w.rect.x + kModListPad + 4.0f, w.rect.y + 2.0f, w.rect.w - 2.0f * kModListPad - 8.0f,
@@ -8190,8 +8431,12 @@ void View::paintModListRow(Canvas &c, const Widget &w) {
     if (const int aux = slotAux([this](int index) { return value(index); }, w.a, w.b); aux >= 0) {
         const Rect chip = modListAuxChip(w.rect);
         const float radius = chip.h * 0.5f;
-        c.fillRect(chip, kPanel, radius);
-        c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
+        if (look.flat) { // as the MODS view's chip
+            c.fillRect(chip, kSourceColors[aux].alpha(0.22f), radius);
+        } else {
+            c.fillRect(chip, kPanel, radius);
+            c.strokeRect(chip, kSourceColors[aux].alpha(0.5f), 1.0f, radius);
+        }
         c.fillCircle({chip.x + 10.0f, chip.center().y}, 3.5f, kSourceColors[aux]);
         c.text({chip.x + 18.0f, chip.y, chip.w - 40.0f, chip.h}, sourceName(aux), kTextLabel, kText, Align::Left, true);
     }
@@ -8758,7 +9003,12 @@ bool View::mouseMove(Point p, Modifiers mods) {
         // Ctrl going down or up, or the mouse going in or out of the routing graph with it held, shows or hides its
         // grid.
         const bool gridEdge = ctrlHeld_ && kRouting.contains(before) != kRouting.contains(p);
-        bool changed = ctrlChanged || gridEdge || hit.has_value() != hover_.has_value() || (hit && !same(*hit, *hover_)) ||
+        // The card under the mouse, which a theme without card outlines outlines.
+        const int card = look.flat ? cardAt(p) : -1;
+        const bool cardChanged = card != hoverCard_;
+        hoverCard_ = card;
+        bool changed = cardChanged || ctrlChanged || gridEdge || hit.has_value() != hover_.has_value() ||
+                       (hit && !same(*hit, *hover_)) ||
                        (hit && hit->kind == Kind::PartialArea) ||
                        (hit && isRatioDisplay(*hit) && ratioDigit(p.x) != ratioDigit(before.x)); // its lit digit
         hover_ = std::move(hit);
@@ -9769,8 +10019,55 @@ void View::finishDrag() {
 }
 
 void View::mouseLeave() {
-    if (drag_.kind == DragKind::None)
+    if (drag_.kind == DragKind::None) {
         hover_.reset();
+        hoverCard_ = -1;
+    }
+}
+
+void View::noteCard(int id, Rect card, Rect shown) {
+    const float x = std::max(card.x, shown.x), y = std::max(card.y, shown.y);
+    const float right = std::min(card.right(), shown.right()), bottom = std::min(card.bottom(), shown.bottom());
+    if (right > x && bottom > y)
+        cardRects_.push_back({id, {x, y, right - x, bottom - y}});
+}
+
+int View::cardAt(Point p) const {
+    for (auto it = cardRects_.rbegin(); it != cardRects_.rend(); ++it) // the last painted is on top
+        if (it->second.contains(p))
+            return it->first;
+    return -1;
+}
+
+// A card's outline: always, but in a theme whose cards go without one, only while it is dragged or under the mouse.
+bool View::cardOutlined(int id, bool dragged) const {
+    return !look.flat || dragged || (hoverCard_ == id && drag_.kind == DragKind::None);
+}
+
+// An effect's or a source's card under what it holds: its shadow, its fill, tinted with its color in a flat theme
+// (faintly while it is off), and its outline (in its color at `edge` while it is on), and noted as card `id`, as much
+// of it as `shown` shows, for the mouse to find.
+void View::paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown) {
+    paintCardShadow(c, card);
+    c.fillRect(card, kCardColor, kRadiusCard);
+    if (look.flat)
+        c.fillRect(card, color.alpha(look.cardTint * (on ? 1.0f : 0.4f)), kRadiusCard);
+    noteCard(id, card, shown);
+    if (cardOutlined(id, dragged))
+        c.strokeRect(card, dragged ? color : (on ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
+}
+
+// The face of the card a widget is on, as paintCardFace() fills it: the cards' color, in a flat theme tinted with its
+// effect's or its source's color (faintly while that is off).
+Color View::cardFaceUnder(const Widget &w) const {
+    if (!look.flat || w.param < 0)
+        return kCardColor;
+    if (const int slot = fxSlotOf(w.param); slot >= 0)
+        return mix(kCardColor, fxTypeColor(fxSlotType(slot)),
+                   look.cardTint * (value(paramIndex(slot, FxParam::Enabled)) >= 0.5 ? 1.0f : 0.4f));
+    if (const int source = sourceOf(w.param); source >= 0 && source < kMaxSources)
+        return mix(kCardColor, kSourceColors[source], look.cardTint * (sourceOn(source) ? 1.0f : 0.4f));
+    return kCardColor;
 }
 
 std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {

@@ -50,11 +50,21 @@ std::vector<View::Widget> View::settingsWidgets() const {
     return list;
 }
 
+namespace {
+// A dialog's panel, as the theme's panels are: outlined, or lifted by a soft shadow in a theme that lifts its panels so.
+void paintDialogPanel(Canvas &c, Rect panel) {
+    if (look.panelShadow > 0.0f)
+        softShadow(c, panel, kRadiusPanel, 6, 1.5f, 4.0f, std::min(look.panelShadow * 1.5f, 0.4f));
+    c.fillRect(panel, kPanel, kRadiusPanel);
+    if (look.panelShadow <= 0.0f)
+        c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
+}
+} // namespace
+
 void View::paintSettings(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
     const Rect panel = settingsPanel(height());
-    c.fillRect(panel, kPanel, kRadiusPanel);
-    c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
+    paintDialogPanel(c, panel);
     c.text({panel.x + 24.0f, panel.y + 14.0f, 200.0f, 24.0f}, tr(Str::SettingsTitle), kTextHeading, kText, Align::Left, true);
     c.line({panel.x + 1.0f, panel.y + 50.5f}, {panel.right() - 1.0f, panel.y + 50.5f}, kBorder, 1.0f);
     c.text({panel.x + 24.0f, panel.y + 60.0f, 200.0f, 16.0f}, tr(Str::SettingsOversampling), kTextLabel, kFaint, Align::Left,
@@ -426,7 +436,8 @@ void View::paintField(Canvas &c, Field f, Rect box, Rect typed, std::string_view
     TextField &t = field(f);
     const bool focused = fieldTyping() == f;
     c.fillRect(box, kBackground, kRadiusControl);
-    c.strokeRect(box, focused || !t.text.empty() ? kAccent : kBorder, 1.0f, kRadiusControl);
+    if (outlined() || focused || !t.text.empty()) // in a flat theme, outlined only while it is typed in or holds words
+        c.strokeRect(box, focused || !t.text.empty() ? kAccent : kBorder, 1.0f, kRadiusControl);
     const Point lens{box.x + 13.0f, box.center().y - 1.0f};
     c.strokeCircle(lens, 4.0f, kDim, 1.3f);
     c.line({lens.x + 3.0f, lens.y + 3.0f}, {lens.x + 6.5f, lens.y + 6.5f}, kDim, 1.5f);
@@ -571,8 +582,7 @@ std::vector<View::Widget> View::browserWidgets() const {
 void View::paintBrowser(Canvas &c) {
     c.fillRect({0.0f, 0.0f, View::kWidth, height()}, kBackground.alpha(0.7f));
     const Rect panel = browserPanel(height());
-    c.fillRect(panel, kPanel, kRadiusPanel);
-    c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
+    paintDialogPanel(c, panel);
     c.text({panel.x + 24.0f, panel.y + 14.0f, 120.0f, 24.0f}, tr(Str::PresetsTitle), kTextHeading, kText, Align::Left, true);
     const std::vector<std::pair<int, std::string>> rows = browserRows();
     const size_t count = controller_.presets().size();
@@ -654,8 +664,7 @@ void View::paintConfirm(Canvas &c) {
     const std::string what = confirmWhat();
     const bool bands = confirm_ == kConfirmMidBand; // where a middle band's effects go (undo brings it back too)
     const Rect panel = bands ? confirmBandsPanel(height()) : confirmPanel(height(), confirmShorter());
-    c.fillRect(panel, kPanel, kRadiusPanel);
-    c.strokeRect(panel, kBorder, 1.0f, kRadiusPanel);
+    paintDialogPanel(c, panel);
     const bool overwrite = confirm_ == static_cast<int>(PresetAction::Save);
     const bool split = confirm_ == kConfirmSplitRemove;
     const bool clear = confirm_ == kConfirmFxClear || bands || split; // the effects go, which undo brings back

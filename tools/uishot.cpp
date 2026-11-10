@@ -6,6 +6,7 @@
 #include "gui/canvas.h"
 #include "gui/layout.h"
 #include "gui/routing.h"
+#include "gui/theme.h"
 #include "gui/view.h"
 #include "uistrings.h"
 
@@ -22,6 +23,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <map>
 #include <numbers>
 #include <string>
 #include <vector>
@@ -143,7 +145,9 @@ public:
     bool offersTempo = false; // a host that lets the editor set its tempo (the browser demo, fmvibe-uihost)
     double bpm = kDefaultTempo;
     int tempoSets = 0;
-    std::string themeName;
+    // Midnight, the theme the pixel checks were written in (an editor given no theme, or one it doesn't know, shows
+    // the default, Spectrum).
+    std::string themeName = "Midnight";
     double glowLevel = 0.0;
     Telemetry live{};
     int scopeOp = -1; // what the view last asked the scope to capture
@@ -2048,6 +2052,218 @@ void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
           "a hovered depth handle draws its range wider, over the others");
 }
 
+// In a theme whose cards go without an outline (Spectrum, Porcelain), a source card outlined only while the mouse is
+// over it, and Midnight's outlined at rest (read off the rendered pixels).
+void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    const Rect card = detail::sourceCard(0.0f);
+    const Point edge{card.x, card.center().y}, inside{card.x + 4.0f, card.center().y}, away{600.0f, 328.0f};
+    auto edgeAt = [&](Point mouse, const char *file) {
+        view.mouseMove(mouse, {});
+        return renderer.save(view, dir / file) ? renderer.pixel(edge) : 0u;
+    };
+    const uint32_t midnight = edgeAt(away, "17f-card-outline-midnight.png");
+    model.themeName = "Spectrum";
+    const uint32_t bare = edgeAt(away, "17g-card-outline-rest.png");
+    const uint32_t outlined = edgeAt(inside, "17h-card-outline-hover.png");
+    const uint32_t bareAgain = edgeAt(away, "17i-card-outline-left.png");
+    // Its dropdowns: the LFO's shape list button filled without an outline, and its list open on a soft shadow.
+    click(view, detail::lfoShapeButton(0.0f).center());
+    view.mouseMove(away, {});
+    const bool listShot = renderer.save(view, dir / "17j-spectrum-list-open.png");
+    click(view, away);
+    // A node playing unison copies: their discs peek out beside it, left of its circle (read off the rendered pixels).
+    click(view, kRoutingTab);
+    const Point node = nodeCenter(model.layout(), 0);
+    const Point beside{node.x - detail::kNodeRadius - 3.0f, node.y};
+    view.mouseMove(away, {});
+    const uint32_t single = renderer.save(view, dir / "17k-flat-unison-off.png") ? renderer.pixel(beside) : 0u;
+    model.set(paramIndex(0, OpParam::Unison), 4.0);
+    view.poll();
+    view.mouseMove(away, {});
+    const uint32_t stacked = renderer.save(view, dir / "17l-flat-unison.png") ? renderer.pixel(beside) : 0u;
+    model.set(paramIndex(0, OpParam::Unison), 1.0);
+    view.poll();
+    click(view, kFxTab);
+    model.themeName = "Midnight";
+    check(single != 0u && stacked != 0u && single != stacked, "a Spectrum node's unison copies show beside it");
+    check(bare != outlined && bare == bareAgain && bare != 0u && midnight != 0u && listShot,
+          "a Spectrum card is outlined only while the mouse is over it");
+}
+
+// A modulation ring whose reach runs past its knob's end, cut off there, ends in a line across it: at the knob's end
+// angle something is drawn further out than the ring reaches inside its range, while a reach that stays inside draws
+// nothing there past the knob's track (read off the rendered pixels, along rays out from Op A's Phase knob).
+void testModEndMarks(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    model.set(paramIndex(0, OpParam::Phase), 0.5);
+    view.poll();
+    drag(view, sourceHandle(0), kOpPhaseKnob);
+    const bool assigned = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Phase);
+    const Color panel = detail::kThemes[detail::themeIndex("Midnight")].panel;
+    const auto bg = static_cast<uint32_t>(panel.r * 255.0f + 0.5f) << 16 |
+                    static_cast<uint32_t>(panel.g * 255.0f + 0.5f) << 8 | static_cast<uint32_t>(panel.b * 255.0f + 0.5f);
+    auto drawn = [&](uint32_t p) {
+        for (int shift = 0; shift < 24; shift += 8)
+            if (std::abs(static_cast<int>((p >> shift) & 0xFF) - static_cast<int>((bg >> shift) & 0xFF)) > 24)
+                return true;
+        return false;
+    };
+    // How far out from the knob's middle something is drawn along the ray at `angle`.
+    auto farthest = [&](float angle) {
+        float last = 0.0f;
+        for (float d = 8.0f; d <= 26.0f; d += 0.5f)
+            if (drawn(renderer.pixel(Canvas::onCircle(kOpPhaseKnob, d, angle))))
+                last = d;
+        return last;
+    };
+    auto at = [&](double phase, const char *file) {
+        model.set(paramIndex(0, OpParam::Phase), phase);
+        view.poll();
+        view.mouseMove({600.0f, 328.0f}, {});
+        return renderer.save(view, dir / file);
+    };
+    const float top = detail::knobAngle(1.0), inside = detail::knobAngle(0.9);
+    const bool cutShot = at(0.97, "17q-mod-end-mark.png");
+    const float cutEnd = farthest(top), cutInside = farthest(inside);
+    const bool freeShot = at(0.5, "17r-mod-no-end-mark.png");
+    const float freeEnd = farthest(top), freeRing = farthest(detail::knobAngle(0.6));
+    std::printf("      end mark: cut off %.1f px out at the end, %.1f inside; within range %.1f at the end, ring %.1f\n",
+                cutEnd, cutInside, freeEnd, freeRing);
+    check(assigned && cutShot && freeShot && cutEnd > cutInside + 1.0f && freeEnd + 2.0f < freeRing,
+          "a modulation ring cut off at its knob's end ends in a line across it, and one within range doesn't");
+}
+
+// In a theme that colors knobs by their card (Spectrum, Porcelain), a modulated knob's arc keeps its color, and a
+// modulation ring whose source's color is like it is drawn lighter (on a dark theme) to stand apart: Spectrum's LFO 1,
+// a blue near its accent, on an operator's knob, in the accent. Midnight draws the ring in the LFO's own color (read off
+// the rendered pixels, the upper half of Op A's Phase knob, set to its middle, where its arc and the ring run).
+void testFlatModulatedKnob(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    addSource(view, SourceType::Lfo);
+    model.set(paramIndex(0, OpParam::Phase), 0.5);
+    view.poll();
+    const Point away{600.0f, 328.0f};
+    // The pixels near each of two colors, in the knob's upper half.
+    auto count = [&](const char *file, uint32_t accent, uint32_t text) {
+        view.mouseMove(away, {});
+        std::pair<int, int> counts{0, 0};
+        if (!renderer.save(view, dir / file))
+            return counts;
+        auto alike = [](uint32_t a, uint32_t b) {
+            for (int shift = 0; shift < 24; shift += 8)
+                if (std::abs(static_cast<int>((a >> shift) & 0xFF) - static_cast<int>((b >> shift) & 0xFF)) > 40)
+                    return false;
+            return true;
+        };
+        for (float y = kOpPhaseKnob.y - 22.0f; y < kOpPhaseKnob.y - 8.0f; y += 1.0f)
+            for (float x = kOpPhaseKnob.x - 22.0f; x < kOpPhaseKnob.x + 22.0f; x += 1.0f) {
+                const uint32_t p = renderer.pixel({x, y});
+                counts.first += alike(p, accent);
+                counts.second += alike(p, text);
+            }
+        return counts;
+    };
+    auto rgb = [](const Color &c) {
+        return static_cast<uint32_t>(c.r * 255.0f + 0.5f) << 16 | static_cast<uint32_t>(c.g * 255.0f + 0.5f) << 8 |
+               static_cast<uint32_t>(c.b * 255.0f + 0.5f);
+    };
+    const detail::Palette &spectrum = detail::kThemes[detail::themeIndex("Spectrum")],
+                          &midnight = detail::kThemes[detail::themeIndex("Midnight")];
+    model.themeName = "Spectrum";
+    // A bipolar LFO's ring is drawn at 60 %, over the inspector's panel.
+    auto ringOn = [&](const detail::Palette &theme, Color color) { return rgb(mix(theme.panel, color, 0.6f)); };
+    const Color lfo = spectrum.sources[0];
+    const uint32_t raw = ringOn(spectrum, lfo);
+    const uint32_t lifted = ringOn(spectrum, mix(lfo, Color{1.0f, 1.0f, 1.0f, 1.0f}, 0.5f)); // told from the accent
+    const auto plain = count("17m-flat-knob.png", rgb(spectrum.accent), raw);
+    drag(view, sourceHandle(0), kOpPhaseKnob);
+    const bool assigned = slotTarget(model.value(slotTargetIndex(0, 0))) == paramIndex(0, OpParam::Phase);
+    const auto modulated = count("17n-flat-knob-modulated.png", rgb(spectrum.accent), raw);
+    const auto ring = count("17n-flat-knob-modulated.png", lifted, rgb(spectrum.text));
+    model.themeName = "Midnight";
+    const auto midnightModulated =
+        count("17o-midnight-knob-modulated.png", rgb(midnight.accent), ringOn(midnight, midnight.sources[0]));
+    // Where a macro takes it with no note playing, its dot on the arc.
+    model.themeName = "Spectrum";
+    const float strip = view.height() - 179.0f;
+    drag(view, {188.0f - 32.0f, strip}, kOpPhaseKnob); // Macro 1's handle
+    model.set(paramIndex(0, MacroParam::Value), 1.0);
+    view.poll();
+    view.mouseMove(away, {});
+    const bool macroShot = renderer.save(view, dir / "17p-flat-knob-macro.png");
+    std::printf("      Phase's arc: Spectrum %d accent, modulated %d accent / %d LFO / %d lighter ring; Midnight "
+                "modulated %d accent / %d LFO\n",
+                plain.first, modulated.first, modulated.second, ring.first, midnightModulated.first,
+                midnightModulated.second);
+    check(assigned && plain.first > 30 && modulated.first > 30 && ring.first > 30 && 2 * modulated.second < ring.first &&
+              midnightModulated.first > 30 && midnightModulated.second > 10 && macroShot,
+          "in Spectrum a modulated knob keeps its arc's color and a ring of a like color is drawn lighter, and in "
+          "Midnight the ring keeps its source's color");
+}
+
+// In the flat themes (Spectrum, Porcelain): no two sources in one color, and no effect in the dim text's color (which
+// would make one that is on look switched off); and an aux that is set a chip tinted with its source's color, which
+// stands out from its MODS row where + Aux is a filled pill (read off the rendered pixels).
+void testFlatThemes(const std::filesystem::path &dir, Renderer &renderer) {
+    auto same = [](const Color &a, const Color &b) { return a.r == b.r && a.g == b.g && a.b == b.b; };
+    bool distinct = true, lively = true;
+    for (const detail::Palette &theme : detail::kThemes) {
+        if (!theme.flat)
+            continue;
+        for (int i = 0; i < kAllSources; ++i)
+            for (int j = i + 1; j < kAllSources; ++j)
+                if (same(theme.sources[i], theme.sources[j])) {
+                    std::printf("      %s: sources %d and %d share a color\n", theme.name, i, j);
+                    distinct = false;
+                }
+        for (int type = 0; type < static_cast<int>(FxType::Count); ++type)
+            if (same(theme.fxTypes[type], theme.dim)) {
+                std::printf("      %s: effect type %d is in the dim text's color\n", theme.name, type);
+                lively = false;
+            }
+    }
+    check(distinct && lively, "a flat theme gives every source a color of its own, and no effect the dim text's");
+
+    FakeController model;
+    View view(model);
+    model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+    model.set(slotTargetIndex(0, 0), slotTargetValue(paramIndex(0, OpParam::Ratio)));
+    model.set(slotAmountIndex(0, 0), 0.4);
+    model.set(slotAuxIndex(0, 0), slotAuxValue(kMaxSources + 1)); // Macro 2
+    view.poll();
+    click(view, {314.0f, 116.0f}); // the MODS tab
+    const Rect row = detail::modsRow(0.0f), cell = detail::modsCell(row, detail::kModsAux);
+    const float y = row.center().y + 6.0f; // under the name's letters
+    // How much of the chip's first 120 px is the row's own fill, its most common color along it.
+    auto plain = [&](const char *theme, const char *file) {
+        model.themeName = theme;
+        view.mouseMove({600.0f, 600.0f}, {});
+        if (!renderer.save(view, dir / file))
+            return 1.0f;
+        std::map<uint32_t, int> seen;
+        for (float x = row.x + 2.0f; x < row.right() - 2.0f; x += 1.0f)
+            ++seen[renderer.pixel({x, y})];
+        const uint32_t fill =
+            std::max_element(seen.begin(), seen.end(), [](auto &a, auto &b) { return a.second < b.second; })->first;
+        int matching = 0, all = 0;
+        for (float x = cell.x + 4.0f; x < cell.x + 124.0f; x += 1.0f, ++all)
+            matching += renderer.pixel({x, y}) == fill;
+        return static_cast<float>(matching) / static_cast<float>(all);
+    };
+    const float spectrum = plain("Spectrum", "17q-flat-aux-chip.png");
+    const float porcelain = plain("Porcelain", "17r-flat-aux-chip-light.png");
+    model.themeName = "Midnight";
+    std::printf("      an aux chip's share in its row's own fill: Spectrum %.2f, Porcelain %.2f\n", spectrum, porcelain);
+    check(model.value(slotAuxIndex(0, 0)) == slotAuxValue(kMaxSources + 1) && spectrum < 0.2f && porcelain < 0.2f,
+          "in a flat theme an aux that is set shows as a chip tinted with its source's color");
+}
+
 // An operator's Ratio, a 7-segment readout: each digit dragged on its own, a step of its place every 6 px, carrying
 // into the next and stopping at 64.00; the wheel stepping the digit under the mouse; a double-click rounding to the
 // digit; the hovered digit lit behind (read off the rendered pixels); a typed fraction; and a source's handle dropped
@@ -2260,8 +2476,10 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 // with their own node places and their name in the preset bar. `prefix` names the images: its routing, matrix
 // and effects.
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
-                   const std::string &prefix, size_t effects) {
+                   const std::string &prefix, size_t effects, const std::string &theme = "") {
     FakeController model;
+    if (!theme.empty())
+        model.themeName = theme;
     View view(model);
     const std::vector<FactoryPreset> &presets = factoryPresets();
     const auto example =
@@ -2293,6 +2511,14 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     view.mouseMove({600.0f, 600.0f}, {});
     shots = shots && model.ui.fxGraphView &&
             renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
+    if (!theme.empty()) { // in a theme other than the checks' Midnight, its effects as a row and its MODS view too
+        click(view, detail::fxModeButton(0).center());
+        view.mouseMove({600.0f, 600.0f}, {});
+        shots = shots && renderer.save(view, dir / (prefix + "-fx-row.png"));
+        click(view, {314.0f, 116.0f});
+        view.mouseMove({600.0f, 600.0f}, {});
+        shots = shots && renderer.save(view, dir / (prefix + "-mods.png"));
+    }
     check(shots && fxChain(model).size() == effects,
           ("render " + name + "'s routing, matrix and " + std::to_string(effects) +
            " effects, and its effects' panel as a chain and as a graph")
@@ -8519,28 +8745,40 @@ void run(const std::filesystem::path &dir, float scale) {
           "the settings dialog switches MPE and picks its bend range, leaving the patch alone");
     view.mouseMove(option(3), {});
     check(renderer.save(view, dir / "14-settings.png"), "render the settings dialog");
-    // Its theme buttons repaint the whole editor in another theme.
-    bool themed = true;
-    for (int i = 1; i < View::themeCount(); ++i) {
+    // Its theme buttons repaint the whole editor in another theme. The first is the default.
+    const int midnight = detail::themeIndex("Midnight");
+    bool themed = detail::themeIndex("") == 0 && std::string_view(View::themeName(0)) == "Spectrum" &&
+                  std::string_view(View::themeName(1)) == "Porcelain";
+    for (int i = 0; i < View::themeCount(); ++i) {
+        if (i == midnight)
+            continue;
         click(view, theme(i));
         themed = themed && model.themeName == View::themeName(i);
-        if (i == View::themeCount() - 1)
+        if (std::string_view(View::themeName(i)) == "Light")
             themed = themed && renderer.save(view, dir / "14c-settings-light.png");
         click(view, closeDialog);
         view.mouseMove({600.0f, 328.0f}, {});
         std::string file = std::string("14d-theme-") + View::themeName(i) + ".png";
         std::transform(file.begin(), file.end(), file.begin(),
-                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+                       [](unsigned char ch) { return ch == ' ' ? '-' : static_cast<char>(std::tolower(ch)); });
         themed = themed && renderer.save(view, dir / file);
         click(view, kRoutingTab);
         view.mouseMove({600.0f, 328.0f}, {});
         file.insert(file.size() - 4, "-routing");
         themed = themed && renderer.save(view, dir / file);
+        if (std::string_view(View::themeName(i)) == "Spectrum") { // its effects as a graph too
+            click(view, kFxTab);
+            click(view, detail::fxModeButton(1).center());
+            view.mouseMove({600.0f, 328.0f}, {});
+            themed = themed && renderer.save(view, dir / "14d-theme-spectrum-graph.png");
+            click(view, detail::fxModeButton(0).center());
+        }
         click(view, kFxTab);
         click(view, cog);
     }
-    click(view, theme(0));
-    check(themed && model.themeName == View::themeName(0), "the settings dialog picks the theme");
+    click(view, theme(midnight));
+    check(themed && model.themeName == "Midnight",
+          "the settings dialog lists Spectrum (the default) and Porcelain first, and picks the theme");
     // The GLOW slider sets how strongly the graphs' curves glow, on both pages, once it is let go.
     auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 397.0f}; };
     view.mouseDown(glowAt(0.2f), {});
@@ -8603,8 +8841,11 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.sourcesCollapsed, "once it is closed, the editor takes clicks again");
     click(view, kSourcesToggle);
     runMore(dir, renderer);
-    renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6);
-    renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4); // its effects as a graph, split low/high
+    // The README's, in the default theme (see release.ps1); Neon Pluck's effects as a graph, split low and high.
+    renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6, "Spectrum");
+    renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4, "Spectrum");
+    renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
+    renderExample(dir, renderer, "BA Neon Pluck", "43-porcelain-neon", 4, "Porcelain");
     renderExample(dir, renderer, "BA Reese Bass", "25-reese", 4);
     renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
@@ -8653,6 +8894,10 @@ void run(const std::filesystem::path &dir, float scale) {
     testCtrlCopy(dir, renderer);
     testDialogKeys(dir, renderer);
     testModFocus(dir, renderer);
+    testCardOutline(dir, renderer);
+    testFlatModulatedKnob(dir, renderer);
+    testModEndMarks(dir, renderer);
+    testFlatThemes(dir, renderer);
     testModPill(dir, renderer);
     testRatioDisplay(dir, renderer);
     testTempo(dir, renderer);

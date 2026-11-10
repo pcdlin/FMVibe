@@ -258,8 +258,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     every other period and a high note's over more periods; falling silent with the output, and nothing once
     switched off;
   - the CPU cost of each factor.
-- **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`. On the
-  way it replays drags and clicks:
+- **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
+  the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
+  screenshots in Spectrum). On the way it replays drags and clicks:
   - the effects graph's slot grid: switching to it showing the chain as its main line, as wired; the main
     line's + opening the list of effects with 2-band split under them, the split coming with its join, its
     empty bands each curving out to a + on its row, each + ringed in its wire's color (read off the rendered
@@ -492,7 +493,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     inside the editor at the chain's right end and staying over a switched-off card's dimming, read off the rendered
     pixels; the sources' closing
     at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
-  - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme and the depth handles'
+  - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list) and the depth handles'
     size (drawn bigger at each, read off the rendered pixels), and dragging the glow slider and the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
@@ -540,6 +541,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels) and its × take the aux away, and a source's line ending at the pill holding its handle;
   - a depth handle's right-click menu removing its aux, undoably, offered only while it has one;
   - a hovered depth handle drawing its range wider, over the others' (read off the rendered pixels);
+  - a knob's modulation ring cut off at the knob's end ending in a line across it, and one within range not (read
+    off the rendered pixels);
+  - in Spectrum, a source card outlined only while the mouse is over it (read off the rendered pixels);
+  - in Spectrum, a modulated knob's arc keeping the accent and a ring from a source of a like color (LFO 1's) drawn
+    lighter, and Midnight's ring in its source's own color (read off the rendered pixels);
+  - in the flat themes, every source in a color of its own and no effect in the dim text's, and an aux that is set
+    a chip tinted with its source's color, standing out from its MODS row (read off the rendered pixels);
   - an aux's handle hovered drawing a dotted line to the depth handle it scales, and that depth handle hovered
     drawing it from the aux's handle (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
@@ -700,11 +708,13 @@ browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and pub
 
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
-`build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render over the README's:
+`build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
 PD Crystal Motion's routing view over `docs/editor.png` and its effects' panel as a chain over `docs/fx-chain.png`, and
 BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
-Any other answer puts those files back as they were.
+Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
+branch: it builds and runs `fmvibe-uishot` and copies its renders over the three, leaving the version, the other tests
+and git alone.
 
 By hand, instead:
 

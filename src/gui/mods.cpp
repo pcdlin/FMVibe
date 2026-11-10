@@ -815,9 +815,9 @@ void View::paintCascade(Canvas &c) {
     for (size_t k = 0; k < levels.size(); ++k) {
         const MenuNode &level = *levels[k];
         const Rect r = rects[k];
-        c.fillRect({r.x + 2.0f, r.y + 4.0f, r.w, r.h}, kBackground.alpha(0.5f), kRadiusCard); // a shadow
-        c.fillRect(r, kRaised, kRadiusCard);
-        c.strokeRect(r, kBorder, 1.0f, kRadiusCard);
+        if (!look.flat) // a flat menu's panel brings its own, softer one
+            c.fillRect({r.x + 2.0f, r.y + 4.0f, r.w, r.h}, kBackground.alpha(0.5f), kRadiusCard); // a shadow
+        paintMenuPanel(c, r);
         const bool searching = k == 0 && cascadeSearches();
         if (searching) { // its search, and the x that empties it
             const Rect search = cascadeSearchRect(r);
@@ -843,8 +843,7 @@ void View::paintCascade(Canvas &c) {
             const bool opened = k + 1 < levels.size() && cascade_->open[k] == static_cast<int>(i);
             const bool hovered = hover_ && hover_->kind == Kind::CascadeItem && hover_->a == static_cast<int>(k) &&
                                  hover_->b == static_cast<int>(i);
-            if (opened || ((hovered || picked == static_cast<int>(i)) && item.enabled))
-                c.fillRect(at, kTrack, kRadiusMark);
+            paintMenuRow(c, at, opened || ((hovered || picked == static_cast<int>(i)) && item.enabled), false);
             const Color ink = item.enabled ? kText : kFaint;
             float x = at.x + 8.0f;
             if (item.color) {

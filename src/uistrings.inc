@@ -426,9 +426,9 @@ STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
 
 STR(ThemeMidnight, "Midnight")
-STR(ThemeGraphite, "Graphite")
 STR(ThemeLight, "Light")
-STR(ThemePaper, "Paper")
+STR(ThemeSpectrum, "Spectrum")
+STR(ThemePorcelain, "Porcelain")
 
 // --- The editor: headings, tabs and labels
 
