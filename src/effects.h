@@ -472,6 +472,7 @@ private:
     double runShifter(int slot, float *const *io, uint32_t n, const ParamValues &p);
 
     double sampleRate_ = 48000.0;
+    uint32_t rampShortest_ = 32; // the fewest samples a gain's or mix's ramp is spread over, at this rate
     std::array<double, kReverbLines> reverbLengths_{}; // at full size, in samples
     double reverbMeanLength_ = 0.0; // how long the lines are on average, for their rounds per second (harmonic mean)
     std::array<std::array<int, kDiffusers>, 2> diffuserLengths_{};

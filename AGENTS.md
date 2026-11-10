@@ -165,7 +165,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
     reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a wire's Level) jumps
-    while events split the block into single frames,
+    while events split the block into single frames (and a delay's Mix and a wire's Level ramping no faster at 96 and
+    192 kHz than at 48),
     when a Param EQ band is switched on and off, and when a wire of the effects graph is connected and taken away;
   - editing the effects graph as a note plays, neither clicking nor dipping (each period's peak kept within 10 %):
     an effect added at the line's end and one taken out, a split taken out with its join, a split's slope

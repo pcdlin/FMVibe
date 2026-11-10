@@ -816,6 +816,50 @@ void effectsChainChecks() {
         check(ratio < 1.5, "a wire's level jump ramps even when events split the block into single frames");
     }
     {
+        // At a high rate, a jump ramps over as long a time as at 48 kHz, not as few samples: a delay's Mix taken from
+        // 0 to 100 % and a wire's level to a quarter, on a steady level, change no faster in time at 96 or 192 kHz.
+        auto steepest = [&](double rate, bool wire) { // the most the output moves in a second, at its steepest
+            Effects fx;
+            fx.prepare(rate);
+            ParamValues p = defaults();
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+            p[paramIndex(0, FxParam::DelayMix)] = 0.0;
+            chain(p, {0});
+            constexpr uint32_t kPiece = 32;
+            float left[kPiece], right[kPiece];
+            float last = 0.0f, most = 0.0f;
+            const size_t before = static_cast<size_t>(0.05 * rate), after = static_cast<size_t>(0.01 * rate);
+            for (size_t t = 0; t < before + after; t += kPiece) {
+                if (t == before / kPiece * kPiece) {
+                    if (wire)
+                        p[fxInputIndex(kFxOutNode, 0, FxInputField::Level)] = 0.25;
+                    else
+                        p[paramIndex(0, FxParam::DelayMix)] = 1.0;
+                }
+                std::fill_n(left, kPiece, 0.5f);
+                std::fill_n(right, kPiece, 0.5f);
+                fx.process(left, right, kPiece, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kPiece; ++s) {
+                    if (t + s > before / 2)
+                        most = std::max(most, std::abs(left[s] - last));
+                    last = left[s];
+                }
+            }
+            return most * rate;
+        };
+        bool even = true;
+        for (bool wire : {false, true}) {
+            const double at48 = steepest(48000.0, wire);
+            for (double rate : {96000.0, 192000.0}) {
+                const double ratio = steepest(rate, wire) / at48;
+                std::printf("      %s at %.0f kHz: %.2fx as steep in time as at 48 kHz\n",
+                            wire ? "a wire's level to a quarter" : "a delay's Mix 0 to 100 %", rate / 1000.0, ratio);
+                even = even && ratio < 1.1 && ratio > 0.5;
+            }
+        }
+        check(even, "a jump ramps over as long a time at 96 and 192 kHz as at 48 kHz");
+    }
+    {
         // A parametric EQ band switched on and off fades rather than clicking: a low cut at 5 kHz, which takes most
         // of a C3 away, switched in single frames, under 4 times as rough as the note before it (as a stolen voice).
         Engine e(2);
