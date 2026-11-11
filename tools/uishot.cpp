@@ -1209,6 +1209,35 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.wheel(partialCount(1), -1.0f, {});
     check(wheeled64 && wheeled32 && model.value(countParam) == 16.0, "the wheel steps through the partial counts offered");
     click(view, partialCount(1));
+    // The dice left of the reset button gives every partial a random level under a pink slope (partial k at most
+    // 1 / sqrt(k)) and a random phase, in one undo step.
+    {
+        const Point kPartialRandom{detail::kRouting.x + detail::kRouting.w - 98.0f, 152.0f};
+        std::vector<double> before;
+        for (int k = 0; k < kPartials; ++k)
+            before.insert(before.end(), {model.value(partialLevelIndex(0, k)), model.value(partialPhaseIndex(0, k))});
+        click(view, kPartialRandom);
+        view.mouseMove(kPartialRandom, {});
+        bool sloped = true, changed = false;
+        double low = 0.0, high = 0.0;
+        for (int k = 0; k < kPartials; ++k) {
+            const double level = model.value(partialLevelIndex(0, k)), phase = model.value(partialPhaseIndex(0, k));
+            sloped = sloped && level >= 0.0 && level <= 1.0 / std::sqrt(k + 1.0) + 1e-9 && phase >= 0.0 && phase < 1.0;
+            changed = changed || level != before[2 * k] || phase != before[2 * k + 1];
+            if (k < 8)
+                low += level / 8.0; // the first eight's mean, against the last 32's
+            else if (k >= 32)
+                high += level / 32.0;
+        }
+        const bool shot = renderer.save(view, dir / "23g-partials-random.png");
+        view.undo();
+        bool restored = true;
+        for (int k = 0; k < kPartials; ++k)
+            restored = restored && model.value(partialLevelIndex(0, k)) == before[2 * k] &&
+                     model.value(partialPhaseIndex(0, k)) == before[2 * k + 1];
+        check(shot && sloped && changed && high < low && restored,
+              "the partial editor's dice randomizes levels on a pink slope and phases, in one undo step");
+    }
     click(view, kRoutingEditorDone);
     // While the wave is Custom, a pencil on the summary line, left of the keyboard switch, opens the partial editor
     // again, lit while it is open, and a second click closes it (read off the rendered pixels: the editor's title).

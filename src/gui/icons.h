@@ -63,6 +63,8 @@ inline std::vector<double> curveKey(Curve curve, Rect r) {
 void powerIcon(Canvas &c, Point center, Color color);
 void keyboardIcon(Canvas &c, Point center, Color color, bool crossed);
 void resetIcon(Canvas &c, Point center, Color color);
+// A die showing five, about 12 x 12: the partial editor's random button.
+void diceIcon(Canvas &c, Point center, Color color);
 void doneIcon(Canvas &c, Point center, Color color);
 // A pencil, about 11 x 11, writing toward the lower left: the edit buttons'.
 void editIcon(Canvas &c, Point center, Color color);

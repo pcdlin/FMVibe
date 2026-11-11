@@ -809,6 +809,7 @@ STR(TipResetVelocityCurve, "Reset to linear")
 STR(TipResetCurve, "Reset to S-curve")
 STR(TipResetShape, "Reset to triangle")
 STR(TipResetPartials, "Reset to sine")
+STR(TipRandomPartials, "Randomize partials") // random levels falling 3 dB an octave, random phases
 STR(TipEditPartials, "Edit partials") // a Custom wave's edit button, by the keyboard switch
 STR(TipEditCurve, "Open curve editor") // a drawn shaper curve's edit button
 STR(TipClosePartials, "Close partial editor")

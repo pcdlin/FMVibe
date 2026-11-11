@@ -1776,6 +1776,7 @@ std::vector<View::Widget> View::widgets() const {
     } else if (partials >= 0) {
         add(Kind::ShapeDone, shapeDone());
         add(Kind::PartialReset, shapeReset(), -1, partials);
+        add(Kind::PartialRandom, partialRandom(), -1, partials);
         const size_t counts = list.size();
         for (int choice = 0; choice < static_cast<int>(std::size(kPartialCounts)); ++choice)
             add(Kind::Choice, partialCountButton(choice), partialCountIndex(partials), -1, kPartialCounts[choice]);
@@ -4483,7 +4484,7 @@ void View::paintPartialEditor(Canvas &c, int op) {
                            : trf(Str::CaptionPartialSilent, {partial, phase});
     }
     const float hintX = partialCountButton(static_cast<int>(std::size(kPartialCounts)) - 1).right() + 12.0f;
-    c.text({hintX, kRouting.y + 10.0f, shapeReset().x - hintX - 12.0f, 22.0f}, hint, kTextLabel, kFaint, Align::Right);
+    c.text({hintX, kRouting.y + 10.0f, partialRandom().x - hintX - 12.0f, 22.0f}, hint, kTextLabel, kFaint, Align::Right);
 
     // The wave they make, one cycle, at its loudest from top to bottom, as the operator plays it.
     const Rect wave = kPartialWave;
@@ -7026,6 +7027,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
         resetIcon(c, w.rect.center(), hovered ? kText : kDim);
         break;
+    case Kind::PartialRandom:
+        c.fillRect(w.rect, hovered ? kTrack : kRaised, kRadiusControl);
+        if (outlined())
+            c.strokeRect(w.rect, kBorder, 1.0f, kRadiusControl);
+        diceIcon(c, w.rect.center(), hovered ? kText : kDim);
+        break;
     case Kind::ShapeGrid: {
         const UiLayout &layout = controller_.layout();
         if (w.b == 0) { // the count
@@ -8415,6 +8422,7 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::TempoBox && hover_->kind != Kind::BrowserFolder &&
          hover_->kind != Kind::SettingsButton && hover_->kind != Kind::UndoButton &&
          hover_->kind != Kind::ShapeReset && hover_->kind != Kind::PartialReset &&
+         hover_->kind != Kind::PartialRandom &&
          hover_->kind != Kind::PartialEdit && hover_->kind != Kind::ClipDisplay &&
          hover_->kind != Kind::ShapeDone && hover_->kind != Kind::ShapeCollapse && hover_->kind != Kind::ShapeExpand &&
          hover_->kind != Kind::ShapeWiden &&
@@ -8593,6 +8601,8 @@ void View::paintTooltip(Canvas &c) {
                                                                        : Str::TipResetShape);
     else if (hover_->kind == Kind::PartialReset)
         text = tr(Str::TipResetPartials);
+    else if (hover_->kind == Kind::PartialRandom)
+        text = tr(Str::TipRandomPartials);
     else if (hover_->kind == Kind::PartialEdit)
         text = tr(partialEditing() == hover_->a ? Str::TipClosePartials : Str::TipEditPartials);
     else if (hover_->kind == Kind::ClipDisplay)
@@ -10122,6 +10132,19 @@ void View::mouseDown(Point p, Modifiers mods) {
         for (int k = 0; k < kPartials; ++k) {
             changes.push_back({partialLevelIndex(w.a, k), table_[partialLevelIndex(w.a, k)].def});
             changes.push_back({partialPhaseIndex(w.a, k), table_[partialPhaseIndex(w.a, k)].def});
+        }
+        editMany(changes);
+        break;
+    }
+    case Kind::PartialRandom: {
+        // Every partial, the hidden ones too: a random level under a pink slope (-3 dB an octave, the level of
+        // partial k at most 1 / sqrt(k)) and a random phase. One undo step.
+        std::uniform_real_distribution<double> unit(0.0, 1.0);
+        std::vector<std::pair<int, double>> changes;
+        for (int k = 0; k < kPartials; ++k) {
+            const double level = unit(random_) / std::sqrt(static_cast<double>(k + 1));
+            changes.push_back({partialLevelIndex(w.a, k), level});
+            changes.push_back({partialPhaseIndex(w.a, k), unit(random_)});
         }
         editMany(changes);
         break;

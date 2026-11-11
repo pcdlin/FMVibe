@@ -60,6 +60,11 @@ Rect View::shapeReset() const {
     return {done.x - 6.0f - 28.0f, done.y, 28.0f, 22.0f};
 }
 
+Rect View::partialRandom() const {
+    const Rect reset = shapeReset();
+    return {reset.x - 6.0f - reset.w, reset.y, reset.w, reset.h};
+}
+
 // The grid's controls, under the editor's right end: per axis a step down (part 0), the count and a step up.
 Rect View::shapeGridButton(int axis, int part) const {
     constexpr float kParts[] = {18.0f, 28.0f, 18.0f};

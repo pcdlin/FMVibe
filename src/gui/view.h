@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <span>
 #include <utility>
 #include <string>
@@ -265,6 +266,7 @@ private:
         ShapeCurve,   // param = curve, a = shape, b = point: bends the segment leaving the point
         PartialArea,  // a = operator, b = 0 for the levels, 1 for the phases: drag across to draw the partials
         PartialReset, // a = operator: back to a plain sine
+        PartialRandom, // a = operator: random levels on a pink slope, and random phases
         PartialEdit,  // a = operator: the edit button left of a Custom wave's keyboard switch; opens its partial
                       // editor, or closes it
         ShapeDone,    // closes the shape editor
@@ -1076,6 +1078,7 @@ private:
     Rect shapeAreaNow(int shape) const; // shapeArea() worked out
     Rect shapeDone() const;
     Rect shapeReset() const;
+    Rect partialRandom() const; // the partial editor's dice, left of its reset button
     Rect shapeGridButton(int axis, int part) const;
     Point shapeAt(double x, double y) const { return shapeAt(-1, x, y); }
     Point shapeAt(int shape, double x, double y) const;
@@ -1460,6 +1463,7 @@ private:
     int shapeEditor_ = -1;                   // the LFO whose shape the routing panel shows, or -1
     int wideLfo_ = -1;                       // the LFO whose card is widened (see wideLfo()), or -1
     int partialEditor_ = -1;                 // the operator whose Custom wave's partials it shows, or -1
+    std::mt19937 random_{std::random_device{}()}; // the partial editor's dice
     float sourceScroll_ = 0.0f;              // how many source cards are scrolled past, before clamping
     float fxScroll_ = 0.0f;                  // how many effect cards are scrolled past, before clamping
     bool fxMenuOpen_ = false;                // the ADD EFFECT list

@@ -50,6 +50,14 @@ void resetIcon(Canvas &c, Point center, Color color) {
     c.fillPolygon(head, std::size(head), color);
 }
 
+// A die showing five: a rounded square with a pip in each corner and one in the middle.
+void diceIcon(Canvas &c, Point center, Color color) {
+    c.strokeRect({center.x - 6.0f, center.y - 6.0f, 12.0f, 12.0f}, color, 1.3f, kRadiusMark);
+    for (const Point pip : {Point{-2.3f, -2.3f}, Point{2.3f, -2.3f}, Point{0.0f, 0.0f}, Point{-2.3f, 2.3f},
+                            Point{2.3f, 2.3f}})
+        c.fillCircle({center.x + pip.x, center.y + pip.y}, 1.2f, color);
+}
+
 // A check mark.
 void doneIcon(Canvas &c, Point center, Color color) {
     const Point check[] = {{center.x - 6.0f, center.y + 0.5f}, {center.x - 2.0f, center.y + 4.5f},

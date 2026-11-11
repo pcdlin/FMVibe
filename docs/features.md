@@ -1022,7 +1022,9 @@ may show anywhere, repaints the whole of it.
     cycle at the top, faint while the partial is silent). Drag across the bars to draw them, double-click
     a bar to take it to nothing; hovering shows a partial's numbers. **16 / 32 / 64**, after the title, pick how
     many partials the wave has, and so how many bars there are (numbered each, or of 64 the first and every
-    fourth); the ones a lower count hides keep what was drawn. The reset button (a circular arrow) goes back to a
+    fourth); the ones a lower count hides keep what was drawn. The random button (a die), left of the reset
+    button, gives all 64 partials a random level under a pink slope (partial *k* at most 1/√*k*, falling 3 dB an
+    octave) and a random phase, in one undo step. The reset button (a circular arrow) goes back to a
     sine, leaving the count, the done button (a check mark), or a tab, closes it, and Custom from the list or the
     edit button (a pencil) on the operator's summary line opens it again. A stroke is one undo step.
   - **Shape editor**: picking an LFO's Custom shape, a click anywhere on a Custom LFO's display (which shows an
