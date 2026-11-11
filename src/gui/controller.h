@@ -38,12 +38,15 @@ constexpr std::array<int, kMaxSources> identitySourceOrder() {
 // Editor state that isn't a param but is saved with the patch.
 struct UiLayout {
     // Node positions in the routing graph, 0..1 within the graph area: the operators' circles, and the boxes of the
-    // filters and then the shapers. Default: A in the middle, B, C and D in a row above it, E and F beside A, the
-    // filters below, a shaper at each end of them.
-    std::array<float, kOps> nodeX{0.5f, 0.2f, 0.5f, 0.8f, 0.2f, 0.8f};
-    std::array<float, kOps> nodeY{0.55f, 0.1f, 0.1f, 0.1f, 0.55f, 0.55f};
-    std::array<float, kFilters + kShapers> boxX{0.35f, 0.65f, 0.08f, 0.92f};
-    std::array<float, kFilters + kShapers> boxY{1.0f, 1.0f, 1.0f, 1.0f};
+    // filters and then the shapers. Default: on the points of the grid Ctrl+drag snaps to (the centers of its 12 x 5
+    // cells, see kRoutingGridCols), mirrored about OUT's row: the operators on the left, F and E in the second column
+    // at the top and bottom, C and B in the fourth a row in from them, D and A in the seventh at the top and bottom;
+    // then the shapers in the ninth, S2 above OUT's row and S1 below it, and the filters in the eleventh, F2 at the
+    // top and F1 at the bottom.
+    std::array<float, kOps> nodeX{13.0f / 24.0f, 7.0f / 24.0f, 7.0f / 24.0f, 13.0f / 24.0f, 3.0f / 24.0f, 3.0f / 24.0f};
+    std::array<float, kOps> nodeY{0.9f, 0.7f, 0.3f, 0.1f, 0.9f, 0.1f};
+    std::array<float, kFilters + kShapers> boxX{21.0f / 24.0f, 21.0f / 24.0f, 17.0f / 24.0f, 17.0f / 24.0f};
+    std::array<float, kFilters + kShapers> boxY{0.9f, 0.1f, 0.7f, 0.3f};
     int selectedNode = 0;    // shown in the inspector panel
     // The order the editor shows the sources in: every place once, empty ones included.
     std::array<int, kMaxSources> sourceOrder = identitySourceOrder();

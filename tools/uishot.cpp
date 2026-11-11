@@ -943,10 +943,11 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(std::abs(model.value(opPhase) - 0.2) < 1e-6, "a run of wheel notches is one undo step");
     // Moving a node is a step too.
     const Point a = nodeCenter(model.layout(), 0);
+    const float wasX = model.layout().nodeX[0];
     drag(view, a, {a.x + 100.0f, a.y - 50.0f});
     const float movedX = model.layout().nodeX[0];
     view.undo();
-    check(movedX != 0.5f && model.layout().nodeX[0] == 0.5f, "undo puts a dragged node back");
+    check(movedX != wasX && model.layout().nodeX[0] == wasX, "undo puts a dragged node back");
     view.redo();
     check(model.layout().nodeX[0] == movedX, "redo moves it again");
     view.undo();
@@ -5554,6 +5555,11 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(1, OpParam::Enabled), 1.0);
     model.set(matrixIndex(1, 0), 0.5);
     model.ui.keptRoutes.push_back(matrixIndex(1, 0));
+    // B up and to the left of A, far enough that a third of the way along its wire is clear of the wire's label.
+    model.ui.nodeX[0] = 0.5f;
+    model.ui.nodeY[0] = 0.55f;
+    model.ui.nodeX[1] = 0.2f;
+    model.ui.nodeY[1] = 0.1f;
     view.poll();
     const UiLayout &layout = model.layout();
     const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1);

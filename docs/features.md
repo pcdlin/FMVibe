@@ -598,7 +598,10 @@ may show anywhere, repaints the whole of it.
     source as loud as it is (an operator by its envelope, a filter or shaper by this in turn) as far as its route lets
     it through. A glow rises from nothing at its outer edge as a smoothstep, so it fades out without an edge or steps. The nodes that are off wait docked under OUT, in the graph's bottom right, as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
-    graph, and shows it in the inspector. However it is switched on (its ghost, its tab, the matrix), a node whose
+    graph, and shows it in the inspector. In a new patch, each node's place is a point of the grid Ctrl+drag snaps to,
+    mirrored about OUT's row: the operators on the left (F and E in the second column at the top and bottom, C and B in
+    the fourth a row in from them, D and A in the seventh at the top and bottom), then the shapers (S2 above OUT's row,
+    S1 below it) and nearest OUT the filters (F2 at the top, F1 at the bottom). However it is switched on (its ghost, its tab, the matrix), a node whose
     place another node shown now covers comes back clear of it: pushed out of the way, or, with no room there, at
     the free place nearest it (in the same undo step as the switch).
     - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
