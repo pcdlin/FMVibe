@@ -748,6 +748,12 @@ version pinned at its top. After that it loads Visual Studio's environment for C
   on the page's main thread.
 - The two modules only send each other messages: the param edits, the notes and the telemetry, whose struct
   bytes cross unchanged.
+- So a browser must never mix files from two builds, which GitHub Pages' caching (10 minutes a file, each on its
+  own timer, and no headers of our own) would otherwise allow. The build writes `version.txt`, a hash of every file
+  in the site (`web/version.cmake`); `index.html` fetches it past the cache and loads `style.css` and `main.js` with
+  `?v=` and the hash, and `main.js` takes that query off its own URL for every file it loads: the modules,
+  `canvas2d.js`, `worklet.js` and both `.wasm` files (the editor's through Emscripten's `locateFile`). A new file
+  the page loads takes the version too.
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
   demo has no files. The theme, hue, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
