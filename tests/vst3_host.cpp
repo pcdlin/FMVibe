@@ -271,8 +271,9 @@ struct Instance {
     bool playing = false;
     double beats = 0.0;
 
-    // One block: the events and param changes given, the audio into left and right.
-    void process(Events &events, Changes &changes, int32 frames = kBlock) {
+    // One block: the events and param changes given, the audio into left and right, and what the plugin tells the
+    // host of into `output`, if given.
+    void process(Events &events, Changes &changes, int32 frames = kBlock, Changes *output = nullptr) {
         float *channels[2] = {left.data(), right.data()};
         AudioBusBuffers out;
         out.numChannels = 2;
@@ -293,6 +294,7 @@ struct Instance {
         data.numOutputs = 1;
         data.outputs = &out;
         data.inputParameterChanges = &changes;
+        data.outputParameterChanges = output;
         data.inputEvents = &events;
         data.processContext = &context;
         processor->process(data);
@@ -594,6 +596,26 @@ int main(int argc, char **argv) {
         Changes changes;
         changes.add(bendId, 0, 8192.0 / 16383.0);
         plugin.process(events, changes);
+    }
+
+    // A hardware mod wheel (CC 1, through the MIDI mapping) moves the Mod Wheel param, which the host hears in its
+    // place in the block; and back.
+    {
+        ParamID wheelCc = 0;
+        midiMapping->getMidiControllerAssignment(0, 0, kCtrlModWheel, wheelCc);
+        const ParamID wheel = idOfIndex(paramIndex(GlobalParam::ModWheel));
+        auto turn = [&](double to, int32 at) {
+            Events events;
+            Changes changes, told;
+            changes.add(wheelCc, at, to);
+            plugin.process(events, changes, kBlock, &told);
+            const bool heard = std::any_of(told.queues.begin(), told.queues.end(), [&](const Queue &q) {
+                return q.id == wheel && q.points.size() == 1 && q.points[0].first == at && q.points[0].second == to;
+            });
+            return heard && plugin.normalized(paramIndex(GlobalParam::ModWheel)) == to;
+        };
+        const bool up = turn(1.0, 37), down = turn(0.0, 5);
+        check(up && down, "a hardware mod wheel (CC 1) moves the Mod Wheel param, the host told in its place");
     }
 
     // A tuning note expression an octave up, on the note's id.

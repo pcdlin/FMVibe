@@ -77,7 +77,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     each other past unity stay finite and end with their note; a filter feeds an earlier filter, one fed back into
     itself grows louder, and filters feeding themselves and each other past unity stay finite and end with their
     note;
-  - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
+  - the mod wheel moves nothing until it is assigned, and then its target, like a macro; and a hardware mod wheel
+    (MIDI CC 1) moving the Mod Wheel param, and its target with it, the host told of the param's value;
   - the pitch bend source moving its target: bipolar, nothing at rest and half its depth bent fully up; unipolar,
     half at rest and all of it fully up;
   - a MIDI source following its controller (and not another), on pressure the channel's and a note's own
@@ -313,7 +314,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
   - the output meter and scope moving repainting the header alone, a key the keyboard alone and an operator's scope
     the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
-    an LFO moving repainting the whole editor, as a compressor's meter and the host's tempo do with no notes playing;
+    as notes play, likewise: an LFO modulating nothing moving repainting its card alone, on an operator's param its
+    card and the panels' row, on the header's Pan its card and the header, on another LFO's Rate the two cards,
+    operator A's envelope moving the inspector alone, and with the MODS view shown the panels' row too (the time a
+    whole paint and those parts take printed); with no notes playing, a compressor's meter the panels' row and the
+    host's tempo the whole editor;
     with none playing, a free LFO's dot moving repainting its card alone, and the editor telling the plugin while one
     runs (so it keeps processing); a retrigger one showing no dot, but while the effects' tail runs it its dot moving
     there, gone again with the tail;
@@ -600,7 +605,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     wiring not given to hosts (their depths and Amounts given), and every param they are given showing; the MIDI
     mapping (per channel, on the note input only), the note expressions and the
     physical UI mapping;
-  - playing: an A4 at 440 Hz, bent through the MIDI-mapped pitch bend, tuned an octave by a note expression on its id
+  - playing: an A4 at 440 Hz, bent through the MIDI-mapped pitch bend, the MIDI-mapped mod wheel (CC 1) moving the
+    Mod Wheel param and the host told in its place in the block, tuned an octave by a note expression on its id
     (and not by one on another id), its level set by a volume expression, automation landing at its place in a
     block, a param change coming before a note at the same place, notes let go (with ids and without) falling
     silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
@@ -992,7 +998,9 @@ itself.
   `NOTE_END` so hosts with
   polyphonic modulation (Bitwig) know when a voice has finished. In mono, a note that is taken over keeps its
   host voice while its key is down and reports `NOTE_END` when the key is let go. Per-note modulation follows the
-  note that is sounding.
+  note that is sounding. MIDI CC 1 also moves the Mod Wheel param (`PluginCore::playModWheel()`), which the audio thread
+  reports to the host in its place in the block (CLAP's output events, VST3's output param changes), as a hardware mod
+  wheel turning the wheel in the editor's keyboard strip.
 - Voices are allocated when the host activates the plugin, for the current Voices value; the audio thread never
   allocates. Lowering the limit takes effect at once: the voices past it fade out as stolen ones do. Raising it past what is allocated calls
   `host->request_restart()` (in VST3, `restartComponent(kLatencyChanged)`, on the main thread), and the host then

@@ -77,6 +77,7 @@ struct InputEvents {
 struct OutputEvents {
     std::vector<clap_event_note_t> noteEnds;
     std::vector<uint16_t> paramEventTypes; // gesture begin/end and values coming from the editor
+    std::vector<std::pair<clap_id, double>> paramValues; // the values among them, by param id
     clap_output_events_t list{this, &tryPush};
 
     static bool CLAP_ABI tryPush(const clap_output_events_t *l, const clap_event_header_t *ev) {
@@ -86,8 +87,13 @@ struct OutputEvents {
         if (ev->type == CLAP_EVENT_NOTE_END)
             self->noteEnds.push_back(*reinterpret_cast<const clap_event_note_t *>(ev));
         else if (ev->type == CLAP_EVENT_PARAM_VALUE || ev->type == CLAP_EVENT_PARAM_GESTURE_BEGIN ||
-                 ev->type == CLAP_EVENT_PARAM_GESTURE_END)
+                 ev->type == CLAP_EVENT_PARAM_GESTURE_END) {
             self->paramEventTypes.push_back(ev->type);
+            if (ev->type == CLAP_EVENT_PARAM_VALUE) {
+                const auto &value = *reinterpret_cast<const clap_event_param_value_t *>(ev);
+                self->paramValues.push_back({value.param_id, value.value});
+            }
+        }
         return true;
     }
 };
@@ -1900,6 +1906,30 @@ int main(int argc, char **argv) {
         std::printf("      bipolar mod wheel on A's output at -100 %%: peak %.3f down, %.3f up\n", bipolarDown, bipolarUp);
         check(std::abs(bipolarDown - resting) < 1e-3f && bipolarUp > 0.4f * resting && bipolarUp < 0.6f * resting,
               "a bipolar mod wheel swings its target both ways");
+
+        // A hardware mod wheel (MIDI CC 1) moves the Mod Wheel param, which the host is told of, and its targets with
+        // it. Back down by CC 1 too: for a moment after the plugin tells the host a value, it takes none for it.
+        setParams({{slotTargetIndex(kWheelSource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kWheelSource, 0), -1.0}});
+        out.paramValues.clear();
+        const clap_event_midi_t wheelUp = midiEvent(0xB0, 1, 127), wheelDown = midiEvent(0xB0, 1, 0);
+        runBlock({&wheelUp.header});
+        const float played = peakOf(play({}));
+        double shown = 0.0;
+        params->get_value(plugin, idOfIndex(wheel), &shown);
+        const bool told = std::any_of(out.paramValues.begin(), out.paramValues.end(), [&](const auto &value) {
+            return value.first == idOfIndex(wheel) && value.second == 1.0;
+        });
+        runBlock({&wheelDown.header});
+        const float back = peakOf(play({}));
+        double shownBack = 1.0;
+        params->get_value(plugin, idOfIndex(wheel), &shownBack);
+        setParams({{slotTargetIndex(kWheelSource, 0), 0.0}, {slotAmountIndex(kWheelSource, 0), 0.0}});
+        std::printf("      MIDI CC 1 up with the mod wheel on A's output at -100 %%: peak %.3f, Mod Wheel %.2f (%s); "
+                    "down: peak %.3f, Mod Wheel %.2f\n",
+                    played, shown, told ? "told" : "not told", back, shownBack);
+        check(played < 0.01f && shown == 1.0 && told && std::abs(back - resting) < 1e-3f && shownBack == 0.0,
+              "a hardware mod wheel (MIDI CC 1) moves the Mod Wheel, telling the host");
     }
 
     // The pitch bend is a source too, bipolar as it starts: on A's output at -100 %, at rest it moves nothing, bent

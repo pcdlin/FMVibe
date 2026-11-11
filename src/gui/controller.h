@@ -208,6 +208,10 @@ public:
     virtual ~Controller() = default;
 
     virtual double value(int index) const = 0;
+    // A number that moves on whenever a param's value may have changed since, so that the editor, which looks for
+    // changes some 60 times a second, need not look over all of them while it stands still. 0, as to begin with: not
+    // known, and the editor looks every time.
+    virtual uint64_t valuesStamp() const { return 0; }
     // Edits from the editor. A drag is wrapped in begin/end so the host records it as one gesture.
     // Each gesture is an undo step, unless a beginStep() around it groups it with others. While a three-band
     // dynamics is linked, an edit of one band's threshold, ratio or gain is made to every band's (see linkedBands()).

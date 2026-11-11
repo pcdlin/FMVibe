@@ -211,6 +211,7 @@ void PluginCore::setHostValue(int index, double value, bool inBlock) {
         return;
     value = std::clamp(value, paramTable()[index].min, paramTable()[index].max);
     values_[index].store(value);
+    stamp(); // the editor sees it
     if (inBlock) {
         // The rest of the block being processed hears it (see beginBlock()); a value it has already, as a host's
         // automation often sends, leaves what the synth works out from the params as it is.
@@ -233,6 +234,23 @@ void PluginCore::setHostValue(int index, double value, bool inBlock) {
     } else if (shapesSections(index)) {
         hostRequestCallback(); // this may be the audio thread; tell the host on the main thread
     }
+}
+
+bool PluginCore::playModWheel(double value) {
+    const int index = paramIndex(GlobalParam::ModWheel);
+    if (!std::isfinite(value))
+        return false;
+    value = std::clamp(value, 0.0, 1.0);
+    if (snapshot_[index] == value && values_[index].load(std::memory_order_relaxed) == value)
+        return false;
+    values_[index].store(value);
+    stamp();
+    snapshot_[index] = value;
+    snapshotChanged_ = true;
+    // The host hands the value back a little later, and by then the wheel may have moved on: not taken, as for an
+    // edit in the editor (see setHostValue()).
+    told(index, steadyMs());
+    return true;
 }
 
 ParamValues PluginCore::valuesNow() const {

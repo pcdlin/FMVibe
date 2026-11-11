@@ -192,7 +192,10 @@ What the plugin does and how its editor works, in full. Building and installing 
     value times each slot's depth is added to its target for every voice and the effects alike, so a macro can
     also move effect params, which per-voice sources can't. Their names are part of the patch.
   - **Mod Wheel**: a macro of its own, its knob the Mod Wheel param (the wheel in the keyboard strip), with 16
-    slots like a macro's. It moves nothing until something is assigned to it.
+    slots like a macro's. It moves nothing until something is assigned to it. A hardware mod wheel (MIDI CC 1, on any
+    channel; in a VST3 host, through its MIDI mapping) moves it as the wheel in the strip does, and the host is told
+    of the param's new value. Like that wheel's, its position is played rather than part of the patch: nothing to
+    undo, and the preset stays unchanged. A MIDI source on CC 1 follows the hardware wheel too.
   - **Note**: a source that follows the pitch each voice plays, pitch bend, glide (and legato slides), note
     tuning and the global Pitch included. Like a macro it has 16 slots and no switch, but it
     runs per voice, like the LFOs and envelopes, and reaches the effects through the newest voice. What it
@@ -568,8 +571,13 @@ the modulation panel or the keyboard strip makes it shorter (the plugin asks the
 its size as it is scaled on the monitor its window is on: in a host aware of each monitor's scaling, opened on (or
 moved to) one scaled otherwise than the main one, it asks the host for the size at that scaling. While
 only what keeps to its place moves (the output meter and scope and the playing count in the header, the keys, an
-operator's scope in the inspector), it repaints that place alone; what a note's sources and envelopes move, which
-may show anywhere, repaints the whole of it.
+operator's scope in the inspector), it repaints that place alone. So it does as notes play: a source moving repaints
+its card, and what its modulation moves the part of the editor that shows it (the header for its knobs, the panels'
+row for an operator's, a filter's, a shaper's or an effect's params, a source's card for that source's own, and the
+panels' row too while the MODS view shows); an operator's envelope repaints the inspector, and the effects' meters,
+sweeps and spectra the panels' row. What may show anywhere repaints the whole of it: the note's pitch and velocity
+changing, the first note or the last ending, and the host's tempo. It looks over the params for changes only when
+one may have changed since it last did.
 
 - **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panel below them shows: the routing graph
   or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or across

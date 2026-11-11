@@ -73,6 +73,7 @@ public:
 
     // gui::Controller, main thread.
     double value(int index) const override { return values_[index].load(); }
+    uint64_t valuesStamp() const override { return valuesStamp_.load(std::memory_order_acquire); }
     void telemetry(Telemetry &out) const override { telemetry_.load(out); }
     gui::UiLayout &layout() override { return layout_; }
     void layoutChanged() override;
@@ -160,6 +161,11 @@ public:
     // host's for that param is not taken: hosts hand values back a little later (Bitwig does), and taking them
     // would flip a preset loaded meanwhile back to the one before.
     void setHostValue(int index, double value, bool inBlock);
+    // Audio thread: a hardware mod wheel (MIDI CC 1, on any channel) moved, to `value` (0..1). It moves the Mod Wheel
+    // param, which the rest of the block hears and the editor's wheel shows, as the wheel's own knob would; it is
+    // played rather than part of the patch, so nothing is undone or marked changed. True when the param changed: the
+    // caller then tells the host its new value, in its place in the block, as a param edit from the plugin.
+    bool playModWheel(double value);
 
     // The state, the same bytes in either format: the patch, then (`settings`) the settings and the preset chunks.
     // Preset files leave out the settings, and loading one keeps them as they are. Main thread.
@@ -277,7 +283,13 @@ private:
         values_[index].store(value);
         valuesChanged();
     }
-    void valuesChanged() { valuesVersion_.fetch_add(1, std::memory_order_release); }
+    void valuesChanged() {
+        valuesVersion_.fetch_add(1, std::memory_order_release);
+        stamp();
+    }
+    // Any thread, after a value is stored, whether or not the snapshot takes it there: what valuesStamp() moves on.
+    void stamp() { valuesStamp_.fetch_add(1, std::memory_order_release); }
+    std::atomic<uint64_t> valuesStamp_{1};
     // When each param's value last went out to the host (steady clock, ms); see setHostValue().
     std::array<std::atomic<int64_t>, kParamCount> toldAt_{};
     SpscQueue<KeyEvent, 256> keys_;

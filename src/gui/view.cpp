@@ -1371,11 +1371,15 @@ bool View::poll() {
                 return;
         areas.push_back(r);
     };
-    for (int i = 0; i < kParamCount; ++i) {
-        const double v = controller_.value(i);
-        if (v != seen_[i]) {
-            seen_[i] = v;
-            changed = true;
+    // Every value looked at again only when one may have changed since (see Controller::valuesStamp()).
+    if (const uint64_t stamp = controller_.valuesStamp(); stamp == 0 || stamp != seenStamp_) {
+        seenStamp_ = stamp;
+        for (int i = 0; i < kParamCount; ++i) {
+            const double v = controller_.value(i);
+            if (v != seen_[i]) {
+                seen_[i] = v;
+                changed = true;
+            }
         }
     }
     if (changed)
@@ -1390,36 +1394,86 @@ bool View::poll() {
     controller_.telemetry(t);
     everywhere = everywhere || changed; // a param: it may show anywhere
     const Rect header{0.0f, 0.0f, kWidth, kHeaderH};
-    // While notes play, what they move: the sources, the modulation on the knobs, the envelopes and levels show
-    // anywhere; the playing count in the header, the keys on the keyboard and the operator's scope in the inspector
-    // only. An LFO's dot glides on from its snapshot by the snapshot's age (see lfoPhaseNow()), so it moves even
-    // between snapshots alike.
-    if ((t.voices > 0) != (telemetry_.voices > 0))
+    // The editor's bands, as paint() leaves out those an area doesn't reach: the panels' row (the routing panel or
+    // the FX view, and the inspector, or the shape and partial editors over them), and what lies under it (the source
+    // cards and the keyboard strip).
+    const Rect panels{0.0f, kHeaderH, kWidth, kRouting.bottom() - kHeaderH};
+    const Rect lower{0.0f, kRouting.bottom(), kWidth, wholeArea().bottom() - kRouting.bottom()};
+    // A source's card, where its output, its LFO's dot, its envelope's and its own params' modulation show; or the
+    // full-size shape editor, while it shows that source. A folded card or one scrolled away shows none of them.
+    const std::vector<int> shown = sourcesShown();
+    auto inCard = [&](int s) {
+        if (shapeEditing() == s) {
+            everywhere = true;
+            return;
+        }
+        if (controller_.layout().sourcesCollapsed || sourceFolded(s))
+            return;
+        const auto at = std::find(shown.begin(), shown.end(), s);
+        if (at == shown.end())
+            return;
+        const float card = sourceOffset(shown, static_cast<size_t>(at - shown.begin())) - sourceScroll();
+        if (onScreen(card, kVisibleCards, sourceSpan(s)))
+            in(sourceCard(card, sourceSpan(s)));
+    };
+    // Where modulation moving param `index` shows: its knobs and the displays drawn from it, with its depth handles,
+    // in the band its section keeps to (a source's own params on its card), the MODS view's rows, and over anything
+    // a pill's list may be open over.
+    auto inTarget = [&](int index) {
+        if (index < 0)
+            return;
+        if (modList_)
+            everywhere = true;
+        if (controller_.layout().view == RoutingView::Mods)
+            in(panels);
+        if (index < kOpBase) // the header's knobs; the mod wheel's, under the keys
+            in(index == paramIndex(GlobalParam::ModWheel) ? lower : header);
+        else if (sourceOf(index) >= 0)
+            inCard(sourceOf(index));
+        else // an operator's, the matrix's, a filter's, a shaper's: the routing panel and the inspector; an effect's
+            in(panels);
+    };
+    // While notes play, or the last one's modulation runs on through the effects' tail, what they move, each where it
+    // shows (above): the modulation, each slot's on its target too; the sources, each on its card (an LFO's dot glides
+    // on from its snapshot by the snapshot's age, see lfoPhaseNow(), so it moves between snapshots alike); the
+    // operators' envelopes on the inspector's ENVELOPE tab (the routing graph's halos follow them below); the playing
+    // count in the header and the operator's scope in the inspector. The note's pitch and velocity, which the filters',
+    // the note source's and velocity's displays and the effects' key tracking follow, show anywhere, as does a voice
+    // starting or the tail coming or going; they change seldom (a note, a glide, a bend).
+    if ((t.voices > 0) != (telemetry_.voices > 0) || t.fxTail != telemetry_.fxTail)
         everywhere = true;
     else if (t.voices != telemetry_.voices)
         in(header);
+    if (t.voices > 0 || telemetry_.voices > 0 || t.fxTail || telemetry_.fxTail) {
+        if (t.notePitch != telemetry_.notePitch || t.noteVelocity != telemetry_.noteVelocity ||
+            t.fxPitch != telemetry_.fxPitch)
+            everywhere = true;
+        for (int i = 0; i < kModulatedCount && !everywhere; ++i)
+            if (t.modOffset[i] != telemetry_.modOffset[i])
+                inTarget(i);
+        for (int k = 0; k < kAllSources * kSlots && !everywhere; ++k)
+            if (t.slotOffset[k] != telemetry_.slotOffset[k])
+                inTarget(slotTarget(value(slotTargetIndex(k / kSlots, k % kSlots))));
+    }
     if (t.voices > 0 || telemetry_.voices > 0) {
-        const bool moved =
-            t.modOffset != telemetry_.modOffset || t.slotOffset != telemetry_.slotOffset ||
-            t.sources != telemetry_.sources || t.lfoPhases != telemetry_.lfoPhases ||
-            t.lfoRates != telemetry_.lfoRates || t.lfoFrom != telemetry_.lfoFrom || t.lfoTo != telemetry_.lfoTo ||
-            t.notePitch != telemetry_.notePitch || t.noteVelocity != telemetry_.noteVelocity ||
-            t.fxPitch != telemetry_.fxPitch || t.opLevels != telemetry_.opLevels ||
-            t.opEnvLevels != telemetry_.opEnvLevels || t.opEnvPos != telemetry_.opEnvPos ||
-            t.envPos != telemetry_.envPos ||
-            (t.voices > 0 && std::any_of(t.lfoRates.begin(), t.lfoRates.end(), [](float r) { return r != 0.0f; }));
-        everywhere = everywhere || moved;
+        for (int s = 0; s < kMaxSources && !everywhere; ++s)
+            if (t.sources[s] != telemetry_.sources[s] || t.lfoPhases[s] != telemetry_.lfoPhases[s] ||
+                t.lfoRates[s] != telemetry_.lfoRates[s] || t.lfoFrom[s] != telemetry_.lfoFrom[s] ||
+                t.lfoTo[s] != telemetry_.lfoTo[s] || t.envPos[s] != telemetry_.envPos[s] ||
+                (t.voices > 0 && t.lfoRates[s] != 0.0f))
+                inCard(s);
+        if (t.opLevels != telemetry_.opLevels || t.opEnvLevels != telemetry_.opEnvLevels ||
+            t.opEnvPos != telemetry_.opEnvPos)
+            in(kInspector);
         if (t.scope != telemetry_.scope || t.scopeBins != telemetry_.scopeBins ||
             t.scopeCursor != telemetry_.scopeCursor)
             in(kInspector);
     }
-    // The last voice's modulation of the effects, moving their knobs on as they ring out.
-    if ((t.fxTail || telemetry_.fxTail) && (t.fxTail != telemetry_.fxTail || t.modOffset != telemetry_.modOffset ||
-                                            t.slotOffset != telemetry_.slotOffset))
-        everywhere = true;
-    // A compressor's and an amp's meters move on while a tail drives them once the notes have ended, and the host's
-    // tempo shows in the synced effects' captions whether notes play or not.
-    if (t.fxReduction != telemetry_.fxReduction || t.tempo != telemetry_.tempo)
+    // A compressor's and an amp's meters move on while a tail drives them once the notes have ended, in the FX view;
+    // the host's tempo shows in the synced effects' and LFOs' captions, and the title bar, whether notes play or not.
+    if (t.fxReduction != telemetry_.fxReduction)
+        in(panels);
+    if (t.tempo != telemetry_.tempo)
         everywhere = true;
     if (t.keys != telemetry_.keys) {
         const bool collapsed = controller_.layout().sourcesCollapsed;
@@ -1451,14 +1505,15 @@ bool View::poll() {
     }
     if (followScopeLevel(opScopeLevel_, opPeak) && opScopeLevel_ > 1e-4f)
         in(kInspector);
-    // A three-band dynamics' bars move with its bands' levels and gains, until they settle.
+    // A three-band dynamics' bars move with its bands' levels and gains, until they settle: in the FX view, as the
+    // effects' sweeps and spectra below.
     for (int slot : fxChain())
         if (fxSlotType(slot) == FxType::MultiDyn)
             for (int band = 0; band < kMcBands; ++band)
                 if (std::abs(t.fxBandLevel[slot][band] - telemetry_.fxBandLevel[slot][band]) >
                         0.01f * std::max(t.fxBandLevel[slot][band], 1e-5f) ||
                     std::abs(t.fxBandGain[slot][band] - telemetry_.fxBandGain[slot][band]) > 0.05f)
-                    everywhere = true;
+                    in(panels);
     // The routing graph's glow follows the output's level (see follow()).
     {
         const RadarLook before = radarLook();
@@ -1472,19 +1527,19 @@ bool View::poll() {
         for (int slot : fxChain())
             if (fxSlotType(slot) == FxType::Phaser || fxSlotType(slot) == FxType::Flanger ||
                 fxSlotType(slot) == FxType::Widener)
-                everywhere = true;
+                in(panels);
     // An analyzer's spectrum goes on falling away after the audio stops, until it is gone; while notes play, the
-    // filters' move along with them.
+    // filters' move along with them: the effects' in the FX view, the voice filters' on the inspector's filter page.
     auto showing = [](const Spectrum &spectrum) {
         return std::any_of(spectrum.begin(), spectrum.end(), [](float level) { return level > 1e-4f; });
     };
-    if (t.age < 1.5f)
-        everywhere = everywhere || std::any_of(t.fxSpectrum.begin(), t.fxSpectrum.end(), showing) ||
-                  std::any_of(t.filterSpectrum.begin(), t.filterSpectrum.end(), showing);
+    if (t.age < 1.5f && std::any_of(t.fxSpectrum.begin(), t.fxSpectrum.end(), showing))
+        in(panels);
+    if (t.age < 1.5f && std::any_of(t.filterSpectrum.begin(), t.filterSpectrum.end(), showing))
+        in(kInspector);
     // With no note playing, a free or anchored LFO's dot runs on along its card's display alone (or the full-size
     // shape editor showing it), gliding between snapshots while the audio runs; so does one the effects' tail runs.
     if (t.voices == 0 && telemetry_.voices == 0) {
-        const std::vector<int> shown = sourcesShown();
         for (int position = 0; position < static_cast<int>(shown.size()); ++position) {
             const int s = shown[position];
             if (!(lfoRunsIdle(s) || lfoInTail(t, s) || lfoInTail(telemetry_, s)) || (t.lfoPhases[s] == telemetry_.lfoPhases[s] && (t.lfoRates[s] == 0.0f || t.age > 0.15f)))

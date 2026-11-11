@@ -22,7 +22,9 @@
 
 #include <clap/clap.h>
 
+#ifndef NOMINMAX // the build defines it, as for every target
 #define NOMINMAX
+#endif
 #include <windows.h>
 
 #include <algorithm>
@@ -323,7 +325,7 @@ int renderPresets(const Module &module, const char *folder) {
     std::sort(presets.begin(), presets.end());
     for (const auto &path : presets) {
         std::vector<unsigned char> preset;
-        if (FILE *file = _wfopen(path.c_str(), L"rb")) {
+        if (FILE *file = nullptr; _wfopen_s(&file, path.c_str(), L"rb") == 0 && file) {
             for (int c; (c = std::fgetc(file)) != EOF;)
                 preset.push_back(static_cast<unsigned char>(c));
             std::fclose(file);

@@ -416,7 +416,7 @@ private:
     bool collect(ProcessData &data);
     void applyOverflow(ProcessData &data);
     void apply(const Change &change, ProcessData &data);
-    void applyMidi(ParamID id, double value);
+    void applyMidi(ParamID id, double value, int32 offset, ProcessData &data);
     void applyEvent(const Event &ev);
 
     std::atomic<uint32> refs_{1};
@@ -798,14 +798,14 @@ void Plugin::apply(const Change &change, ProcessData &data) {
         if (data.inputEvents && data.inputEvents->getEvent(static_cast<int32>(change.value), ev) == kResultOk)
             applyEvent(ev);
     } else if (isMidiParam(change.id)) {
-        applyMidi(change.id, change.value);
+        applyMidi(change.id, change.value, change.offset, data);
     } else if (const int index = indexOfId(change.id); index >= 0) {
         setHostValue(index, toPlain(index, change.value), true);
     }
 }
 
-// A MIDI controller, channel pressure or pitch bend, as the host's MIDI mapping hands it over.
-void Plugin::applyMidi(ParamID id, double value) {
+// A MIDI controller, channel pressure or pitch bend, as the host's MIDI mapping hands it over, at `offset` in the block.
+void Plugin::applyMidi(ParamID id, double value, int32 offset, ProcessData &data) {
     const int channel = static_cast<int>(id - kMidiParamBase) / kMidiControllers;
     const int controller = static_cast<int>(id - kMidiParamBase) % kMidiControllers;
     value = std::clamp(value, 0.0, 1.0);
@@ -815,6 +815,15 @@ void Plugin::applyMidi(ParamID id, double value) {
         synth().channelPressure(channel, value);
     else
         synth().controlChange(channel, controller, value);
+    // A hardware mod wheel moves the Mod Wheel param too (see playModWheel()), which the host hears in its place.
+    if (controller == 1 && playModWheel(value) && data.outputParameterChanges) {
+        int32 queue = 0;
+        const ParamID wheel = idOfIndex(paramIndex(GlobalParam::ModWheel));
+        if (IParamValueQueue *points = data.outputParameterChanges->addParameterData(wheel, queue)) {
+            int32 point = 0;
+            points->addPoint(std::max(offset, 0), toNormalized(paramIndex(GlobalParam::ModWheel), value), point);
+        }
+    }
 }
 
 void Plugin::applyEvent(const Event &ev) {

@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -4436,26 +4437,149 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     check(scopeMoved && !only(view.wholeArea()) && samePixels("99g-partial-scope.png"),
           "an operator's scope moving repaints the inspector alone, as a whole paint would");
 
-    // An LFO moves on: anything may show it, so the whole editor.
-    model.live.lfoPhases[0] = 0.3f;
-    const bool lfoMoved = view.poll();
-    check(lfoMoved && only(view.wholeArea()),
-          "what a voice's sources move repaints the whole editor");
+    // What a voice's sources move repaints where it shows: an LFO modulating nothing, its card alone; its modulation
+    // of an operator's param, the panels' row too (the routing panel and the inspector); of a header knob, the header;
+    // of another source's param, that source's card; an operator's envelope moving, the inspector alone; and with the
+    // MODS view shown, its rows too. Each painted over the frame before as a whole paint of the same moment would be.
+    {
+        const Rect panels{0.0f, detail::kHeaderH, View::kWidth, detail::kRouting.bottom() - detail::kHeaderH};
+        const Rect card0 = detail::sourceCard(0.0f), card1 = detail::sourceCard(1.0f);
+        auto has = [&](Rect r) {
+            return std::any_of(view.changedAreas().begin(), view.changedAreas().end(),
+                               [&](Rect a) { return sameArea(a, r); });
+        };
+        auto areas = [&] { return view.changedAreas().size(); };
+        // Polled until nothing moves (the scopes easing down), then painted whole: the frame the next part goes over.
+        auto settle = [&](const char *name) {
+            for (int i = 0; i < 40 && view.poll(); ++i)
+                ;
+            return renderer.save(view, dir / name);
+        };
+        // What painting `parts` costs, each painted over the last frame (offscreen, so a measure of the editor's own
+        // work, not the screen's).
+        auto paintMs = [&](std::vector<Rect> parts) {
+            const auto start = std::chrono::steady_clock::now();
+            for (int i = 0; i < 10; ++i)
+                for (const Rect &part : parts)
+                    renderer.repaint(view, part);
+            return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / 10.0;
+        };
+        model.live.outPeak = {0.0f, 0.0f}; // the header's meter and scope still
+        scopeAt(0.0f, 0.0f);
+        model.ui.opTab = InspectorTab::Envelope;
+        model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+        model.live.sources[0] = 0.2f;
+        model.live.lfoPhases[0] = 0.1f;
+        settle("99g1-live-before.png");
+        model.live.sources[0] = 0.6f;
+        model.live.lfoPhases[0] = 0.3f;
+        const bool alone = view.poll() && only(card0);
+        const double cardMs = paintMs(view.changedAreas()), wholeMs = paintMs({view.wholeArea()});
+        check(alone && samePixels("99g2-live-lfo-alone.png"),
+              "an LFO moving that modulates nothing repaints its card alone, as a whole paint would");
 
-    // The notes end while a tail drives a compressor on: its meter moving repaints it, and so does the host's tempo.
+        const int out = paramIndex(0, OpParam::Out);
+        model.set(slotTargetIndex(0, 0), slotTargetValue(out));
+        model.set(slotAmountIndex(0, 0), -0.5);
+        model.live.modOffset[out] = -0.1f;
+        model.live.slotOffset[0] = -0.1f;
+        settle("99g3-live-op-before.png");
+        model.live.sources[0] = 0.2f;
+        model.live.modOffset[out] = -0.3f;
+        model.live.slotOffset[0] = -0.3f;
+        const bool onOp = view.poll() && areas() == 2 && has(card0) && has(panels);
+        const double opMs = paintMs(view.changedAreas());
+        check(onOp && samePixels("99g4-live-op.png"),
+              "an LFO moving operator A's Out repaints its card and the panels' row, as a whole paint would");
+
+        const int pan = paramIndex(GlobalParam::Pan);
+        model.set(slotTargetIndex(0, 0), slotTargetValue(pan));
+        model.live.modOffset[out] = 0.0f;
+        model.live.modOffset[pan] = 0.2f;
+        model.live.slotOffset[0] = 0.1f;
+        settle("99g5-live-header-before.png");
+        model.live.sources[0] = 0.7f;
+        model.live.modOffset[pan] = 0.5f;
+        model.live.slotOffset[0] = 0.25f;
+        const bool onHeader = view.poll() && areas() == 2 && has(card0) && has(header);
+        check(onHeader && samePixels("99g6-live-header.png"),
+              "an LFO moving the header's Pan repaints its card and the header, as a whole paint would");
+
+        model.set(paramIndex(1, SourceParam::Type), static_cast<double>(SourceType::Lfo));
+        const int rate = paramIndex(1, SourceParam::Rate);
+        model.set(slotTargetIndex(0, 0), slotTargetValue(rate));
+        model.live.modOffset[pan] = 0.0f;
+        model.live.modOffset[rate] = 0.05f;
+        model.live.slotOffset[0] = 0.05f;
+        settle("99g7-live-source-before.png");
+        model.live.sources[0] = 0.3f;
+        model.live.modOffset[rate] = 0.15f;
+        model.live.slotOffset[0] = 0.15f;
+        const bool onSource = view.poll() && areas() == 2 && has(card0) && has(card1);
+        check(onSource && samePixels("99g8-live-source.png"),
+              "an LFO moving another LFO's Rate repaints the two cards, as a whole paint would");
+
+        model.set(slotTargetIndex(0, 0), 0.0);
+        model.set(slotAmountIndex(0, 0), 0.0);
+        model.live.modOffset[rate] = 0.0f;
+        model.live.slotOffset[0] = 0.0f;
+        model.live.opLevels[0] = model.live.opEnvLevels[0] = 0.8f;
+        model.live.opEnvPos[0] = 2.3f; // in the decay
+        settle("99g9-live-envelope-before.png");
+        model.live.opLevels[0] = model.live.opEnvLevels[0] = 0.6f;
+        model.live.opEnvPos[0] = 2.6f;
+        const bool envelope = view.poll() && only(detail::kInspector);
+        check(envelope && samePixels("99g10-live-envelope.png"),
+              "operator A's envelope moving repaints the inspector alone, as a whole paint would");
+
+        model.ui.view = RoutingView::Mods;
+        model.set(slotTargetIndex(0, 0), slotTargetValue(pan));
+        model.set(slotAmountIndex(0, 0), -0.5);
+        model.live.modOffset[pan] = 0.2f;
+        model.live.slotOffset[0] = 0.1f;
+        settle("99g11-live-mods-before.png");
+        model.live.sources[0] = 0.5f;
+        model.live.modOffset[pan] = 0.4f;
+        model.live.slotOffset[0] = 0.2f;
+        const bool mods = view.poll() && areas() == 3 && has(card0) && has(header) && has(panels);
+        check(mods && samePixels("99g12-live-mods.png"),
+              "with the MODS view shown, an LFO's modulation moving repaints its rows too, as a whole paint would");
+        std::printf("      painting offscreen: the whole editor %.1f ms, an LFO's card %.1f ms, with the panels' row "
+                    "%.1f ms\n",
+                    wholeMs, cardMs, opMs);
+
+        model.ui.view = RoutingView::Matrix;
+        model.set(slotTargetIndex(0, 0), 0.0);
+        model.set(slotAmountIndex(0, 0), 0.0);
+        model.set(paramIndex(0, SourceParam::Type), 0.0);
+        model.set(paramIndex(1, SourceParam::Type), 0.0);
+        model.live.modOffset[pan] = 0.0f;
+        model.live.slotOffset[0] = 0.0f;
+        model.live.sources[0] = 0.0f;
+        model.live.lfoPhases[0] = 0.0f;
+        model.live.opLevels[0] = model.live.opEnvLevels[0] = 0.0f;
+        model.live.opEnvPos[0] = 0.0f;
+    }
+
+    // The notes end while a tail drives a compressor on: its meter moving repaints the panels' row, where the FX view
+    // shows it, as a whole paint would; the host's tempo, which shows in captions anywhere, the whole editor.
     model.live.voices = 0;
     model.live.outPeak = {0.0f, 0.0f};
     model.live.scopeBins = 0;
     for (int i = 0; i < 20 && view.poll(); ++i) // the scopes' levels easing down
         ;
     const bool settled = !view.poll();
+    renderer.save(view, dir / "99g13-compressor-before.png");
     model.live.fxReduction[0][0] = 3.0f;
-    const bool reductionMoved = view.poll() && only(view.wholeArea());
+    const bool reductionMoved =
+        view.poll() && only({0.0f, detail::kHeaderH, View::kWidth, detail::kRouting.bottom() - detail::kHeaderH}) &&
+        samePixels("99g14-compressor.png");
     model.live.tempo = 96.0f;
     const bool tempoMoved = view.poll() && only(view.wholeArea());
     const bool still = !view.poll();
     check(settled && reductionMoved && tempoMoved && still,
-          "with no notes playing, a compressor's meter and the host's tempo moving repaint the editor");
+          "with no notes playing, a compressor's meter moving repaints the panels' row, as a whole paint would, and "
+          "the host's tempo the editor");
 
     // With no notes playing, a free LFO's shared clock runs on: its dot moving repaints its card alone, as a whole
     // paint would. Switched to retrigger it shows no dot (the card's pixels change) and moving repaints nothing.

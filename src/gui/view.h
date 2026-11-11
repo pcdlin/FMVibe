@@ -1435,6 +1435,7 @@ private:
     Controller &controller_;
     const ParamTable &table_;
     ParamValues seen_{};
+    uint64_t seenStamp_ = 0; // the controller's valuesStamp() when seen_ was taken (0: not yet)
     Telemetry telemetry_{};
     std::optional<Widget> hover_;
     Point hoverPoint_; // where the mouse is
