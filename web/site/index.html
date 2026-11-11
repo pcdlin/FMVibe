@@ -5,7 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FMVibe browser demo</title>
   <meta name="description" content="FMVibe, a six-operator FM synthesizer, running in the browser: the plugin's own engine and editor, compiled to WebAssembly.">
-  <link rel="stylesheet" href="style.css">
+  <style>html.loading body { visibility: hidden; }</style>
+  <script>
+    // GitHub Pages lets a browser keep each file for 10 minutes, each on a timer of its own, and the page's files
+    // only work with those of their own build. So the build writes a hash of them into version.txt, fetched here
+    // past the cache, and every file is asked for with it: a new build is new URLs throughout. main.js reads it
+    // off its own URL. Without version.txt (an old build, a server without it) the files load as they are.
+    (() => {
+      const root = document.documentElement;
+      const show = () => root.classList.remove('loading');
+      root.classList.add('loading'); // until the stylesheet is in
+      fetch('version.txt', {cache: 'no-store'})
+        .then((r) => (r.ok ? r.text() : ''))
+        .catch(() => '')
+        .then((text) => {
+          const version = text.trim();
+          const query = version ? `?v=${encodeURIComponent(version)}` : '';
+          const css = document.createElement('link');
+          css.rel = 'stylesheet';
+          css.href = `style.css${query}`;
+          css.onload = css.onerror = show;
+          document.head.append(css);
+          return import(`./main.js${query}`);
+        })
+        .catch((error) => {
+          show();
+          throw error;
+        });
+    })();
+  </script>
 </head>
 <body>
   <main id="stage">
@@ -32,6 +60,5 @@
   </footer>
   <div id="menu" role="menu" hidden></div>
   <div id="toast" role="status"></div>
-  <script type="module" src="main.js"></script>
 </body>
 </html>

@@ -48,13 +48,16 @@ target_link_options(fmvibe-ui PRIVATE
 )
 set_target_properties(fmvibe-ui PROPERTIES SUFFIX ".js")
 
-# The page, next to the modules, with FMVibe's license and the notices of what the modules hold from others.
+# The page, next to the modules, with FMVibe's license and the notices of what the modules hold from others; then
+# version.txt, the hash of them all, which the page asks for its files with (see version.cmake).
 set(site_files index.html style.css main.js canvas2d.js worklet.js THIRD-PARTY-NOTICES.txt)
 list(TRANSFORM site_files PREPEND ${CMAKE_CURRENT_SOURCE_DIR}/site/ OUTPUT_VARIABLE site_sources)
 add_custom_target(fmvibe-site ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${site}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${site_sources} ${site}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_SOURCE_DIR}/LICENSE ${site}/LICENSE.txt
-    DEPENDS ${site_sources} ${PROJECT_SOURCE_DIR}/LICENSE
+    COMMAND ${CMAKE_COMMAND} -DSITE=${site} -P ${CMAKE_CURRENT_SOURCE_DIR}/version.cmake
+    DEPENDS ${site_sources} ${PROJECT_SOURCE_DIR}/LICENSE ${CMAKE_CURRENT_SOURCE_DIR}/version.cmake
     COMMENT "Copying the demo page"
 )
+add_dependencies(fmvibe-site fmvibe-dsp fmvibe-ui)

@@ -2,8 +2,13 @@
 // keyboard as src/gui/editor.cpp does in a plugin window, plays notes from the computer's keyboard, and runs the
 // synth in an AudioWorklet (worklet.js) once the browser lets the page make sound.
 
-import createFMVibeUI from './fmvibe-ui.js';
-import {createCanvas2d} from './canvas2d.js';
+// The build's version, which index.html imported this with ('?v=...', or nothing): every file of the page is asked
+// for with it, so the browser takes them all from one build, never some from its cache of the one before.
+const version = new URL(import.meta.url).search;
+const [{default: createFMVibeUI}, {createCanvas2d}] = await Promise.all([
+  import(`./fmvibe-ui.js${version}`),
+  import(`./canvas2d.js${version}`),
+]);
 
 const canvas = document.getElementById('editor');
 const stage = document.getElementById('stage');
@@ -26,7 +31,7 @@ const SELECT_ALL = 8;
 
 // --- Audio --------------------------------------------------------------------------------------------------
 
-const dspBytes = fetch('fmvibe-dsp.wasm').then((r) => {
+const dspBytes = fetch(`fmvibe-dsp.wasm${version}`).then((r) => {
   if (!r.ok)
     throw new Error(`fmvibe-dsp.wasm: ${r.status}`);
   return r.arrayBuffer();
@@ -64,7 +69,7 @@ async function startAudio() {
   try {
     // Made during the click or key press, so the browser lets it play.
     const context = new AudioContext({latencyHint: 'interactive'});
-    const [wasm] = await Promise.all([dspBytes, context.audioWorklet.addModule('worklet.js')]);
+    const [wasm] = await Promise.all([dspBytes, context.audioWorklet.addModule(`worklet.js${version}`)]);
     const count = ui._ui_param_count();
     const values = new Float64Array(ui.HEAPF64.buffer, ui._ui_values(), count).slice();
     const node = new AudioWorkletNode(context, 'fmvibe', {
@@ -176,7 +181,8 @@ let viewWidth = 1;  // the editor's size in its own units; resize() asks it
 let viewHeight = 1;
 let paintQueued = false; // resize() has a paint coming
 try {
-  ui = await createFMVibeUI({fmv2d: draw, fmvHost: host});
+  // Its wasm with the version too, which Emscripten would ask for by its plain name.
+  ui = await createFMVibeUI({fmv2d: draw, fmvHost: host, locateFile: (path, dir) => dir + path + version});
   ui._ui_init();
 } catch (error) {
   console.error(error);
