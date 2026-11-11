@@ -133,6 +133,8 @@ std::string sourceName(const UiLayout &layout, const Get &get, int source) {
         return tr(Str::SourceNameWheel);
     if (isVelocity(source))
         return tr(Str::SourceNameVelocity);
+    if (isBend(source))
+        return tr(Str::SourceNameBend);
     if (isMacro(source))
         return macroName(layout, source - kMaxSources);
     const SourceType type = sourceType(get(paramIndex(source, SourceParam::Type)));

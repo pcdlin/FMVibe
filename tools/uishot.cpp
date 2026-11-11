@@ -430,13 +430,13 @@ constexpr float kOpEnvBottom = 426.0f + kInsDy;
 // The global strip, under the title bar: from the meter's left edge (kHeaderStart) on, the output scope left of the
 // meter (kOutScope).
 constexpr float kHeaderStart = 128.0f;
-constexpr Point kFmAmountKnob{321.0f, 64.0f};
-constexpr Point kFmAmountNumber{363.0f, 67.0f}; // beside its knob
+constexpr Point kFmAmountKnob{307.0f, 64.0f};
+constexpr Point kFmAmountNumber{349.0f, 67.0f}; // beside its knob
 constexpr Point kVoicesKnob{1058.0f, 64.0f}; // past the second divider, beside the count
-constexpr Point kMonoButton{773.0f, 53.0f};
-constexpr Point kLegatoToggle{751.0f, 76.0f};
-constexpr Point kGlideKnob{837.0f, 64.0f};
-constexpr Point kAlwaysToggle{929.0f, 53.0f};
+constexpr Point kMonoButton{803.0f, 53.0f};
+constexpr Point kLegatoToggle{781.0f, 76.0f};
+constexpr Point kGlideKnob{859.0f, 64.0f};
+constexpr Point kAlwaysToggle{951.0f, 53.0f};
 constexpr float kOutScopeX = kHeaderStart - 104.0f, kOutScopeY = 45.0f, kOutScopeW = 96.0f, kOutScopeH = 38.0f;
 // The view tabs sit above the panels.
 constexpr Point kRoutingTab{64.0f, 116.0f};
@@ -4712,7 +4712,7 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
           "a folded Random card shows RND and its number, which fit the strip");
 }
 
-// The macros in the keyboard panel, above the keys: a knob each (centers 112.75 px apart, 179 px above the
+// The macros in the keyboard panel, above the keys: a knob each (centers 96 px apart, 179 px above the
 // editor's bottom), a handle left of it to map it like a source, and its name under it, which a double-click
 // changes.
 void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
@@ -4760,7 +4760,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     // Once the last voice has ended, the effects' and Volume's knobs show where its modulation takes them as the
     // effects ring out: Volume's dot comes with the tail, and goes with it (read off the rendered pixels).
     {
-        const Point volumeKnob{kFmAmountKnob.x - detail::kHeaderKnobW, kFmAmountKnob.y};
+        const Point volumeKnob{detail::headerKnobX(0) + 18.0f, kFmAmountKnob.y};
         auto volumePixels = [&] {
             view.poll();
             renderer.save(view, dir / "26a4-volume-tail.png");
@@ -4832,10 +4832,10 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     check(noteMapped && shot && removal == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameNote)}),
           "the note source's handle maps it like a macro's, and its display names the note");
 
-    // The mod wheel's handle, in the row between the macros and the note source, maps it the same way (faint until it
-    // does), onto FM Amount here, where it starts upward, as every new modulation does.
+    // The mod wheel's handle, over the wheel below the strip's title, maps it the same way (faint until it does), onto
+    // FM Amount here, where it starts upward, as every new modulation does.
     {
-        const Point wheelHandle{928.0f, y}, wheelRing{934.0f, y - 10.0f};
+        const Point wheelHandle{87.0f, y + 21.0f}, wheelRing{93.0f, y + 11.0f};
         view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "26f-wheel-idle.png");
         const int idle = ringLevel(renderer, wheelRing, 20.0f);
@@ -4853,6 +4853,31 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         check(wheelMapped && wheelShot && idle * 18 < live * 10 &&
                   wheelRemoval == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameWheel)}),
               "the mod wheel's handle maps it like a macro's, upward, and is faint until it does");
+    }
+    // The pitch bend's handle, over the bend wheel, maps it the same way (faint until it does), onto FM Amount too
+    // here; it starts bipolar, so at rest it moves nothing.
+    {
+        const Point bendHandle{47.0f, y + 21.0f}, bendRing{53.0f, y + 11.0f};
+        view.mouseMove({600.0f, 328.0f}, {});
+        renderer.save(view, dir / "26f2-bend-idle.png");
+        const int idle = ringLevel(renderer, bendRing, 20.0f);
+        view.mouseMove(bendHandle, {});
+        const bool tip = renderer.save(view, dir / "26f3-bend-tooltip.png");
+        drag(view, bendHandle, kFmAmountKnob);
+        const bool bendMapped =
+            slotTarget(model.value(slotTargetIndex(kBendSource, 0))) == paramIndex(GlobalParam::FmAmount) &&
+            model.value(slotAmountIndex(kBendSource, 0)) > 0.0 && model.value(paramIndex(BendParam::Bipolar)) == 1.0;
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool bendShot = renderer.save(view, dir / "26g2-bend-mapped.png");
+        const int live = ringLevel(renderer, bendRing, 20.0f);
+        std::string bendRemoval;
+        for (const MenuItem &item : view.contextMenu(kFmAmountKnob))
+            if (item.label.find(tr(Str::SourceNameBend)) != std::string::npos)
+                bendRemoval = item.label;
+        std::printf("      bend handle's brightness: %d idle, %d mapped\n", idle, live);
+        check(tip && bendMapped && bendShot && idle * 18 < live * 10 &&
+                  bendRemoval == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameBend)}),
+              "the pitch bend's handle, over its wheel, maps it like a macro's, bipolar, and is faint until it does");
     }
 
     // The macros', the mod wheel's and the note source's menus pick their polarity too, the one in force checked:
@@ -4878,13 +4903,17 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const bool noteBipolar = model.value(paramIndex(NoteParam::Bipolar)) == 1.0;
         view.mouseMove({600.0f, 328.0f}, {});
         const bool stripShot = renderer.save(view, dir / "26h-bipolar-strip.png");
-        polarity({928.0f, y}, tr(Str::MenuUnipolar)); // the wheel's handle
+        polarity({87.0f, y + 21.0f}, tr(Str::MenuUnipolar)); // the wheel's handle
+        const bool bendWasBipolar = polarity({47.0f, y + 21.0f}, tr(Str::MenuUnipolar)); // the bend wheel's handle
+        const bool bendUnipolar = model.value(paramIndex(BendParam::Bipolar)) == 0.0;
+        polarity({47.0f, y + 21.0f}, tr(Str::MenuBipolar));
         polarity(macroKnob(0), tr(Str::MenuUnipolar));
         polarity({1026.0f, y}, tr(Str::MenuUnipolar));
         check(macroWasUnipolar && macroBipolar && handleShowsIt && wheelBipolar && noteBipolar && stripShot &&
+                  !bendWasBipolar && bendUnipolar && model.value(paramIndex(BendParam::Bipolar)) == 1.0 &&
                   model.value(paramIndex(0, MacroParam::Bipolar)) == 0.0 &&
                   model.value(paramIndex(WheelParam::Bipolar)) == 0.0 && model.value(paramIndex(NoteParam::Bipolar)) == 0.0,
-              "the macros', the mod wheel's and the note source's menus make them unipolar or bipolar");
+              "the macros', the wheels' and the note source's menus make them unipolar or bipolar");
     }
 
     // The octave shift's small buttons, under the keys' right end, move the keys an octave: the first C, a C1, plays
@@ -4905,27 +4934,30 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     }
 
     // Collapsed by its chevron or its title, the keyboard panel keeps its top row and the editor gets 120 px
-    // shorter: the keys, the wheels and the octave shift go, and the mod wheel's handle stays in the row between the
-    // macros and the note source, where it still maps the wheel, onto filter 1's cutoff here. Bend's knob, over the
-    // bend wheel (27 px below the row's middle, at x 46), stays in the row too, and the wheel turns it a semitone.
+    // shorter: the keys, the wheels and the octave shift go, and the wheels' handles stay under the title, where they
+    // still map the wheels, onto filter 1's cutoff here.
     {
         const Point toggle{35.0f, y - 8.0f}, title{80.0f, y - 8.0f};
         const float open = view.height();
         click(view, toggle);
         const bool shorter = model.ui.keysCollapsed && view.height() == open - 120.0f;
-        const Point wheelHandle{928.0f, y};
-        drag(view, wheelHandle, ins(918.0f, 242.0f));
+        drag(view, {87.0f, y + 21.0f}, ins(918.0f, 242.0f));
+        drag(view, {47.0f, y + 21.0f}, ins(918.0f, 242.0f));
         const bool wheelMapped =
-            slotTarget(model.value(slotTargetIndex(kWheelSource, 1))) == paramIndex(0, FilterParam::Cutoff);
-        const double bendWas = model.value(paramIndex(GlobalParam::BendRange));
-        view.wheel({46.0f, y + 27.0f}, 1.0f, {});
-        const bool bendTurned = model.value(paramIndex(GlobalParam::BendRange)) == bendWas + 1.0;
+            slotTarget(model.value(slotTargetIndex(kWheelSource, 1))) == paramIndex(0, FilterParam::Cutoff) &&
+            slotTarget(model.value(slotTargetIndex(kBendSource, 1))) == paramIndex(0, FilterParam::Cutoff);
         view.mouseMove(toggle, {});
         const bool collapsedShot = renderer.save(view, dir / "26j-keys-collapsed.png");
         click(view, title);
-        check(shorter && wheelMapped && bendTurned && collapsedShot && !model.ui.keysCollapsed && view.height() == open,
-              "the keyboard panel collapses to its top row, the mod wheel's handle and Bend's knob staying in it, "
-              "and opens again");
+        check(shorter && wheelMapped && collapsedShot && !model.ui.keysCollapsed && view.height() == open,
+              "the keyboard panel collapses to its top row, the wheels' handles staying in it, and opens again");
+    }
+
+    // Bend's knob, in the header after Pitch: the wheel turns it a semitone.
+    {
+        const double bendWas = model.value(paramIndex(GlobalParam::BendRange));
+        view.wheel({detail::headerKnobX(3) + 18.0f, kFmAmountKnob.y}, 1.0f, {});
+        check(model.value(paramIndex(GlobalParam::BendRange)) == bendWas + 1.0, "Bend's knob in the header turns");
     }
 
     // Its display opens its curve over the routing panel: the notes from Low to High across, their knobs in the

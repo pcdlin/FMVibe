@@ -644,7 +644,7 @@ void Synth::applyMacros(const ParamValues &params) {
     });
     voiceMacroSlotCount_ = 0;
     for (int source = kMaxSources; source < kAllSources; ++source) {
-        if (isNoteBorne(source))
+        if (!hasKnob(source))
             continue;
         for (int slot = 0; slot < kSlots; ++slot)
             if (const int aux = slotAux(get, source, slot); aux >= 0 && runsPerVoice(aux) &&
@@ -1453,6 +1453,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // take this block's value; on a note's first block, so do those the note source scales, from the pitch the note
     // starts at (after that, they take the last block's, as it follows the pitch further down).
     v.auxOut[kVelocitySource] = velocitySourceValue(getParam, v.velocity);
+    // So does the pitch bend, where it stands now, 0..1 with its middle at rest: the host's and the bend wheel's, and the
+    // note's own channel's with MPE on, each a share of its own range.
+    v.auxOut[kBendSource] =
+        0.5 * (std::clamp(bend + (mpe_ && memberChannel(v.note.channel) ? channelBend_[v.note.channel] : 0.0), -1.0, 1.0) +
+               1.0);
     if (v.fresh)
         v.auxOut[kNoteSource] = noteSourceValue([&](int i) { return hostValue(params, i); }, pitchNow());
     if (!sharedSlotsReady_)
@@ -1564,6 +1569,20 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                                             slotCurveValue(swing, slot.curve, bipolar) * slot.depth *
                                                 sharedScale(slot) * slot.range,
                                             kVelocitySource * kSlots + slot.slot};
+        }
+    }
+    // The pitch bend's, likewise, from where it stands this block. Bipolar, as it starts, it moves nothing at rest.
+    {
+        const bool bipolar = params[paramIndex(BendParam::Bipolar)] >= 0.5;
+        const double swing = v.auxOut[kBendSource] - (bipolar ? 0.5 : 0.0);
+        for (int k = 0; k < sharedSlotCount_[kBendSource]; ++k) {
+            const SharedSlot &slot = sharedSlots_[kBendSource][k];
+            if (slot.depth == 0.0)
+                continue;
+            v.slotMods[v.slotModCount++] = {slot.target,
+                                            slotCurveValue(swing, slot.curve, bipolar) * slot.depth *
+                                                sharedScale(slot) * slot.range,
+                                            kBendSource * kSlots + slot.slot};
         }
     }
     // The macros' and the mod wheel's slots that an aux of this voice scales (see applyMacros()).

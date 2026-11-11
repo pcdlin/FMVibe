@@ -78,6 +78,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     itself grows louder, and filters feeding themselves and each other past unity stay finite and end with their
     note;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro;
+  - the pitch bend source moving its target: bipolar, nothing at rest and half its depth bent fully up; unipolar,
+    half at rest and all of it fully up;
   - a MIDI source following its controller (and not another), on pressure the channel's and a note's own
     (polyphonic aftertouch or CLAP's pressure expression, not another key's), and on slide resting in the middle and
     following a note's brightness expression; Slew taking a controller turned up mid-note slowly, and a Random source
@@ -502,11 +504,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the right-click menu on knobs;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
     and velocity's handles, displays and curve editors, velocity's handle faint until it modulates something (read
-    off the rendered pixels), and the mod wheel's
-    handle (new modulation starting upward); with no note playing, a knob's dot showing where a macro takes it
-    (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard strip
-    to its top row by its chevron or title, the mod wheel's handle moving into it and still mapping the wheel, and
-    Bend's knob, over the bend wheel, staying in it and turning;
+    off the rendered pixels), the mod wheel's
+    handle (new modulation starting upward) and the pitch bend's (bipolar), each over its wheel and faint until it
+    modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
+    takes it (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard
+    strip to its top row by its chevron or title, the wheels' handles staying in it and still mapping the wheels; and
+    Bend's knob, in the header after Pitch, turning;
   - the dashed cards that add effects and sources (opening the list of types at the mouse, the effects' moved back
     inside the editor at the chain's right end and staying over a switched-off card's dimming, read off the rendered
     pixels; the sources' closing
@@ -868,16 +871,17 @@ itself.
   2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'
   later slots 6000 + 30·place, shaper effects' curves 7000 + 50·slot (their points past the 16th
   17000 + 200·slot; the slots past the first 16 every field 30000 + 200·(slot - 16)), the chain's order 33400 + place,
-  slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's and
-  velocity's, 9320 + 20 a source by the sources' number), Custom waves' first 32 partials 10000 + 100·op, macros
-  11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod wheel's slots 11500+,
-  velocity 11600+ (its slots, then its curve and Bipolar), the
+  slot bypasses 9000 + 20·place (then the macros', the note source's, the mod wheel's,
+  velocity's and the pitch bend's, 9320 + 20 a source by the sources' number), Custom waves' first 32 partials
+  10000 + 100·op, macros 11000 + 40·macro, the note source 11400+ (its slots, then its range and curve), the mod
+  wheel's slots 11500+, velocity 11600+ (its slots, then its curve and Bipolar), the pitch bend 11700+ (its slots,
+  then Bipolar), the
   Custom waves' partial counts 14000+ and their partials past the 32nd 14100 + 100·op, the routes' modes
   700 + 10·from + to (from by the routing graph's node order: the operators, the filters, the shapers; to an
   operator; an operator's own field, its feedback, hidden and always Phase), the voice shapers'
   curves 13000 + 50·shaper (their points past the 16th 21000 + 200·shaper), every slot's aux and Amount
-  22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel
-  and velocity; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
+  22000 + 40·source (a pair per slot, by the sources' number: the places, the macros, the note source, the mod wheel,
+  velocity and the pitch bend; a source added later takes the next block), and every slot's curve 24000 + 20·source (by the
   sources' number likewise); the effects graph's splits 34000 + 20·split, the wires into its
   slots and splits 34200 + 20·node (the slots, then the splits; a From and a Level an input) and the wires into its
   output 35000+, its sums 35100 + 20·sum and the wires into them 35200 + 20·sum. A wire's From stores its port + 1
@@ -904,8 +908,8 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,226 of the 19,153 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
-  `src/params.h`), 864 of them the slots' depths and Amounts. The editor's alone are those the table marks
+- Hosts are given 1,259 of the 19,378 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+  `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
   fields, the effects graph (its splits, joins and wires) and the source places' own fields (a place's slot

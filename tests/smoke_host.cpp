@@ -1886,6 +1886,34 @@ int main(int argc, char **argv) {
               "a bipolar mod wheel swings its target both ways");
     }
 
+    // The pitch bend is a source too, bipolar as it starts: on A's output at -100 %, at rest it moves nothing, bent
+    // down it takes A up from where it is (already full) and bent all the way up half of the depth down. Unipolar, its
+    // rest is its middle, which halves A, and all the way up silences it.
+    {
+        auto bent = [&](double amount) {
+            const clap_event_midi_t bend = bendEvent(amount);
+            runBlock({&bend.header});
+            return peakOf(play({}));
+        };
+        const float resting = bent(0.0);
+        setParams({{slotTargetIndex(kBendSource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kBendSource, 0), -1.0}});
+        const float atRest = bent(0.0), down = bent(-1.0), up = bent(1.0);
+        setParams({{paramIndex(BendParam::Bipolar), 0.0}});
+        const float unipolarRest = bent(0.0), unipolarUp = bent(1.0);
+        bent(0.0);
+        setParams({{slotTargetIndex(kBendSource, 0), 0.0},
+                   {slotAmountIndex(kBendSource, 0), 0.0},
+                   {paramIndex(BendParam::Bipolar), 1.0}});
+        std::printf("      pitch bend on A's output at -100 %%: peak %.3f at rest, %.3f down, %.3f up (%.3f without it); "
+                    "unipolar %.3f at rest, %.3f up\n",
+                    atRest, down, up, resting, unipolarRest, unipolarUp);
+        check(std::abs(atRest - resting) < 1e-3f && std::abs(down - resting) < 1e-3f && up > 0.4f * resting &&
+                  up < 0.6f * resting && unipolarRest > 0.4f * resting && unipolarRest < 0.6f * resting &&
+                  unipolarUp < 0.01f,
+              "the pitch bend modulates what it is assigned to, about its rest while bipolar, from its bottom while not");
+    }
+
     // The sources that follow what comes in, in place 1 on A's output at -100 %: a MIDI source on a controller
     // silences A with it all the way up and halves it at the middle, and leaves it alone with another controller up;
     // on aftertouch, it follows the channel's, and a note's own (MIDI polyphonic aftertouch or CLAP's pressure

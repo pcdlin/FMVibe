@@ -266,22 +266,29 @@ inline bool followScopeLevel(float &level, float peak) {
     level = peak >= level ? peak : std::max(peak, level * kScopeLevelFall);
     return std::abs(level - before) > 0.01f * before;
 }
-// The first divider, before the play cluster.
-constexpr float kDivider0 = kHeaderStart + 535.0f;
-// The global knobs, 120 px apart, centered between the meter and the first divider: from the first one's arc (2 px
-// into its place) to the Pan knob's widest value ("100 L", 78 px into its place), 43 px from each.
-constexpr float kHeaderKnobW = 120.0f;
+// The global knobs, Volume, FM Amount, Pitch, Bend (the bend range) and Pan, each as far from the next as its widest
+// value needs ("-48.00 st" for Pitch, "96 st" for Bend), the first one's arc (2 px into its place) 43 px past the
+// meter.
+constexpr int kHeaderKnobs = 5;
+constexpr float kHeaderKnobPlaces[kHeaderKnobs] = {106.0f, 106.0f, 108.0f, 96.0f, 100.0f}; // to the next one's
 constexpr float kHeaderKnobX = kHeaderStart + 55.0f;
-static_assert(kHeaderKnobX + 2.0f - (kHeaderStart + 14.0f) == 43.0f &&
-              kDivider0 - (kHeaderKnobX + 3.0f * kHeaderKnobW + 78.0f) == 42.0f);
-constexpr float kPlayX = kDivider0 + 44.0f; // Poly | Mono over Legato, 44 px past the first divider
-// The Glide knob 24 px past them, its Always switch (on its label's row) ending 32 px before the second divider.
-constexpr float kGlideX = kPlayX + 112.0f;
+constexpr float headerKnobX(int knob) {
+    float x = kHeaderKnobX;
+    for (int i = 0; i < knob; ++i)
+        x += kHeaderKnobPlaces[i];
+    return x;
+}
+static_assert(kHeaderKnobX + 2.0f - (kHeaderStart + 14.0f) == 43.0f);
+// The first divider, before the play cluster, 30 px past the Pan knob's widest value ("100 L", 78 px into its place).
+constexpr float kDivider0 = headerKnobX(kHeaderKnobs - 1) + 78.0f + 30.0f;
+constexpr float kPlayX = kDivider0 + 30.0f; // Poly | Mono over Legato, 30 px past the first divider
+// The Glide knob 16 px past them, its Always switch (on its label's row) ending 24 px before the second divider.
+constexpr float kGlideX = kPlayX + 104.0f;
 constexpr float kGlideW = 126.0f;
-constexpr float kDividers[] = {kDivider0, kGlideX + kGlideW + 10.0f + 32.0f};
-// Voices, 53 px past the second divider, right beside PLAYING (whose word starts at about 1134 px): its own place
+constexpr float kDividers[] = {kDivider0, kGlideX + kGlideW + 10.0f + 24.0f};
+// Voices, 39 px past the second divider, right beside PLAYING (whose word starts at about 1134 px): its own place
 // narrower than the global knobs', so it stops short of the count.
-constexpr float kVoicesX = kDividers[1] + 53.0f;
+constexpr float kVoicesX = kDividers[1] + 39.0f;
 constexpr float kVoicesW = 80.0f;
 static_assert(kVoicesX == 1040.0f && kVoicesX + kVoicesW <= 1120.0f);
 // Legato under Poly | Mono, as wide as the two of them, how the notes that come in are read.
@@ -986,8 +993,8 @@ inline Rect peqMenuItem(Rect card, int band, int type) {
 }
 
 // The keyboard strip under the modulation panel, `top` down: along its top the collapse toggle with the strip's
-// title, the macros, the note source and velocity, and under them the wheels on the left and six octaves of keys,
-// the octave shift under their right end, the mod wheel's handle in the top row. Collapsed, only the top row shows.
+// title, the macros, the note source and velocity, and under them the wheels on the left and six octaves of keys, the octave shift under their right end. The wheels' handles sit above them, under the title, within the top
+// row. Collapsed, only the top row shows.
 constexpr float kKeyboardH = 192.0f;
 constexpr float kKeyboardBarH = 72.0f; // the top row, the names under it included: all that shows while collapsed
 constexpr Rect kKeys{130.0f, 76.0f, 1046.0f, 98.0f}; // relative to the strip's top
@@ -1027,20 +1034,22 @@ inline Rect velocityHandle(float keyboardTop) {
 inline Rect stripDisplay(float keyboardTop, bool velocity) {
     return velocity ? velocityDisplay(keyboardTop) : noteDisplay(keyboardTop);
 }
-// The bend range's knob, header-style (the knob, its label and value beside it), over the bend wheel, below the
-// strip's title: within its top row, drawn smaller than the header knobs (see Widget::shrunk). Its knob's center, 16 px
-// into the rect, lies over the bend wheel's middle.
-inline Rect bendKnob(float top) { return {31.0f, top + 36.0f, 82.0f, 34.0f}; }
 inline Rect bendWheel(float top) {
     return {34.0f, top + kKeys.y, 26.0f, 90.0f};
 }
 inline Rect modWheel(float top) {
     return {74.0f, top + kKeys.y, 26.0f, 90.0f};
 }
-// The mod wheel's handle, to drag onto what it moves, as a macro's: in the top row between the macros and the note
-// source, its name under it, whether the keys show or not.
+// The wheels' handles, to drag onto what they move, as a macro's: each over its wheel, below the strip's title, within
+// its top row, so they stay while the keys are folded (their names then under them).
+constexpr float kWheelHandleY = 50.0f; // their middle, below the strip's top
 inline Rect wheelHandle(float top) {
-    return {918.0f, top + kStripRow - 10.0f, 20.0f, 20.0f};
+    const Rect wheel = modWheel(top);
+    return {wheel.center().x - 10.0f, top + kWheelHandleY - 10.0f, 20.0f, 20.0f};
+}
+inline Rect bendHandle(float top) {
+    const Rect wheel = bendWheel(top);
+    return {wheel.center().x - 10.0f, top + kWheelHandleY - 10.0f, 20.0f, 20.0f};
 }
 constexpr int kKeyCount = 73; // C to C, six octaves
 constexpr int kWhiteKeys = 43;

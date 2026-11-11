@@ -538,6 +538,7 @@ std::vector<View::Assignment> View::assignments() const {
     all.push_back(kNoteSource);
     all.push_back(kWheelSource);
     all.push_back(kVelocitySource);
+    all.push_back(kBendSource);
     for (int s : all) {
         const bool bipolar = sourceBipolar(s);
         for (int slot = 0; slot < kSlots; ++slot) {
@@ -676,7 +677,7 @@ void View::setWireBend(int param, float bend) {
 }
 
 bool View::droppable(const Widget &w, int source) const {
-    const bool own = isStripSource(source) && !isNoteBorne(source) && w.param == stripKnobIndex(source);
+    const bool own = hasKnob(source) && w.param == stripKnobIndex(source);
     // A list's row takes it as an aux instead; a disabled widget, which the mouse passes by, takes nothing.
     return w.param >= 0 && isModTarget(w.param) && !own && !w.popup && !w.disabled &&
            (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
@@ -1705,11 +1706,13 @@ std::vector<View::Widget> View::widgets() const {
         list.back().label = label;
         list.back().compact = true;
     };
-    const int globals[] = {paramIndex(GlobalParam::Volume), paramIndex(GlobalParam::FmAmount),
-                           paramIndex(GlobalParam::Pitch), paramIndex(GlobalParam::Pan)};
-    const Str globalLabels[] = {Str::LabelVolume, Str::LabelFmAmount, Str::LabelPitch, Str::LabelPan};
-    for (int i = 0; i < 4; ++i)
-        headerKnob(globals[i], kHeaderKnobX + i * kHeaderKnobW, kHeaderKnobW, tr(globalLabels[i]));
+    const int globals[kHeaderKnobs] = {paramIndex(GlobalParam::Volume), paramIndex(GlobalParam::FmAmount),
+                                       paramIndex(GlobalParam::Pitch), paramIndex(GlobalParam::BendRange),
+                                       paramIndex(GlobalParam::Pan)};
+    const Str globalLabels[kHeaderKnobs] = {Str::LabelVolume, Str::LabelFmAmount, Str::LabelPitch, Str::LabelBend,
+                                            Str::LabelPan};
+    for (int i = 0; i < kHeaderKnobs; ++i)
+        headerKnob(globals[i], headerKnobX(i), kHeaderKnobPlaces[i], tr(globalLabels[i]));
     // Play cluster: Poly | Mono over Legato, then the Glide knob with its Always switch beside its label (added after
     // the knob, so it takes the clicks there).
     const int mono = paramIndex(GlobalParam::Mono);
@@ -1722,7 +1725,7 @@ std::vector<View::Widget> View::widgets() const {
     headerKnob(paramIndex(GlobalParam::Glide), kGlideX, kGlideW, tr(Str::LabelGlide));
     // On the label's row, level with Poly | Mono, clear of the value under it.
     add(Kind::Toggle, {kGlideX + kGlideW - 42.0f, kStripY + 12.0f, 52.0f, 19.0f}, paramIndex(GlobalParam::GlideAlways));
-    // Voices, past the second divider, beside the count. (Bend's knob is over the bend wheel, in the keyboard strip.)
+    // Voices, past the second divider, beside the count.
     headerKnob(paramIndex(GlobalParam::Voices), kVoicesX, kVoicesW, tr(Str::LabelVoices));
 
     // Routing panel, as a graph, as a matrix, or the effects chain; or the shape
@@ -2779,16 +2782,12 @@ std::vector<View::Widget> View::widgets() const {
     add(Kind::NoteDisplay, velocityDisplay(macros), -1, kVelocitySource);
 
     // Keyboard strip. The white keys come first, so the black keys on top win the hits. Collapsed, only its top row
-    // stays, where the mod wheel's handle is anyway.
+    // stays, where the wheels' handles are anyway.
     const float keys = keyboardTop(controller_.layout().sourcesCollapsed);
     const bool keysCollapsed = controller_.layout().keysCollapsed;
     add(Kind::KeysToggle, keysToggle(keys));
+    add(Kind::MacroHandle, bendHandle(keys), -1, kBendSource);
     add(Kind::MacroHandle, wheelHandle(keys), -1, kWheelSource);
-    // The bend range, over the bend wheel, as a header knob: within the top row, so it stays while the keys are folded.
-    add(Kind::Knob, bendKnob(keys), paramIndex(GlobalParam::BendRange));
-    list.back().label = tr(Str::LabelBend);
-    list.back().compact = true;
-    list.back().shrunk = true;
     if (!keysCollapsed) {
         add(Kind::BendWheel, bendWheel(keys));
         add(Kind::ModWheel, modWheel(keys), paramIndex(GlobalParam::ModWheel));
@@ -3482,11 +3481,12 @@ void View::paintHeader(Canvas &c) {
 
 void View::paintKeyboard(Canvas &c) {
     const float top = keyboardTop(controller_.layout().sourcesCollapsed);
-    const Rect handle = wheelHandle(top); // the mod wheel's name, under its handle
-    c.text({handle.x - 30.0f, top + kStripRow + 19.0f, handle.w + 60.0f, 16.0f}, tr(Str::HeadingMod), kTextLabel, kFaint,
-           Align::Center, true);
-    if (controller_.layout().keysCollapsed)
+    if (controller_.layout().keysCollapsed) { // the wheels' names under their handles, with the wheels folded away
+        for (const auto &[handle, name] : {std::pair{bendHandle(top), Str::HeadingBend}, std::pair{wheelHandle(top), Str::HeadingMod}})
+            c.text({handle.x - 10.0f, handle.bottom() + 1.0f, handle.w + 20.0f, 12.0f}, tr(name), kTextLabel, kFaint,
+                   Align::Center, true);
         return;
+    }
     const Rect bend = bendWheel(top), mod = modWheel(top);
     c.text({bend.x - 16.0f, bend.bottom() + 4.0f, bend.w + 32.0f, 14.0f}, tr(Str::HeadingBend), kTextLabel, kFaint,
            Align::Center, true);
@@ -3537,8 +3537,8 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
         // Springs back to the middle: fills up or down from the center.
         const float mid = r.y + r.h * 0.5f;
         const float y = mid - static_cast<float>(bend_) * (r.h * 0.5f - inset);
-        c.fillRect({r.x + inset, std::min(mid, y), r.w - 2.0f * inset, std::abs(y - mid)}, kFilterColor.alpha(0.6f),
-                   kRadiusMark);
+        c.fillRect({r.x + inset, std::min(mid, y), r.w - 2.0f * inset, std::abs(y - mid)},
+                   kSourceColors[kBendSource].alpha(0.6f), kRadiusMark);
         c.line({r.x + 3.0f, mid}, {r.right() - 3.0f, mid}, kFaint, 1.0f);
         c.line({r.x + 3.0f, y}, {r.right() - 3.0f, y}, kText, 2.0f);
     }
@@ -8511,6 +8511,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipNoteHandle);
     } else if (hover_->kind == Kind::MacroHandle && isVelocity(hover_->a)) {
         text = tr(Str::TipVelocityHandle);
+    } else if (hover_->kind == Kind::MacroHandle && isBend(hover_->a)) {
+        text = tr(Str::TipBendHandle);
     } else if (hover_->kind == Kind::MacroHandle) {
         text = trf(Str::TipMacroHandle, {macroName(controller_.layout(), hover_->a - kMaxSources)});
     } else if (hover_->kind == Kind::SourceHandle) {

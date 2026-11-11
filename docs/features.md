@@ -152,10 +152,11 @@ What the plugin does and how its editor works, in full. Building and installing 
   depth. Depth is ±100 % of the target's range: how far a **unipolar** source takes the target one way, and the
   whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
   Every source can be either, for all of its modulations, picked from its right-click menu or the switch after its
-  name in the MODS view (see the editor): LFOs start bipolar, and envelopes, macros, the note source, the mod wheel
-  and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of it, half the depth
-  down at rest and up at its peak), and a bipolar macro, mod wheel, note source or velocity about the middle of
-  what it puts out (a macro moves nothing with its knob at 50 %). LFOs and envelopes run
+  name in the MODS view (see the editor): LFOs and the pitch bend start bipolar, and envelopes, macros, the note
+  source, the mod wheel and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of
+  it, half the depth down at rest and up at its peak), and a bipolar macro, mod wheel, note source, velocity or pitch
+  bend about the middle of what it puts out (a macro moves nothing with its knob at 50 %, the pitch bend nothing at
+  rest). LFOs and envelopes run
   per voice and restart
   with each note. LFOs and envelopes see each other's slot modulation one 32-sample block later.
   Each modulation has a **curve** (-100 to +100 %, a straight line to begin with), which bends what its source puts
@@ -167,8 +168,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   **aux**: another source whose output scales it too, as a unipolar source puts it out (0 to 1), so a macro can
   fade an LFO's vibrato in, or velocity open an envelope's sweep wider. Set either in the MODS view (see the
   editor); the aux also by dropping a source's handle on the modulation's depth handle, or on its aux cell in the MODS view. An aux that runs per voice
-  (an LFO, an envelope, the note source, velocity) scales it in each voice by its own output there, as of the last
-  32-sample block (or this one, for a source that comes before it, and velocity, known from the note; on a note's
+  (an LFO, an envelope, the note source, velocity, the pitch bend) scales it in each voice by its own output there, as
+  of the last 32-sample block (or this one, for a source that comes before it, and velocity and the pitch bend, known
+  as the block starts; on a note's
   first block the note source's comes from the pitch the note starts at); a macro or the mod wheel scales it the same for
   all. A macro's or the mod wheel's modulation with an aux that runs per voice then runs per voice too, reaching the
   effects through the newest voice. A switched-off aux puts out nothing, so it scales its modulation to nothing; a
@@ -212,6 +214,13 @@ What the plugin does and how its editor works, in full. Building and installing 
     each puts out, from nothing to all of it. As it starts, the curve is a straight line, so it puts out the
     velocity as it came: half of it for a note at 64. Drawn the other way round, the softest notes move their
     targets the most. The curve is part of the patch.
+  - **Pitch Bend**: a source that puts out where the pitch bend stands, from all the way down to all the way up, its
+    middle at rest: the host's MIDI pitch bend and the editor's bend wheel together and, with MPE on, a note's own
+    channel's bend on top (each as a share of its own range, whatever Bend Range says). Like velocity it has 16 slots
+    and no switch, runs per voice (so with MPE each note follows its own bend), reaches the effects through the newest
+    voice, and modulates from a note's first block on. It starts bipolar, so it moves nothing at rest and swings its
+    targets both ways as the wheel goes up and down; unipolar, it moves them half its depth at rest and all of it fully
+    up. The pitch still bends by Bend Range too, whatever the source modulates.
   - An LFO runs in one of four clock modes, picked one at a time: **Retrigger** (the default), **Free**, **Anchor** or
     **One-Shot**. Retrigger restarts the LFO from its Phase with every note. Each of the other three is a switch
     hosts see; the editor turns the other two off as it picks one. Should a host turn on more than one, One-Shot
@@ -480,7 +489,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   gives those 12 dB back. A project or preset saved by FMVibe 0.1, whose Volume didn't, loads it 12 dB lower, so
   it sounds as loud as it did. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
   do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
-  MIDI pitch bend (its knob over the bend wheel, in the keyboard strip), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
+  MIDI pitch bend (its knob in the header, after Pitch), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
   polyphony limit (1–512, default 16).
 - **MPE** (MIDI Polyphonic Expression), off to begin with: a setting of the instance, in the settings dialog (see
   Settings), saved with the project but not with presets, so browsing presets leaves it as it is. Hosts that
@@ -947,7 +956,8 @@ may show anywhere, repaints the whole of it.
     right-click an effect's node for its card's menu, a split's or a join's to remove it. The node picked is saved
     with the patch; the effects' count beside + EFFECT and the target menu follow the line's order.
   - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
-    in the order their cards show, then the macros, the note source, the mod wheel and velocity), the first of a
+    in the order their cards show, then the macros, the note source, the mod wheel, velocity and the pitch bend), the
+    first of a
     source's rows naming it with its handle's look and the others a line in its color down the source's column.
     Modulations at 0 % are listed too, and after them the empty ones (see below). Over the rows, the columns' names,
     shown with no modulations too (with a hint under the button that adds one), and at the right of their row the
@@ -965,9 +975,9 @@ may show anywhere, repaints the whole of it.
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
       an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Note & MIDI for the Random and MIDI
       sources, Macros, and Keyboard:
-      Note, Velocity and Mod Wheel); picking one moves the modulation there, into a free slot, with its depth,
+      Note, Velocity, Mod Wheel and Pitch Bend); picking one moves the modulation there, into a free slot, with its depth,
       curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
-      follows it to its new slot, or, moved to a macro, the note source, the mod wheel or velocity (whose depths
+      follows it to its new slot, or, moved to a macro, the note source, the mod wheel, velocity or the pitch bend (whose depths
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
@@ -1098,7 +1108,7 @@ may show anywhere, repaints the whole of it.
   a bar for each side showing its peak, from −48 dB at the bottom,
   in the theme's color up to full scale and red past it, falling 24 dB a second (also once the plugin stops
   processing); the strip above full scale lights up red for a second and a half after the output went over. Then
-  the global knobs; the play cluster between two dividers (Poly/Mono over Legato, which works in both, then
+  the global knobs (Volume, FM Amount, Pitch, Bend and Pan, close together); the play cluster between two dividers (Poly/Mono over Legato, which works in both, then
   a Glide knob like the global ones, its Always switch beside its label, each switch explaining itself on hover);
   Voices (it drags on a log scale, so 4 and 512 are both easy to reach), right beside how many voices are playing.
 - **Undo and redo**: the curved arrows left of the preset buttons step back and forward through the patch's
@@ -1242,7 +1252,7 @@ may show anywhere, repaints the whole of it.
     panel or the effects chain, it scrolls those cards that way, faster nearer the edge, so a knob on a card out of
     view can be reached. Hovering the handle draws a dashed line to each of its targets on screen, ending at the
     small dot it has there (see below), with a ring round the dot; while the source has no targets, it shows a
-    "Drag to assign" tooltip instead, as the macros', the note source's, the mod wheel's and velocity's handles do.
+    "Drag to assign" tooltip instead, as the macros', the note source's, the wheels' and velocity's handles do.
     A source that is another modulation's aux (see below) also gets a dotted line, in its color and bowed the
     other way, to that modulation's depth handle on screen, which is ringed with dots.
   - A card doesn't list its modulations, and ends with a button under its display: it counts them, with **MODS ›**
@@ -1312,7 +1322,7 @@ may show anywhere, repaints the whole of it.
     which an aux lets it go at most.
   - **Bypass**: the dot at the start of a modulation's row in the MODS view or a pill's list switches that
     modulation off and on again, keeping its target and depth, whatever its source (an LFO, an envelope, a macro, the
-    note source, the mod wheel or velocity); so do **Bypass** / **Resume** in the right-click
+    note source, the mod wheel, velocity or the pitch bend); so do **Bypass** / **Resume** in the right-click
     menus of the row, the
     knob's dot and the modulated knob. A bypassed modulation's dots are hollow, its row and ring dimmed. Bypasses
     are saved with the patch (as params of the editor's own, like the drawn shapes).
@@ -1382,23 +1392,25 @@ may show anywhere, repaints the whole of it.
 - **Keyboard strip**: along its top the **KEYBOARD** toggle, the macros close together, the note source and, at the
   right end, velocity; under them the
   wheels and six octaves of virtual keys, from C1 to C7 (the small − and + buttons under their right end, the
-  range between them, shift them by an octave). The mod wheel's handle sits in the top row between the macros and the
-  note source, its name under it, and the Bend Range knob (header-style: its label and value beside it) under the
-  strip's title, over the bend wheel. The toggle (a chevron and the title, like the modulation panel's,
-  as far from the strip's top) collapses the strip to its top row, taking the wheels, the keys and the octave
-  shift away; the mod wheel's handle and the Bend Range knob stay, so the wheel can still be assigned and the range set. Whether it is collapsed is kept with the editor, like the modulation panel's, and loading a
+  range between them, shift them by an octave). Each wheel's handle sits over it, under the strip's title. The toggle
+  (a chevron and the title, like the modulation panel's, as far from the strip's top) collapses the strip to its top
+  row, taking the wheels, the keys and the octave shift away; the wheels' handles stay, their names (BEND, MOD) then
+  under them, so the wheels can still be assigned. Whether it is
+  collapsed is kept with the editor, like the modulation panel's, and loading a
   preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
-  played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs
-  back to center on release; the **Mod** wheel is the Mod Wheel param, and its handle in the top row drags onto what
-  it should move (not the wheel itself), like a macro's (faint, like theirs, until it moves something). The wheel's and its handle's
-  right-click menus make it unipolar or bipolar; bipolar, it fills from its middle, where it moves nothing.
+  played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs back to center on release,
+  filled in the pitch bend source's color, and its handle drags the pitch bend source onto what it should move. The
+  **Mod** wheel is the Mod Wheel param, and its handle drags onto what it should move (not the wheel itself). Both
+  handles work like a macro's (faint, like theirs, until they move something). The mod wheel's and either handle's
+  right-click menus make that wheel unipolar or bipolar; a bipolar mod wheel fills from its middle, where it moves
+  nothing.
 - **Macros** (in the keyboard strip, above the keys): eight knobs, each in a color of its own, with a handle
   beside it to drag onto anything a source can modulate, just like an LFO's, and its name under it: double-click
   the name to change it (Enter
   keeps it, Escape doesn't, an empty name brings back "Macro 1" and so on; an undo step, saved with the patch).
   Hovering a handle draws lines to what it moves; the dots and rings on its targets work like a source's. Until a
   macro modulates something or scales a modulation as its aux, its handle, its knob's arc and its name are faint,
-  and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the mod wheel's and
+  and hovering the handle shows a "Drag to assign" tooltip (so do the note source's, the wheels' and
   velocity's). The right-click menu of its knob,
   handle or name makes it **Unipolar** or **Bipolar** (and the handle's or name's clears its targets); a bipolar
   macro's arc starts from the knob's middle, where it moves nothing, and a double-click on its
@@ -1594,9 +1606,9 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,226 of FMVibe's 19,153 parameters: the globals, the operators, the matrix and the routes' modes,
-the filters, the shapers, the macros' knobs, the note source's, the mod wheel's and velocity's own, and every
-modulation's depth and Amount (16 slots for each of the 27 sources, used or not). The rest are set in the editor only:
+Hosts are given 1,259 of FMVibe's 19,378 parameters: the globals, the operators, the matrix and the routes' modes,
+the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
+and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the freeform LFO shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
 counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the

@@ -120,6 +120,7 @@ std::string letter(int op) {
 // A source as hosts name its fields ("Mod 3", "Macro 2", "Note"), or None for -1: an Aux param's value text.
 std::string auxSourceName(int source) {
     return source < 0             ? std::string(tr(Str::ValueNone))
+           : isBend(source)     ? std::string(tr(Str::ParamBendSource))
            : isVelocity(source) ? std::string(tr(Str::ParamVelocitySource))
            : isWheel(source)    ? std::string(tr(Str::ParamModWheel))
            : isNote(source)     ? std::string(tr(Str::ParamNote))
@@ -518,14 +519,28 @@ void buildTable(ParamTable &t) {
             0.0, 1.0, 0.0);
     }
 
+    // The pitch bend starts mapped to nothing, bipolar: at rest, in the middle, it moves nothing.
+    {
+        const std::string bend = tr(Str::ParamBendSource);
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const std::string n = std::to_string(slot + 1);
+            add(slotTargetIndex(kBendSource, slot), bend + " " + trf(Str::ParamTarget, {n}), bend, ParamKind::ModTarget,
+                0.0, kMaxParamId + 1.0, 0.0);
+            add(slotAmountIndex(kBendSource, slot), bend + " " + trf(Str::ParamAmount, {n}), bend,
+                ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        }
+        add(paramIndex(BendParam::Bipolar), bend + " " + tr(Str::ParamBipolar), bend, ParamKind::Toggle, 0.0, 1.0, 1.0);
+    }
+
     // Every slot of every source has an aux, an Amount and a curve, and those of the sources under the keyboard their bypass.
     for (int source = 0; source < kAllSources; ++source) {
-        const std::string name = isVelocity(source) ? tr(Str::ParamVelocitySource)
+        const std::string name = isBend(source)       ? tr(Str::ParamBendSource)
+                                 : isVelocity(source) ? tr(Str::ParamVelocitySource)
                                  : isWheel(source)  ? tr(Str::ParamModWheel)
                                  : isNote(source)   ? tr(Str::ParamNote)
                                  : isMacro(source)  ? trf(Str::ParamMacro, {std::to_string(source - kMaxSources + 1)})
                                                     : trf(Str::ParamMod, {std::to_string(source + 1)});
-        const std::string module = isNoteBorne(source) || isWheel(source) ? name
+        const std::string module = isNoteBorne(source) || isWheel(source) || isBend(source) ? name
                                    : isMacro(source) ? tr(Str::ModuleMacros) + ("/" + name)
                                                      : tr(Str::ModuleModulation) + ("/" + name);
         // No aux, and all of the depth.

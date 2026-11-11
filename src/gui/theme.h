@@ -37,7 +37,8 @@ struct Palette {
     Color accent;    // operators and FM routing
     Color filter;    // filters and what feeds them
     Color fx;        // effects
-    // One per source place, whichever type it holds, per macro, the note source's, the wheel's and velocity's.
+    // One per source place, whichever type it holds, per macro, the note source's, the wheel's, velocity's and the
+    // pitch bend's (much as the filters' color, in which its wheel was drawn before it was a source).
     Color sources[kAllSources];
     Color card;      // effect and source cards
     Color display;   // the wells graphs are drawn in
@@ -82,7 +83,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x6EE0F0), Color::hex(0x9EF0A0), Color::hex(0x6EA8FF), Color::hex(0xFFB070),
       Color::hex(0xFF9F4A), Color::hex(0xE8A33A), Color::hex(0xA6E05A), Color::hex(0x2FBF9A),
       Color::hex(0x8FD3FF), Color::hex(0x7C8CFF), Color::hex(0xDDB0FF), Color::hex(0xFF5C9A),
-      Color::hex(0xDEE1EE), Color::hex(0xB8C0FF), Color::hex(0xE2B59C)},
+      Color::hex(0xDEE1EE), Color::hex(0xB8C0FF), Color::hex(0xE2B59C), Color::hex(0xC9A8FF)},
      Color::hex(0x191A24), Color::hex(0x0C0E14), Color::hex(0x14151E), Color::hex(0x0E1018),
      Color::hex(0xD7D9E6), Color::hex(0xC1C4D6), Color::hex(0x1C1D28), Color::hex(0x323648), Color::hex(0x575C6E),
      {Color::hex(0xFFB86B), Color::hex(0xFF6B6B), Color::hex(0x4FC3F7), Color::hex(0xF5C04A), Color::hex(0xFF8A5C),
@@ -105,7 +106,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x0A8FAA), Color::hex(0x3E8E3E), Color::hex(0x2F5BFF), Color::hex(0xD46E2C),
       Color::hex(0xB86A3E), Color::hex(0xB5822F), Color::hex(0x9A9420), Color::hex(0x5E9A4E),
       Color::hex(0x3E9A90), Color::hex(0x4F7FC2), Color::hex(0x6E68C2), Color::hex(0xA066C2),
-      Color::hex(0x3A404C), Color::hex(0x6A85FF), Color::hex(0x8A6A4A)},
+      Color::hex(0x3A404C), Color::hex(0x6A85FF), Color::hex(0x8A6A4A), Color::hex(0x9A4DD6)},
      Color::hex(0xFFFFFF), Color::hex(0xF0F2F6), Color::hex(0xFFFFFF), Color::hex(0xFAFBFC),
      Color::hex(0xFFFFFF), Color::hex(0xEDF0F5), Color::hex(0x1A1D24), Color::hex(0x3A3F4B), Color::hex(0x8A91A0),
      {Color::hex(0xD46E2C), Color::hex(0xD64545), Color::hex(0x2F5BFF), Color::hex(0xCF8400), Color::hex(0xD46E2C),
@@ -128,7 +129,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x67E8F9), Color::hex(0x86EFAC), Color::hex(0x60A5FA), Color::hex(0xFDBA74),
       Color::hex(0xFDB09A), Color::hex(0xFDBA74), Color::hex(0xFDE68A), Color::hex(0xBEF264),
       Color::hex(0x6EE7B7), Color::hex(0x67E8F9), Color::hex(0xA5B4FC), Color::hex(0xF0ABFC),
-      Color::hex(0xE2E8F0), Color::hex(0xB8C4FF), Color::hex(0xFF9E7A)},
+      Color::hex(0xE2E8F0), Color::hex(0xB8C4FF), Color::hex(0xFF9E7A), Color::hex(0xC084FC)},
      Color::hex(0x1A1D25), Color::hex(0x101217), Color::hex(0x1A1E26), Color::hex(0x12151B),
      Color::hex(0xE4E7EE), Color::hex(0xCDD3DF), Color::hex(0x07090D), Color::hex(0x262C38), Color::hex(0x4A5162),
      {Color::hex(0xFB923C), Color::hex(0xF87171), Color::hex(0x60A5FA), Color::hex(0xFBBF24), Color::hex(0xFB923C),
@@ -147,7 +148,7 @@ inline constexpr Palette kThemes[] = {
       Color::hex(0x0780A0), Color::hex(0x138A3F), Color::hex(0x1F5BE0), Color::hex(0xDD4F07),
       Color::hex(0x9A3412), Color::hex(0xDD4F07), Color::hex(0xA87103), Color::hex(0x4F8A0B),
       Color::hex(0x04805C), Color::hex(0x0780A0), Color::hex(0x4338CA), Color::hex(0xB01ECA),
-      Color::hex(0x3F4A5C), Color::hex(0x4F52E8), Color::hex(0xC2410C)},
+      Color::hex(0x3F4A5C), Color::hex(0x4F52E8), Color::hex(0xC2410C), Color::hex(0x8A2BE2)},
      Color::hex(0xFFFFFF), Color::hex(0xE8ECF2), Color::hex(0xFFFFFF), Color::hex(0xEDF0F5),
      Color::hex(0xFFFFFF), Color::hex(0xDDE3EC), Color::hex(0x1A1F29), Color::hex(0x3A4252), Color::hex(0x878FA0),
      {Color::hex(0xDD4F07), Color::hex(0xD11F1F), Color::hex(0x1F5BE0), Color::hex(0xC26505), Color::hex(0xDD4F07),

@@ -29,7 +29,7 @@ std::string afterPrefix(const std::string &name, const std::string &prefix) {
 
 // Whether `source` may modulate `target` at all: a macro or the mod wheel can't move its own knob.
 bool canModulate(int source, int target) {
-    return isModTarget(target) && !(isStripSource(source) && !isNoteBorne(source) && target == stripKnobIndex(source));
+    return isModTarget(target) && !(hasKnob(source) && target == stripKnobIndex(source));
 }
 
 } // namespace
@@ -477,7 +477,7 @@ View::MenuNode View::cascadeCategories() const {
             macros.children.push_back(sourcePick(kMaxSources + macro));
         keep(std::move(macros));
         MenuNode keyboard = category(tr(Str::CascadeKeyboard));
-        for (int source : {kNoteSource, kVelocitySource, kWheelSource})
+        for (int source : {kNoteSource, kVelocitySource, kWheelSource, kBendSource})
             keyboard.children.push_back(sourcePick(source));
         keep(std::move(keyboard));
         markHolds(root);

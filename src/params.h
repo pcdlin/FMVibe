@@ -220,16 +220,21 @@ constexpr int kMacroParamCount = static_cast<int>(MacroParam::Count);
 constexpr int kNoteSource = kMaxSources + kMacros; // the note source (see NoteParam)
 constexpr int kWheelSource = kNoteSource + 1;      // the mod wheel (see WheelParam)
 constexpr int kVelocitySource = kWheelSource + 1;  // the velocity source (see VelocityParam)
-// The places, the macros, the note source, the mod wheel and velocity.
-constexpr int kAllSources = kVelocitySource + 1;
+constexpr int kBendSource = kVelocitySource + 1;    // the pitch bend (see BendParam)
+// The places, the macros, the note source, the mod wheel, velocity and the pitch bend.
+constexpr int kAllSources = kBendSource + 1;
 constexpr bool isMacro(int source) { return source >= kMaxSources && source < kNoteSource; }
 constexpr bool isNote(int source) { return source == kNoteSource; }
 constexpr bool isWheel(int source) { return source == kWheelSource; }
 constexpr bool isVelocity(int source) { return source == kVelocitySource; }
+constexpr bool isBend(int source) { return source == kBendSource; }
+// The sources under the keyboard that put out a knob's value (see stripKnobIndex()): the macros and the mod wheel.
+constexpr bool hasKnob(int source) { return isMacro(source) || isWheel(source); }
 // The sources that run per voice from what the note brings, each with a curve of its own: the note source and
 // velocity.
 constexpr bool isNoteBorne(int source) { return isNote(source) || isVelocity(source); }
-// The macros, the note source, the mod wheel and velocity, under the keyboard: no card, type, switch or bypasses.
+// The macros, the note source, the mod wheel, velocity and the pitch bend, under the keyboard: no card, type, switch or
+// bypasses.
 constexpr bool isStripSource(int source) { return source >= kMaxSources; }
 enum class ShapeParam { PointCount, Points, Count = Points + 3 * kMaxShapePoints };
 enum class PointField { X, Y, Curve };
@@ -263,6 +268,12 @@ constexpr int kWheelParamCount = static_cast<int>(WheelParam::Count);
 // projects by number: only append.
 enum class VelocityParam { Slots, Curve = Slots + 2 * kSlots, Bipolar = Curve + kNoteCurveParamCount, Count };
 constexpr int kVelocityParamCount = static_cast<int>(VelocityParam::Count);
+// The pitch bend: kSlots (target, amount) pairs, like the mod wheel's, and Bipolar like a macro's, on to begin with. Per
+// voice, it puts out where the bend stands, 0..1, its middle at rest: the host's bend and the editor's bend wheel and,
+// with MPE on, a note's own channel's too (see Synth::renderBlock()). It counts as source kBendSource, after velocity.
+// Stored in projects by number: only append.
+enum class BendParam { Slots, Bipolar = Slots + 2 * kSlots, Count };
+constexpr int kBendParamCount = static_cast<int>(BendParam::Count);
 // Each slot of every source also has an Aux and an Amount (see slotAuxIndex()): its depth is scaled by Amount (0..1,
 // all of it to begin with) and, while it has an aux, by what that other source puts out now, 0..1, taken as unipolar
 // (see auxValue()). Aux holds the aux's source number + 1 (0 = none): wiring like a target, set in the editor. Stored
@@ -708,11 +719,13 @@ constexpr int kPartialCountBase = kWheelBase + kWheelParamCount;
 constexpr int kLaterPartialBase = kPartialCountBase + kOps;
 // The velocity source (see VelocityParam).
 constexpr int kVelocityBase = kLaterPartialBase + kOps * 2 * (kPartials - kFirstPartials);
+// The pitch bend source (see BendParam).
+constexpr int kBendBase = kVelocityBase + kVelocityParamCount;
 // Each slot's aux and Amount (see SlotAuxParam): kSlots pairs a source, for the places, the macros, the note source,
-// the mod wheel and velocity in turn.
-constexpr int kSlotAuxBase = kVelocityBase + kVelocityParamCount;
-// The bypasses of the slots of the sources under the keyboard (the macros, the note source, the mod wheel and
-// velocity in turn), like the places' (see kSlotBypassBase).
+// the mod wheel, velocity and the pitch bend in turn.
+constexpr int kSlotAuxBase = kBendBase + kBendParamCount;
+// The bypasses of the slots of the sources under the keyboard (the macros, the note source, the mod wheel, velocity
+// and the pitch bend in turn), like the places' (see kSlotBypassBase).
 constexpr int kStripBypassBase = kSlotAuxBase + kAllSources * kSlots * kSlotAuxFields;
 // Each slot's curve (-1..1, 0 a straight line), which bends what its source puts out before the depth takes it, as
 // an envelope segment's curve bends the segment (see slotCurveValue()): kSlots a source, for every source in turn.
@@ -1092,6 +1105,7 @@ constexpr int paramIndex(int macro, MacroParam p) {
 constexpr int paramIndex(NoteParam p) { return kNoteBase + static_cast<int>(p); }
 constexpr int paramIndex(WheelParam p) { return kWheelBase + static_cast<int>(p); }
 constexpr int paramIndex(VelocityParam p) { return kVelocityBase + static_cast<int>(p); }
+constexpr int paramIndex(BendParam p) { return kBendBase + static_cast<int>(p); }
 // The knob whose value a macro (kMaxSources + macro) or the mod wheel puts out.
 constexpr int stripKnobIndex(int source) {
     return isWheel(source) ? paramIndex(GlobalParam::ModWheel) : paramIndex(source - kMaxSources, MacroParam::Value);
@@ -1101,9 +1115,10 @@ constexpr int macroOf(int index) {
     return index >= kMacroBase && index < kNoteBase ? (index - kMacroBase) / kMacroParamCount : -1;
 }
 // A source's slots, for kMaxSources + macro on a macro's, for kNoteSource the note source's, for kWheelSource
-// the mod wheel's and for kVelocitySource the velocity source's.
+// the mod wheel's, for kVelocitySource the velocity source's and for kBendSource the pitch bend's.
 constexpr int slotTargetIndex(int source, int slot) {
-    return isVelocity(source) ? paramIndex(VelocityParam::Slots) + 2 * slot
+    return isBend(source)       ? paramIndex(BendParam::Slots) + 2 * slot
+           : isVelocity(source) ? paramIndex(VelocityParam::Slots) + 2 * slot
            : isWheel(source)  ? paramIndex(WheelParam::Slots) + 2 * slot
            : isNote(source)   ? paramIndex(NoteParam::Slots) + 2 * slot
            : isMacro(source)  ? paramIndex(source - kMaxSources, MacroParam::Slots) + 2 * slot
@@ -1139,19 +1154,20 @@ inline int slotAuxSource(double value) {
     return source >= 0 && source < kAllSources ? static_cast<int>(source) : -1;
 }
 inline double slotAuxValue(int source) { return source < 0 ? 0.0 : source + 1.0; }
-// The sources that run in each voice (the places, the note source and velocity), whose output differs from voice to
-// voice; the macros and the mod wheel are the same for all.
-constexpr bool runsPerVoice(int source) { return !isStripSource(source) || isNoteBorne(source); }
+// The sources that run in each voice (the places, the note source, velocity and the pitch bend), whose output differs
+// from voice to voice; the macros and the mod wheel are the same for all.
+constexpr bool runsPerVoice(int source) { return !hasKnob(source); }
 // The on/off switch of a source.
 constexpr int sourceEnabledIndex(int source) { return paramIndex(source, SourceParam::Enabled); }
 // The switch that makes a source bipolar, and its value when it does: an LFO's Unipolar off, the Bipolar of an
-// envelope (as of `type`), a macro, the note source, the mod wheel or velocity on.
+// envelope (as of `type`), a macro, the note source, the mod wheel, velocity or the pitch bend on.
 struct Polarity {
     int index;
     double bipolar;
 };
 constexpr Polarity polarityOf(int source, SourceType type) {
-    return isVelocity(source)         ? Polarity{paramIndex(VelocityParam::Bipolar), 1.0}
+    return isBend(source)             ? Polarity{paramIndex(BendParam::Bipolar), 1.0}
+           : isVelocity(source)       ? Polarity{paramIndex(VelocityParam::Bipolar), 1.0}
            : isWheel(source)          ? Polarity{paramIndex(WheelParam::Bipolar), 1.0}
            : isNote(source)           ? Polarity{paramIndex(NoteParam::Bipolar), 1.0}
            : isMacro(source)          ? Polarity{paramIndex(source - kMaxSources, MacroParam::Bipolar), 1.0}
@@ -1195,6 +1211,7 @@ constexpr Section kSections[] = {
     {kPartialCountBase, 1, kOps, 14000, 100},
     {kLaterPartialBase, kOps, 2 * (kPartials - kFirstPartials), 14100, 100},
     {kVelocityBase, 1, kVelocityParamCount, 11600, 100},
+    {kBendBase, 1, kBendParamCount, 11700, 100},
     // A block per source, in source order: sources added later take blocks after these.
     {kSlotAuxBase, kAllSources, kSlots * kSlotAuxFields, 22000, 40},
     // A block per source under the keyboard, in source order, after the places' bypasses.
@@ -1505,7 +1522,8 @@ static_assert(idOfIndex(slotBypassIndex(0, 0)) == 9000 &&
 static_assert(idOfIndex(slotBypassIndex(kMaxSources, 0)) == 9320 &&
                   idOfIndex(slotBypassIndex(kNoteSource, 0)) == 9480 &&
                   idOfIndex(slotBypassIndex(kWheelSource, 0)) == 9500 &&
-                  idOfIndex(slotBypassIndex(kVelocitySource, kSlots - 1)) == 9535,
+                  idOfIndex(slotBypassIndex(kVelocitySource, kSlots - 1)) == 9535 &&
+                  idOfIndex(slotBypassIndex(kBendSource, kSlots - 1)) == 9555,
               "strip source bypass param ids moved");
 static_assert(idOfIndex(partialLevelIndex(0, 0)) == 10000 &&
                   idOfIndex(partialPhaseIndex(kOps - 1, kFirstPartials - 1)) == 10563,
@@ -1527,13 +1545,18 @@ static_assert(idOfIndex(paramIndex(VelocityParam::Slots)) == 11600 &&
                       11680 &&
                   idOfIndex(paramIndex(VelocityParam::Bipolar)) == 11681,
               "velocity source param ids moved");
+static_assert(idOfIndex(paramIndex(BendParam::Slots)) == 11700 && idOfIndex(paramIndex(BendParam::Bipolar)) == 11732,
+              "pitch bend source param ids moved");
 static_assert(idOfIndex(slotAuxIndex(0, 0)) == 22000 && idOfIndex(slotScaleIndex(0, 0)) == 22001 &&
                   idOfIndex(slotScaleIndex(0, kSlots - 1)) == 22031 &&
                   idOfIndex(slotAuxIndex(kVelocitySource, 0)) == 23040 &&
-                  idOfIndex(slotScaleIndex(kVelocitySource, kSlots - 1)) == 23071,
+                  idOfIndex(slotScaleIndex(kVelocitySource, kSlots - 1)) == 23071 &&
+                  idOfIndex(slotAuxIndex(kBendSource, 0)) == 23080 &&
+                  idOfIndex(slotScaleIndex(kBendSource, kSlots - 1)) == 23111,
               "slot aux param ids moved");
 static_assert(idOfIndex(slotCurveIndex(0, 0)) == 24000 && idOfIndex(slotCurveIndex(0, kSlots - 1)) == 24015 &&
-                  idOfIndex(slotCurveIndex(kVelocitySource, kSlots - 1)) == 24535,
+                  idOfIndex(slotCurveIndex(kVelocitySource, kSlots - 1)) == 24535 &&
+                  idOfIndex(slotCurveIndex(kBendSource, kSlots - 1)) == 24555,
               "slot curve param ids moved");
 static_assert(idOfIndex(routeModeIndex(0, 0)) == 700 && idOfIndex(routeModeIndex(1, 0)) == 710 &&
                   idOfIndex(routeModeIndex(kRouteSources - 1, kOps - 1)) == 795,
@@ -2268,7 +2291,7 @@ int slotAux(const Get &get, int source, int slot) {
 template <class Get, class Add>
 void forEachMacroMod(const Get &get, const Add &add) {
     for (int source = kMaxSources; source < kAllSources; ++source) {
-        if (isNoteBorne(source))
+        if (!hasKnob(source))
             continue;
         // Bipolar, the knob's middle moves nothing, and its ends half the depth either way.
         const bool bipolar = sourceBipolar(get, source);

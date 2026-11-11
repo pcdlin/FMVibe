@@ -177,6 +177,7 @@ STR(ValueFxIn, "In") // a wire coming from the voices, into the effects graph
 STR(ParamModWheel, "Mod Wheel")
 STR(ParamNote, "Note")
 STR(ParamVelocitySource, "Velocity") // the velocity source, as hosts name its fields
+STR(ParamBendSource, "Pitch Bend") // the pitch bend source, as hosts name its fields
 
 // What a parameter's name starts with; the field's name follows.
 STR(ParamOp, "Op {1}")
@@ -422,6 +423,7 @@ STR(SourceFoldedRandom, "RND {1}") // a Random source's name down its folded car
 STR(SourceNameNote, "Note")
 STR(SourceNameWheel, "Mod Wheel")
 STR(SourceNameVelocity, "Velocity")
+STR(SourceNameBend, "Pitch Bend")
 STR(MacroDefaultName, "Macro {1}") // until it is given a name of its own
 STR(PresetInit, "- Init -") // the preset bar, with no preset loaded
 
@@ -775,6 +777,7 @@ STR(TipSplitThree, "Split into three bands")
 STR(TipWheelHandle, "Drag to assign mod wheel")
 STR(TipNoteHandle, "Drag to assign note pitch modulation")
 STR(TipVelocityHandle, "Drag to assign velocity")
+STR(TipBendHandle, "Drag to assign pitch bend")
 STR(TipMacroHandle, "Drag to assign {1}")
 STR(TipSourceHandle, "Drag to assign {1}") // an LFO's or an envelope's handle, with its name
 STR(TipShowNode, "Show {1}")

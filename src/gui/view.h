@@ -165,7 +165,7 @@ private:
         NoteDisplay,  // a = kNoteSource or kVelocitySource: its display in the keyboard strip; a click opens its curve
         FxFold,       // a = effect slot: folds its card to a strip, or unfolds it
         SourceFold,   // a = source place: the same for its card
-        MacroHandle,  // a = kMaxSources + macro, kNoteSource, kWheelSource or kVelocitySource: drag onto a target, as a
+        MacroHandle,  // a = kMaxSources + macro, kNoteSource, kWheelSource, kVelocitySource or kBendSource: drag onto a target, as a
                       // source's handle
         WaveButton,   // a = op, b = wave: one of the common waves
         WaveMore,     // a = op: "..." opens the list of the other waves
