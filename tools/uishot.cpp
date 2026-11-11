@@ -3449,14 +3449,16 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         renderer.save(view, dir / "40v-fx-quiet.png");
         const uint32_t quietHalo = renderer.pixel(halo), quietAlong = renderer.pixel(along);
         model.live.fxPortLevels[fxSlotPort(0)] = 0.5f;
-        view.poll();
+        for (int i = 0; i < 60; ++i) // rising to it over a moment
+            view.poll();
         const bool shot = renderer.save(view, dir / "40v-fx-glow.png");
         const bool lit = renderer.pixel(halo) != quietHalo && renderer.pixel(along) != quietAlong;
         model.glowLevel = 0.0;
         renderer.save(view, dir / "40v-fx-glow-off.png");
         const bool offDark = renderer.pixel(halo) == quietHalo;
         model.live.fxPortLevels[fxSlotPort(0)] = 0.0f;
-        view.poll();
+        for (int i = 0; i < 60; ++i) // and falling back
+            view.poll();
         renderer.save(view, dir / "40v-fx-quiet.png");
         check(shot && lit && offDark && renderer.pixel(halo) == quietHalo,
               "a node of the effects graph and its wire out glow as loud as what comes out of it, unless the glow "
@@ -3540,7 +3542,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             view.mouseMove(to, {});
             view.poll();
             renderer.save(view, dir / "40o0-fx-drag-step.png");
-            const float x = cell(2, 0).x - detail::kFxNodeR - 3.0f;
+            const float x = cell(2, 0).x - detail::kFxNodeR - 5.0f; // in the arrowhead, short of its tip
             int lit = 0;
             for (float y = cell(2, 0).y - 8.0f; y <= cell(2, 0).y + 8.0f; y += 1.0f) {
                 const uint32_t color = renderer.pixel({x, y});

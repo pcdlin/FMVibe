@@ -880,17 +880,17 @@ inline Rect fxModeButton(int graph) {
 // or shaper's node is in the routing graph (its icon in it, its name under it), a split a box with its bands' ports on
 // its right edge (the high band on top), a join a box as large, IN and OUT boxes, and the + where a node can go next a
 // + in a circle.
-constexpr float kFxGridCol = 92.0f, kFxGridRow = 70.0f, kFxGridLeft = 34.0f;
-constexpr float kFxNodeR = 22.0f;     // an effect's box's half width, where its wires meet it
-constexpr float kFxNodeHalfH = 16.0f; // and its half height
+constexpr float kFxGridCol = 100.0f, kFxGridRow = 80.0f, kFxGridLeft = 38.0f;
+constexpr float kFxNodeR = 25.0f;     // an effect's box's half width, where its wires meet it
+constexpr float kFxNodeHalfH = 18.0f; // and its half height
 constexpr float kSoloedOutAlpha = 0.3f; // how strongly a band its join doesn't hear (the other soloed) is drawn
 constexpr float kFxPlusIdleAlpha = 0.4f; // how strongly the graph's +s are drawn while the mouse isn't on them
-constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
+constexpr float kFxSplitHalfW = 16.0f, kFxSplitHalfH = 28.0f;
 // How far along a graph wire bends from one row to another: within the gap between two columns' nodes.
 constexpr float kFxWireBend = kFxGridCol - 2.0f * kFxNodeR - 4.0f;
-constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
+constexpr float kFxEndHalfW = 18.0f, kFxEndHalfH = 34.0f;
 constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
-constexpr float kFxSlotHalf = 8.5f; // a + where a node can go next: a circle, as on a wire's middle
+constexpr float kFxSlotHalf = 9.5f; // a + where a node can go next: a circle, as on a wire's middle
 constexpr float kFxDropReach = 8.0f; // how near a wire (or its arrowhead) the mouse lands a dragged node where it goes
 inline Point fxGridAt(float col, float row, float scroll) { // fractions of a cell too, as nodes glide
     const Rect area = fxGraphArea(); // its left edge and middle, whatever its width

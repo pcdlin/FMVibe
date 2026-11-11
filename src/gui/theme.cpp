@@ -32,7 +32,11 @@ float glowing = 0.0f;
 // halo and the curve are strokes of one path.
 namespace {
 // Rings a glow is drawn in, from the outermost in: each as faint, so where they overlap it builds up toward the middle.
-constexpr int kFeatherSteps = 10;
+// About one a pixel of its spread, so their edges, each a soft pixel wide, blend into a smooth ramp rather than steps.
+constexpr int kMaxFeatherSteps = 32;
+int featherSteps(float spread) {
+    return std::clamp(static_cast<int>(std::ceil(spread)), 6, kMaxFeatherSteps);
+}
 // The glow setting makes them stronger and wider: as drawn at 75 %, none when it is off.
 float featherStrength() {
     return glowing / 0.75f;
@@ -46,18 +50,20 @@ void featherCircle(Canvas &c, Point center, float inner, float spread, Color col
     if (glowing <= 0.0f)
         return;
     spread = featherSpread(spread);
-    const Color step = color.alpha(std::min(1.6f * featherStrength() / kFeatherSteps, 1.0f));
-    for (int k = 0; k < kFeatherSteps; ++k)
-        c.fillCircle(center, inner + spread * (1.0f - static_cast<float>(k) / kFeatherSteps), step);
+    const int steps = featherSteps(spread);
+    const Color step = color.alpha(std::min(1.6f * featherStrength() / steps, 1.0f));
+    for (int k = 0; k < steps; ++k)
+        c.fillCircle(center, inner + spread * (1.0f - static_cast<float>(k) / steps), step);
 }
 
 void featherRect(Canvas &c, Rect r, float radius, float spread, Color color) {
     if (glowing <= 0.0f)
         return;
     spread = featherSpread(spread);
-    const Color step = color.alpha(std::min(1.6f * featherStrength() / kFeatherSteps, 1.0f));
-    for (int k = 0; k < kFeatherSteps; ++k) {
-        const float out = spread * (1.0f - static_cast<float>(k) / kFeatherSteps);
+    const int steps = featherSteps(spread);
+    const Color step = color.alpha(std::min(1.6f * featherStrength() / steps, 1.0f));
+    for (int k = 0; k < steps; ++k) {
+        const float out = spread * (1.0f - static_cast<float>(k) / steps);
         c.fillRect(r.inset(-out), step, radius + out);
     }
 }
@@ -66,13 +72,14 @@ void featherLine(Canvas &c, const Point *points, size_t count, float width, floa
     if (glowing <= 0.0f)
         return;
     spread = featherSpread(spread);
-    Color colors[kFeatherSteps];
-    float widths[kFeatherSteps];
-    for (int k = 0; k < kFeatherSteps; ++k) {
-        colors[k] = color.alpha(std::min(1.6f * featherStrength() / kFeatherSteps, 1.0f));
-        widths[k] = width + 2.0f * spread * (1.0f - static_cast<float>(k) / kFeatherSteps);
+    const int steps = featherSteps(spread);
+    Color colors[kMaxFeatherSteps];
+    float widths[kMaxFeatherSteps];
+    for (int k = 0; k < steps; ++k) {
+        colors[k] = color.alpha(std::min(1.6f * featherStrength() / steps, 1.0f));
+        widths[k] = width + 2.0f * spread * (1.0f - static_cast<float>(k) / steps);
     }
-    c.polylineStrokes(points, count, colors, widths, kFeatherSteps);
+    c.polylineStrokes(points, count, colors, widths, static_cast<size_t>(steps));
 }
 
 void softShadow(Canvas &c, Rect r, float radius, int steps, float spread, float drop, float alpha) {
