@@ -1457,7 +1457,7 @@ bool View::poll() {
     // The routing graph's glow follows the output's level (see follow()).
     {
         const RadarLook before = radarLook();
-        radarLevel_ = follow(radarLevel_, outputLevel(t));
+        radarLevel_ = follow(radarLevel_, sentOutLevel(t));
         const RadarLook after = radarLook();
         if (routingGraphShown() && (after.strength != before.strength || after.reach != before.reach))
             in(kFxPanel);
@@ -3663,14 +3663,14 @@ float View::shownAmount(int param) const {
     return it != wireAmounts_.end() ? it->second : static_cast<float>(liveAmount(param));
 }
 
-// How loud the output is, 0 to 1, for the routing graph's glow: the RMS of the span its scope took last (the output
-// itself, as the editor shows it), from -48 dB up to -3 dB (a sine at full scale).
-float View::outputLevel(const Telemetry &t) {
-    double sum = 0.0;
-    for (float sample : t.outScope)
-        sum += static_cast<double>(sample) * sample;
-    const double rms = std::sqrt(sum / static_cast<double>(t.outScope.size()));
-    return rms > 1e-6 ? std::clamp(static_cast<float>((20.0 * std::log10(rms) + 48.0) / 45.0), 0.0f, 1.0f) : 0.0f;
+// How loud what the routing graph's nodes send to OUT is, 0 to 1, for its glow: the level of the effects graph's IN,
+// the voices' sum before any effect (a peak falling away about 90 dB a second, as the effects graph's nodes glow), the
+// 12 dB the voices go into the effects with given back, from -48 dB up to full scale.
+float View::sentOutLevel(const Telemetry &t) {
+    const float level = t.age < 0.5f ? t.fxPortLevels[kFxPortIn] : 0.0f;
+    if (!(level > 0.0f))
+        return 0.0f;
+    return std::clamp((20.0f * std::log10(level) + 12.0f + 48.0f) / 48.0f, 0.0f, 1.0f);
 }
 
 // How the routing graph's glow shows, as loud as the output has risen to (see poll()): its alpha on OUT from 30 % of

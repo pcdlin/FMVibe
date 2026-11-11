@@ -5888,7 +5888,7 @@ void testOutBend(const std::filesystem::path &dir, Renderer &renderer) {
 
 // The routing graph's glow: a bloom from OUT, dithered rather than stepped (along a stretch of the panel's bottom, under
 // the ghosts and clear of the rings and rays, neighboring pixels differ many times over, where a glow in steps would
-// change only at its few edges); as bright and as far out as the output is loud (its RMS, read off its scope's span),
+// change only at its few edges); as bright and as far out as what the nodes send to OUT is loud (the effects' IN),
 // rising to it over a few polls rather than at once; as strong as the glow setting says, and gone with it Off; and its
 // level moving repainting the panel as a whole paint would (read off the rendered pixels, in Spectrum).
 void testRadarGlow(const std::filesystem::path &dir, Renderer &renderer) {
@@ -5896,10 +5896,8 @@ void testRadarGlow(const std::filesystem::path &dir, Renderer &renderer) {
     model.themeName = "Spectrum";
     model.glowLevel = 0.75;
     View view(model);
-    auto output = [&](float level) { // a sine at `level` of full scale in the output scope's span
-        for (size_t i = 0; i < model.live.outScope.size(); ++i)
-            model.live.outScope[i] = level * std::sin(6.2831853f * 4.0f * static_cast<float>(i) /
-                                                      static_cast<float>(model.live.outScope.size()));
+    auto output = [&](float level) { // what the nodes send to OUT at `level` of full scale: the effects' IN, 12 dB down
+        model.live.fxPortLevels[kFxPortIn] = 0.25f * level;
     };
     auto settle = [&] {
         for (int i = 0; i < 120; ++i)

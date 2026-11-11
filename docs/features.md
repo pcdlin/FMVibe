@@ -580,8 +580,9 @@ may show anywhere, repaints the whole of it.
     disc at its right end, shading from the accent in its middle to a deeper accent and the filters' purple at its
     edge, in a faint halo, and a bloom of the accent glowing out from it behind the graph, strongest on the core and
     feathering out further from it as light from a point does (1 / (1 + (u / 0.28)^2) of it, u the way out), steeply
-    by the core and ever more gently further out, to nothing as far as it reaches. The bloom follows how loud the
-    output is: the RMS of the span the output scope took last, from -48 dB up to -3 dB (a sine at full scale), which it
+    by the core and ever more gently further out, to nothing as far as it reaches. The bloom follows how loud what
+    the nodes send to OUT is, before any effect: the level of the effects graph's IN (a peak falling away about 90 dB
+    a second), the 12 dB the voices go into the effects with given back, from -48 dB up to full scale, which it
     rises to with a time constant of 70 ms and falls back from with one of 100 ms, so a note swells it rather
     than switching it on. From silence to the loudest, it goes from 30 % of its strength to all of it, and its reach
     from 260 px to 520 px (the outermost ring), so it spreads out as the sound swells; the Glow setting sets how strong

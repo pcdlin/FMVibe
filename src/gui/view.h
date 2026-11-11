@@ -885,7 +885,7 @@ private:
         float reach;    // how far out it fades to nothing
     };
     RadarLook radarLook() const;
-    static float outputLevel(const Telemetry &t);
+    static float sentOutLevel(const Telemetry &t);
     bool routingGraphShown() const;
     static Point nodeDeleteAt(int node, Point center);
     static Point fxDeleteAt(int node, Point center);
