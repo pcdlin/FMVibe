@@ -1362,6 +1362,7 @@ double View::randomPhaseNow(int lfo) const {
 
 bool View::poll() {
     bool changed = false;
+    bool bendMoved = false; // the Pitch Bend param alone, which the bend wheel shows
     // What changed and where it shows: the whole editor for anything that may show anywhere, or the union of the
     // places of what keeps to its own (see changedAreas()).
     bool everywhere = false;
@@ -1379,12 +1380,18 @@ bool View::poll() {
             const double v = controller_.value(i);
             if (v != seen_[i]) {
                 seen_[i] = v;
-                changed = true;
+                // The Pitch Bend param shows on the bend wheel alone (a host automating it moves only that).
+                if (i == paramIndex(GlobalParam::PitchBend))
+                    bendMoved = true;
+                else
+                    changed = true;
             }
         }
     }
     if (changed)
         keepRoutes(); // whatever turned a route on, the editor or the host
+    if (bendMoved)
+        in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
     closeGoneLists(); // the host may have changed what a list belongs to
     // The audio thread captures the operator whose scope shows, and nothing while none does.
     const UiLayout &layout = controller_.layout();
@@ -1393,6 +1400,8 @@ bool View::poll() {
     controller_.setScope(scope ? layout.selectedNode : -1, layout.scopeCycles);
     Telemetry t;
     controller_.telemetry(t);
+    if (t.bend != telemetry_.bend || t.bendSet != telemetry_.bendSet) // where the bend stands: the bend wheel
+        in(keyboardPanel(keyboardTop(controller_.layout().sourcesCollapsed), controller_.layout().keysCollapsed));
     everywhere = everywhere || changed; // a param: it may show anywhere
     const Rect header{0.0f, 0.0f, kWidth, kHeaderH};
     // The editor's bands, as paint() leaves out those an area doesn't reach: the panels' row (the routing panel or
@@ -3607,9 +3616,13 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
             c.line({r.x + 3.0f, from}, {r.right() - 3.0f, from}, kFaint, 1.0f);
         c.line({r.x + 3.0f, y}, {r.right() - 3.0f, y}, kText, 2.0f);
     } else {
-        // Springs back to the middle: fills up or down from the center.
+        // Springs back to the middle: fills up or down from the center. Where the bend stands: the Pitch Bend param as
+        // the editor has it (so a drag moves it at once), with what the host adds on top (see Telemetry::bend): its
+        // MIDI bend and its modulation of the param.
         const float mid = r.y + r.h * 0.5f;
-        const float y = mid - static_cast<float>(bend_) * (r.h * 0.5f - inset);
+        const double bend =
+            std::clamp(value(paramIndex(GlobalParam::PitchBend)) + telemetry_.bend - telemetry_.bendSet, -1.0, 1.0);
+        const float y = mid - static_cast<float>(bend) * (r.h * 0.5f - inset);
         c.fillRect({r.x + inset, std::min(mid, y), r.w - 2.0f * inset, std::abs(y - mid)},
                    kSourceColors[kBendSource].alpha(0.6f), kRadiusMark);
         c.line({r.x + 3.0f, mid}, {r.right() - 3.0f, mid}, kFaint, 1.0f);
@@ -9224,8 +9237,7 @@ void View::applyDrag(Point p) {
         break;
     case DragKind::BendWheel: {
         const double mid = w.rect.y + w.rect.h * 0.5;
-        bend_ = std::clamp((mid - p.y) / (w.rect.h * 0.5), -1.0, 1.0);
-        controller_.pitchWheel(bend_);
+        set(paramIndex(GlobalParam::PitchBend), (mid - p.y) / (w.rect.h * 0.5));
         break;
     }
     case DragKind::Value: {
@@ -10182,8 +10194,9 @@ void View::mouseDown(Point p, Modifiers mods) {
         if (!drag_.fine)
             applyDrag(p);
         break;
-    case Kind::BendWheel:
+    case Kind::BendWheel: // the Pitch Bend param, edited as the mod wheel's knob is (the host follows it)
         drag_.kind = DragKind::BendWheel;
+        controller_.beginEdit(paramIndex(GlobalParam::PitchBend));
         applyDrag(p);
         break;
     case Kind::ShapeArea:
@@ -10524,9 +10537,10 @@ void View::finishDrag() {
     case DragKind::Key:
         controller_.playNote(keyboardBase() + w.a, false);
         break;
-    case DragKind::BendWheel: // springs back to center
-        bend_ = 0.0;
-        controller_.pitchWheel(0.0);
+    case DragKind::BendWheel: // springs back to center, in the same gesture
+        if (value(paramIndex(GlobalParam::PitchBend)) != 0.0)
+            controller_.setValue(paramIndex(GlobalParam::PitchBend), 0.0);
+        controller_.endEdit(paramIndex(GlobalParam::PitchBend));
         break;
     case DragKind::Glow: // the amount it was dragged to is kept only once it is let go (see mouseUp())
         glowDragged_ = linksDragged_ = hueDragged_ = -1.0f;

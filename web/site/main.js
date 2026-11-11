@@ -139,9 +139,6 @@ const host = {
     flush(); // after the edits made before it
     send({type: 'note', key, on, velocity});
   },
-  bend(amount) {
-    send({type: 'bend', amount});
-  },
   scope(op, cycles) {
     scopeAsked = {type: 'scope', op, cycles};
     send(scopeAsked);

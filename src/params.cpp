@@ -250,6 +250,9 @@ void buildTable(ParamTable &t) {
     add(paramIndex(GlobalParam::ModWheel), tr(Str::ParamModWheel), global, ParamKind::Percent, 0.0, 1.0, 0.0);
     t[paramIndex(GlobalParam::ModWheel)].flags &=
         ~static_cast<clap_param_info_flags>(CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID | CLAP_PARAM_IS_MODULATABLE_PER_KEY);
+    // The pitch bend as a param (see GlobalParam): what a host automates and modulates, globally or per note, on top
+    // of the MIDI pitch bend.
+    add(paramIndex(GlobalParam::PitchBend), tr(Str::ParamPitchBend), global, ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
 
     // Default patch: operator A, a plain sine carrier; the others start switched
     // off, to be added from the routing panel. Every operator has the same settings otherwise.

@@ -189,9 +189,8 @@ void Controller::endStep() {
 }
 
 void Controller::record(int index) {
-    // The mod wheel is played, not part of the patch.
-    if (depth_ == 0 || index < 0 || index >= kParamCount || recorded_[index] ||
-        index == paramIndex(GlobalParam::ModWheel))
+    // The mod wheel and the pitch bend are played, not part of the patch.
+    if (depth_ == 0 || index < 0 || index >= kParamCount || recorded_[index] || isPlayed(index))
         return;
     recorded_[index] = true;
     open_.changes.push_back({index, value(index), 0.0});

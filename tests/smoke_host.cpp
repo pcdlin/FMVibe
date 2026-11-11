@@ -1960,6 +1960,51 @@ int main(int argc, char **argv) {
               "the pitch bend modulates what it is assigned to, about its rest while bipolar, from its bottom while not");
     }
 
+    // The Pitch Bend param bends as the MIDI pitch bend does: at its top an A4 two semitones up (the default Bend
+    // Range). The pitch bend source follows it, set and modulated by the host: on A's output at -100 %, bipolar, it
+    // halves A at the top as the MIDI bend does. A host modulates it per note too: with an A3 and an A4 held, the A3's
+    // own bend moves it alone.
+    {
+        const int bendParam = paramIndex(GlobalParam::PitchBend);
+        setParams({{bendParam, 1.0}});
+        const std::vector<float> raised = play({});
+        setParams({{bendParam, 0.0}});
+        const double raisedRatio = magnitude(raised, 493.88) / std::max(magnitude(raised, 440.0), 1e-9);
+
+        setParams({{slotTargetIndex(kBendSource, 0), slotTargetValue(paramIndex(0, OpParam::Out))},
+                   {slotAmountIndex(kBendSource, 0), -1.0}});
+        const float resting = peakOf(play({}));
+        setParams({{bendParam, 1.0}});
+        const float bySetting = peakOf(play({}));
+        setParams({{bendParam, 0.0}});
+        const clap_event_param_mod_t modUp = paramModEvent(bendParam, -1, 1.0), modRest = paramModEvent(bendParam, -1, 0.0);
+        runBlock({&modUp.header});
+        const float byModulation = peakOf(play({}));
+        runBlock({&modRest.header});
+        setParams({{slotTargetIndex(kBendSource, 0), 0.0}, {slotAmountIndex(kBendSource, 0), 0.0}});
+
+        const clap_event_note_t a3 = noteEvent(CLAP_EVENT_NOTE_ON, 31, 57), a4 = noteEvent(CLAP_EVENT_NOTE_ON, 30, 69);
+        runBlock({&a3.header, &a4.header});
+        const clap_event_param_mod_t own = paramModEvent(bendParam, 31, 1.0);
+        runBlock({&own.header});
+        runBlocks(4);
+        std::vector<float> pair;
+        for (int b = 0; b < 16; ++b) {
+            runBlock();
+            pair.insert(pair.end(), left.begin(), left.end());
+        }
+        runBlock({&chokeAll.header});
+        const double a3Bent = magnitude(pair, 246.94) / std::max(magnitude(pair, 220.0), 1e-9);
+        const double a4Kept = magnitude(pair, 440.0) / std::max(magnitude(pair, 493.88), 1e-9);
+        std::printf("      Pitch Bend param up: B4 / A4 %.1f; the bend source on A's output at -100 %%: peak %.3f at rest, "
+                    "%.3f set up, %.3f modulated up; one note's bend: B3 / A3 %.1f, A4 / B4 %.1f\n",
+                    raisedRatio, resting, bySetting, byModulation, a3Bent, a4Kept);
+        check(raisedRatio > 10.0 && bySetting > 0.4f * resting && bySetting < 0.6f * resting &&
+                  byModulation > 0.4f * resting && byModulation < 0.6f * resting && a3Bent > 10.0 && a4Kept > 10.0,
+              "the Pitch Bend param bends as the MIDI bend does, set or modulated by the host, per note too, and the "
+              "pitch bend source follows it");
+    }
+
     // The sources that follow what comes in, in place 1 on A's output at -100 %: a MIDI source on a controller
     // silences A with it all the way up and halves it at the middle, and leaves it alone with another controller up;
     // on aftertouch, it follows the channel's, and a note's own (MIDI polyphonic aftertouch or CLAP's pressure

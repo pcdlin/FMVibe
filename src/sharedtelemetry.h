@@ -28,6 +28,8 @@ struct SharedTelemetry {
     std::array<std::atomic<float>, kMaxSources> envPos{};
     std::atomic<float> notePitch{0.0f};
     std::atomic<float> noteVelocity{0.0f};
+    std::atomic<float> bend{0.0f};
+    std::atomic<float> bendSet{0.0f};
     std::atomic<float> fxPitch{60.0f};
     std::array<std::atomic<float>, kFxSlots * kMcBands> fxReduction{};
     std::array<std::atomic<float>, kFxSlots * kMcBands> fxBandLevel{};
@@ -71,6 +73,8 @@ struct SharedTelemetry {
         }
         notePitch.store(t.notePitch, std::memory_order_relaxed);
         noteVelocity.store(t.noteVelocity, std::memory_order_relaxed);
+        bend.store(t.bend, std::memory_order_relaxed);
+        bendSet.store(t.bendSet, std::memory_order_relaxed);
         fxPitch.store(t.fxPitch, std::memory_order_relaxed);
         for (int i = 0; i < kFxSlots * kMcBands; ++i) {
             fxReduction[i].store(t.fxReduction[i / kMcBands][i % kMcBands], std::memory_order_relaxed);
@@ -123,6 +127,8 @@ struct SharedTelemetry {
         }
         t.notePitch = notePitch.load(std::memory_order_relaxed);
         t.noteVelocity = noteVelocity.load(std::memory_order_relaxed);
+        t.bend = bend.load(std::memory_order_relaxed);
+        t.bendSet = bendSet.load(std::memory_order_relaxed);
         t.fxPitch = fxPitch.load(std::memory_order_relaxed);
         for (int i = 0; i < kFxSlots * kMcBands; ++i) {
             t.fxReduction[i / kMcBands][i % kMcBands] = fxReduction[i].load(std::memory_order_relaxed);

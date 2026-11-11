@@ -657,6 +657,7 @@ void Synth::applyMacros(const ParamValues &params) {
 void Synth::render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams) {
     std::fill_n(left, frames, 0.0f);
     std::fill_n(right, frames, 0.0f);
+    bendSet_ = params[paramIndex(GlobalParam::PitchBend)];
     // What follows from the params and the host's modulation for every voice alone, worked out again only when one
     // of them may have changed since the last render(): a block split by events renders many times over.
     if (!sameParams || sharedStale_) {
@@ -1152,6 +1153,12 @@ void Synth::telemetry(Telemetry &out) const {
     out.tempo = static_cast<float>(tempo_);
     out.fxPitch = static_cast<float>(fxPitch_);
     out.outPeak = {static_cast<float>(outPeak_[0]), static_cast<float>(outPeak_[1])};
+    // The bend with no voice playing: the MIDI bend and the param with the host's modulation for every voice (the
+    // newest voice's, below, while one plays).
+    const int pitchBend = paramIndex(GlobalParam::PitchBend);
+    out.bendSet = static_cast<float>(bendSet_);
+    out.bend = static_cast<float>(std::clamp(
+        bend_ + std::clamp(bendSet_ + globalMod_[pitchBend], table_[pitchBend].min, table_[pitchBend].max), -1.0, 1.0));
     out.clipHold = static_cast<float>(clipHold_);
     if (analyzing_)
         out.outScope = outScope_.frame;
@@ -1235,6 +1242,7 @@ void Synth::telemetry(Telemetry &out) const {
     }
     out.notePitch = static_cast<float>(newest->pitch);
     out.noteVelocity = static_cast<float>(newest->velocity);
+    out.bend = static_cast<float>(2.0 * newest->auxOut[kBendSource] - 1.0); // the newest voice's (see renderBlock())
 }
 
 void Synth::setVoiceLimit(int limit) {
@@ -1441,8 +1449,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         return slotCurveValue(swing, hostValue(params, slotCurveIndex(source, s)), bipolar);
     };
     // The pitch the voice plays: its glide, tuning and the bend, with the params as `p` holds them when it is asked;
-    // with MPE on, a note on a member channel bends with its channel too.
-    const double bend = std::clamp(bend_ + wheelBend_, -1.0, 1.0);
+    // with MPE on, a note on a member channel bends with its channel too. The bend is the host's MIDI pitch bend and the
+    // Pitch Bend param (the editor's bend wheel) together, the param with the host's modulation of it for this voice
+    // (a modulator per note bends each note its own way).
+    const double bend = std::clamp(bend_ + p[paramIndex(GlobalParam::PitchBend)], -1.0, 1.0);
     const double memberBend =
         mpe_ && memberChannel(v.note.channel) ? channelBend_[v.note.channel] * mpeBendRange_ : 0.0;
     auto pitchNow = [&] {
@@ -1453,8 +1463,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     // take this block's value; on a note's first block, so do those the note source scales, from the pitch the note
     // starts at (after that, they take the last block's, as it follows the pitch further down).
     v.auxOut[kVelocitySource] = velocitySourceValue(getParam, v.velocity);
-    // So does the pitch bend, where it stands now, 0..1 with its middle at rest: the host's and the bend wheel's, and the
-    // note's own channel's with MPE on, each a share of its own range.
+    // So does the pitch bend, where it stands now, 0..1 with its middle at rest: the host's MIDI bend and the Pitch Bend
+    // param's, and the note's own channel's with MPE on, each a share of its own range.
     v.auxOut[kBendSource] =
         0.5 * (std::clamp(bend + (mpe_ && memberChannel(v.note.channel) ? channelBend_[v.note.channel] : 0.0), -1.0, 1.0) +
                1.0);

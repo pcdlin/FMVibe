@@ -243,9 +243,8 @@ public:
     // Editor::followDpi()). A host that won't leaves it as it is.
     virtual void requestEditorSize(uint32_t, uint32_t) {}
 
-    // The virtual keyboard: a MIDI note number (60 is middle C), and the bend wheel, -1..1.
+    // The virtual keyboard: a MIDI note number (60 is middle C). (Its bend wheel is the Pitch Bend param, edited.)
     virtual void playNote(int note, bool on) = 0;
-    virtual void pitchWheel(double amount) = 0;
     // The operator whose output the scope shows (-1 while no scope is shown, so the audio thread captures nothing),
     // over how many of its cycles.
     virtual void setScope(int op, int cycles) = 0;

@@ -96,6 +96,12 @@ struct Telemetry {
     std::array<float, kMaxSources> lfoTo{};        // and the one it heads for (-1..1, before Unipolar)
     float notePitch = 0.0f;                     // its pitch, what the note source follows: semitones, 69 is A4
     float noteVelocity = 0.0f;                  // its velocity, what the velocity source follows: 0..1
+    // Where the pitch bend stands, -1..1: what the pitch bend source puts out (the MIDI bend, the Pitch Bend param
+    // with the host's modulation, and in the newest voice its own and its MPE channel's; with no voice, the MIDI bend
+    // and the param with the host's modulation for every voice). And the Pitch Bend param as set, which that includes:
+    // the bend wheel shows the param as the editor has it, with the rest on top.
+    float bend = 0.0f;
+    float bendSet = 0.0f;
     float fxPitch = 60.0f; // what the effects' key tracking follows: that pitch, kept once the voice has ended
     float age = 0.0f;                           // seconds since the audio thread took this snapshot
     std::array<float, kOps> opLevels{};         // operator envelope (the editor scales it by the Out)
@@ -206,8 +212,6 @@ public:
     // ends them at once, fading out as a stolen voice does, and, for every note, has the effects' tails go too.
     void allNotesOff(int channel);
     void allSoundOff(int channel);
-    // The editor's bend wheel, on top of the host's pitch bend. Audio thread.
-    void setWheelBend(double amount) { wheelBend_ = amount; }
     // Host tempo in BPM, for synced LFOs and delay times.
     void setTempo(double bpm) {
         if (std::isfinite(bpm) && bpm > 0.0)
@@ -447,7 +451,7 @@ private:
     double rate_ = 48000.0; // the voices' rate: sampleRate_ * oversampling_
     int capacity_ = 0;      // voices that may play; voices_ has as many more (4 to 32) for stolen ones to fade out in
     double bend_ = 0.0;
-    double wheelBend_ = 0.0;
+    double bendSet_ = 0.0; // the Pitch Bend param as the last render() had it (see Telemetry::bendSet)
     std::array<double, 128> cc_{}; // the MIDI controllers' values, 0..1
     double channelPressure_ = 0.0;
     // MPE (see setMpe()): whether it is on, its bend range, and each member channel's bend (-1..1), pressure (0..1, or
