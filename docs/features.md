@@ -1544,7 +1544,8 @@ may show anywhere, repaints the whole of it.
   names in the matrix (whose legend shows the operators' colors side by side) and the routes it sends to another
   operator in a color of its own (a route into or out of a filter or a shaper takes that node's color, as in every
   theme); the routing nodes on a soft shadow (a silent one outlined in a faint tint of its color, and an operator's
-  unison copies tinted discs peeking out on both sides); the effects graph's nodes, a split and a join too, filled
+  unison copies tinted discs peeking out on both sides, under the wires so an arrowhead coming in at its side shows);
+  the effects graph's nodes, a split and a join too, filled
   with a tint of their color, without an outline; and meters and a dimmed control taking the tint of the card they are on. Settings
   that name a theme no longer offered show the nearest one: Graphite and Machined as Midnight, Paper as Light.
   **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter

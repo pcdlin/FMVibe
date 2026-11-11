@@ -3756,8 +3756,14 @@ void View::paintRouting(Canvas &c) {
                            (drag_.kind == DragKind::Connect || busParam == moving || !wired(busParam));
     paintOutCore(c, busTarget);
 
-    // Modulated routes swell and thin with their modulation while notes play.
+    // The operators' halos and unison copies, under the wires, so an arrowhead coming in at a node's side shows over
+    // the copies peeking out there.
     const std::vector<int> on = enabledNodes();
+    for (int node : on)
+        if (node < kOps)
+            paintOpBacking(c, node, nodeCenter(node));
+
+    // Modulated routes swell and thin with their modulation while notes play.
     auto focused = [&](int param) {
         return (hover_ && hover_->param == param && drag_.kind == DragKind::None) ||
                ((drag_.kind == DragKind::Value || drag_.kind == DragKind::Bend) && drag_.widget.param == param);
@@ -6378,6 +6384,38 @@ Color nodeFace(Color color, bool selected, bool hovered) {
 }
 } // namespace
 
+// Whether operator `op` is heard: going out, or into a filter or shaper that is on.
+bool View::opHeard(int op) const {
+    bool heard = value(paramIndex(op, OpParam::Out)) > 0.0;
+    for (int filter = 0; filter < kFilters; ++filter)
+        heard = heard || (nodeOn(kOps + filter) && value(sendIndex(op, filter)) > 0.0);
+    for (int shaper = 0; shaper < kShapers; ++shaper)
+        heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
+    return heard;
+}
+
+// What an operator's node has behind it, drawn under the wires: its halo, which lights up while playing only if it
+// ends up in the output, as brightly as its envelope and the routes that take it there let it through (where
+// modulation takes them now: one an LFO opens from 0 % lights up too), and with unison a stack of copies peeking out
+// on both sides, past the selection ring, outlined as the node is.
+void View::paintOpBacking(Canvas &c, int op, Point center) {
+    const Color color = nodeColor(op);
+    if (const float level = nodeGlow_[op]; level > 0.01f) {
+        if (glowing > 0.0f) // feathered, as strongly as the glow is set
+            featherCircle(c, center, kNodeRadius, 16.0f, color.alpha(0.3f * level));
+        else // with the glow off, a plain ring of light, so a sounding operator still shows
+            c.fillCircle(center, kNodeRadius + 7.0f, color.alpha(0.22f * level));
+    }
+    if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
+        const Color outline = opHeard(op) ? color : color.alpha(0.45f);
+        for (const float dx : {-9.0f, 9.0f}) {
+            const Point copy{center.x + dx, center.y};
+            c.fillCircle(copy, kNodeRadius, kPanel);
+            c.strokeCircle(copy, kNodeRadius, outline.alpha(0.6f), 1.5f);
+        }
+    }
+}
+
 void View::paintNode(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w) || isActive(w);
     const bool selected = controller_.layout().selectedNode == w.a;
@@ -6415,31 +6453,10 @@ void View::paintNode(Canvas &c, const Widget &w) {
     }
 
     const int op = w.a;
-    bool heard = value(paramIndex(op, OpParam::Out)) > 0.0;
-    for (int filter = 0; filter < kFilters; ++filter)
-        heard = heard || (nodeOn(kOps + filter) && value(sendIndex(op, filter)) > 0.0);
-    for (int shaper = 0; shaper < kShapers; ++shaper)
-        heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
-    // Its halo lights up while playing only if it ends up in the output, as brightly as its envelope and the routes
-    // that take it there let it through, where modulation takes them now: one an LFO opens from 0 % lights up too.
     const Color color = nodeColor(op); // the accent, or in a theme that colors each operator its own
-    const float level = nodeGlow_[op];
-    if (level > 0.01f) {
-        if (glowing > 0.0f) // feathered, as strongly as the glow is set
-            featherCircle(c, center, kNodeRadius, 16.0f, color.alpha(0.3f * level));
-        else // with the glow off, a plain ring of light, so a sounding operator still shows
-            c.fillCircle(center, kNodeRadius + 7.0f, color.alpha(0.22f * level));
-    }
-    // A silent one's outline: its color, faintly.
-    const Color outline = heard ? color : color.alpha(0.45f);
-    if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
-        // Unison: a stack of copies peeking out on both sides, past the selection ring, outlined as the node is.
-        for (const float dx : {-9.0f, 9.0f}) {
-            const Point copy{center.x + dx, center.y};
-            c.fillCircle(copy, kNodeRadius, kPanel);
-            c.strokeCircle(copy, kNodeRadius, outline.alpha(0.6f), 1.5f);
-        }
-    }
+    // A silent one's outline: its color, faintly. (Its halo and unison copies are under the wires: see
+    // paintOpBacking().)
+    const Color outline = opHeard(op) ? color : color.alpha(0.45f);
     // Filled with the panel's color and outlined in its own; the node the inspector shows filled solid with its color,
     // its wave, letter and ratio in the panel's, and ringed in it.
     c.fillCircle(center, kNodeRadius, nodeFace(color, selected, hovered));

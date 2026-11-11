@@ -1329,6 +1329,8 @@ private:
     void paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint, float radius);
     bool lastPartLit_ = false; // whether the part of a pill painted last was lit, for the line after it
     void paintNode(Canvas &c, const Widget &w);
+    void paintOpBacking(Canvas &c, int op, Point center);
+    bool opHeard(int op) const;
     void paintKnob(Canvas &c, const Widget &w);
     void paintRatio(Canvas &c, const Widget &w);
     std::string modRangeText(int source, int slot) const;
