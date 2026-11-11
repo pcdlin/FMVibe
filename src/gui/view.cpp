@@ -1447,12 +1447,15 @@ bool View::poll() {
         for (int port = 0; port < kFxPorts; ++port)
             if (std::abs(t.fxPortLevels[port] - telemetry_.fxPortLevels[port]) > 0.002f * (1.0f + t.fxPortLevels[port]))
                 everywhere = true;
-    // The routing graph's glow follows the output's level, rising to it over a moment (about a sixth of a second at the
-    // sixty polls a second the editor makes) and falling back half as fast.
+    // The routing graph's glow follows the output's level, rising to it with a time constant of 70 ms and falling back
+    // with one of 100 ms, at the sixty polls a second the editor makes.
     {
+        constexpr float kPollSeconds = 1.0f / 60.0f, kAttackSeconds = 0.07f, kReleaseSeconds = 0.1f;
+        static const float attack = 1.0f - std::exp(-kPollSeconds / kAttackSeconds);
+        static const float release = 1.0f - std::exp(-kPollSeconds / kReleaseSeconds);
         const RadarLook before = radarLook();
         const float target = outputLevel(t);
-        radarLevel_ += (target - radarLevel_) * (target > radarLevel_ ? 0.1f : 0.05f);
+        radarLevel_ += (target - radarLevel_) * (target > radarLevel_ ? attack : release);
         if (std::abs(target - radarLevel_) < 1e-3f)
             radarLevel_ = target;
         const RadarLook after = radarLook();
