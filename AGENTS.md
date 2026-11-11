@@ -737,7 +737,7 @@ browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and pub
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
 `build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
-PD Crystal Motion's routing view over `docs/editor.png` and its effects' panel as a chain over `docs/fx-chain.png`, and
+LD Screamer's routing view over `docs/editor.png`, PD Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
 BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
 Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any

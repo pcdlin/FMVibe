@@ -9225,8 +9225,10 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.sourcesCollapsed, "once it is closed, the editor takes clicks again");
     click(view, kSourcesToggle);
     runMore(dir, renderer);
-    // The README's, in the default theme (see release.ps1); Neon Pluck's effects as a graph, split low and high.
+    // The README's, in the default theme (see release.ps1): Screamer's routing, Crystal Motion's effects as a chain and
+    // Neon Pluck's as a graph, split low and high.
     renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6, "Spectrum");
+    renderExample(dir, renderer, "LD Screamer", "24c-screamer-example", 4, "Spectrum");
     renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4, "Spectrum");
     renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
     renderExample(dir, renderer, "BA Neon Pluck", "43-porcelain-neon", 4, "Porcelain");

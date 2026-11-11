@@ -50,7 +50,7 @@ EM_JS(void, js_set_setting, (const char *key, const char *value),
       { Module.fmvHost.setSetting(UTF8ToString(key), UTF8ToString(value)); });
 
 constexpr int kDefaultOversampling = 2;
-constexpr char kFirstPreset[] = "PD Crystal Motion"; // the patch in docs/editor.png
+constexpr char kFirstPreset[] = "PD Crystal Motion"; // the patch whose effects docs/fx-chain.png shows
 
 std::string setting(const char *key) {
     char buffer[256];
