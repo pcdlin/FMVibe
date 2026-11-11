@@ -238,8 +238,8 @@ private:
     void editorFitChanged();
     // Tells the host of every param that changed since `before`, as edits.
     void notifyParams(const ParamValues &before);
-    // What a preset leaves as it is: how big the editor is, whether the modulation panel is
-    // collapsed, the shape editor's grid.
+    // What a preset leaves as it is (gui::keepEditorLayout()): how big the editor is, whether the modulation panel
+    // is collapsed, the shape editor's grid, the view shown.
     void keepEditorLayout(const gui::UiLayout &from);
 
     // A key of the editor's virtual keyboard, on its way to the audio thread.

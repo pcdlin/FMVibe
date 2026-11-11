@@ -385,15 +385,7 @@ void PluginCore::notifyParams(const ParamValues &before) {
 }
 
 void PluginCore::keepEditorLayout(const gui::UiLayout &from) {
-    layout_.zoom = from.zoom;
-    layout_.sourcesCollapsed = from.sourcesCollapsed;
-    layout_.keysCollapsed = from.keysCollapsed;
-    layout_.shapeGridX = from.shapeGridX;
-    layout_.shapeGridY = from.shapeGridY;
-    layout_.shapeSteps = from.shapeSteps;
-    layout_.shapeSnap = from.shapeSnap;
-    layout_.opTab = from.opTab;
-    layout_.scopeCycles = from.scopeCycles;
+    gui::keepEditorLayout(layout_, from);
 }
 
 // Init and loading a preset start the undo history over: undo never brings back the patch before.

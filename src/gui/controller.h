@@ -86,7 +86,8 @@ struct UiLayout {
     // them), -1 for none. Where the nodes sit follows from the wires (see View::fxGridLayout()).
     int fxSelected = -1;
     // Whether the FX view shows the effects as their graph rather than as a row of cards: two views of the same
-    // effects, which switching between changes nothing of. Part of the patch, like the routing view.
+    // effects, which switching between changes nothing of. Saved with the patch, like the routing view, but a preset
+    // loaded leaves it as it is (see keepEditorLayout()).
     bool fxGraphView = false;
     // The band each split shows, by split (0 its low band, 1 its high one, 2 its middle one): the band whose effects its container in
     // the row shows, and whose response its card fills. Part of the patch, like the node places.
@@ -94,6 +95,23 @@ struct UiLayout {
     // The splits' containers in the row folded to a narrow strip, a bit each; saved with the patch, but not undone.
     uint32_t splitsFolded = 0;
 };
+
+// What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, which panels are
+// collapsed, the shape editor's grid, the operator page's tab and the scope's cycles, and the view shown (the routing
+// view's tab, and the FX view's row or graph). A host's project brings them all back.
+inline void keepEditorLayout(UiLayout &to, const UiLayout &from) {
+    to.zoom = from.zoom;
+    to.sourcesCollapsed = from.sourcesCollapsed;
+    to.keysCollapsed = from.keysCollapsed;
+    to.shapeGridX = from.shapeGridX;
+    to.shapeGridY = from.shapeGridY;
+    to.shapeSteps = from.shapeSteps;
+    to.shapeSnap = from.shapeSnap;
+    to.opTab = from.opTab;
+    to.scopeCycles = from.scopeCycles;
+    to.view = from.view;
+    to.fxGraphView = from.fxGraphView;
+}
 
 // How many empty modulations the MODS view keeps at most.
 constexpr int kMaxEmptyMods = 32;

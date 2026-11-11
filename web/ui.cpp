@@ -231,19 +231,11 @@ private:
         const std::string &name = examples_[index].name;
         return L"Factory/" + std::wstring(name.begin(), name.end()); // the examples' names are ASCII
     }
-    // A patch's layout, with what belongs to the editor kept (as Plugin::keepEditorLayout()).
+    // A patch's layout, with what belongs to the editor kept (keepEditorLayout(), as the plugin does).
     void replaceLayout(const UiLayout &patch) {
         const UiLayout before = layout_;
         layout_ = patch;
-        layout_.zoom = before.zoom;
-        layout_.sourcesCollapsed = before.sourcesCollapsed;
-        layout_.keysCollapsed = before.keysCollapsed;
-        layout_.shapeGridX = before.shapeGridX;
-        layout_.shapeGridY = before.shapeGridY;
-        layout_.shapeSteps = before.shapeSteps;
-        layout_.shapeSnap = before.shapeSnap;
-        layout_.opTab = before.opTab;
-        layout_.scopeCycles = before.scopeCycles;
+        keepEditorLayout(layout_, before);
     }
 
     ParamValues values_{};

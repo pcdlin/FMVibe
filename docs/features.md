@@ -572,7 +572,8 @@ may show anywhere, repaints the whole of it.
 - **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panel below them shows: the routing graph
   or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or across
   the whole panel the effects chain or every modulation. The
-  choice is saved with the patch. They are folder tabs: the one shown is part of the panel under it, its outline
+  choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row or graph)
+  as it is. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
   showing faintly under the mouse. While the full-size shape, shaper curve or partial editor has the panels, no tab
