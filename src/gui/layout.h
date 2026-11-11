@@ -996,7 +996,9 @@ inline Rect peqMenuItem(Rect card, int band, int type) {
 // title, the macros, the note source and velocity, and under them the wheels on the left and six octaves of keys, the octave shift under their right end. The wheels' handles sit above them, under the title, within the top
 // row. Collapsed, only the top row shows.
 constexpr float kKeyboardH = 192.0f;
-constexpr float kKeyboardBarH = 72.0f; // the top row, the names under it included: all that shows while collapsed
+// The top row, the names under it included: all that shows while collapsed, the wheels' names under their handles
+// (see kWheelHandleY) clear of the strip's lower edge.
+constexpr float kKeyboardBarH = 80.0f;
 constexpr Rect kKeys{130.0f, 76.0f, 1046.0f, 98.0f}; // relative to the strip's top
 constexpr float kStripRow = 29.0f;                   // the middle of the row above the keys, below the strip's top
 inline float keyboardTop(bool sourcesCollapsed) {

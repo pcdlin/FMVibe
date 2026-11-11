@@ -4969,7 +4969,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         const Point toggle{35.0f, y - 8.0f}, title{80.0f, y - 8.0f};
         const float open = view.height();
         click(view, toggle);
-        const bool shorter = model.ui.keysCollapsed && view.height() == open - 120.0f;
+        const bool shorter = model.ui.keysCollapsed && view.height() == open - (detail::kKeyboardH - detail::kKeyboardBarH);
         drag(view, {87.0f, y + 21.0f}, ins(918.0f, 242.0f));
         drag(view, {47.0f, y + 21.0f}, ins(918.0f, 242.0f));
         const bool wheelMapped =
