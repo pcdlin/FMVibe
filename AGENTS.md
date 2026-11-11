@@ -161,7 +161,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   every remote control page has an id of its own. It also reports CPU cost: on the development machine, 16 voices × 6
   operators take about 13 % of one core at the default 2x oversampling and about 30 % with every operator at 8
   unison copies (the smoke test prints the figures). Time a change to the voices' loop in this build, with one copy
-  and with eight, against the commit before: a Linux measurement doesn't carry over to MSVC's code, where a
+  and with eight, against the commit before (`tools\bench.ps1`, under More checks below): a Linux measurement doesn't
+  carry over to MSVC's code, where a
   `std::copysign` that GCC inlines became a library call on every wavetable read (a third more CPU at eight copies),
   and envelopes run a block ahead into a buffer cost a sixth more with one copy than stepping them in the loop.
 - **Audio quality** (`tests/quality.cpp`): drives the engine directly and measures, at every oversampling factor:
@@ -638,6 +639,16 @@ More checks:
   the plugin when a higher voice limit asks for it, and runs its main-thread callbacks. It isn't a test, and like a
   DAW it is for a person to start: it waits for its window to be closed. `.\build.ps1 -Run` builds it and starts it
   after the other steps.
+- **What a change costs**: `.\tools\bench.ps1 -Commits HEAD~1,HEAD` (or `HEAD,Working` for the working tree's
+  changes, new files too, or `-Plugins` for builds made already) builds the CLAP plugin at each commit in a worktree
+  of its own under `build\bench`, keeps each build there, and runs `fmvibe-bench` (`tools/bench.cpp`) on them. It
+  renders every factory preset through each build, as saved and at 8 unison copies, and says whether each plays bit
+  for bit as the first does. Then it times the builds in turns, round after round, on one logical processor (`-Cpu`,
+  2 to begin with): 16 notes on the default patch, the smoke test's chain of six operators at 1 and at 8 unison
+  copies, nothing playing, and the chain decaying and releasing, each in ms of CPU per second of audio, the median of
+  the rounds, with its change against the first build. It warns when the machine was busy. `fmvibe-bench` talks to
+  the plugin through CLAP alone, with the param ids host projects store, so it runs on earlier commits' builds too.
+  Not a test: timing wants a quiet machine.
 
 ## Linux development build
 
@@ -661,8 +672,8 @@ pkg-config, git and Cairo's headers (`libcairo2-dev`), and fetches the CLAP SDK 
 - **What differs from Windows**: the text is drawn in Inter (`FMVIBE_FONT` picks another family), not Segoe UI, so it
   comes out a little wider, and Cairo's antialiasing isn't Direct2D's. A UI check that reads a pixel should read it
   clear of text and of edges whose place follows a text's width, so it passes with either font.
-- **Not covered**: the CLAP and VST3 smoke tests, the validators, the editor's window and `fmvibe-uihost` need
-  Windows. A change to `src/plugin.cpp`, `src/vst3plugin.cpp`, `src/plugincore.cpp`, `src/gui/editor.cpp` or
+- **Not covered**: the CLAP and VST3 smoke tests, the validators, the editor's window, `fmvibe-uihost` and
+  `fmvibe-bench` (with `tools\bench.ps1`) need Windows. A change to `src/plugin.cpp`, `src/vst3plugin.cpp`, `src/plugincore.cpp`, `src/gui/editor.cpp` or
   `src/gui/canvas.cpp` compiles only there; `build.ps1` on Windows (or the release workflow) is the full check.
 
 ## Factory presets
@@ -832,6 +843,8 @@ breakpoints in `src/` then hit.
 | `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |
 | `tools/uihost.cpp` | `fmvibe-uihost`: a small CLAP host with a window and audio, for trying the editor by hand |
+| `tools/bench.cpp` | `fmvibe-bench`: what a build of the CLAP plugin costs (`time`) and what it plays (`render`), to compare builds by |
+| `tools/bench.ps1` | Builds commits (or the working tree) and compares them with `fmvibe-bench`: bit for bit, then CPU, round-robin |
 | `build.ps1` | One-shot configure/build/test/validate/install |
 | `build.sh`, `cmake/linux.cmake` | The Linux development build: the engine, the editor over Cairo, the quality test and the UI snapshots (see [Linux development build](#linux-development-build)) |
 | `web/dsp.cpp`, `web/ui.cpp` | The browser demo's audio and editor modules |

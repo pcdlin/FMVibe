@@ -238,6 +238,14 @@ target_link_libraries(fmvibe-uihost PRIVATE clap ole32 winmm avrt)
 fmvibe_options(fmvibe-uihost)
 add_dependencies(fmvibe-uihost FMVibe)
 
+# Compares builds of the CLAP plugin: what each costs (`time`) and whether they play the same (`render`). Not a test,
+# as timing wants a quiet machine: tools/bench.ps1 builds commits and runs it on them.
+add_executable(fmvibe-bench tools/bench.cpp)
+target_link_libraries(fmvibe-bench PRIVATE clap)
+# For the param ids in params.h; it talks to the plugin only through CLAP, so it measures older builds too.
+target_include_directories(fmvibe-bench PRIVATE src)
+fmvibe_options(fmvibe-bench)
+
 # Makes edited preset files sparse again before they are committed (see presets/factory.txt).
 add_executable(fmvibe-presettool tools/presettool.cpp)
 target_link_libraries(fmvibe-presettool PRIVATE fmvibe-core)
