@@ -3623,7 +3623,7 @@ void View::paintRouting(Canvas &c) {
         const float out = static_cast<float>(liveAmount(param));
         const OutWire w = outWireOf(node, nodeCenter(node), wireBend(param));
         const Color color = focused(param) ? kText : nodeColor(node).alpha(0.35f + 0.65f * out);
-        c.curve(w.start, w.control, w.end, color, 1.2f + 3.0f * out);
+        c.curve(w.start, w.control, w.end, color, 1.2f + 2.4f * out);
         arrowHead(c, w.end, w.dir, color);
     }
 
@@ -3635,7 +3635,7 @@ void View::paintRouting(Canvas &c) {
             const float amount = static_cast<float>(liveAmount(param));
             const Color base = routeColor(from, to);
             const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
-            const float width = 1.2f + 3.0f * amount;
+            const float width = 1.2f + 2.4f * amount;
             if (from == to) {
                 c.strokeCircle(loopCenter(from, nodeCenter(from)), 9.0f, color, width);
                 continue;
