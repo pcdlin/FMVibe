@@ -62,7 +62,7 @@ constexpr float kCell = kCellStep - kCellGap;
 constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMatrixNamesH};
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
 // An operator's Fixed switch, a keyboard on the summary line left of the power switch.
-constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 30.0f - 4.0f - 26.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
+constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
 // An operator's Ratio: a 7-segment readout, 0.50 to 64.00, over the first two places of its knob row, each digit dragged
 // on its own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along
 // its top, clear of the depth handles along its bottom edge.

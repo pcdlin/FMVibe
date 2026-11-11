@@ -5942,7 +5942,7 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shotB = renderer.save(view, dir / "1h-selected-node-b.png");
     const unsigned leaderB = leader();
     std::printf("      the lens's leader at A's height: %u with A shown, %u with B\n", leaderA, leaderB);
-    check(leaderA > leaderB + 30, "a dotted leader runs from the node the inspector shows across to its lens (read off "
+    check(leaderA > leaderB + 20, "a dotted leader runs from the node the inspector shows across to its lens (read off "
                                   "the rendered pixels)");
     // (Where its ring goes, an unshown node shows the backdrop, which differs from place to place.)
     const bool moved = inside(1) == aIn && inside(0) == bIn && ring(1) > ring(0) + 60;

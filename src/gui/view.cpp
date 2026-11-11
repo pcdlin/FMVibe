@@ -2282,7 +2282,7 @@ std::vector<View::Widget> View::widgets() const {
             {tabsX + i * 25.0f + (isBoxNode(i) ? 6.0f : 0.0f) + (isShaperNode(i) ? 6.0f : 0.0f), kInspector.y + 9.0f,
              24.0f, 22.0f},
             -1, i);
-    add(Kind::Toggle, {kInspector.right() - 16.0f - 30.0f, kInspector.y + 38.0f, 30.0f, 17.0f}, enabledParam(node));
+    add(Kind::Toggle, {kInspector.right() - 16.0f - 26.0f, kInspector.y + 37.0f, 26.0f, 19.0f}, enabledParam(node));
     auto knobRow = [&](const int (&params)[5], const char *const (&labels)[5]) {
         for (int i = 0; i < 5; ++i)
             if (params[i] >= 0)
@@ -3599,8 +3599,8 @@ void View::paintRouting(Canvas &c) {
     }
     if (const std::optional<Point> leader = lensLeaderStart()) {
         const Color color = nodeColor(controller_.layout().selectedNode);
-        c.line(*leader, {kInspector.right(), leader->y}, color.alpha(0.3f), 1.5f, true);
-        c.fillCircle(*leader, 2.5f, color.alpha(0.6f));
+        c.line(*leader, {kInspector.right(), leader->y}, color.alpha(0.18f), 1.5f, true);
+        c.fillCircle(*leader, 2.5f, color.alpha(0.4f));
     }
 
     // OUT, lit while a new or moving route would go there.
@@ -6454,16 +6454,6 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             color = kFilterColor;
         if (modeChoice)
             color = routeColor(routeModeFrom(w.param), routeModeTo(w.param));
-        if (isPowerParam(w.param)) {
-            // The lens's own switch for its node: a pill, solid in the node's color with its knob at the right while
-            // on, a well with a dim knob at the left while off.
-            const Color node = nodeColor(controller_.layout().selectedNode);
-            const float r = 0.5f * w.rect.h;
-            c.fillRect(w.rect, on ? (hovered ? mix(node, kText, 0.15f) : node) : hovered ? wellHover() : wellColor(), r);
-            const Point knob{on ? w.rect.right() - r : w.rect.x + r, w.rect.center().y};
-            c.fillCircle(knob, r - 2.0f, on ? kPanel : (hovered ? kText : kDim));
-            break;
-        }
         paintButtonFace(c, w, on, hovered, color, 0.22f, kRadiusControl);
         if (field == FxParam::FilterType) // the filter types show as icons, named in their tooltips
             filterIcon(c, {w.rect.center().x - 10.0f, w.rect.y + 5.0f, 20.0f, w.rect.h - 10.0f},
@@ -6533,11 +6523,10 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
                              Str::TabInputs};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
-        c.text(w.rect, tr(names[w.a]), kTextLabel, selected ? nodeColor(op) : hovered ? kText : kDim, Align::Center,
-               true);
-        if (selected) // in the node's color, as the lens is outlined
+        c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
+        if (selected)
             c.line({w.rect.x + 4.0f, w.rect.bottom() - 1.0f}, {w.rect.right() - 4.0f, w.rect.bottom() - 1.0f},
-                   nodeColor(op), 2.0f);
+                   kAccent, 2.0f);
         else if (opTabModulated(op, tab))
             c.fillCircle({w.rect.right() - 3.0f, w.rect.y + 5.0f}, 2.0f, kAccent);
         break;
@@ -6559,7 +6548,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         // An enabled node's name takes a little of its color.
         // On its solid fill, in the ink a flat theme's lit switches take.
         const Color ink = look.flat ? litInk(kText) : kBackground;
-        c.text(w.rect, kNodeNames[w.a], kTextBody, selected ? ink : (enabled ? color : kFaint),
+        c.text(w.rect, kNodeNames[w.a], kTextBody, selected ? ink : (enabled ? mix(kDim, color, 0.3f) : kFaint),
                Align::Center, true);
         if (soundsOut(w.a))
             c.fillCircle({w.rect.right() - 5.0f, w.rect.y + 5.0f}, 2.0f, selected ? ink : color);
@@ -6567,10 +6556,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveButton: {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
-        const Color color = opColor(w.a);
-        paintButtonFace(c, w, selected, hovered, color, 0.18f, 0.5f * w.rect.h);
+        paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, 0.5f * w.rect.h);
         const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
-        c.polyline(points.data(), points.size(), selected ? litInk(color) : kDim, 1.5f);
+        c.polyline(points.data(), points.size(), selected ? litInk(kAccent) : kDim, 1.5f);
         break;
     }
     case Kind::TypeButton: {
@@ -6828,11 +6816,11 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(w.a, OpParam::Wave))));
         const bool selected = isMoreWave(wave);
         const bool lit = hovered || waveMenu_ == w.a;
-        paintButtonFace(c, w, selected, lit, opColor(w.a), 0.18f, 0.5f * w.rect.h);
+        paintButtonFace(c, w, selected, lit, kAccent, 0.18f, 0.5f * w.rect.h);
         if (selected) {
             const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
-            c.polyline(points.data(), points.size(), litInk(opColor(w.a)), 1.5f);
+            c.polyline(points.data(), points.size(), litInk(kAccent), 1.5f);
             const Point m{w.rect.right() - 8.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.0f, m.y - 1.5f}, {m.x, m.y + 1.5f}, {m.x + 3.0f, m.y - 1.5f}};
             c.polyline(chevron, 3, look.flat ? litInk(kText) : lit ? kText : kDim, 1.2f);
