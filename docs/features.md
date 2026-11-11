@@ -577,7 +577,7 @@ may show anywhere, repaints the whole of it.
     color (each operator's, the filters' purple, the shapers' red): fully while the node is heard, as its routes are
     set (a filter or shaper while something goes into it), and at 45 % while it isn't. Its letter or name, and an
     operator's wave, take its color too, its ratio or type the dim text's. The graph sits on a radar: **OUT** is a
-    disc at its right end, shading from the accent in its middle to a deeper accent and the filters' purple at its
+    disc at its right end, shading smoothly from the accent in its middle to a deeper accent at its
     edge, in a faint halo, and a bloom of the accent glowing out from it behind the graph, strongest on the core and
     feathering out further from it as light from a point does (1 / (1 + (u / 0.28)^2) of it, u the way out), steeply
     by the core and ever more gently further out, to nothing as far as it reaches. The bloom follows how loud what

@@ -3626,17 +3626,16 @@ void paintRadar(Canvas &c, const View::RadarGlow &glow) {
     c.popClip();
 }
 
-// OUT: a disc shading from the accent in its middle to a darker accent and the filters' color at its edge, in a faint
-// halo, ringed in the accent while a route held over it would go there.
+// OUT: a disc shading from the accent in its middle to a darker accent at its edge, in fine steps, in a faint halo,
+// ringed in the accent while a route held over it would go there.
 void paintOutCore(Canvas &c, bool target) {
     c.fillCircle(kOutCore, kOutCoreRadius + 14.0f, kAccent.alpha(0.08f));
     const Color deep = mix(kAccent, kBackground, 0.3f);
-    c.fillCircle(kOutCore, kOutCoreRadius, kFilterColor.alpha(0.9f));
-    c.fillCircle(kOutCore, kOutCoreRadius - 2.0f, deep);
-    constexpr int kSteps = 7;
-    for (int k = 0; k < kSteps; ++k) {
+    c.fillCircle(kOutCore, kOutCoreRadius, deep);
+    constexpr int kSteps = 20;
+    for (int k = 1; k < kSteps; ++k) {
         const float t = static_cast<float>(k) / (kSteps - 1);
-        c.fillCircle(kOutCore, 0.7f * kOutCoreRadius * (1.0f - static_cast<float>(k) / kSteps), mix(deep, kAccent, t));
+        c.fillCircle(kOutCore, kOutCoreRadius * (1.0f - 0.85f * t), mix(deep, kAccent, t));
     }
     if (target)
         c.strokeCircle(kOutCore, kOutCoreRadius + 5.0f, kAccent, 2.0f);
