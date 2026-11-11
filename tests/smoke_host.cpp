@@ -371,8 +371,8 @@ int main(int argc, char **argv) {
                   !listed(partialCountIndex(0)) && !listed(slotAuxIndex(0, 0)) && !listed(slotCurveIndex(0, 0)) &&
                   !listed(slotBypassIndex(0, 0)) && !listed(routeModeIndex(0, 0)) && listed(routeModeIndex(0, 1)) &&
                   params->get_value(plugin, idOfIndex(shapeCountIndex(0)), &point) && point >= 0.0,
-              "hosts are given the params they automate and see and the slots' depths and Amounts, not the effects, "
-              "the sources' own fields or the editor's drawn shapes and wiring");
+              "hosts are given the params they automate and see and the slots' depths and Amounts, not the effects' "
+              "fields (but for each slot's Output), the sources' own fields or the editor's drawn shapes and wiring");
     }
     check(paramTextRoundTrips(plugin, params), "param text conversions read back what they write");
     check(paramTextsAreWholeUtf8(plugin, params), "param names and texts are whole UTF-8, even in small buffers");
@@ -3153,13 +3153,13 @@ int main(int argc, char **argv) {
                 return sums;
             };
             const auto asIs = levels(69);
-            setParams({{fx(7, FxParam::UtilityGain), 0.5}});
+            setParams({{fx(7, FxParam::Output), 0.5}});
             const auto quieter = levels(69);
-            setParams({{fx(7, FxParam::UtilityGain), 1.0}});
+            setParams({{fx(7, FxParam::Output), 1.0}});
             const auto louder = levels(69);
-            setParams({{fx(7, FxParam::UtilityGain), 0.0}});
+            setParams({{fx(7, FxParam::Output), 0.0}});
             const auto silent = levels(69);
-            setParams({{fx(7, FxParam::UtilityGain), utilityGainNorm(1.0)}, {fx(7, FxParam::UtilityPan), 1.0}});
+            setParams({{fx(7, FxParam::Output), utilityGainNorm(1.0)}, {fx(7, FxParam::UtilityPan), 1.0}});
             const auto toRight = levels(69);
             setParams({{fx(7, FxParam::UtilityPan), -0.5}});
             const auto halfLeft = levels(69);
@@ -3184,7 +3184,7 @@ int main(int argc, char **argv) {
                       std::abs(quieter[1] / asIs[1] / middle - 1.0) < 0.01 &&
                       std::abs(louder[0] / asIs[0] / kMaxUtilityGain - 1.0) < 0.01 && silent[0] < 1e-6 &&
                       silent[1] < 1e-6,
-                  "the utility's Gain goes from silence up to +12 dB, 0 dB to begin with and -6 dB at its middle");
+                  "the utility's level, its Output, goes from silence up to +12 dB, 0 dB to begin with and -6 dB at its middle");
             check(toRight[0] < 1e-6 && std::abs(toRight[1] / asIs[1] - 1.0) < 0.01 &&
                       std::abs(halfLeft[0] / asIs[0] - 1.0) < 0.01 && std::abs(halfLeft[1] / asIs[1] - 0.5) < 0.01,
                   "the utility's Pan turns the other side down");
@@ -4051,8 +4051,8 @@ int main(int argc, char **argv) {
         newer.data[4] = static_cast<uint8_t>(saved.data[4] + 1); // a state version from the future: one past the plugin's
         check(!state->load(plugin, &newer.in), "load rejects a newer state version");
 
-        // Hosts aren't given the effects' fields, whatever a slot holds, nor the sources' own, and so no effect has
-        // a remote control page.
+        // Hosts aren't given the effects' fields, whatever a slot holds, but for each slot's Output, nor the sources'
+        // own, and so no effect has a remote control page.
         auto listed = [&](int index) {
             clap_param_info_t info{};
             return paramInfo(plugin, params, index, &info);
@@ -4063,8 +4063,24 @@ int main(int argc, char **argv) {
         };
         check(!listed(paramIndex(0, FxParam::DelayFeedback)) && !listed(paramIndex(0, FxParam::Type)) &&
                   !listed(paramIndex(1, FxParam::ShaperDrive)) && !listed(paramIndex(2, SourceParam::Rate)) &&
-                  !listed(paramIndex(9, SourceParam::Attack)) && !listed(paramIndex(0, SourceParam::Type)),
+                  !listed(paramIndex(9, SourceParam::Attack)) && !listed(paramIndex(0, SourceParam::Type)) &&
+                  !listed(paramIndex(0, FxParam::UtilityGain)) && !listed(paramIndex(1, FxParam::ShaperOutput)),
               "hosts aren't given the effects' fields or the sources' own");
+        {
+            // Each slot's Output they are, whatever the slot holds, by name and with its value's text.
+            bool outputs = true;
+            for (int slot : {0, 2, kFxSlots - 1}) {
+                clap_param_info_t info{};
+                char text[64] = {};
+                outputs = outputs && paramInfo(plugin, params, paramIndex(slot, FxParam::Output), &info) &&
+                          (info.flags & CLAP_PARAM_IS_HIDDEN) == 0 && (info.flags & CLAP_PARAM_IS_AUTOMATABLE) != 0 &&
+                          std::string(info.name) ==
+                              trf(Str::ParamFx, {std::to_string(slot + 1)}) + " " + tr(Str::ParamOutput) &&
+                          params->value_to_text(plugin, info.id, utilityGainNorm(1.0), text, sizeof(text)) &&
+                          std::string(text) == "0.0 dB";
+            }
+            check(outputs, "hosts are given each effect slot's Output, named after its slot, 0 dB to begin with");
+        }
         uint32_t fxPages = 0;
         for (uint32_t i = 0; i < remote->count(plugin); ++i) {
             clap_remote_controls_page_t page;

@@ -123,6 +123,13 @@ double rampStep(double from, double to, uint32_t n, uint32_t shortest) {
     return n > 0 && rampEnds(from, to, n, shortest) ? (to - from) / n : (to - from) / std::max(n, shortest);
 }
 
+// A slot's Output (see FxParam::Output) as a gain: exactly 1 at 0 dB, which the knob's cube misses by a rounding, so
+// an effect at 0 dB passes its sound as it is.
+double slotOutputGain(double norm) {
+    const double gain = utilityGain(norm);
+    return std::abs(gain - 1.0) < 1e-9 ? 1.0 : gain;
+}
+
 // The phaser's and flanger's polarity turns over in this long, its wet sound and feedback fading through nothing
 // rather than jumping, however the host splits the block.
 constexpr double kPolaritySeconds = 0.01;
@@ -531,6 +538,7 @@ double Effects::delayTarget(int slot, int side, const ParamValues &p, double tem
 void Effects::start(int slot, const ParamValues &p, double tempo) {
     Slot &s = slots_[slot];
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
+    s.output = slotOutputGain(at(FxParam::Output)); // at its level from the start, as it fades in
     switch (s.running) {
     case FxType::Shaper: {
         const ShaperSettings settings = shaperSettings([&p](int index) { return p[index]; }, shaperParams(slot));
@@ -952,6 +960,20 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
     case FxType::None:
     case FxType::Count:
         break;
+    }
+    // Its Output, ramped; at 0 dB the sound passes as it is. Inside the fade, so an effect switched off leaves the
+    // sound alone, this level too.
+    const double outputTo = slotOutputGain(p[paramIndex(slot, FxParam::Output)]);
+    if (fx.output != 1.0 || outputTo != 1.0) {
+        const bool arrives = rampEnds(fx.output, outputTo, n, rampShortest_);
+        const double outputStep = rampStep(fx.output, outputTo, n, rampShortest_);
+        for (uint32_t s = 0; s < n; ++s) {
+            fx.output += outputStep;
+            for (int c = 0; c < 2; ++c)
+                io[c][s] = static_cast<float>(io[c][s] * fx.output);
+        }
+        if (arrives) // exactly there, so a level back at 0 dB costs nothing from the next chunk on
+            fx.output = outputTo;
     }
     if (on && fx.fade >= 1.0)
         return;

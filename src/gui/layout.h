@@ -683,17 +683,42 @@ inline Rect fxMenuNodeItem(Point at, int bands = 2) {
     return {head.x, head.bottom() + (bands == 3 ? kFxMenuPitch : 0.0f), head.w, kFxMenuPitch - 2.0f};
 }
 
-// A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it;
-// under its display LINK, which ties the Output knob to the drive, centered on the card; for a Custom curve SYM
-// left of it, the two centered together. The reverb's row: its algorithm's button.
+// Every effect card's Output (FxParam::Output): a strip down the lower 35 % of its right margin, from silence at the
+// bottom to +12 dB at the top, its cap at the level. The card's rows of knobs lay out short of kFxOutRoom, so their
+// last labels clear the cap. The strip's depth handles stack up from its top, nearest first, kFxOutHandles of them at
+// the most; past that, a "+n" pill over them holds the rest.
+constexpr float kFxOutRoom = 13.0f;
+constexpr float kFxOutCapW = 8.0f, kFxOutCapH = 5.0f;
+constexpr int kFxOutHandles = 2;
+inline Rect fxOutStrip(Rect card) {
+    const float bottom = card.bottom() - 14.0f, top = card.y + card.h * 0.65f;
+    return {card.right() - 11.0f, top, 4.0f, bottom - top};
+}
+inline Rect fxOutHit(Rect card) { // where the mouse takes it: the strip and a little round it, short of the labels
+    const Rect strip = fxOutStrip(card);
+    return {strip.x - 4.0f, strip.y - kFxOutCapH, strip.w + 8.0f, strip.h + 2.0f * kFxOutCapH};
+}
+inline Rect fxOutStripOf(Rect hit) { // and back
+    return {hit.x + 4.0f, hit.y + kFxOutCapH, hit.w - 8.0f, hit.h - 2.0f * kFxOutCapH};
+}
+inline Point fxOutHandle(Rect strip, int k) { // the k-th depth handle over a strip, nearest it first
+    return {strip.center().x, strip.y - 8.0f - 10.0f * static_cast<float>(k)};
+}
+// A row of `count` knobs across a card, stopping short of the strip: the k-th's center.
+inline float fxKnobX(Rect card, int k, int count) {
+    return card.x + (card.w - kFxOutRoom) * (static_cast<float>(k) + 0.5f) / static_cast<float>(count);
+}
+
+// A shaper card's curve picker: a button with the curve's name across the card, and the list it opens under it; in
+// the middle of its knob row, between Drive and Mix, LINK, which ties its level to the drive, at the knobs' height, or
+// for a Custom curve SYM over LINK. The reverb's row: its algorithm's button.
 inline Rect clipModeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
 }
-inline Rect clipSymButton(Rect card) {
-    return {card.center().x - 47.0f, card.y + 194.0f, 44.0f, 20.0f};
-}
+inline float clipSwitchX(Rect card) { return fxKnobX(card, 1, 3) - 22.0f; }
+inline Rect clipSymButton(Rect card) { return {clipSwitchX(card), card.y + 218.0f, 44.0f, 20.0f}; }
 inline Rect clipLinkButton(Rect card, bool custom) {
-    return {card.center().x + (custom ? 3.0f : -22.0f), card.y + 194.0f, 44.0f, 20.0f};
+    return {clipSwitchX(card), card.y + (custom ? 242.0f : 230.0f), 44.0f, 20.0f};
 }
 inline Rect reverbTypeButton(Rect card) {
     return {card.x + 14.0f, card.y + 44.0f, card.w - 28.0f, 22.0f};
@@ -725,9 +750,14 @@ inline Rect fxCardClip() {
 }
 
 // How many of the usual card places a card takes: the parametric EQ's and the three-band dynamics' are wider, for
-// their displays and knobs, and the amp's wider still, its amp and its cabinet side by side.
+// their displays and knobs, and the amp's wider still, its amp and its cabinet side by side. The compressor's and the
+// reverb's are a tenth wider, so their rows of four knobs (the shimmer's two) keep their labels apart beside the
+// output strip.
 inline float fxSpan(FxType type) {
-    return type == FxType::Amp ? 1.85f : type == FxType::ParamEq || type == FxType::MultiDyn ? 1.5f : 1.0f;
+    return type == FxType::Amp                                    ? 1.85f
+           : type == FxType::ParamEq || type == FxType::MultiDyn  ? 1.5f
+           : type == FxType::Compressor || type == FxType::Reverb ? 1.1f
+                                                                  : 1.0f;
 }
 
 // A card's rect by its screen place, in card places from the row's left end (0..kVisibleFx, fractions while
@@ -756,16 +786,12 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
                          type == FxType::Reverb || type == FxType::Phaser || type == FxType::Flanger ||
                          type == FxType::Chorus || type == FxType::Filter || type == FxType::FreqShifter ||
-                         type == FxType::Utility;
+                         type == FxType::Disperser || type == FxType::Widener; // their four knobs two by two
     // The filter's slope switch, the delay's SYNC, LINK and PING-PONG, the phaser's and flanger's SYNC, STEREO and
     // polarity and the chorus's voices go under their displays.
     const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Chorus ||
                                type == FxType::Filter || type == FxType::Delay;
-    // The shaper's LINK goes between its display and its knobs.
-    const float bottom = switchesUnder               ? 158.0f
-                         : twoRows                   ? 180.0f
-                         : type == FxType::Shaper    ? 190.0f
-                                                     : 198.0f;
+    const float bottom = switchesUnder ? 158.0f : twoRows ? 180.0f : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
 }
 // The chorus's voices under its display, in its middle: kChorusVoiceChoices side by side, `choice` the place of one.
@@ -850,17 +876,14 @@ inline Rect ampMicRect(Rect display, double position, double distance) {
     return {m.x - 9.0f, m.y - 8.0f, 22.0f, 16.0f};
 }
 
-// The utility's display: at its left the Gain strip, from silence at the bottom to 0 dB at the top, and beside it the
-// stereo field, left to right, its frequency up from 20 Hz at the bottom to 20 kHz at the top. The sound's middle is
-// across it by Pan, and it spreads either way a quarter of the field's width at 100 % Width.
-constexpr int kUtilityHandles = 4;
-constexpr FxParam kUtilityHandleParams[kUtilityHandles] = {FxParam::UtilityGain, FxParam::UtilityPan,
-                                                           FxParam::UtilityWidth, FxParam::UtilityMonoBass};
-inline Rect utilityStrip(Rect display) {
-    return {display.x + 9.0f, display.y + 24.0f, 4.0f, display.h - 34.0f};
-}
+// The utility's display: the stereo field, left to right, its frequency up from 20 Hz at the bottom to 20 kHz at the
+// top. The sound's middle is across it by Pan, and it spreads either way a quarter of the field's width at 100 % Width.
+// Its level is the card's Output, on the strip at the card's edge.
+constexpr int kUtilityHandles = 3;
+constexpr FxParam kUtilityHandleParams[kUtilityHandles] = {FxParam::UtilityPan, FxParam::UtilityWidth,
+                                                           FxParam::UtilityMonoBass};
 inline Rect utilityField(Rect display) {
-    return {display.x + 26.0f, display.y + 24.0f, display.w - 36.0f, display.h - 34.0f};
+    return {display.x + 12.0f, display.y + 24.0f, display.w - 22.0f, display.h - 34.0f};
 }
 inline float utilityMiddle(Rect field, double pan) {
     return field.center().x + static_cast<float>(std::clamp(pan, -1.0, 1.0)) * field.w * 0.5f;
@@ -993,7 +1016,7 @@ inline Rect peqChipSwitch(Rect chip) { return {chip.x, chip.y, peqChipShape(chip
 // Its row of knobs under the chips, as large as a one-row card's: the band picked's Freq, Gain and Q, then Amount.
 constexpr float kPeqKnobsY = 256.0f, kPeqKnobD = 36.0f;
 inline Point peqKnobCenter(Rect card, int i) {
-    return {card.x + card.w * (static_cast<float>(i) + 0.5f) / 4.0f, card.y + kPeqKnobsY};
+    return {fxKnobX(card, i, 4), card.y + kPeqKnobsY};
 }
 
 // The list of band shapes, which opens upward from its chip over the card's display, inside the card.

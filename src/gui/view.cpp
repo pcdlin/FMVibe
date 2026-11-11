@@ -1652,6 +1652,8 @@ bool View::isRatioTarget(int param) {
 Point View::knobCenter(const Widget &w) {
     if (isRatioDisplay(w))
         return kRatioBox.center();
+    if (w.strip)
+        return w.rect.center();
     if (!w.compact)
         return {w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
     return w.shrunk ? Point{w.rect.x + 16.0f, w.rect.y + 16.0f} : Point{w.rect.x + 18.0f, w.rect.y + 20.0f};
@@ -1674,8 +1676,8 @@ float View::compactTextX(const Widget &w) {
 bool View::onValue(const Widget &w, Point p) {
     if (w.kind == Kind::ValueText)
         return true;
-    if (w.kind != Kind::Knob || isRatioDisplay(w)) // the Ratio readout's digits are its number
-        return false;
+    if (w.kind != Kind::Knob || isRatioDisplay(w) || w.strip) // the Ratio readout's digits are its number; a strip
+        return false;                                             // shows none
     return w.compact ? p.x >= w.rect.x + compactTextX(w) - 4.0f : p.y >= w.rect.y + w.rect.w;
 }
 
@@ -1939,28 +1941,28 @@ std::vector<View::Widget> View::widgets() const {
             if (!graph)
                 add(Kind::FxRemove, cardClose(card), -1, slot);
             const float row = card.y + 44.0f; // mode buttons and switches
+            // A row of knobs across the card, short of the Output strip at its right edge (see fxKnobX()).
             auto knobs = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels,
-                             float y = 240.0f) {
-                const float step = card.w / static_cast<float>(params.size());
-                const float diameter = params.size() > 3 ? 32.0f : (y == 240.0f ? 36.0f : 30.0f);
-                for (size_t i = 0; i < params.size(); ++i)
+                             float y = 240.0f, float diameter = 0.0f) {
+                const int count = static_cast<int>(params.size());
+                if (diameter <= 0.0f)
+                    diameter = count > 3 ? 32.0f : (y == 240.0f ? 36.0f : 30.0f);
+                for (int i = 0; i < count; ++i)
                     if (params.begin()[i] >= 0) // -1 leaves its place empty
-                        knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
-                             labels.begin()[i]);
+                        knob(params.begin()[i], {fxKnobX(card, i, count), card.y + y}, diameter, labels.begin()[i]);
             };
             switch (type) {
             case FxType::Shaper: {
                 add(Kind::ListButton, clipModeButton(card), at(FxParam::ShaperMode));
                 const bool custom = clipMode(value(at(FxParam::ShaperMode))) == ClipMode::Custom;
-                const size_t switches = list.size();
+                // SYM and LINK between Drive and Mix, one over the other, each a switch of its own.
                 if (custom)
                     add(Kind::Toggle, clipSymButton(card), at(FxParam::ShaperSymmetric));
                 add(Kind::Toggle, clipLinkButton(card, custom), at(FxParam::ShaperLink));
-                merge(switches);
                 if (custom)
                     drawnCurve(slot, fxDisplayIn(card, type));
-                knobs({at(FxParam::ShaperDrive), at(FxParam::ShaperOutput), at(FxParam::ShaperMix)},
-                      {tr(Str::LabelDrive), tr(Str::LabelOutput), tr(Str::LabelMix)});
+                knobs({at(FxParam::ShaperDrive), -1, at(FxParam::ShaperMix)},
+                      {tr(Str::LabelDrive), nullptr, tr(Str::LabelMix)});
                 break;
             }
             case FxType::Delay: {
@@ -2062,25 +2064,18 @@ std::vector<View::Widget> View::widgets() const {
                     add(Kind::DynGrip, mdLineGrip(bar, std::min(below, above), above, false), mdDownIndex(slot, band),
                         slot, 2 * band);
                 }
+                // The band's own knobs, then the shared ones: four over three, as the compressor's three over four.
                 const int band = fxBand_[slot];
-                auto row = [&](std::initializer_list<int> params, std::initializer_list<const char *> labels, float y,
-                               float diameter) {
-                    const float step = card.w / static_cast<float>(params.size());
-                    for (size_t i = 0; i < params.size(); ++i)
-                        knob(params.begin()[i], {card.x + step * (static_cast<float>(i) + 0.5f), card.y + y}, diameter,
-                             labels.begin()[i]);
-                };
-                row({mdBelowIndex(slot, band), mdUpIndex(slot, band), mdAboveIndex(slot, band), mdDownIndex(slot, band),
-                     mdGainIndex(slot, band)},
-                    {tr(Str::LabelBelow), tr(Str::LabelUp), tr(Str::LabelAbove), tr(Str::LabelDown),
-                     tr(Str::LabelGain)},
-                    kMdBandKnobsY, 30.0f);
-                row({at(FxParam::MdLowFreq), at(FxParam::MdHighFreq), at(FxParam::MdAttack), at(FxParam::MdRelease)},
-                    {tr(Str::LabelLowX), tr(Str::LabelHighX), tr(Str::LabelAttack), tr(Str::LabelRelease)},
-                    kMdSharedY1, 28.0f);
-                row({at(FxParam::MdKnee), at(FxParam::MdRange), at(FxParam::MdMix), at(FxParam::MdOutput)},
-                    {tr(Str::LabelKnee), tr(Str::LabelRange), tr(Str::LabelMix), tr(Str::LabelOutput)}, kMdSharedY2,
-                    28.0f);
+                knobs({mdBelowIndex(slot, band), mdUpIndex(slot, band), mdAboveIndex(slot, band),
+                       mdDownIndex(slot, band), mdGainIndex(slot, band)},
+                      {tr(Str::LabelBelow), tr(Str::LabelUp), tr(Str::LabelAbove), tr(Str::LabelDown),
+                       tr(Str::LabelGain)},
+                      kMdBandKnobsY, 30.0f);
+                knobs({at(FxParam::MdLowFreq), at(FxParam::MdHighFreq), at(FxParam::MdAttack), at(FxParam::MdRelease)},
+                      {tr(Str::LabelLowX), tr(Str::LabelHighX), tr(Str::LabelAttack), tr(Str::LabelRelease)},
+                      kMdSharedY1, 28.0f);
+                knobs({at(FxParam::MdKnee), at(FxParam::MdRange), at(FxParam::MdMix)},
+                      {tr(Str::LabelKnee), tr(Str::LabelRange), tr(Str::LabelMix)}, kMdSharedY2, 28.0f);
                 break;
             }
             case FxType::Reverb:
@@ -2155,35 +2150,35 @@ std::vector<View::Widget> View::widgets() const {
                 knobs({at(FxParam::ShiftFeedback), -1, at(FxParam::ShiftMix)},
                       {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
                 break;
-            case FxType::Disperser:
-                knobs({at(FxParam::DisperserFreq), at(FxParam::DisperserStages), at(FxParam::DisperserPinch),
-                       at(FxParam::DisperserMix)},
-                      {tr(Str::LabelFreq), tr(Str::LabelStages), tr(Str::LabelPinch), tr(Str::LabelMix)});
+            case FxType::Disperser: // two by two, so the Output strip fits beside them
+                knobs({at(FxParam::DisperserFreq), at(FxParam::DisperserStages)},
+                      {tr(Str::LabelFreq), tr(Str::LabelStages)}, 206.0f);
+                knobs({at(FxParam::DisperserPinch), at(FxParam::DisperserMix)}, {tr(Str::LabelPinch), tr(Str::LabelMix)},
+                      266.0f);
                 break;
             case FxType::Widener:
-                knobs({at(FxParam::WidenerSize), at(FxParam::WidenerWidth), at(FxParam::WidenerHighPass),
-                       at(FxParam::WidenerMix)},
-                      {tr(Str::LabelSize), tr(Str::LabelWidth), tr(Str::LabelHighPass), tr(Str::LabelMix)});
+                knobs({at(FxParam::WidenerSize), at(FxParam::WidenerWidth)}, {tr(Str::LabelSize), tr(Str::LabelWidth)},
+                      206.0f);
+                knobs({at(FxParam::WidenerHighPass), at(FxParam::WidenerMix)},
+                      {tr(Str::LabelHighPass), tr(Str::LabelMix)}, 266.0f);
                 break;
             case FxType::Utility: {
-                // On its display, a handle for each knob: Gain's on the strip at its left, Pan's at the top of the
-                // sound's middle line, Width's on the band's edge and Mono Bass's at the end of its line.
+                // On its display, a handle for each knob: Pan's at the top of the sound's middle line, Width's on the
+                // band's edge and Mono Bass's at the end of its line. Its level is the card's Output.
                 const Rect display = fxDisplayIn(card, type);
                 for (int handle = 0; handle < kUtilityHandles; ++handle) {
                     const Point h = utilityHandlePoint(display, handle, false, slot);
                     add(Kind::UtilityHandle, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f}, at(kUtilityHandleParams[handle]),
                         slot, handle);
                 }
-                knobs({at(FxParam::UtilityGain), at(FxParam::UtilityPan)}, {tr(Str::LabelGain), tr(Str::LabelPan)},
-                      206.0f);
-                knobs({at(FxParam::UtilityWidth), at(FxParam::UtilityMonoBass)},
-                      {tr(Str::LabelWidth), tr(Str::LabelMonoBass)}, 266.0f);
+                knobs({at(FxParam::UtilityPan), at(FxParam::UtilityWidth), at(FxParam::UtilityMonoBass)},
+                      {tr(Str::LabelPan), tr(Str::LabelWidth), tr(Str::LabelMonoBass)});
                 break;
             }
             case FxType::Amp: {
                 // The amp's side: its model's list, STEREO under its display, Gain, Volume and Presence over Bass, Mid
                 // and Treble. The cabinet's: its power switch and list, the mic on its display, the mic's three under
-                // it, Position and Distance over Output and Mix. With the cabinet off, its own controls dim.
+                // it, Position and Distance over Mix, in the middle. With the cabinet off, its own controls dim.
                 add(Kind::ListButton, ampModelButton(card), at(FxParam::AmpModel));
                 add(Kind::Toggle, ampStereoButton(card), at(FxParam::AmpStereo));
                 knob(at(FxParam::AmpGain), ampKnob(card, false, 0, 0), kAmpKnobD, tr(Str::LabelGain));
@@ -2207,8 +2202,8 @@ std::vector<View::Widget> View::widgets() const {
                 if (value(at(FxParam::AmpCabOn)) < 0.5)
                     for (size_t i = cabControls; i < list.size(); ++i)
                         list[i].faint = true;
-                knob(at(FxParam::AmpOutput), ampKnob(card, true, 0, 1), kAmpKnobD, tr(Str::LabelOutput));
-                knob(at(FxParam::AmpMix), ampKnob(card, true, 1, 1), kAmpKnobD, tr(Str::LabelMix));
+                knob(at(FxParam::AmpMix), {ampRight(card).center().x, ampKnob(card, true, 0, 1).y}, kAmpKnobD,
+                     tr(Str::LabelMix));
                 break;
             }
             case FxType::MultiComp: // retired: a state's loads as a three-band dynamics
@@ -2216,6 +2211,9 @@ std::vector<View::Widget> View::widgets() const {
             case FxType::Count:
                 break;
             }
+            // Its Output, the strip down its right edge: a knob drawn as one (see paintOutStrip()).
+            add(Kind::Knob, fxOutHit(card), at(FxParam::Output));
+            list.back().strip = true;
         };
         if (fxGraph()) {
             fxGraphWidgets(list);
@@ -2805,6 +2803,25 @@ std::vector<View::Widget> View::widgets() const {
                 const float edge =
                     first - static_cast<float>(std::max(shown - 1, 0)) * step - (shown > 0 ? 4.25f : 0.0f);
                 pill({edge - pillW, y - 0.5f * sizes.pillCompactH, pillW, sizes.pillCompactH}, shown, true);
+            }
+            continue;
+        }
+        if (list[i].strip) {
+            // An Output strip's stack up from its top, 10 px apart, nearest first; past kFxOutHandles, the last place
+            // holds a pill with the rest, its right edge on the strip's.
+            const Rect strip = fxOutStripOf(r);
+            const int shown = n > kFxOutHandles ? kFxOutHandles - 1 : n;
+            for (int k = 0; k < shown; ++k) {
+                const Point h = fxOutHandle(strip, k);
+                add(Kind::ModDot, {h.x - 5.0f, h.y - 5.0f, 10.0f, 10.0f}, slotAmountIndex(here[k].source, here[k].slot),
+                    here[k].source, here[k].slot);
+                list.back().clip = list[i].clip;
+                list.back().disabled = list[i].disabled;
+            }
+            if (n > kFxOutHandles) {
+                const float pillW = n - shown >= 10 ? sizes.pillWide : sizes.pill;
+                const float y = fxOutHandle(strip, shown).y;
+                pill({strip.right() + 2.0f - pillW, y - 0.5f * sizes.pillH, pillW, sizes.pillH}, shown, false);
             }
             continue;
         }
@@ -4693,18 +4710,19 @@ void View::paintShaperCurve(Canvas &c, Rect r, int unit) {
     const double output =
         std::pow(10.0, clipOutputDb(liveValue(clip.output), liveValue(clip.drive), value(clip.link) >= 0.5) / 20.0);
     const double mix = liveValue(clip.mix);
+    const double level = shaperCardLevel(unit);
     auto get = [this](int index) { return value(index); };
     const bool symmetric = curveSymmetric(curve);
     auto shape = [&](double x) { return shaperCurveValue(get, mode, shapeBase(curve), symmetric, x); };
     std::vector<double> key = curveKey(Curve::Shaper, inner);
-    key.insert(key.end(), {static_cast<double>(mode), symmetric ? 1.0 : 0.0, drive, output, mix});
+    key.insert(key.end(), {static_cast<double>(mode), symmetric ? 1.0 : 0.0, drive, output, mix, level});
     if (mode == ClipMode::Custom) // a drawn curve whose big editor has its points
         keyShape(key, shapeBase(curve));
     const std::vector<Point> points = curves_.get(key, [&] {
         std::vector<Point> points;
         for (int i = 0; i <= 240; ++i) {
             const double x = kRange * (2.0 * i / 240.0 - 1.0);
-            points.push_back(at(x, x + (shape(x * drive) * output - x) * mix));
+            points.push_back(at(x, (x + (shape(x * drive) * output - x) * mix) * level));
         }
         return points;
     });
@@ -4751,12 +4769,13 @@ void View::paintClipCurveCard(Canvas &c, Rect r, int unit) {
         return points;
     });
     key[0] = static_cast<double>(Curve::Driven);
-    key.insert(key.end(), {drive, output, mix});
+    const double level = shaperCardLevel(unit);
+    key.insert(key.end(), {drive, output, mix, level});
     const std::vector<Point> driven = curves_.get(key, [&] {
         std::vector<Point> driven;
         for (int i = 0; i <= 160; ++i) {
             const double x = i / 160.0, in = 2.0 * x - 1.0;
-            const double out = in + (curve(in * drive) * output - in) * mix;
+            const double out = (in + (curve(in * drive) * output - in) * mix) * level;
             driven.push_back(shapeAt(shape, x, std::clamp(out, -1.1, 1.1)));
         }
         return driven;
@@ -5440,21 +5459,15 @@ void View::paintWidener(Canvas &c, Rect r, int slot) {
 
 // The utility's picture of the stereo field, as the widener's: the sound's place across, left to right, and its
 // frequency up. The band is the sound, its middle where Pan puts it and as wide as Width makes it; below Mono Bass's
-// line it narrows into its middle, mono. It fades as Gain goes down below 0 dB, gone at -inf, and the strip at its left
-// shows Gain, a tick across it at 0 dB.
+// line it narrows into its middle, mono. It fades as the card's Output goes down below 0 dB, gone at -inf.
 void View::paintUtility(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
     auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
-    const double gainNorm = std::clamp(at(FxParam::UtilityGain), 0.0, 1.0), pan = at(FxParam::UtilityPan);
+    const double gainNorm = std::clamp(at(FxParam::Output), 0.0, 1.0), pan = at(FxParam::UtilityPan);
     const double width = std::clamp(at(FxParam::UtilityWidth), 0.0, kMaxUtilityWidth);
     const double mono = at(FxParam::UtilityMonoBass);
-    const Rect strip = utilityStrip(r), field = utilityField(r);
-    c.fillRect(strip, kTrack, kRadiusMark);
-    if (const float level = strip.bottom() - static_cast<float>(gainNorm) * strip.h; gainNorm > 0.0)
-        c.fillRect({strip.x, level, strip.w, strip.bottom() - level}, fx.alpha(0.8f), kRadiusMark);
+    const Rect field = utilityField(r);
     const double unity = utilityGainNorm(1.0);
-    const float zeroDb = strip.bottom() - static_cast<float>(unity) * strip.h;
-    c.line({strip.x - 3.0f, zeroDb}, {strip.right() + 3.0f, zeroDb}, kDim, 1.0f);
 
     const float middle = utilityMiddle(field, pan), spread = utilitySpread(field, width);
     auto yOf = [&](double norm) { return field.bottom() - static_cast<float>(norm) * field.h; };
@@ -5486,7 +5499,7 @@ void View::paintUtility(Canvas &c, Rect r, int slot) {
     }
 
     char gain[32], panText[32];
-    formatParam(paramIndex(slot, FxParam::UtilityGain), gainNorm, gain, sizeof(gain));
+    formatParam(paramIndex(slot, FxParam::Output), gainNorm, gain, sizeof(gain));
     formatParam(paramIndex(slot, FxParam::UtilityPan), pan, panText, sizeof(panText));
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, trf(Str::CaptionUtility, {gain, panText}).c_str(), kTextLabel,
            kDim, Align::Left);
@@ -5499,16 +5512,13 @@ Point View::utilityHandlePoint(Rect r, int handle, bool live, int slot) const {
         const int index = paramIndex(slot, f);
         return live ? liveValue(index) : value(index);
     };
-    const Rect strip = utilityStrip(r), field = utilityField(r);
+    const Rect field = utilityField(r);
     const double pan = at(FxParam::UtilityPan);
     const float middle = utilityMiddle(field, pan);
     switch (handle) {
-    case 0: // across the Gain strip, at its level
-        return {strip.center().x,
-                strip.bottom() - static_cast<float>(std::clamp(at(FxParam::UtilityGain), 0.0, 1.0)) * strip.h};
-    case 1: // at the top of the sound's middle line
+    case 0: // at the top of the sound's middle line
         return {middle, field.y + 4.0f};
-    case 2: { // on the band's edge, on the side with more room
+    case 1: { // on the band's edge, on the side with more room
         const float reach = utilitySpread(field, std::clamp(at(FxParam::UtilityWidth), 0.0, kMaxUtilityWidth));
         return {std::clamp(middle + (pan > 0.0 ? -reach : reach), field.x, field.right()),
                 field.y + kUtilityWidthHandleY * field.h};
@@ -7493,20 +7503,13 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillCircle({m.x - 3.0f, m.y}, 3.5f, color);
         break;
     }
-    case Kind::UtilityHandle: { // where modulation has it; a cap across the Gain strip, a dot for the others
+    case Kind::UtilityHandle: { // where modulation has it, a dot
         const Color color = fxColor(w.a);
         Point h = w.rect.center();
         if (const std::optional<Rect> card = fxCardOf(w.a))
             h = utilityHandlePoint(fxDisplayIn(*card, FxType::Utility), w.b, true, w.a);
         const bool focused = hovered || active;
-        const Color edge = w.b == 3 && value(w.param) <= 0.0 ? kDim : color; // Mono Bass off
-        if (w.b == 0) {
-            const Rect cap{h.x - 6.0f, h.y - 2.5f, 12.0f, 5.0f};
-            if (focused)
-                c.strokeRect(cap.inset(-3.0f), edge.alpha(0.45f), 3.0f, kRadiusMark + 3.0f);
-            c.fillRect(cap, focused ? edge : kText, kRadiusMark);
-            break;
-        }
+        const Color edge = w.b == 2 && value(w.param) <= 0.0 ? kDim : color; // Mono Bass off
         if (focused)
             c.strokeCircle(h, 9.0f, edge.alpha(0.45f), 3.0f);
         c.fillCircle(h, 4.5f, focused ? edge : kDisplayColor);
@@ -8317,7 +8320,71 @@ std::string View::modRangeText(int source, int slot) const {
     return text;
 }
 
+// An effect card's Output as a strip (see fxOutStrip()): its track, filled in the effect's color from the bottom up to
+// the level, a tick across it at 0 dB and a cap at the level. Modulated, as a knob is: beside the track a range for each
+// modulation in its source's color, the first between the track and the card's edge and the others on the knobs' side,
+// 3.5 px apart (the one whose depth handle is under the mouse wider, over the others; a line across one where it runs
+// past an end), and a dot on the track where modulation takes it now. Under the mouse or turned, its level beside the
+// cap.
+void View::paintOutStrip(Canvas &c, const Widget &w) {
+    const Rect strip = fxOutStripOf(w.rect);
+    const int slot = fxSlotOf(w.param);
+    const bool on = value(paramIndex(slot, FxParam::Enabled)) >= 0.5;
+    const bool focused = isHovered(w) || isActive(w);
+    const Color fx = fxColor(slot);
+    const double n = std::clamp(norm(w.param), 0.0, 1.0);
+    auto along = [&](double v) { return strip.bottom() - static_cast<float>(std::clamp(v, 0.0, 1.0)) * strip.h; };
+    c.fillRect(strip, look.flat ? fx.alpha(focused ? 0.45f : 0.28f) : (focused ? kFaint : kTrack), kRadiusMark);
+    const float level = along(n);
+    if (n > 0.0)
+        c.fillRect({strip.x, level, strip.w, strip.bottom() - level}, (on ? fx : kDim).alpha(0.8f), kRadiusMark);
+    const float zeroDb = along(utilityGainNorm(1.0));
+    c.line({strip.x - 1.5f, zeroDb}, {strip.right() + 1.5f, zeroDb}, kDim, 1.0f);
+
+    auto range = [&](const Assignment &m, int place, float width, float alpha) {
+        const auto [down, up] = modReach(m);
+        const Color color = ringColor(kSourceColors[m.source], fx).alpha(alpha);
+        if (place == 0)
+            width = std::min(width, 3.0f); // as much as the card's edge leaves
+        const float x = place == 0 ? strip.right() + 1.5f : strip.x - 1.5f - 3.5f * static_cast<float>(place - 1) - width;
+        const float top = along(n + up), bottom = along(n + down);
+        c.fillRect({x, std::min(top, bottom), width, std::abs(bottom - top)}, color, 0.0f);
+        for (const double end : {n + down < 0.0 ? 0.0 : -1.0, n + up > 1.0 ? 1.0 : -1.0})
+            if (end >= 0.0)
+                c.line({x - 1.5f, along(end)}, {x + width + 1.5f, along(end)}, color, 1.5f);
+    };
+    int place = 0;
+    std::vector<std::pair<Assignment, int>> focus;
+    forEachMod(w.param, [&](const Assignment &m) {
+        const int k = place++;
+        if (modFocused(m)) {
+            focus.emplace_back(m, k);
+            return;
+        }
+        range(m, k, 2.5f, (m.bipolar ? 0.6f : 0.9f) * (sourceOn(m.source) && !m.bypassed ? 1.0f : 0.3f));
+    });
+    for (const auto &[m, k] : focus)
+        range(m, k, 4.0f, sourceOn(m.source) && !m.bypassed ? 1.0f : 0.4f);
+
+    c.fillRect({strip.center().x - 0.5f * kFxOutCapW, level - 0.5f * kFxOutCapH, kFxOutCapW, kFxOutCapH},
+               focused ? fx : (on ? kText : kDim), kRadiusMark);
+    if (const float offset = liveOffset(w.param); offset != 0.0f)
+        c.fillCircle({strip.center().x, along(n + offset)}, 2.5f, kText);
+    if (focused && !(typing_ && typing_->widget.same(w))) {
+        char text[32];
+        formatParam(w.param, value(w.param), text, sizeof(text));
+        const float width = std::ceil(c.textWidth(text, kTextLabel)) + 10.0f;
+        const Rect box{strip.x - 5.0f - width, level - 9.0f, width, 18.0f};
+        c.fillRect(box, kDisplayColor, kRadiusControl);
+        c.text(box, text, kTextLabel, kText);
+    }
+}
+
 void View::paintKnob(Canvas &c, const Widget &w) {
+    if (w.strip) {
+        paintOutStrip(c, w);
+        return;
+    }
     const ParamDef &def = table_[w.param];
     const bool focused = isHovered(w) || isActive(w);
     const Point center = knobCenter(w);
@@ -8576,7 +8643,8 @@ void View::paintTooltip(Canvas &c) {
          hover_->kind != Kind::FxNodeRemove && hover_->kind != Kind::FxNodeDelete && hover_->kind != Kind::FxClear &&
          hover_->kind != Kind::NodeDelete &&
          hover_->kind != Kind::WireStart &&
-         hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone && !(hover_->kind == Kind::Knob && dynKnobTip(hover_->param) != Str::Count) &&
+         hover_->kind != Kind::DynGrip && hover_->kind != Kind::DynZone &&
+         !(hover_->kind == Kind::Knob && (hover_->strip || dynKnobTip(hover_->param) != Str::Count)) &&
          !(hover_->kind == Kind::ListButton && (isSlopeList(hover_->param) || isMidiInput(hover_->param))) &&
          !(hover_->kind == Kind::ShapeGrid && hover_->b != 0)))
         return;
@@ -8645,8 +8713,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(hover_->b % 2 == 1 ? Str::TipUpGrip : Str::TipDownGrip);
     } else if (hover_->kind == Kind::DynZone) {
         text = tr(hover_->b % 2 == 1 ? Str::TipUpZone : Str::TipDownZone);
-    } else if (hover_->kind == Kind::Knob) {
-        text = tr(dynKnobTip(param));
+    } else if (hover_->kind == Kind::Knob) { // an Output strip's name, as it has no label
+        text = hover_->strip ? tr(Str::LabelOutput) : tr(dynKnobTip(param));
     } else if (hover_->kind == Kind::MacroHandle && isWheel(hover_->a)) {
         text = tr(Str::TipWheelHandle);
     } else if (hover_->kind == Kind::MacroHandle && isNote(hover_->a)) {
@@ -8990,10 +9058,10 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             c.strokeRect(w.rect.inset(-1.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, kRadiusControl);
             continue;
         }
-        if (w.popup || covered(isRatioDisplay(w)      ? kRatioBox.inset(-4.0f)
-                               : w.kind == Kind::Knob ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f,
-                                                             w.rect.w + 14.0f}
-                                                      : w.rect.inset(-4.0f)))
+        if (w.popup || covered(isRatioDisplay(w)                   ? kRatioBox.inset(-4.0f)
+                               : w.kind == Kind::Knob && !w.strip ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f,
+                                                                          w.rect.w + 14.0f, w.rect.w + 14.0f}
+                                                                   : w.rect.inset(-4.0f)))
             continue;
         if (w.kind == Kind::ModDot && w.a != source) { // a depth handle takes it as the modulation's aux
             if (w.clip.w > 0.0f && !w.clip.contains(w.rect.center()))
@@ -9024,6 +9092,8 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         const Color ring = color.alpha(over ? 1.0f : 0.35f);
         if (isRatioDisplay(w)) {
             c.strokeRect(kRatioBox.inset(-4.0f), ring, over ? 2.5f : 1.5f, kRadiusCard);
+        } else if (w.strip) { // round the strip, a ring round a mark (see theme.h)
+            c.strokeRect(fxOutStripOf(w.rect).inset(-4.0f), ring, over ? 2.5f : 1.5f, kRadiusMark + 4.0f);
         } else if (w.kind == Kind::Knob) {
             c.strokeCircle(knobCenter(w), knobRadius(w) + 6.0f, ring, over ? 2.5f : 1.5f);
         } else {
@@ -9092,6 +9162,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             c.strokeRect(pill->rect.inset(-2.0f), color, 1.5f, pill->rect.h * 0.5f + 2.0f);
         if (isRatioDisplay(w))
             c.strokeRect(kRatioBox.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusCard);
+        else if (w.strip)
+            c.strokeRect(fxOutStripOf(w.rect).inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusMark + 3.0f);
         else if (w.kind == Kind::Knob)
             c.strokeCircle(knobCenter(w), knobRadius(w) + 5.0f, color.alpha(0.5f), 1.0f);
         else
@@ -9129,6 +9201,11 @@ Rect View::typingField() const {
     const Widget &w = typing_->widget;
     if (isRatioDisplay(w)) // over its digits
         return {kRatioBox.x, kRatioBox.y + 9.0f, kRatioBox.w, 22.0f};
+    if (w.strip) { // left of its cap, where its level shows under the mouse
+        const Rect strip = fxOutStripOf(w.rect);
+        const float level = strip.bottom() - static_cast<float>(std::clamp(norm(w.param), 0.0, 1.0)) * strip.h;
+        return {strip.x - 77.0f, level - 9.0f, 72.0f, 18.0f};
+    }
     if (w.kind == Kind::Knob && w.compact)
         return {w.rect.x + compactTextX(w) - 4.0f, w.rect.y + (w.shrunk ? 14.0f : 17.0f), w.rect.w + 2.0f - (compactTextX(w) - 4.0f), 20.0f};
     if (w.kind == Kind::Knob)
@@ -9257,6 +9334,9 @@ void View::applyDrag(Point p) {
         else if (w.kind == Kind::ModDot && w.a >= 0 && w.b >= 0 &&
                  isRatioTarget(slotTarget(value(slotTargetIndex(w.a, w.b))))) // an octave every 60 px (3000 with Shift)
             set(w.param, drag_.startValue + (drag_.start.y - p.y) / (drag_.fine ? 3000.0 : 60.0) * (1.0 / 7.0));
+        else if (w.strip) // its cap follows the mouse (a hundredth as far with Shift)
+            set(w.param, drag_.startValue + (drag_.start.y - p.y) / (fxOutStripOf(w.rect).h * (drag_.fine ? 100.0f : 1.0f)) *
+                                               (def.max - def.min));
         else if (def.kind == ParamKind::VoiceCount) // doubles every 40 px
             set(w.param, std::round(drag_.startValue * std::exp2((drag_.start.y - p.y) / 40.0)));
         else if (snapsToSteps(def.kind)) { // a step every 10 px; a note lands on a whole one
@@ -9343,15 +9423,12 @@ void View::applyDrag(Point p) {
         if (!card)
             break;
         const Rect display = fxDisplayIn(*card, FxType::Utility);
-        const Rect strip = utilityStrip(display), field = utilityField(display);
+        const Rect field = utilityField(display);
         switch (w.b) {
-        case 0: // Gain up the strip
-            set(w.param, (strip.bottom() - p.y) / strip.h);
-            break;
-        case 1: // Pan across the field
+        case 0: // Pan across the field
             set(w.param, (p.x - field.center().x) / (field.w * 0.5f));
             break;
-        case 2: // Width out from the middle, either way
+        case 1: // Width out from the middle, either way
             set(w.param, std::abs(p.x - utilityMiddle(field, value(paramIndex(w.a, FxParam::UtilityPan)))) /
                              utilitySpread(field, 1.0));
             break;

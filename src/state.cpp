@@ -53,7 +53,7 @@ constexpr size_t kMaxPresetChunk = 65536;
 // 10: The three-band dynamics' Above and Below thresholds reach down to -80 dB (kMdThresholdMinDb) rather than -60.
 //    Their values keep their meaning, but a modulation's depth is a share of its target's range, so an earlier state's
 //    depths on them load smaller, to swing them as far as they did.
-constexpr uint32_t kStateVersion = 10;
+constexpr uint32_t kStateVersion = 11;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
     auto *bytes = static_cast<const uint8_t *>(data);
@@ -466,6 +466,68 @@ void loadRetiredMultiComp(ParamValues &values) {
     }
 }
 
+// Every effect has an Output since version 11, which took over the utility's Gain and the shaper's, the three-band
+// dynamics' and the amp's Output knobs: in a state from before, a slot holding one of those has that level on its
+// Output (the dynamics' held to +12 dB, the Output's top), and the knob it came from at 0 dB, where it does nothing. A
+// modulation aimed at the knob moves onto Output, its depth the share of Output's range that reaches the level the old
+// depth reached at its full swing from where the knob was set (the utility's Gain had Output's range and curve, so its
+// depth stays). The shaper's link still lowers its level as its drive goes up, by as much as before.
+// The shaper's and the amp's Output took their wet sound alone, before their Mix (m): they put out dry·(1 − m) +
+// wet·o·m, where the slot's Output (O) takes all they put out, O·(dry·(1 − m′) + wet·m′). So their Output takes
+// O = 1 − m + o·m and their Mix m′ = o·m / O, which plays as they did at any mix (O lies between o and 1, inside
+// Output's range); at 100 % mix, where they start, O is o and the mix stays. A depth on their Output reaches the O its
+// full swing's o gives, at the mix as set.
+void outputFromRetired(ParamValues &values) {
+    const ParamTable &table = paramTable();
+    auto fader = [](double gain) { return utilityGainNorm(std::min(gain, kMaxUtilityGain)); };
+    auto gainOf = [](double db) { return std::pow(10.0, db / 20.0); };
+    for (int slot = 0; slot < kFxSlots; ++slot) {
+        FxParam knob, mix = FxParam::Count; // the Mix the knob came before, for the shaper and the amp
+        switch (fxType(values[paramIndex(slot, FxParam::Type)])) {
+        case FxType::Utility:
+            knob = FxParam::UtilityGain;
+            break;
+        case FxType::Shaper:
+            knob = FxParam::ShaperOutput;
+            mix = FxParam::ShaperMix;
+            break;
+        case FxType::MultiDyn:
+            knob = FxParam::MdOutput;
+            break;
+        case FxType::Amp:
+            knob = FxParam::AmpOutput;
+            mix = FxParam::AmpMix;
+            break;
+        default:
+            continue;
+        }
+        const int from = paramIndex(slot, knob), to = paramIndex(slot, FxParam::Output);
+        const bool sameCurve = knob == FxParam::UtilityGain; // else dB
+        const double set = values[from], range = table[from].max - table[from].min;
+        const double m = mix == FxParam::Count ? 1.0 : std::clamp(values[paramIndex(slot, mix)], 0.0, 1.0);
+        auto level = [&](double db) { return 1.0 - m + gainOf(db) * m; }; // O for a knob at `db`
+        const double base = sameCurve ? set : fader(level(set));
+        values[to] = std::clamp(base, table[to].min, table[to].max);
+        if (mix != FxParam::Count && m < 1.0)
+            values[paramIndex(slot, mix)] = gainOf(set) * m / level(set);
+        values[from] = table[from].def;
+        for (int source = 0; source < kAllSources; ++source)
+            for (int s = 0; s < kSlots; ++s) {
+                // By id, as slotTarget() passes retired params by.
+                const long id = std::lround(values[slotTargetIndex(source, s)]) - 1;
+                if (id < 0 || indexOfId(static_cast<clap_id>(id)) != from)
+                    continue;
+                values[slotTargetIndex(source, s)] = slotTargetValue(to);
+                if (sameCurve)
+                    continue;
+                const int depth = slotAmountIndex(source, s);
+                const double reached =
+                    fader(level(std::clamp(set + values[depth] * range, table[from].min, table[from].max)));
+                values[depth] = std::clamp(reached - base, table[depth].min, table[depth].max);
+            }
+    }
+}
+
 } // namespace
 
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
@@ -559,6 +621,8 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
         for (int position = 0; position < kFxSlots; ++position)
             loaded[fxPositionIndex(position)] = table[fxPositionIndex(position)].def;
     }
+    if (header[1] < 11) // after the retired three-band compressor has become a dynamics, whose Output moves on too
+        outputFromRetired(loaded);
     return true;
 }
 

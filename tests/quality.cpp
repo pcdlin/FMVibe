@@ -411,6 +411,120 @@ void ampChecks() {
     }
 }
 
+// Every effect's Output: a state from before version 11 loading its effects' Out knobs onto it, and the level it sets.
+void checkEffectOutputs() {
+    auto defaults = [] {
+        ParamValues p;
+        for (int i = 0; i < kParamCount; ++i)
+            p[i] = paramTable()[i].def;
+        return p;
+    };
+    {
+        // Every effect has an Output since version 11, which took over the utility's Gain and the shaper's, the
+        // three-band dynamics' and the amp's Output knobs: an earlier state's levels on them load onto the slot's Output
+        // (the dynamics' +18 dB held to +12, the Output's top), the knobs back at 0 dB; a modulation of one aims at
+        // Output, reaching the level it reached at its full swing (the utility's Gain had Output's curve: its depth
+        // stays); a version 11 state loads as saved. An amp mixed half dry, whose Output took its wet sound alone,
+        // takes an Output and a Mix that play as it did (see outputFromRetired()). And the patch plays as it did.
+        auto fader = [](double db) { return utilityGainNorm(std::pow(10.0, db / 20.0)); };
+        ParamValues p = defaults();
+        const FxType types[] = {FxType::Utility, FxType::Shaper, FxType::MultiDyn, FxType::Amp};
+        for (int slot = 0; slot < 4; ++slot)
+            p[paramIndex(slot, FxParam::Type)] = static_cast<double>(types[slot]);
+        chain(p, {0, 1, 2, 3});
+        p[paramIndex(0, FxParam::UtilityGain)] = utilityGainNorm(0.5);
+        p[paramIndex(1, FxParam::ShaperOutput)] = -6.0;
+        p[paramIndex(1, FxParam::ShaperDrive)] = 12.0;
+        p[paramIndex(1, FxParam::ShaperLink)] = 1.0;
+        p[paramIndex(2, FxParam::MdOutput)] = 18.0;
+        p[paramIndex(3, FxParam::AmpOutput)] = -9.0;
+        p[paramIndex(3, FxParam::AmpMix)] = 0.5;
+        p[slotTargetIndex(1, 0)] = static_cast<double>(idOfIndex(paramIndex(1, FxParam::ShaperOutput))) + 1.0;
+        p[slotAmountIndex(1, 0)] = 0.2; // 6 dB of its 30
+        p[slotTargetIndex(1, 1)] = static_cast<double>(idOfIndex(paramIndex(0, FxParam::UtilityGain))) + 1.0;
+        p[slotAmountIndex(1, 1)] = -0.1;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues old = load(10), now = load(11);
+        auto output = [&](int slot) { return old[paramIndex(slot, FxParam::Output)]; };
+        const double ampWet = std::pow(10.0, -9.0 / 20.0) * 0.5, ampLevel = 0.5 + ampWet; // 1 - m + o * m
+        const bool levels = output(0) == utilityGainNorm(0.5) && std::abs(output(1) - fader(-6.0)) < 1e-12 &&
+                            output(2) == 1.0 && std::abs(output(3) - utilityGainNorm(ampLevel)) < 1e-12 &&
+                            std::abs(old[paramIndex(3, FxParam::AmpMix)] - ampWet / ampLevel) < 1e-12;
+        const bool cleared = old[paramIndex(0, FxParam::UtilityGain)] == utilityGainNorm(1.0) &&
+                             old[paramIndex(1, FxParam::ShaperOutput)] == 0.0 &&
+                             old[paramIndex(2, FxParam::MdOutput)] == 0.0 && old[paramIndex(3, FxParam::AmpOutput)] == 0.0;
+        const bool aimed = slotTarget(old[slotTargetIndex(1, 0)]) == paramIndex(1, FxParam::Output) &&
+                           std::abs(old[slotAmountIndex(1, 0)] - (fader(0.0) - fader(-6.0))) < 1e-12 &&
+                           slotTarget(old[slotTargetIndex(1, 1)]) == paramIndex(0, FxParam::Output) &&
+                           old[slotAmountIndex(1, 1)] == -0.1;
+        const bool asSaved = std::equal(now.begin(), now.end(), p.begin());
+        std::printf("      version 10's Out knobs on Output: utility %.3f, shaper %.3f (depth %.3f), 3-band %.3f, amp %.3f\n",
+                    output(0), output(1), old[slotAmountIndex(1, 0)], output(2), output(3));
+        check(levels && cleared && aimed && asSaved,
+              "a state before version 11 loads its effects' Out knobs, and their modulation, onto their Output");
+
+        // As it played: the patch as saved before (its knobs at their levels, the dynamics' at +12 dB, which Output
+        // reaches) against the same loaded now, unmodulated.
+        ParamValues before = p;
+        before[paramIndex(2, FxParam::MdOutput)] = 12.0;
+        before[slotTargetIndex(1, 0)] = before[slotTargetIndex(1, 1)] = 0.0;
+        ParamValues migrated = load(10);
+        migrated[slotTargetIndex(1, 0)] = migrated[slotTargetIndex(1, 1)] = 0.0;
+        auto play = [](const ParamValues &values) {
+            const auto e = std::make_unique<Engine>(2); // an engine is large: not on the stack, beside the patches
+            e->p = values;
+            e->noteOn(57);
+            return e->render(9600);
+        };
+        const std::vector<float> a = play(before), b = play(migrated);
+        double worst = 0.0, peak = 0.0;
+        for (size_t i = 0; i < a.size(); ++i) {
+            worst = std::max(worst, static_cast<double>(std::abs(a[i] - b[i])));
+            peak = std::max(peak, static_cast<double>(std::abs(a[i])));
+        }
+        std::printf("      the patch before and after: peak %.3f, at most %.2g apart\n", peak, worst);
+        check(peak > 0.01 && worst < 1e-4 * peak, "a state before version 11 plays as it did with its Out knobs on Output");
+    }
+    {
+        // A slot's Output: its level after the effect, a delay's echoes and all; silence at its bottom; nothing changed
+        // at 0 dB, where it begins. An effect switched off leaves the sound alone, its Output too.
+        auto play = [](double output, bool on) {
+            const auto engine = std::make_unique<Engine>(2);
+            Engine &e = *engine;
+            e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+            e.p[paramIndex(0, FxParam::DelayMix)] = 0.5;
+            e.p[paramIndex(0, FxParam::Enabled)] = on ? 1.0 : 0.0;
+            if (output >= 0.0)
+                e.p[paramIndex(0, FxParam::Output)] = output;
+            chain(e.p, {0});
+            e.noteOn(57);
+            e.render(2400);
+            const std::vector<float> heard = e.render(9600);
+            double sum = 0.0;
+            for (float s : heard)
+                sum += static_cast<double>(s) * s;
+            return std::sqrt(sum / static_cast<double>(heard.size()));
+        };
+        const double asIs = play(-1.0, true), minus6 = play(utilityGainNorm(0.5), true), silent = play(0.0, true);
+        const double bypassed = play(-1.0, false), bypassedDown = play(utilityGainNorm(0.5), false);
+        std::printf("      a delay's Output: %.4f at 0 dB, %.4f at -6 dB, %.2g at -inf; off, %.4f either way\n", asIs,
+                    minus6, silent, bypassed);
+        check(asIs > 0.01 && std::abs(minus6 / asIs - 0.5) < 0.01 && silent < 1e-7 && bypassed == bypassedDown,
+              "an effect's Output sets its level after it, and does nothing while the effect is switched off");
+    }
+}
+
 // --- The effects chain: a reverb rings on while what went in still waits in its pre-delay; a jump in an effect's
 // param ramps however the host's events split the block; a drawn shaper curve passes a quiet, slow sine as drawn.
 void effectsChainChecks() {
@@ -851,11 +965,13 @@ void effectsChainChecks() {
             {"delay mix 0 to 100 %", FxType::Delay, FxParam::DelayMix, 0.0, 1.0},
             {"reverb mix 0 to 100 %", FxType::Reverb, FxParam::ReverbMix, 0.0, 1.0},
             {"DJ EQ low band killed", FxType::Eq, FxParam::EqLow, 0.0, -1.0},
-            {"3-band dynamics output +12 dB", FxType::MultiDyn, FxParam::MdOutput, 0.0, 12.0},
-            {"amp output +12 dB", FxType::Amp, FxParam::AmpOutput, 0.0, 12.0},
+            {"3-band dynamics output +12 dB", FxType::MultiDyn, FxParam::Output, utilityGainNorm(1.0), 1.0},
+            {"amp output +12 dB", FxType::Amp, FxParam::Output, utilityGainNorm(1.0), 1.0},
             {"amp mix 0 to 100 %", FxType::Amp, FxParam::AmpMix, 0.0, 1.0},
             {"amp gain 5 to 10", FxType::Amp, FxParam::AmpGain, 0.5, 1.0},
-            {"utility gain 0 to +12 dB", FxType::Utility, FxParam::UtilityGain, utilityGainNorm(1.0), 1.0},
+            {"utility output 0 to +12 dB", FxType::Utility, FxParam::Output, utilityGainNorm(1.0), 1.0},
+            {"delay output 0 to +12 dB", FxType::Delay, FxParam::Output, utilityGainNorm(1.0), 1.0},
+            {"reverb output 0 dB to -inf", FxType::Reverb, FxParam::Output, utilityGainNorm(1.0), 0.0},
             {"utility pan C to R50", FxType::Utility, FxParam::UtilityPan, 0.0, 0.5},
             {"utility width 100 to 0 %", FxType::Utility, FxParam::UtilityWidth, 1.0, 0.0},
             {"chorus mix 0 to 100 %", FxType::Chorus, FxParam::ChorusMix, 0.0, 1.0},
@@ -1742,7 +1858,10 @@ void effectsChainChecks() {
                            loaded[mdAboveIndex(3, 1)] == loaded[mdAboveIndex(3, 0)] &&
                            loaded[mdDownIndex(3, 2)] == loaded[mdDownIndex(3, 0)] && loaded[mdGainIndex(3, 0)] == 4.0 &&
                            loaded[mdGainIndex(3, 1)] == 4.0 && loaded[mdGainIndex(3, 2)] == 4.0 &&
-                           std::abs(at(FxParam::MdRelease) - normFromTime(0.4)) < 1e-9 && at(FxParam::MdOutput) == -5.0 &&
+                           std::abs(at(FxParam::MdRelease) - normFromTime(0.4)) < 1e-9 &&
+                           // its output on the slot's Output since version 11 (see the check of that further on)
+                           at(FxParam::MdOutput) == 0.0 &&
+                           std::abs(at(FxParam::Output) - utilityGainNorm(std::pow(10.0, -5.0 / 20.0))) < 1e-12 &&
                            at(FxParam::MdLink) == 1.0 && at(FxParam::MdAttack) == paramTable()[paramIndex(3, FxParam::McAttack)].def;
         bool upward = at(FxParam::MdKnee) == kMcKnee && at(FxParam::MdRms) == 0.0;
         for (int band = 0; band < kMcBands; ++band)
@@ -1813,6 +1932,7 @@ void effectsChainChecks() {
                   now[slotAmountIndex(0, 0)] == 0.4 && now[slotAmountIndex(0, 1)] == -0.2,
               "a state before version 10 loads its depths on the three-band dynamics' thresholds as far as they swung");
     }
+    checkEffectOutputs(); // in a function of its own: its patches would leave the checks after it too little stack
     {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
         // rather than playing back what it held then.
@@ -2667,6 +2787,7 @@ void outScopeChecks() {
 } // namespace
 
 int main() {
+    std::setvbuf(stdout, nullptr, _IONBF, 0); // every line out before a crash, if there is one
     const int factors[] = {1, 2, 4, 8};
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
     std::printf("decimator (dB):\n");
@@ -3824,7 +3945,7 @@ int main() {
     }
 
     // --- An LFO on an effect runs on through the effects' tail once the note's voice has ended: a square LFO on a
-    // utility's Gain after a long reverb keeps the tail stepping up and down, retriggered or free.
+    // utility's Output after a long reverb keeps the tail stepping up and down, retriggered or free.
     std::printf("effects' modulation after the last voice:\n");
     for (const bool free : {false, true}) {
         Engine e(2);
@@ -3834,7 +3955,7 @@ int main() {
         e.p[paramIndex(0, FxParam::ReverbMix)] = 1.0;
         e.p[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Utility);
         chain(e.p, {0, 1});
-        lfoOn(e.p, paramIndex(1, FxParam::UtilityGain), 0.5, 4.0);
+        lfoOn(e.p, paramIndex(1, FxParam::Output), 0.5, 4.0);
         e.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Square);
         e.p[paramIndex(0, SourceParam::Free)] = free ? 1.0 : 0.0;
         e.noteOn(57);
@@ -3844,7 +3965,7 @@ int main() {
         Telemetry t;
         e.synth().telemetry(t);
         const int voices = t.voices;
-        const bool reported = t.fxTail && t.modOffset[paramIndex(1, FxParam::UtilityGain)] != 0.0f;
+        const bool reported = t.fxTail && t.modOffset[paramIndex(1, FxParam::Output)] != 0.0f;
         // and that the tail runs the LFO, where its card shows it: moving on at its rate
         const float phaseBefore = t.lfoPhases[0];
         const bool lfoShown = t.fxTailLfos == 1u && std::abs(t.lfoRates[0] - 4.0f) < 0.01f;

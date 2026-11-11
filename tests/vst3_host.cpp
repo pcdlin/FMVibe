@@ -526,19 +526,27 @@ int main(int argc, char **argv) {
     check(midiInfo.id == vst3::kMidiParamBase && (midiInfo.flags & ParameterInfo::kIsHidden),
           "MIDI controllers' params are hidden");
 
-    // The effects, the sources' own fields and the slots' wiring aren't given to hosts, their depths and Amounts
-    // are, and every param they are given shows: an effect or source changing type changes nothing they see.
+    // The effects (but for each slot's Output), the sources' own fields and the slots' wiring aren't given to hosts,
+    // their depths and Amounts are, and every param they are given shows: an effect or source changing type changes
+    // nothing they see. A slot's Output is in its slot's unit, under the effects'.
     bool noneHidden = true;
     for (int32 i = 0; i < hostParamCount(); ++i) {
         ParameterInfo p{};
         noneHidden = noneHidden && plugin.controller->getParameterInfo(i, p) == kResultOk &&
                      !(p.flags & ParameterInfo::kIsHidden);
     }
+    ParameterInfo output{};
+    const bool outputListed = hostIndexOf(paramIndex(3, FxParam::Output)) >= 0 &&
+                              plugin.controller->getParameterInfo(hostIndexOf(paramIndex(3, FxParam::Output)), output) ==
+                                  kResultOk &&
+                              output.id == idOfIndex(paramIndex(3, FxParam::Output)) &&
+                              (output.flags & ParameterInfo::kCanAutomate) && output.unitId != kRootUnitId;
     check(hostIndexOf(paramIndex(0, FxParam::DelayTimeR)) < 0 && hostIndexOf(paramIndex(0, SourceParam::Rate)) < 0 &&
               hostIndexOf(slotAmountIndex(0, 0)) >= 0 && hostIndexOf(slotScaleIndex(0, 0)) >= 0 &&
-              hostIndexOf(slotTargetIndex(kMaxSources, 0)) < 0 && hostIndexOf(slotCurveIndex(0, 0)) < 0 && noneHidden,
-          "hosts are given the slots' depths and Amounts, not the effects, the sources' own fields or the slots' "
-          "wiring, and the params they are given all show");
+              hostIndexOf(slotTargetIndex(kMaxSources, 0)) < 0 && hostIndexOf(slotCurveIndex(0, 0)) < 0 &&
+              outputListed && noneHidden,
+          "hosts are given the slots' depths and Amounts and each effect slot's Output, not the effects' other fields, "
+          "the sources' own fields or the slots' wiring, and the params they are given all show");
 
     // MIDI controllers, channel pressure and pitch bend map onto params, per channel.
     ParamID bendId = 0, ccId = 0, other = 0;

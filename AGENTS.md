@@ -45,9 +45,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
   table, text round-trips (at each end and just inside it too, the slowest sweep rate and the shortest time typed
   neither still nor Off), the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:
-  - hosts given the params they automate and see and the slots' depths and Amounts, and not the effects, the
-    sources' own fields, the slots' wiring or the editor's drawn shapes (whose values still read back by id); no
-    effect getting a remote-control page, a page per source, and the pages pointing only at params hosts are given;
+  - hosts given the params they automate and see and the slots' depths and Amounts, and not the effects (but for
+    each slot's Output, named after its slot, 0 dB to begin with), the effects' retired Out knobs, the sources' own
+    fields, the slots' wiring or the editor's drawn shapes (whose values still read back by id); no effect getting a
+    remote-control page, a page per source, and the pages pointing only at params hosts are given;
   - sound comes out and `NOTE_END` arrives after the release;
   - voice stealing and choke, and a reset ending the notes playing, their ends reported in the next block;
   - per-voice host modulation, and a mod-envelope slot driving its target, and running its release out after
@@ -126,7 +127,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the filter effect's key tracking putting a cutoff at C4 onto an A4, the frequency shifter moving by its
     Shift's share of its Range, and the Param EQ's third band doing nothing off and playing once on, a band switched
     off left out, its notch taking its frequency away (and leaving an octave off it mostly alone), and its Amount
-    mixing it with what goes in; and the utility's Gain going from silence up to +12 dB (0 dB to begin with, -6 dB at its middle), its
+    mixing it with what goes in; and the utility's level, its Output, going from silence up to +12 dB (0 dB to begin
+    with, -6 dB at its middle), its
     Pan turning the other side down, its Width scaling the sides and keeping the middle, and its Mono Bass making a
     low note's sides mono and leaving a high one's;
   - unison copies spread across the stereo field (and match when centered);
@@ -178,8 +180,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     effects graph;
   - clicks when a voice is stolen (and six at once by a chord), when a note joins a held one in poly legato
     (fading in over 5 ms, its Random LFOs carrying on with the held one's step), and when a param (Volume, and an effect's: a compressor's Makeup, a delay's and a
-    reverb's Mix, a DJ EQ band, a three-band dynamics' Output, an amp's Output, Mix and Gain, a utility's Gain (0 to
-    +12 dB), Pan and Width, a wire's Level) jumps while events split the block into single frames (and a delay's Mix
+    reverb's Mix, a DJ EQ band, an amp's Mix and Gain, a utility's Pan and Width, the Output of a three-band
+    dynamics, an amp, a utility and a delay (0 to +12 dB) and a reverb (0 dB to -inf), a wire's Level) jumps while
+    events split the block into single frames (and a delay's Mix
     and a wire's Level ramping no faster at 96 and 192 kHz than at 48),
     when a Param EQ band is switched on and off, when a utility's Mono Bass is turned on from Off and off again, and
     when a wire of the effects graph is connected and taken away;
@@ -211,6 +214,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     modulation along (a linked one's bands taking the low band's settings), while a version 6 state loads one back
     as saved; and a version 9 state's depths on its thresholds loading three quarters as deep, as their range grew
     from 60 dB to 80, a version 10 state's as saved;
+  - every effect's Output: a delay's level after it (half at -6 dB, silence at -inf, nothing changed at 0 dB) and
+    left alone with the delay switched off; and a version 10 state's utility Gain and shaper, three-band dynamics
+    and amp Output (+18 dB held to +12, an amp mixed half dry taking an Output and a Mix that play as it did) loading
+    onto their slots' Output, the knobs at 0 dB, their modulation moved along as far in level, a version 11 state as
+    saved, and the patch playing as it did (within 1e-4 of its peak);
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -450,7 +458,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
     a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor;
-  - the shaper effect's SYM switch, hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
+  - the shaper effect's LINK, between its Drive and Mix knobs, starting on and switching; its SYM switch, over LINK
+    and hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
     mirrored left half adding a point on the right, the middle point refusing to be deleted, and the switch
     undoing with its point;
   - dragging the filter response handle, the filter's Mix knob (where Out was) moving its response and undone
@@ -510,9 +519,16 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and its display following Treble and the mic's position (read off the rendered pixels); and its title's menu
     picking its oversampling, the one in force checked;
   - the utility's card: added last from the list of effects (under STEREO & PHASE), leaving the sound as it is (Mono
-    Bass Off); the handles on its display setting Mono Bass, Pan, Width and Gain, each drag an undo step, the band
-    narrowing into its middle below Mono Bass's line (read off the rendered pixels), and a double-click putting Mono
-    Bass's back to Off;
+    Bass Off); the handles on its display setting Mono Bass, Pan and Width, each drag an undo step, and none for its
+    level (its Output strip's), the band narrowing into its middle below Mono Bass's line (read off the rendered
+    pixels), and a double-click putting Mono Bass's back to Off;
+  - every effect card's Output strip, down the lower 35 % of its right edge: 0 dB to begin with, its cap there over
+    its filled track (read off the rendered pixels); its cap following a drag down to -inf and up to +12 dB, each drag
+    an undo step; a double-click putting it back at 0 dB and the wheel stepping it; Ctrl+Click typing its level;
+    under the mouse its level beside its cap (read off the rendered pixels); an LFO's handle dropped on it modulating
+    it, its depth handle over the strip's top and its range beside the track (read off the rendered pixels); three
+    modulations putting a pill over the first handle (read off the rendered pixels); and its fill dimmed with the
+    effect switched off (read off the rendered pixels);
   - the chorus's card: added from the list of effects after the flanger, with three voices; its 2 | 3 | 4 | 6 under
     its display picking its voices, each an undo step, its display drawing a lane a voice, six and then two, each at
     its place (read off the rendered pixels), and its Rate and Spread knobs turning;
@@ -617,8 +633,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the buses (a stereo output, refusing mono, and a 16-channel note input) and 32-bit processing only;
   - the params: every one hosts are given, fewer than the engine's, with the CLAP plugin's ids, all different, each in a unit the plugin lists, going to
     normalized and back unchanged (a stepped one exactly), their defaults, a value's text and back, Voices stepped
-    and not automatable, the MIDI controllers' params hidden, the effects, the sources' own fields and the slots'
-    wiring not given to hosts (their depths and Amounts given), and every param they are given showing; the MIDI
+    and not automatable, the MIDI controllers' params hidden, the effects (but for each slot's Output, automatable,
+    in its slot's unit), the sources' own fields and the slots' wiring not given to hosts (their depths and Amounts
+    given), and every param they are given showing; the MIDI
     mapping (per channel, on the note input only), the note expressions and the
     physical UI mapping;
   - playing: an A4 at 440 Hz, bent through the MIDI-mapped pitch bend, the MIDI-mapped mod wheel (CC 1) moving the
@@ -948,18 +965,22 @@ itself.
   three-band compressor (`FxType::MultiComp`) is no longer offered, and `readParams()` loads a slot holding one in a
   state from before version 6 as a three-band dynamics set from its fields, moving the modulation aimed at them
   along. A host can still set the retired type (the Type param's range takes it in): such a slot does nothing, and a
-  state keeps it as it is.
+  state keeps it as it is. Retired fields keep their numbers too: the utility's Gain and the shaper's, the three-band
+  dynamics' and the amp's Output, which every slot's `FxParam::Output` took over (`isRetired()`), still play, but stay
+  at 0 dB, aren't offered as modulation targets and have no knobs; `readParams()` moves a state from before version 11
+  onto Output.
 - Like an effect slot, each of the 16 source places has the fields of every type (an LFO's, an envelope's, and
   Slew, CC, Bipolar and Input for Random and MIDI), and a Type param (Empty, LFO, Envelope, Random or MIDI) that
   picks which are used (`sourceFieldUsedBy()`). Hosts are given only a place's slot depths and Amounts; its fields go by place
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,262 of the 19,381 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
-  `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
+- Hosts are given 1,294 of the 19,637 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+  `src/params.h`), 896 of them the slots' depths and Amounts and 32 each effect slot's Output. The editor's alone are
+  those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
-  fields, the effects graph (its splits, joins and wires) and the source places' own fields (a place's slot
+  other fields, the effects graph (its splits, joins and wires) and the source places' own fields (a place's slot
   depths are listed, whatever it holds). Nothing hosts
   see changes with an effect's or a source's type: the CLAP and VST3 plugins hide none of their params. The remote
   pages follow the sources and the operators switched fixed. CLAP's `count()`/`get_info()` and VST3's
@@ -980,7 +1001,7 @@ itself.
   tells the host a param's value, it takes no value for that param from the host: Bitwig hands values back a
   little later, and taking them would flip a preset loaded meanwhile back to the one before, for a moment. VST3 hosts
   hand every edit back to the processor, which the same moment keeps out.
-- The state blob holds `(id, value)` pairs with a version number (currently 10: version 1's Volume loads 12 dB
+- The state blob holds `(id, value)` pairs with a version number (currently 11: version 1's Volume loads 12 dB
   lower, since Volume now gives back the 12 dB the voices go into the effects with; before version 3, a state in
   poly loads Legato off, since it did nothing there then and acts there now; before version 4, a modulation's depth on an
   envelope's attack, decay or release loads scaled by `kMaxEnvNorm / (kMaxEnvNorm - kMinEnvNorm)`, since their
@@ -994,7 +1015,9 @@ itself.
   loads its chain's order as the graph's line (`fxChainWires()`), since the wires alone put the effects in order now,
   and the places do nothing; before version 10, a modulation's depth on a three-band dynamics' Above or Below threshold
   loads scaled by `kMdRetiredThresholdMinDb / kMdThresholdMinDb`, since their range now reaches down to -80 dB rather
-  than -60), followed by the editor layout:
+  than -60; before version 11, a utility's Gain and a shaper's, three-band dynamics' and amp's Output load onto the
+  slot's Output (`outputFromRetired()`; a shaper or amp mixed partly dry taking the Output and Mix that play as it
+  did), their modulation along, since every effect has an Output now), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

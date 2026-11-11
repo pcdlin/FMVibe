@@ -611,6 +611,11 @@ enum class FxParam {
     ChorusSpread,
     ChorusMix,
     ChorusVoices,
+    // Every effect's level after it, from silence up to +12 dB as the utility's Gain was (see utilityGain()), its strip
+    // down the card's right edge. Switched off, the effect leaves the sound alone, this level too. It took over the
+    // utility's Gain and the shaper's, the three-band dynamics' and the amp's Output knobs, which a state from before
+    // version 11 loads onto it (see outputFromRetired()); those stay at 0 dB, retired (see isRetired()).
+    Output,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -1013,6 +1018,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::AmpModel, FxParam::AmpOversampling, FxType::Amp},
     {FxParam::UtilityGain, FxParam::UtilityMonoBass, FxType::Utility},
     {FxParam::ChorusRate, FxParam::ChorusVoices, FxType::Chorus},
+    {FxParam::Output, FxParam::Output, FxType::None},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1558,7 +1564,11 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(0, FxParam::ChorusVoices)) == 36400 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ChorusVoices)) == 37000 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::ChorusRate)) == 26154 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160 &&
+                  idOfIndex(paramIndex(0, FxParam::Output)) == 36401 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::Output)) == 37001 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::Output)) == 26161 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::Output)) == 29161,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -2187,7 +2197,7 @@ inline std::vector<std::pair<int, double>> mdOttSettings(int slot) {
                                    {paramIndex(slot, FxParam::MdKnee), 21.0},
                                    {paramIndex(slot, FxParam::MdRange), 36.0},
                                    {paramIndex(slot, FxParam::MdMix), 1.0},
-                                   {paramIndex(slot, FxParam::MdOutput), kMakeup},
+                                   {paramIndex(slot, FxParam::Output), utilityGainNorm(std::pow(10.0, kMakeup / 20.0))},
                                    {paramIndex(slot, FxParam::MdRms), 1.0}});
     return changes;
 }

@@ -800,6 +800,8 @@ void buildTable(ParamTable &t) {
         fx(FxParam::ChorusMix, tr(Str::ParamChorusMix), ParamKind::Percent, 0.0, 1.0, 0.5);
         fx(FxParam::ChorusVoices, tr(Str::ParamChorusVoices), ParamKind::Count, kMinChorusVoices, kMaxChorusVoices,
            3.0);
+        // Every effect's level after it: 0 dB to begin with.
+        fx(FxParam::Output, tr(Str::ParamOutput), ParamKind::Fader, 0.0, 1.0, utilityGainNorm(1.0));
         // Synced, two bars a sweep.
         fx(FxParam::FlangerSync, tr(Str::ParamFlangerSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::FlangerDivision, tr(Str::ParamFlangerDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,
@@ -1048,6 +1050,9 @@ const HostList &hostList() {
                     wiring[i] = true;
                 kept[slotAmountIndex(source, s)] = kept[slotScaleIndex(source, s)] = true;
             }
+        // Of an effect's fields, hosts automate its Output, whatever it holds; the rest are the editor's.
+        for (int slot = 0; slot < kFxSlots; ++slot)
+            kept[paramIndex(slot, FxParam::Output)] = true;
         for (int i = 0; i < kParamCount; ++i) {
             const bool listed = kept[i] || (!(table[i].flags & CLAP_PARAM_IS_HIDDEN) && !wiring[i] &&
                                             fxSlotOf(i) < 0 && sourceOf(i) < 0 && !isFxGraphParam(i));
@@ -1071,6 +1076,11 @@ int hostParamIndex(int hostIndex) {
 bool hostListed(int index) { return index >= 0 && index < kParamCount && hostList().host[index] >= 0; }
 
 bool isRetired(int index) {
+    if (fxSlotOf(index) >= 0) { // the Out knobs every effect's Output took over (see FxParam::Output)
+        const FxParam field = fxFieldOf(index);
+        return field == FxParam::UtilityGain || field == FxParam::ShaperOutput || field == FxParam::MdOutput ||
+               field == FxParam::AmpOutput;
+    }
     if (index < kOpBase || index >= kOpBase + kOps * kOpParamCount)
         return false;
     const auto field = static_cast<OpParam>((index - kOpBase) % kOpParamCount);

@@ -416,7 +416,8 @@ private:
     };
     struct Slot {
         FxType running = FxType::None;
-        double fade = 0.0; // 0 = off .. 1 = fully in
+        double fade = 0.0;   // 0 = off .. 1 = fully in
+        double output = 1.0; // its Output as a gain at the end of the last chunk, ramped
         Shaper shaper;
         Delay delay;
         Eq eq;

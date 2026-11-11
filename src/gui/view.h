@@ -360,6 +360,9 @@ private:
         Rect group{};
         float partLeft = 0.0f, partRight = 0.0f;
         bool modeGlyph = false; // a wire label in the graph showing its route's mode (not Phase) inside it
+        // A knob drawn as an effect card's Output strip (see fxOutStrip()): it turns, takes modulation and is typed into
+        // as a knob is, its cap following the mouse; `rect` is where the mouse takes it (fxOutHit()).
+        bool strip = false;
 
         bool same(const Widget &o) const { return kind == o.kind && param == o.param && a == o.a && b == o.b; }
     };
@@ -398,7 +401,7 @@ private:
         FxNodeMove, // a node of the effects graph (a split or a join with what it holds), onto another place
         Tempo,      // the title bar's tempo, up and down (drag_.startValue: the tempo it started at)
         AmpMic,     // an amp's mic, across and away from its cabinet's cone
-        UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
+        UtilityHandle, // a handle on the utility's display: Mono Bass up and down, Pan and Width across
     };
 
     struct Drag {
@@ -1276,6 +1279,11 @@ private:
     void paintNoteSource(Canvas &c, float top);
     void paintVelocitySource(Canvas &c, float top);
     void paintClipCurveCard(Canvas &c, Rect r, int unit);
+    // An effect shaper's card's Output as a gain, as modulation takes it now, which its curve shows it at; 1 for a voice
+    // shaper.
+    double shaperCardLevel(int unit) const {
+        return unit < kFxSlots ? utilityGain(liveValue(paramIndex(unit, FxParam::Output))) : 1.0;
+    }
     void paintMirroredPoints(Canvas &c, int shape, float radius);
     void paintDelay(Canvas &c, Rect r, int slot);
     void paintEq(Canvas &c, Rect r, int slot);
@@ -1342,6 +1350,7 @@ private:
     void paintOpBacking(Canvas &c, int op, Point center);
     bool opHeard(int op) const;
     void paintKnob(Canvas &c, const Widget &w);
+    void paintOutStrip(Canvas &c, const Widget &w);
     void paintRatio(Canvas &c, const Widget &w);
     std::string modRangeText(int source, int slot) const;
     void paintModOverlay(Canvas &c, const std::vector<Widget> &list);

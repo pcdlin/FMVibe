@@ -593,10 +593,7 @@ float fxSpan(const FakeController &model, int slot) {
                                              : (model.ui.fxFoldedLater >> (slot - kFirstFxSlots)) & 1u;
     if (folded)
         return kFoldedSpan;
-    const long type = std::lround(model.value(paramIndex(slot, FxParam::Type)));
-    return type == static_cast<long>(FxType::Amp)                                                        ? 1.85f
-           : type == static_cast<long>(FxType::ParamEq) || type == static_cast<long>(FxType::MultiDyn) ? 1.5f
-                                                                                                         : 1.0f;
+    return detail::fxSpan(fxType(model.value(paramIndex(slot, FxParam::Type))));
 }
 // How far the test has left the chain scrolled, in card places: cards sit that much left of their places.
 float fxScrolled = 0.0f;
@@ -626,9 +623,15 @@ Point fxRemove(const FakeController &model, int position) {
     return {fxCardX(model, position) + fxCardW(model, position) - 15.0f, 198.0f};
 }
 
-// Knob `index` of `count` across a card, in the row at `y` within it.
+// Knob `index` of `count` across a card, in the row at `y` within it, the row short of the Output strip.
 Point fxKnob(const FakeController &model, int position, int index, int count, float y = 240.0f) {
-    return {fxCardX(model, position) + fxCardW(model, position) / count * (index + 0.5f), 180.0f + y};
+    return {fxCardX(model, position) + (fxCardW(model, position) - detail::kFxOutRoom) / count * (index + 0.5f),
+            180.0f + y};
+}
+// The card's Output strip (see detail::fxOutStrip()).
+Rect fxOutStrip(const FakeController &model, int position) {
+    const Rect first = detail::fxCard(0.0f);
+    return detail::fxOutStrip({fxCardX(model, position), first.y, fxCardW(model, position), first.h});
 }
 
 // ADD EFFECT at the FX panel's top left, and the middle of the entry for `type` in the list it opens (its groups in
@@ -1880,7 +1883,7 @@ void testTouchPan(const std::filesystem::path &dir, Renderer &renderer) {
     const bool reset = model.values == before;
     // Off the knobs, near a card's foot, it pans the row (two places back to the start), turning nothing; a tap on an
     // effect's icon switches it.
-    const Point foot{700.0f, 476.0f};
+    const Point foot{700.0f, 481.0f}; // under the knobs' labels, which reach 479 on a second row
     view.touchDown(foot, false, kSlop);
     view.touchMove({foot.x + kFxStep, foot.y + 3.0f});
     view.touchMove({foot.x + 2.0f * kFxStep, foot.y + 3.0f});
@@ -2022,12 +2025,13 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     const bool untouched = model.values == before;
     check(fxShot && panCursor && untouched && chain.size() == 8 && fxAt(2.0f, 2),
           "the middle button drags the effects along with the mouse, leaving the knob it went down on");
-    // Eight cards and the dashed one, six places on screen: the row stops three along, and comes back at once.
+    // Eight cards (the reverb's and the compressor's a tenth wider) and the dashed one, six places on screen: the row
+    // stops 3.2 along, and comes back at once.
     view.middleDown(grab);
     view.mouseMove({grab.x - 20.0f * kFxStep, grab.y}, {});
     view.mouseMove({grab.x - 19.0f * kFxStep, grab.y}, {});
     view.middleUp({grab.x - 19.0f * kFxStep, grab.y});
-    check(fxAt(2.0f, 2), "the middle button drags the effects no further than their end, and back from there at once");
+    check(fxAt(2.2f, 2), "the middle button drags the effects no further than their end, and back from there at once");
     // While the left button drags a knob, the middle one leaves the row where it is.
     const double fm = model.value(paramIndex(GlobalParam::FmAmount));
     view.mouseDown(kFmAmountKnob, {});
@@ -2035,7 +2039,7 @@ void testMiddleDrag(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f}, {});
     view.middleUp({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f});
     view.mouseUp({kFmAmountKnob.x, kFmAmountKnob.y - 20.0f}, {});
-    check(model.value(paramIndex(GlobalParam::FmAmount)) > fm && fxAt(2.0f, 2),
+    check(model.value(paramIndex(GlobalParam::FmAmount)) > fm && fxAt(2.2f, 2),
           "the middle button does nothing while the left button drags a knob");
 
     // The source cards, a card's width to the left: the second shown takes the first's place.
@@ -2802,10 +2806,11 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     }
     view.poll();
     click(view, kFxTab);
-    // The widener's knobs: Size, Width, High Pass and Mix.
+    // The widener's knobs: Size and Width over High Pass and Mix.
     const int highPass = paramIndex(4, FxParam::WidenerHighPass);
     const double before = model.value(highPass);
-    drag(view, fxKnob(model, 4, 2, 4), {fxKnob(model, 4, 2, 4).x, fxKnob(model, 4, 2, 4).y - 20.0f});
+    const Point highPassKnob = fxKnob(model, 4, 0, 2, 266.0f);
+    drag(view, highPassKnob, {highPassKnob.x, highPassKnob.y - 20.0f});
     const bool turned = model.value(highPass) > before;
     // The phaser's SYNC, the delay's metronome at the left under its display, turns its Rate knob into a note
     // value's.
@@ -5605,10 +5610,11 @@ void testAmp(const std::filesystem::path &dir, Renderer &renderer) {
           "the amp's title menu picks its oversampling, the one in force checked");
 }
 
-// The utility: added last from the list of effects, leaving the sound as it is (0 dB, centered, 100 % wide, Mono Bass
-// Off), its Gain at 0 dB below the strip's top (+12 dB); the handles on its display: Mono Bass's dragged up from Off, Pan's across, Width's out along the band's edge and
-// Gain's down its strip, each one undo step; the band narrowing into its middle below Mono Bass's line (read off the
-// rendered pixels); and Mono Bass's handle double-clicked back to Off.
+// The utility: added last from the list of effects, leaving the sound as it is (its Output at 0 dB, centered, 100 %
+// wide, Mono Bass Off); the handles on its display: Mono Bass's dragged up from Off, Pan's across and Width's out along
+// the band's edge, each one undo step, its level the card's Output strip alone (no handle on the display); the band
+// narrowing into its middle below Mono Bass's line (read off the rendered pixels); and Mono Bass's handle double-clicked
+// back to Off.
 void testUtility(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5618,13 +5624,19 @@ void testUtility(const std::filesystem::path &dir, Renderer &renderer) {
     check(model.value(at(FxParam::Type)) == static_cast<double>(FxType::Utility) &&
               detail::fxOfferedPlace(FxType::Utility) == detail::kFxTypes - 1,
           "the list of effects adds a utility, offered last, in its stereo and phase group");
-    const double unity = utilityGainNorm(1.0); // Gain at 0 dB
-    check(model.value(at(FxParam::UtilityGain)) == unity && model.value(at(FxParam::UtilityPan)) == 0.0 &&
+    const double unity = utilityGainNorm(1.0); // Output at 0 dB
+    check(model.value(at(FxParam::Output)) == unity && model.value(at(FxParam::UtilityPan)) == 0.0 &&
               model.value(at(FxParam::UtilityWidth)) == 1.0 && model.value(at(FxParam::UtilityMonoBass)) == 0.0,
           "a new utility leaves the sound as it is, its Mono Bass Off");
     const Rect display = detail::fxDisplayIn(detail::fxCard(0.0f), FxType::Utility);
-    const Rect strip = detail::utilityStrip(display), field = detail::utilityField(display);
+    const Rect field = detail::utilityField(display);
     const Point away{600.0f, 628.0f};
+    // Where its Gain strip was, at the display's left, a drag down sets nothing: its level is the card's Output strip.
+    const UndoStep *added = model.nextUndo();
+    drag(view, {display.x + 11.0f, field.y + 0.3f * field.h}, {display.x + 11.0f, field.bottom()});
+    check(model.value(at(FxParam::Output)) == unity && model.value(at(FxParam::UtilityGain)) == unity &&
+              model.nextUndo() == added,
+          "the utility's display has no handle for its level, which is its Output strip");
 
     // Mono Bass's handle, at the field's bottom while it is Off, up to a third of the way.
     drag(view, {field.right() - 6.0f, field.bottom()}, {field.right() - 6.0f, field.bottom() - 0.3f * field.h});
@@ -5637,18 +5649,13 @@ void testUtility(const std::filesystem::path &dir, Renderer &renderer) {
     const float widthY = field.y + detail::kUtilityWidthHandleY * field.h;
     drag(view, {middle + 0.25f * field.w, widthY}, {middle + 0.375f * field.w, widthY});
     const double width = model.value(at(FxParam::UtilityWidth));
-    // Gain's, at 0 dB on the strip, down to its middle: -6 dB.
-    drag(view, {strip.center().x, strip.bottom() - static_cast<float>(unity) * strip.h},
-         {strip.center().x, strip.y + 0.5f * strip.h});
-    const double gain = model.value(at(FxParam::UtilityGain));
-    std::printf("      utility's handles: mono bass %.3f, pan %.3f, width %.3f, gain %.3f\n", mono, pan, width, gain);
-    check(std::abs(mono - 0.3) < 0.02 && std::abs(pan + 0.3) < 0.02 && std::abs(width - 1.5) < 0.03 &&
-              std::abs(gain - 0.5) < 0.02,
-          "the utility's display handles set Mono Bass, Pan, Width and Gain");
+    std::printf("      utility's handles: mono bass %.3f, pan %.3f, width %.3f\n", mono, pan, width);
+    check(std::abs(mono - 0.3) < 0.02 && std::abs(pan + 0.3) < 0.02 && std::abs(width - 1.5) < 0.03,
+          "the utility's display handles set Mono Bass, Pan and Width");
     view.undo();
-    const bool gainUndone = model.value(at(FxParam::UtilityGain)) == unity && model.value(at(FxParam::UtilityWidth)) == width;
+    const bool widthUndone = model.value(at(FxParam::UtilityWidth)) == 1.0 && model.value(at(FxParam::UtilityPan)) == pan;
     view.redo();
-    check(gainUndone && model.value(at(FxParam::UtilityGain)) == gain, "each drag of a utility handle is one undo step");
+    check(widthUndone && model.value(at(FxParam::UtilityWidth)) == width, "each drag of a utility handle is one undo step");
 
     // The band: wide above Mono Bass's line, gone into its middle below it, where the display shows through.
     view.mouseMove(away, {});
@@ -5661,6 +5668,106 @@ void testUtility(const std::filesystem::path &dir, Renderer &renderer) {
     // Mono Bass's handle double-clicked: Off again.
     doubleClick(view, {field.right() - 6.0f, field.bottom() - static_cast<float>(mono) * field.h});
     check(model.value(at(FxParam::UtilityMonoBass)) == 0.0, "a double-click puts a utility handle back where it starts");
+}
+
+// Every effect card's Output, a strip down the lower 35 % of its right edge: 0 dB to begin with, its cap there (read off
+// the rendered pixels); dragged, its cap following the mouse, down to -inf and up to +12 dB, each drag one undo step;
+// the wheel stepping it; a double-click putting it back at 0 dB; Ctrl+Click typing a value into a field left of it;
+// under the mouse, its level beside its cap (read off the rendered pixels); an LFO's handle dropped on it modulating it,
+// its depth handle over the strip's top and its range beside the track, between it and the card's edge (read off the
+// rendered pixels); a third modulation putting a "+n" pill over the first handle; and its fill dimmed while the effect
+// is switched off (read off the rendered pixels).
+void testOutStrip(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    addFx(view, FxType::Delay);
+    addFx(view, FxType::Reverb);
+    const int out = paramIndex(0, FxParam::Output);
+    const double unity = utilityGainNorm(1.0);
+    const Rect strip = fxOutStrip(model, 0);
+    auto capAt = [&](double norm) { return Point{strip.center().x, strip.bottom() - static_cast<float>(norm) * strip.h}; };
+    auto lum = [](uint32_t c) { return static_cast<int>((c >> 16) & 0xFF) + static_cast<int>((c >> 8) & 0xFF) + static_cast<int>(c & 0xFF); };
+    const Point away{600.0f, 700.0f};
+    view.mouseMove(away, {});
+    const bool shot = renderer.save(view, dir / "45a-fx-out-strip.png");
+    const int cap = lum(renderer.pixel(capAt(unity))), track = lum(renderer.pixel(capAt(0.9))),
+              fill = lum(renderer.pixel(capAt(0.3)));
+    check(shot && model.value(out) == unity && cap > track + 120 && fill > track,
+          "an effect card's Output strip starts at 0 dB, its cap there over its filled track");
+
+    // Dragged: the cap follows the mouse, to the bottom and the top; each drag one step.
+    const UndoStep *before = model.nextUndo();
+    drag(view, capAt(unity), {strip.center().x, strip.bottom() + 30.0f});
+    const bool silent = model.value(out) == 0.0 && model.nextUndo() != before;
+    view.undo();
+    const bool undone = model.value(out) == unity;
+    drag(view, capAt(unity), capAt(unity + 0.2));
+    const bool followed = std::abs(model.value(out) - (unity + 0.2)) < 0.02;
+    drag(view, capAt(model.value(out)), {strip.center().x, strip.y - 40.0f});
+    const bool top = model.value(out) == 1.0;
+    std::printf("      output strip: dragged to its foot %s, back by undo %s, a fifth up %.3f, to its top %s\n",
+                silent ? "silent" : "not silent", undone ? "yes" : "no", unity + 0.2, top ? "+12 dB" : "short");
+    check(silent && undone && followed && top, "an Output strip's cap follows the mouse, a drag one undo step");
+    // Back at 0 dB by a double-click, stepped by the wheel.
+    doubleClick(view, capAt(1.0));
+    const bool reset = model.value(out) == unity;
+    view.wheel(capAt(unity), 1.0f, {});
+    check(reset && model.value(out) > unity, "a double-click puts an Output strip back at 0 dB, and the wheel steps it");
+    view.undo();
+    // Ctrl+Click types its level.
+    view.mouseDown(capAt(unity), {false, true});
+    const bool typingOn = view.typing();
+    type(view, "-6");
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "45b-fx-out-strip-typing.png");
+    view.typeKey(View::Key::Enter);
+    view.mouseUp(away, {});
+    check(typingOn && std::abs(utilityGain(model.value(out)) - std::pow(10.0, -6.0 / 20.0)) < 1e-6,
+          "Ctrl+Click types an Output strip's level");
+    view.undo();
+
+    // Under the mouse, its level shows left of its cap.
+    const Point readout{strip.x - 20.0f, capAt(unity).y};
+    renderer.save(view, dir / "45c-fx-out-strip.png");
+    const uint32_t plain = renderer.pixel(readout);
+    view.mouseMove(capAt(unity), {});
+    renderer.save(view, dir / "45d-fx-out-strip-hover.png");
+    bool shown = false;
+    for (float x = strip.x - 40.0f; x < strip.x - 6.0f; x += 1.0f)
+        shown = shown || renderer.pixel({x, readout.y}) != plain;
+    check(shown, "an Output strip shows its level beside its cap under the mouse");
+
+    // An LFO's handle dropped on it: its depth handle over the strip's top, its range between the track and the edge.
+    addSource(view, SourceType::Lfo);
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "45e-fx-out-strip-plain.png");
+    const Point handle = detail::fxOutHandle(strip, 0);
+    const Point lane{strip.right() + 2.5f, capAt(unity).y - 6.0f};
+    const uint32_t handleBefore = renderer.pixel(handle), laneBefore = renderer.pixel(lane);
+    drag(view, sourceHandle(0), capAt(unity));
+    view.mouseMove(away, {});
+    const bool modShot = renderer.save(view, dir / "45f-fx-out-strip-modulated.png");
+    const bool aimed = slotTarget(model.value(slotTargetIndex(0, 0))) == out;
+    check(modShot && aimed && renderer.pixel(handle) != handleBefore && renderer.pixel(lane) != laneBefore,
+          "an LFO dropped on an Output strip modulates it, its depth handle over the strip and its range beside it");
+    // Three of them: the first handle shows, a pill over it holds the other two.
+    model.set(slotTargetIndex(0, 1), slotTargetValue(out));
+    model.set(slotAmountIndex(0, 1), -0.2);
+    model.set(slotTargetIndex(0, 2), slotTargetValue(out));
+    model.set(slotAmountIndex(0, 2), 0.1);
+    view.poll();
+    renderer.save(view, dir / "45g-fx-out-strip-pill.png");
+    const Point pill{strip.right() - 6.0f, handle.y - 10.0f};
+    check(renderer.pixel(pill) != renderer.pixel({pill.x, pill.y - 12.0f}),
+          "an Output strip with more modulations than it has room for shows a pill over its handles");
+
+    // Switched off, its fill dims.
+    click(view, fxPower(model, 0));
+    view.mouseMove(away, {});
+    renderer.save(view, dir / "45h-fx-out-strip-off.png");
+    check(model.value(paramIndex(0, FxParam::Enabled)) == 0.0 && lum(renderer.pixel(capAt(0.3))) < fill,
+          "an Output strip's fill dims while its effect is switched off");
 }
 
 void testMultiDyn(const std::filesystem::path &dir, Renderer &renderer) {
@@ -8997,9 +9104,11 @@ void run(const std::filesystem::path &dir, float scale) {
     // drag moves it.
     click(view, clipButton);
     click(view, clipItem(ClipMode::Custom));
+    const Rect shaperCard{fxCardX(model, 0), detail::fxCard(0.0f).y, fxCardW(model, 0), detail::fxCard(0.0f).h};
+    const Rect clipDisplay = detail::fxDisplayIn(shaperCard, FxType::Shaper);
     auto cardAt = [&](double x, double y) {
-        return Point{fxCardX(model, 0) + 22.0f + static_cast<float>(x) * (kFxCardW - 44.0f),
-                     312.0f - static_cast<float>(y) * (50.0f - 6.0f)};
+        return Point{clipDisplay.x + 8.0f + static_cast<float>(x) * (clipDisplay.w - 16.0f),
+                     clipDisplay.center().y - static_cast<float>(y) * (clipDisplay.h * 0.5f - 14.0f)};
     };
     view.doubleClick(cardAt(0.8, 0.4), {}); // under the bend handle of the curve's upper half
     const int curveX2 = shapeFieldIndex(clipCurveCountIndex(0), 2, PointField::X);
@@ -9012,7 +9121,7 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove(cardAt(0.8, 0.6), {});
     check(renderer.save(view, dir / "8d-clip-custom.png"), "render the curve being edited in the card");
     // Its edit button, a pencil, opens the big editor, which edits the same curve.
-    click(view, {fxCardX(model, 0) + 134.0f, 180.0f + 190.0f - 12.0f}); // the pencil, at the display's bottom right
+    click(view, {fxCardX(model, 0) + 134.0f, clipDisplay.bottom() - 12.0f}); // the pencil, at the display's bottom right
     view.doubleClick(clipAt(0.3, -0.5), {});
     check(model.value(clipCurveCountIndex(0)) == 5.0 &&
               std::abs(model.value(shapeFieldIndex(clipCurveCountIndex(0), 1, PointField::X)) - 0.3) < 0.01,
@@ -9055,19 +9164,20 @@ void run(const std::filesystem::path &dir, float scale) {
     // The first delay's LINK switch, the middle of three across the card under its display.
     click(view, {fxCardX(model, 1) + fxCardW(model, 1) * 0.5f, 180.0f + 171.0f});
     check(model.value(paramIndex(1, FxParam::DelayLink)) == 1.0, "the delay's LINK switch links its sides");
-    // The shaper's LINK, its chain under the display in the card's middle (with no SYM beside it, but for a Custom
-    // curve), starts on; a click unlinks it, another links it again.
-    const Point clipLink{fxCardX(model, 0) + fxCardW(model, 0) * 0.5f, 180.0f + 194.0f + 10.0f};
+    // The shaper's LINK, its chain between its Drive and Mix knobs (with no SYM over it, but for a Custom curve), starts
+    // on; a click unlinks it, another links it again.
+    const Point clipLink = rectCenter(detail::clipLinkButton(shaperCard, false));
+    const Point clipSym = rectCenter(detail::clipSymButton(shaperCard));
     const bool linkedFirst = model.value(paramIndex(0, FxParam::ShaperLink)) == 1.0;
     click(view, clipLink);
     const bool unlinked = model.value(paramIndex(0, FxParam::ShaperLink)) == 0.0;
     click(view, clipLink);
     check(linkedFirst && unlinked && model.value(paramIndex(0, FxParam::ShaperLink)) == 1.0,
           "the shaper's LINK starts on and switches");
-    click(view, {clipLink.x - 40.0f, clipLink.y}); // where SYM shows for a Custom curve
+    click(view, clipSym); // where SYM shows for a Custom curve
     check(model.value(paramIndex(0, FxParam::ShaperSymmetric)) == 0.0, "the shaper's SYM is hidden but for Custom");
     {
-        // For a Custom curve, SYM shows left of LINK, the two centered together: switched on, it puts a point in the middle of a drawn curve that has none there, and
+        // For a Custom curve, SYM shows over LINK: switched on, it puts a point in the middle of a drawn curve that has none there, and
         // the curve's left half follows the right one: a double-click there adds the mirror image of a point on the
         // right, and the middle point can't be deleted. Undone, the middle point goes with the switch.
         const int mode = paramIndex(0, FxParam::ShaperMode), symmetric = paramIndex(0, FxParam::ShaperSymmetric);
@@ -9077,7 +9187,7 @@ void run(const std::filesystem::path &dir, float scale) {
         const int thirdX = shapeFieldIndex(count, 2, PointField::X); // 0, 0.3, then the middle one
         const double thirdWas = model.value(thirdX);
         model.set(thirdX, 0.6);
-        click(view, {clipLink.x - 25.0f, clipLink.y});
+        click(view, clipSym);
         const bool middled = model.value(symmetric) == 1.0 && model.value(count) == 6.0 &&
                              std::abs(point(2, PointField::X) - 0.5) < 1e-9;
         view.doubleClick(cardAt(0.15, -0.3), {});
@@ -9191,25 +9301,24 @@ void run(const std::filesystem::path &dir, float scale) {
               "the arrow between two effects adds one there, undoably");
     }
 
-    // More effects than fit (seven cards, seven and a half places with the EQ's): the one added last scrolls
-    // into view, so the compressors land on screen places 4 and 5. (The three-band dynamics' card has a test of its
-    // own: see testMultiDyn().)
+    // More effects than fit (seven cards, seven and seven tenths places with the EQ's and the compressors' wider
+    // ones): the one added last scrolls into view. (The three-band dynamics' card has a test of its own: see
+    // testMultiDyn().)
     addFx(view, FxType::Compressor);
     addFx(view, FxType::Compressor);
     check(fxChain(model) == std::vector<int>{1, 2, 0, 3, 4, 5, 6} &&
               model.value(paramIndex(5, FxParam::Type)) == static_cast<double>(FxType::Compressor) &&
               model.value(paramIndex(6, FxParam::Type)) == static_cast<double>(FxType::Compressor),
           "the chain grows past six effects, compressors included");
-    fxScrolled = 1.5f;
+    fxScrolled = 1.7f;
     model.live.fxReduction[5] = {4.5f, 0.0f, 0.0f};
     model.live.fxReduction[6] = {2.0f, 0.0f, 0.0f};
     view.poll();
     view.mouseMove({600.0f, 328.0f}, {});
     check(renderer.save(view, dir / "9b-compressors.png"), "render the compressors in a scrolled chain");
-    // The scrollbar under the cards: eight and a half places with the dashed card at the end, six on screen,
-    // scrolled one and a half along. Its thumb is six of those parts of the 1136 px track, with 334 px to move
-    // in; dragging it a third of that back leaves the cards between places, and all the way back shows the
-    // first card again.
+    // The scrollbar under the cards: eight and seven tenths places with the dashed card at the end, six on screen,
+    // scrolled one and seven tenths along. Dragging its thumb back leaves the cards between places, and all the way
+    // back shows the first card again.
     view.mouseDown({681.0f, 493.0f}, {});
     view.mouseMove({681.0f - 111.0f, 493.0f}, {});
     check(renderer.save(view, dir / "9c-fx-half-scrolled.png"), "render the chain scrolled half a card");
@@ -9224,9 +9333,9 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseDown({681.0f, 493.0f}, {});
     view.mouseMove({681.0f + 600.0f, 493.0f}, {});
     view.mouseUp({681.0f + 600.0f, 493.0f}, {});
-    fxScrolled = 2.5f;
+    fxScrolled = 2.7f;
     click(view, fxRemove(model, 6));
-    fxScrolled = 1.5f;
+    fxScrolled = 1.6f;
     click(view, fxRemove(model, 5));
     view.wheel({600.0f, 153.0f}, 10.0f, {});
     fxScrolled = 0.0f;
@@ -9768,6 +9877,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testMultiDyn(dir, renderer);
     testAmp(dir, renderer);
     testUtility(dir, renderer);
+    testOutStrip(dir, renderer);
     testCardEdgeScroll(dir, renderer);
     testMiddleDrag(dir, renderer);
     testTouchPan(dir, renderer);

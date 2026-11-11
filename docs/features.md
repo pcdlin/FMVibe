@@ -276,6 +276,16 @@ What the plugin does and how its editor works, in full. Building and installing 
   next to nothing, with the editor open too (the analyzers taking in the silence, so their spectra fall away and
   the graph's glow fades); a phaser's, flanger's or chorus's sweep goes round meanwhile, so a synced one keeps
   time.
+  - **Output**: every effect has a level after it, its **Output**, from −inf up to +12 dB, 0 dB to begin with (about
+    two thirds of the way up): its cube as a gain, so it turns evenly through what is heard, about −6 dB at its middle.
+    It takes all the effect puts out, after its Mix, and ramps as the effects' levels do; at 0 dB the sound passes as
+    it is. Switched off, the effect leaves the sound alone, its Output too. Hosts are given each slot's Output (FX 1
+    Output, and so on) to automate and modulate, whatever the slot holds. It took over the utility's Gain and the
+    shaper's, the 3-band dynamics' and the amp's Output knobs: a project or preset saved before (state version 10 and
+    earlier) loads their levels onto it (the 3-band dynamics' held to +12 dB, the top), the modulation aimed at them
+    along, as far in level at its full swing. The shaper's and the amp's took their wet sound alone, before their Mix:
+    mixed partly dry, they load with the Output and the Mix that play as they did (their wet level times the mix,
+    plus the dry share, as the Output; the wet share of that as the Mix).
   - **A line with splits**: the effects run along a line from the voices to the output, a chain of them one after
     another, which up to four **splits** cut by frequency into two bands at their Crossover (250 Hz to
     begin with), at a Slope of 6, 12 or 24 dB per octave (12 to begin with, a second-order Linkwitz-Riley crossover; 24 the
@@ -313,7 +323,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     puts out at the middle is taken out as it moves, so dragging it puts out no DC (made symmetric, the jump it
     makes there, as far as it shifts the average), and a DC blocker takes out the offset that the asymmetric and
     drawn curves, symmetric ones too, can leave. Drive
-    (0–36 dB), Output and Mix; **Link** (on to begin with) brings the output down as the drive goes up, so
+    (0–36 dB) and Mix; **Link** (on to begin with) brings the output down as the drive goes up, so
     turning the drive changes the tone more than the level: by as much as keeps a sine at −6 dBFS as loud (RMS) as it went in, dB
     for dB while the driven sine stays under the ceiling, then less and less as the clipping squares it off
     (about 8 dB at 12 dB of drive, 9 dB at the full 36). Louder sounds come out a little quieter, quieter ones a
@@ -354,7 +364,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     **Distance** from 1 cm to 1 m (2 cm to begin with): close in, its proximity effect lifts the lows; from about
     15 cm on the room comes in, three early reflections (1.3, 3.1 and 7.7 ms, darkened), all of them at 1 m. Off,
     the amp goes straight on. The cabinet and mic are filters, not recordings, so they move smoothly as Position and
-    Distance are turned or modulated. **Output** (−24 to +12 dB) and **Mix** come last, gliding sample by sample.
+    Distance are turned or modulated. **Mix** comes last, gliding sample by sample.
     Changing the model, the cabinet, the mic, switching the cabinet on or off, Stereo or the oversampling crossfades
     from the amp as it was to one at the new setting over 10 ms, so it neither clicks nor dips (another change during
     those 10 ms waits for them to end).
@@ -395,7 +405,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     as its level falls at the Release pace. The lift also stops short of taking the band's peaks, which the peak
     detector catches the moment they come, more than 12 dB over Below, so a note's first moments after silence aren't
     lifted by the Range the silence had. Knee
-    (both thresholds' soft knees), Attack, Release, Range, Mix and Output are shared. To begin with, each band is
+    (both thresholds' soft knees), Attack, Release, Range and Mix are shared. To begin with, each band is
     pulled down 3:1 above −20 dB and lifted 2:1 below −40 dB. **Link** edits the bands together: while it
     is on, changing one band's threshold, ratio or gain in the editor (a knob, a line, a zone, a typed value)
     sets every band's to the same value, as one undo step. Each band always plays its own settings, so turning Link
@@ -409,7 +419,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     undo step, fitted to what that preset does to a test signal bounced through it: crossovers at 88.3 Hz and 2.5 kHz;
     Down at 66.7:1, 66.7:1 and ∞:1 (low, mid, high) and Up at 4.17:1, as the preset has them; Above at −40.9, −37.3
     and −42.6 dB and Below at −47.9, −48.9 and −47.9 dB, each 7.1 dB under the preset's own, whose levels read that
-    much over this detector's; gains of +10.3, +5.7 and +10.3 dB and Output at +5.2 dB; a 21 dB knee, Range at 36 dB
+    much over this detector's; gains of +10.3, +5.7 and +10.3 dB and its Output at +5.2 dB; a 21 dB knee, Range at 36 dB
     (the preset's lift has no limit), RMS on, 100 % mix and Link off. Its curves then come out within a dB of the
     preset's in every band: a loud saw some 14 dB down, a quiet one some 10 dB up. Its attacks and releases are per
     band there and shared here: 1 ms and 30 ms follow its level jumps best (its low and mid bands release about as a
@@ -496,10 +506,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     they are and high-passed over 10 ms. **Width** scales the sides against the middle, which stays as it was: 0 %
     is mono, 100 % (to begin with) leaves the sound as it is, 200 % makes the sides twice as loud. **Pan** is a
     balance: turned right it turns the left side down, all the way to silence at R100, and leaves the right as it
-    is, and the other way round. **Gain** comes last, from −inf up to +12 dB, 0 dB to begin with (about two thirds of
-    the way up), the knob's cube as a gain so it turns evenly through what is heard: about −6 dB at its middle.
-    Its levels ramp like the other effects'.
-    Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
+    is, and the other way round. Its level is its Output, which every effect has (see above): it had a Gain of its own
+    until then. Its levels ramp like the other effects'.
+    Its knobs come in a row, Pan, Width and Mono Bass.
 
   The phaser, flanger and chorus keep their feedback from ringing louder: what they send round is scaled so their level
   across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and
@@ -568,8 +577,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     as much as its range shrank, so it swings Glide as far as it did.
 - **Host modulation** (CLAP; VST3 has none, and VST3 hosts automate the parameters instead): all continuous
   parameters hosts are given accept CLAP modulation globally, the macros' knobs, the mod wheel, the note source's
-  range and every modulation's depth and Amount among them (not the effects or the sources' own knobs, which hosts
-  aren't given); those the voices read also per voice (not Volume, the mod wheel, the macros, the note source or
+  range, every modulation's depth and Amount and every effect's Output among them (not the effects' other knobs or
+  the sources' own, which hosts aren't given); those the voices read also per voice (not Volume, the mod wheel, the macros, the note source or
   velocity), so Bitwig's modulators (including per-note ones) can drive them directly.
 - **Notes**: up to the voice limit, with quietest/oldest stealing (a stolen voice fades out over 3 ms instead of
   clicking; a voice that hasn't played yet, and an operator still in its attack, count as loud, so a chord played
@@ -764,8 +773,8 @@ one may have changed since it last did.
       0.4 dB apart. They move with their threshold: toward the bar's end it pushes them out past it, and moving back
       brings more in. A band's row picks the band its first row of knobs (Below, Up, Above, Down and Gain)
       sets, the band's name on a plate; the line under those knobs is named after it (ALL BANDS while linked),
-      and the shared knobs come in two rows under it, Low X, High X, Attack and Release above Knee, Range, Mix and
-      Output. Each bar's threshold lines drag (lit under the mouse): across, a line moves its threshold (Above
+      and the shared knobs come in two rows under it, Low X, High X, Attack and Release above Knee, Range and Mix.
+      Each bar's threshold lines drag (lit under the mouse): across, a line moves its threshold (Above
       stops at Below, and Below at Above), showing it where the gain was; Alt-dragged up and down, or turned with
       the wheel, it sets that side's ratio; a double-click puts its threshold back. The zones beyond the lines
       drag up and down for their side's ratio, the way the band moves the level: the upward one (left of Below)
@@ -798,10 +807,9 @@ one may have changed since it last did.
       the line. Above it, the high-pass and the taps' delays;
     - the utility's stereo field, as the widener's: left to right across, frequency up, the sound a band about its
       middle, which Pan moves across and Width widens (a quarter of the field either way at 100 %), narrowing into
-      its middle below Mono Bass's line (dashed, its corner over it: `mono < 120 Hz`), and fading as Gain goes down
-      below 0 dB, gone at −inf. At its left, a strip shows Gain, a tick across it at 0 dB, and above it Gain and Pan
-      (`-6.0 dB · L30`). Each knob has a handle there: Gain's a cap across the strip, which drags up and down; Pan's a dot at the top of the middle
-      line, which drags across; Width's a dot on the band's edge, on the side with more room, which drags out and
+      its middle below Mono Bass's line (dashed, its corner over it: `mono < 120 Hz`), and fading as its Output goes
+      down below 0 dB, gone at −inf. Above it its Output and Pan (`-6.0 dB · L30`). Each knob has a handle there:
+      Pan's a dot at the top of the middle line, which drags across; Width's a dot on the band's edge, on the side with more room, which drags out and
       in; and Mono Bass's a dot at the right end of its line (at the bottom, faint, while it is Off), which drags up
       and down, back to Off at the bottom. Each drag is one undo step, and a double-click puts a handle back where
       it starts;
@@ -816,21 +824,36 @@ one may have changed since it last did.
 
     The delay's switches under its display are icons across the card, named on hover: a metronome for Sync, two
     chain links for Link (the right side follows the left) and a ball between two paddles for Ping-Pong. The
-    shaper's Link (which ties its Output knob to the drive) is the same chain, and so is the 3-band dynamics' (at
-    the right end of its line over the shared knobs), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
-    rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
+    shaper's Link (which ties its level to the drive) is the same chain, and so is the 3-band dynamics' (at
+    the right end of its line over the shared knobs); the shaper's sits in the middle of its knob row, between Drive
+    and Mix, and for a Custom curve its Symmetric shows over it, a curve rising to level off, its left half the right
+    one turned over. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (a button of its own, STEREO
     another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note
     value and shows it as its label, as the delay's time knobs do. The chorus has its voices, 2 | 3 | 4 | 6, in the
     middle under its display, and its knobs in two rows, Rate, Depth and Delay above Feedback, Spread and Mix. The filter's slope is a list under its display, like a voice filter's (see the inspector) and a split's. The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
-    frequency shifter's, Range, Shift and Spread above Feedback and Mix.
+    frequency shifter's, Range, Shift and Spread above Feedback and Mix. The phase disperser's come two by two, Freq
+    and Stages above Pinch and Mix, and so do the widener's, Size and Width above High Pass and Mix; the compressor's
+    and the reverb's cards are a tenth wider than the others, so their rows of four (the shimmer's two) keep their
+    labels apart.
+
+    Every card's **Output** is a strip down the lower 35 % of its right edge, from −inf at the bottom to +12 dB at
+    the top: its track, filled in the effect's color up to the level, a tick across it at 0 dB and a cap at the
+    level. Its knob rows stop short of it. It works as a knob does, but its cap follows the mouse: dragged (a
+    hundredth as far with Shift), turned with the wheel, put back at 0 dB by a double-click and typed into by
+    Ctrl+Click or its right-click menu's Edit value, in a field left of it. Under the mouse, its level shows beside
+    its cap and its name in a tooltip. A source's handle dropped on it modulates it; its depth handles stack up from
+    the strip's top (past two, a "+n" pill over the first holds the rest), and each modulation's range runs beside
+    the track in its source's color, the first between the track and the card's edge and the others on the knobs'
+    side, with a dot on the track where modulation takes it now. A folded card has none; in the effects graph, the
+    inspector's card has it.
 
     The amp's card is 1.85 places wide, the amp on the left and the cabinet on the right with a faint line between, in
     the order the sound goes through them. The amp's side: the model's list, its display, STEREO under it, and Gain,
     Volume and Presence over Bass, Mid and Treble. The cabinet's side: its
     power symbol, then the cabinets' list, its display, the mic's three (DYN, CND, RIB) under it, and Position and
-    Distance over Output and Mix. With the cabinet off, its display, the mic's switch and Position and Distance dim,
+    Distance over Mix, in the middle. With the cabinet off, its display, the mic's switch and Position and Distance dim,
     though they still turn and take modulation.
 
     Each effect has an icon, at the left of its card's title and in the list of effects. On the card, the power
@@ -1656,10 +1679,11 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,262 of FMVibe's 19,381 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,294 of FMVibe's 19,637 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
-and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
-the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
+every modulation's depth and Amount (16 slots for each of the 28 sources, used or not) and each of the 32 effect slots'
+Output (FX 1 Output and on, whatever the slot holds). The rest are set in the editor only:
+the effects' other knobs, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the freeform LFO shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
 counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the
 retired fields. They are
