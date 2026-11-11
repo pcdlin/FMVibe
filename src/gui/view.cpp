@@ -9779,10 +9779,14 @@ void View::mouseDown(Point p, Modifiers mods) {
         else if (!nodeOn(w.a))
             edit(enabledParam(w.a), 1.0);
         layout.selectedNode = w.a;
+        if (partialEditor_ != w.a) // another node shown closes the partial editor
+            partialEditor_ = -1;
         break;
     case Kind::NodeGhost: // into the graph where it was, and into the inspector
         edit(enabledParam(w.a), 1.0);
         layout.selectedNode = w.a;
+        if (partialEditor_ != w.a)
+            partialEditor_ = -1;
         break;
     case Kind::ViewTab:
         showView(static_cast<RoutingView>(w.a));

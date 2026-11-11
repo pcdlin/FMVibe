@@ -527,8 +527,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     its editing: selecting with Shift and the arrows, Home and End, the mouse (a drag, a Shift+click, a
     double-click for a word), cutting and pasting;
   - drawing a Custom wave's partials, at 16 and 64 of them too (the wheel stepping through the counts), the ones a lower count hides kept as they were, the
-    edit button (a pencil) by the keyboard switch opening the partial editor and closing it (read off the rendered
-    pixels), and the full-size LFO shape editor hiding the inspector;
+    edit button (a pencil) by the keyboard switch opening the partial editor and closing it, as another node's tab
+    in the inspector does (read off the rendered pixels), and the full-size LFO shape editor hiding the inspector;
   - a Custom LFO's card: picking Custom widening it, and so a click on its display (the next card moving along), the inspector's knobs turning meanwhile, its shape's points added and dragged in the card, its
     tools inverting, reversing and shifting the shape (each one undo step) and copying it into another LFO (one card
     widened at a time), its title row's expand button widening it as a click on its display does, Steps drawing a step with a plain click and Snap snapping a point unless Ctrl is held, its

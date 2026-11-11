@@ -1268,6 +1268,18 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         check(closedShot && openShot && opened && draws && shut &&
                   model.value(partialLevelIndex(0, 5)) == level,
               "a Custom wave's edit button opens its partial editor, and a second click closes it");
+        // Another node picked in the inspector closes it: filter 1's tab (switching it on), then operator A's again
+        // showing the routing panel, not the partials.
+        click(view, kPartialEdit);
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool reopened = renderer.save(view, dir / "23h-partials-reopened.png") && partialsTitle() != closed;
+        click(view, nodeTab(kOps));
+        click(view, nodeTab(0));
+        view.undo(); // filter 1 off again
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool shot = renderer.save(view, dir / "23i-partials-other-node.png");
+        check(shot && reopened && partialsTitle() == closed,
+              "picking another node in the inspector closes the partial editor");
     }
     // The list's newer waves: Alt Sine, Organ and Vowel, between Abs Sine and Custom.
     click(view, kMoreWavesButton);

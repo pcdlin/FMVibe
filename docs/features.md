@@ -1156,7 +1156,8 @@ may show anywhere, repaints the whole of it.
     handles), and the summary line and the operator's circle in the graph show the frequency in Hz instead of the
     ratio. Switched off, the ratio, Pitch and Detune count again as they were. While the wave is Custom,
     an edit button (a pencil, the same as a Custom LFO's and a drawn shaper curve's), left of the keyboard, opens
-    the operator's partial editor (lit while it is open; a second click closes it). Under the knobs, tabs pick what
+    the operator's partial editor (lit while it is open; a second click closes it, as does picking another operator, filter or shaper in the
+    inspector). Under the knobs, tabs pick what
     the lower half of the page shows, the same for every operator and saved with the project (a preset leaves it
     as it is); a hidden tab whose knobs a source modulates has a dot in its corner, and holding a dragged source's
     handle over a tab opens it, so its knobs can take the drop:
