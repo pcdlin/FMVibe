@@ -3266,6 +3266,18 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
                            model.ui.splitBand[0] == 2 &&
                            std::abs(model.value(paramIndex(0, SplitParam::High)) - normFromCutoff(2500.0)) < 0.01 &&
                            renderer.save(view, dir / "40f3-fx-split-three.png");
+        {
+            // Its display's three stretches, between the crossovers, show their bands: low, high, then middle again.
+            const Rect shown{card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, 70.0f};
+            click(view, {shown.x + 6.0f, shown.y + 20.0f});
+            const bool lowShown = model.ui.splitBand[0] == 0;
+            click(view, {shown.right() - 6.0f, shown.y + 20.0f});
+            const bool highShown = model.ui.splitBand[0] == 1;
+            click(view, {shown.x + static_cast<float>(normFromCutoff(1118.0)) * shown.w, shown.y + 20.0f});
+            view.mouseMove({600.0f, 428.0f}, {});
+            check(lowShown && highShown && model.ui.splitBand[0] == 2,
+                  "a click on a three-band split's display shows the band between the crossovers there");
+        }
         bool threeSlopes = false;
         {
             const Rect threeDisplay{card.x + 14.0f, card.y + 66.0f, card.w - 28.0f, 70.0f};
@@ -4031,6 +4043,16 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     // Its HIGH tab shows the high band, empty: its dashed card right after the controls opens the list of effects
     // (no split), and a reverb goes on that band.
     click(view, centerOf(detail::splitTab(column, 1, 2)));
+    const bool highByTab = model.ui.splitBand[0] == 1;
+    // A click on its display left of the crossover shows the low band, and right of it the high band again.
+    {
+        const Rect shown{column.x + 14.0f, column.y + 66.0f, column.w - 28.0f, 104.0f};
+        click(view, {shown.x + 10.0f, shown.y + 30.0f});
+        const bool lowByDisplay = model.ui.splitBand[0] == 0;
+        click(view, {shown.right() - 10.0f, shown.y + 30.0f});
+        check(highByTab && lowByDisplay && model.ui.splitBand[0] == 1,
+              "a click on a split's display between two crossovers shows that band");
+    }
     const bool highShown = model.ui.splitBand[0] == 1;
     const Rect add = detail::fxBoxAddCard(detail::fxCard(2.0f + detail::kFxBoxEdge));
     const Point addAt = centerOf(add);

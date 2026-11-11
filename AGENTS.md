@@ -279,7 +279,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     in from grey at its left and a join's going out to grey at its right (read off the rendered pixels), and then
     the other band's too,
     both soloed; the split's crossover handle dragged on its card, and its slope picked from its list there, 18 dB refused; its title's
-    2 | 3 switch splitting it in three, an empty middle band between shown, into the join's third input, its high
+    2 | 3 switch splitting it in three, an empty middle band between shown (a click on its display left of, right of
+    and between the crossovers showing the low, high and middle band), into the join's third input, its high
     crossover at 2500 Hz, its slope kept and its list refusing 6 dB and picking 24 (a split at 6 going to 12 as it
     splits in three), Low X turned up past the high crossover and High X down past the low one each pushing the
     other along, undoably (a run of wheel notches one undo step), an effect put on its + along the main line's row (and a second one after it, the other bands'
@@ -324,7 +325,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     past the next card's middle after that card; each undone; with the split first in the row (put there by the arrow
     before the first card), a card carried left over its band and controls landing on the band, and on past the
     controls' left edge before the split, undone; a card dragged onto that band landing on it; the HIGH tab
-    showing the high band, whose dashed card opens the list of effects (no split) and puts a reverb on it; the
+    showing the high band (a click on the display left of the crossover the low band, and right of it the high band
+    again), whose dashed card opens the list of effects (no split) and puts a reverb on it; the
     container's Low knob setting the low band's level, lowering that band's curve on its display (read off the
     rendered pixels), its S buttons soloing each band on its own, the band shown faint while the other is soloed (read
     off the rendered pixels), both undone, and its crossover handle dragged; the

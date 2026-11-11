@@ -7268,6 +7268,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxNodeDelete:
     case Kind::FxNodePower:
     case Kind::SplitPoint:
+    case Kind::SplitArea: // drawn with the split's display
         break;
     case Kind::FxMenu:
         if (w.a == 1) { // the list's panel, with each group's name on a strip over its effects (and from the main line

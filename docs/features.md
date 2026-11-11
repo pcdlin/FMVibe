@@ -863,7 +863,8 @@ may show anywhere, repaints the whole of it.
     amber, each theme with band colors of its own; the wheel steps along them too), a hidden band's tab saying how
     many effects it holds after its name and a soloed band's showing an S in its color in its dot's place; the bands'
     responses with a handle on each crossover to drag across, each band's curve lowered as far as its level's knob
-    is turned down (flat at -60 dB), the shown band's filled; under them, at the right, the slope's list, as a filter's is, 6, 12 or 24 dB (18 shows faintly and can't be picked; in three bands 6 does
+    is turned down (flat at -60 dB), the shown band's filled, and a click between two crossovers (or a crossover and
+    the display's edge) showing the band there, as its tab does; under them, at the right, the slope's list, as a filter's is, 6, 12 or 24 dB (18 shows faintly and can't be picked; in three bands 6 does
     too). Switching between two and three bands keeps the slope, but for 6 dB, which goes to 12 as it splits in three,
     in the same undo step. In two bands, three knobs: the low
     band's level, the Crossover and the high band's level (in dB, 0 dB, full, at the top, down to -60 dB, silence).

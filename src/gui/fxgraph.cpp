@@ -1130,8 +1130,23 @@ void View::splitControlWidgets(std::vector<Widget> &list, int split, Rect card, 
     const std::vector<int> tabs = three ? std::vector<int>{0, 2, 1} : std::vector<int>{0, 1};
     for (int tab : tabs)
         add(Kind::SplitBand, splitTab(card, tabPosition(tab, three), static_cast<int>(tabs.size())), -1, split, tab);
-    // The crossovers' handles on the display.
+    // The display between two crossovers (or a crossover and its edge) shows that band, under the handles.
     const Rect display = splitDisplay(card, three);
+    {
+        std::vector<float> cuts = {display.x};
+        for (int which = 0; which < (three ? 2 : 1); ++which)
+            cuts.push_back(splitHandle(split, display, which).x);
+        cuts.push_back(display.right());
+        for (size_t k = 0; k < tabs.size(); ++k) {
+            // Left to right by place: the low band's, the middle one's, the high one's.
+            const int tab = *std::find_if(tabs.begin(), tabs.end(), [&](int t) {
+                return tabPosition(t, three) == static_cast<int>(k);
+            });
+            const float left = cuts[k], right = std::max(cuts[k], cuts[k + 1]);
+            add(Kind::SplitArea, {left, display.y, right - left, display.h}, -1, split, tab);
+        }
+    }
+    // The crossovers' handles on the display.
     for (int which = 0; which < (three ? 2 : 1); ++which) {
         const Point h = splitHandle(split, display, which);
         add(Kind::SplitPoint, {h.x - 8.0f, h.y - 8.0f, 16.0f, 16.0f},
@@ -1852,6 +1867,7 @@ bool View::fxGraphPress(const Widget &w, Point p) {
         setSplitBands(w.a, w.b);
         return true;
     case Kind::SplitBand:
+    case Kind::SplitArea:
         showSplitBand(w.a, w.b);
         return true;
     case Kind::FxBoxFold:
