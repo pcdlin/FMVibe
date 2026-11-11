@@ -87,16 +87,14 @@ inline constexpr double kReverbHighDecay = 0.2;
 // The lines' longest length at full size (seconds).
 inline constexpr double kReverbLongest = 0.0889;
 
-// The chorus's voices: voice `voice` of `voices` with its sweep at `lfo` (-1..1), its delay (seconds) from the Delay
-// knob (0..1 on the time curve) and Depth, which sweeps it up to half of it either way; where it sits between the sides
-// (-1 left .. 1 right) at Spread; and the share of a cycle its sweep runs behind the first voice's.
-double chorusDelay(double delayNorm, double depth, double lfo);
+// The chorus's drifts' paces (Hz), a voice each (see chorusShare()). Below kChorusBassHz (a one-pole's corner), the
+// sound goes past the voices, left as it is: the bass stays steady and in the middle.
+inline constexpr double kChorusDriftHz[kMaxChorusVoices] = {0.23, 0.31, 0.19, 0.37, 0.27, 0.41};
+constexpr double kChorusBassHz = 200.0;
+// Where voice `voice` of the chorus's `voices` sits between the sides (-1 left .. 1 right) at Spread.
 double chorusPan(int voice, int voices, double spread);
-inline double chorusOffset(int voice, int voices) {
-    return static_cast<double>(voice) / voices;
-}
-// Its voices' gains on each side, panned at equal power from Spread and each scaled by 1 / voices, so the voices
-// together are as loud as what went in where they are in phase, in the middle.
+// Its voices' gains on each side, panned at equal power from Spread and each scaled by 1 / sqrt(voices): voices that
+// wait unalike add up about as loud as what went in, however many there are.
 struct ChorusGains {
     double left, right;
 };
@@ -335,16 +333,19 @@ private:
         bool delayKnown = false;
     };
 
-    // A delay line a side, which each voice reads behind at its own swept delay: the voices' sweeps a share of a cycle
-    // apart (gliding there when Voices changes), their gains on each side ramped (so a voice coming or going fades).
+    // A delay line a side, holding the sound above its bass, which each voice reads behind at its own swept delay
+    // (between samples on a cubic): the voices' sweeps a share of a cycle apart and their delays' places along them
+    // (both gliding there when Voices changes), their gains on each side ramped (so a voice coming or going fades).
     struct Chorus {
         std::array<ZeroBuffer, 2> lines;
         int write = 0;
         uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
-        std::array<double, 2> last{}; // what the voices put out on each side, fed back
+        std::array<double, 2> bass{}; // the one-pole low-pass a side that takes the bass past the voices
         double phase = 0.0;           // the first voice's sweep, in cycles
         double mix = 0.5;
         std::array<double, kMaxChorusVoices> offsets{};      // each voice's sweep behind the first's, in cycles
+        std::array<double, kMaxChorusVoices> stagger{};      // each voice's chorusStagger(), gliding
+        std::array<double, kMaxChorusVoices> drift{};        // each voice's drift, in cycles
         std::array<double, kMaxChorusVoices> gainL{}, gainR{}; // ramped
         // Each voice's delay in samples, worked out every kSweepStep samples like the flanger's.
         std::array<double, kMaxChorusVoices> delay{};

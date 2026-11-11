@@ -2654,8 +2654,8 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
 }
 
 // The chorus: added from the list of effects, under MODULATION after the flanger, with three voices; its voices picked
-// under its display (2, 3 and 4 as one choice in its middle, a click on the one lit leaving it), each an undo step, its
-// display drawing a lane a voice (read off the rendered pixels); and its Rate and Spread knobs turning.
+// under its display (2, 3, 4 and 6 as one choice in its middle, a click on the one lit leaving it), each an undo step,
+// its display drawing a lane a voice (read off the rendered pixels); and its Rate and Spread knobs turning.
 void testChorus(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -2667,46 +2667,94 @@ void testChorus(const std::filesystem::path &dir, Renderer &renderer) {
               model.value(at(FxParam::ChorusVoices)) == 3.0,
           "the list of effects adds a chorus, after the flanger, with three voices");
     const Rect display = detail::fxDisplayIn(detail::fxCard(0.0f), FxType::Chorus);
-    auto voiceButton = [&](int voices) { return rectCenter(detail::chorusVoicesButton(display, voices)); };
+    auto voiceButton = [&](int voices) {
+        int choice = 0;
+        while (kChorusVoiceChoices[choice] != voices)
+            ++choice;
+        return rectCenter(detail::chorusVoicesButton(display, choice));
+    };
     const int voices = at(FxParam::ChorusVoices);
     click(view, voiceButton(2));
     const bool two = model.value(voices) == 2.0;
     click(view, voiceButton(2));
     const bool stays = model.value(voices) == 2.0;
-    click(view, voiceButton(4));
-    const bool four = model.value(voices) == 4.0;
+    click(view, voiceButton(6));
+    const bool six = model.value(voices) == 6.0;
     view.undo();
     const bool undone = model.value(voices) == 2.0;
     view.redo();
-    check(two && stays && four && undone && model.value(voices) == 4.0,
-          "the chorus's 2, 3 and 4 under its display pick its voices, each an undo step");
+    check(two && stays && six && undone && model.value(voices) == 6.0,
+          "the chorus's 2, 3, 4 and 6 under its display pick its voices, each an undo step");
 
-    // A lane a voice, held still (no audio running, so no dots), at full Depth: an eighth of a cycle in, four voices'
-    // lanes cross at four heights, and two voices' at two of them.
+    // A lane a voice, held still (no audio running, so no dots), at full Depth, read down a column where six voices'
+    // lanes are furthest apart: six lanes there, and two voices' two, the six's that are clear of them gone.
     model.set(at(FxParam::ChorusDepth), 1.0);
     model.live.age = 1.0f;
     view.poll();
     const Point away{600.0f, 628.0f};
     view.mouseMove(away, {});
-    const Rect inner{display.x + 8.0f, display.y + 22.0f, display.w - 16.0f, display.h - 30.0f};
-    const float x = inner.x + 0.0625f * inner.w, mid = inner.center().y, reach = 0.5f * inner.h;
-    auto lit = [&](double level) { // a lane across `level` (-1..1, up) of the reach, within a pixel
-        const float y = mid - static_cast<float>(level) * reach;
-        const uint32_t clear = renderer.pixel({x, mid + 0.65f * reach});
+    const Rect lanes = detail::chorusLanes(display);
+    auto laneYs = [&](int count, double cycle) {
+        std::vector<float> ys;
+        for (int k = 0; k < count; ++k)
+            ys.push_back(detail::chorusLaneY(lanes, k, count, 1.0, cycle));
+        return ys;
+    };
+    auto gapOf = [](std::vector<float> ys) {
+        std::sort(ys.begin(), ys.end());
+        float gap = 1e9f;
+        for (size_t i = 1; i < ys.size(); ++i)
+            gap = std::min(gap, ys[i] - ys[i - 1]);
+        return gap;
+    };
+    double cycle = 0.0;
+    for (int i = 1; i < 100; ++i)
+        if (gapOf(laneYs(6, i / 100.0)) > gapOf(laneYs(6, cycle)))
+            cycle = i / 100.0;
+    const std::vector<float> sixYs = laneYs(6, cycle), twoYs = laneYs(2, cycle);
+    const float x = lanes.x + static_cast<float>(cycle) * lanes.w;
+    auto clearOf = [](float y, const std::vector<float> &ys) {
+        float d = 1e9f;
+        for (float lane : ys)
+            d = std::min(d, std::abs(y - lane));
+        return d;
+    };
+    float clearY = lanes.y + 2.0f; // down the column, the furthest from every lane and the middle line
+    for (float y = lanes.y + 2.0f; y < lanes.bottom() - 2.0f; y += 0.5f) {
+        auto room = [&](float at) {
+            return std::min({clearOf(at, sixYs), clearOf(at, twoYs), std::abs(at - lanes.center().y)});
+        };
+        if (room(y) > room(clearY))
+            clearY = y;
+    }
+    auto lit = [&](float y) { // a lane across `y`, within a pixel
+        const uint32_t clear = renderer.pixel({x, clearY});
         for (float dy : {-1.0f, 0.0f, 1.0f})
             if (renderer.pixel({x, y + dy}) != clear)
                 return true;
         return false;
     };
-    const double low = std::sin(std::numbers::pi / 8.0), high = std::sin(3.0 * std::numbers::pi / 8.0);
-    const bool fourShot = renderer.save(view, dir / "27f-chorus-four.png");
-    const bool fourLanes = lit(low) && lit(-low) && lit(high) && lit(-high);
+    const bool sixShot = renderer.save(view, dir / "27f-chorus-six.png");
+    bool sixLanes = gapOf(sixYs) >= 4.0f;
+    for (float y : sixYs)
+        sixLanes = sixLanes && lit(y);
     click(view, voiceButton(2));
     view.mouseMove(away, {});
     const bool twoShot = renderer.save(view, dir / "27f-chorus-two.png");
-    const bool twoLanes = lit(low) && lit(-low) && !lit(high) && !lit(-high);
-    check(fourShot && twoShot && fourLanes && twoLanes,
-          "the chorus's display draws a lane a voice, a share of a cycle apart (read off the rendered pixels)");
+    bool twoLanes = true;
+    int gone = 0;
+    for (float y : twoYs)
+        twoLanes = twoLanes && lit(y);
+    for (float y : sixYs)
+        if (clearOf(y, twoYs) > 4.0f) {
+            twoLanes = twoLanes && !lit(y);
+            ++gone;
+        }
+    std::printf("      chorus lanes down the column %.2f of a cycle in: six %.1f px apart at the least, %d clear of two's\n",
+                cycle, gapOf(sixYs), gone);
+    check(sixShot && twoShot && sixLanes && twoLanes && gone >= 2,
+          "the chorus's display draws a lane a voice, each at its place and a share of a cycle apart (read off the "
+          "rendered pixels)");
 
     // Rate, the first knob of the first row, turned up; Spread, the second of the second row, wide to begin with,
     // turned down.

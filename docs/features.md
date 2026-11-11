@@ -454,17 +454,23 @@ What the plugin does and how its editor works, in full. Building and installing 
     there). **Sync** works like the phaser's, two bars a sweep to begin with, and so does **Stereo**, under its
     display, but on to begin with: the right side a quarter cycle ahead. So does its polarity: negative puts a notch
     at 0 Hz and the others where the positive peaks were, the hollow, thin-bottomed negative flange.
-  - **Chorus**: **Voices** copies of the sound (2, 3 or 4; 3 to begin with), each waiting a 1–40 ms **Delay** (12 ms
-    to begin with) that an LFO (Rate, 0–20 Hz, 0.8 Hz to begin with) sweeps by **Depth** (up to half of it either
-    way), each voice's sweep a share of a cycle behind the one before (a half for two voices, a third for three, a
-    quarter for four), so their pitches waver against each other. **Spread** pans the voices across the sides at
-    equal power, from all in the middle at 0 % to one side to the other at 100 % (where it starts); each side's voices
-    read that side's input, so a stereo sound keeps its sides. **Feedback** (either sign, 0 to begin with) sends what
-    the voices put out on each side back into its line. **Mix** takes the dry sound over to the voices alone (50 % to
-    begin with); where the voices are in phase, in the middle, they are as loud together as the dry sound. It has no
-    Sync: its Rate is set in Hz alone. Changing Voices, a voice coming or going fades in or out
-    over 10 ms and the voices' sweeps glide to their new places apart, at most a cycle a second, rather than
-    jumping; Spread moves a voice between the sides over 10 ms too.
+  - **Chorus**: **Voices** copies of the sound (2, 3, 4 or 6; 3 to begin with), each waiting about a 1–40 ms
+    **Delay** (12 ms to begin with): each voice a little shorter or longer than it, up to a fifth either way, so the
+    voices don't comb alike (the first the shortest, the second the longest, the others between, interleaved so the
+    voices beside each other between the sides wait unalike). An LFO (Rate, 0–20 Hz, 0.8 Hz to begin with) sweeps
+    each by **Depth** (up to half of Delay either way), each voice's sweep a share of a cycle behind the one before
+    (a half for two voices, a third for three, and so on), so their pitches waver against each other; and each
+    drifts slowly at a pace of its own (0.19–0.41 Hz), up to a tenth of Delay at full Depth, so they never settle
+    into one pattern. The voices read their lines between samples on a cubic, which keeps the highs from dulling and
+    wobbling as the delays move. The bass below about 200 Hz (a one-pole's corner) goes past the voices, left as it
+    is, so it stays steady and in the middle. **Spread** pans the voices across the sides at equal power, from all
+    in the middle at 0 % to one side to the other at 100 % (where it starts); each side's voices read that side's
+    input, so a stereo sound keeps its sides. Each voice is scaled by 1 / √voices, so more of them sound fuller rather
+    than quieter: together they play about as loud as what went in. **Feedback** (either sign, 0 to begin with) sends
+    the voices' mean on each side back into its line. **Mix** takes the dry sound over to the voices alone (50 % to
+    begin with). It has no Sync: its Rate is set in Hz alone. Changing Voices, a voice coming or going fades in or
+    out over 10 ms and the voices' sweeps and places glide to where they go, rather than jumping; Spread moves a
+    voice between the sides over 10 ms too. A host or modulation can set 5 voices, which the card doesn't offer.
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound.
@@ -772,10 +778,10 @@ one may have changed since it last did.
       like the shaper's curves; a shimmer's card has two rows of four knobs, its Pitch and Shimmer among them;
     - the phaser's and flanger's responses faintly at both ends of their sweep, and bright where their LFO is,
       moving while the audio runs (a stereo one's right side as a second, thinner curve);
-    - the chorus's voices: a lane each across a cycle of its sweep, its delay about a dashed middle line (Delay), as
-      far either way as Depth swings it, each lane a share of the cycle behind the one before and fainter, the first
-      brightest; while the audio runs, a dot on each lane where its sweep is now. Over it, how many voices and the
-      Rate;
+    - the chorus's voices: a lane each across a cycle of its sweep, its delay (up for longer) about its own place
+      along the delays, the dashed middle line Delay, as far either way as Depth swings it, each lane a share of the
+      cycle behind the one before and fainter, the first brightest (their slow drifts aren't drawn); while the audio
+      runs, a dot on each lane where its sweep is now. Over it, how many voices and the Rate;
     - the phase disperser's delay across frequency, peaking at Freq, with what it puts out, measured, behind it
       like the Param EQ's;
     - the frequency shifter's move: a 220 Hz tone's partials, and where it takes them on each side, under the
@@ -809,7 +815,7 @@ one may have changed since it last did.
     rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (a button of its own, STEREO
     another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note
-    value and shows it as its label, as the delay's time knobs do. The chorus has its voices, 2 | 3 | 4, in the
+    value and shows it as its label, as the delay's time knobs do. The chorus has its voices, 2 | 3 | 4 | 6, in the
     middle under its display, and its knobs in two rows, Rate, Depth and Delay above Feedback, Spread and Mix. The filter's slope is a list under its display, like a voice filter's (see the inspector) and a split's. The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.

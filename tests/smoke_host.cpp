@@ -3165,36 +3165,46 @@ int main(int argc, char **argv) {
         check(stereoSides / stereoSum > 0.05 && monoSides / monoSum < 1e-4,
               "a stereo flanger sweeps its sides apart, a mono one together");
 
-        // The chorus, its sweep held still (no Depth): every voice waits its Delay, half a period of 440 Hz, so at 50 %
-        // Mix the sine cancels, at 100 % the voices alone play it at its level, and at 0 % it is left alone, however
-        // many voices it has. Swept, its Spread pans the voices apart, and with none they stay together in the middle.
-        setParams({{type(7), static_cast<double>(FxType::Chorus)},
-                   {fx(7, FxParam::ChorusDepth), 0.0},
-                   {fx(7, FxParam::ChorusDelay), normFromTime(1.0 / 880.0)},
-                   {fx(7, FxParam::ChorusSpread), 0.0},
-                   {fx(7, FxParam::ChorusMix), 0.5}});
-        const double chorusCancelled = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-        setParams({{fx(7, FxParam::ChorusMix), 1.0}, {fx(7, FxParam::ChorusVoices), 4.0}});
-        const double chorusWet = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-        setParams({{fx(7, FxParam::ChorusMix), 0.0}, {fx(7, FxParam::ChorusVoices), 2.0}});
+        // The chorus at 0 % Mix leaves the sound as it was. Swept, its Spread pans its voices apart, and with none they
+        // stay together in the middle. Its bass goes past the voices: with them alone and spread full, an A1's sides
+        // are far narrower against it than an A4's.
+        setParams({{type(7), static_cast<double>(FxType::Chorus)}, {fx(7, FxParam::ChorusMix), 0.0}});
         const double chorusDry = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
-        std::printf("      chorus held still at half a period of 440 Hz: x%.3f at 50 %% mix, x%.3f at 100 %% (4 voices), "
-                    "x%.3f at 0 %%\n",
-                    chorusCancelled, chorusWet, chorusDry);
-        check(chorusCancelled < 0.1 && std::abs(chorusWet - 1.0) < 0.05 && std::abs(chorusDry - 1.0) < 0.02,
-              "the chorus's voices wait their Delay, and its Mix takes the sound over to them");
+        const auto chorusLevels = [&](int16_t key) { // the RMS of the middle and the sides
+            const clap_event_note_t on = noteEvent(CLAP_EVENT_NOTE_ON, 82, key);
+            runBlock({&on.header});
+            runBlocks(8);
+            double sum = 0.0, sides = 0.0;
+            for (int b = 0; b < 32; ++b) {
+                runBlock();
+                for (uint32_t i = 0; i < kBlock; ++i) {
+                    sum += std::pow(0.5 * (left[i] + right[i]), 2.0);
+                    sides += std::pow(0.5 * (left[i] - right[i]), 2.0);
+                }
+            }
+            runBlock({&chokeAll.header});
+            runBlocks(4);
+            return std::pair{std::sqrt(sum), std::sqrt(sides)};
+        };
         setParams({{fx(7, FxParam::ChorusDepth), 0.7},
                    {fx(7, FxParam::ChorusRate), normFromRate(2.0)},
-                   {fx(7, FxParam::ChorusDelay), normFromTime(0.012)},
                    {fx(7, FxParam::ChorusMix), 0.5},
-                   {fx(7, FxParam::ChorusVoices), 3.0}});
-        const auto [narrowSum, narrowSides] = sumAndSides(16);
+                   {fx(7, FxParam::ChorusSpread), 0.0}});
+        chorusLevels(69); // its voices settled where Spread puts them
+        const auto [narrowSum, narrowSides] = chorusLevels(69);
         setParams({{fx(7, FxParam::ChorusSpread), 1.0}});
-        const auto [spreadSum, spreadSides] = sumAndSides(16);
-        std::printf("      chorus on a 440 Hz sine: sides %.5f of the sum with no Spread, %.3f spread full\n",
-                    narrowSides / narrowSum, spreadSides / spreadSum);
+        const auto [spreadSum, spreadSides] = chorusLevels(69);
+        setParams({{fx(7, FxParam::ChorusMix), 1.0}});
+        const auto [trebleSum, trebleSides] = chorusLevels(69);
+        const auto [bassSum, bassSides] = chorusLevels(33);
+        std::printf("      chorus: A4 x%.3f at 0 %% mix; sides %.5f of the sum with no Spread, %.3f spread full; all "
+                    "wet, A4's sides %.3f, A1's %.3f\n",
+                    chorusDry, narrowSides / narrowSum, spreadSides / spreadSum, trebleSides / trebleSum,
+                    bassSides / bassSum);
+        check(std::abs(chorusDry - 1.0) < 0.02, "the chorus at 0 % Mix leaves the sound alone");
         check(narrowSides / narrowSum < 1e-4 && spreadSides / spreadSum > 0.05,
               "the chorus's Spread pans its voices apart, and with none keeps them in the middle");
+        check(bassSides / bassSum < 0.5 * trebleSides / trebleSum, "the chorus's bass goes past its voices, in the middle");
 
         setParams({{type(7), static_cast<double>(FxType::FreqShifter)},
                    {fx(7, FxParam::ShiftRange), normFromShiftRange(200.0)},
@@ -3313,7 +3323,7 @@ int main(int argc, char **argv) {
               {fx(7, FxParam::FlangerRate), normFromRate(20.0)}}},
             {FxType::Chorus,
              {{fx(7, FxParam::ChorusFeedback), -1.0}, {fx(7, FxParam::ChorusDepth), 1.0},
-              {fx(7, FxParam::ChorusRate), normFromRate(20.0)}, {fx(7, FxParam::ChorusVoices), 4.0},
+              {fx(7, FxParam::ChorusRate), normFromRate(20.0)}, {fx(7, FxParam::ChorusVoices), 6.0},
               {fx(7, FxParam::ChorusDelay), normFromTime(kMaxChorusDelay)}, {fx(7, FxParam::ChorusMix), 1.0}}},
             {FxType::Chorus,
              {{fx(7, FxParam::ChorusFeedback), 1.0}, {fx(7, FxParam::ChorusDepth), 1.0},

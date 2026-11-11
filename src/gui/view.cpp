@@ -2126,11 +2126,12 @@ std::vector<View::Widget> View::widgets() const {
                 break;
             }
             case FxType::Chorus: {
-                // Under the display, in its middle, how many voices: 2, 3 and 4 as one choice.
+                // Under the display, in its middle, how many voices: 2, 3, 4 and 6 as one choice.
                 const Rect display = fxDisplayIn(card, type);
                 const size_t voices = list.size();
-                for (int v = kMinChorusVoices; v <= kMaxChorusVoices; ++v)
-                    add(Kind::Choice, chorusVoicesButton(display, v), at(FxParam::ChorusVoices), -1, v);
+                for (int i = 0; i < static_cast<int>(std::size(kChorusVoiceChoices)); ++i)
+                    add(Kind::Choice, chorusVoicesButton(display, i), at(FxParam::ChorusVoices), -1,
+                        kChorusVoiceChoices[i]);
                 merge(voices);
                 knobs({at(FxParam::ChorusRate), at(FxParam::ChorusDepth), at(FxParam::ChorusDelay)},
                       {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
@@ -5295,27 +5296,26 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
 }
 
-// The chorus's voices' delays over a cycle of its sweep, each a lane about the middle line (Delay), as far either way
-// as Depth swings it, a share of the cycle behind the one before; the first voice brightest. While the audio runs, a
-// dot on each lane where its sweep is now.
+// The chorus's voices' delays over a cycle of its sweep, each a lane about its own place along the delays (the dashed
+// middle line Delay), as far either way as Depth swings it, a share of the cycle behind the one before; the first
+// voice brightest, the others fainter. While the audio runs, a dot on each lane where its sweep is now. (Their slow
+// drifts aren't drawn.)
 void View::paintChorus(Canvas &c, Rect r, int slot) {
     const Color fx = fxColor(slot);
-    const Rect inner{r.x + 8.0f, r.y + 22.0f, r.w - 16.0f, r.h - 30.0f};
+    const Rect inner = chorusLanes(r);
     auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
     const int voices = static_cast<int>(std::clamp(std::lround(at(FxParam::ChorusVoices)),
                                                    static_cast<long>(kMinChorusVoices),
                                                    static_cast<long>(kMaxChorusVoices)));
-    const float depth = static_cast<float>(std::clamp(at(FxParam::ChorusDepth), 0.0, 1.0));
-    const float mid = inner.center().y, reach = 0.5f * inner.h * depth;
+    const double depth = at(FxParam::ChorusDepth);
+    const float mid = inner.center().y;
     c.line({inner.x, mid}, {inner.right(), mid}, kBorder, 1.0f, true);
     const bool running = telemetry_.age < 0.5f;
     const double rateHz = sweepHz([this](int i) { return liveValue(i); }, slot, FxType::Chorus, telemetry_.tempo);
     double phase = telemetry_.fxPhases[slot] + rateHz * std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
     phase -= std::floor(phase);
-    constexpr float kLaneAlpha[kMaxChorusVoices] = {1.0f, 0.7f, 0.5f, 0.35f};
-    auto yAt = [&](double cycle, int voice) {
-        return mid - reach * static_cast<float>(std::sin(2.0 * std::numbers::pi * (cycle - chorusOffset(voice, voices))));
-    };
+    constexpr float kLaneAlpha[kMaxChorusVoices] = {1.0f, 0.75f, 0.6f, 0.48f, 0.38f, 0.3f};
+    auto yAt = [&](double cycle, int voice) { return chorusLaneY(inner, voice, voices, depth, cycle); };
     for (int voice = voices - 1; voice >= 0; --voice) { // the first over the others
         std::vector<Point> lane;
         for (int i = 0; i <= 64; ++i) {

@@ -596,10 +596,11 @@ enum class FxParam {
     UtilityPan,
     UtilityWidth,
     UtilityMonoBass,
-    // Chorus: Voices (2 to 4) copies of the sound, each delayed by Delay swept by Depth (up to half of it either way)
-    // at Rate, the voices' sweeps a share of a cycle apart, so their pitches waver against each other. Spread pans the
-    // voices across the sides (0 all in the middle, 1 from one side to the other); Feedback sends what the voices put
-    // out on each side back into its line. Mix takes the dry sound over to the voices alone.
+    // Chorus: Voices (2, 3, 4 or 6) copies of the sound above its bass, each delayed by Delay (each voice a little
+    // shorter or longer) swept by Depth (up to half of it either way) at Rate, the voices' sweeps a share of a cycle
+    // apart, so their pitches waver against each other. Spread pans the voices across the sides (0 all in the middle,
+    // 1 from one side to the other); Feedback sends what the voices put out on each side back into its line. Mix takes
+    // the dry sound over to the voices alone (see Effects::runChorus()).
     ChorusRate,
     ChorusDepth,
     ChorusDelay,
@@ -647,9 +648,32 @@ inline double clipOutputDb(double outputDb, double driveDb, bool linked) {
     return outputDb + 10.0 * std::log10(0.5 * kReference * kReference / meanSquare);
 }
 constexpr int kMaxPhaserStages = 12;
-// The chorus's voices, and its Delay knob's top (seconds), which its sweep takes up to half again past.
-constexpr int kMinChorusVoices = 2, kMaxChorusVoices = 4;
+// The chorus's voices (the editor offers kChorusVoiceChoices of them; a host or modulation can set 5 too), and its
+// Delay knob's top (seconds).
+constexpr int kMinChorusVoices = 2, kMaxChorusVoices = 6;
+constexpr int kChorusVoiceChoices[] = {2, 3, 4, 6};
 constexpr double kMaxChorusDelay = 0.04;
+// Each chorus voice waits Delay times its share (chorusShare()): 1, a little more or less for each voice
+// (kChorusStagger of it at the most, either way: chorusStagger()), swept by Depth up to kChorusSweep of it either way
+// with its sweep at `lfo` (-1..1), its sweep chorusOffset() of a cycle behind the first voice's; and drifting slowly
+// at a pace of its own (kChorusDriftHz) by up to kChorusDrift of it at full Depth. The voices' places along the delays
+// are interleaved, the first voice's the shortest and the second's the longest, so voices beside each other between
+// the sides wait unalike.
+constexpr double kChorusSweep = 0.5;
+constexpr double kChorusStagger = 0.2;
+constexpr double kChorusDrift = 0.1;
+inline double chorusStagger(int voice, int voices) {
+    if (voices <= 1)
+        return 0.0;
+    const int place = voice % 2 == 0 ? voice / 2 : voices - 1 - voice / 2;
+    return kChorusStagger * (-1.0 + 2.0 * place / (voices - 1.0));
+}
+inline double chorusShare(int voice, int voices, double depth, double lfo) {
+    return 1.0 + chorusStagger(voice, voices) + kChorusSweep * std::clamp(depth, 0.0, 1.0) * lfo;
+}
+inline double chorusOffset(int voice, int voices) {
+    return static_cast<double>(voice) / voices;
+}
 constexpr int kMaxDisperserStages = 64;
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
 constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud

@@ -768,11 +768,22 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
                                                      : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
 }
-// The chorus's voices under its display, in its middle: 2, 3 and 4 side by side.
-inline Rect chorusVoicesButton(Rect display, int voices) {
+// The chorus's voices under its display, in its middle: kChorusVoiceChoices side by side, `choice` the place of one.
+inline Rect chorusVoicesButton(Rect display, int choice) {
     constexpr float kW = 22.0f;
-    const float left = display.center().x - 0.5f * kW * (kMaxChorusVoices - kMinChorusVoices + 1);
-    return {left + kW * static_cast<float>(voices - kMinChorusVoices), display.bottom() + 4.0f, kW, 18.0f};
+    const float left = display.center().x - 0.5f * kW * static_cast<float>(std::size(kChorusVoiceChoices));
+    return {left + kW * static_cast<float>(choice), display.bottom() + 4.0f, kW, 18.0f};
+}
+// Its display's lanes, under its readout, and the height of voice `voice` of `voices`'s lane a share `cycle` of the
+// way through its sweep at Depth: up for a longer delay, the middle Delay, the edges as far as a voice's place and its
+// sweep reach.
+inline Rect chorusLanes(Rect display) {
+    return {display.x + 8.0f, display.y + 22.0f, display.w - 16.0f, display.h - 30.0f};
+}
+inline float chorusLaneY(Rect lanes, int voice, int voices, double depth, double cycle) {
+    const double lfo = std::sin(2.0 * std::numbers::pi * (cycle - chorusOffset(voice, voices)));
+    const double off = chorusShare(voice, voices, depth, lfo) - 1.0;
+    return lanes.center().y - static_cast<float>(off / (kChorusStagger + kChorusSweep)) * 0.5f * lanes.h;
 }
 // The amp's card: the amp on the left, the cabinet on the right, a faint line between. Each side: a list at the top
 // (the model; the cabinet's power switch, then its list), a display, switches under it (STEREO; the mic's three), then
