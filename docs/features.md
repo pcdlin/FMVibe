@@ -560,32 +560,56 @@ only what keeps to its place moves (the output meter and scope and the playing c
 operator's scope in the inspector), it repaints that place alone; what a note's sources and envelopes move, which
 may show anywhere, repaints the whole of it.
 
-- **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panels below them show: the routing graph
-  or the matrix (two views of the same connections) next to the inspector, or across both the effects chain or
-  every modulation. The
+- **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panel below them shows: the routing graph
+  or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or across
+  the whole panel the effects chain or every modulation. The
   choice is saved with the patch. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
   showing faintly under the mouse. While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
-- **Routing panel**: the graph shows only what is switched on, the matrix everything, greyed out where it is off.
+- **Routing panel**: the right of the panel the inspector floats over (see below); the graph shows only what is
+  switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph, and the
   x in a circle a node shows at its upper right (a box's corner) while the mouse is over it, as the effects graph's
   nodes do.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their
-    type) and squarer boxes the shapers (with their curve). A colored outline means the node is heard, as its routes are set, and a
-    halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off):
+    type) and squarer boxes the shapers (with their curve), each filled with the panel's color and outlined in its own
+    color (each operator's, the filters' purple, the shapers' red): fully while the node is heard, as its routes are
+    set (a filter or shaper while something goes into it), and at 45 % while it isn't. Its letter or name, and an
+    operator's wave, take its color too, its ratio or type the dim text's. The graph sits on a radar: **OUT** is a
+    disc at its right end, shading smoothly from the accent in its middle to a deeper accent at its
+    edge, in a faint halo, and a bloom of the accent glowing out from it behind the graph, strongest on the core and
+    feathering out further from it as light from a point does (1 / (1 + (u / 0.28)^2) of it, u the way out), steeply
+    by the core and ever more gently further out, to nothing as far as it reaches. The bloom follows how loud what
+    the nodes send to OUT is, before any effect: the level of the effects graph's IN (a peak falling away about 90 dB
+    a second), the 12 dB the voices go into the effects with given back, from -48 dB up to full scale, which it
+    rises to with a time constant of 70 ms and falls back from with one of 100 ms, so a note swells it rather
+    than switching it on. From silence to the loudest, it goes from 30 % of its strength to all of it, and its reach
+    from 260 px to 520 px (the outermost ring), so it spreads out as the sound swells; the Glow setting sets how strong
+    it is (20 % of the accent on the core at the loudest with it at 75 %, none with it Off). It is worked out at the
+    screen's own pixels and dithered, so it fades without steps: where each pixel lies is worked out only as the editor
+    is zoomed, and its pixels filled again as its loudness moves by one of 64 steps. Three orbit rings go round OUT (180, 340
+    and 500 px out, fainter outward) and two faint rays run from it under the inspector's lens to the lens's far
+    corners, all behind the nodes, the wires and the lens. A
+    halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off; it
+    rises and falls as the glow behind OUT does, with time constants of 70 ms up and 100 ms down):
     an operator's as brightly as its envelope and the routes taking it to the output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
-    opens. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
+    opens; a filter's or shaper's the same way, as loud as what goes through it: the loudest of what feeds it, each
+    source as loud as it is (an operator by its envelope, a filter or shaper by this in turn) as far as its route lets
+    it through. A glow rises from nothing at its outer edge as a smoothstep, so it fades out without an edge or steps. The nodes that are off wait docked under OUT, in the graph's bottom right, as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
-    graph, and shows it in the inspector. However it is switched on (its ghost, its tab, the matrix), a node whose
+    graph, and shows it in the inspector. In a new patch, each node's place is a point of the grid Ctrl+drag snaps to,
+    mirrored about OUT's row: the operators on the left (F and E in the second column at the top and bottom, C and B in
+    the fourth a row in from them, D and A in the seventh at the top and bottom), then the shapers (S2 above OUT's row,
+    S1 below it) and nearest OUT the filters (F2 at the top, F1 at the bottom). However it is switched on (its ghost, its tab, the matrix), a node whose
     place another node shown now covers comes back clear of it: pushed out of the way, or, with no room there, at
     the free place nearest it (in the same undo step as the switch).
     - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
       onto an operator to modulate it, back onto itself for feedback, onto a filter or shaper to send it there, or
-      onto the **OUT** bus; from further inside, a drag moves the node, and a click on the edge only picks the node.
+      onto **OUT**; from further inside, a drag moves the node, and a click on the edge only picks the node.
       Filters' and shapers' edges work the same way: onto an operator to modulate it, onto a filter or a shaper,
-      back onto itself for feedback (starting at 25 %, its loop drawn on its top edge), or onto the bus. Every node
+      back onto itself for feedback (starting at 25 %, its loop drawn on its top edge), or onto OUT. Every node
       can feed every other one, and itself. While the drag (or a route's arrowhead being moved) is held back over
       the node it comes from, its line loops round in a small circle over the node's top and back into it, an
       arrow showing the loop letting go there makes (standing on the ring the node is ringed with, selected or not); only once the mouse has been well clear of the node (16 px past its
@@ -593,14 +617,15 @@ may show anywhere, repaints the whole of it.
       shapers go out alike: each has its line to OUT while it is routed there, whether anything goes into it or not.
       A node that already goes out is moved through a filter or shaper it is connected to rather than doubled, its
       output's modulation going along onto the send, and that goes out in its place unless its sound gets there already (through filter 2, say); so does a filter or
-      shaper a node's arrow to OUT is moved onto. Wires to or from a filter are
-      purple, those to or from a shaper red, like the shaper effect.
-    - A node's line to OUT ends in an arrowhead on the bus, like a wire's on the node it feeds, with its
-      percentage label halfway down (beside the line, on its left, when the node sits too close to the bus for
-      it). Drag an arrowhead onto another node to move the route there, or onto the bus to send its node out
+      shaper a node's arrow to OUT is moved onto. Each wire takes the color of the
+      node it comes from (an operator's own, the filters' purple, the shapers' red), as its line to OUT does.
+    - A node's line to OUT runs straight toward OUT's middle, in the node's color, and ends in an arrowhead on its
+      edge, like a wire's on the node it feeds, with its percentage label halfway along (beside the line, on its
+      left, when the node sits too close to OUT for it). OUT is ringed in the accent while a route held over it would
+      go there. Drag an arrowhead onto another node to move the route there, or onto OUT to send its node out
       instead; the line to OUT's onto a node the same way. The route keeps its amount and its modulation, and
       follows the mouse until it is let go; it can't go where its node has a route already, or where a node's edge
-      couldn't take it. Let go of off the nodes and the bus (where it turns faint), the route goes, with its
+      couldn't take it. Let go of off the nodes and OUT (where it turns faint), the route goes, with its
       modulation, as its right-click menu's Disconnect does. The feedback loop above an operator or a shaper has no
       arrowhead.
     - A wire's ends drag from a little way along it too: under the mouse, a faint circle rings its arrowhead, or
@@ -634,10 +659,13 @@ may show anywhere, repaints the whole of it.
       or at an upper corner, inside the panel. A wire that would spill out of the routing panel bows only as far as
       keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
       once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
-      the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
+      the bow it started with. A node's line to OUT runs straight to begin with, and bends the same way, its label
+      and arrowhead going along; a double-click or Reset Bend straightens it again. How each wire bends is saved with the patch, like the node places, and each drag is
       an undo step; a wire that is removed or moved to another node starts bowing as a new one does.
     - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it. The node the inspector shows
-      is filled with its color, like its tab's plate, and ringed in it a little way out; a switched-off one shown
+      is filled solid with its color, like its tab's plate, its letter, wave, ratio or type in the panel's color, and
+      ringed in it at 80 % a little way out; a dotted line in its color, the lens's leader, runs level from its left
+      side across to the inspector's lens; a switched-off one shown
       there has its ghost filled the same way. A node dragged onto another
       stops short of it, held 10 px off its outline and sliding round it, and goes on once the mouse is past. With
       Ctrl held, a node dragged goes onto the nearest point of a coarse grid (12 across, 5 down, the cells' centers
@@ -878,7 +906,8 @@ may show anywhere, repaints the whole of it.
     bands, their thirds, the middle band's between), parted by slightly slanted lines (a join's the split's mirror): a split's colors come in from grey at its left, where the
     main line comes in, and a join's go back out to grey at its right, where the main line goes on. While sound plays, each node glows round it and each
     wire along it as loud as what comes out of it (IN, an effect, a split's band, a join), as the operators do in the
-    routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops. An empty band curves out to a + on
+    routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops, and shown rising and
+    falling as the routing graph's glows do (time constants of 70 ms up and 100 ms down). An empty band curves out to a + on
     its row, a column on from the split, and on into the join, and a click on that + puts an effect on the band (its
     list offers effects only). Each + is ringed in the color of the wire it is on: grey on the main line, a band's
     color on a band. With the mouse
@@ -1079,7 +1108,11 @@ may show anywhere, repaints the whole of it.
   saved state, at Init and when a preset loads: undo never brings back the patch a preset replaced. **Ctrl+Z** undoes, and **Ctrl+Y** or **Ctrl+Shift+Z** redoes, while the mouse is over
   the editor and its window is the active one: a keyboard hook catches them before the host does, so the host's
   own shortcuts keep working everywhere else.
-- **Inspector** (right): tabs A–F, F1 and F2, and S1 and S2 pick what it shows; tabs of switched-off nodes are
+- **Inspector** (left): a lens, a card floating over the routing panel's left end a little in from its edges, on a
+  soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 % (in Spectrum
+  and Porcelain, as their cards, on its shadow alone, without an outline); while
+  the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
+  and S2 pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little
   of their node's color. A dot in a tab's top right corner says the
   node's own sound goes out: its Out is up and it is switched on (a filter's or shaper's only while something goes
@@ -1294,8 +1327,11 @@ may show anywhere, repaints the whole of it.
     must run per voice shows none with no note playing (but on an effect's param or Volume while the effects ring
     out after the last note), nor does a bypassed one or one whose source is off.
   - A modulated route shows it too: its wire (or its line to OUT), in its own color as any other,
-    swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
-    its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.
+    swells and thins with the modulation while notes play (with the macros' alone between notes), following it as the
+    graphs' glows do, rising with a time constant of 70 ms and falling back with one of 100 ms, so a fast modulation
+    shows as a steady swell rather than a flicker; its matrix cell has a small bar along its bottom with each
+    modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
+    modulation's range just above it, clear of its solid fill.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps, a knob then moving a fiftieth as fast; sliders such as the depth bars, the
   Mod wheel and the glow slider then move from where they are, a hundredth as fast; a value moves only once the mouse
   has moved more than 3 px, so a click, or a double-click's jitter, changes nothing), double-click to reset, use the mouse
@@ -1448,7 +1484,11 @@ may show anywhere, repaints the whole of it.
   turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
   octave down, through the Bass amp's grit into a 4x10, its lows staying clean). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
-  given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
+  given, so deleted ones stay gone. It also notes the version of FMVibe that wrote them out: a newer one writes the
+  factory presets still in the `Factory` subfolder again as it has them, so they take its tuning and its routing
+  graphs' layouts (a change saved over one of them is lost then; save it under another name to keep it), and leaves
+  those taken out of it out. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
+  label running over a node it doesn't join. The plugin carries the factory presets built in and writes them out as they are:
   they hold only the params that differ from Init, so their files are small, and load like any other.
   - The **preset bar** in the middle of the title bar shows the preset loaded or saved last, or **- Init -** (as
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next
@@ -1508,9 +1548,14 @@ may show anywhere, repaints the whole of it.
   names in the matrix (whose legend shows the operators' colors side by side) and the routes it sends to another
   operator in a color of its own (a route into or out of a filter or a shaper takes that node's color, as in every
   theme); the routing nodes on a soft shadow (a silent one outlined in a faint tint of its color, and an operator's
-  unison copies tinted discs peeking out on both sides); the effects graph's nodes, a split and a join too, filled
+  unison copies tinted discs peeking out on both sides, under the wires so an arrowhead coming in at its side shows);
+  the effects graph's nodes, a split and a join too, filled
   with a tint of their color, without an outline; and meters and a dimmed control taking the tint of the card they are on. Settings
   that name a theme no longer offered show the nearest one: Graphite and Machined as Midnight, Paper as Light.
+  **Hue**, a slider under the themes along every hue, turns the theme's main color, its accent (and in Spectrum and
+  Porcelain operator A's, which is the accent there), round the color wheel, as saturated and as light as the theme
+  has it: Default to begin with, the theme's own color, and its hue in degrees once one is picked. It is kept as the
+  theme changes, each theme taking it in its own saturation and lightness.
   **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter
   and effect responses) glow, drawing them a little thinner: the higher, the stronger and wider the halo. It sets the
   halos that sounding operators and the effects graph's nodes and wires feather out with too: as they are drawn at 75
@@ -1518,11 +1563,12 @@ may show anywhere, repaints the whole of it.
   glows in the color of the effect it comes out of (or the accent), since a grey glow would read as a shadow there. At
   Off the effects graph shows no level (and the editor doesn't repaint for it), and an operator's halo is a plain
   ring.
-  The editor shows it while it is dragged and keeps it when it is let go. **Lines**, a slider like it from Off to
+  The editor shows it while it is dragged and keeps it when it is let go, as it does Hue and Lines; a double-click on
+  any of the three sliders puts it back to where it starts (Hue to Default). **Lines**, a slider like it from Off to
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
   one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
-  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All four
+  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All five
   are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT

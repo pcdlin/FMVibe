@@ -46,6 +46,40 @@ void writeExamples(const std::filesystem::path &folder, size_t from) {
     }
 }
 
+// Writes the first `given` examples as built in over their files in `folder` where these differ, as a newer FMVibe
+// brings them tuned or laid out anew. Those taken out of the folder stay out.
+void updateExamples(const std::filesystem::path &folder, size_t given) {
+    const std::vector<FactoryPreset> &presets = factoryPresets();
+    for (size_t n = 0; n < std::min(given, presets.size()); ++n) {
+        const FactoryPreset &preset = presets[n];
+        const std::wstring name = widePath(preset.name);
+        if (name.empty())
+            continue;
+        const std::filesystem::path path = folder / (name + L".fmv");
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(path, error))
+            continue;
+        FILE *file = nullptr;
+        if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
+            continue;
+        std::vector<unsigned char> now(preset.data.size() + 1);
+        const size_t read = std::fread(now.data(), 1, now.size(), file);
+        std::fclose(file);
+        if (read == preset.data.size() && std::equal(preset.data.begin(), preset.data.end(), now.begin()))
+            continue; // as built in already
+        // Written beside it, then put in its place, so an instance loading it meanwhile reads the old or the new.
+        std::filesystem::path part = path;
+        part += L"." + std::to_wstring(GetCurrentProcessId()) + L".part";
+        if (_wfopen_s(&file, part.c_str(), L"wb") != 0 || !file)
+            continue;
+        const bool written = std::fwrite(preset.data.data(), 1, preset.data.size(), file) == preset.data.size();
+        if (std::fclose(file) == 0 && written)
+            replaceFile(part.wstring(), path.wstring());
+        else
+            std::filesystem::remove(part, error);
+    }
+}
+
 } // namespace
 
 std::string utf8(const std::filesystem::path &path, bool generic) {
@@ -89,11 +123,16 @@ void PresetLibrary::rescan() {
                          : userSettings.examples >= 0 ? static_cast<size_t>(userSettings.examples)
                                                       : kFirstExamples;
     const size_t examples = factoryPresets().size();
-    if (!error && given < examples) {
+    // A newer FMVibe than the one that last wrote the examples out writes those still there again, as it has them.
+    const bool newer = versionBefore(userSettings.examplesVersion, FMVIBE_VERSION);
+    if (!error && (given < examples || newer)) {
         fs::create_directories(folder / L"Factory", error);
         if (!error) {
+            if (newer && !fresh)
+                updateExamples(folder / L"Factory", given);
             writeExamples(folder / L"Factory", given);
-            userSettings.examples = static_cast<int>(examples);
+            userSettings.examples = static_cast<int>(std::max(examples, given));
+            userSettings.examplesVersion = FMVIBE_VERSION;
             writeUserSettings();
         }
     }

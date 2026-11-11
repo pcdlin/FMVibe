@@ -299,6 +299,7 @@ private:
         SettingsTheme,  // b = the theme it picks
         SettingsHandles, // b = the depth handles' size it picks
         SettingsGlow,   // the slider for how strongly the graphs' curves glow
+        SettingsHue,    // the slider for the theme's main color
         SettingsLinks,  // the slider for how strongly the sources' dashed lines are drawn
         SettingsClose,
         ModWheel,     // param = mod wheel: drag or scroll
@@ -526,7 +527,9 @@ private:
     void setSourcePolarity(int source, bool bipolar);
     // How far a route's wire bows to its left, as a share of the distance it spans: as dragged, or kDefaultWireBend.
     float wireBend(int param) const;
-    void setWireBend(int param, float bend); // kDefaultWireBend forgets it
+    void setWireBend(int param, float bend); // its default forgets it
+    static float defaultWireBend(int param); // kDefaultWireBend, or 0 for a node's line to OUT
+    Point routePoint(int node) const;        // a node's center, or OUT's (kNodes)
     // The MODS view: every modulation as a row, the sources in the order of assignments(), then the empty ones
     // (UiLayout::emptyMods; one from a source that has rows goes after them instead) and a row that adds one, over the routing panel and the inspector. Its rows scroll: how
     // many are scrolled past as shown (gliding), the most that can be, and scrolling them, gliding or at once; the
@@ -747,6 +750,8 @@ private:
     // telemetry, in dB from kFxGlowFloorDb up to full scale; 0 while the audio has stopped.
     static constexpr float kFxGlowFloorDb = -48.0f;
     float fxGlow(int port) const;
+    float fxGlowTarget(int port) const;
+    std::array<float, kFxPorts> fxGlow_{}; // what the effects graph shows of each port's glow, following it
     // Where the graph's nodes (by node), +s (by lane), IN and OUT show on screen: on their cells (fxPlacesOf()), or,
     // while a node is dragged and until they settle after, gliding there (fxPlacesShown(), see fxGlide_).
     struct FxPlaces {
@@ -853,6 +858,37 @@ private:
     int fxHoveredNode() const;
     // The same for the routing graph's nodes, whose x switches the node off (see Kind::NodeDelete).
     int routingHoveredNode() const;
+    // Where the inspector's lens is joined to the node it shows: that node's left side, while the graph shows it.
+    std::optional<Point> lensLeaderStart() const;
+public:
+    // The routing graph's glow behind it (see paintRouting()): its shape at this zoom, over the part of the panel it
+    // reaches, and its pixels for the strength and accent it was filled with last.
+    struct RadarGlow {
+        Rect area;
+        float scale = 0.0f;
+        std::vector<float> distance; // each pixel's from OUT
+        std::vector<float> cover;    // how much of it is in the panel, at its rounded corners
+        Image image;
+        float strength = -1.0f;
+        float reach = -1.0f;
+        Color accent{};
+    };
+
+private:
+    RadarGlow radarGlow_;
+    std::array<float, kNodes> nodeGlow_{};               // what the routing graph shows of each node's halo, following it
+    std::vector<std::pair<int, float>> wireAmounts_;     // and of each wire's amount, by route
+    float nodeGlowTarget(int node) const;
+    float boxLevel(int node) const;
+    float shownAmount(int param) const;
+    float radarLevel_ = 0.0f; // the output's level the glow has risen or fallen to, 0 to 1 (see poll())
+    struct RadarLook {
+        float strength; // its alpha on OUT
+        float reach;    // how far out it fades to nothing
+    };
+    RadarLook radarLook() const;
+    static float sentOutLevel(const Telemetry &t);
+    bool routingGraphShown() const;
     static Point nodeDeleteAt(int node, Point center);
     static Point fxDeleteAt(int node, Point center);
     static Point fxPowerAt(int node, Point center);
@@ -1296,6 +1332,8 @@ private:
     void paintButtonFace(Canvas &c, const Widget &w, bool lit, bool hot, Color color, float tint, float radius);
     bool lastPartLit_ = false; // whether the part of a pill painted last was lit, for the line after it
     void paintNode(Canvas &c, const Widget &w);
+    void paintOpBacking(Canvas &c, int op, Point center);
+    bool opHeard(int op) const;
     void paintKnob(Canvas &c, const Widget &w);
     void paintRatio(Canvas &c, const Widget &w);
     std::string modRangeText(int source, int slot) const;
@@ -1500,7 +1538,15 @@ private:
         return linksDragged_ >= 0.0f ? linksDragged_ : static_cast<float>(controller_.linkIntensity());
     }
     // The amount of the settings slider being dragged (DragKind::Glow): the glow's, or the lines'.
-    float &sliderDragged() { return drag_.widget.kind == Kind::SettingsLinks ? linksDragged_ : glowDragged_; }
+    float hueDragged_ = -1.0f;               // the hue slider's hue while it is dragged, else -1
+    // The hue the theme's main color shows now, 0 to 1, or below 0 for the theme's own.
+    double shownHue() const { return hueDragged_ >= 0.0f ? hueDragged_ : controller_.accentHue(); }
+    double hue_ = -1.0;                      // the hue painted last
+    float &sliderDragged() {
+        return drag_.widget.kind == Kind::SettingsLinks ? linksDragged_
+               : drag_.widget.kind == Kind::SettingsHue ? hueDragged_
+                                                        : glowDragged_;
+    }
     bool ctrlHeld_ = false; // see setCtrl()
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxClear, or -1
     static constexpr int kConfirmFxClear = 4; // asking before every effect goes

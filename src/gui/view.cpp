@@ -41,6 +41,18 @@ const char *fxTitle(FxType type) {
 } // namespace detail
 
 namespace {
+// What the graphs show of a level that moves with the sound (the glows behind OUT and around the nodes, the effects
+// graph's nodes and wires, the routing graph's wires swelling with their modulation) follows it rather than jumping
+// from one snapshot to the next: rising to it with a time constant of 70 ms and falling back with one of 100 ms, at
+// the sixty polls a second the editor makes.
+float follow(float shown, float target) {
+    constexpr float kPollSeconds = 1.0f / 60.0f, kAttackSeconds = 0.07f, kReleaseSeconds = 0.1f;
+    static const float attack = 1.0f - std::exp(-kPollSeconds / kAttackSeconds);
+    static const float release = 1.0f - std::exp(-kPollSeconds / kReleaseSeconds);
+    shown += (target - shown) * (target > shown ? attack : release);
+    return std::abs(target - shown) < 1e-3f ? target : shown;
+}
+
 constexpr Str kMcBandNames[kMcBands] = {Str::BandButtonLow, Str::BandButtonMid, Str::BandButtonHigh};
 constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx, Str::ViewMods};
 static_assert(std::size(kViewNames) == std::size(kViewTabs));
@@ -71,7 +83,7 @@ std::vector<Point> viewTabOutline(Rect r, float flare) {
         }
     };
     const float bottom = r.bottom(), right = r.right(), radius = kViewTabRadius;
-    if (flare > 0.0f && r.x < kRouting.x + 1.0f)
+    if (flare > 0.0f && r.x < kFxPanel.x + 1.0f)
         points.push_back({r.x, bottom + kPanelRadius});
     else if (flare > 0.0f)
         quarter({r.x - flare, bottom - flare}, flare, 0.5f * kPi, 0.0f);
@@ -639,14 +651,26 @@ float View::wireBend(int param) const {
     for (const auto &[route, bend] : controller_.layout().wireBends)
         if (route == param)
             return bend;
+    return defaultWireBend(param);
+}
+
+// A wire between nodes bows to begin with; a node's line to OUT runs straight.
+float View::defaultWireBend(int param) {
+    for (int node = 0; node < kNodes; ++node)
+        if (outParam(node) == param)
+            return 0.0f;
     return kDefaultWireBend;
+}
+
+Point View::routePoint(int node) const {
+    return node == kNodes ? kOutCore : nodeCenter(node);
 }
 
 void View::setWireBend(int param, float bend) {
     std::vector<std::pair<int, float>> &bends = controller_.layout().wireBends;
     std::erase_if(bends, [&](const auto &b) { return b.first == param; });
     bend = std::clamp(bend, -kMaxWireBend, kMaxWireBend);
-    if (bend != kDefaultWireBend)
+    if (bend != defaultWireBend(param))
         bends.push_back({param, bend});
     controller_.layoutChanged();
 }
@@ -1434,11 +1458,14 @@ bool View::poll() {
                         0.01f * std::max(t.fxBandLevel[slot][band], 1e-5f) ||
                     std::abs(t.fxBandGain[slot][band] - telemetry_.fxBandGain[slot][band]) > 0.05f)
                     everywhere = true;
-    // The effects graph's nodes and wires glow with what goes through them; with the glow off, they show nothing of it.
-    if (fxWide() && fxGraph() && shownGlow() > 0.0f)
-        for (int port = 0; port < kFxPorts; ++port)
-            if (std::abs(t.fxPortLevels[port] - telemetry_.fxPortLevels[port]) > 0.002f * (1.0f + t.fxPortLevels[port]))
-                everywhere = true;
+    // The routing graph's glow follows the output's level (see follow()).
+    {
+        const RadarLook before = radarLook();
+        radarLevel_ = follow(radarLevel_, sentOutLevel(t));
+        const RadarLook after = radarLook();
+        if (routingGraphShown() && (after.strength != before.strength || after.reach != before.reach))
+            in(kFxPanel);
+    }
     // Phasers, flangers and wideners sweep while the audio runs.
     if (t.age < 0.5f)
         for (int slot : fxChain())
@@ -1471,6 +1498,39 @@ bool View::poll() {
         }
     }
     telemetry_ = t;
+    // The routing graph's nodes' halos and its wires' swell, and the effects graph's nodes' and wires' glow, follow
+    // what they show as the glow behind OUT does (see follow()); the panel is painted again while any moves visibly.
+    {
+        bool moved = false;
+        auto track = [&](float &shown, float target) {
+            const float next = follow(shown, target);
+            moved = moved || std::abs(next - shown) > 0.002f;
+            shown = next;
+        };
+        for (int node = 0; node < kNodes; ++node)
+            track(nodeGlow_[node], nodeGlowTarget(node));
+        for (int port = 0; port < kFxPorts; ++port)
+            track(fxGlow_[port], fxGlowTarget(port));
+        std::vector<int> wired;
+        for (int from : enabledNodes()) {
+            for (int to = 0; to < kNodes; ++to)
+                if (nodeOn(to) && this->wired(routeParam(from, to)))
+                    wired.push_back(routeParam(from, to));
+            if (goesOut(from))
+                wired.push_back(outParam(from));
+        }
+        std::erase_if(wireAmounts_, [&](const auto &w) { return std::find(wired.begin(), wired.end(), w.first) == wired.end(); });
+        for (int param : wired) {
+            const float target = static_cast<float>(liveAmount(param));
+            const auto it = std::find_if(wireAmounts_.begin(), wireAmounts_.end(), [&](const auto &w) { return w.first == param; });
+            if (it == wireAmounts_.end())
+                wireAmounts_.push_back({param, target});
+            else
+                track(it->second, target);
+        }
+        if (moved && (routingGraphShown() || (fxWide() && fxGraph() && shownGlow() > 0.0f)))
+            in(kFxPanel);
+    }
     traceRandomLfos();
     // A free or anchored LFO switched on runs whether notes play or not, and its card shows it: the plugin keeps
     // processing for it while a host would let it sleep.
@@ -1502,7 +1562,7 @@ bool View::poll() {
         modList_.reset();
         everywhere = true;
     }
-    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_ || shownLinks() != links_ ||
+    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_ || shownLinks() != links_ || shownHue() != hue_ ||
         controller_.handleSize() != handles_) // picked in another editor
         everywhere = true;
     if ((typing_ || fieldTyping()) && ++caretTicks_ % 32 == 0)
@@ -2176,6 +2236,16 @@ std::vector<View::Widget> View::widgets() const {
                 const float bottom = std::max({w.start.y, w.control.y, w.end.y});
                 add(Kind::Wire, Rect{left, top, right - left, bottom - top}.inset(-kWireGrab), param, from, to);
             }
+            // Its line to OUT bends as they do.
+            if (goesOut(from) && outParam(from) != rerouted) {
+                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
+                const float left = std::min({w.start.x, w.control.x, w.end.x});
+                const float top = std::min({w.start.y, w.control.y, w.end.y});
+                const float right = std::max({w.start.x, w.control.x, w.end.x});
+                const float bottom = std::max({w.start.y, w.control.y, w.end.y});
+                add(Kind::Wire, Rect{left, top, right - left, bottom - top}.inset(-kWireGrab), outParam(from), from,
+                    kNodes);
+            }
         }
         for (int node : on) {
             const Point c = nodeCenter(node);
@@ -2212,9 +2282,10 @@ std::vector<View::Widget> View::widgets() const {
                 const Wire w = wireBetween(from, nodeCenter(from), to, nodeCenter(to), wireBend(param));
                 add(Kind::WireEnd, wireEndGrip(w.end, w.tangent), param, from, to);
             }
-            if (goesOut(from) && outParam(from) != moving)
-                add(Kind::WireEnd, wireEndGrip(outWireOf(from, nodeCenter(from)).end, {0.0f, 1.0f}), outParam(from),
-                    from, kNodes);
+            if (goesOut(from) && outParam(from) != moving) {
+                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
+                add(Kind::WireEnd, wireEndGrip(w.end, w.dir), outParam(from), from, kNodes);
+            }
         }
         // Where the wires leave their nodes, over the nodes' edges: dragged onto another node, they come from there.
         auto startGrip = [](Point start, Point toward) {
@@ -2229,8 +2300,8 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::WireStart, startGrip(w.start, w.control), param, from, to);
             }
             if (goesOut(from) && outParam(from) != moving) {
-                const OutWire w = outWireOf(from, nodeCenter(from));
-                add(Kind::WireStart, startGrip(w.start, w.end), outParam(from), from, kNodes);
+                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
+                add(Kind::WireStart, startGrip(w.start, w.control), outParam(from), from, kNodes);
             }
         }
         // The node under the mouse: an x in a circle at its upper right, over its edge, which switches it off.
@@ -2239,13 +2310,17 @@ std::vector<View::Widget> View::widgets() const {
                 const Point x = nodeDeleteAt(node, nodeCenter(node));
                 add(Kind::NodeDelete, {x.x - 8.0f, x.y - 8.0f, 16.0f, 16.0f}, -1, node);
             }
-        // The nodes that are off, as dashed ghosts in the graph's top left, over any node moved there.
-        float x = kRouting.x + 16.0f;
+        // The nodes that are off, as dashed ghosts docked under OUT, in the graph's bottom right, over any node moved
+        // there.
+        float x = kRouting.right() - 16.0f + 6.0f;
+        for (int node = 0; node < kNodes; ++node)
+            if (!nodeOn(node))
+                x -= (isBoxNode(node) ? 34.0f : 24.0f) + 6.0f;
         for (int node = 0; node < kNodes; ++node) {
             if (nodeOn(node))
                 continue;
             const float w = isBoxNode(node) ? 34.0f : 24.0f;
-            add(Kind::NodeGhost, {x, kRouting.y + 10.0f, w, 24.0f}, -1, node);
+            add(Kind::NodeGhost, {x, kRouting.bottom() - 34.0f, w, 24.0f}, -1, node);
             x += w + 6.0f;
         }
     }
@@ -2306,11 +2381,10 @@ std::vector<View::Widget> View::widgets() const {
         inputKnobs(node);
     } else if (node < kOps) {
         const int op = node;
-        const size_t waves = list.size();
+        // Pills a little apart, each on its own, as the lens draws its rows of buttons.
         for (int b = 0; b + 1 < kWaveButtons; ++b)
             add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
         add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
-        merge(waves);
         // The tabs, a noise operator's without the scope, then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
@@ -2401,10 +2475,8 @@ std::vector<View::Widget> View::widgets() const {
         }
     } else {
         const int filter = node - kOps;
-        const size_t types = list.size();
-        for (int t = 0; t < static_cast<int>(FilterType::Count); ++t)
+        for (int t = 0; t < static_cast<int>(FilterType::Count); ++t) // pills, as the waves are
             add(Kind::TypeButton, filterTypeButton(t), -1, filter, t);
-        merge(types);
         add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
         const int params[] = {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance),
                               paramIndex(filter, FilterParam::KeyTrack), paramIndex(filter, FilterParam::Drive),
@@ -2947,7 +3019,7 @@ std::optional<View::Widget> View::hitTest(Point p) const {
             if (onNodeEdge(it->a, it->rect.center(), p))
                 return *it;
         } else if (it->kind == Kind::Wire) {
-            const Wire w = wireBetween(it->a, nodeCenter(it->a), it->b, nodeCenter(it->b), wireBend(it->param));
+            const Wire w = wireBetween(it->a, nodeCenter(it->a), it->b, routePoint(it->b), wireBend(it->param));
             if (it->rect.contains(p) && distanceToWire(w, p) <= kWireGrab)
                 return *it;
         } else if (it->kind == Kind::FxWire) {
@@ -2998,7 +3070,8 @@ void View::paint(Canvas &c, Rect area) {
     });
 
     theme_ = themeIndex(controller_.theme());
-    look = kThemes[theme_];
+    hue_ = shownHue();
+    look = withAccentHue(kThemes[theme_], hue_); // its main color turned to the hue the settings pick
     glow_ = glowing = shownGlow();
     links_ = shownLinks();
     handles_ = controller_.handleSize();
@@ -3199,8 +3272,11 @@ void View::paint(Canvas &c, Rect area) {
         // From the mouse to where it goes; away from the nodes it is faint: let go of there, it goes.
         const int source = nodeAt(drag_.now);
         const Color color = source < 0 ? kFaint : nodeColor(source);
-        const Point end = to == kNodes ? Point{drag_.now.x, kBusY - 10.0f}
-                                       : outlineToward(to, nodeCenter(to), drag_.now);
+        Point end = to == kNodes ? kOutCore : outlineToward(to, nodeCenter(to), drag_.now);
+        if (to == kNodes) { // onto the core's edge, toward the mouse
+            const Point out = normalize({drag_.now.x - kOutCore.x, drag_.now.y - kOutCore.y});
+            end = {kOutCore.x + out.x * (kOutCoreRadius + 2.0f), kOutCore.y + out.y * (kOutCoreRadius + 2.0f)};
+        }
         const Point dir = normalize({end.x - drag_.now.x, end.y - drag_.now.y});
         const Point base{end.x - dir.x * 8.0f, end.y - dir.y * 8.0f};
         c.line(drag_.now, base, color, 2.0f, true);
@@ -3220,7 +3296,7 @@ void View::paint(Canvas &c, Rect area) {
     } else if (drag_.kind == DragKind::Connect || rerouting() >= 0) {
         const int from = drag_.widget.a;
         // A moving route away from the nodes and the bus is faint: let go of there, it goes.
-        const bool removing = rerouting() >= 0 && nodeAt(drag_.now) < 0 && !onBus(drag_.now);
+        const bool removing = rerouting() >= 0 && nodeAt(drag_.now) < 0 && !onOutCore(drag_.now);
         const Color color = removing ? kFaint : nodeColor(from);
         // The route leaves its node toward the mouse; a moving one has its arrowhead under it.
         const Point origin = nodeCenter(from);
@@ -3302,10 +3378,8 @@ void View::paintPanels(Canvas &c) {
                                 keyboardPanel(keyboardTop(collapsed), controller_.layout().keysCollapsed)};
     if (shapeEditing() >= 0 && isClipCurve(shapeEditing()))
         panels.push_back(shapePanel()); // the shaper curve's editor, narrower than the effects it covers
-    else if (inspectorCovered())
+    else // the effects or the modulations across it, or the routing panel with the inspector floating over it
         panels.push_back(kFxPanel);
-    else
-        panels.insert(panels.end(), {kRouting, kInspector});
     // A theme with soft shadows lifts its panels off the background with one, instead of an outline.
     if (look.panelShadow > 0.0f) {
         auto shadow = [&](Rect p, float radius) { softShadow(c, p, radius, 5, 1.2f, 2.0f, look.panelShadow); };
@@ -3314,7 +3388,7 @@ void View::paintPanels(Canvas &c) {
         const bool firstShown = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 &&
                                 partialEditing() < 0;
         for (const Rect &p : panels) {
-            if (!firstShown || p.x != kRouting.x || p.y != kRouting.y) {
+            if (!firstShown || p.x != kFxPanel.x || p.y != kFxPanel.y) {
                 shadow(p, kPanelRadius);
                 continue;
             }
@@ -3335,6 +3409,11 @@ void View::paintPanels(Canvas &c) {
         if (look.panelShadow <= 0.0f)
             c.strokeRect(p, kBorder, 1.0f, kPanelRadius);
     }
+    // The panel's corner the first tab's side runs down, while it is the one shown, squared here (see Kind::ViewTab),
+    // under the inspector's lens, which floats over it.
+    const bool firstTab = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0;
+    if (firstTab)
+        c.fillRect({kFxPanel.x, kFxPanel.y, kPanelRadius, kPanelRadius}, kPanel);
 }
 
 void View::paintHeader(Canvas &c) {
@@ -3465,24 +3544,231 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
     }
 }
 
+namespace {
+// The glow behind the routing graph: a bloom of the accent from OUT, strongest on the core and fading smoothly out to
+// as far as it reaches, its corners rounded as the panel's are. Where each of the target's own pixels lies from OUT
+// (`scale` a logical pixel, held to 3, past which it is drawn stretched) is worked out once, over the part of the panel
+// the glow can reach; then its pixels are filled for how strong it is and how far it reaches (see View::radarLook()),
+// rounded up or down by an 8x8 ordered dither: the glow is so faint that it spans a few levels of each channel, which
+// would otherwise show as rings.
+constexpr float kRadarReach = 520.0f; // at the loudest, the outermost ring's
+void shapeRadarGlow(View::RadarGlow &glow, float scale) {
+    scale = std::clamp(scale, 0.25f, 3.0f);
+    const float left = std::max(kFxPanel.x, kOutCore.x - kRadarReach), top = std::max(kFxPanel.y, kOutCore.y - kRadarReach);
+    const float right = std::min(kFxPanel.right(), kOutCore.x + kRadarReach),
+                bottom = std::min(kFxPanel.bottom(), kOutCore.y + kRadarReach);
+    glow.area = {left, top, right - left, bottom - top};
+    glow.scale = scale;
+    const int w = static_cast<int>(std::ceil(glow.area.w * scale)), h = static_cast<int>(std::ceil(glow.area.h * scale));
+    const size_t count = static_cast<size_t>(w) * static_cast<size_t>(h);
+    glow.image.width = w;
+    glow.image.height = h;
+    glow.image.pixels.assign(count, 0u);
+    glow.distance.assign(count, 0.0f);
+    glow.cover.assign(count, 1.0f);
+    glow.strength = -1.0f; // filled again
+    const float sx = glow.area.w / static_cast<float>(w), sy = glow.area.h / static_cast<float>(h); // logical a pixel
+    constexpr float kCorner = kPanelRadius;
+    for (int y = 0; y < h; ++y) {
+        const float ly = glow.area.y + (static_cast<float>(y) + 0.5f) * sy;
+        const float dy = std::max({kFxPanel.y + kCorner - ly, ly - (kFxPanel.bottom() - kCorner), 0.0f});
+        for (int x = 0; x < w; ++x) {
+            const float lx = glow.area.x + (static_cast<float>(x) + 0.5f) * sx;
+            const float dx = std::max({kFxPanel.x + kCorner - lx, lx - (kFxPanel.right() - kCorner), 0.0f});
+            const size_t at = static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x);
+            glow.distance[at] = std::hypot(lx - kOutCore.x, ly - kOutCore.y);
+            if (dx > 0.0f && dy > 0.0f)
+                glow.cover[at] = std::clamp((kCorner - std::hypot(dx, dy)) / sx + 0.5f, 0.0f, 1.0f);
+        }
+    }
+}
+
+// Its pixels for `strength` (its alpha on the core) reaching `reach` out, in `accent`: as light from a point falls off,
+// steeply by the core and ever more gently further out, 1 / (1 + (u / 0.28)^2) of it, u the way out, tapered to
+// nothing at its reach by (1 - u^2)^2.
+void fillRadarGlow(View::RadarGlow &glow, float strength, float reach, Color accent) {
+    constexpr int kBayer[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},   {48, 16, 56, 24, 50, 18, 58, 26},
+                                  {12, 44, 4, 36, 14, 46, 6, 38},  {60, 28, 52, 20, 62, 30, 54, 22},
+                                  {3, 35, 11, 43, 1, 33, 9, 41},   {51, 19, 59, 27, 49, 17, 57, 25},
+                                  {15, 47, 7, 39, 13, 45, 5, 37},  {63, 31, 55, 23, 61, 29, 53, 21}};
+    const int w = glow.image.width, h = glow.image.height;
+    const float scaled = strength * 255.0f, across = 1.0f / (reach * reach);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            const size_t at = static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x);
+            const float u2 = glow.distance[at] * glow.distance[at] * across;
+            if (u2 >= 1.0f) {
+                glow.image.pixels[at] = 0u;
+                continue;
+            }
+            const float rest = 1.0f - u2, light = 1.0f / (1.0f + u2 * (1.0f / (0.28f * 0.28f)));
+            const float a = light * rest * rest * glow.cover[at] * scaled;
+            const float t = (static_cast<float>(kBayer[y & 7][x & 7]) + 0.5f) / 64.0f;
+            auto level = [&](float v) { return static_cast<uint32_t>(std::clamp(std::floor(v + t), 0.0f, 255.0f)); };
+            glow.image.pixels[at] =
+                level(a) << 24 | level(accent.r * a) << 16 | level(accent.g * a) << 8 | level(accent.b * a);
+        }
+    static uint64_t serials = 0;
+    glow.image.serial = ++serials;
+    glow.strength = strength;
+    glow.reach = reach;
+    glow.accent = accent;
+}
+
+// The graph's backdrop, under the whole panel, the inspector's lens too: the glow spreading from OUT, the orbit rings
+// round it and two faint rays from it to the lens's far corners, the panel's corner left clear for the tab shown.
+void paintRadar(Canvas &c, const View::RadarGlow &glow) {
+    c.pushClip(kFxPanel);
+    if (glow.strength > 0.0f)
+        c.image(glow.image, glow.area);
+    // (Ending at the middles of the lens's corners' arcs, under the lens, so they don't show past its rounded corners.)
+    const float in = kRadiusPanel;
+    c.line(kOutCore, {kInspector.x + in, kInspector.y + in}, mix(kPanel, kBorder, 0.45f), 1.0f);
+    c.line(kOutCore, {kInspector.x + in, kInspector.bottom() - in}, mix(kPanel, kBorder, 0.45f), 1.0f);
+    c.strokeCircle(kOutCore, 180.0f, kBorder, 1.0f);
+    c.strokeCircle(kOutCore, 340.0f, mix(kPanel, kBorder, 0.7f), 1.0f);
+    c.strokeCircle(kOutCore, 500.0f, mix(kPanel, kBorder, 0.45f), 1.0f);
+    c.popClip();
+}
+
+// OUT: a disc shading from the accent in its middle to a darker accent at its edge, in fine steps, in a faint halo,
+// ringed in the accent while a route held over it would go there.
+void paintOutCore(Canvas &c, bool target) {
+    c.fillCircle(kOutCore, kOutCoreRadius + 14.0f, kAccent.alpha(0.08f));
+    const Color deep = mix(kAccent, kBackground, 0.3f);
+    c.fillCircle(kOutCore, kOutCoreRadius, deep);
+    constexpr int kSteps = 20;
+    for (int k = 1; k < kSteps; ++k) {
+        const float t = static_cast<float>(k) / (kSteps - 1);
+        c.fillCircle(kOutCore, kOutCoreRadius * (1.0f - 0.85f * t), mix(deep, kAccent, t));
+    }
+    if (target)
+        c.strokeCircle(kOutCore, kOutCoreRadius + 5.0f, kAccent, 2.0f);
+    c.text({kOutCore.x - kOutCoreRadius, kOutCore.y - 9.0f, 2.0f * kOutCoreRadius, 18.0f}, tr(Str::BusOut), kTextLabel,
+           kPanel, Align::Center, true);
+}
+} // namespace
+
+// How strongly a routing node's halo lights up, 0 to 1, which nodeGlow_ follows: an operator's as brightly as its
+// envelope and the routes that take it to the output let it through, where modulation takes them now, so a route an LFO
+// opens from 0 % lights it up; a filter's or shaper's alike, as loud as what goes through it (see boxLevel()).
+float View::nodeGlowTarget(int node) const {
+    if (!nodeOn(node))
+        return 0.0f;
+    const float level = node < kOps ? std::min(telemetry_.opLevels[node], 1.0f) : boxLevel(node);
+    return level * static_cast<float>(std::sqrt(outLevel(node)));
+}
+
+// How loud what goes through a filter or shaper is, 0 to 1, as an operator's envelope says how loud it is: the
+// loudest of what feeds it, each as loud as its source (an operator by its envelope, a filter or shaper by this in
+// turn) as far as the route lets it through, where modulation takes it now. Filters and shapers can feed each other
+// round in a loop, so each is looked at once.
+float View::boxLevel(int node) const {
+    std::array<bool, kNodes> seen{};
+    auto level = [&](auto &self, int box) -> float {
+        if (seen[box] || !nodeOn(box))
+            return 0.0f;
+        seen[box] = true;
+        float most = 0.0f;
+        for (int from = 0; from < kNodes; ++from) {
+            if (from == box || !nodeOn(from))
+                continue;
+            const float through = static_cast<float>(liveAmount(routeParam(from, box)));
+            if (through <= 0.0f)
+                continue;
+            const float source = from < kOps ? std::min(telemetry_.opLevels[from], 1.0f) : self(self, from);
+            most = std::max(most, source * std::min(through, 1.0f));
+        }
+        return most;
+    };
+    return telemetry_.voices > 0 ? level(level, node) : 0.0f;
+}
+
+// A wire's amount as its swell shows it, following its modulation (see follow()); a wire not followed yet, as it is.
+float View::shownAmount(int param) const {
+    const auto it = std::find_if(wireAmounts_.begin(), wireAmounts_.end(), [&](const auto &w) { return w.first == param; });
+    return it != wireAmounts_.end() ? it->second : static_cast<float>(liveAmount(param));
+}
+
+// How loud what the routing graph's nodes send to OUT is, 0 to 1, for its glow: the level of the effects graph's IN,
+// the voices' sum before any effect (a peak falling away about 90 dB a second, as the effects graph's nodes glow), the
+// 12 dB the voices go into the effects with given back, from -48 dB up to full scale.
+float View::sentOutLevel(const Telemetry &t) {
+    const float level = t.age < 0.5f ? t.fxPortLevels[kFxPortIn] : 0.0f;
+    if (!(level > 0.0f))
+        return 0.0f;
+    return std::clamp((20.0f * std::log10(level) + 12.0f + 48.0f) / 48.0f, 0.0f, 1.0f);
+}
+
+// How the routing graph's glow shows, as loud as the output has risen to (see poll()): its alpha on OUT from 30 % of
+// its strength in silence to all of it at the loudest, and its reach from half the outermost ring's to all of it, so
+// it spreads out as the sound swells; and that as strongly as the glow setting says (20 % on the core at the loudest
+// with it at 75 %, none with it Off). In 64 steps of loudness, so it is filled and painted again only as it shows.
+View::RadarLook View::radarLook() const {
+    const float setting = shownGlow() / 0.75f;
+    if (setting <= 0.0f)
+        return {0.0f, kRadarReach};
+    const float loud = std::round(radarLevel_ * 64.0f) / 64.0f;
+    return {0.2f * setting * (0.3f + 0.7f * loud), kRadarReach * (0.5f + 0.5f * loud)};
+}
+
+// Whether the routing graph shows, with its glow behind it.
+bool View::routingGraphShown() const {
+    return controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0;
+}
+
+// The lens's leader: from the node the inspector shows, while it is in the graph, level across to the lens.
+std::optional<Point> View::lensLeaderStart() const {
+    const int node = controller_.layout().selectedNode;
+    if (controller_.layout().view != RoutingView::Graph || shapeEditing() >= 0 || partialEditing() >= 0 ||
+        !nodeOn(node))
+        return std::nullopt;
+    const Point center = nodeCenter(node);
+    const float extent = (isBoxNode(node) ? kFilterHalfW : kNodeRadius) + kSelectedRing + 2.0f;
+    return Point{center.x - extent, center.y};
+}
+
 void View::paintRouting(Canvas &c) {
+    // The glow's distances are worked out again only as the editor is zoomed, and its pixels filled again as its strength,
+    // its reach or the theme's accent changes.
+    const float scale = std::clamp(c.deviceScale(), 0.25f, 3.0f);
+    if (std::abs(scale - radarGlow_.scale) > 1e-3f)
+        shapeRadarGlow(radarGlow_, scale);
+    const RadarLook glow = radarLook();
+    if (glow.strength > 0.0f && (glow.strength != radarGlow_.strength || glow.reach != radarGlow_.reach ||
+                                 kAccent.r != radarGlow_.accent.r || kAccent.g != radarGlow_.accent.g ||
+                                 kAccent.b != radarGlow_.accent.b))
+        fillRadarGlow(radarGlow_, glow.strength, glow.reach, kAccent);
+    else if (glow.strength <= 0.0f)
+        radarGlow_.strength = 0.0f;
+    paintRadar(c, radarGlow_);
     c.text({kHintX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kHintX, 22.0f},
            tr(Str::HintRouting), kTextLabel, kFaint, Align::Right);
     if (routingGridShown()) { // Ctrl held: the grid's points, under everything, the one a node dragged lands on lit
         const Point target = drag_.kind == DragKind::Node ? nodeCenter(drag_.widget.a) : Point{};
         paintGridMarks(c, kGraph, kRoutingGridCols, kRoutingGridRows, drag_.kind == DragKind::Node ? &target : nullptr);
     }
+    if (const std::optional<Point> leader = lensLeaderStart()) {
+        const Color color = nodeColor(controller_.layout().selectedNode);
+        c.line(*leader, {kInspector.right(), leader->y}, color.alpha(0.18f), 1.5f, true);
+        c.fillCircle(*leader, 2.5f, color.alpha(0.4f));
+    }
 
-    // Output bus along the bottom, lit while a new or moving route would go there.
+    // OUT, lit while a new or moving route would go there.
     const int moving = rerouting(); // drawn following the mouse instead
     const int busParam = drag_.kind == DragKind::Connect || moving >= 0 ? outParam(drag_.widget.a) : -1;
-    const bool busTarget = busParam >= 0 && onBus(drag_.now) &&
+    const bool busTarget = busParam >= 0 && onOutCore(drag_.now) &&
                            (drag_.kind == DragKind::Connect || busParam == moving || !wired(busParam));
-    c.line({kRouting.x + 48.0f, kBusY}, {kRouting.right() - 20.0f, kBusY}, busTarget ? kAccent : kTrack, 3.0f);
-    c.text({kRouting.x + 14.0f, kBusY - 9.0f, 30.0f, 18.0f}, tr(Str::BusOut), kTextLabel, kDim, Align::Left, true);
+    paintOutCore(c, busTarget);
+
+    // The operators' halos and unison copies, under the wires, so an arrowhead coming in at a node's side shows over
+    // the copies peeking out there.
+    const std::vector<int> on = enabledNodes();
+    for (int node : on)
+        if (node < kOps)
+            paintOpBacking(c, node, nodeCenter(node));
 
     // Modulated routes swell and thin with their modulation while notes play.
-    const std::vector<int> on = enabledNodes();
     auto focused = [&](int param) {
         return (hover_ && hover_->param == param && drag_.kind == DragKind::None) ||
                ((drag_.kind == DragKind::Value || drag_.kind == DragKind::Bend) && drag_.widget.param == param);
@@ -3491,12 +3777,11 @@ void View::paintRouting(Canvas &c) {
         const int param = outParam(node);
         if (!goesOut(node) || param == moving)
             continue;
-        const float out = static_cast<float>(liveAmount(param));
-        const OutWire w = outWireOf(node, nodeCenter(node));
-        const Color base = isBoxNode(node) || look.flat ? nodeColor(node) : kText;
-        const Color color = focused(param) ? kText : base.alpha(0.25f + 0.5f * out);
-        c.line(w.start, w.end, color, 1.5f + 2.0f * out);
-        arrowHead(c, w.end, {0.0f, 1.0f}, color);
+        const float out = shownAmount(param);
+        const OutWire w = outWireOf(node, nodeCenter(node), wireBend(param));
+        const Color color = focused(param) ? kText : nodeColor(node).alpha(0.35f + 0.65f * out);
+        c.curve(w.start, w.control, w.end, color, 1.2f + 2.4f * out);
+        arrowHead(c, w.end, w.dir, color);
     }
 
     for (int from : on) {
@@ -3504,10 +3789,10 @@ void View::paintRouting(Canvas &c) {
             const int param = routeParam(from, to);
             if (!wired(param) || param == moving)
                 continue;
-            const float amount = static_cast<float>(liveAmount(param));
+            const float amount = shownAmount(param);
             const Color base = routeColor(from, to);
             const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
-            const float width = 1.2f + 3.0f * amount;
+            const float width = 1.2f + 2.4f * amount;
             if (from == to) {
                 c.strokeCircle(loopCenter(from, nodeCenter(from)), 9.0f, color, width);
                 continue;
@@ -5304,6 +5589,23 @@ void View::paintShifter(Canvas &c, Rect r, int slot) {
 
 void View::paintInspector(Canvas &c) {
     const int node = controller_.layout().selectedNode;
+    // The lens: a card floating over the panel's left end, the graph's backdrop faintly through it, outlined in the
+    // color of the node it shows; a notch on its right side where the leader from that node meets it.
+    const Color edge = nodeColor(node).alpha(0.35f);
+    const Color face = kRaised.alpha(0.92f);
+    // In a flat theme, as its cards, on its shadow alone without an outline.
+    softShadow(c, kInspector, kRadiusPanel, 4, 1.25f, 4.0f, lightTheme() ? 0.05f : 0.16f); // clear of the panel's top
+    c.fillRect(kInspector, face, kRadiusPanel);
+    if (outlined())
+        c.strokeRect(kInspector, edge, 1.0f, kRadiusPanel);
+    if (const std::optional<Point> leader = lensLeaderStart()) {
+        const float x = kInspector.right(), y = leader->y;
+        const Point notch[] = {{x - 1.0f, y - 6.0f}, {x + 6.0f, y}, {x - 1.0f, y + 6.0f}};
+        c.fillPolygon(notch, 3, face);
+        const Point side[] = {{x, y - 6.0f}, {x + 6.0f, y}, {x, y + 6.0f}};
+        if (outlined())
+            c.polyline(side, 3, edge, 1.0f);
+    }
     // Leaves room for the on/off switch at the right.
     Rect summaryRect{kInspector.x + 16.0f, kInspector.y + 38.0f, kInspector.w - 84.0f, 18.0f};
     const char *dot = "  \xC2\xB7  ";
@@ -6077,6 +6379,48 @@ Point View::nodeDeleteAt(int node, Point center) {
     return {center.x + kFilterHalfW - 2.0f, center.y - kFilterHalfH + 2.0f}; // at a box's corner
 }
 
+namespace {
+// A routing node's fill: the panel's color, tinted with its own under the mouse; the node the inspector shows solid
+// in its color, a little lighter under the mouse.
+Color nodeFace(Color color, bool selected, bool hovered) {
+    if (selected)
+        return hovered ? mix(color, kText, 0.15f) : color;
+    return hovered ? mix(kPanel, color, 0.12f) : kPanel;
+}
+} // namespace
+
+// Whether operator `op` is heard: going out, or into a filter or shaper that is on.
+bool View::opHeard(int op) const {
+    bool heard = value(paramIndex(op, OpParam::Out)) > 0.0;
+    for (int filter = 0; filter < kFilters; ++filter)
+        heard = heard || (nodeOn(kOps + filter) && value(sendIndex(op, filter)) > 0.0);
+    for (int shaper = 0; shaper < kShapers; ++shaper)
+        heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
+    return heard;
+}
+
+// What an operator's node has behind it, drawn under the wires: its halo, which lights up while playing only if it
+// ends up in the output, as brightly as its envelope and the routes that take it there let it through (where
+// modulation takes them now: one an LFO opens from 0 % lights up too), and with unison a stack of copies peeking out
+// on both sides, past the selection ring, outlined as the node is.
+void View::paintOpBacking(Canvas &c, int op, Point center) {
+    const Color color = nodeColor(op);
+    if (const float level = nodeGlow_[op]; level > 0.01f) {
+        if (glowing > 0.0f) // feathered, as strongly as the glow is set
+            featherCircle(c, center, kNodeRadius, 16.0f, color.alpha(0.3f * level));
+        else // with the glow off, a plain ring of light, so a sounding operator still shows
+            c.fillCircle(center, kNodeRadius + 7.0f, color.alpha(0.22f * level));
+    }
+    if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
+        const Color outline = opHeard(op) ? color : color.alpha(0.45f);
+        for (const float dx : {-9.0f, 9.0f}) {
+            const Point copy{center.x + dx, center.y};
+            c.fillCircle(copy, kNodeRadius, kPanel);
+            c.strokeCircle(copy, kNodeRadius, outline.alpha(0.6f), 1.5f);
+        }
+    }
+}
+
 void View::paintNode(Canvas &c, const Widget &w) {
     const bool hovered = isHovered(w) || isActive(w);
     const bool selected = controller_.layout().selectedNode == w.a;
@@ -6087,82 +6431,51 @@ void View::paintNode(Canvas &c, const Widget &w) {
         const float corner = shaper ? kRadiusMark : kRadiusControl;
         const Color color = nodeColor(w.a);
         const bool live = boxHasInput(w.a);
-        if (live && telemetry_.voices > 0 && reachesOut(w.a))
-            c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f), corner + 4.0f);
-        // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
-        if (look.flat) { // raised: shaded from its top down, on a shadow
-            paintNodeShadow(c, w.rect, corner);
-            c.fillGradient(w.rect, hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, corner);
-        } else {
-            c.fillRect(w.rect, hovered ? kTrack : kRaised, corner);
+        // Its halo, as an operator's: as bright as what goes through it and on to the output (see nodeGlowTarget()),
+        // feathered as the glow setting says, a plain ring of light with it off.
+        if (const float level = nodeGlow_[w.a]; level > 0.01f) {
+            if (glowing > 0.0f)
+                featherRect(c, w.rect, corner, 16.0f, color.alpha(0.3f * level));
+            else
+                c.fillRect(w.rect.inset(-7.0f), color.alpha(0.22f * level), corner + 7.0f);
         }
-        if (selected)
-            c.fillRect(w.rect, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill), corner);
-        c.strokeRect(w.rect, live ? color : look.flat ? color.alpha(0.35f) : kFaint, selected ? 2.0f : 1.5f, corner);
-        if (selected)
-            c.strokeRect(w.rect.inset(-kSelectedRing), color, 2.0f, corner + kSelectedRing);
-        c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], kTextValue, kText, Align::Center, true);
+        // Filled with the panel's color and outlined in its own, faintly while nothing goes into it; the node the
+        // inspector shows filled solid with its color, its name and type in the panel's, and ringed in it.
+        c.fillRect(w.rect, nodeFace(color, selected, hovered), corner);
+        if (!selected)
+            c.strokeRect(w.rect, live ? color : color.alpha(0.45f), 1.5f, corner);
+        else
+            c.strokeRect(w.rect.inset(-kSelectedRing), color.alpha(0.8f), 1.5f, corner + kSelectedRing);
+        c.text({w.rect.x, w.rect.y + 2.0f, w.rect.w, 16.0f}, kNodeNames[w.a], kTextValue, selected ? kPanel : color,
+               Align::Center, true);
         const int box = w.a - kOps; // the filter, or past them the shaper
         const std::string kind =
             shaper ? clipModeName(clipMode(value(paramIndex(shaperOfNode(w.a), ShaperParam::Mode))))
                    : filterLabel(static_cast<FilterType>(std::lround(value(paramIndex(box, FilterParam::Type)))),
                                  value(paramIndex(box, FilterParam::Slope)));
-        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, kTextLabel, selected ? kText.alpha(0.8f) : kDim);
+        c.text({w.rect.x, w.rect.y + 17.0f, w.rect.w, 14.0f}, kind, kTextLabel, selected ? kPanel.alpha(0.7f) : kDim);
         return;
     }
 
     const int op = w.a;
-    bool heard = value(paramIndex(op, OpParam::Out)) > 0.0;
-    for (int filter = 0; filter < kFilters; ++filter)
-        heard = heard || (nodeOn(kOps + filter) && value(sendIndex(op, filter)) > 0.0);
-    for (int shaper = 0; shaper < kShapers; ++shaper)
-        heard = heard || (nodeOn(kOps + kFilters + shaper) && value(shaperSendIndex(op, shaper)) > 0.0);
-    // Its halo lights up while playing only if it ends up in the output, as brightly as its envelope and the routes
-    // that take it there let it through, where modulation takes them now: one an LFO opens from 0 % lights up too.
     const Color color = nodeColor(op); // the accent, or in a theme that colors each operator its own
-    const float level = std::min(telemetry_.opLevels[op], 1.0f) * static_cast<float>(std::sqrt(outLevel(op)));
-    if (level > 0.01f) {
-        if (glowing > 0.0f) // feathered, as strongly as the glow is set
-            featherCircle(c, center, kNodeRadius, 16.0f, color.alpha(0.3f * level));
-        else // with the glow off, a plain ring of light, so a sounding operator still shows
-            c.fillCircle(center, kNodeRadius + 7.0f, color.alpha(0.22f * level));
-    }
-    // A silent one's outline: faint, or in a flat theme a faint tint of its own color, which sits with its fill and ring.
-    const Color quiet = look.flat ? color.alpha(0.35f) : kFaint;
-    if (std::lround(value(paramIndex(op, OpParam::Unison))) > 1 && !isNoise(op)) {
-        // Unison: a stack of copies peeking out on both sides, rings, or in a flat theme discs tinted with its color,
-        // each on the node's soft shadow.
-        const float spread = look.flat ? 9.0f : 4.5f; // discs further out, to show past the selection ring
-        for (const float dx : {-spread, spread}) {
-            const Point copy{center.x + dx, center.y};
-            if (look.flat) {
-                paintNodeShadow(c, copy, kNodeRadius);
-                c.fillCircle(copy, kNodeRadius, look.nodeBottom);
-                c.fillCircle(copy, kNodeRadius, (heard ? color : kFaint).alpha(0.4f));
-            } else {
-                c.strokeCircle(copy, kNodeRadius, (heard ? color : kFaint).alpha(0.45f), 1.2f);
-            }
-        }
-    }
-    // The node the inspector shows is filled with its color, like its tab's plate, and ringed in it.
-    if (look.flat) { // raised: shaded from its top down, on a shadow
-        paintNodeShadow(c, center, kNodeRadius);
-        c.fillGradient({center.x - kNodeRadius, center.y - kNodeRadius, 2.0f * kNodeRadius, 2.0f * kNodeRadius},
-                       hovered ? mix(look.nodeTop, kText, 0.08f) : look.nodeTop, look.nodeBottom, kNodeRadius);
-    } else {
-        c.fillCircle(center, kNodeRadius, hovered ? kTrack : kRaised);
-    }
-    if (selected)
-        c.fillCircle(center, kNodeRadius, color.alpha(hovered ? kSelectedFill + 0.07f : kSelectedFill));
-    c.strokeCircle(center, kNodeRadius, heard ? color : quiet, selected ? 2.0f : 1.5f);
-    if (selected)
-        c.strokeCircle(center, kNodeRadius + kSelectedRing, color, 2.0f);
-    const Color caption = selected ? kText.alpha(0.8f) : kDim; // its wave and ratio, lighter on its fill
+    // A silent one's outline: its color, faintly. (Its halo and unison copies are under the wires: see
+    // paintOpBacking().)
+    const Color outline = opHeard(op) ? color : color.alpha(0.45f);
+    // Filled with the panel's color and outlined in its own; the node the inspector shows filled solid with its color,
+    // its wave, letter and ratio in the panel's, and ringed in it.
+    c.fillCircle(center, kNodeRadius, nodeFace(color, selected, hovered));
+    if (!selected)
+        c.strokeCircle(center, kNodeRadius, outline, 1.5f);
+    else
+        c.strokeCircle(center, kNodeRadius + kSelectedRing, color.alpha(0.8f), 1.5f);
+    const Color ink = selected ? kPanel : color;
+    const Color caption = selected ? kPanel.alpha(0.7f) : kDim; // its ratio
     // Wave glyph above the letter, ratio below it.
     const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
     const std::vector<Point> glyph = waveIcon(wave, {center.x - 6.0f, center.y - 16.0f, 12.0f, 5.0f});
-    c.polyline(glyph.data(), glyph.size(), caption, 1.0f);
-    c.text({center.x - 20.0f, center.y - 11.0f, 40.0f, 20.0f}, kNodeNames[op], kTextHeading, kText, Align::Center, true);
+    c.polyline(glyph.data(), glyph.size(), ink, 1.2f);
+    c.text({center.x - 20.0f, center.y - 11.0f, 40.0f, 20.0f}, kNodeNames[op], kTextHeading, ink, Align::Center, true);
     char ratio[16];
     const double r = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
     std::snprintf(ratio, sizeof(ratio), "\xC3\x97%.2g", r);
@@ -6364,9 +6677,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             std::vector<Point> fill = outline; // down past the panel's border, to open it without a seam left
             fill.push_back({outline.back().x, w.rect.bottom() + 2.0f});
             fill.push_back({outline.front().x, w.rect.bottom() + 2.0f});
-            c.fillPolygon(fill.data(), fill.size(), kPanel);
-            if (w.rect.x <= kRouting.x) // squaring the panel's corner its side runs down
-                c.fillRect({w.rect.x, w.rect.bottom(), kPanelRadius, kPanelRadius}, kPanel);
+            c.fillPolygon(fill.data(), fill.size(), kPanel); // (the panel's corner its side runs down: see paintPanels())
             if (look.panelShadow <= 0.0f) // outlined as its panel is
                 c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
             c.line({w.rect.x + kViewTabRadius, w.rect.y + 2.0f}, {w.rect.right() - kViewTabRadius, w.rect.y + 2.0f},
@@ -6405,7 +6716,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const bool selected = controller_.layout().selectedNode == w.a;
         const bool enabled = nodeOn(w.a);
         const Color color = nodeColor(w.a);
-        c.fillRect(w.rect, selected ? color.alpha(enabled ? 1.0f : 0.35f) : (hovered ? kTrack : kRaised.alpha(enabled ? 1.0f : 0.4f)),
+        // On the lens, the panel's color, as the nodes in the graph are; a switched-off one's not filled.
+        c.fillRect(w.rect, selected ? color.alpha(enabled ? 1.0f : 0.35f) : (hovered ? kTrack : kPanel.alpha(enabled ? 1.0f : 0.0f)),
                    kRadiusControl);
         // An enabled node's name takes a little of its color.
         // On its solid fill, in the ink a flat theme's lit switches take.
@@ -6418,14 +6730,14 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveButton: {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
-        paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, kRadiusControl);
+        paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, 0.5f * w.rect.h);
         const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
         c.polyline(points.data(), points.size(), selected ? litInk(kAccent) : kDim, 1.5f);
         break;
     }
     case Kind::TypeButton: {
         const bool selected = std::lround(value(paramIndex(w.a, FilterParam::Type))) == w.b;
-        paintButtonFace(c, w, selected, hovered, kFilterColor, 0.18f, kRadiusControl);
+        paintButtonFace(c, w, selected, hovered, kFilterColor, 0.18f, 0.5f * w.rect.h);
         filterIcon(c, w.rect.inset(6.0f), static_cast<FilterType>(w.b), selected ? litInk(kFilterColor) : kDim);
         break;
     }
@@ -6447,7 +6759,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::WireEnd: // drawn with its wire, which lights up under the mouse, a circle around its arrowhead
         if (hovered) {
             if (w.b == kNodes) {
-                wireEndHighlight(c, outWireOf(w.a, nodeCenter(w.a)).end, {0.0f, 1.0f}, nodeColor(w.a));
+                const OutWire out = outWireOf(w.a, nodeCenter(w.a), wireBend(w.param));
+                wireEndHighlight(c, out.end, out.dir, nodeColor(w.a));
             } else {
                 const Wire wire = wireBetween(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param));
                 wireEndHighlight(c, wire.end, wire.tangent, nodeColor(w.a));
@@ -6458,19 +6771,23 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::OutLabel: {
         const double amount = value(w.param);
         const bool focused = hovered || active;
-        const bool boxes = isBoxNode(w.a) || isBoxNode(w.b);
-        const Color tint = w.kind == Kind::OutLabel ? kText.alpha(0.3f) : routeColor(w.a, w.b).alpha(boxes ? 0.6f : 0.5f);
+        // Filled solid with its route's color (a line to OUT's with its node's), its depth in the panel's; a little
+        // lighter while the mouse is on its depth or drags it.
+        const Color color = w.kind == Kind::OutLabel ? nodeColor(w.a) : routeColor(w.a, w.b);
         // As a pill, it draws all of it, its parts' lines and its own lit part; its parts draw what is on them.
         const bool pill = w.group.w > 0.0f;
         const Rect body = pill ? w.group : w.rect;
-        c.fillRect(body, kRaised, body.h * 0.5f);
-        if (pill && focused)
-            c.fillRect(w.rect, kText.alpha(0.06f));
-        c.strokeRect(body, focused || pill ? kText : tint, 1.0f, body.h * 0.5f);
+        c.fillRect(body, color, body.h * 0.5f);
+        if (focused) {
+            c.pushClip(w.rect);
+            c.fillRect(body, kText.alpha(0.18f), body.h * 0.5f);
+            c.popClip();
+        }
         if (pill) {
             if (w.group.x < w.rect.x)
-                c.line({w.rect.x, w.rect.y + 3.0f}, {w.rect.x, w.rect.bottom() - 3.0f}, kTrack, 1.0f);
-            c.line({w.rect.right(), w.rect.y + 3.0f}, {w.rect.right(), w.rect.bottom() - 3.0f}, kTrack, 1.0f);
+                c.line({w.rect.x, w.rect.y + 3.0f}, {w.rect.x, w.rect.bottom() - 3.0f}, kPanel.alpha(0.3f), 1.0f);
+            c.line({w.rect.right(), w.rect.y + 3.0f}, {w.rect.right(), w.rect.bottom() - 3.0f}, kPanel.alpha(0.3f),
+                   1.0f);
         }
         std::string text = percent(amount);
         if (w.kind == Kind::WireLabel && w.a == w.b)
@@ -6480,39 +6797,39 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         Rect textRect{w.rect.x, w.rect.y + lift, w.rect.w, w.rect.h};
         if (w.modeGlyph) { // its mode, other than Phase, at its left
             const auto mode = routeMode(value(routeModeParam(w.a, w.b)));
-            routeModeIcon(c, {w.rect.x + 13.0f, w.rect.center().y}, mode, routeColor(w.a, w.b), 0.85f);
+            routeModeIcon(c, {w.rect.x + 13.0f, w.rect.center().y}, mode, kPanel, 0.85f);
             textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 18.0f, w.rect.h}; // where it sits when open
         }
-        c.text(textRect, text, kTextLabel, focused ? kText : kDim);
-        // On its outline's top line (the line's middle half a pixel in); the handles go below.
-        paintModRange(c, {w.rect.x + 7.0f, w.rect.y - 0.25f, w.rect.w - 14.0f, 1.5f}, w.param);
+        c.text(textRect, text, kTextLabel, kPanel, Align::Center, true);
+        // Just above it, clear of its solid fill (the hovered one's, twice as thick, too); the handles go below.
+        paintModRange(c, {w.rect.x + 7.0f, w.rect.y - 4.0f, w.rect.w - 14.0f, 1.5f}, w.param);
         break;
     }
     case Kind::LabelMode: {
         // Its mode's glyph and a chevron, pointing up while its list is open; lit under the mouse and while open.
+        // On the pill's solid fill, in the panel's color; a little lighter under the mouse and while open.
         const bool open = listMenu_ == w.param;
-        const Color tint = routeColor(w.a, w.b);
         if (hovered || open) {
             c.pushClip(w.rect);
-            c.fillRect(w.group.inset(1.0f), tint.alpha(open ? 0.3f : 0.2f), kRadiusCard);
+            c.fillRect(w.group, kText.alpha(open ? 0.26f : 0.18f), w.group.h * 0.5f);
             c.popClip();
         }
         const Point m{w.rect.x + 11.0f, w.rect.center().y};
-        routeModeIcon(c, m, routeMode(value(w.param)), hovered || open ? kText : tint, 0.85f);
+        routeModeIcon(c, m, routeMode(value(w.param)), kPanel, 0.85f);
         const Point v{w.rect.right() - 7.0f, w.rect.center().y};
         const float dir = open ? -1.0f : 1.0f;
         const Point chevron[] = {{v.x - 2.5f, v.y - 1.2f * dir}, {v.x, v.y + 1.5f * dir}, {v.x + 2.5f, v.y - 1.2f * dir}};
-        c.polyline(chevron, 3, hovered || open ? kText : kDim, 1.2f);
+        c.polyline(chevron, 3, kPanel, 1.4f);
         break;
     }
     case Kind::LabelRemove: {
         if (hovered) {
             c.pushClip(w.rect);
-            c.fillRect(w.group.inset(1.0f), kText.alpha(0.1f), kRadiusCard);
+            c.fillRect(w.group, kText.alpha(0.18f), w.group.h * 0.5f);
             c.popClip();
         }
         const Point m = w.rect.center();
-        const Color ink = hovered ? kText : kDim;
+        const Color ink = kPanel;
         c.line({m.x - 3.0f, m.y - 3.0f}, {m.x + 3.0f, m.y + 3.0f}, ink, 1.3f);
         c.line({m.x - 3.0f, m.y + 3.0f}, {m.x + 3.0f, m.y - 3.0f}, ink, 1.3f);
         break;
@@ -6673,7 +6990,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(w.a, OpParam::Wave))));
         const bool selected = isMoreWave(wave);
         const bool lit = hovered || waveMenu_ == w.a;
-        paintButtonFace(c, w, selected, lit, kAccent, 0.18f, kRadiusControl);
+        paintButtonFace(c, w, selected, lit, kAccent, 0.18f, 0.5f * w.rect.h);
         if (selected) {
             const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
@@ -6923,7 +7240,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::WireStart: // a circle with a dot where it leaves its node
         if (hovered) {
             const Point start = w.b == kNodes
-                                    ? outWireOf(w.a, nodeCenter(w.a)).start
+                                    ? outWireOf(w.a, nodeCenter(w.a), wireBend(w.param)).start
                                     : wireBetween(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param)).start;
             wireStartHighlight(c, start, nodeColor(w.a));
         }
@@ -7382,6 +7699,25 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                   : w.kind == Kind::SettingsHandles ? std::string(tr(kHandleSizes[w.b]))
                                                                     : trf(Str::SettingsMpeRange, {std::to_string(w.b)});
         c.text(w.rect, label, kTextBody, on ? (faint ? litInk(kDim) : litInk(kText)) : kDim, Align::Center, on);
+        break;
+    }
+    case Kind::SettingsHue: {
+        // A track of every hue, the theme's main color as saturated and as light at each, and a knob at the hue shown
+        // (the theme's own while none is picked).
+        const Color own = kThemes[theme_].accent;
+        const double hue = shownHue();
+        const float at = hue >= 0.0 ? static_cast<float>(hue) : hueOf(own);
+        const float y = w.rect.center().y;
+        constexpr int kSteps = 48;
+        const float step = w.rect.w / kSteps;
+        c.fillRect({w.rect.x, y - 2.0f, w.rect.w, 4.0f}, kTrack, kRadiusMark);
+        for (int k = 0; k < kSteps; ++k) // a little over each, so no seam shows between them
+            c.fillRect({w.rect.x + k * step + (k == 0 ? 1.0f : 0.0f), y - 2.0f,
+                        step + (k + 1 < kSteps ? 0.6f : -1.0f) - (k == 0 ? 1.0f : 0.0f), 4.0f},
+                       withHue(own, (k + 0.5f) / kSteps));
+        const float x = w.rect.x + at * w.rect.w;
+        c.fillCircle({x, y}, 7.0f, hovered || active ? kText : kDim);
+        c.fillCircle({x, y}, 3.0f, kAccent);
         break;
     }
     case Kind::SettingsGlow:
@@ -8993,7 +9329,7 @@ void View::applyDrag(Point p) {
     case DragKind::Bend: {
         // The wire's middle follows the mouse sideways, from where it was grabbed: it lies half as far out as the
         // curve's control point.
-        const Point a = nodeCenter(w.a), b = nodeCenter(w.b);
+        const Point a = nodeCenter(w.a), b = routePoint(w.b);
         const float span = std::max(std::hypot(b.x - a.x, b.y - a.y), 1.0f);
         const Point left = leftOf(a, b);
         const float moved = (p.x - drag_.start.x) * left.x + (p.y - drag_.start.y) * left.y;
@@ -9262,7 +9598,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Wire:
         drag_.kind = DragKind::Bend;
-        drag_.startValue = fitBend(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param)); // as drawn
+        drag_.startValue = fitBend(w.a, nodeCenter(w.a), w.b, routePoint(w.b), wireBend(w.param)); // as drawn
         drag_.step = true; // bending it is an undo step
         controller_.beginStep();
         break;
@@ -9686,8 +10022,13 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::SettingsGlow: // dragged; the amount is kept when it is let go
     case Kind::SettingsLinks:
+    case Kind::SettingsHue:
         drag_.kind = DragKind::Glow;
-        drag_.startValue = sliderDragged() = w.kind == Kind::SettingsLinks ? shownLinks() : shownGlow();
+        drag_.startValue = sliderDragged() = w.kind == Kind::SettingsLinks ? shownLinks()
+                                             : w.kind == Kind::SettingsHue
+                                                 ? static_cast<float>(shownHue() >= 0.0 ? shownHue()
+                                                                                        : hueOf(kThemes[theme_].accent))
+                                                 : shownGlow();
         if (!drag_.fine)
             applyDrag(p);
         break;
@@ -9816,7 +10157,7 @@ void View::mouseUp(Point p, Modifiers) {
         const int to = nodeAt(p);
         if (to >= 0) {
             connect(w.a, to);
-        } else if (onBus(p) && value(outParam(w.a)) <= 0.0) {
+        } else if (onOutCore(p) && value(outParam(w.a)) <= 0.0) {
             edit(outParam(w.a), 1.0);
         }
         break;
@@ -9833,7 +10174,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Reroute: {
         if (!drag_.moved) // a click leaves it be
             break;
-        const int into = nodeAt(p) >= 0 ? nodeAt(p) : (onBus(p) ? kNodes : -1);
+        const int into = nodeAt(p) >= 0 ? nodeAt(p) : (onOutCore(p) ? kNodes : -1);
         if (into >= 0)
             reroute(w.a, w.b, into);
         else // let go of off the nodes and the bus, the route goes, with its modulation
@@ -9860,6 +10201,8 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Glow:
         if (w.kind == Kind::SettingsLinks)
             controller_.setLinkIntensity(linksDragged_);
+        else if (w.kind == Kind::SettingsHue)
+            controller_.setAccentHue(hueDragged_);
         else
             controller_.setGlow(glowDragged_);
         break;
@@ -10034,7 +10377,7 @@ void View::finishDrag() {
         controller_.pitchWheel(0.0);
         break;
     case DragKind::Glow: // the amount it was dragged to is kept only once it is let go (see mouseUp())
-        glowDragged_ = linksDragged_ = -1.0f;
+        glowDragged_ = linksDragged_ = hueDragged_ = -1.0f;
         break;
     case DragKind::Partials: // its undo step closes below
     case DragKind::ShapeStep:
@@ -10237,6 +10580,7 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::SearchField:
     case Kind::SettingsGlow:
     case Kind::SettingsLinks:
+    case Kind::SettingsHue:
     case Kind::ModWheel:
     case Kind::BendWheel:
     case Kind::ShapeArea:
@@ -10421,6 +10765,19 @@ void View::doubleClick(Point p, Modifiers mods) {
         startTyping(*hit);
         return;
     }
+    // The settings' sliders back to where they start: the theme's own color, the glow at half and the lines at 75 %.
+    if (hit && hit->kind == Kind::SettingsHue) {
+        controller_.setAccentHue(-1.0);
+        return;
+    }
+    if (hit && hit->kind == Kind::SettingsGlow) {
+        controller_.setGlow(Controller::kDefaultGlow);
+        return;
+    }
+    if (hit && hit->kind == Kind::SettingsLinks) {
+        controller_.setLinkIntensity(Controller::kDefaultLinkIntensity);
+        return;
+    }
     if (hit && hit->kind == Kind::UtilityHandle) { // back where it starts
         edit(hit->param, table_[hit->param].def);
         return;
@@ -10431,9 +10788,9 @@ void View::doubleClick(Point p, Modifiers mods) {
             edit(paramIndex(hit->a, f), table_[paramIndex(hit->a, f)].def);
         return;
     }
-    if (hit && hit->kind == Kind::Wire) { // back to how it bows to begin with
+    if (hit && hit->kind == Kind::Wire) { // back to how it bows to begin with (a line to OUT straight)
         const UndoScope step(controller_);
-        setWireBend(hit->param, kDefaultWireBend);
+        setWireBend(hit->param, defaultWireBend(hit->param));
         return;
     }
     if (hit && hit->kind == Kind::SearchField) { // the word there, up to the spaces either side
@@ -10857,7 +11214,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     if (hit->kind == Kind::WireEnd || hit->kind == Kind::Wire) {
         menuParam_ = hit->param;
         addRouteModes(hit->param);
-        if (hit->kind == Kind::Wire && wireBend(hit->param) != kDefaultWireBend)
+        if (hit->kind == Kind::Wire && wireBend(hit->param) != defaultWireBend(hit->param))
             items.push_back({kResetBendCommand, tr(Str::MenuResetBend)});
         items.push_back({3, tr(Str::MenuDisconnect)});
         return items;

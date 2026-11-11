@@ -248,6 +248,54 @@ void Canvas::fillPolygon(const Point *points, size_t count, Color c) {
     target_->FillGeometry(path.Get(), brush(c));
 }
 
+// The image's pixels go up to the target once, as a bitmap kept until the image changes (a new serial) or the target
+// does; then each frame only draws it.
+void Canvas::image(const Image &image, Rect r) {
+    if (image.width <= 0 || image.height <= 0 ||
+        image.pixels.size() < static_cast<size_t>(image.width) * static_cast<size_t>(image.height))
+        return;
+    std::vector<Resources::ImageBitmap> &kept = resources_.imageBitmaps();
+    ID2D1Bitmap *bitmap = nullptr;
+    for (const Resources::ImageBitmap &k : kept)
+        if (k.target.Get() == target_ && k.serial == image.serial)
+            bitmap = k.bitmap.Get();
+    // A picture of the same size this target has made a bitmap of takes the new pixels into that one.
+    for (Resources::ImageBitmap &k : kept) {
+        if (bitmap || k.target.Get() != target_)
+            continue;
+        const D2D1_SIZE_U size = k.bitmap->GetPixelSize();
+        if (size.width == static_cast<UINT32>(image.width) && size.height == static_cast<UINT32>(image.height) &&
+            SUCCEEDED(k.bitmap->CopyFromMemory(nullptr, image.pixels.data(), static_cast<UINT32>(image.width) * 4))) {
+            k.serial = image.serial;
+            bitmap = k.bitmap.Get();
+        }
+    }
+    if (!bitmap) {
+        // Others this target made of the same picture are stale now; and a few at most are kept.
+        std::erase_if(kept, [&](const Resources::ImageBitmap &k) { return k.target.Get() == target_; });
+        if (kept.size() >= 4)
+            kept.erase(kept.begin());
+        ComPtr<ID2D1Bitmap> made;
+        const D2D1_BITMAP_PROPERTIES properties =
+            D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
+        if (FAILED(target_->CreateBitmap(D2D1::SizeU(static_cast<UINT32>(image.width), static_cast<UINT32>(image.height)),
+                                         image.pixels.data(), static_cast<UINT32>(image.width) * 4, properties,
+                                         made.GetAddressOf())))
+            return;
+        kept.push_back({target_, image.serial, made});
+        bitmap = made.Get();
+    }
+    target_->DrawBitmap(bitmap, rc(r), 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+}
+
+float Canvas::deviceScale() const {
+    D2D1_MATRIX_3X2_F transform;
+    target_->GetTransform(&transform);
+    float dpiX = 96.0f, dpiY = 96.0f;
+    target_->GetDpi(&dpiX, &dpiY);
+    return std::hypot(transform._11, transform._12) * dpiX / 96.0f;
+}
+
 namespace {
 // Lifts the small label sizes toward the body size so they read more easily, keeping their order.
 float liftedSize(float size) {

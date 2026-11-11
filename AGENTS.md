@@ -350,9 +350,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     there only picks the node and a drag from further inside moves it; a drag held back over its own node once clear of
     it looping round over its top and back into it, on the ring around it whether it is selected or not, and one only just past its edge showing no loop (read off the rendered pixels), and let go there feeding it back; a filter's edge dragged onto an earlier
     filter feeding it, and a filter's and a shaper's dragged back onto itself feeding it back; a filter going out by its edge dragged onto
-    the bus, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
+    OUT, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
     which goes out in its place, and picking waves and filter types;
-  - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
+  - moving routes by dragging their arrowheads onto another node and onto OUT, with their modulation, and
     removing one by letting its arrowhead go in empty space; a route's start and an OUT line's start dragged onto
     another node coming from there, with its amount and mode, undoably, grabbed 16 px along the wire and lit there;
     Ctrl+drag putting a node on the grid's nearest free point, the grid's points showing while Ctrl is held, and a
@@ -398,6 +398,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     right-click menus (the cell's corner showing the glyph, read off the rendered pixels) and from the operator
     page's INPUTS tab, whose label sets the depth, each an undo step; a route moved onto another operator keeping
     its mode, and one disconnected starting as Phase again;
+  - a node's line to OUT bent by dragging it sideways, from straight, undoably, and straightened again by a
+    double-click;
   - bending a wire by dragging it sideways (lit under the mouse, its label following its middle), either way,
     undoably, back to its first bow by a double-click or Reset Bend, its bend going with it when it is
     disconnected, and one along the panel's top bowing only as far as keeps it and its label inside (read off the
@@ -405,11 +407,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator lighting up while modulation opens its route from 0 %, and not with the glow setting off (read off
     the rendered pixels), and modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
-  - the INPUTS tab's rows: a modulated depth's handles under it and its ranges on its top line, its number left as it
+  - the INPUTS tab's rows: a modulated depth's handles under it and its ranges just above it, its number left as it
     was (read off the rendered pixels), and eight rows scrolling under the wheel, the scrollbar's thumb and the
     middle button;
-  - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
-    one's ghost filled while it is shown (read off the rendered pixels);
+  - the node the inspector shows filled and ringed in the graph, picking another moving both, a dotted leader running
+    from it across to the inspector's lens, and a switched-off one's ghost filled while it is shown (read off the
+    rendered pixels); and the graph's glow dithered rather than stepped, as bright and as far out as the output is
+    loud (what goes into the effects), rising to it over a few polls, as strong as the glow setting says, its level moving
+    repainting the panel as a whole paint would (read off the rendered pixels);
   - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
     they modulate something
     (read off the rendered pixels);
@@ -507,7 +512,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels; the sources' closing
     at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list) and the depth handles'
-    size (drawn bigger at each, read off the rendered pixels), and dragging the glow slider and the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
+    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider and the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels), a double-click putting each back where it starts, in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
@@ -565,6 +570,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     drawing it from the aux's handle (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
     pixels);
+  - every factory preset's routing graph rendered (in Spectrum, into `presets/`), none with a node on or near
+    another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
+    other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone);
   - the title bar's tempo: none for a plugin host, and for a host that lets the editor set it a field (read off the
     rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
@@ -663,9 +671,18 @@ others), then the editor layout, a kilobyte or so where a preset the plugin save
 To add or change one:
 
 1. Make it in the plugin and save it into `presets/Factory` (the preset bar's Save, then the file dialog).
-2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`.
+2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`. With `--arrange` first
+   (`fmvibe-presettool --arrange <file>...`), it also lays the routing graph out again where its nodes, wires, lines to
+   OUT or labels run over each other (`arrangeRouting()` in `src/gui/arrange.h`: each node moved to the place on a
+   grid and each wire given the bow that lowers a cost most, from where they are and from columns by their distance to
+   OUT), and says how many such clashes are left. The UI checks fail on a factory preset that has any.
 3. For a new one, add its name at the end of `presets/factory.txt`.
 4. Build and run `ctest`.
+
+A user's preset folder gets the factory presets once, and again as a newer version brings them: the settings file
+notes the version that last wrote them out (`examplesVersion`), and a newer one writes those still in the folder's
+`Factory` subfolder over their files where they differ (`PresetLibrary::rescan()`). So a factory preset changed here
+reaches users with the next release, and a user's own change saved over one is lost then.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
@@ -691,7 +708,7 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - The two modules only send each other messages: the param edits, the notes and the telemetry, whose struct
   bytes cross unchanged.
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
-  demo has no files. The theme, glow, handle size and line strength are kept in the browser's storage.
+  demo has no files. The theme, hue, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
   the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
@@ -722,7 +739,7 @@ browser demo on Linux, with the Emscripten version `build-web.ps1` pins, and pub
 `.\release.ps1` does all of it: it needs `main`, a clean working tree, `main` level with origin and a free tag. It
 raises the minor version in `project()` at the top of `CMakeLists.txt` (`-Version 1.0` picks another), runs
 `build.ps1 -Validate` (every test and both validators), and copies the snapshots the tests render, in the Spectrum theme, over the README's:
-PD Crystal Motion's routing view over `docs/editor.png` and its effects' panel as a chain over `docs/fx-chain.png`, and
+LD Screamer's routing view over `docs/editor.png`, PD Crystal Motion's effects' panel as a chain over `docs/fx-chain.png`, and
 BA Neon Pluck's effects' panel, a graph split low and high, over `docs/fx-graph.png`. It then lists what it would do and asks; only an answer of `yes` commits
 `CMakeLists.txt` and the three screenshots as "Version X.Y" on `main`, tags it `vX.Y` and pushes `main` and the tag.
 Any other answer puts those files back as they were. `.\release.ps1 -Screenshots` does only the screenshots, on any
@@ -771,7 +788,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, glow, handle size, line strength, examples given) |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, examples given and the version that wrote them) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
@@ -801,7 +818,8 @@ breakpoints in `src/` then hit.
 | `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
 | `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
-| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored |
+| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, and lays their routing graphs out (`--arrange`) |
+| `src/gui/arrange.h` | Laying a routing graph out: its clashes (nodes, wires, lines to OUT, loops and labels over each other) and a search for a layout without them |
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |

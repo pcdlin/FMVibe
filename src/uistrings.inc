@@ -645,6 +645,8 @@ STR(SettingsMpeWhat, "Requires MPE in the host,")
 STR(SettingsMpeWhy, "unless it sends CLAP note expressions.")
 STR(SettingsMpeSaved, "Not stored in presets.")
 STR(SettingsLook, "LOOK")
+STR(SettingsHue, "HUE") // the theme's main color, beside its slider
+STR(SettingsHueDefault, "Default") // the hue slider left at the theme's own color, after it
 STR(SettingsGlow, "GLOW")
 STR(SettingsLinks, "LINES") // how strongly a source's dashed lines to its targets are drawn, beside its slider
 STR(SettingsHandles, "HANDLES") // the depth handles' size, beside its buttons

@@ -3,6 +3,7 @@
 // without a host. Usage: fmvibe-uishot <output-dir> [scale]
 
 #include "factory.h"
+#include "gui/arrange.h"
 #include "gui/canvas.h"
 #include "gui/layout.h"
 #include "gui/routing.h"
@@ -113,6 +114,8 @@ public:
     void setMpeBendRange(int semitones) override { mpeRange = semitones; }
     std::string theme() const override { return themeName; }
     void setTheme(const std::string &name) override { themeName = name; }
+    double accentHue() const override { return hue; }
+    void setAccentHue(double h) override { hue = h; }
     double glow() const override { return glowLevel; }
     void setGlow(double amount) override { glowLevel = amount; }
     int handleSize() const override { return handles; }
@@ -151,6 +154,7 @@ public:
     // the default, Spectrum).
     std::string themeName = "Midnight";
     double glowLevel = 0.0;
+    double hue = -1.0;
     Telemetry live{};
     int scopeOp = -1; // what the view last asked the scope to capture
     int scopeCycles = 0;
@@ -400,22 +404,29 @@ private:
 };
 #endif
 
-// Screen positions of a few controls in the default layout (mirrors src/gui/layout.h).
-constexpr Point kOpPhaseKnob{1101.0f, 242.0f}; // an operator's Phase, a plain knob
-constexpr Point kMultKnob{967.0f, 242.0f};     // a fixed operator's Mult, in the Ratio readout's right half
-constexpr Point kRatioTens{917.0f, 242.0f}, kRatioOnes{933.0f, 242.0f}, kRatioTenths{956.0f, 242.0f},
-                kRatioHundredths{972.0f, 242.0f}; // the Ratio readout's digits
-constexpr Point kRatioDot{944.7f, 257.0f}; // the first depth handle along the Ratio readout's bottom edge
-constexpr Point kPanKnob{1146.0f, 242.0f}; // an operator's Pan, bipolar
-constexpr float kBusY = 474.0f; // the routing graph's OUT line
-constexpr Point kPitchKnob{1012.0f, 242.0f};
-constexpr Point kUnisonKnob{934.0f, 338.0f}; // on the UNISON tab
-constexpr Point kPhaseKnob{1134.0f, 338.0f};
-constexpr Point kSlopeKnob{922.0f, 242.0f};
-constexpr Point kDecayKnob{1034.0f, 454.0f};
+// Screen positions of a few controls in the default layout (mirrors src/gui/layout.h). The inspector's are given as
+// they were with it at the panels' right, its top left at (884, 132), and moved to where its lens now floats.
+constexpr float kInsDx = detail::kInspector.x - 884.0f, kInsDy = detail::kInspector.y - 132.0f;
+constexpr Point ins(float x, float y) {
+    return {x + kInsDx, y + kInsDy};
+}
+constexpr Point kOpPhaseKnob = ins(1101.0f, 242.0f); // an operator's Phase, a plain knob
+constexpr Point kMultKnob = ins(967.0f, 242.0f);     // a fixed operator's Mult, in the Ratio readout's right half
+constexpr Point kRatioTens = ins(917.0f, 242.0f), kRatioOnes = ins(933.0f, 242.0f), kRatioTenths = ins(956.0f, 242.0f),
+                kRatioHundredths = ins(972.0f, 242.0f); // the Ratio readout's digits
+constexpr Point kRatioDot = ins(944.7f, 257.0f); // the first depth handle along the Ratio readout's bottom edge
+constexpr Point kPanKnob = ins(1146.0f, 242.0f); // an operator's Pan, bipolar
+constexpr Point kOutCore = detail::kOutCore; // the routing graph's OUT
+// What covers the routing panel alone (the note curve's and the partial editor) moved with it, right of the lens.
+constexpr float kRoutingDx = detail::kRouting.x - 16.0f;
+constexpr Point kPitchKnob = ins(1012.0f, 242.0f);
+constexpr Point kUnisonKnob = ins(934.0f, 338.0f); // on the UNISON tab
+constexpr Point kPhaseKnob = ins(1134.0f, 338.0f);
+constexpr Point kSlopeKnob = ins(922.0f, 242.0f);
+constexpr Point kDecayKnob = ins(1034.0f, 454.0f);
 // An operator's envelope display, on its ENVELOPE tab (kOpEnvRect): its top and bottom.
-constexpr float kOpEnvTop = 316.0f;
-constexpr float kOpEnvBottom = 426.0f;
+constexpr float kOpEnvTop = 316.0f + kInsDy;
+constexpr float kOpEnvBottom = 426.0f + kInsDy;
 // The global strip, under the title bar: from the meter's left edge (kHeaderStart) on, the output scope left of the
 // meter (kOutScope).
 constexpr float kHeaderStart = 128.0f;
@@ -431,14 +442,14 @@ constexpr float kOutScopeX = kHeaderStart - 104.0f, kOutScopeY = 45.0f, kOutScop
 constexpr Point kRoutingTab{64.0f, 116.0f};
 constexpr Point kMatrixTab{160.0f, 116.0f};
 constexpr Point kFxTab{240.0f, 116.0f};
-constexpr Point kF1Tab{1068.0f, 152.0f};
+constexpr Point kF1Tab = ins(1068.0f, 152.0f);
 // Init, Load, Save and the settings cog at the right end of the title bar.
 constexpr Point kInitButton{1034.0f, 18.0f};
 constexpr Point kLoadButton{1068.0f, 18.0f};
 constexpr Point kSaveButton{1102.0f, 18.0f};
 constexpr Point kSaveAsButton{1136.0f, 18.0f};
 constexpr Point kSettingsButton{1170.0f, 18.0f};
-constexpr Point kOpFTab{1037.0f, 152.0f};
+constexpr Point kOpFTab = ins(1037.0f, 152.0f);
 constexpr Point kSourcesToggle{60.0f, 541.0f};
 
 // The modulation panel: chips and add buttons in its title row, then four cards, 277 wide (and after them the
@@ -667,11 +678,11 @@ Point sourceListItem(const View &view, Point click, SourceType type) {
 Point shapeAt(double x, double y, float width = 1088.0f) {
     return {56.0f + static_cast<float>(x) * width, 330.0f - static_cast<float>(y) * 126.0f};
 }
-Point noteCurveAt(double x, double y) {
-    return shapeAt(x, y, 772.0f);
+Point noteCurveAt(double x, double y) { // over the routing panel, right of the lens
+    return {detail::kRouting.x + 40.0f + static_cast<float>(x) * 772.0f, 330.0f - static_cast<float>(y) * 126.0f};
 }
 constexpr Point kShapeDone{1154.0f, 152.0f};
-constexpr Point kRoutingEditorDone{838.0f, 152.0f}; // the note curve's and the partial editor's
+constexpr Point kRoutingEditorDone{detail::kRouting.x + detail::kRouting.w - 30.0f, 152.0f}; // the note curve's and the partial editor's
 // A shaper's big curve editor is a 520 px panel in the middle of the effects' panel, its plot 440 wide.
 Point clipAt(double x, double y) {
     return {380.0f + static_cast<float>(x) * 440.0f, 330.0f - static_cast<float>(y) * 126.0f};
@@ -681,17 +692,17 @@ constexpr Point kClipDone{830.0f, 152.0f};
 // The common waves' buttons (Sine, Triangle, Saw, Square, Noise), then "..." with the others.
 Point waveButton(int button) {
     constexpr float kStep = (300.0f - 32.0f + 4.0f) / 6.0f;
-    return {900.0f + button * kStep + (kStep - 4.0f) * 0.5f, 205.0f};
+    return ins(900.0f + button * kStep + (kStep - 4.0f) * 0.5f, 205.0f);
 }
 const Point kNoiseButton = waveButton(4);
 // An operator page's tabs, ENVELOPE, UNISON, INPUTS and SCOPE (by InspectorTab), and the scope's buttons for 1, 2
 // and 4 cycles in its display's top right corner.
 Point opTabPoint(InspectorTab tab) {
     constexpr float kX[] = {1009.0f, 937.0f, 1127.0f, 1070.0f};
-    return {kX[static_cast<int>(tab)], 298.0f};
+    return ins(kX[static_cast<int>(tab)], 298.0f);
 }
 Point scopeCycleButton(int choice) {
-    return {1112.0f + choice * 20.0f, 330.0f};
+    return ins(1112.0f + choice * 20.0f, 330.0f);
 }
 const Point kMoreWavesButton = waveButton(5);
 
@@ -707,24 +718,24 @@ Point slopeItem(int slope) {
 
 // Every node has its row and column, A..F, F1 and F2, then S1 and S2; the output is the last column.
 Point gridCellCenter(int row, int col) {
-    return {72.0f + col * 32.6f + 14.3f, 168.0f + row * 32.6f + 14.3f};
+    return {detail::kGridOrigin.x + col * 32.6f + 14.3f, 168.0f + row * 32.6f + 14.3f};
 }
 
 Point nodeCenter(const UiLayout &layout, int node) {
+    const Rect g = detail::kGraph;
     if (node >= kOps)
-        return {56.0f + layout.boxX[node - kOps] * 772.0f, 202.0f + layout.boxY[node - kOps] * 226.0f};
-    return {56.0f + layout.nodeX[node] * 772.0f, 202.0f + layout.nodeY[node] * 226.0f};
+        return {g.x + layout.boxX[node - kOps] * g.w, g.y + layout.boxY[node - kOps] * g.h};
+    return {g.x + layout.nodeX[node] * g.w, g.y + layout.nodeY[node] * g.h};
 }
 
-// A node's label on its line to OUT: halfway between its outline and the arrowhead over the bus, or left of the
-// line where the node sits too close to the bus for it (mirrors outWireOf() in view.cpp). The arrowhead's middle.
+// A node's label on its line to OUT: halfway between its outline and the arrowhead on OUT's edge, or left of the
+// line where the node sits too close to OUT for it (see outWireOf()). The arrowhead's middle.
 Point outLabelOf(const UiLayout &layout, int node) {
-    const Point c = nodeCenter(layout, node);
-    const float top = c.y + (node >= kOps ? 17.0f : 24.0f), end = kBusY - 10.0f;
-    return {end - top < 18.0f ? c.x - 28.0f : c.x, 0.5f * (top + end)};
+    return detail::outWireOf(node, nodeCenter(layout, node)).label;
 }
 Point outArrowOf(const UiLayout &layout, int node) {
-    return {nodeCenter(layout, node).x, kBusY - 6.0f};
+    const detail::OutWire w = detail::outWireOf(node, nodeCenter(layout, node));
+    return {w.end.x + w.dir.x * 4.0f, w.end.y + w.dir.y * 4.0f};
 }
 
 // The middle of a wire's arrowhead, from operator center `a` to operator center `b`, bowed as in view.cpp: the head
@@ -741,25 +752,40 @@ Point arrowOf(Point a, Point b) {
 
 // The inspector's tabs: A..F, then a little gap and F1 and F2, another and S1 and S2.
 Point nodeTab(int node) {
-    return {912.0f + node * 25.0f + (node >= kOps ? 6.0f : 0.0f) + (node >= kOps + kFilters ? 6.0f : 0.0f), 152.0f};
+    return ins(912.0f + node * 25.0f + (node >= kOps ? 6.0f : 0.0f) + (node >= kOps + kFilters ? 6.0f : 0.0f), 152.0f);
 }
 
 // A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output, Mix and To Out knobs, the
 // list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with its edit button in the display's
 // corner.
-constexpr Point kShaperList{1009.0f, 205.0f};
-constexpr Point kShaperSym{1096.0f, 205.0f};
-constexpr Point kShaperLink{1146.0f, 205.0f};
+constexpr Point kShaperList = ins(1009.0f, 205.0f);
+constexpr Point kShaperSym = ins(1096.0f, 205.0f);
+constexpr Point kShaperLink = ins(1146.0f, 205.0f);
 Point shaperKnob(int knob) {
-    return {900.0f + 268.0f / 4.0f * (knob + 0.5f), 242.0f}; // Drive, Output, Mix, To Out
+    return ins(900.0f + 268.0f / 4.0f * (knob + 0.5f), 242.0f); // Drive, Output, Mix, To Out
 }
 Point shaperListItem(ClipMode mode) {
-    return {1009.0f, 220.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f};
+    return ins(1009.0f, 220.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f);
 }
 Point shaperCurveAt(double x, double y) {
-    return {908.0f + static_cast<float>(x) * 252.0f, 338.0f - static_cast<float>(y) * 42.24f};
+    return ins(908.0f + static_cast<float>(x) * 252.0f, 338.0f - static_cast<float>(y) * 42.24f);
 }
-constexpr Point kShaperEdit{1150.0f, 381.0f};
+constexpr Point kShaperEdit = ins(1150.0f, 381.0f);
+
+// A switched-off node's ghost, docked under OUT in the graph's bottom right, the ghosts in the nodes' order (mirrors
+// the widgets in view.cpp).
+Point ghostOf(const FakeController &model, int node) {
+    auto off = [&](int n) { return model.value(detail::enabledParam(n)) < 0.5; };
+    auto width = [](int n) { return n >= kOps ? 34.0f : 24.0f; };
+    float x = detail::kRouting.right() - 16.0f + 6.0f;
+    for (int n = 0; n < kNodes; ++n)
+        if (off(n))
+            x -= width(n) + 6.0f;
+    for (int n = 0; n < node; ++n)
+        if (off(n))
+            x += width(n) + 6.0f;
+    return {x + 0.5f * width(node), detail::kRouting.bottom() - 22.0f};
+}
 
 // A point on a node's edge, where a drag connects it: an operator's lower right, a filter's or shaper's right side.
 Point portOf(const UiLayout &layout, int node) {
@@ -814,7 +840,7 @@ bool grey(uint32_t color) {
 
 // The color of the dot in the top right corner of a node's tab in the inspector, in what was saved last.
 uint32_t tabDot(const Renderer &renderer, int node) {
-    return renderer.pixel({nodeTab(node).x + 7.0f, 146.0f});
+    return renderer.pixel({nodeTab(node).x + 7.0f, nodeTab(node).y - 6.0f});
 }
 
 void click(View &view, Point p, Modifiers mods = {}) {
@@ -851,7 +877,7 @@ constexpr Point kRedoButton{986.0f, 18.0f};
 // The LFO shape editor's reset button (the note curve's further left), and its grid's buttons: per axis (0 across)
 // a step down (part 0), the count, a step up.
 constexpr Point kShapeReset{1120.0f, 152.0f};
-constexpr Point kNoteCurveReset{804.0f, 152.0f};
+constexpr Point kNoteCurveReset{804.0f + kRoutingDx, 152.0f};
 Point shapeGrid(int axis, int part) {
     constexpr float kParts[] = {18.0f, 28.0f, 18.0f};
     const float x = 1144.0f - (axis == 0 ? 148.0f : 64.0f) + (part > 0 ? 18.0f : 0.0f) + (part > 1 ? 28.0f : 0.0f);
@@ -917,10 +943,11 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     check(std::abs(model.value(opPhase) - 0.2) < 1e-6, "a run of wheel notches is one undo step");
     // Moving a node is a step too.
     const Point a = nodeCenter(model.layout(), 0);
+    const float wasX = model.layout().nodeX[0];
     drag(view, a, {a.x + 100.0f, a.y - 50.0f});
     const float movedX = model.layout().nodeX[0];
     view.undo();
-    check(movedX != 0.5f && model.layout().nodeX[0] == 0.5f, "undo puts a dragged node back");
+    check(movedX != wasX && model.layout().nodeX[0] == wasX, "undo puts a dragged node back");
     view.redo();
     check(model.layout().nodeX[0] == movedX, "redo moves it again");
     view.undo();
@@ -1122,9 +1149,9 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The uncommon waves sit in a list behind "...".
     click(view, kMoreWavesButton);
-    view.mouseMove({1102.0f, 260.0f}, {});
+    view.mouseMove(ins(1102.0f, 260.0f), {});
     check(renderer.save(view, dir / "19-more-waves.png"), "render the list of more waves");
-    click(view, {1102.0f, 236.0f}); // its first entry, Pulse
+    click(view, ins(1102.0f, 236.0f)); // its first entry, Pulse
     view.mouseMove({600.0f, 328.0f}, {});
     check(model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Pulse) &&
               renderer.save(view, dir / "19b-pulse.png"),
@@ -1132,14 +1159,16 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // Custom, at the end of that list, opens the partial editor: a stroke across the level bars draws them
     // (half way up the bars, which run from -60 dB to 0 dB, is -30 dB), and a double-click takes a bar to nothing.
     click(view, kMoreWavesButton);
-    click(view, {1102.0f, 236.0f + 6.0f * 24.0f});
+    click(view, ins(1102.0f, 236.0f + 6.0f * 24.0f));
     const bool customPicked = model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Custom);
     // Picked after the 25 % pulse, the partials start as the pulse's: the first loudest, the fourth silent.
     const bool fromPulse = std::abs(model.value(partialLevelIndex(0, 0)) - 1.0) < 1e-9 &&
                            std::abs(model.value(partialLevelIndex(0, 1)) - std::sqrt(0.5)) < 0.01 &&
                            model.value(partialLevelIndex(0, 3)) == 0.0;
     check(fromPulse, "picking Custom starts its partials from the wave it was");
-    auto barX = [](int partial, int count = kDefaultPartials) { return 56.0f + (partial + 0.5f) * 772.0f / count; };
+    auto barX = [](int partial, int count = kDefaultPartials) { // over the routing panel, right of the lens
+        return detail::kPartialLevels.x + (partial + 0.5f) * 772.0f / count;
+    };
     const float halfway = 314.0f + 84.0f * 0.5f;
     drag(view, {barX(1), halfway}, {barX(3), halfway});
     doubleClick(view, {barX(0), halfway});
@@ -1153,7 +1182,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
           "picking Custom opens the partial editor, which draws levels and phases");
     // Its resolution, 16, 32 or 64 partials, in the title row: at 64, the 50th can be drawn; at 16, the bars widen
     // to the first 16 and the 50th, unheard, keeps its level, there again at 64.
-    auto partialCount = [](int choice) { return Point{177.0f + choice * 36.0f, 152.0f}; };
+    auto partialCount = [](int choice) { return Point{detail::kRouting.x + 161.0f + choice * 36.0f, 152.0f}; };
     const int countParam = partialCountIndex(0), fiftieth = partialLevelIndex(0, 49);
     click(view, partialCount(2));
     drag(view, {barX(49, 64), halfway}, {barX(49, 64), halfway});
@@ -1184,11 +1213,11 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     // While the wave is Custom, a pencil on the summary line, left of the keyboard switch, opens the partial editor
     // again, lit while it is open, and a second click closes it (read off the rendered pixels: the editor's title).
     {
-        constexpr Point kPartialEdit{1095.0f, 178.0f};
+        const Point kPartialEdit = detail::kPartialEditButton.center();
         auto partialsTitle = [&] {
             std::vector<uint32_t> pixels;
             for (float y = 142.0f; y < 162.0f; y += 2.0f)
-                for (float x = 34.0f; x < 150.0f; x += 3.0f)
+                for (float x = detail::kRouting.x + 18.0f; x < detail::kRouting.x + 134.0f; x += 3.0f)
                     pixels.push_back(renderer.pixel({x, y}));
             return pixels;
         };
@@ -1213,7 +1242,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     }
     // The list's newer waves: Alt Sine, Organ and Vowel, between Abs Sine and Custom.
     click(view, kMoreWavesButton);
-    click(view, {1102.0f, 236.0f + 4.0f * 24.0f});
+    click(view, ins(1102.0f, 236.0f + 4.0f * 24.0f));
     check(model.value(paramIndex(0, OpParam::Wave)) == static_cast<double>(OpWave::Organ), "the list picks Organ");
     view.undo();
 
@@ -1358,7 +1387,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
         model.live.notePitch = pitch;
         view.poll();
         renderer.save(view, dir / "18e-filter-key-track.png");
-        return static_cast<int>(renderer.pixel({910.0f + 0.75f * 248.0f, 329.0f}) >> 16 & 255);
+        return static_cast<int>(renderer.pixel(ins(910.0f + 0.75f * 248.0f, 329.0f)) >> 16 & 255);
     };
     const int fillC4 = fillAt(60.0f), fillC7 = fillAt(96.0f);
     check(fillC7 > fillC4 + 10, "a filter's response moves with the note its key tracking follows");
@@ -1367,7 +1396,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
 
     // A modulated filter: its response shows how far the modulation reaches, and follows it while notes play.
-    drag(view, sourceHandle(0), {918.0f, 242.0f}); // onto its Cutoff knob
+    drag(view, sourceHandle(0), ins(918.0f, 242.0f)); // onto its Cutoff knob
     bool cutoffModulated = false;
     for (int slot = 0; slot < kSlots; ++slot)
         cutoffModulated = cutoffModulated || slotTarget(model.value(slotTargetIndex(0, slot))) == paramIndex(0, FilterParam::Cutoff);
@@ -1379,7 +1408,7 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
           "render a modulated filter's response, its reach and where it is now");
     model.live = Telemetry{};
     view.poll();
-    click(view, {912.0f, 152.0f}); // back to operator A
+    click(view, ins(912.0f, 152.0f)); // back to operator A
 
     // Presets: the bar shows Init; the arrows step through the library, asking first while the patch has
     // changed since it was loaded; the browser lists them by subfolder.
@@ -2045,7 +2074,7 @@ void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, sourceHandle(1), kOpPhaseKnob);
     auto ring = [&] { // above the knob, where both ranges run
         std::vector<uint32_t> pixels;
-        for (float y = 220.0f; y < 235.0f; y += 1.0f)
+        for (float y = 220.0f + kInsDy; y < 235.0f + kInsDy; y += 1.0f)
             for (float x = kOpPhaseKnob.x - 20.0f; x < kOpPhaseKnob.x + 21.0f; x += 1.0f)
                 pixels.push_back(renderer.pixel({x, y}));
         return pixels;
@@ -2053,10 +2082,10 @@ void testModFocus(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove({600.0f, 328.0f}, {});
     const bool plainShot = renderer.save(view, dir / "17c-mod-ranges.png");
     const std::vector<uint32_t> plain = ring();
-    view.mouseMove({kOpPhaseKnob.x - 5.0f, 257.0f}, {}); // LFO 1's handle, the first under the knob
+    view.mouseMove({kOpPhaseKnob.x - 5.0f, 257.0f + kInsDy}, {}); // LFO 1's handle, the first under the knob
     const bool lfoShot = renderer.save(view, dir / "17d-mod-range-hovered.png");
     const std::vector<uint32_t> lfo = ring();
-    view.mouseMove({kOpPhaseKnob.x + 5.0f, 257.0f}, {}); // Env 1's, the second
+    view.mouseMove({kOpPhaseKnob.x + 5.0f, 257.0f + kInsDy}, {}); // Env 1's, the second
     renderer.save(view, dir / "17e-mod-range-hovered.png");
     const std::vector<uint32_t> env = ring();
     check(model.value(slotTargetIndex(0, 0)) == slotTargetValue(paramIndex(0, OpParam::Phase)) &&
@@ -2087,10 +2116,10 @@ void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(away, {});
     const bool listShot = renderer.save(view, dir / "17j-spectrum-list-open.png");
     click(view, away);
-    // A node playing unison copies: their discs peek out beside it, left of its circle (read off the rendered pixels).
+    // A node playing unison copies: their outlines peek out beside it, left of its circle (read off the rendered pixels).
     click(view, kRoutingTab);
     const Point node = nodeCenter(model.layout(), 0);
-    const Point beside{node.x - detail::kNodeRadius - 3.0f, node.y};
+    const Point beside{node.x - detail::kNodeRadius - 9.0f, node.y}; // where a copy's outline runs
     view.mouseMove(away, {});
     const uint32_t single = renderer.save(view, dir / "17k-flat-unison-off.png") ? renderer.pixel(beside) : 0u;
     model.set(paramIndex(0, OpParam::Unison), 4.0);
@@ -2421,7 +2450,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // A source's handle dropped on the readout modulates it, its reach drawn in its color along the track.
     addSource(view, SourceType::Lfo);
-    const Point track{911.0f, 227.0f}; // on the track over the digits (from x 910), a little below 3.50 (at x 913)
+    const Point track = ins(911.0f, 227.0f); // on the track over the digits (from x 910), a little below 3.50 (at x 913)
     view.mouseMove({600.0f, 328.0f}, {});
     renderer.save(view, dir / "3g-ratio-plain.png");
     const uint32_t bare = renderer.pixel(track);
@@ -2434,7 +2463,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 
     // The track is a straight line to 64: set there, the ratio's tick is at its right end (x 979), and the modulation
     // going on past 64 has an arrow after it (x 980 to 984) (read off the rendered pixels).
-    const Point end{978.5f, 225.0f}, arrow{981.5f, 227.0f};
+    const Point end = ins(978.5f, 225.0f), arrow = ins(981.5f, 227.0f);
     const uint32_t endBefore = renderer.pixel(end), arrowBefore = renderer.pixel(arrow);
     model.set(ratio, 1.0);
     view.poll();
@@ -2457,7 +2486,7 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
     // Its depth handles, 9 px apart along its bottom edge from x 913, hold eight before a pill: the eighth at x 976,
     // and with a ninth, six handles and the pill (x 966 to 978), which opens their list under it (read off the
     // rendered pixels, inside the envelope's display, clear of the tabs above it, whose width follows the font).
-    const Point eighth{976.0f, 257.0f}, pill{971.7f, 257.0f}, under{960.0f, 320.0f};
+    const Point eighth = ins(976.0f, 257.0f), pill = ins(971.7f, 257.0f), under = ins(960.0f, 320.0f);
     const uint32_t noEighth = renderer.pixel(eighth);
     for (int place = 1; place < 9; ++place) {
         model.set(paramIndex(place, SourceParam::Type), static_cast<double>(SourceType::Lfo));
@@ -2488,11 +2517,40 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 // The examples that use the most of the synth, as the preset library writes them: Init, then their changes,
 // with their own node places and their name in the preset bar. `prefix` names the images: its routing, matrix
 // and effects.
+// Every factory preset's routing view, in Spectrum, into presets/: none with a node on another, or a wire, a line to
+// OUT or a label over a node it doesn't join (as fmvibe-presettool --arrange lays them out).
+void renderFactoryPresets(const std::filesystem::path &dir, Renderer &renderer) {
+    std::filesystem::create_directories(dir / "presets");
+    int clear = 0;
+    for (const FactoryPreset &preset : factoryPresets()) {
+        FakeController model;
+        model.themeName = "Spectrum";
+        model.glowLevel = 0.5;
+        View view(model);
+        if (!loadFactoryPreset(preset, model.values, model.ui)) {
+            check(false, ("load the factory preset " + preset.name).c_str());
+            continue;
+        }
+        model.ui.view = RoutingView::Graph; // its graph, whichever view it was saved in
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "presets" / (preset.name + ".png"));
+        const detail::ArrangeScore score = detail::arrangeScore(model.values, model.ui);
+        if (score.clashes == 0)
+            ++clear;
+        else
+            std::printf("  %s: %d clashes in its routing graph\n", preset.name.c_str(), score.clashes);
+    }
+    check(clear == static_cast<int>(factoryPresets().size()),
+          "every factory preset's routing graph keeps its nodes, wires and labels clear of each other");
+}
+
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
-                   const std::string &prefix, size_t effects, const std::string &theme = "") {
+                   const std::string &prefix, size_t effects, const std::string &theme = "", bool playing = false) {
     FakeController model;
     if (!theme.empty())
         model.themeName = theme;
+    model.glowLevel = 0.5; // as a new user's settings have it
     View view(model);
     const std::vector<FactoryPreset> &presets = factoryPresets();
     const auto example =
@@ -2504,6 +2562,21 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     model.library = {{name, "Factory"}}; // the preset bar shows its name
     model.setPreset(std::wstring(name.begin(), name.end()));
     view.poll();
+    if (playing) { // an A3 held, its operators sounding and going into the effects, the glows risen to it
+        model.live.voices = 1;
+        model.live.notePitch = 57.0f;
+        model.live.noteVelocity = 0.8f;
+        model.live.keys[57 / 32] |= 1u << (57 % 32);
+        model.live.opLevels.fill(0.9f);
+        model.live.opEnvLevels.fill(0.9f);
+        model.live.opEnvPos.fill(-1.0f); // no dot along the envelopes, as if between snapshots of them
+        model.live.envPos.fill(-1.0f);
+        model.live.lfoPhases.fill(0.3f);
+        model.live.fxPortLevels[kFxPortIn] = 0.25f;
+        model.live.outPeak = {0.5f, 0.5f};
+        for (int i = 0; i < 120; ++i)
+            view.poll();
+    }
     view.mouseMove({600.0f, 328.0f}, {});
     bool shots = renderer.save(view, dir / (prefix + "-routing.png"));
     click(view, kMatrixTab);
@@ -3424,14 +3497,16 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
         renderer.save(view, dir / "40v-fx-quiet.png");
         const uint32_t quietHalo = renderer.pixel(halo), quietAlong = renderer.pixel(along);
         model.live.fxPortLevels[fxSlotPort(0)] = 0.5f;
-        view.poll();
+        for (int i = 0; i < 60; ++i) // rising to it over a moment
+            view.poll();
         const bool shot = renderer.save(view, dir / "40v-fx-glow.png");
         const bool lit = renderer.pixel(halo) != quietHalo && renderer.pixel(along) != quietAlong;
         model.glowLevel = 0.0;
         renderer.save(view, dir / "40v-fx-glow-off.png");
         const bool offDark = renderer.pixel(halo) == quietHalo;
         model.live.fxPortLevels[fxSlotPort(0)] = 0.0f;
-        view.poll();
+        for (int i = 0; i < 60; ++i) // and falling back
+            view.poll();
         renderer.save(view, dir / "40v-fx-quiet.png");
         check(shot && lit && offDark && renderer.pixel(halo) == quietHalo,
               "a node of the effects graph and its wire out glow as loud as what comes out of it, unless the glow "
@@ -3515,7 +3590,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
             view.mouseMove(to, {});
             view.poll();
             renderer.save(view, dir / "40o0-fx-drag-step.png");
-            const float x = cell(2, 0).x - detail::kFxNodeR - 3.0f;
+            const float x = cell(2, 0).x - detail::kFxNodeR - 5.0f; // in the arrowhead, short of its tip
             int lit = 0;
             for (float y = cell(2, 0).y - 8.0f; y <= cell(2, 0).y + 8.0f; y += 1.0f) {
                 const uint32_t color = renderer.pixel({x, y});
@@ -4200,6 +4275,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
 // frame before, the part comes out as a whole paint of the same moment does, pixel for pixel.
 void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
+    model.ui.view = RoutingView::Matrix; // the routing graph's glow, which follows the output, isn't behind it
     View view(model);
     model.live.voices = 1;
     auto scopeAt = [&](float shift, float level) {
@@ -4736,7 +4812,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     // cutoff here, and while a note plays its display names it (an A4 bent 30 cents up).
     const Point noteHandle{976.0f, y};
     click(view, kF1Tab);
-    drag(view, noteHandle, {918.0f, 242.0f});
+    drag(view, noteHandle, ins(918.0f, 242.0f));
     const bool noteMapped =
         slotTarget(model.value(slotTargetIndex(kNoteSource, 0))) == paramIndex(0, FilterParam::Cutoff);
     model.live.voices = 1;
@@ -4750,7 +4826,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     check(idleShot && macroIdle * 18 < macroLive * 10 && noteIdle * 18 < noteLive * 10,
           "a macro's and the note source's handles are faint until they modulate something");
     std::string removal;
-    for (const MenuItem &item : view.contextMenu({918.0f, 242.0f}))
+    for (const MenuItem &item : view.contextMenu(ins(918.0f, 242.0f)))
         if (item.label.find(tr(Str::SourceNameNote)) != std::string::npos)
             removal = item.label;
     check(noteMapped && shot && removal == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameNote)}),
@@ -4838,7 +4914,7 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         click(view, toggle);
         const bool shorter = model.ui.keysCollapsed && view.height() == open - 120.0f;
         const Point wheelHandle{928.0f, y};
-        drag(view, wheelHandle, {918.0f, 242.0f});
+        drag(view, wheelHandle, ins(918.0f, 242.0f));
         const bool wheelMapped =
             slotTarget(model.value(slotTargetIndex(kWheelSource, 1))) == paramIndex(0, FilterParam::Cutoff);
         const double bendWas = model.value(paramIndex(GlobalParam::BendRange));
@@ -4858,16 +4934,16 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, {1026.0f, y});
     const int low = paramIndex(NoteParam::Low), high = paramIndex(NoteParam::High);
     const double lowFrom = model.value(low);
-    drag(view, {182.0f, 152.0f}, {182.0f, 52.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
+    drag(view, {182.0f + kRoutingDx, 152.0f}, {182.0f + kRoutingDx, 52.0f}); // Low's knob, 100 px up: ten notes, landing on a whole one
     const bool raised = model.value(low) == std::round(lowFrom) + 10.0;
     view.doubleClick(noteCurveAt(0.5, 0.6), {});
     const bool pointAdded = model.value(paramIndex(NoteParam::Curve)) == 4.0;
     // Steps, under the plot left of the grid's controls, has a plain click draw a step here too; Points goes back.
-    click(view, {514.0f, 486.0f});
+    click(view, {514.0f + kRoutingDx, 486.0f});
     click(view, noteCurveAt(0.2, -0.5));
     const bool stepped = model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) > 4.0;
     view.undo();
-    click(view, {446.0f, 486.0f});
+    click(view, {446.0f + kRoutingDx, 486.0f});
     click(view, noteCurveAt(0.2, -0.5));
     const bool modes = stepped && !model.layout().shapeSteps && model.value(paramIndex(NoteParam::Curve)) == 4.0;
     model.live.notePitch = 72.0f;
@@ -5447,7 +5523,8 @@ void testRouteFrom(const std::filesystem::path &dir, Renderer &renderer) {
                        model.value(routeModeIndex(1, 0)) == 0.0;
     // A's line to OUT, by where it leaves A, onto B: B goes out at A's level, A no longer does.
     const double out = model.value(paramIndex(0, OpParam::Out));
-    drag(view, {a.x, a.y + 24.0f + 4.0f}, b);
+    const detail::OutWire aOut = detail::outWireOf(0, a); // toward OUT
+    drag(view, {aOut.start.x + aOut.dir.x * 4.0f, aOut.start.y + aOut.dir.y * 4.0f}, b);
     const bool outMoved = model.value(paramIndex(0, OpParam::Out)) == 0.0 &&
                           model.value(paramIndex(1, OpParam::Out)) == out;
     view.undo();
@@ -5510,6 +5587,11 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
     model.set(paramIndex(1, OpParam::Enabled), 1.0);
     model.set(matrixIndex(1, 0), 0.5);
     model.ui.keptRoutes.push_back(matrixIndex(1, 0));
+    // B up and to the left of A, far enough that a third of the way along its wire is clear of the wire's label.
+    model.ui.nodeX[0] = 0.5f;
+    model.ui.nodeY[0] = 0.55f;
+    model.ui.nodeX[1] = 0.2f;
+    model.ui.nodeY[1] = 0.1f;
     view.poll();
     const UiLayout &layout = model.layout();
     const Point a = nodeCenter(layout, 0), b = nodeCenter(layout, 1);
@@ -5611,7 +5693,7 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
 // right-click menus of its label and its matrix cell (whose corner shows the glyph), and from the operator page's
 // INPUTS tab; each pick an undo step. Moved onto another operator by its arrowhead, a route keeps its mode;
 // disconnected, it starts as Phase.
-// The INPUTS tab's rows 30 px apart: a modulated depth showing its handles under it and its ranges on its top line,
+// The INPUTS tab's rows 30 px apart: a modulated depth showing its handles under it and its ranges just above it,
 // its number left as it was (read off the rendered pixels); past the six rows the tab holds, the wheel scrolls the
 // rows and its scrollbar's thumb dragged brings them back.
 void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
@@ -5632,7 +5714,7 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, opTabPoint(InspectorTab::Inputs));
     view.mouseMove({600.0f, 468.0f}, {});
     // The first row's depth, 48 px wide at the inspector's right, and the rows' place in it.
-    const Rect depth{884.0f + 300.0f - 16.0f - 48.0f, 132.0f + 186.0f, 48.0f, 18.0f};
+    const Rect depth{detail::kInspector.x + 300.0f - 16.0f - 48.0f, detail::kInspector.y + 186.0f, 48.0f, 18.0f};
     auto pixels = [&](float top, float bottom) {
         std::vector<uint32_t> found;
         for (float y = top; y < bottom; y += 1.0f)
@@ -5643,35 +5725,35 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     renderer.save(view, dir / "5l-op-inputs-many.png");
     const std::vector<uint32_t> number = pixels(depth.y + 4.0f, depth.bottom() - 4.0f);
     const std::vector<uint32_t> under = pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f);
-    const std::vector<uint32_t> top = pixels(depth.y - 1.0f, depth.y + 1.0f);
+    const std::vector<uint32_t> top = pixels(depth.y - 5.0f, depth.y - 2.0f);
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(slotTargetIndex(0, 0), slotTargetValue(detail::routeParam(1, 0)));
     model.set(slotAmountIndex(0, 0), 0.3);
     view.poll();
     const bool modShot = renderer.save(view, dir / "5m-op-inputs-modulated.png");
     check(modShot && pixels(depth.y + 4.0f, depth.bottom() - 4.0f) == number &&
-              pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 1.0f, depth.y + 1.0f) != top,
-          "an INPUTS row's modulated depth has its handles under it and its ranges on its top line, its number as it was");
+              pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 5.0f, depth.y - 2.0f) != top,
+          "an INPUTS row's modulated depth has its handles under it and its ranges just above it, its number as it was");
 
     // The sixth row's depth is F1's; two notches down over the names, the eighth's, the feedback's, is there.
     const Point sixth{depth.center().x, depth.center().y + 5.0f * 30.0f};
-    view.wheel({900.0f, 330.0f}, -2.0f, {});
+    view.wheel(ins(900.0f, 330.0f), -2.0f, {});
     view.poll();
     const bool scrolledShot = renderer.save(view, dir / "5n-op-inputs-scrolled.png");
     drag(view, sixth, {sixth.x, sixth.y - 20.0f});
     const bool feedback = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
     view.undo();
     // The thumb, at the bar's foot now, dragged up to its top: the first row is B's again.
-    const Point thumb{884.0f + 300.0f - 9.0f, 132.0f + 372.0f - 20.0f};
+    const Point thumb{detail::kInspector.x + 300.0f - 9.0f, detail::kInspector.y + detail::kInspector.h - 20.0f};
     drag(view, thumb, {thumb.x, thumb.y - 200.0f});
     view.poll();
     drag(view, depth.center(), {depth.center().x, depth.center().y - 20.0f});
     const bool back = model.value(detail::routeParam(1, 0)) > 0.5;
     view.undo();
     // Dragged up 60 px with the middle button over the names, the rows follow: the feedback's is the sixth again.
-    view.middleDown({900.0f, 420.0f});
-    view.mouseMove({900.0f, 360.0f}, {});
-    view.middleUp({900.0f, 360.0f});
+    view.middleDown(ins(900.0f, 420.0f));
+    view.mouseMove(ins(900.0f, 360.0f), {});
+    view.middleUp(ins(900.0f, 360.0f));
     drag(view, sixth, {sixth.x, sixth.y - 20.0f});
     const bool panned = model.value(detail::routeParam(0, 0)) > 0.3 && model.value(detail::routeParam(kOps, 0)) == 0.5;
     check(scrolledShot && feedback && back && panned,
@@ -5794,13 +5876,13 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
     view.poll();
     click(view, opTabPoint(InspectorTab::Inputs));
     const bool tab = layout.opTab == InspectorTab::Inputs;
-    const float row = 132.0f + 186.0f + 9.0f;
-    auto modeButton = [&](RouteMode m) { return Point{884.0f + 48.0f + 13.0f + static_cast<int>(m) * 26.0f, row}; };
+    const float row = detail::kInspector.y + 186.0f + 9.0f;
+    auto modeButton = [&](RouteMode m) { return Point{detail::kInspector.x + 48.0f + 13.0f + static_cast<int>(m) * 26.0f, row}; };
     click(view, modeButton(RouteMode::Ring));
     const bool ringPicked = model.value(mode) == static_cast<double>(RouteMode::Ring);
     view.mouseMove(modeButton(RouteMode::ExpFm), {});
     const bool inputsShot = renderer.save(view, dir / "5k-op-inputs.png");
-    const Point depth{884.0f + 300.0f - 16.0f - 24.0f, row};
+    const Point depth{detail::kInspector.x + 300.0f - 16.0f - 24.0f, row};
     drag(view, depth, {depth.x, depth.y - 20.0f});
     const bool deeper = model.value(matrixIndex(1, 0)) > 0.5;
     view.undo();
@@ -5840,6 +5922,124 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
 
 // The node the inspector shows is filled with its color and ringed in it in the graph, and picking another node moves
 // both there (read off the rendered pixels); a switched-off node's ghost is filled while it is the one shown.
+// A node's line to OUT bends as a wire does: straight to begin with, dragged sideways from a third of the way along
+// (clear of its label in the middle) it bows that way, as one undo step, and a double-click on it straightens it.
+void testOutBend(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const UiLayout &layout = model.layout();
+    const int out = paramIndex(0, OpParam::Out);
+    const Point a = nodeCenter(layout, 0);
+    auto along = [&](float bend, float t) {
+        const detail::OutWire w = detail::outWireOf(0, a, bend);
+        const float s = 1.0f - t;
+        return Point{s * s * w.start.x + 2.0f * s * t * w.control.x + t * t * w.end.x,
+                     s * s * w.start.y + 2.0f * s * t * w.control.y + t * t * w.end.y};
+    };
+    auto bendOf = [&] {
+        for (const auto &[route, bend] : layout.wireBends)
+            if (route == out)
+                return bend;
+        return 0.0f;
+    };
+    const detail::OutWire straight = detail::outWireOf(0, a);
+    const Point grab = along(0.0f, 0.3f);
+    const Point side{-straight.dir.y * 30.0f, straight.dir.x * 30.0f}; // to its right
+    drag(view, grab, {grab.x + side.x, grab.y + side.y});
+    const float bent = bendOf();
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool shot = renderer.save(view, dir / "1o-out-bent.png");
+    view.undo();
+    const bool undone = bendOf() == 0.0f;
+    view.redo();
+    doubleClick(view, along(bent, 0.3f));
+    std::printf("      A's line to OUT bent to %.3f\n", bent);
+    check(shot && bent != 0.0f && undone && bendOf() == 0.0f && model.value(out) == 1.0,
+          "a node's line to OUT bends when dragged sideways, undoably, and a double-click straightens it");
+}
+
+// The routing graph's glow: a bloom from OUT, dithered rather than stepped (along a stretch of the panel's bottom, under
+// the ghosts and clear of the rings and rays, neighboring pixels differ many times over, where a glow in steps would
+// change only at its few edges); as bright and as far out as what the nodes send to OUT is loud (the effects' IN),
+// rising to it over a few polls rather than at once; as strong as the glow setting says, and gone with it Off; and its
+// level moving repainting the panel as a whole paint would (read off the rendered pixels, in Spectrum).
+void testRadarGlow(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    model.themeName = "Spectrum";
+    model.glowLevel = 0.75;
+    View view(model);
+    auto output = [&](float level) { // what the nodes send to OUT at `level` of full scale: the effects' IN, 12 dB down
+        model.live.fxPortLevels[kFxPortIn] = 0.25f * level;
+    };
+    auto settle = [&] {
+        for (int i = 0; i < 120; ++i)
+            view.poll();
+    };
+    output(1.0f);
+    settle();
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool shot = renderer.save(view, dir / "1n-radar-glow.png");
+    const float y = detail::kRouting.bottom() - 6.0f;
+    int changes = 0;
+    uint32_t last = renderer.pixel({kOutCore.x - 260.0f, y});
+    for (float x = kOutCore.x - 259.0f; x <= kOutCore.x - 160.0f; x += 1.0f) {
+        const uint32_t p = renderer.pixel({x, y});
+        changes += p != last ? 1 : 0;
+        last = p;
+    }
+    std::printf("      the glow along 100 px of the panel's bottom: %d changes between neighbors\n", changes);
+    check(shot && changes >= 20, "the routing graph's glow is dithered, not stepped (read off the rendered pixels)");
+
+    // Its brightest channel by the core's left, and far out, past half the outermost ring's reach.
+    const Point byCore{kOutCore.x - 70.0f, kOutCore.y + 60.0f}, farOut{kOutCore.x - 330.0f, kOutCore.y + 80.0f};
+    auto brightness = [&](Point at) {
+        const uint32_t p = renderer.pixel(at);
+        return static_cast<int>(std::max({p >> 16 & 255, p >> 8 & 255, p & 255}));
+    };
+    auto shown = [&](const char *file) {
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / file);
+        return std::pair{brightness(byCore), brightness(farOut)};
+    };
+    const auto [loud, loudFar] = shown("1n-radar-glow-loud.png");
+    output(0.0f);
+    settle();
+    const auto [quiet, quietFar] = shown("1n-radar-glow-quiet.png");
+    output(1.0f);
+    view.poll(); // one poll in: on its way up
+    const auto [rising, risingFar] = shown("1n-radar-glow-rising.png");
+    settle();
+    model.glowLevel = 0.3;
+    view.poll();
+    const auto [lower, lowerFar] = shown("1n-radar-glow-lower.png");
+    model.glowLevel = 0.0;
+    view.poll();
+    const auto [off, offFar] = shown("1n-radar-glow-off.png");
+    output(0.0f);
+    settle();
+    const auto [none, noneFar] = shown("1n-radar-glow-off.png");
+    std::printf("      the glow by OUT: %d loud (%d far out), %d in silence (%d far out), %d one poll after it got loud, "
+                "%d with the setting at 30 %%, %d with it Off\n",
+                loud, loudFar, quiet, quietFar, rising, lower, off);
+    // Its level moving repaints the panel (and the header, its meter), as a whole paint would.
+    model.glowLevel = 0.75;
+    view.poll();
+    renderer.save(view, dir / "1n-radar-glow-repaint-before.png");
+    output(0.8f);
+    const bool moved = view.poll() && std::any_of(view.changedAreas().begin(), view.changedAreas().end(), [](Rect r) {
+        return r.x == detail::kFxPanel.x && r.y == detail::kFxPanel.y && r.w == detail::kFxPanel.w;
+    });
+    bool repainted = true;
+    for (const Rect &area : view.changedAreas())
+        repainted = renderer.repaint(view, area) && repainted;
+    const std::vector<uint32_t> part = renderer.image();
+    const bool whole = renderer.save(view, dir / "1n-radar-glow-repaint.png") && renderer.image() == part;
+    check(loud > quiet + 8 && loudFar > quietFar && quiet > none && rising > quiet && rising < loud && lower < loud &&
+              off == none && moved && repainted && whole,
+          "the routing graph's glow is as bright and as far out as the output is loud, rising to it over a moment, as "
+          "strong as the glow setting says, and its level moving repaints the panel, as a whole paint would");
+}
+
 void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -5853,21 +6053,39 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
         const Point c = nodeCenter(layout, node);
         return renderer.pixel({c.x - 14.0f, c.y});
     };
-    auto ring = [&](int node) {
+    auto ring = [&](int node) { // over its top, clear of the lens's leader; by its brightest channel
         const Point c = nodeCenter(layout, node);
-        return renderer.pixel({c.x - 24.0f - 5.0f, c.y});
+        const uint32_t p = renderer.pixel({c.x, c.y - 24.0f - 5.0f});
+        return std::max({p >> 16 & 255, p >> 8 & 255, p & 255});
     };
     const bool shotA = renderer.save(view, dir / "1g-selected-node.png");
     const uint32_t aIn = inside(0), bIn = inside(1), aRing = ring(0), bRing = ring(1);
+    // The lens's leader, a dotted line in A's color level from A's left across to the lens: the brightest pixel along
+    // that row, just right of the lens, while A is shown and once B is.
+    auto leader = [&] {
+        const float y = nodeCenter(layout, 0).y;
+        unsigned most = 0;
+        for (float x = detail::kInspector.right() + 2.0f; x < detail::kInspector.right() + 14.0f; x += 1.0f) {
+            const uint32_t p = renderer.pixel({x, y});
+            most = std::max({most, p >> 16 & 255, p >> 8 & 255, p & 255});
+        }
+        return most;
+    };
+    const unsigned leaderA = leader();
     click(view, nodeTab(1));
     view.mouseMove({600.0f, 468.0f}, {});
     const bool shotB = renderer.save(view, dir / "1h-selected-node-b.png");
-    const bool moved = inside(1) == aIn && inside(0) == bIn && ring(1) == aRing && ring(0) == bRing;
-    check(shotA && shotB && aIn != bIn && aRing != bRing && moved,
+    const unsigned leaderB = leader();
+    std::printf("      the lens's leader at A's height: %u with A shown, %u with B\n", leaderA, leaderB);
+    check(leaderA > leaderB + 20, "a dotted leader runs from the node the inspector shows across to its lens (read off "
+                                  "the rendered pixels)");
+    // (Where its ring goes, an unshown node shows the backdrop, which differs from place to place.)
+    const bool moved = inside(1) == aIn && inside(0) == bIn && ring(1) > ring(0) + 60;
+    check(shotA && shotB && aIn != bIn && aRing > bRing + 60 && moved,
           "the node the inspector shows is filled and ringed in the graph, and picking another moves both (read off the "
           "rendered pixels)");
-    // C and D are off, the first two ghosts in the graph's top left: C's filled while it is the one shown.
-    auto ghost = [&](int k) { return renderer.pixel({32.0f + k * 30.0f + 5.0f, 132.0f + 10.0f + 12.0f}); };
+    // C and D are off, the first two ghosts docked under OUT: C's filled while it is the one shown.
+    auto ghost = [&](int k) { return renderer.pixel({ghostOf(model, 2 + k).x - 7.0f, ghostOf(model, 2 + k).y}); };
     const bool plainShot = renderer.save(view, dir / "1i-ghosts.png");
     const uint32_t cPlain = ghost(0), dPlain = ghost(1);
     click(view, nodeTab(2));
@@ -6227,8 +6445,8 @@ void testLabelClearOfNode(const std::filesystem::path &dir, Renderer &renderer) 
     const Point start = toward(a, 24.0f), end = toward(b, 32.0f);
     const Point middle{0.25f * start.x + 0.5f * control.x + 0.25f * end.x,
                        0.25f * start.y + 0.5f * control.y + 0.25f * end.y};
-    layout.nodeX[2] = (middle.x - 56.0f) / 772.0f;
-    layout.nodeY[2] = (middle.y - 202.0f) / 226.0f;
+    layout.nodeX[2] = (middle.x - detail::kGraph.x) / detail::kGraph.w;
+    layout.nodeY[2] = (middle.y - detail::kGraph.y) / detail::kGraph.h;
     view.poll();
     view.mouseMove({600.0f, 468.0f}, {});
     const bool shot = renderer.save(view, dir / "1m-label-clear-of-node.png");
@@ -6301,9 +6519,9 @@ void testLoopLabelClear(const std::filesystem::path &dir, Renderer &renderer) {
     layout.nodeY[1] = 0.6f;
     const Point b = nodeCenter(layout, 1);
     const Point middle{b.x + 52.0f, b.y - 47.0f}; // the wire's label, clear of B but over where the loop's would be
-    layout.nodeX[0] = (middle.x - 200.0f - 56.0f) / 772.0f;
-    layout.nodeX[2] = (middle.x + 200.0f - 56.0f) / 772.0f;
-    layout.nodeY[0] = layout.nodeY[2] = (middle.y - 202.0f) / 226.0f;
+    layout.nodeX[0] = (middle.x - 200.0f - detail::kGraph.x) / detail::kGraph.w;
+    layout.nodeX[2] = (middle.x + 200.0f - detail::kGraph.x) / detail::kGraph.w;
+    layout.nodeY[0] = layout.nodeY[2] = (middle.y - detail::kGraph.y) / detail::kGraph.h;
     layout.wireBends = {{wire, 0.0f}};
     view.poll();
     const bool shot = renderer.save(view, dir / "1m-loop-label-clear.png");
@@ -6737,7 +6955,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // the knob's. Its list, 265 px wide and 8 more for its scrollbar, centered under it: the rows 24 px apart from
     // 24 px down, as on a card, six of them shown. From the knob's exact middle, as the inspector's knob row places it
     // (kPitchKnob rounds it).
-    const Point pill{884.0f + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.5f, 257.0f};
+    const Point pill{detail::kInspector.x + 16.0f + (300.0f - 32.0f) / 6.0f * 2.5f + 9.5f, 257.0f + kInsDy};
     const float listX = pill.x - 136.5f + 6.0f, rowsY = pill.y + 4.5f + 6.0f + 24.0f;
     auto row = [&](int k, float x) { return Point{listX + x, rowsY + k * 24.0f + 10.0f}; };
     view.mouseMove(pill, {});
@@ -6803,7 +7021,7 @@ void testModPill(const std::filesystem::path &dir, Renderer &renderer) {
     // list narrowing again.
     click(view, pill);
     view.mouseMove({600.0f, 328.0f}, {});
-    const float wideX = std::min(pill.x - 184.5f, 1200.0f - 4.0f - 369.0f) + 6.0f; // held inside the window
+    const float wideX = std::clamp(pill.x - 184.5f, 4.0f, 1200.0f - 4.0f - 369.0f) + 6.0f; // held inside the window
     auto wideRow = [&](int k, float x) { return Point{wideX + x, rowsY + k * 24.0f + 10.0f}; };
     const bool chipShot = renderer.save(view, dir / "40g2-pill-aux-chip.png");
     const bool chip = renderer.pixel(wideRow(3, 126.0f)) != renderer.pixel(wideRow(2, 126.0f));
@@ -6952,7 +7170,7 @@ void run(const std::filesystem::path &dir, float scale) {
     {
         const double total = normFromTime(1.5) + normFromTime(0.015); // A's decay and release
         const float zoom = static_cast<float>((248.0f - 40.0f) / total);
-        drag(view, {930.0f, kOpEnvTop + 12.0f}, {930.0f + 0.2f * zoom, kOpEnvTop + 12.0f});
+        drag(view, {930.0f + kInsDx, kOpEnvTop + 12.0f}, {930.0f + kInsDx + 0.2f * zoom, kOpEnvTop + 12.0f});
         check(std::abs(model.value(paramIndex(0, OpParam::Hold)) - 0.2) < 1e-3 && model.openEdits == 0,
               "dragging the hold handle sets the hold, at the zoom the drag started with");
     }
@@ -6965,16 +7183,16 @@ void run(const std::filesystem::path &dir, float scale) {
         auto edge = [&] {
             std::vector<uint32_t> column;
             for (float y = kOpEnvTop; y < kOpEnvBottom + 1.0f; y += 1.0f)
-                column.push_back(renderer.pixel({1176.0f, y}));
+                column.push_back(renderer.pixel({1176.0f + kInsDx, y}));
             return column;
         };
         const bool shot = renderer.save(view, dir / "4c-envelope-dragged.png");
         const std::vector<uint32_t> still = edge();
-        view.mouseDown({1158.0f, kOpEnvBottom - 10.0f}, {});
-        view.mouseMove({1240.0f, kOpEnvBottom - 10.0f}, {});
-        view.mouseMove({1320.0f, kOpEnvBottom - 10.0f}, {});
+        view.mouseDown({1158.0f + kInsDx, kOpEnvBottom - 10.0f}, {});
+        view.mouseMove({1240.0f + kInsDx, kOpEnvBottom - 10.0f}, {});
+        view.mouseMove({1320.0f + kInsDx, kOpEnvBottom - 10.0f}, {});
         const bool inside = renderer.save(view, dir / "4c-envelope-dragged.png") && edge() == still;
-        view.mouseUp({1320.0f, kOpEnvBottom - 10.0f}, {});
+        view.mouseUp({1320.0f + kInsDx, kOpEnvBottom - 10.0f}, {});
         const bool longer = model.value(release) > before + 0.2;
         view.undo();
         check(shot && inside && longer && model.value(release) == before,
@@ -6989,14 +7207,14 @@ void run(const std::filesystem::path &dir, float scale) {
         auto column = [&] {
             std::vector<uint32_t> pixels;
             for (float y = kOpEnvTop + 14.0f; y < kOpEnvBottom - 14.0f; y += 1.0f)
-                pixels.push_back(renderer.pixel({910.0f, y}));
+                pixels.push_back(renderer.pixel({910.0f + kInsDx, y}));
             return pixels;
         };
         const bool before = renderer.save(view, dir / "4d-envelope-attack.png");
         const std::vector<uint32_t> slant = column();
-        drag(view, {920.0f, kOpEnvTop + 12.0f}, {915.0f, kOpEnvTop + 12.0f});
+        drag(view, {920.0f + kInsDx, kOpEnvTop + 12.0f}, {915.0f + kInsDx, kOpEnvTop + 12.0f});
         const double half = envTimeFromNorm(model.value(attack));
-        drag(view, {915.0f, kOpEnvTop + 12.0f}, {900.0f, kOpEnvTop + 12.0f});
+        drag(view, {915.0f + kInsDx, kOpEnvTop + 12.0f}, {900.0f + kInsDx, kOpEnvTop + 12.0f});
         const double zero = envTimeFromNorm(model.value(attack));
         const bool after = renderer.save(view, dir / "4d-envelope-attack-0ms.png");
         const std::vector<uint32_t> vertical = column();
@@ -7023,7 +7241,7 @@ void run(const std::filesystem::path &dir, float scale) {
             std::vector<uint32_t> pixels;
             for (int row = 0; row < kRows; ++row)
                 for (int column = 0; column < kColumns; ++column)
-                    pixels.push_back(renderer.pixel({1040.0f + column, kOpEnvTop + row}));
+                    pixels.push_back(renderer.pixel({1040.0f + kInsDx + column, kOpEnvTop + row}));
             return pixels;
         };
         view.mouseMove({600.0f, 328.0f}, {});
@@ -7031,7 +7249,7 @@ void run(const std::filesystem::path &dir, float scale) {
         const std::vector<uint32_t> plain = corner();
         Point bend{0.0f, 0.0f};
         for (float y = kOpEnvTop + 6.0f; y <= kOpEnvTop + 18.0f && bend.x == 0.0f; y += 2.0f)
-            for (float x = 950.0f; x < 1150.0f && bend.x == 0.0f; x += 2.0f) {
+            for (float x = 950.0f + kInsDx; x < 1150.0f + kInsDx && bend.x == 0.0f; x += 2.0f) {
                 view.mouseMove({x, y}, {});
                 if (view.cursor() == CursorKind::Vertical)
                     bend = {x, y};
@@ -7136,7 +7354,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.value(paramIndex(4, OpParam::Enabled)) == 1.0 && layout.selectedNode == 4,
           "a switched-off operator's tab switches it on and selects it");
     // While it is off, its page is dimmed (read off the rendered pixels: the envelope's line darkens).
-    const Point envColumn{1034.0f, kOpEnvTop};
+    const Point envColumn{1034.0f + kInsDx, kOpEnvTop};
     view.mouseMove({600.0f, 328.0f}, {});
     const bool pageOnShot = renderer.save(view, dir / "1d-op-on.png");
     const int pageOn = ringLevel(renderer, envColumn, kOpEnvBottom - kOpEnvTop);
@@ -7224,7 +7442,9 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "2c-modulated-out.png"), "render a modulated output at 0 %");
     view.menuCommand(outDisconnect(bOut));
-    check(outDisconnect(bOut) < 0 && slotTarget(model.value(slotTargetIndex(0, 1))) < 0,
+    // (Asked along its line: by OUT's edge the arrowheads of the lines to it lie close, A's among them.)
+    const Point bLine = detail::outWireOf(1, nodeCenter(layout, 1)).start;
+    check(outDisconnect({bLine.x + 12.0f, bLine.y}) < 0 && slotTarget(model.value(slotTargetIndex(0, 1))) < 0,
           "Disconnect takes an output's wire away with its modulation");
     click(view, a);
 
@@ -7257,7 +7477,7 @@ void run(const std::filesystem::path &dir, float scale) {
         const int aOutParam = paramIndex(0, OpParam::Out);
         drag(view, outArrowOf(layout, 0), cNode);
         const bool outMoved = model.value(aOutParam) == 0.0 && model.value(matrixIndex(0, 2)) == 1.0;
-        drag(view, arrowOf(a, cNode), {cNode.x + 150.0f, kBusY});
+        drag(view, arrowOf(a, cNode), kOutCore);
         check(outMoved && model.value(aOutParam) == 1.0 && model.value(matrixIndex(0, 2)) == 0.0,
               "an arrow to OUT moves onto a node, and a wire's arrow onto the OUT bus");
         view.mouseDown(arrowOf(b, a), {});
@@ -7456,9 +7676,11 @@ void run(const std::filesystem::path &dir, float scale) {
         view.poll();
         check(layout.opTab == InspectorTab::Scope && model.scopeOp == 0 && model.scopeCycles == 2,
               "the SCOPE tab asks for its operator's output");
-        auto peakAt = [&](int cycles) { // the first peak: 8 px across the inner display, 67 px from the middle up
-            const float x = 908.0f + 252.0f * (0.25f / cycles);
-            return ringLevel(renderer, {x, 411.0f - 0.8f * 67.0f - 4.0f}, 8.0f);
+        auto peakAt = [&](int cycles) { // the first peak: 8 px across the inner display, half its height up
+            const Rect s = detail::kScopeRect;
+            const float half = 0.5f * (s.h - 40.0f), middle = s.y + 28.0f + half;
+            const float x = s.x + 8.0f + (s.w - 16.0f) * (0.25f / cycles);
+            return ringLevel(renderer, {x, middle - 0.8f * half - 4.0f}, 8.0f);
         };
         auto frame = [&](int cycles, float cursor) {
             model.live.voices = 1;
@@ -7494,7 +7716,7 @@ void run(const std::filesystem::path &dir, float scale) {
         check(model.scopeOp == -1, "a noise operator's page asks for no scope");
         model.set(paramIndex(0, OpParam::Wave), 0.0);
         // A hidden tab with a modulated knob shows a dot: LFO 1 on A's decay, on the ENVELOPE tab.
-        const Point dot{971.0f, 291.0f};
+        const Point dot = ins(971.0f, 291.0f);
         view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "3e-scope-tab-dot.png");
         const int plain = ringLevel(renderer, dot, 4.0f);
@@ -7532,7 +7754,7 @@ void run(const std::filesystem::path &dir, float scale) {
         auto rowAt = [&](float level) { // the brightest pixel along that row, by its strongest channel
             const float y = std::round(bottom - level * (bottom - top));
             int most = 0;
-            for (float x = 1000.0f; x <= 1100.0f; x += 1.0f) {
+            for (float x = 1000.0f + kInsDx; x <= 1100.0f + kInsDx; x += 1.0f) {
                 const uint32_t color = renderer.pixel({x, y});
                 most = std::max({most, static_cast<int>(color >> 16 & 255), static_cast<int>(color >> 8 & 255),
                                  static_cast<int>(color & 255)});
@@ -7622,7 +7844,7 @@ void run(const std::filesystem::path &dir, float scale) {
         };
         // A: half way along its attack, decay and release; then just into a release from 0.8, above its sustain of
         // 0.3.
-        const Region op{896, static_cast<int>(kOpEnvTop), 276, static_cast<int>(kOpEnvBottom - kOpEnvTop)};
+        const Region op{896 + static_cast<int>(kInsDx), static_cast<int>(kOpEnvTop), 276, static_cast<int>(kOpEnvBottom - kOpEnvTop)};
         const float top = kOpEnvTop + 12.0f, bottom = kOpEnvBottom - 10.0f;
         model.live.voices = 0;
         const std::vector<uint32_t> opIdle = capture(op, "3f-env-dot-idle.png");
@@ -7667,8 +7889,8 @@ void run(const std::filesystem::path &dir, float scale) {
     // one undo step. Freq and Mult take the Ratio readout's place (Mult stepping, 10 px up a step), and Pitch and
     // Detune, dimmed, don't turn (read off the rendered pixels: the Pitch knob's column darkens).
     {
-        constexpr Point kFixedSwitch{1125.0f, 178.0f};
-        const Point pitchColumn{kPitchKnob.x, 226.0f};
+        const Point kFixedSwitch = detail::kFixedSwitch.center();
+        const Point pitchColumn{kPitchKnob.x, 226.0f + kInsDy};
         const int fixed = paramIndex(0, OpParam::Fixed), freq = paramIndex(0, OpParam::FixedFreq),
                   mult = paramIndex(0, OpParam::FixedMult);
         const double tracked = 440.0 * ratioFromNorm(model.value(paramIndex(0, OpParam::Ratio)));
@@ -7681,7 +7903,7 @@ void run(const std::filesystem::path &dir, float scale) {
         // Mult reads "×1", its × two bytes in UTF-8: typed into, the caret steps over it whole, and Backspace and
         // Delete take all of it, so "10" is left to read as a value either way.
         {
-            const Point multNumber{kMultKnob.x, 266.0f};
+            const Point multNumber{kMultKnob.x, 266.0f + kInsDy};
             doubleClick(view, multNumber);
             for (View::Key key : {View::Key::End, View::Key::Left, View::Key::Backspace, View::Key::End})
                 view.typeKey(key);
@@ -7782,10 +8004,10 @@ void run(const std::filesystem::path &dir, float scale) {
     // line to OUT, though nothing goes into it, and that line's arrowhead let go of in empty space takes it away.
     const int f1Out = paramIndex(0, FilterParam::Out);
     const bool startsNowhere = model.value(f1Out) == 0.0;
-    drag(view, portOf(layout, kOps), {nodeCenter(layout, kOps).x + 120.0f, kBusY});
+    drag(view, portOf(layout, kOps), kOutCore);
     view.mouseMove({400.0f, 328.0f}, {});
     const bool routedOut = model.value(f1Out) == 1.0 && renderer.save(view, dir / "3d-filter-out.png");
-    drag(view, outArrowOf(layout, kOps), {nodeCenter(layout, kOps).x + 120.0f, kBusY - 60.0f});
+    drag(view, outArrowOf(layout, kOps), {kOutCore.x, kOutCore.y + 110.0f});
     check(startsNowhere && routedOut && model.value(f1Out) == 0.0,
           "a filter goes out by its edge dragged onto the bus, and stops by its arrowhead dragged away");
     drag(view, portOf(layout, 0), nodeCenter(layout, kOps));
@@ -7910,7 +8132,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "5a-unheard.png"), "render an operator that isn't heard");
     model.set(matrixIndex(5, 4), 0.45);
     // The Routing tab shown runs on down the panel's left edge, its corner square; the matrix's is round.
-    auto cornerSquare = [&] { return renderer.pixel({18.0f, 134.0f}) == renderer.pixel({18.0f, 168.0f}); };
+    auto cornerSquare = [&] { return renderer.pixel({18.0f, 134.0f}) == renderer.pixel({18.0f, 150.0f}); };
     const bool routingCorner = cornerSquare();
 
     // The same routing as a matrix: double-click toggles C -> F2 off.
@@ -7920,7 +8142,8 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "6-matrix.png"), "render the matrix view");
     // The tab shown opens the panel's top edge under it, the edge running on under the others; one under the mouse
     // shows a tab's shape.
-    auto edgeOpen = [&](Point tab) { return renderer.pixel({tab.x, 132.0f}) == renderer.pixel({tab.x, 140.0f}); };
+    // (Read above the inspector's lens, which floats 6 px under the panel's top.)
+    auto edgeOpen = [&](Point tab) { return renderer.pixel({tab.x, 132.0f}) == renderer.pixel({tab.x, 135.0f}); };
     const bool tabJoined = edgeOpen(kMatrixTab) && !edgeOpen(kRoutingTab) && !edgeOpen(kFxTab);
     check(routingCorner && !cornerSquare(), "the Routing tab shown runs on down its panel's left edge");
     const uint32_t fxTabAlone = renderer.pixel({kFxTab.x, 104.0f});
@@ -7942,8 +8165,8 @@ void run(const std::filesystem::path &dir, float scale) {
     if (!nodeMenu.empty())
         view.menuCommand(nodeMenu.front().command);
     check(model.value(paramIndex(5, OpParam::Enabled)) == 0.0, "an operator's menu switches it off");
-    // F and the shapers, which are off, wait in the graph's top left as dashed ghosts (F hovered here).
-    const Point ghostF{44.0f, 154.0f};
+    // F and the shapers, which are off, wait docked under OUT as dashed ghosts (F hovered here).
+    const Point ghostF = ghostOf(model, 5);
     view.mouseMove(ghostF, {});
     check(renderer.save(view, dir / "7-switched-off.png"), "render after switching F off");
     const int selectedBefore = layout.selectedNode;
@@ -7975,7 +8198,9 @@ void run(const std::filesystem::path &dir, float scale) {
     drag(view, portOf(layout, s1), nodeCenter(layout, kOps));
     check(model.value(shaperModIndex(0, 1)) == 0.3 && model.value(shaperFilterIndex(0, 0)) == 1.0,
           "dragging S1's port onto B makes it modulate B, and onto F1 feeds it into filter 1");
-    drag(view, portOf(layout, kOps), nodeCenter(layout, s1));
+    // (From their boxes' bottom edges here: on their right edges the wires to F1 and to F2 now leave them.)
+    auto bottomEdge = [&](int node) { return Point{nodeCenter(layout, node).x, nodeCenter(layout, node).y + 17.0f}; };
+    drag(view, bottomEdge(kOps), nodeCenter(layout, s1));
     drag(view, portOf(layout, kOps + 1), nodeCenter(layout, kOps));
     const bool backward = model.value(filterLinkIndex(1, 0)) > 0.0;
     view.undo();
@@ -7984,13 +8209,13 @@ void run(const std::filesystem::path &dir, float scale) {
     view.undo();
     check(backward && itself && model.value(filterLinkIndex(1, 0)) == 0.0 && model.value(filterLinkIndex(0, 0)) == 0.0,
           "a filter's edge dragged onto an earlier filter feeds it, and onto itself feeds it back");
-    drag(view, portOf(layout, s1), {nodeCenter(layout, s1).x + 120.0f, kBusY}); // onto the OUT bus
+    drag(view, bottomEdge(s1), kOutCore); // onto OUT
     check(model.value(filterLinkIndex(0, 1)) == 0.5 && model.value(shaperModIndex(0, 1)) == 0.3 &&
               model.value(shaperFilterIndex(0, 0)) == 1.0 && model.value(shaperSendIndex(0, 0)) == 1.0 &&
               model.value(filterShaperIndex(0, 0)) > 0.0 && model.value(paramIndex(0, ShaperParam::Out)) == 1.0,
           "a filter feeds a shaper, and a shaper goes out onto the bus");
     // Dragged from its edge back onto itself, S1 feeds itself back, at 25 % as an operator does, still going out.
-    drag(view, portOf(layout, s1), nodeCenter(layout, s1));
+    drag(view, bottomEdge(s1), nodeCenter(layout, s1));
     check(model.value(shaperShaperIndex(0, 0)) == 0.25 && model.value(paramIndex(0, ShaperParam::Out)) == 1.0,
           "a shaper's edge dragged onto itself feeds it back into itself");
     view.mouseMove({400.0f, 328.0f}, {});
@@ -8005,9 +8230,9 @@ void run(const std::filesystem::path &dir, float scale) {
     // There a name works like its node's tab: on a node that is off, it switches it on and selects it; on the
     // selected one, it switches it off and on again; on another that is on, it only selects that one.
     const int selectedThen = layout.selectedNode;
-    click(view, {54.0f, gridCellCenter(5, 0).y}); // F's row name
+    click(view, {detail::kGridOrigin.x - 18.0f, gridCellCenter(5, 0).y}); // F's row name
     const bool fromName = model.value(paramIndex(5, OpParam::Enabled)) == 1.0 && layout.selectedNode == 5;
-    click(view, {54.0f, gridCellCenter(5, 0).y}); // again, now that F is selected
+    click(view, {detail::kGridOrigin.x - 18.0f, gridCellCenter(5, 0).y}); // again, now that F is selected
     const bool offByName = model.value(paramIndex(5, OpParam::Enabled)) == 0.0 && layout.selectedNode == 5;
     view.mouseMove({gridCellCenter(0, 5).x, gridCellCenter(0, 5).y - 28.0f}, {});
     const bool selectedShot = renderer.save(view, dir / "7d-matrix-selected.png");
@@ -8887,7 +9112,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;
-    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 562.0f) * 0.5f), 380.0f, 562.0f};
+    const Rect dialog = detail::settingsPanel(view.height());
     auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
     auto mpeSwitch = [&](int on) { return Point{dialog.x + 24.0f + on * 56.0f + 26.0f, dialog.y + 228.0f}; };
     auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
@@ -8950,7 +9175,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(themed && model.themeName == "Midnight",
           "the settings dialog lists Spectrum (the default) and Porcelain first, and picks the theme");
     // The GLOW slider sets how strongly the graphs' curves glow, on both pages, once it is let go.
-    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 397.0f}; };
+    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 429.0f}; };
     view.mouseDown(glowAt(0.2f), {});
     view.mouseMove(glowAt(0.75f), {});
     const bool kept = model.glowLevel == 0.0; // only once it is let go
@@ -8973,7 +9198,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.glowLevel == 0.0, "the GLOW slider's left end turns it off");
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
     // LINES, under GLOW, sets how strongly a source's dashed lines are drawn, 75 % to begin with, once it is let go.
-    auto linesAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 117.0f}; };
+    auto linesAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 149.0f}; };
     const bool linesStart = model.links == 0.75;
     view.mouseDown(linesAt(0.75f), {});
     view.mouseMove(linesAt(0.4f), {});
@@ -8986,9 +9211,30 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseUp({linesAt(1.0f).x + 40.0f, linesAt(1.0f).y}, {});
     check(linesStart && linesKept && linesShot && linesSet && model.links == 1.0 && model.glowLevel == 0.0,
           "the settings dialog's LINES slider sets how strongly the sources' lines are drawn, and only that");
+    // HUE, under the themes, turns the theme's main color round the color wheel once it is let go, the theme's own to
+    // begin with; the accent then takes it (read off the rendered pixels: the slider's knob, in the accent).
+    auto hueAt = [&](float hue) { return Point{dialog.x + 76.0f + 200.0f * hue, dialog.y + 312.0f + 85.0f}; };
+    const bool hueStarts = model.hue < 0.0;
+    view.mouseDown(hueAt(0.2f), {});
+    view.mouseMove(hueAt(0.6f), {});
+    const bool hueKept = model.hue < 0.0; // only once it is let go
+    view.mouseUp(hueAt(0.6f), {});
+    const bool hueSet = std::abs(model.hue - 0.6) < 1e-3;
+    view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
+    const bool hueShot = renderer.save(view, dir / "14j-settings-hue.png");
+    const float knobHue = detail::hueOf(Color::hex(renderer.pixel(hueAt(0.6f)) & 0xFFFFFF));
+    check(hueStarts && hueKept && hueSet && hueShot && std::abs(knobHue - 0.6f) < 0.02f && model.themeName == "Midnight",
+          "the settings dialog's HUE slider turns the theme's main color");
+    // A double-click puts HUE back to the theme's own color, GLOW to half and LINES to 75 %.
+    doubleClick(view, hueAt(0.3f));
+    doubleClick(view, glowAt(0.9f));
+    doubleClick(view, linesAt(0.1f));
+    check(model.hue < 0.0 && model.glowLevel == 0.5 && model.links == 0.75,
+          "a double-click puts the HUE, GLOW and LINES sliders back to where they start");
+    model.glowLevel = 0.0;
     model.links = 0.75;
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
-    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 152.0f}; };
+    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 184.0f}; };
     const ParamValues handlesBefore = model.values;
     const bool startsSmall = model.handles == 0;
     click(view, handlesButton(2));
@@ -9011,8 +9257,10 @@ void run(const std::filesystem::path &dir, float scale) {
     check(layout.sourcesCollapsed, "once it is closed, the editor takes clicks again");
     click(view, kSourcesToggle);
     runMore(dir, renderer);
-    // The README's, in the default theme (see release.ps1); Neon Pluck's effects as a graph, split low and high.
+    // The README's, in the default theme (see release.ps1): Screamer's routing, Crystal Motion's effects as a chain and
+    // Neon Pluck's as a graph, split low and high.
     renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6, "Spectrum");
+    renderExample(dir, renderer, "LD Screamer", "24c-screamer-example", 4, "Spectrum", true); // a note playing
     renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4, "Spectrum");
     renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
     renderExample(dir, renderer, "BA Neon Pluck", "43-porcelain-neon", 4, "Porcelain");
@@ -9020,6 +9268,7 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
     renderExample(dir, renderer, "SQ Step Filter", "33-step-filter", 3);
+    renderFactoryPresets(dir, renderer);
     renderLfoOnLfo(dir, renderer);
     testMacros(dir, renderer);
     testVelocity(dir, renderer);
@@ -9029,6 +9278,8 @@ void run(const std::filesystem::path &dir, float scale) {
     testRouteModes(dir, renderer);
     testInputsScroll(dir, renderer);
     testSelectedNode(dir, renderer);
+    testRadarGlow(dir, renderer);
+    testOutBend(dir, renderer);
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);
@@ -9077,7 +9328,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale]\n");
+        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale] [--presets]\n");
         return 2;
     }
     const std::filesystem::path dir = argv[1];
@@ -9086,7 +9337,13 @@ int main(int argc, char **argv) {
 #ifdef _WIN32
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 #endif
-    run(dir, argc > 2 ? static_cast<float>(std::atof(argv[2])) : 1.0f); // COM objects die before CoUninitialize
+    const float scale = argc > 2 ? static_cast<float>(std::atof(argv[2])) : 1.0f;
+    if (argc > 3 && std::strcmp(argv[3], "--presets") == 0) { // only the factory presets' routing views
+        Renderer renderer(scale);
+        renderFactoryPresets(dir, renderer);
+    } else {
+        run(dir, scale); // COM objects die before CoUninitialize
+    }
 #ifdef _WIN32
     CoUninitialize();
 #endif

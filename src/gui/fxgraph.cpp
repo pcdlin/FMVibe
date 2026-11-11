@@ -1000,6 +1000,11 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
 }
 
 float View::fxGlow(int port) const {
+    return port >= 0 && port < kFxPorts ? fxGlow_[port] : 0.0f;
+}
+
+// How strongly a port of the effects graph glows as of the last snapshot, which fxGlow_ follows (see View::follow()).
+float View::fxGlowTarget(int port) const {
     if (port < 0 || port >= kFxPorts || !(telemetry_.age < 0.5f))
         return 0.0f;
     const float level = telemetry_.fxPortLevels[port];
@@ -2012,7 +2017,7 @@ void View::paintFxGraph(Canvas &c) {
                 const float row = static_cast<float>(laneRow(lane)) * kFxGridRow;
                 const float y = lane == 1 ? split.y + row - 18.0f : lane == 2 ? split.y + row + 4.0f : split.y - 17.0f;
                 const Str name = lane == 1 ? Str::BandHigh : lane == 2 ? Str::BandLow : Str::BandMid;
-                c.text({split.x + (lane == 3 ? 36.0f : 30.0f), y, 80.0f, 14.0f}, tr(name), kTextSmall,
+                c.text({split.x + (lane == 3 ? 40.0f : 34.0f), y, 80.0f, 16.0f}, tr(name), kTextLabel,
                        laneColor(lane).alpha(heard), Align::Left, true);
             }
         }
@@ -2024,7 +2029,7 @@ void View::paintFxGraph(Canvas &c) {
     for (const auto &[p, name] : {std::pair{at.in, Str::NodeFxIn}, std::pair{at.out, Str::NodeFxOut}}) {
         const Rect r = boxAround(p, kFxEndHalfW, kFxEndHalfH);
         if (const float glow = name == Str::NodeFxIn ? fxGlow(kFxPortIn) : outGlow; glow > 0.01f)
-            featherRect(c, r, kRadiusControl, 12.0f, kText.alpha(0.18f * glow * nodeGlow));
+            featherRect(c, r, kRadiusControl, 14.0f, kText.alpha(0.18f * glow * nodeGlow));
         paintNodeShadow(c, r, kRadiusControl);
         c.fillRect(r, look.flat ? kTrack : kCardColor, kRadiusControl);
         if (!look.flat)
@@ -2047,7 +2052,7 @@ void View::paintFxGraph(Canvas &c) {
             return;
         }
         auto name = [&](float below, const std::string &text) {
-            c.text({center.x - 60.0f, center.y + below + 3.0f, 120.0f, 14.0f}, text, kTextSmall, (isSelected ? kText : kDim).alpha(alpha),
+            c.text({center.x - 60.0f, center.y + below + 3.0f, 120.0f, 16.0f}, text, kTextLabel, (isSelected ? kText : kDim).alpha(alpha),
                    Align::Center, true);
         };
         // As loud as what comes out of it is, a node glows in its color around it, as an operator does.
@@ -2055,7 +2060,7 @@ void View::paintFxGraph(Canvas &c) {
             const Color color = effectColor(node).alpha(alpha);
             const Rect r = nodeRect(node, center);
             if (const float glow = alpha < 1.0f ? 0.0f : fxGlow(fxSlotPort(node)); glow > 0.01f)
-                featherRect(c, r, kRadiusControl, 16.0f, color.alpha(0.3f * glow * nodeGlow));
+                featherRect(c, r, kRadiusControl, 18.0f, color.alpha(0.3f * glow * nodeGlow));
             if (isSelected)
                 c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
             if (look.flat) { // filled with a tint of its color, stronger under the mouse and picked, no outline
@@ -2067,7 +2072,7 @@ void View::paintFxGraph(Canvas &c) {
                 c.fillRect(r, isSelected ? color.alpha(kSelectedFill) : kCardColor.alpha(fill), kRadiusControl);
                 c.strokeRect(r, color, width, kRadiusControl);
             }
-            fxIcon(c, {center.x - 10.0f, center.y - 7.0f, 20.0f, 14.0f}, fxSlotType(node), color);
+            fxIcon(c, {center.x - 12.0f, center.y - 8.5f, 24.0f, 17.0f}, fxSlotType(node), color);
             name(kFxNodeHalfH, fxTitle(fxSlotType(node)));
             return;
         }
@@ -2081,7 +2086,7 @@ void View::paintFxGraph(Canvas &c) {
                                   : std::max({fxGlow(fxBandPort(sum, kHighBand)), fxGlow(fxBandPort(sum, kLowBand)),
                                               three ? fxGlow(fxBandPort(sum, 1)) : 0.0f});
         if (glow > 0.01f)
-            featherRect(c, r, kRadiusControl, 14.0f, kText.alpha(0.18f * glow * nodeGlow));
+            featherRect(c, r, kRadiusControl, 16.0f, kText.alpha(0.18f * glow * nodeGlow));
         if (isSelected) // as an effect's: its ring 5 px out, its corners as much rounder
             c.strokeRect(r.inset(-5.0f), color.alpha(0.5f), 1.5f, kRadiusControl + 5.0f);
         // Its upper half in the high band's color, its lower half in the low band's, parted by a slight slant (rising

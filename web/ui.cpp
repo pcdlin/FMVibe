@@ -50,7 +50,7 @@ EM_JS(void, js_set_setting, (const char *key, const char *value),
       { Module.fmvHost.setSetting(UTF8ToString(key), UTF8ToString(value)); });
 
 constexpr int kDefaultOversampling = 2;
-constexpr char kFirstPreset[] = "PD Crystal Motion"; // the patch in docs/editor.png
+constexpr char kFirstPreset[] = "PD Crystal Motion"; // the patch whose effects docs/fx-chain.png shows
 
 std::string setting(const char *key) {
     char buffer[256];
@@ -80,6 +80,8 @@ public:
         const std::string glow = setting("glow");
         glow_ = glow.empty() ? 0.5 : std::clamp(std::atof(glow.c_str()), 0.0, 1.0);
         handleSize_ = std::clamp(std::atoi(setting("handleSize").c_str()), 0, 2);
+        const std::string hue = setting("hue");
+        hue_ = hue.empty() ? -1.0 : std::min(std::atof(hue.c_str()), 1.0);
         const std::string links = setting("linkIntensity");
         links_ = links.empty() ? 0.75 : std::clamp(std::atof(links.c_str()), 0.0, 1.0);
         const std::string tempo = setting("tempo");
@@ -179,6 +181,11 @@ public:
         theme_ = name;
         js_set_setting("theme", name.c_str());
     }
+    double accentHue() const override { return hue_; }
+    void setAccentHue(double hue) override {
+        hue_ = hue < 0.0 ? -1.0 : std::clamp(hue, 0.0, 1.0);
+        js_set_setting("hue", std::to_string(hue_).c_str());
+    }
     double glow() const override { return glow_; }
     void setGlow(double amount) override {
         glow_ = std::clamp(amount, 0.0, 1.0);
@@ -253,6 +260,7 @@ private:
     int mpeBendRange_ = 48;
     std::string theme_;
     double glow_ = 0.5;
+    double hue_ = -1.0; // the theme's own
     int handleSize_ = 0;
     double links_ = 0.75;
     double tempo_ = kDefaultTempo;

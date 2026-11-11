@@ -76,6 +76,9 @@ EM_JS(void, js_push_clip, (float x, float y, float w, float h), { Module.fmv2d.p
 EM_JS(void, js_pop_clip, (), { Module.fmv2d.popClip(); });
 EM_JS(void, js_push_layer, (float x, float y, float opacity), { Module.fmv2d.pushLayer(x, y, opacity); });
 EM_JS(void, js_pop_layer, (), { Module.fmv2d.popLayer(); });
+EM_JS(void, js_image, (const uint8_t *rgba, int width, int height, double serial, float x, float y, float w, float h),
+      { Module.fmv2d.image(HEAPU8.subarray(rgba, rgba + width * height * 4), width, height, serial, x, y, w, h); });
+EM_JS(float, js_device_scale, (), { return Module.fmv2d.deviceScale(); });
 
 Color mix(Color a, Color b, float t) {
     return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t};
@@ -157,6 +160,34 @@ void Canvas::polylineStrokes(const Point *points, size_t count, const Color *col
         js_polyline_strokes(&points[0].x, static_cast<int>(count), static_cast<int>(n), color(0), width(0), color(1),
                             width(1), color(2), width(2), color(3), width(3), dashed);
     }
+}
+
+// The 2D context takes straight RGBA bytes: the image's premultiplied pixels are turned into them once for each serial,
+// and the JS side keeps them in a canvas of their own until the serial changes.
+void Canvas::image(const Image &image, Rect r) {
+    if (image.width <= 0 || image.height <= 0 ||
+        image.pixels.size() < static_cast<size_t>(image.width) * static_cast<size_t>(image.height))
+        return;
+    static std::vector<uint8_t> bytes;
+    static uint64_t serial = 0;
+    if (serial != image.serial || bytes.size() != image.pixels.size() * 4) {
+        bytes.resize(image.pixels.size() * 4);
+        for (size_t i = 0; i < image.pixels.size(); ++i) {
+            const uint32_t p = image.pixels[i];
+            const uint32_t a = p >> 24;
+            auto straight = [a](uint32_t c) { return a ? static_cast<uint8_t>(std::min(255u, (c * 255 + a / 2) / a)) : 0; };
+            bytes[i * 4 + 0] = straight(p >> 16 & 255);
+            bytes[i * 4 + 1] = straight(p >> 8 & 255);
+            bytes[i * 4 + 2] = straight(p & 255);
+            bytes[i * 4 + 3] = static_cast<uint8_t>(a);
+        }
+        serial = image.serial;
+    }
+    js_image(bytes.data(), image.width, image.height, static_cast<double>(image.serial), r.x, r.y, r.w, r.h);
+}
+
+float Canvas::deviceScale() const {
+    return js_device_scale();
 }
 
 void Canvas::fillPolygon(const Point *points, size_t count, Color c) {

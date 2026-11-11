@@ -288,13 +288,10 @@ std::vector<std::pair<int, Rect>> View::routeLabels() const {
     }
     for (int node : on)
         if (goesOut(node) && outParam(node) != moving) {
-            const OutWire w = outWireOf(node, nodeCenter(node));
+            const OutWire w = outWireOf(node, nodeCenter(node), wireBend(outParam(node)));
             // Beside the line where it is too short for the label to fit along it; else along it, clear of the nodes
             // and the labels before it.
-            const Point at = w.label.x != w.start.x
-                                 ? w.label
-                                 : labelAlong(w.start, {0.5f * (w.start.x + w.end.x), 0.5f * (w.start.y + w.end.y)},
-                                              w.end, w.label, 40.0f, taken);
+            const Point at = w.beside ? w.label : labelAlong(w.start, w.control, w.end, w.label, 40.0f, taken);
             labels.emplace_back(outParam(node), chip(at, 40.0f));
             taken.push_back(chip(at, 40.0f));
         }

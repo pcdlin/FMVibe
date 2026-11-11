@@ -15,6 +15,8 @@ export function createCanvas2d(ctx) {
   let lineWidth = null;
   let lineCap = null; // 'round' (with round joins) or 'butt' (with mitered ones)
   let dash = null; // the dash's length, or 'solid'
+  let imageCanvas = null; // image()'s pixels, for the serial they came with
+  let imageSerial = null;
 
   function css(rgba) {
     rgba >>>= 0;
@@ -275,6 +277,23 @@ export function createCanvas2d(ctx) {
     popLayer() {
       ctx.restore();
       fill = stroke = font = lineWidth = lineCap = dash = null;
+    },
+    // A picture made pixel by pixel (canvas_web.cpp's image()): its straight RGBA bytes go into a canvas of their own
+    // once, kept until the serial changes, which is then drawn stretched over the box, smoothly.
+    image(bytes, width, height, serial, x, y, w, h) {
+      if (imageSerial !== serial || !imageCanvas || imageCanvas.width !== width || imageCanvas.height !== height) {
+        imageCanvas = document.createElement('canvas');
+        imageCanvas.width = width;
+        imageCanvas.height = height;
+        imageCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
+        imageSerial = serial;
+      }
+      ctx.drawImage(imageCanvas, x, y, w, h);
+    },
+    // How many of the canvas's pixels a logical one takes, by the transform the caller set.
+    deviceScale() {
+      const m = ctx.getTransform();
+      return Math.hypot(m.a, m.b);
     },
   };
 }

@@ -30,10 +30,14 @@ constexpr float kHeaderH = 92.0f;
 constexpr float kStripY = 32.0f; // how far the global strip's content sits below where it stood alone (13 to 51 px)
 constexpr float kPanelsTop = 132.0f;
 constexpr float kPanelRadius = kRadiusPanel; // the panels' corners
-constexpr Rect kRouting{16.0f, kPanelsTop, 852.0f, 372.0f};
-constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
-constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
-constexpr float kBusY = kRouting.y + kRouting.h - 30.0f;
+// The routing graph and the matrix share one panel with the inspector, kFxPanel's place: the inspector floats as a
+// lens over its left end, a card a little in from the panel's edges, and the graph or matrix takes the rest. The
+// graph's OUT is a core at its right end, the orbit rings around it reaching back across the panel.
+constexpr Rect kInspector{24.0f, kPanelsTop + 6.0f, 300.0f, 360.0f};
+constexpr Rect kRouting{kInspector.x + kInspector.w + 8.0f, kPanelsTop, 852.0f, 372.0f};
+constexpr Point kOutCore{kRouting.x + kRouting.w - 70.0f, kRouting.y + 0.5f * kRouting.h};
+constexpr float kOutCoreRadius = 34.0f;
+constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 56.0f, kRouting.w - 190.0f, kRouting.h - 112.0f}; // node centers
 // Ctrl+drag puts a node of the routing graph on the nearest point of a coarse grid over the area its center may go
 // in: the cells' centers, kRoutingGridCols x kRoutingGridRows.
 constexpr int kRoutingGridCols = 12, kRoutingGridRows = 5;
@@ -120,11 +124,11 @@ inline Rect inputsDepth(float y) { return {kInspector.x + kInspector.w - 16.0f -
 constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
 // Unison: the knobs at y + 206, where the copies sit under them.
 constexpr float kUnisonKnobsY = kInspector.y + 206.0f;
-constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 110.0f};
+constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 102.0f};
 // A noise operator's spectrum, in Unison's place.
 constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
 // Scope: the operator's output, the cycle count's buttons in its top right corner.
-constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 174.0f};
+constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 166.0f};
 inline Rect scopeCycleButton(int choice) {
     return {kScopeRect.right() - 6.0f - (3 - choice) * 20.0f, kScopeRect.y + 6.0f, 20.0f, 16.0f};
 }
@@ -184,7 +188,7 @@ constexpr float kViewTabRadius = kRadiusCard; // its top corners
 constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
 // The FX view covers the routing panel and the inspector: one card per effect,
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
-constexpr Rect kFxPanel{kRouting.x, kRouting.y, kInspector.x + kInspector.w - kRouting.x, kRouting.h};
+constexpr Rect kFxPanel{16.0f, kPanelsTop, kRouting.x + kRouting.w - 16.0f, kRouting.h};
 constexpr int kVisibleFx = 6;
 constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
 // The row's first card starts a gap in from the clip it scrolls in (see fxCardClip()), for the arrow before it.
@@ -876,17 +880,17 @@ inline Rect fxModeButton(int graph) {
 // or shaper's node is in the routing graph (its icon in it, its name under it), a split a box with its bands' ports on
 // its right edge (the high band on top), a join a box as large, IN and OUT boxes, and the + where a node can go next a
 // + in a circle.
-constexpr float kFxGridCol = 92.0f, kFxGridRow = 70.0f, kFxGridLeft = 34.0f;
-constexpr float kFxNodeR = 22.0f;     // an effect's box's half width, where its wires meet it
-constexpr float kFxNodeHalfH = 16.0f; // and its half height
+constexpr float kFxGridCol = 100.0f, kFxGridRow = 80.0f, kFxGridLeft = 38.0f;
+constexpr float kFxNodeR = 25.0f;     // an effect's box's half width, where its wires meet it
+constexpr float kFxNodeHalfH = 18.0f; // and its half height
 constexpr float kSoloedOutAlpha = 0.3f; // how strongly a band its join doesn't hear (the other soloed) is drawn
 constexpr float kFxPlusIdleAlpha = 0.4f; // how strongly the graph's +s are drawn while the mouse isn't on them
-constexpr float kFxSplitHalfW = 14.0f, kFxSplitHalfH = 24.0f;
+constexpr float kFxSplitHalfW = 16.0f, kFxSplitHalfH = 28.0f;
 // How far along a graph wire bends from one row to another: within the gap between two columns' nodes.
 constexpr float kFxWireBend = kFxGridCol - 2.0f * kFxNodeR - 4.0f;
-constexpr float kFxEndHalfW = 16.0f, kFxEndHalfH = 30.0f;
+constexpr float kFxEndHalfW = 18.0f, kFxEndHalfH = 34.0f;
 constexpr float kFxJoinHalfW = kFxSplitHalfW, kFxJoinHalfH = kFxSplitHalfH; // as large as a split
-constexpr float kFxSlotHalf = 8.5f; // a + where a node can go next: a circle, as on a wire's middle
+constexpr float kFxSlotHalf = 9.5f; // a + where a node can go next: a circle, as on a wire's middle
 constexpr float kFxDropReach = 8.0f; // how near a wire (or its arrowhead) the mouse lands a dragged node where it goes
 inline Point fxGridAt(float col, float row, float scroll) { // fractions of a cell too, as nodes glide
     const Rect area = fxGraphArea(); // its left edge and middle, whatever its width
@@ -1047,7 +1051,7 @@ constexpr int kBaseNote = 24; // C1, where the keyboard starts before any octave
 // Init, Load, Save, Save As and the settings cog: icons at the right end of the title bar.
 inline Rect toolbarButton(int i) {
     constexpr float kW = 28.0f, kGap = 6.0f;
-    return {kInspector.right() - (5 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
+    return {kFxPanel.right() - (5 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
 }
 // Undo and redo, a little apart to their left.
 inline Rect undoButton(int redo) {
@@ -1127,7 +1131,7 @@ inline double partialBarFromLevel(double level) {
 // The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
 // (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 562.0f;
+constexpr float kSettingsH = 594.0f;
 constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
 constexpr float kSettingsLookY = 312.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
@@ -1152,17 +1156,22 @@ inline Rect settingsTheme(Rect panel, int i) {
     const float w = (panel.w - 48.0f + 6.0f) / kThemeCount;
     return {panel.x + 24.0f + i * w, panel.y + kSettingsLookY + 30.0f, w - 6.0f, 30.0f};
 }
-// The glow slider's track, with room above and below to grab it; GLOW before it, its amount after.
-inline Rect settingsGlow(Rect panel) {
+// Under the themes, the hue slider's track, with room above and below to grab it: the theme's main color. HUE before
+// it, its hue after.
+inline Rect settingsHue(Rect panel) {
     return {panel.x + 76.0f, panel.y + kSettingsLookY + 72.0f, 200.0f, 26.0f};
+}
+// The glow slider, like it; GLOW before it, its amount after.
+inline Rect settingsGlow(Rect panel) {
+    return {panel.x + 76.0f, panel.y + kSettingsLookY + 104.0f, 200.0f, 26.0f};
 }
 // Under it, the LINES slider, like it: how strongly a source's dashed lines are drawn.
 inline Rect settingsLinks(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 104.0f, 200.0f, 26.0f};
+    return {panel.x + 76.0f, panel.y + kSettingsLookY + 136.0f, 200.0f, 26.0f};
 }
 // Under that, HANDLES and the depth handles' sizes: small, medium and large.
 inline Rect settingsHandles(Rect panel, int size) {
-    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 138.0f, 64.0f, 28.0f};
+    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 170.0f, 64.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

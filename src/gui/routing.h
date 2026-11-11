@@ -39,15 +39,16 @@ inline Color nodeColor(int node) {
     return isShaperNode(node) ? kShaperColor : isFilterNode(node) ? kFilterColor : opColor(node);
 }
 
-// A route takes the color of the shaper or filter it joins, if any, else its operator's.
-inline Color routeColor(int from, int to) {
-    return isShaperNode(from) || isShaperNode(to)   ? kShaperColor
-           : isFilterNode(from) || isFilterNode(to) ? kFilterColor
-                                                    : opColor(from);
+// A route takes the color of the node it comes from, as its line to OUT does.
+inline Color routeColor(int from, int /*to*/) {
+    return nodeColor(from);
 }
 
-// Distance from a node's center to its outline in direction `dir`.
+// Distance from a node's center to its outline in direction `dir`; kNodes is OUT, whose arrowheads stop 2 px short
+// of its edge.
 inline float nodeExtent(int node, Point dir) {
+    if (node == kNodes)
+        return kOutCoreRadius + 2.0f;
     if (!isBoxNode(node))
         return kNodeRadius;
     const float tx = std::abs(dir.x) > 1e-4f ? kFilterHalfW / std::abs(dir.x) : 1e9f;
@@ -114,9 +115,9 @@ inline int routeTo(int from, int to) {
     return to == kNodes ? outParam(from) : routeParam(from, to);
 }
 
-// Whether a port or arrowhead let go at `p` lands on the OUT bus.
-inline bool onBus(Point p) {
-    return std::abs(p.y - kBusY) < 16.0f && p.x > kRouting.x && p.x < kRouting.right();
+// Whether a port or arrowhead let go at `p` lands on OUT, the core at the graph's right end.
+inline bool onOutCore(Point p) {
+    return std::hypot(p.x - kOutCore.x, p.y - kOutCore.y) < kOutCoreRadius + 14.0f;
 }
 
 // Whether `param` is a route of the graph: one node into another, or a node into the output.
@@ -351,22 +352,26 @@ inline void wireStartHighlight(Canvas &c, Point start, Color color) {
     c.fillCircle(start, 3.0f, color);
 }
 
-// A node's line down to the OUT bus: from its outline to the base of the arrowhead, whose tip touches the bus, with
-// its label halfway along. A node too close to the bus for the label to fit in between has it beside the line, on
-// the left.
+// A node's line to OUT: a wire from its outline into the core (see bentWire()), straight to begin with and bent as a
+// wire between nodes is, its arrowhead's tip 2 px short of the core's edge, with its label halfway along. A straight
+// one too short for the label to fit along it has it beside the line, on its left.
 struct OutWire {
     Point start;
+    Point control;
     Point end; // base of the arrowhead
     Point label;
+    Point dir;   // along the line's end, toward the core
+    bool beside; // the label off the line, too short for it
 };
 
-inline OutWire outWireOf(int node, Point center) {
-    const float top = center.y + (isBoxNode(node) ? kFilterHalfH : kNodeRadius);
-    const float end = kBusY - 10.0f;
-    OutWire w{{center.x, top}, {center.x, end}, {center.x, 0.5f * (top + end)}};
-    if (end - top < 18.0f)
-        w.label.x -= 28.0f;
-    return w;
+inline OutWire outWireOf(int node, Point center, float bend = 0.0f) {
+    const Wire w = wireBetween(node, center, kNodes, kOutCore, bend);
+    OutWire out{w.start, w.control, w.end, w.label, w.tangent, false};
+    if (bend == 0.0f && std::hypot(w.end.x - w.start.x, w.end.y - w.start.y) < 44.0f) {
+        out.label = {out.label.x + out.dir.y * 22.0f, out.label.y - out.dir.x * 22.0f};
+        out.beside = true;
+    }
+    return out;
 }
 
 } // namespace fmvibe::gui::detail
