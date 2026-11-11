@@ -105,6 +105,11 @@ public:
         userSettings.theme = name;
         writeUserSettings();
     }
+    double accentHue() const override { return userSettings.hue; }
+    void setAccentHue(double hue) override {
+        userSettings.hue = hue < 0.0 ? -1.0 : std::clamp(hue, 0.0, 1.0);
+        writeUserSettings();
+    }
     double glow() const override { return userSettings.glow; }
     void setGlow(double amount) override {
         userSettings.glow = std::clamp(amount, 0.0, 1.0);

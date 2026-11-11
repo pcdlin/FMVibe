@@ -1558,7 +1558,7 @@ bool View::poll() {
         modList_.reset();
         everywhere = true;
     }
-    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_ || shownLinks() != links_ ||
+    if (themeIndex(controller_.theme()) != theme_ || shownGlow() != glow_ || shownLinks() != links_ || shownHue() != hue_ ||
         controller_.handleSize() != handles_) // picked in another editor
         everywhere = true;
     if ((typing_ || fieldTyping()) && ++caretTicks_ % 32 == 0)
@@ -3066,7 +3066,8 @@ void View::paint(Canvas &c, Rect area) {
     });
 
     theme_ = themeIndex(controller_.theme());
-    look = kThemes[theme_];
+    hue_ = shownHue();
+    look = withAccentHue(kThemes[theme_], hue_); // its main color turned to the hue the settings pick
     glow_ = glowing = shownGlow();
     links_ = shownLinks();
     handles_ = controller_.handleSize();
@@ -7696,6 +7697,25 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.text(w.rect, label, kTextBody, on ? (faint ? litInk(kDim) : litInk(kText)) : kDim, Align::Center, on);
         break;
     }
+    case Kind::SettingsHue: {
+        // A track of every hue, the theme's main color as saturated and as light at each, and a knob at the hue shown
+        // (the theme's own while none is picked).
+        const Color own = kThemes[theme_].accent;
+        const double hue = shownHue();
+        const float at = hue >= 0.0 ? static_cast<float>(hue) : hueOf(own);
+        const float y = w.rect.center().y;
+        constexpr int kSteps = 48;
+        const float step = w.rect.w / kSteps;
+        c.fillRect({w.rect.x, y - 2.0f, w.rect.w, 4.0f}, kTrack, kRadiusMark);
+        for (int k = 0; k < kSteps; ++k) // a little over each, so no seam shows between them
+            c.fillRect({w.rect.x + k * step + (k == 0 ? 1.0f : 0.0f), y - 2.0f,
+                        step + (k + 1 < kSteps ? 0.6f : -1.0f) - (k == 0 ? 1.0f : 0.0f), 4.0f},
+                       withHue(own, (k + 0.5f) / kSteps));
+        const float x = w.rect.x + at * w.rect.w;
+        c.fillCircle({x, y}, 7.0f, hovered || active ? kText : kDim);
+        c.fillCircle({x, y}, 3.0f, kAccent);
+        break;
+    }
     case Kind::SettingsGlow:
     case Kind::SettingsLinks: {
         // A track filled up to the amount, and a knob to drag along it.
@@ -9998,8 +10018,13 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::SettingsGlow: // dragged; the amount is kept when it is let go
     case Kind::SettingsLinks:
+    case Kind::SettingsHue:
         drag_.kind = DragKind::Glow;
-        drag_.startValue = sliderDragged() = w.kind == Kind::SettingsLinks ? shownLinks() : shownGlow();
+        drag_.startValue = sliderDragged() = w.kind == Kind::SettingsLinks ? shownLinks()
+                                             : w.kind == Kind::SettingsHue
+                                                 ? static_cast<float>(shownHue() >= 0.0 ? shownHue()
+                                                                                        : hueOf(kThemes[theme_].accent))
+                                                 : shownGlow();
         if (!drag_.fine)
             applyDrag(p);
         break;
@@ -10172,6 +10197,8 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Glow:
         if (w.kind == Kind::SettingsLinks)
             controller_.setLinkIntensity(linksDragged_);
+        else if (w.kind == Kind::SettingsHue)
+            controller_.setAccentHue(hueDragged_);
         else
             controller_.setGlow(glowDragged_);
         break;
@@ -10346,7 +10373,7 @@ void View::finishDrag() {
         controller_.pitchWheel(0.0);
         break;
     case DragKind::Glow: // the amount it was dragged to is kept only once it is let go (see mouseUp())
-        glowDragged_ = linksDragged_ = -1.0f;
+        glowDragged_ = linksDragged_ = hueDragged_ = -1.0f;
         break;
     case DragKind::Partials: // its undo step closes below
     case DragKind::ShapeStep:
@@ -10549,6 +10576,7 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::SearchField:
     case Kind::SettingsGlow:
     case Kind::SettingsLinks:
+    case Kind::SettingsHue:
     case Kind::ModWheel:
     case Kind::BendWheel:
     case Kind::ShapeArea:
@@ -10731,6 +10759,19 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && (hit->kind == Kind::MacroName || hit->kind == Kind::TempoBox)) {
         startTyping(*hit);
+        return;
+    }
+    // The settings' sliders back to where they start: the theme's own color, the glow at half and the lines at 75 %.
+    if (hit && hit->kind == Kind::SettingsHue) {
+        controller_.setAccentHue(-1.0);
+        return;
+    }
+    if (hit && hit->kind == Kind::SettingsGlow) {
+        controller_.setGlow(Controller::kDefaultGlow);
+        return;
+    }
+    if (hit && hit->kind == Kind::SettingsLinks) {
+        controller_.setLinkIntensity(Controller::kDefaultLinkIntensity);
         return;
     }
     if (hit && hit->kind == Kind::UtilityHandle) { // back where it starts

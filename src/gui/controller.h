@@ -270,6 +270,14 @@ public:
     // settings above it is the user's: every FMVibe editor uses it, whichever project it is in.
     virtual std::string theme() const = 0;
     virtual void setTheme(const std::string &name) = 0;
+    // Where the glow and the lines' strength start, as a new user's settings have them (a double-click on their sliders
+    // puts them back).
+    static constexpr double kDefaultGlow = 0.5;
+    static constexpr double kDefaultLinkIntensity = 0.75;
+    // The theme's main color, its accent, as a hue 0 to 1 round the color wheel from red, or below 0 for the theme's
+    // own (as to begin with); the user's too, kept as the theme changes.
+    virtual double accentHue() const = 0;
+    virtual void setAccentHue(double hue) = 0;
     // How strongly the curves in the editor's graphs glow, 0 (not at all) to 1; the user's too.
     virtual double glow() const = 0;
     virtual void setGlow(double amount) = 0;

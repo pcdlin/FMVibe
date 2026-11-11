@@ -40,6 +40,7 @@ std::vector<View::Widget> View::settingsWidgets() const {
     mergeButtons(list, row);
     for (int i = 0; i < kThemeCount; ++i)
         add(Kind::SettingsTheme, settingsTheme(panel, i), -1, i);
+    add(Kind::SettingsHue, settingsHue(panel));
     add(Kind::SettingsGlow, settingsGlow(panel));
     add(Kind::SettingsLinks, settingsLinks(panel));
     row = list.size();
@@ -87,7 +88,7 @@ void View::paintSettings(Canvas &c) {
            Align::Left);
     c.text({panel.x + 24.0f, mpeY + 102.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsMpeSaved), kTextLabel, kFaint,
            Align::Left);
-    // LOOK: the themes, the glow, the sources' lines and the depth handles' size.
+    // LOOK: the themes, their main color's hue, the glow, the sources' lines and the depth handles' size.
     const float lookY = panel.y + kSettingsLookY;
     c.line({panel.x + 24.0f, lookY + 0.5f}, {panel.right() - 24.0f, lookY + 0.5f}, kBorder, 1.0f);
     c.text({panel.x + 24.0f, lookY + 8.0f, 200.0f, 16.0f}, tr(Str::SettingsLook), kTextLabel, kFaint, Align::Left, true);
@@ -99,15 +100,24 @@ void View::paintSettings(Canvas &c) {
         c.text({track.right() + 14.0f, track.y, panel.right() - 24.0f - track.right() - 14.0f, track.h},
                amount > 0.0f ? text : tr(Str::ValueOff), kTextLabel, amount > 0.0f ? kText : kDim, Align::Left);
     };
+    { // HUE, and its hue in degrees after it, or Default while it is the theme's own
+        const Rect track = settingsHue(panel);
+        c.text({panel.x + 24.0f, track.y, 52.0f, track.h}, tr(Str::SettingsHue), kTextLabel, kDim, Align::Left, true);
+        const double hue = shownHue();
+        char text[16];
+        std::snprintf(text, sizeof(text), "%.0f\xC2\xB0", hue * 360.0);
+        c.text({track.right() + 14.0f, track.y, panel.right() - 24.0f - track.right() - 14.0f, track.h},
+               hue >= 0.0 ? text : tr(Str::SettingsHueDefault), kTextLabel, hue >= 0.0 ? kText : kDim, Align::Left);
+    }
     slider(settingsGlow(panel), Str::SettingsGlow, shownGlow());
     slider(settingsLinks(panel), Str::SettingsLinks, shownLinks());
     const Rect handles = settingsHandles(panel, 0);
     c.text({panel.x + 24.0f, handles.y, 52.0f, handles.h}, tr(Str::SettingsHandles), kTextLabel, kDim, Align::Left, true);
-    c.text({panel.x + 24.0f, lookY + 180.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
+    c.text({panel.x + 24.0f, lookY + 212.0f, panel.w - 48.0f, 16.0f}, tr(Str::SettingsLookSaved), kTextLabel, kFaint,
            Align::Left);
     // The version and the license, at the bottom.
-    c.line({panel.x + 24.0f, lookY + 206.5f}, {panel.right() - 24.0f, lookY + 206.5f}, kBorder, 1.0f);
-    const Rect about{panel.x + 24.0f, lookY + 214.0f, panel.w - 48.0f, 16.0f};
+    c.line({panel.x + 24.0f, lookY + 238.5f}, {panel.right() - 24.0f, lookY + 238.5f}, kBorder, 1.0f);
+    const Rect about{panel.x + 24.0f, lookY + 246.0f, panel.w - 48.0f, 16.0f};
     c.text(about, trf(Str::SettingsVersion, {FMVIBE_VERSION}), kTextLabel, kFaint, Align::Left, true);
     c.text(about, tr(Str::SettingsLicense), kTextLabel, kDim, Align::Right);
     for (const Widget &w : settingsWidgets())

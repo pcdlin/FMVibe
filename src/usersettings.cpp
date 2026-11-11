@@ -38,6 +38,8 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.theme = line.substr(6);
         else if (line.starts_with("glowLevel=")) // a plain "glow=" came before the 50 % default: left alone
             settings.glow = std::clamp(std::atof(line.c_str() + 10), 0.0, 1.0);
+        else if (line.starts_with("hue="))
+            settings.hue = std::min(std::atof(line.c_str() + 4), 1.0);
         else if (line.starts_with("handleSize="))
             settings.handleSize = std::clamp(std::atoi(line.c_str() + 11), 0, kMaxHandleSize);
         else if (line.starts_with("linkIntensity="))
@@ -76,6 +78,8 @@ void writeUserSettings() {
         merged.theme = userSettings.theme;
     if (userSettings.glow != asRead.glow)
         merged.glow = userSettings.glow;
+    if (userSettings.hue != asRead.hue)
+        merged.hue = userSettings.hue;
     if (userSettings.handleSize != asRead.handleSize)
         merged.handleSize = userSettings.handleSize;
     if (userSettings.links != asRead.links)
@@ -99,6 +103,8 @@ void writeUserSettings() {
         std::ofstream out(part);
         out << "theme=" << merged.theme << "\nglowLevel=" << merged.glow << "\nhandleSize=" << merged.handleSize
             << "\nlinkIntensity=" << merged.links << '\n';
+        if (merged.hue >= 0.0)
+            out << "hue=" << merged.hue << '\n';
         if (merged.zoom > 0.0)
             out << "zoom=" << merged.zoom << '\n';
         if (merged.examples >= 0)

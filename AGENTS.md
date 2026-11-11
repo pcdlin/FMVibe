@@ -510,7 +510,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels; the sources' closing
     at a click around it, and shutting with the panel for good), and the arrow between two effects adding one there;
   - picking the oversampling, MPE and its bend range (leaving the patch alone), the theme (Spectrum, the default, and Porcelain first in its list) and the depth handles'
-    size (drawn bigger at each, read off the rendered pixels), and dragging the glow slider and the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels), in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
+    size (drawn bigger at each, read off the rendered pixels), and dragging the hue slider (the accent taking its hue, read off the rendered pixels), the glow slider and the lines slider (a source's dashed line drawn as strongly as it says, and not at all when off, read off the rendered pixels), a double-click putting each back where it starts, in the settings dialog (with the editor rendered in each theme, and glowing), closing it with its x
     or a click around it, and the wheel scrolling nothing behind it;
   - undo and redo of drags, wheel runs, node moves, typed values and a removed effect with its modulation;
   - typing values into knobs, header knobs and target depths, with Enter, Escape and a click elsewhere;
@@ -706,7 +706,7 @@ version pinned at its top. After that it loads Visual Studio's environment for C
 - The two modules only send each other messages: the param edits, the notes and the telemetry, whose struct
   bytes cross unchanged.
 - Presets are the factory ones, held in memory. Load, Save and the preset folder show a message instead, since the
-  demo has no files. The theme, glow, handle size and line strength are kept in the browser's storage.
+  demo has no files. The theme, hue, glow, handle size and line strength are kept in the browser's storage.
 - The computer keyboard plays notes: A W S E D … from middle C, with Z and X to shift the octave and C and V to step
   the velocity (1, 20, 40 … 100, 120, 127; 100 to begin with, as the editor's keyboard always plays).
 - On a touchscreen, `main.js` hands the editor one finger (`View::touchDown()` and on: it drags what drags, pans
@@ -786,7 +786,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, glow, handle size, line strength, examples given and the version that wrote them) |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, examples given and the version that wrote them) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |

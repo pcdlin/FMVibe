@@ -169,6 +169,13 @@ static_assert(everySourceColored(), "a color for each source in every theme");
 
 int themeIndex(const std::string &name);
 
+// A color's hue, 0 to 1 round the color wheel from red, and the color with another hue, as saturated and as light.
+float hueOf(Color color);
+Color withHue(Color color, float hue);
+// The theme `palette` with its main color, the accent (and the first operator's, where it is the accent), turned to
+// `hue`, 0 to 1; one below 0 leaves it its own.
+Palette withAccentHue(const Palette &palette, double hue);
+
 // The theme being painted: View::paint() sets it from the controller first, so the names below always
 // stand for the colors of the editor painting.
 extern Palette look;

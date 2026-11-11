@@ -1,6 +1,7 @@
 #include "theme.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 
 namespace fmvibe::gui::detail {
@@ -21,6 +22,61 @@ int themeIndex(const std::string &name) {
 }
 
 Palette look = kThemes[0];
+
+namespace {
+// Its hue, its saturation and its lightness, 0 to 1 each.
+struct Hsl {
+    float h, s, l;
+};
+Hsl toHsl(Color c) {
+    const float most = std::max({c.r, c.g, c.b}), least = std::min({c.r, c.g, c.b});
+    const float l = 0.5f * (most + least), d = most - least;
+    if (d <= 1e-6f)
+        return {0.0f, 0.0f, l};
+    const float s = l > 0.5f ? d / (2.0f - most - least) : d / (most + least);
+    float h = most == c.r ? (c.g - c.b) / d + (c.g < c.b ? 6.0f : 0.0f) : most == c.g ? (c.b - c.r) / d + 2.0f
+                                                                                      : (c.r - c.g) / d + 4.0f;
+    return {h / 6.0f, s, l};
+}
+Color fromHsl(Hsl hsl, float alpha) {
+    if (hsl.s <= 0.0f)
+        return {hsl.l, hsl.l, hsl.l, alpha};
+    const float q = hsl.l < 0.5f ? hsl.l * (1.0f + hsl.s) : hsl.l + hsl.s - hsl.l * hsl.s, p = 2.0f * hsl.l - q;
+    auto channel = [&](float t) {
+        t -= std::floor(t);
+        if (t < 1.0f / 6.0f)
+            return p + (q - p) * 6.0f * t;
+        if (t < 0.5f)
+            return q;
+        if (t < 2.0f / 3.0f)
+            return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+        return p;
+    };
+    return {channel(hsl.h + 1.0f / 3.0f), channel(hsl.h), channel(hsl.h - 1.0f / 3.0f), alpha};
+}
+} // namespace
+
+float hueOf(Color color) {
+    return toHsl(color).h;
+}
+
+Color withHue(Color color, float hue) {
+    Hsl hsl = toHsl(color);
+    hsl.h = hue - std::floor(hue);
+    return fromHsl(hsl, color.a);
+}
+
+Palette withAccentHue(const Palette &palette, double hue) {
+    Palette turned = palette;
+    if (hue < 0.0)
+        return turned;
+    const Color accent = withHue(palette.accent, static_cast<float>(hue));
+    const Color &first = palette.ops[0];
+    if (first.r == palette.accent.r && first.g == palette.accent.g && first.b == palette.accent.b)
+        turned.ops[0] = accent;
+    turned.accent = accent;
+    return turned;
+}
 
 Color fxTypeColor(FxType type) {
     return look.fxTypes[std::clamp(static_cast<int>(type), 0, static_cast<int>(FxType::Count) - 1)];

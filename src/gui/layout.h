@@ -1131,7 +1131,7 @@ inline double partialBarFromLevel(double level) {
 // The settings dialog, centered over the editor: OVERSAMPLING, then MPE (kSettingsMpeY down), then LOOK
 // (kSettingsLookY down), each with its heading, its buttons and its lines under them.
 constexpr float kSettingsW = 380.0f;
-constexpr float kSettingsH = 562.0f;
+constexpr float kSettingsH = 594.0f;
 constexpr float kSettingsMpeY = 184.0f;  // the divider above MPE
 constexpr float kSettingsLookY = 312.0f; // and above LOOK
 constexpr int kOversamplingFactors[] = {1, 2, 4, 8};
@@ -1156,17 +1156,22 @@ inline Rect settingsTheme(Rect panel, int i) {
     const float w = (panel.w - 48.0f + 6.0f) / kThemeCount;
     return {panel.x + 24.0f + i * w, panel.y + kSettingsLookY + 30.0f, w - 6.0f, 30.0f};
 }
-// The glow slider's track, with room above and below to grab it; GLOW before it, its amount after.
-inline Rect settingsGlow(Rect panel) {
+// Under the themes, the hue slider's track, with room above and below to grab it: the theme's main color. HUE before
+// it, its hue after.
+inline Rect settingsHue(Rect panel) {
     return {panel.x + 76.0f, panel.y + kSettingsLookY + 72.0f, 200.0f, 26.0f};
+}
+// The glow slider, like it; GLOW before it, its amount after.
+inline Rect settingsGlow(Rect panel) {
+    return {panel.x + 76.0f, panel.y + kSettingsLookY + 104.0f, 200.0f, 26.0f};
 }
 // Under it, the LINES slider, like it: how strongly a source's dashed lines are drawn.
 inline Rect settingsLinks(Rect panel) {
-    return {panel.x + 76.0f, panel.y + kSettingsLookY + 104.0f, 200.0f, 26.0f};
+    return {panel.x + 76.0f, panel.y + kSettingsLookY + 136.0f, 200.0f, 26.0f};
 }
 // Under that, HANDLES and the depth handles' sizes: small, medium and large.
 inline Rect settingsHandles(Rect panel, int size) {
-    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 138.0f, 64.0f, 28.0f};
+    return {panel.x + 76.0f + size * 68.0f, panel.y + kSettingsLookY + 170.0f, 64.0f, 28.0f};
 }
 inline Rect settingsClose(Rect panel) {
     return {panel.right() - 38.0f, panel.y + 14.0f, 24.0f, 24.0f};

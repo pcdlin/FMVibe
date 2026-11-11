@@ -299,6 +299,7 @@ private:
         SettingsTheme,  // b = the theme it picks
         SettingsHandles, // b = the depth handles' size it picks
         SettingsGlow,   // the slider for how strongly the graphs' curves glow
+        SettingsHue,    // the slider for the theme's main color
         SettingsLinks,  // the slider for how strongly the sources' dashed lines are drawn
         SettingsClose,
         ModWheel,     // param = mod wheel: drag or scroll
@@ -1535,7 +1536,15 @@ private:
         return linksDragged_ >= 0.0f ? linksDragged_ : static_cast<float>(controller_.linkIntensity());
     }
     // The amount of the settings slider being dragged (DragKind::Glow): the glow's, or the lines'.
-    float &sliderDragged() { return drag_.widget.kind == Kind::SettingsLinks ? linksDragged_ : glowDragged_; }
+    float hueDragged_ = -1.0f;               // the hue slider's hue while it is dragged, else -1
+    // The hue the theme's main color shows now, 0 to 1, or below 0 for the theme's own.
+    double shownHue() const { return hueDragged_ >= 0.0f ? hueDragged_ : controller_.accentHue(); }
+    double hue_ = -1.0;                      // the hue painted last
+    float &sliderDragged() {
+        return drag_.widget.kind == Kind::SettingsLinks ? linksDragged_
+               : drag_.widget.kind == Kind::SettingsHue ? hueDragged_
+                                                        : glowDragged_;
+    }
     bool ctrlHeld_ = false; // see setCtrl()
     int confirm_ = -1; // the PresetAction the confirm dialog asks about, kConfirmFxClear, or -1
     static constexpr int kConfirmFxClear = 4; // asking before every effect goes

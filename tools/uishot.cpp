@@ -114,6 +114,8 @@ public:
     void setMpeBendRange(int semitones) override { mpeRange = semitones; }
     std::string theme() const override { return themeName; }
     void setTheme(const std::string &name) override { themeName = name; }
+    double accentHue() const override { return hue; }
+    void setAccentHue(double h) override { hue = h; }
     double glow() const override { return glowLevel; }
     void setGlow(double amount) override { glowLevel = amount; }
     int handleSize() const override { return handles; }
@@ -152,6 +154,7 @@ public:
     // the default, Spectrum).
     std::string themeName = "Midnight";
     double glowLevel = 0.0;
+    double hue = -1.0;
     Telemetry live{};
     int scopeOp = -1; // what the view last asked the scope to capture
     int scopeCycles = 0;
@@ -9071,7 +9074,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
     // The cog after the preset buttons opens the settings dialog, which takes every click until it closes.
     const Point cog = kSettingsButton;
-    const Rect dialog{(View::kWidth - 380.0f) * 0.5f, std::round((view.height() - 562.0f) * 0.5f), 380.0f, 562.0f};
+    const Rect dialog = detail::settingsPanel(view.height());
     auto option = [&](int i) { return Point{dialog.x + 24.0f + i * 64.0f + 29.0f, dialog.y + 96.0f}; };
     auto mpeSwitch = [&](int on) { return Point{dialog.x + 24.0f + on * 56.0f + 26.0f, dialog.y + 228.0f}; };
     auto mpeRange = [&](int i) { return Point{dialog.x + 190.0f + i * 42.0f + 19.0f, dialog.y + 228.0f}; };
@@ -9134,7 +9137,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(themed && model.themeName == "Midnight",
           "the settings dialog lists Spectrum (the default) and Porcelain first, and picks the theme");
     // The GLOW slider sets how strongly the graphs' curves glow, on both pages, once it is let go.
-    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 397.0f}; };
+    auto glowAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 429.0f}; };
     view.mouseDown(glowAt(0.2f), {});
     view.mouseMove(glowAt(0.75f), {});
     const bool kept = model.glowLevel == 0.0; // only once it is let go
@@ -9157,7 +9160,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(model.glowLevel == 0.0, "the GLOW slider's left end turns it off");
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
     // LINES, under GLOW, sets how strongly a source's dashed lines are drawn, 75 % to begin with, once it is let go.
-    auto linesAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 117.0f}; };
+    auto linesAt = [&](float amount) { return Point{dialog.x + 76.0f + 200.0f * amount, dialog.y + 312.0f + 149.0f}; };
     const bool linesStart = model.links == 0.75;
     view.mouseDown(linesAt(0.75f), {});
     view.mouseMove(linesAt(0.4f), {});
@@ -9170,9 +9173,30 @@ void run(const std::filesystem::path &dir, float scale) {
     view.mouseUp({linesAt(1.0f).x + 40.0f, linesAt(1.0f).y}, {});
     check(linesStart && linesKept && linesShot && linesSet && model.links == 1.0 && model.glowLevel == 0.0,
           "the settings dialog's LINES slider sets how strongly the sources' lines are drawn, and only that");
+    // HUE, under the themes, turns the theme's main color round the color wheel once it is let go, the theme's own to
+    // begin with; the accent then takes it (read off the rendered pixels: the slider's knob, in the accent).
+    auto hueAt = [&](float hue) { return Point{dialog.x + 76.0f + 200.0f * hue, dialog.y + 312.0f + 85.0f}; };
+    const bool hueStarts = model.hue < 0.0;
+    view.mouseDown(hueAt(0.2f), {});
+    view.mouseMove(hueAt(0.6f), {});
+    const bool hueKept = model.hue < 0.0; // only once it is let go
+    view.mouseUp(hueAt(0.6f), {});
+    const bool hueSet = std::abs(model.hue - 0.6) < 1e-3;
+    view.mouseMove({dialog.x + 24.0f, dialog.y + 30.0f}, {});
+    const bool hueShot = renderer.save(view, dir / "14j-settings-hue.png");
+    const float knobHue = detail::hueOf(Color::hex(renderer.pixel(hueAt(0.6f)) & 0xFFFFFF));
+    check(hueStarts && hueKept && hueSet && hueShot && std::abs(knobHue - 0.6f) < 0.02f && model.themeName == "Midnight",
+          "the settings dialog's HUE slider turns the theme's main color");
+    // A double-click puts HUE back to the theme's own color, GLOW to half and LINES to 75 %.
+    doubleClick(view, hueAt(0.3f));
+    doubleClick(view, glowAt(0.9f));
+    doubleClick(view, linesAt(0.1f));
+    check(model.hue < 0.0 && model.glowLevel == 0.5 && model.links == 0.75,
+          "a double-click puts the HUE, GLOW and LINES sliders back to where they start");
+    model.glowLevel = 0.0;
     model.links = 0.75;
     // HANDLES picks the depth handles' size, Small to begin with, leaving the patch alone.
-    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 152.0f}; };
+    auto handlesButton = [&](int size) { return Point{dialog.x + 76.0f + size * 68.0f + 32.0f, dialog.y + 312.0f + 184.0f}; };
     const ParamValues handlesBefore = model.values;
     const bool startsSmall = model.handles == 0;
     click(view, handlesButton(2));

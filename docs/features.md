@@ -1548,6 +1548,10 @@ may show anywhere, repaints the whole of it.
   the effects graph's nodes, a split and a join too, filled
   with a tint of their color, without an outline; and meters and a dimmed control taking the tint of the card they are on. Settings
   that name a theme no longer offered show the nearest one: Graphite and Machined as Midnight, Paper as Light.
+  **Hue**, a slider under the themes along every hue, turns the theme's main color, its accent (and in Spectrum and
+  Porcelain operator A's, which is the accent there), round the color wheel, as saturated and as light as the theme
+  has it: Default to begin with, the theme's own color, and its hue in degrees once one is picked. It is kept as the
+  theme changes, each theme taking it in its own saturation and lightness.
   **Glow**, a slider from Off to 100 % (50 % to begin with), makes the curves in the graphs (envelopes, LFOs, filter
   and effect responses) glow, drawing them a little thinner: the higher, the stronger and wider the halo. It sets the
   halos that sounding operators and the effects graph's nodes and wires feather out with too: as they are drawn at 75
@@ -1555,11 +1559,12 @@ may show anywhere, repaints the whole of it.
   glows in the color of the effect it comes out of (or the accent), since a grey glow would read as a shadow there. At
   Off the effects graph shows no level (and the editor doesn't repaint for it), and an operator's halo is a plain
   ring.
-  The editor shows it while it is dragged and keeps it when it is let go. **Lines**, a slider like it from Off to
+  The editor shows it while it is dragged and keeps it when it is let go, as it does Hue and Lines; a double-click on
+  any of the three sliders puts it back to where it starts (Hue to Default). **Lines**, a slider like it from Off to
   100 % (75 % to begin with), sets how strongly the dashed lines from a source's handle to what it modulates (and the
   one a handle being dragged trails) are drawn: Off draws none, 100 % draws them opaque. **Handles**, Small (to begin
   with), Medium or Large, draws the depth handles and their **+n** pills bigger, each step about half a pixel more in
-  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All four
+  radius and a pixel more across, in the same places (so on a label or cell, Large ones overlap a little). All five
   are yours rather than the
   project's: they are kept in `%APPDATA%\FMVibe\settings.txt`, every FMVibe editor uses them, and other open editors
   switch along. An editor writes only what it changed into that file, leaving what another one changed meanwhile. The dialog's bottom line shows the version number and that FMVibe is released under the MIT

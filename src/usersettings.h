@@ -11,6 +11,7 @@ constexpr int kMaxHandleSize = 2;
 struct UserSettings {
     std::string theme;
     double glow = 0.5;
+    double hue = -1.0; // the theme's main color as a hue, 0 to 1, or -1 for the theme's own
     int handleSize = 0; // the depth handles' and pills' size, 0 to kMaxHandleSize
     double links = 0.75; // how strongly the dashed lines from a source to its targets are drawn
     double zoom = 0.0; // the editor size new instances open at, relative to the default; 0 if never resized
