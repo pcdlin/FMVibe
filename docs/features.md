@@ -578,10 +578,14 @@ may show anywhere, repaints the whole of it.
     set (a filter or shaper while something goes into it), and at 45 % while it isn't. Its letter or name, and an
     operator's wave, take its color too, its ratio or type the dim text's. The graph sits on a radar: **OUT** is a
     disc at its right end, shading from the accent in its middle to a deeper accent and the filters' purple at its
-    edge, in a faint halo, a glow of the accent spreading out from it across the whole panel (16 % on it, 5 % a third
-    of the way out, gone 520 px away; made once at the screen's own pixels and dithered, so it fades without steps,
-    and made again only as the editor is zoomed or the theme changes), with three orbit rings round it (180, 340 and 500 px out, fainter outward) and
-    two faint rays from it to the panel's left corners, all behind the nodes, the wires and the inspector's lens. A
+    edge, in a faint halo, a glow of the accent spreading out from it across the whole panel (strongest on it, a third
+    as strong a third of the way out, gone 520 px away). The glow is as bright as the output is loud: its meter's peak,
+    from -48 dB up to full scale, takes it from 30 % of its strength in silence to all of it, and the Glow setting
+    sets how strong that is (16 % of the accent on the core at full scale with it at 75 %, none with it Off). It is
+    worked out once at the screen's own pixels and dithered, so it fades without steps, its pixels filled again as its
+    strength changes by a step and its shape only as the editor is zoomed. Three orbit rings go round OUT (180, 340
+    and 500 px out, fainter outward) and two faint rays run from it under the inspector's lens to the lens's far
+    corners, all behind the nodes, the wires and the lens. A
     halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off):
     an operator's as brightly as its envelope and the routes taking it to the output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
     opens. The nodes that are off wait docked under OUT, in the graph's bottom right, as dashed ghosts, a circle with an

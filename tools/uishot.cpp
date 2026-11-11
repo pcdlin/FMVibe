@@ -2111,10 +2111,10 @@ void testCardOutline(const std::filesystem::path &dir, Renderer &renderer) {
     view.mouseMove(away, {});
     const bool listShot = renderer.save(view, dir / "17j-spectrum-list-open.png");
     click(view, away);
-    // A node playing unison copies: their discs peek out beside it, left of its circle (read off the rendered pixels).
+    // A node playing unison copies: their outlines peek out beside it, left of its circle (read off the rendered pixels).
     click(view, kRoutingTab);
     const Point node = nodeCenter(model.layout(), 0);
-    const Point beside{node.x - detail::kNodeRadius - 3.0f, node.y};
+    const Point beside{node.x - detail::kNodeRadius - 9.0f, node.y}; // where a copy's outline runs
     view.mouseMove(away, {});
     const uint32_t single = renderer.save(view, dir / "17k-flat-unison-off.png") ? renderer.pixel(beside) : 0u;
     model.set(paramIndex(0, OpParam::Unison), 4.0);
@@ -2517,6 +2517,7 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     FakeController model;
     if (!theme.empty())
         model.themeName = theme;
+    model.glowLevel = 0.5; // as a new user's settings have it
     View view(model);
     const std::vector<FactoryPreset> &presets = factoryPresets();
     const auto example =
@@ -4224,6 +4225,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
 // frame before, the part comes out as a whole paint of the same moment does, pixel for pixel.
 void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
+    model.ui.view = RoutingView::Matrix; // the routing graph's glow, which follows the output, isn't behind it
     View view(model);
     model.live.voices = 1;
     auto scopeAt = [&](float shift, float level) {
@@ -5890,7 +5892,10 @@ void testOutBend(const std::filesystem::path &dir, Renderer &renderer) {
 void testRadarGlow(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     model.themeName = "Spectrum";
+    model.glowLevel = 0.75;
+    model.live.outPeak = {1.0f, 1.0f}; // full scale
     View view(model);
+    view.poll();
     view.mouseMove({600.0f, 600.0f}, {});
     const bool shot = renderer.save(view, dir / "1n-radar-glow.png");
     const float y = detail::kRouting.bottom() - 6.0f;
@@ -5903,6 +5908,43 @@ void testRadarGlow(const std::filesystem::path &dir, Renderer &renderer) {
     }
     std::printf("      the glow along 100 px of the panel's bottom: %d changes between neighbors\n", changes);
     check(shot && changes >= 20, "the routing graph's glow is dithered, not stepped (read off the rendered pixels)");
+
+    // As loud as the output: brighter at full scale than in silence, fainter with the glow setting turned down, and
+    // gone with it Off (read off the rendered pixels, by the core's left, its brightest channel).
+    const Point byCore{kOutCore.x - 70.0f, kOutCore.y + 60.0f};
+    auto glowAt = [&](float peak, double setting, const char *file) {
+        model.live.outPeak = {peak, peak};
+        model.glowLevel = setting;
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / file);
+        const uint32_t p = renderer.pixel(byCore);
+        return static_cast<int>(std::max({p >> 16 & 255, p >> 8 & 255, p & 255}));
+    };
+    const int loud = glowAt(1.0f, 0.75, "1n-radar-glow-loud.png");
+    const int quiet = glowAt(0.0f, 0.75, "1n-radar-glow-quiet.png");
+    const int lower = glowAt(1.0f, 0.3, "1n-radar-glow-lower.png");
+    const int off = glowAt(1.0f, 0.0, "1n-radar-glow-off.png");
+    const int none = glowAt(0.0f, 0.0, "1n-radar-glow-off.png");
+    std::printf("      the glow by OUT: %d at full scale, %d in silence, %d with the setting at 30 %%, %d with it Off\n", loud,
+                quiet, lower, off);
+    // Its level moving repaints the panel (and the header, its meter), as a whole paint would.
+    model.glowLevel = 0.75;
+    model.live.outPeak = {0.0f, 0.0f};
+    view.poll();
+    renderer.save(view, dir / "1n-radar-glow-repaint-before.png");
+    model.live.outPeak = {0.8f, 0.8f};
+    const bool moved = view.poll() && std::any_of(view.changedAreas().begin(), view.changedAreas().end(), [](Rect r) {
+        return r.x == detail::kFxPanel.x && r.y == detail::kFxPanel.y && r.w == detail::kFxPanel.w;
+    });
+    bool repainted = true;
+    for (const Rect &area : view.changedAreas())
+        repainted = renderer.repaint(view, area) && repainted;
+    const std::vector<uint32_t> part = renderer.image();
+    const bool whole = renderer.save(view, dir / "1n-radar-glow-repaint.png") && renderer.image() == part;
+    check(loud > quiet + 8 && quiet > none && lower < loud && off == none && moved && repainted && whole,
+          "the routing graph's glow is as bright as the output is loud, as strong as the glow setting says, and its "
+          "level moving repaints the panel, as a whole paint would");
 }
 
 void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {

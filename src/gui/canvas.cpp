@@ -259,6 +259,17 @@ void Canvas::image(const Image &image, Rect r) {
     for (const Resources::ImageBitmap &k : kept)
         if (k.target.Get() == target_ && k.serial == image.serial)
             bitmap = k.bitmap.Get();
+    // A picture of the same size this target has made a bitmap of takes the new pixels into that one.
+    for (Resources::ImageBitmap &k : kept) {
+        if (bitmap || k.target.Get() != target_)
+            continue;
+        const D2D1_SIZE_U size = k.bitmap->GetPixelSize();
+        if (size.width == static_cast<UINT32>(image.width) && size.height == static_cast<UINT32>(image.height) &&
+            SUCCEEDED(k.bitmap->CopyFromMemory(nullptr, image.pixels.data(), static_cast<UINT32>(image.width) * 4))) {
+            k.serial = image.serial;
+            bitmap = k.bitmap.Get();
+        }
+    }
     if (!bitmap) {
         // Others this target made of the same picture are stale now; and a few at most are kept.
         std::erase_if(kept, [&](const Resources::ImageBitmap &k) { return k.target.Get() == target_; });

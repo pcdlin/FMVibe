@@ -857,10 +857,22 @@ private:
     int routingHoveredNode() const;
     // Where the inspector's lens is joined to the node it shows: that node's left side, while the graph shows it.
     std::optional<Point> lensLeaderStart() const;
-    // The routing graph's glow behind it, made for this zoom and accent (see paintRouting()).
-    Image radarGlow_;
-    float radarGlowScale_ = 0.0f;
-    Color radarGlowAccent_{};
+public:
+    // The routing graph's glow behind it (see paintRouting()): its shape at this zoom, over the part of the panel it
+    // reaches, and its pixels for the strength and accent it was filled with last.
+    struct RadarGlow {
+        Rect area;
+        float scale = 0.0f;
+        std::vector<float> shape;
+        Image image;
+        float strength = -1.0f;
+        Color accent{};
+    };
+
+private:
+    RadarGlow radarGlow_;
+    float radarGlowStrength(const Telemetry &t) const;
+    bool routingGraphShown() const;
     static Point nodeDeleteAt(int node, Point center);
     static Point fxDeleteAt(int node, Point center);
     static Point fxPowerAt(int node, Point center);

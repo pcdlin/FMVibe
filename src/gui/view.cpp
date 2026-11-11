@@ -1447,6 +1447,9 @@ bool View::poll() {
         for (int port = 0; port < kFxPorts; ++port)
             if (std::abs(t.fxPortLevels[port] - telemetry_.fxPortLevels[port]) > 0.002f * (1.0f + t.fxPortLevels[port]))
                 everywhere = true;
+    // The routing graph's glow follows the output's level.
+    if (routingGraphShown() && radarGlowStrength(t) != radarGlowStrength(telemetry_))
+        in(kFxPanel);
     // Phasers, flangers and wideners sweep while the audio runs.
     if (t.age < 0.5f)
         for (int slot : fxChain())
@@ -3492,53 +3495,81 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
 }
 
 namespace {
-// The glow behind the routing graph: the accent at 16 % on OUT, 5 % a third of the way out and nothing at the outermost
-// ring's reach, over the whole panel, its corners rounded as the panel's are. Made at the target's own pixels, `scale`
-// a logical pixel (held to 3, past which it is drawn stretched), its premultiplied pixels rounded up or down by an 8x8
-// ordered dither: the glow is so faint that it spans a few levels of each channel, which would otherwise show as rings.
-void makeRadarGlow(Image &image, float scale, Color accent) {
-    constexpr float kReach = 520.0f, kKnee = 182.0f;
-    auto glowAt = [](float r) {
-        return r >= kReach ? 0.0f
-               : r >= kKnee ? 0.05f * (kReach - r) / (kReach - kKnee)
-                            : 0.05f + 0.11f * (kKnee - r) / kKnee;
+// The glow behind the routing graph, spreading from OUT: full on the core, a third as strong a third of the way out
+// and nothing at the outermost ring's reach, its corners rounded as the panel's are. Its shape is worked out once for
+// the target's own pixels, `scale` a logical pixel (held to 3, past which it is drawn stretched), over the part of the
+// panel it reaches; then its pixels are filled for the strength it is drawn at (see View::radarGlowStrength()), rounded
+// up or down by an 8x8 ordered dither: the glow is so faint that it spans a few levels of each channel, which would
+// otherwise show as rings.
+constexpr float kRadarReach = 520.0f;
+void shapeRadarGlow(View::RadarGlow &glow, float scale) {
+    constexpr float kKnee = 182.0f;
+    auto shapeAt = [](float r) { // 1 on the core
+        return r >= kRadarReach ? 0.0f
+               : r >= kKnee     ? 0.3125f * (kRadarReach - r) / (kRadarReach - kKnee)
+                                : 0.3125f + 0.6875f * (kKnee - r) / kKnee;
     };
-    constexpr int kBayer[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},   {48, 16, 56, 24, 50, 18, 58, 26},
-                                  {12, 44, 4, 36, 14, 46, 6, 38},  {60, 28, 52, 20, 62, 30, 54, 22},
-                                  {3, 35, 11, 43, 1, 33, 9, 41},   {51, 19, 59, 27, 49, 17, 57, 25},
-                                  {15, 47, 7, 39, 13, 45, 5, 37},  {63, 31, 55, 23, 61, 29, 53, 21}};
     scale = std::clamp(scale, 0.25f, 3.0f);
-    const int w = static_cast<int>(std::ceil(kFxPanel.w * scale)), h = static_cast<int>(std::ceil(kFxPanel.h * scale));
-    image.width = w;
-    image.height = h;
-    image.pixels.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0u);
-    const float sx = kFxPanel.w / static_cast<float>(w), sy = kFxPanel.h / static_cast<float>(h); // logical a pixel
+    const float left = std::max(kFxPanel.x, kOutCore.x - kRadarReach), top = std::max(kFxPanel.y, kOutCore.y - kRadarReach);
+    const float right = std::min(kFxPanel.right(), kOutCore.x + kRadarReach),
+                bottom = std::min(kFxPanel.bottom(), kOutCore.y + kRadarReach);
+    glow.area = {left, top, right - left, bottom - top};
+    glow.scale = scale;
+    const int w = static_cast<int>(std::ceil(glow.area.w * scale)), h = static_cast<int>(std::ceil(glow.area.h * scale));
+    glow.image.width = w;
+    glow.image.height = h;
+    glow.image.pixels.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0u);
+    glow.shape.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0.0f);
+    glow.strength = -1.0f; // filled again
+    const float sx = glow.area.w / static_cast<float>(w), sy = glow.area.h / static_cast<float>(h); // logical a pixel
     constexpr float kCorner = kPanelRadius;
     for (int y = 0; y < h; ++y) {
-        const float ly = kFxPanel.y + (static_cast<float>(y) + 0.5f) * sy;
+        const float ly = glow.area.y + (static_cast<float>(y) + 0.5f) * sy;
         const float dy = std::max({kFxPanel.y + kCorner - ly, ly - (kFxPanel.bottom() - kCorner), 0.0f});
         for (int x = 0; x < w; ++x) {
-            const float lx = kFxPanel.x + (static_cast<float>(x) + 0.5f) * sx;
-            const float g = glowAt(std::hypot(lx - kOutCore.x, ly - kOutCore.y));
-            if (g <= 0.0f)
-                continue;
+            const float lx = glow.area.x + (static_cast<float>(x) + 0.5f) * sx;
             const float dx = std::max({kFxPanel.x + kCorner - lx, lx - (kFxPanel.right() - kCorner), 0.0f});
             const float cover =
                 dx > 0.0f && dy > 0.0f ? std::clamp((kCorner - std::hypot(dx, dy)) / sx + 0.5f, 0.0f, 1.0f) : 1.0f;
-            const float a = g * cover * 255.0f;
-            const float t = (static_cast<float>(kBayer[y & 7][x & 7]) + 0.5f) / 64.0f;
-            auto level = [&](float v) { return static_cast<uint32_t>(std::clamp(std::floor(v + t), 0.0f, 255.0f)); };
-            image.pixels[static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)] =
-                level(a) << 24 | level(accent.r * a) << 16 | level(accent.g * a) << 8 | level(accent.b * a);
+            glow.shape[static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)] =
+                shapeAt(std::hypot(lx - kOutCore.x, ly - kOutCore.y)) * cover;
         }
     }
 }
 
+// Its pixels for `strength` (its alpha on the core) in `accent`.
+void fillRadarGlow(View::RadarGlow &glow, float strength, Color accent) {
+    constexpr int kBayer[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},   {48, 16, 56, 24, 50, 18, 58, 26},
+                                  {12, 44, 4, 36, 14, 46, 6, 38},  {60, 28, 52, 20, 62, 30, 54, 22},
+                                  {3, 35, 11, 43, 1, 33, 9, 41},   {51, 19, 59, 27, 49, 17, 57, 25},
+                                  {15, 47, 7, 39, 13, 45, 5, 37},  {63, 31, 55, 23, 61, 29, 53, 21}};
+    const int w = glow.image.width, h = glow.image.height;
+    const float scaled = strength * 255.0f;
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            const size_t at = static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x);
+            const float a = glow.shape[at] * scaled;
+            if (a <= 0.0f) {
+                glow.image.pixels[at] = 0u;
+                continue;
+            }
+            const float t = (static_cast<float>(kBayer[y & 7][x & 7]) + 0.5f) / 64.0f;
+            auto level = [&](float v) { return static_cast<uint32_t>(std::clamp(std::floor(v + t), 0.0f, 255.0f)); };
+            glow.image.pixels[at] =
+                level(a) << 24 | level(accent.r * a) << 16 | level(accent.g * a) << 8 | level(accent.b * a);
+        }
+    static uint64_t serials = 0;
+    glow.image.serial = ++serials;
+    glow.strength = strength;
+    glow.accent = accent;
+}
+
 // The graph's backdrop, under the whole panel, the inspector's lens too: the glow spreading from OUT, the orbit rings
 // round it and two faint rays from it to the lens's far corners, the panel's corner left clear for the tab shown.
-void paintRadar(Canvas &c, const Image &glow) {
+void paintRadar(Canvas &c, const View::RadarGlow &glow) {
     c.pushClip(kFxPanel);
-    c.image(glow, kFxPanel);
+    if (glow.strength > 0.0f)
+        c.image(glow.image, glow.area);
     // (Ending at the middles of the lens's corners' arcs, under the lens, so they don't show past its rounded corners.)
     const float in = kRadiusPanel;
     c.line(kOutCore, {kInspector.x + in, kInspector.y + in}, mix(kPanel, kBorder, 0.45f), 1.0f);
@@ -3568,6 +3599,26 @@ void paintOutCore(Canvas &c, bool target) {
 }
 } // namespace
 
+// How strongly the routing graph's glow shows, its alpha on OUT: as loud as the output (its meter's peak, from -48 dB
+// up to full scale, as the effects graph's nodes glow), from 30 % of its strength in silence to all of it at full
+// scale, and that as strongly as the glow setting says (16 % on the core at full scale with it at 75 %, none with it
+// Off). In steps a little under a level of the accent's channels apart, so it is filled and painted again only as
+// it shows.
+float View::radarGlowStrength(const Telemetry &t) const {
+    const float setting = shownGlow() / 0.75f;
+    if (setting <= 0.0f)
+        return 0.0f;
+    const float peak = std::max(meterPeak(t, 0), meterPeak(t, 1));
+    const float loud = peak > 0.0f ? std::clamp((20.0f * std::log10(peak) + 48.0f) / 48.0f, 0.0f, 1.0f) : 0.0f;
+    const float strength = 0.16f * setting * (0.3f + 0.7f * loud);
+    return std::round(strength * 512.0f) / 512.0f;
+}
+
+// Whether the routing graph shows, with its glow behind it.
+bool View::routingGraphShown() const {
+    return controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0;
+}
+
 // The lens's leader: from the node the inspector shows, while it is in the graph, level across to the lens.
 std::optional<Point> View::lensLeaderStart() const {
     const int node = controller_.layout().selectedNode;
@@ -3580,16 +3631,17 @@ std::optional<Point> View::lensLeaderStart() const {
 }
 
 void View::paintRouting(Canvas &c) {
-    // The glow is made again only as the editor is zoomed or the theme's accent changes.
+    // The glow's shape is worked out again only as the editor is zoomed, and its pixels filled again as its strength
+    // or the theme's accent changes.
     const float scale = std::clamp(c.deviceScale(), 0.25f, 3.0f);
-    if (std::abs(scale - radarGlowScale_) > 1e-3f || kAccent.r != radarGlowAccent_.r ||
-        kAccent.g != radarGlowAccent_.g || kAccent.b != radarGlowAccent_.b) {
-        static uint64_t serials = 0;
-        makeRadarGlow(radarGlow_, scale, kAccent);
-        radarGlow_.serial = ++serials;
-        radarGlowScale_ = scale;
-        radarGlowAccent_ = kAccent;
-    }
+    if (std::abs(scale - radarGlow_.scale) > 1e-3f)
+        shapeRadarGlow(radarGlow_, scale);
+    const float strength = radarGlowStrength(telemetry_);
+    if (strength > 0.0f && (strength != radarGlow_.strength || kAccent.r != radarGlow_.accent.r ||
+                            kAccent.g != radarGlow_.accent.g || kAccent.b != radarGlow_.accent.b))
+        fillRadarGlow(radarGlow_, strength, kAccent);
+    else if (strength <= 0.0f)
+        radarGlow_.strength = 0.0f;
     paintRadar(c, radarGlow_);
     c.text({kHintX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kHintX, 22.0f},
            tr(Str::HintRouting), kTextLabel, kFaint, Align::Right);
