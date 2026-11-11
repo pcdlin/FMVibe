@@ -5583,7 +5583,7 @@ void View::paintInspector(Canvas &c) {
     const Color edge = nodeColor(node).alpha(0.35f);
     const Color face = kRaised.alpha(0.92f);
     // In a flat theme, as its cards, on its shadow alone without an outline.
-    softShadow(c, kInspector, kRadiusPanel, 4, 1.25f, 4.0f, lightTheme() ? 0.1f : 0.32f); // clear of the panel's top
+    softShadow(c, kInspector, kRadiusPanel, 4, 1.25f, 4.0f, lightTheme() ? 0.05f : 0.16f); // clear of the panel's top
     c.fillRect(kInspector, face, kRadiusPanel);
     if (outlined())
         c.strokeRect(kInspector, edge, 1.0f, kRadiusPanel);

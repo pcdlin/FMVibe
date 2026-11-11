@@ -46,6 +46,8 @@ UserSettings readFile(const std::filesystem::path &file) {
             settings.zoom = std::clamp(std::atof(line.c_str() + 5), 0.0, 3.0);
         else if (line.starts_with("examples="))
             settings.examples = std::max(std::atoi(line.c_str() + 9), 0);
+        else if (line.starts_with("examplesVersion="))
+            settings.examplesVersion = line.substr(16);
     }
     return settings;
 }
@@ -81,6 +83,8 @@ void writeUserSettings() {
     if (userSettings.zoom != asRead.zoom)
         merged.zoom = userSettings.zoom;
     merged.examples = std::max(merged.examples, userSettings.examples);
+    if (versionBefore(merged.examplesVersion, userSettings.examplesVersion))
+        merged.examplesVersion = userSettings.examplesVersion;
     userSettings = asRead = merged;
 
     std::error_code error;
@@ -99,6 +103,8 @@ void writeUserSettings() {
             out << "zoom=" << merged.zoom << '\n';
         if (merged.examples >= 0)
             out << "examples=" << merged.examples << '\n';
+        if (!merged.examplesVersion.empty())
+            out << "examplesVersion=" << merged.examplesVersion << '\n';
         out.close();
         if (!out)
             error = std::make_error_code(std::errc::io_error);
@@ -109,6 +115,25 @@ void writeUserSettings() {
         std::error_code ignored;
         std::filesystem::remove(part, ignored);
     }
+}
+
+bool versionBefore(const std::string &a, const std::string &b) {
+    size_t i = 0, j = 0;
+    while (i < a.size() || j < b.size()) {
+        auto number = [](const std::string &text, size_t &at) {
+            long n = 0;
+            while (at < text.size() && text[at] >= '0' && text[at] <= '9')
+                n = std::min(n * 10 + (text[at++] - '0'), 1000000000L);
+            while (at < text.size() && (text[at] < '0' || text[at] > '9')) // the dot, or whatever else, after it
+                ++at;
+            return n;
+        };
+        const bool aHas = i < a.size(), bHas = j < b.size();
+        const long x = aHas ? number(a, i) : -1, y = bHas ? number(b, j) : -1;
+        if (x != y)
+            return x < y;
+    }
+    return false;
 }
 
 bool replaceFile(const std::wstring &part, const std::wstring &target) {

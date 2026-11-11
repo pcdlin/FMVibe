@@ -18,6 +18,7 @@ add_library(fmvibe-core STATIC
     ${factory_presets}
     src/factory.cpp
     src/factory.h
+    src/gui/arrange.h
     src/gui/canvas_cairo.cpp
     src/gui/canvas.h
     src/gui/controller.cpp

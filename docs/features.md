@@ -1480,7 +1480,11 @@ may show anywhere, repaints the whole of it.
   turning up the amp's Gain, then ping-pong echoes and a plate); and BA Driven Bass (a round FM bass with a sub an
   octave down, through the Bass amp's grit into a 4x10, its lows staying clean). A folder made
   before an example came gets it the next time the library is used; `%APPDATA%\FMVibe\settings.txt` counts the examples
-  given, so deleted ones stay gone. The plugin carries the factory presets built in and writes them out as they are:
+  given, so deleted ones stay gone. It also notes the version of FMVibe that wrote them out: a newer one writes the
+  factory presets still in the `Factory` subfolder again as it has them, so they take its tuning and its routing
+  graphs' layouts (a change saved over one of them is lost then; save it under another name to keep it), and leaves
+  those taken out of it out. Their routing graphs are laid out with no node on another, and no wire, line to OUT or
+  label running over a node it doesn't join. The plugin carries the factory presets built in and writes them out as they are:
   they hold only the params that differ from Init, so their files are small, and load like any other.
   - The **preset bar** in the middle of the title bar shows the preset loaded or saved last, or **- Init -** (as
     a new instance does), with a dot while the patch has changed since. Its arrows step to the previous or next

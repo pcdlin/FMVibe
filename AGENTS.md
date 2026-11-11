@@ -568,6 +568,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     drawing it from the aux's handle (read off the rendered pixels);
   - an LFO's handle showing its "Drag to assign" tooltip only until it modulates something (read off the rendered
     pixels);
+  - every factory preset's routing graph rendered (in Spectrum, into `presets/`), none with a node on or near
+    another, a wire, a line to OUT or a label over a node it doesn't join or through a loop, or two labels on each
+    other (`src/gui/arrange.h` counts them; `fmvibe-uishot <dir> 1 --presets` renders and checks these alone);
   - the title bar's tempo: none for a plugin host, and for a host that lets the editor set it a field (read off the
     rendered pixels) dragged a BPM every 2 px (a tenth with Shift), the wheel stepping it a BPM a notch onto whole
     ones (a tenth with Shift), held to 20-999, and typed after a double-click or Ctrl+Click (`BPM` after it taken,
@@ -666,9 +669,18 @@ others), then the editor layout, a kilobyte or so where a preset the plugin save
 To add or change one:
 
 1. Make it in the plugin and save it into `presets/Factory` (the preset bar's Save, then the file dialog).
-2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`.
+2. Make the file sparse: `build\release\fmvibe-presettool.exe "presets\Factory\<name>.fmv"`. With `--arrange` first
+   (`fmvibe-presettool --arrange <file>...`), it also lays the routing graph out again where its nodes, wires, lines to
+   OUT or labels run over each other (`arrangeRouting()` in `src/gui/arrange.h`: each node moved to the place on a
+   grid and each wire given the bow that lowers a cost most, from where they are and from columns by their distance to
+   OUT), and says how many such clashes are left. The UI checks fail on a factory preset that has any.
 3. For a new one, add its name at the end of `presets/factory.txt`.
 4. Build and run `ctest`.
+
+A user's preset folder gets the factory presets once, and again as a newer version brings them: the settings file
+notes the version that last wrote them out (`examplesVersion`), and a newer one writes those still in the folder's
+`Factory` subfolder over their files where they differ (`PresetLibrary::rescan()`). So a factory preset changed here
+reaches users with the next release, and a user's own change saved over one is lost then.
 
 Factory presets are not pinned by checksum, so changing or adding one needs no test edit. Don't add a checksum test
 for them: a preset is meant to change as its sound is tuned, and a pinned hash only forces an edit to the test on
@@ -774,7 +786,7 @@ breakpoints in `src/` then hit.
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
-| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, glow, handle size, line strength, examples given) |
+| `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, glow, handle size, line strength, examples given and the version that wrote them) |
 | `src/sharedtelemetry.h` | The telemetry the audio thread hands the editor, in atomics |
 | `src/params.h` | Parameter layout (index ↔ id), slot targets, value mappings |
 | `src/params.cpp` | Parameter table (names, ranges, defaults) and value text |
@@ -804,7 +816,8 @@ breakpoints in `src/` then hit.
 | `src/gui/controller.cpp` | The undo history, which the plugin keeps for the editor |
 | `src/factory.cpp` | The factory presets' loading; the presets themselves are `presets/Factory/*.fmv`, built in by `cmake/embed_presets.cmake` (see [Factory presets](#factory-presets)) |
 | `presets/` | The factory presets' files, and `factory.txt`, the order they came in |
-| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored |
+| `tools/presettool.cpp` | `fmvibe-presettool`: makes preset files sparse, as the factory ones are stored, and lays their routing graphs out (`--arrange`) |
+| `src/gui/arrange.h` | Laying a routing graph out: its clashes (nodes, wires, lines to OUT, loops and labels over each other) and a search for a layout without them |
 | `tests/smoke_host.cpp` | Headless CLAP test host |
 | `tests/vst3_host.cpp` | Headless VST3 test host |
 | `tools/uishot.cpp` | Offscreen editor renderer and interaction checks |

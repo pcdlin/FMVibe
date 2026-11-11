@@ -3,6 +3,7 @@
 // without a host. Usage: fmvibe-uishot <output-dir> [scale]
 
 #include "factory.h"
+#include "gui/arrange.h"
 #include "gui/canvas.h"
 #include "gui/layout.h"
 #include "gui/routing.h"
@@ -2512,6 +2513,34 @@ void testRatioDisplay(const std::filesystem::path &dir, Renderer &renderer) {
 // The examples that use the most of the synth, as the preset library writes them: Init, then their changes,
 // with their own node places and their name in the preset bar. `prefix` names the images: its routing, matrix
 // and effects.
+// Every factory preset's routing view, in Spectrum, into presets/: none with a node on another, or a wire, a line to
+// OUT or a label over a node it doesn't join (as fmvibe-presettool --arrange lays them out).
+void renderFactoryPresets(const std::filesystem::path &dir, Renderer &renderer) {
+    std::filesystem::create_directories(dir / "presets");
+    int clear = 0;
+    for (const FactoryPreset &preset : factoryPresets()) {
+        FakeController model;
+        model.themeName = "Spectrum";
+        model.glowLevel = 0.5;
+        View view(model);
+        if (!loadFactoryPreset(preset, model.values, model.ui)) {
+            check(false, ("load the factory preset " + preset.name).c_str());
+            continue;
+        }
+        model.ui.view = RoutingView::Graph; // its graph, whichever view it was saved in
+        view.poll();
+        view.mouseMove({600.0f, 600.0f}, {});
+        renderer.save(view, dir / "presets" / (preset.name + ".png"));
+        const detail::ArrangeScore score = detail::arrangeScore(model.values, model.ui);
+        if (score.clashes == 0)
+            ++clear;
+        else
+            std::printf("  %s: %d clashes in its routing graph\n", preset.name.c_str(), score.clashes);
+    }
+    check(clear == static_cast<int>(factoryPresets().size()),
+          "every factory preset's routing graph keeps its nodes, wires and labels clear of each other");
+}
+
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
                    const std::string &prefix, size_t effects, const std::string &theme = "") {
     FakeController model;
@@ -9175,6 +9204,7 @@ void run(const std::filesystem::path &dir, float scale) {
     renderExample(dir, renderer, "LD Folded Lead", "31-folded-lead", 2);
     renderExample(dir, renderer, "BA Fuzz Bass", "32-fuzz-bass", 2);
     renderExample(dir, renderer, "SQ Step Filter", "33-step-filter", 3);
+    renderFactoryPresets(dir, renderer);
     renderLfoOnLfo(dir, renderer);
     testMacros(dir, renderer);
     testVelocity(dir, renderer);
@@ -9234,7 +9264,7 @@ void run(const std::filesystem::path &dir, float scale) {
 
 int main(int argc, char **argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale]\n");
+        std::fprintf(stderr, "usage: fmvibe-uishot <output-dir> [scale] [--presets]\n");
         return 2;
     }
     const std::filesystem::path dir = argv[1];
@@ -9243,7 +9273,13 @@ int main(int argc, char **argv) {
 #ifdef _WIN32
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 #endif
-    run(dir, argc > 2 ? static_cast<float>(std::atof(argv[2])) : 1.0f); // COM objects die before CoUninitialize
+    const float scale = argc > 2 ? static_cast<float>(std::atof(argv[2])) : 1.0f;
+    if (argc > 3 && std::strcmp(argv[3], "--presets") == 0) { // only the factory presets' routing views
+        Renderer renderer(scale);
+        renderFactoryPresets(dir, renderer);
+    } else {
+        run(dir, scale); // COM objects die before CoUninitialize
+    }
 #ifdef _WIN32
     CoUninitialize();
 #endif
