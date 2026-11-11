@@ -3545,7 +3545,9 @@ void shapeRadarGlow(View::RadarGlow &glow, float scale) {
     }
 }
 
-// Its pixels for `strength` (its alpha on the core) reaching `reach` out, in `accent`: (1 - u^2)^3 of it, u the way out.
+// Its pixels for `strength` (its alpha on the core) reaching `reach` out, in `accent`: as light from a point falls off,
+// steeply by the core and ever more gently further out, 1 / (1 + (u / 0.28)^2) of it, u the way out, tapered to
+// nothing at its reach by (1 - u^2)^2.
 void fillRadarGlow(View::RadarGlow &glow, float strength, float reach, Color accent) {
     constexpr int kBayer[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},   {48, 16, 56, 24, 50, 18, 58, 26},
                                   {12, 44, 4, 36, 14, 46, 6, 38},  {60, 28, 52, 20, 62, 30, 54, 22},
@@ -3561,8 +3563,8 @@ void fillRadarGlow(View::RadarGlow &glow, float strength, float reach, Color acc
                 glow.image.pixels[at] = 0u;
                 continue;
             }
-            const float rest = 1.0f - u2;
-            const float a = rest * rest * rest * glow.cover[at] * scaled;
+            const float rest = 1.0f - u2, light = 1.0f / (1.0f + u2 * (1.0f / (0.28f * 0.28f)));
+            const float a = light * rest * rest * glow.cover[at] * scaled;
             const float t = (static_cast<float>(kBayer[y & 7][x & 7]) + 0.5f) / 64.0f;
             auto level = [&](float v) { return static_cast<uint32_t>(std::clamp(std::floor(v + t), 0.0f, 255.0f)); };
             glow.image.pixels[at] =
