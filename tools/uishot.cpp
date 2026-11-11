@@ -2546,7 +2546,7 @@ void renderFactoryPresets(const std::filesystem::path &dir, Renderer &renderer) 
 }
 
 void renderExample(const std::filesystem::path &dir, Renderer &renderer, const std::string &name,
-                   const std::string &prefix, size_t effects, const std::string &theme = "") {
+                   const std::string &prefix, size_t effects, const std::string &theme = "", bool playing = false) {
     FakeController model;
     if (!theme.empty())
         model.themeName = theme;
@@ -2562,6 +2562,21 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     model.library = {{name, "Factory"}}; // the preset bar shows its name
     model.setPreset(std::wstring(name.begin(), name.end()));
     view.poll();
+    if (playing) { // an A3 held, its operators sounding and going into the effects, the glows risen to it
+        model.live.voices = 1;
+        model.live.notePitch = 57.0f;
+        model.live.noteVelocity = 0.8f;
+        model.live.keys[57 / 32] |= 1u << (57 % 32);
+        model.live.opLevels.fill(0.9f);
+        model.live.opEnvLevels.fill(0.9f);
+        model.live.opEnvPos.fill(-1.0f); // no dot along the envelopes, as if between snapshots of them
+        model.live.envPos.fill(-1.0f);
+        model.live.lfoPhases.fill(0.3f);
+        model.live.fxPortLevels[kFxPortIn] = 0.25f;
+        model.live.outPeak = {0.5f, 0.5f};
+        for (int i = 0; i < 120; ++i)
+            view.poll();
+    }
     view.mouseMove({600.0f, 328.0f}, {});
     bool shots = renderer.save(view, dir / (prefix + "-routing.png"));
     click(view, kMatrixTab);
@@ -9228,7 +9243,7 @@ void run(const std::filesystem::path &dir, float scale) {
     // The README's, in the default theme (see release.ps1): Screamer's routing, Crystal Motion's effects as a chain and
     // Neon Pluck's as a graph, split low and high.
     renderExample(dir, renderer, "PD Crystal Motion", "24-example", 6, "Spectrum");
-    renderExample(dir, renderer, "LD Screamer", "24c-screamer-example", 4, "Spectrum");
+    renderExample(dir, renderer, "LD Screamer", "24c-screamer-example", 4, "Spectrum", true); // a note playing
     renderExample(dir, renderer, "BA Neon Pluck", "24b-split-example", 4, "Spectrum");
     renderExample(dir, renderer, "PD Crystal Motion", "42-porcelain-crystal", 6, "Porcelain");
     renderExample(dir, renderer, "BA Neon Pluck", "43-porcelain-neon", 4, "Porcelain");
