@@ -4307,6 +4307,23 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     const bool noDot = renderer.save(view, dir / "99j-idle-lfo-retrigger.png") && renderer.image() != withDot;
     model.live.lfoPhases[0] = 0.9f;
     check(noDot && !view.poll(), "a retrigger LFO shows no dot with no notes playing, and repaints nothing");
+    // While it modulates the effects as they ring out after the last note, the tail runs it: its dot shows, moving
+    // with the tail's clock, and goes with the tail.
+    const std::vector<uint32_t> idleCard = renderer.image();
+    model.live.fxTail = true;
+    model.live.fxTailLfos = 1u;
+    model.live.lfoPhases[0] = 0.2f;
+    view.poll();
+    renderer.save(view, dir / "99k-tail-lfo.png");
+    const std::vector<uint32_t> tailDot = renderer.image();
+    model.live.lfoPhases[0] = 0.6f;
+    const bool tailMoved = view.poll() && only(detail::sourceCard(0.0f));
+    model.live.fxTail = false;
+    model.live.fxTailLfos = 0u;
+    view.poll();
+    renderer.save(view, dir / "99l-tail-lfo-done.png");
+    check(tailDot != idleCard && tailMoved && renderer.image() == idleCard,
+          "a retrigger LFO the effects' tail runs shows its dot moving, and none once the tail ends");
     check(idleTold && !model.idleLfosShown,
           "the editor tells the plugin while a free LFO runs with no notes playing, and once none does");
 }

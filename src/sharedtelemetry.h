@@ -41,6 +41,7 @@ struct SharedTelemetry {
     std::atomic<int64_t> stamp{0}; // steady_clock ticks when stored, for Telemetry::age
     std::atomic<int> voices{0};
     std::atomic<bool> fxTail{false};
+    std::atomic<uint32_t> fxTailLfos{0};
     std::atomic<float> tempo{120.0f};
     std::array<std::atomic<uint32_t>, 4> keys{};
     std::array<std::atomic<float>, kScopeBins> scope{};
@@ -89,6 +90,7 @@ struct SharedTelemetry {
         clipHold.store(t.clipHold, std::memory_order_relaxed);
         voices.store(t.voices, std::memory_order_relaxed);
         fxTail.store(t.fxTail, std::memory_order_relaxed);
+        fxTailLfos.store(t.fxTailLfos, std::memory_order_relaxed);
         tempo.store(t.tempo, std::memory_order_relaxed);
         for (int i = 0; i < t.scopeBins; ++i) // only what was captured: its first scopeBins
             scope[i].store(t.scope[i], std::memory_order_relaxed);
@@ -140,6 +142,7 @@ struct SharedTelemetry {
         t.clipHold = clipHold.load(std::memory_order_relaxed);
         t.voices = voices.load(std::memory_order_relaxed);
         t.fxTail = fxTail.load(std::memory_order_relaxed);
+        t.fxTailLfos = fxTailLfos.load(std::memory_order_relaxed);
         t.tempo = tempo.load(std::memory_order_relaxed);
         t.scopeBins = std::clamp(scopeBins.load(std::memory_order_relaxed), 0, kScopeBins);
         for (int i = 0; i < t.scopeBins; ++i)

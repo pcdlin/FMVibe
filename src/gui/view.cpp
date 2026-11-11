@@ -1270,7 +1270,11 @@ bool View::lfoRunsIdle(int lfo) const {
 }
 
 bool View::lfoRunning(int lfo) const {
-    return telemetry_.voices > 0 ? sourceOn(lfo) : lfoRunsIdle(lfo);
+    return telemetry_.voices > 0 ? sourceOn(lfo) : lfoRunsIdle(lfo) || lfoInTail(telemetry_, lfo);
+}
+
+bool View::lfoInTail(const Telemetry &t, int lfo) {
+    return t.fxTail && lfo >= 0 && lfo < kMaxSources && (t.fxTailLfos & (1u << lfo)) != 0;
 }
 
 bool View::lfoPhaseUsed(int lfo) const {
@@ -1450,12 +1454,12 @@ bool View::poll() {
         everywhere = everywhere || std::any_of(t.fxSpectrum.begin(), t.fxSpectrum.end(), showing) ||
                   std::any_of(t.filterSpectrum.begin(), t.filterSpectrum.end(), showing);
     // With no note playing, a free or anchored LFO's dot runs on along its card's display alone (or the full-size
-    // shape editor showing it), gliding between snapshots while the audio runs.
+    // shape editor showing it), gliding between snapshots while the audio runs; so does one the effects' tail runs.
     if (t.voices == 0 && telemetry_.voices == 0) {
         const std::vector<int> shown = sourcesShown();
         for (int position = 0; position < static_cast<int>(shown.size()); ++position) {
             const int s = shown[position];
-            if (!lfoRunsIdle(s) || (t.lfoPhases[s] == telemetry_.lfoPhases[s] && (t.lfoRates[s] == 0.0f || t.age > 0.15f)))
+            if (!(lfoRunsIdle(s) || lfoInTail(t, s) || lfoInTail(telemetry_, s)) || (t.lfoPhases[s] == telemetry_.lfoPhases[s] && (t.lfoRates[s] == 0.0f || t.age > 0.15f)))
                 continue;
             if (shapeEditing() == s) {
                 everywhere = true;

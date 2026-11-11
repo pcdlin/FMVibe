@@ -182,7 +182,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   (what is set, with the host's and the macros' modulation); the other sources' modulations keep what they last
   gave. Once the effects have put out silence (below -100 dB) for a second, the effects' params go back to their
   knobs, where nothing is heard, and a new note takes over from its first block. The voice itself still ends, and
-  reports its note's end, as it did.
+  reports its note's end, as it did. Meanwhile an LFO that modulates the effects this way shows running on its card,
+  its dot moving along as it did under the note (a Random one's glides too), until the tail stops.
   - **Macros**: eight knobs (0–100 %) that hosts can automate, each with 16 slots like a source's. A macro's
     value times each slot's depth is added to its target for every voice and the effects alike, so a macro can
     also move effect params, which per-voice sources can't. Their names are part of the patch.

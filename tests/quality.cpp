@@ -3659,6 +3659,9 @@ int main() {
         e.synth().telemetry(t);
         const int voices = t.voices;
         const bool reported = t.fxTail && t.modOffset[paramIndex(1, FxParam::UtilityGain)] != 0.0f;
+        // and that the tail runs the LFO, where its card shows it: moving on at its rate
+        const float phaseBefore = t.lfoPhases[0];
+        const bool lfoShown = t.fxTailLfos == 1u && std::abs(t.lfoRates[0] - 4.0f) < 0.01f;
         // The steps between sixteenths of a second: an eighth of a second each way, the LFO's half cycle.
         const std::vector<float> tail = e.render(48000);
         constexpr size_t kWindow = 3000;
@@ -3675,7 +3678,11 @@ int main() {
         std::printf("      %-10s LFO on a utility after a reverb: %d voice(s), tail steps up to %.1f dB\n",
                     free ? "free" : "retrigger", voices, step);
         check(voices == 0 && step > 12.0, "an LFO keeps modulating the effects through their tail once the voice ends");
+        e.render(3000); // a sixteenth of a second more: a quarter of a cycle on
+        e.synth().telemetry(t);
         check(reported, "the editor is told where the tail's modulation takes the effects");
+        check(lfoShown && t.fxTailLfos == 1u && t.lfoPhases[0] != phaseBefore,
+              "the editor is told where the LFOs the tail runs are, as they move on");
     }
     // With a short reverb, the tail's modulation stops once the effects have been silent for a second.
     {

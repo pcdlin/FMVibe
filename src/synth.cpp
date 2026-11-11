@@ -839,6 +839,7 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
     const int volume = paramIndex(GlobalParam::Volume);
     int count = fxTail_.heldCount;
     std::copy_n(fxTail_.held.begin(), count, fxTailMods_.begin());
+    fxTail_.lfoMask = 0;
     for (int s = 0; s < kMaxSources; ++s) {
         if (sourceType(params[paramIndex(s, SourceParam::Type)]) != SourceType::Lfo ||
             params[sourceEnabledIndex(s)] < 0.5)
@@ -862,6 +863,7 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
             const double scale = slot.voiceAux >= 0 ? slot.scale * fxTail_.auxOut[slot.voiceAux] : slot.scale;
             fxTailMods_[count++] = {slot.target, slotCurveValue(swing, slot.curve, bipolar) * amount * scale * slot.range,
                                     s * kSlots + slot.slot};
+            fxTail_.lfoMask |= 1u << s;
         }
         if (!free)
             advanceLfo(lfo, lfoHz(get, s, tempo_), frames, fxTail_.rng,
@@ -1188,6 +1190,16 @@ void Synth::telemetry(Telemetry &out) const {
         // What the last voice's modulation adds to the effects as they ring out, where the editor's knobs show it.
         if (fxTail_.on) {
             out.fxTail = true;
+            out.fxTailLfos = fxTail_.lfoMask;
+            for (int s = 0; s < kMaxSources; ++s) { // the LFOs it runs, where their cards show them
+                if (!(fxTail_.lfoMask & (1u << s)))
+                    continue;
+                const Lfo &lfo = fxTail_.lfos[s];
+                out.lfoPhases[s] = static_cast<float>(lfo.phase);
+                out.lfoRates[s] = static_cast<float>(lfo.hz);
+                out.lfoFrom[s] = static_cast<float>(lfo.from);
+                out.lfoTo[s] = static_cast<float>(lfo.held);
+            }
             for (int m = 0; m < fxTailModCount_; ++m) {
                 const SlotMod &mod = fxTailMods_[m];
                 out.modOffset[mod.index] += static_cast<float>(mod.offset);

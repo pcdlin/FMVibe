@@ -1139,8 +1139,10 @@ private:
     // clock.
     double lfoPhaseNow(int lfo) const;
     double lfoValueNow(int lfo) const;
-    // Whether an LFO's dot shows where it is: while a note plays, or, free or anchored, while none does too.
+    // Whether an LFO's dot shows where it is: while a note plays, or, free or anchored, while none does too, and
+    // while it modulates the effects as they ring out after the last note.
     bool lfoRunning(int lfo) const;
+    static bool lfoInTail(const Telemetry &t, int lfo);
     // Whether an LFO runs on with no note playing and shows it: switched on, free or anchored.
     bool lfoRunsIdle(int lfo) const;
     // Whether notes start an LFO at its Phase: not while it is free (and not a one-shot), nor Random.

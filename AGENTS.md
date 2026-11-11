@@ -235,7 +235,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - an LFO on an effect, retriggered or free, still modulating it through a reverb's tail once the note's voice has
-    ended, the editor told where it takes the effect, and stopping once the effects have rung out;
+    ended, the editor told where it takes the effect and where the LFO is as it moves on, and stopping once the
+    effects have rung out;
   - every note reporting its end once: in mono a note taken over in its release, notes held in poly as mono turns
     on (a key let go not moving its voice onto a key another voice plays), with note ids a note on a key
     struck again while it rings (without them, the key staying down as the last note ends), the voices a lower voice limit cuts, a note with an id while its key sounds on
@@ -308,7 +309,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
     an LFO moving repainting the whole editor, as a compressor's meter and the host's tempo do with no notes playing;
     with none playing, a free LFO's dot moving repainting its card alone, and the editor telling the plugin while one
-    runs (so it keeps processing);
+    runs (so it keeps processing); a retrigger one showing no dot, but while the effects' tail runs it its dot moving
+    there, gone again with the tail;
   - the list of effects opened on a band's + closing at an undo, and an effect picked from it after its split went
     behind the editor's back going at the line's end;
   - a card dragged a tenth of a card onto its neighbor moving nothing, and three tenths making the neighbor glide aside
