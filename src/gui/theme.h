@@ -47,7 +47,7 @@ struct Palette {
     // Each type of effect in a color of its own, by FxType (None: the effects' color): shaper red, delay
     // blue, DJ EQ amber, parametric EQ orange, filter purple, compressor green, three-band teal, reverb indigo,
     // phaser pink, flanger lime, frequency shifter cyan, phase disperser slate blue, widener fuchsia, amp tweed gold,
-    // utility a neutral gray.
+    // utility a neutral gray, chorus periwinkle.
     Color fxTypes[static_cast<int>(FxType::Count)];
     // A split's bands, low, middle and high: from cool and darker to warm and lighter, so they part by lightness too.
     Color bands[3];
@@ -68,7 +68,7 @@ struct Palette {
     float panelShadow = 0.0f;  // a soft shadow under the panels and the tab shown, this dark, which then go unoutlined
     float cardShadow = 0.0f;   // a soft shadow under the effect and source cards, this dark
 };
-static_assert(static_cast<int>(FxType::Count) == 17, "a color for each effect type in every theme");
+static_assert(static_cast<int>(FxType::Count) == 18, "a color for each effect type in every theme");
 
 // The themes the settings pick from, by name; the first is the default.
 inline constexpr Palette kThemes[] = {
@@ -89,7 +89,7 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0xFFB86B), Color::hex(0xFF6B6B), Color::hex(0x4FC3F7), Color::hex(0xF5C04A), Color::hex(0xFF8A5C),
       Color::hex(0xC9A8FF), Color::hex(0x4FE0A8), Color::hex(0x3ED6C1), Color::hex(0x7C8CFF), Color::hex(0xFF5C9A),
       Color::hex(0xA6E05A), Color::hex(0x6EE0F0), Color::hex(0x8FB0D6), Color::hex(0xF08CE8),
-      Color::hex(0x3ED6C1), Color::hex(0xE8C27A), Color::hex(0xA8ABB8)},
+      Color::hex(0x3ED6C1), Color::hex(0xE8C27A), Color::hex(0xA8ABB8), Color::hex(0x9DB4FF)},
      {Color::hex(0x6E9BFF), Color::hex(0x7FD87F), Color::hex(0xFFB86B)},
      true,
      {Color::hex(0x7C8CFF), Color::hex(0xFF8A5C), Color::hex(0x3ED6C1), Color::hex(0xF5C04A), Color::hex(0xFF5C9A),
@@ -112,7 +112,7 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0xD46E2C), Color::hex(0xD64545), Color::hex(0x2F5BFF), Color::hex(0xCF8400), Color::hex(0xD46E2C),
       Color::hex(0x7A4DFF), Color::hex(0x0E8F6E), Color::hex(0x0F8F85), Color::hex(0x4F52E8), Color::hex(0xD6406A),
       Color::hex(0x759612), Color::hex(0x0A8FAA), Color::hex(0x3F6E99), Color::hex(0xB03FC4),
-      Color::hex(0x0F8F85), Color::hex(0xA07020), Color::hex(0x6A707C)},
+      Color::hex(0x0F8F85), Color::hex(0xA07020), Color::hex(0x6A707C), Color::hex(0x4A6FD0)},
      {Color::hex(0x2F67D0), Color::hex(0x3C9A4C), Color::hex(0xC27A1E)},
      true,
      {Color::hex(0x2F5BFF), Color::hex(0xD9541A), Color::hex(0x0A9488), Color::hex(0xB07A00), Color::hex(0xD0236E),
@@ -135,7 +135,7 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0xFB923C), Color::hex(0xF87171), Color::hex(0x60A5FA), Color::hex(0xFBBF24), Color::hex(0xFB923C),
       Color::hex(0xC084FC), Color::hex(0x34D399), Color::hex(0x2DD4BF), Color::hex(0x818CF8), Color::hex(0xF472B6),
       Color::hex(0xA3E635), Color::hex(0x22D3EE), Color::hex(0xCBD5E1), Color::hex(0xE879F9),
-      Color::hex(0x2DD4BF), Color::hex(0xE0B878), Color::hex(0xA8A8AD)},
+      Color::hex(0x2DD4BF), Color::hex(0xE0B878), Color::hex(0xA8A8AD), Color::hex(0x93B4FD)},
      {Color::hex(0x6AA3F0), Color::hex(0x4CC9B0), Color::hex(0xEFB46F)}},
     {"Light", Str::ThemeLight, // crisp: white cards and knob caps on a cool gray, with deep, saturated colors
      Color::hex(0xD5DAE3), Color::hex(0xF3F5F8), Color::hex(0xE4E8EF), Color::hex(0xC3CAD6), Color::hex(0xCDD3DD),
@@ -154,7 +154,7 @@ inline constexpr Palette kThemes[] = {
      {Color::hex(0xDD4F07), Color::hex(0xD11F1F), Color::hex(0x1F5BE0), Color::hex(0xC26505), Color::hex(0xDD4F07),
       Color::hex(0x8A2BE2), Color::hex(0x04805C), Color::hex(0x0B857A), Color::hex(0x4338CA), Color::hex(0xD0216D),
       Color::hex(0x4F8A0B), Color::hex(0x0780A0), Color::hex(0x3B6A8C), Color::hex(0xB01ECA),
-      Color::hex(0x0B857A), Color::hex(0x9A6A1C), Color::hex(0x5F6066)},
+      Color::hex(0x0B857A), Color::hex(0x9A6A1C), Color::hex(0x5F6066), Color::hex(0x3A5FC0)},
      {Color::hex(0x2F67D0), Color::hex(0x0B8A75), Color::hex(0xB86E0E)}},
 };
 constexpr int kThemeCount = static_cast<int>(std::size(kThemes));

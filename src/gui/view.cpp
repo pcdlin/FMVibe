@@ -33,7 +33,8 @@ namespace detail {
 constexpr Str kFxTitles[] = {Str::FxTitleShaper, Str::FxTitleDelay, Str::FxTitleDjEq, Str::FxTitleParamEq,
                              Str::FxTitleFilter, Str::FxTitleCompressor, Str::FxTitleMultiComp, Str::FxTitleReverb,
                              Str::FxTitlePhaser, Str::FxTitleFlanger, Str::FxTitleFreqShifter, Str::FxTitleDisperser,
-                             Str::FxTitleWidener, Str::FxTitleMultiDyn, Str::FxTitleAmp, Str::FxTitleUtility};
+                             Str::FxTitleWidener, Str::FxTitleMultiDyn, Str::FxTitleAmp, Str::FxTitleUtility,
+                             Str::FxTitleChorus};
 static_assert(std::size(kFxTitles) == static_cast<size_t>(FxType::Count) - 1);
 const char *fxTitle(FxType type) {
     return type == FxType::None ? "" : tr(kFxTitles[static_cast<int>(type) - 1]);
@@ -1531,11 +1532,11 @@ bool View::poll() {
         if (routingGraphShown() && (after.strength != before.strength || after.reach != before.reach))
             in(kFxPanel);
     }
-    // Phasers, flangers and wideners sweep while the audio runs.
+    // Phasers, flangers, choruses and wideners sweep while the audio runs.
     if (t.age < 0.5f)
         for (int slot : fxChain())
             if (fxSlotType(slot) == FxType::Phaser || fxSlotType(slot) == FxType::Flanger ||
-                fxSlotType(slot) == FxType::Widener)
+                fxSlotType(slot) == FxType::Chorus || fxSlotType(slot) == FxType::Widener)
                 in(panels);
     // An analyzer's spectrum goes on falling away after the audio stops, until it is gone; while notes play, the
     // filters' move along with them: the effects' in the FX view, the voice filters' on the inspector's filter page.
@@ -2131,6 +2132,20 @@ std::vector<View::Widget> View::widgets() const {
                       {synced ? nullptr : tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
                 knobs({at(FxParam::FlangerFeedback), -1, at(FxParam::FlangerMix)},
                       {tr(Str::LabelFeedback), nullptr, tr(Str::LabelMix)}, 266.0f);
+                break;
+            }
+            case FxType::Chorus: {
+                // Under the display, in its middle, how many voices: 2, 3, 4 and 6 as one choice.
+                const Rect display = fxDisplayIn(card, type);
+                const size_t voices = list.size();
+                for (int i = 0; i < static_cast<int>(std::size(kChorusVoiceChoices)); ++i)
+                    add(Kind::Choice, chorusVoicesButton(display, i), at(FxParam::ChorusVoices), -1,
+                        kChorusVoiceChoices[i]);
+                merge(voices);
+                knobs({at(FxParam::ChorusRate), at(FxParam::ChorusDepth), at(FxParam::ChorusDelay)},
+                      {tr(Str::LabelRate), tr(Str::LabelDepth), tr(Str::LabelDelay)}, 206.0f);
+                knobs({at(FxParam::ChorusFeedback), at(FxParam::ChorusSpread), at(FxParam::ChorusMix)},
+                      {tr(Str::LabelFeedback), tr(Str::LabelSpread), tr(Str::LabelMix)}, 266.0f);
                 break;
             }
             case FxType::FreqShifter:
@@ -4225,6 +4240,9 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     case FxType::Flanger:
         paintSweep(c, display, slot, type);
         break;
+    case FxType::Chorus:
+        paintChorus(c, display, slot);
+        break;
     case FxType::FreqShifter:
         paintShifter(c, display, slot);
         break;
@@ -5241,7 +5259,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     // last snapshot at its rate), or in the middle while no audio runs. A stereo sweep's right side, a
     // quarter cycle ahead, is the thinner of the two bright curves.
     const bool running = telemetry_.age < 0.5f;
-    const double rateHz = sweepHz([this](int i) { return liveValue(i); }, slot, phaser, telemetry_.tempo);
+    const double rateHz = sweepHz([this](int i) { return liveValue(i); }, slot, type, telemetry_.tempo);
     const double phase = telemetry_.fxPhases[slot] + rateHz * std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
     const bool stereo = at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo) >= 0.5;
     struct Response {
@@ -5288,6 +5306,48 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     else
         formatParam(paramIndex(slot, FxParam::FlangerDelay), at(FxParam::FlangerDelay), shape, sizeof(shape));
     std::snprintf(text, sizeof(text), "%s  \xC2\xB7  %s", shape, rate);
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
+}
+
+// The chorus's voices' delays over a cycle of its sweep, each a lane about its own place along the delays (the dashed
+// middle line Delay), as far either way as Depth swings it, a share of the cycle behind the one before; the first
+// voice brightest, the others fainter. While the audio runs, a dot on each lane where its sweep is now. (Their slow
+// drifts aren't drawn.)
+void View::paintChorus(Canvas &c, Rect r, int slot) {
+    const Color fx = fxColor(slot);
+    const Rect inner = chorusLanes(r);
+    auto at = [&](FxParam f) { return liveValue(paramIndex(slot, f)); }; // as modulation takes them now
+    const int voices = static_cast<int>(std::clamp(std::lround(at(FxParam::ChorusVoices)),
+                                                   static_cast<long>(kMinChorusVoices),
+                                                   static_cast<long>(kMaxChorusVoices)));
+    const double depth = at(FxParam::ChorusDepth);
+    const float mid = inner.center().y;
+    c.line({inner.x, mid}, {inner.right(), mid}, kBorder, 1.0f, true);
+    const bool running = telemetry_.age < 0.5f;
+    const double rateHz = sweepHz([this](int i) { return liveValue(i); }, slot, FxType::Chorus, telemetry_.tempo);
+    double phase = telemetry_.fxPhases[slot] + rateHz * std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
+    phase -= std::floor(phase);
+    constexpr float kLaneAlpha[kMaxChorusVoices] = {1.0f, 0.75f, 0.6f, 0.48f, 0.38f, 0.3f};
+    auto yAt = [&](double cycle, int voice) { return chorusLaneY(inner, voice, voices, depth, cycle); };
+    for (int voice = voices - 1; voice >= 0; --voice) { // the first over the others
+        std::vector<Point> lane;
+        for (int i = 0; i <= 64; ++i) {
+            const double x = i / 64.0;
+            lane.push_back({inner.x + static_cast<float>(x) * inner.w, yAt(x, voice)});
+        }
+        if (voice == 0)
+            plotLine(c, lane.data(), lane.size(), fx, 1.8f);
+        else
+            c.polyline(lane.data(), lane.size(), fx.alpha(kLaneAlpha[voice]), 1.4f);
+        if (running)
+            c.fillCircle({inner.x + static_cast<float>(phase) * inner.w, yAt(phase, voice)}, 2.5f,
+                         voice == 0 ? fx : fx.alpha(kLaneAlpha[voice]));
+    }
+    char rate[32], text[80];
+    const int rateParam = paramIndex(slot, FxParam::ChorusRate);
+    formatParam(rateParam, liveValue(rateParam), rate, sizeof(rate));
+    std::snprintf(text, sizeof(text), "%s  \xC2\xB7  %s", trf(Str::CaptionVoices, {std::to_string(voices)}).c_str(),
+                  rate);
     c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 14.0f}, text, kTextLabel, kDim, Align::Left);
 }
 
@@ -6678,7 +6738,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const std::string count = std::to_string(w.b); // the partial editor's resolution
         const bool modeChoice = routeModeFrom(w.param) >= 0; // an operator's INPUTS row's, as glyphs
         const char *text = power || modeChoice ? ""
-                           : isPartialCount(w.param) ? count.c_str()
+                           : isPartialCount(w.param) || field == FxParam::ChorusVoices ? count.c_str()
                            : w.param == paramIndex(GlobalParam::Mono) ? tr(w.b == 0 ? Str::SwitchPoly : Str::SwitchMono)
                            : w.param == paramIndex(GlobalParam::Legato) ? tr(Str::SwitchLegato)
                            : field == FxParam::ShaperMode               ? tr(clipModes[std::clamp(w.b, 0, 2)])
@@ -8732,6 +8792,8 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipDelaySync);
     else if (field == FxParam::PhaserSync || field == FxParam::FlangerSync)
         text = tr(Str::TipSweepSync);
+    else if (field == FxParam::ChorusVoices)
+        text = tr(Str::TipChorusVoices);
     else if (field == FxParam::DelayPingPong)
         text = tr(Str::TipPingPong);
     else if (field == FxParam::DelayLink)

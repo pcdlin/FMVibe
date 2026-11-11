@@ -87,6 +87,18 @@ inline constexpr double kReverbHighDecay = 0.2;
 // The lines' longest length at full size (seconds).
 inline constexpr double kReverbLongest = 0.0889;
 
+// The chorus's drifts' paces (Hz), a voice each (see chorusShare()). Below kChorusBassHz (a one-pole's corner), the
+// sound goes past the voices, left as it is: the bass stays steady and in the middle.
+inline constexpr double kChorusDriftHz[kMaxChorusVoices] = {0.23, 0.31, 0.19, 0.37, 0.27, 0.41};
+constexpr double kChorusBassHz = 200.0;
+// The chorus's voices' gains on each side: voice `voice` of `voices` panned at equal power between the sides by Spread
+// (all in the middle at 0, from left to right in order at 1), and each scaled by 1 / sqrt(voices): voices that wait
+// unalike add up about as loud as what went in, however many there are.
+struct ChorusGains {
+    double left, right;
+};
+ChorusGains chorusGains(int voice, int voices, double spread);
+
 // The widener's taps: how long each waits at full size (seconds) and how fast it is swept (Hz).
 // The first and third go to the left side, the others to the right.
 constexpr int kWidenerTaps = 4;
@@ -108,8 +120,8 @@ UtilityGains utilityGains(double gainNorm, double pan);
 
 // The effects on the sum of the voices: kFxSlots slots, each holding a
 // shaper, delay, DJ EQ, parametric EQ, filter, compressor, three-band
-// dynamics, reverb, phaser, flanger, frequency shifter, phase disperser, widener, amp or utility, or nothing, run as
-// the effects graph's wires take them from the input to the output (a chain is the slots one after another). An
+// dynamics, reverb, phaser, flanger, chorus, frequency shifter, phase disperser, widener, amp or utility, or nothing,
+// run as the effects graph's wires take them from the input to the output (a chain is the slots one after another). An
 // empty or switched-off slot costs nothing; switching one fades it in or out over a few milliseconds. Audio thread
 // only, apart from construction and prepare().
 class Effects {
@@ -140,7 +152,8 @@ public:
     // The level of what a parametric EQ or filter in `slot` puts out in spectrum band `band`, where a full-scale
     // sine reads 1: the most of the latest measurements, falling away about 55 dB a second.
     float spectrum(int slot, int band) const { return slots_[slot].analyzed.bands[band]; }
-    // Where a phaser's, flanger's or widener's sweep is, in cycles (the widener's first tap's); 0 for other effects.
+    // Where a phaser's, flanger's, chorus's or widener's sweep is, in cycles (the widener's first tap's, the chorus's
+    // first voice's); 0 for other effects.
     float sweepPhase(int slot) const;
     // The effects graph's ports (see fxPortValue()): how loud what comes out of each is, the peak of either side
     // (1 is full scale), falling kPortFallDb a second; 0 for a port of a node the graph doesn't run, and for every port
@@ -319,6 +332,25 @@ private:
         bool delayKnown = false;
     };
 
+    // A delay line a side, holding the sound above its bass, which each voice reads behind at its own swept delay
+    // (between samples on a cubic): the voices' sweeps a share of a cycle apart and their delays' places along them
+    // (both gliding there when Voices changes), their gains on each side ramped (so a voice coming or going fades).
+    struct Chorus {
+        std::array<ZeroBuffer, 2> lines;
+        int write = 0;
+        uint64_t ran = 0; // samples run since it started: its lines hold nothing past as many from their start
+        std::array<double, 2> bass{}; // the one-pole low-pass a side that takes the bass past the voices
+        double phase = 0.0;           // the first voice's sweep, in cycles
+        double mix = 0.5;
+        std::array<double, kMaxChorusVoices> offsets{};      // each voice's sweep behind the first's, in cycles
+        std::array<double, kMaxChorusVoices> stagger{};      // each voice's chorusStagger(), gliding
+        std::array<double, kMaxChorusVoices> drift{};        // each voice's drift, in cycles
+        std::array<double, kMaxChorusVoices> gainL{}, gainR{}; // ramped
+        // Each voice's delay in samples, worked out every kSweepStep samples like the flanger's.
+        std::array<double, kMaxChorusVoices> delay{};
+        bool delayKnown = false;
+    };
+
     // Two all-pass chains whose outputs stay 90 degrees apart across the audio band, from kHilbertLowHz up: a signal
     // and its Hilbert transform. Their coefficients are worked out for the rate (see hilbertCoefs()), with more
     // sections the higher it is, since the band then spans more octaves; at 44.1 and 48 kHz, four a chain as in Olli
@@ -395,6 +427,7 @@ private:
         Reverb reverb;
         Phaser phaser;
         Flanger flanger;
+        Chorus chorus;
         Shifter shifter;
         Disperser disperser;
         Widener widener;
@@ -498,6 +531,7 @@ private:
     double runReverb(int slot, float *const *io, uint32_t n, const ParamValues &p);
     double runPhaser(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
     double runFlanger(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
+    double runChorus(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo);
     double runShifter(int slot, float *const *io, uint32_t n, const ParamValues &p);
 
     double sampleRate_ = 48000.0;

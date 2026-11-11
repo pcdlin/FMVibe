@@ -274,7 +274,8 @@ What the plugin does and how its editor works, in full. Building and installing 
   removed. A patch saved while the chain held 16 loads its effects in the order they had. Once nothing goes in and
   every tail has rung out (a compressor's or a 3-band dynamics' release run out too), the effects rest, costing
   next to nothing, with the editor open too (the analyzers taking in the silence, so their spectra fall away and
-  the graph's glow fades); a phaser's or flanger's sweep goes round meanwhile, so a synced one keeps time.
+  the graph's glow fades); a phaser's, flanger's or chorus's sweep goes round meanwhile, so a synced one keeps
+  time.
   - **A line with splits**: the effects run along a line from the voices to the output, a chain of them one after
     another, which up to four **splits** cut by frequency into two bands at their Crossover (250 Hz to
     begin with), at a Slope of 6, 12 or 24 dB per octave (12 to begin with, a second-order Linkwitz-Riley crossover; 24 the
@@ -453,6 +454,24 @@ What the plugin does and how its editor works, in full. Building and installing 
     there). **Sync** works like the phaser's, two bars a sweep to begin with, and so does **Stereo**, under its
     display, but on to begin with: the right side a quarter cycle ahead. So does its polarity: negative puts a notch
     at 0 Hz and the others where the positive peaks were, the hollow, thin-bottomed negative flange.
+  - **Chorus**: **Voices** copies of the sound (2, 3, 4 or 6; 3 to begin with), each waiting about a 1–40 ms
+    **Delay** (12 ms to begin with): each voice a little shorter or longer than it, up to a fifth either way, so the
+    voices don't comb alike (the first the shortest, the second the longest, the others between, interleaved so the
+    voices beside each other between the sides wait unalike). An LFO (Rate, 0–20 Hz, 0.8 Hz to begin with) sweeps
+    each by **Depth** (up to half of Delay either way), each voice's sweep a share of a cycle behind the one before
+    (a half for two voices, a third for three, and so on), so their pitches waver against each other; and each
+    drifts slowly at a pace of its own (0.19–0.41 Hz), up to a tenth of Delay at full Depth, so they never settle
+    into one pattern. The voices read their lines between samples on a cubic, which keeps the highs from dulling and
+    wobbling as the delays move. The bass below about 200 Hz (a one-pole's corner) goes past the voices, left as it
+    is, so it stays steady and in the middle. **Spread** pans the voices across the sides at equal power, from all
+    in the middle at 0 % to one side to the other at 100 % (where it starts); each side's voices read that side's
+    input, so a stereo sound keeps its sides. Each voice is scaled by 1 / √voices, so more of them sound fuller rather
+    than quieter: together they play about as loud as what went in. **Feedback** (either sign, 0 to begin with) sends
+    the voices' mean on each side back into its line, the voices then scaled down as the phaser's and flanger's are
+    so it doesn't ring louder. **Mix** takes the dry sound over to the voices alone (50 % to
+    begin with). It has no Sync: its Rate is set in Hz alone. Changing Voices, a voice coming or going fades in or
+    out over 10 ms and the voices' sweeps and places glide to where they go, rather than jumping; Spread moves a
+    voice between the sides over 10 ms too. A host or modulation can set 5 voices, which the card doesn't offer.
   - **Phase Disp** (phase disperser): 1–64 second-order all-passes in a row (Stages) at Freq, each as narrow as
     Pinch sets (Q 0.3 to 6): the sound around Freq comes out later than the rest, smeared in time into a chirp,
     but at full level; Mix blends it with the dry sound.
@@ -482,7 +501,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     Its levels ramp like the other effects'.
     Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
 
-  The phaser and flanger keep their feedback from ringing louder: what they send round is scaled so their level
+  The phaser, flanger and chorus keep their feedback from ringing louder: what they send round is scaled so their level
   across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and
   mixes ramp to a new setting sample by sample, however the host splits the block. As the effects are shared by all voices, the LFOs and envelopes
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of
@@ -712,8 +731,8 @@ one may have changed since it last did.
 
   - **FX**: takes the place of both the routing panel and the inspector. It shows a card per effect, left to right
     in processing order, each in its type's color (shaper red, delay blue, DJ EQ amber, Param EQ orange, filter
-    purple, compressor green, 3-band dynamics teal, reverb indigo, phaser pink, flanger lime, frequency shifter
-    cyan, phase disperser slate, widener fuchsia, amp tweed gold, utility gray) and
+    purple, compressor green, 3-band dynamics teal, reverb indigo, phaser pink, flanger lime, chorus periwinkle,
+    frequency shifter cyan, phase disperser slate, widener fuchsia, amp tweed gold, utility gray) and
     with a title row laid out as every card's (the source cards' too): its icon and its name in capitals at the left, then a
     chevron that folds it, its power switch and an × to remove it at the right; and under it a live display, which
     draws the effect as modulation takes its params now (the newest voice's, or the macros' while nothing plays); the
@@ -765,6 +784,10 @@ one may have changed since it last did.
       like the shaper's curves; a shimmer's card has two rows of four knobs, its Pitch and Shimmer among them;
     - the phaser's and flanger's responses faintly at both ends of their sweep, and bright where their LFO is,
       moving while the audio runs (a stereo one's right side as a second, thinner curve);
+    - the chorus's voices: a lane each across a cycle of its sweep, its delay (up for longer) about its own place
+      along the delays, the dashed middle line Delay, as far either way as Depth swings it, each lane a share of the
+      cycle behind the one before and fainter, the first brightest (their slow drifts aren't drawn); while the audio
+      runs, a dot on each lane where its sweep is now. Over it, how many voices and the Rate;
     - the phase disperser's delay across frequency, peaking at Freq, with what it puts out, measured, behind it
       like the Param EQ's;
     - the frequency shifter's move: a 220 Hz tone's partials, and where it takes them on each side, under the
@@ -797,8 +820,9 @@ one may have changed since it last did.
     the right end of its line over the shared knobs), centered on the card under its display; for a Custom curve the shaper's Symmetric shows left of it, a curve
     rising to level off, its left half the right one turned over, the two centered together. The shaper's curve's list takes the whole row above the display. Every effect with a Sync
     has that metronome: the phaser and flanger at the left under their displays (a button of its own, STEREO
-    another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note value and shows it as its label, as the delay's time knobs
-    do. The filter's slope is a list under its display, like a voice filter's (see the inspector) and a split's. The filter's
+    another beside it, and their polarity's + | − at the right), over their Rate knob, which, synced, picks a note
+    value and shows it as its label, as the delay's time knobs do. The chorus has its voices, 2 | 3 | 4 | 6, in the
+    middle under its display, and its knobs in two rows, Rate, Depth and Delay above Feedback, Spread and Mix. The filter's slope is a list under its display, like a voice filter's (see the inspector) and a split's. The filter's
     knobs come in two rows, Cutoff, Reso and Key Track above Drive and Mix, and so do the
     frequency shifter's, Range, Shift and Spread above Feedback and Mix.
 
@@ -818,7 +842,7 @@ one may have changed since it last did.
     places are taken, as in 3/32), and so does a dashed card with a plus after the last effect, at the mouse (moved
     back inside the editor where it would reach past an edge). The list groups the effects by kind in two columns,
     a little apart, each group under its name in capitals on a darker strip: DRIVE (Shaper, Amp), EQ & FILTER (DJ EQ, Param EQ, Filter) and DYNAMICS
-    (Compressor, 3-Band Dynamics) down the left one, SPACE (Delay, Reverb), MODULATION (Phaser, Flanger, Freq Shifter)
+    (Compressor, 3-Band Dynamics) down the left one, SPACE (Delay, Reverb), MODULATION (Phaser, Flanger, Chorus, Freq Shifter)
     and STEREO & PHASE (Widener, Phase Disp, Utility) down the right one. The
     one picked goes at the end of the chain, which scrolls to show it, and so does a copy. An arrow goes before each
     card, the first too, and turns into a plus under the mouse: a click opens the list over the cards there, and the
@@ -1398,7 +1422,7 @@ one may have changed since it last did.
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a
   time is 300 ms, `1.2k` on a cutoff 1.2 kHz; `Off` or `0` on a time that can be Off, while `1 ms` is the shortest
-  time; on an envelope's attack, decay or release `0` is 0 ms and `0.5` half a millisecond, and `0` on a phaser's or flanger's Rate stands it still, while `0.02 Hz` is its slowest sweep); Enter or a click elsewhere sets it, Escape drops it. The editor
+  time; on an envelope's attack, decay or release `0` is 0 ms and `0.5` half a millisecond, and `0` on a phaser's, flanger's or chorus's Rate stands it still, while `0.02 Hz` is its slowest sweep); Enter or a click elsewhere sets it, Escape drops it. The editor
   takes the keyboard while you type and hands it back afterwards; the keys are taken straight off the window's
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
@@ -1406,7 +1430,8 @@ one may have changed since it last did.
   band's shapes, the MODS view's cascading menus) marks the row under the mouse, and the one picked, in the same
   neutral tones; only a row's icon takes a color (the effect's, the band's, the source's).
 - **Button rows**: buttons that pick one of a few (Poly | Mono, an operator's waves, a voice filter's and the filter
-  effect's types, an LFO's clock modes, the partial counts, Points | Steps, the phaser's and flanger's + | −) and
+  effect's types, an LFO's clock modes, the partial counts, Points | Steps, the phaser's and flanger's + | −, the
+  chorus's voices) and
   switches that sit side by side (the
   delay's Sync, Link and Ping-Pong, the shaper's Symmetric and Link, the 3-band dynamics' RMS and LINK) are drawn
   merged into one pill: one outline, rounded at its ends, with a thin line between its parts, each part lit on its

@@ -341,6 +341,7 @@ enum class FxType {
     MultiDyn, // three bands, each compressed downward above one threshold and upward below another
     Amp,      // a guitar amp: preamp stages, a tone stack and a power amp, then a cabinet (see src/amp.h)
     Utility,  // gain, balance, stereo width and the bass in mono
+    Chorus,   // a few voices of the sound, each a short delay swept a share of a cycle apart from the next
     Count
 };
 // Stored in projects by number: only append. Cubic is x - x^3/3 scaled to reach 1 at 1;
@@ -598,6 +599,18 @@ enum class FxParam {
     UtilityPan,
     UtilityWidth,
     UtilityMonoBass,
+    // Chorus: Voices (2, 3, 4 or 6) copies of the sound above its bass, each delayed by Delay (each voice a little
+    // shorter or longer) swept by Depth (up to half of it either way) at Rate, the voices' sweeps a share of a cycle
+    // apart, so their pitches waver against each other. Spread pans the voices across the sides (0 all in the middle,
+    // 1 from one side to the other); Feedback sends what the voices put out on each side back into its line. Mix takes
+    // the dry sound over to the voices alone (see Effects::runChorus()).
+    ChorusRate,
+    ChorusDepth,
+    ChorusDelay,
+    ChorusFeedback,
+    ChorusSpread,
+    ChorusMix,
+    ChorusVoices,
     Count
 };
 // A split in the effects graph: Used puts it in the graph; Bands (2 or 3) cuts what goes in at Low, and at High too
@@ -638,6 +651,32 @@ inline double clipOutputDb(double outputDb, double driveDb, bool linked) {
     return outputDb + 10.0 * std::log10(0.5 * kReference * kReference / meanSquare);
 }
 constexpr int kMaxPhaserStages = 12;
+// The chorus's voices (the editor offers kChorusVoiceChoices of them; a host or modulation can set 5 too), and its
+// Delay knob's top (seconds).
+constexpr int kMinChorusVoices = 2, kMaxChorusVoices = 6;
+constexpr int kChorusVoiceChoices[] = {2, 3, 4, 6};
+constexpr double kMaxChorusDelay = 0.04;
+// Each chorus voice waits Delay times its share (chorusShare()): 1, a little more or less for each voice
+// (kChorusStagger of it at the most, either way: chorusStagger()), swept by Depth up to kChorusSweep of it either way
+// with its sweep at `lfo` (-1..1), its sweep chorusOffset() of a cycle behind the first voice's; and drifting slowly
+// at a pace of its own (kChorusDriftHz) by up to kChorusDrift of it at full Depth. The voices' places along the delays
+// are interleaved, the first voice's the shortest and the second's the longest, so voices beside each other between
+// the sides wait unalike.
+constexpr double kChorusSweep = 0.5;
+constexpr double kChorusStagger = 0.2;
+constexpr double kChorusDrift = 0.1;
+inline double chorusStagger(int voice, int voices) {
+    if (voices <= 1)
+        return 0.0;
+    const int place = voice % 2 == 0 ? voice / 2 : voices - 1 - voice / 2;
+    return kChorusStagger * (-1.0 + 2.0 * place / (voices - 1.0));
+}
+inline double chorusShare(int voice, int voices, double depth, double lfo) {
+    return 1.0 + chorusStagger(voice, voices) + kChorusSweep * std::clamp(depth, 0.0, 1.0) * lfo;
+}
+inline double chorusOffset(int voice, int voices) {
+    return static_cast<double>(voice) / voices;
+}
 constexpr int kMaxDisperserStages = 64;
 constexpr double kMaxWidenerHighPass = 2000.0; // Hz, the top of the widener's High Pass knob
 constexpr double kMaxUtilityWidth = 2.0;       // the utility's Width at its top: the sides twice as loud
@@ -973,6 +1012,7 @@ constexpr FxFieldRun kFxFieldRuns[] = {
     {FxParam::FlangerNegative, FxParam::FlangerNegative, FxType::Flanger},
     {FxParam::AmpModel, FxParam::AmpOversampling, FxType::Amp},
     {FxParam::UtilityGain, FxParam::UtilityMonoBass, FxType::Utility},
+    {FxParam::ChorusRate, FxParam::ChorusVoices, FxType::Chorus},
 };
 // Whether the runs take every field once, in order, up to the last.
 constexpr bool fxFieldRunsCoverAll() {
@@ -1255,7 +1295,7 @@ struct IdRange {
     int fields;
     clap_id base, stride;
 };
-constexpr int kMaxIdRanges = 4;
+constexpr int kMaxIdRanges = 5;
 constexpr int kRestFields = 1 << 20; // the last range's: every field left
 struct SplitSection {
     int firstIndex;
@@ -1265,10 +1305,13 @@ struct SplitSection {
 };
 
 constexpr SplitSection kSplitSections[] = {
-    // Effect slots: the fields added once the 80 had run out, those added once the next 20 had too, and those added
-    // once the next 40 had. The slots past the kFirstFxSlots the chain had at first have every field in a range of
-    // their own.
-    {kFxBase, kFirstFxSlots, kFxParamCount, {{80, 1400, 80}, {20, 12000, 20}, {40, 25000, 40}, {kRestFields, 36000, 20}}},
+    // Effect slots: the fields added once the 80 had run out, those added once the next 20 had too, those added once
+    // the next 40 had, and those added once the next 20 had. The slots past the kFirstFxSlots the chain had at first
+    // have every field in a range of their own.
+    {kFxBase,
+     kFirstFxSlots,
+     kFxParamCount,
+     {{80, 1400, 80}, {20, 12000, 20}, {40, 25000, 40}, {20, 36000, 20}, {kRestFields, 36400, 40}}},
     {kFxBase + kFirstFxSlots * kFxParamCount, kFxSlots - kFirstFxSlots, kFxParamCount, {{kRestFields, 26000, 200}}},
     // Freeform LFO shapes and shaper curves: the points past the 16 they had at first (33 for an LFO's).
     {kShapeBase, kMaxSources, kShapeParamCount, {{100, 4000, 100}, {kRestFields, 15000, 100}}},
@@ -1509,7 +1552,13 @@ static_assert(idOfIndex(paramIndex(0, FxParam::Type)) == 1400 &&
                   idOfIndex(paramIndex(0, FxParam::UtilityGain)) == 36010 &&
                   idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::UtilityMonoBass)) == 36313 &&
                   idOfIndex(paramIndex(kFirstFxSlots, FxParam::UtilityGain)) == 26150 &&
-                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::UtilityMonoBass)) == 29153,
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::UtilityMonoBass)) == 29153 &&
+                  idOfIndex(paramIndex(0, FxParam::ChorusRate)) == 36014 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ChorusMix)) == 36319 &&
+                  idOfIndex(paramIndex(0, FxParam::ChorusVoices)) == 36400 &&
+                  idOfIndex(paramIndex(kFirstFxSlots - 1, FxParam::ChorusVoices)) == 37000 &&
+                  idOfIndex(paramIndex(kFirstFxSlots, FxParam::ChorusRate)) == 26154 &&
+                  idOfIndex(paramIndex(kFxSlots - 1, FxParam::ChorusVoices)) == 29160,
               "effect slot param ids moved");
 static_assert(idOfIndex(shapeCountIndex(0)) == 4000 &&
                   idOfIndex(shapePointIndex(kMaxSources - 1, 32, PointField::Curve)) == 5599 &&
@@ -1601,7 +1650,7 @@ static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, Filter
 static_assert(numberedInOrder({FxType::None, FxType::Shaper, FxType::Delay, FxType::Eq, FxType::ParamEq,
                                FxType::Filter, FxType::Compressor, FxType::MultiComp, FxType::Reverb, FxType::Phaser,
                                FxType::Flanger, FxType::FreqShifter, FxType::Disperser, FxType::Widener,
-                               FxType::MultiDyn, FxType::Amp, FxType::Utility, FxType::Count}),
+                               FxType::MultiDyn, FxType::Amp, FxType::Utility, FxType::Chorus, FxType::Count}),
               "FxType is stored by number: only append");
 static_assert(numberedInOrder({AmpModel::Clean, AmpModel::Blues, AmpModel::Crunch, AmpModel::Lead, AmpModel::Heavy,
                                AmpModel::Bass, AmpModel::Fuzz, AmpModel::Count}),
@@ -1789,11 +1838,14 @@ inline double divisionBeats(int division) {
 inline double divisionSeconds(double division, double tempo) {
     return divisionBeats(static_cast<int>(std::lround(division))) * 60.0 / tempo;
 }
-// How fast the phaser or flanger in `slot` sweeps (Hz): at its Rate, or synced, a cycle per note value at `tempo`
-// BPM. `get(index)` returns a param value.
+// How fast the phaser, flanger or chorus (`type`) in `slot` sweeps (Hz): at its Rate, or, a phaser or flanger
+// synced, a cycle per note value at `tempo` BPM. `get(index)` returns a param value.
 template <class Get>
-double sweepHz(const Get &get, int slot, bool phaser, double tempo) {
+double sweepHz(const Get &get, int slot, FxType type, double tempo) {
     auto at = [&](FxParam f) { return get(paramIndex(slot, f)); };
+    if (type == FxType::Chorus) // never synced
+        return sweepRateHz(at(FxParam::ChorusRate));
+    const bool phaser = type == FxType::Phaser;
     if (at(phaser ? FxParam::PhaserSync : FxParam::FlangerSync) >= 0.5)
         return 1.0 / divisionSeconds(at(phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision), tempo);
     return sweepRateHz(at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate));

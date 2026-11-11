@@ -858,6 +858,9 @@ void effectsChainChecks() {
             {"utility gain 0 to +12 dB", FxType::Utility, FxParam::UtilityGain, utilityGainNorm(1.0), 1.0},
             {"utility pan C to R50", FxType::Utility, FxParam::UtilityPan, 0.0, 0.5},
             {"utility width 100 to 0 %", FxType::Utility, FxParam::UtilityWidth, 1.0, 0.0},
+            {"chorus mix 0 to 100 %", FxType::Chorus, FxParam::ChorusMix, 0.0, 1.0},
+            {"chorus voices 2 to 6", FxType::Chorus, FxParam::ChorusVoices, 2.0, 6.0},
+            {"chorus spread 0 to 100 %", FxType::Chorus, FxParam::ChorusSpread, 0.0, 1.0},
         };
         double worst = 0.0;
         for (const Jump &jump : jumps) {
@@ -3083,6 +3086,165 @@ int main() {
             synced = synced && std::abs(fast - 0.5) < 1e-3 && std::abs(slow - 0.25) < 1e-3;
         }
         check(synced, "synced, the phaser's and flanger's sweeps follow the host tempo");
+    }
+
+    // --- The chorus's Voices and Spread changed under a sine, all wet: a voice coming or going fades, the voices'
+    // sweeps glide to their new places apart and a voice moving between the sides moves there over 10 ms, so no sample
+    // steps further than a sine as loud as the loudest the voices play does (its pitch wavering a little with the
+    // sweep): voices in phase can play louder than what went in.
+    std::printf("chorus voices and spread changed under a sine (steepest step against a sine's at its peak):\n");
+    {
+        auto steepest = [](FxParam param, std::initializer_list<double> values) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Chorus);
+            p[paramIndex(0, FxParam::ChorusMix)] = 1.0;
+            p[paramIndex(0, FxParam::ChorusSpread)] = 0.0;
+            chain(p, {0});
+            constexpr double kHz = 440.0;
+            const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
+            std::vector<float> left(kBlock), right(kBlock);
+            double most = 0.0, last = 0.0, peak = 0.0;
+            uint32_t t = 0;
+            for (double value : values) {
+                p[paramIndex(0, param)] = value;
+                for (uint32_t done = 0; done < each; done += kBlock, t += kBlock) {
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * kHz * (t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kBlock; ++s) {
+                        if (t + s > kSampleRate / 10) { // past its first voices' delays
+                            most = std::max(most, static_cast<double>(std::abs(left[s] - last)));
+                            peak = std::max(peak, static_cast<double>(std::abs(left[s])));
+                        }
+                        last = left[s];
+                    }
+                }
+            }
+            return most / (peak * 2.0 * std::numbers::pi * kHz / kSampleRate);
+        };
+        const double voices = steepest(FxParam::ChorusVoices, {2.0, 6.0, 3.0, 2.0});
+        const double spread = steepest(FxParam::ChorusSpread, {0.0, 1.0, 0.0});
+        std::printf("      voices 2, 6, 3, 2: x%.3f   spread 0, 100, 0 %%: x%.3f\n", voices, spread);
+        check(voices < 1.15 && spread < 1.15,
+              "the chorus's Voices and Spread changed under a sine glide rather than click");
+    }
+
+    // --- The chorus's voices, held still (no Depth), all wet and in the middle: an impulse comes out once a voice,
+    // each at its place along Delay (12.5 ms here, so every place falls on a sample), a little shorter or longer than it, as loud as 1 / sqrt(voices) (less
+    // the share of it the bass takes past them). And swept, its voices together play a sine about as loud as it went
+    // in, low and high, however many there are.
+    std::printf("chorus voices (impulse's echoes at their places; a sine's level, all wet):\n");
+    {
+        auto chorusFx = [](Effects &fx, ParamValues &p, int voices, double depth) {
+            fx.prepare(kSampleRate);
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Chorus);
+            p[paramIndex(0, FxParam::ChorusVoices)] = voices;
+            p[paramIndex(0, FxParam::ChorusDepth)] = depth;
+            p[paramIndex(0, FxParam::ChorusDelay)] = normFromTime(0.0125);
+            p[paramIndex(0, FxParam::ChorusMix)] = 1.0;
+            p[paramIndex(0, FxParam::ChorusSpread)] = 0.0;
+            chain(p, {0});
+        };
+        bool placed = true;
+        for (int voices : {2, 6}) {
+            Effects fx;
+            ParamValues p;
+            chorusFx(fx, p, voices, 0.0);
+            const uint32_t total = static_cast<uint32_t>(0.02 * kSampleRate);
+            static_assert(kSampleRate == 48000.0);
+            std::vector<float> out, left(kBlock), right(kBlock);
+            for (uint32_t done = 0; done < total; done += kBlock) {
+                std::fill(left.begin(), left.end(), 0.0f);
+                std::fill(right.begin(), right.end(), 0.0f);
+                if (done == 0)
+                    left[0] = right[0] = 1.0f;
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                out.insert(out.end(), left.begin(), left.end());
+            }
+            const double level = 1.0 / std::sqrt(static_cast<double>(voices));
+            std::printf("      %d voices:", voices);
+            for (int k = 0; k < voices; ++k) {
+                const size_t at = static_cast<size_t>(std::lround(0.0125 * chorusShare(k, voices, 0.0, 0.0) * kSampleRate));
+                std::printf(" %.3f at %zu", out[at], at);
+                placed = placed && std::abs(out[at] / level - 0.97) < 0.03 &&
+                         std::abs(out[at - 1]) < 0.05 && std::abs(out[at + 1]) < 0.05;
+            }
+            std::printf("\n");
+        }
+        check(placed, "the chorus's voices each wait their own place along Delay, as loud as 1 / sqrt(voices)");
+        bool level = true;
+        for (double hz : {440.0, 5000.0}) {
+            std::printf("      %4.0f Hz:", hz);
+            for (int voices : {2, 3, 4, 6}) {
+                Effects fx;
+                ParamValues p;
+                chorusFx(fx, p, voices, 0.5);
+                const uint32_t total = static_cast<uint32_t>(2.0 * kSampleRate);
+                std::vector<float> left(kBlock), right(kBlock);
+                double in = 0.0, outSum = 0.0;
+                for (uint32_t done = 0; done < total; done += kBlock) {
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        left[s] = right[s] =
+                            static_cast<float>(0.5 * std::sin(2.0 * std::numbers::pi * hz * (done + s) / kSampleRate));
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        in += left[s] * left[s];
+                    fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        outSum += left[s] * left[s];
+                }
+                const double ratio = std::sqrt(outSum / in);
+                std::printf(" x%.2f (%d)", ratio, voices);
+                level = level && ratio > 0.6 && ratio < 1.5;
+            }
+            std::printf("\n");
+        }
+        check(level, "the chorus's voices together play about as loud as what went in, however many, low and high");
+
+        // Its Feedback full up either way, Voices dropped from 6 to 2 under a loud sine and the sine then stopped: what
+        // goes round doesn't grow while the voices fade out, and dies away after. Its peaks move about with the sweep,
+        // which moves its resonances; grown out of hand, they would be orders of magnitude louder.
+        bool steady = true;
+        for (double feedback : {1.0, -1.0}) {
+            Effects fx;
+            ParamValues p;
+            chorusFx(fx, p, 6, 0.5);
+            p[paramIndex(0, FxParam::ChorusFeedback)] = feedback;
+            std::vector<float> left(kBlock), right(kBlock);
+            double before = 0.0, during = 0.0, after = 0.0; // with 6 voices, as they drop to 2, and once settled
+            const uint32_t second = static_cast<uint32_t>(kSampleRate);
+            for (uint32_t done = 0; done < 3 * second; done += kBlock) {
+                if (done >= second)
+                    p[paramIndex(0, FxParam::ChorusVoices)] = 2.0;
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] =
+                        done < 2 * second
+                            ? static_cast<float>(0.8 * std::sin(2.0 * std::numbers::pi * 700.0 * (done + s) / kSampleRate))
+                            : 0.0f;
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s) {
+                    const double level = std::max(std::abs(left[s]), std::abs(right[s]));
+                    double &into = done < second ? before : done < second + second / 4 ? during : after;
+                    if (done < 2 * second)
+                        into = std::max(into, level);
+                }
+            }
+            double last = 0.0; // the last block's peak, a second after the sine stopped
+            for (uint32_t s = 0; s < kBlock; ++s)
+                last = std::max(last, static_cast<double>(std::max(std::abs(left[s]), std::abs(right[s]))));
+            std::printf("      feedback %+.0f %%: peak %.2f with 6 voices, %.2f dropping to 2, %.2f with 2, then %.2g a "
+                        "second after\n",
+                        feedback * 100.0, before, during, after, last);
+            steady = steady && std::isfinite(during) && during < 3.0 * std::max(before, after) && after < 2.5 &&
+                     last < 1e-3;
+        }
+        check(steady, "the chorus's feedback stays steady as voices fade out, and dies away after");
     }
 
     // --- The phaser's and flanger's polarity, standing still with no feedback at full Mix (half wet). Positive, a
