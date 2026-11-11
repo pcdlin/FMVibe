@@ -248,6 +248,32 @@ void Canvas::polylineStrokes(const Point *points, size_t count, const Color *col
         cairo_path_destroy(path);
 }
 
+// Cairo reads the image's pixels where they are (its ARGB32 is premultiplied 0xAARRGGBB, as the Image's).
+void Canvas::image(const Image &image, Rect r) {
+    if (image.width <= 0 || image.height <= 0 || r.w <= 0.0f || r.h <= 0.0f ||
+        image.pixels.size() < static_cast<size_t>(image.width) * static_cast<size_t>(image.height))
+        return;
+    cairo_surface_t *surface = cairo_image_surface_create_for_data(
+        reinterpret_cast<unsigned char *>(const_cast<uint32_t *>(image.pixels.data())), CAIRO_FORMAT_ARGB32,
+        image.width, image.height, image.width * 4);
+    cairo_save(target_);
+    cairo_rectangle(target_, r.x, r.y, r.w, r.h);
+    cairo_clip(target_);
+    cairo_translate(target_, r.x, r.y);
+    cairo_scale(target_, r.w / static_cast<double>(image.width), r.h / static_cast<double>(image.height));
+    cairo_set_source_surface(target_, surface, 0.0, 0.0);
+    cairo_pattern_set_filter(cairo_get_source(target_), CAIRO_FILTER_BILINEAR);
+    cairo_paint(target_);
+    cairo_restore(target_);
+    cairo_surface_destroy(surface);
+}
+
+float Canvas::deviceScale() const {
+    cairo_matrix_t m;
+    cairo_get_matrix(target_, &m);
+    return static_cast<float>(std::hypot(m.xx, m.yx));
+}
+
 void Canvas::fillPolygon(const Point *points, size_t count, Color c) {
     if (count < 3)
         return;

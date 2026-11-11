@@ -408,7 +408,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     middle button;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, a dotted leader running
     from it across to the inspector's lens, and a switched-off one's ghost filled while it is shown (read off the
-    rendered pixels);
+    rendered pixels); and the graph's glow dithered rather than stepped (read off the rendered pixels);
   - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
     they modulate something
     (read off the rendered pixels);

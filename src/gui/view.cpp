@@ -3465,26 +3465,53 @@ void View::paintWheel(Canvas &c, const Widget &w, bool hovered, bool active) {
 }
 
 namespace {
-// The graph's backdrop, under the whole panel, the inspector's lens too: a glow spreading from OUT, the orbit rings
-// round it and two faint rays from it to the lens's far corners, the panel's corner left clear for the tab shown.
-void paintRadar(Canvas &c) {
-    c.pushClip(kFxPanel);
-    // The glow as discs from the largest in, each adding a little: the accent at 16 % on the core, 5 % a third of the
-    // way out and nothing at the outermost ring's reach.
+// The glow behind the routing graph: the accent at 16 % on OUT, 5 % a third of the way out and nothing at the outermost
+// ring's reach, over the whole panel, its corners rounded as the panel's are. Made at the target's own pixels, `scale`
+// a logical pixel (held to 3, past which it is drawn stretched), its premultiplied pixels rounded up or down by an 8x8
+// ordered dither: the glow is so faint that it spans a few levels of each channel, which would otherwise show as rings.
+void makeRadarGlow(Image &image, float scale, Color accent) {
     constexpr float kReach = 520.0f, kKnee = 182.0f;
     auto glowAt = [](float r) {
         return r >= kReach ? 0.0f
                : r >= kKnee ? 0.05f * (kReach - r) / (kReach - kKnee)
                             : 0.05f + 0.11f * (kKnee - r) / kKnee;
     };
-    constexpr int kDiscs = 28;
-    for (int i = 0; i < kDiscs; ++i) {
-        const float r = kReach * (1.0f - static_cast<float>(i) / kDiscs);
-        const float next = kReach * (1.0f - static_cast<float>(i + 1) / kDiscs);
-        const float outer = glowAt(r), inner = glowAt(next);
-        const float a = (inner - outer) / std::max(1.0f - outer, 1e-3f); // over what the larger discs laid down
-        c.fillCircle(kOutCore, r, kAccent.alpha(a));
+    constexpr int kBayer[8][8] = {{0, 32, 8, 40, 2, 34, 10, 42},   {48, 16, 56, 24, 50, 18, 58, 26},
+                                  {12, 44, 4, 36, 14, 46, 6, 38},  {60, 28, 52, 20, 62, 30, 54, 22},
+                                  {3, 35, 11, 43, 1, 33, 9, 41},   {51, 19, 59, 27, 49, 17, 57, 25},
+                                  {15, 47, 7, 39, 13, 45, 5, 37},  {63, 31, 55, 23, 61, 29, 53, 21}};
+    scale = std::clamp(scale, 0.25f, 3.0f);
+    const int w = static_cast<int>(std::ceil(kFxPanel.w * scale)), h = static_cast<int>(std::ceil(kFxPanel.h * scale));
+    image.width = w;
+    image.height = h;
+    image.pixels.assign(static_cast<size_t>(w) * static_cast<size_t>(h), 0u);
+    const float sx = kFxPanel.w / static_cast<float>(w), sy = kFxPanel.h / static_cast<float>(h); // logical a pixel
+    constexpr float kCorner = kPanelRadius;
+    for (int y = 0; y < h; ++y) {
+        const float ly = kFxPanel.y + (static_cast<float>(y) + 0.5f) * sy;
+        const float dy = std::max({kFxPanel.y + kCorner - ly, ly - (kFxPanel.bottom() - kCorner), 0.0f});
+        for (int x = 0; x < w; ++x) {
+            const float lx = kFxPanel.x + (static_cast<float>(x) + 0.5f) * sx;
+            const float g = glowAt(std::hypot(lx - kOutCore.x, ly - kOutCore.y));
+            if (g <= 0.0f)
+                continue;
+            const float dx = std::max({kFxPanel.x + kCorner - lx, lx - (kFxPanel.right() - kCorner), 0.0f});
+            const float cover =
+                dx > 0.0f && dy > 0.0f ? std::clamp((kCorner - std::hypot(dx, dy)) / sx + 0.5f, 0.0f, 1.0f) : 1.0f;
+            const float a = g * cover * 255.0f;
+            const float t = (static_cast<float>(kBayer[y & 7][x & 7]) + 0.5f) / 64.0f;
+            auto level = [&](float v) { return static_cast<uint32_t>(std::clamp(std::floor(v + t), 0.0f, 255.0f)); };
+            image.pixels[static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)] =
+                level(a) << 24 | level(accent.r * a) << 16 | level(accent.g * a) << 8 | level(accent.b * a);
+        }
     }
+}
+
+// The graph's backdrop, under the whole panel, the inspector's lens too: the glow spreading from OUT, the orbit rings
+// round it and two faint rays from it to the lens's far corners, the panel's corner left clear for the tab shown.
+void paintRadar(Canvas &c, const Image &glow) {
+    c.pushClip(kFxPanel);
+    c.image(glow, kFxPanel);
     c.line(kOutCore, {kInspector.x, kInspector.y}, mix(kPanel, kBorder, 0.45f), 1.0f);
     c.line(kOutCore, {kInspector.x, kInspector.bottom()}, mix(kPanel, kBorder, 0.45f), 1.0f);
     c.strokeCircle(kOutCore, 180.0f, kBorder, 1.0f);
@@ -3524,7 +3551,17 @@ std::optional<Point> View::lensLeaderStart() const {
 }
 
 void View::paintRouting(Canvas &c) {
-    paintRadar(c);
+    // The glow is made again only as the editor is zoomed or the theme's accent changes.
+    const float scale = std::clamp(c.deviceScale(), 0.25f, 3.0f);
+    if (std::abs(scale - radarGlowScale_) > 1e-3f || kAccent.r != radarGlowAccent_.r ||
+        kAccent.g != radarGlowAccent_.g || kAccent.b != radarGlowAccent_.b) {
+        static uint64_t serials = 0;
+        makeRadarGlow(radarGlow_, scale, kAccent);
+        radarGlow_.serial = ++serials;
+        radarGlowScale_ = scale;
+        radarGlowAccent_ = kAccent;
+    }
+    paintRadar(c, radarGlow_);
     c.text({kHintX, kRouting.y + 10.0f, kRouting.right() - 16.0f - kHintX, 22.0f},
            tr(Str::HintRouting), kTextLabel, kFaint, Align::Right);
     if (routingGridShown()) { // Ctrl held: the grid's points, under everything, the one a node dragged lands on lit

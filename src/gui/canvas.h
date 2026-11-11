@@ -61,6 +61,16 @@ Color mix(Color a, Color b, float t);
 
 enum class Align { Left, Center, Right };
 
+// A picture made pixel by pixel (the routing graph's dithered glow): `width` x `height` pixels, row by row from the top
+// left, each 0xAARRGGBB with its color premultiplied by its alpha. Whoever makes one gives it a new `serial` whenever
+// its pixels change, by which a backend keeps what it made of it.
+struct Image {
+    int width = 0;
+    int height = 0;
+    std::vector<uint32_t> pixels;
+    uint64_t serial = 0;
+};
+
 // Device-independent resources that outlive a frame: factories, text formats, stroke styles.
 // The browser's canvas keeps its own, so there it holds nothing.
 class Resources {
@@ -79,6 +89,14 @@ public:
     // The layouts Canvas::text() draws, by text format, box size and text (see there). Like the text formats, they
     // don't belong to a device or a target, so they outlive a lost device and serve every target.
     std::unordered_map<std::string, ComPtr<IDWriteTextLayout>> &textLayouts() { return layouts_; }
+    // The bitmaps Canvas::image() made, by target and image (see Image::serial); holding the target keeps its address
+    // from being taken by another one while its bitmap is kept.
+    struct ImageBitmap {
+        ComPtr<ID2D1RenderTarget> target;
+        uint64_t serial = 0;
+        ComPtr<ID2D1Bitmap> bitmap;
+    };
+    std::vector<ImageBitmap> &imageBitmaps() { return images_; }
 
     // A path geometry made from a few numbers (an arc's, a curve's), kept for the next frame, which mostly draws the
     // same ones again (knobs at rest, wires): `build` fills the sink of a path made for a key not kept yet.
@@ -124,6 +142,7 @@ private:
     std::map<std::tuple<int, bool, Align>, ComPtr<IDWriteTextFormat>> formats_;
     std::unordered_map<std::string, float> widths_;
     std::unordered_map<std::string, ComPtr<IDWriteTextLayout>> layouts_;
+    std::vector<ImageBitmap> images_;
 #endif
 };
 
@@ -157,6 +176,10 @@ public:
     void polylineStrokes(const Point *points, size_t count, const Color *colors, const float *widths, size_t strokes,
                          bool dashed = false);
     void fillPolygon(const Point *points, size_t count, Color c);
+    // `image` stretched over `r`, smoothly: one image pixel a target pixel where `r` takes as many (see deviceScale()).
+    void image(const Image &image, Rect r);
+    // How many of the target's pixels a logical one takes, by its transform (the editor's zoom) and its DPI.
+    float deviceScale() const;
     void text(Rect r, std::string_view utf8, float size, Color c, Align align = Align::Center, bool bold = false);
     // How wide text() draws `utf8` at this size, untrimmed.
     float textWidth(std::string_view utf8, float size, bool bold = false);

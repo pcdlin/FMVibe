@@ -5848,6 +5848,27 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
 
 // The node the inspector shows is filled with its color and ringed in it in the graph, and picking another node moves
 // both there (read off the rendered pixels); a switched-off node's ghost is filled while it is the one shown.
+// The routing graph's glow is dithered rather than stepped: along a stretch of the panel's bottom, under the ghosts and
+// clear of the rings and rays, where the glow fades by about a level of each channel, neighboring pixels differ many
+// times over, where a glow in steps would change only at its few edges (read off the rendered pixels, in Spectrum).
+void testRadarGlow(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    model.themeName = "Spectrum";
+    View view(model);
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool shot = renderer.save(view, dir / "1n-radar-glow.png");
+    const float y = detail::kRouting.bottom() - 6.0f;
+    int changes = 0;
+    uint32_t last = renderer.pixel({kOutCore.x - 260.0f, y});
+    for (float x = kOutCore.x - 259.0f; x <= kOutCore.x - 160.0f; x += 1.0f) {
+        const uint32_t p = renderer.pixel({x, y});
+        changes += p != last ? 1 : 0;
+        last = p;
+    }
+    std::printf("      the glow along 100 px of the panel's bottom: %d changes between neighbors\n", changes);
+    check(shot && changes >= 20, "the routing graph's glow is dithered, not stepped (read off the rendered pixels)");
+}
+
 void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     FakeController model;
     View view(model);
@@ -9062,6 +9083,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testRouteModes(dir, renderer);
     testInputsScroll(dir, renderer);
     testSelectedNode(dir, renderer);
+    testRadarGlow(dir, renderer);
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);

@@ -579,7 +579,8 @@ may show anywhere, repaints the whole of it.
     operator's wave, take its color too, its ratio or type the dim text's. The graph sits on a radar: **OUT** is a
     disc at its right end, shading from the accent in its middle to a deeper accent and the filters' purple at its
     edge, in a faint halo, a glow of the accent spreading out from it across the whole panel (16 % on it, 5 % a third
-    of the way out, gone 520 px away), with three orbit rings round it (180, 340 and 500 px out, fainter outward) and
+    of the way out, gone 520 px away; made once at the screen's own pixels and dithered, so it fades without steps,
+    and made again only as the editor is zoomed or the theme changes), with three orbit rings round it (180, 340 and 500 px out, fainter outward) and
     two faint rays from it to the panel's left corners, all behind the nodes, the wires and the inspector's lens. A
     halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off):
     an operator's as brightly as its envelope and the routes taking it to the output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
