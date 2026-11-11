@@ -5621,7 +5621,7 @@ void testWireBend(const std::filesystem::path &dir, Renderer &renderer) {
 // right-click menus of its label and its matrix cell (whose corner shows the glyph), and from the operator page's
 // INPUTS tab; each pick an undo step. Moved onto another operator by its arrowhead, a route keeps its mode;
 // disconnected, it starts as Phase.
-// The INPUTS tab's rows 30 px apart: a modulated depth showing its handles under it and its ranges on its top line,
+// The INPUTS tab's rows 30 px apart: a modulated depth showing its handles under it and its ranges just above it,
 // its number left as it was (read off the rendered pixels); past the six rows the tab holds, the wheel scrolls the
 // rows and its scrollbar's thumb dragged brings them back.
 void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
@@ -5653,15 +5653,15 @@ void testInputsScroll(const std::filesystem::path &dir, Renderer &renderer) {
     renderer.save(view, dir / "5l-op-inputs-many.png");
     const std::vector<uint32_t> number = pixels(depth.y + 4.0f, depth.bottom() - 4.0f);
     const std::vector<uint32_t> under = pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f);
-    const std::vector<uint32_t> top = pixels(depth.y - 1.0f, depth.y + 1.0f);
+    const std::vector<uint32_t> top = pixels(depth.y - 5.0f, depth.y - 2.0f);
     model.set(paramIndex(0, SourceParam::Type), static_cast<double>(SourceType::Lfo));
     model.set(slotTargetIndex(0, 0), slotTargetValue(detail::routeParam(1, 0)));
     model.set(slotAmountIndex(0, 0), 0.3);
     view.poll();
     const bool modShot = renderer.save(view, dir / "5m-op-inputs-modulated.png");
     check(modShot && pixels(depth.y + 4.0f, depth.bottom() - 4.0f) == number &&
-              pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 1.0f, depth.y + 1.0f) != top,
-          "an INPUTS row's modulated depth has its handles under it and its ranges on its top line, its number as it was");
+              pixels(depth.bottom() + 1.0f, depth.bottom() + 9.0f) != under && pixels(depth.y - 5.0f, depth.y - 2.0f) != top,
+          "an INPUTS row's modulated depth has its handles under it and its ranges just above it, its number as it was");
 
     // The sixth row's depth is F1's; two notches down over the names, the eighth's, the feedback's, is there.
     const Point sixth{depth.center().x, depth.center().y + 5.0f * 30.0f};

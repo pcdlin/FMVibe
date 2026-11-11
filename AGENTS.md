@@ -405,7 +405,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - an operator lighting up while modulation opens its route from 0 %, and not with the glow setting off (read off
     the rendered pixels), and modulation dropped on a silent operator's OUT cell in the matrix showing its wire to OUT;
   - an operator's Pan knob turning from its middle and reset to it by a double-click;
-  - the INPUTS tab's rows: a modulated depth's handles under it and its ranges on its top line, its number left as it
+  - the INPUTS tab's rows: a modulated depth's handles under it and its ranges just above it, its number left as it
     was (read off the rendered pixels), and eight rows scrolling under the wheel, the scrollbar's thumb and the
     middle button;
   - the node the inspector shows filled and ringed in the graph, picking another moving both, a dotted leader running

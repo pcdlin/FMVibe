@@ -41,6 +41,18 @@ const char *fxTitle(FxType type) {
 } // namespace detail
 
 namespace {
+// What the graphs show of a level that moves with the sound (the glows behind OUT and around the nodes, the effects
+// graph's nodes and wires, the routing graph's wires swelling with their modulation) follows it rather than jumping
+// from one snapshot to the next: rising to it with a time constant of 70 ms and falling back with one of 100 ms, at
+// the sixty polls a second the editor makes.
+float follow(float shown, float target) {
+    constexpr float kPollSeconds = 1.0f / 60.0f, kAttackSeconds = 0.07f, kReleaseSeconds = 0.1f;
+    static const float attack = 1.0f - std::exp(-kPollSeconds / kAttackSeconds);
+    static const float release = 1.0f - std::exp(-kPollSeconds / kReleaseSeconds);
+    shown += (target - shown) * (target > shown ? attack : release);
+    return std::abs(target - shown) < 1e-3f ? target : shown;
+}
+
 constexpr Str kMcBandNames[kMcBands] = {Str::BandButtonLow, Str::BandButtonMid, Str::BandButtonHigh};
 constexpr Str kViewNames[] = {Str::ViewRouting, Str::ViewMatrix, Str::ViewFx, Str::ViewMods};
 static_assert(std::size(kViewNames) == std::size(kViewTabs));
@@ -1442,22 +1454,10 @@ bool View::poll() {
                         0.01f * std::max(t.fxBandLevel[slot][band], 1e-5f) ||
                     std::abs(t.fxBandGain[slot][band] - telemetry_.fxBandGain[slot][band]) > 0.05f)
                     everywhere = true;
-    // The effects graph's nodes and wires glow with what goes through them; with the glow off, they show nothing of it.
-    if (fxWide() && fxGraph() && shownGlow() > 0.0f)
-        for (int port = 0; port < kFxPorts; ++port)
-            if (std::abs(t.fxPortLevels[port] - telemetry_.fxPortLevels[port]) > 0.002f * (1.0f + t.fxPortLevels[port]))
-                everywhere = true;
-    // The routing graph's glow follows the output's level, rising to it with a time constant of 70 ms and falling back
-    // with one of 100 ms, at the sixty polls a second the editor makes.
+    // The routing graph's glow follows the output's level (see follow()).
     {
-        constexpr float kPollSeconds = 1.0f / 60.0f, kAttackSeconds = 0.07f, kReleaseSeconds = 0.1f;
-        static const float attack = 1.0f - std::exp(-kPollSeconds / kAttackSeconds);
-        static const float release = 1.0f - std::exp(-kPollSeconds / kReleaseSeconds);
         const RadarLook before = radarLook();
-        const float target = outputLevel(t);
-        radarLevel_ += (target - radarLevel_) * (target > radarLevel_ ? attack : release);
-        if (std::abs(target - radarLevel_) < 1e-3f)
-            radarLevel_ = target;
+        radarLevel_ = follow(radarLevel_, outputLevel(t));
         const RadarLook after = radarLook();
         if (routingGraphShown() && (after.strength != before.strength || after.reach != before.reach))
             in(kFxPanel);
@@ -1494,6 +1494,39 @@ bool View::poll() {
         }
     }
     telemetry_ = t;
+    // The routing graph's nodes' halos and its wires' swell, and the effects graph's nodes' and wires' glow, follow
+    // what they show as the glow behind OUT does (see follow()); the panel is painted again while any moves visibly.
+    {
+        bool moved = false;
+        auto track = [&](float &shown, float target) {
+            const float next = follow(shown, target);
+            moved = moved || std::abs(next - shown) > 0.002f;
+            shown = next;
+        };
+        for (int node = 0; node < kNodes; ++node)
+            track(nodeGlow_[node], nodeGlowTarget(node));
+        for (int port = 0; port < kFxPorts; ++port)
+            track(fxGlow_[port], fxGlowTarget(port));
+        std::vector<int> wired;
+        for (int from : enabledNodes()) {
+            for (int to = 0; to < kNodes; ++to)
+                if (nodeOn(to) && this->wired(routeParam(from, to)))
+                    wired.push_back(routeParam(from, to));
+            if (goesOut(from))
+                wired.push_back(outParam(from));
+        }
+        std::erase_if(wireAmounts_, [&](const auto &w) { return std::find(wired.begin(), wired.end(), w.first) == wired.end(); });
+        for (int param : wired) {
+            const float target = static_cast<float>(liveAmount(param));
+            const auto it = std::find_if(wireAmounts_.begin(), wireAmounts_.end(), [&](const auto &w) { return w.first == param; });
+            if (it == wireAmounts_.end())
+                wireAmounts_.push_back({param, target});
+            else
+                track(it->second, target);
+        }
+        if (moved && (routingGraphShown() || (fxWide() && fxGraph() && shownGlow() > 0.0f)))
+            in(kFxPanel);
+    }
     traceRandomLfos();
     // A free or anchored LFO switched on runs whether notes play or not, and its card shows it: the plugin keeps
     // processing for it while a host would let it sleep.
@@ -3612,6 +3645,24 @@ void paintOutCore(Canvas &c, bool target) {
 }
 } // namespace
 
+// How strongly a routing node's halo lights up, 0 to 1, which nodeGlow_ follows: an operator's as brightly as its
+// envelope and the routes that take it to the output let it through, where modulation takes them now, so a route an LFO
+// opens from 0 % lights it up; a filter's or shaper's while notes play and something goes into it that reaches the
+// output.
+float View::nodeGlowTarget(int node) const {
+    if (!nodeOn(node))
+        return 0.0f;
+    if (node < kOps)
+        return std::min(telemetry_.opLevels[node], 1.0f) * static_cast<float>(std::sqrt(outLevel(node)));
+    return boxHasInput(node) && telemetry_.voices > 0 && reachesOut(node) ? 1.0f : 0.0f;
+}
+
+// A wire's amount as its swell shows it, following its modulation (see follow()); a wire not followed yet, as it is.
+float View::shownAmount(int param) const {
+    const auto it = std::find_if(wireAmounts_.begin(), wireAmounts_.end(), [&](const auto &w) { return w.first == param; });
+    return it != wireAmounts_.end() ? it->second : static_cast<float>(liveAmount(param));
+}
+
 // How loud the output is, 0 to 1, for the routing graph's glow: the RMS of the span its scope took last (the output
 // itself, as the editor shows it), from -48 dB up to -3 dB (a sine at full scale).
 float View::outputLevel(const Telemetry &t) {
@@ -3693,7 +3744,7 @@ void View::paintRouting(Canvas &c) {
         const int param = outParam(node);
         if (!goesOut(node) || param == moving)
             continue;
-        const float out = static_cast<float>(liveAmount(param));
+        const float out = shownAmount(param);
         const OutWire w = outWireOf(node, nodeCenter(node), wireBend(param));
         const Color color = focused(param) ? kText : nodeColor(node).alpha(0.35f + 0.65f * out);
         c.curve(w.start, w.control, w.end, color, 1.2f + 2.4f * out);
@@ -3705,7 +3756,7 @@ void View::paintRouting(Canvas &c) {
             const int param = routeParam(from, to);
             if (!wired(param) || param == moving)
                 continue;
-            const float amount = static_cast<float>(liveAmount(param));
+            const float amount = shownAmount(param);
             const Color base = routeColor(from, to);
             const Color color = focused(param) ? kText : base.alpha(0.35f + 0.65f * amount);
             const float width = 1.2f + 2.4f * amount;
@@ -6315,8 +6366,8 @@ void View::paintNode(Canvas &c, const Widget &w) {
         const float corner = shaper ? kRadiusMark : kRadiusControl;
         const Color color = nodeColor(w.a);
         const bool live = boxHasInput(w.a);
-        if (live && telemetry_.voices > 0 && reachesOut(w.a))
-            c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f), corner + 4.0f);
+        if (nodeGlow_[w.a] > 0.01f) // lit while it sounds out, fading in and out (see nodeGlowTarget())
+            c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f * nodeGlow_[w.a]), corner + 4.0f);
         // Filled with the panel's color and outlined in its own, faintly while nothing goes into it; the node the
         // inspector shows filled solid with its color, its name and type in the panel's, and ringed in it.
         c.fillRect(w.rect, nodeFace(color, selected, hovered), corner);
@@ -6344,7 +6395,7 @@ void View::paintNode(Canvas &c, const Widget &w) {
     // Its halo lights up while playing only if it ends up in the output, as brightly as its envelope and the routes
     // that take it there let it through, where modulation takes them now: one an LFO opens from 0 % lights up too.
     const Color color = nodeColor(op); // the accent, or in a theme that colors each operator its own
-    const float level = std::min(telemetry_.opLevels[op], 1.0f) * static_cast<float>(std::sqrt(outLevel(op)));
+    const float level = nodeGlow_[op];
     if (level > 0.01f) {
         if (glowing > 0.0f) // feathered, as strongly as the glow is set
             featherCircle(c, center, kNodeRadius, 16.0f, color.alpha(0.3f * level));
@@ -6700,8 +6751,8 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             textRect = {w.rect.x + 18.0f, w.rect.y + lift, w.rect.w - 18.0f, w.rect.h}; // where it sits when open
         }
         c.text(textRect, text, kTextLabel, kPanel, Align::Center, true);
-        // On its outline's top line (the line's middle half a pixel in); the handles go below.
-        paintModRange(c, {w.rect.x + 7.0f, w.rect.y - 0.25f, w.rect.w - 14.0f, 1.5f}, w.param);
+        // Just above it, clear of its solid fill (the hovered one's, twice as thick, too); the handles go below.
+        paintModRange(c, {w.rect.x + 7.0f, w.rect.y - 4.0f, w.rect.w - 14.0f, 1.5f}, w.param);
         break;
     }
     case Kind::LabelMode: {

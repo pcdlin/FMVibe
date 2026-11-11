@@ -590,7 +590,8 @@ may show anywhere, repaints the whole of it.
     is zoomed, and its pixels filled again as its loudness moves by one of 64 steps. Three orbit rings go round OUT (180, 340
     and 500 px out, fainter outward) and two faint rays run from it under the inspector's lens to the lens's far
     corners, all behind the nodes, the wires and the lens. A
-    halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off):
+    halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off; it
+    rises and falls as the glow behind OUT does, with time constants of 70 ms up and 100 ms down):
     an operator's as brightly as its envelope and the routes taking it to the output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
     opens. The nodes that are off wait docked under OUT, in the graph's bottom right, as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
@@ -898,7 +899,8 @@ may show anywhere, repaints the whole of it.
     bands, their thirds, the middle band's between), parted by slightly slanted lines (a join's the split's mirror): a split's colors come in from grey at its left, where the
     main line comes in, and a join's go back out to grey at its right, where the main line goes on. While sound plays, each node glows round it and each
     wire along it as loud as what comes out of it (IN, an effect, a split's band, a join), as the operators do in the
-    routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops. An empty band curves out to a + on
+    routing graph: from -48 dB up to full scale, falling away about 90 dB a second once it stops, and shown rising and
+    falling as the routing graph's glows do (time constants of 70 ms up and 100 ms down). An empty band curves out to a + on
     its row, a column on from the split, and on into the join, and a click on that + puts an effect on the band (its
     list offers effects only). Each + is ringed in the color of the wire it is on: grey on the main line, a band's
     color on a band. With the mouse
@@ -1318,8 +1320,11 @@ may show anywhere, repaints the whole of it.
     must run per voice shows none with no note playing (but on an effect's param or Volume while the effects ring
     out after the last note), nor does a bypassed one or one whose source is off.
   - A modulated route shows it too: its wire (or its line to OUT), in its own color as any other,
-    swells and thins with the modulation while notes play (with the macros' alone between notes), and its label or matrix cell has a small bar along
-    its bottom with each modulation's range, a tick where the amount is set and a white dot where it is now.
+    swells and thins with the modulation while notes play (with the macros' alone between notes), following it as the
+    graphs' glows do, rising with a time constant of 70 ms and falling back with one of 100 ms, so a fast modulation
+    shows as a steady swell rather than a flicker; its matrix cell has a small bar along its bottom with each
+    modulation's range, a tick where the amount is set and a white dot where it is now, and its label each
+    modulation's range just above it, clear of its solid fill.
 - **Everywhere**: drag up/down to change values (hold Shift for fine steps, a knob then moving a fiftieth as fast; sliders such as the depth bars, the
   Mod wheel and the glow slider then move from where they are, a hundredth as fast; a value moves only once the mouse
   has moved more than 3 px, so a click, or a double-click's jitter, changes nothing), double-click to reset, use the mouse

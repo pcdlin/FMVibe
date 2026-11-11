@@ -1000,6 +1000,11 @@ std::vector<View::FxGraphWire> View::fxGraphWires(const FxLine &line, const FxPl
 }
 
 float View::fxGlow(int port) const {
+    return port >= 0 && port < kFxPorts ? fxGlow_[port] : 0.0f;
+}
+
+// How strongly a port of the effects graph glows as of the last snapshot, which fxGlow_ follows (see View::follow()).
+float View::fxGlowTarget(int port) const {
     if (port < 0 || port >= kFxPorts || !(telemetry_.age < 0.5f))
         return 0.0f;
     const float level = telemetry_.fxPortLevels[port];

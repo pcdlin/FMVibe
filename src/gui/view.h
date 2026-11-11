@@ -749,6 +749,8 @@ private:
     // telemetry, in dB from kFxGlowFloorDb up to full scale; 0 while the audio has stopped.
     static constexpr float kFxGlowFloorDb = -48.0f;
     float fxGlow(int port) const;
+    float fxGlowTarget(int port) const;
+    std::array<float, kFxPorts> fxGlow_{}; // what the effects graph shows of each port's glow, following it
     // Where the graph's nodes (by node), +s (by lane), IN and OUT show on screen: on their cells (fxPlacesOf()), or,
     // while a node is dragged and until they settle after, gliding there (fxPlacesShown(), see fxGlide_).
     struct FxPlaces {
@@ -873,6 +875,10 @@ public:
 
 private:
     RadarGlow radarGlow_;
+    std::array<float, kNodes> nodeGlow_{};               // what the routing graph shows of each node's halo, following it
+    std::vector<std::pair<int, float>> wireAmounts_;     // and of each wire's amount, by route
+    float nodeGlowTarget(int node) const;
+    float shownAmount(int param) const;
     float radarLevel_ = 0.0f; // the output's level the glow has risen or fallen to, 0 to 1 (see poll())
     struct RadarLook {
         float strength; // its alpha on OUT
