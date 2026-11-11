@@ -594,7 +594,9 @@ may show anywhere, repaints the whole of it.
     halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off; it
     rises and falls as the glow behind OUT does, with time constants of 70 ms up and 100 ms down):
     an operator's as brightly as its envelope and the routes taking it to the output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
-    opens. The nodes that are off wait docked under OUT, in the graph's bottom right, as dashed ghosts, a circle with an
+    opens; a filter's or shaper's the same way, as loud as what goes through it: the loudest of what feeds it, each
+    source as loud as it is (an operator by its envelope, a filter or shaper by this in turn) as far as its route lets
+    it through. A glow rises from nothing at its outer edge as a smoothstep, so it fades out without an edge or steps. The nodes that are off wait docked under OUT, in the graph's bottom right, as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
     graph, and shows it in the inspector. However it is switched on (its ghost, its tab, the matrix), a node whose
     place another node shown now covers comes back clear of it: pushed out of the way, or, with no room there, at

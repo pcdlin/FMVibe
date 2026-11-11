@@ -878,6 +878,7 @@ private:
     std::array<float, kNodes> nodeGlow_{};               // what the routing graph shows of each node's halo, following it
     std::vector<std::pair<int, float>> wireAmounts_;     // and of each wire's amount, by route
     float nodeGlowTarget(int node) const;
+    float boxLevel(int node) const;
     float shownAmount(int param) const;
     float radarLevel_ = 0.0f; // the output's level the glow has risen or fallen to, 0 to 1 (see poll())
     struct RadarLook {

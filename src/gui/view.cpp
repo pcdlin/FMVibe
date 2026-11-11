@@ -3646,14 +3646,37 @@ void paintOutCore(Canvas &c, bool target) {
 
 // How strongly a routing node's halo lights up, 0 to 1, which nodeGlow_ follows: an operator's as brightly as its
 // envelope and the routes that take it to the output let it through, where modulation takes them now, so a route an LFO
-// opens from 0 % lights it up; a filter's or shaper's while notes play and something goes into it that reaches the
-// output.
+// opens from 0 % lights it up; a filter's or shaper's alike, as loud as what goes through it (see boxLevel()).
 float View::nodeGlowTarget(int node) const {
     if (!nodeOn(node))
         return 0.0f;
-    if (node < kOps)
-        return std::min(telemetry_.opLevels[node], 1.0f) * static_cast<float>(std::sqrt(outLevel(node)));
-    return boxHasInput(node) && telemetry_.voices > 0 && reachesOut(node) ? 1.0f : 0.0f;
+    const float level = node < kOps ? std::min(telemetry_.opLevels[node], 1.0f) : boxLevel(node);
+    return level * static_cast<float>(std::sqrt(outLevel(node)));
+}
+
+// How loud what goes through a filter or shaper is, 0 to 1, as an operator's envelope says how loud it is: the
+// loudest of what feeds it, each as loud as its source (an operator by its envelope, a filter or shaper by this in
+// turn) as far as the route lets it through, where modulation takes it now. Filters and shapers can feed each other
+// round in a loop, so each is looked at once.
+float View::boxLevel(int node) const {
+    std::array<bool, kNodes> seen{};
+    auto level = [&](auto &self, int box) -> float {
+        if (seen[box] || !nodeOn(box))
+            return 0.0f;
+        seen[box] = true;
+        float most = 0.0f;
+        for (int from = 0; from < kNodes; ++from) {
+            if (from == box || !nodeOn(from))
+                continue;
+            const float through = static_cast<float>(liveAmount(routeParam(from, box)));
+            if (through <= 0.0f)
+                continue;
+            const float source = from < kOps ? std::min(telemetry_.opLevels[from], 1.0f) : self(self, from);
+            most = std::max(most, source * std::min(through, 1.0f));
+        }
+        return most;
+    };
+    return telemetry_.voices > 0 ? level(level, node) : 0.0f;
 }
 
 // A wire's amount as its swell shows it, following its modulation (see follow()); a wire not followed yet, as it is.
@@ -6365,8 +6388,14 @@ void View::paintNode(Canvas &c, const Widget &w) {
         const float corner = shaper ? kRadiusMark : kRadiusControl;
         const Color color = nodeColor(w.a);
         const bool live = boxHasInput(w.a);
-        if (nodeGlow_[w.a] > 0.01f) // lit while it sounds out, fading in and out (see nodeGlowTarget())
-            c.fillRect(w.rect.inset(-6.0f), color.alpha(0.12f * nodeGlow_[w.a]), corner + 4.0f);
+        // Its halo, as an operator's: as bright as what goes through it and on to the output (see nodeGlowTarget()),
+        // feathered as the glow setting says, a plain ring of light with it off.
+        if (const float level = nodeGlow_[w.a]; level > 0.01f) {
+            if (glowing > 0.0f)
+                featherRect(c, w.rect, corner, 16.0f, color.alpha(0.3f * level));
+            else
+                c.fillRect(w.rect.inset(-7.0f), color.alpha(0.22f * level), corner + 7.0f);
+        }
         // Filled with the panel's color and outlined in its own, faintly while nothing goes into it; the node the
         // inspector shows filled solid with its color, its name and type in the panel's, and ringed in it.
         c.fillRect(w.rect, nodeFace(color, selected, hovered), corner);

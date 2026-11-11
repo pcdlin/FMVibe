@@ -31,11 +31,19 @@ float glowing = 0.0f;
 // halo grows stronger and wider with the glow (at half, three strokes 6, 3.5 and 2 times the curve's width). The
 // halo and the curve are strokes of one path.
 namespace {
-// Rings a glow is drawn in, from the outermost in: each as faint, so where they overlap it builds up toward the middle.
-// About one a pixel of its spread, so their edges, each a soft pixel wide, blend into a smooth ramp rather than steps.
+// Rings a glow is drawn in, from the outermost in, about one a pixel of its spread, so their edges, each a soft pixel
+// wide, blend together. Where they overlap it builds up toward the middle: the outer ones fainter and the inner ones
+// stronger, so it rises as a smoothstep from nothing at its outer edge (no edge to see there, nor a kink where a
+// straight ramp would start) to its full strength by what it glows round.
 constexpr int kMaxFeatherSteps = 32;
 int featherSteps(float spread) {
     return std::clamp(static_cast<int>(std::ceil(spread)), 6, kMaxFeatherSteps);
+}
+// Ring k's alpha (k = 0 the outermost) of `steps`, its share of `total`.
+float featherRing(int k, int steps, float total) {
+    auto rise = [](float x) { return x * x * (3.0f - 2.0f * x); };
+    const float share = rise(static_cast<float>(k + 1) / steps) - rise(static_cast<float>(k) / steps);
+    return std::min(total * share, 1.0f);
 }
 // The glow setting makes them stronger and wider: as drawn at 75 %, none when it is off.
 float featherStrength() {
@@ -51,9 +59,9 @@ void featherCircle(Canvas &c, Point center, float inner, float spread, Color col
         return;
     spread = featherSpread(spread);
     const int steps = featherSteps(spread);
-    const Color step = color.alpha(std::min(1.6f * featherStrength() / steps, 1.0f));
     for (int k = 0; k < steps; ++k)
-        c.fillCircle(center, inner + spread * (1.0f - static_cast<float>(k) / steps), step);
+        c.fillCircle(center, inner + spread * (1.0f - static_cast<float>(k) / steps),
+                     color.alpha(featherRing(k, steps, 1.6f * featherStrength())));
 }
 
 void featherRect(Canvas &c, Rect r, float radius, float spread, Color color) {
@@ -61,10 +69,9 @@ void featherRect(Canvas &c, Rect r, float radius, float spread, Color color) {
         return;
     spread = featherSpread(spread);
     const int steps = featherSteps(spread);
-    const Color step = color.alpha(std::min(1.6f * featherStrength() / steps, 1.0f));
     for (int k = 0; k < steps; ++k) {
         const float out = spread * (1.0f - static_cast<float>(k) / steps);
-        c.fillRect(r.inset(-out), step, radius + out);
+        c.fillRect(r.inset(-out), color.alpha(featherRing(k, steps, 1.6f * featherStrength())), radius + out);
     }
 }
 
@@ -76,7 +83,7 @@ void featherLine(Canvas &c, const Point *points, size_t count, float width, floa
     Color colors[kMaxFeatherSteps];
     float widths[kMaxFeatherSteps];
     for (int k = 0; k < steps; ++k) {
-        colors[k] = color.alpha(std::min(1.6f * featherStrength() / steps, 1.0f));
+        colors[k] = color.alpha(featherRing(k, steps, 1.6f * featherStrength()));
         widths[k] = width + 2.0f * spread * (1.0f - static_cast<float>(k) / steps);
     }
     c.polylineStrokes(points, count, colors, widths, static_cast<size_t>(steps));
