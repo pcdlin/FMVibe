@@ -159,10 +159,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
   8 state's retired one doing nothing, its places putting the effects in order), a layout as large as one gets among them (and one of NaNs,
   which loads as the defaults), and checks that
   every remote control page has an id of its own. It also reports CPU cost: on the development machine, 16 voices × 6
-  operators take about 14 % of one core at the default 2x oversampling and about 34 % with every operator at 8
+  operators take about 13 % of one core at the default 2x oversampling and about 30 % with every operator at 8
   unison copies (the smoke test prints the figures). Time a change to the voices' loop in this build, with one copy
   and with eight, against the commit before: a Linux measurement doesn't carry over to MSVC's code, where a
-  `std::copysign` that GCC inlines became a library call on every wavetable read, a third more CPU at eight copies.
+  `std::copysign` that GCC inlines became a library call on every wavetable read (a third more CPU at eight copies),
+  and envelopes run a block ahead into a buffer cost a sixth more with one copy than stepping them in the loop.
 - **Audio quality** (`tests/quality.cpp`): drives the engine directly and measures, at every oversampling factor:
   - the decimator's passband ripple and alias rejection;
   - aliasing (the energy off the harmonics, 20 Hz–20 kHz) of a high saw, bright FM (phase, linear and ring),

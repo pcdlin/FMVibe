@@ -1716,6 +1716,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     std::array<int, kOps> copies;
     std::array<double, kOps> monoGain;
     std::array<std::array<double, kMaxUnison>, kOps> incStep; // per sample, toward the block's increments
+    std::array<bool, kOps> incMoving{}; // whether any of an operator's increments moves this block
     std::array<const UnisonIncs *, kOps> copy;
     std::array<const UnisonGains *, kOps> copyGains;
     // Switched-off operators and filters are skipped and route nothing.
@@ -1832,8 +1833,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 op.incNow[k] = copy[i]->inc[k];
         op.incKnown = !noise[i]; // noise moves no increment along: back to a wave, it starts at its own
         op.incCopies = copies[i];
-        for (int k = 0; k < copies[i]; ++k)
+        for (int k = 0; k < copies[i]; ++k) {
             incStep[i][k] = (copy[i]->inc[k] - op.incNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));
+            incMoving[i] = incMoving[i] || incStep[i][k] != 0.0;
+        }
 
         // Squared amounts give finer control over the subtle low end.
         for (int to = 0; to < kOps; ++to) {
@@ -2117,12 +2120,6 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         wave[i] = opShapes[i] == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(opShapes[i], highest);
     }
 
-    // The operators' envelopes for the whole block, ahead of it: nothing in it moves them but their own steps.
-    std::array<std::array<double, kControlBlock * Decimator::kMaxFactor>, kOps> envLevels;
-    for (int i = 0; i < kOps; ++i)
-        if (opOn[i])
-            v.ops[i].env.run(rates[i], envLevels[i].data(), static_cast<int>(frames));
-
     Levels &level = v.levels;
     double blockPeak = 0.0;
     std::array<double, kFilters> filterPeak{};
@@ -2199,7 +2196,9 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 route.pitched ? (ex != 0.0 ? std::exp2(std::clamp(ex * v.fmScale, -16.0, 16.0)) : 1.0) + lin * v.fmScale
                               : 1.0;
 
-            const double envLevel = envLevels[i][s];
+            // Its envelope a sample at a time, here: run a block ahead into a buffer of its own (Envelope::run()), the
+            // same levels made the voices a sixth slower with one copy in the plugins' MSVC build.
+            const double envLevel = op.env.next(rates[i]);
             const double scopePhase = i == scopeOp ? op.phases[0] : 0.0; // where this sample is read
             double mono = 0.0, l = 0.0, r = 0.0;
             if (noise[i]) {
@@ -2217,7 +2216,6 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                 // wave, so its copies only move on as they would have.
                 for (int k = 0; k < copies[i]; ++k) {
                     op.phases[k] += op.incNow[k];
-                    op.incNow[k] += incStep[i][k];
                     if (op.phases[k] >= 1.0)
                         op.phases[k] -= 1.0;
                 }
@@ -2235,7 +2233,6 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                             r += x * copyGains[i]->gainR[k];
                         }
                         op.phases[k] += op.incNow[k];
-                        op.incNow[k] += incStep[i][k];
                         if (op.phases[k] >= 1.0)
                             op.phases[k] -= 1.0;
                     }
@@ -2250,7 +2247,6 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                             r += x * copyGains[i]->gainR[k];
                         }
                         op.phases[k] += std::clamp(op.incNow[k] * factor, -0.5, 0.5);
-                        op.incNow[k] += incStep[i][k];
                         if (op.phases[k] >= 1.0)
                             op.phases[k] -= 1.0;
                         else if (op.phases[k] < 0.0)
@@ -2258,6 +2254,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     }
                 }
             }
+            // The copies' increments move on toward the block's only while one differs from it: a pitch holding still,
+            // as most do, leaves them as they are, without a store a copy and a sample (each copy reads its own alone).
+            if (incMoving[i] && !noise[i])
+                for (int k = 0; k < copies[i]; ++k)
+                    op.incNow[k] += incStep[i][k];
             if (ring != 1.0) {
                 mono *= ring;
                 l *= ring;
