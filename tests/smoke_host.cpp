@@ -683,6 +683,7 @@ int main(int argc, char **argv) {
         double f1ToA = 0.0; // B goes into filter 1 (which isn't heard), and filter 1 modulates A
         int filter = 0;     // the filter A goes through
         bool intoLast = false; // that filter is heard only through the last one, filter 2, a 300 Hz low-pass
+        double mix = 1.0;      // that filter's Mix
     };
     // Plays the patch for ~0.1 s; returns the left channel after a short settle.
     auto play = [&](const Patch &patch) {
@@ -702,6 +703,8 @@ int main(int argc, char **argv) {
             paramEvent(paramIndex(patch.filter, FilterParam::KeyTrack), 0.0),
             paramEvent(filterLinkIndex(std::min(patch.filter, last - 1), last), patch.intoLast ? 1.0 : 0.0),
         };
+        for (int f = 0; f < kFilters; ++f)
+            settings.push_back(paramEvent(paramIndex(f, FilterParam::Mix), f == patch.filter ? patch.mix : 1.0));
         if (patch.intoLast)
             settings.insert(settings.end(),
                             {paramEvent(paramIndex(last, FilterParam::Type), static_cast<double>(FilterType::LowPass)),
@@ -977,6 +980,19 @@ int main(int argc, char **argv) {
     std::printf("      saw 880/440 Hz: %.2f dry, %.2f low-passed at 300 Hz, %.2f high-passed at 2 kHz\n", saw,
                 lowPassed, highPassed);
     check(lowPassed < saw / 2.0 && highPassed > saw * 2.0, "low-pass and high-pass reshape the spectrum");
+    // A filter's Mix blends what goes in with what it makes of it: at 0 the saw comes through as it was; at 50 % its
+    // 880 Hz is about half the dry saw's, as the low-pass at 300 Hz puts out little there (an eighth, out of phase,
+    // taking a little more away).
+    const double mixedNone = secondHarmonicRatio(
+        {.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::LowPass, .cutoffHz = 300.0, .mix = 0.0});
+    const std::vector<float> dry = play({.wave = OpWave::Saw}),
+                             half = play({.wave = OpWave::Saw, .throughFilter = true, .type = FilterType::LowPass,
+                                          .cutoffHz = 300.0, .mix = 0.5});
+    const double halfShare = magnitude(half, 880.0) / std::max(magnitude(dry, 880.0), 1e-9);
+    std::printf("      saw low-passed at 300 Hz: 880/440 Hz %.2f at 0 %% mix; at 50 %% its 880 Hz %.2f of the dry saw's\n",
+                mixedNone, halfShare);
+    check(std::abs(mixedNone / saw - 1.0) < 0.02 && halfShare > 0.35 && halfShare < 0.6,
+          "a filter's Mix blends what goes in with what it makes of it");
     // Each slope from 6 to 24 dB per octave cuts the same filters harder than the one before: both harmonics lie past
     // the low-pass's cutoff and before the high-pass's, so the 2nd falls (or rises) against the 1st by another
     // pole's worth each time.

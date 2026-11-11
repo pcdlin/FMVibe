@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <numbers>
 
 namespace fmvibe {
@@ -222,42 +223,52 @@ private:
 #endif
 };
 
-// Magnitude response at `hz`, from the analog prototypes, for drawing. `slope` is as stored (0..3).
-inline double filterResponse(FilterType type, int slope, double cutoffHz, double resonance, double hz) {
-    auto secondOrder = [](double w, double k) { return std::sqrt((1.0 - w * w) * (1.0 - w * w) + (k * w) * (k * w)); };
+// Magnitude response at `hz`, from the analog prototypes, for drawing. `slope` is as stored (0..3). `mix` blends the
+// filter with what goes in, as Filter::process()'s callers do: the two are summed with their phases, so a notch at 50 %
+// dips about 6 dB, and a band-pass's skirts flatten out 6 dB down.
+inline double filterResponse(FilterType type, int slope, double cutoffHz, double resonance, double hz,
+                             double mix = 1.0) {
+    using Complex = std::complex<double>;
     const double w = hz / cutoffHz;
+    const Complex s{0.0, w};
     slope = playedSlope(type, slope);
     auto stage = [&](double k, bool onePole) {
+        const Complex d = s * s + k * s + 1.0;
         switch (type) {
         case FilterType::LowPass: // (1 + s) over the second order for the one-pole form
-            return (onePole ? std::sqrt(1.0 + w * w) : 1.0) / secondOrder(w, k);
+            return (onePole ? 1.0 + s : Complex{1.0}) / d;
         case FilterType::HighPass: // (s^2 + s)
-            return (onePole ? w * std::sqrt(1.0 + w * w) : w * w) / secondOrder(w, k);
+            return (onePole ? s * s + s : s * s) / d;
         case FilterType::BandPass:
-            return k * w / secondOrder(w, k);
+            return k * s / d;
         case FilterType::Notch:
-            return std::abs(1.0 - w * w) / secondOrder(w, k);
+            return (s * s + 1.0) / d;
         default:
-            return 1.0 / secondOrder(w, k);
+            return 1.0 / d;
         }
     };
+    Complex h{1.0};
     switch (type) {
     case FilterType::LowPass:
     case FilterType::HighPass:
     case FilterType::BandPass:
-    case FilterType::Notch: {
-        const double first = slope == 0 ? stage(onePoleDamping(resonance), true) : stage(filterDamping(resonance), false);
-        return first * (slope == 2 ? stage(2.0, true) : slope == 3 ? stage(std::numbers::sqrt2, false) : 1.0);
-    }
+    case FilterType::Notch:
+        h = slope == 0 ? stage(onePoleDamping(resonance), true) : stage(filterDamping(resonance), false);
+        if (slope == 2)
+            h *= stage(2.0, true);
+        else if (slope == 3)
+            h *= stage(std::numbers::sqrt2, false);
+        break;
     case FilterType::Comb: {
         const double fb = combFeedback(resonance);
-        return std::sqrt(1.0 - fb * fb) /
-               std::sqrt(1.0 + fb * fb - 2.0 * fb * std::cos(2.0 * std::numbers::pi * hz / cutoffHz));
+        h = std::sqrt(1.0 - fb * fb) / (1.0 - fb * std::polar(1.0, -2.0 * std::numbers::pi * hz / cutoffHz));
+        break;
     }
     case FilterType::Count:
         break;
     }
-    return 1.0;
+    mix = std::clamp(mix, 0.0, 1.0);
+    return std::abs(1.0 - mix + mix * h);
 }
 
 } // namespace fmvibe

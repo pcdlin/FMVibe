@@ -101,8 +101,10 @@ enum class OpParam {
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
-// Shapers: how much of the filter goes into each shaper (see filterShaperIndex()). Stored in projects by number: only
-// append.
+// Shapers: how much of the filter goes into each shaper (see filterShaperIndex()). Mix, added later, blends what goes
+// in (before Drive) with what the filter makes of it, as the filter effect's does: 1 (to begin with) all filter.
+// Everything the filter puts out (to OUT, the operators, the filters and the shapers) is that blend. Stored in projects
+// by number: only append.
 enum class FilterParam {
     Type,
     Cutoff,
@@ -113,7 +115,8 @@ enum class FilterParam {
     Enabled,
     Slope,
     Shapers,
-    Count = Shapers + kShapers
+    Mix = Shapers + kShapers,
+    Count
 };
 // A shaper in each voice: the shaper effect's curves (see ClipMode), drive, output, mix and link,
 // and a drawn curve of its own for Custom (see shaperCurveCountIndex()); shaperParams() finds the fields of either.
@@ -1450,7 +1453,9 @@ static_assert(idOfIndex(filterModIndex(0, 0)) == 500 && idOfIndex(filterModIndex
               "filter modulation param ids moved");
 static_assert(idOfIndex(paramIndex(0, FilterParam::Type)) == 800 &&
                   idOfIndex(paramIndex(0, FilterParam::Slope)) == 807 && idOfIndex(filterShaperIndex(0, 0)) == 808 &&
-                  idOfIndex(filterShaperIndex(kFilters - 1, kShapers - 1)) == 829,
+                  idOfIndex(filterShaperIndex(kFilters - 1, kShapers - 1)) == 829 &&
+                  idOfIndex(paramIndex(0, FilterParam::Mix)) == 810 &&
+                  idOfIndex(paramIndex(kFilters - 1, FilterParam::Mix)) == 830 && kFilterParamCount <= 20,
               "filter param ids moved");
 static_assert(kFilterLinks == 4 && idOfIndex(filterLinkIndex(0, 1)) == 900 && idOfIndex(filterLinkIndex(0, 0)) == 901 &&
                   idOfIndex(filterLinkIndex(1, 0)) == 902 && idOfIndex(filterLinkIndex(1, 1)) == 903,

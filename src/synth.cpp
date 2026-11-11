@@ -1860,6 +1860,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             target.filterShaper[f][sh] =
                 filterEnabled[f] && shaperEnabled[sh] && !v.tail ? p[filterShaperIndex(f, sh)] : 0.0;
         target.filterOut[f] = p[paramIndex(f, FilterParam::Out)];
+        target.filterMix[f] = p[paramIndex(f, FilterParam::Mix)];
     }
     // A shaper clips what the operators, filters and shapers send it, like the shaper effect, and from there feeds
     // the filters and shapers, modulates operators and goes out, like a filter does. Shapers hear the shapers
@@ -2321,8 +2322,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     for (int c = 0; c < 2; ++c)
                         toFilter[f][c] += v.filterLast[from][c] * level.link[from][f];
             std::array<double, 2> y{};
-            for (int c = 0; c < channels; ++c)
-                y[c] = v.filters[f][c].process(toFilter[f][c], *filter[f], combs[f][c], combSize_);
+            for (int c = 0; c < channels; ++c) { // blended with what goes in by its Mix, as the filter effect is
+                const double in = toFilter[f][c];
+                y[c] = in + (v.filters[f][c].process(in, *filter[f], combs[f][c], combSize_) - in) * level.filterMix[f];
+            }
             if (!stereo)
                 y[1] = y[0];
             v.filterOut[f] = 0.5 * (y[0] + y[1]);

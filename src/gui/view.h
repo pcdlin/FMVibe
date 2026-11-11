@@ -1301,7 +1301,8 @@ private:
     // A filter's response, from its params; its key tracking (`keyTrackParam`) follows `pitch` (semitones, 69 is
     // A4). `spectrum`: what the filter puts out, measured, to show behind the response, if any.
     void paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam, int cutoffParam, int resonanceParam,
-                             int keyTrackParam, double pitch, Color color, const Spectrum *spectrum = nullptr);
+                             int keyTrackParam, int mixParam, double pitch, Color color,
+                             const Spectrum *spectrum = nullptr);
     void paintUnison(Canvas &c, Rect r, int op);
     void paintScope(Canvas &c, Rect r, int op);
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.

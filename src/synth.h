@@ -303,6 +303,7 @@ private:
         std::array<std::array<double, kOps>, kFilters> filterIndex{}; // [filter][to]
         std::array<std::array<double, kFilters>, kFilters> link{};  // [from][to]
         std::array<double, kFilters> filterOut{};
+        std::array<double, kFilters> filterMix{}; // how much of what a filter puts out is the filter, the rest its input
         std::array<std::array<double, kShapers>, kOps> shaperSend{};      // [op][shaper]
         std::array<std::array<double, kOps>, kShapers> shaperIndex{};     // [shaper][to], like index
         std::array<std::array<double, kFilters>, kShapers> shaperLink{};  // [shaper][filter]

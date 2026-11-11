@@ -373,6 +373,8 @@ void buildTable(ParamTable &t) {
             0.0, kFilterSlopes - 1.0, d.slope);
         add(paramIndex(filter, FilterParam::Enabled), name + " " + tr(Str::ParamOn), module, ParamKind::Toggle, 0.0,
             1.0, 0.0);
+        add(paramIndex(filter, FilterParam::Mix), name + " " + tr(Str::ParamMix), module, ParamKind::Percent, 0.0, 1.0,
+            1.0);
     }
     for (int from = 0; from < kFilters; ++from) {
         const std::string tag = "F" + std::to_string(from + 1);

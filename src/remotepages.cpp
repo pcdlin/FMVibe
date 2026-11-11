@@ -57,10 +57,13 @@ std::vector<clap_remote_controls_page_t> buildRemotePages(const ParamValues &val
              paramIndex(op, OpParam::Sustain), paramIndex(op, OpParam::Release)});
     }
 
-    for (int filter = 0; filter < kFilters; ++filter) { // its own fields; what it feeds goes on the Matrix pages
+    // A filter's own fields, as its page in the editor has them: Mix where Out was, which the routing graph's line to OUT
+    // sets. What it feeds goes on the Matrix pages.
+    for (int filter = 0; filter < kFilters; ++filter) {
         std::vector<int> fields;
-        for (int f = 0; f < static_cast<int>(FilterParam::Shapers); ++f)
-            fields.push_back(paramIndex(filter, FilterParam::Type) + f);
+        for (FilterParam f : {FilterParam::Type, FilterParam::Cutoff, FilterParam::Resonance, FilterParam::KeyTrack,
+                              FilterParam::Drive, FilterParam::Mix, FilterParam::Enabled, FilterParam::Slope})
+            fields.push_back(paramIndex(filter, f));
         add(tr(Str::ModuleFilters), trf(Str::ParamFilter, {std::to_string(filter + 1)}), fields);
     }
     std::vector<int> links;

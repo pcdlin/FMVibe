@@ -565,7 +565,8 @@ View::MenuNode View::cascadeCategories() const {
     for (int filter = 0; filter < kFilters; ++filter) {
         MenuNode node = category(kNodeNames[kOps + filter]);
         const std::string prefix = trf(Str::ParamFilter, {std::to_string(filter + 1)});
-        for (FilterParam field : {FilterParam::Cutoff, FilterParam::Resonance, FilterParam::KeyTrack, FilterParam::Drive})
+        for (FilterParam field :
+             {FilterParam::Cutoff, FilterParam::Resonance, FilterParam::KeyTrack, FilterParam::Drive, FilterParam::Mix})
             add(node, paramIndex(filter, field), prefix);
         filters.children.push_back(std::move(node));
     }

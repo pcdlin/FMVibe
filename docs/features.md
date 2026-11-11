@@ -111,7 +111,9 @@ What the plugin does and how its editor works, in full. Building and installing 
   Every filter's Cutoff, the filter effect's too, starts (and resets) at its knob's middle, about 632 Hz: there,
   a bipolar note source on it at 100 % puts it right on the note. Each filter also has Resonance, Key Track (how
   far the cutoff follows the note from C4 on, an octave per octave at 100 %; 0 to begin with, on every filter) and
-  Drive (saturation before the filter, anti-aliased like the shapers). A voice only ends once its filters have
+  Drive (saturation before the filter, anti-aliased like the shapers), and **Mix**, which blends what goes in (before
+  Drive) with what the filter makes of it, as the filter effect's does (100 % to begin with, all filter): everything
+  the filter puts out, to the output, the operators, the filters and the shapers, is that blend. A voice only ends once its filters have
   rung out (a plucked comb through the silences between its pulses too), and a filter whose sends go to 0 rings
   out too; when they come back, or its type or slope takes up a stage it left out, that starts from silence.
 - **Shapers S1 and S2**, per voice, each switchable on and off (off to begin with): the shaper effect in every
@@ -122,7 +124,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   Feedback`), and a shaper's output feeds the filters (`S1 → F1`), for
   distortion into a filter or a filter's sound distorted, and modulates operators the way an operator does
   (`S1 → A`, scaled by FM Amount), so a modulator can be folded or squared off before it reaches its carrier. Its
-  **To Out** sends it straight to the output, like an operator's Out (0 to begin with, so a new shaper is heard only
+  **To Out**, set by its line to OUT's label in the routing graph, sends it straight to the output, like an operator's Out (0 to begin with, so a new shaper is heard only
   once it is routed out, or through what it feeds or modulates). Operators hear its previous output sample, and it
   hears a filter's previous one, so a filter and a shaper can feed each other round in a loop. S2 hears S1 as it is
   that sample, and S1 hears S2, and each shaper itself, a sample late, so shapers can feed each other and themselves
@@ -1197,19 +1199,22 @@ may show anywhere, repaints the whole of it.
     and dragging on lengthens the segment further. The same goes for the mod envelopes' displays. In the graph, an operator with unison is drawn as a stack of rings.
   - Shapers: the summary (its curve, what feeds it, the filters it feeds, whether it goes out and the operators it
     modulates, as a filter's has), its curve's list with the link switch beside it, and for a Custom curve the
-    symmetric one between them (as on the shaper effect's card), the Drive, Output, Mix and To Out knobs,
+    symmetric one between them (as on the shaper effect's card), the Drive, Output and Mix knobs, centered under them
+    (what goes straight out is its line to OUT's label),
     and its transfer curve; a Custom curve shows its points and bends there to drag, like a shaper effect's card, and its
     edit button (a pencil) opens the big curve editor over the routing panel, the shaper's page staying beside it. Underneath
     are the send knobs of the operators and filters that feed it.
   - Filters: the summary (its type and slope, then what feeds it, what it feeds and whether it goes out, and the
     operators it modulates, as a shaper's has), type buttons across the row under it, each a small picture of its
-    response (named on hover), cutoff, resonance, key tracking, drive and output, and a live response curve whose
+    response (named on hover), cutoff, resonance, key tracking, drive and mix (its output level is its line to OUT's
+    label), and a live response curve, drawn as its Mix blends what goes in back in (a notch at 50 % dips about 6 dB,
+    a low-pass leveling off 6 dB down past its cutoff), whose
     handle drags cutoff (sideways) and resonance (up/down), with the slope's list under it, as the filter effect's and
     a split's are: 6, 12, 18 or 24 dB (a band-pass's or notch's shows 6 and 18 faintly and can't pick them, and shows
     what plays; for a comb it is faint and doesn't open). With its cutoff or resonance modulated, faint curves
     show how far the modulation takes it either way, and while notes play the curve follows where the newest
     voice is (the handle stays at the set values, the cutoff a C4 has). Key tracking moves all of it with that
-    voice's note, an octave per octave at 100 %. The filter effect's display does the same, with a handle of its own for cutoff and resonance, its key tracking
+    voice's note, an octave per octave at 100 %. The filter effect's display does the same, its Mix drawn in too, with a handle of its own for cutoff and resonance, its key tracking
     staying where the last note left it, as the effect's does. It sits on the filter effect's grid. Behind the curve,
     like the filter effect's, is what the filter puts out, all voices together, measured before its output level
     (the Param EQ's analyzer: a 2048-point FFT in 96 bands, 0 dB at the top), while the editor is open; a filter
@@ -1598,7 +1603,7 @@ may show anywhere, repaints the whole of it.
 | --- | --- |
 | Mix | Macros (the eight knobs, the page shown first), Global (Volume, FM Amount, Pitch, Pan), Play (Mono, Legato, Glide, Glide Always, Bend Range, Voices), Outputs (A–F, then S1 and S2 To Out) |
 | Operators | Op A … Op F: Wave, Ratio, Pitch (Fixed Freq and Fixed Mult while the operator is fixed), Detune, Attack, Decay, Sustain, Release |
-| Filters | Filter 1 and 2: Type, Cutoff, Resonance, Key Track, Drive, Out, On, Slope; Filter links: F1 Feedback, F1 → F2, F2 → F1, F2 Feedback |
+| Filters | Filter 1 and 2: Type, Cutoff, Resonance, Key Track, Drive, Mix, On, Slope; Filter links: F1 Feedback, F1 → F2, F2 → F1, F2 Feedback |
 | Shapers | Shaper 1 and 2: On, Curve, Drive, Output, Mix, Link, then what it feeds into F1 and F2 |
 | Matrix | "A modulates" … "F modulates": what that operator modulates; "Into F1", "Into F2": each operator's send into that filter; "F1 modulates", "F2 modulates": the operators each filter modulates; "Into S1", "S1 modulates" and the same for S2: each operator's and filter's send into that shaper, and the operators it modulates; "Shapers into shapers": S1 Feedback, S1 → S2, S2 → S1, S2 Feedback |
 | Modulation | One page per source, in the editor's order: its first 8 slot depths |
@@ -1611,7 +1616,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,259 of FMVibe's 19,378 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,261 of FMVibe's 19,380 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

@@ -57,7 +57,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     octaves, and feedback stays Phase whatever its mode param says; every wave sounds; a saw's 2nd harmonic sits at
     half the fundamental, and Alt Sine's, Organ's and Vowel's where their series put them; a Custom wave plays its
     partials, only as many as its count (the 40th silent at 32, heard at 64); a low-pass at 300 Hz and a high-pass
-    at 2 kHz move that ratio the right way, each slope from 6 to 24 dB harder than the one before (the 6 dB
+    at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
     still ends;
@@ -429,11 +429,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     after (read off the rendered pixels);
   - a shaper: switching it on with its tab, sending an operator and a filter into it (in the graph and the matrix)
     and running it onto an operator and into a filter, its page's curve list, link switch, symmetric switch (for
-    a Custom curve) and knobs, its Custom curve drawn on the page and in the big editor;
+    a Custom curve) and knobs (Drive, Output and Mix, centered, with no To Out), its Custom curve drawn on the page and in the big editor;
   - the shaper effect's SYM switch, hidden but for a Custom curve, putting a point in the middle of its drawn curve, a double-click on the curve's
     mirrored left half adding a point on the right, the middle point refusing to be deleted, and the switch
     undoing with its point;
-  - dragging the filter response handle, switching between the graph and matrix views (the tab shown opening its
+  - dragging the filter response handle, the filter's Mix knob (where Out was) moving its response and undone
+    putting it back (read off the rendered pixels), switching between the graph and matrix views (the tab shown opening its
     panel's edge, and a hovered one's shape, read off the rendered pixels), and toggling a matrix cell: undone, its
     route (or one the wheel switched on) not kept at 0 %, and a press drifting a pixel setting nothing; a shaper's
     row routing it into the other shaper and, on the diagonal, into itself;
@@ -496,8 +497,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     flanger's STEREO and its + | − picking its polarity, the filter's Key Track and the shaper's and delay's LINK
     too) and the list of effects with their icons, each group's name on a strip, the splits' SPLIT group from the main line
     only (read off the rendered pixels);
-  - a filter's and the filter effect's responses moving with the note their key tracking follows (read off the
-    rendered pixels);
+  - a filter's and the filter effect's responses moving with the note their key tracking follows, and the filter
+    effect's with its Mix (read off the rendered pixels);
   - the disperser's and widener's displays following their params as modulation takes them (read off the rendered
     pixels);
   - switching effects with their cards' power switches and icons (a switched-off one's staying grey under the mouse,
@@ -910,7 +911,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,259 of the 19,378 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,261 of the 19,380 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

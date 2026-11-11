@@ -2363,8 +2363,9 @@ std::vector<View::Widget> View::widgets() const {
                  28.0f, kNodeNames[sources[i]]);
     };
     if (isShaperNode(node)) {
-        // The curve's list and the symmetric and link switches, then drive, output, mix and what goes straight out;
-        // a drawn curve is edited in the display unless its big editor has it.
+        // The curve's list and the symmetric and link switches, then drive, output and mix, centered under the display
+        // (what goes straight out is its line to OUT's label); a drawn curve is edited in the display unless its big
+        // editor has it.
         const int shaper = shaperOfNode(node);
         const bool custom = clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom;
         add(Kind::ListButton, shaperModeButton(custom), paramIndex(shaper, ShaperParam::Mode));
@@ -2374,11 +2375,12 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::Toggle, kShaperLinkButton, paramIndex(shaper, ShaperParam::Link));
         merge(switches);
         const int params[] = {paramIndex(shaper, ShaperParam::Drive), paramIndex(shaper, ShaperParam::Output),
-                              paramIndex(shaper, ShaperParam::Mix), paramIndex(shaper, ShaperParam::Out)};
-        const Str labels[] = {Str::LabelDrive, Str::LabelOutput, Str::LabelMix, Str::LabelToOut};
-        const float step = (kInspector.w - 32.0f) / 4.0f;
-        for (int i = 0; i < 4; ++i)
-            knob(params[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 110.0f}, 34.0f, tr(labels[i]));
+                              paramIndex(shaper, ShaperParam::Mix)};
+        const Str labels[] = {Str::LabelDrive, Str::LabelOutput, Str::LabelMix};
+        const float step = (kInspector.w - 32.0f) / 4.0f; // as far apart as four were, the three in the middle
+        for (int i = 0; i < 3; ++i)
+            knob(params[i], {kInspector.x + 0.5f * kInspector.w + step * (i - 1.0f), kInspector.y + 110.0f}, 34.0f,
+                 tr(labels[i]));
         if (clipMode(value(paramIndex(shaper, ShaperParam::Mode))) == ClipMode::Custom &&
             shapeEditing() != shaperCurve(shaper))
             drawnCurve(kFxSlots + shaper, kShaperDisplay);
@@ -2484,9 +2486,9 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ListButton, kFilterSlopeButton, paramIndex(filter, FilterParam::Slope));
         const int params[] = {paramIndex(filter, FilterParam::Cutoff), paramIndex(filter, FilterParam::Resonance),
                               paramIndex(filter, FilterParam::KeyTrack), paramIndex(filter, FilterParam::Drive),
-                              paramIndex(filter, FilterParam::Out)};
+                              paramIndex(filter, FilterParam::Mix)};
         const char *const labels[] = {tr(Str::LabelCutoff), tr(Str::LabelResonance), tr(Str::LabelKeyTrack),
-                                      tr(Str::LabelDrive), tr(Str::LabelOut)};
+                                      tr(Str::LabelDrive), tr(Str::LabelMix)};
         knobRow(params, labels);
         const Point handle = filterHandle(kFilterDisplay, value(params[0]), value(params[1]));
         add(Kind::FilterPoint, {handle.x - 8.0f, handle.y - 8.0f, 16.0f, 16.0f}, -1, filter);
@@ -4140,7 +4142,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         paintFilterResponse(c, display, paramIndex(slot, FxParam::FilterType),
                             paramIndex(slot, FxParam::FilterSlope), paramIndex(slot, FxParam::FilterCutoff),
                             paramIndex(slot, FxParam::FilterResonance), paramIndex(slot, FxParam::FilterKeyTrack),
-                            telemetry_.fxPitch, fx, &telemetry_.fxSpectrum[slot]);
+                            paramIndex(slot, FxParam::FilterMix), telemetry_.fxPitch, fx, &telemetry_.fxSpectrum[slot]);
         break;
     case FxType::Compressor:
         paintCompressor(c, display, slot);
@@ -5678,7 +5680,8 @@ void View::paintInspector(Canvas &c) {
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
                         paramIndex(filter, FilterParam::Slope), paramIndex(filter, FilterParam::Cutoff),
                         paramIndex(filter, FilterParam::Resonance), paramIndex(filter, FilterParam::KeyTrack),
-                        telemetry_.voices > 0 ? telemetry_.notePitch : 60.0, kFilterColor,
+                        paramIndex(filter, FilterParam::Mix), telemetry_.voices > 0 ? telemetry_.notePitch : 60.0,
+                        kFilterColor,
                         &telemetry_.filterSpectrum[filter]);
     c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), kTextLabel, kFaint,
            Align::Left, true);
@@ -5974,7 +5977,7 @@ void View::paintNoiseSlope(Canvas &c, Rect r, int op) {
 }
 
 void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam, int cutoffParam,
-                               int resonanceParam, int keyTrackParam, double pitch, Color color,
+                               int resonanceParam, int keyTrackParam, int mixParam, double pitch, Color color,
                                const Spectrum *spectrum) {
     c.fillRect(r, kDisplayColor, kRadiusCard);
     const Rect inner{r.x + 10.0f, r.y + 10.0f, r.w - 20.0f, r.h - 20.0f};
@@ -5999,15 +6002,17 @@ void View::paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam,
     const double resonance = value(resonanceParam);
     const int steps = type == FilterType::Comb ? 240 : 96; // comb teeth need more points
     const double slope = value(slopeParam);
+    // Mixed with what goes in, as it plays (and as modulation takes it, live).
+    const double mix = std::clamp(liveAmount(mixParam), 0.0, 1.0);
     auto response = [&](double cutoffNorm, double res) {
         std::vector<double> key = curveKey(Curve::Filter, inner);
-        key.insert(key.end(), {static_cast<double>(type), slope, cutoffNorm, res});
+        key.insert(key.end(), {static_cast<double>(type), slope, cutoffNorm, res, mix});
         return curves_.get(key, [&] {
             std::vector<Point> points;
             for (int i = 0; i <= steps; ++i) {
                 const double x = static_cast<double>(i) / steps;
-                const double magnitude =
-                    filterResponse(type, filterSlope(slope), cutoffFromNorm(cutoffNorm), res, cutoffFromNorm(x));
+                const double magnitude = filterResponse(type, filterSlope(slope), cutoffFromNorm(cutoffNorm), res,
+                                                        cutoffFromNorm(x), mix);
                 const float db = static_cast<float>(20.0 * std::log10(std::max(magnitude, 1e-6)));
                 points.push_back({inner.x + static_cast<float>(x) * inner.w, yOfDb(db)});
             }

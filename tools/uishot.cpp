@@ -755,14 +755,14 @@ Point nodeTab(int node) {
     return ins(912.0f + node * 25.0f + (node >= kOps ? 6.0f : 0.0f) + (node >= kOps + kFilters ? 6.0f : 0.0f), 152.0f);
 }
 
-// A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output, Mix and To Out knobs, the
-// list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with its edit button in the display's
-// corner.
+// A shaper's page: its curve's list, the symmetric and link switches, the Drive, Output and Mix knobs (centered, as far
+// apart as four would be), the list's entries, and its drawn curve in the display (x 0..1 across, y -1..1 up), with its
+// edit button in the display's corner.
 constexpr Point kShaperList = ins(1009.0f, 205.0f);
 constexpr Point kShaperSym = ins(1096.0f, 205.0f);
 constexpr Point kShaperLink = ins(1146.0f, 205.0f);
 Point shaperKnob(int knob) {
-    return ins(900.0f + 268.0f / 4.0f * (knob + 0.5f), 242.0f); // Drive, Output, Mix, To Out
+    return ins(884.0f + 150.0f + 268.0f / 4.0f * (knob - 1.0f), 242.0f); // Drive, Output, Mix
 }
 Point shaperListItem(ClipMode mode) {
     return ins(1009.0f, 220.0f + 4.0f + static_cast<int>(mode) * 22.0f + 11.0f);
@@ -2780,6 +2780,32 @@ void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
     drag(view, fxHandle, {fxHandle.x - 30.0f, fxHandle.y - 15.0f});
     check(model.value(fxCutoff) < fxCutoffBefore - 0.05 && model.value(fxReso) > fxResoBefore + 0.05,
           "dragging the filter effect's response handle moves its cutoff and resonance");
+    // Its Mix shows in the response as a voice filter's does: what goes in blended back in (read off the rendered
+    // pixels).
+    {
+        const int fxMix = paramIndex(3, FxParam::FilterMix);
+        auto responsePixels = [&] {
+            std::vector<uint32_t> pixels;
+            for (float y = shown.y + 10.0f; y < shown.bottom() - 10.0f; y += 1.0f)
+                for (float x = shown.x + 10.0f; x < shown.right() - 10.0f; x += 1.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        view.mouseMove({600.0f, 60.0f}, {});
+        renderer.save(view, dir / "27d-fx-filter-full.png");
+        const std::vector<uint32_t> full = responsePixels();
+        const double mixBefore = model.value(fxMix);
+        model.set(fxMix, 0.4);
+        view.poll();
+        renderer.save(view, dir / "27e-fx-filter-mix.png");
+        const std::vector<uint32_t> mixed = responsePixels();
+        model.set(fxMix, mixBefore);
+        int moved = 0;
+        for (size_t i = 0; i < full.size(); ++i)
+            moved += full[i] != mixed[i];
+        std::printf("      the filter effect's Mix at 40 %%: %d pixels of its response change\n", moved);
+        check(mixBefore == 1.0 && moved > 300, "the filter effect's response follows its Mix");
+    }
 }
 
 // A shaper's page: the curve list picks Hard, the link switch unlinks, Drive turns; picked from the list, Custom shows
@@ -2799,6 +2825,14 @@ void testShapers(const std::filesystem::path &dir, Renderer &renderer) {
     check(at(ShaperParam::Mode) == static_cast<double>(ClipMode::Hard) && at(ShaperParam::Link) == 0.0 &&
               at(ShaperParam::Drive) > drive,
           "a shaper's list picks its curve, its chain unlinks it and its Drive knob turns");
+    // Three knobs, centered: Mix last, and nothing where a fourth would be (its To Out is its line to OUT's label).
+    drag(view, shaperKnob(2), {shaperKnob(2).x, shaperKnob(2).y + 30.0f});
+    const bool mixTurned = at(ShaperParam::Mix) < 1.0;
+    view.undo();
+    const double outBefore = at(ShaperParam::Out);
+    drag(view, shaperKnob(3), {shaperKnob(3).x, shaperKnob(3).y - 30.0f});
+    check(mixTurned && at(ShaperParam::Mix) == 1.0 && at(ShaperParam::Out) == outBefore,
+          "a shaper's page has Drive, Output and Mix, centered, and no To Out knob");
     model.set(paramIndex(0, OpParam::Enabled), 1.0);
     model.set(paramIndex(1, OpParam::Enabled), 1.0);
     model.set(shaperSendIndex(0, shaper), 0.8);
@@ -8171,6 +8205,41 @@ void run(const std::filesystem::path &dir, float scale) {
                            static_cast<float>(model.value(paramIndex(0, FilterParam::Resonance))) * (response.h - 20.0f)};
     drag(view, handle, {handle.x - 50.0f, handle.y - 20.0f});
     check(model.value(cutoff) < cutoffBefore - 0.15, "dragging the response handle moves the cutoff");
+    // Its last knob is Mix, where Out was (the line to OUT's label sets that): turned down, what goes in shows through
+    // the response, lifting it past the cutoff (read off the rendered pixels), and undone it is all filter again.
+    {
+        const int mix = paramIndex(0, FilterParam::Mix);
+        const Point mixKnob = ins(884.0f + 34.0f + 4.0f * 58.0f, 242.0f);
+        // The display's right half, well past the cutoff, where the response lifts.
+        auto pastCutoff = [&] {
+            std::vector<uint32_t> pixels;
+            for (float y = response.y + 10.0f; y < response.bottom() - 10.0f; y += 1.0f)
+                for (float x = response.center().x; x < response.right() - 10.0f; x += 1.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        view.mouseMove({1000.0f, 148.0f}, {});
+        renderer.save(view, dir / "4-filter-mix-full.png");
+        const std::vector<uint32_t> full = pastCutoff();
+        drag(view, mixKnob, {mixKnob.x, mixKnob.y + 100.0f});
+        const double turned = model.value(mix);
+        view.mouseMove({1000.0f, 148.0f}, {});
+        renderer.save(view, dir / "4-filter-mix.png");
+        const std::vector<uint32_t> mixed = pastCutoff();
+        view.undo();
+        view.mouseMove({1000.0f, 148.0f}, {});
+        renderer.save(view, dir / "4-filter-mix-undone.png");
+        int moved = 0, back = 0;
+        const std::vector<uint32_t> undone = pastCutoff();
+        for (size_t i = 0; i < full.size(); ++i) {
+            moved += full[i] != mixed[i];
+            back += full[i] != undone[i];
+        }
+        std::printf("      the filter's Mix at %.0f %%: %d pixels of its response past the cutoff change\n",
+                    turned * 100.0, moved);
+        check(model.value(mix) == 1.0 && turned < 0.8 && moved > 300 && back == 0,
+              "a filter's Mix knob blends what goes in back in, its response following it");
+    }
     model.set(paramIndex(0, FilterParam::Resonance), 0.55);
     // Behind the response, what the filter puts out, measured: a 220 Hz saw's harmonics, falling away past the
     // cutoff.
