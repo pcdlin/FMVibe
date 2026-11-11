@@ -113,7 +113,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     neither or both are), a three-band split's middle one too; a hard shaper on a split's low band squaring an A4 only when the A4 is in that band; the
     chain's retired places doing nothing; a loop, which only params make, staying finite; and a macro taking a wire's
     level down;
-  - each effect on its own, among them a shimmer's tail rising in octaves where a hall's has none (a fifth up or
+  - each effect on its own, among them a chorus held still (no Depth) waiting its Delay, half a period of an A4,
+    so that at 50 % Mix the A4 cancels, at 100 % its voices alone play it at its level and at 0 % it is left alone,
+    and its Spread panning its voices apart (none keeping them in the middle); a shimmer's tail rising in octaves
+    where a hall's has none (a fifth up or
     an octave down as its Pitch says, and nothing shifted at 0 % Shimmer), the widener
     widening the sides above its high-pass while the mono sum stays dry, the phaser's and flanger's notches deepest
     at 100 % mix (half wet), the flanger's taking half of the tone in it away at 50 %, a stereo flanger's sides
@@ -207,6 +210,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     modulation along (a linked one's bands taking the low band's settings), while a version 6 state loads one back
     as saved; and a version 9 state's depths on its thresholds loading three quarters as deep, as their range grew
     from 60 dB to 80, a version 10 state's as saved;
+  - the chorus's Voices (2, 4, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
+    clicking: no sample stepping further than the sine's own do;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,
@@ -501,6 +506,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Bass Off); the handles on its display setting Mono Bass, Pan, Width and Gain, each drag an undo step, the band
     narrowing into its middle below Mono Bass's line (read off the rendered pixels), and a double-click putting Mono
     Bass's back to Off;
+  - the chorus's card: added from the list of effects after the flanger, with three voices; its 2 | 3 | 4 under its
+    display picking its voices, each an undo step, its display drawing a lane a voice (read off the rendered
+    pixels), and its Rate and Spread knobs turning;
   - the newer effects' cards (the widener's knobs, the frequency shifter's Shift, the phaser's SYNC, the
     flanger's STEREO and its + | − picking its polarity, the filter's Key Track and the shaper's and delay's LINK
     too) and the list of effects with their icons, each group's name on a strip, the splits' SPLIT group from the main line
@@ -889,7 +897,8 @@ itself.
   400 + 10·from + to, filter modulation
   500 + 10·filter + to, shapers 600 + 50·shaper, filters 800 + 20·filter, filter links 900+, effect slots
   1400 + 80·slot (their fields past
-  the 80th 12000 + 20·slot, past the 100th 25000 + 40·slot, and past the 140th 36000 + 20·slot; the slots past the
+  the 80th 12000 + 20·slot, past the 100th 25000 + 40·slot, past the 140th 36000 + 20·slot, and past the 160th
+  36400 + 40·slot; the slots past the
   first 16 every field
   26000 + 200·(slot - 16)), source places
   2800 + 40·place, freeform shapes 4000 + 100·place (their points past the 33rd 15000 + 100·place), the sources'

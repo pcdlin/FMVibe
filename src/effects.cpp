@@ -197,6 +197,12 @@ constexpr double kShimmerStretch = 0.6;
 constexpr double kMaxPreDelay = 0.25;
 constexpr double kMaxFlangerDelay = 0.032; // the longest center delay at full depth, with room
 constexpr double kWidenerSweep = 0.12;    // how far the widener's taps are swept either way, of their delay
+constexpr double kChorusSweep = 0.5;      // how far the chorus's voices are swept either way at full Depth, of Delay
+// The fastest the chorus's voices' sweeps move apart or together as Voices changes, in cycles a second: a voice's
+// pitch then wavers a little more for a moment, rather than jumping.
+constexpr double kChorusGlide = 1.0;
+// How long a chorus voice takes to fade in or out as Voices changes, or to move between the sides as Spread does.
+constexpr double kChorusFadeSeconds = 0.01;
 
 // Reads a delay line `delay` samples behind `write`, between samples.
 double readBehind(const ZeroBuffer &line, int write, double delay) {
@@ -255,6 +261,22 @@ double phaserCorner(double centerNorm, double depth, double lfo) {
 
 double flangerDelay(double delayNorm, double depth, double lfo) {
     return timeFromNorm(delayNorm) * (1.0 + 0.95 * depth * lfo);
+}
+
+double chorusDelay(double delayNorm, double depth, double lfo) {
+    return timeFromNorm(delayNorm) * (1.0 + kChorusSweep * std::clamp(depth, 0.0, 1.0) * lfo);
+}
+
+double chorusPan(int voice, int voices, double spread) {
+    if (voices <= 1)
+        return 0.0;
+    return std::clamp(spread, 0.0, 1.0) * (-1.0 + 2.0 * voice / (voices - 1.0));
+}
+
+ChorusGains chorusGains(int voice, int voices, double spread) {
+    const double angle = (1.0 + chorusPan(voice, voices, spread)) * 0.25 * std::numbers::pi;
+    const double scale = std::numbers::sqrt2 / std::max(voices, 1);
+    return {scale * std::cos(angle), scale * std::sin(angle)};
 }
 
 double sweepFeedback(double feedback) {
@@ -426,6 +448,8 @@ void Effects::prepare(double sampleRate) {
         slot.widener.line.assign(static_cast<size_t>(std::ceil(longestTap * sampleRate)) + 4, 0.0f);
         for (ZeroBuffer &line : slot.flanger.lines)
             line.assign(static_cast<size_t>(std::ceil(kMaxFlangerDelay * sampleRate)) + 4, 0.0f);
+        for (ZeroBuffer &line : slot.chorus.lines)
+            line.assign(static_cast<size_t>(std::ceil(kMaxChorusDelay * (1.0 + kChorusSweep) * sampleRate)) + 4, 0.0f);
         Analyzer::prepare(slot.analyzed, static_cast<int>(&slot - slots_.data()), kFxSlots + kFilters);
         if (!slot.amp)
             slot.amp = std::make_unique<AmpFx>();
@@ -597,6 +621,28 @@ void Effects::start(int slot, const ParamValues &p, double tempo) {
         s.flanger.mix = sweepWet(at(FxParam::FlangerMix));
         s.flanger.polarity = sweepPolarity(at(FxParam::FlangerNegative));
         break;
+    case FxType::Chorus: {
+        Chorus &ch = s.chorus;
+        for (ZeroBuffer &line : ch.lines)
+            line.zero(ch.ran);
+        ch.ran = 0;
+        ch.write = 0;
+        ch.phase = 0.0;
+        ch.delayKnown = false;
+        ch.mix = at(FxParam::ChorusMix);
+        // Its voices where Voices and Spread put them at once; those it doesn't play silent, their sweeps where they
+        // would be with one voice more, so one coming in glides little.
+        const int voices = static_cast<int>(std::clamp(std::lround(at(FxParam::ChorusVoices)),
+                                                       static_cast<long>(kMinChorusVoices),
+                                                       static_cast<long>(kMaxChorusVoices)));
+        for (int k = 0; k < kMaxChorusVoices; ++k) {
+            ch.offsets[k] = chorusOffset(k, std::max(voices, k + 1));
+            const ChorusGains g = k < voices ? chorusGains(k, voices, at(FxParam::ChorusSpread)) : ChorusGains{};
+            ch.gainL[k] = g.left;
+            ch.gainR[k] = g.right;
+        }
+        break;
+    }
     case FxType::FreqShifter:
         s.shifter = Shifter{};
         s.shifter.mix = at(FxParam::ShiftMix);
@@ -779,13 +825,18 @@ void Effects::idleSweeps(uint32_t n, const ParamValues &p, double tempo) {
         if (slot >= kFxSlots || slots_[slot].fade <= 0.0)
             continue;
         Slot &fx = slots_[slot];
-        const bool phaser = fx.running == FxType::Phaser;
-        if (!phaser && fx.running != FxType::Flanger)
+        const FxType type = fx.running;
+        if (type != FxType::Phaser && type != FxType::Flanger && type != FxType::Chorus)
             continue;
-        double &phase = phaser ? fx.phaser.phase : fx.flanger.phase;
-        phase += sweepHz([&p](int k) { return p[k]; }, slot, phaser, tempo) / sampleRate_ * n;
+        double &phase = type == FxType::Phaser   ? fx.phaser.phase
+                        : type == FxType::Chorus ? fx.chorus.phase
+                                                 : fx.flanger.phase;
+        phase += sweepHz([&p](int k) { return p[k]; }, slot, type, tempo) / sampleRate_ * n;
         phase -= std::floor(phase);
-        (phaser ? fx.phaser.coefKnown : fx.flanger.delayKnown) = false; // worked out again where the sweep is now
+        bool &known = type == FxType::Phaser   ? fx.phaser.coefKnown
+                      : type == FxType::Chorus ? fx.chorus.delayKnown
+                                               : fx.flanger.delayKnown;
+        known = false; // worked out again where the sweep is now
     }
 }
 
@@ -863,6 +914,7 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
     case FxType::Reverb:
     case FxType::Phaser:
     case FxType::Flanger:
+    case FxType::Chorus:
     case FxType::FreqShifter:
     case FxType::Disperser:
     case FxType::Widener: {
@@ -871,6 +923,7 @@ void Effects::runSlot(int slot, float *const *io, uint32_t n, const ParamValues 
         const double peak = fx.running == FxType::Reverb      ? runReverb(slot, io, n, p)
                             : fx.running == FxType::Phaser    ? runPhaser(slot, io, n, p, tempo)
                             : fx.running == FxType::Flanger   ? runFlanger(slot, io, n, p, tempo)
+                            : fx.running == FxType::Chorus    ? runChorus(slot, io, n, p, tempo)
                             : fx.running == FxType::Disperser ? runDisperser(slot, io, n, p)
                             : fx.running == FxType::Widener  ? runWidener(slot, io, n, p)
                                                               : runShifter(slot, io, n, p);
@@ -2085,6 +2138,7 @@ float Effects::sweepPhase(int slot) const {
     const Slot &s = slots_[slot];
     return static_cast<float>(s.running == FxType::Phaser     ? s.phaser.phase
                               : s.running == FxType::Flanger  ? s.flanger.phase
+                              : s.running == FxType::Chorus   ? s.chorus.phase
                               : s.running == FxType::Widener ? s.widener.phases[0]
                                                               : 0.0);
 }
@@ -2270,6 +2324,85 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
             peak = std::max({peak, std::abs(x), std::abs(delayed)});
         }
         f.write = f.write + 1 == size ? 0 : f.write + 1;
+    }
+    return peak;
+}
+
+double Effects::runChorus(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
+    Chorus &ch = slots_[slot].chorus;
+    ch.ran += n; // counted ahead of what this chunk writes (see start())
+    auto at = [&](FxParam field) { return p[paramIndex(slot, field)]; };
+    const double step = sweepHz([&p](int i) { return p[i]; }, slot, FxType::Chorus, tempo) / sampleRate_;
+    const double delaySeconds = timeFromNorm(at(FxParam::ChorusDelay)); // chorusDelay()'s, the same all chunk
+    const double swing = kChorusSweep * std::clamp(at(FxParam::ChorusDepth), 0.0, 1.0);
+    const double feedback = sweepFeedback(at(FxParam::ChorusFeedback));
+    const double mixStep = rampStep(ch.mix, at(FxParam::ChorusMix), n, rampShortest_);
+    const int voices = static_cast<int>(std::clamp(std::lround(at(FxParam::ChorusVoices)),
+                                                   static_cast<long>(kMinChorusVoices),
+                                                   static_cast<long>(kMaxChorusVoices)));
+    const double spread = at(FxParam::ChorusSpread);
+    const int size = static_cast<int>(ch.lines[0].size());
+    // The voices' sweeps glide toward their places apart, and their gains ramp to where Voices and Spread put them;
+    // a voice silent and staying so is left out.
+    const uint32_t fade = std::max(rampShortest_, static_cast<uint32_t>(kChorusFadeSeconds * sampleRate_));
+    std::array<double, kMaxChorusVoices> stepL{}, stepR{};
+    std::array<bool, kMaxChorusVoices> heard{};
+    for (int k = 0; k < kMaxChorusVoices; ++k) {
+        if (k < voices)
+            ch.offsets[k] = moveToward(ch.offsets[k], chorusOffset(k, voices), kChorusGlide * n / sampleRate_);
+        const ChorusGains g = k < voices ? chorusGains(k, voices, spread) : ChorusGains{};
+        stepL[k] = rampStep(ch.gainL[k], g.left, n, fade);
+        stepR[k] = rampStep(ch.gainR[k], g.right, n, fade);
+        heard[k] = k < voices || ch.gainL[k] != 0.0 || ch.gainR[k] != 0.0;
+    }
+    // Each voice's delay in samples where the sweep is at `phase`: worked out every kSweepStep samples, as the
+    // flanger's is (see runFlanger()).
+    auto delayAt = [&](double phase, int k) {
+        const double lfo = std::sin(2.0 * std::numbers::pi * (phase - ch.offsets[k]));
+        return std::clamp(delaySeconds * (1.0 + swing * lfo) * sampleRate_, 1.0, size - 2.0); // chorusDelay()
+    };
+    if (!ch.delayKnown) {
+        for (int k = 0; k < kMaxChorusVoices; ++k)
+            ch.delay[k] = delayAt(ch.phase, k);
+        ch.delayKnown = true;
+    }
+    std::array<double, kMaxChorusVoices> delayTo{}, delayStep{};
+    uint32_t stepLeft = 0;
+    double peak = 0.0;
+    for (uint32_t s = 0; s < n; ++s) {
+        if (stepLeft == 0) {
+            stepLeft = std::min(kSweepStep, n - s);
+            double ahead = ch.phase;
+            for (uint32_t k = 0; k < stepLeft; ++k) {
+                ahead += step;
+                ahead -= std::floor(ahead);
+            }
+            for (int k = 0; k < kMaxChorusVoices; ++k) {
+                delayTo[k] = delayAt(ahead, k);
+                delayStep[k] = (delayTo[k] - ch.delay[k]) / stepLeft;
+            }
+        }
+        --stepLeft;
+        ch.mix += mixStep;
+        ch.phase += step;
+        ch.phase -= std::floor(ch.phase);
+        double wetL = 0.0, wetR = 0.0;
+        for (int k = 0; k < kMaxChorusVoices; ++k) {
+            ch.delay[k] = stepLeft == 0 ? delayTo[k] : ch.delay[k] + delayStep[k];
+            if (!heard[k])
+                continue;
+            ch.gainL[k] += stepL[k];
+            ch.gainR[k] += stepR[k];
+            wetL += ch.gainL[k] * readBehind(ch.lines[0], ch.write, ch.delay[k]);
+            wetR += ch.gainR[k] * readBehind(ch.lines[1], ch.write, ch.delay[k]);
+        }
+        const double x[2] = {io[0][s], io[1][s]}, wet[2] = {wetL, wetR};
+        for (int c = 0; c < 2; ++c) {
+            ch.lines[c][ch.write] = static_cast<float>(x[c] + feedback * wet[c]);
+            io[c][s] = static_cast<float>(x[c] + (wet[c] - x[c]) * ch.mix);
+            peak = std::max({peak, std::abs(x[c]), std::abs(wet[c])});
+        }
+        ch.write = ch.write + 1 == size ? 0 : ch.write + 1;
     }
     return peak;
 }

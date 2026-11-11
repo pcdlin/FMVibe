@@ -109,6 +109,7 @@ STR(FxWidener, "Widener")
 STR(FxMultiDyn, "3-Band Dynamics")
 STR(FxAmp, "Amp")
 STR(FxUtility, "Utility")
+STR(FxChorus, "Chorus")
 
 // What a modulation place holds.
 STR(SourceEmpty, "Empty")
@@ -378,6 +379,13 @@ STR(ParamUtilityGain, "Utility Gain")
 STR(ParamUtilityPan, "Utility Pan")
 STR(ParamUtilityWidth, "Utility Width")
 STR(ParamUtilityMonoBass, "Utility Mono Bass")
+STR(ParamChorusRate, "Chorus Rate")
+STR(ParamChorusDepth, "Chorus Depth")
+STR(ParamChorusDelay, "Chorus Delay")
+STR(ParamChorusFeedback, "Chorus Feedback")
+STR(ParamChorusSpread, "Chorus Spread")
+STR(ParamChorusMix, "Chorus Mix")
+STR(ParamChorusVoices, "Chorus Voices")
 STR(ParamShiftRange, "Shift Range")
 STR(ParamShiftAmount, "Freq Shift")
 STR(ParamShiftSpread, "Shift Spread")
@@ -477,6 +485,7 @@ STR(FxTitleDisperser, "PHASE DISP")
 STR(FxTitleWidener, "WIDENER")
 STR(FxTitleAmp, "AMP")
 STR(FxTitleUtility, "UTILITY")
+STR(FxTitleChorus, "CHORUS")
 
 // The big editors' titles.
 STR(TitleShape, "{1} SHAPE")
@@ -703,6 +712,7 @@ STR(CaptionAllBands, "ALL BANDS") // the same, linked
 STR(CaptionPreDelay, "{1}  ·  pre {2}")
 STR(CaptionShimmer, "{1}  ·  shift {2}")
 STR(CaptionStages, "{1} stages")
+STR(CaptionVoices, "{1} voices")
 STR(CaptionDispersion, "{1}  ·  up to {2} ms")
 STR(CaptionWidener, "HP {1}  ·  {2}–{3} ms")
 STR(CaptionAmpDrive, "drive {1} dB") // how far the amp's stages saturate now
@@ -846,6 +856,7 @@ STR(TipUnipolar, "Unipolar")
 STR(TipBipolar, "Bipolar") // a Random card's switch, beside Unipolar
 STR(TipDelaySync, "Sync times to tempo")
 STR(TipSweepSync, "Sync sweep to tempo")
+STR(TipChorusVoices, "Number of voices")
 STR(TipPingPong, "Alternate echoes between sides")
 STR(TipDelayLink, "Left time for both sides")
 STR(TipBandLink, "Edit all bands")
@@ -885,7 +896,7 @@ STR(MenuFxDrive, "DRIVE") // the shaper and the amp
 STR(MenuFxEqFilter, "EQ & FILTER")
 STR(MenuFxDynamics, "DYNAMICS")
 STR(MenuFxSpace, "SPACE") // the delay and the reverb
-STR(MenuFxModulation, "MODULATION") // the phaser, the flanger and the frequency shifter
+STR(MenuFxModulation, "MODULATION") // the phaser, the flanger, the chorus and the frequency shifter
 STR(MenuFxStereo, "STEREO & PHASE") // the widener, the phase disperser and the utility
 STR(MenuFxSplit, "SPLIT") // from the main line: a split in two bands and in three (MenuSplitBands, MenuSplitThree)
 STR(MenuResetSettings, "Reset settings")

@@ -57,7 +57,7 @@ constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay, 
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
                             Str::FxDisperser, Str::FxWidener,   Str::FxMultiDyn,   Str::FxAmp,
-                            Str::FxUtility};
+                            Str::FxUtility,   Str::FxChorus};
 static_assert(std::size(kFxNames) == static_cast<size_t>(FxType::Count));
 constexpr Str kSourceTypeNames[] = {Str::SourceEmpty, Str::SourceLfo, Str::SourceEnvelope, Str::SourceRandom,
                                     Str::SourceMidi};
@@ -786,6 +786,17 @@ void buildTable(ParamTable &t) {
         fx(FxParam::UtilityWidth, tr(Str::ParamUtilityWidth), ParamKind::Percent, 0.0, kMaxUtilityWidth, 1.0);
         fx(FxParam::UtilityMonoBass, tr(Str::ParamUtilityMonoBass), ParamKind::CutoffOrOff, 0.0,
            normFromCutoff(kMaxUtilityMonoBass), 0.0);
+        // Three voices, wide, swept slowly a few milliseconds either way of 12 ms, half in.
+        fx(FxParam::ChorusRate, tr(Str::ParamChorusRate), ParamKind::SweepRate, 0.0, normFromRate(20.0),
+           normFromRate(0.8));
+        fx(FxParam::ChorusDepth, tr(Str::ParamChorusDepth), ParamKind::Percent, 0.0, 1.0, 0.5);
+        fx(FxParam::ChorusDelay, tr(Str::ParamChorusDelay), ParamKind::Time, 0.0, normFromTime(kMaxChorusDelay),
+           normFromTime(0.012));
+        fx(FxParam::ChorusFeedback, tr(Str::ParamChorusFeedback), ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
+        fx(FxParam::ChorusSpread, tr(Str::ParamChorusSpread), ParamKind::Percent, 0.0, 1.0, 1.0);
+        fx(FxParam::ChorusMix, tr(Str::ParamChorusMix), ParamKind::Percent, 0.0, 1.0, 0.5);
+        fx(FxParam::ChorusVoices, tr(Str::ParamChorusVoices), ParamKind::Count, kMinChorusVoices, kMaxChorusVoices,
+           3.0);
         // Synced, two bars a sweep.
         fx(FxParam::FlangerSync, tr(Str::ParamFlangerSync), ParamKind::Toggle, 0.0, 1.0, 0.0);
         fx(FxParam::FlangerDivision, tr(Str::ParamFlangerDivision), ParamKind::SyncDivision, 0.0, kDivisions - 1.0,

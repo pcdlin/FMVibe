@@ -2653,6 +2653,84 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
               .c_str());
 }
 
+// The chorus: added from the list of effects, under MODULATION after the flanger, with three voices; its voices picked
+// under its display (2, 3 and 4 as one choice in its middle, a click on the one lit leaving it), each an undo step, its
+// display drawing a lane a voice (read off the rendered pixels); and its Rate and Spread knobs turning.
+void testChorus(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    click(view, kFxTab);
+    addFx(view, FxType::Chorus);
+    auto at = [&](FxParam f) { return paramIndex(0, f); };
+    check(model.value(at(FxParam::Type)) == static_cast<double>(FxType::Chorus) &&
+              detail::fxOfferedPlace(FxType::Chorus) == detail::fxOfferedPlace(FxType::Flanger) + 1 &&
+              model.value(at(FxParam::ChorusVoices)) == 3.0,
+          "the list of effects adds a chorus, after the flanger, with three voices");
+    const Rect display = detail::fxDisplayIn(detail::fxCard(0.0f), FxType::Chorus);
+    auto voiceButton = [&](int voices) { return rectCenter(detail::chorusVoicesButton(display, voices)); };
+    const int voices = at(FxParam::ChorusVoices);
+    click(view, voiceButton(2));
+    const bool two = model.value(voices) == 2.0;
+    click(view, voiceButton(2));
+    const bool stays = model.value(voices) == 2.0;
+    click(view, voiceButton(4));
+    const bool four = model.value(voices) == 4.0;
+    view.undo();
+    const bool undone = model.value(voices) == 2.0;
+    view.redo();
+    check(two && stays && four && undone && model.value(voices) == 4.0,
+          "the chorus's 2, 3 and 4 under its display pick its voices, each an undo step");
+
+    // A lane a voice, held still (no audio running, so no dots), at full Depth: an eighth of a cycle in, four voices'
+    // lanes cross at four heights, and two voices' at two of them.
+    model.set(at(FxParam::ChorusDepth), 1.0);
+    model.live.age = 1.0f;
+    view.poll();
+    const Point away{600.0f, 628.0f};
+    view.mouseMove(away, {});
+    const Rect inner{display.x + 8.0f, display.y + 22.0f, display.w - 16.0f, display.h - 30.0f};
+    const float x = inner.x + 0.0625f * inner.w, mid = inner.center().y, reach = 0.5f * inner.h;
+    auto lit = [&](double level) { // a lane across `level` (-1..1, up) of the reach, within a pixel
+        const float y = mid - static_cast<float>(level) * reach;
+        const uint32_t clear = renderer.pixel({x, mid + 0.65f * reach});
+        for (float dy : {-1.0f, 0.0f, 1.0f})
+            if (renderer.pixel({x, y + dy}) != clear)
+                return true;
+        return false;
+    };
+    const double low = std::sin(std::numbers::pi / 8.0), high = std::sin(3.0 * std::numbers::pi / 8.0);
+    const bool fourShot = renderer.save(view, dir / "27f-chorus-four.png");
+    const bool fourLanes = lit(low) && lit(-low) && lit(high) && lit(-high);
+    click(view, voiceButton(2));
+    view.mouseMove(away, {});
+    const bool twoShot = renderer.save(view, dir / "27f-chorus-two.png");
+    const bool twoLanes = lit(low) && lit(-low) && !lit(high) && !lit(-high);
+    check(fourShot && twoShot && fourLanes && twoLanes,
+          "the chorus's display draws a lane a voice, a share of a cycle apart (read off the rendered pixels)");
+
+    // Rate, the first knob of the first row, turned up; Spread, the second of the second row, wide to begin with,
+    // turned down.
+    const double rateBefore = model.value(at(FxParam::ChorusRate));
+    const Point rateKnob = fxKnob(model, 0, 0, 3, 206.0f);
+    drag(view, rateKnob, {rateKnob.x, rateKnob.y - 20.0f});
+    const Point spreadKnob = fxKnob(model, 0, 1, 3, 266.0f);
+    drag(view, spreadKnob, {spreadKnob.x, spreadKnob.y + 20.0f});
+    check(model.value(at(FxParam::ChorusRate)) > rateBefore && model.value(at(FxParam::ChorusSpread)) < 1.0,
+          "the chorus's Rate and Spread knobs turn");
+
+    // Mid-sweep, a dot on each lane where it is now.
+    model.set(at(FxParam::ChorusVoices), 3.0);
+    model.live.age = 0.01f;
+    model.live.fxPhases[0] = 0.3f;
+    view.poll();
+    view.mouseMove(away, {});
+    const bool midnight = renderer.save(view, dir / "27f-chorus.png");
+    model.themeName = "Spectrum"; // and in the theme it starts in
+    view.mouseMove({601.0f, 628.0f}, {});
+    check(midnight && renderer.save(view, dir / "27f-chorus-spectrum.png"),
+          "render a chorus mid-sweep, three voices, in Midnight and Spectrum");
+}
+
 // A stereo phaser and a flanger mid-sweep (their LFOs where the audio left them), a phase disperser and a filter,
 // each with its output's spectrum behind its curve, and a widener, half of it in the middle.
 void renderNewEffects(const std::filesystem::path &dir, Renderer &renderer) {
@@ -9582,6 +9660,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testMeter(dir, renderer);
     testOutScope(dir, renderer);
     renderNewEffects(dir, renderer);
+    testChorus(dir, renderer);
     testShapers(dir, renderer);
     testWideLfoCard(dir, renderer);
     testFolding(dir, renderer);

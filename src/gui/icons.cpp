@@ -471,6 +471,15 @@ void fxIcon(Canvas &c, Rect r, FxType type, Color color) {
             return y;
         });
         break;
+    case FxType::Chorus: // three voices of a wave, each a little apart from the next, fainter
+        for (int k = 2; k >= 0; --k) {
+            for (int i = 0; i <= 24; ++i) {
+                const float x = i / 24.0f;
+                at(x, 0.6f * std::sin(2.0f * kPi * x + 0.9f * k));
+            }
+            stroke(color.alpha(1.0f - 0.3f * k));
+        }
+        break;
     case FxType::Disperser: { // a chirp: the sound smeared, its cycles drawn out
         std::vector<Point> chirp;
         for (int i = 0; i <= 40; ++i) {

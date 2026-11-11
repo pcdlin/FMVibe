@@ -3165,6 +3165,37 @@ int main(int argc, char **argv) {
         check(stereoSides / stereoSum > 0.05 && monoSides / monoSum < 1e-4,
               "a stereo flanger sweeps its sides apart, a mono one together");
 
+        // The chorus, its sweep held still (no Depth): every voice waits its Delay, half a period of 440 Hz, so at 50 %
+        // Mix the sine cancels, at 100 % the voices alone play it at its level, and at 0 % it is left alone, however
+        // many voices it has. Swept, its Spread pans the voices apart, and with none they stay together in the middle.
+        setParams({{type(7), static_cast<double>(FxType::Chorus)},
+                   {fx(7, FxParam::ChorusDepth), 0.0},
+                   {fx(7, FxParam::ChorusDelay), normFromTime(1.0 / 880.0)},
+                   {fx(7, FxParam::ChorusSpread), 0.0},
+                   {fx(7, FxParam::ChorusMix), 0.5}});
+        const double chorusCancelled = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        setParams({{fx(7, FxParam::ChorusMix), 1.0}, {fx(7, FxParam::ChorusVoices), 4.0}});
+        const double chorusWet = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        setParams({{fx(7, FxParam::ChorusMix), 0.0}, {fx(7, FxParam::ChorusVoices), 2.0}});
+        const double chorusDry = magnitude(play({}), 440.0) / magnitude(dry, 440.0);
+        std::printf("      chorus held still at half a period of 440 Hz: x%.3f at 50 %% mix, x%.3f at 100 %% (4 voices), "
+                    "x%.3f at 0 %%\n",
+                    chorusCancelled, chorusWet, chorusDry);
+        check(chorusCancelled < 0.1 && std::abs(chorusWet - 1.0) < 0.05 && std::abs(chorusDry - 1.0) < 0.02,
+              "the chorus's voices wait their Delay, and its Mix takes the sound over to them");
+        setParams({{fx(7, FxParam::ChorusDepth), 0.7},
+                   {fx(7, FxParam::ChorusRate), normFromRate(2.0)},
+                   {fx(7, FxParam::ChorusDelay), normFromTime(0.012)},
+                   {fx(7, FxParam::ChorusMix), 0.5},
+                   {fx(7, FxParam::ChorusVoices), 3.0}});
+        const auto [narrowSum, narrowSides] = sumAndSides(16);
+        setParams({{fx(7, FxParam::ChorusSpread), 1.0}});
+        const auto [spreadSum, spreadSides] = sumAndSides(16);
+        std::printf("      chorus on a 440 Hz sine: sides %.5f of the sum with no Spread, %.3f spread full\n",
+                    narrowSides / narrowSum, spreadSides / spreadSum);
+        check(narrowSides / narrowSum < 1e-4 && spreadSides / spreadSum > 0.05,
+              "the chorus's Spread pans its voices apart, and with none keeps them in the middle");
+
         setParams({{type(7), static_cast<double>(FxType::FreqShifter)},
                    {fx(7, FxParam::ShiftRange), normFromShiftRange(200.0)},
                    {fx(7, FxParam::ShiftAmount), 0.5},
@@ -3280,6 +3311,13 @@ int main(int argc, char **argv) {
             {FxType::Flanger,
              {{fx(7, FxParam::FlangerFeedback), -1.0}, {fx(7, FxParam::FlangerDepth), 1.0},
               {fx(7, FxParam::FlangerRate), normFromRate(20.0)}}},
+            {FxType::Chorus,
+             {{fx(7, FxParam::ChorusFeedback), -1.0}, {fx(7, FxParam::ChorusDepth), 1.0},
+              {fx(7, FxParam::ChorusRate), normFromRate(20.0)}, {fx(7, FxParam::ChorusVoices), 4.0},
+              {fx(7, FxParam::ChorusDelay), normFromTime(kMaxChorusDelay)}, {fx(7, FxParam::ChorusMix), 1.0}}},
+            {FxType::Chorus,
+             {{fx(7, FxParam::ChorusFeedback), 1.0}, {fx(7, FxParam::ChorusDepth), 1.0},
+              {fx(7, FxParam::ChorusDelay), 0.0}, {fx(7, FxParam::ChorusSpread), 0.0}}},
             {FxType::Disperser, {{fx(7, FxParam::DisperserStages), 64.0}, {fx(7, FxParam::DisperserPinch), 1.0},
                                  {fx(7, FxParam::DisperserFreq), 1.0}}},
             {FxType::FreqShifter, {{fx(7, FxParam::ShiftRange), 1.0}, {fx(7, FxParam::ShiftAmount), 1.0},
@@ -3300,8 +3338,8 @@ int main(int argc, char **argv) {
             std::printf("      effect type %d at its limits: peak %.3f\n", static_cast<int>(effect), peak);
             sane = sane && peak > 0.005f && peak < 4.0f;
         }
-        check(sane, "the reverb (a shimmer too), phaser, flanger, disperser, shifter and widener stay finite at their "
-                    "limits");
+        check(sane, "the reverb (a shimmer too), phaser, flanger, chorus, disperser, shifter and widener stay finite at "
+                    "their limits");
         setParams({{type(7), static_cast<double>(FxType::None)}, {fx(7, FxParam::ReverbType), 0.0}});
         runBlocks(blocksPerSecond * 3); // let the tail die away
     }

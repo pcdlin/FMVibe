@@ -858,6 +858,9 @@ void effectsChainChecks() {
             {"utility gain 0 to +12 dB", FxType::Utility, FxParam::UtilityGain, utilityGainNorm(1.0), 1.0},
             {"utility pan C to R50", FxType::Utility, FxParam::UtilityPan, 0.0, 0.5},
             {"utility width 100 to 0 %", FxType::Utility, FxParam::UtilityWidth, 1.0, 0.0},
+            {"chorus mix 0 to 100 %", FxType::Chorus, FxParam::ChorusMix, 0.0, 1.0},
+            {"chorus voices 2 to 4", FxType::Chorus, FxParam::ChorusVoices, 2.0, 4.0},
+            {"chorus spread 0 to 100 %", FxType::Chorus, FxParam::ChorusSpread, 0.0, 1.0},
         };
         double worst = 0.0;
         for (const Jump &jump : jumps) {
@@ -3059,6 +3062,48 @@ int main() {
             synced = synced && std::abs(fast - 0.5) < 1e-3 && std::abs(slow - 0.25) < 1e-3;
         }
         check(synced, "synced, the phaser's and flanger's sweeps follow the host tempo");
+    }
+
+    // --- The chorus's Voices and Spread changed under a sine, all wet: a voice coming or going fades, the voices'
+    // sweeps glide to their new places apart and a voice moving between the sides moves there over 10 ms, so no sample
+    // steps further than the sine's own do (its pitch wavering a little with the sweep).
+    std::printf("chorus voices and spread changed under a sine (steepest step against the sine's):\n");
+    {
+        auto steepest = [](FxParam param, std::initializer_list<double> values) {
+            Effects fx;
+            fx.prepare(kSampleRate);
+            ParamValues p;
+            for (int i = 0; i < kParamCount; ++i)
+                p[i] = paramTable()[i].def;
+            p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Chorus);
+            p[paramIndex(0, FxParam::ChorusMix)] = 1.0;
+            p[paramIndex(0, FxParam::ChorusSpread)] = 0.0;
+            chain(p, {0});
+            constexpr double kHz = 440.0;
+            const uint32_t each = static_cast<uint32_t>(kSampleRate / 4);
+            std::vector<float> left(kBlock), right(kBlock);
+            double most = 0.0, last = 0.0;
+            uint32_t t = 0;
+            for (double value : values) {
+                p[paramIndex(0, param)] = value;
+                for (uint32_t done = 0; done < each; done += kBlock, t += kBlock) {
+                    for (uint32_t s = 0; s < kBlock; ++s)
+                        left[s] = right[s] = static_cast<float>(
+                            0.5 * std::sin(2.0 * std::numbers::pi * kHz * (t + s) / kSampleRate));
+                    fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                    for (uint32_t s = 0; s < kBlock; ++s) {
+                        if (t + s > kSampleRate / 10) // past its first voices' delays
+                            most = std::max(most, static_cast<double>(std::abs(left[s] - last)));
+                        last = left[s];
+                    }
+                }
+            }
+            return most / (0.5 * 2.0 * std::numbers::pi * kHz / kSampleRate);
+        };
+        const double voices = steepest(FxParam::ChorusVoices, {2.0, 4.0, 3.0, 2.0});
+        const double spread = steepest(FxParam::ChorusSpread, {0.0, 1.0, 0.0});
+        std::printf("      voices 2, 4, 3, 2: x%.3f   spread 0, 100, 0 %%: x%.3f\n", voices, spread);
+        check(voices < 1.1 && spread < 1.1, "the chorus's Voices and Spread changed under a sine glide rather than click");
     }
 
     // --- The phaser's and flanger's polarity, standing still with no feedback at full Mix (half wet). Positive, a

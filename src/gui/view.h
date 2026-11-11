@@ -1288,6 +1288,7 @@ private:
     void paintReverb(Canvas &c, Rect r, int slot);
     // The phaser's and flanger's responses, with the LFO at the middle and at both ends.
     void paintSweep(Canvas &c, Rect r, int slot, FxType type);
+    void paintChorus(Canvas &c, Rect r, int slot);
     void paintShifter(Canvas &c, Rect r, int slot);
     void paintInspector(Canvas &c);
     // A shaper's page in the inspector: its summary in `summary`, its transfer curve, and the label over its inputs.

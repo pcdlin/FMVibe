@@ -598,7 +598,7 @@ constexpr FxType kFxOffered[] = {
     FxType::Eq,         FxType::ParamEq,   FxType::Filter,       // EQ and filter
     FxType::Compressor, FxType::MultiDyn,                        // dynamics
     FxType::Delay,      FxType::Reverb,                          // space
-    FxType::Phaser,     FxType::Flanger,   FxType::FreqShifter,  // modulation
+    FxType::Phaser,     FxType::Flanger,   FxType::Chorus,       FxType::FreqShifter, // modulation
     FxType::Widener,    FxType::Disperser, FxType::Utility,      // stereo and phase
 };
 constexpr int kFxTypes = static_cast<int>(std::size(kFxOffered));
@@ -611,7 +611,7 @@ constexpr int fxOfferedPlace(FxType type) {
 }
 // How many effects each group holds, in the list's order. The first kFxMenuLeftGroups go down its left column, the
 // others down its right one.
-constexpr int kFxMenuGroups[] = {2, 3, 2, 2, 3, 3};
+constexpr int kFxMenuGroups[] = {2, 3, 2, 2, 4, 3};
 constexpr int kFxMenuGroupCount = static_cast<int>(std::size(kFxMenuGroups));
 constexpr int kFxMenuLeftGroups = 3;
 constexpr int fxMenuGroupsTotal() {
@@ -755,17 +755,24 @@ inline Rect fxDisplayIn(Rect card, FxType type) {
     const float top = buttonRow ? 74.0f : 44.0f;
     const bool twoRows = type == FxType::Delay || type == FxType::ParamEq || type == FxType::Compressor ||
                          type == FxType::Reverb || type == FxType::Phaser || type == FxType::Flanger ||
-                         type == FxType::Filter || type == FxType::FreqShifter || type == FxType::Utility;
-    // The filter's slope switch, the delay's SYNC, LINK and PING-PONG and the phaser's and flanger's SYNC, STEREO and
-    // polarity go under their displays.
-    const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Filter ||
-                               type == FxType::Delay;
+                         type == FxType::Chorus || type == FxType::Filter || type == FxType::FreqShifter ||
+                         type == FxType::Utility;
+    // The filter's slope switch, the delay's SYNC, LINK and PING-PONG, the phaser's and flanger's SYNC, STEREO and
+    // polarity and the chorus's voices go under their displays.
+    const bool switchesUnder = type == FxType::Phaser || type == FxType::Flanger || type == FxType::Chorus ||
+                               type == FxType::Filter || type == FxType::Delay;
     // The shaper's LINK goes between its display and its knobs.
     const float bottom = switchesUnder               ? 158.0f
                          : twoRows                   ? 180.0f
                          : type == FxType::Shaper    ? 190.0f
                                                      : 198.0f;
     return {card.x + 14.0f, card.y + top, card.w - 28.0f, bottom - top};
+}
+// The chorus's voices under its display, in its middle: 2, 3 and 4 side by side.
+inline Rect chorusVoicesButton(Rect display, int voices) {
+    constexpr float kW = 22.0f;
+    const float left = display.center().x - 0.5f * kW * (kMaxChorusVoices - kMinChorusVoices + 1);
+    return {left + kW * static_cast<float>(voices - kMinChorusVoices), display.bottom() + 4.0f, kW, 18.0f};
 }
 // The amp's card: the amp on the left, the cabinet on the right, a faint line between. Each side: a list at the top
 // (the model; the cabinet's power switch, then its list), a display, switches under it (STEREO; the mic's three), then
