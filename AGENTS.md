@@ -396,6 +396,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     right-click menus (the cell's corner showing the glyph, read off the rendered pixels) and from the operator
     page's INPUTS tab, whose label sets the depth, each an undo step; a route moved onto another operator keeping
     its mode, and one disconnected starting as Phase again;
+  - a node's line to OUT bent by dragging it sideways, from straight, undoably, and straightened again by a
+    double-click;
   - bending a wire by dragging it sideways (lit under the mouse, its label following its middle), either way,
     undoably, back to its first bow by a double-click or Reset Bend, its bend going with it when it is
     disconnected, and one along the panel's top bowing only as far as keeps it and its label inside (read off the

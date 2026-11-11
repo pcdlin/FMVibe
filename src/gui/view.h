@@ -526,7 +526,9 @@ private:
     void setSourcePolarity(int source, bool bipolar);
     // How far a route's wire bows to its left, as a share of the distance it spans: as dragged, or kDefaultWireBend.
     float wireBend(int param) const;
-    void setWireBend(int param, float bend); // kDefaultWireBend forgets it
+    void setWireBend(int param, float bend); // its default forgets it
+    static float defaultWireBend(int param); // kDefaultWireBend, or 0 for a node's line to OUT
+    Point routePoint(int node) const;        // a node's center, or OUT's (kNodes)
     // The MODS view: every modulation as a row, the sources in the order of assignments(), then the empty ones
     // (UiLayout::emptyMods; one from a source that has rows goes after them instead) and a row that adds one, over the routing panel and the inspector. Its rows scroll: how
     // many are scrolled past as shown (gliding), the most that can be, and scrolling them, gliding or at once; the

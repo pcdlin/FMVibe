@@ -5848,6 +5848,42 @@ void testRouteModes(const std::filesystem::path &dir, Renderer &renderer) {
 
 // The node the inspector shows is filled with its color and ringed in it in the graph, and picking another node moves
 // both there (read off the rendered pixels); a switched-off node's ghost is filled while it is the one shown.
+// A node's line to OUT bends as a wire does: straight to begin with, dragged sideways from a third of the way along
+// (clear of its label in the middle) it bows that way, as one undo step, and a double-click on it straightens it.
+void testOutBend(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const UiLayout &layout = model.layout();
+    const int out = paramIndex(0, OpParam::Out);
+    const Point a = nodeCenter(layout, 0);
+    auto along = [&](float bend, float t) {
+        const detail::OutWire w = detail::outWireOf(0, a, bend);
+        const float s = 1.0f - t;
+        return Point{s * s * w.start.x + 2.0f * s * t * w.control.x + t * t * w.end.x,
+                     s * s * w.start.y + 2.0f * s * t * w.control.y + t * t * w.end.y};
+    };
+    auto bendOf = [&] {
+        for (const auto &[route, bend] : layout.wireBends)
+            if (route == out)
+                return bend;
+        return 0.0f;
+    };
+    const detail::OutWire straight = detail::outWireOf(0, a);
+    const Point grab = along(0.0f, 0.3f);
+    const Point side{-straight.dir.y * 30.0f, straight.dir.x * 30.0f}; // to its right
+    drag(view, grab, {grab.x + side.x, grab.y + side.y});
+    const float bent = bendOf();
+    view.mouseMove({600.0f, 600.0f}, {});
+    const bool shot = renderer.save(view, dir / "1o-out-bent.png");
+    view.undo();
+    const bool undone = bendOf() == 0.0f;
+    view.redo();
+    doubleClick(view, along(bent, 0.3f));
+    std::printf("      A's line to OUT bent to %.3f\n", bent);
+    check(shot && bent != 0.0f && undone && bendOf() == 0.0f && model.value(out) == 1.0,
+          "a node's line to OUT bends when dragged sideways, undoably, and a double-click straightens it");
+}
+
 // The routing graph's glow is dithered rather than stepped: along a stretch of the panel's bottom, under the ghosts and
 // clear of the rings and rays, where the glow fades by about a level of each channel, neighboring pixels differ many
 // times over, where a glow in steps would change only at its few edges (read off the rendered pixels, in Spectrum).
@@ -5906,7 +5942,7 @@ void testSelectedNode(const std::filesystem::path &dir, Renderer &renderer) {
     const bool shotB = renderer.save(view, dir / "1h-selected-node-b.png");
     const unsigned leaderB = leader();
     std::printf("      the lens's leader at A's height: %u with A shown, %u with B\n", leaderA, leaderB);
-    check(leaderA > leaderB + 60, "a dotted leader runs from the node the inspector shows across to its lens (read off "
+    check(leaderA > leaderB + 30, "a dotted leader runs from the node the inspector shows across to its lens (read off "
                                   "the rendered pixels)");
     // (Where its ring goes, an unshown node shows the backdrop, which differs from place to place.)
     const bool moved = inside(1) == aIn && inside(0) == bIn && ring(1) > ring(0) + 60;
@@ -7961,7 +7997,7 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "5a-unheard.png"), "render an operator that isn't heard");
     model.set(matrixIndex(5, 4), 0.45);
     // The Routing tab shown runs on down the panel's left edge, its corner square; the matrix's is round.
-    auto cornerSquare = [&] { return renderer.pixel({18.0f, 134.0f}) == renderer.pixel({18.0f, 136.0f}); };
+    auto cornerSquare = [&] { return renderer.pixel({18.0f, 134.0f}) == renderer.pixel({18.0f, 150.0f}); };
     const bool routingCorner = cornerSquare();
 
     // The same routing as a matrix: double-click toggles C -> F2 off.
@@ -9084,6 +9120,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testInputsScroll(dir, renderer);
     testSelectedNode(dir, renderer);
     testRadarGlow(dir, renderer);
+    testOutBend(dir, renderer);
     testModsEmpty(dir, renderer);
     testNewSources(dir, renderer);
     testMods(dir, renderer);

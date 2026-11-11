@@ -639,14 +639,26 @@ float View::wireBend(int param) const {
     for (const auto &[route, bend] : controller_.layout().wireBends)
         if (route == param)
             return bend;
+    return defaultWireBend(param);
+}
+
+// A wire between nodes bows to begin with; a node's line to OUT runs straight.
+float View::defaultWireBend(int param) {
+    for (int node = 0; node < kNodes; ++node)
+        if (outParam(node) == param)
+            return 0.0f;
     return kDefaultWireBend;
+}
+
+Point View::routePoint(int node) const {
+    return node == kNodes ? kOutCore : nodeCenter(node);
 }
 
 void View::setWireBend(int param, float bend) {
     std::vector<std::pair<int, float>> &bends = controller_.layout().wireBends;
     std::erase_if(bends, [&](const auto &b) { return b.first == param; });
     bend = std::clamp(bend, -kMaxWireBend, kMaxWireBend);
-    if (bend != kDefaultWireBend)
+    if (bend != defaultWireBend(param))
         bends.push_back({param, bend});
     controller_.layoutChanged();
 }
@@ -2172,6 +2184,16 @@ std::vector<View::Widget> View::widgets() const {
                 const float bottom = std::max({w.start.y, w.control.y, w.end.y});
                 add(Kind::Wire, Rect{left, top, right - left, bottom - top}.inset(-kWireGrab), param, from, to);
             }
+            // Its line to OUT bends as they do.
+            if (goesOut(from) && outParam(from) != rerouted) {
+                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
+                const float left = std::min({w.start.x, w.control.x, w.end.x});
+                const float top = std::min({w.start.y, w.control.y, w.end.y});
+                const float right = std::max({w.start.x, w.control.x, w.end.x});
+                const float bottom = std::max({w.start.y, w.control.y, w.end.y});
+                add(Kind::Wire, Rect{left, top, right - left, bottom - top}.inset(-kWireGrab), outParam(from), from,
+                    kNodes);
+            }
         }
         for (int node : on) {
             const Point c = nodeCenter(node);
@@ -2209,7 +2231,7 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::WireEnd, wireEndGrip(w.end, w.tangent), param, from, to);
             }
             if (goesOut(from) && outParam(from) != moving) {
-                const OutWire w = outWireOf(from, nodeCenter(from));
+                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
                 add(Kind::WireEnd, wireEndGrip(w.end, w.dir), outParam(from), from, kNodes);
             }
         }
@@ -2226,8 +2248,8 @@ std::vector<View::Widget> View::widgets() const {
                 add(Kind::WireStart, startGrip(w.start, w.control), param, from, to);
             }
             if (goesOut(from) && outParam(from) != moving) {
-                const OutWire w = outWireOf(from, nodeCenter(from));
-                add(Kind::WireStart, startGrip(w.start, w.end), outParam(from), from, kNodes);
+                const OutWire w = outWireOf(from, nodeCenter(from), wireBend(outParam(from)));
+                add(Kind::WireStart, startGrip(w.start, w.control), outParam(from), from, kNodes);
             }
         }
         // The node under the mouse: an x in a circle at its upper right, over its edge, which switches it off.
@@ -2945,7 +2967,7 @@ std::optional<View::Widget> View::hitTest(Point p) const {
             if (onNodeEdge(it->a, it->rect.center(), p))
                 return *it;
         } else if (it->kind == Kind::Wire) {
-            const Wire w = wireBetween(it->a, nodeCenter(it->a), it->b, nodeCenter(it->b), wireBend(it->param));
+            const Wire w = wireBetween(it->a, nodeCenter(it->a), it->b, routePoint(it->b), wireBend(it->param));
             if (it->rect.contains(p) && distanceToWire(w, p) <= kWireGrab)
                 return *it;
         } else if (it->kind == Kind::FxWire) {
@@ -3334,6 +3356,11 @@ void View::paintPanels(Canvas &c) {
         if (look.panelShadow <= 0.0f)
             c.strokeRect(p, kBorder, 1.0f, kPanelRadius);
     }
+    // The panel's corner the first tab's side runs down, while it is the one shown, squared here (see Kind::ViewTab),
+    // under the inspector's lens, which floats over it.
+    const bool firstTab = controller_.layout().view == RoutingView::Graph && shapeEditing() < 0 && partialEditing() < 0;
+    if (firstTab)
+        c.fillRect({kFxPanel.x, kFxPanel.y, kPanelRadius, kPanelRadius}, kPanel);
 }
 
 void View::paintHeader(Canvas &c) {
@@ -3512,8 +3539,10 @@ void makeRadarGlow(Image &image, float scale, Color accent) {
 void paintRadar(Canvas &c, const Image &glow) {
     c.pushClip(kFxPanel);
     c.image(glow, kFxPanel);
-    c.line(kOutCore, {kInspector.x, kInspector.y}, mix(kPanel, kBorder, 0.45f), 1.0f);
-    c.line(kOutCore, {kInspector.x, kInspector.bottom()}, mix(kPanel, kBorder, 0.45f), 1.0f);
+    // (Ending at the middles of the lens's corners' arcs, under the lens, so they don't show past its rounded corners.)
+    const float in = kRadiusPanel;
+    c.line(kOutCore, {kInspector.x + in, kInspector.y + in}, mix(kPanel, kBorder, 0.45f), 1.0f);
+    c.line(kOutCore, {kInspector.x + in, kInspector.bottom() - in}, mix(kPanel, kBorder, 0.45f), 1.0f);
     c.strokeCircle(kOutCore, 180.0f, kBorder, 1.0f);
     c.strokeCircle(kOutCore, 340.0f, mix(kPanel, kBorder, 0.7f), 1.0f);
     c.strokeCircle(kOutCore, 500.0f, mix(kPanel, kBorder, 0.45f), 1.0f);
@@ -3570,8 +3599,8 @@ void View::paintRouting(Canvas &c) {
     }
     if (const std::optional<Point> leader = lensLeaderStart()) {
         const Color color = nodeColor(controller_.layout().selectedNode);
-        c.line(*leader, {kInspector.right(), leader->y}, color.alpha(0.55f), 1.5f, true);
-        c.fillCircle(*leader, 2.5f, color);
+        c.line(*leader, {kInspector.right(), leader->y}, color.alpha(0.3f), 1.5f, true);
+        c.fillCircle(*leader, 2.5f, color.alpha(0.6f));
     }
 
     // OUT, lit while a new or moving route would go there.
@@ -3592,9 +3621,9 @@ void View::paintRouting(Canvas &c) {
         if (!goesOut(node) || param == moving)
             continue;
         const float out = static_cast<float>(liveAmount(param));
-        const OutWire w = outWireOf(node, nodeCenter(node));
+        const OutWire w = outWireOf(node, nodeCenter(node), wireBend(param));
         const Color color = focused(param) ? kText : nodeColor(node).alpha(0.35f + 0.65f * out);
-        c.line(w.start, w.end, color, 1.2f + 3.0f * out);
+        c.curve(w.start, w.control, w.end, color, 1.2f + 3.0f * out);
         arrowHead(c, w.end, w.dir, color);
     }
 
@@ -5407,15 +5436,18 @@ void View::paintInspector(Canvas &c) {
     // color of the node it shows; a notch on its right side where the leader from that node meets it.
     const Color edge = nodeColor(node).alpha(0.35f);
     const Color face = kRaised.alpha(0.92f);
+    // In a flat theme, as its cards, on its shadow alone without an outline.
     softShadow(c, kInspector, kRadiusPanel, 4, 1.25f, 4.0f, lightTheme() ? 0.1f : 0.32f); // clear of the panel's top
     c.fillRect(kInspector, face, kRadiusPanel);
-    c.strokeRect(kInspector, edge, 1.0f, kRadiusPanel);
+    if (outlined())
+        c.strokeRect(kInspector, edge, 1.0f, kRadiusPanel);
     if (const std::optional<Point> leader = lensLeaderStart()) {
         const float x = kInspector.right(), y = leader->y;
         const Point notch[] = {{x - 1.0f, y - 6.0f}, {x + 6.0f, y}, {x - 1.0f, y + 6.0f}};
         c.fillPolygon(notch, 3, face);
         const Point side[] = {{x, y - 6.0f}, {x + 6.0f, y}, {x, y + 6.0f}};
-        c.polyline(side, 3, edge, 1.0f);
+        if (outlined())
+            c.polyline(side, 3, edge, 1.0f);
     }
     // Leaves room for the on/off switch at the right.
     Rect summaryRect{kInspector.x + 16.0f, kInspector.y + 38.0f, kInspector.w - 84.0f, 18.0f};
@@ -6481,9 +6513,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             std::vector<Point> fill = outline; // down past the panel's border, to open it without a seam left
             fill.push_back({outline.back().x, w.rect.bottom() + 2.0f});
             fill.push_back({outline.front().x, w.rect.bottom() + 2.0f});
-            c.fillPolygon(fill.data(), fill.size(), kPanel);
-            if (w.rect.x <= kFxPanel.x) // squaring the panel's corner its side runs down
-                c.fillRect({w.rect.x, w.rect.bottom(), kPanelRadius, kPanelRadius}, kPanel);
+            c.fillPolygon(fill.data(), fill.size(), kPanel); // (the panel's corner its side runs down: see paintPanels())
             if (look.panelShadow <= 0.0f) // outlined as its panel is
                 c.polyline(outline.data(), outline.size(), kBorder, 1.0f);
             c.line({w.rect.x + kViewTabRadius, w.rect.y + 2.0f}, {w.rect.right() - kViewTabRadius, w.rect.y + 2.0f},
@@ -6567,7 +6597,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::WireEnd: // drawn with its wire, which lights up under the mouse, a circle around its arrowhead
         if (hovered) {
             if (w.b == kNodes) {
-                const OutWire out = outWireOf(w.a, nodeCenter(w.a));
+                const OutWire out = outWireOf(w.a, nodeCenter(w.a), wireBend(w.param));
                 wireEndHighlight(c, out.end, out.dir, nodeColor(w.a));
             } else {
                 const Wire wire = wireBetween(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param));
@@ -7048,7 +7078,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::WireStart: // a circle with a dot where it leaves its node
         if (hovered) {
             const Point start = w.b == kNodes
-                                    ? outWireOf(w.a, nodeCenter(w.a)).start
+                                    ? outWireOf(w.a, nodeCenter(w.a), wireBend(w.param)).start
                                     : wireBetween(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param)).start;
             wireStartHighlight(c, start, nodeColor(w.a));
         }
@@ -9118,7 +9148,7 @@ void View::applyDrag(Point p) {
     case DragKind::Bend: {
         // The wire's middle follows the mouse sideways, from where it was grabbed: it lies half as far out as the
         // curve's control point.
-        const Point a = nodeCenter(w.a), b = nodeCenter(w.b);
+        const Point a = nodeCenter(w.a), b = routePoint(w.b);
         const float span = std::max(std::hypot(b.x - a.x, b.y - a.y), 1.0f);
         const Point left = leftOf(a, b);
         const float moved = (p.x - drag_.start.x) * left.x + (p.y - drag_.start.y) * left.y;
@@ -9387,7 +9417,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::Wire:
         drag_.kind = DragKind::Bend;
-        drag_.startValue = fitBend(w.a, nodeCenter(w.a), w.b, nodeCenter(w.b), wireBend(w.param)); // as drawn
+        drag_.startValue = fitBend(w.a, nodeCenter(w.a), w.b, routePoint(w.b), wireBend(w.param)); // as drawn
         drag_.step = true; // bending it is an undo step
         controller_.beginStep();
         break;
@@ -10556,9 +10586,9 @@ void View::doubleClick(Point p, Modifiers mods) {
             edit(paramIndex(hit->a, f), table_[paramIndex(hit->a, f)].def);
         return;
     }
-    if (hit && hit->kind == Kind::Wire) { // back to how it bows to begin with
+    if (hit && hit->kind == Kind::Wire) { // back to how it bows to begin with (a line to OUT straight)
         const UndoScope step(controller_);
-        setWireBend(hit->param, kDefaultWireBend);
+        setWireBend(hit->param, defaultWireBend(hit->param));
         return;
     }
     if (hit && hit->kind == Kind::SearchField) { // the word there, up to the spaces either side
@@ -10982,7 +11012,7 @@ std::vector<MenuItem> View::contextMenu(Point p) {
     if (hit->kind == Kind::WireEnd || hit->kind == Kind::Wire) {
         menuParam_ = hit->param;
         addRouteModes(hit->param);
-        if (hit->kind == Kind::Wire && wireBend(hit->param) != kDefaultWireBend)
+        if (hit->kind == Kind::Wire && wireBend(hit->param) != defaultWireBend(hit->param))
             items.push_back({kResetBendCommand, tr(Str::MenuResetBend)});
         items.push_back({3, tr(Str::MenuDisconnect)});
         return items;

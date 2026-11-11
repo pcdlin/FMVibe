@@ -601,8 +601,8 @@ may show anywhere, repaints the whole of it.
       shapers go out alike: each has its line to OUT while it is routed there, whether anything goes into it or not.
       A node that already goes out is moved through a filter or shaper it is connected to rather than doubled, its
       output's modulation going along onto the send, and that goes out in its place unless its sound gets there already (through filter 2, say); so does a filter or
-      shaper a node's arrow to OUT is moved onto. Wires to or from a filter are
-      purple, those to or from a shaper red, like the shaper effect.
+      shaper a node's arrow to OUT is moved onto. Each wire takes the color of the
+      node it comes from (an operator's own, the filters' purple, the shapers' red), as its line to OUT does.
     - A node's line to OUT runs straight toward OUT's middle, in the node's color, and ends in an arrowhead on its
       edge, like a wire's on the node it feeds, with its percentage label halfway along (beside the line, on its
       left, when the node sits too close to OUT for it). OUT is ringed in the accent while a route held over it would
@@ -643,7 +643,8 @@ may show anywhere, repaints the whole of it.
       or at an upper corner, inside the panel. A wire that would spill out of the routing panel bows only as far as
       keeps it and its label inside, whether it is bent or its nodes are moved toward the edge, and bows as it was set again
       once there is room. A double-click on it, or Reset Bend in its right-click menu, brings back
-      the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
+      the bow it started with. A node's line to OUT runs straight to begin with, and bends the same way, its label
+      and arrowhead going along; a double-click or Reset Bend straightens it again. How each wire bends is saved with the patch, like the node places, and each drag is
       an undo step; a wire that is removed or moved to another node starts bowing as a new one does.
     - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it. The node the inspector shows
       is filled solid with its color, like its tab's plate, its letter, wave, ratio or type in the panel's color, and
@@ -1091,7 +1092,8 @@ may show anywhere, repaints the whole of it.
   the editor and its window is the active one: a keyboard hook catches them before the host does, so the host's
   own shortcuts keep working everywhere else.
 - **Inspector** (left): a lens, a card floating over the routing panel's left end a little in from its edges, on a
-  soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 %; while
+  soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 % (in Spectrum
+  and Porcelain, as their cards, on its shadow alone, without an outline); while
   the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
   and S2 pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little
