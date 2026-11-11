@@ -114,9 +114,9 @@ inline int routeTo(int from, int to) {
     return to == kNodes ? outParam(from) : routeParam(from, to);
 }
 
-// Whether a port or arrowhead let go at `p` lands on the OUT bus.
-inline bool onBus(Point p) {
-    return std::abs(p.y - kBusY) < 16.0f && p.x > kRouting.x && p.x < kRouting.right();
+// Whether a port or arrowhead let go at `p` lands on OUT, the core at the graph's right end.
+inline bool onOutCore(Point p) {
+    return std::hypot(p.x - kOutCore.x, p.y - kOutCore.y) < kOutCoreRadius + 14.0f;
 }
 
 // Whether `param` is a route of the graph: one node into another, or a node into the output.
@@ -351,21 +351,28 @@ inline void wireStartHighlight(Canvas &c, Point start, Color color) {
     c.fillCircle(start, 3.0f, color);
 }
 
-// A node's line down to the OUT bus: from its outline to the base of the arrowhead, whose tip touches the bus, with
-// its label halfway along. A node too close to the bus for the label to fit in between has it beside the line, on
-// the left.
+// A node's line to OUT: straight from its outline toward the core, to the base of the arrowhead, whose tip touches
+// the core, with its label halfway along. A node too close to the core for the label to fit in between has it beside
+// the line, on its left.
 struct OutWire {
     Point start;
     Point end; // base of the arrowhead
     Point label;
+    Point dir;   // along the line, toward the core
+    bool beside; // the label off the line, too short for it
 };
 
 inline OutWire outWireOf(int node, Point center) {
-    const float top = center.y + (isBoxNode(node) ? kFilterHalfH : kNodeRadius);
-    const float end = kBusY - 10.0f;
-    OutWire w{{center.x, top}, {center.x, end}, {center.x, 0.5f * (top + end)}};
-    if (end - top < 18.0f)
-        w.label.x -= 28.0f;
+    const Point dir = normalize({kOutCore.x - center.x, kOutCore.y - center.y});
+    const float from = nodeExtent(node, dir);
+    const Point start{center.x + dir.x * from, center.y + dir.y * from};
+    const float reach = kOutCoreRadius + 10.0f; // the arrowhead's base, its tip 2 px short of the core's edge
+    const Point end{kOutCore.x - dir.x * reach, kOutCore.y - dir.y * reach};
+    OutWire w{start, end, {0.5f * (start.x + end.x), 0.5f * (start.y + end.y)}, dir, false};
+    if ((end.x - start.x) * dir.x + (end.y - start.y) * dir.y < 44.0f) {
+        w.label = {w.label.x + dir.y * 22.0f, w.label.y - dir.x * 22.0f};
+        w.beside = true;
+    }
     return w;
 }
 

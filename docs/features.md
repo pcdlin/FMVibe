@@ -559,32 +559,40 @@ only what keeps to its place moves (the output meter and scope and the playing c
 operator's scope in the inspector), it repaints that place alone; what a note's sources and envelopes move, which
 may show anywhere, repaints the whole of it.
 
-- **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panels below them show: the routing graph
-  or the matrix (two views of the same connections) next to the inspector, or across both the effects chain or
-  every modulation. The
+- **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panel below them shows: the routing graph
+  or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or across
+  the whole panel the effects chain or every modulation. The
   choice is saved with the patch. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
   showing faintly under the mouse. While the full-size shape, shaper curve or partial editor has the panels, no tab
   is shown, and clicking one closes the editor (a widened LFO card's shape stays in its card).
-- **Routing panel**: the graph shows only what is switched on, the matrix everything, greyed out where it is off.
+- **Routing panel**: the right of the panel the inspector floats over (see below); the graph shows only what is
+  switched on, the matrix everything, greyed out where it is off.
   The inspector's tabs switch nodes on and off (see below); so does a node's right-click menu in the graph, and the
   x in a circle a node shows at its upper right (a box's corner) while the mouse is over it, as the effects graph's
   nodes do.
   - **Routing** (graph): circles are operators (with their wave and ratio), rounded boxes the filters (with their
-    type) and squarer boxes the shapers (with their curve). A colored outline means the node is heard, as its routes are set, and a
+    type) and squarer boxes the shapers (with their curve), each filled with the panel's color and outlined in its own
+    color (each operator's, the filters' purple, the shapers' red): fully while the node is heard, as its routes are
+    set (a filter or shaper while something goes into it), and at 45 % while it isn't. Its letter or name, and an
+    operator's wave, take its color too, its ratio or type the dim text's. The graph sits on a radar: **OUT** is a
+    disc at its right end, shading from the accent in its middle to a deeper accent and the filters' purple at its
+    edge, in a faint halo, a glow of the accent spreading out from it across the whole panel (16 % on it, 5 % a third
+    of the way out, gone 520 px away), with three orbit rings round it (180, 340 and 500 px out, fainter outward) and
+    two faint rays from it to the panel's left corners, all behind the nodes, the wires and the inspector's lens. A
     halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off):
     an operator's as brightly as its envelope and the routes taking it to the output let it through, where modulation takes them now, so a route an LFO opens from 0 % lights it up as it
-    opens. The nodes that are off wait in the graph's top left as dashed ghosts, a circle with an
+    opens. The nodes that are off wait docked under OUT, in the graph's bottom right, as dashed ghosts, a circle with an
     operator's letter or a box with a filter's or shaper's name; a click switches one on, back where it was in the
     graph, and shows it in the inspector. However it is switched on (its ghost, its tab, the matrix), a node whose
     place another node shown now covers comes back clear of it: pushed out of the way, or, with no room there, at
     the free place nearest it (in the same undo step as the switch).
     - Drag from a node's **edge** (a band along its outline, which glows in the node's color under the mouse)
       onto an operator to modulate it, back onto itself for feedback, onto a filter or shaper to send it there, or
-      onto the **OUT** bus; from further inside, a drag moves the node, and a click on the edge only picks the node.
+      onto **OUT**; from further inside, a drag moves the node, and a click on the edge only picks the node.
       Filters' and shapers' edges work the same way: onto an operator to modulate it, onto a filter or a shaper,
-      back onto itself for feedback (starting at 25 %, its loop drawn on its top edge), or onto the bus. Every node
+      back onto itself for feedback (starting at 25 %, its loop drawn on its top edge), or onto OUT. Every node
       can feed every other one, and itself. While the drag (or a route's arrowhead being moved) is held back over
       the node it comes from, its line loops round in a small circle over the node's top and back into it, an
       arrow showing the loop letting go there makes (standing on the ring the node is ringed with, selected or not); only once the mouse has been well clear of the node (16 px past its
@@ -594,12 +602,13 @@ may show anywhere, repaints the whole of it.
       output's modulation going along onto the send, and that goes out in its place unless its sound gets there already (through filter 2, say); so does a filter or
       shaper a node's arrow to OUT is moved onto. Wires to or from a filter are
       purple, those to or from a shaper red, like the shaper effect.
-    - A node's line to OUT ends in an arrowhead on the bus, like a wire's on the node it feeds, with its
-      percentage label halfway down (beside the line, on its left, when the node sits too close to the bus for
-      it). Drag an arrowhead onto another node to move the route there, or onto the bus to send its node out
+    - A node's line to OUT runs straight toward OUT's middle, in the node's color, and ends in an arrowhead on its
+      edge, like a wire's on the node it feeds, with its percentage label halfway along (beside the line, on its
+      left, when the node sits too close to OUT for it). OUT is ringed in the accent while a route held over it would
+      go there. Drag an arrowhead onto another node to move the route there, or onto OUT to send its node out
       instead; the line to OUT's onto a node the same way. The route keeps its amount and its modulation, and
       follows the mouse until it is let go; it can't go where its node has a route already, or where a node's edge
-      couldn't take it. Let go of off the nodes and the bus (where it turns faint), the route goes, with its
+      couldn't take it. Let go of off the nodes and OUT (where it turns faint), the route goes, with its
       modulation, as its right-click menu's Disconnect does. The feedback loop above an operator or a shaper has no
       arrowhead.
     - A wire's ends drag from a little way along it too: under the mouse, a faint circle rings its arrowhead, or
@@ -636,7 +645,9 @@ may show anywhere, repaints the whole of it.
       the bow it started with. How each wire bends is saved with the patch, like the node places, and each drag is
       an undo step; a wire that is removed or moved to another node starts bowing as a new one does.
     - Drag nodes to rearrange the graph (saved with the patch). Click one to edit it. The node the inspector shows
-      is filled with its color, like its tab's plate, and ringed in it a little way out; a switched-off one shown
+      is filled solid with its color, like its tab's plate, its letter, wave, ratio or type in the panel's color, and
+      ringed in it at 80 % a little way out; a dotted line in its color, the lens's leader, runs level from its left
+      side across to the inspector's lens; a switched-off one shown
       there has its ghost filled the same way. A node dragged onto another
       stops short of it, held 10 px off its outline and sliding round it, and goes on once the mouse is past. With
       Ctrl held, a node dragged goes onto the nearest point of a coarse grid (12 across, 5 down, the cells' centers
@@ -1078,7 +1089,10 @@ may show anywhere, repaints the whole of it.
   saved state, at Init and when a preset loads: undo never brings back the patch a preset replaced. **Ctrl+Z** undoes, and **Ctrl+Y** or **Ctrl+Shift+Z** redoes, while the mouse is over
   the editor and its window is the active one: a keyboard hook catches them before the host does, so the host's
   own shortcuts keep working everywhere else.
-- **Inspector** (right): tabs A–F, F1 and F2, and S1 and S2 pick what it shows; tabs of switched-off nodes are
+- **Inspector** (left): a lens, a card floating over the routing panel's left end a little in from its edges, on a
+  soft shadow, the graph's backdrop faintly through it, outlined in the color of the node it shows at 35 %; while
+  the graph shows that node, a notch on the card's right side meets the leader from it. Tabs A–F, F1 and F2, and S1
+  and S2 pick what it shows; tabs of switched-off nodes are
   dimmed, and clicking one switches its operator, filter or shaper on; the names of switched-on ones take a little
   of their node's color. A dot in a tab's top right corner says the
   node's own sound goes out: its Out is up and it is switched on (a filter's or shaper's only while something goes

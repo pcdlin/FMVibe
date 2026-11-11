@@ -853,6 +853,8 @@ private:
     int fxHoveredNode() const;
     // The same for the routing graph's nodes, whose x switches the node off (see Kind::NodeDelete).
     int routingHoveredNode() const;
+    // Where the inspector's lens is joined to the node it shows: that node's left side, while the graph shows it.
+    std::optional<Point> lensLeaderStart() const;
     static Point nodeDeleteAt(int node, Point center);
     static Point fxDeleteAt(int node, Point center);
     static Point fxPowerAt(int node, Point center);

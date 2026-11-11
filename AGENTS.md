@@ -348,9 +348,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     there only picks the node and a drag from further inside moves it; a drag held back over its own node once clear of
     it looping round over its top and back into it, on the ring around it whether it is selected or not, and one only just past its edge showing no loop (read off the rendered pixels), and let go there feeding it back; a filter's edge dragged onto an earlier
     filter feeding it, and a filter's and a shaper's dragged back onto itself feeding it back; a filter going out by its edge dragged onto
-    the bus, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
+    OUT, with nothing going in, and stopping by its arrowhead dragged away; routing a carrier through a filter,
     which goes out in its place, and picking waves and filter types;
-  - moving routes by dragging their arrowheads onto another node and onto the OUT bus, with their modulation, and
+  - moving routes by dragging their arrowheads onto another node and onto OUT, with their modulation, and
     removing one by letting its arrowhead go in empty space; a route's start and an OUT line's start dragged onto
     another node coming from there, with its amount and mode, undoably, grabbed 16 px along the wire and lit there;
     Ctrl+drag putting a node on the grid's nearest free point, the grid's points showing while Ctrl is held, and a
@@ -406,8 +406,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the INPUTS tab's rows: a modulated depth's handles under it and its ranges on its top line, its number left as it
     was (read off the rendered pixels), and eight rows scrolling under the wheel, the scrollbar's thumb and the
     middle button;
-  - the node the inspector shows filled and ringed in the graph, picking another moving both, and a switched-off
-    one's ghost filled while it is shown (read off the rendered pixels);
+  - the node the inspector shows filled and ringed in the graph, picking another moving both, a dotted leader running
+    from it across to the inspector's lens, and a switched-off one's ghost filled while it is shown (read off the
+    rendered pixels);
   - a switched-off source's handle going faint, and an LFO's, an envelope's, a macro's and the note source's until
     they modulate something
     (read off the rendered pixels);

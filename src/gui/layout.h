@@ -30,10 +30,14 @@ constexpr float kHeaderH = 92.0f;
 constexpr float kStripY = 32.0f; // how far the global strip's content sits below where it stood alone (13 to 51 px)
 constexpr float kPanelsTop = 132.0f;
 constexpr float kPanelRadius = kRadiusPanel; // the panels' corners
-constexpr Rect kRouting{16.0f, kPanelsTop, 852.0f, 372.0f};
-constexpr Rect kInspector{884.0f, kPanelsTop, 300.0f, 372.0f};
-constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 70.0f, kRouting.w - 80.0f, kRouting.h - 146.0f}; // node centers
-constexpr float kBusY = kRouting.y + kRouting.h - 30.0f;
+// The routing graph and the matrix share one panel with the inspector, kFxPanel's place: the inspector floats as a
+// lens over its left end, a card a little in from the panel's edges, and the graph or matrix takes the rest. The
+// graph's OUT is a core at its right end, the orbit rings around it reaching back across the panel.
+constexpr Rect kInspector{24.0f, kPanelsTop + 6.0f, 300.0f, 360.0f};
+constexpr Rect kRouting{kInspector.x + kInspector.w + 8.0f, kPanelsTop, 852.0f, 372.0f};
+constexpr Point kOutCore{kRouting.x + kRouting.w - 70.0f, kRouting.y + 0.5f * kRouting.h};
+constexpr float kOutCoreRadius = 34.0f;
+constexpr Rect kGraph{kRouting.x + 40.0f, kRouting.y + 56.0f, kRouting.w - 190.0f, kRouting.h - 112.0f}; // node centers
 // Ctrl+drag puts a node of the routing graph on the nearest point of a coarse grid over the area its center may go
 // in: the cells' centers, kRoutingGridCols x kRoutingGridRows.
 constexpr int kRoutingGridCols = 12, kRoutingGridRows = 5;
@@ -58,7 +62,7 @@ constexpr float kCell = kCellStep - kCellGap;
 constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMatrixNamesH};
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
 // An operator's Fixed switch, a keyboard on the summary line left of the power switch.
-constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
+constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 30.0f - 4.0f - 26.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
 // An operator's Ratio: a 7-segment readout, 0.50 to 64.00, over the first two places of its knob row, each digit dragged
 // on its own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along
 // its top, clear of the depth handles along its bottom edge.
@@ -120,11 +124,11 @@ inline Rect inputsDepth(float y) { return {kInspector.x + kInspector.w - 16.0f -
 constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
 // Unison: the knobs at y + 206, where the copies sit under them.
 constexpr float kUnisonKnobsY = kInspector.y + 206.0f;
-constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 110.0f};
+constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 102.0f};
 // A noise operator's spectrum, in Unison's place.
 constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
 // Scope: the operator's output, the cycle count's buttons in its top right corner.
-constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 174.0f};
+constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 166.0f};
 inline Rect scopeCycleButton(int choice) {
     return {kScopeRect.right() - 6.0f - (3 - choice) * 20.0f, kScopeRect.y + 6.0f, 20.0f, 16.0f};
 }
@@ -184,7 +188,7 @@ constexpr float kViewTabRadius = kRadiusCard; // its top corners
 constexpr float kViewTabFlare = 6.0f;  // the shown one's curves into the panel's edge
 // The FX view covers the routing panel and the inspector: one card per effect,
 // left to right in processing order, then a card to add one; kVisibleFx at a time.
-constexpr Rect kFxPanel{kRouting.x, kRouting.y, kInspector.x + kInspector.w - kRouting.x, kRouting.h};
+constexpr Rect kFxPanel{16.0f, kPanelsTop, kRouting.x + kRouting.w - 16.0f, kRouting.h};
 constexpr int kVisibleFx = 6;
 constexpr float kFxGap = 22.0f; // room for the plus that adds an effect between two cards
 // The row's first card starts a gap in from the clip it scrolls in (see fxCardClip()), for the arrow before it.
@@ -1047,7 +1051,7 @@ constexpr int kBaseNote = 24; // C1, where the keyboard starts before any octave
 // Init, Load, Save, Save As and the settings cog: icons at the right end of the title bar.
 inline Rect toolbarButton(int i) {
     constexpr float kW = 28.0f, kGap = 6.0f;
-    return {kInspector.right() - (5 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
+    return {kFxPanel.right() - (5 - i) * (kW + kGap) + kGap, kTitleRowY, kW, kTopRowH};
 }
 // Undo and redo, a little apart to their left.
 inline Rect undoButton(int redo) {
