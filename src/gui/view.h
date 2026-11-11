@@ -863,15 +863,23 @@ public:
     struct RadarGlow {
         Rect area;
         float scale = 0.0f;
-        std::vector<float> shape;
+        std::vector<float> distance; // each pixel's from OUT
+        std::vector<float> cover;    // how much of it is in the panel, at its rounded corners
         Image image;
         float strength = -1.0f;
+        float reach = -1.0f;
         Color accent{};
     };
 
 private:
     RadarGlow radarGlow_;
-    float radarGlowStrength(const Telemetry &t) const;
+    float radarLevel_ = 0.0f; // the output's level the glow has risen or fallen to, 0 to 1 (see poll())
+    struct RadarLook {
+        float strength; // its alpha on OUT
+        float reach;    // how far out it fades to nothing
+    };
+    RadarLook radarLook() const;
+    static float outputLevel(const Telemetry &t);
     bool routingGraphShown() const;
     static Point nodeDeleteAt(int node, Point center);
     static Point fxDeleteAt(int node, Point center);

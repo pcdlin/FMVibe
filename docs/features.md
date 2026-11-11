@@ -578,12 +578,15 @@ may show anywhere, repaints the whole of it.
     set (a filter or shaper while something goes into it), and at 45 % while it isn't. Its letter or name, and an
     operator's wave, take its color too, its ratio or type the dim text's. The graph sits on a radar: **OUT** is a
     disc at its right end, shading from the accent in its middle to a deeper accent and the filters' purple at its
-    edge, in a faint halo, a glow of the accent spreading out from it across the whole panel (strongest on it, a third
-    as strong a third of the way out, gone 520 px away). The glow is as bright as the output is loud: its meter's peak,
-    from -48 dB up to full scale, takes it from 30 % of its strength in silence to all of it, and the Glow setting
-    sets how strong that is (16 % of the accent on the core at full scale with it at 75 %, none with it Off). It is
-    worked out once at the screen's own pixels and dithered, so it fades without steps, its pixels filled again as its
-    strength changes by a step and its shape only as the editor is zoomed. Three orbit rings go round OUT (180, 340
+    edge, in a faint halo, and a bloom of the accent glowing out from it behind the graph, strongest on the core and
+    fading smoothly ((1 - u^2)^3 of it, u the way out) to nothing as far as it reaches. The bloom follows how loud the
+    output is: the RMS of the span the output scope took last, from -48 dB up to -3 dB (a sine at full scale), which it
+    rises to over a moment (about a sixth of a second) and falls back from half as fast, so a note swells it rather
+    than switching it on. From silence to the loudest, it goes from 30 % of its strength to all of it, and its reach
+    from 260 px to 520 px (the outermost ring), so it spreads out as the sound swells; the Glow setting sets how strong
+    it is (20 % of the accent on the core at the loudest with it at 75 %, none with it Off). It is worked out at the
+    screen's own pixels and dithered, so it fades without steps: where each pixel lies is worked out only as the editor
+    is zoomed, and its pixels filled again as its loudness moves by one of 64 steps. Three orbit rings go round OUT (180, 340
     and 500 px out, fainter outward) and two faint rays run from it under the inspector's lens to the lens's far
     corners, all behind the nodes, the wires and the lens. A
     halo glows around it while it sounds (feathered as the Glow setting says, a plain ring of light with it Off):
