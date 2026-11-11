@@ -506,10 +506,10 @@ View::MenuNode View::cascadeCategories() const {
             to.children.push_back(targetPick(afterPrefix(table_[index].name, prefix), index));
     };
 
-    // The mod wheel is played, not set: it isn't offered.
+    // The mod wheel and the pitch bend are played, not set: they aren't offered.
     MenuNode global = category(tr(Str::CascadeGlobal));
     for (int g = 0; g < kGlobalCount; ++g)
-        if (g != paramIndex(GlobalParam::ModWheel))
+        if (!isPlayed(g))
             add(global, g, "");
     keep(std::move(global));
 

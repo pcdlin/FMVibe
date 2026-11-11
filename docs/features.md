@@ -220,8 +220,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     velocity as it came: half of it for a note at 64. Drawn the other way round, the softest notes move their
     targets the most. The curve is part of the patch.
   - **Pitch Bend**: a source that puts out where the pitch bend stands, from all the way down to all the way up, its
-    middle at rest: the host's MIDI pitch bend and the editor's bend wheel together and, with MPE on, a note's own
-    channel's bend on top (each as a share of its own range, whatever Bend Range says). Like velocity it has 16 slots
+    middle at rest: the host's MIDI pitch bend and the **Pitch Bend** param (the editor's bend wheel) together and,
+    with MPE on, a note's own channel's bend on top (each as a share of its own range, whatever Bend Range says). Like velocity it has 16 slots
     and no switch, runs per voice (so with MPE each note follows its own bend), reaches the effects through the newest
     voice, and modulates from a note's first block on. It starts bipolar, so it moves nothing at rest and swings its
     targets both ways as the wheel goes up and down; unipolar, it moves them half its depth at rest and all of it fully
@@ -494,8 +494,13 @@ What the plugin does and how its editor works, in full. Building and installing 
   gives those 12 dB back. A project or preset saved by FMVibe 0.1, whose Volume didn't, loads it 12 dB lower, so
   it sounds as loud as it did. Hosts modulate it globally, and LFOs and envelopes through the newest voice, as they
   do effect knobs), FM Amount, Pitch (±48 semitones, handy as an envelope target for drums), Pan, **Bend** Range for
-  MIDI pitch bend (its knob in the header, after Pitch), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), and **Voices**, the
-  polyphony limit (1–512, default 16).
+  MIDI pitch bend (its knob in the header, after Pitch), **Mod Wheel**, which moves what is assigned to it (nothing to begin with), **Pitch Bend**
+  (±100 %, at rest in the middle), and **Voices**, the polyphony limit (1–512, default 16). Pitch Bend is the
+  editor's bend wheel: it bends as the MIDI pitch bend does, added to it (by Bend Range), and the pitch bend source
+  follows it. As a parameter, a host automates and modulates it like the others, globally or per note (a modulator
+  per note, as Bitwig's are, bending each note its own way), and the wheel dragged edits it as a knob does, so a host
+  shows its automation then (Bitwig, in its automation lane). Like the mod wheel's position, it is played rather than
+  part of the patch: nothing to undo, and no modulation's target.
 - **MPE** (MIDI Polyphonic Expression), off to begin with: a setting of the instance, in the settings dialog (see
   Settings), saved with the project but not with presets, so browsing presets leaves it as it is. Hosts that
   send note expressions (Bitwig to CLAP plugins, Cubase to VST3 ones) need nothing: each note's tuning, volume,
@@ -1416,7 +1421,9 @@ one may have changed since it last did.
   under them, so the wheels can still be assigned. Whether it is
   collapsed is kept with the editor, like the modulation panel's, and loading a
   preset leaves it as it is. Drag across the keys to glide between notes. Keys light up while they are held, whether clicked here or
-  played by the host. The **Bend** wheel bends the pitch by the Bend Range and springs back to center on release,
+  played by the host. The **Bend** wheel is the Pitch Bend param: it bends the pitch by the Bend Range and springs
+  back to center on release, in one edit the host follows. It shows where the bend stands: the param, with what the
+  host adds on top (its MIDI pitch bend, and its modulation of the param, the newest note's own while notes play),
   filled in the pitch bend source's color, and its handle drags the pitch bend source onto what it should move. The
   **Mod** wheel is the Mod Wheel param, and its handle drags onto what it should move (not the wheel itself). Both
   handles work like a macro's (faint, like theirs, until they move something). The mod wheel's and either handle's
@@ -1624,7 +1631,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,261 of FMVibe's 19,380 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,262 of FMVibe's 19,381 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

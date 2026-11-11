@@ -59,7 +59,6 @@ public:
             lastNote = note;
     }
     int lastNote = -1; // the last key played
-    void pitchWheel(double) override {}
     void setScope(int op, int cycles) override {
         scopeOp = op;
         scopeCycles = cycles;
@@ -131,7 +130,10 @@ public:
     }
 
 protected:
-    void performBeginEdit(int) override { ++openEdits; }
+    void performBeginEdit(int index) override {
+        ++openEdits;
+        begun.push_back(index);
+    }
     void performSetValue(int index, double v) override {
         values[index] = v;
         sets.push_back(index);
@@ -141,6 +143,7 @@ protected:
 public:
 
     void set(int index, double v) { values[index] = v; }
+    std::vector<int> begun; // the params whose gestures began, in order
 
     ParamValues values{};
     int oversamplingFactor = 2;
@@ -4422,6 +4425,27 @@ void testPartialRepaint(const std::filesystem::path &dir, Renderer &renderer) {
     check(keyMoved && samePixels("99e-partial-keys.png"),
           "a key going down repaints the keyboard alone (and the header apart), as a whole paint would");
 
+    // The Pitch Bend param moving, as a host automates it, moves the bend wheel: the keyboard's panel again.
+    model.set(paramIndex(GlobalParam::PitchBend), -0.6);
+    const bool wheelMoved = view.poll() && !only(view.wholeArea()) &&
+                            std::any_of(view.changedAreas().begin(), view.changedAreas().end(),
+                                        [](Rect r) { return r.y > detail::kRouting.bottom() && r.h < 200.0f; });
+    check(wheelMoved && samePixels("99e2-partial-bend.png"),
+          "the Pitch Bend param moving repaints the keyboard's panel, its wheel there, as a whole paint would");
+    // So does what the host adds to it, its modulation of the param and its MIDI bend (see Telemetry::bend): the wheel
+    // shows the param as set with that on top, here +0.9 on its -0.6.
+    model.live.bend = 0.3f;
+    model.live.bendSet = -0.6f;
+    const bool hostMoved = view.poll() && !only(view.wholeArea()) &&
+                           std::any_of(view.changedAreas().begin(), view.changedAreas().end(),
+                                       [](Rect r) { return r.y > detail::kRouting.bottom() && r.h < 200.0f; });
+    const std::vector<uint32_t> before = renderer.image();
+    check(hostMoved && samePixels("99e3-partial-bend-host.png") && renderer.image() != before,
+          "the host's modulation of the pitch bend moves the bend wheel, repainting the keyboard's panel, as a whole "
+          "paint would");
+    model.live.bend = model.live.bendSet = 0.0f;
+    model.set(paramIndex(GlobalParam::PitchBend), 0.0);
+
     // Operator A's scope shown: its trace moving repaints the inspector (and the header apart, its meter showing).
     model.ui.selectedNode = 0;
     model.ui.opTab = InspectorTab::Scope;
@@ -5099,6 +5123,24 @@ void testMacros(const std::filesystem::path &dir, Renderer &renderer) {
         check(tip && bendMapped && bendShot && idle * 18 < live * 10 &&
                   bendRemoval == trf(Str::MenuRemoveModulation, {tr(Str::SourceNameBend)}),
               "the pitch bend's handle, over its wheel, maps it like a macro's, bipolar, and is faint until it does");
+    }
+    // The bend wheel is the Pitch Bend param: dragged, it edits it in one gesture, which a host follows (as Bitwig
+    // shows the param's automation), springing back to the middle as it is let go, and leaves nothing to undo.
+    {
+        const Rect wheel = detail::bendWheel(detail::keyboardTop(false));
+        const int bendParam = paramIndex(GlobalParam::PitchBend);
+        const UndoStep *before = model.nextUndo();
+        model.begun.clear();
+        const Point up{wheel.center().x, wheel.y + wheel.h * 0.15f};
+        view.mouseDown(wheel.center(), {});
+        view.mouseMove(up, {});
+        const double bent = model.value(bendParam);
+        const bool wheelShot = renderer.save(view, dir / "26g3-bend-wheel-up.png");
+        view.mouseUp(up, {});
+        std::printf("      the bend wheel dragged up: Pitch Bend %.2f, %.2f let go\n", bent, model.value(bendParam));
+        check(wheelShot && bent > 0.6 && model.value(bendParam) == 0.0 && model.begun == std::vector<int>{bendParam} &&
+                  model.openEdits == 0 && model.nextUndo() == before,
+              "the bend wheel edits the Pitch Bend param in one gesture, springing back to the middle, nothing to undo");
     }
 
     // The macros', the mod wheel's and the note source's menus pick their polarity too, the one in force checked:
@@ -7000,11 +7042,11 @@ void testModsEmpty(const std::filesystem::path &dir, Renderer &renderer) {
     check(added && menuShot && sourced && shot && slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) < 0,
           "the MODS view's last row adds an empty modulation, which takes a source and modulates nothing yet");
     // Its target opens the targets under it, at x 234, under the menu's search (30 px): Global, the first category,
-    // lists its params beside it from x 476, but not the mod wheel; where it would come after them, a click only
-    // closes the menu.
+    // lists its params beside it from x 476, but not the mod wheel or the pitch bend; where it would come after them, a
+    // click only closes the menu.
     std::vector<int> globals;
     for (int g = 0; g < kGlobalCount; ++g)
-        if (isModTarget(g) && g != paramIndex(GlobalParam::ModWheel))
+        if (isModTarget(g) && !isPlayed(g))
             globals.push_back(g);
     auto openGlobal = [&] {
         click(view, {300.0f, y});

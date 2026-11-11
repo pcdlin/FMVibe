@@ -175,6 +175,7 @@ STR(ParamFxInputFrom, "From")
 STR(ParamFxInputLevel, "Level")
 STR(ValueFxIn, "In") // a wire coming from the voices, into the effects graph
 STR(ParamModWheel, "Mod Wheel")
+STR(ParamPitchBend, "Pitch Bend")
 STR(ParamNote, "Note")
 STR(ParamVelocitySource, "Velocity") // the velocity source, as hosts name its fields
 STR(ParamBendSource, "Pitch Bend") // the pitch bend source, as hosts name its fields

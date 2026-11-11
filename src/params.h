@@ -49,7 +49,9 @@ constexpr int kMaxUnison = 16;  // copies per operator
 // overlapping ones. RetiredFxOrder was the order of the first kFirstFxSlots effect slots as one number; it does
 // nothing since the chain's order is a param a place (see fxOrder()), kept so the ids after it stay.
 // ModWheel is the mod wheel's position, 0..1: like a macro's knob, it moves only what it is assigned to (see
-// WheelParam).
+// WheelParam). PitchBend (-1..1) bends as the MIDI pitch bend does, added to it and to the editor's bend wheel: a
+// param, so a host can automate and modulate the bend (per note too) as it does other params, and the pitch bend
+// source follows it.
 enum class GlobalParam {
     Volume,
     FmAmount,
@@ -63,6 +65,7 @@ enum class GlobalParam {
     GlideAlways,
     RetiredFxOrder,
     ModWheel,
+    PitchBend,
     Count
 };
 // Out goes straight to the output; the sends go into the filters (see sendIndex()) and the shapers
@@ -1415,7 +1418,8 @@ static_assert(kOps == 6 && kMacros == 8 && kMaxSources == 16 && kSlots == 16 && 
                   kShapers == 2 && kFxSlots == 32 && kFirstFxSlots == 16 && kMaxShapePoints == 64 && kMaxNotePoints == 16 &&
                   kPartials == 64 && kFirstPartials == 32,
               "a count the param ids are laid out by changed: see Pinned ids");
-static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(paramIndex(GlobalParam::ModWheel)) == 11,
+static_assert(idOfIndex(paramIndex(GlobalParam::Volume)) == 0 && idOfIndex(paramIndex(GlobalParam::ModWheel)) == 11 &&
+                  idOfIndex(paramIndex(GlobalParam::PitchBend)) == 12,
               "global param ids moved");
 static_assert(idOfIndex(kFxPositionBase) == 33400 && idOfIndex(kFxPositionBase + kFxSlots - 1) == 33431,
               "chain order param ids moved");
@@ -2267,6 +2271,11 @@ constexpr bool modulatedInSteps(int index) { return sourceFieldOf(index) == Sour
 // retired ones (see isRetired()), which do nothing.
 // Not the macros' own knobs: they are read as set.
 bool isRetired(int index);
+// The wheels' positions, played rather than set: the mod wheel and the pitch bend. Not part of the patch's edits (no
+// undo step), nor a target the editor offers modulation.
+constexpr bool isPlayed(int index) {
+    return index == paramIndex(GlobalParam::ModWheel) || index == paramIndex(GlobalParam::PitchBend);
+}
 inline bool isModTarget(int index) {
     return index >= 0 && index < kMacroBase && !isRetired(index) &&
            (!isStepped(paramTable()[index].kind) || modulatedInSteps(index)) &&

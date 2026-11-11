@@ -1570,7 +1570,6 @@ private:
     bool modsFiltering_ = false;             // and whether it has the keyboard
     TextField cascadeSearch_;                // the search atop the open target menu
     int browserPick_ = -1;                   // the preset Up and Down picked, which Enter loads, or -1
-    double bend_ = 0.0;                      // the bend wheel's position, -1..1
     std::string flash_;
     int flashTicks_ = 0;
     std::optional<Typing> typing_;

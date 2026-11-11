@@ -78,7 +78,6 @@ public:
     gui::UiLayout &layout() override { return layout_; }
     void layoutChanged() override;
     void playNote(int note, bool on) override;
-    void pitchWheel(double amount) override { wheelBend_.store(amount); }
     void setScope(int op, int cycles) override {
         scopeOp_.store(op, std::memory_order_relaxed);
         scopeCycles_.store(cycles, std::memory_order_relaxed);
@@ -142,8 +141,8 @@ public:
     // Main thread, while not processing (or the audio thread, between blocks).
     void resetVoices() { synth_.reset(); }
 
-    // Audio thread. A block starts with beginBlock(), which takes what the editor did since the last one (its keys,
-    // bend wheel and scope) and a copy of the params; renders in spans, between which the host's notes and values
+    // Audio thread. A block starts with beginBlock(), which takes what the editor did since the last one (its keys
+    // and scope) and a copy of the params; renders in spans, between which the host's notes and values
     // go to synth() and setHostValue(); and ends with endBlock(), which hands the editor its telemetry. Denormals are
     // flushed to zero in between.
     void beginBlock();
@@ -293,7 +292,6 @@ private:
     // When each param's value last went out to the host (steady clock, ms); see setHostValue().
     std::array<std::atomic<int64_t>, kParamCount> toldAt_{};
     SpscQueue<KeyEvent, 256> keys_;
-    std::atomic<double> wheelBend_{0.0};
     SharedTelemetry telemetry_;
     // Audio thread: the telemetry's snapshots (see endBlock()), how often, the audio since the last one, whether the
     // editor was open at the last block, and where a snapshot is put together (on the heap: it is large).

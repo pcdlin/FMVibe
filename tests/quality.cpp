@@ -2392,6 +2392,30 @@ void presetContentChecks() {
     check(sparse, "every factory preset's file is sparse, as fmvibe-presettool writes it");
 }
 
+// Where the pitch bend stands, as the editor's bend wheel shows it (see Telemetry::bend): the MIDI bend and the Pitch
+// Bend param with the host's modulation for every voice, and in the newest voice its own on top; and the param as set.
+void bendTelemetryChecks() {
+    std::printf("bend telemetry:\n");
+    auto t = std::make_unique<Telemetry>(); // large: the analyzers' spectra are in it
+    Engine e(2);
+    const int bend = paramIndex(GlobalParam::PitchBend);
+    e.p[bend] = 0.2;
+    e.synth().paramMod(bend, {-1, -1, -1, -1}, 0.3);
+    e.synth().pitchBend(0, 0.1);
+    e.render(kBlock);
+    e.synth().telemetry(*t);
+    const float idle = t->bend, idleSet = t->bendSet;
+    e.noteOn(69, 7);
+    e.synth().paramMod(bend, {7, -1, -1, -1}, 0.2);
+    e.render(2 * kBlock);
+    e.synth().telemetry(*t);
+    std::printf("      Pitch Bend 0.2, the host's modulation +0.3, its MIDI bend +0.1: %.3f with no note (as set %.3f); "
+                "a note's own modulation +0.2: %.3f (as set %.3f)\n",
+                idle, idleSet, t->bend, t->bendSet);
+    check(std::abs(idle - 0.6f) < 1e-4f && idleSet == 0.2f && std::abs(t->bend - 0.8f) < 1e-4f && t->bendSet == 0.2f,
+          "the telemetry tells where the bend stands, the host's MIDI bend and modulation on top of the param as set");
+}
+
 // The scope: an operator's output, phase-locked to it, captured only while asked for.
 void scopeChecks() {
     std::printf("scope:\n");
@@ -3745,6 +3769,7 @@ int main() {
     }
 
     noteAndVoiceChecks();
+    bendTelemetryChecks();
 
     // --- What oversampling costs: 16 voices of a 6-operator stack, one second.
     std::printf("cost (16 voices, 6 operators, ms per second of audio):\n");

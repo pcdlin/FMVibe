@@ -32,7 +32,6 @@ EM_JS(void, js_param, (int index, double value), { Module.fmvHost.param(index, v
 EM_JS(void, js_all_params, (const double *values, int count),
       { Module.fmvHost.allParams(HEAPF64.slice(values >> 3, (values >> 3) + count)); });
 EM_JS(void, js_note, (int key, int on), { Module.fmvHost.note(key, on != 0); });
-EM_JS(void, js_bend, (double amount), { Module.fmvHost.bend(amount); });
 EM_JS(void, js_scope, (int op, int cycles), { Module.fmvHost.scope(op, cycles); });
 EM_JS(void, js_oversampling, (int factor), { Module.fmvHost.oversampling(factor); });
 EM_JS(void, js_tempo, (double bpm), { Module.fmvHost.tempo(bpm); });
@@ -108,7 +107,6 @@ public:
     UiLayout &layout() override { return layout_; }
     void layoutChanged() override { js_layout_changed(); }
     void playNote(int note, bool on) override { js_note(note, on); }
-    void pitchWheel(double amount) override { js_bend(amount); }
     // The view asks every poll; only a change goes to the worklet.
     void setScope(int op, int cycles) override {
         if (op == scopeOp_ && cycles == scopeCycles_)

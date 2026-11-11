@@ -80,7 +80,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro; and a hardware mod wheel
     (MIDI CC 1) moving the Mod Wheel param, and its target with it, the host told of the param's value;
   - the pitch bend source moving its target: bipolar, nothing at rest and half its depth bent fully up; unipolar,
-    half at rest and all of it fully up;
+    half at rest and all of it fully up; and the Pitch Bend param bending an A4 two semitones up, the source
+    following it set and modulated by the host, and a host's modulation of it for one note bending that note alone;
   - a MIDI source following its controller (and not another), on pressure the channel's and a note's own
     (polyphonic aftertouch or CLAP's pressure expression, not another key's), and on slide resting in the middle and
     following a note's brightness expression; Slew taking a controller turned up mid-note slowly, and a Random source
@@ -239,6 +240,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
+  - where the pitch bend stands, as the bend wheel shows it: the host's MIDI bend and modulation on top of the Pitch
+    Bend param as set, with no note and in a note with its own modulation;
   - Volume setting the level after the effects, and a mod envelope's level half way through its release;
   - an LFO on an effect, retriggered or free, still modulating it through a reverb's tail once the note's voice has
     ended, the editor told where it takes the effect and where the LFO is as it moves on, and stopping once the
@@ -312,7 +315,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     output is, and not once it is silent or the glow setting is off (read off the rendered pixels); and going back to
     the row changing nothing, the split showing there as its container;
   - a macro's name that isn't valid UTF-8 leaving the rest of the editor drawn (read off the rendered pixels);
-  - the output meter and scope moving repainting the header alone, a key the keyboard alone and an operator's scope
+  - the output meter and scope moving repainting the header alone, a key, the Pitch Bend param and the host's bend
+    on top of it (its wheel) the keyboard alone and an operator's scope
     the inspector alone, each painted over the frame before coming out as a whole paint does, pixel for pixel, and
     as notes play, likewise: an LFO modulating nothing moving repainting its card alone, on an operator's param its
     card and the panels' row, on the header's Pan its card and the header, on another LFO's Rate the two cards,
@@ -399,7 +403,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     following its input; a Random card's Unipolar | Bipolar setting its polarity (read off the rendered pixels),
     undoably;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
-    then a target from Global (which offers no Mod Wheel) makes it its source's modulation, each pick undoable, and
+    then a target from Global (which offers no Mod Wheel or Pitch Bend) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
     lighting none of them (read off the rendered pixels); a source card's button showing its modulations in MODS, or with none adding an empty one
     from it;
@@ -520,7 +524,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     modulates something (read off the rendered pixels); with no note playing, a knob's dot showing where a macro
     takes it (read off the rendered pixels); the octave shift's small buttons under the keys; collapsing the keyboard
     strip to its top row by its chevron or title, the wheels' handles staying in it and still mapping the wheels; and
-    Bend's knob, in the header after Pitch, turning;
+    Bend's knob, in the header after Pitch, turning; the bend wheel dragged editing the Pitch Bend param in one
+    gesture (the host following it), springing back to the middle and leaving nothing to undo;
   - the dashed cards that add effects and sources (opening the list of types at the mouse, the effects' moved back
     inside the editor at the chain's right end and staying over a switched-off card's dimming, read off the rendered
     pixels; the sources' closing
@@ -932,7 +937,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,261 of the 19,380 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,262 of the 19,381 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'

@@ -140,7 +140,6 @@ void PluginCore::beginBlock() {
     _mm_setcsr(csr_ | 0x8040); // flush-to-zero and denormals-are-zero
 
     playKeys();
-    synth_.setWheelBend(wheelBend_.load());
     synth_.setAnalyzing(editorOpen_.load(std::memory_order_relaxed));
     synth_.setScope(editorOpen_.load(std::memory_order_relaxed) ? scopeOp_.load(std::memory_order_relaxed) : -1,
                     scopeCycles_.load(std::memory_order_relaxed));

@@ -24,7 +24,6 @@ float right[kMaxFrames];
 Telemetry telemetry{};
 double sampleRate = 48000.0;
 int oversampling = 2;
-double wheelBend = 0.0;
 
 int voiceLimit() {
     return std::clamp(static_cast<int>(std::lround(values[paramIndex(GlobalParam::Voices)])), 1, kMaxVoices);
@@ -68,10 +67,6 @@ EMSCRIPTEN_KEEPALIVE void dsp_note(int key, int on, int velocity) {
         synth.noteOff(note);
 }
 
-EMSCRIPTEN_KEEPALIVE void dsp_bend(double amount) {
-    wheelBend = amount;
-}
-
 // The page's tempo (BPM), standing in for a host's transport: synced LFOs, delays and sweeps follow it.
 EMSCRIPTEN_KEEPALIVE void dsp_tempo(double bpm) {
     synth.setTempo(bpm);
@@ -99,7 +94,6 @@ EMSCRIPTEN_KEEPALIVE void dsp_render(int frames) {
     // restart does for the plugin. It allocates, so the sound stops for a moment.
     if (voiceLimit() > synth.capacity() || oversampling != synth.oversampling())
         synth.prepare(sampleRate, voiceLimit(), oversampling);
-    synth.setWheelBend(wheelBend);
     synth.setAnalyzing(true); // the editor is always open
     synth.setVoiceLimit(voiceLimit());
     applyPlayMode();
