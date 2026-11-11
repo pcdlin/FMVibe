@@ -3182,6 +3182,45 @@ int main() {
             std::printf("\n");
         }
         check(level, "the chorus's voices together play about as loud as what went in, however many, low and high");
+
+        // Its Feedback full up either way, Voices dropped from 6 to 2 under a loud sine and the sine then stopped: what
+        // goes round doesn't grow while the voices fade out, and dies away after. Its peaks move about with the sweep,
+        // which moves its resonances; grown out of hand, they would be orders of magnitude louder.
+        bool steady = true;
+        for (double feedback : {1.0, -1.0}) {
+            Effects fx;
+            ParamValues p;
+            chorusFx(fx, p, 6, 0.5);
+            p[paramIndex(0, FxParam::ChorusFeedback)] = feedback;
+            std::vector<float> left(kBlock), right(kBlock);
+            double before = 0.0, during = 0.0, after = 0.0; // with 6 voices, as they drop to 2, and once settled
+            const uint32_t second = static_cast<uint32_t>(kSampleRate);
+            for (uint32_t done = 0; done < 3 * second; done += kBlock) {
+                if (done >= second)
+                    p[paramIndex(0, FxParam::ChorusVoices)] = 2.0;
+                for (uint32_t s = 0; s < kBlock; ++s)
+                    left[s] = right[s] =
+                        done < 2 * second
+                            ? static_cast<float>(0.8 * std::sin(2.0 * std::numbers::pi * 700.0 * (done + s) / kSampleRate))
+                            : 0.0f;
+                fx.process(left.data(), right.data(), kBlock, p, 120.0, 60.0);
+                for (uint32_t s = 0; s < kBlock; ++s) {
+                    const double level = std::max(std::abs(left[s]), std::abs(right[s]));
+                    double &into = done < second ? before : done < second + second / 4 ? during : after;
+                    if (done < 2 * second)
+                        into = std::max(into, level);
+                }
+            }
+            double last = 0.0; // the last block's peak, a second after the sine stopped
+            for (uint32_t s = 0; s < kBlock; ++s)
+                last = std::max(last, static_cast<double>(std::max(std::abs(left[s]), std::abs(right[s]))));
+            std::printf("      feedback %+.0f %%: peak %.2f with 6 voices, %.2f dropping to 2, %.2f with 2, then %.2g a "
+                        "second after\n",
+                        feedback * 100.0, before, during, after, last);
+            steady = steady && std::isfinite(during) && during < 3.0 * std::max(before, after) && after < 2.5 &&
+                     last < 1e-3;
+        }
+        check(steady, "the chorus's feedback stays steady as voices fade out, and dies away after");
     }
 
     // --- The phaser's and flanger's polarity, standing still with no feedback at full Mix (half wet). Positive, a

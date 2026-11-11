@@ -213,7 +213,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
-    440 Hz and 5 kHz about as loud as it went in, with 2, 3, 4 and 6;
+    440 Hz and 5 kHz about as loud as it went in, with 2, 3, 4 and 6; and its Feedback full up either way staying
+    steady as Voices drops from 6 to 2 under a loud sine, then dying away;
   - the reverb's tails: every algorithm's late spectrum without lasting resonances and its two sides unalike, an
     undamped tail falling 60 dB around 1 kHz in its decay time, and a reverb with a 200 ms pre-delay ringing on
     until its tail has been heard, and stopping after; a sample that isn't a number, and one louder than any sound,

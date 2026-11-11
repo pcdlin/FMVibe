@@ -5246,7 +5246,7 @@ void View::paintSweep(Canvas &c, Rect r, int slot, FxType type) {
     // last snapshot at its rate), or in the middle while no audio runs. A stereo sweep's right side, a
     // quarter cycle ahead, is the thinner of the two bright curves.
     const bool running = telemetry_.age < 0.5f;
-    const double rateHz = sweepHz([this](int i) { return liveValue(i); }, slot, phaser, telemetry_.tempo);
+    const double rateHz = sweepHz([this](int i) { return liveValue(i); }, slot, type, telemetry_.tempo);
     const double phase = telemetry_.fxPhases[slot] + rateHz * std::clamp(static_cast<double>(telemetry_.age), 0.0, 0.1);
     const bool stereo = at(phaser ? FxParam::PhaserStereo : FxParam::FlangerStereo) >= 0.5;
     struct Response {

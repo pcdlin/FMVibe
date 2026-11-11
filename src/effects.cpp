@@ -282,14 +282,9 @@ double flangerDelay(double delayNorm, double depth, double lfo) {
     return timeFromNorm(delayNorm) * (1.0 + 0.95 * depth * lfo);
 }
 
-double chorusPan(int voice, int voices, double spread) {
-    if (voices <= 1)
-        return 0.0;
-    return std::clamp(spread, 0.0, 1.0) * (-1.0 + 2.0 * voice / (voices - 1.0));
-}
-
 ChorusGains chorusGains(int voice, int voices, double spread) {
-    const double angle = (1.0 + chorusPan(voice, voices, spread)) * 0.25 * std::numbers::pi;
+    const double pan = voices <= 1 ? 0.0 : std::clamp(spread, 0.0, 1.0) * (-1.0 + 2.0 * voice / (voices - 1.0));
+    const double angle = (1.0 + pan) * 0.25 * std::numbers::pi;
     const double scale = std::numbers::sqrt2 / std::sqrt(static_cast<double>(std::max(voices, 1)));
     return {scale * std::cos(angle), scale * std::sin(angle)};
 }
@@ -2065,7 +2060,7 @@ double Effects::runReverb(int slot, float *const *io, uint32_t n, const ParamVal
 double Effects::runPhaser(int slot, float *const *io, uint32_t n, const ParamValues &p, double tempo) {
     Phaser &ph = slots_[slot].phaser;
     auto at = [&](FxParam f) { return p[paramIndex(slot, f)]; };
-    const double step = sweepHz([&p](int i) { return p[i]; }, slot, true, tempo) / sampleRate_;
+    const double step = sweepHz([&p](int i) { return p[i]; }, slot, FxType::Phaser, tempo) / sampleRate_;
     const double centerHz = cutoffFromNorm(at(FxParam::PhaserCenter)); // phaserCorner()'s, the same all chunk
     const double depth = at(FxParam::PhaserDepth);
     const double feedback = sweepFeedback(at(FxParam::PhaserFeedback));
@@ -2292,7 +2287,7 @@ double Effects::runFlanger(int slot, float *const *io, uint32_t n, const ParamVa
     Flanger &f = slots_[slot].flanger;
     f.ran += n; // counted ahead of what this chunk writes (see start())
     auto at = [&](FxParam field) { return p[paramIndex(slot, field)]; };
-    const double step = sweepHz([&p](int i) { return p[i]; }, slot, false, tempo) / sampleRate_;
+    const double step = sweepHz([&p](int i) { return p[i]; }, slot, FxType::Flanger, tempo) / sampleRate_;
     const double delaySeconds = timeFromNorm(at(FxParam::FlangerDelay)); // flangerDelay()'s, the same all chunk
     const double depth = at(FxParam::FlangerDepth);
     const double feedback = sweepFeedback(at(FxParam::FlangerFeedback));
@@ -2356,6 +2351,7 @@ double Effects::runChorus(int slot, float *const *io, uint32_t n, const ParamVal
     const double depth = std::clamp(at(FxParam::ChorusDepth), 0.0, 1.0);
     const double swing = kChorusSweep * depth, wander = kChorusDrift * depth;
     const double feedback = sweepFeedback(at(FxParam::ChorusFeedback));
+    const double gain = sweepGain(at(FxParam::ChorusFeedback)); // as the flanger's, so feedback doesn't ring louder
     const double mixStep = rampStep(ch.mix, at(FxParam::ChorusMix), n, rampShortest_);
     const int voices = static_cast<int>(std::clamp(std::lround(at(FxParam::ChorusVoices)),
                                                    static_cast<long>(kMinChorusVoices),
@@ -2364,11 +2360,14 @@ double Effects::runChorus(int slot, float *const *io, uint32_t n, const ParamVal
     const double bassCoef = onePole(kChorusBassHz, sampleRate_);
     const int size = static_cast<int>(ch.lines[0].size());
     // The voices' sweeps and places glide toward where Voices puts them, and their gains ramp to where Voices and
-    // Spread put them; a voice silent and staying so is left out.
+    // Spread put them; a voice silent and staying so is left out (snapped to silence once its ramp has all but ended,
+    // which its last steps' rounding may not quite reach).
     const uint32_t fade = std::max(rampShortest_, static_cast<uint32_t>(kChorusFadeSeconds * sampleRate_));
     std::array<double, kMaxChorusVoices> stepL{}, stepR{}, driftStep{};
     std::array<bool, kMaxChorusVoices> heard{};
     for (int k = 0; k < kMaxChorusVoices; ++k) {
+        if (k >= voices && std::abs(ch.gainL[k]) < 1e-9 && std::abs(ch.gainR[k]) < 1e-9)
+            ch.gainL[k] = ch.gainR[k] = 0.0;
         if (k < voices) {
             ch.offsets[k] = moveToward(ch.offsets[k], chorusOffset(k, voices), kChorusGlide * n / sampleRate_);
             ch.stagger[k] =
@@ -2426,13 +2425,16 @@ double Effects::runChorus(int slot, float *const *io, uint32_t n, const ParamVal
             const double right = readCubic(ch.lines[1], ch.write, ch.delay[k]);
             wet[0] += ch.gainL[k] * left;
             wet[1] += ch.gainR[k] * right;
-            back[0] += left;
-            back[1] += right;
+            // Its share of what goes round: 1 / voices once its gains are where they go (whose squares add up to
+            // 2 / voices at any Spread), fading in or out with them. The shares add up to 1 at most, also while
+            // voices come and go, so Feedback under 1 keeps what goes round from growing.
+            const double share = 0.5 * (ch.gainL[k] * ch.gainL[k] + ch.gainR[k] * ch.gainR[k]);
+            back[0] += share * left;
+            back[1] += share * right;
         }
         for (int c = 0; c < 2; ++c) {
-            // What goes round is the voices' mean on that side, so Feedback under 1 keeps it from growing.
-            ch.lines[c][ch.write] = static_cast<float>(high[c] + feedback * back[c] / voices);
-            io[c][s] = static_cast<float>(x[c] + (wet[c] - high[c]) * ch.mix);
+            ch.lines[c][ch.write] = static_cast<float>(high[c] + feedback * back[c]);
+            io[c][s] = static_cast<float>(x[c] + (gain * wet[c] - high[c]) * ch.mix);
             peak = std::max({peak, std::abs(x[c]), std::abs(wet[c])});
         }
         ch.write = ch.write + 1 == size ? 0 : ch.write + 1;

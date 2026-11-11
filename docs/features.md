@@ -467,7 +467,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     in the middle at 0 % to one side to the other at 100 % (where it starts); each side's voices read that side's
     input, so a stereo sound keeps its sides. Each voice is scaled by 1 / √voices, so more of them sound fuller rather
     than quieter: together they play about as loud as what went in. **Feedback** (either sign, 0 to begin with) sends
-    the voices' mean on each side back into its line. **Mix** takes the dry sound over to the voices alone (50 % to
+    the voices' mean on each side back into its line, the voices then scaled down as the phaser's and flanger's are
+    so it doesn't ring louder. **Mix** takes the dry sound over to the voices alone (50 % to
     begin with). It has no Sync: its Rate is set in Hz alone. Changing Voices, a voice coming or going fades in or
     out over 10 ms and the voices' sweeps and places glide to where they go, rather than jumping; Spread moves a
     voice between the sides over 10 ms too. A host or modulation can set 5 voices, which the card doesn't offer.
@@ -500,7 +501,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     Its levels ramp like the other effects'.
     Its knobs come in two rows, Gain and Pan above Width and Mono Bass.
 
-  The phaser and flanger keep their feedback from ringing louder: what they send round is scaled so their level
+  The phaser, flanger and chorus keep their feedback from ringing louder: what they send round is scaled so their level
   across the spectrum stays where it was without it. Effect knobs can be modulated like any other. Their levels and
   mixes ramp to a new setting sample by sample, however the host splits the block. As the effects are shared by all voices, the LFOs and envelopes
   reach them through the most recently played voice. Each of the 16 places in the chain has the parameters of

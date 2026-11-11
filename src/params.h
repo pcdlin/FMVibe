@@ -1846,10 +1846,6 @@ double sweepHz(const Get &get, int slot, FxType type, double tempo) {
         return 1.0 / divisionSeconds(at(phaser ? FxParam::PhaserDivision : FxParam::FlangerDivision), tempo);
     return sweepRateHz(at(phaser ? FxParam::PhaserRate : FxParam::FlangerRate));
 }
-template <class Get>
-double sweepHz(const Get &get, int slot, bool phaser, double tempo) {
-    return sweepHz(get, slot, phaser ? FxType::Phaser : FxType::Flanger, tempo);
-}
 
 // The permutation of 0..N-1 at `rank` in lexicographic order, and back.
 template <int N>

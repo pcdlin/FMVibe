@@ -91,10 +91,9 @@ inline constexpr double kReverbLongest = 0.0889;
 // sound goes past the voices, left as it is: the bass stays steady and in the middle.
 inline constexpr double kChorusDriftHz[kMaxChorusVoices] = {0.23, 0.31, 0.19, 0.37, 0.27, 0.41};
 constexpr double kChorusBassHz = 200.0;
-// Where voice `voice` of the chorus's `voices` sits between the sides (-1 left .. 1 right) at Spread.
-double chorusPan(int voice, int voices, double spread);
-// Its voices' gains on each side, panned at equal power from Spread and each scaled by 1 / sqrt(voices): voices that
-// wait unalike add up about as loud as what went in, however many there are.
+// The chorus's voices' gains on each side: voice `voice` of `voices` panned at equal power between the sides by Spread
+// (all in the middle at 0, from left to right in order at 1), and each scaled by 1 / sqrt(voices): voices that wait
+// unalike add up about as loud as what went in, however many there are.
 struct ChorusGains {
     double left, right;
 };
