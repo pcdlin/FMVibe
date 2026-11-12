@@ -279,6 +279,20 @@ private:
         Memo<UnisonIncs, 3> unisonIncs;   // its copies' increments, from its pitch, detune and copies
         Memo<UnisonGains, 2> unisonGains; // and their gains, from its spread and copies
         std::array<NoiseColor::State, 2> noise{}; // the Noise wave's color filters: middle and sides
+        // Hard sync: each copy's master, a cycle of the note (as detuned as the copy), restarts the copy at the phase
+        // the note started it at. A restart's step, and the bend in its slope, are smoothed over the samples either
+        // side of it (polyBLEP and polyBLAMP): the one after's share waits in `syncCarry`.
+        std::array<double, kMaxUnison> startPhases{}; // where the note started each copy
+        std::array<double, kMaxUnison> syncPhases{};  // the masters', in cycles
+        std::array<double, kMaxUnison> syncIncNow{};  // and their increments, moving to each block's
+        std::array<double, kMaxUnison> syncCarry{};   // what the next sample adds, per copy
+        bool syncOn = false;  // syncing: the masters run
+        bool syncKnown = false; // syncIncNow holds the last block's
+        int syncCopies = 0;     // for how many copies
+        bool carrying = false;  // some copy's syncCarry isn't 0 yet
+        // The warp it plays (see warp.h) and its amount, which goes to 0 before the warp changes to another one.
+        OpWarp warp = OpWarp::Off;
+        double warpNow = 0.0;
     };
 
     struct Lfo {

@@ -29,6 +29,13 @@ STR(WaveAltSine, "Alt Sine")
 STR(WaveOrgan, "Organ")
 STR(WaveVowel, "Vowel")
 
+// How an operator reads its wave's cycle (its Warp), in its buttons' tooltips and the host.
+STR(WarpOff, "Off")
+STR(WarpBend, "Bend")
+STR(WarpSqueeze, "Squeeze")
+STR(WarpPulse, "Pulse")
+STR(WarpSteps, "Steps")
+
 STR(FilterLowPass, "Low-pass")
 STR(FilterHighPass, "High-pass")
 STR(FilterBandPass, "Band-pass")
@@ -214,6 +221,8 @@ STR(ParamNoiseSlope, "Noise Slope")
 STR(ParamFixed, "Fixed") // the operator plays a fixed frequency instead of following the note
 STR(ParamFixedFreq, "Fixed Freq")
 STR(ParamFixedMult, "Fixed Mult")
+STR(ParamWarp, "Warp")
+STR(ParamWarpAmount, "Warp Amount")
 STR(ParamPartials, "Partials") // how many the Custom wave plays
 STR(ParamPartial, "Partial {1}")
 STR(ParamLevel, "Level")
@@ -458,6 +467,7 @@ STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
 STR(TabEnvelope, "ENVELOPE")
 STR(TabScope, "SCOPE")
 STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
+STR(TabWarp, "WARP") // its warp and hard sync
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -584,6 +594,7 @@ STR(SwitchPoly, "POLY")
 STR(SwitchMono, "MONO")
 STR(SwitchLegato, "LEGATO")
 STR(SwitchAlways, "ALWAYS") // the glide's
+STR(SwitchHardSync, "SYNC") // an operator's hard sync to the note
 STR(SwitchStereo, "STEREO")
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")

@@ -101,6 +101,10 @@ enum class OpParam {
     Ratio,                          // 0..1 on a log curve, 0.5 to 64 times the note; see ratioFromNorm()
     Pan,                            // -1..1: where what it puts out (to the output, the filters, the shapers) sits;
                                     // what other operators hear of it stays mono
+    Sync,                           // stored by number: 0 off, 1 hard sync to the note (its phase restarts at Phase
+                                    // each cycle of the note's pitch; see OpSync)
+    Warp,                           // one of OpWarp, by number: how its wave's cycle is read (see warpPhase())
+    WarpAmount,                     // -1..1, 0 (every warp's plain wave) to begin with
     Count
 };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
@@ -294,6 +298,13 @@ enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 // half of the cycle and silence for the second, like the classic FM chips'; Organ a stack of drawbar harmonics; Vowel
 // a buzz through two formant peaks, an "ah".
 enum class OpWave { Sine, Triangle, Saw, Square, Pulse, HalfSine, AbsSine, Noise, Custom, AltSine, Organ, Vowel, Count };
+// What an operator's Sync restarts its wave with: nothing, or the note's pitch. Stored by number: only append (an
+// operator to sync to could come after Note).
+enum class OpSync { Off, Note, Count };
+// How an operator reads its wave's cycle (see warpPhase() in warp.h): as it is, bent toward its start or end, squeezed
+// into a share of the cycle about its middle (a square's pulse width), squeezed into a pulse that then rests, or in
+// steps. Stored by number: only append.
+enum class OpWarp { Off, Bend, Squeeze, Pulse, Steps, Count };
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };
 // How a route into an operator (from an operator, a filter or a shaper) acts on it; see routeModeIndex(). Phase adds
@@ -1492,7 +1503,9 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(0, OpParam::RetiredVelocity)) == 108 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Phase)) == 378 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Ratio)) == 379 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 && kOpParamCount <= 50,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 &&
+                  idOfIndex(paramIndex(0, OpParam::Sync)) == 131 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::WarpAmount)) == 383 && kOpParamCount <= 50,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -1644,6 +1657,10 @@ static_assert(numberedInOrder({OpWave::Sine, OpWave::Triangle, OpWave::Saw, OpWa
                                OpWave::HalfSine, OpWave::AbsSine, OpWave::Noise, OpWave::Custom, OpWave::AltSine,
                                OpWave::Organ, OpWave::Vowel, OpWave::Count}),
               "OpWave is stored by number: only append");
+static_assert(numberedInOrder({OpSync::Off, OpSync::Note, OpSync::Count}), "OpSync is stored by number: only append");
+static_assert(numberedInOrder({OpWarp::Off, OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps,
+                               OpWarp::Count}),
+              "OpWarp is stored by number: only append");
 static_assert(numberedInOrder({FilterType::LowPass, FilterType::HighPass, FilterType::BandPass, FilterType::Notch,
                                FilterType::Comb, FilterType::Count}),
               "FilterType is stored by number: only append");
@@ -2277,6 +2294,7 @@ enum class ParamKind {
     AmpDistance,  // 0..1 on a log curve, shown in cm or m; see ampDistanceCm()
     Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
     CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
+    OpWarp,       // stepped: how an operator reads its wave's cycle (see OpWarp)
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);
@@ -2408,6 +2426,7 @@ bool parseParam(int index, const char *text, double *out);
 
 const char *lfoShapeName(LfoShape shape);
 const char *waveName(OpWave wave);
+const char *warpName(OpWarp warp);
 const char *filterTypeName(FilterType type);
 const char *filterTypeShortName(FilterType type);
 const char *divisionName(int division);

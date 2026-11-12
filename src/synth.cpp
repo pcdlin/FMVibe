@@ -1,4 +1,5 @@
 #include "synth.h"
+#include "warp.h"
 
 #include <algorithm>
 #include <cmath>
@@ -18,6 +19,7 @@ namespace {
 bool memberChannel(int channel) { return channel >= 1 && channel < 16; }
 
 constexpr uint32_t kControlBlock = 32;        // samples between modulation updates
+constexpr double kWarpSlew = 250.0;           // how fast an operator's warp amount moves at most, a second
 constexpr double kMaxIndex = 8.0;             // radians of phase modulation at a 100 % matrix amount
 constexpr double kMaxFeedback = std::numbers::pi;
 // The other ways a route can act on an operator (see RouteMode), at a 100 % amount and FM Amount: Linear FM swings
@@ -1377,6 +1379,55 @@ void Synth::shareVoiceParams(const ParamValues &params) {
     voiceBaseReady_ = true;
 }
 
+// What a warped operator's copy adds to this sample and the next for the warp's bends its phase passes before the next
+// sample, from `cycle` (`stretch` along the warp's stretch) on by `step`: each bend in its slope smoothed over the two
+// samples (polyBLAMP), by the change in slope, in the output's units a sample: the wave's slope where the warp reads
+// it there (over a sample at the faster side's speed) times the change in speed. Kept out of the voices' loop, which
+// passes a bend only now and then.
+namespace {
+
+struct WarpBends {
+    double now = 0.0, next = 0.0;
+};
+#ifdef _MSC_VER
+__declspec(noinline)
+#else
+__attribute__((noinline))
+#endif
+WarpBends warpBends(const WarpCoefs &coefs, const WarpKinks &kinks, const float *table, double cycle, double stretch,
+                    double step) {
+    WarpBends out;
+    const double by = step * kinks.perCycle; // how far it goes, in stretches
+    auto smooth = [&](int o, double ahead) {
+        const double until = ahead / by; // of a sample, to the bend
+        const double after = 1.0 - until;
+        const double kink = cycle + ahead / kinks.perCycle;
+        const double at = warpPhase(coefs, kink - std::floor(kink));
+        const double span = 0.5 * std::abs(step) * std::max(kinks.before[o], kinks.after[o]);
+        const double slope = (WaveTables::read(table, at + span) - WaveTables::read(table, at - span)) / (2.0 * span);
+        const double bend = slope * std::abs(step) * (kinks.after[o] - kinks.before[o]);
+        out.now += bend * after * after * after / 6.0;
+        out.next += bend * until * until * until / 6.0;
+    };
+    for (int o = 0; o < kinks.count; ++o) {
+        double ahead = kinks.offsets[o] - stretch;
+        if (by > 0.0) {
+            if (ahead <= 0.0)
+                ahead += 1.0;
+            for (; ahead <= by; ahead += 1.0)
+                smooth(o, ahead);
+        } else {
+            if (ahead >= 0.0)
+                ahead -= 1.0;
+            for (; ahead >= by; ahead -= 1.0)
+                smooth(o, ahead);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFrames, const ParamValues &params) {
     // This voice's param values before LFOs and envelopes: automation plus host modulation, global and per voice.
     // Freeform shapes are read from `params`; slot modulation of the effects reaches them in render(). What every
@@ -1625,7 +1676,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             for (int k = 0; k < kMaxUnison; ++k) {
                 const double phase = start + amount * 0.5 * (nextRandom(v.rng) + 1.0);
                 v.ops[i].phases[k] = phase - std::floor(phase);
+                v.ops[i].startPhases[k] = v.ops[i].phases[k];
+                v.ops[i].syncPhases[k] = 0.0; // a cycle of the note starts with the note
+                v.ops[i].syncCarry[k] = 0.0;
             }
+            v.ops[i].carrying = false;
         }
     }
 
@@ -1728,6 +1783,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     std::array<std::array<double, kMaxUnison>, kOps> incStep; // per sample, toward the block's increments
     std::array<bool, kOps> incMoving{}; // whether any of an operator's increments moves this block
     std::array<const UnisonIncs *, kOps> copy;
+    // Sync and the warp (see Operator): the operators that read their wave through either, or still carry a sync's
+    // smoothing over, take a loop of their own. The masters' increments move like the copies' do.
+    std::array<bool, kOps> warped{};
+    std::array<double, kOps> warpStep{};
+    std::array<std::array<double, kMaxUnison>, kOps> syncIncStep;
     std::array<const UnisonGains *, kOps> copyGains;
     // Switched-off operators and filters are skipped and route nothing.
     std::array<bool, kOps> opOn;
@@ -1747,6 +1807,12 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             op.out = 0.0;
             op.prevOut = 0.0;
             op.incKnown = false;
+            op.syncOn = false;
+            op.syncKnown = false;
+            op.carrying = false;
+            op.syncCarry.fill(0.0);
+            op.warp = OpWarp::Off;
+            op.warpNow = 0.0;
             v.levels.out[i] = 0.0;
             v.levels.send[i].fill(0.0);
             v.levels.shaperSend[i].fill(0.0);
@@ -1800,8 +1866,47 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         monoGain[i] = 1.0 / std::sqrt(static_cast<double>(copies[i]));
         const double detune = p[paramIndex(i, OpParam::UnisonDetune)];
         const double spread = p[paramIndex(i, OpParam::UnisonSpread)];
-        // The table suits the highest copy, so none of them reaches past Nyquist.
-        const double highest = copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc;
+        // The warp: its amount ramps to this block's over a control block, as the levels do; a warp changed to another
+        // first takes its amount down to 0 (the plain wave, whatever the warp), then switches and takes it up again.
+        double squeeze = 1.0; // how much faster the warp reads the wave at its steepest, for the table
+        {
+            const auto want = noise[i] ? OpWarp::Off
+                                       : static_cast<OpWarp>(stepped(p[paramIndex(i, OpParam::Warp)],
+                                                                      static_cast<int>(OpWarp::Count) - 1));
+            const double amount = want == OpWarp::Off ? 0.0 : std::clamp(p[paramIndex(i, OpParam::WarpAmount)], -1.0, 1.0);
+            if (starting) {
+                op.warp = want;
+                op.warpNow = amount;
+            }
+            if (want != op.warp && (op.warp == OpWarp::Off || op.warpNow == 0.0)) {
+                op.warp = want;
+                op.warpNow = 0.0;
+            }
+            const double to = want == op.warp ? amount : 0.0;
+            if (std::abs(to - op.warpNow) < 1e-6) // close enough: there, rather than ever closer
+                op.warpNow = to;
+            // At most kWarpSlew of its range a second, so a jump (a host's, or the duck to 0 and back of a warp
+            // changed) moves the wave's shape over a few milliseconds; modulation moves far slower than that.
+            const double most = kWarpSlew / rate_;
+            warpStep[i] = std::clamp((to - op.warpNow) * ramp, -most, most);
+            if (op.warp == OpWarp::Off && want == OpWarp::Off)
+                op.warpNow = 0.0;
+            if (op.warp != OpWarp::Off)
+                squeeze = warpSqueeze(op.warp, std::max(std::abs(op.warpNow), std::abs(to)));
+        }
+        // Sync to the note: switched on, a master starts a cycle of the note there.
+        const bool syncing = !noise[i] && p[paramIndex(i, OpParam::Sync)] >= 0.5;
+        if (syncing && !op.syncOn) {
+            op.syncPhases.fill(0.0);
+            op.syncKnown = false;
+        }
+        op.syncOn = syncing;
+        if (noise[i])
+            op.carrying = false; // noise has no cycle: what a sync carried is let go
+        warped[i] = op.syncOn || op.warp != OpWarp::Off || op.carrying;
+
+        // The table suits the highest copy, so none of them reaches past Nyquist, and the warp's steepest stretch.
+        const double highest = (copies[i] > 1 ? inc * std::exp2(detune / 1200.0) : inc) * squeeze;
         if (shape == OpWave::Custom)
             customWaves_[i].build(); // its tables follow its partials once a voice plays it
         wave[i] = shape == OpWave::Custom ? customWaves_[i].table(highest) : waves_.table(shape, highest);
@@ -1846,6 +1951,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         for (int k = 0; k < copies[i]; ++k) {
             incStep[i][k] = (copy[i]->inc[k] - op.incNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));
             incMoving[i] = incMoving[i] || incStep[i][k] != 0.0;
+        }
+        // The masters: each a cycle of the note, detuned as its copy is.
+        if (op.syncOn) {
+            const double noteInc = std::min(noteHz / rate_, 0.5);
+            for (int k = 0; k < copies[i]; ++k) {
+                const double to = std::min(noteInc * std::exp2(copyOffset(k) * detune / 1200.0), 0.5);
+                if (starting || !op.syncKnown || op.syncCopies != copies[i])
+                    op.syncIncNow[k] = to;
+                syncIncStep[i][k] = (to - op.syncIncNow[k]) / static_cast<double>(std::max<uint32_t>(frames, 1));
+            }
+            op.syncKnown = true;
+            op.syncCopies = copies[i];
         }
 
         // Squared amounts give finer control over the subtle low end.
@@ -2209,9 +2326,87 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             // Its envelope a sample at a time, here: run a block ahead into a buffer of its own (Envelope::run()), the
             // same levels made the voices a sixth slower with one copy in the plugins' MSVC build.
             const double envLevel = op.env.next(rates[i]);
-            const double scopePhase = i == scopeOp ? op.phases[0] : 0.0; // where this sample is read
+            // A synced operator's scope follows the note's cycles, which its own restart with.
+            const double scopePhase = i != scopeOp ? 0.0 : op.syncOn ? op.syncPhases[0] : op.phases[0];
             double mono = 0.0, l = 0.0, r = 0.0;
-            if (noise[i]) {
+            if (warped[i]) {
+                // Synced or warped (see Operator): each copy read through its warp, and restarted by its master. The
+                // plain loops below are as they were, so an operator with neither costs nothing more.
+                const WarpCoefs coefs = warpCoefs(op.warp, op.warpNow);
+                const bool warping = coefs.mode != OpWarp::Off;
+                const WarpKinks kinks = warpKinks(coefs);
+                const float *table = wave[i];
+                auto read = [&](double phase) {
+                    return warping ? WaveTables::readCycle(table, warpPhase(coefs, phase - std::floor(phase)))
+                                   : static_cast<double>(WaveTables::read(table, phase));
+                };
+                const bool sides = route.out || route.sendCount > 0 || route.shaperSendCount > 0;
+                bool carrying = false;
+                for (int k = 0; k < copies[i]; ++k) {
+                    const double here = op.phases[k] + offset;
+                    const double cycle = here - std::floor(here); // where along its cycle it is, 0..1
+                    double x = (warping ? WaveTables::readCycle(table, warpPhase(coefs, cycle))
+                                        : WaveTables::read(table, here)) +
+                               op.syncCarry[k];
+                    op.syncCarry[k] = 0.0;
+                    const double step = factor == 1.0 ? op.incNow[k] : std::clamp(op.incNow[k] * factor, -0.5, 0.5);
+                    op.phases[k] += step;
+                    bool restarted = false;
+                    if (op.syncOn) {
+                        double master = op.syncPhases[k] + op.syncIncNow[k];
+                        if (master >= 1.0) {
+                            // The master's cycle ended `after` of a sample before the next one: the copy restarts
+                            // at its start there. Its step and the change in its slope are spread over this sample
+                            // and the next as band-limited ones would be (polyBLEP and polyBLAMP).
+                            master -= 1.0;
+                            const double after = std::min(master / op.syncIncNow[k], 1.0);
+                            const double at = op.phases[k] - after * step; // where the restart cut it off
+                            const double start = op.startPhases[k];
+                            const double from = read(at + offset), to = read(start + offset);
+                            const double jump = to - from;
+                            const double bend = (read(start + step + offset) - to) - (from - read(at - step + offset));
+                            const double before = 1.0 - after;
+                            x += jump * 0.5 * after * after + bend * after * after * after / 6.0;
+                            op.syncCarry[k] = -jump * 0.5 * before * before + bend * before * before * before / 6.0;
+                            carrying = true;
+                            restarted = true;
+                            op.phases[k] = start + after * step;
+                        }
+                        op.syncPhases[k] = master;
+                        op.syncIncNow[k] += syncIncStep[i][k];
+                    }
+                    // The warp's bends that the phase passes before the next sample (as it moves now), each smoothed
+                    // as a sync's restart is: by the change in the slope, over this sample and the next (polyBLAMP).
+                    // Along each of the warp's stretches (its steps, or the cycle), `ahead` is how far on a bend is.
+                    if (warping && !restarted && step != 0.0) {
+                        const double along = cycle * kinks.perCycle;
+                        const double stretch = kinks.perCycle == 1.0 ? cycle : along - std::floor(along); // 0..1
+                        const double by = step * kinks.perCycle; // how far it goes, in stretches
+                        // Only now and then does it pass one: then they are smoothed out of the loop's way.
+                        bool passes = false;
+                        for (int o = 0; o < kinks.count; ++o) {
+                            const double ahead = kinks.offsets[o] - stretch;
+                            passes = passes || (by > 0.0 ? (ahead > 0.0 ? ahead : ahead + 1.0) <= by
+                                                         : (ahead < 0.0 ? ahead : ahead - 1.0) >= by);
+                        }
+                        if (passes) {
+                            const WarpBends bends = warpBends(coefs, kinks, table, cycle, stretch, step);
+                            x += bends.now;
+                            op.syncCarry[k] += bends.next;
+                            carrying = true;
+                        }
+                    }
+                    if (op.phases[k] >= 1.0 || op.phases[k] < 0.0)
+                        op.phases[k] -= std::floor(op.phases[k]);
+                    mono += x;
+                    if (sides) {
+                        l += x * copyGains[i]->gainL[k];
+                        r += x * copyGains[i]->gainR[k];
+                    }
+                }
+                op.carrying = carrying;
+                op.warpNow += warpStep[i];
+            } else if (noise[i]) {
                 mono = nextRandom(v.rng);
                 mono = colored[i] ? noiseColor_.process(mono, noiseCoefs[i], op.noise[0]) : mono * whiteGain;
                 l = r = mono * noiseMid[i];
