@@ -467,7 +467,7 @@ STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
 STR(TabEnvelope, "ENVELOPE")
 STR(TabScope, "SCOPE")
 STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
-STR(TabWarp, "WARP") // its warp and hard sync
+STR(TabWarp, "WAVE") // its scope, warp and hard sync
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix

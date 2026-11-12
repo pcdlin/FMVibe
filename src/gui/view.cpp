@@ -1398,7 +1398,7 @@ bool View::poll() {
     // The audio thread captures the operator whose scope shows, and nothing while none does.
     const UiLayout &layout = controller_.layout();
     const bool scope = layout.selectedNode < kOps && !inspectorCovered() &&
-                       opTabShown(layout.selectedNode) == InspectorTab::Scope;
+                       opTabShown(layout.selectedNode) == InspectorTab::Warp;
     controller_.setScope(scope ? layout.selectedNode : -1, layout.scopeCycles);
     Telemetry t;
     controller_.telemetry(t);
@@ -2476,9 +2476,9 @@ std::vector<View::Widget> View::widgets() const {
         const InspectorTab tab = opTabShown(op);
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
             if (const auto shown = static_cast<InspectorTab>(t);
-                !isNoise(op) || (shown != InspectorTab::Scope && shown != InspectorTab::Warp))
+                shown != InspectorTab::Scope && (!isNoise(op) || shown != InspectorTab::Warp))
                 add(Kind::OpTab, opTab(t, isNoise(op)), -1, t);
-        if (tab == InspectorTab::Scope)
+        if (tab == InspectorTab::Warp)
             for (int k = 0; k < 3; ++k)
                 add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
         if (isNoise(op)) {
@@ -5803,10 +5803,8 @@ void View::paintInspector(Canvas &c) {
             paintEnvelope(c, kOpEnvRect, op, kAccent, true);
             break;
         case InspectorTab::Scope:
-            paintScope(c, kScopeRect, op);
-            break;
         case InspectorTab::Warp:
-            paintWarp(c, kWarpRect, op);
+            paintScope(c, kScopeRect, op);
             break;
         case InspectorTab::Inputs:
         case InspectorTab::Count:
@@ -6031,7 +6029,9 @@ void View::paintInputs(Canvas &c, int op) {
 
 InspectorTab View::opTabShown(int op) const {
     const InspectorTab tab = controller_.layout().opTab;
-    return (tab == InspectorTab::Scope || tab == InspectorTab::Warp) && isNoise(op) ? InspectorTab::Envelope : tab;
+    if (tab == InspectorTab::Scope || tab == InspectorTab::Warp) // the scope is on the WAVE tab
+        return isNoise(op) ? InspectorTab::Envelope : InspectorTab::Warp;
+    return tab;
 }
 
 // Whether a source modulates one of the knobs on an operator's tab, which shows a dot on the tab while it is hidden.
@@ -6163,7 +6163,7 @@ void View::paintWarp(Canvas &c, Rect r, int op) {
 void View::paintScope(Canvas &c, Rect r, int op) {
     c.fillRect(r, kDisplayColor, kRadiusCard);
     const int cycles = controller_.layout().scopeCycles;
-    const Rect inner{r.x + 8.0f, r.y + 28.0f, r.w - 16.0f, r.h - 40.0f};
+    const Rect inner{r.x + 8.0f, r.y + 26.0f, r.w - 16.0f, r.h - 46.0f};
     const float middle = inner.center().y;
     const float half = inner.h * 0.5f;
     c.line({inner.x, inner.y}, {inner.right(), inner.y}, kBorder, 1.0f, true);
@@ -6174,20 +6174,32 @@ void View::paintScope(Canvas &c, Rect r, int op) {
         c.line({x, inner.y - 6.0f}, {x, inner.bottom() + 6.0f}, kBorder.alpha(0.6f), 1.0f, true);
     }
 
+    // The warp along the bottom: its name and amount, and SYNC while synced.
+    const OpWarp warp = opWarp(op);
+    const bool shaped = warp != OpWarp::Off || opSynced(op);
+    if (shaped) {
+        std::string caption = warpName(warp);
+        if (warp != OpWarp::Off) {
+            char amount[32];
+            const int param = paramIndex(op, OpParam::WarpAmount);
+            formatParam(param, value(param), amount, sizeof(amount));
+            caption += std::string("  ") + amount;
+        }
+        if (opSynced(op))
+            caption += std::string("  \xC2\xB7  ") + tr(Str::SwitchHardSync);
+        c.text({r.x + 8.0f, r.bottom() - 17.0f, r.w - 16.0f, 14.0f}, caption, kTextSmall, kDim, Align::Left);
+    }
+
     const int bins = cycles * kScopeBinsPerCycle;
     if (telemetry_.voices == 0 || telemetry_.scopeBins != bins) {
-        const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
-        // Warped or synced, the wave as it plays them (a cycle of the note, synced); otherwise its plain shape.
-        if (opWarp(op) != OpWarp::Off || opSynced(op)) {
-            const std::vector<Point> points = opWavePoints(op, inner, cycles, false);
-            c.polyline(points.data(), points.size(), kDim.alpha(0.5f), 1.5f, true);
-            return;
+        // No note: the wave as the operator plays it (warped, and synced a cycle of the note each), over its plain
+        // shape faintly while either changes it.
+        if (shaped) {
+            const std::vector<Point> plain = opWavePoints(op, inner, cycles, true);
+            c.polyline(plain.data(), plain.size(), kDim.alpha(0.45f), 1.0f, true);
         }
-        for (int k = 0; k < cycles; ++k) {
-            const Rect cycle{inner.x + inner.w * k / cycles, inner.y, inner.w / cycles, inner.h};
-            const std::vector<Point> points = wavePoints(wave, cycle);
-            c.polyline(points.data(), points.size(), kDim.alpha(0.5f), 1.5f, true);
-        }
+        const std::vector<Point> points = opWavePoints(op, inner, cycles, false);
+        c.polyline(points.data(), points.size(), kAccent.alpha(0.85f), 1.5f);
         return;
     }
     // A bin per point, but no more points than the display has pixels across, twice over.
