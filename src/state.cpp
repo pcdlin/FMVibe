@@ -29,7 +29,10 @@ constexpr int kMaxRoutes = gui::kNodes * (gui::kNodes + 1);
 static_assert(2 * kOps + 2 * (kFilters + kShapers) + 4 + kMaxSources + 1 + kMaxRoutes + 2 +
                   kMacros * (1 + kMaxMacroName) + 2 + 3 + 1 + 2 * kMaxRoutes + 1 + 2 * gui::kMaxEmptyMods + 2 + 1 <=
               kMaxLayoutFloats);
-constexpr uint32_t kMaxSettingsFloats = 64; // likewise for the settings chunk
+// Likewise for the settings chunk: its three fields, then the MIDI mappings (their count, then a CC and a param id
+// each), with room to spare.
+constexpr uint32_t kMaxSettingsFloats = 1024;
+static_assert(3 + 1 + 2 * kLearnableCcs <= kMaxSettingsFloats);
 // The most bytes of a preset chunk read and written: its flag and a preset file's path in UTF-8, past the longest a
 // Windows path's 32767 characters take for all but the rarest scripts.
 constexpr size_t kMaxPresetChunk = 65536;
@@ -572,11 +575,23 @@ gui::UiLayout readLayout(const clap_istream_t *stream) {
 }
 
 bool writeSettings(const clap_ostream_t *stream, const Settings &settings) {
-    // Settings chunk fields, in order; later versions only append.
-    const float stored[] = {static_cast<float>(settings.oversampling), settings.mpe ? 1.0f : 0.0f,
-                            static_cast<float>(settings.mpeBendRange)};
-    const uint32_t settingsChunk[] = {kSettingsMagic, static_cast<uint32_t>(std::size(stored))};
-    return writeAll(stream, settingsChunk, sizeof(settingsChunk)) && writeAll(stream, stored, sizeof(stored));
+    // Settings chunk fields, in order; later versions only append. The MIDI mappings: how many, then each one's CC and
+    // its param's id (which, unlike its index, stays), both whole numbers a float holds exactly.
+    std::vector<float> stored{static_cast<float>(settings.oversampling), settings.mpe ? 1.0f : 0.0f,
+                              static_cast<float>(settings.mpeBendRange)};
+    std::vector<MidiMapping> mappings;
+    for (const MidiMapping &m : settings.midiMap)
+        if (m.cc >= 0 && m.cc < kLearnableCcs && m.index >= 0 && m.index < kParamCount &&
+            mappings.size() < static_cast<size_t>(kLearnableCcs))
+            mappings.push_back(m);
+    stored.push_back(static_cast<float>(mappings.size()));
+    for (const MidiMapping &m : mappings) {
+        stored.push_back(static_cast<float>(m.cc));
+        stored.push_back(static_cast<float>(idOfIndex(m.index)));
+    }
+    const uint32_t settingsChunk[] = {kSettingsMagic, static_cast<uint32_t>(stored.size())};
+    return writeAll(stream, settingsChunk, sizeof(settingsChunk)) &&
+           writeAll(stream, stored.data(), stored.size() * sizeof(float));
 }
 
 Settings readSettings(const clap_istream_t *stream) {
@@ -590,6 +605,20 @@ Settings readSettings(const clap_istream_t *stream) {
     settings.mpe = field(1, 0.0f) >= 0.5f;
     settings.mpeBendRange =
         std::clamp(static_cast<int>(std::lround(field(2, kDefaultMpeBendRange))), 1, kMaxMpeBendRange);
+    // The MIDI mappings, as many as arrived whole; one naming a CC or a param id this version doesn't know is left out.
+    const float count = field(3, 0.0f);
+    for (size_t i = 0; i < static_cast<size_t>(std::clamp(count, 0.0f, static_cast<float>(kLearnableCcs))); ++i) {
+        const size_t at = 4 + 2 * i;
+        if (at + 1 >= values.size())
+            break;
+        const float cc = values[at], id = values[at + 1];
+        if (!std::isfinite(cc) || !std::isfinite(id) || cc < 0.0f || cc >= kLearnableCcs || id < 0.0f ||
+            id > 4.0e9f)
+            continue;
+        const int index = indexOfId(static_cast<clap_id>(id));
+        if (index >= 0 && cc == std::floor(cc) && id == std::floor(id))
+            settings.midiMap.push_back({static_cast<int>(cc), index});
+    }
     return settings;
 }
 

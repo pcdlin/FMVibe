@@ -147,6 +147,9 @@ public:
     // was taken.
     bool dialogOpen() const { return settingsOpen_ || confirm_ >= 0; }
     bool dialogKey(Key key);
+    // A knob waits for a MIDI CC to learn (see Controller::armMidiLearn()): Escape stops it, through dialogKey(), which
+    // the window should send Escape to meanwhile.
+    bool midiLearning() const { return controller_.midiLearnArmed() >= 0; }
     // Ctrl going down or up, from the keyboard while the window has it (mouse messages bring it too): while it is held
     // over a graph, its grid's points show, and a node dragged snaps to them. True if a repaint is due.
     bool setCtrl(bool held);
@@ -1437,6 +1440,7 @@ private:
     const ParamTable &table_;
     ParamValues seen_{};
     uint64_t seenStamp_ = 0; // the controller's valuesStamp() when seen_ was taken (0: not yet)
+    uint64_t seenMidiStamp_ = 0; // the controller's midiLearnStamp() when last painted
     Telemetry telemetry_{};
     std::optional<Widget> hover_;
     Point hoverPoint_; // where the mouse is

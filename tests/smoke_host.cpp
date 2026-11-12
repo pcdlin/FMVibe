@@ -133,6 +133,58 @@ struct MemoryStream {
     }
 };
 
+// A state the plugin saved (every param), its settings chunk's MIDI mappings (see MidiLearn) put in place of the
+// ones it had: (CC, param index) pairs, after the chunk's first three fields. The patch is its params, then the layout
+// chunk; the settings chunk follows, the preset chunk after it.
+size_t settingsChunkAt(const std::vector<uint8_t> &state) {
+    const size_t layoutAt = 12 + static_cast<size_t>(kParamCount) * 12;
+    uint32_t layout[2] = {};
+    if (layoutAt + sizeof(layout) > state.size())
+        return state.size();
+    std::memcpy(layout, state.data() + layoutAt, sizeof(layout));
+    return layoutAt + sizeof(layout) + static_cast<size_t>(layout[1]) * sizeof(float);
+}
+std::vector<uint8_t> withMidiMap(const std::vector<uint8_t> &state, const std::vector<std::pair<int, int>> &map) {
+    const size_t at = settingsChunkAt(state);
+    uint32_t chunk[2] = {};
+    if (at + sizeof(chunk) + 3 * sizeof(float) > state.size())
+        return state;
+    std::memcpy(chunk, state.data() + at, sizeof(chunk));
+    std::vector<float> fields(3);
+    std::memcpy(fields.data(), state.data() + at + sizeof(chunk), 3 * sizeof(float));
+    fields.push_back(static_cast<float>(map.size()));
+    for (const auto &[cc, index] : map) {
+        fields.push_back(static_cast<float>(cc));
+        fields.push_back(static_cast<float>(idOfIndex(index)));
+    }
+    std::vector<uint8_t> out(state.begin(), state.begin() + static_cast<std::ptrdiff_t>(at));
+    const uint32_t head[2] = {chunk[0], static_cast<uint32_t>(fields.size())};
+    const auto *h = reinterpret_cast<const uint8_t *>(head);
+    out.insert(out.end(), h, h + sizeof(head));
+    const auto *f = reinterpret_cast<const uint8_t *>(fields.data());
+    out.insert(out.end(), f, f + fields.size() * sizeof(float));
+    const size_t rest = at + sizeof(chunk) + static_cast<size_t>(chunk[1]) * sizeof(float);
+    if (rest <= state.size())
+        out.insert(out.end(), state.begin() + static_cast<std::ptrdiff_t>(rest), state.end());
+    return out;
+}
+// The MIDI mappings a saved state's settings chunk holds, as (CC, param id) pairs.
+std::vector<std::pair<int, clap_id>> midiMapOf(const std::vector<uint8_t> &state) {
+    std::vector<std::pair<int, clap_id>> map;
+    const size_t at = settingsChunkAt(state);
+    uint32_t chunk[2] = {};
+    if (at + sizeof(chunk) > state.size())
+        return map;
+    std::memcpy(chunk, state.data() + at, sizeof(chunk));
+    if (at + sizeof(chunk) + static_cast<size_t>(chunk[1]) * sizeof(float) > state.size() || chunk[1] < 4)
+        return map;
+    std::vector<float> fields(chunk[1]);
+    std::memcpy(fields.data(), state.data() + at + sizeof(chunk), fields.size() * sizeof(float));
+    for (size_t i = 0; i < static_cast<size_t>(fields[3]) && 5 + 2 * i < fields.size(); ++i)
+        map.push_back({static_cast<int>(fields[4 + 2 * i]), static_cast<clap_id>(fields[5 + 2 * i])});
+    return map;
+}
+
 clap_event_note_t noteEvent(uint16_t type, int32_t noteId, int16_t key) {
     clap_event_note_t ev{};
     ev.header = {sizeof(ev), 0, CLAP_CORE_EVENT_SPACE_ID, type, 0};
@@ -1930,6 +1982,77 @@ int main(int argc, char **argv) {
                     played, shown, told ? "told" : "not told", back, shownBack);
         check(played < 0.01f && shown == 1.0 && told && std::abs(back - resting) < 1e-3f && shownBack == 0.0,
               "a hardware mod wheel (MIDI CC 1) moves the Mod Wheel, telling the host");
+    }
+
+    // MIDI learn: a CC learned for a param moves it over its range, telling the host (a param hosts are given; one
+    // they aren't, an effect's, moves untold), and still reaches what listens to CCs. Arming a knob is the editor's
+    // (checked in the UI snapshots); here the mappings come in as a project brings them, in the settings chunk, and go
+    // out with it again. A state without them forgets them.
+    {
+        const int pan = paramIndex(0, OpParam::Pan), drive = paramIndex(0, FxParam::ShaperDrive);
+        const ParamDef &panDef = paramTable()[pan], &driveDef = paramTable()[drive];
+        MemoryStream plain;
+        state->save(plugin, &plain.out);
+        double panBefore = 0.0;
+        params->get_value(plugin, idOfIndex(pan), &panBefore);
+        MemoryStream mapped;
+        mapped.data = withMidiMap(plain.data, {{20, pan}, {21, drive}});
+        const bool loaded = state->load(plugin, &mapped.in);
+        plugin->on_main_thread(plugin);
+        auto valueOf = [&](int index) {
+            double v = 0.0;
+            params->get_value(plugin, idOfIndex(index), &v);
+            return v;
+        };
+        auto toldOf = [&](int index, double v) {
+            return std::any_of(out.paramValues.begin(), out.paramValues.end(),
+                               [&](const auto &told) { return told.first == idOfIndex(index) && told.second == v; });
+        };
+        auto toldAny = [&](int index) {
+            return std::any_of(out.paramValues.begin(), out.paramValues.end(),
+                               [&](const auto &told) { return told.first == idOfIndex(index); });
+        };
+        out.paramValues.clear();
+        const clap_event_midi_t panUp = midiEvent(0xB0, 20, 127), panDown = midiEvent(0xB0, 20, 0),
+                                panMiddle = midiEvent(0xB1, 20, 64), driveUp = midiEvent(0xB0, 21, 127);
+        runBlock({&panUp.header});
+        const bool up = valueOf(pan) == panDef.max && toldOf(pan, panDef.max);
+        runBlock({&panDown.header});
+        const bool down = valueOf(pan) == panDef.min && toldOf(pan, panDef.min);
+        runBlock({&panMiddle.header}); // on another channel too
+        const double middle = valueOf(pan);
+        runBlock({&driveUp.header});
+        const bool untold = valueOf(drive) == driveDef.max && !toldAny(drive);
+        std::printf("      learned CC 20 on A's Pan: %.2f up, %.2f down, %.3f at 64; CC 21 on a shaper's Drive %.2f\n",
+                    panDef.max, panDef.min, middle, valueOf(drive));
+        const double expected = panDef.min + 64.0 / 127.0 * (panDef.max - panDef.min);
+        check(loaded && up && down && std::abs(middle - expected) < 1e-6 && untold,
+              "a learned CC moves its param over its range on any channel, telling the host of a param it is given");
+
+        // Saved with the project, and loaded back after a state without them, which forgets them.
+        MemoryStream kept;
+        state->save(plugin, &kept.out);
+        const auto map = midiMapOf(kept.data);
+        const bool saved = map.size() == 2 && map[0] == std::pair<int, clap_id>{20, idOfIndex(pan)} &&
+                           map[1] == std::pair<int, clap_id>{21, idOfIndex(drive)};
+        plain.readPos = 0;
+        state->load(plugin, &plain.in);
+        plugin->on_main_thread(plugin);
+        out.paramValues.clear();
+        runBlock({&panUp.header});
+        MemoryStream none;
+        state->save(plugin, &none.out);
+        const bool forgotten = valueOf(pan) == panBefore && !toldAny(pan) && midiMapOf(none.data).empty();
+        kept.readPos = 0;
+        state->load(plugin, &kept.in);
+        plugin->on_main_thread(plugin);
+        runBlock({&panUp.header});
+        const bool back = valueOf(pan) == panDef.max;
+        plain.readPos = 0;
+        state->load(plugin, &plain.in);
+        plugin->on_main_thread(plugin);
+        check(saved && forgotten && back,
+              "the learned CCs are saved in the state's settings and load back, a state without them forgetting them");
     }
 
     // The pitch bend is a source too, bipolar as it starts: on A's output at -100 %, at rest it moves nothing, bent

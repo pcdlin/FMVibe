@@ -6,6 +6,7 @@
 
 #include "gui/controller.h"
 #include "gui/editor.h"
+#include "midilearn.h"
 #include "presets.h"
 #include "sharedtelemetry.h"
 #include "state.h"
@@ -120,6 +121,12 @@ public:
         userSettings.handleSize = std::clamp(size, 0, kMaxHandleSize);
         writeUserSettings();
     }
+    bool midiLearnOffered() const override { return true; }
+    int midiCc(int index) const override { return midiLearn_.ccOf(index); }
+    int midiLearnArmed() const override { return midiLearn_.armed(); }
+    uint64_t midiLearnStamp() const override { return midiLearn_.stamp(); }
+    void armMidiLearn(int index) override { midiLearn_.arm(index); }
+    void forgetMidi(int index) override;
     double linkIntensity() const override { return userSettings.links; }
     void setLinkIntensity(double amount) override {
         userSettings.links = std::clamp(amount, 0.0, 1.0);
@@ -165,6 +172,15 @@ public:
     // played rather than part of the patch, so nothing is undone or marked changed. True when the param changed: the
     // caller then tells the host its new value, in its place in the block, as a param edit from the plugin.
     bool playModWheel(double value);
+    // Audio thread: MIDI controller `controller` (0..127, on any channel) moved, to `value` (0..1). A param waiting for
+    // a CC learns it (see MidiLearn), and the param it is mapped to moves to where the CC puts it, played as the mod
+    // wheel is (the rest of the block hears it, nothing is undone, the host is told). The param's index when it
+    // changed and hosts are given it: the caller then tells the host its new value (valueNow()), in its place in the
+    // block, as a param edit from the plugin. -1 otherwise; a change to a param hosts aren't given marks the project
+    // changed instead, from the main thread. Hearing the CC (a MIDI source, the mod wheel) is the caller's.
+    int playLearnedCc(int controller, double value);
+    // Any thread: param `index`'s value now.
+    double valueNow(int index) const { return values_[index].load(std::memory_order_relaxed); }
 
     // The state, the same bytes in either format: the patch, then (`settings`) the settings and the preset chunks.
     // Preset files leave out the settings, and loading one keeps them as they are. Main thread.
@@ -172,7 +188,7 @@ public:
     bool loadState(const clap_istream_t *stream, bool settings = true);
 
     // Main thread: what hostRequestCallback() asks for.
-    void onMainThread() { sectionsChanged(); }
+    void onMainThread();
 
     // The editor window, while the host shows it. Main thread.
     gui::Editor *editor() const { return editor_.get(); }
@@ -231,6 +247,9 @@ protected:
     void sectionsChanged();
 
 private:
+    // Audio thread: param `index` set to `value` as a played control (the mod wheel, a learned CC): the rest of the
+    // block hears it and the editor sees it. True when it changed.
+    bool playValue(int index, double value);
     void applyPlayMode();
     void playKeys();
     void voiceLimitChanged();
@@ -265,6 +284,11 @@ private:
     // MPE over MIDI and its member channels' bend range: settings, set on the main thread, read by the audio thread.
     std::atomic<bool> mpe_{false};
     std::atomic<int> mpeBendRange_{kDefaultMpeBendRange};
+    // The MIDI CCs learned and the param waiting for one: a setting like MPE, saved in the settings chunk. The audio
+    // thread learns and plays them; what it changed that the host hears of from the main thread (a mapping learned,
+    // a param hosts aren't given moved) waits in midiDirty_ for onMainThread().
+    MidiLearn midiLearn_;
+    std::atomic<bool> midiDirty_{false};
     // Written by the audio thread (param events) and the main thread (editor,
     // state load), read by both, hence atomics. The audio thread works from a
     // copy taken at the start of each block, which the block's param events update.

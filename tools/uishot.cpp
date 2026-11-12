@@ -9,6 +9,7 @@
 #include "gui/routing.h"
 #include "gui/theme.h"
 #include "gui/view.h"
+#include "midilearn.h"
 #include "uistrings.h"
 
 #ifdef _WIN32
@@ -122,6 +123,14 @@ public:
     void setHandleSize(int size) override { handles = size; }
     double linkIntensity() const override { return links; }
     void setLinkIntensity(double amount) override { links = amount; }
+    bool midiLearnOffered() const override { return offersMidiLearn; }
+    int midiCc(int index) const override { return midi.ccOf(index); }
+    int midiLearnArmed() const override { return midi.armed(); }
+    uint64_t midiLearnStamp() const override { return midi.stamp(); }
+    void armMidiLearn(int index) override { midi.arm(index); }
+    void forgetMidi(int index) override { midi.forget(index); }
+    bool offersMidiLearn = true; // as the plugin does (the browser demo offers none)
+    MidiLearn midi;              // a CC comes in as midi.learn(), as the audio thread has it
     bool hasTempo() const override { return offersTempo; }
     double tempo() const override { return bpm; }
     void setTempo(double v) override {
@@ -1000,6 +1009,85 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
     type(view, "35");
     view.typeKey(View::Key::Enter);
     check(menuTyping && std::abs(model.value(opPhase) - 0.35) < 1e-9, "a knob's menu has Edit value, which types into it");
+
+    // MIDI learn from a knob's menu: MIDI Learn arms its param, which the knob shows (ringed, its label saying so, read
+    // off the rendered pixels) and its menu offers to cancel, Escape cancelling too, as arming another knob does; the
+    // next CC (here as the audio thread learns it) maps it, the menu then showing the CC with Forget, which lets it
+    // go. A header knob's and a macro's menus offer it, Voices' not, nor a host that takes no MIDI (the browser demo).
+    {
+        auto hasEntry = [&](Point at, const std::string &label) { return menuEntry(at, label) >= 0; };
+        const std::string learnLabel = tr(Str::MenuMidiLearn), cancelLabel = tr(Str::MenuMidiCancel);
+        const Point macroKnob{188.0f, view.height() - 179.0f};
+        const bool offered = hasEntry(kOpPhaseKnob, learnLabel) && hasEntry(kFmAmountKnob, learnLabel) &&
+                             hasEntry(macroKnob, learnLabel) && !hasEntry(kVoicesKnob, learnLabel);
+        model.offersMidiLearn = false;
+        const bool hidden = !hasEntry(kOpPhaseKnob, learnLabel);
+        model.offersMidiLearn = true;
+        check(offered && hidden,
+              "a knob's menu offers MIDI Learn (a header knob's and a macro's too, not Voices', nor without MIDI)");
+
+        view.poll();
+        check(renderer.save(view, dir / "16c-midi-before.png"), "render a knob before MIDI learn");
+        // The knob's row and column through its middle, out past its modulation rings, as rendered.
+        auto around = [&] {
+            std::vector<uint32_t> pixels;
+            for (float d = 4.0f; d <= 34.0f; d += 0.5f)
+                for (const Point p : {Point{kOpPhaseKnob.x + d, kOpPhaseKnob.y},
+                                      Point{kOpPhaseKnob.x - d, kOpPhaseKnob.y}, Point{kOpPhaseKnob.x, kOpPhaseKnob.y - d}})
+                    pixels.push_back(renderer.pixel(p));
+            return pixels;
+        };
+        auto label = [&] {
+            std::vector<uint32_t> pixels;
+            for (float x = kOpPhaseKnob.x - 20.0f; x <= kOpPhaseKnob.x + 20.0f; x += 0.5f)
+                for (float y = 258.0f; y <= 274.0f; y += 1.0f)
+                    pixels.push_back(renderer.pixel({x, y}));
+            return pixels;
+        };
+        const std::vector<uint32_t> plainRing = around(), plainLabel = label();
+        view.menuCommand(menuEntry(kOpPhaseKnob, learnLabel));
+        const bool armed = model.midiLearnArmed() == opPhase && hasEntry(kOpPhaseKnob, cancelLabel) &&
+                           view.midiLearning();
+        view.poll();
+        check(renderer.save(view, dir / "16c-midi-learning.png"), "render a knob waiting for its MIDI CC");
+        const std::vector<uint32_t> armedRing = around(), armedLabel = label();
+        int ringChanged = 0, labelChanged = 0;
+        for (size_t i = 0; i < plainRing.size(); ++i)
+            ringChanged += plainRing[i] != armedRing[i];
+        for (size_t i = 0; i < plainLabel.size(); ++i)
+            labelChanged += plainLabel[i] != armedLabel[i];
+        std::printf("      MIDI learn: armed ring %d pixel(s), label %d pixel(s) changed\n", ringChanged, labelChanged);
+        check(armed && ringChanged >= 3 && labelChanged > 10,
+              "MIDI Learn arms the knob, ringed and its label saying so (read off the rendered pixels)");
+        const bool escaped = view.dialogKey(View::Key::Escape) && model.midiLearnArmed() < 0 && !view.midiLearning() &&
+                             !view.dialogKey(View::Key::Escape);
+        view.menuCommand(menuEntry(kOpPhaseKnob, learnLabel));
+        view.menuCommand(menuEntry(kOpPhaseKnob, cancelLabel));
+        const bool cancelled = model.midiLearnArmed() < 0;
+        view.menuCommand(menuEntry(kOpPhaseKnob, learnLabel));
+        view.menuCommand(menuEntry(kFmAmountKnob, learnLabel));
+        const bool elsewhere = model.midiLearnArmed() == paramIndex(GlobalParam::FmAmount);
+        view.poll();
+        check(renderer.save(view, dir / "16c-midi-learning-header.png"),
+              "render a header knob waiting for its MIDI CC");
+        view.dialogKey(View::Key::Escape);
+        check(escaped && cancelled && elsewhere,
+              "Escape and Cancel MIDI Learn stop it waiting, as MIDI Learn on another knob does");
+
+        view.menuCommand(menuEntry(kOpPhaseKnob, learnLabel));
+        model.midi.learn(74);
+        view.poll();
+        const std::string relearn = trf(Str::MenuMidiRelearn, {"74"}), forget = trf(Str::MenuMidiForget, {"74"});
+        check(renderer.save(view, dir / "16c-midi-learned.png"), "render a knob a MIDI CC drives");
+        const std::vector<uint32_t> learnedRing = around();
+        const bool learned = model.midiCc(opPhase) == 74 && model.midiLearnArmed() < 0 &&
+                             hasEntry(kOpPhaseKnob, relearn) && hasEntry(kOpPhaseKnob, forget) &&
+                             !hasEntry(kOpPhaseKnob, learnLabel) && learnedRing == plainRing;
+        view.menuCommand(menuEntry(kOpPhaseKnob, forget));
+        const bool forgotten = model.midiCc(opPhase) < 0 && hasEntry(kOpPhaseKnob, learnLabel) &&
+                               !hasEntry(kOpPhaseKnob, forget);
+        check(learned && forgotten, "a learned knob's menu shows its CC with Forget, which lets it go");
+    }
     // Ctrl+Click types into a route: A's label on its line to OUT in the graph, then its OUT cell in the matrix.
     const Point aOut = outLabelOf(model.layout(), 0);
     view.mouseDown(aOut, {false, true});

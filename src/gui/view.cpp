@@ -7,6 +7,7 @@
 #include "theme.h"
 #include "../effects.h"
 #include "../filter.h"
+#include "../midilearn.h"
 #include "../uistrings.h"
 #include "../wavetable.h"
 
@@ -1387,6 +1388,11 @@ bool View::poll() {
                     changed = true;
             }
         }
+    }
+    // A knob armed for MIDI learn, or one that learned its CC, shows it (see paintKnob()).
+    if (const uint64_t midi = controller_.midiLearnStamp(); midi != seenMidiStamp_) {
+        seenMidiStamp_ = midi;
+        changed = true;
     }
     if (changed)
         keepRoutes(); // whatever turned a route on, the editor or the host
@@ -8422,11 +8428,30 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     if (offset != 0.0f)
         c.fillCircle(Canvas::onCircle(center, radius - 2.0f, knobAngle(n + offset / (def.max - def.min))), 2.5f, kText);
 
+    // Waiting for a MIDI CC to learn: ringed in the accent, its label saying so.
+    const bool learning = controller_.midiLearnArmed() == w.param;
+    if (learning)
+        c.strokeCircle(center, radius + 6.5f, kAccent, 1.5f);
+
     char text[64];
     formatParam(w.param, value(w.param), text, sizeof(text));
     std::string shown = text;
     if (def.kind == ParamKind::Ratio)
         shown = "\xC3\x97" + shown;
+    if (learning) {
+        shown = tr(Str::KnobMidiLearning);
+        if (w.compact) {
+            const float textX = compactTextX(w);
+            c.text({w.rect.x + textX, w.rect.y + (w.shrunk ? 2.0f : 3.0f), w.rect.w - textX, 16.0f}, w.label,
+                   kTextLabel, kDim, Align::Left);
+            c.text({w.rect.x + textX, w.rect.y + (w.shrunk ? 15.0f : 18.0f), w.rect.w - textX, 18.0f}, shown,
+                   kTextValue, kAccent, Align::Left, true);
+        } else {
+            c.text({w.rect.x - 14.0f, w.rect.y + w.rect.w + 2.0f, w.rect.w + 28.0f, 16.0f}, shown, kTextLabel,
+                   kAccent);
+        }
+        return;
+    }
     if (w.compact) {
         const float textX = compactTextX(w);
         const float textWidth = w.rect.w - textX;
@@ -8483,7 +8508,9 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     const bool focused = isHovered(w) || dragged;
     const double n = norm(w.param);
     c.fillRect(kRatioBox, kDisplayColor, kRadiusControl);
-    if (outlined() || focused) // in a flat theme, as its other displays, outlined only under the mouse
+    if (controller_.midiLearnArmed() == w.param) // waiting for a MIDI CC to learn: outlined in the accent
+        c.strokeRect(kRatioBox, kAccent, 1.5f, kRadiusControl);
+    else if (outlined() || focused) // in a flat theme, as its other displays, outlined only under the mouse
         c.strokeRect(kRatioBox, focused ? kFaint : kBorder, 1.0f, kRadiusControl);
 
     const long h = ratioHundredths(value(w.param));
@@ -11236,8 +11263,12 @@ constexpr int kAmpOversamplingCommand = 30;
 constexpr int kMoveBandCommand = 40;
 // And from here on, each sets the mode of the route the menu was opened on (see RouteMode).
 constexpr int kRouteModeCommand = 16;
+// MIDI learn: a knob's param waits for its CC (or stops waiting), or its CC drives it no more.
+constexpr int kMidiLearnCommand = 50;
+constexpr int kMidiForgetCommand = 51;
 static_assert(kRouteModeCommand + static_cast<int>(RouteMode::Count) <= kAmpOversamplingCommand &&
-              kAmpOversamplingCommand + kAmpOversamplings <= kMoveBandCommand && kMoveBandCommand + 3 < 100);
+              kAmpOversamplingCommand + kAmpOversamplings <= kMoveBandCommand &&
+              kMoveBandCommand + 3 < kMidiLearnCommand && kMidiForgetCommand < 100);
 
 std::vector<MenuItem> View::contextMenu(Point p) {
     endTyping(true);
@@ -11423,6 +11454,19 @@ std::vector<MenuItem> View::contextMenu(Point p) {
         items.push_back({0, ""});
         addPolarity();
     }
+    // A knob's param can be driven by a MIDI CC, learned from the next one that comes in.
+    if (hit->kind == Kind::Knob && controller_.midiLearnOffered() && midiLearnable(hit->param)) {
+        const int cc = controller_.midiCc(hit->param);
+        items.push_back({0, ""});
+        if (controller_.midiLearnArmed() == hit->param)
+            items.push_back({kMidiLearnCommand, tr(Str::MenuMidiCancel)});
+        else if (cc >= 0)
+            items.push_back({kMidiLearnCommand, trf(Str::MenuMidiRelearn, {std::to_string(cc)})});
+        else
+            items.push_back({kMidiLearnCommand, tr(Str::MenuMidiLearn)});
+        if (cc >= 0)
+            items.push_back({kMidiForgetCommand, trf(Str::MenuMidiForget, {std::to_string(cc)})});
+    }
     return items;
 }
 
@@ -11467,6 +11511,10 @@ void View::menuCommand(int command) {
     } else if (command >= kAmpOversamplingCommand && command < kAmpOversamplingCommand + kAmpOversamplings &&
                menuFx_ >= 0 && fxSlotType(menuFx_) == FxType::Amp) {
         edit(paramIndex(menuFx_, FxParam::AmpOversampling), command - kAmpOversamplingCommand);
+    } else if (command == kMidiLearnCommand && menuParam_ >= 0) {
+        controller_.armMidiLearn(controller_.midiLearnArmed() == menuParam_ ? -1 : menuParam_);
+    } else if (command == kMidiForgetCommand && menuParam_ >= 0) {
+        controller_.forgetMidi(menuParam_);
     } else if (command == 3 && menuParam_ >= 0) {
         disconnect(menuParam_);
     } else if (command == 4 && menuParam_ >= 0) {

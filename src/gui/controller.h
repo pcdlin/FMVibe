@@ -322,6 +322,18 @@ public:
     virtual bool hasTempo() const { return false; }
     virtual double tempo() const { return kDefaultTempo; }
     virtual void setTempo(double) {}
+    // MIDI learn (see MidiLearn): whether the editor offers it in a knob's menu (a plugin, which a host feeds MIDI;
+    // not the browser demo, which takes none); the CC that drives param `index`, or -1; the param waiting for its CC,
+    // or -1; and a number that moves on whenever either changes, so the editor need not look at every knob's while
+    // it stands still.
+    virtual bool midiLearnOffered() const { return false; }
+    virtual int midiCc(int) const { return -1; }
+    virtual int midiLearnArmed() const { return -1; }
+    virtual uint64_t midiLearnStamp() const { return 0; }
+    // Param `index` waits for the next CC to come in (-1: none does any more). Only one waits at a time.
+    virtual void armMidiLearn(int) {}
+    // Param `index` is driven by no CC any more.
+    virtual void forgetMidi(int) {}
 
 protected:
     // What beginEdit(), setValue() and endEdit() do besides keeping the history: undo and redo

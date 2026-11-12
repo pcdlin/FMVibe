@@ -210,8 +210,14 @@ void View::answerConfirm(int button) {
 }
 
 bool View::dialogKey(Key key) {
-    if (typing_ || !dialogOpen() || (key != Key::Enter && key != Key::Escape))
+    if (typing_ || (key != Key::Enter && key != Key::Escape))
         return false;
+    if (!dialogOpen()) { // Escape stops a knob waiting for a MIDI CC
+        if (key != Key::Escape || !midiLearning())
+            return false;
+        controller_.armMidiLearn(-1);
+        return true;
+    }
     if (settingsOpen_) { // nothing in it waits to be confirmed: either key closes it
         settingsOpen_ = false;
         hover_.reset();

@@ -235,21 +235,58 @@ void PluginCore::setHostValue(int index, double value, bool inBlock) {
     }
 }
 
-bool PluginCore::playModWheel(double value) {
-    const int index = paramIndex(GlobalParam::ModWheel);
-    if (!std::isfinite(value))
-        return false;
-    value = std::clamp(value, 0.0, 1.0);
+bool PluginCore::playValue(int index, double value) {
     if (snapshot_[index] == value && values_[index].load(std::memory_order_relaxed) == value)
         return false;
     values_[index].store(value);
     stamp();
     snapshot_[index] = value;
     snapshotChanged_ = true;
-    // The host hands the value back a little later, and by then the wheel may have moved on: not taken, as for an
+    // The host hands the value back a little later, and by then the control may have moved on: not taken, as for an
     // edit in the editor (see setHostValue()).
     told(index, steadyMs());
     return true;
+}
+
+bool PluginCore::playModWheel(double value) {
+    if (!std::isfinite(value))
+        return false;
+    return playValue(paramIndex(GlobalParam::ModWheel), std::clamp(value, 0.0, 1.0));
+}
+
+int PluginCore::playLearnedCc(int controller, double value) {
+    if (!std::isfinite(value))
+        return -1;
+    bool dirty = midiLearn_.learn(controller); // a new mapping, which the project saves
+    const int index = midiLearn_.paramOf(controller);
+    int tell = -1;
+    if (index >= 0 && playValue(index, midiLearnValue(index, value))) {
+        if (hostListed(index))
+            tell = index;
+        else
+            dirty = true; // the host hears of no edit to mark the project by
+        if (index == paramIndex(GlobalParam::Mono) || index == paramIndex(GlobalParam::Legato) ||
+            index == paramIndex(GlobalParam::GlideAlways))
+            applyPlayMode();
+        else if (shapesSections(index))
+            dirty = true; // and the remote pages follow, on the main thread
+    }
+    if (dirty && !midiDirty_.exchange(true))
+        hostRequestCallback();
+    return tell;
+}
+
+void PluginCore::forgetMidi(int index) {
+    if (midiLearn_.ccOf(index) < 0)
+        return;
+    midiLearn_.forget(index);
+    hostMarkDirty();
+}
+
+void PluginCore::onMainThread() {
+    if (midiDirty_.exchange(false))
+        hostMarkDirty();
+    sectionsChanged();
 }
 
 ParamValues PluginCore::valuesNow() const {
@@ -316,7 +353,7 @@ bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
         return false;
     if (!settings)
         return true;
-    if (!writeSettings(stream, {oversampling_.load(), mpe_.load(), mpeBendRange_.load()}))
+    if (!writeSettings(stream, {oversampling_.load(), mpe_.load(), mpeBendRange_.load(), midiLearn_.mappings()}))
         return false;
     // The preset the patch came from: whether it changed since, then its file's path in UTF-8.
     return writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile())));
@@ -352,6 +389,7 @@ bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {
         oversampling_.store(stored.oversampling);
         mpe_.store(stored.mpe);
         mpeBendRange_.store(stored.mpeBendRange);
+        midiLearn_.set(stored.midiMap); // a project saved before them has none
         restartIfNeeded();
 
         // Which preset it was. Without that, it shows Init, changed unless it is Init.

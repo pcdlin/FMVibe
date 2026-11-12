@@ -618,6 +618,85 @@ int main(int argc, char **argv) {
         check(up && down, "a hardware mod wheel (CC 1) moves the Mod Wheel param, the host told in its place");
     }
 
+    // MIDI learn: a CC learned for a param (here brought in with the state's settings, as a project brings it; arming
+    // a knob is the editor's) moves it as the host's MIDI mapping hands the CC over, on any channel, the host told in
+    // its place; the state saves the mapping, and one without it forgets it.
+    {
+        const int pan = paramIndex(0, OpParam::Pan);
+        // The state as saved, with `map` (CC, param index) as its MIDI mappings.
+        auto stateWith = [&](const std::vector<MidiMapping> &map) {
+            MemoryStream now;
+            plugin.component->getState(&now);
+            MemoryReader reader{now.data.data(), now.data.size()};
+            const clap_istream_t in = memoryIn(reader);
+            const auto values = std::make_unique<ParamValues>();
+            readParams(&in, *values);
+            const gui::UiLayout layout = readLayout(&in);
+            Settings settings = readSettings(&in);
+            std::string preset;
+            bool edited = false;
+            const bool named = readPresetChunk(&in, preset, edited);
+            settings.midiMap = map;
+            MemoryStream with;
+            const clap_ostream_t out{&with, [](const clap_ostream_t *st, const void *buffer, uint64_t n) -> int64_t {
+                                         auto *stream = static_cast<MemoryStream *>(st->ctx);
+                                         const auto *bytes = static_cast<const uint8_t *>(buffer);
+                                         stream->data.insert(stream->data.end(), bytes, bytes + n);
+                                         return static_cast<int64_t>(n);
+                                     }};
+            writePatch(&out, *values, layout);
+            writeSettings(&out, settings);
+            if (named)
+                writePresetChunk(&out, edited, preset);
+            return with.data;
+        };
+        // The MIDI mappings in the state as saved now.
+        auto savedMap = [&] {
+            MemoryStream now;
+            plugin.component->getState(&now);
+            MemoryReader reader{now.data.data(), now.data.size()};
+            const clap_istream_t in = memoryIn(reader);
+            const auto values = std::make_unique<ParamValues>();
+            readParams(&in, *values);
+            readLayout(&in);
+            return readSettings(&in).midiMap;
+        };
+        auto load = [&](const std::vector<uint8_t> &bytes) {
+            plugin.processor->setProcessing(false);
+            MemoryStream stream;
+            stream.data = bytes;
+            const bool loaded = plugin.component->setState(&stream) == kResultOk;
+            plugin.processor->setProcessing(true);
+            return loaded;
+        };
+        // CC 20 to `to` on `channel`, at `at` in the block: whether the host heard Pan's new value there.
+        auto turn = [&](int16 channel, double to, int32 at) {
+            ParamID cc = 0;
+            midiMapping->getMidiControllerAssignment(0, channel, 20, cc);
+            Events events;
+            Changes changes, told;
+            changes.add(cc, at, to);
+            plugin.process(events, changes, kBlock, &told);
+            return std::any_of(told.queues.begin(), told.queues.end(), [&](const Queue &q) {
+                return q.id == idOfIndex(pan) && q.points.size() == 1 && q.points[0].first == at &&
+                       std::abs(q.points[0].second - to) < 1e-9;
+            });
+        };
+        const std::vector<uint8_t> plain = stateWith({});
+        const double panBefore = plugin.normalized(pan);
+        const bool loaded = load(stateWith({{20, pan}}));
+        const bool up = turn(0, 1.0, 21) && plugin.normalized(pan) == 1.0;
+        const bool down = turn(9, 0.0, 3) && plugin.normalized(pan) == 0.0;
+        const auto map = savedMap();
+        const bool saved = map.size() == 1 && map[0] == MidiMapping{20, pan};
+        load(plain);
+        const bool forgotten = !turn(0, 1.0, 0) && plugin.normalized(pan) == panBefore && savedMap().empty();
+        load(plain);
+        check(loaded && up && down && saved && forgotten,
+              "a learned CC (through the MIDI mapping, any channel) moves its param, the host told in its place; the "
+              "state keeps it, and a state without it forgets it");
+    }
+
     // A tuning note expression an octave up, on the note's id.
     {
         Events events;

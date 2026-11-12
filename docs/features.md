@@ -195,7 +195,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     slots like a macro's. It moves nothing until something is assigned to it. A hardware mod wheel (MIDI CC 1, on any
     channel; in a VST3 host, through its MIDI mapping) moves it as the wheel in the strip does, and the host is told
     of the param's new value. Like that wheel's, its position is played rather than part of the patch: nothing to
-    undo, and the preset stays unchanged. A MIDI source on CC 1 follows the hardware wheel too.
+    undo, and the preset stays unchanged. A MIDI source on CC 1 follows the hardware wheel too, and a knob that
+    learned CC 1 (see MIDI learn) moves with it.
   - **Note**: a source that follows the pitch each voice plays, pitch bend, glide (and legato slides), note
     tuning and the global Pitch included. Like a macro it has 16 slots and no switch, but it
     runs per voice, like the LFOs and envelopes, and reaches the effects through the newest voice. What it
@@ -546,6 +547,22 @@ What the plugin does and how its editor works, in full. Building and installing 
   as a stolen voice does, and the effects' tails with them: every effect running fades out over 5 ms and starts
   again cleared. With MPE on, a member channel's panic reaches only its own notes (and leaves the effects alone);
   the master channel's, like any channel's with MPE off, reaches every note.
+- **MIDI learn**: a knob's right-click menu has **MIDI Learn**, which arms its param: the next MIDI controller (CC 0
+  to 119) that comes in, on any channel, then drives it. Over 0 to 127 the CC sweeps the param across its whole range
+  (as a host's normalized value would), a stepped one landing on its steps. It is played as the mod wheel is: the
+  rest of the block hears it, the editor shows it, and the host is told of the param's new value in its place in the
+  block (CLAP's output events, VST3's output param changes), so a host records it as automation; nothing goes into
+  the undo history, and the preset isn't marked changed. A param hosts aren't given (an effect's, a source's own) moves
+  just the same, untold, and the project is marked changed. A CC drives one param, and a param takes one CC: learning a
+  CC that drives another param moves it to the one armed, and learning a param that has a CC gives the old one up. The
+  CC still reaches everything else that listens to CCs (a MIDI source on it, the sustain pedal on 64), and CC 1 still
+  moves the Mod Wheel too, so learned onto a knob it moves both. CCs 120 to 127 are MIDI's channel mode messages (All
+  Sound Off, All Notes Off and the like) and are never learned. Under MPE, a member channel's CC moves a learned param
+  for every note, as the master channel's does: the mappings listen on every channel. Voices isn't offered (more
+  voices may take a restart), nor anything the editor wires rather than turns (targets, auxes, a slot's bypass,
+  shapes' points). The mappings are a setting of the instance like MPE, saved with the project in the settings chunk
+  (by param id) and not with presets, so browsing presets keeps them; a project saved before them has none. The
+  browser demo takes no MIDI, and doesn't offer MIDI learn.
 - **Play modes**:
   - **Mono** plays one voice that moves from note to note. When you let go of the sounding key while others are
     held, it returns to the most recent one.
@@ -1426,6 +1443,14 @@ one may have changed since it last did.
   takes the keyboard while you type and hands it back afterwards; the keys are taken straight off the window's
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.
+- **MIDI learn** (see the sound engine's MIDI learn): a knob's right-click menu (an operator's, a filter's, a shaper's,
+  an effect's, the header's, a macro's, a source's, the Ratio readout's) offers **MIDI Learn** after its other entries.
+  Picked, the knob waits for a CC: it is ringed in the accent, and its label (in the header, its value) reads
+  "Learn…" (the Ratio readout is outlined in the accent instead). The next CC maps it, and the knob looks as before.
+  Meanwhile its menu offers **Cancel MIDI Learn**, Escape cancels it too (the editor takes Escape while a knob waits),
+  and MIDI Learn on another knob arms that one instead: one waits at a time. A knob a CC drives shows the CC in its
+  menu, **MIDI Learn (CC 74)** to learn another in its place, and **Forget MIDI CC 74**, which lets it go. Neither is
+  an undo step: the mappings are the instance's settings, not the patch.
 - **Menus and lists**: every list and menu (the effects', the source types', the waves', a list button's, a Param EQ
   band's shapes, the MODS view's cascading menus) marks the row under the mouse, and the one picked, in the same
   neutral tones; only a row's icon takes a color (the effect's, the band's, the source's).
@@ -1671,8 +1696,8 @@ What the VST3 plugin does its own way:
 
 - **MIDI**: VST3 hands plugins notes, but no controllers. FMVibe asks hosts to map every controller, channel pressure
   and pitch bend, on each of the 16 MIDI channels, to hidden parameters of its own, and takes them as MIDI from
-  there: pitch bend (by Bend Range), the MIDI sources' controllers and pressure, and MPE over MIDI work as in the
-  CLAP plugin. Polyphonic pressure comes as its own event, a note's pressure.
+  there: pitch bend (by Bend Range), the MIDI sources' controllers and pressure, MIDI learn and MPE over MIDI work as
+  in the CLAP plugin. Polyphonic pressure comes as its own event, a note's pressure.
 - **Note expressions**: Volume, Pan, Tuning (ten octaves either way) and Brightness (a note's slide), as VST3 names
   them, and Pressure, one of FMVibe's own. For touch surfaces and MPE controllers, FMVibe tells hosts to send a
   finger's sideways movement as Tuning, its movement along the key as Brightness and how hard it presses as

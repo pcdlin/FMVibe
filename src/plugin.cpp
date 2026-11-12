@@ -111,6 +111,9 @@ private:
     bool init();
     clap_process_status process(const clap_process_t *process);
     void handleEvent(const clap_event_header_t *ev);
+    // Audio thread: tells the host of param `index`'s new value, which a played control set (the mod wheel, a learned
+    // CC) at `time` in the block, as a param edit from the plugin.
+    void tellPlayed(int index, uint32_t time);
     void applyTransport(const clap_event_transport_t &transport);
     void setParam(const clap_event_param_value_t &ev) { setHostValue(indexOfId(ev.param_id), ev.value, true); }
     void queueEdit(int index, const EditEvent &ev);
@@ -152,7 +155,7 @@ private:
     bool rescanValues_ = false;
     std::atomic<bool> flushAsked_{false}; // the host asked to flush since the edits were last sent (see queueEdit())
     // Audio thread: the block's output events while process() runs, for what its events make the plugin tell the
-    // host (a hardware mod wheel moving the Mod Wheel param).
+    // host (a hardware mod wheel moving the Mod Wheel param, a learned CC its param).
     const clap_output_events_t *out_ = nullptr;
     uint32_t outFrames_ = 0; // and the block's length
 };
@@ -321,16 +324,10 @@ void Plugin::handleEvent(const clap_event_header_t *ev) {
             const int controller = midi.data[1] & 0x7F;
             const double value = (midi.data[2] & 0x7F) / 127.0;
             synth.controlChange(note.channel, controller, value);
-            if (controller == 1 && playModWheel(value) && out_) { // a hardware mod wheel: the Mod Wheel param follows
-                clap_event_param_value_t moved{};
-                moved.header = {sizeof(moved), ev->time, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
-                moved.header.time = std::min(ev->time, outFrames_ > 0 ? outFrames_ - 1 : 0);
-                moved.param_id = idOfIndex(paramIndex(GlobalParam::ModWheel));
-                moved.note_id = -1;
-                moved.port_index = moved.channel = moved.key = -1;
-                moved.value = value;
-                out_->try_push(out_, &moved.header);
-            }
+            if (controller == 1 && playModWheel(value)) // a hardware mod wheel: the Mod Wheel param follows
+                tellPlayed(paramIndex(GlobalParam::ModWheel), ev->time);
+            if (const int learned = playLearnedCc(controller, value); learned >= 0) // a CC learned for a param
+                tellPlayed(learned, ev->time);
         }
         else if (status == 0xD0)
             synth.channelPressure(note.channel, (midi.data[1] & 0x7F) / 127.0);
@@ -339,6 +336,19 @@ void Plugin::handleEvent(const clap_event_header_t *ev) {
         break;
     }
     }
+}
+
+void Plugin::tellPlayed(int index, uint32_t time) {
+    if (!out_)
+        return;
+    clap_event_param_value_t moved{};
+    moved.header = {sizeof(moved), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0};
+    moved.header.time = std::min(time, outFrames_ > 0 ? outFrames_ - 1 : 0);
+    moved.param_id = idOfIndex(index);
+    moved.note_id = -1;
+    moved.port_index = moved.channel = moved.key = -1;
+    moved.value = valueNow(index);
+    out_->try_push(out_, &moved.header);
 }
 
 // Main thread.

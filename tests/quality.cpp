@@ -5,6 +5,7 @@
 
 #include "factory.h"
 #include "gui/controller.h"
+#include "midilearn.h"
 #include "state.h"
 #include "synth.h"
 
@@ -2682,6 +2683,106 @@ int main() {
                     leak = std::max(leak, throughDecimator(factor, hz));
         std::printf("      %dx: passband ripple %.3f, worst alias %.1f\n", factor, ripple, leak);
         check(ripple < 0.1 && leak < -90.0, "the decimator is flat to 20 kHz and keeps aliases below -90 dB");
+    }
+
+    // --- MIDI learn: a param armed takes the next CC, a CC drives one param and a param takes one CC, CCs 120 to 127
+    // aren't learned, Forget lets one go; a CC's value spreads over the param's range, a stepped one's onto its steps;
+    // the mappings go through the settings chunk by param id, an older chunk loading none and a longer one skipped.
+    std::printf("MIDI learn:\n");
+    {
+        const int volume = paramIndex(GlobalParam::Volume), cutoff = paramIndex(0, FilterParam::Cutoff),
+                  type = paramIndex(0, FilterParam::Type), voices = paramIndex(GlobalParam::Voices);
+        MidiLearn learn;
+        const bool nothing = learn.paramOf(74) < 0 && learn.ccOf(cutoff) < 0 && !learn.learn(74);
+        learn.arm(cutoff);
+        const bool armed = learn.armed() == cutoff && learn.learn(74) && learn.paramOf(74) == cutoff &&
+                           learn.ccOf(cutoff) == 74 && learn.armed() < 0 && !learn.learn(75);
+        learn.arm(volume); // CC 74 moves from the cutoff to Volume
+        learn.learn(74);
+        const bool moved = learn.paramOf(74) == volume && learn.ccOf(cutoff) < 0;
+        learn.arm(volume); // Volume moves from CC 74 to CC 7
+        learn.learn(7);
+        const bool one = learn.paramOf(7) == volume && learn.paramOf(74) < 0 && learn.ccOf(volume) == 7;
+        learn.arm(cutoff);
+        const bool modes = !learn.learn(120) && !learn.learn(123) && learn.armed() == cutoff && learn.learn(1) &&
+                           learn.paramOf(1) == cutoff;
+        learn.arm(voices);
+        const bool voicesRefused = learn.armed() < 0 && !midiLearnable(voices) && midiLearnable(type);
+        const uint64_t before = learn.stamp();
+        learn.forget(volume);
+        const bool forgot = learn.paramOf(7) < 0 && learn.ccOf(volume) < 0 && learn.paramOf(1) == cutoff &&
+                            learn.stamp() != before;
+        std::printf("      %d %d %d %d %d %d %d\n", nothing, armed, moved, one, modes, voicesRefused, forgot);
+        check(nothing && armed && moved && one && modes && voicesRefused && forgot,
+              "a param armed learns the next CC (not 120-127), a CC drives one param and a param takes one CC, "
+              "Forget letting it go, and Voices can't be learned");
+
+        const ParamDef &v = paramTable()[volume], &t = paramTable()[type];
+        const bool spread = midiLearnValue(volume, 0.0) == v.min && midiLearnValue(volume, 1.0) == v.max &&
+                            std::abs(midiLearnValue(volume, 64.0 / 127.0) - (v.min + 64.0 / 127.0 * (v.max - v.min))) <
+                                1e-9 &&
+                            midiLearnValue(volume, 2.0) == v.max && midiLearnValue(volume, NAN) == v.min;
+        bool steps = midiLearnValue(type, 1.0) == t.max;
+        for (int cc = 0; cc <= 127; ++cc) {
+            const double value = midiLearnValue(type, cc / 127.0);
+            steps = steps && value == std::round(value) && value >= t.min && value <= t.max;
+        }
+        check(spread && steps, "a CC spreads over its param's range, and puts a stepped one on its steps");
+
+        // Through the settings chunk, with a preset chunk after it, as the host's state has them.
+        learn.arm(volume);
+        learn.learn(7);
+        Settings settings;
+        settings.mpe = true;
+        settings.midiMap = learn.mappings();
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writeSettings(&out, settings);
+        writePresetChunk(&out, true, "x.fmv");
+        MemoryReader reader{bytes.data(), bytes.size()};
+        const clap_istream_t in = memoryIn(reader);
+        const Settings back = readSettings(&in);
+        std::string file;
+        bool edited = false;
+        const bool chunked = readPresetChunk(&in, file, edited) && file == "x.fmv";
+        MidiLearn loaded;
+        loaded.set(back.midiMap);
+        const bool kept = back.mpe && back.midiMap == settings.midiMap && settings.midiMap.size() == 2 &&
+                          loaded.paramOf(7) == volume && loaded.paramOf(1) == cutoff && chunked;
+
+        // An older chunk (its three fields) loads none; a longer one (fields this version doesn't know after the
+        // mappings) and one naming an unknown id or a CC out of range keep the rest, the preset chunk after it read.
+        auto chunk = [](const std::vector<float> &fields) {
+            std::vector<unsigned char> b;
+            const clap_ostream_t o = memoryOut(b);
+            const uint32_t head[] = {0x47544553u, static_cast<uint32_t>(fields.size())};
+            o.write(&o, head, sizeof(head));
+            o.write(&o, fields.data(), fields.size() * sizeof(float));
+            writePresetChunk(&o, false, "y.fmv");
+            return b;
+        };
+        auto read = [](std::vector<unsigned char> b, bool &preset) {
+            MemoryReader r{b.data(), b.size()};
+            const clap_istream_t i = memoryIn(r);
+            const Settings got = readSettings(&i);
+            std::string f;
+            bool e = false;
+            preset = readPresetChunk(&i, f, e) && f == "y.fmv";
+            return got;
+        };
+        bool p1 = false, p2 = false;
+        const Settings older = read(chunk({4.0f, 0.0f, 48.0f}), p1);
+        std::vector<float> longer{2.0f, 0.0f, 48.0f, 3.0f, 7.0f, static_cast<float>(idOfIndex(volume)), 9.0f,
+                                  3.9e9f, 200.0f, static_cast<float>(idOfIndex(cutoff))};
+        for (int k = 0; k < 2000; ++k)
+            longer.push_back(1.0f);
+        const Settings later = read(chunk(longer), p2);
+        const bool compatible = older.oversampling == 4 && older.midiMap.empty() && p1 && later.midiMap.size() == 1 &&
+                                later.midiMap[0] == MidiMapping{7, volume} && p2;
+        std::printf("      %zu mappings back, older %zu, longer %zu\n", back.midiMap.size(), older.midiMap.size(),
+                    later.midiMap.size());
+        check(kept && compatible, "the MIDI mappings go through the settings chunk, an older one loading none and a "
+                                  "longer one skipped past");
     }
 
     // --- A Custom wave plays its partials: drawn while the operator plays a sine, then taken up as it switches to

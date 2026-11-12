@@ -417,6 +417,7 @@ private:
     void applyOverflow(ProcessData &data);
     void apply(const Change &change, ProcessData &data);
     void applyMidi(ParamID id, double value, int32 offset, ProcessData &data);
+    void tellPlayed(int index, int32 offset, ProcessData &data);
     void applyEvent(const Event &ev);
 
     std::atomic<uint32> refs_{1};
@@ -815,14 +816,24 @@ void Plugin::applyMidi(ParamID id, double value, int32 offset, ProcessData &data
         synth().channelPressure(channel, value);
     else
         synth().controlChange(channel, controller, value);
-    // A hardware mod wheel moves the Mod Wheel param too (see playModWheel()), which the host hears in its place.
-    if (controller == 1 && playModWheel(value) && data.outputParameterChanges) {
-        int32 queue = 0;
-        const ParamID wheel = idOfIndex(paramIndex(GlobalParam::ModWheel));
-        if (IParamValueQueue *points = data.outputParameterChanges->addParameterData(wheel, queue)) {
-            int32 point = 0;
-            points->addPoint(std::max(offset, 0), toNormalized(paramIndex(GlobalParam::ModWheel), value), point);
-        }
+    // A hardware mod wheel moves the Mod Wheel param too (see playModWheel()), and a learned CC its param (see
+    // playLearnedCc()), which the host hears in its place.
+    if (controller == 1 && playModWheel(value))
+        tellPlayed(paramIndex(GlobalParam::ModWheel), offset, data);
+    if (controller < kLearnableCcs)
+        if (const int learned = playLearnedCc(controller, value); learned >= 0)
+            tellPlayed(learned, offset, data);
+}
+
+// Tells the host of param `index`'s new value, which a played control set at `offset` in the block, as a param edit
+// from the plugin.
+void Plugin::tellPlayed(int index, int32 offset, ProcessData &data) {
+    if (!data.outputParameterChanges)
+        return;
+    int32 queue = 0;
+    if (IParamValueQueue *points = data.outputParameterChanges->addParameterData(idOfIndex(index), queue)) {
+        int32 point = 0;
+        points->addPoint(std::max(offset, 0), toNormalized(index, valueNow(index)), point);
     }
 }
 

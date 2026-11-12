@@ -79,6 +79,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     note;
   - the mod wheel moves nothing until it is assigned, and then its target, like a macro; and a hardware mod wheel
     (MIDI CC 1) moving the Mod Wheel param, and its target with it, the host told of the param's value;
+  - MIDI learn: a CC learned for a param (brought in through the state's settings chunk, as a project brings it;
+    arming a knob is the editor's) moving it over its range on any channel, the host told of a param it is given and
+    not of an effect's, which moves all the same; the state saving the mapping, and one without it forgetting it;
   - the pitch bend source moving its target: bipolar, nothing at rest and half its depth bent fully up; unipolar,
     half at rest and all of it fully up; and the Pitch Bend param bending an A4 two semitones up, the source
     following it set and modulated by the host, and a host's modulation of it for one note bending that note alone;
@@ -247,6 +250,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
+  - MIDI learn's mappings: a param armed learning the next CC (not 120 to 127), a CC driving one param and a param
+    taking one CC, Forget letting it go, Voices not learnable; a CC spreading over its param's range and onto a stepped
+    one's steps; and the mappings going through the settings chunk by param id, an older chunk loading none and a
+    longer one skipped past;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - where the pitch bend stands, as the bend wheel shows it: the host's MIDI bend and modulation on top of the Pitch
     Bend param as set, with no note and in a note with its own modulation;
@@ -528,6 +535,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     read off the rendered pixels), dragging cards by them, and folding cards, the icon staying put, one in a slot past the 16th
     too;
   - the right-click menu on knobs;
+  - MIDI learn from a knob's menu: offered on an operator's, a header knob's and a macro's knob (not Voices', nor
+    with a host that takes no MIDI), MIDI Learn arming the knob, ringed and its label saying so (read off the
+    rendered pixels), Escape, Cancel MIDI Learn and arming another knob stopping it, a CC coming in mapping it, the
+    menu then showing the CC with Forget, which lets it go;
   - the macros' knobs (a double-click setting a bipolar one to its middle), handles and names, the note source's
     and velocity's handles, displays and curve editors, velocity's handle faint until it modulates something (read
     off the rendered pixels), the mod wheel's
@@ -625,7 +636,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Mod Wheel param and the host told in its place in the block, tuned an octave by a note expression on its id
     (and not by one on another id), its level set by a volume expression, automation landing at its place in a
     block, a param change coming before a note at the same place, notes let go (with ids and without) falling
-    silent, an anchored LFO standing where the process context's position puts it, more changes than a block sorts
+    silent, an anchored LFO standing where the process context's position puts it, a learned CC (through the MIDI
+    mapping, on any channel) moving its param with the host told in its place, kept by the state and forgotten by one
+    without it, more changes than a block sorts
     (a note's end past them still ending it, a param's last point winning), a flush without audio taken, the
     controller's copy of a value from the host left alone while processing, and a voice limit past the voices
     allocated asking the host for a restart;
@@ -833,6 +846,7 @@ breakpoints in `src/` then hit.
 | `src/vst3plugin.cpp` | The VST3 plugin: the core as one object that is component, processor and edit controller (buses, process loop, params in units, MIDI mapping, note expressions, state), and its editor view |
 | `src/vst3iids.cpp` | The ids of the VST3 interfaces the plugin and its test host use |
 | `src/state.cpp` | The state's bytes: the patch (params, then the editor layout chunk, whose fields one list describes for writing and reading), the settings and preset chunks; independent of Windows |
+| `src/midilearn.h`, `src/midilearn.cpp` | MIDI learn: the CCs mapped to params and the param waiting for one, lock-free between the editor and the audio thread, and the value a CC gives a param |
 | `src/remotepages.cpp` | The remote control pages hosts show, built from the patch and the editor's source order |
 | `src/presets.cpp` | The preset library: the preset folder, its scan, the examples written into it |
 | `src/usersettings.cpp` | The user's settings file in the roaming app data (theme, hue, glow, handle size, line strength, examples given and the version that wrote them) |
@@ -1003,10 +1017,11 @@ itself.
   effect cards past the 16th slot are folded, the node the effects graph's inspector shows, whether the FX view shows
   the graph, the band each split shows and which splits' containers are folded.
   The host's state goes on with
-  the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
+  the settings chunk (the oversampling, MPE, MPE's bend range, then MIDI learn's mappings: their count, then a CC
+  and a param id each; see `src/midilearn.h`) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a
   state doesn't have keep their defaults; a layout or settings chunk longer than the loader knows (up to 4096
-  floats are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
+  floats of a layout, 1024 of the settings, are read) keeps the fields it knows and is skipped past, so the chunks after it still load; a chunk cut
   short keeps the floats that arrived whole, and a layout value that isn't a number keeps its default. States
   with a newer version are refused.
 - Times and LFO rates are stored as 0–1 on a log curve (1 ms–20 s, 0.02–100 Hz), so host knobs and modulation

@@ -7,6 +7,7 @@
 // The host's state: the patch (magic, version, param count, (id, value) pairs, then the editor layout chunk), then
 // the settings chunk and the preset chunk. A preset file holds the patch alone.
 
+#include "midilearn.h"
 #include "params.h"
 
 #include <clap/stream.h>
@@ -35,6 +36,7 @@ struct Settings {
     int oversampling = kDefaultOversampling; // 1, 2, 4 or 8
     bool mpe = false;                        // MPE over MIDI (see Synth::setMpe())
     int mpeBendRange = kDefaultMpeBendRange; // 1 to kMaxMpeBendRange semitones
+    std::vector<MidiMapping> midiMap;        // the CCs learned, each with the param it drives (see MidiLearn)
 };
 
 // Streams over a file, for presets.

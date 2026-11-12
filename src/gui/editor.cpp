@@ -691,7 +691,7 @@ bool Editor::key(WPARAM key, LPARAM flags) {
         }
     }
     // A dialog open over the editor: Enter confirms it, Escape cancels it. Other keys go on to the host.
-    if (view_.dialogOpen() && (key == VK_RETURN || key == VK_ESCAPE))
+    if ((view_.dialogOpen() && (key == VK_RETURN || key == VK_ESCAPE)) || (view_.midiLearning() && key == VK_ESCAPE))
         return view_.dialogKey(key == VK_RETURN ? View::Key::Enter : View::Key::Escape);
     if (ctrl && (key == 'Y' || (key == 'Z' && GetKeyState(VK_SHIFT) < 0))) {
         view_.redo();
@@ -740,7 +740,8 @@ bool Editor::typedKey(const MSG &msg) {
     const auto code = static_cast<uint8_t>(msg.wParam);
     switch (msg.message) {
     case WM_KEYDOWN:
-        if (!(view_.typing() || (view_.dialogOpen() && (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE))) ||
+        if (!(view_.typing() || (view_.dialogOpen() && (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE)) ||
+              (view_.midiLearning() && msg.wParam == VK_ESCAPE)) ||
             isModifier(msg.wParam))
             return false;
         typedKeys_.set(code);

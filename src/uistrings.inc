@@ -921,6 +921,11 @@ STR(MenuSwitchOff, "Switch off {1}")
 STR(MenuDisconnect, "Disconnect")
 STR(MenuEditValue, "Edit value…")
 STR(MenuResetDefault, "Reset to default")
+STR(MenuMidiLearn, "MIDI Learn") // a knob's: the next MIDI CC that comes in drives its param
+STR(MenuMidiRelearn, "MIDI Learn (CC {1})") // likewise, on a knob a CC drives already, {1} its number
+STR(MenuMidiCancel, "Cancel MIDI Learn") // on the knob waiting for its CC
+STR(MenuMidiForget, "Forget MIDI CC {1}") // the knob's CC drives it no more, {1} its number
+STR(KnobMidiLearning, "Learn…") // under a knob waiting for a MIDI CC, in place of its label
 
 // --- The editor: undo and redo, on their buttons' tooltips
 

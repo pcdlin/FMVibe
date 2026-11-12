@@ -29,6 +29,7 @@ add_executable(fmvibe-ui
     ${engine}
     ${factory_presets}
     ${PROJECT_SOURCE_DIR}/src/factory.cpp
+    ${PROJECT_SOURCE_DIR}/src/midilearn.cpp
     ${PROJECT_SOURCE_DIR}/src/state.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/canvas_web.cpp
     ${PROJECT_SOURCE_DIR}/src/gui/controller.cpp
