@@ -41,7 +41,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
 
 - **Smoke test** (`tests/smoke_host.cpp`): a small headless host. (It and the VST3 test set `FMVIBE_SETTINGS_DIR`,
   which `src/usersettings.cpp` reads in place of the roaming app data, so their editor resizes don't land in your
-  settings file.) It loads the `.clap` and checks the parameter
+  settings file, and it sets `FMVIBE_PRESETS_DIR`, which `PresetLibrary::folderPath()` reads in place of
+  `Documents\FMVibe\presets`, so its presets don't land in yours.) It loads the `.clap` and checks the parameter
   table, text round-trips (at each end and just inside it too, the slowest sweep rate and the shortest time typed
   neither still nor Off), the note source's range (every MIDI note, on to the pitch at 20 kHz) and remote-control pages. It then plays
   notes, checking:
@@ -148,7 +149,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     loaded while active, requests one too.
 
   It gets the preset discovery factory from `clap_entry` (by its id and its draft's): one provider, which declares
-  `.fmv` files, the factory presets in the plugin and the preset folder (`Documents\FMVibe\presets`, once made), lists every
+  `.fmv` files, the factory presets in the plugin and the preset folder (the test's own), lists every
   factory preset with a load key, for FMVibe, as factory content (BA FM Bass tagged bass), and a preset file in a
   temporary folder by its name, while a file that isn't a preset reports an error. Through `clap.preset-load` (on an
   instance of its own) it loads a factory preset by its load key (params changed, gestures and values to the host,
@@ -657,7 +658,10 @@ More checks:
 - **Validators**: `.\build.ps1 -Validate` runs clap-validator (free-audio's conformance tests, a prebuilt binary)
   on the CLAP plugin and Steinberg's validator (the VST3 SDK's, built here from the SDK's MIT-licensed sources with
   the SDK's own list of them) on the VST3 one. They are the `validate-clap` and `validate-vst3` targets, both under
-  `validate`. Steinberg's validator lists notes ("Info") beyond its tests: param titles alike within a unit, values
+  `validate`. clap-validator's preset discovery tests have bugs of their own: they refuse a Windows path as a file
+  location (it must start with `/`) and deadlock on a plugin location listing more than one preset, so it runs with
+  `FMVIBE_PRESETS_DIR` naming a folder that isn't there (the provider then declares none) and without
+  `preset-discovery-crawl` and `-load`, which the smoke and quality tests stand in for. Steinberg's validator lists notes ("Info") beyond its tests: param titles alike within a unit, values
   that come back slightly off from their rounded text and units with many params are expected.
 - **In Bitwig Studio**: install the plugins as the [README](README.md#build) describes; Bitwig finds them
   in the per-user CLAP and VST3 folders.

@@ -20,7 +20,8 @@ std::wstring widePath(std::string_view text);
 // scanned, each entry with its file. Main thread.
 class PresetLibrary {
 public:
-    // The preset folder, or "" when Windows doesn't say where the documents are.
+    // The preset folder, or "" when Windows doesn't say where the documents are. The environment variable
+    // FMVIBE_PRESETS_DIR names another, for the tests and the validators.
     static std::wstring folderPath();
     // The first scan makes the folder, with the examples in a subfolder of their own; a folder made before
     // later examples came gets those once. The settings file counts the examples given, so deleted ones

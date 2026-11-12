@@ -429,16 +429,15 @@ void presetChecks(const clap_plugin_entry_t *entry, const clap_plugin_factory_t 
     const Indexed::Location *pluginLocation = nullptr, *fileLocation = nullptr;
     for (const Indexed::Location &l : indexed.locations)
         (l.kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN ? pluginLocation : fileLocation) = &l;
-    const auto endsWith = [](const std::string &text, const std::string &end) {
-        return text.size() >= end.size() && text.compare(text.size() - end.size(), end.size(), end) == 0;
-    };
-    // The preset folder only once the library has made it, which a new machine (a CI runner) hasn't.
-    check(indexed.extensions == std::vector<std::string>{"fmv"} && pluginLocation && !pluginLocation->hasLocation &&
-              pluginLocation->flags == CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT &&
-              indexed.locations.size() == (fileLocation ? 2u : 1u) &&
-              (!fileLocation || (endsWith(fileLocation->location, "FMVibe\\presets") &&
-                                 fileLocation->flags == CLAP_PRESET_DISCOVERY_IS_USER_CONTENT)),
-          "the provider declares .fmv files, the factory presets in the plugin and the preset folder if made");
+    // The preset folder is the test's own (FMVIBE_PRESETS_DIR, set in main()), as the provider declares it.
+    wchar_t temp[MAX_PATH];
+    GetTempPathW(MAX_PATH, temp);
+    const std::wstring folder = std::wstring(temp) + L"fmvibe-smoke-presets";
+    check(indexed.extensions == std::vector<std::string>{"fmv"} && indexed.locations.size() == 2 && pluginLocation &&
+              !pluginLocation->hasLocation && pluginLocation->flags == CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT &&
+              fileLocation && fileLocation->location == narrow(folder) &&
+              fileLocation->flags == CLAP_PRESET_DISCOVERY_IS_USER_CONTENT,
+          "the provider declares .fmv files, the factory presets in the plugin and the preset folder");
 
     Received built;
     clap_preset_discovery_metadata_receiver_t receiver = testReceiver(built);
@@ -455,12 +454,7 @@ void presetChecks(const clap_plugin_entry_t *entry, const clap_plugin_factory_t 
     check(listed && fmBass && std::find(fmBass->features.begin(), fmBass->features.end(), "bass") != fmBass->features.end(),
           "the factory presets are listed with load keys, for FMVibe, as factory content, BA FM Bass as a bass");
 
-    // A preset folder of the test's own: a preset saved from an instance with its Volume turned, and a file that
-    // isn't a preset.
-    wchar_t temp[MAX_PATH];
-    GetTempPathW(MAX_PATH, temp);
-    const std::wstring folder = std::wstring(temp) + L"fmvibe-smoke-presets";
-    CreateDirectoryW(folder.c_str(), nullptr);
+    // In the preset folder: a preset saved from an instance with its Volume turned, and a file that isn't a preset.
     const std::wstring presetFile = folder + L"\\LD Smoke Lead.fmv", junkFile = folder + L"\\Junk.fmv",
                        missingFile = folder + L"\\Missing.fmv";
     const int volume = paramIndex(GlobalParam::Volume);
@@ -594,6 +588,10 @@ int main(int argc, char **argv) {
         const std::wstring dir = std::wstring(temp) + L"fmvibe-smoke-settings";
         CreateDirectoryW(dir.c_str(), nullptr);
         SetEnvironmentVariableW(L"FMVIBE_SETTINGS_DIR", dir.c_str());
+        // And a preset folder of its own, which the preset checks fill (see presetChecks()).
+        const std::wstring presets = std::wstring(temp) + L"fmvibe-smoke-presets";
+        CreateDirectoryW(presets.c_str(), nullptr);
+        SetEnvironmentVariableW(L"FMVIBE_PRESETS_DIR", presets.c_str());
     }
 
     HMODULE lib = LoadLibraryA(argv[1]);

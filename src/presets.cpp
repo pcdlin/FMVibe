@@ -100,6 +100,12 @@ std::wstring widePath(std::string_view text) {
 }
 
 std::wstring PresetLibrary::folderPath() {
+    // The tests and the validators name a folder of their own (see FMVIBE_SETTINGS_DIR in usersettings.cpp), so
+    // they leave the user's presets alone.
+    wchar_t override_[MAX_PATH];
+    const DWORD length = GetEnvironmentVariableW(L"FMVIBE_PRESETS_DIR", override_, MAX_PATH);
+    if (length > 0 && length < MAX_PATH)
+        return std::wstring(override_, length);
     PWSTR documents = nullptr;
     std::wstring folder;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, nullptr, &documents)))
