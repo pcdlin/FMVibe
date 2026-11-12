@@ -37,6 +37,9 @@ add_library(fmvibe-core STATIC
     src/gui/theme.h
     src/gui/view.cpp
     src/gui/view.h
+    src/presetdiscovery.cpp
+    src/presetdiscovery.h
+    src/plugininfo.h
     src/remotepages.cpp
     src/remotepages.h
     src/sharedtelemetry.h

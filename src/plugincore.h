@@ -6,6 +6,7 @@
 
 #include "gui/controller.h"
 #include "gui/editor.h"
+#include "plugininfo.h"
 #include "presets.h"
 #include "sharedtelemetry.h"
 #include "state.h"
@@ -16,6 +17,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -56,11 +58,6 @@ private:
     std::atomic<size_t> tail_{0};
 };
 
-// The plugin's name, maker and description, as both formats report them.
-inline constexpr char kPluginName[] = "FMVibe";
-inline constexpr char kPluginVendor[] = "pcdlin";
-inline constexpr char kPluginDescription[] = "Six-operator FM synthesizer";
-
 // Milliseconds on the steady clock.
 int64_t steadyMs();
 
@@ -84,6 +81,7 @@ public:
     }
     void setIdleLfosShown(bool shown) override;
     void resetPreset() override;
+    // Loading a preset file from the editor, which the host is then told of (see hostPresetLoaded()).
     bool loadPreset(const std::wstring &path) override;
     bool savePreset(const std::wstring &path) override;
     void choosePreset(bool save) override;
@@ -171,6 +169,14 @@ public:
     bool saveState(const clap_ostream_t *stream, bool settings = true) const;
     bool loadState(const clap_istream_t *stream, bool settings = true);
 
+    // Main thread: loading a preset as the editor does (gestures for the params that change, the preset bar showing
+    // it unchanged, the undo history starting over), for the host's preset browser, which hears of it from its own
+    // call: a file (`osError` the OS's error when it can't be opened, else 0), or a factory preset built in
+    // (factoryPresets()), shown as its copy in the preset folder's Factory subfolder, changed if that copy differs.
+    // Neither scans the preset folder, so neither writes the examples into it.
+    bool loadPresetFile(const std::wstring &path, int32_t *osError = nullptr);
+    bool loadFactoryPresetAt(int index);
+
     // Main thread: what hostRequestCallback() asks for.
     void onMainThread() { sectionsChanged(); }
 
@@ -221,6 +227,8 @@ protected:
     virtual void hostRequestCallback() = 0;
     // The virtual keyboard played a note, while the host may have stopped processing.
     virtual void hostRequestProcess() {}
+    // The editor loaded preset file `file`, which a host's preset browser follows.
+    virtual void hostPresetLoaded(const std::wstring &file) { (void)file; }
 
     // The host was told param `index`'s value just now (see setHostValue()).
     void told(int index, int64_t now) { toldAt_[index].store(now, std::memory_order_relaxed); }
@@ -243,6 +251,8 @@ private:
     void editorFitChanged();
     // Tells the host of every param that changed since `before`, as edits.
     void notifyParams(const ParamValues &before);
+    // Loads a preset's bytes as the patch, as loading its file does, which the preset bar then shows as `file`.
+    bool loadPresetBytes(std::span<const unsigned char> bytes, const std::wstring &file, bool edited);
     // What a preset leaves as it is (gui::keepEditorLayout()): how big the editor is, whether the modulation panel
     // is collapsed, the shape editor's grid, the view shown.
     void keepEditorLayout(const gui::UiLayout &from);

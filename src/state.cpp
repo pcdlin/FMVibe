@@ -468,6 +468,14 @@ void loadRetiredMultiComp(ParamValues &values) {
 
 } // namespace
 
+bool patchHeaderValid(const unsigned char (&bytes)[12], uint64_t size) {
+    uint32_t header[3];
+    std::memcpy(header, bytes, sizeof(header));
+    constexpr uint64_t kPair = sizeof(uint32_t) + sizeof(double);
+    return header[0] == kStateMagic && header[1] >= 1 && header[1] <= kStateVersion &&
+           size >= sizeof(header) + header[2] * kPair;
+}
+
 bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     uint32_t header[3];
     if (!readAll(stream, header, sizeof(header)) || header[0] != kStateMagic || header[1] < 1 ||

@@ -57,6 +57,10 @@ bool writePatch(const clap_ostream_t *stream, const ParamValues &values, const g
 // The patch's header and params: false for a stream that isn't FMVibe's state, is of a newer version or ends among
 // the params. Params missing from the state keep their defaults; unknown ids are skipped.
 bool readParams(const clap_istream_t *stream, ParamValues &values);
+// Whether a patch's first 12 bytes (`header`) are FMVibe's state of a version this one reads, and `size`, the bytes
+// the whole patch has, holds every (id, value) pair they count: what the preset discovery checks of a file, cheaply,
+// without reading its params.
+bool patchHeaderValid(const unsigned char (&header)[12], uint64_t size);
 // The editor layout chunk that follows the params. It is optional; whatever is missing keeps its default.
 gui::UiLayout readLayout(const clap_istream_t *stream);
 

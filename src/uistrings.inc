@@ -966,6 +966,18 @@ STR(DialogAllFiles, "All files (*.*)")
 STR(DialogWriteFailed, "Could not save the preset.")
 STR(DialogNotPreset, "Not an FMVibe preset.")
 
+// --- The host's preset browser (CLAP's preset discovery and preset-load)
+
+STR(DiscoveryProvider, "FMVibe presets") // the preset provider, as the host names it
+STR(DiscoveryFileType, "FMVibe preset")
+STR(DiscoveryFileTypeHint, "An FMVibe patch, saved from its preset bar")
+STR(DiscoveryFactory, "FMVibe factory presets") // the presets built into the plugin
+STR(DiscoveryUser, "FMVibe user presets") // the preset folder
+STR(DiscoveryUnreadable, "Could not read the preset file")
+STR(DiscoveryNotPreset, "Not an FMVibe preset, or one from a newer version")
+STR(DiscoveryNoFactory, "FMVibe has no factory preset named \"{1}\"")
+STR(DiscoveryNoLocation, "FMVibe has no presets at this location")
+
 // --- The browser demo, which has no files
 
 STR(DemoNoFiles, "No file access in the demo. Click the preset name for factory presets.")

@@ -147,6 +147,14 @@ the plain CMake commands and installing into a host are in the [README](README.m
     before the host restarts) and is reported through voice-info after reactivation, and a state with a higher one,
     loaded while active, requests one too.
 
+  It gets the preset discovery factory from `clap_entry` (by its id and its draft's): one provider, which declares
+  `.fmv` files, the factory presets in the plugin and the preset folder (`Documents\FMVibe\presets`), lists every
+  factory preset with a load key, for FMVibe, as factory content (BA FM Bass tagged bass), and a preset file in a
+  temporary folder by its name, while a file that isn't a preset reports an error. Through `clap.preset-load` (on an
+  instance of its own) it loads a factory preset by its load key (params changed, gestures and values to the host,
+  `loaded()` called, the state naming the preset's file) and the file by its path, and an unknown key, a missing
+  file, one that isn't a preset and no path each call `on_error()`, leaving the params as they were.
+
   It opens the editor inside a hidden host window and drags the Volume knob with mouse messages. It checks that
   the param changes and that the host receives gesture-begin, value and gesture-end events, and that an older
   value the host hands back right after isn't taken; that with nothing sounding processing sleeps, but not while the
@@ -247,6 +255,12 @@ the plain CMake commands and installing into a host are in the [README](README.m
     EQ's, the phase disperser's and the voice filters' analyzers (falling away as fast at 96 kHz as at 48), and that each example preset holds valid values
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
+  - CLAP's preset discovery (`src/presetdiscovery.cpp`) with an indexer of its own: the provider declaring `.fmv`
+    files, the factory presets as a plugin location and a preset folder as a file location (none with no folder),
+    listing every factory preset by its name and a load key that finds it again, for FMVibe, as factory content, its
+    prefix tagging its sound, and stopping when the host's receiver says no; in a temporary folder, a preset listed
+    by its name as the user's, a file that isn't a preset, one cut short and one that isn't there reporting an error,
+    an unchanged factory preset's copy in its `Factory` subfolder listing nothing and a changed one listed;
   - the mod wheel leaving the FM alone until it is assigned, and the output meter's peaks, fall and clip light;
   - where the pitch bend stands, as the bend wheel shows it: the host's MIDI bend and modulation on top of the Pitch
     Bend param as set, with no note and in a note with its own modulation;
@@ -704,7 +718,8 @@ The factory presets are preset files, `presets/Factory/<name>.fmv`, which the bu
 `cmake/embed_presets.cmake` turns them into byte arrays (`factoryPresets()` in `src/factory.h`), for the plugin and
 the browser demo alike, again whenever one changes. The plugin writes their bytes as they are into a new preset folder.
 `presets/factory.txt` names them in the order they came, which counts: the settings file counts the examples a folder
-was given, so a new one goes at the end and none is reordered or taken out. The build fails on a file the list
+was given, so a new one goes at the end and none is reordered or taken out. Nor is one renamed: its name is its load
+key in CLAP's preset discovery, which hosts store in their projects and favorites. The build fails on a file the list
 doesn't name, or a name without its file.
 
 They are stored sparse: only the params that differ from their defaults (which is what loading a preset gives the
@@ -826,9 +841,11 @@ breakpoints in `src/` then hit.
 | Path | What |
 | --- | --- |
 | `src/plugincore.cpp` | What both plugins are: `PluginCore`, the engine and its param values, the editor's `Controller` (presets, settings), the state and the editor window, telling each host through its hooks |
-| `src/entry.cpp` | The CLAP plugin's exported `clap_entry` and factory |
+| `src/entry.cpp` | The CLAP plugin's exported `clap_entry`, its plugin factory and its preset discovery factory |
+| `src/plugininfo.h` | The plugin's id, name, maker and description, as both formats and the preset discovery report them |
+| `src/presetdiscovery.h`, `src/presetdiscovery.cpp` | CLAP's preset discovery provider: the `.fmv` file type, the factory presets (by load key) and the preset folder, and a preset's metadata; independent of Windows |
 | `src/hosttempo.h` | FMVibe's own CLAP host extension for the tempo, which `fmvibe-uihost` offers so the editor can show and set it |
-| `src/plugin.cpp` | The CLAP plugin: the core with its process loop, events and extension tables (ports, params, state, remote controls, voice info, gui) |
+| `src/plugin.cpp` | The CLAP plugin: the core with its process loop, events and extension tables (ports, params, state, remote controls, voice info, gui, preset-load) |
 | `src/vst3entry.cpp` | The VST3 plugin's exported `GetPluginFactory` (and `InitDll`, `ExitDll`) and factory |
 | `src/vst3plugin.cpp` | The VST3 plugin: the core as one object that is component, processor and edit controller (buses, process loop, params in units, MIDI mapping, note expressions, state), and its editor view |
 | `src/vst3iids.cpp` | The ids of the VST3 interfaces the plugin and its test host use |
@@ -889,7 +906,7 @@ itself.
 
 ## Plugin facts
 
-- CLAP id `io.github.pcdlin.fmvibe`, VST3 class id `9BCBBCB9-166D49F6-A9C2271D-5009BDD5` (`kClassId` in
+- CLAP id `io.github.pcdlin.fmvibe` (`kPluginId` in `src/plugininfo.h`, which presets name too), VST3 class id `9BCBBCB9-166D49F6-A9C2271D-5009BDD5` (`kClassId` in
   `src/vst3plugin.h`). Changing either makes hosts treat it as a different plugin.
 - The VST3 plugin is a single component: one object is its component, processor and edit controller, so
   `getControllerClassId()` has none to name, and the controller's own state is empty (the component's is the whole
@@ -1049,7 +1066,6 @@ see.
 
 ## Next steps
 
-- Presets: the `clap.preset-load` extension and preset discovery, so hosts can browse FMVibe's presets too.
 - Sound: fixed-frequency operators, key scaling, oversampling for high-index patches.
 - AU and standalone builds: [clap-wrapper](https://github.com/free-audio/clap-wrapper) builds these from the
   CLAP plugin. The plugins' editor is Windows-only for now (the browser demo has its own drawing backend).

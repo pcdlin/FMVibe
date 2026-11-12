@@ -3,6 +3,7 @@
 #include "hosttempo.h"
 #include "params.h"
 #include "plugincore.h"
+#include "presetdiscovery.h"
 #include "remotepages.h"
 #include "uistrings.h"
 
@@ -12,6 +13,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -44,7 +47,7 @@ struct EditEvent {
 
 const clap_plugin_descriptor_t kDescriptor = {
     CLAP_VERSION_INIT,
-    "io.github.pcdlin.fmvibe",
+    kPluginId,
     kPluginName,
     kPluginVendor,
     "", // url
@@ -94,6 +97,7 @@ protected:
     void hostRequestRestart() override { host_->request_restart(host_); } // thread-safe
     void hostRequestCallback() override { host_->request_callback(host_); }
     void hostRequestProcess() override { host_->request_process(host_); }
+    void hostPresetLoaded(const std::wstring &file) override;
 
 public:
     // The tempo control, for a host that offers FMVibe's own extension for it (fmvibe-uihost).
@@ -109,6 +113,8 @@ private:
     static const void *extension(const char *id);
 
     bool init();
+    // clap.preset-load: a preset the host's browser found (see src/presetdiscovery.h), loaded as the editor loads one.
+    bool loadFromLocation(uint32_t kind, const char *location, const char *loadKey);
     clap_process_status process(const clap_process_t *process);
     void handleEvent(const clap_event_header_t *ev);
     void applyTransport(const clap_event_transport_t &transport);
@@ -131,6 +137,7 @@ private:
     static const clap_plugin_remote_controls_t kRemoteControls;
     static const clap_plugin_voice_info_t kVoiceInfo;
     static const clap_plugin_gui_t kGui;
+    static const clap_plugin_preset_load_t kPresetLoad;
 
     clap_plugin_t plugin_;
     const clap_host_t *host_;
@@ -140,6 +147,7 @@ private:
     const clap_host_remote_controls_t *hostRemoteControls_ = nullptr;
     const clap_host_gui_t *hostGui_ = nullptr;
     const HostTempo *hostTempo_ = nullptr;
+    const clap_host_preset_load_t *hostPresetLoad_ = nullptr;
     // Main thread: the remote pages, as the sections were when the host was last told (see sectionsChanged()).
     std::vector<clap_remote_controls_page_t> remotePages_;
     // Presets set every param at once, about three events each.
@@ -196,6 +204,12 @@ bool Plugin::init() {
     if (!hostRemoteControls_)
         hostRemoteControls_ = static_cast<const clap_host_remote_controls_t *>(
             host_->get_extension(host_, CLAP_EXT_REMOTE_CONTROLS_COMPAT));
+    hostPresetLoad_ = static_cast<const clap_host_preset_load_t *>(host_->get_extension(host_, CLAP_EXT_PRESET_LOAD));
+    if (!hostPresetLoad_)
+        hostPresetLoad_ =
+            static_cast<const clap_host_preset_load_t *>(host_->get_extension(host_, CLAP_EXT_PRESET_LOAD_COMPAT));
+    if (hostPresetLoad_ && (!hostPresetLoad_->on_error || !hostPresetLoad_->loaded))
+        hostPresetLoad_ = nullptr;
     return true;
 }
 
@@ -214,7 +228,57 @@ const void *Plugin::extension(const char *id) {
         return &kVoiceInfo;
     if (std::strcmp(id, CLAP_EXT_GUI) == 0)
         return &kGui;
+    if (std::strcmp(id, CLAP_EXT_PRESET_LOAD) == 0 || std::strcmp(id, CLAP_EXT_PRESET_LOAD_COMPAT) == 0)
+        return &kPresetLoad;
     return nullptr;
+}
+
+// Main thread. A factory preset goes by its load key, a file by its path in UTF-8; either loads as the editor loads a
+// preset, and the host hears whether it did.
+bool Plugin::loadFromLocation(uint32_t kind, const char *location, const char *loadKey) {
+    bool loaded = false;
+    int32_t osError = 0;
+    std::string message;
+    if (kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN) {
+        const int index = factoryPresetByKey(loadKey);
+        if (index < 0)
+            message = trf(Str::DiscoveryNoFactory, {loadKey ? loadKey : ""});
+        else if (!(loaded = loadFactoryPresetAt(index)))
+            message = tr(Str::DiscoveryNotPreset);
+    } else if (kind == CLAP_PRESET_DISCOVERY_LOCATION_FILE && location && *location) {
+        const std::wstring file = widePath(location);
+        if (file.empty())
+            message = tr(Str::DiscoveryNoLocation);
+        else if (!(loaded = loadPresetFile(file, &osError)))
+            message = tr(osError != 0 ? Str::DiscoveryUnreadable : Str::DiscoveryNotPreset);
+    } else {
+        message = tr(Str::DiscoveryNoLocation);
+    }
+    if (hostPresetLoad_) {
+        // A load key only for a preset in a container: the plugin's own.
+        const char *key = kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN ? loadKey : nullptr;
+        if (loaded)
+            hostPresetLoad_->loaded(host_, kind, location, key);
+        else
+            hostPresetLoad_->on_error(host_, kind, location, key, osError, message.c_str());
+    }
+    return loaded;
+}
+
+// Main thread: a preset the editor loaded, which the host's browser shows as loaded too. An unchanged copy of a factory
+// preset in the preset folder goes as the built-in one, which is what the browser lists in its place.
+void Plugin::hostPresetLoaded(const std::wstring &file) {
+    if (!hostPresetLoad_)
+        return;
+    const std::filesystem::path path(file);
+    const int factory = factoryCopyOf(path, std::filesystem::path(PresetLibrary::folderPath()));
+    if (factory >= 0) {
+        hostPresetLoad_->loaded(host_, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, factoryPresetKey(factory));
+        return;
+    }
+    const std::string text = utf8(path);
+    if (!text.empty())
+        hostPresetLoad_->loaded(host_, CLAP_PRESET_DISCOVERY_LOCATION_FILE, text.c_str(), nullptr);
 }
 
 clap_process_status Plugin::process(const clap_process_t *process) {
@@ -596,6 +660,12 @@ const clap_plugin_gui_t Plugin::kGui = {
     [](const clap_plugin_t *, const char *) {},                         // suggest_title
     [](const clap_plugin_t *p) { return self(p).editor() && self(p).editor()->show(true); },
     [](const clap_plugin_t *p) { return self(p).editor() && self(p).editor()->show(false); },
+};
+
+const clap_plugin_preset_load_t Plugin::kPresetLoad = {
+    [](const clap_plugin_t *p, uint32_t kind, const char *location, const char *loadKey) {
+        return self(p).loadFromLocation(kind, location, loadKey);
+    },
 };
 
 const clap_plugin_t *createPlugin(const clap_host_t *host) {

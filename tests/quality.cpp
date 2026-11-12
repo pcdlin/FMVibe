@@ -5,6 +5,7 @@
 
 #include "factory.h"
 #include "gui/controller.h"
+#include "presetdiscovery.h"
 #include "state.h"
 #include "synth.h"
 
@@ -15,6 +16,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -2395,6 +2398,221 @@ void presetContentChecks() {
     check(sparse, "every factory preset's file is sparse, as fmvibe-presettool writes it");
 }
 
+// CLAP's preset discovery, as a host's indexer sees it (src/presetdiscovery.cpp): what the provider declares, and the
+// presets it finds in the plugin and in a preset folder.
+struct FoundPreset {
+    std::string name, key;
+    std::vector<std::string> pluginIds, features, creators;
+    uint32_t flags = 0;
+    bool flagged = false;
+};
+struct Indexed {
+    std::vector<clap_preset_discovery_filetype_t> filetypes;
+    std::vector<std::string> extensions;
+    struct Location {
+        uint32_t flags, kind;
+        std::string name;
+        bool hasLocation;
+        std::string location;
+    };
+    std::vector<Location> locations;
+};
+struct Received {
+    std::vector<FoundPreset> presets;
+    std::vector<std::string> errors;
+    size_t stopAfter = SIZE_MAX; // begin_preset() says no from this many presets on
+};
+
+clap_preset_discovery_indexer_t testIndexer(Indexed &indexed) {
+    clap_preset_discovery_indexer_t indexer{};
+    indexer.clap_version = CLAP_VERSION;
+    indexer.name = "quality";
+    indexer.indexer_data = &indexed;
+    indexer.declare_filetype = [](const clap_preset_discovery_indexer_t *i, const clap_preset_discovery_filetype_t *t) {
+        auto &in = *static_cast<Indexed *>(i->indexer_data);
+        in.filetypes.push_back(*t);
+        in.extensions.push_back(t->file_extension ? t->file_extension : "");
+        return true;
+    };
+    indexer.declare_location = [](const clap_preset_discovery_indexer_t *i, const clap_preset_discovery_location_t *l) {
+        static_cast<Indexed *>(i->indexer_data)
+            ->locations.push_back({l->flags, l->kind, l->name ? l->name : "", l->location != nullptr,
+                                   l->location ? l->location : ""});
+        return true;
+    };
+    indexer.declare_soundpack = [](const clap_preset_discovery_indexer_t *, const clap_preset_discovery_soundpack_t *) {
+        return true;
+    };
+    indexer.get_extension = [](const clap_preset_discovery_indexer_t *, const char *) -> const void * { return nullptr; };
+    return indexer;
+}
+
+clap_preset_discovery_metadata_receiver_t testReceiver(Received &received) {
+    using R = const clap_preset_discovery_metadata_receiver_t *;
+    clap_preset_discovery_metadata_receiver_t receiver{};
+    receiver.receiver_data = &received;
+    receiver.on_error = [](R r, int32_t, const char *message) {
+        static_cast<Received *>(r->receiver_data)->errors.push_back(message ? message : "");
+    };
+    receiver.begin_preset = [](R r, const char *name, const char *key) {
+        Received &in = *static_cast<Received *>(r->receiver_data);
+        if (in.presets.size() >= in.stopAfter)
+            return false;
+        in.presets.push_back({name ? name : "", key ? key : ""});
+        return true;
+    };
+    receiver.add_plugin_id = [](R r, const clap_universal_plugin_id_t *id) {
+        static_cast<Received *>(r->receiver_data)->presets.back().pluginIds.push_back(std::string(id->abi) + ":" + id->id);
+    };
+    receiver.set_soundpack_id = [](R, const char *) {};
+    receiver.set_flags = [](R r, uint32_t flags) {
+        FoundPreset &preset = static_cast<Received *>(r->receiver_data)->presets.back();
+        preset.flags = flags;
+        preset.flagged = true;
+    };
+    receiver.add_creator = [](R r, const char *creator) {
+        static_cast<Received *>(r->receiver_data)->presets.back().creators.push_back(creator);
+    };
+    receiver.set_description = [](R, const char *) {};
+    receiver.set_timestamps = [](R, clap_timestamp, clap_timestamp) {};
+    receiver.add_feature = [](R r, const char *feature) {
+        static_cast<Received *>(r->receiver_data)->presets.back().features.push_back(feature);
+    };
+    receiver.add_extra_info = [](R, const char *, const char *) {};
+    return receiver;
+}
+
+bool hasFeature(const FoundPreset &preset, const char *feature) {
+    return std::find(preset.features.begin(), preset.features.end(), feature) != preset.features.end();
+}
+
+void writeBytes(const std::filesystem::path &path, const void *data, size_t size) {
+    std::ofstream out(path, std::ios::binary);
+    out.write(static_cast<const char *>(data), static_cast<std::streamsize>(size));
+}
+
+void presetDiscoveryChecks() {
+    namespace fs = std::filesystem;
+    std::printf("preset discovery:\n");
+    const std::vector<FactoryPreset> &factory = factoryPresets();
+    const clap_preset_discovery_provider_descriptor_t *descriptor = presetProviderDescriptor();
+    check(descriptor && std::strcmp(descriptor->id, kPresetProviderId) == 0 && descriptor->name &&
+              *descriptor->name && clap_version_is_compatible(descriptor->clap_version),
+          "the preset provider has an id, a name and the CLAP version");
+
+    // A preset folder: a preset of the user's, one that isn't a preset, one cut short, an unchanged copy of a factory
+    // preset (as the library writes them) and a changed one.
+    std::error_code error;
+    const fs::path folder = fs::temp_directory_path(error) / ("fmvibe-discovery-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(folder / "Factory", error);
+    const FactoryPreset &brass = factory[static_cast<size_t>(factoryPresetByKey("LD FM Brass"))];
+    const FactoryPreset &bass = factory[static_cast<size_t>(factoryPresetByKey("BA FM Bass"))];
+    writeBytes(folder / "LD My Lead.fmv", brass.data.data(), brass.data.size());
+    writeBytes(folder / "Broken.fmv", "not a preset at all", 19);
+    writeBytes(folder / "Short.fmv", brass.data.data(), 40); // its header counts more pairs than it holds
+    writeBytes(folder / "Factory" / "BA FM Bass.fmv", bass.data.data(), bass.data.size());
+    std::vector<unsigned char> changed(brass.data.begin(), brass.data.end());
+    changed.push_back(0); // a byte past the layout: still a preset, no longer the factory one
+    writeBytes(folder / "Factory" / "LD FM Brass.fmv", changed.data(), changed.size());
+
+    Indexed indexed;
+    const clap_preset_discovery_indexer_t indexer = testIndexer(indexed);
+    const clap_preset_discovery_provider_t *provider = createPresetProvider(&indexer, folder);
+    const bool initialized = provider && provider->init(provider);
+    const auto locationOf = [&](uint32_t kind) {
+        for (const Indexed::Location &l : indexed.locations)
+            if (l.kind == kind)
+                return &l;
+        return static_cast<const Indexed::Location *>(nullptr);
+    };
+    const Indexed::Location *plugin = locationOf(CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN);
+    const Indexed::Location *user = locationOf(CLAP_PRESET_DISCOVERY_LOCATION_FILE);
+    check(initialized && indexed.extensions == std::vector<std::string>{"fmv"} && indexed.locations.size() == 2 &&
+              plugin && !plugin->hasLocation && plugin->flags == CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT && user &&
+              pathFromUtf8(user->location) == folder && user->flags == CLAP_PRESET_DISCOVERY_IS_USER_CONTENT,
+          "the provider declares .fmv files, the factory presets in the plugin and the preset folder");
+    if (!initialized) {
+        fs::remove_all(folder, error);
+        return;
+    }
+
+    // The factory presets: each by its name, its load key naming it back, for FMVibe, factory content by its maker,
+    // and the sound its prefix stands for.
+    Received built;
+    clap_preset_discovery_metadata_receiver_t receiver = testReceiver(built);
+    const bool crawled = provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, &receiver);
+    bool listed = crawled && built.presets.size() == factory.size() && built.errors.empty();
+    for (size_t i = 0; listed && i < factory.size(); ++i) {
+        const FoundPreset &p = built.presets[i];
+        listed = p.name == factory[i].name && factoryPresetByKey(p.key.c_str()) == static_cast<int>(i) &&
+                 p.pluginIds == std::vector<std::string>{"clap:io.github.pcdlin.fmvibe"} && p.flagged &&
+                 p.flags == CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT && p.creators.size() == 1 &&
+                 hasFeature(p, CLAP_PLUGIN_FEATURE_INSTRUMENT) && p.features.size() == 3; // and its prefix's
+    }
+    check(listed, "every factory preset is listed by its name and a load key, for FMVibe, as factory content");
+    const auto found = [](const Received &r, const std::string &name) {
+        for (const FoundPreset &p : r.presets)
+            if (p.name == name)
+                return &p;
+        return static_cast<const FoundPreset *>(nullptr);
+    };
+    const FoundPreset *fmBass = found(built, "BA FM Bass"), *pad = found(built, "PD Warm Pad");
+    check(fmBass && hasFeature(*fmBass, "bass") && pad && hasFeature(*pad, "pad") &&
+              presetFeatures("Untitled").empty() && presetFeatures("BAD Name").empty(),
+          "a preset's name prefix gives its sound as a feature (BA bass, PD pad), and no prefix none");
+    check(factoryPresetByKey(nullptr) < 0 && factoryPresetByKey("") < 0 && factoryPresetByKey("No Such Preset") < 0,
+          "a load key that names no factory preset finds none");
+    Received stopped;
+    stopped.stopAfter = 2;
+    receiver = testReceiver(stopped);
+    provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr, &receiver);
+    check(stopped.presets.size() == 2, "the provider stops listing once the host's receiver says no");
+
+    // The folder's files, as the host crawls them.
+    const auto read = [&](const fs::path &file, Received &into) {
+        receiver = testReceiver(into);
+        const std::string text = [&] {
+            const std::u8string u = file.u8string();
+            return std::string(u.begin(), u.end());
+        }();
+        return provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_FILE, text.c_str(), &receiver);
+    };
+    Received mine, broken, shortened, missing, copy, edited;
+    const bool mineRead = read(folder / "LD My Lead.fmv", mine);
+    check(mineRead && mine.presets.size() == 1 && mine.presets[0].name == "LD My Lead" && mine.presets[0].key.empty() &&
+              !mine.presets[0].flagged && hasFeature(mine.presets[0], "lead") &&
+              mine.presets[0].pluginIds == std::vector<std::string>{"clap:io.github.pcdlin.fmvibe"},
+          "a preset file in the folder is listed by its name, for FMVibe, as the folder's (user) content");
+    check(!read(folder / "Broken.fmv", broken) && broken.presets.empty() && broken.errors.size() == 1 &&
+              !read(folder / "Short.fmv", shortened) && shortened.presets.empty() && shortened.errors.size() == 1 &&
+              !read(folder / "Gone.fmv", missing) && missing.presets.empty() && missing.errors.size() == 1,
+          "a file that isn't a preset, one cut short and one that isn't there each report an error, listing nothing");
+    check(read(folder / "Factory" / "BA FM Bass.fmv", copy) && copy.presets.empty() && copy.errors.empty() &&
+              factoryCopyOf(folder / "Factory" / "BA FM Bass.fmv", folder) == factoryPresetByKey("BA FM Bass"),
+          "an unchanged copy of a factory preset in the folder lists nothing, the plugin location listing it");
+    check(read(folder / "Factory" / "LD FM Brass.fmv", edited) && edited.presets.size() == 1 &&
+              edited.presets[0].name == "LD FM Brass" && factoryCopyOf(folder / "Factory" / "LD FM Brass.fmv", folder) < 0 &&
+              factoryCopyOf(folder / "LD My Lead.fmv", folder) < 0,
+          "a factory preset's copy changed in the folder is listed as the user's, as is one outside its Factory folder");
+    Received nowhere;
+    receiver = testReceiver(nowhere);
+    check(!provider->get_metadata(provider, CLAP_PRESET_DISCOVERY_LOCATION_FILE, nullptr, &receiver) &&
+              nowhere.errors.size() == 1 && nowhere.presets.empty(),
+          "a file location with no path reports an error");
+    provider->destroy(provider);
+
+    // With no preset folder (no documents folder), only the plugin location.
+    Indexed bare;
+    const clap_preset_discovery_indexer_t bareIndexer = testIndexer(bare);
+    const clap_preset_discovery_provider_t *noFolder = createPresetProvider(&bareIndexer, {});
+    check(noFolder && noFolder->init(noFolder) && bare.locations.size() == 1 &&
+              bare.locations[0].kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN,
+          "with no preset folder, the provider declares the factory presets alone");
+    if (noFolder)
+        noFolder->destroy(noFolder);
+    fs::remove_all(folder, error);
+}
+
 // Where the pitch bend stands, as the editor's bend wheel shows it (see Telemetry::bend): the MIDI bend and the Pitch
 // Bend param with the host's modulation for every voice, and in the newest voice its own on top; and the param as set.
 void bendTelemetryChecks() {
@@ -3624,6 +3842,7 @@ int main() {
         check(sane, "the example presets hold valid values and sound at a sane level");
     }
     presetContentChecks();
+    presetDiscoveryChecks();
     scopeChecks();
     outScopeChecks();
 

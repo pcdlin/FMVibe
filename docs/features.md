@@ -1581,6 +1581,22 @@ one may have changed since it last did.
   - Init and loading ask first only while the patch has changed since it was loaded, saved or reset, or when the
     host brought a patch that isn't a preset, since the patch they replace can't be undone back (undoing every edit
     since a preset loaded leaves it unchanged again). The project remembers which preset it was and whether it changed.
+  - **The host's preset browser** (CLAP): the CLAP plugin offers hosts CLAP's preset discovery, so a host's own
+    browser (Bitwig's, say) lists FMVibe's presets without loading the plugin, and loads one into it through CLAP's
+    preset-load. It lists the factory presets from inside the plugin, as factory content, each by its name (its load
+    key, which a host keeps with its projects and favorites), and the `.fmv` files it finds in the preset folder and
+    its subfolders, as the user's. Each says it is for FMVibe, an instrument and a synthesizer, and its name's
+    two-letter prefix gives its sound as a tag: bass, drum, fx, keys, lead, pad, pluck or sequence. An unchanged copy
+    of a factory preset in the folder's `Factory` subfolder isn't listed twice: the plugin's own stands in for it
+    (one changed there is listed as the user's). Listing a file reads only its size and its first bytes, which tell
+    a preset of a version this one reads; a file that isn't one, or is cut short, is reported to the host and left
+    out. A preset the host loads loads as one from the editor's browser: every param it changes goes to the host as
+    an edit, the undo history starts over and the preset bar shows it unchanged (a factory preset as its copy in the
+    `Factory` subfolder, changed when that copy differs). The host is told it loaded, or why it couldn't (no factory
+    preset of that name, a file that can't be read or isn't a preset), and the patch stays as it was then. A preset
+    loaded from the editor's browser or file dialog is reported to the host too, so its browser shows it (a factory
+    preset's unchanged copy as the factory preset). VST3 has nothing like it: VST3 hosts browse presets of their
+    own format, and FMVibe's through its editor.
 - **Settings** (the cog after Save As): **Oversampling**, 1x, 2x, 4x or 8x. It is saved with the project but not
   with presets, and changing it restarts the plugin (the host deactivates and reactivates it).
   **MPE**, Off or On, and its **Bend** range for the member channels, 12, 24, 48 (to begin with) or 96 semitones,
@@ -1680,5 +1696,6 @@ What the VST3 plugin does its own way:
 - **Parameters** are grouped in units, as their modules are (Operators, Op A, Filters, ...).
 - **Restarting**: raising the voice limit past the voices allocated (a project loaded may too), or changing the
   oversampling, asks the host to deactivate and reactivate the plugin (through a latency change, which has hosts do that).
-- **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, and the note-end
-  reports that per-voice modulation needs.
+- **Not in VST3**: CLAP's per-voice and global host modulation, Bitwig's remote-control pages, the note-end
+  reports that per-voice modulation needs, and CLAP's preset discovery and preset-load, which list and load FMVibe's
+  presets in a host's own browser (see Presets, above).

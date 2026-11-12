@@ -1,13 +1,17 @@
 #include "plugincore.h"
 
+#include "factory.h"
 #include "params.h"
+#include "presetdiscovery.h"
 #include "uistrings.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <vector>
 
 #include <xmmintrin.h>
 
@@ -425,21 +429,67 @@ void PluginCore::resetPreset() {
 
 // A preset file holds the same bytes as the host's state.
 bool PluginCore::loadPreset(const std::wstring &path) {
-    FILE *file = nullptr;
-    if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file)
+    if (!loadPresetFile(path))
         return false;
-    const clap_istream_t stream = fileIn(file);
+    hostPresetLoaded(path);
+    return true;
+}
+
+bool PluginCore::loadPresetFile(const std::wstring &path, int32_t *osError) {
+    if (osError)
+        *osError = 0;
+    FILE *file = nullptr;
+    if (const errno_t opened = _wfopen_s(&file, path.c_str(), L"rb"); opened != 0 || !file) {
+        if (osError)
+            *osError = opened != 0 ? opened : EIO;
+        return false;
+    }
+    // Read whole first (a preset is a few hundred KB at most), then loaded as the factory presets are.
+    std::vector<unsigned char> bytes;
+    unsigned char chunk[65536];
+    for (size_t read; (read = std::fread(chunk, 1, sizeof(chunk), file)) > 0;)
+        bytes.insert(bytes.end(), chunk, chunk + read);
+    const bool failed = std::ferror(file) != 0;
+    std::fclose(file);
+    if (failed) {
+        if (osError)
+            *osError = EIO;
+        return false;
+    }
+    return loadPresetBytes(bytes, path, false);
+}
+
+bool PluginCore::loadFactoryPresetAt(int index) {
+    const std::vector<FactoryPreset> &presets = factoryPresets();
+    if (index < 0 || index >= static_cast<int>(presets.size()))
+        return false;
+    // The preset bar shows it as its copy in the preset folder's Factory subfolder (which the library writes), so the
+    // library finds it and Save writes there; changed when a copy is there and differs from the built-in one. With no
+    // preset folder, as a patch from elsewhere: changed, with no file.
+    std::wstring file;
+    bool edited = true;
+    const std::wstring folder = PresetLibrary::folderPath();
+    if (const std::wstring name = widePath(presets[index].name); !folder.empty() && !name.empty()) {
+        const std::filesystem::path copy = std::filesystem::path(folder) / L"Factory" / (name + L".fmv");
+        std::error_code error;
+        file = copy.wstring();
+        edited = std::filesystem::exists(copy, error) && factoryCopyOf(copy, std::filesystem::path(folder)) != index;
+    }
+    return loadPresetBytes(presets[index].data, file, edited);
+}
+
+bool PluginCore::loadPresetBytes(std::span<const unsigned char> bytes, const std::wstring &file, bool edited) {
+    MemoryReader reader{bytes.data(), bytes.size()};
+    const clap_istream_t stream = memoryIn(reader);
     const auto told = std::make_unique<ParamValues>();
     valuesInto(*told);
-    const bool loaded = loadState(&stream, false);
-    if (loaded) {
-        notifyParams(*told);
-        layoutChanged();
-        setPreset(path);
-        clearHistory();
-    }
-    std::fclose(file);
-    return loaded;
+    if (!loadState(&stream, false))
+        return false;
+    notifyParams(*told);
+    layoutChanged();
+    setPreset(file, edited);
+    clearHistory();
+    return true;
 }
 
 bool PluginCore::savePreset(const std::wstring &path) {
