@@ -2233,17 +2233,20 @@ int main(int argc, char **argv) {
         std::printf("      MIDI CC 74 turned up mid-note: peak %.3f with a 1 s slew, %.3f without\n", slewed, unslewed);
         check(slewed > 0.8f * resting && unslewed < 0.01f, "a source's Slew follows its controller slowly");
 
-        // Random: a level of its own for each note, from none of A to all of it.
+        // Random: a level of its own for each note, from none of A to all of it. Each note's level comes from the
+        // voice's generator, seeded by how many notes came before, so the notes this test plays are a different
+        // sample whenever a check before it plays more or fewer: sixteen of them span less than 30 % of the range
+        // about once in ten million samples, where eight did about once in a thousand.
         setParams({{type, static_cast<double>(SourceType::Random)}});
         float lowest = resting, highest = 0.0f;
-        for (int n = 0; n < 8; ++n) {
+        for (int n = 0; n < 16; ++n) {
             const float peak = peakOf(play({}));
             lowest = std::min(lowest, peak);
             highest = std::max(highest, peak);
         }
         setParams({{type, static_cast<double>(SourceType::None)}, {slotTargetIndex(0, 0), 0.0},
                    {slotAmountIndex(0, 0), 0.0}});
-        std::printf("      Random on A's output at -100 %%: peaks of eight notes from %.3f to %.3f\n", lowest, highest);
+        std::printf("      Random on A's output at -100 %%: peaks of sixteen notes from %.3f to %.3f\n", lowest, highest);
         check(highest - lowest > 0.3f * resting && highest <= resting * 1.001f,
               "a Random source gives each note a value of its own");
     }
