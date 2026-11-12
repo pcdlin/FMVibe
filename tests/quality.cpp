@@ -2072,6 +2072,93 @@ void noteAndVoiceChecks() {
               "host modulation of a macro, the mod wheel, the note source's and velocity's depth moves their targets");
     }
     {
+        // A macro's knob as a target: the macros in a chain, Macro 3 on Macro 2's knob, Macro 2 on Macro 1's (the order
+        // they are worked out in isn't their numbers'), and Macro 1 taking A's Out down by 100 %. Macro 3 turned up
+        // takes A down to silence through the other two; turned down, A plays. The telemetry says where the knobs stand.
+        auto peakOf = [](Engine &e, int key, double velocity = 1.0) {
+            e.synth().noteOn({-1, 0, 0, static_cast<int16_t>(key)}, velocity);
+            const std::vector<float> out = e.render(9600);
+            float peak = 0.0f;
+            for (size_t i = 4800; i < out.size(); ++i)
+                peak = std::max(peak, std::abs(out[i]));
+            return peak;
+        };
+        auto link = [](Engine &e, int source, int slot, int target, double depth) {
+            e.p[slotTargetIndex(source, slot)] = slotTargetValue(target);
+            e.p[slotAmountIndex(source, slot)] = depth;
+        };
+        const int out = paramIndex(0, OpParam::Out);
+        auto chain = [&](double macro3, MacroKnobs *knobs) {
+            Engine e(2);
+            link(e, kMaxSources, 0, out, -1.0);
+            link(e, kMaxSources + 1, 0, paramIndex(0, MacroParam::Value), 1.0);
+            link(e, kMaxSources + 2, 0, paramIndex(1, MacroParam::Value), 1.0);
+            e.p[paramIndex(2, MacroParam::Value)] = macro3;
+            const float peak = peakOf(e, 60);
+            if (knobs) {
+                auto t = std::make_unique<Telemetry>();
+                e.synth().telemetry(*t);
+                for (int m = 0; m < kMacros; ++m)
+                    (*knobs)[m] = e.p[paramIndex(m, MacroParam::Value)] + t->macroOffset[m];
+            }
+            return peak;
+        };
+        MacroKnobs knobs{};
+        const float down = chain(1.0, &knobs), up = chain(0.0, nullptr);
+        std::printf("      A's peak through a chain of three macros: %.4f with the last turned up, %.3f down; knobs "
+                    "%.2f %.2f %.2f\n", down, up, knobs[0], knobs[1], knobs[2]);
+        check(down < 1e-3f && up > 0.5f && std::abs(knobs[0] - 1.0) < 1e-6 && std::abs(knobs[1] - 1.0) < 1e-6,
+              "a macro's knob takes the modulation of another macro, along a chain of them, whatever their numbers");
+
+        // A loop the editor doesn't make (Macro 1 and Macro 2 on each other's knobs), as a state can hold it: it plays
+        // steadily, each render alike.
+        auto loop = [&] {
+            Engine e(2);
+            link(e, kMaxSources, 0, out, -0.5);
+            link(e, kMaxSources, 1, paramIndex(1, MacroParam::Value), 1.0);
+            link(e, kMaxSources + 1, 0, paramIndex(0, MacroParam::Value), 0.7);
+            e.p[paramIndex(0, MacroParam::Value)] = 0.4;
+            return peakOf(e, 60);
+        };
+        const float looped = loop(), again = loop();
+        std::printf("      two macros on each other's knobs: peak %.4f, then %.4f\n", looped, again);
+        check(std::isfinite(looped) && looped == again && looped > 0.1f,
+              "macros modulating each other's knobs in a loop play steadily and alike");
+
+        // Per voice: velocity on Macro 2's knob, Macro 2 taking A's Out down by 100 %. A note at full velocity is
+        // silent, a soft one plays; played together, each voice has its own knob: the loud note adds nothing to the
+        // soft one. Its knob in the telemetry is the newest voice's.
+        auto voiced = [&](bool loud, bool soft, MacroKnobs *knobs) {
+            Engine e(2);
+            link(e, kMaxSources + 1, 0, out, -1.0);
+            link(e, kVelocitySource, 0, paramIndex(1, MacroParam::Value), 1.0);
+            if (loud)
+                e.synth().noteOn({-1, 0, 0, 60}, 1.0);
+            if (soft)
+                e.synth().noteOn({-1, 0, 0, 64}, 0.05);
+            const std::vector<float> rendered = e.render(9600);
+            if (knobs) {
+                auto t = std::make_unique<Telemetry>();
+                e.synth().telemetry(*t);
+                (*knobs)[1] = t->macroOffset[1];
+            }
+            return std::vector<float>(rendered.begin() + 4800, rendered.end());
+        };
+        MacroKnobs softKnob{};
+        const std::vector<float> loudAlone = voiced(true, false, nullptr), softAlone = voiced(false, true, &softKnob),
+                                 both = voiced(true, true, nullptr);
+        float loudPeak = 0.0f, softPeak = 0.0f, apart = 0.0f;
+        for (size_t i = 0; i < both.size(); ++i) {
+            loudPeak = std::max(loudPeak, std::abs(loudAlone[i]));
+            softPeak = std::max(softPeak, std::abs(softAlone[i]));
+            apart = std::max(apart, std::abs(both[i] - softAlone[i]));
+        }
+        std::printf("      velocity on a macro's knob: a loud note's peak %.4f, a soft one's %.3f, both less the soft "
+                    "one %.6f; the soft note's knob %.3f\n", loudPeak, softPeak, apart, softKnob[1]);
+        check(loudPeak < 1e-3f && softPeak > 0.5f && apart < 1e-4f && softKnob[1] > 0.0 && softKnob[1] < 0.2,
+              "a source of each voice on a macro's knob moves what the macro modulates in that voice alone");
+    }
+    {
         // A comb whose delay lies a hair over a whole number of samples (at a cutoff of 1 kHz at 2x, say) reads only
         // inside its line: the float past the line's end, which it would read for the line's start, is never heard
         // (here it isn't a number).

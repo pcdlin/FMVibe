@@ -15,8 +15,6 @@
 
 ## Improvements 
 
-- Make macros modulatable
-
 - Make the random modulation source into the random LFO, remove random LFO mode
 
 ## Architecture

@@ -90,6 +90,9 @@ struct Telemetry {
     // editor works out itself.
     std::array<float, kAllSources * kSlots> slotOffset{};
     std::array<float, kMaxSources> sources{};      // LFO outputs (-1..1), envelope levels (0..1)
+    // Where modulation takes each macro's knob, against its set value (with the host's modulation for every voice):
+    // the newest voice's, or with none what every voice shares (the macros' and the mod wheel's slots on it).
+    std::array<float, kMacros> macroOffset{};
     std::array<float, kMaxSources> lfoPhases{};    // 0..1
     std::array<float, kMaxSources> lfoRates{};     // cycles per second, to move the phases on between snapshots
     std::array<float, kMaxSources> lfoFrom{};      // a Random LFO's glide this cycle: the value it leaves,
@@ -379,12 +382,15 @@ private:
         std::array<double, kMaxSources> sourceValues{};
         // Slot modulation of the latest block. Sources read their own params (rates,
         // times, amounts) with these applied, so LFO 1 can modulate LFO 2's rate
-        // one block later. Velocity's come after the places', then the macros' and the mod wheel's that an aux scales
-        // per voice, and the note source's last.
+        // one block later. Velocity's and the pitch bend's come after the places', then the note source's on the
+        // macros' knobs and what the voice's own knobs make of the macros' and the mod wheel's slots, then those an aux
+        // scales per voice, and the note source's others last.
         std::array<SlotMod, kAllSources * kSlots> slotMods{};
         // What each source that runs per voice puts out, 0..1 as a unipolar one would, for the slots it scales as an
         // aux: as of this block for the sources before them and velocity (and on a note's first block, the note
-        // source), else the last block's.
+        // source), else the last block's. And each macro's knob as the voice has it: as every voice shares it, or for
+        // a macro its sources move (see MacroGraph::voiceMoved), as they took it this block, after the places,
+        // velocity and the pitch bend (the slots before that taking the last block's).
         std::array<double, kAllSources> auxOut{};
         int slotModCount = 0;
         std::array<double, kVoiceParamCount> mod{}; // per-voice host modulation
@@ -486,6 +492,29 @@ private:
     // The macros' and the mod wheel's slots that an aux running per voice scales, which the voices add (source, slot).
     std::array<std::pair<int, int>, (kMacros + 1) * kSlots> voiceMacroSlots_{};
     int voiceMacroSlotCount_ = 0;
+    // How the macros' knobs modulate one another (see MacroGraph), and the knobs as set (with the host's modulation for
+    // every voice) and as the macros' and the mod wheel's slots on them take them, which every voice shares.
+    MacroGraph macroGraph_;
+    MacroKnobs macroSet_{};
+    MacroKnobs macroKnobs_{};
+    // The macros' and the mod wheel's slots that every voice shares but whose source's knob, or aux's, a source of the
+    // voice moves (see MacroGraph::voiceMoved): what is the same for every voice, and what they add there
+    // (`shared`, in macroMod_ already), which each voice takes back for what its own knobs make of it.
+    struct VoiceMovedSlot {
+        int source;
+        int slot;
+        int target;
+        int aux = -1; // a macro or the mod wheel, or none
+        double curve = 0.0;
+        double depth = 0.0; // the slot's depth times its Amount, in the target's units
+        bool bipolar = false;
+        double shared = 0.0;
+    };
+    std::array<VoiceMovedSlot, (kMacros + 1) * kSlots> voiceMovedSlots_{};
+    int voiceMovedSlotCount_ = 0;
+    bool voiceMovedMacro(int source) const {
+        return isMacro(source) && (macroGraph_.voiceMoved >> knobOf(source) & 1u) != 0;
+    }
     void applyMacros(const ParamValues &params);
     // A param as set with the host's modulation for every voice, in its range: how the macros, the mod wheel and the
     // note source read their knobs, depths and range.

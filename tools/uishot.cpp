@@ -5083,6 +5083,71 @@ void testFolding(const std::filesystem::path &dir, Renderer &renderer) {
           "a folded Random card shows RND and its number, which fit the strip");
 }
 
+// A macro's knob as a target: an LFO's handle dropped on it modulating it, its depth handle under it; another
+// macro's handle modulating it too, and its handle refused on the knob of the macro that moves it (a loop) and on
+// its own; with no note playing, the knob's dot showing where the other macro takes it (read off the rendered pixels);
+// and the target menu listing the macros' knobs by their names, the one that would loop greyed out.
+void testMacroTargets(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    const float y = view.height() - 179.0f;
+    auto macroKnob = [&](int macro) { return Point{188.0f + 96.0f * macro, y}; };
+    auto macroHandle = [&](int macro) { return Point{macroKnob(macro).x - 32.0f, y}; };
+    const int knob2 = paramIndex(1, MacroParam::Value);
+    addSource(view, SourceType::Lfo);
+    drag(view, sourceHandle(0), macroKnob(1));
+    const bool lfoOn = slotTarget(model.value(slotTargetIndex(0, 0))) == knob2;
+    drag(view, macroHandle(0), macroKnob(1)); // Macro 1 onto Macro 2's knob
+    const bool linked = slotTarget(model.value(slotTargetIndex(kMaxSources, 0))) == knob2;
+    view.mouseMove({600.0f, 328.0f}, {});
+    const bool shot = renderer.save(view, dir / "26m-macro-modulated.png");
+    // Macro 2 onto Macro 1's knob would loop, and onto its own knob is its own: neither takes.
+    drag(view, macroHandle(1), macroKnob(0));
+    drag(view, macroHandle(1), macroKnob(1));
+    view.mouseMove({600.0f, 328.0f}, {});
+    const bool refused = slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0;
+    check(lfoOn && linked && refused && shot,
+          "a macro's knob takes an LFO's and another macro's modulation, but not one that would loop or its own");
+    // With no note playing, Macro 2's knob shows where Macro 1 takes it: its dot on the arc moves as Macro 1 turns
+    // (read off the rendered pixels around Macro 2's knob, clear of its name).
+    auto knobPixels = [&] {
+        std::vector<uint32_t> pixels;
+        for (float dy = -16.0f; dy <= 6.0f; dy += 1.0f)
+            for (float dx = -16.0f; dx <= 16.0f; dx += 1.0f)
+                pixels.push_back(renderer.pixel({macroKnob(1).x + dx, y + dy}));
+        return pixels;
+    };
+    model.set(paramIndex(0, MacroParam::Value), 0.0);
+    view.poll();
+    renderer.save(view, dir / "26n-macro-moved-none.png");
+    const std::vector<uint32_t> still = knobPixels();
+    model.set(paramIndex(0, MacroParam::Value), 1.0);
+    view.poll();
+    renderer.save(view, dir / "26o-macro-moved.png");
+    const std::vector<uint32_t> moved = knobPixels();
+    int differ = 0;
+    for (size_t i = 0; i < still.size(); ++i)
+        differ += still[i] != moved[i];
+    std::printf("      Macro 2's knob: %d pixels change as Macro 1 turns up\n", differ);
+    check(differ > 8, "with no note playing, a macro's knob shows where another macro takes it");
+    // The target menu, from a new empty modulation of Macro 2: Macro 1's knob, which would loop, can't be picked,
+    // and Macro 3's can, by its name.
+    model.ui.macroNames[2] = "Space";
+    model.ui.view = RoutingView::Mods;
+    model.ui.emptyMods = {{kMaxSources + 1, -1}};
+    view.poll();
+    click(view, {300.0f, 242.0f}); // the empty row's target, under the two rows
+    view.mouseMove({300.0f, 435.0f}, {}); // Macros, the last category
+    const bool menuShot = renderer.save(view, dir / "26p-macro-target-menu.png");
+    click(view, {520.0f, 435.0f}); // Macro 1, beside it: would loop
+    const bool loopRefused = model.ui.emptyMods.size() == 1 && slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) < 0;
+    click(view, {520.0f, 479.0f}); // Space, Macro 3, the menu still open
+    const bool picked = model.ui.emptyMods.empty() &&
+                        slotTarget(model.value(slotTargetIndex(kMaxSources + 1, 0))) == paramIndex(2, MacroParam::Value);
+    check(menuShot && loopRefused && picked,
+          "the target menu lists the macros' knobs by name, refusing the one that would loop and the macro's own");
+}
+
 // The macros in the keyboard panel, above the keys: a knob each (centers 96 px apart, 179 px above the
 // editor's bottom), a handle left of it to map it like a source, and its name under it, which a double-click
 // changes.
@@ -9727,6 +9792,7 @@ void run(const std::filesystem::path &dir, float scale) {
     renderFactoryPresets(dir, renderer);
     renderLfoOnLfo(dir, renderer);
     testMacros(dir, renderer);
+    testMacroTargets(dir, renderer);
     testVelocity(dir, renderer);
     testWireBend(dir, renderer);
     testRouteFrom(dir, renderer);

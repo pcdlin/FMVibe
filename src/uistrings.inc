@@ -938,6 +938,7 @@ STR(RedoChanges, "Redo {1} changes")
 STR(MsgAlreadyModulates, "{1} already modulates {2}")
 STR(MsgSlotsFull, "{1}: all {2} slots are in use")
 STR(MsgOwnKnob, "{1} can't modulate its own knob")
+STR(MsgMacroLoop, "{1} moves {2} already: it can't modulate it back") // macros modulating each other in a loop
 STR(MsgEmptyModsFull, "Up to {1} empty modulations allowed.")
 STR(MsgRouteExists, "{1} already routes to {2}")
 STR(MsgChainFull, "Only supports up to {1} effects in the chain")
@@ -1027,6 +1028,7 @@ STR(CascadeAlready, "on it already") // a source that modulates the row's target
 STR(CascadeSlotsFull, "no slot free")
 STR(CascadeItself, "itself") // a row's own source, which can't be its aux
 STR(CascadeOwnKnob, "its own knob")
+STR(CascadeLoop, "would loop") // a macro moved by the macro whose knob it would modulate
 STR(CascadeOff, "off") // a switched-off operator
 STR(CascadeSearchHint, "Search targets")
 STR(CascadeNoMatch, "No target matches") // the target menu's search found nothing

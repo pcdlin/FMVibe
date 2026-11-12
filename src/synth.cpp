@@ -638,19 +638,41 @@ void Synth::applyMacros(const ParamValues &params) {
         macroMod_[macroTargets_[i]] = 0.0;
     macroTargetCount_ = 0;
     auto get = [this, &params](int i) { return hostValue(params, i); };
-    forEachMacroMod(get, [this](int target, double offset, int, int) {
+    // The knobs first, as the macros' and the mod wheel's slots on them take them, then what the knobs move.
+    macroGraph_ = macroGraph(get);
+    macroSet_ = macroKnobsSet(get);
+    macroKnobs_ = sharedMacroKnobs(get, macroGraph_);
+    voiceMovedSlotCount_ = 0;
+    forEachMacroMod(get, macroKnobs_, [&](int target, double offset, int source, int slot) {
         macroMod_[target] += offset;
         macroTargets_[macroTargetCount_++] = target;
+        // A slot whose knob, or aux's, the voices' sources move: each voice takes this back for its own.
+        const int aux = slotAux(get, source, slot);
+        if (!voiceMovedMacro(source) && !(aux >= 0 && voiceMovedMacro(aux)))
+            return;
+        const bool bipolar = sourceBipolar(get, source);
+        voiceMovedSlots_[voiceMovedSlotCount_++] = {
+            source,
+            slot,
+            target,
+            aux,
+            get(slotCurveIndex(source, slot)),
+            get(slotAmountIndex(source, slot)) * get(slotScaleIndex(source, slot)) *
+                (table_[target].max - table_[target].min),
+            bipolar,
+            offset};
     });
     voiceMacroSlotCount_ = 0;
     for (int source = kMaxSources; source < kAllSources; ++source) {
         if (!hasKnob(source))
             continue;
-        for (int slot = 0; slot < kSlots; ++slot)
-            if (const int aux = slotAux(get, source, slot); aux >= 0 && runsPerVoice(aux) &&
-                                                             slotTarget(params[slotTargetIndex(source, slot)]) >= 0 &&
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const int target = slotTarget(params[slotTargetIndex(source, slot)]);
+            if (const int aux = slotAux(get, source, slot); aux >= 0 && runsPerVoice(aux) && target >= 0 &&
+                                                             target < kModulatedCount &&
                                                              params[slotBypassIndex(source, slot)] < 0.5)
                 voiceMacroSlots_[voiceMacroSlotCount_++] = {source, slot};
+        }
     }
 }
 
@@ -1186,6 +1208,8 @@ void Synth::telemetry(Telemetry &out) const {
         if (!newest || v.order > newest->order)
             newest = &v;
     }
+    for (int m = 0; m < kMacros; ++m) // the macros' knobs as modulation takes them: in the newest voice, or every voice's
+        out.macroOffset[m] = static_cast<float>((newest ? newest->auxOut[kMaxSources + m] : macroKnobs_[m]) - macroSet_[m]);
     if (!newest) {
         // The free and anchored LFOs' shared clocks run on with no voice, and the editor's cards show them running.
         for (int s = 0; s < kMaxSources; ++s) {
@@ -1209,7 +1233,8 @@ void Synth::telemetry(Telemetry &out) const {
             }
             for (int m = 0; m < fxTailModCount_; ++m) {
                 const SlotMod &mod = fxTailMods_[m];
-                out.modOffset[mod.index] += static_cast<float>(mod.offset);
+                if (mod.index < kModulatedCount)
+                    out.modOffset[mod.index] += static_cast<float>(mod.offset);
                 if (mod.slot >= 0)
                     out.slotOffset[mod.slot] =
                         static_cast<float>(mod.offset / (table_[mod.index].max - table_[mod.index].min));
@@ -1219,7 +1244,8 @@ void Synth::telemetry(Telemetry &out) const {
     }
     for (int m = 0; m < newest->slotModCount; ++m) {
         const SlotMod &mod = newest->slotMods[m];
-        out.modOffset[mod.index] += static_cast<float>(mod.offset);
+        if (mod.index < kModulatedCount) // not a macro's knob, which macroOffset has
+            out.modOffset[mod.index] += static_cast<float>(mod.offset);
         if (mod.slot >= 0)
             out.slotOffset[mod.slot] =
                 static_cast<float>(mod.offset / (table_[mod.index].max - table_[mod.index].min));
@@ -1353,10 +1379,10 @@ void Synth::shareSlots(const ParamValues &params) {
             slot.scale = hostValue(params, slotScaleIndex(source, s));
             slot.voiceAux = -1;
             if (const int aux = slotAux(get, source, s); aux >= 0) {
-                if (runsPerVoice(aux))
+                if (runsPerVoice(aux) || voiceMovedMacro(aux)) // a macro the voice's sources move, as the voice has it
                     slot.voiceAux = aux;
                 else
-                    slot.scale *= hostValue(params, stripKnobIndex(aux));
+                    slot.scale *= macroKnobs_[knobOf(aux)];
             }
             slot.range = table_[target].max - table_[target].min;
             slot.depth = hostValue(params, slotAmountIndex(source, s));
@@ -1441,7 +1467,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     auto scaleOf = [&](int source, int s) {
         double scale = hostValue(params, slotScaleIndex(source, s));
         if (const int aux = slotAux(getParam, source, s); aux >= 0)
-            scale *= runsPerVoice(aux) ? v.auxOut[aux] : hostValue(params, stripKnobIndex(aux));
+            scale *= runsPerVoice(aux) || isMacro(aux) ? v.auxOut[aux] : macroKnobs_[kMacros];
         return scale;
     };
     // What slot `s` of `source` takes of the source's `swing`, through the slot's curve (see slotCurveValue()).
@@ -1470,6 +1496,11 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                1.0);
     if (v.fresh)
         v.auxOut[kNoteSource] = noteSourceValue([&](int i) { return hostValue(params, i); }, pitchNow());
+    // The macros' knobs as every voice shares them, but those the voice's sources move (below), which a note starts
+    // from there.
+    for (int m = 0; m < kMacros; ++m)
+        if (v.fresh || !(macroGraph_.voiceMoved >> m & 1u))
+            v.auxOut[kMaxSources + m] = macroKnobs_[m];
     if (!sharedSlotsReady_)
         shareSlots(params);
     // A shared slot's depth scale in this voice: what is the same for every voice, times its own source's aux.
@@ -1595,6 +1626,43 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                                             kBendSource * kSlots + slot.slot};
         }
     }
+    // The macros' knobs as this voice's sources take them (see MacroGraph::voiceMoved): with what the places, velocity
+    // and the pitch bend add to them this block, and the note source from where it stood the last block (on a note's
+    // first, where it starts), then the macros' slots on one another. Then what those knobs make of the slots they
+    // move, against what every voice shares of them (in macroMod_ already).
+    // A macro's or the mod wheel's knob as the voice has it.
+    auto voiceKnob = [&](int source) { return isMacro(source) ? v.auxOut[source] : macroKnobs_[kMacros]; };
+    if (macroGraph_.voiceMoved != 0) {
+        std::array<double, kMacros> extra{};
+        for (int m = 0; m < v.slotModCount; ++m)
+            if (isMacroKnob(v.slotMods[m].index))
+                extra[macroOf(v.slotMods[m].index)] += v.slotMods[m].offset;
+        const bool noteBipolar = params[paramIndex(NoteParam::Bipolar)] >= 0.5;
+        for (int k = 0; k < sharedSlotCount_[kNoteSource]; ++k) {
+            const SharedSlot &slot = sharedSlots_[kNoteSource][k];
+            if (!isMacroKnob(slot.target) || slot.depth == 0.0)
+                continue;
+            const double offset = slotCurveValue(v.auxOut[kNoteSource] - (noteBipolar ? 0.5 : 0.0), slot.curve,
+                                                 noteBipolar) *
+                                  slot.depth * sharedScale(slot) * slot.range;
+            v.slotMods[v.slotModCount++] = {slot.target, offset, kNoteSource * kSlots + slot.slot};
+            extra[macroOf(slot.target)] += offset;
+        }
+        MacroKnobs knobs = macroSet_;
+        runMacroGraph(
+            macroGraph_, [&](int i) { return hostValue(params, i); }, knobs, extra.data(),
+            [&](int aux) { return v.auxOut[aux]; }, [](int, int, double) {});
+        for (int m = 0; m < kMacros; ++m)
+            v.auxOut[kMaxSources + m] = knobs[m];
+        for (int k = 0; k < voiceMovedSlotCount_; ++k) {
+            const VoiceMovedSlot &slot = voiceMovedSlots_[k];
+            const double offset = slotCurveValue(voiceKnob(slot.source) - (slot.bipolar ? 0.5 : 0.0), slot.curve,
+                                                 slot.bipolar) *
+                                      slot.depth * (slot.aux >= 0 ? voiceKnob(slot.aux) : 1.0) -
+                                  slot.shared;
+            v.slotMods[v.slotModCount++] = {slot.target, offset, slot.source * kSlots + slot.slot};
+        }
+    }
     // The macros' and the mod wheel's slots that an aux of this voice scales (see applyMacros()).
     for (int k = 0; k < voiceMacroSlotCount_; ++k) {
         const auto [source, s] = voiceMacroSlots_[k];
@@ -1603,7 +1671,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
         if (target < 0 || amount == 0.0)
             continue;
         const bool bipolar = sourceBipolar(getParam, source);
-        const double swing = hostValue(params, stripKnobIndex(source)) - (bipolar ? 0.5 : 0.0);
+        const double swing = voiceKnob(source) - (bipolar ? 0.5 : 0.0);
         v.slotMods[v.slotModCount++] = {target,
                                         bent(source, s, swing, bipolar) * amount * scaleOf(source, s) *
                                             (table_[target].max - table_[target].min),
@@ -1658,7 +1726,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
     const int noteModsStart = v.slotModCount;
     for (int k = 0; k < sharedSlotCount_[kNoteSource]; ++k) {
         const SharedSlot &slot = sharedSlots_[kNoteSource][k];
-        if (slot.depth != 0.0) {
+        if (slot.depth != 0.0 && !isMacroKnob(slot.target)) { // its slots on macros' knobs came with the macros
             v.slotMods[v.slotModCount++] = {slot.target,
                                             slotCurveValue(swing, slot.curve, noteBipolar) * slot.depth *
                                                 sharedScale(slot) * slot.range,

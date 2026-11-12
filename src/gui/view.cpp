@@ -574,6 +574,10 @@ bool View::sourceUsed(int source) const {
 }
 
 void View::assign(int source, int target) {
+    if (!canModulate(source, target)) {
+        flash(refusedMessage(source, target));
+        return;
+    }
     const UndoScope step(controller_); // with the route it may keep
     int free = -1;
     for (int slot = kSlots - 1; slot >= 0; --slot) {
@@ -678,9 +682,8 @@ void View::setWireBend(int param, float bend) {
 }
 
 bool View::droppable(const Widget &w, int source) const {
-    const bool own = hasKnob(source) && w.param == stripKnobIndex(source);
     // A list's row takes it as an aux instead; a disabled widget, which the mouse passes by, takes nothing.
-    return w.param >= 0 && isModTarget(w.param) && !own && !w.popup && !w.disabled &&
+    return w.param >= 0 && canModulate(source, w.param) && !w.popup && !w.disabled &&
            (w.kind == Kind::Knob || w.kind == Kind::WireLabel || w.kind == Kind::OutLabel || w.kind == Kind::GridCell ||
             w.kind == Kind::SlotBar);
 }
@@ -1102,6 +1105,8 @@ std::string View::paramName(int index) const {
         return target >= 0 ? trf(Str::ParamNameBypassOn, {sourceName(owner), paramName(target)})
                            : trf(Str::ParamNameBypass, {sourceName(owner)});
     }
+    if (isMacroKnob(index)) // by the name it is given
+        return sourceName(kMaxSources + macroOf(index));
     const int source = sourceOf(index);
     const std::string &name = table_[index].name;
     if (source < 0)
@@ -1438,6 +1443,8 @@ bool View::poll() {
             in(panels);
         if (index < kOpBase) // the header's knobs; the mod wheel's, under the keys
             in(index == paramIndex(GlobalParam::ModWheel) ? lower : header);
+        else if (isMacroKnob(index)) // a macro's, under the keys too
+            in(lower);
         else if (sourceOf(index) >= 0)
             inCard(sourceOf(index));
         else // an operator's, the matrix's, a filter's, a shaper's: the routing panel and the inspector; an effect's
@@ -1461,6 +1468,9 @@ bool View::poll() {
         for (int i = 0; i < kModulatedCount && !everywhere; ++i)
             if (t.modOffset[i] != telemetry_.modOffset[i])
                 inTarget(i);
+        for (int m = 0; m < kMacros && !everywhere; ++m)
+            if (t.macroOffset[m] != telemetry_.macroOffset[m])
+                inTarget(paramIndex(m, MacroParam::Value));
         for (int k = 0; k < kAllSources * kSlots && !everywhere; ++k)
             if (t.slotOffset[k] != telemetry_.slotOffset[k])
                 inTarget(slotTarget(value(slotTargetIndex(k / kSlots, k % kSlots))));
@@ -2740,6 +2750,23 @@ std::vector<View::Widget> View::widgets() const {
         if (list[i].clip.w <= 0.0f)
             list[i].clip = sourceCardClip();
 
+    // The macros: their knobs, the names under them and their handles, before the depth handles, which a macro's knob
+    // takes too.
+    const float macros = keyboardTop(controller_.layout().sourcesCollapsed);
+    for (int macro = 0; macro < kMacros; ++macro) {
+        const Point center = macroKnob(macros, macro);
+        std::snprintf(macroLabels_[macro].data(), macroLabels_[macro].size(), "%s",
+                      macroName(controller_.layout(), macro).c_str());
+        knob(paramIndex(macro, MacroParam::Value), center, 34.0f, macroLabels_[macro].data());
+        add(Kind::MacroName, {center.x - 0.5f * kMacroCell, center.y + 18.0f, kMacroCell, 17.0f}, -1, macro);
+        add(Kind::MacroHandle, {center.x - 42.0f, center.y - 10.0f, 20.0f, 20.0f}, -1, kMaxSources + macro);
+    }
+    // The note source's handle and velocity's, after them, work the same way; their displays open their curves.
+    add(Kind::MacroHandle, noteHandle(macros), -1, kNoteSource);
+    add(Kind::NoteDisplay, noteDisplay(macros), -1, kNoteSource);
+    add(Kind::MacroHandle, velocityHandle(macros), -1, kVelocitySource);
+    add(Kind::NoteDisplay, velocityDisplay(macros), -1, kVelocitySource);
+
     // Depth handles in the gap under each modulated knob, and small ones in the bottom right corner of each
     // modulated wire label and the top right of each matrix cell and source's depth bar (another source modulating
     // its depth). As many as
@@ -2846,22 +2873,6 @@ std::vector<View::Widget> View::widgets() const {
         if (n > fit)
             pill({left + handles + (shown > 0 ? kPillGap : 0.0f), base.y - 0.5f * sizes.pillH, pillW, sizes.pillH}, shown, false);
     }
-
-    // The macros: their knobs, the names under them and their handles.
-    const float macros = keyboardTop(controller_.layout().sourcesCollapsed);
-    for (int macro = 0; macro < kMacros; ++macro) {
-        const Point center = macroKnob(macros, macro);
-        std::snprintf(macroLabels_[macro].data(), macroLabels_[macro].size(), "%s",
-                      macroName(controller_.layout(), macro).c_str());
-        knob(paramIndex(macro, MacroParam::Value), center, 34.0f, macroLabels_[macro].data());
-        add(Kind::MacroName, {center.x - 0.5f * kMacroCell, center.y + 18.0f, kMacroCell, 17.0f}, -1, macro);
-        add(Kind::MacroHandle, {center.x - 42.0f, center.y - 10.0f, 20.0f, 20.0f}, -1, kMaxSources + macro);
-    }
-    // The note source's handle and velocity's, after them, work the same way; their displays open their curves.
-    add(Kind::MacroHandle, noteHandle(macros), -1, kNoteSource);
-    add(Kind::NoteDisplay, noteDisplay(macros), -1, kNoteSource);
-    add(Kind::MacroHandle, velocityHandle(macros), -1, kVelocitySource);
-    add(Kind::NoteDisplay, velocityDisplay(macros), -1, kVelocitySource);
 
     // Keyboard strip. The white keys come first, so the black keys on top win the hits. Collapsed, only its top row
     // stays, where the wheels' handles are anyway.
@@ -3144,11 +3155,26 @@ void View::paint(Canvas &c, Rect area) {
     const std::vector<Widget> &list = scopedWidgets();
     std::fill(macroOffsets_.begin(), macroOffsets_.end(), 0.0f);
     macroSlotOffsets_.fill(0.0f);
-    forEachMacroMod([this](int i) { return value(i); }, [this](int target, double offset, int source, int slot) {
-        macroOffsets_[target] += static_cast<float>(offset);
-        macroSlotOffsets_[source * kSlots + slot] =
-            static_cast<float>(offset / (table_[target].max - table_[target].min));
-    });
+    {
+        // The macros' knobs as the macros' and the mod wheel's slots on them take them, then what the knobs move.
+        auto get = [this](int i) { return value(i); };
+        const MacroGraph graph = macroGraph(get);
+        voiceMovedMacros_ = graph.voiceMoved;
+        const MacroKnobs set = macroKnobsSet(get);
+        MacroKnobs knobs = set;
+        runMacroGraph(
+            graph, get, knobs, nullptr, [](int) { return -1.0; },
+            [this](int source, int slot, double offset) {
+                macroSlotOffsets_[source * kSlots + slot] = static_cast<float>(offset);
+            });
+        for (int m = 0; m < kMacros; ++m)
+            macroKnobOffsets_[m] = static_cast<float>(knobs[m] - set[m]);
+        forEachMacroMod(get, knobs, [this](int target, double offset, int source, int slot) {
+            macroOffsets_[target] += static_cast<float>(offset);
+            macroSlotOffsets_[source * kSlots + slot] =
+                static_cast<float>(offset / (table_[target].max - table_[target].min));
+        });
+    }
 
     theme_ = themeIndex(controller_.theme());
     hue_ = shownHue();
@@ -3897,8 +3923,15 @@ std::optional<double> View::liveSlotOffset(int source, int slot) const {
     if (source < 0 || slot < 0 || slotBypassed(source, slot) || !sourceOn(source))
         return std::nullopt;
     const int aux = slotAux([this](int i) { return value(i); }, source, slot);
-    if (!runsPerVoice(source) && (aux < 0 || !runsPerVoice(aux)))
-        return macroSlotOffsets_[source * kSlots + slot];
+    if (!runsPerVoice(source) && (aux < 0 || !runsPerVoice(aux))) {
+        // What every voice shares; where the newest voice's own sources move its knob, or its aux's, and it is on
+        // anything but a macro's knob, with what that voice adds to it.
+        const int target = slotTarget(value(slotTargetIndex(source, slot)));
+        const bool voiceMoved = voiceMovedMacro(source) || (aux >= 0 && voiceMovedMacro(aux));
+        return macroSlotOffsets_[source * kSlots + slot] +
+               (voiceMoved && !isMacroKnob(target) && telemetry_.voices > 0 ? telemetry_.slotOffset[source * kSlots + slot]
+                                                                            : 0.0f);
+    }
     if (telemetry_.voices <= 0) {
         const int target = slotTarget(value(slotTargetIndex(source, slot)));
         const bool effect = (target >= kFxBase && target < kShapeBase) || target == paramIndex(GlobalParam::Volume);

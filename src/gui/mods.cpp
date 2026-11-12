@@ -27,12 +27,26 @@ std::string afterPrefix(const std::string &name, const std::string &prefix) {
                : name;
 }
 
-// Whether `source` may modulate `target` at all: a macro or the mod wheel can't move its own knob.
-bool canModulate(int source, int target) {
-    return isModTarget(target) && !(hasKnob(source) && target == stripKnobIndex(source));
+} // namespace
+
+bool View::closesLoop(int source, int target) const {
+    return isMacro(source) && isMacroKnob(target) && target != stripKnobIndex(source) &&
+           macroReaches([this](int i) { return value(i); }, macroOf(target), knobOf(source));
 }
 
-} // namespace
+bool View::canModulate(int source, int target) const {
+    return isModTarget(target) && !(hasKnob(source) && target == stripKnobIndex(source)) &&
+           !closesLoop(source, target);
+}
+
+std::string View::refusedNote(int source, int target) const {
+    return closesLoop(source, target) ? tr(Str::CascadeLoop) : tr(Str::CascadeOwnKnob);
+}
+
+std::string View::refusedMessage(int source, int target) const {
+    return closesLoop(source, target) ? trf(Str::MsgMacroLoop, {sourceName(source), paramName(target)})
+                                      : trf(Str::MsgOwnKnob, {sourceName(source)});
+}
 
 bool View::modsWide() const {
     return controller_.layout().view == RoutingView::Mods && shapeEditing() < 0 && partialEditing() < 0;
@@ -142,7 +156,7 @@ void View::moveModulation(int source, int slot, int to) {
     if (target < 0 || to < 0 || to == source)
         return;
     if (!canModulate(to, target)) {
-        flash(trf(Str::MsgOwnKnob, {sourceName(to)}));
+        flash(refusedMessage(to, target));
         return;
     }
     int free = -1;
@@ -202,7 +216,7 @@ void View::retarget(int source, int slot, int target) {
     if (current < 0 || target == current || target < 0)
         return;
     if (!canModulate(source, target)) {
-        flash(trf(Str::MsgOwnKnob, {sourceName(source)}));
+        flash(refusedMessage(source, target));
         return;
     }
     for (int s = 0; s < kSlots; ++s)
@@ -301,7 +315,7 @@ void View::fillEmptyMod(int row, int source, int target) {
         return;
     }
     if (!canModulate(s, t)) {
-        flash(trf(Str::MsgOwnKnob, {sourceName(s)}));
+        flash(refusedMessage(s, t));
         return;
     }
     auto modulates = [&] {
@@ -448,7 +462,7 @@ View::MenuNode View::cascadeCategories() const {
             const std::vector<int> used = usedSlots(source);
             if (target >= 0 && !canModulate(source, target)) {
                 node.enabled = false;
-                node.note = tr(Str::CascadeOwnKnob);
+                node.note = refusedNote(source, target);
             } else if (target >= 0 && std::any_of(used.begin(), used.end(), [&](int s) {
                            return slotTarget(value(slotTargetIndex(source, s))) == target;
                        })) {
@@ -497,7 +511,7 @@ View::MenuNode View::cascadeCategories() const {
             node.note = tr(Str::CascadeAlready);
         } else if (!canModulate(menu.source, index)) {
             node.enabled = false;
-            node.note = tr(Str::CascadeOwnKnob);
+            node.note = refusedNote(menu.source, index);
         }
         return node;
     };
@@ -647,6 +661,13 @@ View::MenuNode View::cascadeCategories() const {
         modulation.children.push_back(std::move(node));
     }
     keep(std::move(modulation));
+
+    // Then the macros' knobs, by their names and in their colors.
+    MenuNode macroKnobs = category(tr(Str::CascadeMacros));
+    for (int macro = 0; macro < kMacros; ++macro)
+        macroKnobs.children.push_back(targetPick(sourceName(kMaxSources + macro), paramIndex(macro, MacroParam::Value),
+                                                 kSourceColors[kMaxSources + macro]));
+    keep(std::move(macroKnobs));
     markHolds(root);
     return root;
 }
