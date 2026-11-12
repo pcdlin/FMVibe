@@ -76,8 +76,11 @@ struct Provider {
                                                           tr(Str::DiscoveryFactory),
                                                           CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN, nullptr};
         indexer->declare_location(indexer, &factory);
-        // The preset folder, whether or not the plugin has made it yet: the host keeps what it was told.
-        if (!userFolderText.empty()) {
+        // The preset folder, once the library has made it (the first time the editor's browser, arrows or file
+        // dialog are used): a host crawling a folder that isn't there may count it an error. Hosts call init() again
+        // as they scan again, and find it then.
+        std::error_code error;
+        if (!userFolderText.empty() && std::filesystem::is_directory(userFolder, error)) {
             const clap_preset_discovery_location_t user = {CLAP_PRESET_DISCOVERY_IS_USER_CONTENT,
                                                            tr(Str::DiscoveryUser), CLAP_PRESET_DISCOVERY_LOCATION_FILE,
                                                            userFolderText.c_str()};

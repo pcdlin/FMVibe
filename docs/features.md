@@ -1585,7 +1585,8 @@ one may have changed since it last did.
     browser (Bitwig's, say) lists FMVibe's presets without loading the plugin, and loads one into it through CLAP's
     preset-load. It lists the factory presets from inside the plugin, as factory content, each by its name (its load
     key, which a host keeps with its projects and favorites), and the `.fmv` files it finds in the preset folder and
-    its subfolders, as the user's. Each says it is for FMVibe, an instrument and a synthesizer, and its name's
+    its subfolders, as the user's (once the library has made the folder; a host scanning before then finds it on
+    its next scan). Each says it is for FMVibe, an instrument and a synthesizer, and its name's
     two-letter prefix gives its sound as a tag: bass, drum, fx, keys, lead, pad, pluck or sequence. An unchanged copy
     of a factory preset in the folder's `Factory` subfolder isn't listed twice: the plugin's own stands in for it
     (one changed there is listed as the user's). Listing a file reads only its size and its first bytes, which tell

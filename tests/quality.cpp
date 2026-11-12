@@ -2601,16 +2601,19 @@ void presetDiscoveryChecks() {
           "a file location with no path reports an error");
     provider->destroy(provider);
 
-    // With no preset folder (no documents folder), only the plugin location.
-    Indexed bare;
-    const clap_preset_discovery_indexer_t bareIndexer = testIndexer(bare);
-    const clap_preset_discovery_provider_t *noFolder = createPresetProvider(&bareIndexer, {});
-    check(noFolder && noFolder->init(noFolder) && bare.locations.size() == 1 &&
-              bare.locations[0].kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN,
-          "with no preset folder, the provider declares the factory presets alone");
-    if (noFolder)
-        noFolder->destroy(noFolder);
+    // With no preset folder (no documents folder), or one not made yet, only the plugin location.
     fs::remove_all(folder, error);
+    bool alone = true;
+    for (const fs::path &none : {fs::path(), folder}) {
+        Indexed bare;
+        const clap_preset_discovery_indexer_t bareIndexer = testIndexer(bare);
+        const clap_preset_discovery_provider_t *noFolder = createPresetProvider(&bareIndexer, none);
+        alone = alone && noFolder && noFolder->init(noFolder) && bare.locations.size() == 1 &&
+                bare.locations[0].kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN;
+        if (noFolder)
+            noFolder->destroy(noFolder);
+    }
+    check(alone, "with no preset folder, or one not made yet, the provider declares the factory presets alone");
 }
 
 // Where the pitch bend stands, as the editor's bend wheel shows it (see Telemetry::bend): the MIDI bend and the Pitch

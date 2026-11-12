@@ -432,11 +432,13 @@ void presetChecks(const clap_plugin_entry_t *entry, const clap_plugin_factory_t 
     const auto endsWith = [](const std::string &text, const std::string &end) {
         return text.size() >= end.size() && text.compare(text.size() - end.size(), end.size(), end) == 0;
     };
-    check(indexed.extensions == std::vector<std::string>{"fmv"} && indexed.locations.size() == 2 && pluginLocation &&
-              !pluginLocation->hasLocation && pluginLocation->flags == CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT &&
-              fileLocation && endsWith(fileLocation->location, "FMVibe\\presets") &&
-              fileLocation->flags == CLAP_PRESET_DISCOVERY_IS_USER_CONTENT,
-          "the provider declares .fmv files, the factory presets in the plugin and the preset folder");
+    // The preset folder only once the library has made it, which a new machine (a CI runner) hasn't.
+    check(indexed.extensions == std::vector<std::string>{"fmv"} && pluginLocation && !pluginLocation->hasLocation &&
+              pluginLocation->flags == CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT &&
+              indexed.locations.size() == (fileLocation ? 2u : 1u) &&
+              (!fileLocation || (endsWith(fileLocation->location, "FMVibe\\presets") &&
+                                 fileLocation->flags == CLAP_PRESET_DISCOVERY_IS_USER_CONTENT)),
+          "the provider declares .fmv files, the factory presets in the plugin and the preset folder if made");
 
     Received built;
     clap_preset_discovery_metadata_receiver_t receiver = testReceiver(built);

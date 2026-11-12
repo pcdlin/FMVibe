@@ -53,7 +53,7 @@ PresetFileStatus readPresetFileInfo(const std::filesystem::path &file, const std
                                     PresetFileInfo &info, int32_t &osError);
 
 // The one provider's descriptor, and a new provider for `indexer` (destroyed through its destroy()), whose file
-// location is `userFolder` (the preset library's folder; empty for none). Thread-safe.
+// location is `userFolder` (the preset library's folder; empty for none), declared while it is there. Thread-safe.
 const clap_preset_discovery_provider_descriptor_t *presetProviderDescriptor();
 const clap_preset_discovery_provider_t *createPresetProvider(const clap_preset_discovery_indexer_t *indexer,
                                                              const std::filesystem::path &userFolder);

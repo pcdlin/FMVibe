@@ -148,7 +148,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     loaded while active, requests one too.
 
   It gets the preset discovery factory from `clap_entry` (by its id and its draft's): one provider, which declares
-  `.fmv` files, the factory presets in the plugin and the preset folder (`Documents\FMVibe\presets`), lists every
+  `.fmv` files, the factory presets in the plugin and the preset folder (`Documents\FMVibe\presets`, once made), lists every
   factory preset with a load key, for FMVibe, as factory content (BA FM Bass tagged bass), and a preset file in a
   temporary folder by its name, while a file that isn't a preset reports an error. Through `clap.preset-load` (on an
   instance of its own) it loads a factory preset by its load key (params changed, gestures and values to the host,
@@ -256,7 +256,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     and sounds at a sane level;
   - each factory preset's file being sparse, as the preset tool writes it;
   - CLAP's preset discovery (`src/presetdiscovery.cpp`) with an indexer of its own: the provider declaring `.fmv`
-    files, the factory presets as a plugin location and a preset folder as a file location (none with no folder),
+    files, the factory presets as a plugin location and a preset folder as a file location (none with no folder or
+    one not made yet),
     listing every factory preset by its name and a load key that finds it again, for FMVibe, as factory content, its
     prefix tagging its sound, and stopping when the host's receiver says no; in a temporary folder, a preset listed
     by its name as the user's, a file that isn't a preset, one cut short and one that isn't there reporting an error,
