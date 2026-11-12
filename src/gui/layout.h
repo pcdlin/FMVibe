@@ -102,11 +102,21 @@ inline Rect clipEditButton(Rect display) {
 // An operator's page: under its knob row, tabs (one per InspectorTab) pick what the lower half shows.
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
-inline Rect opTab(int tab) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS by InspectorTab; along the line ENVELOPE, UNISON, INPUTS, SCOPE
-    constexpr float kX[] = {78.0f, 0.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f, 52.0f};
-    return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
+inline Rect opTab(int tab, bool noise = false) {
+    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS, SCOPE. A
+    // noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS.
+    constexpr float kX[] = {66.0f, 0.0f, 216.0f, 164.0f, 122.0f}, kW[] = {56.0f, 66.0f, 52.0f, 52.0f, 42.0f};
+    constexpr float kNoiseX[] = {70.0f, 0.0f, 216.0f, 152.0f, 122.0f}, kNoiseW[] = {78.0f, 66.0f, 52.0f, 52.0f, 42.0f};
+    return {kInspector.x + 16.0f + (noise ? kNoiseX : kX)[tab], kOpTabsY, (noise ? kNoiseW : kW)[tab], kOpTabH};
 }
+// Warp: its display (two of the operator's cycles as the warp reads them, or two of the note's when synced), then the
+// warps' buttons, the amount's knob and the SYNC switch along the row under it.
+constexpr Rect kWarpRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 108.0f};
+inline Rect warpButton(int warp) {
+    return {kInspector.x + 16.0f + warp * 30.0f, kInspector.y + 306.0f, 30.0f, 22.0f};
+}
+constexpr Point kWarpAmountKnob{kInspector.x + 206.0f, kInspector.y + 314.0f};
+constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 46.0f, kInspector.y + 306.0f, 46.0f, 22.0f};
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
 // with room under the depth for its modulations' handles. Past the rows the tab holds, they scroll, with a bar at
 // their right; drawn and hit within kInputsList, which leaves room for the ranges on the first row's depth's top.

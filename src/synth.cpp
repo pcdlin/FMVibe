@@ -1873,7 +1873,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const auto want = noise[i] ? OpWarp::Off
                                        : static_cast<OpWarp>(stepped(p[paramIndex(i, OpParam::Warp)],
                                                                       static_cast<int>(OpWarp::Count) - 1));
-            const double amount = want == OpWarp::Off ? 0.0 : std::clamp(p[paramIndex(i, OpParam::WarpAmount)], -1.0, 1.0);
+            const double amount =
+                want == OpWarp::Off ? 0.0 : std::clamp(p[paramIndex(i, OpParam::WarpAmount)], -1.0, 1.0);
             if (starting) {
                 op.warp = want;
                 op.warpNow = amount;
@@ -2349,8 +2350,8 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                                         : WaveTables::read(table, here)) +
                                op.syncCarry[k];
                     op.syncCarry[k] = 0.0;
-                    const double step = factor == 1.0 ? op.incNow[k] : std::clamp(op.incNow[k] * factor, -0.5, 0.5);
-                    op.phases[k] += step;
+                    const double advance = factor == 1.0 ? op.incNow[k] : std::clamp(op.incNow[k] * factor, -0.5, 0.5);
+                    op.phases[k] += advance;
                     bool restarted = false;
                     if (op.syncOn) {
                         double master = op.syncPhases[k] + op.syncIncNow[k];
@@ -2360,17 +2361,18 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                             // and the next as band-limited ones would be (polyBLEP and polyBLAMP).
                             master -= 1.0;
                             const double after = std::min(master / op.syncIncNow[k], 1.0);
-                            const double at = op.phases[k] - after * step; // where the restart cut it off
+                            const double at = op.phases[k] - after * advance; // where the restart cut it off
                             const double start = op.startPhases[k];
                             const double from = read(at + offset), to = read(start + offset);
                             const double jump = to - from;
-                            const double bend = (read(start + step + offset) - to) - (from - read(at - step + offset));
+                            const double bend =
+                                (read(start + advance + offset) - to) - (from - read(at - advance + offset));
                             const double before = 1.0 - after;
                             x += jump * 0.5 * after * after + bend * after * after * after / 6.0;
                             op.syncCarry[k] = -jump * 0.5 * before * before + bend * before * before * before / 6.0;
                             carrying = true;
                             restarted = true;
-                            op.phases[k] = start + after * step;
+                            op.phases[k] = start + after * advance;
                         }
                         op.syncPhases[k] = master;
                         op.syncIncNow[k] += syncIncStep[i][k];
@@ -2378,10 +2380,10 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                     // The warp's bends that the phase passes before the next sample (as it moves now), each smoothed
                     // as a sync's restart is: by the change in the slope, over this sample and the next (polyBLAMP).
                     // Along each of the warp's stretches (its steps, or the cycle), `ahead` is how far on a bend is.
-                    if (warping && !restarted && step != 0.0) {
+                    if (warping && !restarted && advance != 0.0) {
                         const double along = cycle * kinks.perCycle;
                         const double stretch = kinks.perCycle == 1.0 ? cycle : along - std::floor(along); // 0..1
-                        const double by = step * kinks.perCycle; // how far it goes, in stretches
+                        const double by = advance * kinks.perCycle; // how far it goes, in stretches
                         // Only now and then does it pass one: then they are smoothed out of the loop's way.
                         bool passes = false;
                         for (int o = 0; o < kinks.count; ++o) {
@@ -2390,7 +2392,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
                                                          : (ahead < 0.0 ? ahead : ahead - 1.0) >= by);
                         }
                         if (passes) {
-                            const WarpBends bends = warpBends(coefs, kinks, table, cycle, stretch, step);
+                            const WarpBends bends = warpBends(coefs, kinks, table, cycle, stretch, advance);
                             x += bends.now;
                             op.syncCarry[k] += bends.next;
                             carrying = true;

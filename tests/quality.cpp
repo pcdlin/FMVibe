@@ -2740,9 +2740,9 @@ void syncWarpChecks(const int (&factors)[4]) {
               "every warp at 0 plays the plain wave bit for bit, and sync and warp start off");
     }
 
-    // Switched on and changed under a held A3, A a saw at 2.5 times it (in single frames too, as events split blocks): nothing
-    // rougher than the synced or warped sound itself is, before or after, or the plain saw a warp changed to another
-    // passes through.
+    // Switched on and changed under a held A3, A a saw at 2.5 times it (in single frames too, as events split
+    // blocks): nothing rougher than the synced or warped sound itself is, before or after, or the plain saw a warp
+    // changed to another passes through.
     {
         struct Switch {
             const char *name;

@@ -8,6 +8,7 @@
 #include "../effects.h"
 #include "../filter.h"
 #include "../uistrings.h"
+#include "../warp.h"
 #include "../wavetable.h"
 
 #include <algorithm>
@@ -16,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <iterator>
 #include <numbers>
 #include <numeric>
@@ -2473,8 +2475,9 @@ std::vector<View::Widget> View::widgets() const {
         // The tabs, a noise operator's without the scope, then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
-            if (!isNoise(op) || static_cast<InspectorTab>(t) != InspectorTab::Scope)
-                add(Kind::OpTab, opTab(t), -1, t);
+            if (const auto shown = static_cast<InspectorTab>(t);
+                !isNoise(op) || (shown != InspectorTab::Scope && shown != InspectorTab::Warp))
+                add(Kind::OpTab, opTab(t, isNoise(op)), -1, t);
         if (tab == InspectorTab::Scope)
             for (int k = 0; k < 3; ++k)
                 add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
@@ -2549,6 +2552,15 @@ std::vector<View::Widget> View::widgets() const {
             }
             if (inputsEnd(op) > 0.0f)
                 add(Kind::InputsScroll, inputsScrollTrack().inset(-3.0f));
+        }
+        if (tab == InspectorTab::Warp) {
+            // The warps as buttons, each its icon (named in its tooltip), its amount, and hard sync to the note.
+            const size_t buttons = list.size();
+            for (int m = 0; m < static_cast<int>(OpWarp::Count); ++m)
+                add(Kind::Choice, warpButton(m), paramIndex(op, OpParam::Warp), op, m);
+            merge(buttons);
+            knob(paramIndex(op, OpParam::WarpAmount), kWarpAmountKnob, 30.0f, tr(Str::LabelAmount));
+            add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         }
         if (tab == InspectorTab::Envelope) {
             const EnvIndices e = envIndices(op);
@@ -5764,6 +5776,10 @@ void View::paintInspector(Canvas &c) {
         const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
         if (copies > 1 && !isNoise(op))
             summary += dot + trf(Str::SummaryUnison, {std::to_string(copies)});
+        if (!isNoise(op) && value(paramIndex(op, OpParam::Sync)) >= 0.5)
+            summary += dot + std::string(tr(Str::SummarySync));
+        if (const OpWarp warp = opWarp(op); !isNoise(op) && warp != OpWarp::Off)
+            summary += dot + std::string(warpName(warp));
         std::string feeds;
         if (value(paramIndex(op, OpParam::Out)) > 0.0)
             feeds = tr(Str::SummaryOut);
@@ -5788,6 +5804,9 @@ void View::paintInspector(Canvas &c) {
             break;
         case InspectorTab::Scope:
             paintScope(c, kScopeRect, op);
+            break;
+        case InspectorTab::Warp:
+            paintWarp(c, kWarpRect, op);
             break;
         case InspectorTab::Inputs:
         case InspectorTab::Count:
@@ -6012,7 +6031,7 @@ void View::paintInputs(Canvas &c, int op) {
 
 InspectorTab View::opTabShown(int op) const {
     const InspectorTab tab = controller_.layout().opTab;
-    return tab == InspectorTab::Scope && isNoise(op) ? InspectorTab::Envelope : tab;
+    return (tab == InspectorTab::Scope || tab == InspectorTab::Warp) && isNoise(op) ? InspectorTab::Envelope : tab;
 }
 
 // Whether a source modulates one of the knobs on an operator's tab, which shows a dot on the tab while it is hidden.
@@ -6025,10 +6044,117 @@ bool View::opTabModulated(int op, InspectorTab tab) const {
         const EnvIndices e = envIndices(op);
         params = {e.attack, e.hold, e.decay, e.sustain, e.release};
     }
+    if (tab == InspectorTab::Warp && !isNoise(op))
+        params = {paramIndex(op, OpParam::WarpAmount)};
     for (const Assignment &m : assignments())
         if (std::find(params.begin(), params.end(), m.target) != params.end())
             return true;
     return false;
+}
+
+OpWarp View::opWarp(int op) const {
+    return static_cast<OpWarp>(std::clamp(std::lround(value(paramIndex(op, OpParam::Warp))), 0L,
+                                          static_cast<long>(OpWarp::Count) - 1));
+}
+
+bool View::opSynced(int op) const {
+    return !isNoise(op) && value(paramIndex(op, OpParam::Sync)) >= 0.5;
+}
+
+// `cycles` of the operator's wave across `r`, as it plays it: read through its warp (unless `plain`), and synced, a
+// cycle of the note each, its own cycles restarting at its Phase (at its ratio over the note; fixed, over a C4). The
+// wave is its icon's shape, or a Custom wave's partials, at full scale between r's top and bottom.
+std::vector<Point> View::opWavePoints(int op, Rect r, int cycles, bool plain) const {
+    const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
+    std::function<double(double)> shape;
+    if (wave == OpWave::Custom) {
+        std::vector<std::pair<double, double>> partials; // level, phase
+        const int count = std::clamp(static_cast<int>(std::lround(value(partialCountIndex(op)))), 1, kPartials);
+        for (int k = 0; k < count; ++k)
+            partials.emplace_back(value(partialLevelIndex(op, k)), value(partialPhaseIndex(op, k)));
+        auto sum = [partials](double t) {
+            double x = 0.0;
+            for (size_t k = 0; k < partials.size(); ++k)
+                x += partials[k].first * std::sin(2.0 * kPi * (partials[k].second + (k + 1.0) * t));
+            return x;
+        };
+        double peak = 1e-9;
+        for (int i = 0; i < 256; ++i)
+            peak = std::max(peak, std::abs(sum(i / 256.0)));
+        shape = [sum, peak](double t) { return sum(t) / peak; };
+    } else {
+        // Its icon's points along a cycle 1 wide, -1..1 tall: a value between two of them is on the line between.
+        const std::vector<Point> points = wavePoints(wave, {0.0f, -1.0f, 1.0f, 2.0f});
+        shape = [points](double t) {
+            for (size_t k = 1; k < points.size(); ++k)
+                if (points[k].x >= t && points[k].x > points[k - 1].x) {
+                    const double f = (t - points[k - 1].x) / (points[k].x - points[k - 1].x);
+                    return -(points[k - 1].y + (points[k].y - points[k - 1].y) * std::clamp(f, 0.0, 1.0));
+                }
+            return points.empty() ? 0.0 : -static_cast<double>(points.back().y);
+        };
+    }
+    const WarpCoefs coefs = warpCoefs(plain ? OpWarp::Off : opWarp(op), value(paramIndex(op, OpParam::WarpAmount)));
+    const bool synced = opSynced(op);
+    double over = 1.0; // its cycles to the note's, synced
+    if (synced) {
+        const double fixed =
+            fixedHz(value(paramIndex(op, OpParam::FixedFreq)), value(paramIndex(op, OpParam::FixedMult)));
+        over = isFixed(op) ? fixed / 261.63
+                           : ratioFromNorm(value(paramIndex(op, OpParam::Ratio))) *
+                                 std::exp2(value(paramIndex(op, OpParam::Transpose)) / 12.0 +
+                                           value(paramIndex(op, OpParam::Detune)) / 1200.0);
+        over = std::clamp(over, 0.01, 64.0);
+    }
+    const double start = synced ? value(paramIndex(op, OpParam::Phase)) : 0.0;
+    const int steps = std::max(64, static_cast<int>(r.w * 2.0f));
+    std::vector<Point> points;
+    points.reserve(static_cast<size_t>(steps) + 1);
+    for (int i = 0; i <= steps; ++i) {
+        const double t = static_cast<double>(i) / steps * cycles;
+        double p = t;
+        if (synced) {
+            const double note = std::min(t - std::floor(t), i == steps ? 1.0 : 0.999999);
+            p = start + note * over;
+        }
+        p -= std::floor(p);
+        if (i == steps && !synced)
+            p = 1.0; // the cycle's end, not its start again
+        const double y = std::clamp(shape(warpPhase(coefs, p)), -1.15, 1.15);
+        points.push_back(
+            {r.x + r.w * static_cast<float>(i) / steps, r.center().y - static_cast<float>(y) * r.h * 0.5f});
+    }
+    return points;
+}
+
+// The WARP tab's display: two of the operator's cycles (synced, of the note's) as its warp reads them, over its plain
+// wave faintly, between dashed lines at full scale; the warp's name in its corner, with SYNC while synced.
+void View::paintWarp(Canvas &c, Rect r, int op) {
+    c.fillRect(r, kDisplayColor, kRadiusCard);
+    const Rect inner{r.x + 8.0f, r.y + 24.0f, r.w - 16.0f, r.h - 34.0f};
+    const float middle = inner.center().y;
+    c.line({inner.x, inner.y}, {inner.right(), inner.y}, kBorder, 1.0f, true);
+    c.line({inner.x, inner.bottom()}, {inner.right(), inner.bottom()}, kBorder, 1.0f, true);
+    c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
+    const float half = inner.x + inner.w * 0.5f;
+    c.line({half, inner.y - 6.0f}, {half, inner.bottom() + 6.0f}, kBorder.alpha(0.6f), 1.0f, true);
+    const OpWarp warp = opWarp(op);
+    std::string name = warpName(warp);
+    if (warp != OpWarp::Off) {
+        char amount[32];
+        const int param = paramIndex(op, OpParam::WarpAmount);
+        formatParam(param, value(param), amount, sizeof(amount));
+        name += std::string("  ") + amount;
+    }
+    if (opSynced(op))
+        name += std::string("  \xC2\xB7  ") + tr(Str::SwitchHardSync);
+    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 16.0f}, name, kTextSmall, kDim, Align::Left);
+    if (warp != OpWarp::Off) {
+        const std::vector<Point> plain = opWavePoints(op, inner, 2, true);
+        c.polyline(plain.data(), plain.size(), kDim.alpha(0.45f), 1.0f, true);
+    }
+    const std::vector<Point> points = opWavePoints(op, inner, 2, false);
+    c.polyline(points.data(), points.size(), kAccent, 1.5f);
 }
 
 // The operator's output in the newest voice, a point per bin across the display: the cycles the switch in the corner
@@ -6051,6 +6177,12 @@ void View::paintScope(Canvas &c, Rect r, int op) {
     const int bins = cycles * kScopeBinsPerCycle;
     if (telemetry_.voices == 0 || telemetry_.scopeBins != bins) {
         const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))));
+        // Warped or synced, the wave as it plays them (a cycle of the note, synced); otherwise its plain shape.
+        if (opWarp(op) != OpWarp::Off || opSynced(op)) {
+            const std::vector<Point> points = opWavePoints(op, inner, cycles, false);
+            c.polyline(points.data(), points.size(), kDim.alpha(0.5f), 1.5f, true);
+            return;
+        }
         for (int k = 0; k < cycles; ++k) {
             const Rect cycle{inner.x + inner.w * k / cycles, inner.y, inner.w / cycles, inner.h};
             const std::vector<Point> points = wavePoints(wave, cycle);
@@ -6748,6 +6880,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                                ? tr(Str::SwitchStereo)
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
+                           : opOfField(w.param, OpParam::Sync) >= 0                     ? tr(Str::SwitchHardSync)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
@@ -6770,6 +6903,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
             powerIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kDim));
         else if (modeChoice)
             routeModeIcon(c, w.rect.center(), static_cast<RouteMode>(w.b), on ? litInk(color) : (hovered ? kText : kDim));
+        else if (opOfField(w.param, OpParam::Warp) >= 0) // a sine as the warp reads it
+            warpIcon(c, {w.rect.center().x - 9.0f, w.rect.center().y - 5.0f, 18.0f, 10.0f}, static_cast<OpWarp>(w.b),
+                     on ? litInk(color) : (hovered ? kText : kDim));
         else if (fixedSwitchOp(w.param) >= 0) // a keyboard, crossed out while the operator doesn't follow it
             keyboardIcon(c, w.rect.center(), on ? litInk(color) : (hovered ? kText : kFaint), on);
         else if (shaperFieldOf(w.param) == ShaperParam::Link) // a voice shaper's link, as the shaper effect's
@@ -6829,7 +6965,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto tab = static_cast<InspectorTab>(w.a);
         const bool selected = opTabShown(op) == tab;
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
-                             Str::TabInputs};
+                             Str::TabInputs, Str::TabWarp};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
         c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
         if (selected)
@@ -8765,6 +8901,14 @@ void View::paintTooltip(Canvas &c) {
         text = tr(Str::TipNodePower);
     else if (fixedSwitchOp(param) >= 0)
         text = tr(value(param) >= 0.5 ? Str::TipFixedOn : Str::TipFixedOff);
+    else if (opOfField(param, OpParam::Sync) >= 0)
+        text = tr(Str::TipHardSync);
+    else if (opOfField(param, OpParam::Warp) >= 0) {
+        const Str tips[] = {Str::TipWarpOff, Str::TipWarpBend, Str::TipWarpSqueeze, Str::TipWarpPulse,
+                            Str::TipWarpSteps};
+        static_assert(std::size(tips) == static_cast<size_t>(OpWarp::Count));
+        text = tr(tips[std::clamp(hover_->b, 0, static_cast<int>(OpWarp::Count) - 1)]);
+    }
     else if (isSourcePower(param))
         text = tr(Str::TipSourcePower);
     else if (param == paramIndex(GlobalParam::Mono))

@@ -1820,6 +1820,13 @@ inline int fixedSwitchOp(int index) {
             return op;
     return -1;
 }
+// The operator whose `field` the param is, or -1.
+inline int opOfField(int index, OpParam field) {
+    for (int op = 0; op < kOps; ++op)
+        if (index == paramIndex(op, field))
+            return op;
+    return -1;
+}
 // The old Coarse was stepped 0..32, 0 standing for a ratio of 0.5; states before Ratio load through it.
 inline double coarseRatio(double coarse) {
     const long c = std::lround(coarse);

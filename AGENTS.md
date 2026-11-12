@@ -7,8 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult lists, and
-  the state layout are
+- Parameter ids, the wave, warp, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult
+  lists, and the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
@@ -56,7 +56,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     difference and at 50 % is AM, Linear FM keeps the mean pitch (through zero too) where Exp FM lifts it by its
     octaves, and feedback stays Phase whatever its mode param says; every wave sounds; a saw's 2nd harmonic sits at
     half the fundamental, and Alt Sine's, Organ's and Vowel's where their series put them; a Custom wave plays its
-    partials, only as many as its count (the 40th silent at 32, heard at 64); a low-pass at 300 Hz and a high-pass
+    partials, only as many as its count (the 40th silent at 32, heard at 64); a sine synced at 2.5 times an A4
+    playing the A4's harmonics and not its own 1100 Hz, and Squeeze moving a square's pulse width (its 2nd harmonic
+    from none at 50 % to about 0.63 of its fundamental either way at ±50 %); a low-pass at 300 Hz and a high-pass
     at 2 kHz move that ratio the right way (the low-pass's Mix at 0 leaving the saw as it was, at 50 % between), each slope from 6 to 24 dB harder than the one before (the 6 dB
     low-pass a one-pole), and a band-pass set to 6 or 18 dB plays 12 or 24;
   - every filter type stays finite at high resonance at every slope, and a voice ringing through a resonant comb
@@ -269,6 +271,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     smoothed, and a voice with a 0 ms attack at full level from its first sample;
   - a Custom wave playing the partials drawn, taken up as it is picked and changed partial by partial as it plays;
   - an operator's Phase starting its wave that far into its cycle, set or modulated;
+  - an operator's hard sync and warps: the aliasing of synced sines and saws and of every warp (Bend, Squeeze,
+    Pulse, Steps, either way, and synced and warped together) at each oversampling factor, every warp at 0 the
+    plain wave bit for bit, sync switched on and off and a warp switched on and changed to another under a note
+    (in single frames too) no rougher than the sound before, after or the plain wave between, and an LFO on
+    Squeeze's amount and on a synced operator's ratio leaving only the note's harmonics and their sidebands;
   - an anchored LFO standing where the transport puts it, from its Phase, by beats when synced and by seconds when
     not (a one-shot not anchored), following it through a block split into pieces, running on from there while the
     transport is stopped, and a random one stepping as the transport passes a cycle;
@@ -484,6 +491,10 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
     the track, a straight line to 64 with its tick at the end there and an arrow for modulation going on past it
     (read off the rendered pixels);
+  - an operator page's WARP tab: its buttons picking the warp, its knob the amount and SYNC hard sync, each an undo
+    step, its display drawing a square's pulse width as Squeeze takes it (read off the rendered pixels), a warp
+    button's tooltip, the display synced, the SCOPE tab's idle wave warped and synced, and a noise operator showing
+    its envelope in the tab's place;
   - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the
     ratio was in one undo step and taking Ratio's and Fine's places, Mult stepping (and typed into, its × taken
     whole), and Pitch and Detune dimmed (read off the rendered pixels), not turning and not ringed for a dragged
@@ -848,6 +859,7 @@ breakpoints in `src/` then hit.
 | `src/amp.h`, `src/amp.cpp` | The Amp effect's sound: its models (preamp stages, tone stack, power amp), cabinets and mics, its oversampling, and the responses the editor draws |
 | `src/analyzer.cpp` | The spectrum analyzer (FFT) behind the Param EQ's, filter effect's, phase disperser's and voice filters' displays |
 | `src/envelope.h` | AHDSR used by operators and mod envelopes |
+| `src/warp.h` | An operator's warps: where along its cycle it reads its wave, how much they squeeze it and where they bend it |
 | `src/gui/view.cpp` | The editor: its widgets, drawing and mouse and keyboard handling, and the model access behind them. Window-free, so it also renders offscreen |
 | `src/gui/theme.h`, `src/gui/theme.cpp` | The editor's color themes, the colors of the one being painted, and the graphs' glow |
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
@@ -905,7 +917,8 @@ itself.
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
-  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult and Phase; the
+  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan,
+  Sync, Warp and Warp Amount; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -941,7 +954,8 @@ itself.
   read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic and fixed Mult lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, fixed Mult, operator sync (`OpSync`) and
+  warp (`OpWarp`) lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -955,7 +969,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,262 of the 19,381 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,280 of the 19,623 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
