@@ -243,8 +243,10 @@ bool PluginCore::playValue(int index, double value) {
     snapshot_[index] = value;
     snapshotChanged_ = true;
     // The host hands the value back a little later, and by then the control may have moved on: not taken, as for an
-    // edit in the editor (see setHostValue()).
-    told(index, steadyMs());
+    // edit in the editor (see setHostValue()). Only a param the host is told of comes back; for another (an effect's
+    // field, which a learned CC moves), what the host sends is its own and taken at once.
+    if (hostListed(index))
+        told(index, steadyMs());
     return true;
 }
 

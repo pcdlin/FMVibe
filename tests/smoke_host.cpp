@@ -2023,11 +2023,17 @@ int main(int argc, char **argv) {
         const double middle = valueOf(pan);
         runBlock({&driveUp.header});
         const bool untold = valueOf(drive) == driveDef.max && !toldAny(drive);
+        const double driveMoved = valueOf(drive);
+        // The host never heard of that value, so none it sends can be an older one handed back: taken at once.
+        const clap_event_param_value_t driveSet = paramEvent(drive, driveDef.def);
+        runBlock({&driveSet.header});
+        const bool hostTaken = valueOf(drive) == driveDef.def;
         std::printf("      learned CC 20 on A's Pan: %.2f up, %.2f down, %.3f at 64; CC 21 on a shaper's Drive %.2f\n",
-                    panDef.max, panDef.min, middle, valueOf(drive));
+                    panDef.max, panDef.min, middle, driveMoved);
         const double expected = panDef.min + 64.0 / 127.0 * (panDef.max - panDef.min);
-        check(loaded && up && down && std::abs(middle - expected) < 1e-6 && untold,
-              "a learned CC moves its param over its range on any channel, telling the host of a param it is given");
+        check(loaded && up && down && std::abs(middle - expected) < 1e-6 && untold && hostTaken,
+              "a learned CC moves its param over its range on any channel, telling the host of a param it is given "
+              "(and taking the host's value for one it isn't at once)");
 
         // Saved with the project, and loaded back after a state without them, which forgets them.
         MemoryStream kept;
@@ -2053,6 +2059,9 @@ int main(int argc, char **argv) {
         plugin->on_main_thread(plugin);
         check(saved && forgotten && back,
               "the learned CCs are saved in the state's settings and load back, a state without them forgetting them");
+        // The host was told of Pan's played value, so for half a second the plugin takes none of the host's for it
+        // (as an older one handed back): wait that out, as the tests after this one set Pan.
+        Sleep(600);
     }
 
     // The pitch bend is a source too, bipolar as it starts: on A's output at -100 %, at rest it moves nothing, bent
