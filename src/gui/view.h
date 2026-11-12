@@ -1306,7 +1306,6 @@ private:
                              const Spectrum *spectrum = nullptr);
     void paintUnison(Canvas &c, Rect r, int op);
     void paintScope(Canvas &c, Rect r, int op);
-    void paintWarp(Canvas &c, Rect r, int op);
     OpWarp opWarp(int op) const;
     bool opSynced(int op) const;
     std::vector<Point> opWavePoints(int op, Rect r, int cycles, bool plain) const;

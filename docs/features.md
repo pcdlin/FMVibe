@@ -71,7 +71,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     later. Its unison copies each sync to a note detuned as the copy is, and the note's pitch follows bend, glide
     and tuning. A restart's step, and the change in the wave's slope there, are smoothed over the samples either
     side as a band-limited restart would be (polyBLEP and polyBLAMP), so a synced sine at C6 keeps what aliases
-    65 dB down at the default 2x oversampling. Its scope follows the note's cycles. Noise has no cycle to sync or warp;
+    65 dB down at the default 2x oversampling. Its scope (on the WAVE tab) follows the note's cycles. Noise has no cycle to sync or warp;
   - **Warp** (Off by default) and **Warp Amount** (−100 to +100 %, 0 to begin with): where along its cycle the
     operator reads its wave, any wave, Custom too (Vital-style phase warps):
     - **Bend**: rushes through the cycle's start and lingers at its end (below 0, the other way round), as Casio's
@@ -1236,31 +1236,31 @@ one may have changed since it last did.
       does.
     - **UNISON**: the unison knobs and Rnd Phase, and a display of where the copies sit (left/right by spread,
       up/down by detune).
-    - **WARP**: a display of two of the operator's cycles as its warp reads them (synced, two of the note's, the
-      operator's own restarting in each), over the plain wave faintly, the warp's name and amount (and SYNC while
-      synced) in its corner; under it, the warps as buttons, each a sine as it warps it (named in its tooltip),
-      the Amount knob and the SYNC switch. The summary line names the warp and says "sync" while either is on, and
-      the scope's faint wave with no note playing is warped and synced as this display draws it.
+    - **WAVE**: the operator's wave, its warp and its hard sync. Its display is a scope: the operator's output in
+      the newest voice as it plays, with its unison copies together and everything that moves it (the FM it gets,
+      its envelope, the modulation on its level and pitch), before it reaches the filters, shapers or the output.
+      It is caught at the operator's own phase (a synced one's at the note's), so a span starts where a cycle does
+      and stands still even under heavy FM. The buttons in its corner show 1, 2 or 4 cycles across (2 to begin
+      with): real cycles, so a modulator at a ratio of 0.5 or detuned copies make them differ. The trace is drawn
+      at its level, between dashed lines at full scale, its level in dB in the top left corner: following its peaks
+      as the header's output scope does, up at once and down slowly, so it doesn't flicker. A slow operator, whose
+      cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left of the last span
+      faint after it. With no note playing, the wave's plain shape shows faintly; warped or synced, the wave as they
+      make it (synced, the note's cycles, the operator's own restarting in each) shows in the accent over the plain
+      one. The warp's name and amount, and SYNC while synced, run along the display's bottom. Under it, the warps
+      as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the SYNC switch. The audio
+      thread captures only while the tab is shown. The summary line names the warp and says "sync" while either is
+      on. (The scope and the warp had a tab each before; a layout saved on the scope's opens this one.)
     - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
       wire's. Its feedback comes last, with its depth and "phase only". With nothing routed into it, a line says
       so. The rows sit 30 px apart, room for a modulated depth's dots under it; past the six the tab holds, they
       scroll, by the wheel over them, by dragging with the middle button held, or by the scrollbar at their right.
-    - **SCOPE**: the operator's output in the newest voice as it plays, with its unison copies together and
-      everything that moves it (the FM it gets, its envelope, the modulation on its level and pitch), before it
-      reaches the filters, shapers or the output. It is caught at the operator's own phase, so a span starts where a
-      cycle does and stands still even under heavy FM. The buttons in its corner show 1, 2 or 4 cycles across
-      (2 to begin with): real cycles, so a modulator at a ratio of 0.5 or detuned copies make them differ. The trace
-      is drawn at its level, between dashed lines at full scale, its level in dB in the top left corner: following
-      its peaks as the header's output scope does, up at once and down slowly, so it doesn't flicker. A slow
-      operator, whose cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left
-      of the last span faint after it. With no note playing, the wave's plain shape shows faintly. The audio thread
-      captures only while the tab is shown.
 
     A noise operator shows Slope and Spread instead of the pitch knobs, and no Phase; its first tab is
-    **SPECTRUM**, its spectrum against white, pink and brown, and it has no scope or warp (picked, either shows its
-envelope).
+    **SPECTRUM**, its spectrum against white, pink and brown, and it has no WAVE tab (picked, it shows its
+    envelope).
     Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end
     (release). The release starts at the sustain level's point: the sustain has no length of its own, lasting as

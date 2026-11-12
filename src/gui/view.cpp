@@ -6127,39 +6127,10 @@ std::vector<Point> View::opWavePoints(int op, Rect r, int cycles, bool plain) co
     return points;
 }
 
-// The WARP tab's display: two of the operator's cycles (synced, of the note's) as its warp reads them, over its plain
-// wave faintly, between dashed lines at full scale; the warp's name in its corner, with SYNC while synced.
-void View::paintWarp(Canvas &c, Rect r, int op) {
-    c.fillRect(r, kDisplayColor, kRadiusCard);
-    const Rect inner{r.x + 8.0f, r.y + 24.0f, r.w - 16.0f, r.h - 34.0f};
-    const float middle = inner.center().y;
-    c.line({inner.x, inner.y}, {inner.right(), inner.y}, kBorder, 1.0f, true);
-    c.line({inner.x, inner.bottom()}, {inner.right(), inner.bottom()}, kBorder, 1.0f, true);
-    c.line({inner.x, middle}, {inner.right(), middle}, kBorder.alpha(0.6f), 1.0f);
-    const float half = inner.x + inner.w * 0.5f;
-    c.line({half, inner.y - 6.0f}, {half, inner.bottom() + 6.0f}, kBorder.alpha(0.6f), 1.0f, true);
-    const OpWarp warp = opWarp(op);
-    std::string name = warpName(warp);
-    if (warp != OpWarp::Off) {
-        char amount[32];
-        const int param = paramIndex(op, OpParam::WarpAmount);
-        formatParam(param, value(param), amount, sizeof(amount));
-        name += std::string("  ") + amount;
-    }
-    if (opSynced(op))
-        name += std::string("  \xC2\xB7  ") + tr(Str::SwitchHardSync);
-    c.text({r.x + 8.0f, r.y + 4.0f, r.w - 16.0f, 16.0f}, name, kTextSmall, kDim, Align::Left);
-    if (warp != OpWarp::Off) {
-        const std::vector<Point> plain = opWavePoints(op, inner, 2, true);
-        c.polyline(plain.data(), plain.size(), kDim.alpha(0.45f), 1.0f, true);
-    }
-    const std::vector<Point> points = opWavePoints(op, inner, 2, false);
-    c.polyline(points.data(), points.size(), kAccent, 1.5f);
-}
-
 // The operator's output in the newest voice, a point per bin across the display: the cycles the switch in the corner
 // picks, at their real level between dashed lines at full scale, the level its peaks follow in the corner. A slow operator's span is drawn as it fills, up to
-// its cursor, the last one's rest faintly after it. With nothing captured, the wave's plain shape is drawn faintly.
+// its cursor, the last one's rest faintly after it. With nothing captured, the wave's plain shape is drawn faintly, or,
+// warped or synced, the wave as they make it over its plain shape; the warp is named along the bottom.
 void View::paintScope(Canvas &c, Rect r, int op) {
     c.fillRect(r, kDisplayColor, kRadiusCard);
     const int cycles = controller_.layout().scopeCycles;
@@ -6198,8 +6169,12 @@ void View::paintScope(Canvas &c, Rect r, int op) {
             const std::vector<Point> plain = opWavePoints(op, inner, cycles, true);
             c.polyline(plain.data(), plain.size(), kDim.alpha(0.45f), 1.0f, true);
         }
+        // Unchanged, the plain shape faintly, as a stand-in for the trace; warped or synced, what they make of it.
         const std::vector<Point> points = opWavePoints(op, inner, cycles, false);
-        c.polyline(points.data(), points.size(), kAccent.alpha(0.85f), 1.5f);
+        if (shaped)
+            c.polyline(points.data(), points.size(), kAccent.alpha(0.85f), 1.5f);
+        else
+            c.polyline(points.data(), points.size(), kDim.alpha(0.5f), 1.5f, true);
         return;
     }
     // A bin per point, but no more points than the display has pixels across, twice over.

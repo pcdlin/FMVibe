@@ -480,7 +480,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     off the rendered pixels), and the attack's below 1 ms, to 0.5 ms and to 0 ms, drawn as a vertical line (read off
     the rendered pixels), and straightening a segment's bend to 0 % with a double-click, its readout drawn
     over the curve (read off the rendered pixels);
-  - an operator page's ENVELOPE, UNISON and SCOPE tabs: a line across the envelope at the newest voice's level,
+  - an operator page's ENVELOPE, UNISON and WAVE tabs: a line across the envelope at the newest voice's level,
     and a dot on the curve along the attack, decay and release (one releasing from above the sustain too), as on a
     mod envelope's card (read off the rendered pixels), the unison knobs on theirs, the scope asking for its
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
@@ -491,10 +491,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
     the track, a straight line to 64 with its tick at the end there and an arrow for modulation going on past it
     (read off the rendered pixels);
-  - an operator page's WARP tab: its buttons picking the warp, its knob the amount and SYNC hard sync, each an undo
-    step, its display drawing a square's pulse width as Squeeze takes it (read off the rendered pixels), a warp
-    button's tooltip, the display synced, the SCOPE tab's idle wave warped and synced, and a noise operator showing
-    its envelope in the tab's place;
+  - the WAVE tab's warp: its buttons picking the warp, its knob the amount and SYNC hard sync, each an undo step,
+    its display with no note drawing a square's pulse width as Squeeze takes it (read off the rendered pixels), a
+    warp button's tooltip, the display synced, and a noise operator showing its envelope in the tab's place;
   - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the
     ratio was in one undo step and taking Ratio's and Fine's places, Mult stepping (and typed into, its × taken
     whole), and Pitch and Detune dimmed (read off the rendered pixels), not turning and not ringed for a dragged

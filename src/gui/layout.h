@@ -110,9 +110,10 @@ inline Rect opTab(int tab, bool noise = false) {
     constexpr float kNoiseX[] = {78.0f, 0.0f, 144.0f, 168.0f, 144.0f}, kNoiseW[] = {84.0f, 74.0f, 52.0f, 54.0f, 52.0f};
     return {kInspector.x + 16.0f + (noise ? kNoiseX : kX)[tab], kOpTabsY, (noise ? kNoiseW : kW)[tab], kOpTabH};
 }
-// Warp: its display (two of the operator's cycles as the warp reads them, or two of the note's when synced), then the
-// warps' buttons, the amount's knob and the SYNC switch along the row under it.
-constexpr Rect kWarpRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 116.0f};
+// Wave: its display (the scope; with no note, the operator's cycles as its warp reads them, or the note's when
+// synced, the cycle buttons in its top right corner), then the warps' buttons, the amount's knob and the SYNC switch
+// along the row under it.
+constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 116.0f};
 inline Rect warpButton(int warp) {
     return {kInspector.x + 16.0f + warp * 30.0f, kInspector.y + 306.0f, 30.0f, 22.0f};
 }
@@ -138,8 +139,6 @@ constexpr float kUnisonKnobsY = kInspector.y + 206.0f;
 constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 102.0f};
 // A noise operator's spectrum, in Unison's place.
 constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
-// Scope: the operator's output, the cycle count's buttons in its top right corner.
-constexpr Rect kScopeRect = kWarpRect; // the WAVE tab's display
 inline Rect scopeCycleButton(int choice) {
     return {kScopeRect.right() - 6.0f - (3 - choice) * 20.0f, kScopeRect.y + 6.0f, 20.0f, 16.0f};
 }
