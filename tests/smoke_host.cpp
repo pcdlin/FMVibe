@@ -1475,6 +1475,25 @@ int main(int argc, char **argv) {
         const Take modulatorPanned = play({{bPan, 1.0}});
         check(modulated.samples == modulatorPanned.samples && modulated.left > 0.05f,
               "a modulator's Pan leaves what it modulates alone");
+        // Keyboard scaling, set by the host: an A4 with A's breakpoint an octave under it (A3) and its right side at
+        // -6 dB an octave comes out at half the level, an exponential side the same an octave out; the breakpoint moved
+        // with no depth leaves it as it was, sample for sample.
+        {
+            const int brk = paramIndex(0, OpParam::KeyBreak), rightDepth = paramIndex(0, OpParam::KeyRightDepth),
+                      rightCurve = paramIndex(0, OpParam::KeyRightCurve);
+            const Take plain = play({{paramIndex(1, OpParam::Enabled), 0.0}, {matrixIndex(1, 0), 0.0}, {bPan, 0.0}});
+            const Take moved = play({{brk, 57.0}});
+            const Take scaled = play({{rightDepth, -6.0}});
+            const Take scaledExp = play({{rightCurve, 1.0}});
+            play({{rightDepth, 0.0}, {rightCurve, 0.0}, {brk, 60.0}});
+            const float half = std::pow(10.0f, -6.0f / 20.0f);
+            std::printf("      keyboard scaling: an A4 at %.3f, x%.3f an octave over its breakpoint (%.3f exponential)\n",
+                        plain.left, scaled.left / plain.left, scaledExp.left / plain.left);
+            check(plain.left > 0.05f && moved.samples == plain.samples &&
+                      std::abs(scaled.left / plain.left - half) < 0.01f &&
+                      std::abs(scaledExp.left / plain.left - half) < 0.01f,
+                  "keyboard scaling set by the host takes an operator's level down above its breakpoint");
+        }
         const clap_event_param_value_t back[] = {paramEvent(bPan, 0.0), paramEvent(matrixIndex(1, 0), 0.0),
                                                  paramEvent(paramIndex(1, OpParam::Enabled), 0.0)};
         runBlock({&back[0].header, &back[1].header, &back[2].header});

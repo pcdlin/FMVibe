@@ -2666,6 +2666,159 @@ void outScopeChecks() {
 
 } // namespace
 
+// Keyboard scaling: an operator's level across the keys by its breakpoint, depths and curves, a modulator's index
+// with it, its envelope's times by rate scaling, and nothing changed while it is off.
+void keyScaleChecks() {
+    std::printf("keyboard scaling:\n");
+    // The output's RMS level (dB) of a held note, once settled.
+    auto levelDb = [](int key, const auto &setup) {
+        Engine e(2);
+        setup(e.p);
+        e.noteOn(key);
+        e.render(4800);
+        const std::vector<float> out = e.render(kFftSize);
+        double sum = 0.0;
+        for (float x : out)
+            sum += static_cast<double>(x) * x;
+        return 10.0 * std::log10(sum / out.size() + 1e-30);
+    };
+    {
+        // Breakpoint at C4; the right side down 6 dB an octave, the left up 3: each note against itself unscaled.
+        // Linear, two octaves up is 12 dB down; exponential, 6 dB the first octave and 12 more the second (18).
+        auto scaled = [&](int key, double curve) {
+            return levelDb(key, [&](ParamValues &p) {
+                       p[paramIndex(0, OpParam::KeyBreak)] = 60.0;
+                       p[paramIndex(0, OpParam::KeyRightDepth)] = -6.0;
+                       p[paramIndex(0, OpParam::KeyLeftDepth)] = 3.0;
+                       p[paramIndex(0, OpParam::KeyRightCurve)] = curve;
+                       p[paramIndex(0, OpParam::KeyLeftCurve)] = curve;
+                   }) -
+                   levelDb(key, [](ParamValues &) {});
+        };
+        const double at60 = scaled(60, 0.0), up1 = scaled(72, 0.0), up2 = scaled(84, 0.0), down1 = scaled(48, 0.0),
+                     down2 = scaled(36, 0.0), half = scaled(66, 0.0);
+        const double expUp1 = scaled(72, 1.0), expUp2 = scaled(84, 1.0), expDown2 = scaled(36, 1.0);
+        std::printf("      linear: C4 %+.2f, C5 %+.2f, C6 %+.2f, F#4 %+.2f, C3 %+.2f, C2 %+.2f dB; "
+                    "exponential: C5 %+.2f, C6 %+.2f, C2 %+.2f dB\n",
+                    at60, up1, up2, half, down1, down2, expUp1, expUp2, expDown2);
+        auto near = [](double a, double b) { return std::abs(a - b) < 0.1; };
+        check(near(at60, 0.0) && near(up1, -6.0) && near(up2, -12.0) && near(half, -3.0) && near(down1, 3.0) &&
+                  near(down2, 6.0),
+              "level scaling moves an operator's level by its depth an octave from the breakpoint, either side");
+        check(near(expUp1, -6.0) && near(expUp2, -18.0) && near(expDown2, 9.0),
+              "an exponential side doubles what it adds each octave");
+        const double floor = scaled(108, 0.0) - 0.0; // 4 octaves at -24 dB an octave: held at the floor
+        const double deep = levelDb(108, [](ParamValues &p) {
+                                p[paramIndex(0, OpParam::KeyRightDepth)] = -kMaxKeyDepthDb;
+                                p[paramIndex(0, OpParam::KeyRightCurve)] = 1.0;
+                            }) -
+                            levelDb(108, [](ParamValues &) {});
+        std::printf("      C8 at -6 dB an octave %+.1f dB, at -24 dB exponential %+.1f dB\n", floor, deep);
+        check(near(floor, -24.0) && std::abs(deep - kKeyScaleFloorDb) < 1.0, "level scaling stops at its floor");
+    }
+    {
+        // On a modulator, it takes the index down with the level: B modulating A at the same ratio, its right side at
+        // -24 dB an octave from A2, leaves an A4 (two octaves up, 48 dB down) all but a sine, where unscaled it has a
+        // strong 2nd harmonic.
+        auto second = [&](double depth) {
+            const std::vector<float> tone = steadyTone(2, 69, [&](ParamValues &p) {
+                p[paramIndex(1, OpParam::Enabled)] = 1.0;
+                p[matrixIndex(1, 0)] = 0.5;
+                p[paramIndex(1, OpParam::KeyBreak)] = 45.0;
+                p[paramIndex(1, OpParam::KeyRightDepth)] = depth;
+            });
+            const std::vector<double> power = powerSpectrum(tone);
+            auto at = [&](double hz) {
+                const long center = std::lround(hz / (kSampleRate / kFftSize));
+                double most = 1e-30;
+                for (long b = center - 3; b <= center + 3; ++b)
+                    most = std::max(most, power[static_cast<size_t>(b)]);
+                return 10.0 * std::log10(most);
+            };
+            return at(880.0) - at(440.0);
+        };
+        const double unscaled = second(0.0), scaled = second(-24.0);
+        std::printf("      a modulator's 2nd harmonic under the fundamental: %.1f dB unscaled, %.1f dB scaled\n",
+                    unscaled, scaled);
+        check(unscaled > -20.0 && scaled < unscaled - 40.0, "level scaling on a modulator takes its index down");
+    }
+    {
+        // Off, it changes nothing: a breakpoint moved with no depth and no rate scaling plays the default patch's
+        // notes sample for sample, a chord in single frames among them.
+        auto play = [](double breakpoint, uint32_t piece) {
+            Engine e(2);
+            e.p[paramIndex(0, OpParam::KeyBreak)] = breakpoint;
+            e.p[paramIndex(0, OpParam::Decay)] = normFromTime(0.3);
+            e.p[paramIndex(0, OpParam::Sustain)] = 0.4;
+            for (int key : {36, 60, 67, 96})
+                e.noteOn(key);
+            std::vector<float> out = e.render(9600, piece);
+            for (int key : {36, 60, 67, 96})
+                e.noteOff(key);
+            const std::vector<float> tail = e.render(4800, piece);
+            out.insert(out.end(), tail.begin(), tail.end());
+            return out;
+        };
+        check(play(60.0, kBlock) == play(100.0, kBlock) && play(60.0, 1) == play(20.0, 1),
+              "keyboard scaling off leaves the sound exactly as it was, wherever its breakpoint is");
+    }
+    {
+        // Rate scaling: at 100 % an octave above the breakpoint halves the envelope's times, an octave below doubles
+        // them; at 50 %, two octaves up halves them. Measured by when a decay to silence, 0.4 s at the breakpoint,
+        // has fallen 40 dB from its start.
+        auto fallTime = [](int key, double amount) {
+            Engine e(2);
+            e.p[paramIndex(0, OpParam::Decay)] = normFromTime(0.4);
+            e.p[paramIndex(0, OpParam::Sustain)] = 0.0;
+            e.p[paramIndex(0, OpParam::KeyBreak)] = 60.0;
+            e.p[paramIndex(0, OpParam::RateScale)] = amount;
+            e.noteOn(key);
+            const std::vector<float> out = e.render(static_cast<size_t>(kSampleRate * 2.0));
+            const size_t window = static_cast<size_t>(kSampleRate / 50.0); // 20 ms, over a C3's period
+            auto peak = [&](size_t from) {
+                float most = 0.0f;
+                for (size_t i = from; i < from + window && i < out.size(); ++i)
+                    most = std::max(most, std::abs(out[i]));
+                return most;
+            };
+            const float start = peak(0);
+            for (size_t at = window; at + window < out.size(); at += window / 20)
+                if (peak(at) < start * 0.01f)
+                    return at / kSampleRate;
+            return 99.0;
+        };
+        const double plain = fallTime(60, 1.0), up = fallTime(72, 1.0), down = fallTime(48, 1.0),
+                     off = fallTime(72, 0.0), halfway = fallTime(84, 0.5);
+        std::printf("      decay to -40 dB: %.3f s at C4, %.3f s at C5, %.3f s at C3 (100 %%); %.3f s at C5 off, "
+                    "%.3f s at C6 (50 %%)\n",
+                    plain, up, down, off, halfway);
+        auto ratio = [](double a, double b, double want) { return std::abs(a / b / want - 1.0) < 0.05; };
+        check(ratio(up, plain, 0.5) && ratio(down, plain, 2.0) && ratio(off, plain, 1.0) && ratio(halfway, plain, 0.5),
+              "rate scaling shortens the envelope's times above the breakpoint and lengthens them below");
+    }
+    {
+        // Its params' text reads back as written, at their ends and between.
+        bool ok = true;
+        for (OpParam f : {OpParam::KeyBreak, OpParam::KeyLeftDepth, OpParam::KeyRightDepth, OpParam::KeyLeftCurve,
+                          OpParam::KeyRightCurve, OpParam::RateScale}) {
+            const int index = paramIndex(2, f);
+            const ParamDef &def = paramTable()[index];
+            for (double v : {def.min, def.def, 0.5 * (def.min + def.max), def.max - (def.max - def.min) * 1e-4, def.max}) {
+                char text[64], again[64];
+                double parsed = 0.0;
+                ok = ok && formatParam(index, v, text, sizeof(text)) && parseParam(index, text, &parsed) &&
+                     formatParam(index, parsed, again, sizeof(again)) && std::strcmp(text, again) == 0;
+            }
+        }
+        char text[64];
+        formatParam(paramIndex(0, OpParam::KeyRightDepth), -6.0, text, sizeof(text));
+        const std::string depth = text;
+        formatParam(paramIndex(0, OpParam::KeyRightCurve), 1.0, text, sizeof(text));
+        std::printf("      a depth reads \"%s\", a curve \"%s\"\n", depth.c_str(), text);
+        check(ok && depth == "-6.0 dB" && std::strcmp(text, "Exp") == 0, "keyboard scaling's params read back as written");
+    }
+}
+
 int main() {
     const int factors[] = {1, 2, 4, 8};
     // --- The decimator: flat up to 20 kHz, and what would fold into the audible band gone.
@@ -3932,6 +4085,7 @@ int main() {
 
     noteAndVoiceChecks();
     bendTelemetryChecks();
+    keyScaleChecks();
 
     // --- What oversampling costs: 16 voices of a 6-operator stack, one second.
     std::printf("cost (16 voices, 6 operators, ms per second of audio):\n");

@@ -39,16 +39,17 @@ inline EnvSegment envSegment(double seconds, double curve, double sampleRate) {
 // timeFromNorm; the attack, decay and release may be 0 ms, see envTimeFromNorm), and each segment arrives in its
 // time; a hold of 0 is none. Curves are -1..1 (see envCurve). After the decay, the level follows sustain changes at
 // the decay's pace, but over 1 ms at least: the sustain moves once a control block, and a 0 ms decay would step
-// along with it.
+// along with it. `speed` divides every time (an operator's rate scaling, see keyRateScale()); at 1 they are as set.
 inline EnvRates envRates(double attack, double hold, double decay, double sustain, double release,
-                         double attackCurve, double decayCurve, double releaseCurve, double sampleRate) {
+                         double attackCurve, double decayCurve, double releaseCurve, double sampleRate,
+                         double speed = 1.0) {
     constexpr double kLn1000 = 6.907755278982137;
-    const double decaySeconds = envTimeFromNorm(decay);
+    const double decaySeconds = envTimeFromNorm(decay) / speed;
     return {
-        envSegment(envTimeFromNorm(attack), attackCurve, sampleRate),
-        hold > 0.0 ? timeFromNorm(hold) * sampleRate : 0.0,
+        envSegment(envTimeFromNorm(attack) / speed, attackCurve, sampleRate),
+        hold > 0.0 ? timeFromNorm(hold) / speed * sampleRate : 0.0,
         envSegment(decaySeconds, decayCurve, sampleRate),
-        envSegment(envTimeFromNorm(release), releaseCurve, sampleRate),
+        envSegment(envTimeFromNorm(release) / speed, releaseCurve, sampleRate),
         sustain,
         std::exp(-kLn1000 / (std::max(decaySeconds, kMinTime) * sampleRate)),
     };

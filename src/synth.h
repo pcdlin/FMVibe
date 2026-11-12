@@ -275,7 +275,7 @@ private:
         int incCopies = 0;     // how many copies incNow holds
         bool incKnown = false; // incNow holds the last block's, not stale: false for a new note and after being off
         Envelope env;
-        Memo<EnvRates, 8> rates; // its envelope's, from its params
+        Memo<EnvRates, 9> rates; // its envelope's, from its params and its rate scaling
         Memo<UnisonIncs, 3> unisonIncs;   // its copies' increments, from its pitch, detune and copies
         Memo<UnisonGains, 2> unisonGains; // and their gains, from its spread and copies
         std::array<NoiseColor::State, 2> noise{}; // the Noise wave's color filters: middle and sides
@@ -300,6 +300,7 @@ private:
     // What renderBlock() ramps sample by sample toward each block's values.
     struct Levels {
         std::array<double, kOps> out{};
+        std::array<double, kOps> keyLevel{}; // an operator's keyboard scaling, a gain on all it puts out (see keyScaleDb())
         std::array<double, kOps> panL{}; // an operator's Pan as left and right gains, on all it puts out but its FM
         std::array<double, kOps> panR{};
         std::array<std::array<double, kFilters>, kOps> send{};

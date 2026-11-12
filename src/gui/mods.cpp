@@ -519,7 +519,7 @@ View::MenuNode View::cascadeCategories() const {
         node.note = nodeOn(op) ? waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))))
                                : tr(Str::CascadeOff);
         const std::string prefix = trf(Str::ParamOp, {kNodeNames[op]});
-        // In two columns, about as tall: the pitch, level, phase and unison, then the envelope and the noise.
+        // In two columns, about as tall: the pitch, level, phase and unison, then the envelope, the keys and the noise.
         const std::pair<Str, std::vector<OpParam>> sections[] = {
             {Str::CascadePitch, {OpParam::Ratio, OpParam::Transpose, OpParam::Detune, OpParam::FixedFreq}},
             {Str::CascadeLevel, {OpParam::Out, OpParam::Pan}},
@@ -528,6 +528,7 @@ View::MenuNode View::cascadeCategories() const {
             {Str::CascadeEnvelope,
              {OpParam::Attack, OpParam::Hold, OpParam::Decay, OpParam::Sustain, OpParam::Release, OpParam::AttackCurve,
               OpParam::DecayCurve, OpParam::ReleaseCurve}},
+            {Str::CascadeKeys, {OpParam::KeyBreak, OpParam::KeyLeftDepth, OpParam::KeyRightDepth, OpParam::RateScale}},
             {Str::CascadeNoise, {OpParam::NoiseSlope}}};
         for (const auto &[title, fields] : sections) {
             node.children.push_back(heading(title));

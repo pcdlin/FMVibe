@@ -2558,6 +2558,22 @@ std::vector<View::Widget> View::widgets() const {
                 knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 322.0f}, 30.0f,
                      tr(envLabels[i]));
         }
+        if (tab == InspectorTab::Keys) {
+            // Keyboard scaling: the breakpoint, each side's depth and the rate scaling as knobs, each side's curve
+            // switch in the display's top corners, and the breakpoint and depths as handles on the display.
+            const int params[] = {paramIndex(op, OpParam::KeyBreak), paramIndex(op, OpParam::KeyLeftDepth),
+                                  paramIndex(op, OpParam::KeyRightDepth), paramIndex(op, OpParam::RateScale)};
+            const Str labels[] = {Str::LabelBreak, Str::LabelLeftDepth, Str::LabelRightDepth, Str::LabelRateScale};
+            const float step = (kInspector.w - 32.0f) / 4.0f;
+            for (int i = 0; i < 4; ++i)
+                knob(params[i], {kInspector.x + 16.0f + step * (i + 0.5f), kKeyScaleKnobsY}, 30.0f, tr(labels[i]));
+            add(Kind::Toggle, keyCurveButton(0), paramIndex(op, OpParam::KeyLeftCurve));
+            add(Kind::Toggle, keyCurveButton(1), paramIndex(op, OpParam::KeyRightCurve));
+            for (int b : {1, 2, 0}) { // the breakpoint last, so it wins where they meet
+                const Point at = keyPoint(op, b);
+                add(Kind::KeyPoint, {at.x - 7.0f, at.y - 7.0f, 14.0f, 14.0f}, params[b], op, b);
+            }
+        }
     } else {
         const int filter = node - kOps;
         for (int t = 0; t < static_cast<int>(FilterType::Count); ++t) // pills, as the waves are
@@ -3221,6 +3237,9 @@ void View::paint(Canvas &c, Rect area) {
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
+    for (const Widget &w : list)
+        if (w.kind == Kind::KeyPoint && (isHovered(w) || isActive(w)))
+            paintKeyReadout(c, w);
     // A switched-off source's card is dimmed below its title row (a folded one's name is already dim).
     c.pushClip(sourceCardClip());
     for (int s : sources()) {
@@ -5789,6 +5808,9 @@ void View::paintInspector(Canvas &c) {
         case InspectorTab::Scope:
             paintScope(c, kScopeRect, op);
             break;
+        case InspectorTab::Keys:
+            paintKeyScale(c, op);
+            break;
         case InspectorTab::Inputs:
         case InspectorTab::Count:
             paintInputs(c, op);
@@ -6025,6 +6047,9 @@ bool View::opTabModulated(int op, InspectorTab tab) const {
         const EnvIndices e = envIndices(op);
         params = {e.attack, e.hold, e.decay, e.sustain, e.release};
     }
+    if (tab == InspectorTab::Keys)
+        params = {paramIndex(op, OpParam::KeyBreak), paramIndex(op, OpParam::KeyLeftDepth),
+                  paramIndex(op, OpParam::KeyRightDepth), paramIndex(op, OpParam::RateScale)};
     for (const Assignment &m : assignments())
         if (std::find(params.begin(), params.end(), m.target) != params.end())
             return true;
@@ -6268,6 +6293,87 @@ void View::paintEnvReadout(Canvas &c, const Widget &w) {
     const float width = c.textWidth(text, kTextLabel);
     c.fillRect({right - width - 5.0f, r.y + 2.0f, width + 10.0f, 14.0f}, kDisplayColor.alpha(0.85f), kRadiusMark);
     c.text({r.x, r.y + 2.0f, right - r.x, 14.0f}, text, kTextLabel, kText, Align::Right);
+}
+
+Point View::keyPoint(int op, int handle) const {
+    const double breakpoint = value(paramIndex(op, OpParam::KeyBreak));
+    if (handle == 0)
+        return {keyScaleX(breakpoint), keyScaleY(0.0)};
+    const Rect plot = keyScalePlot();
+    const float x = keyScaleX(breakpoint + (handle == 1 ? -12.0 : 12.0));
+    // Held inside the display, a little in from its ends, so a breakpoint near one keeps its handle in reach.
+    return {std::clamp(x, plot.x + 4.0f, plot.right() - 4.0f),
+            keyScaleY(value(paramIndex(op, handle == 1 ? OpParam::KeyLeftDepth : OpParam::KeyRightDepth)))};
+}
+
+// The operator's level across the keys, in dB from kKeyScaleTopDb down to kKeyScaleBottomDb: a line at 0 dB, faint
+// lines at each C (C4 marked), the breakpoint's dashed line, the curve with the area under it filled, and, while notes
+// play, the newest voice's key on it. The rate scaling shows as the time its envelope takes at the display's ends.
+void View::paintKeyScale(Canvas &c, int op) {
+    const Rect r = kKeyScaleRect, plot = keyScalePlot();
+    c.fillRect(r, kDisplayColor, kRadiusCard);
+    for (int key = 12; key <= 120; key += 12) {
+        const float x = keyScaleX(key);
+        c.line({x, plot.y}, {x, plot.bottom()}, kBorder.alpha(key == 60 ? 0.9f : 0.45f), 1.0f);
+    }
+    c.text({keyScaleX(60.0) - 20.0f, plot.bottom() + 1.0f, 40.0f, 11.0f}, "C4", kTextSmall, kFaint, Align::Center);
+    c.line({plot.x, keyScaleY(0.0)}, {plot.right(), keyScaleY(0.0)}, kBorder, 1.0f);
+    auto get = [&](OpParam f) { return value(paramIndex(op, f)); };
+    const double breakpoint = get(OpParam::KeyBreak), left = get(OpParam::KeyLeftDepth),
+                 right = get(OpParam::KeyRightDepth), leftCurve = get(OpParam::KeyLeftCurve),
+                 rightCurve = get(OpParam::KeyRightCurve);
+    auto dbAt = [&](double key) { return keyScaleDb(key, breakpoint, left, right, leftCurve, rightCurve); };
+    const float breakX = keyScaleX(breakpoint);
+    c.line({breakX, plot.y}, {breakX, plot.bottom()}, kAccent.alpha(0.45f), 1.0f, true);
+
+    std::vector<double> key = curveKey(Curve::KeyScale, r);
+    key.insert(key.end(), {breakpoint, left, right, leftCurve, rightCurve});
+    const std::vector<Point> points = curves_.get(key, [&] {
+        std::vector<Point> points;
+        for (int k = 0; k <= 254; ++k) // every half note, the breakpoint's own place among them
+            points.push_back({keyScaleX(k * 0.5), keyScaleY(dbAt(k * 0.5))});
+        return points;
+    });
+    std::vector<Point> area = points;
+    area.push_back({plot.right(), plot.bottom()});
+    area.push_back({plot.x, plot.bottom()});
+    c.fillPolygon(area.data(), area.size(), kAccent.alpha(0.12f));
+    plotLine(c, points.data(), points.size(), kAccent, 2.0f);
+
+    // Rate scaling: how much faster the envelope runs at each end of the keys, under the curve switches.
+    if (const double rate = get(OpParam::RateScale); rate > 0.0) {
+        char low[32], high[32];
+        std::snprintf(low, sizeof(low), "\xC3\x97%.2g", 1.0 / keyRateScale(0.0, breakpoint, rate));
+        std::snprintf(high, sizeof(high), "\xC3\x97%.2g", 1.0 / keyRateScale(127.0, breakpoint, rate));
+        c.text({r.x + 44.0f, r.y + 5.0f, 60.0f, 16.0f}, trf(Str::CaptionKeyTimes, {low}), kTextSmall, kDim,
+               Align::Left);
+        c.text({r.right() - 104.0f, r.y + 5.0f, 60.0f, 16.0f}, trf(Str::CaptionKeyTimes, {high}), kTextSmall, kDim,
+               Align::Right);
+    }
+
+    // While notes play, the newest voice's note: a line down through it and a dot where it meets the curve.
+    if (telemetry_.voices > 0 && nodeOn(op)) {
+        const double note = telemetry_.notePitch;
+        const float x = keyScaleX(note);
+        c.line({x, plot.y}, {x, plot.bottom()}, kAccent.alpha(0.35f), 1.0f, true);
+        const Point dot{x, keyScaleY(dbAt(note))};
+        c.fillCircle(dot, 7.0f, kAccent.alpha(0.25f));
+        c.fillCircle(dot, 3.5f, kText);
+    }
+}
+
+void View::paintKeyReadout(Canvas &c, const Widget &w) {
+    char a[32];
+    formatParam(w.param, value(w.param), a, sizeof(a));
+    const std::string text = w.b == 0 ? trf(Str::CaptionKeyBreak, {a})
+                                      : trf(Str::CaptionKeyDepth, {a, tr(w.b == 1 ? Str::CaptionKeyBelow
+                                                                                   : Str::CaptionKeyAbove)});
+    // Over the display's top middle, between the curve switches, on a backdrop of its color.
+    const Rect r = kKeyScaleRect;
+    const float width = c.textWidth(text, kTextLabel);
+    const float x = r.center().x - width * 0.5f;
+    c.fillRect({x - 5.0f, r.y + 5.0f, width + 10.0f, 15.0f}, kDisplayColor.alpha(0.85f), kRadiusMark);
+    c.text({x, r.y + 5.0f, width, 15.0f}, text, kTextLabel, kText, Align::Center);
 }
 
 // How many cycles a random LFO's display shows.
@@ -6749,6 +6855,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
                            : field == FxParam::AmpMic ? tr(kMicShortNames[std::clamp(w.b, 0, 2)])
                            : field == FxParam::MdRms                                            ? tr(Str::SwitchRms)
                            : isJoinSolo(w.param)                                                ? tr(Str::SwitchSolo)
+                           : isKeyCurveParam(w.param)                                           ? tr(Str::SwitchExp)
                                                                                                : tr(Str::SwitchAlways);
         // LFO switches take their LFO's color, effect switches the effects' color.
         Color color = kAccent;
@@ -6829,7 +6936,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto tab = static_cast<InspectorTab>(w.a);
         const bool selected = opTabShown(op) == tab;
         const Str names[] = {isNoise(op) ? Str::TabSpectrum : Str::TabUnison, Str::TabEnvelope, Str::TabScope,
-                             Str::TabInputs};
+                             Str::TabInputs, Str::TabKeys};
         static_assert(std::size(names) == static_cast<size_t>(InspectorTab::Count));
         c.text(w.rect, tr(names[w.a]), kTextLabel, selected || hovered ? kText : kDim, Align::Center, true);
         if (selected)
@@ -7209,6 +7316,15 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         c.fillCircle(center, hovered || active ? 5.5f : 4.0f, hovered || active ? color : kPanel);
         c.strokeCircle(center, hovered || active ? 5.5f : 4.0f, color, 1.8f);
         break; // its readout goes over the other handles (paintEnvReadout())
+    }
+    case Kind::KeyPoint: { // as an envelope's points are; the breakpoint's a ring with a dot in it
+        const Point center = w.rect.center();
+        const bool focused = hovered || active;
+        c.fillCircle(center, focused ? 5.5f : 4.0f, focused ? kAccent : kPanel);
+        c.strokeCircle(center, focused ? 5.5f : 4.0f, kAccent, 1.8f);
+        if (w.b == 0 && !focused)
+            c.fillCircle(center, 1.6f, kAccent);
+        break; // its readout goes over the other handles (paintKeyReadout())
     }
     case Kind::FilterPoint: {
         const Point center = w.rect.center();
@@ -9310,6 +9426,13 @@ void View::applyDrag(Point p) {
         // Dragging up lifts the middle of the segment: a faster attack start, a slower decay or release start.
         set(w.param, drag_.startValue + (w.b == 0 ? 1.0 : -1.0) * (drag_.start.y - p.y) / 100.0);
         break;
+    case DragKind::KeyPoint:
+        // The breakpoint across, onto whole notes; a depth up and down, where its handle sits an octave out.
+        if (w.b == 0)
+            set(w.param, std::round(keyScaleKey(p.x)));
+        else
+            set(w.param, keyScaleDbAt(p.y));
+        break;
     case DragKind::FilterPoint: {
         const Rect r = w.b == 1 ? fxFilterArea(w.a) : kFilterDisplay;
         const std::vector<int> params = filterPointParams(w.a, w.b);
@@ -9769,6 +9892,10 @@ void View::mouseDown(Point p, Modifiers mods) {
         drag_.kind = DragKind::FilterPoint;
         for (int index : filterPointParams(w.a, w.b))
             controller_.beginEdit(index);
+        break;
+    case Kind::KeyPoint:
+        drag_.kind = DragKind::KeyPoint;
+        controller_.beginEdit(w.param);
         break;
     case Kind::DynZone: // up and down for its ratio, as on a knob; its band's knobs show
         fxBand_[w.a] = w.b / 2;
@@ -10398,6 +10525,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::Value:
     case DragKind::EnvPoint:
     case DragKind::EnvCurve:
+    case DragKind::KeyPoint:
     case DragKind::FilterPoint:
     case DragKind::PeqPoint:
     case DragKind::AmpMic:
@@ -10505,6 +10633,7 @@ void View::finishDrag() {
         controller_.endEdit(w.param);
         break;
     case DragKind::EnvCurve:
+    case DragKind::KeyPoint:
     case DragKind::ShapeCurve:
     case DragKind::ModWheel:
     case DragKind::SplitPoint:
@@ -10729,6 +10858,7 @@ bool View::dragsOnTouch(const Widget &w) const {
     case Kind::MacroHandle:
     case Kind::EnvPoint:
     case Kind::EnvCurve:
+    case Kind::KeyPoint:
     case Kind::FilterPoint:
     case Kind::DynZone:
     case Kind::DynGrip:
@@ -10942,6 +11072,10 @@ void View::doubleClick(Point p, Modifiers mods) {
     }
     if (hit && hit->kind == Kind::SettingsLinks) {
         controller_.setLinkIntensity(Controller::kDefaultLinkIntensity);
+        return;
+    }
+    if (hit && hit->kind == Kind::KeyPoint) { // the breakpoint back to C4, a depth to none
+        edit(hit->param, table_[hit->param].def);
         return;
     }
     if (hit && hit->kind == Kind::UtilityHandle) { // back where it starts
@@ -11797,6 +11931,8 @@ CursorKind View::cursor() const {
         return CursorKind::Horizontal;
     case Kind::ModsCurve:
         return CursorKind::Vertical;
+    case Kind::KeyPoint: // the breakpoint across, a depth up and down
+        return w->b == 0 ? CursorKind::Horizontal : CursorKind::Vertical;
     case Kind::Node:
     case Kind::EnvPoint:
     case Kind::FilterPoint:

@@ -90,6 +90,8 @@ STR(RoutePhase, "Phase")
 STR(RouteLinearFm, "Linear FM")
 STR(RouteExpFm, "Exp FM")
 STR(RouteRing, "Ring")
+STR(KeyCurveLinear, "Linear") // a keyboard scaling side's curve
+STR(KeyCurveExp, "Exp")
 
 // The effects, in the list that adds them and on the host's pages.
 STR(FxEmpty, "Empty")
@@ -154,6 +156,12 @@ STR(ParamFmAmount, "FM Amount")
 STR(ParamBendRange, "Bend Range")
 STR(ParamPitch, "Pitch")
 STR(ParamPan, "Pan")
+STR(ParamKeyBreak, "Key Break") // keyboard scaling's breakpoint
+STR(ParamKeyLeftDepth, "Key L Depth")
+STR(ParamKeyRightDepth, "Key R Depth")
+STR(ParamKeyLeftCurve, "Key L Curve")
+STR(ParamKeyRightCurve, "Key R Curve")
+STR(ParamRateScale, "Rate Scale") // how much higher notes shorten its envelope
 STR(ParamVoices, "Voices")
 STR(ParamMono, "Mono")
 STR(ParamLegato, "Legato")
@@ -458,6 +466,7 @@ STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
 STR(TabEnvelope, "ENVELOPE")
 STR(TabScope, "SCOPE")
 STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
+STR(TabKeys, "KEYS") // keyboard scaling: its level and envelope across the keys
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -505,6 +514,10 @@ STR(LabelVolume, "Volume")
 STR(LabelFmAmount, "FM Amount")
 STR(LabelPitch, "Pitch")
 STR(LabelPan, "Pan")
+STR(LabelBreak, "Break") // keyboard scaling's breakpoint
+STR(LabelLeftDepth, "L Depth")
+STR(LabelRightDepth, "R Depth")
+STR(LabelRateScale, "Rate")
 STR(LabelGlide, "Glide")
 STR(LabelBend, "Bend")
 STR(LabelVoices, "Voices")
@@ -585,6 +598,7 @@ STR(SwitchMono, "MONO")
 STR(SwitchLegato, "LEGATO")
 STR(SwitchAlways, "ALWAYS") // the glide's
 STR(SwitchStereo, "STEREO")
+STR(SwitchExp, "EXP") // a keyboard scaling side's curve: lit exponential, dark linear
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
 STR(SwitchSnap, "Snap") // an LFO's shape points to the grid
@@ -722,6 +736,11 @@ STR(CaptionUtility, "{1}  ·  {2}") // the utility's gain and pan
 STR(CaptionUtilityMonoBass, "mono < {1}") // on the utility's Mono Bass line: below it, the sound is mono
 STR(CaptionShiftOf, "{1}  ·  of {2}")
 STR(CaptionHold, "hold {1}")
+STR(CaptionKeyBreak, "break {1}") // keyboard scaling's handles, over its display
+STR(CaptionKeyDepth, "{1} an octave {2}") // a depth, then below or above
+STR(CaptionKeyBelow, "below")
+STR(CaptionKeyAbove, "above")
+STR(CaptionKeyTimes, "times {1}") // an envelope's times at one end of the keys, by rate scaling
 STR(CaptionResonance, "{1}  ·  res {2}")
 STR(CaptionEnvCurve, "{1} curve  ·  {2}") // an envelope segment's knob label, then its curve
 STR(CaptionFeedback, "fb {1}") // an operator's feedback on its wire label
@@ -1020,6 +1039,7 @@ STR(CascadePhase, "PHASE")
 STR(CascadeEnvelope, "ENVELOPE")
 STR(CascadeUnison, "UNISON")
 STR(CascadeNoise, "NOISE")
+STR(CascadeKeys, "KEYS") // keyboard scaling
 STR(CascadeFields, "SETTINGS") // a source's own knobs, before the depths of its modulations
 STR(CascadeDepths, "DEPTHS")
 STR(CascadeFeedback, "Feedback") // a node into itself, in the matrix's list

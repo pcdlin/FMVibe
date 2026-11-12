@@ -103,8 +103,8 @@ inline Rect clipEditButton(Rect display) {
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
 inline Rect opTab(int tab) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS by InspectorTab; along the line ENVELOPE, UNISON, INPUTS, SCOPE
-    constexpr float kX[] = {78.0f, 0.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f, 52.0f};
+    // UNISON, ENVELOPE, SCOPE, INPUTS, KEYS by InspectorTab; along the line ENVELOPE, UNISON, INPUTS, SCOPE, KEYS
+    constexpr float kX[] = {70.0f, 0.0f, 180.0f, 126.0f, 230.0f}, kW[] = {56.0f, 74.0f, 50.0f, 54.0f, 38.0f};
     return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
 }
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
@@ -122,6 +122,35 @@ inline Rect inputsModeName(float y) { return {kInspector.x + 158.0f, y, 74.0f, 1
 inline Rect inputsDepth(float y) { return {kInspector.x + kInspector.w - 16.0f - 48.0f, y, 48.0f, 18.0f}; }
 // Envelope: the curve, its knobs under it at y + 322.
 constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
+// Keys: keyboard scaling's display, the keys across (MIDI 0 to 127) and the level up and down (kKeyScaleTopDb at its
+// top, kKeyScaleBottomDb at its bottom), with each side's curve switch in its top corners; its knobs under it at
+// y + 322, as the envelope's.
+constexpr Rect kKeyScaleRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
+constexpr float kKeyScaleTopDb = 24.0f, kKeyScaleBottomDb = -48.0f;
+constexpr float kKeyScaleKnobsY = kInspector.y + 322.0f;
+inline Rect keyScalePlot() { return {kKeyScaleRect.x + 10.0f, kKeyScaleRect.y + 26.0f, kKeyScaleRect.w - 20.0f, kKeyScaleRect.h - 38.0f}; }
+inline float keyScaleX(double key) {
+    const Rect r = keyScalePlot();
+    return r.x + static_cast<float>(std::clamp(key, 0.0, 127.0) / 127.0) * r.w;
+}
+inline double keyScaleKey(float x) { // the key at x, held to the keys
+    const Rect r = keyScalePlot();
+    return std::clamp(static_cast<double>((x - r.x) / r.w) * 127.0, 0.0, 127.0);
+}
+inline float keyScaleY(double db) {
+    const Rect r = keyScalePlot();
+    const double clamped = std::clamp(db, static_cast<double>(kKeyScaleBottomDb), static_cast<double>(kKeyScaleTopDb));
+    return r.y + static_cast<float>((kKeyScaleTopDb - clamped) / (kKeyScaleTopDb - kKeyScaleBottomDb)) * r.h;
+}
+inline double keyScaleDbAt(float y) {
+    const Rect r = keyScalePlot();
+    return kKeyScaleTopDb - static_cast<double>((y - r.y) / r.h) * (kKeyScaleTopDb - kKeyScaleBottomDb);
+}
+// A side's curve switch (0 the left side's, 1 the right's): EXP, lit while it is exponential.
+inline Rect keyCurveButton(int side) {
+    return {side == 0 ? kKeyScaleRect.x + 6.0f : kKeyScaleRect.right() - 6.0f - 34.0f, kKeyScaleRect.y + 5.0f, 34.0f,
+            16.0f};
+}
 // Unison: the knobs at y + 206, where the copies sit under them.
 constexpr float kUnisonKnobsY = kInspector.y + 206.0f;
 constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 102.0f};

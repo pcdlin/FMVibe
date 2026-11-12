@@ -54,7 +54,7 @@ namespace fmvibe::gui::detail {
 // What tells the curves apart in a PointCache key: its first value, then where the curve goes.
 enum class Curve {
     Filter = 1, ParamEq, Sweep, Driven, Drawn, Shaper, LfoEditor, ClipEditor, NoteEditor, NoteExact, Partials, Lfo,
-    Envelope, Eq, LfoIcon, WaveIcon, ModeIcon, FilterIcon, PeqIcon, PolarityIcon, VelocityEditor, RouteIcon,
+    Envelope, Eq, LfoIcon, WaveIcon, ModeIcon, FilterIcon, PeqIcon, PolarityIcon, VelocityEditor, RouteIcon, KeyScale,
 };
 inline std::vector<double> curveKey(Curve curve, Rect r) {
     return {static_cast<double>(curve), r.x, r.y, r.w, r.h};
