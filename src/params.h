@@ -101,8 +101,20 @@ enum class OpParam {
     Ratio,                          // 0..1 on a log curve, 0.5 to 64 times the note; see ratioFromNorm()
     Pan,                            // -1..1: where what it puts out (to the output, the filters, the shapers) sits;
                                     // what other operators hear of it stays mono
+    // Keyboard scaling (see keyScaleDb() and keyRateScale()): its level, in dB, falls or rises with the note's distance
+    // from the breakpoint, each side by its depth and curve; and higher notes shorten its envelope's times.
+    KeyBreak,      // the breakpoint, a MIDI note (NotePitch); C4 to begin with
+    KeyLeftDepth,  // dB the level moves an octave below the breakpoint, -kMaxKeyDepthDb..kMaxKeyDepthDb; 0 is none
+    KeyRightDepth, // likewise an octave above it
+    KeyLeftCurve,  // KeyCurve, by number: how it goes on past that octave
+    KeyRightCurve,
+    RateScale,     // 0..1: at 1, its envelope's times halve every octave above the breakpoint (double below); 0 is none
     Count
 };
+// How keyboard scaling goes on past the first octave from the breakpoint: Linear adds the depth again every octave (a
+// straight line in dB); Exp doubles what it adds each octave, steep far from the breakpoint as the classic FM chips'
+// exponential curves are. Each side's sign is its depth's. Stored in projects by number: only append.
+enum class KeyCurve { Linear, Exp, Count };
 // Slope: 6, 12, 18 or 24 dB per octave, for the types that have one (see hasSlope() and filterSlope()).
 // Shapers: how much of the filter goes into each shaper (see filterShaperIndex()). Mix, added later, blends what goes
 // in (before Drive) with what the filter makes of it, as the filter effect's does: 1 (to begin with) all filter.
@@ -1492,7 +1504,9 @@ static_assert(idOfIndex(paramIndex(0, OpParam::RetiredCoarse)) == 100 && idOfInd
                   idOfIndex(paramIndex(0, OpParam::RetiredVelocity)) == 108 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Phase)) == 378 &&
                   idOfIndex(paramIndex(kOps - 1, OpParam::Ratio)) == 379 &&
-                  idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 && kOpParamCount <= 50,
+                  idOfIndex(paramIndex(kOps - 1, OpParam::Pan)) == 380 &&
+                  idOfIndex(paramIndex(0, OpParam::KeyBreak)) == 131 &&
+                  idOfIndex(paramIndex(kOps - 1, OpParam::RateScale)) == 386 && kOpParamCount <= 50,
               "operator param ids moved");
 static_assert(idOfIndex(matrixIndex(0, 0)) == 400 && idOfIndex(matrixIndex(kOps - 1, kOps - 1)) == 455,
               "matrix param ids moved");
@@ -1660,6 +1674,8 @@ static_assert(numberedInOrder({AmpCab::Open1x12, AmpCab::Open2x12, AmpCab::Close
               "AmpCab is stored by number: only append");
 static_assert(numberedInOrder({AmpMic::Dynamic, AmpMic::Condenser, AmpMic::Ribbon, AmpMic::Count}),
               "AmpMic is stored by number: only append");
+static_assert(numberedInOrder({KeyCurve::Linear, KeyCurve::Exp, KeyCurve::Count}),
+              "KeyCurve is stored by number: only append");
 static_assert(numberedInOrder({MidiInput::Cc, MidiInput::Pressure, MidiInput::Slide, MidiInput::Count}),
               "MidiInput is stored by number: only append");
 static_assert(numberedInOrder({SourceType::None, SourceType::Lfo, SourceType::Env, SourceType::Random,
@@ -1757,6 +1773,35 @@ inline std::array<double, 2> splitCrossovers(double lowNorm, double highNorm) {
 // Pitches in semitones (MIDI numbering, 69 is A4 at 440 Hz) and frequencies.
 inline double pitchOfHz(double hz) { return 69.0 + 12.0 * std::log2(hz / 440.0); }
 inline double hzOfPitch(double pitch) { return 440.0 * std::exp2((pitch - 69.0) / 12.0); }
+// Keyboard scaling (see OpParam::KeyBreak): an operator's level moves by its depth (dB) an octave from the breakpoint,
+// each side by its own; past that, a Linear side adds its depth every octave, an Exp one doubles what it adds every
+// octave. Held within kKeyScaleFloorDb..kKeyScaleCeilingDb, so a boosted modulator can't run away and a cut one ends
+// silent. The note is the key a voice plays (gliding with it), not the bend.
+constexpr double kMaxKeyDepthDb = 24.0;
+constexpr double kKeyScaleCeilingDb = 24.0;
+constexpr double kKeyScaleFloorDb = -96.0;
+constexpr double kDefaultKeyBreak = 60.0; // C4
+inline double keyScaleDb(double key, double breakpoint, double leftDepth, double rightDepth, double leftCurve,
+                         double rightCurve) {
+    const bool left = key < breakpoint;
+    const double depth = left ? leftDepth : rightDepth;
+    if (depth == 0.0 || !std::isfinite(key) || !std::isfinite(breakpoint))
+        return 0.0;
+    const double octaves = std::min(std::abs(key - breakpoint) / 12.0, 16.0);
+    const bool exp = std::lround(left ? leftCurve : rightCurve) == static_cast<long>(KeyCurve::Exp);
+    const double db = depth * (exp ? std::exp2(octaves) - 1.0 : octaves);
+    return std::clamp(db, kKeyScaleFloorDb, kKeyScaleCeilingDb);
+}
+// The gain that is: exactly 1 when nothing scales it, so a patch without keyboard scaling plays as it did.
+inline double keyScaleGain(double db) { return db == 0.0 ? 1.0 : std::pow(10.0, db / 20.0); }
+// How much faster an operator's envelope runs for a key (its times divided by this): 2 to the power of Rate Scale times
+// the octaves above the breakpoint (below it, slower), held to kMaxRateScaleSpeed either way; exactly 1 at 0 %.
+constexpr double kMaxRateScaleSpeed = 16.0;
+inline double keyRateScale(double key, double breakpoint, double amount) {
+    if (!(amount > 0.0) || !std::isfinite(key) || !std::isfinite(breakpoint))
+        return 1.0;
+    return std::clamp(std::exp2(amount * (key - breakpoint) / 12.0), 1.0 / kMaxRateScaleSpeed, kMaxRateScaleSpeed);
+}
 // The top of the note source's range: the pitch at the cutoff knobs' top, 20 kHz, D#10 +8, past G9, the highest
 // MIDI note (C-1, the lowest, is its bottom).
 inline const double kMaxNotePitch = pitchOfHz(kMaxCutoff);
@@ -1802,6 +1847,13 @@ inline int fixedSwitchOp(int index) {
         if (index == paramIndex(op, OpParam::Fixed))
             return op;
     return -1;
+}
+// Whether the param is one of an operator's keyboard scaling curves (OpParam::KeyLeftCurve or KeyRightCurve).
+inline bool isKeyCurveParam(int index) {
+    if (index < kOpBase || index >= kOpBase + kOps * kOpParamCount)
+        return false;
+    const auto field = static_cast<OpParam>((index - kOpBase) % kOpParamCount);
+    return field == OpParam::KeyLeftCurve || field == OpParam::KeyRightCurve;
 }
 // The old Coarse was stepped 0..32, 0 standing for a ratio of 0.5; states before Ratio load through it.
 inline double coarseRatio(double coarse) {
@@ -2277,6 +2329,8 @@ enum class ParamKind {
     AmpDistance,  // 0..1 on a log curve, shown in cm or m; see ampDistanceCm()
     Fader,        // 0..1, a gain from silence to +12 dB, shown in dB down to -inf dB; see utilityGain()
     CutoffOrOff,  // like Cutoff, but 0 is Off; see utilityMonoBassHz()
+    KeyDepth,     // bipolar dB: a keyboard scaling depth, an octave from the breakpoint (see keyScaleDb())
+    KeyCurve,     // stepped: a keyboard scaling side's curve (see KeyCurve)
 };
 // A port's name: "In", "FX 3", "Split 1 Low"; "None" for -1.
 std::string fxPortName(int port);

@@ -20,10 +20,10 @@ constexpr int kNodes = kOps + kFilters + kShapers;
 enum class RoutingView { Graph, Matrix, Fx, Mods };
 
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
-// the page (Envelope, Unison, Inputs, Scope) is layout.h's opTab(). A noise operator shows
+// the page (Envelope, Unison, Inputs, Scope, Keys) is layout.h's opTab(). A noise operator shows
 // its spectrum in Unison's place, and its envelope in Scope's.
 // Stored in the layout by number: only append.
-enum class InspectorTab { Unison, Envelope, Scope, Inputs, Count };
+enum class InspectorTab { Unison, Envelope, Scope, Inputs, Keys, Count };
 
 // How many of the operator's cycles the scope shows across.
 constexpr int kScopeCycleChoices[] = {1, 2, 4};

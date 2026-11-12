@@ -7,8 +7,8 @@ feature.
 
 ## Ground rules
 
-- Parameter ids, the wave, filter type, effect type, source type, amp model, cabinet, mic and fixed Mult lists, and
-  the state layout are
+- Parameter ids, the wave, filter type, effect type, source type, amp model, cabinet, mic, fixed Mult and keyboard
+  scaling curve lists, and the state layout are
   stored in host projects and preset files: follow the rules under [Plugin facts](#plugin-facts) when touching them.
 - Keep `ctest` green (the CLAP and VST3 smoke tests, audio quality, UI snapshots). New editor interactions get a
   replay in `tools/uishot.cpp`, new engine behavior a check in `tests/smoke_host.cpp` or `tests/quality.cpp`, and
@@ -132,6 +132,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - unison copies spread across the stereo field (and match when centered);
   - an operator's Pan placing it, equal-power, through a filter too, and a modulator's leaving what it modulates
     alone;
+  - keyboard scaling set by the host: an A4 an octave over its operator's breakpoint at half the level for a right
+    depth of -6 dB, linear or exponential, and a breakpoint moved with no depth leaving it as it was, sample for
+    sample;
   - mono: a new key takes the voice over, letting go returns to the held key, and every note reports `NOTE_END`
     exactly once;
   - the sustain pedal (CC 64) holding a note let go until it comes up; a key struck again under it letting its held
@@ -280,6 +283,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     note, standing still from one span to the next: a sine, a wave crossing 0 many times a period, one repeating
     every other period and a high note's over more periods; falling silent with the output, and nothing once
     switched off;
+  - keyboard scaling: an operator's level moved by its depth an octave from the breakpoint on either side (half an
+    octave half as far, two octaves twice as far linear and three times exponential), held at its floor; on a
+    modulator taking the index down with it (its 2nd harmonic all but gone two octaves up); off, wherever its
+    breakpoint is, leaving the sound sample for sample as it was; rate scaling halving the envelope's times an
+    octave up at 100 % (two octaves at 50 %) and doubling them an octave down; and its params' text reading back;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -479,6 +487,11 @@ the plain CMake commands and installing into a host are in the [README](README.m
     operator's output (and a noise operator's, or a hidden one's, for none), its trace drawn over 2 and 4 cycles
     and as a slow span fills, the faint plain wave with no note, a hidden tab's dot while one of its knobs is
     modulated (read off the rendered pixels), and a dragged handle opening the tab it is held over;
+  - an operator page's KEYS tab: its breakpoint dragged across onto whole notes and its depths up and down, each an
+    undo step closing its gesture, undone one at a time, and a double-click putting the breakpoint back on C4; its
+    EXP switch making its side exponential (the curve three octaves out leaving its linear place, read off the
+    rendered pixels); a dot on the curve at the newest voice's key (read off the rendered pixels); and the tab's dot
+    while its rate scaling is modulated and it is hidden (read off the rendered pixels);
   - an operator's Ratio readout: each digit dragged by its own place, carrying and held to 64.00, each drag an undo
     step; the wheel stepping the digit under the mouse, a double-click rounding to it, its depth handle dragging an octave every 60 px, the hovered digit lit (read off
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
@@ -905,7 +918,8 @@ itself.
   `FMVIBE_VERSION`: the plugin descriptor reports it to hosts and the settings dialog shows it. FMVibe is released
   under the MIT license (`LICENSE`).
 - Parameter ids are stored in host projects and automation. `src/params.h` derives them per section with spare
-  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult and Phase; the
+  room: globals 0+, operators 100 + 50·op (their filter and shaper sends, then Fixed, Freq, Mult, Phase, Ratio, Pan and keyboard
+  scaling's six fields; the
   9th field, once Velocity, does nothing and is hidden, kept so the ids after it stay, as are the first two, once
   Coarse and Fine, since Ratio after Phase), matrix
   400 + 10·from + to, filter modulation
@@ -941,7 +955,7 @@ itself.
   read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic and fixed Mult lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic, keyboard scaling curve and fixed Mult lists, the routing views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -955,7 +969,7 @@ itself.
   ("Mod 3 Rate"), since a name can't follow the type. A MIDI source takes CLAP MIDI events
   (controllers, channel and polyphonic aftertouch) and CLAP's pressure and brightness note expressions, as its Input
   picks.
-- Hosts are given 1,262 of the 19,381 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
+- Hosts are given 1,298 of the 19,641 params (`hostParamCount()`, `hostParamIndex()`, `hostListed()` in
   `src/params.h`), 896 of them the slots' depths and Amounts. The editor's alone are those the table marks
   `CLAP_PARAM_IS_HIDDEN` (the drawn shapes and curves, the Custom waves' partials and counts, the chain's retired order, the
   feedback's route modes and the retired fields), every slot's target, aux, curve and bypass, the effect slots'
@@ -1050,7 +1064,7 @@ see.
 ## Next steps
 
 - Presets: the `clap.preset-load` extension and preset discovery, so hosts can browse FMVibe's presets too.
-- Sound: fixed-frequency operators, key scaling, oversampling for high-index patches.
+- Sound: fixed-frequency operators, oversampling for high-index patches.
 - AU and standalone builds: [clap-wrapper](https://github.com/free-audio/clap-wrapper) builds these from the
   CLAP plugin. The plugins' editor is Windows-only for now (the browser demo has its own drawing backend).
 - VST3: a `moduleinfo.json` in the bundle, for hosts that scan with it.

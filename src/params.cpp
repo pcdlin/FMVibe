@@ -53,6 +53,8 @@ constexpr Str kAmpMicNames[] = {Str::MicDynamic, Str::MicCondenser, Str::MicRibb
 static_assert(std::size(kAmpMicNames) == static_cast<size_t>(AmpMic::Count));
 constexpr Str kRouteModeNames[] = {Str::RoutePhase, Str::RouteLinearFm, Str::RouteExpFm, Str::RouteRing};
 static_assert(std::size(kRouteModeNames) == static_cast<size_t>(RouteMode::Count));
+constexpr Str kKeyCurveNames[] = {Str::KeyCurveLinear, Str::KeyCurveExp};
+static_assert(std::size(kKeyCurveNames) == static_cast<size_t>(KeyCurve::Count));
 constexpr Str kFxNames[] = {Str::FxEmpty,     Str::FxShaper,      Str::FxDelay,      Str::FxDjEq,
                             Str::FxParamEq,   Str::FxFilter,      Str::FxCompressor, Str::FxMultiComp,
                             Str::FxReverb,    Str::FxPhaser,      Str::FxFlanger,    Str::FxFreqShifter,
@@ -160,7 +162,7 @@ void buildTable(ParamTable &t) {
             kind == ParamKind::ClipMode || kind == ParamKind::FxType || kind == ParamKind::SourceType ||
             kind == ParamKind::PeqType || kind == ParamKind::ReverbType || kind == ParamKind::MidiInput ||
             kind == ParamKind::RouteMode || kind == ParamKind::AmpModel || kind == ParamKind::AmpCab ||
-            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling)
+            kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling || kind == ParamKind::KeyCurve)
             flags |= CLAP_PARAM_IS_ENUM;
         t[index] = {idOfIndex(index), std::move(name), std::move(module), kind, min, max, def, flags};
     };
@@ -321,6 +323,20 @@ void buildTable(ParamTable &t) {
             0.0, 1.0, normFromFixedFreq(440.0));
         add(paramIndex(op, OpParam::FixedMult), name + " " + tr(Str::ParamFixedMult), module, ParamKind::FixedMult,
             0.0, kFixedMultCount - 1.0, 3.0);
+        // Keyboard scaling, off to begin with: no depth either side and no rate scaling, so the operator plays every
+        // key as set (see keyScaleDb() and keyRateScale()).
+        add(paramIndex(op, OpParam::KeyBreak), name + " " + tr(Str::ParamKeyBreak), module, ParamKind::NotePitch, 0.0,
+            127.0, kDefaultKeyBreak);
+        add(paramIndex(op, OpParam::KeyLeftDepth), name + " " + tr(Str::ParamKeyLeftDepth), module,
+            ParamKind::KeyDepth, -kMaxKeyDepthDb, kMaxKeyDepthDb, 0.0);
+        add(paramIndex(op, OpParam::KeyRightDepth), name + " " + tr(Str::ParamKeyRightDepth), module,
+            ParamKind::KeyDepth, -kMaxKeyDepthDb, kMaxKeyDepthDb, 0.0);
+        add(paramIndex(op, OpParam::KeyLeftCurve), name + " " + tr(Str::ParamKeyLeftCurve), module,
+            ParamKind::KeyCurve, 0.0, static_cast<double>(KeyCurve::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::KeyRightCurve), name + " " + tr(Str::ParamKeyRightCurve), module,
+            ParamKind::KeyCurve, 0.0, static_cast<double>(KeyCurve::Count) - 1.0, 0.0);
+        add(paramIndex(op, OpParam::RateScale), name + " " + tr(Str::ParamRateScale), module, ParamKind::Percent, 0.0,
+            1.0, 0.0);
         // The Custom wave starts as a sine: the first partial alone, of 32.
         add(partialCountIndex(op), name + " " + tr(Str::ParamPartials), module, ParamKind::ShapeCount,
             kPartialCounts[0], kPartials, kDefaultPartials);
@@ -1086,12 +1102,14 @@ bool isStepped(ParamKind kind) {
            kind == ParamKind::FilterSlope || kind == ParamKind::SlotBypass || kind == ParamKind::PeqType ||
            kind == ParamKind::ReverbType || kind == ParamKind::FixedMult || kind == ParamKind::SlotAux ||
            kind == ParamKind::MidiInput || kind == ParamKind::RouteMode || kind == ParamKind::AmpModel ||
-           kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling;
+           kind == ParamKind::AmpCab || kind == ParamKind::AmpMic || kind == ParamKind::AmpOversampling ||
+           kind == ParamKind::KeyCurve;
 }
 
 bool isBipolar(ParamKind kind) {
     return kind == ParamKind::BipolarPercent || kind == ParamKind::Cents || kind == ParamKind::SemitoneOffset ||
-           kind == ParamKind::Transpose || kind == ParamKind::Pan || kind == ParamKind::EqGain || kind == ParamKind::DelayTone;
+           kind == ParamKind::Transpose || kind == ParamKind::Pan || kind == ParamKind::EqGain || kind == ParamKind::DelayTone ||
+           kind == ParamKind::KeyDepth;
 }
 
 bool formatParam(int index, double value, char *out, uint32_t capacity) {
@@ -1278,6 +1296,12 @@ bool formatParam(int index, double value, char *out, uint32_t capacity) {
     case ParamKind::RouteMode:
         std::snprintf(out, capacity, "%s", nameAt(kRouteModeNames, value));
         break;
+    case ParamKind::KeyCurve:
+        std::snprintf(out, capacity, "%s", nameAt(kKeyCurveNames, value));
+        break;
+    case ParamKind::KeyDepth: // never "-0.0"
+        std::snprintf(out, capacity, "%+.1f dB", std::abs(value) < 0.05 ? 0.0 : value);
+        break;
     case ParamKind::MidiInput:
         std::snprintf(out, capacity, "%s", nameAt(kMidiInputNames, value));
         break;
@@ -1373,6 +1397,7 @@ bool parseParam(int index, const char *text, double *out) {
                       : def.kind == ParamKind::AmpMic       ? findName(kAmpMicNames, text)
                       : def.kind == ParamKind::MidiInput    ? findName(kMidiInputNames, text)
                       : def.kind == ParamKind::RouteMode    ? findName(kRouteModeNames, text)
+                      : def.kind == ParamKind::KeyCurve     ? findName(kKeyCurveNames, text)
                                                             : -1;
     if (named >= 0) {
         *out = named;
@@ -1606,6 +1631,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::AmpMic:
     case ParamKind::MidiInput:
     case ParamKind::RouteMode:
+    case ParamKind::KeyCurve:
     case ParamKind::FxOrder:
     case ParamKind::FxPosition:
     case ParamKind::FxPort:
@@ -1660,6 +1686,7 @@ bool parseParam(int index, const char *text, double *out) {
     case ParamKind::Transpose:
     case ParamKind::NotePitch: // a bare number is a MIDI note
     case ParamKind::Decibel:
+    case ParamKind::KeyDepth:
     case ParamKind::Cents:
     case ParamKind::CentsAmount:
     case ParamKind::SemitoneOffset:

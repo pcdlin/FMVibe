@@ -54,6 +54,22 @@ What the plugin does and how its editor works, in full. Building and installing 
     filters and shapers (which are stereo, so a panned operator stays where it is through them), and its unison
     copies' spread with it; what other operators hear of it is the mono sum, so a modulator's Pan changes nothing it
     modulates, and does nothing unless the operator is also heard;
+  - **Keyboard scaling** (off by default), as the classic FM synths have it, so a modulator's index can fall away up
+    the keyboard, or a carrier be louder low down:
+    - **Level scaling**: a **Breakpoint** (a note, C4 to begin with) and, for each side of it, a **Depth** (−24 to
+      +24 dB, 0 to begin with) and a **Curve** (Linear, to begin with, or Exp). The operator's level moves by a side's
+      depth an octave from the breakpoint (down for a negative depth, up for a positive one); past that, a linear side
+      adds its depth again every octave (a straight line in dB), an exponential one doubles what it adds every octave
+      (6, then 18, then 42 dB down at −6 dB). It is held between −96 dB and +24 dB. It scales all the operator puts
+      out (to the output, the filters and shapers, and the operators it modulates, so on a modulator it is the index),
+      by the key the voice plays, gliding with it (the pitch bend leaves it alone), and moves smoothly when it changes;
+    - **Rate scaling** (0 to 100 %, 0 to begin with): how much faster the operator's envelope runs above the
+      breakpoint, and slower below it. At 100 % its attack, hold, decay and release halve every octave up and double
+      every octave down, at 50 % every two octaves, held to 16 times either way.
+
+    The depths, the breakpoint and the rate scaling can be modulated and automated; the curves are switches. Off
+    (no depth and no rate scaling), wherever its breakpoint is, the operator plays exactly as it did, so projects and
+    presets from before it sound as they did;
   - **Phase**: where a note starts the waveform, 0 to 100 % of a cycle (0 % by default; a sine at 25 % starts at
     its peak). It is read as a note starts, with the host's and the sources' modulation on it then, and holds for the
     note. A noise operator has none. Operators don't follow velocity themselves: velocity reaches them as a source
@@ -1022,7 +1038,7 @@ one may have changed since it last did.
       can't be modulated), goes. A source that modulates the
       target already, or has no slot free, is listed faintly, saying why, and can't be picked. The target's lists
       every target by category: Global (but the mod wheel, which is played rather than set); Operators, each with
-      its params in two columns, under PITCH, LEVEL, PHASE and UNISON, and beside them ENVELOPE and NOISE;
+      its params in two columns, under PITCH, LEVEL, PHASE and UNISON, and beside them ENVELOPE, KEYS and NOISE;
       the Matrix, by the node a route comes from (into each other node it can feed, out, and its feedback last); Filters; Shapers; Effects,
       only those in the line, in its order, each with the knobs of its type, then each split's crossover (its two
       in three bands) and each join's High and Low levels (and Mid); and Modulation, each LFO's and
@@ -1222,6 +1238,15 @@ one may have changed since it last did.
       operator, whose cycles take longer than a fifth of a second, is drawn as it goes, up to a line, what is left
       of the last span faint after it. With no note playing, the wave's plain shape shows faintly. The audio thread
       captures only while the tab is shown.
+    - **KEYS**: the operator's keyboard scaling. Its display runs across the keys (C−1 to G9, a faint line at each C,
+      C4 marked) and up and down in dB (+24 at the top, −48 at the bottom, a line at 0 dB): the level each key plays
+      the operator at, the area under it filled, the breakpoint a dashed line. Its handles: the breakpoint on the
+      0 dB line, dragged across onto whole notes, and each side's depth an octave out from it, dragged up and down
+      (the dB it sits at is the depth); a double-click puts one back (the breakpoint to C4, a depth to none), and a
+      hovered or dragged handle's value shows over the display's top. **EXP** in each top corner switches that side
+      exponential, lit while it is. While the rate scaling is up, how much longer or shorter the envelope's times are at
+      each end of the keys shows beside them (times ×16, times ×0.062). While notes play, a dashed line through the
+      newest voice's note, with a dot where it meets the curve. Under it, the Break, L Depth, R Depth and Rate knobs.
 
     A noise operator shows Slope and Spread instead of the pitch knobs, and no Phase; its first tab is
     **SPECTRUM**, its spectrum against white, pink and brown, and it has no scope (picked, it shows its envelope).
@@ -1656,7 +1681,7 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,262 of FMVibe's 19,381 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,298 of FMVibe's 19,641 parameters: the globals, the operators, the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and

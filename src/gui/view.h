@@ -216,6 +216,8 @@ private:
         ValueText,    // param, a = source, b = slot: a slot's depth in numbers; double-click types one
         EnvPoint,     // a = envelope (ops, then kOps + source), b = point
         EnvCurve,     // param = curve, a = envelope, b = segment (attack, decay, release): bends it
+        KeyPoint,     // param = what it sets, a = op, b = 0 for keyboard scaling's breakpoint (dragged across), 1 or 2
+                      // for its left or right depth (up and down, at an octave from the breakpoint)
         FilterPoint,  // a = filter (b = 1: the filter effect in slot a): cutoff and resonance handle
         ModDot,       // param = slot amount, a = source, b = slot: depth handle on a knob
         ModPill,      // a = the target param, b = how many depth handles show before it: "+n" in place of the handles
@@ -374,6 +376,7 @@ private:
         ModSource,
         EnvPoint,
         EnvCurve,
+        KeyPoint,
         FilterPoint,
         PeqPoint,
         DynGrip,
@@ -1299,6 +1302,11 @@ private:
     void paintEnvelope(Canvas &c, Rect r, int env, Color color, bool live);
     // The values of the envelope handle `w` (hovered or dragged), at its display's top right over everything else.
     void paintEnvReadout(Canvas &c, const Widget &w);
+    // An operator's keyboard scaling across the keys (its KEYS tab), and a handle's readout over it.
+    void paintKeyScale(Canvas &c, int op);
+    void paintKeyReadout(Canvas &c, const Widget &w);
+    // Where a keyboard scaling handle sits: the breakpoint at 0 dB, a depth an octave out from it.
+    Point keyPoint(int op, int handle) const;
     // A filter's response, from its params; its key tracking (`keyTrackParam`) follows `pitch` (semitones, 69 is
     // A4). `spectrum`: what the filter puts out, measured, to show behind the response, if any.
     void paintFilterResponse(Canvas &c, Rect r, int typeParam, int slopeParam, int cutoffParam, int resonanceParam,
