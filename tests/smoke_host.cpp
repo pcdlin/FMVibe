@@ -2200,8 +2200,9 @@ int main(int argc, char **argv) {
         std::printf("      MIDI CC 74 turned up mid-note: peak %.3f with a 1 s slew, %.3f without\n", slewed, unslewed);
         check(slewed > 0.8f * resting && unslewed < 0.01f, "a source's Slew follows its controller slowly");
 
-        // Random: a level of its own for each note, from none of A to all of it.
-        setParams({{type, static_cast<double>(SourceType::Random)}});
+        // Random standing still (unsynced, at 0 Hz): a level of its own for each note, from none of A to all of it.
+        setParams({{type, static_cast<double>(SourceType::Random)}, {paramIndex(0, SourceParam::Sync), 0.0},
+                   {paramIndex(0, SourceParam::Rate), 0.0}});
         float lowest = resting, highest = 0.0f;
         for (int n = 0; n < 8; ++n) {
             const float peak = peakOf(play({}));
@@ -2209,7 +2210,8 @@ int main(int argc, char **argv) {
             highest = std::max(highest, peak);
         }
         setParams({{type, static_cast<double>(SourceType::None)}, {slotTargetIndex(0, 0), 0.0},
-                   {slotAmountIndex(0, 0), 0.0}});
+                   {slotAmountIndex(0, 0), 0.0}, {paramIndex(0, SourceParam::Sync), 1.0},
+                   {paramIndex(0, SourceParam::Rate), paramTable()[paramIndex(0, SourceParam::Rate)].def}});
         std::printf("      Random on A's output at -100 %%: peaks of eight notes from %.3f to %.3f\n", lowest, highest);
         check(highest - lowest > 0.3f * resting && highest <= resting * 1.001f,
               "a Random source gives each note a value of its own");

@@ -133,11 +133,19 @@ What the plugin does and how its editor works, in full. Building and installing 
   +18 dB, so a loop that lifts itself past unity (a resonant filter, or shapers feeding back, with a shaper's Mix
   below 100 %) grows loud but never without end. It runs only while something goes in and its output goes
   somewhere (a shaper feeding only itself goes nowhere; one feeding a shaper that goes somewhere does).
-- **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square, random or a freeform shape;
-  0.02–100 Hz), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
+- **Modulation**: up to 16 sources, any mix of LFOs (sine, triangle, saw, square or a freeform shape; 0.02–100 Hz,
+  and at the Rate knob's bottom 0 Hz, where an LFO stands still at its Phase), mod envelopes (AHDSR, starting at full sustain and with an operator's 15 ms release; times as an
   operator's envelope has them), and two that follow what a note or the controller brings:
-  - **Random**: a value of its own for each note, taken at random as the note starts (or restarts, in mono without
-    legato) and held, 0–100 %: notes that each detune, brighten or pan a little differently.
+  - **Random**: a random LFO. It runs as an LFO does, with the LFO's Rate (or, synced, a note value: it starts synced
+    in quarter notes, as an LFO does), clock modes and anchoring, and takes a new value every cycle. **Chaos** sets
+    how far it may move from the last one: up to a tenth of the range either way at 0 %, so it wanders, rising to
+    anywhere at all at 100 % (the default), like sample and hold. **Smooth** glides to each new value instead of
+    jumping: over that share of the cycle, easing in and out, then it holds (0 %, the default, steps). Unsynced at
+    0 Hz, the Rate knob's bottom, it stands still: each note takes a value of its own as it starts (and as it restarts
+    it, in mono without legato), anywhere at Chaos's 100 %, at once, and holds it, so notes each detune, brighten or
+    pan a little differently. It takes no Phase. It replaces the LFO's Random shape, which the LFOs no longer offer:
+    a patch saved before (state version 10 and earlier) loads an LFO with that shape as a Random source running as
+    the LFO ran, and a Random source, which then only took a value for each note, as one at 0 Hz.
   - **MIDI**: what its **Input** picks. **CC**, to begin with: a MIDI controller, **CC** 0–127 (1, the mod wheel's,
     to begin with), the same for every voice. **Pressure**: aftertouch, a voice following its own note's (MIDI
     polyphonic aftertouch, CLAP's pressure note expression, or channel pressure on an MPE member channel) once some
@@ -187,7 +195,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   gave. Once the effects have put out silence (below -100 dB) for a second, the effects' params go back to their
   knobs, where nothing is heard, and a new note takes over from its first block. The voice itself still ends, and
   reports its note's end, as it did. Meanwhile an LFO that modulates the effects this way shows running on its card,
-  its dot moving along as it did under the note (a Random one's glides too), until the tail stops.
+  its dot moving along as it did under the note (a Random source's glides too), until the tail stops.
   - **Macros**: eight knobs (0–100 %) that hosts can automate, each with 16 slots like a source's. A macro's
     value times each slot's depth is added to its target for every voice and the effects alike, so a macro can
     also move effect params, which per-voice sources can't. Their names are part of the patch.
@@ -242,8 +250,8 @@ What the plugin does and how its editor works, in full. Building and installing 
     The browser demo has no transport, so there anchored LFOs run free; `fmvibe-uihost` plays its transport from the
     moment it starts.
   - **Phase** (0–100 %, 0 to begin with) is where in its cycle each note starts an LFO: at 25 % a sine starts at
-    its peak, and 100 % is the cycle's start again. A free LFO keeps its shared clock and a random one its steps,
-    so neither uses it; an anchored one stands at it at the song's start. A one-shot runs from there to the cycle's
+    its peak, and 100 % is the cycle's start again. A free LFO keeps its shared clock, so it doesn't use it (nor does
+    a Random source, which keeps its steps); an anchored one stands at it at the song's start. A one-shot runs from there to the cycle's
     end, so at 50 % it plays only the second half.
   - **Sync** locks an LFO to the host tempo: its rate becomes a note value from 4/1 down to 1/64, each straight,
     dotted (D) or as a triplet (T). Without a tempo from the host, it assumes 120 BPM. The browser demo has no
@@ -255,15 +263,11 @@ What the plugin does and how its editor works, in full. Building and installing 
     the one playing.
   - **One-Shot** runs an LFO through one cycle from each note and then holds it where the cycle ends (a one-shot
     is never free or anchored): for a sine, a triangle or a drawn shape that is where it started, while a saw holds
-    at its top, a square low and a random one at the value it took. A drawn shape with a point at the cycle's end
+    at its top, a square low and a Random source at the value it took. A drawn shape with a point at the cycle's end
     (100 %) holds at that point's level instead, so a ramp from 0 up to 1 there stays at 1.
   - **Unipolar** makes an LFO swing from 0 to 1 instead of −1 to 1, so it only pushes its targets one way, like an
     envelope. It is the same choice the LFO's right-click menu offers, and its display then has its zero line at the
     bottom.
-  - **Random** takes a new value every cycle. **Chaos** sets how far it may move from the last one: up to a tenth
-    of the range either way at 0 %, so it wanders, rising to anywhere at all at 100 % (the default), like sample
-    and hold. **Smooth** glides to each new value instead of jumping: over that share of the cycle, easing in and
-    out, then it holds (0 %, the default, steps).
   - **Custom** shapes are drawn from 2 to 64 points, starting as a triangle: up from the bottom to the top at the
     middle of the cycle and down again. Each segment between two points can be bent, from easing in
     to easing out, and the last segment wraps around to the first point, so the cycle loops without a jump. The
@@ -1014,8 +1018,8 @@ one may have changed since it last did.
       source's **polarity** switch: a wave about a middle line while the source is bipolar and humps on a baseline
       while it is unipolar (the LFO's UNIPOLAR icon), flipping it between the two for all of its modulations, as its
       right-click menu does. A click on the source or the target opens a cascading menu, the next level opening beside
-      an entry under the mouse. The source's lists the sources by category (LFOs, Envelopes, Note & MIDI for the Random and MIDI
-      sources, Macros, and Keyboard:
+      an entry under the mouse. The source's lists the sources by category (LFOs, the Random sources among them, Envelopes,
+      Note & MIDI for the MIDI sources, Macros, and Keyboard:
       Note, Velocity, Mod Wheel and Pitch Bend); picking one moves the modulation there, into a free slot, with its depth,
       curve, Amount, aux and bypass, as one undo step; it then swings as its new source does. What modulates its depth
       follows it to its new slot, or, moved to a macro, the note source, the mod wheel, velocity or the pitch bend (whose depths
@@ -1260,9 +1264,9 @@ one may have changed since it last did.
   opens it again (the editor gets shorter; saved with the project, but not part of presets), then **+ SOURCE**,
   shaped like + EFFECT (a drawn plus, the word and a chevron), which opens the list of source types under it to add
   one (which opens a collapsed panel), and beside it how many of the 16 places are taken, as in 4/16 (with every
-  place taken it is dimmed, and a click says so). A Random card says what it does where the others have knobs, and
-  under that has **Unipolar** | **Bipolar** (as icons, where an LFO's clock modes are), one of them lit, which sets
-  which way its depths swing, as the polarity in its title's menu does. A MIDI card has its input's list (CC,
+  place taken it is dimmed, and a click says so). A Random card is laid out as an LFO's (see below), but has
+  **Unipolar** | **Bipolar** (as icons) where an LFO's shape list is, one of them lit, which sets which way its depths
+  swing, as the polarity in its title's menu does, no Unipolar switch and no Phase knob. A MIDI card has its input's list (CC,
   Pressure or Slide, where an LFO's shape is; its tooltip says what the input follows), and right of it its CC knob
   (while its input is a controller) and Slew; under them, both cards'
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
@@ -1306,26 +1310,29 @@ one may have changed since it last did.
     at its right, and shows them in the MODS view, scrolled to the source's first row. While the source modulates
     nothing, it reads **No modulations** and adds an empty modulation from the source there (see the MODS view),
     with its target's menu open.
-    A random
-    LFO has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
-    while notes play it shows the LFO's own last four cycles instead, as one line scrolling left with the live dot
-    at its right end (at the end of a cycle, it waits there until the next one comes in). A Free or Anchor LFO
-    runs on one clock whether notes play or not, so its card shows its dot moving (and a random one its cycles
+    A Random
+    card has **Smooth** and **Chaos** knobs beside its display, which shows four made-up cycles of what they do;
+    while notes play it shows the source's own last four cycles instead, as one line scrolling left with the live dot
+    at its right end (at the end of a cycle, it waits there until the next one comes in). Standing still at 0 Hz,
+    it shows four made-up notes' values, and while notes play a line across at the value the newest voice holds,
+    the live dot at its right end. A Free or Anchor LFO
+    runs on one clock whether notes play or not, so its card shows its dot moving (and a Random one its cycles
     scrolling) with no note playing too; a Retrigger or One-Shot one, which notes start, shows none until one
     plays. Without a note it modulates nothing, so only the card moves, and only the card repaints. While the editor
     is open with one switched on, the CLAP plugin keeps processing with nothing sounding, where a host would let it
     sleep and the clock would stand still. An LFO picks its shape from a list, like a
-    shaper's curve, its button and each entry showing the shape's icon before its name. Under the shape list, as
+    shaper's curve, its button and each entry showing the shape's icon before its name (the wheel over it steps
+    along them). Under the shape list, as
     wide as it, are its clock modes side by side, as Poly | Mono are, the one it runs in lit, each drawn as an icon
     (named on hover): a rise that starts again at each dot for **Retrigger**, an infinity sign for **Free**, an
     anchor for **Anchor** and a single cycle that ends in a dot for **One-Shot**. A click picks one (a click on the
     one lit leaves it), and the wheel over them steps to the next one. Right of those two rows, centered
-    on them, are the Rate and Phase knobs,
-    over a random LFO's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
+    on them, are the Rate and Phase knobs (a Random card's Rate alone),
+    over a Random card's Smooth and Chaos, with the sync switch between the shape list and Rate, level with the list: a small square button
     with the metronome the effects' SYNC has, which turns the Rate knob into a note-value knob (as it starts, on).
     Under it, level with the clock modes, is the **Unipolar** switch, a hump on a baseline as a MODS row's
     polarity switch has.
-    The Phase knob is faint while it does nothing (a random LFO, or a free one that isn't anchored), and otherwise
+    The Phase knob is faint while it does nothing (on a free LFO that isn't anchored), and otherwise
     a thin line on the display marks where notes start the LFO (or where the song starts an anchored one). A
     unipolar LFO's display has its zero line at the bottom. A Custom LFO's
     display, or the expand button in its title row, widens its card, to edit the shape there (see the shape editor).
@@ -1422,7 +1429,8 @@ one may have changed since it last did.
   the knob, or beside it in the header), or pick **Edit value…** (**Edit depth…** on a modulation) from the
   right-click menu, or Ctrl+Click it, to type a value, in the units it shows or as a plain number (`300` on a
   time is 300 ms, `1.2k` on a cutoff 1.2 kHz; `Off` or `0` on a time that can be Off, while `1 ms` is the shortest
-  time; on an envelope's attack, decay or release `0` is 0 ms and `0.5` half a millisecond, and `0` on a phaser's, flanger's or chorus's Rate stands it still, while `0.02 Hz` is its slowest sweep); Enter or a click elsewhere sets it, Escape drops it. The editor
+  time; on an envelope's attack, decay or release `0` is 0 ms and `0.5` half a millisecond, and `0` on an LFO's, a Random source's, a phaser's, flanger's or chorus's Rate stands it still, while `0.02 Hz` is
+  its slowest sweep); Enter or a click elsewhere sets it, Escape drops it. The editor
   takes the keyboard while you type and hands it back afterwards; the keys are taken straight off the window's
   message queue, so hosts whose message loops pass keys on to themselves (Bitwig) don't get them first. A wire
   label, OUT label or matrix cell types a value on Ctrl+Click, since its double-click removes or toggles the route.

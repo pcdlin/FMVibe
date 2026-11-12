@@ -553,16 +553,21 @@ inline Rect lfoModeSwitch(float card, int mode) {
     return {p.x + 16.0f + mode * 30.5f, p.y + 72.0f, 30.5f, 16.0f};
 }
 
-// A Random card's polarity, Unipolar (0) | Bipolar (1), centered under what the card says it does, level with an
-// LFO's clock modes and as wide as two of them.
-inline Rect randomPolaritySwitch(float card, int bipolar) {
-    const Rect mode = lfoModeSwitch(card, bipolar);
-    return {sourceCard(card).center().x + (static_cast<float>(bipolar) - 1.0f) * mode.w, mode.y, mode.w, mode.h};
-}
-
 inline Rect lfoShapeButton(float card) {
     const Rect p = sourceCard(card);
     return {p.x + 16.0f, p.y + 42.0f, lfoModeSwitch(card, kLfoModes - 1).right() - p.x - 16.0f, 22.0f};
+}
+
+// The shapes an LFO's list offers, in its order: every one but the retired Random, which the Random source took over.
+constexpr LfoShape kLfoShapesOffered[] = {LfoShape::Sine, LfoShape::Triangle, LfoShape::Saw, LfoShape::Square,
+                                          LfoShape::Custom};
+constexpr int kLfoShapeItems = static_cast<int>(std::size(kLfoShapesOffered));
+
+// A Random card's polarity, Unipolar (0) | Bipolar (1), where an LFO's shape list is, each half of it, over its clock
+// modes as an LFO's.
+inline Rect randomPolaritySwitch(float card, int bipolar) {
+    const Rect list = lfoShapeButton(card);
+    return {list.x + bipolar * list.w * 0.5f, list.y, list.w * 0.5f, list.h};
 }
 
 // Right of those two rows, the Rate (0) and Phase (1) knobs with their labels, centered on them, each over a random

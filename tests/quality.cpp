@@ -1814,6 +1814,63 @@ void effectsChainChecks() {
               "a state before version 10 loads its depths on the three-band dynamics' thresholds as far as they swung");
     }
     {
+        // Before version 11, a Random source took a value for each note and held it, and an LFO could have the Random
+        // shape. The source loads as a random LFO standing still (unsynced at 0 Hz, on its own clock in each voice, the
+        // LFO's fields it now uses as they start but for those), its polarity kept; an LFO with the Random shape as a
+        // Random source running as it ran (its rate, clock and chaos kept, Bipolar standing for its Unipolar), its shape
+        // and Unipolar back at their defaults; another LFO as it was. A version 11 state loads as saved.
+        ParamValues p = defaults();
+        auto set = [&p](int place, SourceParam f, double v) { p[paramIndex(place, f)] = v; };
+        set(0, SourceParam::Type, static_cast<double>(SourceType::Random));
+        set(0, SourceParam::Free, 1.0); // left by an LFO the place held, which the Random source ignored
+        set(0, SourceParam::RandomSmooth, 0.5);
+        set(0, SourceParam::Bipolar, 1.0);
+        for (int place : {1, 2}) {
+            set(place, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+            set(place, SourceParam::Shape, static_cast<double>(LfoShape::Random));
+            set(place, SourceParam::Unipolar, place == 1 ? 1.0 : 0.0);
+            set(place, SourceParam::Sync, 0.0);
+            set(place, SourceParam::Rate, normFromRate(3.0));
+            set(place, SourceParam::Anchor, 1.0);
+            set(place, SourceParam::RandomChaos, 0.3);
+        }
+        set(3, SourceParam::Type, static_cast<double>(SourceType::Lfo));
+        set(3, SourceParam::Shape, static_cast<double>(LfoShape::Saw));
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, p, gui::UiLayout{}, true);
+        auto load = [&bytes](uint32_t version) {
+            std::vector<unsigned char> saved = bytes;
+            std::memcpy(saved.data() + sizeof(uint32_t), &version, sizeof(version)); // after the magic
+            MemoryReader reader{saved.data(), saved.size(), 0};
+            const clap_istream_t in = memoryIn(reader);
+            ParamValues loaded;
+            readParams(&in, loaded);
+            return loaded;
+        };
+        const ParamValues before = load(10), now = load(11);
+        auto at = [&before](int place, SourceParam f) { return before[paramIndex(place, f)]; };
+        auto def = [](int place, SourceParam f) { return paramTable()[paramIndex(place, f)].def; };
+        const double random = static_cast<double>(SourceType::Random);
+        const bool source = at(0, SourceParam::Type) == random && at(0, SourceParam::Sync) == 0.0 &&
+                            at(0, SourceParam::Rate) == 0.0 && at(0, SourceParam::Free) == 0.0 &&
+                            at(0, SourceParam::RandomSmooth) == def(0, SourceParam::RandomSmooth) &&
+                            at(0, SourceParam::Bipolar) == 1.0;
+        bool lfos = true;
+        for (int place : {1, 2})
+            lfos = lfos && at(place, SourceParam::Type) == random &&
+                   at(place, SourceParam::Bipolar) == (place == 1 ? 0.0 : 1.0) &&
+                   at(place, SourceParam::Rate) == normFromRate(3.0) && at(place, SourceParam::Sync) == 0.0 &&
+                   at(place, SourceParam::Anchor) == 1.0 && at(place, SourceParam::RandomChaos) == 0.3 &&
+                   at(place, SourceParam::Shape) == def(place, SourceParam::Shape) &&
+                   at(place, SourceParam::Unipolar) == 0.0;
+        const bool plain = at(3, SourceParam::Type) == static_cast<double>(SourceType::Lfo) &&
+                           at(3, SourceParam::Shape) == static_cast<double>(LfoShape::Saw);
+        check(source, "a state before version 11 loads its Random source as one standing still, taking a value a note");
+        check(lfos && plain, "a state before version 11 loads its random LFO as a Random source running as it ran");
+        check(std::equal(now.begin(), now.end(), p.begin()), "a version 11 state loads its sources as saved");
+    }
+    {
         // The filter effect switched to another type or slope and back: the stage it left out starts from silence,
         // rather than playing back what it held then.
         auto stale = [&](FilterType first, int firstSlope, FilterType second, int secondSlope) {
@@ -2874,13 +2931,56 @@ int main() {
         auto wobble = [](ParamValues &p) {
             p[paramIndex(0, OpParam::Out)] = 0.5;
             lfoOn(p, paramIndex(0, OpParam::Out), 0.4, 40.0);
-            p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Random);
+            p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
             p[paramIndex(0, SourceParam::RandomSmooth)] = 1.0;
             p[paramIndex(0, SourceParam::RandomChaos)] = 0.5;
         };
         const std::vector<float> out = steadyTone(2, 57, wobble);
         check(std::all_of(out.begin(), out.end(), [](float x) { return std::isfinite(x); }),
               "a smoothed random LFO on an operator's level stays finite");
+
+        // A Random source at 0 Hz (unsynced) stands still: each note takes a value of its own as it starts, at once
+        // (its smoothing gliding none), anywhere (in each quarter of the range about as often), and holds it; a note
+        // retriggering it in mono takes a new one.
+        auto t = std::make_unique<Telemetry>(); // large: the analyzers' spectra are in it
+        Engine e(1);
+        e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
+        e.p[sourceEnabledIndex(0)] = 1.0;
+        e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
+        e.p[paramIndex(0, SourceParam::Rate)] = 0.0;
+        e.p[paramIndex(0, SourceParam::RandomSmooth)] = 1.0;
+        auto now = [&] {
+            e.synth().telemetry(*t);
+            return t->sources[0];
+        };
+        int notes[4] = {};
+        bool held = true, own = true;
+        float previous = -1.0f;
+        for (int n = 0; n < 400; ++n) {
+            e.noteOn(60 + n % 12);
+            e.render(kBlock);
+            const float first = now();
+            e.render(2400);
+            held = held && now() == first;
+            own = own && first != previous;
+            previous = first;
+            ++notes[std::clamp(static_cast<int>(first * 4.0f), 0, 3)];
+            e.noteOff(60 + n % 12);
+            e.render(kBlock);
+        }
+        std::printf("      notes per quarter at 0 Hz  %d %d %d %d\n", notes[0], notes[1], notes[2], notes[3]);
+        check(held && own && std::all_of(std::begin(notes), std::end(notes), [](int n) { return n > 60 && n < 140; }),
+              "a Random source at 0 Hz takes a value anywhere for each note, at once, and holds it");
+        e.synth().setPlayMode(true, false, false);
+        e.noteOn(50);
+        e.render(2400);
+        const float before = now();
+        e.noteOn(52);
+        e.render(kBlock);
+        const float retriggered = now();
+        e.render(2400);
+        check(retriggered != before && now() == retriggered,
+              "a Random source at 0 Hz takes a new value as a note retriggers it in mono, and holds it");
     }
 
     // --- A freeform LFO's points sharing a time: a spike up at 0.5 and a drop at the cycle's end. Either side of a
@@ -2988,7 +3088,7 @@ int main() {
         // Random: the value it holds through a cycle, and a new one in the next.
         Engine random(1);
         anchored(random);
-        random.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Random);
+        random.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
         random.noteOn(57);
         auto heldAt = [&](double beats) {
             random.synth().setTransport(true, beats, beats * 0.5);
@@ -3717,8 +3817,7 @@ int main() {
         {
             Engine e(2);
             e.synth().setPlayMode(false, true, false);
-            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
-            e.p[paramIndex(0, SourceParam::Shape)] = static_cast<double>(LfoShape::Random);
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Random);
             e.p[paramIndex(0, SourceParam::Sync)] = 0.0;
             e.p[paramIndex(0, SourceParam::Rate)] = normFromRate(0.05); // no new step meanwhile
             e.noteOn(48);

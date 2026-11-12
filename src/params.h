@@ -147,8 +147,10 @@ enum class ShaperParam {
 // the kMaxSources places holds a source of either type, or none, and has the
 // fields of both; only those of its type are used (and shown to hosts). Stored
 // in projects by number: only append.
-// Random and Midi came later. Random puts out a value of its own for each note, taken at random as the note starts
-// and held. Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice; pressure,
+// Random and Midi came later. Random is a random LFO: it runs as an LFO does, with the LFO's Rate, Sync, Division,
+// Free, One-Shot and Anchor, and takes a new value each cycle (see RandomChaos and RandomSmooth below); at a Rate of
+// 0 Hz (unsynced) it takes one as each note starts (see lfoHeld()) and holds it. It has no Shape, Phase or Unipolar,
+// but its Bipolar. Midi follows what its MidiInput picks: a MIDI controller, CcNumber, the same for every voice; pressure,
 // a voice's own note's (MIDI polyphonic aftertouch, CLAP's pressure expression, or channel pressure on an MPE member
 // channel) once some came, else the channel's; or slide, a voice's own note's (CLAP's brightness expression, or
 // CC 74 on an MPE member channel), resting in the middle.
@@ -165,10 +167,11 @@ enum class MidiInput { Cc, Pressure, Slide, Count };
 // all voices share. A unipolar LFO swings 0..1 instead of -1..1, so it only
 // pushes its targets one way, like an envelope; a bipolar one swings a slot's depth
 // across the set value, half below and half above (100 % is -50 % to +50 %). A one-shot LFO runs one cycle
-// from each note and then stays where the cycle ends; it is never free. The
-// Random shape takes a new value each cycle: Chaos sets how far it may jump from
+// from each note and then stays where the cycle ends; it is never free. At a Rate of 0 Hz (its lowest), an LFO stands
+// still. A
+// Random source takes a new value each cycle: Chaos sets how far it may jump from
 // the last one (at 100 % anywhere), Smooth how much of the cycle it glides there. Phase is where in its cycle an
-// LFO starts with each note (a one-shot runs from there to the cycle's end); a free or Random one ignores it. An
+// LFO starts with each note (a one-shot runs from there to the cycle's end); a free one ignores it. An
 // anchored LFO (Anchor, added later) is tied to the host's transport: while it plays, the LFO stands where it would
 // had it started at Phase at the song's start and run at its rate since (in beats when synced, else in seconds), all
 // voices sharing it; while the transport is stopped, or the host gives no position, it runs on as a free one. A
@@ -196,7 +199,8 @@ enum class SourceParam {
     AttackCurve,
     DecayCurve,
     ReleaseCurve,
-    // Added later, so they sit after the fields above: ids go by position. LFO fields.
+    // Added later, so they sit after the fields above: ids go by position. Random's fields (an LFO's once, for its
+    // retired Random shape).
     RandomSmooth,
     RandomChaos,
     EnvBipolar, // a mod envelope's field
@@ -287,7 +291,10 @@ constexpr int kBendParamCount = static_cast<int>(BendParam::Count);
 enum class SlotAuxParam { Aux, Amount, Count };
 constexpr int kSlotAuxFields = static_cast<int>(SlotAuxParam::Count);
 
-// Stored in projects by number: only append.
+// Stored in projects by number: only append. Random is retired, the Random source taking its place: the editor no
+// longer offers it, and a state from before version 11 loads an LFO with it as a Random source (see state.cpp). An
+// LFO still holding it (a state can) plays it as a Random source would. A Random source runs as an LFO of this shape
+// (see lfoShape()).
 enum class LfoShape { Sine, Triangle, Saw, Square, Random, Custom, Count };
 // Stored in projects by number: only append.
 // Custom is a wave drawn from partials: see partialLevelIndex(). Alt Sine is a sine at twice the rate for the first
@@ -908,6 +915,8 @@ constexpr int sourceOf(int index) {
 constexpr SourceParam sourceFieldOf(int index) {
     return sourceOf(index) < 0 ? SourceParam::Count : static_cast<SourceParam>((index - kSourceBase) % kSourceParamCount);
 }
+// Whether a source of type `t` runs as an LFO, on an LFO's clock: an LFO, and Random, a random LFO.
+constexpr bool runsLfo(SourceType t) { return t == SourceType::Lfo || t == SourceType::Random; }
 // Whether a source of type `t` uses field `f`: every source uses Type, Enabled and its slots.
 constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     if (f < SourceParam::Shape)
@@ -915,11 +924,20 @@ constexpr bool sourceFieldUsedBy(SourceParam f, SourceType t) {
     switch (f) {
     case SourceParam::EnvBipolar:
         return t == SourceType::Env;
+    case SourceParam::Shape:
+    case SourceParam::Unipolar:
+    case SourceParam::Phase:
+        return t == SourceType::Lfo;
+    case SourceParam::Rate:
+    case SourceParam::Sync:
+    case SourceParam::Division:
+    case SourceParam::Free:
+    case SourceParam::OneShot:
+    case SourceParam::Anchor:
+        return runsLfo(t);
     case SourceParam::RandomSmooth:
     case SourceParam::RandomChaos:
-    case SourceParam::Phase:
-    case SourceParam::Anchor:
-        return t == SourceType::Lfo;
+        return t == SourceType::Random;
     case SourceParam::Slew:
     case SourceParam::CcNumber:
     case SourceParam::MidiInput:
@@ -956,6 +974,20 @@ LfoClock lfoClock(const Get &get, int source) {
 inline SourceType sourceType(double value) {
     const long t = std::lround(value);
     return static_cast<SourceType>(t < 0 ? 0 : (t >= static_cast<long>(SourceType::Count) ? 0 : t));
+}
+// The shape the source in place `source` runs as an LFO: its Shape, or Random for a Random source.
+template <class Get>
+LfoShape lfoShape(const Get &get, int source) {
+    if (sourceType(get(paramIndex(source, SourceParam::Type))) == SourceType::Random)
+        return LfoShape::Random;
+    const long shape = std::lround(get(paramIndex(source, SourceParam::Shape)));
+    return static_cast<LfoShape>(std::clamp(shape, 0l, static_cast<long>(LfoShape::Count) - 1));
+}
+// Whether the LFO in place `source` stands still: unsynced, at a Rate of 0 Hz. A random one then takes a value of its
+// own as each note starts, at once, and holds it.
+template <class Get>
+bool lfoHeld(const Get &get, int source) {
+    return get(paramIndex(source, SourceParam::Sync)) < 0.5 && get(paramIndex(source, SourceParam::Rate)) <= 0.0;
 }
 // The shaper a param belongs to, and which of its fields it is; -1 / Count for other params.
 constexpr int shaperOf(int index) {
@@ -2223,7 +2255,6 @@ enum class ParamKind {
     Percent,
     BipolarPercent,
     Time,
-    Rate,
     Ratio,
     Cents,          // bipolar
     CentsAmount,    // unipolar
@@ -2260,7 +2291,7 @@ enum class ParamKind {
     PeqType,     // a parametric EQ band's shape
     ReverbType,  // the reverb's algorithm
     MidiInput,   // what a Midi source follows
-    SweepRate,   // like Rate, but its lowest setting is 0 Hz: a sweep held still (see sweepRateHz())
+    SweepRate,   // 0..1 on a log curve, shown in Hz, its lowest setting 0 Hz: held still (see sweepRateHz())
     NotePitch,   // semitones in MIDI numbering, shown as a note and its cents; continuous, but the editor sets whole ones
     FixedFreq,   // 0..1 on a log curve, shown in Hz; see fixedFreqFromNorm()
     FixedMult,   // stepped: one of kFixedMults, shown as x0.001 and so on

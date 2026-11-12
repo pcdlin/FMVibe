@@ -181,11 +181,12 @@ bool isMidiInput(int param) {
 }
 
 // A choice that opens a list under its button (an LFO's shape, a MIDI source's input, a shaper's curve, the reverb's
-// algorithm, a filter's slope): which values it has, and their names.
+// algorithm, a filter's slope): how many values it offers (an LFO's shapes kLfoShapesOffered, in their order), and
+// their names.
 int listCount(int param) {
     return routeModeFrom(param) >= 0                  ? static_cast<int>(RouteMode::Count)
            : isSlopeList(param)                       ? kFilterSlopes
-           : isLfoShape(param)                        ? static_cast<int>(LfoShape::Count)
+           : isLfoShape(param)                        ? kLfoShapeItems
            : isMidiInput(param)                       ? static_cast<int>(MidiInput::Count)
            : fxFieldOf(param) == FxParam::ReverbType ? static_cast<int>(ReverbType::Count)
            : fxFieldOf(param) == FxParam::AmpModel   ? static_cast<int>(AmpModel::Count)
@@ -1090,6 +1091,10 @@ SourceType View::sourceTypeOf(int source) const {
     return isStripSource(source) ? SourceType::None : sourceType(value(paramIndex(source, SourceParam::Type)));
 }
 
+LfoShape View::lfoShapeOf(int source) const {
+    return lfoShape([this](int i) { return value(i); }, source);
+}
+
 std::string View::sourceName(int source) const {
     return fmvibe::gui::sourceName(controller_.layout(), [this](int index) { return value(index); }, source);
 }
@@ -1291,8 +1296,7 @@ void View::setLfoClock(int lfo, LfoClock clock) {
 }
 
 bool View::lfoRunsIdle(int lfo) const {
-    return sourceTypeOf(lfo) == SourceType::Lfo && sourceOn(lfo) &&
-           lfoShared([this](int i) { return value(i); }, lfo);
+    return runsLfo(sourceTypeOf(lfo)) && sourceOn(lfo) && lfoShared([this](int i) { return value(i); }, lfo);
 }
 
 bool View::lfoRunning(int lfo) const {
@@ -1306,19 +1310,19 @@ bool View::lfoInTail(const Telemetry &t, int lfo) {
 bool View::lfoPhaseUsed(int lfo) const {
     // An anchored LFO stood at its Phase at the song's start.
     auto get = [this](int i) { return value(i); };
-    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo)) &&
-           std::lround(value(paramIndex(lfo, SourceParam::Shape))) != static_cast<long>(LfoShape::Random);
+    return (!lfoShared(get, lfo) || lfoAnchored(get, lfo)) && lfoShapeOf(lfo) != LfoShape::Random;
 }
 
 double View::lfoValueNow(int lfo) const {
-    const auto shape = static_cast<LfoShape>(std::clamp(
-        static_cast<int>(std::lround(value(paramIndex(lfo, SourceParam::Shape)))), 0, static_cast<int>(LfoShape::Count) - 1));
+    const LfoShape shape = lfoShapeOf(lfo);
     if (shape == LfoShape::Random) { // can't be told ahead
-        if (telemetry_.voices == 0) // the shared clock's glide, which no voice puts out
-            return randomGlide(telemetry_.lfoFrom[lfo], telemetry_.lfoTo[lfo], randomPhaseNow(lfo),
-                               value(paramIndex(lfo, SourceParam::RandomSmooth)));
+        if (telemetry_.voices == 0) // the shared clock's glide (or the value it holds), which no voice puts out
+            return lfoHeld([this](int i) { return value(i); }, lfo)
+                       ? telemetry_.lfoTo[lfo]
+                       : randomGlide(telemetry_.lfoFrom[lfo], telemetry_.lfoTo[lfo], randomPhaseNow(lfo),
+                                     value(paramIndex(lfo, SourceParam::RandomSmooth)));
         const double out = telemetry_.sources[lfo];
-        return value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? out * 2.0 - 1.0 : out;
+        return sourceBipolar(lfo) ? out : out * 2.0 - 1.0;
     }
     if (shape == LfoShape::Custom)
         return shapeValue([this](int index) { return value(index); }, lfo, lfoPhaseNow(lfo));
@@ -1329,8 +1333,9 @@ void View::traceRandomLfos() {
     // A new cycle is a new glide; one that stops running, or isn't random any more, starts over.
     for (int s = 0; s < kMaxSources; ++s) {
         RandomTrace &trace = randomTraces_[s];
-        const bool random = sourceTypeOf(s) == SourceType::Lfo &&
-                            std::lround(value(paramIndex(s, SourceParam::Shape))) == static_cast<long>(LfoShape::Random);
+        // Standing still, it has no cycles to trace: its display shows the value it holds.
+        const bool random = runsLfo(sourceTypeOf(s)) && lfoShapeOf(s) == LfoShape::Random &&
+                            !lfoHeld([this](int i) { return value(i); }, s);
         if (!random || !lfoRunning(s)) {
             trace.count = 0;
             continue;
@@ -2629,10 +2634,9 @@ std::vector<View::Widget> View::widgets() const {
         }
         const float span = sourceSpan(s);
         const Rect p = sourceCard(card, span);
-        const bool lfo = sourceTypeOf(s) == SourceType::Lfo;
+        const bool lfo = runsLfo(sourceTypeOf(s)); // an LFO, or Random, a random one
         const bool widened = s == wideLfo();
-        const bool widens = lfo && !widened && std::lround(value(paramIndex(s, SourceParam::Shape))) ==
-                                                   static_cast<long>(LfoShape::Custom);
+        const bool widens = lfo && !widened && lfoShapeOf(s) == LfoShape::Custom;
         const float gripEnd = widened ? lfoCardButton(card, 1).x - 4.0f // short of the reset, leftmost
                               : widens ? lfoWidenButton(card).x - 4.0f
                                        : cardTitleRight(p);
@@ -2684,11 +2688,20 @@ std::vector<View::Widget> View::widgets() const {
             }
         }
         if (lfo) {
-            add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
-            if (listMenu_ == paramIndex(s, SourceParam::Shape))
-                lfoList = lfoShapeButton(card);
-            const bool random =
-                std::lround(value(paramIndex(s, SourceParam::Shape))) == static_cast<long>(LfoShape::Random);
+            // An LFO's shape list, or a Random card's Unipolar | Bipolar in its place, one of them lit, as the clock
+            // modes are.
+            const bool random = sourceTypeOf(s) == SourceType::Random;
+            if (random) {
+                const size_t polarity = list.size();
+                for (int bipolar = 0; bipolar < 2; ++bipolar)
+                    add(Kind::Choice, randomPolaritySwitch(card, bipolar), paramIndex(s, SourceParam::Bipolar), s,
+                        bipolar);
+                merge(polarity);
+            } else {
+                add(Kind::ListButton, lfoShapeButton(card), paramIndex(s, SourceParam::Shape));
+                if (listMenu_ == paramIndex(s, SourceParam::Shape))
+                    lfoList = lfoShapeButton(card);
+            }
             if (!widened)
                 add(Kind::LfoDisplay, sourceDisplay(card, random), -1, s);
             if (random) {
@@ -2699,15 +2712,18 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::Toggle, sourceSync(card), paramIndex(s, SourceParam::Sync));
             // Its clock modes under the shape list, one of them lit, as Poly | Mono; each sets Free, Anchor and
             // One-Shot for it (see setLfoClock()), and stands for them all. Unipolar under the sync switch.
+            // A Random card has neither Unipolar, which its polarity stands for, nor Phase, which it takes none of.
             const size_t modes = list.size();
             for (int i = 0; i < kLfoModes; ++i)
                 add(Kind::Choice, lfoModeSwitch(card, i), paramIndex(s, SourceParam::Free), s, i);
             merge(modes);
-            add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
+            if (!random)
+                add(Kind::Toggle, lfoUnipolarSwitch(card), paramIndex(s, SourceParam::Unipolar));
             const bool synced = value(paramIndex(s, SourceParam::Sync)) >= 0.5;
             knob(synced ? paramIndex(s, SourceParam::Division) : paramIndex(s, SourceParam::Rate),
                  lfoKnob(card, 0), 30.0f, synced ? nullptr : tr(Str::LabelRate));
-            knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
+            if (!random)
+                knob(paramIndex(s, SourceParam::Phase), lfoKnob(card, 1), 30.0f, tr(Str::LabelPhase));
         } else if (sourceTypeOf(s) == SourceType::Env) {
             const EnvIndices e = envIndices(kOps + s);
             const int params[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
@@ -2716,7 +2732,7 @@ std::vector<View::Widget> View::widgets() const {
                 knob(params[i], {p.x + 12.0f + step * (i + 0.5f), p.y + 54.0f}, 32.0f, tr(envLabels[i]));
         } else if (sourceTypeOf(s) == SourceType::Midi) {
             // Its input's list button, where an LFO's shape is, and right of it the controller (while that is its
-            // input) and Slew; Random has none. Its list opens as an LFO's shapes do.
+            // input) and Slew. Its list opens as an LFO's shapes do.
             const int input = paramIndex(s, SourceParam::MidiInput);
             add(Kind::ListButton, midiInputButton(p), input);
             if (listMenu_ == input)
@@ -2724,12 +2740,6 @@ std::vector<View::Widget> View::widgets() const {
             if (std::lround(value(input)) == static_cast<long>(MidiInput::Cc))
                 knob(paramIndex(s, SourceParam::CcNumber), {p.x + 172.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelCc));
             knob(paramIndex(s, SourceParam::Slew), {p.x + 228.0f, p.y + 54.0f}, 32.0f, tr(Str::LabelSlew));
-        } else if (sourceTypeOf(s) == SourceType::Random) {
-            // Unipolar | Bipolar under what it does, one of them lit, as an LFO's clock modes are.
-            const size_t polarity = list.size();
-            for (int bipolar = 0; bipolar < 2; ++bipolar)
-                add(Kind::Choice, randomPolaritySwitch(card, bipolar), paramIndex(s, SourceParam::Bipolar), s, bipolar);
-            merge(polarity);
         }
         // Its modulations are listed in the MODS view, which the button under its display shows.
         add(Kind::SourceMods, sourceModsButton(card), -1, s);
@@ -2958,7 +2968,8 @@ std::vector<View::Widget> View::widgets() const {
         add(Kind::ListMenu, listMenu(lfoList, items), -1, 1);
         list.back().clip = sourceListClip();
         for (int item = 0; item < items; ++item) {
-            add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1, item);
+            add(Kind::ListItem, listMenuItem(lfoList, items, item), listMenu_, -1,
+                isLfoShape(listMenu_) ? static_cast<int>(kLfoShapesOffered[item]) : item);
             list.back().clip = sourceListClip();
         }
     }
@@ -6277,10 +6288,13 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     c.fillRect(r, kDisplayColor, kRadiusCard);
     const Rect inner{r.x + 10.0f, r.y + 8.0f, r.w - 20.0f, r.h - 16.0f};
     // The zero line: in the middle, or at the bottom for a unipolar LFO, which only swings up from it.
-    const float zero = value(paramIndex(lfo, SourceParam::Unipolar)) >= 0.5 ? inner.bottom() : inner.center().y;
+    const float zero = sourceBipolar(lfo) ? inner.center().y : inner.bottom();
     c.line({inner.x, zero}, {inner.right(), zero}, kBorder, 1.0f);
-    const auto shape = static_cast<LfoShape>(std::clamp(
-        static_cast<int>(std::lround(value(paramIndex(lfo, SourceParam::Shape)))), 0, static_cast<int>(LfoShape::Count) - 1));
+    const LfoShape shape = lfoShapeOf(lfo);
+    // A random one standing still takes a value for each note, at once: four made-up notes' steps, until one plays,
+    // then a line across at the value the newest voice holds, the live dot at its right end.
+    const bool held = shape == LfoShape::Random && lfoHeld([this](int i) { return value(i); }, lfo);
+    const bool holding = held && lfoRunning(lfo);
     // Where notes start it, past the cycle's start.
     if (const double start = value(paramIndex(lfo, SourceParam::Phase)); lfoPhaseUsed(lfo) && start > 0.0 && start < 1.0) {
         const float x = inner.x + static_cast<float>(start) * inner.w;
@@ -6290,8 +6304,12 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     auto at = [&](double x, double y) {
         points.push_back({inner.x + static_cast<float>(x) * inner.w, inner.center().y - static_cast<float>(y) * inner.h * 0.5f});
     };
-    const bool sweep = shape == LfoShape::Random && randomSweep(lfo);
-    if (sweep) {
+    const bool sweep = shape == LfoShape::Random && !held && randomSweep(lfo);
+    if (holding) {
+        const double now = lfoValueNow(lfo);
+        at(0.0, now);
+        at(1.0, now);
+    } else if (sweep) {
         // Running, a random LFO's own last cycles as they came, as one line scrolling left: the live dot at its right
         // end, the display four cycles wide.
         const RandomTrace &trace = randomTraces_[lfo];
@@ -6313,16 +6331,15 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
         key.push_back(static_cast<double>(shape));
         if (shape == LfoShape::Custom)
             keyShape(key, shapeCountIndex(lfo));
+        const double smooth = held ? 0.0 : value(paramIndex(lfo, SourceParam::RandomSmooth)); // held, it glides none
         if (shape == LfoShape::Random)
-            key.insert(key.end(), {value(paramIndex(lfo, SourceParam::RandomSmooth)),
-                                   value(paramIndex(lfo, SourceParam::RandomChaos))});
+            key.insert(key.end(), {smooth, value(paramIndex(lfo, SourceParam::RandomChaos))});
         points = curves_.get(key, [&] {
             if (shape == LfoShape::Custom) {
                 auto get = [this](int index) { return value(index); };
                 shapeOutline(get, lfo, 96, at);
             } else if (shape == LfoShape::Random) {
                 // Four cycles of a made-up run with this LFO's chaos and smoothing, until it runs.
-                const double smooth = value(paramIndex(lfo, SourceParam::RandomSmooth));
                 const double chaos = value(paramIndex(lfo, SourceParam::RandomChaos));
                 uint32_t rng = 0x2545F491u;
                 double from = 0.3;
@@ -6347,8 +6364,8 @@ void View::paintLfo(Canvas &c, Rect r, int lfo) {
     }
     plotLine(c, points.data(), points.size(), color, 2.0f);
 
-    if (lfoRunning(lfo) && (sweep || shape != LfoShape::Random)) {
-        const Point dot = sweep ? points.back()
+    if (lfoRunning(lfo) && (sweep || holding || shape != LfoShape::Random)) {
+        const Point dot = sweep || holding ? points.back()
                                 : Point{inner.x + static_cast<float>(lfoPhaseNow(lfo)) * inner.w,
                                         inner.center().y - static_cast<float>(lfoValueNow(lfo)) * inner.h * 0.5f};
         c.fillCircle(dot, 7.0f, color.alpha(0.25f));
@@ -6445,7 +6462,7 @@ float slotNameSize(Canvas &c, const std::string &name) {
 void View::paintSource(Canvas &c, float card, int s) {
     const Rect p = sourceCard(card, sourceSpan(s));
     const Color color = kSourceColors[s];
-    const bool lfo = sourceTypeOf(s) == SourceType::Lfo;
+    const bool lfo = runsLfo(sourceTypeOf(s)); // an LFO, or Random, a random one
     const bool dragged = drag_.kind == DragKind::SourceMove && drag_.widget.a == s;
     paintCardFace(c, p, color, sourceOn(s), s, dragged, 0.35f, sourceCardClip());
     if (sourceFolded(s)) { // the grip's dots under the handle (widgets), then its name down the strip
@@ -6468,17 +6485,12 @@ void View::paintSource(Canvas &c, float card, int s) {
     if (s == wideLfo()) {
         paintLfoCard(c, card, s);
     } else if (lfo) {
-        paintLfo(c, sourceDisplay(card, std::lround(value(paramIndex(s, SourceParam::Shape))) ==
-                                             static_cast<long>(LfoShape::Random)),
-                 s);
+        paintLfo(c, sourceDisplay(card, lfoShapeOf(s) == LfoShape::Random), s);
     } else if (sourceTypeOf(s) == SourceType::Env) {
         paintEnvelope(c, sourceDisplay(card), kOps + s, color, true);
     } else {
-        // Random and MIDI: what the newest voice gets from it, as a bar from the left (from the middle while
-        // it is bipolar, where its depths swing both ways), and in numbers; Random says what it does over its knobs'
-        // row, having none.
-        if (sourceTypeOf(s) == SourceType::Random)
-            c.text({p.x + 16.0f, p.y + 40.0f, p.w - 32.0f, 30.0f}, tr(Str::HintRandomSource), kTextLabel, kDim);
+        // MIDI: what the newest voice gets from it, as a bar from the left (from the middle while it is bipolar, where
+        // its depths swing both ways), and in numbers.
         const Rect d = sourceDisplay(card);
         c.fillRect(d, kBackground, kRadiusCard);
         const bool live = sourceOn(s) && telemetry_.voices > 0;
@@ -7541,7 +7553,7 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::LfoDisplay:
         // A freeform LFO's display opens its editor.
-        if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom))
+        if (lfoShapeOf(w.a) == LfoShape::Custom)
             editButton(c, lfoEditButton(w.rect), kSourceColors[w.a], hovered, false);
         break;
     case Kind::PartialEdit: // a Custom wave's, lit while its partial editor is open
@@ -9972,7 +9984,7 @@ void View::mouseDown(Point p, Modifiers mods) {
 
     case Kind::ShapeWiden:
     case Kind::LfoDisplay: // a Custom LFO's widens its card, which then has the shape (and the full-size editor not)
-        if (std::lround(value(paramIndex(w.a, SourceParam::Shape))) == static_cast<long>(LfoShape::Custom)) {
+        if (lfoShapeOf(w.a) == LfoShape::Custom) {
             wideLfo_ = w.a;
             if (shapeEditing() >= 0 && !isCurve(shapeEditing()))
                 shapeEditor_ = -1;
@@ -11180,6 +11192,15 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             at = filterSlope(value(hit->param)) >= slopes[k] ? k : at;
         if (whole != 0)
             edit(hit->param, slopes[std::clamp(at + whole, first, 2)]);
+        return;
+    }
+    if (isLfoShape(hit->param)) { // to the next shape its list offers, as the wheel turns
+        const auto *first = std::begin(kLfoShapesOffered), *last = std::end(kLfoShapesOffered);
+        const auto now = static_cast<LfoShape>(std::lround(value(hit->param)));
+        const auto at = std::find(first, last, now) - first; // the retired Random, not offered, steps from the start
+        const int to = std::clamp(static_cast<int>(at == last - first ? 0 : at) + whole, 0, kLfoShapeItems - 1);
+        if (whole != 0 && kLfoShapesOffered[to] != now)
+            edit(hit->param, static_cast<double>(kLfoShapesOffered[to]));
         return;
     }
     if (hit->kind == Kind::LabelMode) { // to the next mode along, as the wheel turns, a run of notches one undo step

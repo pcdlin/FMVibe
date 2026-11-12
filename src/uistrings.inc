@@ -600,7 +600,6 @@ STR(BandButtonHigh, "HIGH")
 STR(ButtonAddEffect, "ADD EFFECT")
 STR(ButtonClearFx, "Remove All") // the confirm dialog's button that removes every effect
 STR(ButtonAddSource, "ADD SOURCE") // the dashed card after the sources: opens the list of source types
-STR(HintRandomSource, "Random value per note")
 STR(ButtonEffect, "EFFECT") // + EFFECT and + SOURCE, after a drawn plus
 STR(ButtonSource, "SOURCE")
 STR(ButtonOpenFolder, "OPEN FOLDER")

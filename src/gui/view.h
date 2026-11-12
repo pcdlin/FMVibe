@@ -1150,6 +1150,8 @@ private:
     std::vector<int> sourcesShown() const;
     std::vector<int> sourcesMoved() const; // sourcesShown() worked out
     SourceType sourceTypeOf(int source) const;
+    // The shape the source in place `source` runs as an LFO (see fmvibe::lfoShape()): Random for a Random source.
+    LfoShape lfoShapeOf(int source) const;
     std::pair<double, double> modReach(const Assignment &m) const;
     // Whether a source swings its targets both ways (see fmvibe::sourceBipolar()).
     bool sourceBipolar(int source) const;

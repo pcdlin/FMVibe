@@ -100,22 +100,22 @@ int stepped(double value, int max) {
     return std::clamp(static_cast<int>(std::lround(value)), 0, max);
 }
 
-// Cycles per second of the LFO in place `source`, reading its params through `get`.
+// Cycles per second of the LFO in place `source`, reading its params through `get`: 0 at its lowest Rate.
 template <class Get>
 double lfoHz(const Get &get, int source, double tempo) {
     return get(paramIndex(source, SourceParam::Sync)) >= 0.5
                ? 1.0 / divisionSeconds(get(paramIndex(source, SourceParam::Division)), tempo)
-               : rateFromNorm(get(paramIndex(source, SourceParam::Rate)));
+               : sweepRateHz(get(paramIndex(source, SourceParam::Rate)));
 }
 
 // What the LFO in place `source` puts out where `lfo` stands, -1..1, reading its params through `get` and a Custom
 // shape's points from `params`.
+// A random one standing still holds the value it took, gliding to none.
 template <class Get, class Lfo>
 double lfoOutput(const Get &get, const ParamValues &params, int source, const Lfo &lfo) {
-    const auto shape = static_cast<LfoShape>(
-        stepped(get(paramIndex(source, SourceParam::Shape)), static_cast<int>(LfoShape::Count) - 1));
+    const LfoShape shape = lfoShape(get, source);
     return shape == LfoShape::Custom ? shapeValue([&params](int i) { return params[i]; }, source, lfo.phase)
-           : shape == LfoShape::Random
+           : shape == LfoShape::Random && !lfoHeld(get, source)
                ? randomGlide(lfo.from, lfo.held, lfo.phase, get(paramIndex(source, SourceParam::RandomSmooth)))
                : lfoValue(shape, lfo.phase, lfo.held);
 }
@@ -492,7 +492,7 @@ void Synth::moveVoice(Voice &v, const HeldNote &to, bool retrigger, bool glide) 
             op.env.start();
         for (Envelope &env : v.modEnvs)
             env.start();
-        for (Lfo &lfo : v.lfos) { // Random carries on from the value it holds
+        for (Lfo &lfo : v.lfos) { // Random carries on from the value it holds (standing still, takes a new one)
             lfo.phase = 0.0;
             lfo.from = lfo.held;
             lfo.restart = true;
@@ -826,7 +826,7 @@ void Synth::startFxTail(const Voice &v, const ParamValues &params) {
         if ((mod.index < kFxBase || mod.index >= kShapeBase) && mod.index != volume)
             continue;
         const int source = mod.slot / kSlots;
-        if (source < kMaxSources && sourceType(params[paramIndex(source, SourceParam::Type)]) == SourceType::Lfo)
+        if (source < kMaxSources && runsLfo(sourceType(params[paramIndex(source, SourceParam::Type)])))
             continue;
         fxTail_.held[fxTail_.heldCount++] = mod;
     }
@@ -842,8 +842,7 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
     std::copy_n(fxTail_.held.begin(), count, fxTailMods_.begin());
     fxTail_.lfoMask = 0;
     for (int s = 0; s < kMaxSources; ++s) {
-        if (sourceType(params[paramIndex(s, SourceParam::Type)]) != SourceType::Lfo ||
-            params[sourceEnabledIndex(s)] < 0.5)
+        if (!runsLfo(sourceType(params[paramIndex(s, SourceParam::Type)])) || params[sourceEnabledIndex(s)] < 0.5)
             continue;
         // A free or anchored LFO goes on along its shared clock, as a voice's would; another from where it stood.
         Lfo &lfo = fxTail_.lfos[s];
@@ -851,7 +850,7 @@ int Synth::fxTailBlock(const ParamValues &params, uint32_t frames) {
         if (free)
             lfo = freeLfos_[s];
         const double value = lfoOutput(get, params, s, lfo);
-        const bool bipolar = get(paramIndex(s, SourceParam::Unipolar)) < 0.5;
+        const bool bipolar = sourceBipolar(get, s);
         fxTail_.auxOut[s] = 0.5 * (value + 1.0);
         const double swing = bipolar ? 0.5 * value : 0.5 * (value + 1.0);
         for (int k = 0; k < sharedSlotCount_[s]; ++k) {
@@ -892,7 +891,7 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
         return std::clamp(value, table_[i].min, table_[i].max);
     };
     for (int s = 0; s < kMaxSources; ++s) {
-        if (sourceType(params[paramIndex(s, SourceParam::Type)]) != SourceType::Lfo)
+        if (!runsLfo(sourceType(params[paramIndex(s, SourceParam::Type)])))
             continue;
         Lfo &lfo = freeLfos_[s];
         const double chaos = shared(paramIndex(s, SourceParam::RandomChaos));
@@ -908,9 +907,8 @@ void Synth::runSharedLfos(const ParamValues &params, const Voice *newest, uint32
             shared(paramIndex(s, SourceParam::Sync)) >= 0.5
                 ? (songBeats_ + seconds * tempo_ / 60.0) /
                       divisionBeats(static_cast<int>(std::lround(shared(paramIndex(s, SourceParam::Division)))))
-                : (songSeconds_ + seconds) * rateFromNorm(shared(paramIndex(s, SourceParam::Rate)));
-        const bool random =
-            std::lround(shared(paramIndex(s, SourceParam::Shape))) == static_cast<long>(LfoShape::Random);
+                : (songSeconds_ + seconds) * sweepRateHz(shared(paramIndex(s, SourceParam::Rate)));
+        const bool random = lfoShape(shared, s) == LfoShape::Random;
         const double at = cycles + (random ? 0.0 : shared(paramIndex(s, SourceParam::Phase)));
         const double cycle = std::floor(at);
         lfo.hz = lfoHz(shared, s, tempo_);
@@ -1500,7 +1498,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             v.auxOut[s] = 0.0; // scales nothing, as it modulates nothing
             continue;
         }
-        if (type == SourceType::Lfo) {
+        if (runsLfo(type)) { // an LFO, or Random, a random one
             Lfo &lfo = v.lfos[s];
             // A free LFO takes the shared clock, which render() moves on; switched
             // back to retrigger, it carries on from there. A one-shot is never free.
@@ -1508,12 +1506,14 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             const bool oneShot = p[paramIndex(s, SourceParam::OneShot)] >= 0.5;
             const bool free = lfoShared(get, s);
             const double chaos = p[paramIndex(s, SourceParam::RandomChaos)];
+            // A note takes a new value for it to glide to; so does a note retriggering it in mono while it stands
+            // still, where one running carries on from the value it holds. A joined voice's Random carries on with
+            // the held one's step.
             if (free)
                 lfo = freeLfos_[s];
-            else if (v.fresh && !v.keepLfos) // a joined voice's Random carries on with the held one's step
+            else if (v.newRandom && !v.keepLfos && (v.fresh || lfoHeld(get, s)))
                 lfo.held = randomStep(lfo.from, chaos, v.rng);
-            const auto shape = static_cast<LfoShape>(stepped(p[paramIndex(s, SourceParam::Shape)],
-                                                             static_cast<int>(LfoShape::Count) - 1));
+            const LfoShape shape = lfoShape(get, s);
             // A note starts it at its Phase (100 % is 0 % again), read here so that host modulation sent with the
             // note applies. A free one keeps the shared clock, and Random its steps.
             if (lfo.restart && shape != LfoShape::Random) {
@@ -1522,32 +1522,25 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             }
             lfo.restart = false;
             const double value = lfoOutput(get, params, s, lfo);
-            const bool lfoUnipolar = p[paramIndex(s, SourceParam::Unipolar)] >= 0.5;
+            const bool lfoUnipolar = !sourceBipolar(get, s);
             collectSlots(s, lfoUnipolar ? 0.5 * (value + 1.0) : value, 0.5 * (value + 1.0), 0.5 * value, !lfoUnipolar);
             if (!free)
                 advanceLfo(lfo, lfoHz(get, s, tempo_), hostFrames, v.rng, oneShot, chaos);
             continue;
         }
-        if (type != SourceType::Env) {
-            // Random holds a value of its own from the note's start; Midi follows its controller, or the note's
-            // pressure (else the channel's) or slide, through Slew, from where it is as the note starts.
+        if (type == SourceType::Midi) {
+            // It follows its controller, or the note's pressure (else the channel's) or slide, through Slew, from
+            // where it is as the note starts.
             double &out = v.follow[s];
-            if (type == SourceType::Random) {
-                if (v.newRandom)
-                    out = 0.5 * (nextRandom(v.rng) + 1.0);
-            } else {
-                const auto input = static_cast<MidiInput>(
-                    stepped(p[paramIndex(s, SourceParam::MidiInput)], static_cast<int>(MidiInput::Count) - 1));
-                const double in =
-                    input == MidiInput::Pressure ? (v.pressure >= 0.0 ? v.pressure : channelPressure_)
-                    : input == MidiInput::Slide  ? v.slide
-                                                 : cc_[static_cast<size_t>(
-                                                      stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))];
-                out = v.fresh ? in
-                              : in + (out - in) * std::exp(-static_cast<double>(hostFrames) /
-                                                           (timeFromNorm(p[paramIndex(s, SourceParam::Slew)]) *
-                                                            sampleRate_));
-            }
+            const auto input = static_cast<MidiInput>(
+                stepped(p[paramIndex(s, SourceParam::MidiInput)], static_cast<int>(MidiInput::Count) - 1));
+            const double in = input == MidiInput::Pressure ? (v.pressure >= 0.0 ? v.pressure : channelPressure_)
+                              : input == MidiInput::Slide  ? v.slide
+                                                           : cc_[static_cast<size_t>(
+                                                                stepped(p[paramIndex(s, SourceParam::CcNumber)], 127))];
+            out = v.fresh ? in
+                          : in + (out - in) * std::exp(-static_cast<double>(hostFrames) /
+                                                       (timeFromNorm(p[paramIndex(s, SourceParam::Slew)]) * sampleRate_));
             collectSlots(s, out, out, out - 0.5, p[paramIndex(s, SourceParam::Bipolar)] >= 0.5);
             continue;
         }
