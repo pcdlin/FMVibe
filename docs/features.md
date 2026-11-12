@@ -289,9 +289,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     -60 dB, silence; full to begin with), and the line goes on from it; a split left open at the line's end sends both
     bands out. The join can **solo** bands, each on its own, letting only those soloed through. The splits
     and joins don't take any of the 32 effects' places, and modulation moves a split's crossover and a join's levels
-    like any knob. The editor shows the line two ways, as a row of cards or as a graph (the FX tab's switch, see the
-    editor), and switching between them changes nothing: underneath, the line is the effects graph's wires between
-    the effects, which both views lay along it and the effects always run as. A
+    like any knob. The editor shows the line three ways, as a row of cards, as a graph or as a rack (the FX tab's switch,
+    see the editor), and switching between them changes nothing: underneath, the line is the effects graph's wires
+    between the effects, which every view lays along it and the effects always run as. A
     wire's level glides as it moves, a wire connected or taken away fades in or out over 5 ms, a wire moved
     crossfades from where it came from to where it comes from now over the same 5 ms, and a wire that would loop
     back (which the editor doesn't make) reads what its source put out 64 samples before. Effects moved along the
@@ -606,7 +606,7 @@ one may have changed since it last did.
 - **ROUTING / MATRIX / FX / MODS** tabs, under the header, pick what the panel below them shows: the routing graph
   or the matrix (two views of the same connections) with the inspector floating over the panel's left end, or across
   the whole panel the effects chain or every modulation. The
-  choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row or graph)
+  choice is saved with the project, but loading a preset or Init leaves the tab shown (and the FX view's row, graph or rack)
   as it is. They are folder tabs: the one shown is part of the panel under it, its outline
   curving into the panel's edge (ROUTING, in line with the panel's left edge, runs straight on down it), with the
   theme's accent along its top; the others are their names, a tab's shape
@@ -929,11 +929,11 @@ one may have changed since it last did.
     band goes onto the main line. A copy of a card on a band goes at the end of that band. The band each split shows
     and which containers are folded are saved with the patch, but not undone.
 
-    Left of that switch, a bin removes every effect, in the chain and in the graph (with every split and join), as one
+    Left of that switch, a bin removes every effect, in the chain, the graph and the rack (with every split and join), as one
     undo step: while there is any, it asks first ("Really remove all FX?"); with none, it is faint and does nothing.
 
-    The switch at the panel's top right (cards in a row, or a node forking and meeting again) shows the effects as
-    a **graph** instead: at the right the card of the node picked, as it would show in the row but without its ×
+    The switch at the panel's top right (cards in a row; a node forking and meeting again; a list beside a card)
+    shows the effects as a **graph** or a **rack** instead. The graph: at the right the card of the node picked, as it would show in the row but without its ×
     (the node's own × removes it: see below), an effect card's power switch taking the ×'s corner, and the graph at the
     left in the room the card leaves: beside a card one place wide the graph reaches further right, and a wide card
     (the Param EQ's, the 3-band dynamics') takes some of its room. The graph scrolls as far as it needs beside the
@@ -996,6 +996,28 @@ one may have changed since it last did.
     graph or back changes nothing but the view: both show the same line, splits and all. A click on a node shows it in the card at the right;
     right-click an effect's node for its card's menu, a split's or a join's to remove it. The node picked is saved
     with the patch; the effects' count beside + EFFECT and the target menu follow the line's order.
+
+    The **rack** lists the line top to bottom in a column at the panel's left, 300 px wide, and shows the card of the
+    row picked in the rest of the panel, its **focus**: the same card as in the row or the graph's inspector (its
+    power switch in the ×'s corner, as there), laid out across the whole width, so its display and knobs spread
+    out. Its hint reads "click row: edit · drag row: move". From the top: IN, with a meter of what comes in; a row an
+    effect, its icon on a tile in its color, its name, what it is set to (two or three of its params' values, the
+    most telling ones, as many as fit: a reverb's algorithm, decay and mix, a Param EQ's bands that play by their
+    frequencies), a thin meter of what comes out of it in its color, and its power switch; a split's row (its
+    crossovers and slope), then each band, the high one on top as in the graph, its name in its color with its
+    level into the join and a **+** in a circle that adds an effect at its end (effects only), and its effects' rows
+    indented under it, hanging off a line in its color; the join's row; a dashed **+ ADD EFFECT** row at the
+    line's end, whose list also offers the splits (none after a split left open, nor once the 32 places are taken);
+    and OUT, with a meter of what goes out. The row picked is filled in its color and outlined, a split's or a join's
+    outlined grey; a click on a row picks it, and a split's or a join's row shows the split's card. Under the mouse,
+    a row shows an x in a circle at its right end, which removes it as a node's x does. A row dragged up or down
+    moves its effect (or a split with its bands and join), one undo step: the rows close up behind it at once and a
+    dotted place opens where it would land, the gap nearest where its rows would start, an effect's anywhere on the
+    main line or a band, a split's only on the main line, while the row carried follows the mouse over the others;
+    with Ctrl held as it starts to move it carries a copy, as a node does, its place opening right after the
+    original. Taller than the rack, the rows scroll under the wheel, the middle button and two fingers (a thin bar
+    at the rack's right shows how far), and a row held at the rack's top or bottom scrolls it that way; an effect added
+    scrolls into view. Its meters follow the effects graph's port levels, as the graph's glows do.
   - **MODS**: takes the place of both too: every modulation as a row of a table, by source (the LFOs and envelopes
     in the order their cards show, then the macros, the note source, the mod wheel, velocity and the pitch bend), the
     first of a

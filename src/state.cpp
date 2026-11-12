@@ -307,8 +307,9 @@ void layoutFields(Io &io, Layout &ui) {
     io.number(ui.fxFoldedLater, 0.0f, 65535.0f, rounded<uint32_t>);
     // The node the effects graph's inspector shows.
     io.number(ui.fxSelected, -1.0f, kFxNodes - 1.0f, rounded<int>);
-    // Whether the FX view shows the graph, the band each split shows, and the splits' containers folded.
-    io.number(ui.fxGraphView, 0.0f, 1.0f, [](float value) { return value >= 0.5f; });
+    // How the FX view shows the effects (once only whether it showed the graph, 1, or the row, 0), the band each split
+    // shows, and the splits' containers folded.
+    io.number(ui.fxView, 0.0f, static_cast<float>(gui::FxView::Count) - 1.0f, rounded<gui::FxView>);
     io.numbers(ui.splitBand, 0.0f, 2.0f, rounded<int>); // 0 low, 1 high, 2 middle
     io.number(ui.splitsFolded, 0.0f, 15.0f, rounded<uint32_t>);
 }

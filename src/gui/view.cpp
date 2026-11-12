@@ -1596,6 +1596,8 @@ bool View::poll() {
         }
         if (moved && (routingGraphShown() || (fxWide() && fxGraph() && shownGlow() > 0.0f)))
             in(kFxPanel);
+        else if (moved && fxWide() && fxRack()) // its rows' meters
+            in(fxRackArea());
     }
     traceRandomLfos();
     // A free or anchored LFO switched on runs whether notes play or not, and its card shows it: the plugin keeps
@@ -1619,6 +1621,8 @@ bool View::poll() {
     if (glideFxGraph()) // the effects graph's nodes making room for one dragged, or settling after
         everywhere = true;
     if (glideFxRow()) // the row's cards and containers likewise
+        everywhere = true;
+    if (edgeScrollRack()) // the rack's rows, a row held at its top or bottom
         everywhere = true;
     if (sourceMenuOpen_ && !sourceMenuShown()) { // its card or button went: scrolled away, the panel shut, the places full
         sourceMenuOpen_ = false;
@@ -1907,7 +1911,7 @@ std::vector<View::Widget> View::widgets() const {
             add(Kind::SearchClear, fieldClear(filter), -1, static_cast<int>(Field::ModsFilter));
     } else if (view == RoutingView::Fx) {
         add(Kind::FxMenuButton, fxMenuButton());
-        if (scrollLength(ScrollArea::Fx) > kVisibleFx + 0.01f && !fxGraph())
+        if (scrollLength(ScrollArea::Fx) > kVisibleFx + 0.01f && !fxInspecting())
             add(Kind::Scrollbar, fxScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::Fx));
         if (fxGraph() && scrollLength(ScrollArea::FxGraph) > fxGraphArea().w + 0.5f) // wider than its box
             add(Kind::Scrollbar, fxGraphScrollTrack().inset(-4.0f), -1, static_cast<int>(ScrollArea::FxGraph));
@@ -2217,8 +2221,11 @@ std::vector<View::Widget> View::widgets() const {
                 break;
             }
         };
-        if (fxGraph()) {
-            fxGraphWidgets(list);
+        if (fxInspecting()) {
+            if (fxGraph())
+                fxGraphWidgets(list);
+            else
+                fxRackWidgets(list);
             if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots)
                 cardWidgets(node, 0, fxInspector(node), true);
             else if (fxNodeSplit(node)) // a split and its join share their controls' card
@@ -2284,11 +2291,11 @@ std::vector<View::Widget> View::widgets() const {
                         insert(card.place, box.lane, box.item, k++);
             }
         }
-        for (size_t i = cardsStart; i < list.size() && !fxGraph(); ++i)
+        for (size_t i = cardsStart; i < list.size() && !fxInspecting(); ++i)
             list[i].clip = fxCardClip();
-        for (int graph = 0; graph < 2; ++graph) // the switch between the chain and the graph
-            add(Kind::FxMode, fxModeButton(graph), -1, -1, graph);
-        merge(list.size() - 2);
+        for (int view = 0; view < kFxViews; ++view) // the switch between the chain, the graph and the rack
+            add(Kind::FxMode, fxModeButton(view), -1, -1, view);
+        merge(list.size() - kFxViews);
         add(Kind::FxClear, fxClearButton());
     } else if (view == RoutingView::Matrix) {
         // Rows feed columns; the last column is the output. The rows' and columns' names work like the
@@ -2924,7 +2931,7 @@ std::vector<View::Widget> View::widgets() const {
     const FxParam listField = fxFieldOf(listMenu_);
     const int listSlot = fxSlotOf(listMenu_);
     if (listSlot >= 0 && fxWide() && fxTypeOfField(listField) == fxSlotType(listSlot) &&
-        (fxGraph() || !fxFolded(listSlot))) {
+        (fxInspecting() || !fxFolded(listSlot))) {
         if (const std::optional<Rect> shown = fxCardOf(listSlot)) {
             const Rect card = *shown;
             const Rect button = listField == FxParam::ReverbType    ? reverbTypeButton(card)
@@ -2997,7 +3004,7 @@ std::vector<View::Widget> View::widgets() const {
         const int slot = fxSlotOf(peqMenu_);
         const int band = peqBandOfType(peqMenu_);
         const std::optional<Rect> shown = fxCardOf(slot);
-        if (band >= 0 && shown && (fxGraph() || !fxFolded(slot))) {
+        if (band >= 0 && shown && (fxInspecting() || !fxFolded(slot))) {
             const Rect card = *shown;
             add(Kind::PeqTypeMenu, {0.0f, 0.0f, View::kWidth, height()}, -1, 0);
             add(Kind::PeqTypeMenu, peqMenu(card, band), -1, 1);
@@ -3232,7 +3239,7 @@ void View::paint(Canvas &c, Rect area) {
     }
     c.popClip();
     // So is a switched-off effect's.
-    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && fxGraph()) {
+    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && fxInspecting()) {
         if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots &&
                                                value(paramIndex(node, FxParam::Enabled)) < 0.5) {
             const Rect p = fxInspector(node);
@@ -3302,7 +3309,7 @@ void View::paint(Canvas &c, Rect area) {
         c.popClip();
         c.popLayer();
     };
-    if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && !fxGraph()) {
+    if (drag_.kind == DragKind::FxMove && drag_.moved && fxDrag_ && !fxInspecting()) {
         const int node = fxDrag_->item.node;
         const FxRow row = fxRowShown();
         std::optional<Rect> landing;
@@ -4063,10 +4070,15 @@ void View::paintFx(Canvas &c, std::optional<Rect> only) {
         const float hintX = count.right() + 8.0f;
         if (!chain.empty()) // how to work the cards or the graph's nodes, while there are some
             c.text({hintX, kFxPanel.y + 10.0f, fxClearButton().x - 12.0f - hintX, 22.0f},
-                   tr(fxGraph() ? Str::HintFxGraph : Str::HintFx), kTextLabel, kFaint, Align::Right);
+                   tr(fxGraph() ? Str::HintFxGraph : fxRack() ? Str::HintFxRack : Str::HintFx), kTextLabel, kFaint,
+                   Align::Right);
     }
     if (fxGraph()) {
         paintFxGraph(c);
+        return;
+    }
+    if (fxRack()) {
+        paintFxRack(c);
         return;
     }
     const FxRow row = fxRowShown();
@@ -4198,7 +4210,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
     const Color fx = fxTypeColor(type); // each type of effect in a color of its own
     paintCardFace(c, card, fx, on, kMaxSources + slot, dragged, 0.45f, kFxPanel);
     // Title row: the effect's icon (a widget of its own, which also switches it) and its name, up to the fold button.
-    const float titleRight = fxGraph() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
+    const float titleRight = fxInspecting() ? cardPowerInGraph(card).x - 3.0f : cardTitleRight(card);
     const Rect titleRect{card.x + 33.0f, card.y + 6.0f, titleRight - card.x - 33.0f, 20.0f};
     const char *title = fxTitle(type);
     float titleSize = kTextBody; // smaller for a long name, so it fits beside the icon
@@ -7372,9 +7384,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     case Kind::FxInsert: // drawn with the arrows between the cards
         break;
     case Kind::FxMode: {
-        const bool on = fxGraph() == (w.b == 1);
+        const bool on = fxView() == static_cast<FxView>(w.b);
         paintButtonFace(c, w, on, hovered, kAccent, 0.22f, kRadiusControl);
-        fxModeIcon(c, w.rect.center(), w.b == 1, on ? litInk(kAccent) : (hovered ? kText : kDim));
+        fxModeIcon(c, w.rect.center(), w.b, on ? litInk(kAccent) : (hovered ? kText : kDim));
         break;
     }
     case Kind::WireStart: // a circle with a dot where it leaves its node
@@ -8602,7 +8614,7 @@ void View::paintTooltip(Canvas &c) {
     } else if (hover_->kind == Kind::NoteDisplay) {
         text = tr(isVelocity(hover_->a) ? Str::TipVelocityDisplay : Str::TipNoteDisplay);
     } else if (hover_->kind == Kind::FxMode) {
-        text = tr(hover_->b == 1 ? Str::TipFxGraph : Str::TipFxChain);
+        text = tr(hover_->b == 1 ? Str::TipFxGraph : hover_->b == 2 ? Str::TipFxRack : Str::TipFxChain);
     } else if (hover_->kind == Kind::FxNode) {
         text = tr(Str::TipFxNode);
     } else if (hover_->kind == Kind::FxSlot) {
@@ -9817,7 +9829,7 @@ void View::mouseDown(Point p, Modifiers mods) {
             fxMenuOpen_ = !fxMenuOpen_ || fxMenuAt_.x >= 0.0f; // from another list, to the button's
             fxMenuAt_ = {-1.0f, -1.0f};
             // In the row, at the main line's end; in the graph, after the node picked.
-            fxSlot_ = fxGraph() ? FxSlotAt{} : FxSlotAt{0, static_cast<int>(fxLine().size()), 0};
+            fxSlot_ = fxInspecting() ? FxSlotAt{} : FxSlotAt{0, static_cast<int>(fxLine().size()), 0};
         }
         break;
     case Kind::FxShadow: // the list at the mouse, kept inside the editor, for the main line's end
@@ -9943,7 +9955,7 @@ void View::mouseDown(Point p, Modifiers mods) {
         break;
     case Kind::FxGrip:
     case Kind::FxPower: // the icon: let go without moving, it switches the effect
-        if (fxGraph()) { // in the graph's inspector, where the card doesn't move
+        if (fxInspecting()) { // in the graph's inspector or the rack's focus, where the card doesn't move
             if (w.kind == Kind::FxPower)
                 edit(w.param, value(w.param) >= 0.5 ? 0.0 : 1.0);
             break;
@@ -10656,8 +10668,10 @@ std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {
         return std::pair{PanArea::Inputs, inputsFirst(op)};
     if (fxWide() && fxGraph() && fxGraphArea().contains(p)) // the graph, by pixels
         return std::pair{PanArea::Fx, fxGraphScroll(fxGridLayout(fxLine()))};
-    if (fxWide() && !fxGraph() && kFxPanel.contains(p))
+    if (fxWide() && !fxInspecting() && kFxPanel.contains(p))
         return std::pair{PanArea::Fx, fxScroll()};
+    if (fxWide() && fxRack() && fxRackArea().contains(p)) // the rack's rows, by pixels
+        return std::pair{PanArea::FxRack, fxRackScroll()};
     return std::nullopt;
 }
 
@@ -10843,7 +10857,7 @@ void View::wheelAcross(Point p, float steps) {
         fxGraphScroll_ = std::clamp(fxGraphScroll(grid) + steps * 0.5f * kFxGridCol, 0.0f, fxGraphScrollMost(grid));
         if (fxSlot_.lane >= 0)
             fxMenuOpen_ = false;
-    } else if (fxWide() && !fxGraph() && kFxPanel.contains(p)) {
+    } else if (fxWide() && !fxInspecting() && kFxPanel.contains(p)) {
         setScroll(ScrollArea::Fx, fxScroll() + steps * 0.4f);
         closeGoneLists();
     }
@@ -10884,6 +10898,9 @@ void View::applyPan(Point p) {
     }
     case PanArea::ModList:
         modListScroll_ = hold(first - down / kModListRowStep, modListEnd());
+        break;
+    case PanArea::FxRack:
+        fxRackScroll_ = hold(first - down, fxRackScrollMost());
         break;
     case PanArea::Browser: { // in whole rows
         const int rows = static_cast<int>(browserRows().size()) - browserVisibleRows(browserPanel(height()));
@@ -11137,6 +11154,15 @@ void View::wheel(Point p, float steps, Modifiers mods) {
             // The graph sideways, half a column a notch, closing a +'s list.
             const FxGridLayout grid = fxGridLayout(fxLine());
             fxGraphScroll_ = std::clamp(fxGraphScroll(grid) - steps * 0.5f * kFxGridCol, 0.0f, fxGraphScrollMost(grid));
+            if (fxSlot_.lane >= 0)
+                fxMenuOpen_ = false;
+        }
+        return;
+    }
+    if ((!hit || hit->param < 0) && fxWide() && kFxPanel.contains(p) && steps != 0.0f && fxRack()) {
+        if (fxRackArea().contains(p)) { // the rack's rows, a row a notch
+            fxRackScroll_ = fxRackScroll() - steps * (kFxRackRowH + kFxRackGap);
+            fxRackScroll_ = fxRackScroll();
             if (fxSlot_.lane >= 0)
                 fxMenuOpen_ = false;
         }

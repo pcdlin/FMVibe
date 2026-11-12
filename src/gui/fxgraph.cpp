@@ -1,6 +1,7 @@
 // The effects as a line of effects and splits from IN to OUT, which the editor reads from the wires and writes back to
-// them, and the View's methods that edit it; its two views, the row of cards (each split a container holding its
-// bands) and the graph on its slot grid, with their widgets and painting; and a split's controls, which both show.
+// them, and the View's methods that edit it; its three views, the row of cards (each split a container holding its
+// bands), the graph on its slot grid and the rack (a list of rows beside the card of the one picked), with their
+// widgets and painting; and a split's controls, which they all show.
 // The engine runs the wires as they are (see Effects::processGraph()); the editor only ever wires a line.
 
 #include "view.h"
@@ -250,8 +251,22 @@ Point View::routingGridPoint(int node, Point want) const {
 
 // --- Model
 
+static_assert(kFxViews == static_cast<int>(FxView::Count), "a switch for every view");
+
+FxView View::fxView() const {
+    return controller_.layout().fxView;
+}
+
 bool View::fxGraph() const {
-    return controller_.layout().fxGraphView;
+    return fxView() == FxView::Graph;
+}
+
+bool View::fxRack() const {
+    return fxView() == FxView::Rack;
+}
+
+bool View::fxInspecting() const {
+    return fxView() != FxView::Chain;
 }
 
 bool View::fxNodeShown(int node) const {
@@ -475,6 +490,7 @@ float View::fxGraphScroll(const FxGridLayout &grid) const {
 }
 
 void View::revealFxNode(int node) {
+    revealFxRackNode(node);
     const FxGridLayout grid = fxGridLayout(fxLine());
     const float scroll = fxGraphScroll(grid);
     const Rect area = fxGraphArea();
@@ -508,6 +524,8 @@ Point View::fxPowerAt(int node, Point center) {
 }
 
 Rect View::fxInspector(int node) const {
+    if (fxRack()) // the rack's focus: the rest of the panel
+        return fxFocusCard();
     return fxInspectorCard(node >= 0 && node < kFxSlots ? fxSpan(fxSlotType(node)) : 1.0f);
 }
 
@@ -538,7 +556,7 @@ int View::fxSelectedNode() const {
 }
 
 std::optional<Rect> View::fxCardOf(int slot) const {
-    if (fxGraph())
+    if (fxInspecting())
         return fxSelectedNode() == slot ? std::optional(fxInspector(slot)) : std::nullopt;
     for (const FxRowCard &card : fxRowShown().cards)
         if (card.slot == slot) {
@@ -580,7 +598,7 @@ void View::fxPlaceNew(int slot, int copyOf) {
     };
     const bool open = openSplit(line);
     const int last = static_cast<int>(line.size()) - 1;
-    if (const LinePlace was = copyOf >= 0 ? placeOf(line, copyOf) : LinePlace{}; was.item >= 0 && fxGraph()) {
+    if (const LinePlace was = copyOf >= 0 ? placeOf(line, copyOf) : LinePlace{}; was.item >= 0 && fxInspecting()) {
         put(was.lane == 0 ? was.item + 1 : was.item, was.lane, was.at + 1); // a copy right after its original
     } else if (was.item >= 0) { // in the row, at the line's end, or its band's
         if (was.lane == 0)
@@ -770,11 +788,11 @@ void View::setSplitBands(int split, int bands, int midTo) {
         showSplitBand(split, midTo == 1 ? tabOfLane(1) : tabOfLane(2));
 }
 
-void View::setFxGraph(bool on) {
-    // Two views of the same line: only what shows changes.
-    if (on == fxGraph())
+void View::setFxView(FxView view) {
+    // Three views of the same line: only what shows changes.
+    if (view == fxView())
         return;
-    controller_.layout().fxGraphView = on;
+    controller_.layout().fxView = view;
     controller_.layoutChanged();
     fxMenuOpen_ = false;
     fxSlot_ = {};
@@ -1094,7 +1112,7 @@ void View::setSplitFolded(int split, bool folded) {
 }
 
 std::optional<Rect> View::splitCardOf(int split) const {
-    if (fxGraph()) {
+    if (fxInspecting()) {
         const int node = fxSelectedNode();
         if (node == fxSplitNode(split) || node == fxJoinNode(split))
             return fxInspector(node);
@@ -1300,7 +1318,7 @@ bool View::glideFxRow() {
     FxRowGlide &g = fxRowGlide_;
     if (!g.on)
         return false;
-    if (fxGraph()) {
+    if (fxInspecting()) {
         g.on = false;
         return true;
     }
@@ -1794,14 +1812,20 @@ void View::dropFxNode(bool take) {
         const UndoScope step(controller_);
         writeFxLine(fxLineWith(d.rest, d.item, d.at));
     }
+    if (fxRack()) { // the rack's rows take their places at once
+        fxGlide_.on = false;
+        return;
+    }
     for (const auto &p : fxGridLayout(fxLine()).nodes)
         if (std::find(d.nodes.begin(), d.nodes.end(), p.node) != d.nodes.end())
             fxGlide_.node[p.node] = {static_cast<float>(p.col), static_cast<float>(p.row)};
 }
 
 bool View::glideFxGraph() {
-    if (!fxGlide_.on)
+    if (!fxGlide_.on || fxRack()) {
+        fxGlide_.on = false;
         return false;
+    }
     const bool dragging = drag_.kind == DragKind::FxNodeMove && drag_.moved && fxDrag_.has_value();
     if (dragging) { // held at the graph's left or right edge, it scrolls that way, and where it lands follows
         const Rect area = fxGraphArea();
@@ -1845,18 +1869,529 @@ bool View::glideFxGraph() {
     return true;
 }
 
+// --- The rack
+
+std::vector<View::FxRackRow> View::fxRackRows(const FxLine &line) const {
+    using Type = FxRackRow::Type;
+    std::vector<FxRackRow> rows;
+    float y = 0.0f;
+    auto add = [&](Type type, int node, FxSlotAt at, float h, bool indented = false) {
+        FxRackRow row{type, node, at, y, h, indented};
+        rows.push_back(row);
+        y += h + kFxRackGap;
+    };
+    add(Type::In, -1, {}, kFxRackEndH);
+    const int n = static_cast<int>(line.size());
+    for (int i = 0; i < n; ++i) {
+        const FxLineItem &item = line[i];
+        if (item.node < kFxSlots) {
+            add(Type::Effect, item.node, {0, i, 0}, kFxRackRowH);
+            continue;
+        }
+        add(Type::Split, item.node, {0, i, 0}, kFxRackLineH);
+        for (int lane : item.lanes()) { // as the graph has them: the high band on top
+            add(Type::Band, item.node, {lane, i, -1}, kFxRackEndH, true);
+            const std::vector<int> &band = item.band(lane);
+            for (int k = 0; k < static_cast<int>(band.size()); ++k)
+                add(Type::Effect, band[k], {lane, i, k}, kFxRackRowH, true);
+        }
+        if (item.joined)
+            add(Type::Join, fxJoinNode(item.node - kFxSlots), {0, i, 0}, kFxRackLineH);
+    }
+    if (!openSplit(line) && fxShadow()) // nothing goes after a split left open, nor past the last slot
+        add(Type::Add, -1, {0, n, 0}, kFxRackLineH);
+    add(Type::Out, -1, {}, kFxRackEndH);
+    // What is carried shows where it would land, as an outline.
+    if (drag_.kind == DragKind::FxNodeMove && drag_.moved && fxDrag_)
+        for (FxRackRow &row : rows)
+            row.faint = row.node >= 0 &&
+                        std::find(fxDrag_->nodes.begin(), fxDrag_->nodes.end(), row.node) != fxDrag_->nodes.end();
+    return rows;
+}
+
+float View::fxRackHeight(const std::vector<FxRackRow> &rows) const {
+    return rows.empty() ? 0.0f : rows.back().y + rows.back().h;
+}
+
+float View::fxRackScrollMost() const {
+    return std::max(fxRackHeight(fxRackRows(fxLineShown())) - fxRackArea().h, 0.0f);
+}
+
+float View::fxRackScroll() const {
+    return std::clamp(fxRackScroll_, 0.0f, fxRackScrollMost());
+}
+
+Rect View::fxRackRowRect(const FxRackRow &row, float scroll) {
+    const Rect area = fxRackArea();
+    const float indent = row.indented ? kFxRackIndent : 0.0f;
+    return {area.x + indent, area.y + row.y - scroll, area.w - indent, row.h};
+}
+
+void View::revealFxRackNode(int node) {
+    const Rect area = fxRackArea();
+    for (const FxRackRow &row : fxRackRows(fxLine()))
+        if (row.node == node && row.type != FxRackRow::Type::Band) {
+            const float scroll = fxRackScroll();
+            const float top = row.y - kFxRackGap, bottom = row.y + row.h + kFxRackGap;
+            fxRackScroll_ = top < scroll ? top : bottom > scroll + area.h ? bottom - area.h : scroll;
+            fxRackScroll_ = fxRackScroll();
+            return;
+        }
+}
+
+std::string View::fxRackSummary(int slot) const {
+    auto at = [slot](FxParam f) { return paramIndex(slot, f); };
+    std::vector<int> params;
+    switch (fxSlotType(slot)) {
+    case FxType::Shaper:
+        params = {at(FxParam::ShaperMode), at(FxParam::ShaperDrive), at(FxParam::ShaperMix)};
+        break;
+    case FxType::Delay: {
+        const bool synced = value(at(FxParam::DelaySync)) >= 0.5;
+        params = {at(synced ? FxParam::DelayDivisionL : FxParam::DelayTimeL), at(FxParam::DelayFeedback),
+                  at(FxParam::DelayMix)};
+        break;
+    }
+    case FxType::Eq:
+        params = {at(FxParam::EqLow), at(FxParam::EqMid), at(FxParam::EqHigh)};
+        break;
+    case FxType::ParamEq: // the bands that play, by their frequencies
+        for (int band = 0; band < kPeqBands; ++band)
+            if (value(peqOnIndex(slot, band)) >= 0.5)
+                params.push_back(peqFreqIndex(slot, band));
+        break;
+    case FxType::Filter:
+        params = {at(FxParam::FilterType), at(FxParam::FilterCutoff), at(FxParam::FilterResonance)};
+        break;
+    case FxType::Compressor:
+        params = {at(FxParam::CompThreshold), at(FxParam::CompRatio), at(FxParam::CompMix)};
+        break;
+    case FxType::MultiDyn:
+        params = {at(FxParam::MdLowFreq), at(FxParam::MdHighFreq), at(FxParam::MdMix)};
+        break;
+    case FxType::Reverb:
+        params = {at(FxParam::ReverbType), at(FxParam::ReverbDecay), at(FxParam::ReverbMix)};
+        break;
+    case FxType::Phaser: {
+        const bool synced = value(at(FxParam::PhaserSync)) >= 0.5;
+        params = {at(synced ? FxParam::PhaserDivision : FxParam::PhaserRate), at(FxParam::PhaserDepth),
+                  at(FxParam::PhaserMix)};
+        break;
+    }
+    case FxType::Flanger: {
+        const bool synced = value(at(FxParam::FlangerSync)) >= 0.5;
+        params = {at(synced ? FxParam::FlangerDivision : FxParam::FlangerRate), at(FxParam::FlangerDelay),
+                  at(FxParam::FlangerMix)};
+        break;
+    }
+    case FxType::Chorus:
+        params = {at(FxParam::ChorusRate), at(FxParam::ChorusDelay), at(FxParam::ChorusMix)};
+        break;
+    case FxType::FreqShifter:
+        params = {at(FxParam::ShiftAmount), at(FxParam::ShiftRange), at(FxParam::ShiftMix)};
+        break;
+    case FxType::Disperser:
+        params = {at(FxParam::DisperserFreq), at(FxParam::DisperserStages), at(FxParam::DisperserMix)};
+        break;
+    case FxType::Widener:
+        params = {at(FxParam::WidenerWidth), at(FxParam::WidenerHighPass), at(FxParam::WidenerMix)};
+        break;
+    case FxType::Amp:
+        params = {at(FxParam::AmpModel), at(FxParam::AmpGain), at(FxParam::AmpMix)};
+        break;
+    case FxType::Utility:
+        params = {at(FxParam::UtilityGain), at(FxParam::UtilityPan), at(FxParam::UtilityWidth)};
+        break;
+    case FxType::MultiComp:
+    case FxType::None:
+    case FxType::Count:
+        break;
+    }
+    std::string text;
+    for (int index : params) {
+        char buffer[64] = {};
+        if (!formatParam(index, value(index), buffer, sizeof buffer) || buffer[0] == '\0')
+            continue;
+        if (!text.empty())
+            text += "  \xC2\xB7  "; // a middle dot between them
+        text += buffer;
+    }
+    return text;
+}
+
+std::string View::fxRackBandLevel(int split, int lane) const {
+    if (value(paramIndex(split, SumParam::Used)) < 0.5)
+        return {};
+    const int index = fxInputIndex(fxJoinNode(split), laneJoinInput(lane), FxInputField::Level);
+    char buffer[64] = {};
+    return formatParam(index, value(index), buffer, sizeof buffer) ? std::string(buffer) : std::string();
+}
+
+void View::fxRackWidgets(std::vector<Widget> &list) const {
+    using Type = FxRackRow::Type;
+    const Rect area = fxRackArea(); // the rows scroll inside it
+    auto add = [&list, area](Kind kind, Rect rect, int param = -1, int a = -1, int b = -1) {
+        Widget w;
+        w.kind = kind;
+        w.rect = rect;
+        w.param = param;
+        w.a = a;
+        w.b = b;
+        w.clip = area;
+        list.push_back(w);
+    };
+    const float scroll = fxRackScroll();
+    for (const FxRackRow &row : fxRackRows(fxLine())) {
+        const Rect r = fxRackRowRect(row, scroll);
+        if (r.bottom() < area.y || r.y > area.bottom())
+            continue;
+        switch (row.type) {
+        case Type::Effect:
+        case Type::Split:
+        case Type::Join:
+            // Picked by a click, dragged to move it, as a node in the graph; its power switch, and under the mouse
+            // its x, at its right end.
+            add(Kind::FxNode, r, -1, row.node);
+            if (row.type == Type::Effect)
+                add(Kind::FxNodePower, fxRackPower(r), paramIndex(row.node, FxParam::Enabled), row.node);
+            if (row.node == fxHoveredNode())
+                add(Kind::FxNodeDelete, fxRackRemove(r), -1, row.node);
+            break;
+        case Type::Band: // its + adds an effect at its end, as a wire's middle in the graph adds one there
+            add(Kind::FxGap, fxRackRemove(r), -1, row.at.lane,
+                row.at.item * kFxGapStride + static_cast<int>(fxLine()[row.at.item].band(row.at.lane).size()));
+            break;
+        case Type::Add: // the effects' list, the effect or split picked going at the line's end
+            add(Kind::FxGap, r, -1, 0, row.at.item * kFxGapStride);
+            break;
+        case Type::In:
+        case Type::Out:
+            break;
+        }
+    }
+}
+
+void View::retargetRackDrag(Point mouse) {
+    if (!fxDrag_)
+        return;
+    using Type = FxRackRow::Type;
+    FxDrag &d = *fxDrag_;
+    // Where the top of what is carried is, among the rows of the line without it: it lands in the gap between two of
+    // them that it can go in where its rows would start nearest there, so its placeholder opens under it.
+    const std::vector<FxRackRow> own = fxRackRows({d.item});
+    float grabbedY = 0.0f, grabbedH = 0.0f;
+    for (const FxRackRow &row : own)
+        if (row.node == drag_.widget.a && row.type != Type::Band) {
+            grabbedY = row.y;
+            grabbedH = row.h;
+        }
+    const float firstY = own.size() > 1 ? own[1].y : 0.0f; // its first row's, past IN's
+    const float carried = d.startPlace + mouse.y - drag_.start.y - 0.5f * grabbedH - (grabbedY - firstY) -
+                          fxRackArea().y + fxRackScroll();
+    const bool group = fxNodeSplit(d.item.node);
+    const bool open = openSplit(d.rest);
+    const int n = static_cast<int>(d.rest.size());
+    auto fits = [&](FxSlotAt at) {
+        if (at.lane != 0)
+            return !group; // a split stays on the main line
+        if (at.item >= n && open)
+            return false; // nothing goes after a split left open, which ends the line
+        return !(group && !d.item.joined && at.item < n); // a split left open stays at the end
+    };
+    float best = 1e30f;
+    std::optional<FxSlotAt> over;
+    for (const FxRackRow &row : fxRackRows(d.rest)) {
+        std::optional<FxSlotAt> after; // the place right after the row
+        switch (row.type) {
+        case Type::In:
+            after = FxSlotAt{0, 0, 0};
+            break;
+        case Type::Effect:
+            after = row.at.lane == 0 ? FxSlotAt{0, row.at.item + 1, 0}
+                                     : FxSlotAt{row.at.lane, row.at.item, row.at.place + 1};
+            break;
+        case Type::Band:
+            after = FxSlotAt{row.at.lane, row.at.item, 0};
+            break;
+        case Type::Join:
+            after = FxSlotAt{0, row.at.item + 1, 0};
+            break;
+        case Type::Split:
+        case Type::Add:
+        case Type::Out:
+            break;
+        }
+        if (!after || !fits(*after))
+            continue;
+        const float gap = std::abs(row.y + row.h + kFxRackGap - carried);
+        if (gap < best) {
+            best = gap;
+            over = after;
+        }
+    }
+    if (over)
+        d.at = *over;
+}
+
+bool View::edgeScrollRack() {
+    if (!fxRack() || drag_.kind != DragKind::FxNodeMove || !drag_.moved || !fxDrag_)
+        return false;
+    // Held at the rack's top or bottom, the rows scroll that way, and where it lands follows.
+    const Rect area = fxRackArea();
+    constexpr float kZone = 24.0f, kStep = 8.0f;
+    const float y = drag_.now.y;
+    const float pull = y < area.y + kZone       ? -std::min((area.y + kZone - y) / kZone, 1.0f)
+                       : y > area.bottom() - kZone ? std::min((y - area.bottom() + kZone) / kZone, 1.0f)
+                                                    : 0.0f;
+    const float was = fxRackScroll();
+    fxRackScroll_ = was + pull * kStep;
+    fxRackScroll_ = fxRackScroll();
+    if (fxRackScroll_ == was)
+        return false;
+    retargetRackDrag(drag_.now);
+    return true;
+}
+
+void View::paintFxRack(Canvas &c) {
+    using Type = FxRackRow::Type;
+    const Rect area = fxRackArea();
+    c.fillRect(area, kDisplayColor, kRadiusCard);
+    const FxLine line = fxLineShown();
+    const std::vector<FxRackRow> rows = fxRackRows(line);
+    const float scroll = fxRackScroll();
+    const int selected = fxSelectedNode();
+    const bool dragging = drag_.kind == DragKind::FxNodeMove && drag_.moved && fxDrag_;
+    // What leaves for the output: the wires into OUT, as loud as the loudest.
+    float outLevel = 0.0f;
+    for (const FxWireRef &w : fxWires())
+        if (w.node == kFxOutNode)
+            outLevel = std::max(outLevel, fxGlow(w.port));
+
+    // A level as a thin bar, in `color`; on a row's face only while there is one, on the rack's ground in its well.
+    auto meter = [&](Rect r, float level, Color color, bool well = false) {
+        if (well)
+            c.fillRect(r, meterWell(), kRadiusMark);
+        if (level > 0.01f)
+            c.fillRect({r.x, r.y, r.w * std::clamp(level, 0.0f, 1.0f), r.h}, color, kRadiusMark);
+    };
+    // A power symbol in a circle, filled in `color` while on.
+    auto power = [&](Rect r, bool on, bool hot, Color color, float alpha) {
+        const Point o = r.center();
+        if (on)
+            c.fillCircle(o, 8.0f, color.alpha(alpha));
+        else
+            c.strokeCircle(o, 7.5f, (hot ? kText : kDim).alpha(alpha), 1.2f);
+        const Color mark = (on ? kCardColor : hot ? kText : kDim).alpha(alpha);
+        constexpr float kRadius = 3.6f, kGap = 0.75f;
+        c.arc(o, kRadius, kGap, 2.0f * std::numbers::pi_v<float> - kGap, mark, 1.4f);
+        c.line({o.x, o.y - kRadius - 1.0f}, {o.x, o.y - 0.3f}, mark, 1.4f);
+    };
+    // A row: an effect's its icon, its name and what it is set to, its meter and its power switch; a split's and a
+    // join's their names; a band's its name, its level into the join and its +; IN's and OUT's their meters.
+    auto paintRow = [&](const FxRackRow &row, Rect r, float alpha, bool carriedImage) {
+        const bool hot = !dragging && hover_ && hover_->a == row.node && row.node >= 0 &&
+                         (hover_->kind == Kind::FxNode || hover_->kind == Kind::FxNodePower ||
+                          hover_->kind == Kind::FxNodeDelete);
+        if (row.faint && !carriedImage) { // where what is carried would land
+            c.strokeRect(r.inset(0.5f), kFaint, 1.3f, kRadiusControl, true);
+            return;
+        }
+        switch (row.type) {
+        case Type::In:
+        case Type::Out: {
+            const bool in = row.type == Type::In;
+            c.text({r.x + 10.0f, r.y, 40.0f, r.h}, tr(in ? Str::NodeFxIn : Str::NodeFxOut), kTextSmall,
+                   kDim.alpha(alpha), Align::Left, true);
+            meter({r.x + 48.0f, r.center().y - 1.5f, r.w - 60.0f, 3.0f}, in ? fxGlow(kFxPortIn) : outLevel,
+                  kAccent.alpha(alpha), true);
+            break;
+        }
+        case Type::Effect: {
+            const FxType type = fxSlotType(row.node);
+            const bool on = value(paramIndex(row.node, FxParam::Enabled)) >= 0.5;
+            const Color color = (on ? fxTypeColor(type) : kFaint).alpha(alpha);
+            const bool picked = row.node == selected;
+            c.fillRect(r, (hot && !picked ? kRaised : kCardColor).alpha(alpha), kRadiusControl);
+            if (picked) {
+                c.fillRect(r, color.alpha(kSelectedFill * alpha), kRadiusControl);
+                c.strokeRect(r.inset(0.5f), color, 1.3f, kRadiusControl);
+            }
+            const Rect tile{r.x + 7.0f, r.center().y - 11.0f, 22.0f, 22.0f};
+            c.fillRect(tile, color.alpha(0.18f * alpha), kRadiusControl);
+            fxIcon(c, {tile.x + 3.0f, tile.center().y - 6.5f, 16.0f, 13.0f}, type, color);
+            const float textX = tile.right() + 8.0f, textW = fxRackMeter(r).x - 8.0f - textX;
+            c.text({textX, r.y + 4.0f, textW, 14.0f}, fxTitle(type), kTextLabel, (on ? kText : kDim).alpha(alpha),
+                   Align::Left, true);
+            // What it is set to, as much as fits.
+            std::string summary = fxRackSummary(row.node);
+            while (!summary.empty() && c.textWidth(summary, kTextSmall) > textW) {
+                const size_t dot = summary.rfind("  \xC2\xB7  ");
+                summary = dot == std::string::npos ? std::string() : summary.substr(0, dot);
+            }
+            c.text({textX, r.y + 18.0f, textW, 12.0f}, summary, kTextSmall, kDim.alpha(alpha), Align::Left);
+            meter(fxRackMeter(r), on ? fxGlow(fxSlotPort(row.node)) : 0.0f, color);
+            const bool powerHot = hover_ && hover_->kind == Kind::FxNodePower && hover_->a == row.node;
+            power(fxRackPower(r), on, powerHot, fxTypeColor(type), alpha);
+            break;
+        }
+        case Type::Split:
+        case Type::Join: {
+            const bool join = row.type == Type::Join;
+            const int split = join ? fxNodeSum(row.node) : row.node - kFxSlots;
+            const bool picked = row.node == selected;
+            c.fillRect(r, (hot || picked ? kRaised : splitFill()).alpha(alpha), kRadiusControl);
+            if (picked)
+                c.strokeRect(r.inset(0.5f), kDim.alpha(alpha), 1.3f, kRadiusControl);
+            // A fork, or two bands meeting again.
+            const Point m{r.x + 18.0f, r.center().y};
+            const Color ink = kDim.alpha(alpha);
+            if (join) {
+                c.line({m.x - 6.0f, m.y - 5.0f}, {m.x + 2.0f, m.y}, ink, 1.3f);
+                c.line({m.x - 6.0f, m.y + 5.0f}, {m.x + 2.0f, m.y}, ink, 1.3f);
+                c.line({m.x + 2.0f, m.y}, {m.x + 7.0f, m.y}, ink, 1.3f);
+            } else {
+                c.line({m.x - 7.0f, m.y}, {m.x - 2.0f, m.y}, ink, 1.3f);
+                c.line({m.x - 2.0f, m.y}, {m.x + 6.0f, m.y - 5.0f}, ink, 1.3f);
+                c.line({m.x - 2.0f, m.y}, {m.x + 6.0f, m.y + 5.0f}, ink, 1.3f);
+            }
+            const std::string name = trf(join ? Str::NodeJoin : Str::NodeSplit, {std::to_string(split + 1)});
+            const float nameW = std::ceil(c.textWidth(name, kTextLabel, true)) + 2.0f;
+            c.text({r.x + 34.0f, r.y, nameW, r.h}, name, kTextLabel, kText.alpha(alpha), Align::Left, true);
+            if (!join) { // its crossovers and slope
+                std::string text;
+                std::vector<int> params = {paramIndex(split, SplitParam::Low)};
+                if (splitThree(split))
+                    params.push_back(paramIndex(split, SplitParam::High));
+                params.push_back(paramIndex(split, SplitParam::Slope));
+                for (int index : params) {
+                    char buffer[64] = {};
+                    if (!formatParam(index, value(index), buffer, sizeof buffer))
+                        continue;
+                    if (!text.empty())
+                        text += "  \xC2\xB7  ";
+                    text += buffer;
+                }
+                const float x = r.x + 34.0f + nameW + 8.0f;
+                c.text({x, r.y, fxRackRemove(r).x - 6.0f - x, r.h}, text, kTextSmall, kDim.alpha(alpha), Align::Left);
+            }
+            break;
+        }
+        case Type::Band: {
+            const int split = row.node - kFxSlots;
+            const int lane = row.at.lane;
+            const Color color = laneColor(lane).alpha(alpha);
+            const Str name = lane == 1 ? Str::BandButtonHigh : lane == 3 ? Str::BandButtonMid : Str::BandButtonLow;
+            const float nameW = std::ceil(c.textWidth(tr(name), kTextSmall, true)) + 2.0f;
+            c.text({r.x + 4.0f, r.y, nameW, r.h}, tr(name), kTextSmall, color, Align::Left, true);
+            c.text({r.x + 4.0f + nameW + 8.0f, r.y, 70.0f, r.h}, fxRackBandLevel(split, lane), kTextSmall,
+                   kDim.alpha(alpha), Align::Left);
+            meter(fxRackMeter(r), fxGlow(fxBandPort(split, laneBand(lane))), color);
+            // Its +, which adds an effect at its end: faint until the mouse is on it.
+            const Point m = fxRackRemove(r).center();
+            const bool plusHot = !dragging && hover_ && hover_->kind == Kind::FxGap && hover_->a == lane &&
+                                 hover_->b / kFxGapStride == row.at.item;
+            const float shown = (plusHot ? 1.0f : kFxPlusIdleAlpha) * alpha;
+            c.fillCircle(m, 8.0f, color.alpha(plusHot ? 0.28f : 0.14f));
+            c.strokeCircle(m, 8.0f, color.alpha(shown), 1.2f);
+            c.line({m.x - 3.5f, m.y}, {m.x + 3.5f, m.y}, kText.alpha(shown), 1.4f);
+            c.line({m.x, m.y - 3.5f}, {m.x, m.y + 3.5f}, kText.alpha(shown), 1.4f);
+            break;
+        }
+        case Type::Add: {
+            const bool addHot = !dragging && hover_ && hover_->kind == Kind::FxGap && hover_->a == 0 &&
+                                hover_->b / kFxGapStride == row.at.item;
+            c.strokeRect(r.inset(0.5f), (addHot ? kDim : kFaint).alpha(alpha), 1.2f, kRadiusControl, true);
+            // A drawn plus, then the words, together in its middle.
+            const Color ink = (addHot ? kText : kDim).alpha(alpha);
+            const char *what = tr(Str::ButtonAddEffect);
+            const float textW = std::ceil(c.textWidth(what, kTextLabel, true)) + 2.0f;
+            const float left = r.center().x - 0.5f * (textW + 14.0f);
+            const Point plus{left + 4.0f, r.center().y};
+            c.line({plus.x - 4.0f, plus.y}, {plus.x + 4.0f, plus.y}, ink, 1.4f);
+            c.line({plus.x, plus.y - 4.0f}, {plus.x, plus.y + 4.0f}, ink, 1.4f);
+            c.text({left + 14.0f, r.y, textW, r.h}, what, kTextLabel, ink, Align::Left, true);
+            break;
+        }
+        }
+        // Under the mouse, an x in a circle at its right end, which removes it.
+        if (!carriedImage && row.node >= 0 && row.type != Type::Band && row.node == fxHoveredNode()) {
+            const Point x = fxRackRemove(r).center();
+            const bool xHot = hover_->kind == Kind::FxNodeDelete;
+            const Color ink = xHot ? kText : kDim;
+            c.fillCircle(x, 7.5f, xHot ? kRaised : kCardColor);
+            c.strokeCircle(x, 7.5f, ink, 1.2f);
+            c.line({x.x - 3.0f, x.y - 3.0f}, {x.x + 3.0f, x.y + 3.0f}, ink, 1.4f);
+            c.line({x.x + 3.0f, x.y - 3.0f}, {x.x - 3.0f, x.y + 3.0f}, ink, 1.4f);
+        }
+    };
+
+    c.pushClip(area);
+    // A band's rows hang off a line in its color down their left, from its name to its last effect.
+    for (const FxRackRow &row : rows)
+        if (row.indented) {
+            const Rect r = fxRackRowRect(row, scroll);
+            const int lane = row.at.lane;
+            const float x = area.x + 0.5f * kFxRackIndent;
+            const float top = row.type == Type::Band ? r.center().y : r.y - kFxRackGap;
+            c.line({x, top}, {x, r.bottom()}, laneColor(lane).alpha(0.55f), 1.4f);
+            if (row.type == Type::Band)
+                c.line({x, top}, {r.x, top}, laneColor(lane).alpha(0.55f), 1.4f);
+        }
+    for (const FxRackRow &row : rows) {
+        const Rect r = fxRackRowRect(row, scroll);
+        if (r.bottom() >= area.y && r.y <= area.bottom())
+            paintRow(row, r, 1.0f, false);
+    }
+    c.popClip();
+
+    // What is carried, over everything, with the mouse: its rows as they would show, its grabbed row under the mouse.
+    if (dragging) {
+        const FxDrag &d = *fxDrag_;
+        const std::vector<FxRackRow> carried = fxRackRows({d.item});
+        float grabbedY = 0.0f, grabbedH = 0.0f;
+        for (const FxRackRow &row : carried)
+            if (row.node == drag_.widget.a && row.type != Type::Band) {
+                grabbedY = row.y;
+                grabbedH = row.h;
+            }
+        const float top = d.startPlace + drag_.now.y - drag_.start.y - 0.5f * grabbedH - grabbedY;
+        for (const FxRackRow &row : carried) {
+            if (row.type == Type::In || row.type == Type::Out || row.type == Type::Add)
+                continue;
+            const float indent = row.indented ? kFxRackIndent : 0.0f;
+            const Rect r{area.x + indent, top + row.y, area.w - indent, row.h};
+            paintCardShadow(c, r, kRadiusControl);
+            paintRow(row, r, 0.85f, true);
+        }
+    }
+
+    // How far down the rows are scrolled, while they reach past the rack.
+    const float height = fxRackHeight(rows);
+    if (height > area.h + 0.5f) {
+        const Rect track = fxRackScrollTrack();
+        const float thumbH = std::max(track.h * area.h / height, 20.0f);
+        const float first = scroll / (height - area.h);
+        c.fillRect(track, meterWell(), kRadiusMark);
+        c.fillRect({track.x, track.y + (track.h - thumbH) * first, track.w, thumbH}, kDim, kRadiusMark);
+    }
+
+    paintFxInspector(c);
+}
+
 // --- Mouse
 
 bool View::fxGraphPress(const Widget &w, Point p) {
     switch (w.kind) {
     case Kind::FxMode:
-        setFxGraph(w.b == 1);
+        setFxView(static_cast<FxView>(w.b));
         return true;
     case Kind::FxNode: // picked; dragged, onto another place
         controller_.layout().fxSelected = w.a;
         controller_.layoutChanged();
         drag_.kind = DragKind::FxNodeMove;
         startFxDrag(w.a);
+        if (fxDrag_ && fxRack()) // a row of the rack: where its middle was, which the mouse carries
+            fxDrag_->startPlace = w.rect.center().y;
         return true;
     case Kind::FxWire: // only its + takes a click
         return true;
@@ -1928,6 +2463,10 @@ bool View::fxGraphPress(const Widget &w, Point p) {
 
 void View::fxGraphDrag(Point p) {
     if (drag_.kind == DragKind::FxNodeMove) {
+        if (drag_.moved && fxDrag_ && fxRack()) { // a row of the rack: the others make room for it at once
+            retargetRackDrag(p);
+            return;
+        }
         if (drag_.moved && fxDrag_) {
             fxGlide_.on = true; // the others make room for it, gliding
             retargetFxDrag(p);
@@ -2263,7 +2802,12 @@ void View::paintFxGraph(Canvas &c) {
                       false, 0.5f);
     c.popClip();
 
-    // The node it shows, in the inspector.
+    paintFxInspector(c);
+}
+
+void View::paintFxInspector(Canvas &c) {
+    // The node it shows, in the graph's inspector or the rack's focus.
+    const int selected = fxSelectedNode();
     if (selected >= 0 && selected < kFxSlots)
         paintFxCard(c, selected, fxInspector(selected), false);
     else if (fxNodeSplit(selected)) // a split and its join share their controls' card
@@ -2271,9 +2815,9 @@ void View::paintFxGraph(Canvas &c) {
     else if (fxNodeSum(selected) >= 0)
         paintSplitControls(c, fxNodeSum(selected), fxInspector(selected), false);
     else {
-        const Rect card = fxInspectorCard();
+        const Rect card = fxRack() ? fxFocusCard() : fxInspectorCard();
         c.strokeRect(card, kBorder, 1.0f, kRadiusCard, true);
-        c.text(card, tr(Str::HintFxInspector), kTextLabel, kFaint);
+        c.text(card, tr(fxRack() ? Str::HintFxFocus : Str::HintFxInspector), kTextLabel, kFaint);
     }
 }
 

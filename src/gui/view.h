@@ -307,7 +307,7 @@ private:
         ModWheel,     // param = mod wheel: drag or scroll
         BendWheel,    // drag; springs back to center on release
         // The effects graph (see fxgraph.cpp).
-        FxMode,       // b = 0 the chain, 1 the graph: the switch at the FX panel's top right
+        FxMode,       // b = the FxView: the switch at the FX panel's top right
         FxNode,       // a = node: a click shows it in the inspector
         FxSlot,       // a = lane (0 the main line, 1 the high band, 2 the low band, 3 the middle band): a +, which opens
                       // the list of effects
@@ -811,7 +811,12 @@ private:
     // there is any.
     void clearFx();
     bool fxAnyToClear() const;
+    // How the FX view shows the effects (see FxView); whether as the graph, as the rack, and whether the card of the
+    // node picked shows at the panel's right, as both of those show it (the graph's inspector, the rack's focus).
+    FxView fxView() const;
     bool fxGraph() const;
+    bool fxRack() const;
+    bool fxInspecting() const;
     bool fxNodeShown(int node) const;
     std::vector<FxWireRef> fxWires() const;
     // The line the wires make, with any effect they leave out put at its end (on the high band while a split is open).
@@ -855,8 +860,8 @@ private:
     // effect moved to the end of one of them (`lane` as FxLineItem's), one undo step.
     std::vector<int> fxOtherBands(int slot) const;
     void moveFxToBand(int slot, int lane);
-    // The FX view showing the effects as a graph, or as the row: only the view changes.
-    void setFxGraph(bool on);
+    // The FX view showing the effects as the row, the graph or the rack: only the view changes.
+    void setFxView(FxView view);
     // The node of the graph under the mouse, or whose x or power switch is (see Kind::FxNodeDelete and FxNodePower),
     // -1 for none; and where its x goes, at its upper right, and an effect's power switch, at its upper left.
     int fxHoveredNode() const;
@@ -965,6 +970,35 @@ private:
     void startRowDrag(int node);
     void retargetRowDrag(Point mouse);
     void dropRowDrag();
+    // The rack (FxView::Rack): the line's rows top to bottom, in pixels from the top of its rows, unscrolled. IN, then
+    // each item: an effect's row, or a split's, then each of its bands (low to high) its name's row and its effects'
+    // rows, then its join's (a split left open has none); then the row that adds an effect at the line's end, and OUT.
+    struct FxRackRow {
+        enum class Type { In, Effect, Split, Band, Join, Add, Out } type;
+        int node = -1;     // the effect's slot, or the split's or join's node; a band's split's node
+        FxSlotAt at;       // where it is in the line: an effect's place, a band's name its lane and item (place -1)
+        float y = 0.0f, h = 0.0f;
+        bool indented = false; // on a band
+        bool faint = false;    // carried: where it would land (see fxLineShown())
+    };
+    std::vector<FxRackRow> fxRackRows(const FxLine &line) const;
+    float fxRackHeight(const std::vector<FxRackRow> &rows) const; // how tall its rows are, all together
+    float fxRackScroll() const;                                  // held to how far they reach past the rack
+    float fxRackScrollMost() const;                              // how far that is
+    static Rect fxRackRowRect(const FxRackRow &row, float scroll); // on screen, scrolled that far
+    void revealFxRackNode(int node);                             // scrolls the rack to show the row of `node`
+    // What an effect's row says it is set to: two or three of its params' values, the most telling ones.
+    std::string fxRackSummary(int slot) const;
+    // A split's band's level going into its join, as text ("" for a split left open).
+    std::string fxRackBandLevel(int split, int lane) const;
+    void fxRackWidgets(std::vector<Widget> &list) const;
+    // Dragging a row (DragKind::FxNodeMove, as a node in the graph): where it would land for the mouse at `mouse`,
+    // by the rows of the line without it; and, held near the rack's top or bottom, it scrolls that way.
+    void retargetRackDrag(Point mouse);
+    bool edgeScrollRack();
+    void paintFxRack(Canvas &c);
+    // The card of the node picked at the panel's right, in the graph's inspector or as the rack's focus.
+    void paintFxInspector(Canvas &c);
     // The mouse on the graph's widgets: a press (true if it was one of them), and a drag going on.
     bool fxGraphPress(const Widget &w, Point p);
     void fxGraphDrag(Point p);
@@ -997,7 +1031,7 @@ private:
     // effects graph, by pixels. How long each is, how much of it shows, where it is scrolled to and its thumb.
     enum class ScrollArea { Fx, Sources, FxGraph };
     // What the middle button drags along: those rows, the MODS view's rows or the preset browser's list.
-    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList };
+    enum class PanArea { Fx, Sources, Mods, Browser, Inputs, ModList, FxRack };
     void applyPan(Point p);
     // What the middle button (or a finger) would pan at `p`, and where it is scrolled to now; none over a dialog, an
     // open list or menu that doesn't scroll, or while a drag goes on.
@@ -1478,6 +1512,7 @@ private:
     FxGlide fxGlide_;
     FxRowGlide fxRowGlide_;
     float fxGraphScroll_ = 0.0f;             // how far the effects graph is scrolled sideways, before clamping
+    float fxRackScroll_ = 0.0f;              // how far the rack's rows are scrolled down, in pixels, before clamping
     int listMenu_ = -1;                      // the param whose list (ListButton) is open, or -1
     int peqMenu_ = -1;                       // the band type param whose list of shapes is open, or -1
     int waveMenu_ = -1;                      // the operator whose list of more waves is open, or -1

@@ -363,6 +363,13 @@ the plain CMake commands and installing into a host are in the [README](README.m
     pixels), the first's list putting an effect at the line's start;
   - the effects graph's box taking the room the inspector's card leaves, more beside a narrow card than a wide one
     (read off the rendered pixels);
+  - the rack (the FX view's third): a row an effect, the first effect's card in the focus to begin with, a click on
+    a row picking it and its power switch switching it, undoably; a row dragged past another moving its effect
+    there, undoably; the last row adding a split with its join, a band's + an effect on that band, and a row dragged
+    onto that split's other band moving onto it, undoably; a split's row showing its card in the focus; a row's x
+    under the mouse removing its effect, undoably; the wheel and two fingers scrolling the rows; a row Ctrl-dragged
+    leaving a copy, one undo step; switching to the graph, the chain and back changing no wire; and every effect's
+    card laid out over the whole focus, its power switch at the focus's top right;
   - the FX panel's bin, in the chain and in the graph: asking first (read off the rendered pixels), a click around
     the dialog keeping the effects, going ahead removing every effect, a split and its join too, undoably, and with
     nothing left asking nothing (read off the rendered pixels); ten effects making the graph wider than its box, a scrollbar under it (read off the
@@ -853,7 +860,7 @@ breakpoints in `src/` then hit.
 | `src/gui/layout.h` | Where the editor's panels, cards, buttons, lists and dialogs go, in logical pixels |
 | `src/gui/icons.h`, `src/gui/icons.cpp` | The editor's icons (effects, filter types, band shapes, LFO modes, waves) and the point cache behind them and the graphs' curves |
 | `src/gui/routing.h`, `src/gui/routing.cpp` | The routing graph: which param joins two nodes, wires and arrowheads; connecting and rerouting |
-| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its two views, the row (each split a container holding its bands) and the graph's slot grid with its +s and inspector; and a split's controls, which both show |
+| `src/gui/fxgraph.h`, `src/gui/fxgraph.cpp` | The effects' line of effects, splits and joins, read from the wires and written back to them; its three views, the row (each split a container holding its bands), the graph's slot grid with its +s and inspector, and the rack's rows beside the card of the one picked; and a split's controls, which they all show |
 | `src/gui/shapes.cpp` | Editing drawn shapes: freeform LFOs, shaper curves and the note source's curve |
 | `src/gui/mods.cpp` | The MODS view: every modulation as a row, its filter, and the cascading menus (the target's with a search) that move it, retarget it and pick its aux |
 | `src/gui/dialogs.cpp` | The settings and confirm dialogs, the preset browser with its search, and the text fields' editing |
@@ -936,12 +943,13 @@ itself.
   nodes are numbered the slots, the splits, the output, then the sums. The editor wires a line (see
   `src/gui/fxgraph.cpp`): a split's two bands are its low and high ones (Bands 2), and its join is the sum of its
   number, whose first two inputs take the high band and the low band. The effects always run as the graph: a chain
-  is a line of it (the output's first wire comes from the input to begin with), and the FX view's row and graph are
-  two views of it, the view a layout field (`UiLayout::fxGraphView`). The chain's places (33400 + place) are only
+  is a line of it (the output's first wire comes from the input to begin with), and the FX view's row, graph and rack are
+  three views of it, the view a layout field (`UiLayout::fxView`, an `FxView`; a state from before the rack stored
+  the graph as 1 and the row as 0, as it still does). The chain's places (33400 + place) are only
   read when loading a state from before version 9.
   Once released, new fields go at the end of their section's
   enum and fields are never reordered. The same goes for the wave, filter type, effect type, source type, route
-  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic and fixed Mult lists, the routing views and the operator page's tabs,
+  mode, slot aux field, split field, wire field, port, amp model, cabinet, mic and fixed Mult lists, the routing views, the FX views and the operator page's tabs,
   which are stored by number. `src/params.h` pins each section's first and last ids, the counts they come from and
   the stored lists' members with static_asserts, so a change that renumbers them doesn't compile; a field added to
   `FxParam` also needs its effect type in `kFxFieldRuns`. A retired type keeps its number and fields: the
@@ -1000,8 +1008,8 @@ itself.
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the
   scope's cycle count, the wires bent away from their first bow (by route), the MODS view's empty modulations
   (each its source + 1 and its target's id + 1, 0 for none), how shapes are edited (Steps, then Snap), which
-  effect cards past the 16th slot are folded, the node the effects graph's inspector shows, whether the FX view shows
-  the graph, the band each split shows and which splits' containers are folded.
+  effect cards past the 16th slot are folded, the node the effects graph's inspector shows, how the FX view shows the
+  effects (the row, the graph or the rack), the band each split shows and which splits' containers are folded.
   The host's state goes on with
   the settings chunk (the oversampling, MPE and MPE's bend range) and a preset chunk (whether the patch changed since its preset, then the preset file's path
   in UTF-8, left out past 64 KB); preset files stop after the layout. Params and layout fields a

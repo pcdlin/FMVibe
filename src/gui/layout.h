@@ -875,10 +875,9 @@ inline Rect fxDisplay(float position, FxType type) {
     return fxDisplayIn(fxCard(position, fxSpan(type)), type);
 }
 
-// The effects graph (UiLayout::fxGraphView) takes the card row's place: at the right the card of the node it shows (an
+// The effects graph (FxView::Graph) takes the card row's place: at the right the card of the node it shows (an
 // effect's, a split's or a join's), `span` card places wide, and the graph's box left of it, as wide as the card
-// leaves it, so a narrow card gives the graph more room and a wide one takes some. The switch between the chain and
-// the graph sits at the panel's top right.
+// leaves it, so a narrow card gives the graph more room and a wide one takes some.
 inline Rect fxInspectorCard(float span = 1.0f) {
     const float w = span * (kFxCardW + kFxGap) - kFxGap;
     return {std::round(kFxPanel.right() - 16.0f - w), kFxTop, w, kFxPanel.bottom() - 20.0f - kFxTop};
@@ -892,12 +891,39 @@ inline Rect fxGraphScrollTrack(float span = 1.0f) {
     const Rect area = fxGraphArea(span);
     return {area.x + 12.0f, kFxPanel.y + kFxPanel.h - 14.0f, area.w - 24.0f, 6.0f};
 }
-// Left of the switch, a button that removes every effect.
-inline Rect fxClearButton() {
-    return {kFxPanel.right() - 16.0f - 2.0f * 34.0f - 10.0f - 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
+// The rack (FxView::Rack) takes the card row's place too: at the left a list of the effects from IN to OUT, a row an
+// effect, a split, a split's band and a join, a band's effects indented under it, scrolling up and down; at the right
+// the card of the row picked, as wide as the rest of the panel, so its display and knobs have room.
+constexpr float kFxRackW = 300.0f;
+constexpr float kFxRackRowH = 34.0f;  // an effect's row: its icon, its name and what it is set to, its meter and switch
+constexpr float kFxRackLineH = 26.0f; // a split's and a join's
+constexpr float kFxRackEndH = 22.0f;  // IN's, OUT's and a band's
+constexpr float kFxRackGap = 3.0f;    // between two rows
+constexpr float kFxRackIndent = 18.0f; // a band's rows, under its name
+inline Rect fxRackArea() {
+    return {kFxPanel.x + 16.0f, kFxTop, kFxRackW, kFxPanel.bottom() - 20.0f - kFxTop};
 }
-inline Rect fxModeButton(int graph) {
-    return {kFxPanel.right() - 16.0f - 2.0f * 34.0f + graph * 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
+inline Rect fxFocusCard() {
+    const float x = fxRackArea().right() + 16.0f;
+    return {x, kFxTop, kFxPanel.right() - 16.0f - x, kFxPanel.bottom() - 20.0f - kFxTop};
+}
+// A row's power switch and, under the mouse, its x, at its right end; and its meter, left of them.
+inline Rect fxRackPower(Rect row) { return {row.right() - 46.0f, row.center().y - 9.0f, 18.0f, 18.0f}; }
+inline Rect fxRackRemove(Rect row) { return {row.right() - 24.0f, row.center().y - 9.0f, 18.0f, 18.0f}; }
+inline Rect fxRackMeter(Rect row) { return {row.right() - 92.0f, row.center().y - 1.5f, 36.0f, 3.0f}; }
+// Along the rack's right edge, while its rows reach past it: how far down they are scrolled.
+inline Rect fxRackScrollTrack() {
+    const Rect area = fxRackArea();
+    return {area.right() + 5.0f, area.y + 4.0f, 3.0f, area.h - 8.0f};
+}
+// The switch between the chain, the graph and the rack, at the panel's top right; left of it, a button that removes
+// every effect.
+constexpr int kFxViews = 3;
+inline Rect fxModeButton(int view) {
+    return {kFxPanel.right() - 16.0f - kFxViews * 34.0f + view * 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
+}
+inline Rect fxClearButton() {
+    return {fxModeButton(0).x - 10.0f - 34.0f, kFxPanel.y + 9.0f, 34.0f, 22.0f};
 }
 // Its nodes sit on a fixed grid: IN in column 0, then a column a node, the main line in the middle row (0) and a
 // split's high and low bands in the rows above and below it (-1, 1), OUT after the last column. The graph scrolls

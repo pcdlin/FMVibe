@@ -99,8 +99,9 @@ void splitIcon(Canvas &c, Rect r, Color color, int bands = 2); // a fork into tw
 void joinIcon(Canvas &c, Rect r, Color color, int bands = 2);
 // A bin, about 12 x 14 around `m`: removing everything.
 void binIcon(Canvas &c, Point m, Color color);
-// The FX panel's switch between the chain (cards in a row) and the graph (nodes and wires).
-void fxModeIcon(Canvas &c, Point m, bool graph, Color color);
+// The FX panel's switch between the chain (cards in a row), the graph (nodes and wires) and the rack (a list beside a
+// card).
+void fxModeIcon(Canvas &c, Point m, int view, Color color); // view: an FxView, by number
 void peqIcon(Canvas &c, Rect r, PeqType type, Color color);
 
 // Wave icons, one cycle across r.

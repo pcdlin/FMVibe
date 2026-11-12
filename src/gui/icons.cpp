@@ -384,10 +384,16 @@ void binIcon(Canvas &c, Point m, Color color) {
         c.line({m.x + x, m.y - 1.0f}, {m.x + x * 0.8f, m.y + 4.5f}, color, 1.1f);
 }
 
-void fxModeIcon(Canvas &c, Point m, bool graph, Color color) {
-    if (!graph) { // three cards in a row
+void fxModeIcon(Canvas &c, Point m, int view, Color color) {
+    if (view == 0) { // three cards in a row
         for (int i = -1; i <= 1; ++i)
             c.strokeRect({m.x + i * 6.0f - 2.5f, m.y - 5.0f, 5.0f, 10.0f}, color, 1.2f, 1.0f);
+        return;
+    }
+    if (view == 2) { // a list of rows beside the card of the one picked
+        for (int i = -1; i <= 1; ++i)
+            c.line({m.x - 8.5f, m.y + i * 4.0f}, {m.x - 2.5f, m.y + i * 4.0f}, color, 1.2f);
+        c.strokeRect({m.x + 0.5f, m.y - 5.0f, 8.0f, 10.0f}, color, 1.2f, 1.0f);
         return;
     }
     // A node forking into two, which meet again

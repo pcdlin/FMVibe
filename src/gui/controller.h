@@ -19,6 +19,13 @@ constexpr int kNodes = kOps + kFilters + kShapers;
 // routing), the effects chain or every modulation (MODS). Saved by number: only append.
 enum class RoutingView { Graph, Matrix, Fx, Mods };
 
+// How the FX view shows the effects: as a row of cards (the chain), as their graph, or as a rack, a list of them from
+// IN to OUT beside the card of the one picked. Three views of the same effects, which switching between changes
+// nothing of. Saved by number: only append (a state from before the rack stored the graph as 1, the chain as 0).
+enum class FxView { Chain, Graph, Rack, Count };
+static_assert(static_cast<int>(FxView::Chain) == 0 && static_cast<int>(FxView::Graph) == 1 &&
+              static_cast<int>(FxView::Rack) == 2);
+
 // What the lower half of an operator's page shows, one for every operator. Saved by number, so the tabs' order on
 // the page (Envelope, Unison, Inputs, Scope) is layout.h's opTab(). A noise operator shows
 // its spectrum in Unison's place, and its envelope in Scope's.
@@ -85,10 +92,9 @@ struct UiLayout {
     // The node the effects graph's inspector shows (a slot, a split or a join, numbered as the graph's params number
     // them), -1 for none. Where the nodes sit follows from the wires (see View::fxGridLayout()).
     int fxSelected = -1;
-    // Whether the FX view shows the effects as their graph rather than as a row of cards: two views of the same
-    // effects, which switching between changes nothing of. Saved with the patch, like the routing view, but a preset
-    // loaded leaves it as it is (see keepEditorLayout()).
-    bool fxGraphView = false;
+    // How the FX view shows the effects: as a row of cards, as their graph or as a rack (see FxView). Saved with the
+    // patch, like the routing view, but a preset loaded leaves it as it is (see keepEditorLayout()).
+    FxView fxView = FxView::Chain;
     // The band each split shows, by split (0 its low band, 1 its high one, 2 its middle one): the band whose effects its container in
     // the row shows, and whose response its card fills. Part of the patch, like the node places.
     std::array<int, kFxSplits> splitBand{};
@@ -98,7 +104,7 @@ struct UiLayout {
 
 // What a preset or Init leaves as it is, taken from the layout before it: how big the editor is, which panels are
 // collapsed, the shape editor's grid, the operator page's tab and the scope's cycles, and the view shown (the routing
-// view's tab, and the FX view's row or graph). A host's project brings them all back.
+// view's tab, and the FX view's row, graph or rack). A host's project brings them all back.
 inline void keepEditorLayout(UiLayout &to, const UiLayout &from) {
     to.zoom = from.zoom;
     to.sourcesCollapsed = from.sourcesCollapsed;
@@ -110,7 +116,7 @@ inline void keepEditorLayout(UiLayout &to, const UiLayout &from) {
     to.opTab = from.opTab;
     to.scopeCycles = from.scopeCycles;
     to.view = from.view;
-    to.fxGraphView = from.fxGraphView;
+    to.fxView = from.fxView;
 }
 
 // How many empty modulations the MODS view keeps at most.

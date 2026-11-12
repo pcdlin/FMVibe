@@ -2634,13 +2634,13 @@ void renderExample(const std::filesystem::path &dir, Renderer &renderer, const s
     // README's, see release.ps1).
     const Rect panel{detail::kFxPanel.x - 8.0f, detail::kFxPanel.y - 1.0f, detail::kFxPanel.w + 16.0f,
                      detail::kFxPanel.h + 9.0f}; // not the tabs above it
-    if (!model.ui.fxGraphView) {
+    if (model.ui.fxView == gui::FxView::Chain) {
         shots = shots && renderer.save(view, dir / (prefix + "-fx-chain-panel.png"), &panel);
         const Rect graphSwitch = detail::fxModeButton(1);
         click(view, {graphSwitch.x + graphSwitch.w * 0.5f, graphSwitch.y + graphSwitch.h * 0.5f});
     }
     view.mouseMove({600.0f, 600.0f}, {});
-    shots = shots && model.ui.fxGraphView &&
+    shots = shots && (model.ui.fxView == gui::FxView::Graph) &&
             renderer.save(view, dir / (prefix + "-fx-graph-panel.png"), &panel);
     if (!theme.empty()) { // in a theme other than the checks' Midnight, its effects as a row and its MODS view too
         click(view, detail::fxModeButton(0).center());
@@ -3230,7 +3230,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     auto from = [&](int node, int input) {
         return fxPortOf(model.value(fxInputIndex(node, input, FxInputField::From)));
     };
-    check(model.ui.fxGraphView && from(0, 0) == kFxPortIn && from(1, 0) == fxSlotPort(0) &&
+    check((model.ui.fxView == gui::FxView::Graph) && from(0, 0) == kFxPortIn && from(1, 0) == fxSlotPort(0) &&
               from(kFxOutNode, 0) == fxSlotPort(1) && from(kFxOutNode, 1) < 0 &&
               renderer.save(view, dir / "40a-fx-graph.png"),
           "switching to the effects graph shows the chain as its main line, wired as it runs");
@@ -3952,7 +3952,7 @@ void testFxGraph(const std::filesystem::path &dir, Renderer &renderer) {
     bool same = fxChain(model) == before;
     for (int i = kFxSplitBase; i < kShapeBase; ++i)
         same = same && model.value(i) == wires[i - kFxSplitBase];
-    check(!model.ui.fxGraphView && same && model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
+    check((model.ui.fxView == gui::FxView::Chain) && same && model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
               renderer.save(view, dir / "40h-fx-to-chain.png"),
           "going back to the row changes nothing: the split shows there as its container");
 }
@@ -4114,7 +4114,7 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
     const bool added = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
                        model.value(paramIndex(0, SumParam::Used)) == 1.0 && from(split, 0) == fxSlotPort(0) &&
                        from(join, 0) == high && from(join, 1) == low && from(1, 0) == fxSumPort(0) &&
-                       from(2, 0) == fxSlotPort(1) && model.ui.splitBand[0] == 0 && !model.ui.fxGraphView;
+                       from(2, 0) == fxSlotPort(1) && model.ui.splitBand[0] == 0 && (model.ui.fxView == gui::FxView::Chain);
     view.mouseMove({600.0f, 600.0f}, {});
     check(listShot && added && renderer.save(view, dir / "41b-fx-row-split.png"),
           "the arrow between two cards puts a split there: a container, its low band shown, empty");
@@ -4313,9 +4313,9 @@ void testFxRow(const std::filesystem::path &dir, Renderer &renderer) {
         before.push_back(model.value(i));
     click(view, centerOf(detail::fxModeButton(1)));
     view.mouseMove({600.0f, 600.0f}, {});
-    const bool graphShot = model.ui.fxGraphView && renderer.save(view, dir / "41f-fx-row-as-graph.png");
+    const bool graphShot = (model.ui.fxView == gui::FxView::Graph) && renderer.save(view, dir / "41f-fx-row-as-graph.png");
     click(view, centerOf(detail::fxModeButton(0)));
-    bool same = !model.ui.fxGraphView;
+    bool same = (model.ui.fxView == gui::FxView::Chain);
     for (int i = kFxSplitBase; i < kShapeBase; ++i)
         same = same && model.value(i) == before[i - kFxSplitBase];
     check(graphShot && same, "switching to the graph and back leaves the split as it was");
@@ -4932,6 +4932,177 @@ void testFxGraphScroll(const std::filesystem::path &dir, Renderer &renderer) {
     check(most > 0.0f && barShown && scrolledShot && picked && added && gone,
           "the effects graph wider than its box has a scrollbar under it that scrolls it, picking a node moving it "
           "nowhere, and none once it fits");
+}
+
+
+// The rack (the FX view's third): a row an effect from IN to OUT, the card of the row picked filling the rest of the
+// panel. A click on a row picks it, its power switch switches it, its x removes it; a row dragged moves its effect,
+// along the main line and onto a split's band; the row at the end adds an effect or a split, a band's + an effect at
+// that band's end; the wheel scrolls the rows; and switching views changes no wire. Each effect's card is laid out
+// over the whole focus: its power switch at the focus's top right.
+void testFxRack(const std::filesystem::path &dir, Renderer &renderer) {
+    FakeController model;
+    View view(model);
+    model.values[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+    model.values[paramIndex(1, FxParam::Type)] = static_cast<double>(FxType::Reverb);
+    model.values[paramIndex(2, FxParam::Type)] = static_cast<double>(FxType::Shaper);
+    setChain(model, {0, 1, 2});
+    view.poll();
+    click(view, kFxTab);
+    click(view, detail::fxModeButton(2).center());
+    // The rows, from the rack's top: IN (22 high), an effect's 34, a split's and a join's 26, a band's 22, 3 apart,
+    // a band's rows indented.
+    const Rect area = detail::fxRackArea();
+    auto row = [&](float y, float h, bool indented = false) {
+        const float in = indented ? detail::kFxRackIndent : 0.0f;
+        return Rect{area.x + in, area.y + y, area.w - in, h};
+    };
+    auto from = [&](int node) { return fxPortOf(model.value(fxInputIndex(node, 0, FxInputField::From))); };
+    view.mouseMove({600.0f, 700.0f}, {});
+    const bool shown = model.ui.fxView == FxView::Rack && renderer.save(view, dir / "40x-fx-rack.png");
+    // Nothing picked, the focus shows the first effect's card (its power switch the delay's); a click on the reverb's
+    // row picks it.
+    click(view, detail::cardPowerInGraph(detail::fxFocusCard()).center());
+    const bool firstShown = model.value(paramIndex(0, FxParam::Enabled)) == 0.0;
+    view.undo();
+    click(view, row(62.0f, 34.0f).center());
+    const bool picked = model.ui.fxSelected == 1;
+    // The shaper's power switch, at its row's right end, switches it off, undoably.
+    click(view, detail::fxRackPower(row(99.0f, 34.0f)).center());
+    const bool off = model.value(paramIndex(2, FxParam::Enabled)) == 0.0;
+    view.undo();
+    const bool powered = off && model.value(paramIndex(2, FxParam::Enabled)) == 1.0;
+    check(shown && firstShown && picked && powered,
+          "the rack shows a row an effect, a click on one picking it and its switch switching it");
+
+    // The delay's row dragged down past the reverb's lands after it, one undo step.
+    drag(view, row(25.0f, 34.0f).center(), {area.center().x, row(62.0f, 34.0f).center().y + 8.0f});
+    const bool moved = fxChain(model) == std::vector<int>{1, 0, 2};
+    view.undo();
+    const bool moveUndone = fxChain(model) == std::vector<int>{0, 1, 2};
+    drag(view, row(25.0f, 34.0f).center(), {area.center().x, row(62.0f, 34.0f).center().y + 8.0f});
+    check(moved && moveUndone && fxChain(model) == std::vector<int>{1, 0, 2},
+          "a row of the rack dragged past another moves its effect there, undoably");
+
+    // The row at the line's end adds a split there (with its join); its high band's + then a phaser on that band.
+    const Rect add = row(136.0f, 26.0f);
+    click(view, add.center());
+    click(view, fxListSplit(view, besidePlus(add.center())));
+    const bool split = model.value(paramIndex(0, SplitParam::Used)) == 1.0 &&
+                       model.value(paramIndex(0, SumParam::Used)) == 1.0 && from(fxSplitNode(0)) == fxSlotPort(2);
+    // Split 136, its high band 165, its low band 190, its join 215.
+    const Point highPlus = detail::fxRackRemove(row(165.0f, 22.0f, true)).center();
+    click(view, highPlus);
+    click(view, fxListItem(view, besidePlus(highPlus), FxType::Phaser));
+    const bool onBand = model.value(paramIndex(3, FxParam::Type)) == static_cast<double>(FxType::Phaser) &&
+                        from(3) == fxBandPort(0, kFxBands - 1);
+    view.mouseMove({600.0f, 700.0f}, {});
+    const bool splitShot = renderer.save(view, dir / "40x2-fx-rack-split.png");
+    check(split && onBand && splitShot,
+          "the rack's last row adds a split with its join, and a band's + an effect on that band");
+
+    // The shaper's row dragged onto the low band, between its name and the join (the phaser's row now at 190, the
+    // low band's name at 227): there, undoably.
+    const Rect shaper = row(99.0f, 34.0f);
+    const Point onLow{shaper.center().x, shaper.center().y + 116.0f};
+    view.mouseDown(shaper.center(), {});
+    view.mouseMove({shaper.center().x, shaper.center().y + 40.0f}, {});
+    view.mouseMove(onLow, {});
+    const bool dragShot = renderer.save(view, dir / "40x4-fx-rack-drag.png");
+    view.mouseUp(onLow, {});
+    const bool lowBand = from(2) == fxBandPort(0, 0) &&
+                         fxPortOf(model.value(fxInputIndex(fxSumNode(0), 1, FxInputField::From))) == fxSlotPort(2);
+    view.undo();
+    const bool bandUndone = from(fxSplitNode(0)) == fxSlotPort(2);
+    check(dragShot && lowBand && bandUndone,
+          "a row of the rack dragged onto a split's band moves its effect onto it, undoably");
+    // The split's row picks the split: its controls' card in the focus.
+    click(view, row(136.0f, 26.0f).center());
+    view.mouseMove({600.0f, 700.0f}, {});
+    check(model.ui.fxSelected == fxSplitNode(0) && renderer.save(view, dir / "40x5-fx-rack-split-card.png"),
+          "a split's row of the rack shows its controls' card in the focus");
+
+    // Under the mouse, a row shows its x, which removes its effect, undoably.
+    const Rect delay = row(62.0f, 34.0f);
+    view.mouseMove(delay.center(), {});
+    view.mouseMove(detail::fxRackRemove(delay).center(), {});
+    const bool xShot = renderer.save(view, dir / "40x3-fx-rack-remove.png");
+    click(view, detail::fxRackRemove(delay).center());
+    const bool removed = model.value(paramIndex(0, FxParam::Type)) == 0.0;
+    view.undo();
+    check(xShot && removed && model.value(paramIndex(0, FxParam::Type)) == static_cast<double>(FxType::Delay),
+          "a row of the rack under the mouse shows an x that removes its effect, undoably");
+
+    // Its rows reach past the rack now (OUT's at 310): the wheel scrolls them, as far as they reach.
+    click(view, {area.center().x, area.y + 40.0f});
+    const bool beforeScroll = model.ui.fxSelected == 1;
+    view.wheel({area.center().x, area.y + 40.0f}, -1.0f, {});
+    click(view, {area.center().x, area.y + 40.0f});
+    check(beforeScroll && model.ui.fxSelected == 0, "the wheel scrolls the rack's rows");
+    // Two fingers scroll them back.
+    view.touchPanBegin(area.center());
+    view.touchPanMove({area.center().x, area.center().y + 200.0f});
+    view.touchPanEnd({area.center().x, area.center().y + 200.0f});
+    click(view, {area.center().x, area.y + 40.0f});
+    check(model.ui.fxSelected == 1, "two fingers scroll the rack's rows");
+
+    // Ctrl-dragged, the reverb's row leaves a copy where it lands, one undo step: its copy's place opens right after
+    // the reverb as it starts to move, so past the delay is two rows further down.
+    const Modifiers ctrl{false, true, false};
+    const Point reverb = row(25.0f, 34.0f).center(), past{reverb.x, reverb.y + 2.0f * 37.0f};
+    view.mouseDown(reverb, ctrl);
+    view.mouseMove({reverb.x, reverb.y + 10.0f}, ctrl);
+    view.mouseMove(past, ctrl);
+    view.mouseUp(past, ctrl);
+    const bool copied = fxChain(model) == std::vector<int>{1, 0, 4, 2, 3} &&
+                        model.value(paramIndex(4, FxParam::Type)) == static_cast<double>(FxType::Reverb);
+    view.undo();
+    check(copied && fxChain(model) == std::vector<int>{1, 0, 2, 3} &&
+              model.value(paramIndex(4, FxParam::Type)) == 0.0,
+          "a row of the rack Ctrl-dragged leaves a copy where it lands, one undo step");
+
+    // The chain and the graph show the same wires, and back to the rack.
+    std::vector<double> wires;
+    for (int node = 0; node < kFxNodes; ++node)
+        for (int input = 0; input < fxInputCount(node); ++input)
+            wires.push_back(model.value(fxInputIndex(node, input, FxInputField::From)));
+    click(view, detail::fxModeButton(1).center());
+    const bool graph = model.ui.fxView == FxView::Graph;
+    click(view, detail::fxModeButton(0).center());
+    const bool chain = model.ui.fxView == FxView::Chain;
+    click(view, detail::fxModeButton(2).center());
+    std::vector<double> after;
+    for (int node = 0; node < kFxNodes; ++node)
+        for (int input = 0; input < fxInputCount(node); ++input)
+            after.push_back(model.value(fxInputIndex(node, input, FxInputField::From)));
+    check(graph && chain && model.ui.fxView == FxView::Rack && after == wires,
+          "switching between the chain, the graph and the rack changes no wire");
+
+    // Every effect's card in the focus, as wide as it is: its power switch at the focus's top right.
+    FakeController all;
+    View allView(all);
+    const FxType types[] = {FxType::Shaper,    FxType::Delay,      FxType::Eq,       FxType::ParamEq,
+                            FxType::Filter,    FxType::Compressor, FxType::Reverb,   FxType::Phaser,
+                            FxType::Flanger,   FxType::FreqShifter, FxType::Disperser, FxType::Widener,
+                            FxType::MultiDyn, FxType::Amp,        FxType::Utility,  FxType::Chorus};
+    for (int slot = 0; slot < 16; ++slot)
+        all.values[paramIndex(slot, FxParam::Type)] = static_cast<double>(types[slot]);
+    setChain(all, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15});
+    allView.poll();
+    click(allView, kFxTab);
+    click(allView, detail::fxModeButton(2).center());
+    bool cards = true;
+    for (int slot = 0; slot < 16; ++slot) {
+        all.ui.fxSelected = slot;
+        allView.poll();
+        allView.mouseMove({600.0f, 700.0f}, {});
+        const std::string name = "40y-fx-rack-" + std::to_string(slot) + ".png";
+        cards = renderer.save(allView, dir / name) && cards;
+        click(allView, detail::cardPowerInGraph(detail::fxFocusCard()).center());
+        cards = cards && all.value(paramIndex(slot, FxParam::Enabled)) == 0.0;
+        click(allView, detail::cardPowerInGraph(detail::fxFocusCard()).center());
+    }
+    check(cards, "every effect's card fills the rack's focus, its power switch at the focus's top right");
 }
 
 // The bin at the FX panel's top right, in the chain and in the graph: with effects (or a split) it asks first, and a
@@ -9760,6 +9931,7 @@ void run(const std::filesystem::path &dir, float scale) {
     testPartialRepaint(dir, renderer);
     testFxGraphScroll(dir, renderer);
     testFxGraphRoom(dir, renderer);
+    testFxRack(dir, renderer);
     testFxRow(dir, renderer);
     testFxRowSplitFirst(dir, renderer);
     testFxClear(dir, renderer);

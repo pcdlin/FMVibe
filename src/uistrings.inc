@@ -616,6 +616,8 @@ STR(HintMatrix, "rows feed columns  ·  drag to adjust  ·  double-click to togg
 STR(HintFx, "drag a title to reorder")
 STR(HintFxGraph, "click node: edit  ·  drag node: move  ·  click wire: insert")
 STR(HintFxInspector, "Click a node to edit it") // the graph's inspector, with no node to show
+STR(HintFxRack, "click row: edit  ·  drag row: move")
+STR(HintFxFocus, "Click a row to edit it") // the rack's focus, with no row picked
 // A split's controls: the tabs that pick the band it shows, and its container's dashed card adding to that band.
 STR(TabBandLow, "Low")
 STR(TabBandHigh, "High")
@@ -762,6 +764,7 @@ STR(TipWireStart, "Drag onto another node to change source")
 STR(TipWire, "Drag to bend, double-click resets")
 STR(TipFxChain, "Chain View")
 STR(TipFxGraph, "Graph View")
+STR(TipFxRack, "Rack View")
 STR(TipFxNode, "Click to show its card, drag to move it")
 STR(TipFxSlot, "Add an effect or a split here")
 STR(TipFxSlotBand, "Add an effect to this band")
