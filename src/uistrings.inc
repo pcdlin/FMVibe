@@ -469,7 +469,7 @@ STR(TabSpectrum, "SPECTRUM") // a noise operator's, in Unison's place
 STR(TabEnvelope, "ENVELOPE")
 STR(TabScope, "SCOPE")
 STR(TabInputs, "INPUTS") // the routes into the operator, each with its mode
-STR(TabWarp, "WAVE") // its scope, warp and hard sync
+STR(TabWarp, "WARP") // its scope, warp and hard sync
 STR(HeadingModulation, "MODULATION")
 STR(HeadingKeyboard, "KEYBOARD")
 STR(BusOut, "OUT") // the output, in the graph and the matrix
@@ -597,7 +597,7 @@ STR(SwitchMono, "MONO")
 STR(SwitchLegato, "LEGATO")
 STR(SwitchAlways, "ALWAYS") // the glide's
 STR(SwitchHardSync, "NOTE") // an operator's note sync switch: hard sync to the note (not the Sync warp)
-STR(CaptionNoteSync, "NOTE SYNC") // on the WAVE display, while the operator is synced to the note
+STR(CaptionNoteSync, "NOTE SYNC") // on the WARP display, while the operator is synced to the note
 STR(SwitchStereo, "STEREO")
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")

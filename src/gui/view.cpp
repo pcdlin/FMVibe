@@ -6029,7 +6029,7 @@ void View::paintInputs(Canvas &c, int op) {
 
 InspectorTab View::opTabShown(int op) const {
     const InspectorTab tab = controller_.layout().opTab;
-    if (tab == InspectorTab::Scope || tab == InspectorTab::Warp) // the scope is on the WAVE tab
+    if (tab == InspectorTab::Scope || tab == InspectorTab::Warp) // the scope is on the WARP tab
         return isNoise(op) ? InspectorTab::Envelope : InspectorTab::Warp;
     return tab;
 }

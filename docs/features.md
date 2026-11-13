@@ -72,7 +72,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     the operator's own cycle). Its unison copies each sync to a note detuned as the copy is, and the note's pitch
     follows bend, glide and tuning. A restart's step, and the change in the wave's slope there, are smoothed over
     the samples either side as a band-limited restart would be (polyBLEP and polyBLAMP), so a synced sine at C6
-    keeps what aliases 65 dB down at the default 2x oversampling. Its scope (on the WAVE tab) follows the note's
+    keeps what aliases 65 dB down at the default 2x oversampling. Its scope (on the WARP tab) follows the note's
     cycles. Noise has no cycle to sync or warp;
   - **Warp** (Off by default) and **Warp Amount** (−100 to +100 %, 0 to begin with): where along its cycle the
     operator reads its wave, any wave, Custom too (Vital-style phase warps):
@@ -1243,7 +1243,7 @@ one may have changed since it last did.
       does.
     - **UNISON**: the unison knobs and Rnd Phase, and a display of where the copies sit (left/right by spread,
       up/down by detune).
-    - **WAVE**: the operator's wave, its warp and its hard sync. Its display is a scope: the operator's output in
+    - **WARP**: the operator's scope, its warp and its note sync. Its display is a scope: the operator's output in
       the newest voice as it plays, with its unison copies together and everything that moves it (the FM it gets,
       its envelope, the modulation on its level and pitch), before it reaches the filters, shapers or the output. It
       is caught at the operator's own phase (a synced one's at the note's), so a span starts where a cycle does and
@@ -1267,7 +1267,7 @@ one may have changed since it last did.
       scroll, by the wheel over them, by dragging with the middle button held, or by the scrollbar at their right.
 
     A noise operator shows Slope and Spread instead of the pitch knobs, and no Phase; its first tab is
-    **SPECTRUM**, its spectrum against white, pink and brown, and it has no WAVE tab (picked, it shows its
+    **SPECTRUM**, its spectrum against white, pink and brown, and it has no WARP tab (picked, it shows its
     envelope).
     Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end

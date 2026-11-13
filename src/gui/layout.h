@@ -103,8 +103,8 @@ inline Rect clipEditButton(Rect display) {
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
 inline Rect opTab(int tab, bool noise = false) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS, WAVE by InspectorTab; along the line ENVELOPE, UNISON, WAVE, INPUTS. SCOPE is
-    // no longer a tab of its own (the WAVE tab shows the scope; a layout saved on it opens WAVE): it sits where WAVE
+    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS. SCOPE is
+    // no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens WARP): it sits where WARP
     // does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS.
     constexpr float kX[] = {78.0f, 0.0f, 144.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 52.0f, 54.0f, 52.0f};
     constexpr float kNoiseX[] = {78.0f, 0.0f, 144.0f, 168.0f, 144.0f}, kNoiseW[] = {84.0f, 74.0f, 52.0f, 54.0f, 52.0f};

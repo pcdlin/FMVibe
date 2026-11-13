@@ -322,12 +322,16 @@ void warpIcon(Canvas &c, Rect r, OpWarp warp, Color color) {
     std::vector<double> key = curveKey(Curve::WarpIcon, r);
     key.push_back(static_cast<double>(warp));
     const std::vector<Point> points = icons.get(key, [&] {
-        const WarpCoefs coefs = warpCoefs(warp, 0.75);
+        // Steps at full, so its eight steps read as steps at this size (at three quarters they blur into a sine),
+        // traced finely enough that each rise stays sharp.
+        const bool steps = warp == OpWarp::Steps;
+        const WarpCoefs coefs = warpCoefs(warp, steps ? 1.0 : 0.75);
+        const int n = steps ? 160 : 40;
         std::vector<Point> line;
-        for (int i = 0; i <= 40; ++i) {
-            const double p = i == 40 ? 1.0 : i / 40.0;
+        for (int i = 0; i <= n; ++i) {
+            const double p = i == n ? 1.0 : static_cast<double>(i) / n;
             const double y = std::sin(2.0 * std::numbers::pi * warpPhase(coefs, p));
-            line.push_back({r.x + r.w * i / 40.0f, r.center().y - static_cast<float>(y) * r.h * 0.5f});
+            line.push_back({r.x + r.w * static_cast<float>(i) / n, r.center().y - static_cast<float>(y) * r.h * 0.5f});
         }
         return line;
     });

@@ -8095,7 +8095,7 @@ void run(const std::filesystem::path &dir, float scale) {
         click(view, opTabPoint(InspectorTab::Warp));
         view.poll();
         check(layout.opTab == InspectorTab::Warp && model.scopeOp == 0 && model.scopeCycles == 2,
-              "the WAVE tab asks for its operator's output");
+              "the WARP tab asks for its operator's output");
         auto peakAt = [&](int cycles) { // the first peak: 8 px across the inner display, half its height up
             const Rect s = detail::kScopeRect;
             const float half = 0.5f * (s.h - 46.0f), middle = s.y + 26.0f + half;
@@ -8166,7 +8166,7 @@ void run(const std::filesystem::path &dir, float scale) {
         check(layout.opTab == InspectorTab::Envelope && layout.scopeCycles == 2, "the ENVELOPE tab is back");
     }
 
-    // The WAVE tab's warp: its buttons pick the warp, its knob the amount and NOTE (note sync) the hard sync, each
+    // The WARP tab's warp: its buttons pick the warp, its knob the amount and NOTE (note sync) the hard sync, each
     // an undo step; with no note its display draws a square as the warp reads it, read off the rendered pixels: with
     // Squeeze at +50 % the first cycle's high half runs on past its middle (high at 60 % of it, where the plain square
     // is low), and synced to the note at a ratio of 1.5 the note's cycle restarts it.
@@ -8201,7 +8201,7 @@ void run(const std::filesystem::path &dir, float scale) {
         // The plain square is drawn faintly, a stand-in for the trace; the warped one in the accent.
         check(shown && picked && turned && squeezedShot && plainLow > plainHigh + 30 &&
                   squeezedHigh > squeezedLow + 60,
-              "the WAVE tab picks a warp and its amount, and its display draws the square's pulse width");
+              "the WARP tab picks a warp and its amount, and its display draws the square's pulse width");
         view.mouseMove(detail::warpButton(static_cast<int>(OpWarp::Sync)).center(), {});
         check(renderer.save(view, dir / "3w-warp-tip.png"), "render a warp button's tooltip");
         // The Sync warp (the wave played through more times a cycle, cut off at its end) is a warp like the others,
@@ -8227,15 +8227,15 @@ void run(const std::filesystem::path &dir, float scale) {
         view.undo(); // the warp
         check(syncUndone && model.value(amount) == 0.0 && model.value(warp) == 0.0,
               "the warp, its amount and the NOTE switch are undone a step each");
-        // A noise operator has no wave to show or warp: its page shows the envelope in the WAVE tab's place.
+        // A noise operator has no wave to show or warp: its page shows the envelope in the WARP tab's place.
         model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Noise));
         view.poll();
         view.mouseMove({600.0f, 328.0f}, {});
-        check(renderer.save(view, dir / "3w-warp-noise.png"), "render a noise operator with the WAVE tab picked");
+        check(renderer.save(view, dir / "3w-warp-noise.png"), "render a noise operator with the WARP tab picked");
         model.set(paramIndex(0, OpParam::Wave), 0.0);
         click(view, opTabPoint(InspectorTab::Envelope));
         view.poll();
-        check(layout.opTab == InspectorTab::Envelope, "the ENVELOPE tab is back after WAVE");
+        check(layout.opTab == InspectorTab::Envelope, "the ENVELOPE tab is back after WARP");
     }
 
     // While notes play, the ENVELOPE tab draws a line across at the newest voice's envelope level, as a mod
