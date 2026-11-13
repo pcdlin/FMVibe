@@ -1705,9 +1705,16 @@ bool View::isRatioTarget(int param) {
     return param >= 0 && paramTable()[param].kind == ParamKind::OpRatio;
 }
 
+bool View::isTableDisplay(const Widget &w) {
+    return w.kind == Kind::Knob && w.param >= kOpBase && w.param < kOpBase + kOps * kOpParamCount &&
+           (w.param - kOpBase) % kOpParamCount == static_cast<int>(OpParam::TablePos);
+}
+
 Point View::knobCenter(const Widget &w) {
     if (isRatioDisplay(w))
         return kRatioBox.center();
+    if (isTableDisplay(w))
+        return w.rect.center();
     if (!w.compact)
         return {w.rect.center().x, w.rect.y + w.rect.w * 0.5f};
     return w.shrunk ? Point{w.rect.x + 16.0f, w.rect.y + 16.0f} : Point{w.rect.x + 18.0f, w.rect.y + 20.0f};
@@ -1716,6 +1723,8 @@ Point View::knobCenter(const Widget &w) {
 float View::knobRadius(const Widget &w) {
     if (isRatioDisplay(w))
         return kRatioBox.h * 0.5f;
+    if (isTableDisplay(w))
+        return w.rect.h * 0.5f;
     if (!w.compact)
         return w.rect.w * 0.5f;
     return w.shrunk ? 14.0f : 17.0f;
@@ -1730,7 +1739,7 @@ float View::compactTextX(const Widget &w) {
 bool View::onValue(const Widget &w, Point p) {
     if (w.kind == Kind::ValueText)
         return true;
-    if (w.kind != Kind::Knob || isRatioDisplay(w)) // the Ratio readout's digits are its number
+    if (w.kind != Kind::Knob || isRatioDisplay(w) || isTableDisplay(w)) // the Ratio readout's digits are its number
         return false;
     return w.compact ? p.x >= w.rect.x + compactTextX(w) - 4.0f : p.y >= w.rect.y + w.rect.w;
 }
@@ -2963,13 +2972,20 @@ std::vector<View::Widget> View::widgets() const {
             continue;
         }
         // Under a knob, 10 px apart and centered; a header knob's go under its knob, at its left.
-        // The Ratio readout's go along its box's bottom edge.
+        // The Ratio readout's go along its box's bottom edge; the TABLE tab's display's along its bottom edge too, in
+        // its right part (under the stack's back frames, which rise away from it), short of its meter.
+        constexpr float kTableHandlesW = 92.0f;
+        const bool tableDisplay = isTableDisplay(list[i]);
         const Point base = isRatioDisplay(list[i]) ? Point{r.center().x, kRatioBox.bottom() - 1.0f}
+                           : tableDisplay          ? Point{r.right() - 30.0f - 0.5f * kTableHandlesW, r.bottom() - 8.0f}
                            : list[i].compact       ? Point{r.x + 18.0f, r.y + 37.0f}
                                                    : Point{r.center().x, r.y + r.w - 1.0f};
         // The Ratio readout keeps its handles clear of its box's rounded corners.
         constexpr float kStep = 10.0f;
-        const float width = isRatioDisplay(list[i]) ? r.w - 9.0f : list[i].compact ? 34.0f : r.w;
+        const float width = isRatioDisplay(list[i]) ? r.w - 9.0f
+                            : tableDisplay          ? kTableHandlesW
+                            : list[i].compact       ? 34.0f
+                                                    : r.w;
         const float dot = sizes.dot; // the handles stay inside that width at the user's size
         const int fit = static_cast<int>((width - 2.0f * dot) / kStep) + 1;
         // Past that, as many as fit beside the pill, 2 px left of it.
@@ -9332,10 +9348,10 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
             c.strokeRect(w.rect.inset(-1.0f), color.alpha(over ? 1.0f : 0.35f), over ? 2.0f : 1.0f, kRadiusControl);
             continue;
         }
-        if (w.popup || covered(isRatioDisplay(w)      ? kRatioBox.inset(-4.0f)
-                               : w.kind == Kind::Knob ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f,
-                                                             w.rect.w + 14.0f}
-                                                      : w.rect.inset(-4.0f)))
+        const bool round = w.kind == Kind::Knob && !isTableDisplay(w); // Position's display is a box
+        if (w.popup || covered(isRatioDisplay(w) ? kRatioBox.inset(-4.0f)
+                               : round           ? Rect{w.rect.x - 7.0f, w.rect.y - 7.0f, w.rect.w + 14.0f, w.rect.w + 14.0f}
+                                                 : w.rect.inset(-4.0f)))
             continue;
         if (w.kind == Kind::ModDot && w.a != source) { // a depth handle takes it as the modulation's aux
             if (w.clip.w > 0.0f && !w.clip.contains(w.rect.center()))
@@ -9366,6 +9382,8 @@ void View::paintModOverlay(Canvas &c, const std::vector<Widget> &list) {
         const Color ring = color.alpha(over ? 1.0f : 0.35f);
         if (isRatioDisplay(w)) {
             c.strokeRect(kRatioBox.inset(-4.0f), ring, over ? 2.5f : 1.5f, kRadiusCard);
+        } else if (isTableDisplay(w)) {
+            c.strokeRect(w.rect.inset(-3.0f), ring, over ? 2.5f : 1.5f, kRadiusCard + 3.0f);
         } else if (w.kind == Kind::Knob) {
             c.strokeCircle(knobCenter(w), knobRadius(w) + 6.0f, ring, over ? 2.5f : 1.5f);
         } else {
@@ -9434,6 +9452,8 @@ void View::paintSourceLinks(Canvas &c, const std::vector<Widget> &list, int sour
             c.strokeRect(pill->rect.inset(-2.0f), color, 1.5f, pill->rect.h * 0.5f + 2.0f);
         if (isRatioDisplay(w))
             c.strokeRect(kRatioBox.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusCard);
+        else if (isTableDisplay(w))
+            c.strokeRect(w.rect.inset(-3.0f), color.alpha(0.5f), 1.0f, kRadiusCard + 3.0f);
         else if (w.kind == Kind::Knob)
             c.strokeCircle(knobCenter(w), knobRadius(w) + 5.0f, color.alpha(0.5f), 1.0f);
         else
@@ -9471,6 +9491,8 @@ Rect View::typingField() const {
     const Widget &w = typing_->widget;
     if (isRatioDisplay(w)) // over its digits
         return {kRatioBox.x, kRatioBox.y + 9.0f, kRatioBox.w, 22.0f};
+    if (isTableDisplay(w)) // over its % in the top left corner
+        return {w.rect.x + 4.0f, w.rect.y + 2.0f, 80.0f, 18.0f};
     if (w.kind == Kind::Knob && w.compact)
         return {w.rect.x + compactTextX(w) - 4.0f, w.rect.y + (w.shrunk ? 14.0f : 17.0f), w.rect.w + 2.0f - (compactTextX(w) - 4.0f), 20.0f};
     if (w.kind == Kind::Knob)
@@ -12231,7 +12253,6 @@ CursorKind View::cursor() const {
     case Kind::ShapeCurve:
     case Kind::EnvCurve:
     case Kind::TempoBox:
-    case Kind::TableDisplay:
     case Kind::SampleRoot:
         return CursorKind::Vertical;
     case Kind::SplitPoint:

@@ -7751,13 +7751,9 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
               detail::kOpWellTall.bottom() <= lens.bottom() &&
               detail::opTab(static_cast<int>(InspectorTab::Inputs), detail::OpTabs::Table).right() <= detail::kOpWell.right() + 0.5f &&
               detail::opTab(static_cast<int>(InspectorTab::Warp), detail::OpTabs::Table).x ==
-                  detail::opTab(static_cast<int>(InspectorTab::Source), detail::OpTabs::Table).x &&
-              detail::kTablePosKnob.x + 0.5f * detail::kOpKnobD < detail::tableWarpButton(0).x &&
-              detail::tableWarpButton(static_cast<int>(OpWarp::Count) - 1).right() <
-                  detail::kTableWarpAmountKnob.x - 0.5f * detail::kOpKnobD &&
-              detail::kTableWarpAmountKnob.x + 0.5f * detail::kOpKnobD < detail::kSyncButton.x,
+                  detail::opTab(static_cast<int>(InspectorTab::Source), detail::OpTabs::Table).x,
           "the operator's block makes room for the source switch, its well and controls inside the lens; a Wavetable "
-          "operator's four tabs fit, its TABLE tab in WARP's place, and Position, the warps, Amount and NOTE along its row");
+          "operator's four tabs fit, its TABLE tab in WARP's place");
     renderer.save(view, dir / "wt-0-saw.png");
     const uint32_t below = renderer.pixel({lens.center().x, lens.bottom() + 3.0f});
 
@@ -7794,12 +7790,27 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     check(picked && closed && next && model.value(table) == 1.0,
           "the picker opens the browser, a row picks a table, Done closes it, and the steps go through the tables");
 
-    // Position: its knob turns, and the stack's front frame moves (read off the rendered pixels).
+    // Position is the display, with no knob of its own: dragged up it turns, one undo step, and the stack's front frame
+    // moves (read off the rendered pixels).
     const int position = paramIndex(0, OpParam::TablePos);
-    const Point knob{detail::kTablePosKnob.x, detail::kOpControlsY};
-    drag(view, knob, {knob.x, knob.y - 60.0f});
+    const Point middle = detail::kOpDisplay.center();
+    drag(view, middle, {middle.x, middle.y - 60.0f});
     const double turned = model.value(position);
     view.undo();
+    const bool positionUndone = model.value(position) == 0.0;
+    // The wheel steps it, a double-click puts it back to 0 %, and Ctrl+Click types it.
+    view.wheel(middle, 2.0f, {});
+    const bool stepped = model.value(position) > 0.0;
+    doubleClick(view, middle);
+    const bool reset = model.value(position) == 0.0;
+    click(view, middle, {.ctrl = true});
+    type(view, "50");
+    view.typeKey(View::Key::Enter);
+    const bool typed = std::abs(model.value(position) - 0.5) < 1e-6;
+    std::printf("      the display as Position's control: dragged %.3f, undone %d, wheel %d, double-click %d, typed %d\n",
+                turned, positionUndone, stepped, reset, typed);
+    check(stepped && reset && typed, "the wheel steps Position on its display, a double-click resets it, and Ctrl+Click types it");
+    model.set(position, 0.0);
     auto strip = [&] {
         std::vector<uint32_t> pixels;
         for (float y = detail::kOpDisplay.y + 10.0f; y < detail::kOpDisplay.bottom() - 4.0f; y += 1.0f)
@@ -7811,14 +7822,18 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     const std::vector<uint32_t> atStart = strip();
     model.set(position, 1.0);
     renderer.save(view, dir / "wt-4-position-1.png");
-    check(turned > 0.2 && strip() != atStart, "Position's knob turns, and the lit frame in the stack moves with it");
+    check(turned > 0.2 && positionUndone && strip() != atStart,
+          "Position is dragged up and down on the TABLE tab's display, an undo step, and the lit frame moves with it");
 
-    // Position modulated by LFO 3, whose color is far from the effects': the depth axis's band in the color of the knob's ring (read off the rendered
-    // pixels), each the most saturated pixel along it.
+    // Position modulated by LFO 3, whose color is far from the effects': its handle dropped anywhere on the display
+    // modulates Position, a depth handle along the display's foot; the meter's band in the color of the source's handle
+    // (read off the rendered pixels), each the most saturated pixel along it.
     {
         model.set(position, 0.2);
         model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::Lfo));
-        model.set(slotTargetIndex(2, 0), slotTargetValue(position));
+        view.poll();
+        drag(view, sourceHandle(0), {detail::kOpDisplay.x + 70.0f, detail::kOpDisplay.y + 30.0f});
+        const bool dropped = slotTarget(model.value(slotTargetIndex(2, 0))) == position;
         model.set(slotAmountIndex(2, 0), 0.3);
         view.poll();
         view.mouseMove({lens.center().x, lens.y + 40.0f}, {});
@@ -7829,12 +7844,12 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
         };
         auto most = [&](uint32_t best, uint32_t p) { return saturation(p) > saturation(best) ? p : best; };
         uint32_t ring = 0, band = 0;
-        const Point knobAt{detail::kTablePosKnob.x, detail::kOpControlsY};
-        for (int k = 0; k < 360; ++k) {
-            const double a = k * std::numbers::pi / 180.0;
-            ring = most(ring, renderer.pixel({knobAt.x + 16.5f * static_cast<float>(std::cos(a)),
-                                              knobAt.y + 16.5f * static_cast<float>(std::sin(a))}));
-        }
+        for (float dx = -3.0f; dx <= 3.0f; dx += 1.0f) // the source's handle, in its color
+            ring = most(ring, renderer.pixel({sourceHandle(0).x + dx, sourceHandle(0).y}));
+        // A depth handle along the display's foot, short of the meter: a saturated pixel there that wasn't before.
+        int handlePixels = 0;
+        for (float x = detail::kOpDisplay.right() - 130.0f; x < detail::kOpDisplay.right() - 26.0f; x += 1.0f)
+            handlePixels += saturation(renderer.pixel({x, detail::kOpDisplay.bottom() - 8.0f})) > 60 ? 1 : 0;
         // The axis runs from the display's foot (0) to its top (1), 10 px in: the band read at 0.33, clear of the
         // diamond where Position plays (0.2) and inside the LFO's reach.
         const float axisX = detail::kOpDisplay.right() - 14.0f;
@@ -7846,10 +7861,12 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
                              std::abs(static_cast<int>(a >> 8 & 255) - static_cast<int>(b >> 8 & 255)),
                              std::abs(static_cast<int>(a & 255) - static_cast<int>(b & 255))});
         };
-        std::printf("      Position modulated: knob's ring %06X, depth axis's band %06X, %d apart\n", ring & 0xFFFFFF,
-                    band & 0xFFFFFF, apart(ring, band));
-        check(saturation(ring) > 60 && apart(ring, band) < 40,
-              "a modulated Position's band on the TABLE tab's depth axis takes the knob's ring's color");
+        std::printf("      Position modulated: dropped %d, the source's handle %06X, the meter's band %06X, %d apart, a "
+                    "depth handle %d px\n",
+                    dropped, ring & 0xFFFFFF, band & 0xFFFFFF, apart(ring, band), handlePixels);
+        check(dropped && saturation(ring) > 60 && apart(ring, band) < 40 && handlePixels >= 4,
+              "a source's handle dropped on the TABLE tab's display modulates Position, its depth handle along the "
+              "display's foot and its band on the meter in its color");
         model.set(slotTargetIndex(2, 0), 0.0);
         model.set(slotAmountIndex(2, 0), 0.0);
         model.set(paramIndex(2, SourceParam::Type), static_cast<double>(SourceType::None));
@@ -7869,9 +7886,9 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
         renderer.save(view, dir / "wt-4c-warp-plain.png");
         const std::vector<uint32_t> plain = strip();
         const bool noScope = model.scopeOp == -1;
-        click(view, detail::tableWarpButton(static_cast<int>(OpWarp::Squeeze)).center());
+        click(view, detail::warpButton(static_cast<int>(OpWarp::Squeeze)).center());
         const bool picked = std::lround(model.value(warp)) == static_cast<long>(OpWarp::Squeeze);
-        const Point knobAt = detail::kTableWarpAmountKnob;
+        const Point knobAt = detail::kWarpAmountKnob;
         drag(view, knobAt, {knobAt.x, knobAt.y - 40.0f});
         const bool turned = model.value(amount) > 0.05;
         view.mouseMove(away, {});

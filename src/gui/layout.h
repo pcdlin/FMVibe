@@ -181,15 +181,10 @@ inline Rect opTab(int tab, OpTabs tabs = OpTabs::Plain) {
     const float w = (kOpWell.w - 8.0f) / count;
     return {kOpWell.x + 4.0f + places[tab] * w, kOpTabsY, w, kOpTabH};
 }
-// The TABLE tab: its display, then along the row under it Position's knob, the warps' buttons (a little narrower than
-// on the WARP tab), the warp's Amount knob and the NOTE (note sync) switch, as the WARP tab has them. The SAMPLE tab:
-// its display with the ROOT readout in its top right corner, then LOOP and MODE, each a row of three, under it, named
-// under them.
-constexpr Point kTablePosKnob{kInspector.x + 34.0f, 0.0f}; // y: kOpControlsY
-inline Rect tableWarpButton(int warp) {
-    return {kInspector.x + 56.0f + warp * 24.0f, kOpControlsY - 11.0f, 24.0f, 22.0f};
-}
-constexpr Point kTableWarpAmountKnob{kInspector.x + 216.0f, kOpControlsY};
+// The TABLE tab: its display, which is Position's control, then along the row under it the warps' buttons, the warp's
+// Amount knob and the NOTE (note sync) switch, where the WARP tab has them (warpButton(), kWarpAmountKnob,
+// kSyncButton). The SAMPLE tab: its display with the ROOT readout in its top right corner, then LOOP and MODE, each a
+// row of three, under it, named under them.
 inline Rect sampleRootBox(Rect display) { return {display.right() - 6.0f - 56.0f, display.y + 4.0f, 56.0f, 16.0f}; }
 inline Rect sampleLoopButton(int choice, float y) {
     return {kInspector.x + 16.0f + choice * 42.0f, y - 10.0f, 42.0f, 20.0f};

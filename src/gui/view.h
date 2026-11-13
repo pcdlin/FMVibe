@@ -340,7 +340,6 @@ private:
         TablePicker,  // a = op: the table's name; opens the table browser
         SamplePicker, // a = op: the sample's name; opens the table browser, picking a sample
         DataImport,   // a = op, b = DataKind: the import button, and the dashed card of a Sample operator with none
-        TableDisplay, // param = its Position, a = op: the TABLE tab's display; dragged up and down, Position
         SampleHandle, // param, a = op, b = which (0 Start, 1 Loop Start, 2 Loop End, 3 Loop Fade): dragged across
         SampleRoot,   // param = its Root, a = op: the ROOT readout, dragged up and down or typed
         TbSource,     // a = source (-2 Factory, -1 In this patch, else the library's): picks it; right-click its menu
@@ -1249,6 +1248,9 @@ private:
     static bool isRatioDisplay(const Widget &w);
     // An operator's Ratio, whose depth handles drag on its log curve, an octave every 60 px.
     static bool isRatioTarget(int param);
+    // A Wavetable operator's Position, a knob drawn as its TABLE tab's display (see paintTableTab()): dragged up and
+    // down, a source dropped anywhere on it, its depth handles along its bottom edge, left of its meter.
+    static bool isTableDisplay(const Widget &w);
     static float compactTextX(const Widget &w);
     static float knobRadius(const Widget &w);
     // Whether `p` is on the number widget `w` shows, where a double-click starts typing.

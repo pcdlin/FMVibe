@@ -129,15 +129,14 @@ void View::opDataWidgets(std::vector<Widget> &list, int op, InspectorTab tab) co
     if (tab != InspectorTab::Source)
         return;
     if (table) {
-        add(Kind::TableDisplay, kOpDisplay, paramIndex(op, OpParam::TablePos), op);
-        add(Kind::Knob, knobRect({kTablePosKnob.x, kOpControlsY}, kOpKnobD), paramIndex(op, OpParam::TablePos)).label =
-            tr(Str::LabelPosition);
+        // Position is its display (see isTableDisplay()), dragged and modulated as a knob is.
+        add(Kind::Knob, kOpDisplay, paramIndex(op, OpParam::TablePos), op).label = tr(Str::LabelPosition);
         // Its warp, as the WARP tab of a plain wave has it: the warps' buttons, the amount and note sync.
         const size_t warps = list.size();
         for (int m = 0; m < static_cast<int>(OpWarp::Count); ++m)
-            add(Kind::Choice, tableWarpButton(m), paramIndex(op, OpParam::Warp), op, m);
+            add(Kind::Choice, warpButton(m), paramIndex(op, OpParam::Warp), op, m);
         mergeButtons(list, warps);
-        add(Kind::Knob, knobRect(kTableWarpAmountKnob, kOpKnobD), paramIndex(op, OpParam::WarpAmount)).label =
+        add(Kind::Knob, knobRect(kWarpAmountKnob, kOpKnobD), paramIndex(op, OpParam::WarpAmount)).label =
             tr(Str::LabelAmount);
         add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         return;
@@ -228,8 +227,12 @@ bool View::paintDataWidget(Canvas &c, const Widget &w, bool hovered, bool active
         c.polyline(tray, 4, ink, 1.2f);
         return true;
     }
-    case Kind::TableDisplay:
-        return true; // painted with the tab (see paintTableTab())
+    case Kind::Knob: // Position's: the display painted with the tab (see paintTableTab()), outlined under the mouse
+        if (!isTableDisplay(w))
+            return false;
+        if (hovered || active)
+            c.strokeRect(w.rect, kFaint, 1.0f, kRadiusCard);
+        return true;
     case Kind::SampleHandle: {
         const Rect area = sampleArea(kOpDisplay);
         const float x = w.rect.center().x;
@@ -1012,7 +1015,6 @@ bool View::dataPress(const Widget &w, Point p, Modifiers mods) {
     case Kind::DataImport:
         controller_.chooseOperatorFile(w.a, static_cast<DataKind>(w.b));
         return true;
-    case Kind::TableDisplay:
     case Kind::SampleRoot:
         drag_.kind = DragKind::Value;
         drag_.startValue = value(w.param);
@@ -1229,8 +1231,8 @@ std::string View::dataTip(const Widget &w) const {
     case Kind::DataImport:
         return w.rect.w > 40.0f ? std::string() : tr(w.b == static_cast<int>(DataKind::Table) ? Str::TipImportTable
                                                                                              : Str::TipImportSample);
-    case Kind::TableDisplay:
-        return tr(Str::TipTableDisplay);
+    case Kind::Knob:
+        return isTableDisplay(w) ? std::string(tr(Str::TipTableDisplay)) : std::string();
     case Kind::SampleHandle: {
         const Str tips[] = {Str::TipSampleStart, Str::TipLoopStart, Str::TipLoopEnd, Str::TipLoopFade};
         return tr(tips[std::clamp(w.b, 0, 3)]);
