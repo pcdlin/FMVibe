@@ -396,8 +396,8 @@ inline Rect lfoCardButton(float card, int button) {
 constexpr float kSourceShadowGap = 10.0f;
 constexpr float kSourceShadowW = (kCardH - kSourceShadowGap) * 0.5f;
 constexpr int kSourceTypes = static_cast<int>(SourceType::Count) - 1; // without None
-// The types it lists, in its order: the ones that run as LFOs first.
-constexpr SourceType kSourceMenuOrder[] = {SourceType::Lfo, SourceType::Curve, SourceType::Random, SourceType::Env,
+// The types it lists, in its order.
+constexpr SourceType kSourceMenuOrder[] = {SourceType::Env, SourceType::Lfo, SourceType::Curve, SourceType::Random,
                                            SourceType::Midi};
 static_assert(std::size(kSourceMenuOrder) == static_cast<size_t>(kSourceTypes));
 // That list, its top left given; an entry a type.

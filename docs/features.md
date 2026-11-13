@@ -1337,8 +1337,8 @@ one may have changed since it last did.
   display is a bar of what the newest voice gets now (from the middle while the source is bipolar), with its value.
   Below, the sources' cards show four at a time, and after the last one, while there is room for more, a dashed
   card with a plus, **ADD SOURCE**, as tall as the cards, opens the list of source types at the mouse, moved back
-  inside the editor where it would reach past an edge (LFO, Curve, Random,
-  Envelope and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
+  inside the editor where it would reach past an edge (Envelope, LFO, Curve,
+  Random and MIDI, each with a small picture of what it puts out); a pick adds one, and a click elsewhere closes
   the list. With more than fit, the scrollbar under them (thinner while the mouse is away from it, like every
   scrollbar) or the mouse wheel over the panel scrolls them smoothly, and a drag with the middle button held drags
   them along. Sources are numbered by type in the order they show ("LFO 2", "Curve 1", "Env 1", "Random 1",
