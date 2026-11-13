@@ -102,11 +102,23 @@ inline Rect clipEditButton(Rect display) {
 // An operator's page: under its knob row, tabs (one per InspectorTab) pick what the lower half shows.
 constexpr float kOpTabsY = kInspector.y + 156.0f;
 constexpr float kOpTabH = 20.0f;
-inline Rect opTab(int tab) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS by InspectorTab; along the line ENVELOPE, UNISON, INPUTS, SCOPE
-    constexpr float kX[] = {78.0f, 0.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 54.0f, 52.0f};
-    return {kInspector.x + 16.0f + kX[tab], kOpTabsY, kW[tab], kOpTabH};
+inline Rect opTab(int tab, bool noise = false) {
+    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS. SCOPE is
+    // no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens WARP): it sits where WARP
+    // does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS.
+    constexpr float kX[] = {78.0f, 0.0f, 144.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 52.0f, 54.0f, 52.0f};
+    constexpr float kNoiseX[] = {78.0f, 0.0f, 144.0f, 168.0f, 144.0f}, kNoiseW[] = {84.0f, 74.0f, 52.0f, 54.0f, 52.0f};
+    return {kInspector.x + 16.0f + (noise ? kNoiseX : kX)[tab], kOpTabsY, (noise ? kNoiseW : kW)[tab], kOpTabH};
 }
+// Wave: its display (the scope; with no note, the operator's cycles as its warp reads them, or the note's when
+// synced, the cycle buttons in its top right corner), then the warps' buttons, the amount's knob and the NOTE
+// (note sync) switch along the row under it.
+constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 116.0f};
+inline Rect warpButton(int warp) {
+    return {kInspector.x + 16.0f + warp * 28.0f, kInspector.y + 306.0f, 28.0f, 22.0f};
+}
+constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kInspector.y + 314.0f};
+constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 46.0f, kInspector.y + 306.0f, 46.0f, 22.0f};
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
 // with room under the depth for its modulations' handles. Past the rows the tab holds, they scroll, with a bar at
 // their right; drawn and hit within kInputsList, which leaves room for the ranges on the first row's depth's top.
@@ -127,8 +139,6 @@ constexpr float kUnisonKnobsY = kInspector.y + 206.0f;
 constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 102.0f};
 // A noise operator's spectrum, in Unison's place.
 constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
-// Scope: the operator's output, the cycle count's buttons in its top right corner.
-constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 166.0f};
 inline Rect scopeCycleButton(int choice) {
     return {kScopeRect.right() - 6.0f - (3 - choice) * 20.0f, kScopeRect.y + 6.0f, 20.0f, 16.0f};
 }

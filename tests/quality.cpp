@@ -2664,6 +2664,197 @@ void outScopeChecks() {
     check(silent < 1e-4f && peakOf() == 0.0f, "the output scope falls silent with the output, and shows nothing off");
 }
 
+// What the switches below start from: operator A a saw at 2.5 times the note.
+void syncWarpBase(ParamValues &p) {
+    p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw);
+    p[paramIndex(0, OpParam::Ratio)] = normFromRatio(2.5);
+}
+
+// --- An operator's hard sync and warp: band-limited (the energy off the note's harmonics, as the aliasing cases
+// above), switched on and changed under a note without a click, a warp's amount modulated without zipper, a synced
+// operator's ratio swept by an LFO staying on the note's harmonics and their sidebands, and a warp at 0 the plain wave.
+void syncWarpChecks(const int (&factors)[4]) {
+    std::printf("hard sync and warp:\n");
+    struct Case {
+        const char *name;
+        int key;
+        OpWave wave;
+        bool sync;
+        double ratio;
+        OpWarp warp;
+        double amount;
+        double limit2x; // dB at 2x oversampling
+    };
+    const Case cases[] = {
+        {"synced sine x3.3 at C6", 84, OpWave::Sine, true, 3.3, OpWarp::Off, 0.0, -60.0},
+        {"synced saw x2.6 at C6", 84, OpWave::Saw, true, 2.6, OpWarp::Off, 0.0, -50.0},
+        {"synced sine x7.7 at C5", 72, OpWave::Sine, true, 7.7, OpWarp::Off, 0.0, -60.0},
+        {"Bend 100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Bend, 1.0, -60.0},
+        {"Bend -60% saw at C6", 84, OpWave::Saw, false, 1.0, OpWarp::Bend, -0.6, -60.0},
+        {"Squeeze 80% square at C6", 84, OpWave::Square, false, 1.0, OpWarp::Squeeze, 0.8, -60.0},
+        {"Squeeze -100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Squeeze, -1.0, -60.0},
+        {"Pulse 100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Pulse, 1.0, -60.0},
+        {"Pulse -70% saw at C6", 84, OpWave::Saw, false, 1.0, OpWarp::Pulse, -0.7, -60.0},
+        {"Steps 100% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Steps, 1.0, -60.0},
+        {"Steps -100% triangle at C6", 84, OpWave::Triangle, false, 1.0, OpWarp::Steps, -1.0, -58.0},
+        {"synced Squeeze 60% square x2.4 C6", 84, OpWave::Square, true, 2.4, OpWarp::Squeeze, 0.6, -50.0},
+        {"Sync warp 50% sine at C6", 84, OpWave::Sine, false, 1.0, OpWarp::Sync, 0.5, -60.0},
+        {"Sync warp -80% saw at C6", 84, OpWave::Saw, false, 1.0, OpWarp::Sync, -0.8, -50.0},
+        {"Sync warp 30% triangle at C7", 96, OpWave::Triangle, false, 1.0, OpWarp::Sync, 0.3, -60.0},
+    };
+    auto setup = [](const Case &c) {
+        return [&c](ParamValues &p) {
+            p[paramIndex(0, OpParam::Wave)] = static_cast<double>(c.wave);
+            p[paramIndex(0, OpParam::Sync)] = c.sync ? 1.0 : 0.0;
+            p[paramIndex(0, OpParam::Ratio)] = normFromRatio(c.ratio);
+            p[paramIndex(0, OpParam::Warp)] = static_cast<double>(c.warp);
+            p[paramIndex(0, OpParam::WarpAmount)] = c.amount;
+        };
+    };
+    for (const Case &c : cases) {
+        double db[4];
+        for (int f = 0; f < 4; ++f)
+            db[f] = unexpectedDb(steadyTone(factors[f], c.key, setup(c)), harmonics(keyHz(c.key)));
+        std::printf("      %-34s 1x %7.1f   2x %7.1f   4x %7.1f   8x %7.1f\n", c.name, db[0], db[1], db[2], db[3]);
+        char what[128];
+        std::snprintf(what, sizeof(what), "%s: below %.0f dB at 2x", c.name, c.limit2x);
+        check(db[1] < c.limit2x, what);
+        std::snprintf(what, sizeof(what), "%s: oversampling doesn't make it worse", c.name);
+        check(db[3] < db[0] + 3.0, what);
+    }
+
+    // A warp at 0 is the plain wave, bit for bit; and with Sync and Warp at their defaults (as every patch from before
+    // them has them) an operator plays as it did, which the factory presets' renders in fmvibe-bench also check.
+    {
+        auto plain = [](ParamValues &p) { p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Saw); };
+        const std::vector<float> a = steadyTone(2, 69, plain);
+        bool same = true;
+        for (OpWarp warp : {OpWarp::Bend, OpWarp::Squeeze, OpWarp::Pulse, OpWarp::Steps, OpWarp::Sync}) {
+            const std::vector<float> b = steadyTone(2, 69, [&](ParamValues &p) {
+                plain(p);
+                p[paramIndex(0, OpParam::Warp)] = static_cast<double>(warp);
+            });
+            same = same && a == b;
+        }
+        const ParamDef &sync = paramTable()[paramIndex(0, OpParam::Sync)];
+        const ParamDef &warp = paramTable()[paramIndex(0, OpParam::Warp)];
+        const ParamDef &amount = paramTable()[paramIndex(0, OpParam::WarpAmount)];
+        check(same && sync.def == 0.0 && warp.def == 0.0 && amount.def == 0.0,
+              "every warp at 0 plays the plain wave bit for bit, and sync and warp start off");
+    }
+
+    // Switched on and changed under a held A3, A a saw at 2.5 times it (in single frames too, as events split
+    // blocks): nothing rougher than the synced or warped sound itself is, before or after, or the plain saw a warp
+    // changed to another passes through.
+    {
+        struct Switch {
+            const char *name;
+            void (*before)(ParamValues &);
+            void (*after)(ParamValues &);
+        };
+        const Switch switches[] = {
+            {"sync switched on", [](ParamValues &p) { syncWarpBase(p); },
+             [](ParamValues &p) { syncWarpBase(p), p[paramIndex(0, OpParam::Sync)] = 1.0; }},
+            {"sync switched off", [](ParamValues &p) { syncWarpBase(p), p[paramIndex(0, OpParam::Sync)] = 1.0; },
+             [](ParamValues &p) { syncWarpBase(p); }},
+            {"Squeeze 90% switched on", [](ParamValues &p) { syncWarpBase(p); },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             }},
+            {"Bend 90% to Steps 90%",
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Bend);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Steps);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             }},
+            {"Squeeze 90% to Sync 70%",
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.9;
+             },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Sync);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 0.7;
+             }},
+            {"Pulse -100% to +100%",
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Pulse);
+                 p[paramIndex(0, OpParam::WarpAmount)] = -1.0;
+             },
+             [](ParamValues &p) {
+                 syncWarpBase(p);
+                 p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Pulse);
+                 p[paramIndex(0, OpParam::WarpAmount)] = 1.0;
+             }},
+        };
+        // A warp changed to another goes through its plain wave (an amount of 0) on the way, which counts too.
+        double plain = 0.0;
+        {
+            Engine e(2);
+            syncWarpBase(e.p);
+            e.noteOn(57);
+            plain = roughness(e.render(9600), 4800, 9600);
+        }
+        double worst = 0.0;
+        for (const Switch &sw : switches)
+            for (uint32_t piece : {kBlock, 1u}) {
+                Engine e(2);
+                sw.before(e.p);
+                e.noteOn(57);
+                const std::vector<float> before = e.render(9600, piece);
+                sw.after(e.p);
+                const std::vector<float> after = e.render(9600, piece);
+                const std::vector<float> both = joined(before, after);
+                const double steady = std::max({roughness(both, 4800, before.size() - 1),
+                                                roughness(both, before.size() + 4800, both.size()), plain});
+                const double switched = roughness(both, before.size() - 2, before.size() + 480);
+                const double ratio = switched / steady;
+                if (piece == kBlock)
+                    std::printf("      %-34s %.2f times as rough as the sound itself\n", sw.name, ratio);
+                worst = std::max(worst, ratio);
+            }
+        check(worst < 1.5, "sync and warp switched or changed under a note don't click");
+    }
+
+    // Modulated: a 20 Hz LFO on Squeeze's amount (a square's pulse width) and on a synced operator's ratio leaves only
+    // the note's harmonics and their sidebands, not partials at the control rate.
+    {
+        const int key = 57;
+        const double f0 = keyHz(key), lfo = 20.0;
+        std::vector<double> partials;
+        for (double h : harmonics(f0))
+            for (int k = -16; k <= 16; ++k)
+                partials.push_back(h + k * lfo);
+        auto pwm = [&](ParamValues &p) {
+            p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Square);
+            p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+            p[paramIndex(0, OpParam::WarpAmount)] = 0.0;
+            lfoOn(p, paramIndex(0, OpParam::WarpAmount), 0.3, lfo);
+        };
+        const double width = unexpectedDb(steadyTone(1, key, pwm), partials);
+        std::printf("      %-34s %7.1f dB off the expected partials\n", "LFO on Squeeze (PWM)", width);
+        check(width < -60.0, "an LFO on a warp's amount doesn't zipper");
+        auto sweep = [&](ParamValues &p) {
+            p[paramIndex(0, OpParam::Sync)] = 1.0;
+            p[paramIndex(0, OpParam::Ratio)] = normFromRatio(3.0);
+            lfoOn(p, paramIndex(0, OpParam::Ratio), 0.1, lfo);
+        };
+        const double swept = unexpectedDb(steadyTone(2, key, sweep), partials);
+        std::printf("      %-34s %7.1f dB off the expected partials\n", "LFO on a synced ratio (sweep)", swept);
+        check(swept < -60.0, "a synced operator's ratio swept stays on the note's harmonics, without zipper");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -2782,6 +2973,8 @@ int main() {
         std::snprintf(what, sizeof(what), "%s: oversampling doesn't make it worse", c.name);
         check(db[3] < db[0] + 3.0, what);
     }
+
+    syncWarpChecks(factors);
 
     // --- Zipper: modulation stepping once per control block leaves partials
     // around multiples of the control rate. A 20 Hz LFO on a 220 Hz sine should

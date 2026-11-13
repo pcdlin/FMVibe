@@ -519,11 +519,12 @@ View::MenuNode View::cascadeCategories() const {
         node.note = nodeOn(op) ? waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))))
                                : tr(Str::CascadeOff);
         const std::string prefix = trf(Str::ParamOp, {kNodeNames[op]});
-        // In two columns, about as tall: the pitch, level, phase and unison, then the envelope and the noise.
+        // In two columns, about as tall: the pitch, level, phase (and the warp's amount) and unison, then the envelope
+        // and the noise.
         const std::pair<Str, std::vector<OpParam>> sections[] = {
             {Str::CascadePitch, {OpParam::Ratio, OpParam::Transpose, OpParam::Detune, OpParam::FixedFreq}},
             {Str::CascadeLevel, {OpParam::Out, OpParam::Pan}},
-            {Str::CascadePhase, {OpParam::Phase}},
+            {Str::CascadePhase, {OpParam::Phase, OpParam::WarpAmount}},
             {Str::CascadeUnison, {OpParam::UnisonDetune, OpParam::UnisonSpread, OpParam::PhaseRandom}},
             {Str::CascadeEnvelope,
              {OpParam::Attack, OpParam::Hold, OpParam::Decay, OpParam::Sustain, OpParam::Release, OpParam::AttackCurve,

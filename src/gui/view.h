@@ -1306,6 +1306,9 @@ private:
                              const Spectrum *spectrum = nullptr);
     void paintUnison(Canvas &c, Rect r, int op);
     void paintScope(Canvas &c, Rect r, int op);
+    OpWarp opWarp(int op) const;
+    bool opSynced(int op) const;
+    std::vector<Point> opWavePoints(int op, Rect r, int cycles, bool plain) const;
     // The tab an operator's page shows: the one picked, but a noise operator's envelope for the scope it hasn't.
     InspectorTab opTabShown(int op) const;
     // A route's label in the graph, from its place as it rests (`idle`): while it or its parts are under the mouse,

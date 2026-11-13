@@ -702,8 +702,7 @@ const Point kNoiseButton = waveButton(4);
 // An operator page's tabs, ENVELOPE, UNISON, INPUTS and SCOPE (by InspectorTab), and the scope's buttons for 1, 2
 // and 4 cycles in its display's top right corner.
 Point opTabPoint(InspectorTab tab) {
-    constexpr float kX[] = {1009.0f, 937.0f, 1127.0f, 1070.0f};
-    return ins(kX[static_cast<int>(tab)], 298.0f);
+    return detail::opTab(static_cast<int>(tab)).center();
 }
 Point scopeCycleButton(int choice) {
     return ins(1112.0f + choice * 20.0f, 330.0f);
@@ -8093,13 +8092,13 @@ void run(const std::filesystem::path &dir, float scale) {
     // the first cycle, 0.8 of the way up to the full-scale line.
     {
         const Telemetry before = model.live;
-        click(view, opTabPoint(InspectorTab::Scope));
+        click(view, opTabPoint(InspectorTab::Warp));
         view.poll();
-        check(layout.opTab == InspectorTab::Scope && model.scopeOp == 0 && model.scopeCycles == 2,
-              "the SCOPE tab asks for its operator's output");
+        check(layout.opTab == InspectorTab::Warp && model.scopeOp == 0 && model.scopeCycles == 2,
+              "the WARP tab asks for its operator's output");
         auto peakAt = [&](int cycles) { // the first peak: 8 px across the inner display, half its height up
             const Rect s = detail::kScopeRect;
-            const float half = 0.5f * (s.h - 40.0f), middle = s.y + 28.0f + half;
+            const float half = 0.5f * (s.h - 46.0f), middle = s.y + 26.0f + half;
             const float x = s.x + 8.0f + (s.w - 16.0f) * (0.25f / cycles);
             return ringLevel(renderer, {x, middle - 0.8f * half - 4.0f}, 8.0f);
         };
@@ -8137,7 +8136,8 @@ void run(const std::filesystem::path &dir, float scale) {
         check(model.scopeOp == -1, "a noise operator's page asks for no scope");
         model.set(paramIndex(0, OpParam::Wave), 0.0);
         // A hidden tab with a modulated knob shows a dot: LFO 1 on A's decay, on the ENVELOPE tab.
-        const Point dot = ins(971.0f, 291.0f);
+        const Rect envelopeTab = detail::opTab(static_cast<int>(InspectorTab::Envelope));
+        const Point dot{envelopeTab.right() - 3.0f, envelopeTab.y + 5.0f};
         view.mouseMove({600.0f, 328.0f}, {});
         renderer.save(view, dir / "3e-scope-tab-dot.png");
         const int plain = ringLevel(renderer, dot, 4.0f);
@@ -8159,11 +8159,83 @@ void run(const std::filesystem::path &dir, float scale) {
         view.poll();
         check(opened && model.scopeOp == -1, "a dragged handle opens the tab it is held over, and the scope stops");
         model.live = before;
-        click(view, opTabPoint(InspectorTab::Scope));
+        click(view, opTabPoint(InspectorTab::Warp));
         click(view, scopeCycleButton(1));
         click(view, opTabPoint(InspectorTab::Envelope));
         view.poll();
         check(layout.opTab == InspectorTab::Envelope && layout.scopeCycles == 2, "the ENVELOPE tab is back");
+    }
+
+    // The WARP tab's warp: its buttons pick the warp, its knob the amount and NOTE (note sync) the hard sync, each
+    // an undo step; with no note its display draws a square as the warp reads it, read off the rendered pixels: with
+    // Squeeze at +50 % the first cycle's high half runs on past its middle (high at 60 % of it, where the plain square
+    // is low), and synced to the note at a ratio of 1.5 the note's cycle restarts it.
+    {
+        const int warp = paramIndex(0, OpParam::Warp), amount = paramIndex(0, OpParam::WarpAmount),
+                  sync = paramIndex(0, OpParam::Sync);
+        model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Square));
+        click(view, opTabPoint(InspectorTab::Warp));
+        view.poll();
+        const bool shown = layout.opTab == InspectorTab::Warp;
+        // Where along the display's two cycles (0..2) the trace is lit at the full-scale line, top or bottom.
+        auto litAt = [&](Rect inner, float cycles, float at, bool top) {
+            const float x = inner.x + inner.w * at / cycles;
+            return ringLevel(renderer, {x, (top ? inner.y : inner.bottom()) - 3.0f}, 6.0f);
+        };
+        const Rect r = detail::kScopeRect;
+        const Rect inner{r.x + 8.0f, r.y + 26.0f, r.w - 16.0f, r.h - 46.0f};
+        view.mouseMove({600.0f, 328.0f}, {});
+        renderer.save(view, dir / "3w-warp-off.png");
+        const int plainHigh = litAt(inner, 2.0f, 0.6f, true), plainLow = litAt(inner, 2.0f, 0.6f, false);
+        click(view, detail::warpButton(static_cast<int>(OpWarp::Squeeze)).center());
+        const bool picked = std::lround(model.value(warp)) == static_cast<long>(OpWarp::Squeeze);
+        drag(view, detail::kWarpAmountKnob, {detail::kWarpAmountKnob.x, detail::kWarpAmountKnob.y - 40.0f});
+        const bool turned = model.value(amount) > 0.05;
+        model.set(amount, 0.5);
+        view.poll();
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool squeezedShot = renderer.save(view, dir / "3w-warp-squeeze.png");
+        const int squeezedHigh = litAt(inner, 2.0f, 0.6f, true), squeezedLow = litAt(inner, 2.0f, 0.6f, false);
+        std::printf("      a square at 60 %% of its cycle: high %d, low %d plain; high %d, low %d squeezed\n",
+                    plainHigh, plainLow, squeezedHigh, squeezedLow);
+        // The plain square is drawn faintly, a stand-in for the trace; the warped one in the accent.
+        check(shown && picked && turned && squeezedShot && plainLow > plainHigh + 30 &&
+                  squeezedHigh > squeezedLow + 60,
+              "the WARP tab picks a warp and its amount, and its display draws the square's pulse width");
+        view.mouseMove(detail::warpButton(static_cast<int>(OpWarp::Sync)).center(), {});
+        check(renderer.save(view, dir / "3w-warp-tip.png"), "render a warp button's tooltip");
+        // The Sync warp (the wave played through more times a cycle, cut off at its end) is a warp like the others,
+        // apart from the NOTE switch: picked, undone, Squeeze back.
+        click(view, detail::warpButton(static_cast<int>(OpWarp::Sync)).center());
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool syncWarpShot = renderer.save(view, dir / "3w-warp-sync-warp.png");
+        const bool syncWarp = std::lround(model.value(warp)) == static_cast<long>(OpWarp::Sync) &&
+                              model.value(sync) == 0.0;
+        view.undo();
+        check(syncWarpShot && syncWarp && std::lround(model.value(warp)) == static_cast<long>(OpWarp::Squeeze),
+              "the Sync warp is picked apart from the NOTE switch, undoably");
+        // NOTE: on, the summary says so and the display shows the note's cycles; then each step undone.
+        model.set(paramIndex(0, OpParam::Ratio), normFromRatio(1.5));
+        click(view, detail::kSyncButton.center());
+        const bool synced = model.value(sync) == 1.0;
+        view.mouseMove({600.0f, 328.0f}, {});
+        check(renderer.save(view, dir / "3w-warp-sync.png") && synced, "the NOTE switch turns note sync on");
+        view.undo(); // sync
+        const bool syncUndone = model.value(sync) == 0.0;
+        model.set(paramIndex(0, OpParam::Ratio), normFromRatio(1.0));
+        view.undo(); // the amount's drag
+        view.undo(); // the warp
+        check(syncUndone && model.value(amount) == 0.0 && model.value(warp) == 0.0,
+              "the warp, its amount and the NOTE switch are undone a step each");
+        // A noise operator has no wave to show or warp: its page shows the envelope in the WARP tab's place.
+        model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Noise));
+        view.poll();
+        view.mouseMove({600.0f, 328.0f}, {});
+        check(renderer.save(view, dir / "3w-warp-noise.png"), "render a noise operator with the WARP tab picked");
+        model.set(paramIndex(0, OpParam::Wave), 0.0);
+        click(view, opTabPoint(InspectorTab::Envelope));
+        view.poll();
+        check(layout.opTab == InspectorTab::Envelope, "the ENVELOPE tab is back after WARP");
     }
 
     // While notes play, the ENVELOPE tab draws a line across at the newest voice's envelope level, as a mod
