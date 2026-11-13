@@ -1004,7 +1004,9 @@ void Synth::captureOutput(const float *left, const float *right, uint32_t frames
     const double periods = kOutScopePeriods * std::ceil(std::max(kOutScopeMinSpan * hz / kOutScopePeriods, 1.0));
     const double inc = hz / (periods * sampleRate_); // of a span, a sample
     auto place = [](int point) { return static_cast<double>(point) / (kOutScopeBins - 1); }; // 0..1 through the span
+    const auto slow = static_cast<int64_t>(kScopeBlendSpan * sampleRate_);
     for (uint32_t i = 0; i < frames; ++i) {
+        ++s.blend.since;
         double x = 0.5 * (static_cast<double>(left[i]) + right[i]);
         if (!std::isfinite(x))
             x = 0.0;
@@ -1025,8 +1027,10 @@ void Synth::captureOutput(const float *left, const float *right, uint32_t frames
             }
             if (to < 1.0)
                 break;
-            if (s.next == kOutScopeBins) // whole: published
+            if (s.next == kOutScopeBins) { // whole: published
+                s.blend.publish(s.frame, kOutScopeBins, true, slow);
                 s.frame = s.filling;
+            }
             s.next = 0;
             from -= 1.0;
             to -= 1.0;
@@ -1095,11 +1099,13 @@ void Synth::scopeRestart() {
     scope_.whole = false;
     scope_.filling.fill(0.0f);
     scope_.frame.fill(0.0f);
+    scope_.blend = {};
 }
 
 void Synth::scopeTake(double phase, double value) {
     ScopeCapture &s = scope_;
     const int total = s.cycles * kScopeBinsPerCycle;
+    ++s.blend.since;
     double delta = phase - s.lastPhase;
     if (delta < -0.5) // copy 0 went on into its next cycle
         delta += 1.0;
@@ -1137,6 +1143,7 @@ void Synth::scopeTake(double phase, double value) {
                 const double t = (static_cast<double>(s.next) / kScopeBinsPerCycle - s.lastPos) / delta;
                 s.filling[s.next] = static_cast<float>(s.lastValue + (value - s.lastValue) * t);
                 if (++s.next == total) { // a whole span, published; the next one starts at 0
+                    s.blend.publish(s.frame, total, s.whole, static_cast<int64_t>(kScopeBlendSpan * rate_));
                     std::copy_n(s.filling.begin(), total, s.frame.begin());
                     s.whole = true;
                     s.next = 0;
@@ -1164,11 +1171,15 @@ void Synth::telemetry(Telemetry &out) const {
     static_assert(std::is_trivially_destructible_v<Telemetry>);
     std::construct_at(&out);
     if (scope_.op >= 0 && scope_.live) {
-        // A slow span (or the first one, before it is whole) shows as it fills; a quick one a whole span at a time.
+        // A slow span (or the first one, before it is whole) shows as it fills; a quicker one a whole span at a time,
+        // blending into the next (see kScopeBlendSpan).
         const int total = scope_.cycles * kScopeBinsPerCycle;
         const bool slow = scope_.inc <= 0.0 || scope_.cycles / (scope_.inc * rate_) > kScopeSlowSpan;
         const bool filling = slow || !scope_.whole;
-        std::copy_n((filling ? scope_.filling : scope_.frame).begin(), total, out.scope.begin());
+        if (filling)
+            std::copy_n(scope_.filling.begin(), total, out.scope.begin());
+        else
+            scope_.blend.show(scope_.frame, total, out.scope);
         out.scopeBins = total;
         out.scopeCursor = filling ? static_cast<float>(scope_.next) / static_cast<float>(total) : -1.0f;
     }
@@ -1183,7 +1194,7 @@ void Synth::telemetry(Telemetry &out) const {
         bend_ + std::clamp(bendSet_ + globalMod_[pitchBend], table_[pitchBend].min, table_[pitchBend].max), -1.0, 1.0));
     out.clipHold = static_cast<float>(clipHold_);
     if (analyzing_)
-        out.outScope = outScope_.frame;
+        outScope_.blend.show(outScope_.frame, kOutScopeBins, out.outScope);
     for (const HeldNote &held : held_)
         out.keys[held.note.key / 32] |= 1u << (held.note.key % 32);
     for (int slot = 0; slot < kFxSlots; ++slot) { // effects keep working on echoes after the voices end
