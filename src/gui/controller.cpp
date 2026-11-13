@@ -361,6 +361,7 @@ void Controller::undo() {
     undo_.pop_back();
     apply(step, false);
     redo_.push_back(std::move(step));
+    refreshData(); // once the step is in the history again, which then holds what it names
 }
 
 void Controller::redo() {
@@ -370,6 +371,7 @@ void Controller::redo() {
     redo_.pop_back();
     apply(step, true);
     undo_.push_back(std::move(step));
+    refreshData();
 }
 
 // As one gesture, in the order the step's params were first edited, so an effect's or source's
@@ -394,7 +396,6 @@ void Controller::apply(const UndoStep &step, bool forward) {
     }
     performStepEnd();
     applying_ = false;
-    refreshData();
 }
 
 void Controller::clearHistory() {

@@ -611,12 +611,13 @@ TableFile readTableFile(const uint8_t *bytes, size_t size, const std::string &na
         }
         std::string tag = "wav";
         int frame = wavFrameSize(w, tag);
-        const bool guessed = frame <= 0;
-        if (guessed)
+        const bool chunkless = frame <= 0;
+        if (chunkless)
             frame = guessFrameSize(static_cast<int64_t>(samples.size()), frameSize);
         if (frame <= 0 || frame > 4096)
             return out.error = ReadError::NotTable, out;
-        return asTable(samples, frame, w.bits <= 16 && w.format == 1, guessed ? "wav" : tag, guessed);
+        // Guessed only when neither a chunk nor the folder gave it.
+        return asTable(samples, frame, w.bits <= 16 && w.format == 1, chunkless ? "wav" : tag, chunkless && frameSize <= 0);
     }
     if (size >= 4 && std::memcmp(bytes, "fLaC", 4) == 0) {
         std::vector<float> samples;
@@ -689,10 +690,11 @@ TableInfo probeTableFile(const ReadAt &read, uint64_t size, const std::string &n
             return info.sample = true, info.frames = static_cast<int>(std::min<int64_t>(length, INT32_MAX)), info;
         std::string tag = "wav";
         int frame = wavFrameSize(w, tag);
-        info.guessed = frame <= 0;
-        if (info.guessed)
+        const bool chunkless = frame <= 0;
+        if (chunkless)
             frame = guessFrameSize(length, frameSize);
-        info.format = info.guessed ? "wav" : tag;
+        info.guessed = chunkless && frameSize <= 0;
+        info.format = chunkless ? "wav" : tag;
         if (frame <= 0 || frame > 4096)
             return info.sample = true, info.frames = static_cast<int>(std::min<int64_t>(length, INT32_MAX)), info;
         info.frameSize = frame;

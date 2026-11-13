@@ -4,9 +4,18 @@
 // against limits. Usage: fmvibe-quality
 
 #include "factory.h"
+#include "fft.h"
 #include "gui/controller.h"
+#include "opdata.h"
 #include "state.h"
 #include "synth.h"
+#include "tables.h"
+#include "tables/library.h"
+#include "tables/readers.h"
+
+#include <filesystem>
+#include <fstream>
+#include <thread>
 
 #include <algorithm>
 #include <chrono>
@@ -3218,6 +3227,988 @@ void syncWarpChecks(const int (&factors)[4]) {
     }
 }
 
+// --- Wavetable and Sample operators.
+
+// A table's data, from `count` frames of FrameTable::kFrameSize samples, built, under `key`.
+std::shared_ptr<OpData> tableData(uint32_t key, std::vector<float> frames, int count) {
+    auto d = std::make_shared<OpData>();
+    d->kind = DataKind::Table;
+    d->key = key;
+    d->frames = count;
+    d->pcm = std::move(frames);
+    buildOpData(*d);
+    return d;
+}
+
+// A sample's, mono at `rate`, its root `root`.
+std::shared_ptr<OpData> sampleData(uint32_t key, std::vector<float> pcm, uint32_t rate, float root) {
+    auto d = std::make_shared<OpData>();
+    d->kind = DataKind::Sample;
+    d->key = key;
+    d->rate = rate;
+    d->root = root;
+    d->pcm = std::move(pcm);
+    buildOpData(*d);
+    return d;
+}
+
+// One cycle of FrameTable::kFrameSize samples: sum of `level(n)` sin(n t) over n.
+template <class Level>
+std::vector<float> cycleFrame(int top, const Level &level) {
+    std::vector<float> frame(FrameTable::kFrameSize);
+    for (int i = 0; i < FrameTable::kFrameSize; ++i) {
+        double x = 0.0;
+        for (int n = 1; n <= top; ++n)
+            x += level(n) * std::sin(2.0 * std::numbers::pi * n * i / FrameTable::kFrameSize);
+        frame[i] = static_cast<float>(x);
+    }
+    return frame;
+}
+
+// An engine whose data store hands its synth what it plays (as the plugin's does), operator A a Wavetable or a Sample.
+struct DataEngine {
+    explicit DataEngine(int oversampling) : e(oversampling) { store.attach(&e.synth().registry()); }
+    ~DataEngine() { store.attach(nullptr); }
+    void table(uint32_t key, double position = 0.0) {
+        store.ensure(key);
+        e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Wavetable);
+        e.p[paramIndex(0, OpParam::Table)] = key;
+        e.p[paramIndex(0, OpParam::TablePos)] = position;
+    }
+    void sample(const std::shared_ptr<OpData> &data) {
+        store.put(data);
+        store.ensure(data->key);
+        e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Sample);
+        e.p[paramIndex(0, OpParam::Sample)] = data->key;
+        e.p[paramIndex(0, OpParam::SampleRoot)] = data->root;
+    }
+    Engine e;
+    DataStore store;
+};
+
+// The frame of a factory table with the most energy above its 32nd harmonic: its brightest.
+double brightestPosition(int table) {
+    const std::vector<float> frames = factoryTableFrames(table);
+    int best = 0;
+    double most = -1.0;
+    for (int f = 0; f < kFactoryFrames; ++f) {
+        const auto h = harmonicsOf(&frames[static_cast<size_t>(f) * FrameTable::kFrameSize], FrameTable::kFrameSize, 512);
+        double high = 0.0;
+        for (int n = 32; n <= 512; ++n)
+            high += std::norm(h[n]);
+        if (high > most) {
+            most = high;
+            best = f;
+        }
+    }
+    return static_cast<double>(best) / (kFactoryFrames - 1);
+}
+
+void wavetableChecks(const int (&factors)[4]) {
+    std::printf("wavetables:\n");
+    // Each factory table's spectrum, frame by frame where it says what the table is.
+    {
+        auto level = [](int table, int frame, int n) {
+            const std::vector<float> frames = factoryTableFrames(table);
+            return std::abs(harmonicsOf(&frames[static_cast<size_t>(frame) * FrameTable::kFrameSize],
+                                        FrameTable::kFrameSize, 512)[n]);
+        };
+        auto pure = [&](int table, int frame) { // a sine: nothing past its fundamental
+            double rest = 0.0;
+            for (int n = 2; n <= 64; ++n)
+                rest = std::max(rest, level(table, frame, n));
+            return rest < 1e-3 * level(table, frame, 1);
+        };
+        const int last = kFactoryFrames - 1;
+        auto t = [](FactoryTable table) { return static_cast<int>(table); };
+        struct Spectral {
+            const char *name;
+            bool ok;
+        };
+        const Spectral spectra[] = {
+            {"Basic Shapes: a sine first, a 25 % pulse last (no 4th harmonic, the 2nd 0.71 of the 1st)",
+             pure(t(FactoryTable::BasicShapes), 0) && level(t(FactoryTable::BasicShapes), last, 4) < 1e-3 &&
+                 std::abs(level(t(FactoryTable::BasicShapes), last, 2) / level(t(FactoryTable::BasicShapes), last, 1) - 0.707) < 0.03},
+            {"PWM: a square first (no even harmonics), a narrow pulse last (its harmonics about level)",
+             level(t(FactoryTable::Pwm), 0, 2) < 1e-3 * level(t(FactoryTable::Pwm), 0, 1) &&
+                 level(t(FactoryTable::Pwm), last, 2) > 0.9 * level(t(FactoryTable::Pwm), last, 1)},
+            {"Harmonic Build: a sine first, 64 partials last and none past them",
+             pure(t(FactoryTable::HarmonicBuild), 0) && level(t(FactoryTable::HarmonicBuild), last, 64) > 0.0 &&
+                 level(t(FactoryTable::HarmonicBuild), last, 65) < 1e-4 * level(t(FactoryTable::HarmonicBuild), last, 1)},
+            {"FM Sweep: a sine first, spread over many harmonics last",
+             pure(t(FactoryTable::FmSweep), 0) && level(t(FactoryTable::FmSweep), last, 6) > 0.2 * level(t(FactoryTable::FmSweep), last, 1)},
+            {"Sync Sweep: a saw first (its 2nd half the 1st), its loudest harmonic about the 8th last",
+             std::abs(level(t(FactoryTable::SyncSweep), 0, 2) / level(t(FactoryTable::SyncSweep), 0, 1) - 0.5) < 0.02 &&
+                 level(t(FactoryTable::SyncSweep), last, 8) > level(t(FactoryTable::SyncSweep), last, 3)},
+            {"Resonant Sweep: its 2nd harmonic lifted past the 1st last, the 10th all but gone",
+             level(t(FactoryTable::ResonantSweep), last, 2) > level(t(FactoryTable::ResonantSweep), last, 1) &&
+                 level(t(FactoryTable::ResonantSweep), last, 10) < 0.02 * level(t(FactoryTable::ResonantSweep), last, 1)},
+            {"Vowels: an \"ah\" first, its first formant about the 7th harmonic",
+             level(t(FactoryTable::Vowels), 0, 7) > level(t(FactoryTable::Vowels), 0, 4)},
+            {"Fold: a sine first, folded into odd harmonics last",
+             pure(t(FactoryTable::Fold), 0) && level(t(FactoryTable::Fold), last, 2) < 1e-3 &&
+                 level(t(FactoryTable::Fold), last, 3) > 0.1 * level(t(FactoryTable::Fold), last, 1)},
+            {"Odd to Even: no even harmonics first, no odd ones but the fundamental last",
+             level(t(FactoryTable::OddEven), 0, 2) < 1e-4 && level(t(FactoryTable::OddEven), last, 3) < 1e-4 &&
+                 level(t(FactoryTable::OddEven), last, 2) > 0.1},
+        };
+        static_assert(std::size(spectra) == static_cast<size_t>(FactoryTable::Count));
+        for (const Spectral &s : spectra)
+            check(s.ok, s.name);
+    }
+
+    // A C7 on each factory table's brightest frame: the energy off the note's harmonics.
+    {
+        bool clean = true, better = true;
+        for (int table = 0; table < static_cast<int>(FactoryTable::Count); ++table) {
+            const double position = brightestPosition(table);
+            double db[4];
+            for (int f = 0; f < 4; ++f) {
+                DataEngine d(factors[f]);
+                d.table(static_cast<uint32_t>(table), position);
+                d.e.noteOn(96);
+                d.e.render(4800);
+                db[f] = unexpectedDb(d.e.render(kFftSize), harmonics(keyHz(96)));
+            }
+            std::printf("      %-16s at %.2f, C7: 1x %7.1f   2x %7.1f   4x %7.1f   8x %7.1f\n", factoryTableName(table),
+                        position, db[0], db[1], db[2], db[3]);
+            clean = clean && db[1] < -60.0;
+            better = better && db[3] < db[0] + 3.0;
+        }
+        check(clean, "every factory table's brightest frame at C7 stays 60 dB clean of aliasing at 2x");
+        check(better, "and oversampling doesn't make it worse");
+    }
+
+    // An LFO on Position leaves only the note's harmonics and their sidebands: no steps at the control rate.
+    {
+        const int key = 57;
+        const double lfo = 20.0;
+        std::vector<double> partials;
+        for (double h : harmonics(keyHz(key)))
+            for (int k = -24; k <= 24; ++k)
+                partials.push_back(h + k * lfo);
+        DataEngine d(2);
+        d.table(static_cast<uint32_t>(FactoryTable::BasicShapes), 0.5);
+        lfoOn(d.e.p, paramIndex(0, OpParam::TablePos), 0.3, lfo);
+        d.e.noteOn(key);
+        d.e.render(4800);
+        const double db = unexpectedDb(d.e.render(kFftSize), partials);
+        std::printf("      LFO on Position: %.1f dB off the expected partials\n", db);
+        check(db < -60.0, "an LFO on a table's Position doesn't zipper");
+    }
+
+    // Position 0 and 1 play a two-frame table's first and last frames bit for bit as one-frame tables of them do.
+    {
+        // The second frame the first upside down: as loud to the last bit, so both tables take the same gain.
+        const std::vector<float> a = cycleFrame(1, [](int) { return 1.0; });
+        const std::vector<float> b = cycleFrame(1, [](int) { return -1.0; });
+        auto play = [](const std::shared_ptr<OpData> &data, double position) {
+            DataEngine d(2);
+            d.store.put(data);
+            d.table(data->key, position);
+            d.e.noteOn(57);
+            return d.e.render(9600);
+        };
+        const auto two = tableData(kUserDataBase + 1, joined(a, b), 2);
+        const auto onlyA = tableData(kUserDataBase + 2, a, 1), onlyB = tableData(kUserDataBase + 3, b, 1);
+        check(play(two, 0.0) == play(onlyA, 0.0) && play(two, 1.0) == play(onlyB, 0.0),
+              "Position 0 and 1 play the first and last frames bit for bit, as one-frame tables of them do");
+    }
+
+    // A table the registry doesn't have yet: silent, and asked for; once registered, it plays.
+    {
+        DataEngine d(2);
+        const auto data = tableData(kUserDataBase + 7, cycleFrame(1, [](int) { return 1.0; }), 1);
+        d.e.p[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Wavetable);
+        d.e.p[paramIndex(0, OpParam::Table)] = data->key;
+        d.e.noteOn(69);
+        const std::vector<float> before = d.e.render(4800);
+        const bool asked = d.e.synth().registry().anyMissing();
+        const std::vector<uint32_t> missing = d.e.synth().registry().takeMissing();
+        d.store.put(data);
+        d.store.ensure(data->key);
+        const std::vector<float> after = d.e.render(4800);
+        const float peakBefore = *std::max_element(before.begin(), before.end());
+        const float peakAfter = *std::max_element(after.begin(), after.end());
+        std::printf("      a table not registered yet: peak %.4f; registered, %.3f\n", peakBefore, peakAfter);
+        check(peakBefore == 0.0f && asked && missing.size() == 1 && missing[0] == data->key && peakAfter > 0.1f,
+              "an operator whose table isn't registered yet stays silent and asks for it, then plays it");
+    }
+
+    // Data let go of while a voice plays it is freed only once the audio thread has rendered past that moment.
+    {
+        DataEngine d(2);
+        constexpr uint32_t kKey = kUserDataBase + 9;
+        d.store.put(tableData(kKey, cycleFrame(1, [](int) { return 1.0; }), 1)); // the store's alone
+        std::weak_ptr<const OpData> held = d.store.get(kKey);
+        d.table(kKey);
+        d.e.noteOn(69);
+        d.e.render(kBlock);
+        // Let go of between two renders, as a render may be under way: kept until one has ended since.
+        d.store.keep({}, {}, d.e.synth().registry().blocks(), false);
+        const bool kept = !held.expired();
+        d.e.render(kBlock);
+        d.store.keep({}, {}, d.e.synth().registry().blocks(), false);
+        check(kept && held.expired(),
+              "data let go of while a voice plays it is freed only once the audio thread has rendered past it");
+    }
+
+    // A warped table's aliasing, as a warped wave's.
+    {
+        double db[4];
+        for (int f = 0; f < 4; ++f) {
+            DataEngine d(factors[f]);
+            d.table(static_cast<uint32_t>(FactoryTable::BasicShapes), 0.6);
+            d.e.p[paramIndex(0, OpParam::Warp)] = static_cast<double>(OpWarp::Squeeze);
+            d.e.p[paramIndex(0, OpParam::WarpAmount)] = 0.8;
+            d.e.noteOn(84);
+            d.e.render(4800);
+            db[f] = unexpectedDb(d.e.render(kFftSize), harmonics(keyHz(84)));
+        }
+        std::printf("      Squeeze 80%% on Basic Shapes at C6: 1x %7.1f   2x %7.1f   4x %7.1f   8x %7.1f\n", db[0], db[1],
+                    db[2], db[3]);
+        check(db[1] < -60.0 && db[3] < db[0] + 3.0, "a warped table stays 60 dB clean of aliasing at 2x");
+    }
+}
+
+// A band-limited saw at 220.5 Hz, 2 s at 44.1 kHz (200 samples a cycle), its loop over whole cycles: a steady tone a
+// note plays at any pitch.
+std::shared_ptr<OpData> sawSample(uint32_t key) {
+    constexpr uint32_t kRate = 44100;
+    std::vector<float> pcm(kRate * 2);
+    for (size_t i = 0; i < pcm.size(); ++i) {
+        double x = 0.0;
+        for (int n = 1; n <= 40; ++n)
+            x += std::sin(2.0 * std::numbers::pi * n * 220.5 * static_cast<double>(i) / kRate) / n;
+        pcm[i] = static_cast<float>(x);
+    }
+    const float root = static_cast<float>(69.0 + 12.0 * std::log2(220.5 / 440.0));
+    return sampleData(key, std::move(pcm), kRate, root);
+}
+
+void sampleChecks(const int (&factors)[4]) {
+    std::printf("samples:\n");
+    // Played 1, 2 and 3 octaves above its root: the energy off the note's harmonics.
+    {
+        bool clean = true, better = true;
+        for (int octaves = 1; octaves <= 3; ++octaves) {
+            double db[4];
+            const int key = 57 + 12 * octaves;
+            for (int f = 0; f < 4; ++f) {
+                DataEngine d(factors[f]);
+                d.sample(sawSample(kUserDataBase + 20));
+                d.e.p[paramIndex(0, OpParam::LoopMode)] = static_cast<double>(SampleLoop::Forward);
+                d.e.p[paramIndex(0, OpParam::LoopStart)] = 2000.0 / 88199.0; // 10 cycles in
+                d.e.p[paramIndex(0, OpParam::LoopEnd)] = 82000.0 / 88199.0;  // 400 cycles on
+                d.e.noteOn(key);
+                d.e.render(4800);
+                db[f] = unexpectedDb(d.e.render(kFftSize), harmonics(keyHz(key)));
+            }
+            std::printf("      %d octave(s) up: 1x %7.1f   2x %7.1f   4x %7.1f   8x %7.1f\n", octaves, db[0], db[1], db[2],
+                        db[3]);
+            clean = clean && (octaves < 3 || db[1] < -60.0);
+            better = better && db[3] < db[0] + 3.0;
+        }
+        check(clean, "a sample three octaves above its root stays 60 dB clean of aliasing at 2x");
+        check(better, "and oversampling doesn't make it worse");
+    }
+
+    // A sine sample whose loop's points don't fall on whole cycles, crossfaded (Forward) or turned round (Ping-Pong):
+    // no sample steps further than the sine's own do, by more than its crossfade's swell.
+    {
+        constexpr uint32_t kRate = 48000;
+        std::vector<float> sine(kRate);
+        for (size_t i = 0; i < sine.size(); ++i)
+            sine[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * 441.0 * i / kRate));
+        const auto data = sampleData(kUserDataBase + 21, sine, kRate, 69.0f);
+        auto worstStep = [&](SampleLoop loop, bool modulated) {
+            DataEngine d(2);
+            d.sample(data);
+            d.e.p[paramIndex(0, OpParam::LoopMode)] = static_cast<double>(loop);
+            d.e.p[paramIndex(0, OpParam::LoopStart)] = 0.2137;
+            d.e.p[paramIndex(0, OpParam::LoopEnd)] = 0.4419;
+            d.e.p[paramIndex(0, OpParam::LoopFade)] = 0.3;
+            if (modulated) {
+                lfoOn(d.e.p, paramIndex(0, OpParam::LoopStart), 0.05, 3.0);
+                d.e.p[slotTargetIndex(0, 1)] = slotTargetValue(paramIndex(0, OpParam::LoopEnd));
+                d.e.p[slotAmountIndex(0, 1)] = 0.05;
+            }
+            d.e.noteOn(69);
+            const std::vector<float> out = d.e.render(kRate * 2);
+            double step = 0.0, peak = 0.0;
+            for (size_t i = 4800; i < out.size(); ++i) {
+                step = std::max(step, std::abs(static_cast<double>(out[i]) - out[i - 1]));
+                peak = std::max(peak, std::abs(static_cast<double>(out[i])));
+            }
+            // A sine's largest step, at its own level.
+            return step / (peak * 2.0 * std::sin(std::numbers::pi * 441.0 / kRate));
+        };
+        const double forward = worstStep(SampleLoop::Forward, false), pingPong = worstStep(SampleLoop::PingPong, false);
+        const double moving = worstStep(SampleLoop::Forward, true);
+        std::printf("      loops' largest steps against the sine's own: forward %.2f, ping-pong %.2f, points modulated "
+                    "%.2f\n",
+                    forward, pingPong, moving);
+        check(forward < 1.5 && pingPong < 1.5, "a forward or ping-pong loop off whole cycles doesn't click");
+        check(moving < 1.5, "a loop whose points an LFO moves doesn't click");
+    }
+
+    // How a voice ends: a short sample (0.1 s) with no loop, a long release.
+    auto ending = [](SampleMode mode, bool loop, bool letGo, int &endedAt) {
+        DataEngine d(2);
+        std::vector<float> pcm(4800);
+        for (size_t i = 0; i < pcm.size(); ++i)
+            pcm[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * 441.0 * i / 48000.0));
+        d.sample(sampleData(kUserDataBase + 22, pcm, 48000, 69.0f));
+        d.e.p[paramIndex(0, OpParam::SampleMode)] = static_cast<double>(mode);
+        d.e.p[paramIndex(0, OpParam::Release)] = normFromTime(2.0);
+        if (loop) {
+            d.e.p[paramIndex(0, OpParam::LoopMode)] = static_cast<double>(SampleLoop::Forward);
+            d.e.p[paramIndex(0, OpParam::LoopStart)] = 0.2;
+            d.e.p[paramIndex(0, OpParam::LoopEnd)] = 0.6;
+        }
+        d.e.noteOn(69);
+        endedAt = -1;
+        for (int block = 0; block < 200 && endedAt < 0; ++block) {
+            if (letGo && block == 10)
+                d.e.noteOff(69);
+            d.e.render(kBlock);
+            if (!d.e.synth().endedNotes().empty())
+                endedAt = block;
+        }
+        return endedAt;
+    };
+    int oneShot = 0, gate = 0, sustain = 0, gateLoop = 0;
+    ending(SampleMode::OneShot, false, false, oneShot);
+    ending(SampleMode::Gate, false, false, gate);
+    ending(SampleMode::Sustain, true, true, sustain);
+    ending(SampleMode::Gate, true, true, gateLoop);
+    std::printf("      voices ended at block: one-shot %d, gate %d (both keys down), sustain let go %d, gate looped let "
+                "go %d\n",
+                oneShot, gate, sustain, gateLoop);
+    check(oneShot >= 0 && oneShot < 25, "a one-shot sample ends its voice (NOTE_END) at its end, the key still down");
+    check(gate >= 0 && gate < 25, "a Gate sample with no loop ends its voice at its end too");
+    check(sustain >= 10 && sustain < 30 && gateLoop < 0,
+          "Sustain leaves its loop once let go of and plays to its end, where Gate loops on through its release");
+
+    // Linear FM through zero, deep: the playhead runs backward too, and stays within the sample.
+    {
+        DataEngine d(2);
+        d.sample(sawSample(kUserDataBase + 23));
+        d.e.p[paramIndex(1, OpParam::Enabled)] = 1.0;
+        d.e.p[matrixIndex(1, 0)] = 1.0;
+        d.e.p[routeModeIndex(1, 0)] = static_cast<double>(RouteMode::LinearFm);
+        d.e.p[paramIndex(1, OpParam::Ratio)] = normFromRatio(0.5);
+        d.e.noteOn(57);
+        const std::vector<float> out = d.e.render(48000);
+        Telemetry t;
+        d.e.synth().telemetry(t);
+        const bool finite = std::all_of(out.begin(), out.end(), [](float x) { return std::isfinite(x) && std::abs(x) < 8.0f; });
+        check(finite && t.opSamplePos[0] >= 0.0f && t.opSamplePos[0] <= 1.0f,
+              "Linear FM through zero on a sample stays finite and within the sample");
+    }
+
+    // The operators' ids past their 50th field go on from 38000 (no field is there yet: the static_asserts in
+    // params.h pin the ranges), and their fields so far keep theirs.
+    check(idOfIndex(paramIndex(0, OpParam::TablePos)) == 134 && idOfIndex(paramIndex(kOps - 1, OpParam::SampleMode)) == 393 &&
+              indexOfId(38000) == -1,
+          "the operators' new fields have their ids, and 38000 on is theirs to grow into");
+}
+
+// --- Reading other plugins' files.
+
+// A WAV file's bytes: `samples` (per channel, interleaved), in PCM of `bits` or float 32, with `chunks` before the
+// data (each its four-letter id and body).
+std::vector<uint8_t> wavBytes(const std::vector<float> &samples, int channels, int bits, bool real, uint32_t rate,
+                              const std::vector<std::pair<std::string, std::vector<uint8_t>>> &chunks = {}) {
+    std::vector<uint8_t> out;
+    auto word = [&](uint32_t w) {
+        for (int i = 0; i < 4; ++i)
+            out.push_back(static_cast<uint8_t>(w >> (8 * i)));
+    };
+    auto half = [&](uint16_t h) {
+        out.push_back(static_cast<uint8_t>(h));
+        out.push_back(static_cast<uint8_t>(h >> 8));
+    };
+    auto tag = [&](const std::string &t) { out.insert(out.end(), t.begin(), t.begin() + 4); };
+    tag("RIFF");
+    word(0); // fixed below
+    tag("WAVE");
+    tag("fmt ");
+    word(16);
+    half(real ? 3 : 1);
+    half(static_cast<uint16_t>(channels));
+    word(rate);
+    word(rate * channels * bits / 8);
+    half(static_cast<uint16_t>(channels * bits / 8));
+    half(static_cast<uint16_t>(bits));
+    for (const auto &[id, body] : chunks) {
+        tag(id);
+        word(static_cast<uint32_t>(body.size()));
+        out.insert(out.end(), body.begin(), body.end());
+        if (body.size() % 2)
+            out.push_back(0);
+    }
+    tag("data");
+    word(static_cast<uint32_t>(samples.size() * bits / 8));
+    for (float x : samples) {
+        if (real) {
+            uint32_t w;
+            std::memcpy(&w, &x, 4);
+            word(w);
+        } else if (bits == 16) {
+            half(static_cast<uint16_t>(static_cast<int16_t>(std::lround(std::clamp(x, -1.0f, 1.0f) * 32767.0f))));
+        } else if (bits == 24) {
+            const auto v = static_cast<int32_t>(std::lround(std::clamp(x, -1.0f, 1.0f) * 8388607.0f));
+            for (int i = 0; i < 3; ++i)
+                out.push_back(static_cast<uint8_t>(static_cast<uint32_t>(v) >> (8 * i)));
+        }
+    }
+    const uint32_t size = static_cast<uint32_t>(out.size() - 8);
+    std::memcpy(&out[4], &size, 4);
+    return out;
+}
+
+std::vector<uint8_t> words(std::initializer_list<uint32_t> list) {
+    std::vector<uint8_t> out;
+    for (uint32_t w : list)
+        for (int i = 0; i < 4; ++i)
+            out.push_back(static_cast<uint8_t>(w >> (8 * i)));
+    return out;
+}
+
+// `count` frames of `size` samples, each frame k a sine at harmonic k + 1 (then scaled to 0.9), one after another.
+std::vector<float> testFrames(int count, int size) {
+    std::vector<float> out(static_cast<size_t>(count) * size);
+    for (int f = 0; f < count; ++f)
+        for (int i = 0; i < size; ++i)
+            out[static_cast<size_t>(f) * size + i] =
+                0.9f * static_cast<float>(std::sin(2.0 * std::numbers::pi * ((f % 8) + 1) * i / size));
+    return out;
+}
+
+// A FLAC stream holding `samples` (mono, 16 bits) at `rate`, each frame's subframe verbatim, as a reader must read.
+std::vector<uint8_t> flacBytes(const std::vector<float> &samples, uint32_t rate) {
+    std::vector<uint8_t> out = {'f', 'L', 'a', 'C'};
+    struct BitWriter {
+        std::vector<uint8_t> &to;
+        int bits = 0;
+        uint32_t acc = 0;
+        void put(uint32_t value, int n) {
+            for (int i = n - 1; i >= 0; --i) {
+                acc = (acc << 1) | ((value >> i) & 1u);
+                if (++bits == 8) {
+                    to.push_back(static_cast<uint8_t>(acc));
+                    acc = 0;
+                    bits = 0;
+                }
+            }
+        }
+        void align() {
+            while (bits != 0)
+                put(0, 1);
+        }
+    };
+    // STREAMINFO, the last metadata block.
+    out.push_back(0x80);
+    out.push_back(0);
+    out.push_back(0);
+    out.push_back(34);
+    {
+        BitWriter w{out};
+        w.put(4096, 16);
+        w.put(4096, 16);
+        w.put(0, 24);
+        w.put(0, 24);
+        w.put(rate, 20);
+        w.put(0, 3);  // one channel
+        w.put(15, 5); // 16 bits
+        w.put(0, 4);
+        w.put(static_cast<uint32_t>(samples.size()), 32);
+        for (int i = 0; i < 16; ++i)
+            w.put(0, 8); // MD5
+    }
+    const size_t block = 4096;
+    for (size_t at = 0, frame = 0; at < samples.size(); at += block, ++frame) {
+        const size_t n = std::min(block, samples.size() - at);
+        BitWriter w{out};
+        w.put(0x3FFE, 14);
+        w.put(0, 1);
+        w.put(0, 1);
+        w.put(7, 4); // block size: 16 bits after the header
+        w.put(0, 4); // rate from STREAMINFO
+        w.put(0, 4); // mono
+        w.put(4, 3); // 16 bits
+        w.put(0, 1);
+        w.put(static_cast<uint32_t>(frame), 8); // frame number, < 128
+        w.put(static_cast<uint32_t>(n - 1), 16);
+        w.put(0, 8); // CRC-8 (not checked)
+        w.put(0, 1);
+        w.put(1, 6); // verbatim
+        w.put(0, 1);
+        for (size_t i = 0; i < n; ++i)
+            w.put(static_cast<uint32_t>(static_cast<int16_t>(std::lround(samples[at + i] * 32767.0f))) & 0xFFFFu, 16);
+        w.align();
+        w.put(0, 16); // CRC-16
+    }
+    return out;
+}
+
+std::vector<uint8_t> textBytes(const std::string &s) { return std::vector<uint8_t>(s.begin(), s.end()); }
+
+std::string base64(const std::vector<float> &floats) {
+    static const char *const kChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const auto *b = reinterpret_cast<const uint8_t *>(floats.data());
+    const size_t n = floats.size() * 4;
+    std::string out;
+    for (size_t i = 0; i < n; i += 3) {
+        const uint32_t v = (uint32_t{b[i]} << 16) | (i + 1 < n ? uint32_t{b[i + 1]} << 8 : 0u) | (i + 2 < n ? b[i + 2] : 0u);
+        out += kChars[(v >> 18) & 63];
+        out += kChars[(v >> 12) & 63];
+        out += i + 1 < n ? kChars[(v >> 6) & 63] : '=';
+        out += i + 2 < n ? kChars[v & 63] : '=';
+    }
+    return out;
+}
+
+// Whether two tables' frames are alike, sample by sample, within `tolerance`.
+bool sameFrames(const std::vector<float> &a, const std::vector<float> &b, double tolerance) {
+    if (a.size() != b.size())
+        return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (std::abs(a[i] - b[i]) > tolerance)
+            return false;
+    return true;
+}
+
+void readerChecks() {
+    std::printf("reading wavetable and sample files:\n");
+    const std::vector<float> frames = testFrames(4, 2048);
+    // The same table, as stored: the DC out and the loudest at 1.
+    int expectedFrames = 0;
+    const std::vector<float> expected = normalizeFrames(frames.data(), 4, 2048, expectedFrames);
+    auto read = [](const std::vector<uint8_t> &bytes, ReadAs as = ReadAs::Table, int size = 0) {
+        return readTableFile(bytes.data(), bytes.size(), "test.wav", as, size);
+    };
+    const std::vector<std::pair<std::string, std::vector<uint8_t>>> clm = {
+        {"clm ", textBytes("<!>2048 10000000 wavetable (www.xferrecords.com)")}};
+    {
+        const TableFile f16 = read(wavBytes(frames, 1, 16, false, 44100, clm));
+        const TableFile f24 = read(wavBytes(frames, 1, 24, false, 44100, clm));
+        const TableFile f32 = read(wavBytes(frames, 1, 32, true, 44100, clm));
+        check(f16.error == ReadError::None && f16.frames == 4 && f16.sixteenBit && sameFrames(f16.data, expected, 1e-3) &&
+                  f24.frames == 4 && sameFrames(f24.data, expected, 1e-5) && f32.frames == 4 &&
+                  sameFrames(f32.data, expected, 1e-6) && f32.format == "clm",
+              "a Serum table reads in 16, 24 and float 32 bits, its frames as written");
+    }
+    {
+        std::vector<float> stereo;
+        for (float x : frames) {
+            stereo.push_back(0.5f * x);
+            stereo.push_back(0.5f * x);
+        }
+        const TableFile f = read(wavBytes(stereo, 2, 32, true, 44100, clm));
+        check(f.frames == 4 && sameFrames(f.data, expected, 1e-5), "a stereo file's channels are summed");
+    }
+    {
+        const std::vector<float> small = testFrames(8, 1024);
+        const TableFile f = read(wavBytes(small, 1, 32, true, 44100,
+                                          {{"clm ", textBytes("<!>1024 10000000 wavetable (www.xferrecords.com)")}}));
+        const TableFile none = read(wavBytes(frames, 1, 32, true, 44100));
+        check(f.frames == 8 && f.frameSize == 1024 && !f.guessed && none.frames == 4 && none.guessed &&
+                  sameFrames(none.data, expected, 1e-5),
+              "clm's frame size is read (1024 here), and a file with none takes 2048, guessed");
+    }
+    {
+        const TableFile f = read(wavBytes(testFrames(600, 2048), 1, 16, false, 44100, clm));
+        check(f.frames == FrameTable::kMaxFrames && f.fileFrames == 600, "more than 512 frames are thinned to 512");
+    }
+    {
+        std::vector<uint8_t> broken = wavBytes(frames, 1, 16, false, 44100, clm);
+        broken[12] = 'x'; // not "fmt "
+        const TableFile f = read(broken);
+        const TableFile notAudio = read(textBytes("this is not a wave file at all, just some text"));
+        check(f.error != ReadError::None && notAudio.error == ReadError::NotAudio, "a broken RIFF is refused");
+    }
+    // The other chunks that give a frame size.
+    {
+        const std::vector<float> small = testFrames(4, 1024);
+        int n = 0;
+        const std::vector<float> want = normalizeFrames(small.data(), 4, 1024, n);
+        const TableFile uhwt = read(wavBytes(frames, 1, 32, true, 44100, {{"uhWT", words({0})}}));
+        const TableFile srge = read(wavBytes(small, 1, 32, true, 44100, {{"srge", words({1, 1024})}}));
+        const TableFile cue = read(wavBytes(small, 1, 32, true, 44100,
+                                            {{"cue ", words({2, 1, 0, 0x61746164, 0, 0, 0, 2, 1024, 0x61746164, 0, 0, 1024})}}));
+        const TableFile smpl = read(wavBytes(small, 1, 32, true, 44100,
+                                             {{"smpl", words({0, 0, 22675, 60, 0, 0, 0, 1, 0, 0, 0, 0, 1023, 0, 0})}}));
+        check(uhwt.frames == 4 && uhwt.format == "uhWT" && srge.frames == 4 && srge.format == "srge" &&
+                  sameFrames(srge.data, want, 1e-5) && cue.frames == 4 && cue.format == "cue" && smpl.frames == 4 &&
+                  smpl.format == "smpl",
+              "uhWT, srge, cue points and smpl give a table's frame size");
+    }
+    // FLAC, its frame size by the fallback.
+    {
+        const TableFile f = read(flacBytes(frames, 44100));
+        check(f.error == ReadError::None && f.frames == 4 && f.format == "flac" && sameFrames(f.data, expected, 1e-3),
+              "a FLAC file reads, its frames as written");
+    }
+    // .wt: int16 at both scales, float 32, and one flagged a sample.
+    {
+        auto wt = [&](uint16_t flags, bool int16, double scale) {
+            std::vector<uint8_t> out = {'v', 'a', 'w', 't'};
+            const std::vector<uint8_t> head = words({2048});
+            out.insert(out.end(), head.begin(), head.end());
+            out.push_back(4);
+            out.push_back(0);
+            out.push_back(static_cast<uint8_t>(flags));
+            out.push_back(static_cast<uint8_t>(flags >> 8));
+            for (float x : frames) {
+                if (int16) {
+                    const auto v = static_cast<int16_t>(std::lround(x * scale));
+                    out.push_back(static_cast<uint8_t>(v));
+                    out.push_back(static_cast<uint8_t>(static_cast<uint16_t>(v) >> 8));
+                } else {
+                    uint8_t b[4];
+                    std::memcpy(b, &x, 4);
+                    out.insert(out.end(), b, b + 4);
+                }
+            }
+            return read(out);
+        };
+        const TableFile full = wt(0x04 | 0x08, true, 32767.0), quarter = wt(0x04, true, 16383.0), real = wt(0, false, 1.0);
+        const TableFile sample = wt(0x01, false, 1.0);
+        check(full.frames == 4 && sameFrames(full.data, expected, 1e-3) && quarter.frames == 4 &&
+                  sameFrames(quarter.data, expected, 1e-3) && real.frames == 4 && sameFrames(real.data, expected, 1e-6) &&
+                  sample.sample && sample.frames == 4 * 2048,
+              "a .wt reads in int16 at either scale and in float 32, and one flagged a sample as a sample");
+    }
+    // .vitaltable: two keyframes, filled in between.
+    {
+        std::vector<float> a(2048), b(2048);
+        for (int i = 0; i < 2048; ++i) {
+            a[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * i / 2048));
+            b[i] = static_cast<float>(std::sin(2.0 * std::numbers::pi * 2 * i / 2048));
+        }
+        const std::string json = "{\"author\":\"\",\"groups\":[{\"components\":[{\"type\":\"Wave Source\",\"keyframes\":["
+                                 "{\"position\":0,\"wave_data\":\"" + base64(a) + "\"},{\"position\":4,\"wave_data\":\"" +
+                                 base64(b) + "\"}]}]}],\"name\":\"two\",\"version\":\"1.0\"}";
+        const TableFile f = readTableFile(reinterpret_cast<const uint8_t *>(json.data()), json.size(), "two.vitaltable",
+                                          ReadAs::Table);
+        bool between = f.frames == 5;
+        for (int i = 0; between && i < 2048; i += 97) // the middle frame half of each
+            between = std::abs(f.data[2 * 2048 + i] - (0.5f * a[i] + 0.5f * b[i]) / 1.0f) < 0.02f;
+        const std::string preset = "{\"settings\":{\"osc_1_on\":1}}";
+        const TableFile vital = readTableFile(reinterpret_cast<const uint8_t *>(preset.data()), preset.size(),
+                                              "x.vital", ReadAs::Table);
+        check(f.error == ReadError::None && between && vital.error == ReadError::PresetOnly,
+              "a .vitaltable's keyframes are read and filled in between; a Vital preset says its table is inside it");
+    }
+    // A frame size of 4096 brought to 2048, its harmonics up to 1024 as they were.
+    {
+        const std::vector<float> big = testFrames(2, 4096);
+        const TableFile f = read(wavBytes(big, 1, 32, true, 44100, {{"clm ", textBytes("<!>4096 1")}}));
+        bool same = f.frames == 2;
+        for (int frame = 0; same && frame < 2; ++frame) {
+            const auto was = harmonicsOf(&big[static_cast<size_t>(frame) * 4096], 4096, 1023);
+            const auto now = harmonicsOf(&f.data[static_cast<size_t>(frame) * 2048], 2048, 1023);
+            for (int n = 1; n <= 1023; ++n)
+                same = same && std::abs(std::abs(now[n]) - std::abs(was[n]) / 0.9) < 1e-3;
+        }
+        check(same, "a frame size of 4096 is brought to 2048, its harmonics up to 1024 as they were");
+    }
+    // A file with no chunk takes the frame size its folder gives.
+    {
+        const std::vector<float> small = testFrames(6, 512);
+        const TableFile f = read(wavBytes(small, 1, 32, true, 44100), ReadAs::Table, 512);
+        const TableFile guessed = read(wavBytes(small, 1, 32, true, 44100));
+        check(f.frames == 6 && f.frameSize == 512 && guessed.frameSize == 1024,
+              "a file with no chunk takes the frame size its folder gives");
+    }
+    // Every format cut short, or lying about its sizes, is refused without reading past its end.
+    {
+        const std::vector<std::vector<uint8_t>> files = {wavBytes(frames, 1, 16, false, 44100, clm), flacBytes(frames, 44100)};
+        bool refused = true;
+        for (const std::vector<uint8_t> &whole : files)
+            for (size_t cut : {size_t{3}, size_t{11}, size_t{40}, size_t{45}, whole.size() / 2, whole.size() - 1}) {
+                std::vector<uint8_t> part(whole.begin(), whole.begin() + static_cast<std::ptrdiff_t>(cut));
+                part.shrink_to_fit(); // a read past its end shows under the debug heap and sanitizers
+                const TableFile f = readTableFile(part.data(), part.size(), "cut", ReadAs::Table);
+                refused = refused && (f.error != ReadError::None || f.frames <= 4);
+            }
+        std::vector<uint8_t> lying = wavBytes(frames, 1, 16, false, 44100, clm);
+        const uint32_t huge = 0x7FFFFFF0;
+        std::memcpy(&lying[lying.size() - frames.size() * 2 - 4], &huge, 4); // the data chunk's size
+        const TableFile f = read(lying);
+        const std::vector<uint8_t> wt = {'v', 'a', 'w', 't', 0, 8, 0, 0, 200, 0, 0, 0, 1, 2, 3};
+        const TableFile w = read(wt);
+        check(refused && f.frames == 4 && w.error != ReadError::None,
+              "files cut short, or lying about their sizes, are read no further than they go");
+    }
+    // Stored, each frame has no DC and the loudest frame peaks at 1.
+    {
+        std::vector<float> offset = frames;
+        for (size_t i = 0; i < offset.size(); ++i)
+            offset[i] = offset[i] * (i < 2048 ? 0.5f : 0.25f) + 0.3f;
+        const TableFile f = read(wavBytes(offset, 1, 32, true, 44100, clm));
+        double dc = 0.0, peak = 0.0;
+        for (int i = 0; i < 2048; ++i)
+            dc += f.data[i];
+        for (float x : f.data)
+            peak = std::max(peak, static_cast<double>(std::abs(x)));
+        check(std::abs(dc / 2048) < 1e-5 && std::abs(peak - 1.0) < 1e-5,
+              "a table's frames lose their DC, and one gain brings the loudest to 1");
+    }
+    // A sample's root and loop from its smpl chunk.
+    {
+        std::vector<float> pcm(10000);
+        for (size_t i = 0; i < pcm.size(); ++i)
+            pcm[i] = static_cast<float>(std::sin(i * 0.05));
+        const TableFile f = read(wavBytes(pcm, 1, 16, false, 32000,
+                                          {{"smpl", words({0, 0, 31250, 64, 0x80000000u, 0, 0, 1, 0, 0, 0, 1000, 8999, 0, 0})}}),
+                                 ReadAs::Sample);
+        check(f.sample && f.rate == 32000 && std::abs(f.root - 64.5f) < 1e-3 && f.loopStart == 1000 && f.loopEnd == 9000,
+              "a sample's rate, root and loop come from its file");
+    }
+}
+
+// A stream that moves at most five bytes a call, as a host's may.
+struct TrickleIn {
+    std::vector<unsigned char> data;
+    size_t at = 0;
+    clap_istream_t in{this, [](const clap_istream_t *s, void *buffer, uint64_t size) -> int64_t {
+                          auto &t = *static_cast<TrickleIn *>(s->ctx);
+                          const size_t n = std::min<size_t>({static_cast<size_t>(size), size_t{5}, t.data.size() - t.at});
+                          std::memcpy(buffer, t.data.data() + t.at, n);
+                          t.at += n;
+                          return static_cast<int64_t>(n);
+                      }};
+};
+
+void dataStateChecks() {
+    std::printf("the DATA chunk:\n");
+    ParamValues values;
+    for (int i = 0; i < kParamCount; ++i)
+        values[i] = paramTable()[i].def;
+    // Two tables (one stored in 16 bits) and a sample; operators A and C share the first.
+    DataStore store;
+    auto table = tableData(0, cycleFrame(5, [](int n) { return 0.5 / n; }), 1); // within full scale, as a file's is
+    table->int16 = true;
+    for (float &x : table->pcm)
+        x = static_cast<float>(std::lround(x * 32767.0f)) / 32767.0f;
+    table->name = "Saw-ish";
+    const uint32_t a = store.add(table);
+    const uint32_t b = store.add(tableData(0, testFrames(3, 2048), 3));
+    std::vector<float> pcm(3000);
+    for (size_t i = 0; i < pcm.size(); ++i)
+        pcm[i] = static_cast<float>(std::sin(i * 0.1));
+    auto sample = sampleData(0, pcm, 44100, 61.5f);
+    sample->loopStart = 100;
+    sample->loopEnd = 2000;
+    sample->origin = "Drums/kick.wav";
+    const uint32_t s = store.add(sample);
+    values[paramIndex(0, OpParam::Table)] = a;
+    values[paramIndex(2, OpParam::Table)] = a;
+    values[paramIndex(1, OpParam::Table)] = b;
+    values[paramIndex(1, OpParam::Sample)] = s;
+    std::vector<uint32_t> keys;
+    for (int op = 0; op < kOps; ++op)
+        for (const OpParam p : {OpParam::Table, OpParam::Sample})
+            keys.push_back(dataKey(values[paramIndex(op, p)]));
+    const std::vector<const OpData *> named = store.named(keys);
+    std::vector<unsigned char> bytes;
+    const clap_ostream_t out = memoryOut(bytes);
+    const bool written = writePatch(&out, values, gui::UiLayout{}) && writeSettings(&out, {}) &&
+                         writePresetChunk(&out, false, "") && writeDataChunk(&out, named);
+    TrickleIn in{bytes};
+    ParamValues loaded;
+    const bool read = readParams(&in.in, loaded);
+    readLayout(&in.in);
+    readSettings(&in.in);
+    std::string preset;
+    bool edited = false;
+    readPresetChunk(&in.in, preset, edited);
+    std::vector<std::shared_ptr<OpData>> entries;
+    const bool data = readDataChunk(&in.in, entries);
+    bool same = entries.size() == 3;
+    for (const auto &entry : entries) {
+        const OpData *was = store.find(entry->key);
+        same = same && was && was->kind == entry->kind && was->frames == entry->frames && was->pcm == entry->pcm &&
+               was->name == entry->name && was->origin == entry->origin && was->root == entry->root &&
+               was->loopStart == entry->loopStart && was->loopEnd == entry->loopEnd && was->int16 == entry->int16;
+        if (was)
+            same = same && contentKey(*entry) == entry->key; // the key it hashes to, loaded back
+    }
+    std::printf("      %zu of %zu entries back, alike: %s\n", entries.size(), named.size(), same ? "yes" : "no");
+    check(written && read && data && named.size() == 3 && same && loaded[paramIndex(0, OpParam::Table)] == a,
+          "a state's tables and samples come back as saved, keys and samples alike, through a 5-byte stream, a table "
+          "two operators share stored once");
+    // Cut short inside the chunk: the params stand, and the entries that came whole.
+    {
+        TrickleIn cut{std::vector<unsigned char>(bytes.begin(), bytes.end() - 100)};
+        ParamValues p;
+        const bool params = readParams(&cut.in, p);
+        readLayout(&cut.in);
+        readSettings(&cut.in);
+        readPresetChunk(&cut.in, preset, edited);
+        std::vector<std::shared_ptr<OpData>> some;
+        readDataChunk(&cut.in, some);
+        check(params && p[paramIndex(1, OpParam::Sample)] == s && some.size() == 2,
+              "a state cut short inside DATA keeps its params, and the entries that came whole");
+    }
+    // An older reader stops after the preset chunk: what it read is the same, the chunk after it never looked at.
+    {
+        TrickleIn older{bytes};
+        ParamValues p;
+        const bool params = readParams(&older.in, p);
+        readLayout(&older.in);
+        const Settings settings = readSettings(&older.in);
+        const bool presetRead = readPresetChunk(&older.in, preset, edited);
+        check(params && p == loaded && settings.oversampling == kDefaultOversampling && presetRead,
+              "an older build reads the state up to its preset chunk as before, the DATA chunk after it left alone");
+    }
+    // A preset file: the patch, then the DATA chunk.
+    {
+        std::vector<unsigned char> file;
+        const clap_ostream_t f = memoryOut(file);
+        writePatch(&f, values, gui::UiLayout{}, true);
+        writeDataChunk(&f, named);
+        TrickleIn back{file};
+        ParamValues p;
+        readParams(&back.in, p);
+        readLayout(&back.in);
+        std::vector<std::shared_ptr<OpData>> got;
+        check(readDataChunk(&back.in, got) && got.size() == 3, "a preset file carries its tables and samples");
+    }
+}
+
+void libraryChecks() {
+    std::printf("the wavetable library:\n");
+    namespace fs = std::filesystem;
+    std::error_code error;
+    const fs::path root = fs::temp_directory_path() / ("fmvibe-library-" + std::to_string(std::rand()));
+    fs::remove_all(root, error);
+    auto put = [&](const fs::path &path, const std::vector<uint8_t> &bytes) {
+        fs::create_directories(path.parent_path(), error);
+        std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char *>(bytes.data()),
+                                                    static_cast<std::streamsize>(bytes.size()));
+    };
+    auto utf8 = [](const fs::path &p) {
+        const std::u8string s = p.generic_u8string();
+        return std::string(reinterpret_cast<const char *>(s.data()), s.size());
+    };
+    const std::vector<std::pair<std::string, std::vector<uint8_t>>> clm = {{"clm ", textBytes("<!>2048 1")}};
+    const fs::path folder = root / "Synth";
+    put(folder / "Basic" / "saw.wav", wavBytes(testFrames(4, 2048), 1, 16, false, 44100, clm));
+    put(folder / "Basic" / "Deep" / "square.wt",
+        [] {
+            std::vector<uint8_t> out = {'v', 'a', 'w', 't', 0, 4, 0, 0, 2, 0, 0, 0};
+            out.resize(out.size() + 2 * 1024 * 4, 0);
+            return out;
+        }());
+    put(folder / "sweep.flac", flacBytes(testFrames(3, 2048), 44100));
+    put(folder / "nochunk.wav", wavBytes(testFrames(6, 512), 1, 32, true, 44100));
+    put(folder / "broken.wav", textBytes("RIFF\x10\0\0\0WAVEjunkjunk"));
+    put(folder / "notes.txt", textBytes("not audio, and not listed"));
+    put(folder / "fake.wav", textBytes("this is text with a .wav name"));
+    const std::string cache = utf8(root / "cache.bin");
+    auto entryOf = [](const LibrarySource &s, const std::string &path) -> const LibraryEntry * {
+        for (const LibraryEntry &e : s.entries)
+            if (e.path == path)
+                return &e;
+        return nullptr;
+    };
+    {
+        TableLibrary library(cache);
+        const int source = library.addFolder(utf8(folder));
+        library.finish();
+        const LibrarySource &s = library.sources()[source];
+        const LibraryEntry *saw = entryOf(s, "Basic/saw.wav"), *square = entryOf(s, "Basic/Deep/square.wt");
+        const LibraryEntry *flac = entryOf(s, "sweep.flac"), *nochunk = entryOf(s, "nochunk.wav");
+        const LibraryEntry *broken = entryOf(s, "broken.wav"), *fake = entryOf(s, "fake.wav");
+        check(s.entries.size() == 6 && saw && saw->info.frames == 4 && saw->info.format == "clm" && square &&
+                  square->group == "Basic/Deep" && square->info.frames == 2 && flac && flac->info.frames == 3 && nochunk &&
+                  nochunk->info.guessed && nochunk->info.frameSize == 1024 && broken &&
+                  broken->info.error != ReadError::None && fake && fake->info.error == ReadError::NotAudio,
+              "a folder scanned lists every table at any depth with its frame size and count, the broken ones with why");
+        // Its frame size for files without one.
+        library.setFrameSize(source, 512);
+        library.finish();
+        const LibraryEntry *now = entryOf(library.sources()[source], "nochunk.wav");
+        check(now && now->info.frameSize == 512 && now->info.frames == 6 && !now->info.guessed,
+              "a folder's frame size is used for its files that have none");
+        // A folder inside it is the same source; its parent takes it in.
+        const int inside = library.addFolder(utf8(folder / "Basic"));
+        const size_t before = library.sources().size();
+        const int parent = library.addFolder(utf8(root));
+        library.finish();
+        check(inside == source && before == 1 && library.sources().size() == 1 && parent == 0 &&
+                  library.sources()[0].folder.path == utf8(root),
+              "a folder inside a source is that source, and its parent takes the source into itself");
+        library.removeFolder(0);
+        library.addFolder(utf8(folder));
+        library.setFrameSize(0, 0);
+        library.finish();
+    }
+    // Scanned again with nothing changed, no file is read again; a file touched is; one removed is gone.
+    {
+        TableLibrary library(cache);
+        library.setFolders({{"Synth", utf8(folder), 0}});
+        library.finish();
+        const int unchanged = library.filesRead();
+        put(folder / "sweep.flac", flacBytes(testFrames(5, 2048), 44100));
+        fs::last_write_time(folder / "sweep.flac", fs::last_write_time(folder / "sweep.flac") + std::chrono::seconds(5), error);
+        fs::remove(folder / "nochunk.wav", error);
+        library.rescan(0);
+        library.finish();
+        const LibraryEntry *flac = entryOf(library.sources()[0], "sweep.flac");
+        check(unchanged == 0 && library.filesRead() == 1 && flac && flac->info.frames == 5 &&
+                  !entryOf(library.sources()[0], "nochunk.wav"),
+              "a second scan reads only what changed, from its cache, and a file removed is gone");
+    }
+    // A folder that has gone, and nothing scanned outside the sources.
+    {
+        TableLibrary library;
+        library.setFolders({{"Gone", utf8(root / "nowhere"), 0}});
+        library.finish();
+        check(library.sources()[0].missing && library.sources()[0].entries.empty(), "a folder that has gone shows missing");
+    }
+    // Scanning on its thread while the main thread reads the list and removes a folder part-way.
+    {
+        TableLibrary library;
+        bool fine = true;
+        for (int round = 0; round < 20; ++round) {
+            library.setFolders({{"A", utf8(folder), 0}, {"B", utf8(root), 0}});
+            for (int k = 0; k < 50; ++k) {
+                library.poll();
+                for (const LibrarySource &s : library.sources())
+                    fine = fine && s.entries.size() < 100;
+                if (k == 10 && library.sources().size() == 2)
+                    library.removeFolder(0);
+            }
+            library.finish();
+            fine = fine && library.sources().size() == 1 && !library.sources()[0].scanning;
+        }
+        check(fine, "scans run on their thread while the list is read and a folder removed part-way");
+    }
+    // Twenty thousand small files, scanned in good time.
+    {
+        const fs::path many = root / "Many";
+        fs::create_directories(many, error);
+        const std::vector<uint8_t> tiny = wavBytes(testFrames(1, 2048), 1, 16, false, 44100, clm);
+        for (int i = 0; i < TableLibrary::kMaxFiles; ++i)
+            std::ofstream(many / ("t" + std::to_string(i) + ".wav"), std::ios::binary)
+                .write(reinterpret_cast<const char *>(tiny.data()), 64); // headers only, cut short
+        TableLibrary library;
+        const auto start = std::chrono::steady_clock::now();
+        library.addFolder(utf8(many));
+        library.finish();
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        std::printf("      %zu files scanned in %.2f s\n", library.sources()[0].entries.size(), seconds);
+        check(library.sources()[0].entries.size() == static_cast<size_t>(TableLibrary::kMaxFiles) && seconds < 30.0,
+              "twenty thousand files scan in good time");
+    }
+    fs::remove_all(root, error);
+}
+
 } // namespace
 
 int main() {
@@ -4550,6 +5541,11 @@ int main() {
 
     noteAndVoiceChecks();
     bendTelemetryChecks();
+    wavetableChecks(factors);
+    sampleChecks(factors);
+    readerChecks();
+    dataStateChecks();
+    libraryChecks();
 
     // --- What oversampling costs: 16 voices of a 6-operator stack, one second.
     std::printf("cost (16 voices, 6 operators, ms per second of audio):\n");

@@ -157,7 +157,7 @@ constexpr float kOpRuleY = kInspector.y + 166.0f;
 constexpr float kOpTabsY = kInspector.y + 172.0f;
 constexpr float kOpTabH = 22.0f;
 // An even height keeps the envelope's levels (from 12 px under its top to 10 px over its bottom) on whole pixels at 0.5.
-constexpr Rect kOpDisplay{kInspector.x + 16.0f, kOpTabsY + kOpTabH, kInspector.w - 32.0f, 116.0f};
+constexpr Rect kOpDisplay{kInspector.x + 16.0f, kOpTabsY + kOpTabH, kInspector.w - 32.0f, 96.0f};
 // The well, the tabs and the display; INPUTS, with no controls under it, takes it down to the lens's bottom.
 constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpDisplay.h - kOpTabsY};
 constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};

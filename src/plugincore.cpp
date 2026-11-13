@@ -389,8 +389,10 @@ bool PluginCore::saveState(const clap_ostream_t *stream, bool settings) const {
         if (!writePresetChunk(stream, patchEdited(), utf8(std::filesystem::path(presetFile()))))
             return false;
     }
-    // Last, the tables and samples the params name that the patch holds itself (not the factory tables).
-    return writeDataChunk(stream, data().named(namedKeys(*values)));
+    // Last, the tables and samples the params name that the patch holds itself (not the factory tables); a patch with
+    // none has no DATA chunk, its bytes as they were before there was one.
+    const std::vector<const OpData *> named = data().named(namedKeys(*values));
+    return named.empty() || writeDataChunk(stream, named);
 }
 
 bool PluginCore::loadState(const clap_istream_t *stream, bool settings) {

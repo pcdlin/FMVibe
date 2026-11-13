@@ -18,6 +18,42 @@ What the plugin does and how its editor works, in full. Building and installing 
     peak; the synth builds its tables again whenever the partials change. Noise has no pitch or unison: instead a **Slope** moves it from white through pink (−3 dB per
     octave) to brown (−6 dB per octave) at about the same loudness, and **Spread** (the Uni Spread param) widens it
     from mono to fully uncorrelated left and right;
+  - or, in the wave's place, a **Wavetable**: frames of a single cycle each, which **Position** (0–100 %, given to
+    hosts and modulated like any knob) scans, blending the two frames about it, so a Position at a frame plays that
+    frame alone, bit for bit. Its frames are band-limited as the waves are (a table a frame for each octave, with
+    the partials that fit under Nyquist there), so a table plays as cleanly high up as a saw; Position moves to a new
+    control block's value over the block's length. It modulates and is modulated as any wave is, through every route
+    mode, and takes unison, the warps and Note Sync. The **factory tables**, made by FMVibe and not read from files,
+    are Basic Shapes (sine, triangle, saw, square and a 25 % pulse, crossfading from one to the next), PWM, Harmonic Build, FM Sweep, Sync Sweep,
+    Resonant Sweep, Vowels, Fold and Odd to Even; a new Wavetable operator plays Basic Shapes. A table from a file (see
+    *Wavetables and samples from files* below) is copied into the patch;
+  - or a **Sample**: a recording played at the note's pitch, at its own speed on its **Root** note (C4 to begin
+    with, or the root its file names), from **Start** (a share of its length, given to hosts). Its **Loop** is Off,
+    Forward or Ping-Pong between **Loop Start** and **Loop End** (a loop shorter than 64 samples is none), its end
+    crossfading into its start over **Loop Fade** (a share of half the loop, equal power). Its **Mode** says what a
+    key let go of does: **Gate** keeps it looping through the envelope's release; **Sustain** lets it leave the loop
+    and play on to its end; **One-Shot** plays it to its end whatever the key does, its envelope never releasing.
+    Played to its end, a sample fades out over 2 ms and stops, and a voice whose every operator heard is a sample
+    played out ends, its key down or not. It is read through a set of halved copies (each half the rate of the one
+    before, through a steep filter), the one a note's pitch reads cleanly, between samples by a cubic curve, so a
+    sample played three octaves up keeps its aliasing far down. Phase modulation moves where it reads (a period of its
+    root a cycle), frequency modulation how fast (through 0 too, playing it backward, which stops at its start);
+    unison copies start up to Phase Random's share of 50 ms apart. Phase does nothing on a sample, and Note Sync and
+    the warps neither;
+  - **Wavetables and samples from files**: WAV (8, 16, 24 and 32-bit integer and 32 and 64-bit float, its channels
+    mixed to one, RF64 and extensible WAVs too), FLAC (read by FMVibe's own decoder), `.wt` and Vital's `.vitaltable` (its sample-based
+    tables; its line-drawn ones are refused, saying so). A WAV's frame size comes from what the writing synth put in
+    it (Serum's `clm` chunk, Surge's `srge`, u-he's `uhWT`, a cue list, a `smpl` loop), else from its folder's frame size,
+    else it is guessed from the length (2048, else 1024, 512, 256, 4096 or 128 dividing it into 2 to 512 frames; a
+    file of no more than 4096 points is one frame). A table's frames lose their DC and
+    take one gain across them (so a table's quiet frames stay quiet), at most 512 frames (thinned evenly past that)
+    and each brought to 2048 points by its spectrum. A sample keeps its rate and its `smpl` loop and root, up to 87 s
+    at 48 kHz. What a patch plays is in the patch, so a project or a preset plays the same on another machine
+    without the file: up to 16 MB a table or sample, 64 MB in all, as 16-bit when the file was and as floats
+    otherwise. The same table picked twice, or by two operators, is held once. Tables and samples are copied for the
+    patch, as the user picks them: other plugins' factory tables are theirs to share or not, and nothing of theirs
+    comes with FMVibe. In the browser demo, Import file… and + Add folder… open the browser's own pickers, and a
+    folder's files are read for that visit only;
   - **Ratio**, 0.50 to 64.00 times the note, set to the hundredth. It is stored on a log curve, so a host's knob
     gives 1 to 2 as much travel as 32 to 64, and a modulation's depth is the same interval wherever the ratio is set
     (a seventh of the range is an octave); modulated, it glides continuously, and goes on past 64 up to 128. Patches saved before it (state version
@@ -1239,9 +1275,14 @@ one may have changed since it last did.
   next to it does the same as clicking the selected tab. While the node is off, its page is dimmed below the summary
   line; its knobs still work.
   - Operators: the operator's sound in one block. At its left, as tall as two rows, the Ratio readout; at its right,
-    the waves as one segmented row of buttons, the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine,
-    Alt Sine, Organ, Vowel and Custom (picked, one of these shows on that button), and under them the pitch, detune,
-    phase and pan knobs, their labels on the Ratio readout's line. The Ratio readout is four digits of a 7-segment
+    the source switch, **WAVE | TABLE | SAMPLE** (each an undo step; WAVE brings back the wave the operator had
+    before, which the project keeps), and under it what the source picks: for WAVE the waves as one segmented row of
+    buttons, the common waves, then **…**, which lists Pulse, Half Sine, Abs Sine, Alt Sine, Organ, Vowel and Custom
+    (picked, one of these shows on that button); for TABLE a step back, the table's picker (its glyph, its name and a
+    chevron), which opens the table browser, and a step on (through the factory tables, the patch's own or the files
+    of the folder the table came from, round); for SAMPLE the sample's picker, which opens the browser on samples,
+    and an import button, which opens the file dialog. Under them the pitch, detune, phase and pan knobs, their
+    labels on the Ratio readout's line (a sample's Phase dimmed: it does nothing there). The Ratio readout is four digits of a 7-segment
     display (88.88, the tens dark below 10),
     each its own handle. A digit dragged up or down steps by its own place (tens 10, ones 1, tenths 0.1, hundredths
     0.01), a step every 6 px (24 with Shift), carrying into the next digit and held to 0.50 to 64.00; the wheel steps
@@ -1287,6 +1328,19 @@ one may have changed since it last did.
       (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
+    - **TABLE** (a Wavetable operator's, between UNISON and WARP; picking TABLE, or importing a table, opens it): the
+      table's frames as a stack seen from a little above and to the side, the first at the front, the frame Position
+      plays lit in the accent over them, and Position in % at the top left. Along the right, a depth axis: the knob's
+      value ringed, how far modulation takes it as a band, and the frame the newest voice plays as a diamond (with no
+      note, the knob's value with its modulation). Dragged up and down, the display sets Position, as the
+      **Position** knob under it does.
+    - **SAMPLE** (a Sample operator's, in WARP's place): the sample's waveform, its name at the top left and its
+      **ROOT** at the top right (dragged up and down, or typed after a double-click: a note name or number). Over its upper
+      part the loop's brackets, Loop Start's and Loop End's handles (Alt+drag puts them on zero crossings), the loop
+      shaded faintly and its fade a ramp up to its end, with the fade's handle on it; along its foot Start's tab. Each
+      drag is an undo step and a double-click puts a handle back. A line shows where the newest voice's first copy
+      plays. Under it **LOOP** (Off, Fwd, Ping) and **MODE** (Gate, Sus, 1-Shot). With no sample, a dashed card in the
+      display's place opens the file dialog.
     - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,
       which shows it in the inspector as a tab does; four buttons with the modes' glyphs, the one in force lit, each
       naming its mode on hover; the mode's name; and the route's depth as a label, dragged, typed and modulated as a
@@ -1297,6 +1351,25 @@ one may have changed since it last did.
     A noise operator shows Slope and Spread in the Ratio readout's place, and no Pitch, Detune or Phase; its first tab is
     **SPECTRUM**, its spectrum against white, pink and brown, and it has no WARP tab (picked, it shows its
     envelope).
+
+    The **table browser** takes the routing panel's place beside the inspector, opened by a table's or a sample's
+    picker (a second click closes it, as do **Done** and Escape). At its left the sources: **Factory** (FMVibe's
+    tables), **In this patch** (the tables and samples the patch holds), then the folders added, each with how many
+    files it lists (greyed out, and saying so in its tooltip, while it can't be found), and **+ Add folder…**, which
+    asks for a folder and names it after it. A folder's right-click menu renames it, sets the frame size for its files
+    that don't name one (Auto, 256, 512, 1024 or 2048), scans it again, shows it in Explorer or removes it. Folders are
+    kept in the settings file, every FMVibe editor sharing them, and scanned in the background (a list of what was
+    found kept in `tables-cache.bin` beside it, so they show at once the next time; a file is read again only once it
+    has changed); a folder of more than 20,000 files lists the first 20,000. In the middle the source's files, a
+    subfolder's under its name, which folds them: each its glyph, its name, its frames (or a sample's length) and its
+    format, with a ? after a guessed frame size; one that can't be read greyed out, its tooltip saying why (an
+    encrypted format, or a preset with its table inside, says to export the table from its synth as a WAV). A click on a row plays it at once,
+    an undo step each; the search over the list finds tables in every source, each source's under its name; Up and
+    Down pick a row there and Enter plays it. Escape empties the search, and then closes the browser, putting back
+    what the operator played as it opened (one undo step). At the right a preview of the row under the mouse (else
+    the one picked, else what the operator plays): a table's stack or a sample's waveform, with its path, format,
+    frame size and frames. **Import file…** opens the file dialog, as a sample's import button does. A file picked
+    from a folder, or imported, is copied into the patch, so a project plays without it.
     Its circle in the graph is labeled with its color instead of a ratio. The envelope is a curve with draggable
     points: the peak (attack), the end of the hold just after it, the sustain level (decay and sustain) and the end
     (release). The release starts at the sustain level's point: the sustain has no length of its own, lasting as
@@ -1658,7 +1731,7 @@ one may have changed since it last did.
     **Save As** (a disk with a plus) read and write a `.fmv` file through the standard file dialog, which always
     starts in the preset folder, wherever the host's last file dialog was left; Save As suggests the current
     preset's name. The file holds the same data as the host's
-    saved state, apart from the settings.
+    saved state, apart from the settings: the tables and samples the patch plays too.
   - **Save** (the disk) writes the patch over the file of the preset it is, after asking ("Overwrite …?"), and
     tells in a message that it saved or couldn't. It is on only for a preset loaded (or saved) from a file that has
     changed since; otherwise, and always for Init, it is greyed out and does nothing. Save As is greyed out too on
@@ -1741,13 +1814,14 @@ against the VST3 interfaces, with no wrapper in between, as one object that is b
 controller. Its state is the same bytes as the CLAP plugin's, so a `.fmv` preset loads in either; hosts see them
 as two different plugins, though, so a project made with one doesn't switch to the other by itself.
 
-Hosts are given 1,280 of FMVibe's 19,623 parameters: the globals, the operators, the matrix and the routes' modes,
+Hosts are given 1,292 of FMVibe's 19,683 parameters: the globals, the operators (a Wavetable's Position and a
+Sample's Start among them), the matrix and the routes' modes,
 the filters, the shapers, the macros' knobs, the note source's, the mod wheel's, velocity's and the pitch bend's own,
 and every modulation's depth and Amount (16 slots for each of the 28 sources, used or not). The rest are set in the editor only:
 the effects, the LFOs', envelopes' and other sources' own knobs, what each modulation targets and its aux, curve and
 bypass, the Curve sources' drawn shapes, the shaper curves and the note source's curve, the Custom waves' partials and their
-counts, the effects graph (its splits, joins and wires), the chain's retired order, the feedback's route modes and the
-retired fields. They are
+counts, which table or sample an operator plays and a sample's root, loop and mode, the effects graph (its splits,
+joins and wires), the chain's retired order, the feedback's route modes and the retired fields. They are
 saved with the project and in presets like the others, the editor's sources modulate them and its history undoes
 them, but hosts can't automate them and don't record their edits: an edit of one marks the project changed
 instead.

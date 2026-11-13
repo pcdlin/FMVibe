@@ -711,6 +711,8 @@ bool writeDataChunk(const clap_ostream_t *stream, const std::vector<const OpData
     putWord(bytes, kDataVersion);
     putWord(bytes, static_cast<uint32_t>(data.size()));
     for (const OpData *d : data) {
+        // In 16 bits only what fits them as it is: anything past full scale would come back clipped, so as floats.
+        const bool int16 = d->int16 && std::all_of(d->pcm.begin(), d->pcm.end(), [](float x) { return std::abs(x) <= 1.0f; });
         std::vector<unsigned char> entry;
         putWord(entry, d->key);
         putWord(entry, static_cast<uint32_t>(d->kind));
@@ -722,9 +724,9 @@ bool writeDataChunk(const clap_ostream_t *stream, const std::vector<const OpData
         putWord(entry, root);
         putWord(entry, d->loopStart);
         putWord(entry, d->loopEnd);
-        putWord(entry, d->int16 ? kFormatInt16 : kFormatFloat32);
+        putWord(entry, int16 ? kFormatInt16 : kFormatFloat32);
         putText(entry, d->name, kMaxDataName);
-        if (d->int16) {
+        if (int16) {
             for (float x : d->pcm) {
                 const auto s = static_cast<int16_t>(std::lround(std::clamp(x, -1.0f, 1.0f) * 32767.0f));
                 const auto *b = reinterpret_cast<const unsigned char *>(&s);

@@ -2316,7 +2316,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             r.mips = &sampleData->sample;
             const double rootHz = 440.0 * std::exp2((std::clamp(p[paramIndex(i, OpParam::SampleRoot)], 0.0, 127.0) - 69.0) / 12.0);
             r.stepScale = r.pmScale = sampleData->rate / rootHz;
-            r.level = r.mips->level(highest * r.stepScale);
+            r.level = r.mips->level(highest * r.stepScale, oversampling_ >= 2 ? 0.78 : 1.0);
             r.scale = 1.0 / static_cast<double>(int64_t{1} << r.level);
             r.maxStep = static_cast<double>(int64_t{1} << r.mips->levels);
             r.length = static_cast<double>(sampleData->frames);
@@ -2692,7 +2692,7 @@ void Synth::renderBlock(Voice &v, double *left, double *right, uint32_t hostFram
             tableLevel[i] = FrameTable::level(highest);
         if (sampleOp[i]) {
             SampleRead &sr = sampleRead[i];
-            sr.level = sr.mips->level(highest * sr.stepScale);
+            sr.level = sr.mips->level(highest * sr.stepScale, oversampling_ >= 2 ? 0.78 : 1.0);
             sr.scale = 1.0 / static_cast<double>(int64_t{1} << sr.level);
         }
     }

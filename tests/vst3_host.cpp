@@ -5,6 +5,7 @@
 // Usage: fmvibe-vst3-smoke <path\to\FMVibe.vst3\Contents\x86_64-win\FMVibe.vst3>
 
 #include "gui/controller.h" // UiLayout, to write a state with the modulation panel collapsed
+#include "opdata.h"           // a Wavetable operator's table, in a state's DATA chunk
 #include "params.h"
 #include "state.h"
 #include "uistrings.h"
@@ -825,6 +826,58 @@ int main(int argc, char **argv) {
     MemoryStream garbage;
     garbage.data = {1, 2, 3, 4, 5, 6, 7};
     check(plugin.component->setState(&garbage) != kResultOk, "load rejects a foreign blob");
+
+    // A state holding its own table (operator A a Wavetable of it): it plays, and getState() gives it back as it was.
+    {
+        constexpr uint32_t kKey = 1u << 20;
+        auto table = std::make_shared<OpData>();
+        table->kind = DataKind::Table;
+        table->key = kKey;
+        table->frames = 1;
+        table->pcm.resize(FrameTable::kFrameSize);
+        for (int i = 0; i < FrameTable::kFrameSize; ++i)
+            table->pcm[i] = static_cast<float>(std::sin(2.0 * 3.141592653589793 * i / FrameTable::kFrameSize));
+        buildOpData(*table);
+        ParamValues values;
+        for (int i = 0; i < kParamCount; ++i)
+            values[i] = paramTable()[i].def;
+        values[paramIndex(0, OpParam::Wave)] = static_cast<double>(OpWave::Wavetable);
+        values[paramIndex(0, OpParam::Table)] = kKey;
+        std::vector<unsigned char> bytes;
+        const clap_ostream_t out = memoryOut(bytes);
+        writePatch(&out, values, gui::UiLayout{});
+        writeSettings(&out, {});
+        writePresetChunk(&out, false, "");
+        writeDataChunk(&out, {table.get()});
+        MemoryStream withTable;
+        withTable.data.assign(bytes.begin(), bytes.end());
+        const bool loaded = plugin.component->setState(&withTable) == kResultOk;
+        plugin.processor->setProcessing(true);
+        {
+            Events events;
+            Changes changes;
+            events.events = {noteOn(0, 69, 7)};
+            plugin.process(events, changes);
+        }
+        const std::vector<float> played = plugin.render(0.3);
+        plugin.processor->setProcessing(false);
+        MemoryStream back;
+        plugin.component->getState(&back);
+        MemoryReader reader{back.data.data(), back.data.size()};
+        const clap_istream_t in = memoryIn(reader);
+        ParamValues read;
+        std::vector<std::shared_ptr<OpData>> entries;
+        std::string preset;
+        bool edited = false;
+        const bool parsed = readParams(&in, read) && (readLayout(&in), readSettings(&in), readPresetChunk(&in, preset, edited),
+                                                      readDataChunk(&in, entries));
+        const double hz = frequency(std::vector<float>(played.begin() + 4800, played.end()));
+        check(loaded && peak(played) > 0.05 && std::abs(hz - 440.0) < 2.0 && parsed && entries.size() == 1 &&
+                  entries[0]->key == kKey && entries[0]->pcm == table->pcm,
+              "a state's own table plays, and getState() gives it back as setState() took it");
+        saved.pos = 0;
+        plugin.component->setState(&saved);
+    }
     plugin.processor->setProcessing(true);
 
     // --- Editor: embed it in a (hidden) host window, resize it, drag the Volume knob, close.

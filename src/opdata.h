@@ -22,15 +22,17 @@
 namespace fmvibe {
 
 // A table of frames as the audio thread reads it: every frame at kLevels levels, each holding half the harmonics of
-// the one before (512 at the first, in 2048 samples), with at least four samples a cycle of its highest harmonic; each
-// cycle kept with its first sample again after it, as WaveTables' are. Level by level, so a level's frames sit next to
-// one another, and one gain for the whole table, from its loudest frame.
+// the one before (512 at the first), each cycle kept with its first sample again after it, as WaveTables' are. Read
+// between its samples in a straight line, a level needs many samples a cycle of its highest harmonic, or what the
+// line adds folds back as aliasing: 32 from the fourth level on (2048 samples there, and half as many a level after),
+// 16, 8 and 4 at the first three, which only low notes read, their highest harmonics far past hearing. Level by level,
+// so a level's frames sit next to one another, and one gain for the whole table, from its loudest frame.
 struct FrameTable {
     static constexpr int kFrameSize = 2048; // a frame's samples as stored and imported (Serum's frame size)
     static constexpr int kHarmonics = 512;  // at the first level
     static constexpr int kLevels = 10;      // 512 harmonics down to 1
     static constexpr int kMaxFrames = 512;
-    static constexpr int levelSize(int level) { return std::max(kFrameSize >> level, 16); }
+    static constexpr int levelSize(int level) { return std::min(kFrameSize, 32 * (kHarmonics >> level)); }
     static constexpr int levelHarmonics(int level) { return kHarmonics >> level; }
     // The level whose harmonics stay below Nyquist at a phase increment (cycles a sample).
     static int level(double increment) {
@@ -61,11 +63,13 @@ struct SampleMips {
     int levels = 0;
     int64_t length = 0; // level 0's samples
     std::array<std::vector<float>, kMaxLevels> data;
-    // The level for a step of `step` level-0 samples a sample.
-    int level(double step) const {
-        if (!(step > 1.0))
+    // The level for a step of `step` level-0 samples a sample: the first where it steps `most` of its samples or fewer.
+    // Stepping at most one, nothing it holds lies past Nyquist; oversampled, at most 0.78, what reading between its
+    // samples adds lands past hearing (and past the decimator) too, as the voices' rate is twice the host's or more.
+    int level(double step, double most = 1.0) const {
+        if (!(step > most))
             return 0;
-        return std::clamp(static_cast<int>(std::ceil(std::log2(step))), 0, levels - 1);
+        return std::clamp(static_cast<int>(std::ceil(std::log2(step / most))), 0, levels - 1);
     }
     // Level `level`'s first sample (with kPad before it to read).
     const float *at(int level) const { return data[level].data() + kPad; }
