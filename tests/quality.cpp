@@ -3608,6 +3608,47 @@ void sampleChecks(const int (&factors)[4]) {
               "Linear FM through zero on a sample stays finite and within the sample");
     }
 
+    // A recording of middle C, at 44.1 kHz, played on middle C: its own pitch, at every oversampling factor, its Root
+    // left where a new Sample operator starts it. The pitch from the output's rising zero crossings, a second of them.
+    {
+        constexpr uint32_t kRate = 44100;
+        const double c4 = keyHz(60);
+        std::vector<float> pcm(kRate * 3);
+        for (size_t i = 0; i < pcm.size(); ++i)
+            pcm[i] = static_cast<float>(0.8 * std::sin(2.0 * std::numbers::pi * c4 * static_cast<double>(i) / kRate));
+        auto pitchOf = [](const std::vector<float> &out, double rate) {
+            double first = -1.0, last = -1.0;
+            int crossings = 0;
+            for (size_t i = 1; i < out.size(); ++i) {
+                const float a = out[i - 1], b = out[i];
+                if (a < 0.0f && b >= 0.0f) {
+                    const double at = static_cast<double>(i - 1) + a / (a - b);
+                    if (first < 0.0)
+                        first = at;
+                    else
+                        ++crossings;
+                    last = at;
+                }
+            }
+            return crossings > 0 ? crossings * rate / (last - first) : 0.0;
+        };
+        std::string pitches;
+        bool exact = true;
+        for (const int factor : factors) {
+            DataEngine d(factor);
+            auto data = sampleData(kUserDataBase + 25, pcm, kRate, 60.0f);
+            d.sample(data);
+            d.e.p[paramIndex(0, OpParam::SampleRoot)] = paramTable()[paramIndex(0, OpParam::SampleRoot)].def;
+            d.e.noteOn(60);
+            d.e.render(4800);
+            const double hz = pitchOf(d.e.render(kSampleRate), static_cast<double>(kSampleRate));
+            pitches += " " + std::to_string(factor) + "x " + std::to_string(hz).substr(0, 7);
+            exact = exact && std::abs(1200.0 * std::log2(hz / c4)) < 1.0;
+        }
+        std::printf("      middle C recorded, played on middle C (%.2f Hz):%s\n", c4, pitches.c_str());
+        check(exact, "a sample plays at its own pitch on middle C, as a new Sample operator starts, within a cent");
+    }
+
     // Where the newest voice plays a table and a sample reaches the editor through the telemetry the plugin hands it
     // (SharedTelemetry), as the TABLE tab's lit frame and the SAMPLE tab's playhead show it.
     {

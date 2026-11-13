@@ -126,10 +126,9 @@ std::string Controller::importOperatorData(int op, DataKind kind, const std::vec
     buildOpData(*data);
     const bool sample = data->kind == DataKind::Sample;
     struct {
-        float root;
         uint32_t loopStart, loopEnd;
         int frames;
-    } const stored{data->root, data->loopStart, data->loopEnd, data->frames};
+    } const stored{data->loopStart, data->loopEnd, data->frames};
     const uint32_t key = data_.add(std::move(data));
     UndoScope scope(*this);
     const int wave = paramIndex(op, OpParam::Wave);
@@ -140,8 +139,10 @@ std::string Controller::importOperatorData(int op, DataKind kind, const std::vec
     setValue(paramIndex(op, sample ? OpParam::Sample : OpParam::Table), static_cast<double>(key));
     setValue(wave, static_cast<double>(sample ? OpWave::Sample : OpWave::Wavetable));
     if (sample) {
-        // Its root, and its loop if the file has one (else none), from the start.
-        setValue(paramIndex(op, OpParam::SampleRoot), stored.root);
+        // Its root at middle C, so middle C plays it as it was recorded (whatever root its file names, often a guess of
+        // the writer's); its loop if the file has one (else none), from the start.
+        const int root = paramIndex(op, OpParam::SampleRoot);
+        setValue(root, paramTable()[root].def);
         setValue(paramIndex(op, OpParam::SampleStart), 0.0);
         const bool loop = stored.loopEnd > stored.loopStart && stored.frames > 1;
         const double last = std::max(stored.frames - 1, 1);

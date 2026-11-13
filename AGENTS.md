@@ -292,7 +292,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     Gate one with no loop, ending its voice at its end with the key down, Sustain leaving its loop once let go and
     playing to its end, where Gate loops on; Linear FM through zero staying finite and within the sample; and where
     the newest voice plays its table and its sample reaching the editor through `SharedTelemetry`, as the plugin
-    hands it;
+    hands it; and a recording of middle C played on middle C at its own pitch (within a cent, at every oversampling
+    factor), its Root where a new Sample operator starts it;
   - the operators' new fields at their ids (op A's Position 134, op F's Sample Mode 393, 38000 on free for them);
   - the file readers: WAVs at 16, 24 and 32 bits and float with Serum's `clm` (its frame size read, 2048 guessed
     without one, the folder's taken), stereo summed, past 512 frames thinned, `uhWT`, `srge`, cue and `smpl` frame
@@ -690,7 +691,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     2,000 files, the list's scrollbar thumb still 24 px tall (read off the rendered pixels), dragged to the list's end
     and jumping to a click on its track;
   - a Sample operator: SAMPLE with none showing the dashed card, which opens the file dialog, as the import button
-    does; no WARP tab; Start and the loop's end dragged, each an undo step, a double-click putting one back; LOOP and
+    does; a file naming A3 as its root imported with the operator's Root at middle C; no WARP tab; Start and the
+    loop's end dragged, each an undo step, a double-click putting one back; LOOP and
     MODE picking; the newest voice's playhead (read off the rendered pixels); and Phase dimmed, not turning.
 
   Pass a scale to render larger: `build\release\fmvibe-uishot.exe out 2`.

@@ -8146,8 +8146,27 @@ void testSamples(const std::filesystem::path &dir, Renderer &renderer) {
     click(view, detail::kSampleImport.center());
     check(sampled && model.fileDialogs == 2 && model.fileDialogKind == DataKind::Sample,
           "SAMPLE picks a sample, whose dashed card and import button open the file dialog");
-    const std::string said = model.importOperatorData(1, DataKind::Sample, sampleWav(), "tone.wav");
+    // Its file names a root of A3 in a smpl chunk: the operator's Root is middle C all the same, so middle C plays it as
+    // it was recorded.
+    std::vector<uint8_t> wav = sampleWav();
+    {
+        const uint32_t words[9] = {0, 0, 0, 57, 0, 0, 0, 0, 0}; // manufacturer ... unity note 57 ... no loops
+        const char head[8] = {'s', 'm', 'p', 'l', 36, 0, 0, 0};
+        wav.insert(wav.end(), head, head + 8);
+        for (const uint32_t w : words)
+            for (int b = 0; b < 4; ++b)
+                wav.push_back(static_cast<uint8_t>(w >> (8 * b)));
+        const uint32_t riff = static_cast<uint32_t>(wav.size() - 8);
+        for (int b = 0; b < 4; ++b)
+            wav[4 + b] = static_cast<uint8_t>(riff >> (8 * b));
+    }
+    const std::string said = model.importOperatorData(1, DataKind::Sample, wav, "tone.wav");
     view.poll();
+    const OpData *imported = model.opData(dataKey(model.value(paramIndex(1, OpParam::Sample))));
+    std::printf("      a sample whose file names A3: its root as read %.1f, the operator's Root %.1f\n",
+                imported ? imported->root : -1.0f, model.value(paramIndex(1, OpParam::SampleRoot)));
+    check(imported && std::abs(imported->root - 57.0f) < 0.01f && model.value(paramIndex(1, OpParam::SampleRoot)) == 60.0,
+          "an imported sample's Root is middle C, whatever its file names, so middle C plays it as recorded");
     renderer.save(view, dir / "wt-13-sample.png");
     // WARP isn't one of its tabs: its SAMPLE tab is in WARP's place.
     click(view, detail::opTab(static_cast<int>(InspectorTab::Warp), detail::OpTabs::Sample).center());

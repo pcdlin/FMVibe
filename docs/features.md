@@ -27,8 +27,9 @@ What the plugin does and how its editor works, in full. Building and installing 
     are Basic Shapes (sine, triangle, saw, square and a 25 % pulse, crossfading from one to the next), PWM, Harmonic Build, FM Sweep, Sync Sweep,
     Resonant Sweep, Vowels, Fold and Odd to Even; a new Wavetable operator plays Basic Shapes. A table from a file (see
     *Wavetables and samples from files* below) is copied into the patch;
-  - or a **Sample**: a recording played at the note's pitch, at its own speed on its **Root** note (C4 to begin
-    with, or the root its file names), from **Start** (a share of its length, given to hosts). Its **Loop** is Off,
+  - or a **Sample**: a recording played at the note's pitch, at its own speed on its **Root** note (C4, middle
+    C, MIDI note 60, for every sample imported, whatever root its file names, so middle C plays it as it was
+    recorded), from **Start** (a share of its length, given to hosts). Its **Loop** is Off,
     Forward or Ping-Pong between **Loop Start** and **Loop End** (a loop shorter than 64 samples is none), its end
     crossfading into its start over **Loop Fade** (a share of half the loop, equal power). Its **Mode** says what a
     key let go of does: **Gate** keeps it looping through the envelope's release; **Sustain** lets it leave the loop
@@ -47,7 +48,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     else it is guessed from the length (2048, else 1024, 512, 256, 4096 or 128 dividing it into 2 to 512 frames; a
     file of no more than 4096 points is one frame). A table's frames lose their DC and
     take one gain across them (so a table's quiet frames stay quiet), at most 512 frames (thinned evenly past that)
-    and each brought to 2048 points by its spectrum. A sample keeps its rate and its `smpl` loop and root, up to 87 s
+    and each brought to 2048 points by its spectrum. A sample keeps its rate and its `smpl` loop, up to 87 s
     at 48 kHz. What a patch plays is in the patch, so a project or a preset plays the same on another machine
     without the file: up to 16 MB a table or sample, 64 MB in all, as 16-bit when the file was and as floats
     otherwise. The same table picked twice, or by two operators, is held once. Tables and samples are copied for the
