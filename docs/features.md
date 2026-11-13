@@ -1255,8 +1255,8 @@ one may have changed since it last did.
       after it. With no note playing, the wave's plain shape shows faintly; warped or synced, the wave as they make
       it (synced, the note's cycles, the operator's own restarting in each) shows in the accent over the plain one.
       The warp's name and amount, and NOTE SYNC while synced to the note, run along the display's bottom. Under it,
-      the warps as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the NOTE SYNC
-      switch. The audio thread captures only while the tab is shown. The summary line names the warp and says "note
+      the warps as buttons, each a sine as it warps it (named in its tooltip), the Amount knob and the NOTE switch
+      (Note Sync, named in its tooltip). The audio thread captures only while the tab is shown. The summary line names the warp and says "note
       sync" while either is on. (The scope and the warp had a tab each before; a layout saved on the scope's opens
       this one.)
     - **INPUTS**: a row per node routed into the operator (the nodes that are on, in the graph's order): its name,

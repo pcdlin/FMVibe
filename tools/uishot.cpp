@@ -8166,7 +8166,7 @@ void run(const std::filesystem::path &dir, float scale) {
         check(layout.opTab == InspectorTab::Envelope && layout.scopeCycles == 2, "the ENVELOPE tab is back");
     }
 
-    // The WAVE tab's warp: its buttons pick the warp, its knob the amount and NOTE SYNC hard sync to the note, each
+    // The WAVE tab's warp: its buttons pick the warp, its knob the amount and NOTE (note sync) the hard sync, each
     // an undo step; with no note its display draws a square as the warp reads it, read off the rendered pixels: with
     // Squeeze at +50 % the first cycle's high half runs on past its middle (high at 60 % of it, where the plain square
     // is low), and synced to the note at a ratio of 1.5 the note's cycle restarts it.
@@ -8205,7 +8205,7 @@ void run(const std::filesystem::path &dir, float scale) {
         view.mouseMove(detail::warpButton(static_cast<int>(OpWarp::Sync)).center(), {});
         check(renderer.save(view, dir / "3w-warp-tip.png"), "render a warp button's tooltip");
         // The Sync warp (the wave played through more times a cycle, cut off at its end) is a warp like the others,
-        // apart from NOTE SYNC: picked, undone, Squeeze back.
+        // apart from the NOTE switch: picked, undone, Squeeze back.
         click(view, detail::warpButton(static_cast<int>(OpWarp::Sync)).center());
         view.mouseMove({600.0f, 328.0f}, {});
         const bool syncWarpShot = renderer.save(view, dir / "3w-warp-sync-warp.png");
@@ -8213,20 +8213,20 @@ void run(const std::filesystem::path &dir, float scale) {
                               model.value(sync) == 0.0;
         view.undo();
         check(syncWarpShot && syncWarp && std::lround(model.value(warp)) == static_cast<long>(OpWarp::Squeeze),
-              "the Sync warp is picked apart from NOTE SYNC, undoably");
-        // NOTE SYNC: on, the summary says so and the display shows the note's cycles; then each step undone.
+              "the Sync warp is picked apart from the NOTE switch, undoably");
+        // NOTE: on, the summary says so and the display shows the note's cycles; then each step undone.
         model.set(paramIndex(0, OpParam::Ratio), normFromRatio(1.5));
         click(view, detail::kSyncButton.center());
         const bool synced = model.value(sync) == 1.0;
         view.mouseMove({600.0f, 328.0f}, {});
-        check(renderer.save(view, dir / "3w-warp-sync.png") && synced, "NOTE SYNC switches hard sync on");
+        check(renderer.save(view, dir / "3w-warp-sync.png") && synced, "the NOTE switch turns note sync on");
         view.undo(); // sync
         const bool syncUndone = model.value(sync) == 0.0;
         model.set(paramIndex(0, OpParam::Ratio), normFromRatio(1.0));
         view.undo(); // the amount's drag
         view.undo(); // the warp
         check(syncUndone && model.value(amount) == 0.0 && model.value(warp) == 0.0,
-              "the warp, its amount and NOTE SYNC are undone a step each");
+              "the warp, its amount and the NOTE switch are undone a step each");
         // A noise operator has no wave to show or warp: its page shows the envelope in the WAVE tab's place.
         model.set(paramIndex(0, OpParam::Wave), static_cast<double>(OpWave::Noise));
         view.poll();

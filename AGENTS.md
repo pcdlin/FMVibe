@@ -492,8 +492,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     the rendered pixels), a typed fraction, and a source's handle dropped on it modulating it, its reach drawn along
     the track, a straight line to 64 with its tick at the end there and an arrow for modulation going on past it
     (read off the rendered pixels);
-  - the WAVE tab's warp: its buttons picking the warp (the Sync warp apart from NOTE SYNC), its knob the amount and
-    NOTE SYNC hard sync, each an undo step,
+  - the WAVE tab's warp: its buttons picking the warp (the Sync warp apart from the NOTE switch), its knob the amount
+    and NOTE note sync, each an undo step,
     its display with no note drawing a square's pulse width as Squeeze takes it (read off the rendered pixels), a
     warp button's tooltip, the display synced, and a noise operator showing its envelope in the tab's place;
   - an operator's fixed pitch switched on by its keyboard (and by the wheel over it), Freq and Mult set to where the

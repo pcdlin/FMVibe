@@ -6157,7 +6157,7 @@ void View::paintScope(Canvas &c, Rect r, int op) {
             caption += std::string("  ") + amount;
         }
         if (opSynced(op))
-            caption += std::string("  \xC2\xB7  ") + tr(Str::SwitchHardSync);
+            caption += std::string("  \xC2\xB7  ") + tr(Str::CaptionNoteSync);
         c.text({r.x + 8.0f, r.bottom() - 17.0f, r.w - 16.0f, 14.0f}, caption, kTextSmall, kDim, Align::Left);
     }
 

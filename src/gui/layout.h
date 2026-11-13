@@ -111,14 +111,14 @@ inline Rect opTab(int tab, bool noise = false) {
     return {kInspector.x + 16.0f + (noise ? kNoiseX : kX)[tab], kOpTabsY, (noise ? kNoiseW : kW)[tab], kOpTabH};
 }
 // Wave: its display (the scope; with no note, the operator's cycles as its warp reads them, or the note's when
-// synced, the cycle buttons in its top right corner), then the warps' buttons, the amount's knob and the NOTE SYNC
-// switch along the row under it.
+// synced, the cycle buttons in its top right corner), then the warps' buttons, the amount's knob and the NOTE
+// (note sync) switch along the row under it.
 constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 116.0f};
 inline Rect warpButton(int warp) {
-    return {kInspector.x + 16.0f + warp * 27.0f, kInspector.y + 306.0f, 27.0f, 22.0f};
+    return {kInspector.x + 16.0f + warp * 28.0f, kInspector.y + 306.0f, 28.0f, 22.0f};
 }
-constexpr Point kWarpAmountKnob{kInspector.x + 195.0f, kInspector.y + 314.0f};
-constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 70.0f, kInspector.y + 306.0f, 70.0f, 22.0f};
+constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kInspector.y + 314.0f};
+constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 46.0f, kInspector.y + 306.0f, 46.0f, 22.0f};
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
 // with room under the depth for its modulations' handles. Past the rows the tab holds, they scroll, with a bar at
 // their right; drawn and hit within kInputsList, which leaves room for the ranges on the first row's depth's top.

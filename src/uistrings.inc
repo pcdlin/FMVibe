@@ -596,7 +596,8 @@ STR(SwitchPoly, "POLY")
 STR(SwitchMono, "MONO")
 STR(SwitchLegato, "LEGATO")
 STR(SwitchAlways, "ALWAYS") // the glide's
-STR(SwitchHardSync, "NOTE SYNC") // an operator's hard sync to the note (not the Sync warp)
+STR(SwitchHardSync, "NOTE") // an operator's note sync switch: hard sync to the note (not the Sync warp)
+STR(CaptionNoteSync, "NOTE SYNC") // on the WAVE display, while the operator is synced to the note
 STR(SwitchStereo, "STEREO")
 STR(SwitchPoints, "Points") // what a click on an LFO's shape does
 STR(SwitchSteps, "Steps")
@@ -744,7 +745,7 @@ STR(NoisePinkCaption, "pink")
 STR(NoiseBrownCaption, "brown")
 STR(TipMoreWaves, "More waves")
 STR(TipFixedOff, "Fixed pitch at Freq × Mult") // the keyboard switch, tracking the keys
-STR(TipHardSync, "Note sync: restart the wave with each cycle of the note") // an operator's NOTE SYNC switch
+STR(TipHardSync, "Note sync: restart the wave with each cycle of the note") // an operator's NOTE switch
 STR(TipWarpOff, "Off: the wave as it is") // an operator's warps, its WARP tab's buttons
 STR(TipWarpBend, "Bend: rush through the cycle's start, linger at its end")
 STR(TipWarpSqueeze, "Squeeze: the first half in less of the cycle (a square's pulse width)")
