@@ -112,9 +112,9 @@ public:
     void chooseOperatorFile(int op, DataKind kind) override { js_choose_file(op, static_cast<int>(kind)); }
     // Folders picked on the page, listed for the session only: the demo keeps no paths.
     TableLibrary *tableLibrary() override {
-        if (!library_)
-            library_ = std::make_unique<TableLibrary>();
-        return library_.get();
+        if (!tables_)
+            tables_ = std::make_unique<TableLibrary>();
+        return tables_.get();
     }
     void chooseTableFolder() override { js_choose_folder(); }
 
@@ -285,7 +285,7 @@ private:
     int handleSize_ = 0;
     double links_ = 0.75;
     double tempo_ = kDefaultTempo;
-    std::unique_ptr<TableLibrary> library_;
+    std::unique_ptr<TableLibrary> tables_;
 };
 
 std::unique_ptr<WebController> controller;
