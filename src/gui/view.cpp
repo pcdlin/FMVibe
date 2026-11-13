@@ -2439,23 +2439,19 @@ std::vector<View::Widget> View::widgets() const {
     // Inspector: tabs, then the selected operator, filter or shaper. The FX view covers it.
     const size_t inspectorStart = list.size();
     const int node = controller_.layout().selectedNode;
-    const float tabsX = kInspector.x + 16.0f;
-    for (int i = 0; i < kNodes; ++i) // the operators', the filters' and the shapers', a little apart
-        add(Kind::NodeTab,
-            {tabsX + i * 25.0f + (isBoxNode(i) ? 6.0f : 0.0f) + (isShaperNode(i) ? 6.0f : 0.0f), kInspector.y + 9.0f,
-             24.0f, 22.0f},
-            -1, i);
+    for (int i = 0; i < kNodes; ++i) // the operators', the filters' and the shapers', in three groups
+        add(Kind::NodeTab, nodeTabRect(i), -1, i);
     add(Kind::Toggle, {kInspector.right() - 16.0f - 26.0f, kInspector.y + 37.0f, 26.0f, 19.0f}, enabledParam(node));
     auto knobRow = [&](const int (&params)[5], const char *const (&labels)[5]) {
         for (int i = 0; i < 5; ++i)
             if (params[i] >= 0)
                 knob(params[i], {kInspector.x + 34.0f + i * 58.0f, kInspector.y + 110.0f}, 34.0f, labels[i]);
     };
+    // An operator's block: the left column's two places (-2, -1), then the right column's four (see opKnobCenter()).
     auto opKnobRow = [&](const int (&params)[6], const char *const (&labels)[6]) {
-        const float step = (kInspector.w - 32.0f) / 6.0f;
         for (int i = 0; i < 6; ++i)
             if (params[i] >= 0)
-                knob(params[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 110.0f}, 32.0f, labels[i]);
+                knob(params[i], opKnobCenter(i - 2), kOpKnobD, labels[i]);
     };
     const Str envLabels[] = {Str::LabelAttack, Str::LabelHold, Str::LabelDecay, Str::LabelSustain, Str::LabelRelease};
     // What feeds a filter or shaper, from the other nodes that are on.
@@ -2494,10 +2490,12 @@ std::vector<View::Widget> View::widgets() const {
         inputKnobs(node);
     } else if (node < kOps) {
         const int op = node;
-        // Pills a little apart, each on its own, as the lens draws its rows of buttons.
+        // One segmented row, the list's button last in it.
+        const size_t waves = list.size();
         for (int b = 0; b + 1 < kWaveButtons; ++b)
             add(Kind::WaveButton, waveButton(b), -1, op, static_cast<int>(kCommonWaves[b]));
         add(Kind::WaveMore, waveButton(kWaveButtons - 1), -1, op);
+        merge(waves);
         // The tabs, a noise operator's without the scope, then what the shown one holds.
         const InspectorTab tab = opTabShown(op);
         for (int t = 0; t < static_cast<int>(InspectorTab::Count); ++t)
@@ -2508,7 +2506,7 @@ std::vector<View::Widget> View::widgets() const {
             for (int k = 0; k < 3; ++k)
                 add(Kind::ScopeCycles, scopeCycleButton(k), -1, op, kScopeCycleChoices[k]);
         if (isNoise(op)) {
-            // Its slope and stereo spread take the place of the pitch knobs; the unison row shows the spectrum. Noise
+            // Its slope and stereo spread take the Ratio readout's place; the unison row shows the spectrum. Noise
             // has no cycle to start, so no Phase.
             const int params[] = {paramIndex(op, OpParam::NoiseSlope), paramIndex(op, OpParam::UnisonSpread), -1, -1,
                                   -1, paramIndex(op, OpParam::Pan)};
@@ -2534,7 +2532,7 @@ std::vector<View::Widget> View::widgets() const {
             for (size_t i = row; i < list.size(); ++i)
                 list[i].disabled = fixed && (list[i].param == params[2] || list[i].param == params[3]);
             if (!fixed) {
-                add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kRatioBox.h + 19.0f},
+                add(Kind::Knob, {kRatioBox.x, kRatioBox.y, kRatioBox.w, kOpLabelY + 17.0f - kRatioBox.y},
                     paramIndex(op, OpParam::Ratio));
                 list.back().label = tr(Str::LabelRatio);
             }
@@ -2547,7 +2545,7 @@ std::vector<View::Widget> View::widgets() const {
             const float step = (kInspector.w - 32.0f) / 4.0f;
             if (tab == InspectorTab::Unison)
                 for (int i = 0; i < 4; ++i)
-                    knob(unison[i], {kInspector.x + 16.0f + step * (i + 0.5f), kUnisonKnobsY}, 34.0f,
+                    knob(unison[i], {kInspector.x + 16.0f + step * (i + 0.5f), kUnisonKnobsY}, kOpKnobD,
                          tr(unisonLabels[i]));
         }
         if (tab == InspectorTab::Inputs) {
@@ -2585,7 +2583,7 @@ std::vector<View::Widget> View::widgets() const {
             for (int m = 0; m < static_cast<int>(OpWarp::Count); ++m)
                 add(Kind::Choice, warpButton(m), paramIndex(op, OpParam::Warp), op, m);
             merge(buttons);
-            knob(paramIndex(op, OpParam::WarpAmount), kWarpAmountKnob, 30.0f, tr(Str::LabelAmount));
+            knob(paramIndex(op, OpParam::WarpAmount), kWarpAmountKnob, kOpKnobD, tr(Str::LabelAmount));
             add(Kind::Toggle, kSyncButton, paramIndex(op, OpParam::Sync));
         }
         if (tab == InspectorTab::Envelope) {
@@ -2593,7 +2591,7 @@ std::vector<View::Widget> View::widgets() const {
             const int ahdsr[] = {e.attack, e.hold, e.decay, e.sustain, e.release};
             const float step = (kInspector.w - 32.0f) / 5.0f;
             for (int i = 0; i < 5; ++i)
-                knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kInspector.y + 322.0f}, 30.0f,
+                knob(ahdsr[i], {kInspector.x + 16.0f + step * (i + 0.5f), kOpControlsY}, kOpKnobD,
                      tr(envLabels[i]));
         }
     } else {
@@ -3254,6 +3252,16 @@ void View::paint(Canvas &c, Rect area) {
         paintVelocitySource(c, keyboardTop(controller_.layout().sourcesCollapsed));
         paintSources(c);
     }
+    // A switched-off card's displays are dimmed under an overlay of its own face, which leaves the face as it is: as
+    // though drawn at kDimOpacity. Its widgets, and every other dimmed one, are drawn at that opacity as they go.
+    const std::vector<DimArea> dimmed = dimmedAreas();
+    for (const DimArea &d : dimmed) {
+        if (d.face.a <= 0.0f)
+            continue; // the inspector's page dims itself (paintInspector())
+        c.pushClip(d.clip);
+        c.fillRect(d.area, d.face.alpha(1.0f - kDimOpacity), kRadiusCard - 1.0f);
+        c.popClip();
+    }
     // The open lists (of effects, curves, EQ shapes, waves) go over everything else, the dimmed cards included.
     auto paintWidgets = [&](bool lists) {
         for (const Widget &w : list) {
@@ -3267,9 +3275,13 @@ void View::paint(Canvas &c, Rect area) {
                 continue;
             if (w.clip.w > 0.0f)
                 c.pushClip(w.clip);
+            // A list open over a dimmed card is not dimmed with it.
+            const bool dim = lists ? (w.disabled || w.faint) : widgetDimmed(w, dimmed);
+            if (dim)
+                c.pushLayer({0.0f, 0.0f}, kDimOpacity, w.rect.inset(-kWidgetReach));
             paintWidget(c, w);
-            if (w.disabled || w.faint) // dimmed as a switched-off node's page is, in the face of what it is on
-                c.fillRect(w.rect.inset(-1.0f), (w.faint ? cardFaceUnder(w) : kPanel).alpha(0.6f), kRadiusControl + 1.0f);
+            if (dim)
+                c.popLayer();
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
@@ -3284,34 +3296,9 @@ void View::paint(Canvas &c, Rect area) {
             if (w.clip.w > 0.0f)
                 c.popClip();
         }
-    // A switched-off source's card is dimmed below its title row (a folded one's name is already dim).
-    c.pushClip(sourceCardClip());
-    for (int s : sources()) {
-        const float card = cardOf(s);
-        if (card == kOffScreen || sourceOn(s) || sourceFolded(s))
-            continue;
-        const Rect p = sourceCard(card, sourceSpan(s));
-        c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kPanel.alpha(0.6f), kRadiusCard - 1.0f);
-    }
-    c.popClip();
-    // So is a switched-off effect's.
-    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && fxGraph()) {
-        if (const int node = fxSelectedNode(); node >= 0 && node < kFxSlots &&
-                                               value(paramIndex(node, FxParam::Enabled)) < 0.5) {
-            const Rect p = fxInspector(node);
-            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), kRadiusCard - 1.0f);
-        }
-    } else if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx) {
+    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && !fxGraph()) {
         c.pushClip(fxCardClip());
         const FxRow row = fxRowShown();
-        for (const FxRowCard &card : row.cards) {
-            const float pos = card.place - fxScroll();
-            if (!onScreen(pos, kVisibleFx, card.span) || value(paramIndex(card.slot, FxParam::Enabled)) >= 0.5 ||
-                fxFolded(card.slot))
-                continue;
-            const Rect p = fxCard(pos, card.span);
-            c.fillRect({p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}, kCardColor.alpha(0.6f), kRadiusCard - 1.0f);
-        }
         // The card or container carried, faint where it would land until it is let go of; and the cards of a band a
         // container shows that its join doesn't let through, the other band soloed.
         const FxLine line = fxLineShown();
@@ -3336,10 +3323,6 @@ void View::paint(Canvas &c, Rect area) {
         }
         c.popClip();
     }
-    // And the inspector's page while its operator, filter or shaper is off, below the tabs, summary and switch.
-    if (!inspectorCovered() && !nodeOn(controller_.layout().selectedNode))
-        c.fillRect({kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f},
-                   kPanel.alpha(0.6f), kRadiusPanel - 1.0f);
     paintWidgets(true);
     // The card being dragged: where it would land only its outline, and a faint image of it under the mouse wherever
     // it goes (over every panel, held to none), before it snaps into place: an effect card or a split's container, or
@@ -4331,10 +4314,9 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         const Rect cab = ampCabDisplay(card);
         c.fillRect(cab, kDisplayColor, kRadiusCard);
         paintAmpCab(c, cab, slot);
-        if (value(paramIndex(slot, FxParam::AmpCabOn)) < 0.5)
-            c.fillRect(cab, kCardColor.alpha(0.6f), kRadiusCard);
-        if (!on)
-            c.fillRect(cab, kPanel.alpha(0.55f), kRadiusCard);
+        // Dimmed as its controls are (switched off, the whole card's body is dimmed instead, see dimmedAreas()).
+        if (on && value(paramIndex(slot, FxParam::AmpCabOn)) < 0.5)
+            c.fillRect(cab, cardFace(fx, on).alpha(1.0f - kDimOpacity), kRadiusCard);
         const float x = ampDivider(card);
         c.line({x, display.y}, {x, card.bottom() - 12.0f}, kBorder, 1.0f);
         break;
@@ -4352,8 +4334,7 @@ void View::paintFxCard(Canvas &c, int slot, Rect card, bool dragged) {
         c.line({card.x + 14.0f + width, y}, {mdRmsButton(card).x - 6.0f, y}, kBorder, 1.0f);
         c.text({card.x + 14.0f, y - 7.0f, width, 14.0f}, name, kTextSmall, on ? fx : kDim, Align::Left, true);
     }
-    if (!on)
-        c.fillRect(display, kPanel.alpha(0.55f), kRadiusCard); // dimmed while switched off
+    // Switched off, its body is dimmed with its widgets (see dimmedAreas()).
 }
 
 void View::paintShapeEditor(Canvas &c, int shape) {
@@ -5807,18 +5788,40 @@ void View::paintInspector(Canvas &c) {
         if (outlined())
             c.polyline(side, 3, edge, 1.0f);
     }
-    // Leaves room for the on/off switch at the right.
-    Rect summaryRect{kInspector.x + 16.0f, kInspector.y + 38.0f, kInspector.w - 84.0f, 18.0f};
+    // The tabs' groups, a hairline between two.
+    for (int group = 1; group <= 2; ++group) {
+        const float x = nodeTabDivider(group);
+        c.line({x, kInspector.y + 13.0f}, {x, kInspector.y + 27.0f}, kBorder, 1.0f);
+    }
+    // The title row leaves room for the on/off switch at the right.
+    Rect summaryRect{kTitleRow.x, kTitleRow.y, kInspector.w - 84.0f, kTitleRow.h};
     const char *dot = "  \xC2\xB7  ";
+    // While the node is off, the page under its title is drawn dimmed (its widgets are too, see dimmedAreas()).
+    struct PageDim {
+        Canvas &c;
+        bool on;
+        PageDim(Canvas &canvas, bool dim) : c(canvas), on(dim) {
+            if (on)
+                c.pushLayer({0.0f, 0.0f}, kDimOpacity, kInspectorPage);
+        }
+        ~PageDim() {
+            if (on)
+                c.popLayer();
+        }
+    };
 
     if (isShaperNode(node)) {
-        paintShaperPage(c, shaperOfNode(node), summaryRect);
+        const int shaper = shaperOfNode(node);
+        paintPageTitle(c, node, summaryRect, clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode)))),
+                       boxRoutes(node));
+        const PageDim page(c, !nodeOn(node));
+        paintShaperPage(c, shaper);
         return;
     }
     if (node < kOps) {
         const int op = node;
         const double ratio = ratioHundredths(value(paramIndex(op, OpParam::Ratio))) / 100.0;
-        std::string summary = std::string(kNodeNames[op]) + dot;
+        std::string head, summary;
         summaryRect.w -= kFixedSwitch.w + 4.0f; // the keyboard switch, left of the power switch
         if (isCustomWave(op))
             summaryRect.w -= kPartialEditButton.w + 4.0f; // and a Custom wave's edit button, left of that
@@ -5826,10 +5829,11 @@ void View::paintInspector(Canvas &c) {
             char slope[32];
             const int slopeParam = paramIndex(op, OpParam::NoiseSlope);
             formatParam(slopeParam, value(slopeParam), slope, sizeof(slope));
-            summary += waveName(OpWave::Noise) + (dot + std::string(slope));
+            head = waveName(OpWave::Noise);
+            summary = dot + std::string(slope);
         } else {
-            summary += waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave))))) +
-                       (dot + (isFixed(op) ? fixedHzText(op, false) : number("%.2f", ratio)));
+            head = waveName(static_cast<OpWave>(std::lround(value(paramIndex(op, OpParam::Wave)))));
+            summary = dot + (isFixed(op) ? fixedHzText(op, false) : number("%.2f", ratio));
         }
         const long copies = std::lround(value(paramIndex(op, OpParam::Unison)));
         if (copies > 1 && !isNoise(op))
@@ -5846,11 +5850,16 @@ void View::paintInspector(Canvas &c) {
                 feeds += (feeds.empty() ? "" : ", ") + std::string(kNodeNames[to]);
         if (!feeds.empty())
             summary += dot + trf(Str::SummaryTo, {feeds});
-        c.text(summaryRect, summary, kTextBody, kDim, Align::Left);
-        // The tabs' line, which the shown one's accent sits on.
-        c.line({kInspector.x + 16.0f, kOpTabsY + kOpTabH}, {kInspector.right() - 16.0f, kOpTabsY + kOpTabH}, kBorder,
-               1.0f);
-        switch (opTabShown(op)) {
+        paintPageTitle(c, node, summaryRect, head, summary);
+        const PageDim page(c, !nodeOn(node));
+        // The line between the operator's sound and its tabs, then the well: the tabs along its top edge, on a line
+        // the shown one's accent sits on, and the display under them.
+        c.line({kInspector.x + 16.0f, kOpRuleY}, {kInspector.right() - 16.0f, kOpRuleY}, kBorder, 1.0f);
+        const InspectorTab shown = opTabShown(op);
+        const Rect well = shown == InspectorTab::Inputs ? kOpWellTall : kOpWell;
+        c.fillRect(well, kDisplayColor, kRadiusCard);
+        c.line({well.x, kOpTabsY + kOpTabH - 0.5f}, {well.right(), kOpTabsY + kOpTabH - 0.5f}, kBorder, 1.0f);
+        switch (shown) {
         case InspectorTab::Unison:
             if (isNoise(op))
                 paintNoiseSlope(c, kNoiseRect, op);
@@ -5874,11 +5883,12 @@ void View::paintInspector(Canvas &c) {
 
     const int filter = node - kOps;
     const auto type = static_cast<FilterType>(std::lround(value(paramIndex(filter, FilterParam::Type))));
-    std::string summary = std::string(kNodeNames[node]) + dot + filterTypeName(type);
+    std::string head = filterTypeName(type);
     if (hasSlope(type))
-        summary += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
-                   " dB";
-    c.text(summaryRect, summary + boxRoutes(node), kTextBody, kDim, Align::Left);
+        head += " " + std::to_string(slopeDb(playedSlope(type, filterSlope(value(paramIndex(filter, FilterParam::Slope)))))) +
+                " dB";
+    paintPageTitle(c, node, summaryRect, head, boxRoutes(node));
+    const PageDim page(c, !nodeOn(node));
     // A voice filter tracks the newest voice's note; with none, the curve is back at the knob's C4.
     paintFilterResponse(c, kFilterDisplay, paramIndex(filter, FilterParam::Type),
                         paramIndex(filter, FilterParam::Slope), paramIndex(filter, FilterParam::Cutoff),
@@ -5914,10 +5924,20 @@ std::string View::boxRoutes(int node) const {
     return text;
 }
 
-void View::paintShaperPage(Canvas &c, int shaper, Rect summaryRect) {
-    const std::string summary = std::string(kNodeNames[kOps + kFilters + shaper]) + "  \xC2\xB7  " +
-                                clipModeName(clipMode(value(paramIndex(shaper, ShaperParam::Mode))));
-    c.text(summaryRect, summary + boxRoutes(kOps + kFilters + shaper), kTextBody, kDim, Align::Left);
+// A page's title: the node's letter in its color at the heading's size, then the summary's head (an operator's wave,
+// a filter's type, a shaper's curve) in full text and the rest dimmed, cut off at r's right end.
+void View::paintPageTitle(Canvas &c, int node, Rect r, const std::string &head, const std::string &rest) {
+    const char *const letter = kNodeNames[node];
+    const float letterW = std::ceil(c.textWidth(letter, kTextHeading, true)) + 8.0f;
+    c.text({r.x, r.y, letterW, r.h}, letter, kTextHeading, nodeColor(node), Align::Left, true);
+    const Rect text{r.x + letterW, r.y, std::max(r.w - letterW, 0.0f), r.h};
+    const float headW = std::min(std::ceil(c.textWidth(head, kTextBody)) + 1.0f, text.w);
+    c.text({text.x, text.y, headW, text.h}, head, kTextBody, kText, Align::Left);
+    if (text.w > headW)
+        c.text({text.x + headW, text.y, text.w - headW, text.h}, rest, kTextBody, kDim, Align::Left);
+}
+
+void View::paintShaperPage(Canvas &c, int shaper) {
     c.fillRect(kShaperDisplay, kDisplayColor, kRadiusCard);
     paintShaperCurve(c, kShaperDisplay, kFxSlots + shaper);
     c.text({kInspector.x + 16.0f, kInspector.y + 276.0f, 120.0f, 14.0f}, tr(Str::HeadingInputs), kTextLabel, kFaint,
@@ -6590,7 +6610,8 @@ void View::paintLfoCard(Canvas &c, float card, int lfo) {
     // While the full-size editor has the shape, this row is greyed out like the rest of the card's editor (whose
     // widgets are dimmed as disabled ones are).
     if (shapeEditing() == lfo)
-        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h}, kPanel.alpha(0.6f), kRadiusMark);
+        c.fillRect({readout.x, readout.y, r.w + 16.0f, readout.h},
+                   cardFace(kSourceColors[lfo], sourceOn(lfo)).alpha(1.0f - kDimOpacity), kRadiusMark);
 }
 
 void View::paintSources(Canvas &c) {
@@ -7050,8 +7071,9 @@ void View::paintWidget(Canvas &c, const Widget &w) {
     }
     case Kind::WaveButton: {
         const bool selected = std::lround(value(paramIndex(w.a, OpParam::Wave))) == w.b;
-        paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, 0.5f * w.rect.h);
-        const std::vector<Point> points = waveIcon(static_cast<OpWave>(w.b), w.rect.inset(7.0f));
+        paintButtonFace(c, w, selected, hovered, kAccent, 0.18f, kRadiusControl); // a part of the waves' row
+        const std::vector<Point> points =
+            waveIcon(static_cast<OpWave>(w.b), {w.rect.x + 6.0f, w.rect.y + 6.0f, w.rect.w - 12.0f, w.rect.h - 12.0f});
         c.polyline(points.data(), points.size(), selected ? litInk(kAccent) : kDim, 1.5f);
         break;
     }
@@ -7310,12 +7332,12 @@ void View::paintWidget(Canvas &c, const Widget &w) {
         const auto wave = static_cast<OpWave>(std::lround(value(paramIndex(w.a, OpParam::Wave))));
         const bool selected = isMoreWave(wave);
         const bool lit = hovered || waveMenu_ == w.a;
-        paintButtonFace(c, w, selected, lit, kAccent, 0.18f, 0.5f * w.rect.h);
+        paintButtonFace(c, w, selected, lit, kAccent, 0.18f, kRadiusControl); // the last part of the waves' row
         if (selected) {
-            const Rect icon{w.rect.x + 7.0f, w.rect.y + 7.0f, w.rect.w - 22.0f, w.rect.h - 14.0f};
+            const Rect icon{w.rect.x + 4.0f, w.rect.y + 6.0f, w.rect.w - 15.0f, w.rect.h - 12.0f};
             const std::vector<Point> points = waveIcon(wave, icon);
             c.polyline(points.data(), points.size(), litInk(kAccent), 1.5f);
-            const Point m{w.rect.right() - 8.0f, w.rect.center().y};
+            const Point m{w.rect.right() - 6.0f, w.rect.center().y};
             const Point chevron[] = {{m.x - 3.0f, m.y - 1.5f}, {m.x, m.y + 1.5f}, {m.x + 3.0f, m.y - 1.5f}};
             c.polyline(chevron, 3, look.flat ? litInk(kText) : lit ? kText : kDim, 1.2f);
         } else {
@@ -8513,11 +8535,9 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     const double n = norm(w.param);
     const float angle = knobAngle(n);
 
-    // A macro's knob in its handle's color, faint like the handle, and its name too, while it modulates nothing.
+    // A macro's knob in its handle's color. While it modulates nothing it is faint like the handle, and an LFO's Phase
+    // while notes don't start the LFO there: dimmed as a whole, as every dimmed widget is (knobIdle()).
     const int macro = macroOf(w.param);
-    // An LFO's Phase is faint too while notes don't start the LFO there.
-    const bool idle = (macro >= 0 && !sourceLive(kMaxSources + macro)) ||
-                      (isLfoPhase(w.param) && !lfoPhaseUsed(sourceOf(w.param)));
     // A join's band levels in their bands' colors (the high band's wire takes its first input).
     const int sum = fxSumOfLevel(w.param);
     const int levelOf = sum < 0 ? -1
@@ -8556,7 +8576,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     // The track under it: in a theme that colors knobs by what they belong to, a faint tint of that color, which stands
     // out on a card tinted with it as the plain track doesn't.
     // Modulated, it keeps them: a modulation ring in a color like its own is told apart from it instead (ringColor()).
-    const Color arc = own.alpha(idle ? 0.3f : 1.0f);
+    const Color arc = own;
     const Color track = look.flat ? own.alpha(focused ? 0.45f : 0.28f) : (focused ? kFaint : kTrack);
     c.arc(center, radius - 2.0f, kKnobStart, kKnobStart + kKnobSweep, track, 3.5f);
     c.arc(center, radius - 2.0f, fromMiddle ? 0.0f : kKnobStart, angle, arc, 3.5f);
@@ -8624,7 +8644,7 @@ void View::paintKnob(Canvas &c, const Widget &w) {
     } else {
         const Rect label{w.rect.x - 14.0f, w.rect.y + w.rect.w + 2.0f, w.rect.w + 28.0f, 16.0f};
         c.text(label, focused || !w.label ? shown : std::string(w.label), kTextLabel,
-               focused ? kText : (idle ? kFaint : kDim));
+               focused ? kText : kDim);
     }
 }
 
@@ -8730,7 +8750,7 @@ void View::paintRatio(Canvas &c, const Widget &w) {
     if (offset != 0.0f)
         c.fillCircle({along(n + offset / (def.max - def.min)), kRatioTrack.center().y}, 2.5f, kText);
 
-    c.text({w.rect.x, kRatioBox.bottom() + 2.0f, w.rect.w, 16.0f}, w.label ? w.label : "", kTextLabel,
+    c.text({w.rect.x, kOpLabelY, w.rect.w, 16.0f}, w.label ? w.label : "", kTextLabel,
            focused ? kText : kDim);
 }
 
@@ -10799,17 +10819,72 @@ void View::paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, boo
         c.strokeRect(card, dragged ? color : (on ? color.alpha(edge) : kBorder), dragged ? 1.5f : 1.0f, kRadiusCard);
 }
 
-// The face of the card a widget is on, as paintCardFace() fills it: the cards' color, in a flat theme tinted with its
-// effect's or its source's color (faintly while that is off).
+// A card's face, as paintCardFace() fills it: the cards' color, in a flat theme tinted with `color` (faintly while off).
+Color View::cardFace(Color color, bool on) const {
+    return look.flat ? mix(kCardColor, color, look.cardTint * (on ? 1.0f : 0.4f)) : kCardColor;
+}
+
+// The face of the card a widget is on: its effect's or its source's card's.
 Color View::cardFaceUnder(const Widget &w) const {
-    if (!look.flat || w.param < 0)
+    if (w.param < 0)
         return kCardColor;
     if (const int slot = fxSlotOf(w.param); slot >= 0)
-        return mix(kCardColor, fxTypeColor(fxSlotType(slot)),
-                   look.cardTint * (value(paramIndex(slot, FxParam::Enabled)) >= 0.5 ? 1.0f : 0.4f));
+        return cardFace(fxTypeColor(fxSlotType(slot)), value(paramIndex(slot, FxParam::Enabled)) >= 0.5);
     if (const int source = sourceOf(w.param); source >= 0 && source < kMaxSources)
-        return mix(kCardColor, kSourceColors[source], look.cardTint * (sourceOn(source) ? 1.0f : 0.4f));
+        return cardFace(kSourceColors[source], sourceOn(source));
     return kCardColor;
+}
+
+std::vector<View::DimArea> View::dimmedAreas() const {
+    std::vector<DimArea> areas;
+    auto body = [](Rect p) { return Rect{p.x + 1.0f, p.y + 36.0f, p.w - 2.0f, p.h - 37.0f}; };
+    // A switched-off source's card below its title row (a folded one's name is already dim).
+    if (!controller_.layout().sourcesCollapsed)
+        for (int s : sources()) {
+            const float card = cardOf(s);
+            if (card == kOffScreen || sourceOn(s) || sourceFolded(s))
+                continue;
+            areas.push_back({body(sourceCard(card, sourceSpan(s))), cardFace(kSourceColors[s], false), sourceCardClip()});
+        }
+    // So is a switched-off effect's, in the effects graph's inspector or along the row.
+    auto effect = [&](int slot, Rect p, Rect clip) {
+        areas.push_back({body(p), cardFace(fxTypeColor(fxSlotType(slot)), false), clip});
+    };
+    if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx && fxGraph()) {
+        if (const int node = fxSelectedNode();
+            node >= 0 && node < kFxSlots && value(paramIndex(node, FxParam::Enabled)) < 0.5)
+            effect(node, fxInspector(node), fxInspector(node));
+    } else if (shapeEditing() < 0 && controller_.layout().view == RoutingView::Fx) {
+        for (const FxRowCard &card : fxRowShown().cards) {
+            const float pos = card.place - fxScroll();
+            if (onScreen(pos, kVisibleFx, card.span) && value(paramIndex(card.slot, FxParam::Enabled)) < 0.5 &&
+                !fxFolded(card.slot))
+                effect(card.slot, fxCard(pos, card.span), fxCardClip());
+        }
+    }
+    // And the inspector's page while its operator, filter or shaper is off, below the tabs, title and switch.
+    if (!inspectorCovered() && !nodeOn(controller_.layout().selectedNode))
+        areas.push_back({kInspectorPage, Color{0.0f, 0.0f, 0.0f, 0.0f}, kInspectorPage});
+    return areas;
+}
+
+// A macro's knob while it modulates nothing, and an LFO's Phase while notes don't start the LFO there: faint, as the
+// macro's handle is, though they still turn.
+bool View::knobIdle(const Widget &w) const {
+    if (w.kind != Kind::Knob || w.param < 0)
+        return false;
+    const int macro = macroOf(w.param);
+    return (macro >= 0 && !sourceLive(kMaxSources + macro)) ||
+           (isLfoPhase(w.param) && !lfoPhaseUsed(sourceOf(w.param)));
+}
+
+// Whether a widget is drawn dimmed: one that takes no input, one that does nothing for now, an idle knob, or one in a
+// dimmed area.
+bool View::widgetDimmed(const Widget &w, const std::vector<DimArea> &areas) const {
+    if (w.disabled || w.faint || knobIdle(w))
+        return true;
+    const Point m = w.rect.center();
+    return std::any_of(areas.begin(), areas.end(), [&](const DimArea &a) { return a.area.contains(m); });
 }
 
 std::optional<std::pair<View::PanArea, float>> View::panAt(Point p) const {

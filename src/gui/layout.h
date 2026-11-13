@@ -61,21 +61,57 @@ constexpr float kCellStep = (kRouting.h - 2.0f * kMatrixMargin - kMatrixNamesH +
 constexpr float kCell = kCellStep - kCellGap;
 constexpr Point kGridOrigin{kRouting.x + 56.0f, kRouting.y + kMatrixMargin + kMatrixNamesH};
 constexpr float kLegendX = kGridOrigin.x + kGridCols * kCellStep + 40.0f;
+// The inspector's tabs, one per node along its top: the operators', the filters' and the shapers' in three groups, a
+// hairline between two groups (kNodeTabDivider()).
+constexpr float kNodeTabStep = 24.0f, kNodeTabGroupGap = 13.0f;
+inline Rect nodeTabRect(int node) {
+    const int group = node < kOps ? 0 : node < kOps + kFilters ? 1 : 2;
+    return {kInspector.x + 16.0f + node * kNodeTabStep + group * kNodeTabGroupGap, kInspector.y + 9.0f,
+            kNodeTabStep - 1.0f, 22.0f};
+}
+// The hairline before group 1 (the filters) or 2 (the shapers), in the middle of the gap.
+inline float nodeTabDivider(int group) {
+    const int first = group == 1 ? kOps : kOps + kFilters;
+    return nodeTabRect(first).x - 0.5f * (kNodeTabGroupGap + 1.0f);
+}
+// The page below the tabs, title and switch, dimmed while its node is off.
+constexpr Rect kInspectorPage{kInspector.x + 1.0f, kInspector.y + 60.0f, kInspector.w - 2.0f, kInspector.h - 61.0f};
+// The page's title row under the tabs: the node's letter, then its summary; the switches at its right end.
+constexpr Rect kTitleRow{kInspector.x + 16.0f, kInspector.y + 37.0f, kInspector.w - 32.0f, 20.0f};
+constexpr float kTitleLetterW = 16.0f;
 // An operator's Fixed switch, a keyboard on the summary line left of the power switch.
 constexpr Rect kFixedSwitch{kInspector.x + kInspector.w - 16.0f - 26.0f - 30.0f, kInspector.y + 37.0f, 26.0f, 19.0f};
-// An operator's Ratio: a 7-segment readout, 0.50 to 64.00, over the first two places of its knob row, each digit dragged
-// on its own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along
-// its top, clear of the depth handles along its bottom edge.
-constexpr Rect kRatioBox{kInspector.x + 20.0f, kInspector.y + 90.0f, (kInspector.w - 32.0f) / 3.0f - 8.0f, 36.0f};
+// An operator's sound in one block under the title: at its left, its pitch (the Ratio readout, Freq and Mult when
+// fixed, or a noise operator's Slope and Spread), as tall as two rows; at its right, the waves and under them the
+// Pitch, Detune, Phase and Pan knobs. Their labels, and the Ratio readout's, share one line.
+constexpr float kOpHeroY = kInspector.y + 64.0f;
+constexpr float kOpPitchW = 88.0f; // the left column
+constexpr float kOpRightX = kInspector.x + 16.0f + kOpPitchW + 12.0f;
+constexpr float kOpRightW = kInspector.x + kInspector.w - 16.0f - kOpRightX;
+constexpr float kOpWavesH = 20.0f; // the waves' row, over the knobs
+constexpr float kOpKnobY = kOpHeroY + 38.0f, kOpKnobD = 28.0f;
+// Place 0-3 along the right column (Pitch, Detune, Phase, Pan); the left column's two (Freq and Mult, or Slope and
+// Spread) are places -2 and -1.
+inline Point opKnobCenter(int place) {
+    if (place < 0)
+        return {kInspector.x + 16.0f + kOpPitchW * (place + 2.5f) * 0.5f, kOpKnobY};
+    return {kOpRightX + kOpRightW * (place + 0.5f) / 4.0f, kOpKnobY};
+}
+// An operator's Ratio: a 7-segment readout, 0.50 to 64.00, the left column of its block, each digit dragged on its
+// own; its widget runs on under the box to the label, as a knob's does (see ratioDigit()). The track runs along its
+// top, clear of the depth handles along its bottom edge.
+// Its top level with the waves' row, and its label on the knobs' labels' line (kOpLabelY), as a knob's is under it.
+constexpr Rect kRatioBox{kInspector.x + 16.0f, kOpHeroY, kOpPitchW, 44.0f};
+constexpr float kOpLabelY = kOpKnobY + 0.5f * kOpKnobD + 2.0f; // the top of the block's labels' line
 constexpr int kRatioDigits = 4; // tens, ones, tenths, hundredths
 constexpr long kRatioPlaces[kRatioDigits] = {1000, 100, 10, 1}; // in hundredths
-constexpr float kRatioDigitW = 14.0f, kRatioDigitH = 20.0f, kRatioDigitGap = 2.5f, kRatioPointW = 6.0f;
+constexpr float kRatioDigitW = 15.0f, kRatioDigitH = 21.0f, kRatioDigitGap = 2.5f, kRatioPointW = 6.5f;
 // Digit k's place in the box (the decimal point after the second).
 inline Rect ratioDigitRect(int k) {
     const float total = kRatioDigits * kRatioDigitW + (kRatioDigits - 1) * kRatioDigitGap + kRatioPointW;
     const float left = kRatioBox.x + (kRatioBox.w - total) * 0.5f;
     const float x = left + k * (kRatioDigitW + kRatioDigitGap) + (k >= 2 ? kRatioPointW : 0.0f);
-    return {x, kRatioBox.y + 10.0f, kRatioDigitW, kRatioDigitH};
+    return {x, kRatioBox.y + 11.0f, kRatioDigitW, kRatioDigitH};
 }
 // The digit nearest along the box to x.
 inline int ratioDigit(float x) {
@@ -99,46 +135,56 @@ inline Rect lfoEditButton(Rect display) {
 inline Rect clipEditButton(Rect display) {
     return {display.right() - 6.0f - kEditButtonW, display.bottom() - 5.0f - kEditButtonH, kEditButtonW, kEditButtonH};
 }
-// An operator's page: under its knob row, tabs (one per InspectorTab) pick what the lower half shows.
-constexpr float kOpTabsY = kInspector.y + 156.0f;
-constexpr float kOpTabH = 20.0f;
+// An operator's page: under its block, a line across, then a well whose top edge holds the tabs (one per
+// InspectorTab) and whose display under them shows what the tab picks; the tab's controls in a row under the well.
+constexpr float kOpRuleY = kInspector.y + 144.0f;
+constexpr float kOpTabsY = kInspector.y + 150.0f;
+constexpr float kOpTabH = 22.0f;
+// An even height keeps the envelope's levels (from 12 px under its top to 10 px over its bottom) on whole pixels at 0.5.
+constexpr Rect kOpDisplay{kInspector.x + 16.0f, kOpTabsY + kOpTabH, kInspector.w - 32.0f, 116.0f};
+// The well, the tabs and the display; INPUTS, with no controls under it, takes it down to the lens's bottom.
+constexpr Rect kOpWell{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kOpDisplay.y + kOpDisplay.h - kOpTabsY};
+constexpr Rect kOpWellTall{kOpDisplay.x, kOpTabsY, kOpDisplay.w, kInspector.y + kInspector.h - 10.0f - kOpTabsY};
+constexpr float kOpControlsY = kOpDisplay.y + kOpDisplay.h + 25.0f; // the controls' knobs' centers
 inline Rect opTab(int tab, bool noise = false) {
-    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS. SCOPE is
-    // no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens WARP): it sits where WARP
-    // does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS.
-    constexpr float kX[] = {78.0f, 0.0f, 144.0f, 200.0f, 144.0f}, kW[] = {62.0f, 74.0f, 52.0f, 54.0f, 52.0f};
-    constexpr float kNoiseX[] = {78.0f, 0.0f, 144.0f, 168.0f, 144.0f}, kNoiseW[] = {84.0f, 74.0f, 52.0f, 54.0f, 52.0f};
-    return {kInspector.x + 16.0f + (noise ? kNoiseX : kX)[tab], kOpTabsY, (noise ? kNoiseW : kW)[tab], kOpTabH};
+    // UNISON, ENVELOPE, SCOPE, INPUTS, WARP by InspectorTab; along the line ENVELOPE, UNISON, WARP, INPUTS, a quarter
+    // of the well each. SCOPE is no longer a tab of its own (the WARP tab shows the scope; a layout saved on it opens
+    // WARP): it sits where WARP does. A noise operator's are ENVELOPE, SPECTRUM (in UNISON's place) and INPUTS, a third
+    // each.
+    constexpr int kPlace[] = {1, 0, 2, 3, 2}, kNoisePlace[] = {1, 0, 2, 2, 2};
+    const float w = (kOpWell.w - 8.0f) / (noise ? 3.0f : 4.0f);
+    return {kOpWell.x + 4.0f + (noise ? kNoisePlace : kPlace)[tab] * w, kOpTabsY, w, kOpTabH};
 }
 // Wave: its display (the scope; with no note, the operator's cycles as its warp reads them, or the note's when
 // synced, the cycle buttons in its top right corner), then the warps' buttons, the amount's knob and the NOTE
 // (note sync) switch along the row under it.
-constexpr Rect kScopeRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 116.0f};
+constexpr Rect kScopeRect = kOpDisplay;
 inline Rect warpButton(int warp) {
-    return {kInspector.x + 16.0f + warp * 28.0f, kInspector.y + 306.0f, 28.0f, 22.0f};
+    return {kInspector.x + 16.0f + warp * 26.0f, kOpControlsY - 11.0f, 26.0f, 22.0f};
 }
-constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kInspector.y + 314.0f};
-constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 46.0f, kInspector.y + 306.0f, 46.0f, 22.0f};
+constexpr Point kWarpAmountKnob{kInspector.x + 210.0f, kOpControlsY};
+constexpr Rect kSyncButton{kInspector.x + kInspector.w - 16.0f - 46.0f, kOpControlsY - 11.0f, 46.0f, 22.0f};
 // Inputs: a row per route into the operator, its source's name, its mode's buttons, the mode's name and its depth,
-// with room under the depth for its modulations' handles. Past the rows the tab holds, they scroll, with a bar at
-// their right; drawn and hit within kInputsList, which leaves room for the ranges on the first row's depth's top.
-constexpr float kInputsTop = kInspector.y + 186.0f;
-constexpr float kInputsBottom = kInspector.y + kInspector.h - 8.0f;
+// with room under the depth for its modulations' handles, inside the tall well. Past the rows the tab holds, they
+// scroll, with a bar at their right; drawn and hit within kInputsList, which leaves room for the ranges on the first
+// row's depth's top.
+constexpr float kInputsTop = kOpDisplay.y + 8.0f;
+constexpr float kInputsBottom = kOpWellTall.y + kOpWellTall.h - 4.0f;
 constexpr float kInputsStep = 30.0f;
 constexpr float kInputsRowSpan = 28.0f; // a row and the handles under its depth
-constexpr Rect kInputsList{kInspector.x + 8.0f, kInputsTop - 3.0f, kInspector.w - 16.0f, kInputsBottom - kInputsTop + 3.0f};
-inline Rect inputsScrollTrack() { return {kInspector.right() - 11.0f, kInputsTop + 1.0f, 4.0f, kInputsBottom - kInputsTop - 2.0f}; }
-inline Rect inputsName(float y) { return {kInspector.x + 16.0f, y, 26.0f, 18.0f}; }
-inline Rect inputsMode(float y, int mode) { return {kInspector.x + 48.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
-inline Rect inputsModeName(float y) { return {kInspector.x + 158.0f, y, 74.0f, 18.0f}; }
-inline Rect inputsDepth(float y) { return {kInspector.x + kInspector.w - 16.0f - 48.0f, y, 48.0f, 18.0f}; }
-// Envelope: the curve, its knobs under it at y + 322.
-constexpr Rect kOpEnvRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
-// Unison: the knobs at y + 206, where the copies sit under them.
-constexpr float kUnisonKnobsY = kInspector.y + 206.0f;
-constexpr Rect kUnisonRect{kInspector.x + 16.0f, kInspector.y + 248.0f, kInspector.w - 32.0f, 102.0f};
+constexpr Rect kInputsList{kOpWell.x, kInputsTop - 3.0f, kOpWell.w, kInputsBottom - kInputsTop + 3.0f};
+inline Rect inputsScrollTrack() { return {kOpWell.right() - 7.0f, kInputsTop + 1.0f, 4.0f, kInputsBottom - kInputsTop - 2.0f}; }
+inline Rect inputsName(float y) { return {kOpWell.x + 8.0f, y, 26.0f, 18.0f}; }
+inline Rect inputsMode(float y, int mode) { return {kOpWell.x + 36.0f + mode * 26.0f, y, 26.0f, 18.0f}; }
+inline Rect inputsModeName(float y) { return {kOpWell.x + 146.0f, y, 66.0f, 18.0f}; }
+inline Rect inputsDepth(float y) { return {kOpWell.right() - 12.0f - 48.0f, y, 48.0f, 18.0f}; }
+// Envelope: the curve, its knobs under the well.
+constexpr Rect kOpEnvRect = kOpDisplay;
+// Unison: where the copies sit, its knobs under the well.
+constexpr float kUnisonKnobsY = kOpControlsY;
+constexpr Rect kUnisonRect = kOpDisplay;
 // A noise operator's spectrum, in Unison's place.
-constexpr Rect kNoiseRect{kInspector.x + 16.0f, kInspector.y + 184.0f, kInspector.w - 32.0f, 110.0f};
+constexpr Rect kNoiseRect = kOpDisplay;
 inline Rect scopeCycleButton(int choice) {
     return {kScopeRect.right() - 6.0f - (3 - choice) * 20.0f, kScopeRect.y + 6.0f, 20.0f, 16.0f};
 }
@@ -168,9 +214,10 @@ constexpr OpWave kMoreWaves[] = {OpWave::Pulse,   OpWave::HalfSine, OpWave::AbsS
                                  OpWave::Organ,   OpWave::Vowel,    OpWave::Custom};
 static_assert(std::size(kCommonWaves) + std::size(kMoreWaves) == static_cast<size_t>(OpWave::Count));
 constexpr int kWaveButtons = static_cast<int>(std::size(kCommonWaves)) + 1;
+// One segmented row at the top of the block's right column.
 inline Rect waveButton(int button) {
-    constexpr float kStep = (kInspector.w - 32.0f + 4.0f) / kWaveButtons;
-    return {kInspector.x + 16.0f + button * kStep, kInspector.y + 62.0f, kStep - 4.0f, 22.0f};
+    const float step = kOpRightW / kWaveButtons;
+    return {kOpRightX + button * step, kOpHeroY, step, kOpWavesH};
 }
 // The list "..." opens, right-aligned under it.
 inline Rect waveMenu() {

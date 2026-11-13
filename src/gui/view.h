@@ -1302,7 +1302,8 @@ private:
     void paintShifter(Canvas &c, Rect r, int slot);
     void paintInspector(Canvas &c);
     // A shaper's page in the inspector: its summary in `summary`, its transfer curve, and the label over its inputs.
-    void paintShaperPage(Canvas &c, int shaper, Rect summary);
+    void paintShaperPage(Canvas &c, int shaper);
+    void paintPageTitle(Canvas &c, int node, Rect r, const std::string &head, const std::string &rest);
     std::string boxRoutes(int node) const;
     void paintSources(Canvas &c);
     void paintSource(Canvas &c, float card, int source);
@@ -1462,6 +1463,18 @@ private:
     int cardAt(Point p) const;
     bool cardOutlined(int id, bool dragged) const;
     Color cardFaceUnder(const Widget &w) const;
+    Color cardFace(Color color, bool on) const;
+    // The switched-off cards' bodies below their title rows, and the inspector's page of a switched-off node: what is in
+    // them is dimmed. A card's displays under an overlay of its own face (`face`, within `clip`), which leaves its
+    // face as it is; the page under a layer (paintInspector(), no face here); the widgets in both under a layer.
+    struct DimArea {
+        Rect area;
+        Color face;
+        Rect clip;
+    };
+    std::vector<DimArea> dimmedAreas() const;
+    bool knobIdle(const Widget &w) const;
+    bool widgetDimmed(const Widget &w, const std::vector<DimArea> &areas) const;
     void paintCardFace(Canvas &c, Rect card, Color color, bool on, int id, bool dragged, float edge, Rect shown);
     Drag drag_;
     // What the last press hit, as it went down, and where: a double-click after it goes with it.

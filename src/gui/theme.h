@@ -22,6 +22,10 @@ constexpr float kRadiusControl = 5.0f; // buttons, switches, lists' buttons, fie
 constexpr float kRadiusCard = 8.0f;    // cards, displays, menus, tooltips and the view tabs
 constexpr float kRadiusPanel = 12.0f;  // the panels and the dialogs
 // Text comes in five sizes (the name in the title bar apart). A name fitted to its room may be drawn smaller.
+// How a dimmed control, or a switched-off card's or page's contents, is drawn: at this opacity over what is under it,
+// the same wherever something is dimmed.
+constexpr float kDimOpacity = 0.4f;
+
 constexpr float kTextSmall = 9.0f;     // axis ticks, units, readouts on displays, graph nodes' names
 constexpr float kTextLabel = 10.5f;    // knob labels, switches, buttons, hints
 constexpr float kTextBody = 11.0f;     // card titles (bold capitals), list and menu rows, fields
