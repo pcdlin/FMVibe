@@ -2174,6 +2174,100 @@ void noteAndVoiceChecks() {
               "host modulation of a macro, the mod wheel, the note source's and velocity's depth moves their targets");
     }
     {
+        // A host's automation and modulation splitting blocks into pieces: render() told only which params changed
+        // (paramChanged(), sameParams) plays sample for sample as one working out everything again for every piece.
+        // The params moved: the operators', a route's, the voice's, a filter's, an LFO's rate, an effect's (one an
+        // LFO moves, one a macro moves), and the slots' depths and a macro's knob, which change what the rest reads.
+        auto setUp = [](Engine &e) {
+            for (int op = 0; op < kOps; ++op) {
+                e.p[paramIndex(op, OpParam::Enabled)] = 1.0;
+                e.p[paramIndex(op, OpParam::Out)] = 0.3;
+                if (op + 1 < kOps)
+                    e.p[matrixIndex(op + 1, op)] = 0.3;
+            }
+            e.p[paramIndex(0, SourceParam::Type)] = static_cast<double>(SourceType::Lfo);
+            e.p[slotTargetIndex(0, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+            e.p[slotAmountIndex(0, 0)] = 0.2;
+            e.p[slotTargetIndex(0, 1)] = slotTargetValue(paramIndex(0, FxParam::DelayMix));
+            e.p[slotAmountIndex(0, 1)] = 0.3;
+            e.p[slotTargetIndex(kMaxSources, 0)] = slotTargetValue(paramIndex(0, OpParam::Out));
+            e.p[slotAmountIndex(kMaxSources, 0)] = -0.2;
+            e.p[slotTargetIndex(kMaxSources, 1)] = slotTargetValue(paramIndex(0, FxParam::DelayFeedback));
+            e.p[slotAmountIndex(kMaxSources, 1)] = 0.2;
+            e.p[paramIndex(0, MacroParam::Value)] = 0.5;
+            e.p[slotTargetIndex(kWheelSource, 0)] = slotTargetValue(paramIndex(2, OpParam::Out));
+            e.p[slotAmountIndex(kWheelSource, 0)] = -0.2;
+            e.p[paramIndex(0, FxParam::Type)] = static_cast<double>(FxType::Delay);
+            chain(e.p, {0});
+        };
+        const int moved[] = {paramIndex(0, OpParam::Out),      paramIndex(3, OpParam::Out),
+                             matrixIndex(1, 0),                paramIndex(1, OpParam::Ratio),
+                             paramIndex(GlobalParam::Pan),     paramIndex(GlobalParam::FmAmount),
+                             paramIndex(0, FilterParam::Cutoff), paramIndex(0, SourceParam::Rate),
+                             paramIndex(0, FxParam::DelayMix), paramIndex(0, FxParam::DelayFeedback),
+                             paramIndex(0, FxParam::DelayTimeL), slotAmountIndex(0, 0),
+                             slotAmountIndex(kMaxSources, 0),  paramIndex(0, MacroParam::Value),
+                             paramIndex(GlobalParam::ModWheel), slotAmountIndex(kWheelSource, 0)};
+        Engine full(2), told(2);
+        setUp(full);
+        setUp(told);
+        uint32_t rng = 12345u;
+        auto next = [&rng] {
+            rng = rng * 1664525u + 1013904223u;
+            return (rng >> 8) / 16777216.0;
+        };
+        const size_t frames = static_cast<size_t>(1.5 * kSampleRate);
+        std::vector<float> fullOut[2] = {std::vector<float>(frames), std::vector<float>(frames)};
+        std::vector<float> toldOut[2] = {std::vector<float>(frames), std::vector<float>(frames)};
+        int changes = 0;
+        bool first = true;
+        for (size_t done = 0; done < frames;) {
+            if (done == 0 || (done > 30000 && done < 30300)) // a chord, then a note let go and another struck
+                for (Engine *e : {&full, &told}) {
+                    if (done == 0)
+                        for (int key : {48, 60, 67})
+                            e->noteOn(key);
+                    else {
+                        e->noteOff(60);
+                        e->noteOn(72);
+                    }
+                }
+            for (int c = static_cast<int>(next() * 4.0); c > 0; --c) {
+                // Half of them on those above, half on any param that can be modulated (a type or a slot's wiring
+                // too, which has everything worked out again).
+                const int i = next() < 0.5 ? moved[static_cast<size_t>(next() * std::size(moved))]
+                                           : static_cast<int>(next() * kModulatedCount);
+                const ParamDef &def = paramTable()[i];
+                if (next() < 0.5) { // automation
+                    const double value = def.min + next() * (def.max - def.min);
+                    full.p[i] = told.p[i] = value;
+                    told.synth().paramChanged(i);
+                } else { // the host's modulation for every voice
+                    const double amount = (next() - 0.5) * 0.6 * (def.max - def.min);
+                    full.synth().paramMod(i, {-1, -1, -1, -1}, amount);
+                    told.synth().paramMod(i, {-1, -1, -1, -1}, amount);
+                }
+                ++changes;
+            }
+            const uint32_t n = static_cast<uint32_t>(std::min<size_t>(1 + static_cast<size_t>(next() * 200.0), frames - done));
+            full.synth().render(fullOut[0].data() + done, fullOut[1].data() + done, n, full.p, false);
+            told.synth().render(toldOut[0].data() + done, toldOut[1].data() + done, n, told.p, !first);
+            first = false;
+            done += n;
+        }
+        size_t differ = 0;
+        float peak = 0.0f;
+        for (int c = 0; c < 2; ++c)
+            for (size_t s = 0; s < frames; ++s) {
+                differ += std::memcmp(&fullOut[c][s], &toldOut[c][s], sizeof(float)) != 0;
+                peak = std::max(peak, std::abs(fullOut[c][s]));
+            }
+        std::printf("      %d changes over 1.5 s in pieces of 1-200 samples: %zu samples differ (peak %.3f)\n", changes,
+                    differ, peak);
+        check(differ == 0 && peak > 0.0f,
+              "automation and modulation told param by param play as working everything out again does");
+    }
+    {
         // A macro's knob as a target: the macros in a chain, Macro 3 on Macro 2's knob, Macro 2 on Macro 1's (the order
         // they are worked out in isn't their numbers'), and Macro 1 taking A's Out down by 100 %. Macro 3 turned up
         // takes A down to silence through the other two; turned down, A plays. The telemetry says where the knobs stand.

@@ -191,6 +191,7 @@ void Synth::prepare(double sampleRate, int capacity, int oversampling) {
     bend_ = 0.0;
     globalMod_.fill(0.0);
     sharedStale_ = true;
+    changedCount_ = 0;
     capacity_ = std::clamp(capacity, 1, kMaxVoices);
     voices_.assign(static_cast<size_t>(capacity_ + std::clamp(capacity_, kFadeSlots, kMaxFadeSlots)), Voice{});
     active_.clear();
@@ -625,7 +626,7 @@ void Synth::paramMod(int index, const NoteRef &match, double amount) {
         return;
     if (match == NoteRef{-1, -1, -1, -1}) {
         globalMod_[index] = amount;
-        sharedStale_ = true; // what render() works out from it (see render())
+        paramChanged(index); // what render() works out from it (see render())
         return;
     }
     if (index >= kVoiceParamCount)
@@ -683,36 +684,13 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
     std::fill_n(right, frames, 0.0f);
     bendSet_ = params[paramIndex(GlobalParam::PitchBend)];
     // What follows from the params and the host's modulation for every voice alone, worked out again only when one
-    // of them may have changed since the last render(): a block split by events renders many times over.
-    if (!sameParams || sharedStale_) {
-        sharedStale_ = false;
-        applyMacros(params);
-        for (int from = 0; from < kRouteSources; ++from)
-            for (int to = 0; to < kOps; ++to)
-                routeModes_[from][to] = from == to ? RouteMode::Phase : routeMode(params[routeModeIndex(from, to)]);
-        voiceBaseReady_ = false; // what the voices share is summed again for these params, once a voice needs it
-        for (int op = 0; op < kOps; ++op) // the Custom waves take their partials, built again once played (renderBlock())
-            customWaves_[op].update(
-                partialCount(params[partialCountIndex(op)]), [&](int k) { return params[partialLevelIndex(op, k)]; },
-                [&](int k) { return params[partialPhaseIndex(op, k)]; });
-        for (int sh = 0; sh < kShapers; ++sh) { // and the shapers' drawn curves their points
-            const ShaperParams fields = shaperParams(kFxSlots + sh);
-            if (clipMode(params[fields.mode]) == ClipMode::Custom)
-                shaperTables_[sh].update([&params](int index) { return params[index]; }, fields.curve);
-        }
-        // The effects' params with the host's and the macros' modulation, which stay as they are through a
-        // render(): as summed, and in their ranges in fxParams_, where each control block adds the newest voice's
-        // slot modulation to the params it moves (and puts back those it moved before: fxMoved_, kept while the
-        // params stay). Their drawn curves are read as set.
-        for (int i = kFxBase; i < kShapeBase; ++i) {
-            fxBase_[i - kFxBase] = params[i] + globalMod_[i] + macroMod_[i];
-            fxParams_[i] = std::clamp(fxBase_[i - kFxBase], paramMin_[i], paramMax_[i]);
-        }
-        fxMovedCount_ = 0;
-        std::copy(params.begin() + kClipCurveBase, params.begin() + kSlotBypassBase,
-                  fxParams_.begin() + kClipCurveBase);
-        sharedSlotsReady_ = false;
-    }
+    // of them may have changed since the last render(): a block split by events renders many times over. A few that
+    // a host's automation or modulation moved, each only summed with the rest, take only their own sums again.
+    if (!sameParams || sharedStale_)
+        shareAll(params);
+    else if (changedCount_ > 0)
+        shareChanged(params);
+    changedCount_ = 0;
     // Anchored LFOs go to where the transport stands: it may have jumped since the last render().
     runSharedLfos(params, newestVoice(), 0, 0);
     for (uint32_t done = 0; done < frames; done += kControlBlock) {
@@ -833,6 +811,88 @@ void Synth::render(float *left, float *right, uint32_t frames, const ParamValues
     if (playing_) {
         songSeconds_ += frames / sampleRate_;
         songBeats_ += frames / sampleRate_ * tempo_ / 60.0;
+    }
+}
+
+void Synth::shareAll(const ParamValues &params) {
+    sharedStale_ = false;
+    applyMacros(params);
+    for (int from = 0; from < kRouteSources; ++from)
+        for (int to = 0; to < kOps; ++to)
+            routeModes_[from][to] = from == to ? RouteMode::Phase : routeMode(params[routeModeIndex(from, to)]);
+    voiceBaseReady_ = false; // what the voices share is summed again for these params, once a voice needs it
+    for (int op = 0; op < kOps; ++op) // the Custom waves take their partials, built again once played (renderBlock())
+        customWaves_[op].update(
+            partialCount(params[partialCountIndex(op)]), [&](int k) { return params[partialLevelIndex(op, k)]; },
+            [&](int k) { return params[partialPhaseIndex(op, k)]; });
+    for (int sh = 0; sh < kShapers; ++sh) { // and the shapers' drawn curves their points
+        const ShaperParams fields = shaperParams(kFxSlots + sh);
+        if (clipMode(params[fields.mode]) == ClipMode::Custom)
+            shaperTables_[sh].update([&params](int index) { return params[index]; }, fields.curve);
+    }
+    // The effects' params with the host's and the macros' modulation, which stay as they are through a
+    // render(): as summed, and in their ranges in fxParams_, where each control block adds the newest voice's
+    // slot modulation to the params it moves (and puts back those it moved before: fxMoved_, kept while the
+    // params stay). Their drawn curves are read as set.
+    for (int i = kFxBase; i < kShapeBase; ++i) {
+        fxBase_[i - kFxBase] = params[i] + globalMod_[i] + macroMod_[i];
+        fxParams_[i] = std::clamp(fxBase_[i - kFxBase], paramMin_[i], paramMax_[i]);
+    }
+    fxMovedCount_ = 0;
+    std::copy(params.begin() + kClipCurveBase, params.begin() + kSlotBypassBase,
+              fxParams_.begin() + kClipCurveBase);
+    sharedSlotsReady_ = false;
+}
+
+namespace {
+
+// Whether the rest of what render() works out from the params (see Synth::shareAll()) reads param `index`, or its
+// host modulation: the macros (their knobs and slots, and the slots on them), the slots' wiring and depths, the
+// route modes, the Custom waves and the drawn curves. A param it doesn't read is only summed with the host's and the
+// macros' modulation, for the voices or the effects, and only its own sum need be worked out again.
+bool changesShared(int index) {
+    static const std::vector<bool> reads = [] {
+        std::vector<bool> r(kParamCount, false);
+        for (int i = kShapeBase; i < kParamCount; ++i) // the drawn shapes and everything after them
+            r[i] = true;
+        for (int source = 0; source < kAllSources; ++source)
+            for (int slot = 0; slot < kSlots; ++slot)
+                for (const int i : {slotTargetIndex(source, slot), slotAmountIndex(source, slot),
+                                    slotAuxIndex(source, slot), slotScaleIndex(source, slot),
+                                    slotCurveIndex(source, slot), slotBypassIndex(source, slot)})
+                    r[i] = true;
+        for (int source = kMaxSources; source < kAllSources; ++source) // the knobs: the Mod Wheel's is a global
+            if (hasKnob(source))
+                r[stripKnobIndex(source)] = true;
+        for (int source = 0; source < kMaxSources; ++source) // what a place holds, which says how it reads its fields
+            r[paramIndex(source, SourceParam::Type)] = true;
+        for (int sh = 0; sh < kShapers; ++sh) // whether a voice shaper plays a drawn curve
+            r[shaperParams(kFxSlots + sh).mode] = true;
+        return r;
+    }();
+    return reads[index];
+}
+
+} // namespace
+
+void Synth::shareChanged(const ParamValues &params) {
+    for (int k = 0; k < changedCount_; ++k)
+        if (changesShared(changed_[k])) {
+            shareAll(params);
+            return;
+        }
+    // As shareAll() and shareVoiceParams() sum them, sum for sum, so the voices and the effects play as they would.
+    for (int k = 0; k < changedCount_; ++k) {
+        const int i = changed_[k];
+        const double base = params[i] + globalMod_[i] + macroMod_[i];
+        if (i >= kFxBase) {
+            fxBase_[i - kFxBase] = base;
+            fxParams_[i] = std::clamp(base, paramMin_[i], paramMax_[i]); // a param a slot moves takes it each block
+        } else if (voiceBaseReady_) { // else summed with the rest when a voice needs them
+            voiceBase_[i] = base;
+            voiceClamped_[i] = std::clamp(base + 0.0, paramMin_[i], paramMax_[i]);
+            voiceParams_[i] = voiceClamped_[i]; // and where the last voice moved it, put back as its first block starts
+        }
     }
 }
 

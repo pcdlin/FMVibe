@@ -213,10 +213,11 @@ void PluginCore::setHostValue(int index, double value, bool inBlock) {
     stamp(); // the editor sees it
     if (inBlock) {
         // The rest of the block being processed hears it (see beginBlock()); a value it has already, as a host's
-        // automation often sends, leaves what the synth works out from the params as it is.
+        // automation often sends, leaves what the synth works out from the params as it is, and another has it work
+        // out again what follows from that param (see Synth::paramChanged()).
         if (snapshot_[index] != value) {
             snapshot_[index] = value;
-            snapshotChanged_ = true;
+            synth_.paramChanged(index);
         }
     } else {
         valuesChanged(); // the next block's snapshot takes it
@@ -245,7 +246,7 @@ bool PluginCore::playModWheel(double value) {
     values_[index].store(value);
     stamp();
     snapshot_[index] = value;
-    snapshotChanged_ = true;
+    synth_.paramChanged(index);
     // The host hands the value back a little later, and by then the wheel may have moved on: not taken, as for an
     // edit in the editor (see setHostValue()).
     told(index, steadyMs());

@@ -9,7 +9,10 @@
 // default patch (operator A alone: mostly what a voice costs a block apart from its samples); then the smoke test's
 // load, all six operators on, each into the one before it at 30 % and out at 30 %, at 1 unison copy and at 8 spread
 // ones; nothing playing; and the 1-copy load with every envelope decaying, then releasing (10 s each), the stages a
-// plucked or let-go note spends its time in, which cost otherwise than the sustain.
+// plucked or let-go note spends its time in, which cost otherwise than the sustain. Then, on a new instance playing the
+// 1-copy load, host automation and modulation: as it is (still); with 8 param events a block that change nothing
+// (split, what rendering a block in pieces costs); with 8 that move their params (automated, PARAM_VALUE); and with 8
+// that move the host's modulation of them for every voice (modulated, PARAM_MOD).
 //
 // render: each factory preset in the folder (*.fmv) loaded into a new instance, and a chord of 8 notes over six
 // octaves played into it for 3 s, let go half way: as saved, and again with every operator at 8 spread unison copies.
@@ -149,12 +152,22 @@ public:
 
     // The fewest ms of CPU any of `passes` seconds of audio took, each timed on its own.
     double best(int passes) {
+        return best(passes, [](int, std::vector<const clap_event_header_t *> &) {});
+    }
+    // The same with each block's events from `events(block, list)`, which fills `list` (emptied before each block).
+    template <class Events>
+    double best(int passes, const Events &events) {
         const int blocks = static_cast<int>(kRate / kBlock);
         double least = 1e300;
+        std::vector<const clap_event_header_t *> list;
+        list.reserve(64);
         for (int pass = 0; pass < passes; ++pass) {
             const auto start = std::chrono::steady_clock::now();
-            for (int b = 0; b < blocks; ++b)
-                block();
+            for (int b = 0; b < blocks; ++b) {
+                list.clear();
+                events(pass * blocks + b, list);
+                block(list);
+            }
             least = std::min(least, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
         }
         return least;
@@ -247,8 +260,63 @@ int timeLoads(const Module &module, int passes) {
     instance.block(offEvents);
     const double release = instance.best(passes);
 
-    std::printf("light %.2f one %.2f eight %.2f idle %.3f decay %.2f release %.2f\n", light, one, eight, idle, decay,
-                release);
+    // Host automation and modulation, on a new instance playing the 1-copy load: 8 events a block, 32 samples apart,
+    // each on its own param (the operators' Outs and two of the chain's routes), so each block renders in 8 pieces.
+    // `split` sends the values as set, which changes nothing: what splitting the block costs. `automated` sends them
+    // moving (PARAM_VALUE), `modulated` moves the host's modulation of them (PARAM_MOD for every voice): what working
+    // out again what follows from the params costs on top, each time one moves.
+    Instance host(module);
+    if (!host)
+        return 3;
+    {
+        std::vector<const clap_event_header_t *> events;
+        for (const auto &p : chain)
+            events.push_back(&p.header);
+        for (const auto &n : notes)
+            events.push_back(&n.header);
+        host.block(events);
+        for (int b = 0; b < 47; ++b)
+            host.block();
+    }
+    const int moved[] = {paramIndex(0, OpParam::Out), paramIndex(1, OpParam::Out), paramIndex(2, OpParam::Out),
+                         paramIndex(3, OpParam::Out), paramIndex(4, OpParam::Out), paramIndex(5, OpParam::Out),
+                         matrixIndex(1, 0),           matrixIndex(2, 1)};
+    constexpr int kMoved = static_cast<int>(std::size(moved));
+    std::vector<clap_event_param_value_t> values(kMoved);
+    std::vector<clap_event_param_mod_t> mods(kMoved);
+    enum class Kind { Split, Automated, Modulated };
+    auto moving = [&](Kind kind) {
+        return [&, kind](int block, std::vector<const clap_event_header_t *> &list) {
+            for (int k = 0; k < kMoved; ++k) {
+                const uint32_t time = static_cast<uint32_t>(k) * (kBlock / kMoved);
+                const double swing =
+                    kind == Kind::Split ? 0.0 : 0.05 * std::sin(2.0 * 3.141592653589793 * (block * kMoved + k) / 997.0);
+                if (kind == Kind::Modulated) {
+                    clap_event_param_mod_t &ev = mods[k];
+                    ev = {};
+                    ev.header = {sizeof(ev), time, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_MOD, 0};
+                    ev.param_id = idOfIndex(moved[k]);
+                    ev.note_id = -1;
+                    ev.port_index = ev.channel = ev.key = -1;
+                    ev.amount = swing;
+                    list.push_back(&ev.header);
+                } else {
+                    values[k] = param(moved[k], 0.3 + swing);
+                    values[k].header.time = time;
+                    list.push_back(&values[k].header);
+                }
+            }
+        };
+    };
+    host.best(1);
+    const double still = host.best(passes);
+    const double split = host.best(passes, moving(Kind::Split));
+    const double automated = host.best(passes, moving(Kind::Automated));
+    const double modulated = host.best(passes, moving(Kind::Modulated));
+
+    std::printf("light %.2f one %.2f eight %.2f idle %.3f decay %.2f release %.2f still %.2f split %.2f automated %.2f "
+                "modulated %.2f\n",
+                light, one, eight, idle, decay, release, still, split, automated, modulated);
     return 0;
 }
 

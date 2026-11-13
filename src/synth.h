@@ -237,9 +237,20 @@ public:
         }
     }
 
-    // `sameParams`: the caller vouches that `params` are what the last render() had, so what follows from them alone
-    // (see sharedStale_) isn't worked out again; the host's modulation since is taken in any case.
+    // `sameParams`: the caller vouches that `params` are what the last render() had, but for those it named to
+    // paramChanged() since, so what follows from them alone (see sharedStale_) isn't worked out again, or only for
+    // those; the host's modulation since is taken in any case.
     void render(float *left, float *right, uint32_t frames, const ParamValues &params, bool sameParams = false);
+    // Param `index` changed since the last render(), which is told sameParams: what render() works out from the
+    // params is worked out again for that param alone, where that is all it touches (see changesShared()).
+    void paramChanged(int index) {
+        if (sharedStale_ || index < 0 || index >= kParamCount)
+            return;
+        if (changedCount_ < kMaxChanged)
+            changed_[changedCount_++] = index;
+        else
+            sharedStale_ = true; // past what a few events ask: all of it, once
+    }
 
     // Whether a voice still plays `note`'s key. A host without note ids keeps one voice per key, so a key struck again
     // keeps it alive; with note ids, an overlapping note on the same key is a voice of its own.
@@ -555,6 +566,16 @@ private:
     // Whether what render() works out from the params and the host's modulation for every voice may be out of date,
     // for want of a render() told its params changed (see render()), or with that modulation since.
     bool sharedStale_ = true;
+    // The params named to paramChanged() since the last render(), a param that changed twice listed twice: a host's
+    // automation or modulation of a knob or two, between two pieces of a block its events split.
+    static constexpr int kMaxChanged = 64;
+    std::array<int, kMaxChanged> changed_{};
+    int changedCount_ = 0;
+    // What render() works out from the params and the host's modulation for every voice alone: all of it, or (from
+    // changed_) only the summed values of the params that changed, when none of them is one the rest is worked out
+    // from (see changesShared()).
+    void shareAll(const ParamValues &params);
+    void shareChanged(const ParamValues &params);
     // Each source's slots in use, in order: those with a target that aren't bypassed, and their targets, which no
     // modulation moves. Worked out once a render() whose params changed, when the first voice needs them; the voices
     // look over these rather than every slot (an Amount of 0 they still leave out, as it takes modulation).

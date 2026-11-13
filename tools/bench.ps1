@@ -9,7 +9,8 @@ build\bench, keeps each build there, and runs fmvibe-bench (tools/bench.cpp) on 
 - render: every factory preset through each build, as saved and at 8 unison copies, compared bit for bit with the
   first build's;
 - time: each load (16 notes on the default patch; the 6-operator chain at 1 and at 8 unison copies; nothing playing;
-  the chain decaying and releasing) in ms of CPU per second of audio, the builds taking turns round after round on
+  the chain decaying and releasing; and the 1-copy chain with 8 host events a block, changing nothing, automating and
+  modulating params) in ms of CPU per second of audio, the builds taking turns round after round on
   one logical processor, so a machine that gets busier for a while weighs on all of them alike. Each figure is the
   median of the rounds, each round the best of -Passes seconds.
 
@@ -160,7 +161,11 @@ if (-not $SkipTime) {
             if ($line -notmatch '^light ([0-9.]+) one ([0-9.]+) eight ([0-9.]+) idle ([0-9.]+) decay ([0-9.]+) release ([0-9.]+)') {
                 throw "fmvibe-bench time failed on $($b.Path)"
             }
-            $runs[$b.Label] += , @(1..6 | ForEach-Object { [double]$Matches[$_] })
+            $figures = @(1..6 | ForEach-Object { [double]$Matches[$_] })
+            if ($line -match 'still ([0-9.]+) split ([0-9.]+) automated ([0-9.]+) modulated ([0-9.]+)') {
+                $figures += @(1..4 | ForEach-Object { [double]$Matches[$_] })
+            }
+            $runs[$b.Label] += , $figures
         }
     }
     function Median($values) { $sorted = @($values | Sort-Object); $sorted[[int][Math]::Floor(($sorted.Count - 1) / 2)] }
@@ -183,5 +188,23 @@ if (-not $SkipTime) {
             '{0,9:N1} {1,7}' -f $median[$k], $change
         }
         "{0,-14} {1,9:N1} {2} {3} {4,8:N2} {5} {6}" -f $b.Label, $median[0], (& $cell 1), (& $cell 2), $median[3], (& $cell 4), (& $cell 5)
+    }
+    # Host automation and modulation on the 1-copy load, 8 events a block (see tools/bench.cpp).
+    if (@($builds | Where-Object { $runs[$_.Label][0].Count -ge 10 }).Count -eq $builds.Count) {
+        ''
+        '1 copy with 8 host events a block: none, unchanged values, automation, modulation'
+        "{0,-14} {1,-17} {2,-17} {3,-17} {4,-17}" -f 'build', '    still', '    split', ' automated', ' modulated'
+        $base = $null
+        foreach ($b in $builds) {
+            $median = @(6..9 | ForEach-Object { $k = $_; Median ($runs[$b.Label] | ForEach-Object { $_[$k] }) })
+            $first = -not $base
+            if ($first) { $base = $median }
+            $cell = {
+                param($k)
+                $change = if ($first) { '' } else { '{0:+0.0;-0.0}%' -f (100.0 * ($median[$k] / $base[$k] - 1.0)) }
+                '{0,9:N1} {1,7}' -f $median[$k], $change
+            }
+            "{0,-14} {1} {2} {3} {4}" -f $b.Label, (& $cell 0), (& $cell 1), (& $cell 2), (& $cell 3)
+        }
     }
 }

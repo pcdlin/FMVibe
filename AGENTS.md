@@ -297,6 +297,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     note, standing still from one span to the next: a sine, a wave crossing 0 many times a period, one repeating
     every other period and a high note's over more periods; a low note's blending each span into the next, as the
     operator scope's does; falling silent with the output, and nothing once switched off;
+  - a host's automation and modulation splitting blocks into pieces as they move params (some chosen, the rest any
+    param that can be modulated, wiring too): the synth told param by param which changed playing sample for sample
+    as one working everything out again for every piece;
   - the CPU cost of each factor.
 - **UI snapshots** (`tools/uishot.cpp`): renders the editor offscreen to PNGs in `build\<config>\ui-shots`, in Midnight,
   the theme its pixel checks were written in, but for the checks and examples that pick another (the README's
@@ -696,7 +699,9 @@ More checks:
   renders every factory preset through each build, as saved and at 8 unison copies, and says whether each plays bit
   for bit as the first does. Then it times the builds in turns, round after round, on one logical processor (`-Cpu`,
   2 to begin with): 16 notes on the default patch, the smoke test's chain of six operators at 1 and at 8 unison
-  copies, nothing playing, and the chain decaying and releasing, each in ms of CPU per second of audio, the median of
+  copies, nothing playing, the chain decaying and releasing, and the 1-copy chain again with 8 host events a block
+  (values that change nothing, which only splits the block, then automation and modulation that move their params),
+  each in ms of CPU per second of audio, the median of
   the rounds, with its change against the first build. It warns when the machine was busy. `fmvibe-bench` talks to
   the plugin through CLAP alone, with the param ids host projects store, so it runs on earlier commits' builds too.
   Not a test: timing wants a quiet machine.
