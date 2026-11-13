@@ -746,12 +746,12 @@ STR(NoiseBrownCaption, "brown")
 STR(TipMoreWaves, "More waves")
 STR(TipFixedOff, "Fixed pitch at Freq × Mult") // the keyboard switch, tracking the keys
 STR(TipHardSync, "Note sync: restart the wave with each cycle of the note") // an operator's NOTE switch
-STR(TipWarpOff, "Off: the wave as it is") // an operator's warps, its WARP tab's buttons
-STR(TipWarpBend, "Bend: rush through the cycle's start, linger at its end")
-STR(TipWarpSqueeze, "Squeeze: the first half in less of the cycle (a square's pulse width)")
-STR(TipWarpPulse, "Pulse: the cycle squeezed into its start, then resting")
-STR(TipWarpSteps, "Steps: the cycle in 8 steps (4 below 0)")
-STR(TipWarpSync, "Sync: the wave up to 8 times a cycle, cut off at its end")
+STR(TipWarpOff, "Off") // an operator's warps, its WARP tab's buttons
+STR(TipWarpBend, "Bend")
+STR(TipWarpSqueeze, "Squeeze")
+STR(TipWarpPulse, "Pulse")
+STR(TipWarpSteps, "Steps")
+STR(TipWarpSync, "Sync")
 STR(SummarySync, "note sync") // on an operator's summary line, while it is synced to the note
 STR(TipFixedOn, "Fixed pitch on. Click to track keys")
 
