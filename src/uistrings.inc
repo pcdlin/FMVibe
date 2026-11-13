@@ -768,10 +768,10 @@ STR(TipWarpSync, "Sync")
 STR(TipUniCurveLinear, "Copies spread evenly in pitch") // the UNISON tab's buttons
 STR(TipUniCurveCenter, "Copies bunched about the pitch")
 STR(TipUniCurveSupersaw, "Supersaw spacing")
-STR(TipUniCurveRandom, "Copies anywhere in the detune, each note anew")
+STR(TipUniCurveRandom, "Random detune, new for every note")
 STR(TipUniPanRamp, "Left to right as the pitch rises")
 STR(TipUniPanAlternate, "Copies next in pitch on opposite sides")
-STR(TipUniPanRandom, "Copies anywhere across, each note anew")
+STR(TipUniPanRandom, "Random places, new for every note")
 STR(SummarySync, "note sync") // on an operator's summary line, while it is synced to the note
 STR(TipFixedOn, "Fixed pitch on. Click to track keys")
 

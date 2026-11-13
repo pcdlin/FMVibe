@@ -61,7 +61,9 @@ constexpr size_t kMaxPresetChunk = 65536;
 //    LFO with the Custom shape loads as a Curve source running as the LFO ran, its points and polarity kept (see
 //    loadCurveSources()).
 // 13: An operator's Unison Detune reaches 200 cents rather than 100 (kMaxUnisonDetune), so an earlier state's
-//    depths on it load half as deep, to swing it as far as they did.
+//    depths on it load half as deep, to swing it as far as they did. And the unison copies' Unison Pan, new with it,
+//    is Alternate to begin with: an earlier state, which has none, loads Ramp, its copies from left to right as they
+//    played.
 constexpr uint32_t kStateVersion = 13;
 
 bool writeAll(const clap_ostream_t *stream, const void *data, size_t size) {
@@ -524,6 +526,11 @@ bool readParams(const clap_istream_t *stream, ParamValues &loaded) {
     const ParamTable &table = paramTable();
     for (int i = 0; i < kParamCount; ++i)
         loaded[i] = table[i].def;
+    // Before version 13 there was no Unison Pan: the copies sat from left to right, which is what a state without one
+    // loads (one that has it, as saved).
+    if (header[1] < 13)
+        for (int op = 0; op < kOps; ++op)
+            loaded[paramIndex(op, OpParam::UnisonPan)] = static_cast<double>(UniPan::Ramp);
     const int volume = paramIndex(GlobalParam::Volume);
     // Whether the state wires the effects graph's output: before version 9, only one saved with them as a graph does.
     bool outWired = false;

@@ -62,16 +62,17 @@ What the plugin does and how its editor works, in full. Building and installing 
     copies by up to ±200 cents; patches saved while it stopped at 100, state version 12 and earlier, load a
     modulation's depth on it half as deep, to swing it as far) and *Spread* (Unison Spread) across the stereo field. On a modulator, the copies' sum
     is what its targets hear; on a carrier, every copy is modulated by the same signal. How they spread is the
-    operator's to pick (`src/unison.h`; to begin with, evenly in pitch, from left to right, all as loud, as unison
-    always played):
+    operator's to pick (`src/unison.h`; to begin with, evenly in pitch and all as loud, as unison always played, and
+    Alternate across; patches saved before these, state version 12 and earlier, load Ramp, from left to right, as
+    they played):
     - **Unison Curve**, where the copies go in pitch: *Linear* (evenly), *Center* (bunched about the pitch, the
       outermost as far out as Linear's, each copy's share of the detune its even share squared), *Supersaw* (as a
       classic supersaw spaces its seven: unevenly, the outer pair far out; other counts read along those seven) or
-      *Random* (one copy anywhere in each of as many even stretches of the detune, drawn anew for each note and
+      *Random* (one copy anywhere in each of as many even stretches of the detune, drawn new for every note and
       each operator, held through the note);
-    - **Unison Pan**, where they sit: *Ramp* (from left to right as their pitch rises), *Alternate* (copies next to
-      each other in pitch on opposite sides, mirrored outward from the middle copy, so the stereo field is wide
-      however few copies play, and no two sit in one place) or *Random* (the even places dealt out anew for each
+    - **Unison Pan**, where they sit: *Ramp* (from left to right as their pitch rises), *Alternate* (to begin with:
+      copies next to each other in pitch on opposite sides, mirrored outward from the middle copy, so the stereo field is wide
+      however few copies play, and no two sit in one place) or *Random* (the even places dealt out new for every
       note);
     - **Blend** (Unison Blend, 0 % to begin with): turns each copy down by how far out its detune takes it, the
       outermost to a tenth of the middle at 100 %, all together kept as loud as before. It acts on what a modulator's

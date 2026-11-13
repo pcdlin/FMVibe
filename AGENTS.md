@@ -218,7 +218,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
     state's as saved; and a version 11 state's LFO with the retired Custom shape loading as a Curve source running as
     it ran (its points and polarity kept), a version 12 state's as saved; and a version 12 state's depth on an
     operator's Unison Detune loading half as deep, as its range grew from 100 cents to 200, a version 13 state's as
-    saved;
+    saved, and its Unison Pan loading Ramp, as its copies played, where a version 13 state without one loads
+    Alternate, the pan a new operator starts with;
   - the chorus's Voices (2, 6, 3, 2) and Spread (0, 100, 0 %) changed under a sine, all wet, gliding rather than
     clicking: no sample stepping further than the sine's own do; held still, an impulse coming out once a voice, at
     its place along Delay and as loud as 1 / sqrt(voices) (2 and 6); and swept, its voices together playing a sine at
@@ -304,7 +305,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     as one working everything out again for every piece;
   - the unison modes: Linear and Ramp spreading the copies evenly, to the bit, as unison always did; Center
     bunching them about the pitch, Supersaw spacing seven as a supersaw does, Random putting one in each stretch of
-    the detune (the same through a note, anew for another), Alternate putting copies next in pitch on opposite sides
+    the detune (the same through a note, new for another), Alternate putting copies next in pitch on opposite sides
     and Random pan dealing them the even places; and on an A4, Center's inner copies nearer the pitch than Linear's,
     Alternate's lowest copy on the other side from Ramp's, and full Blend taking the outermost copy 20 dB under the
     middle one, in what a modulator's carrier plays too;
@@ -526,9 +527,9 @@ the plain CMake commands and installing into a host are in the [README](README.m
     handle (read off the rendered pixels);
   - switching operators and filters on and off with their tabs, the matrix's names and their ghosts in the graph,
     and off from a node's right-click menu, a switched-off one's page dimmed (read off the rendered pixels);
-  - the UNISON tab's buttons picking the copies' curve (Supersaw) and pan (Alternate) and its Blend knob, each an
-    undo step, the display's lowest copy moving from the left to the right (read off the rendered pixels), and a pan
-    button's tooltip;
+  - the UNISON tab starting on Alternate, its buttons picking the copies' curve (Supersaw) and pan (Ramp) and its
+    Blend knob, each an undo step, the display's lowest copy moving from the right to the left (read off the rendered
+    pixels), and a pan button's tooltip;
   - the play switches and the glide knob;
   - an LFO starting synced in quarter notes, and its sync switch freeing it; its Phase knob, marked on its display
     and faint while the LFO is free, and lit while it is anchored (read off the rendered pixels); its clock modes
@@ -1057,7 +1058,8 @@ itself.
   the retired Random shape as a Random source running as it ran (`loadRandomSources()`); before version 12, an LFO
   with the retired Custom shape loads as a Curve source running as it ran (`loadCurveSources()`); before version 13,
   a modulation's depth on an operator's Unison Detune loads scaled by `kRetiredMaxUnisonDetune / kMaxUnisonDetune`,
-  since its range now reaches 200 cents rather than 100), followed by the editor layout:
+  since its range now reaches 200 cents rather than 100, and its Unison Pan, Alternate to begin with, loads Ramp, as
+  its copies played), followed by the editor layout:
   node, filter and shaper positions, selected node, zoom, the routing view, whether the modulation panel is collapsed,
   the order the sources show in, the routes kept at 0 %, the shape editor's grid, the macros' names, which
   effect and source cards are folded, whether the keyboard strip is collapsed, the operator page's tab, the

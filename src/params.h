@@ -317,10 +317,10 @@ enum class OpSync { Off, Note, Count };
 // steps, or played several times through and cut off (Sync). Stored by number: only append.
 enum class OpWarp { Off, Bend, Squeeze, Pulse, Steps, Sync, Count };
 // How an operator's unison copies spread in pitch (see unison.h): evenly, bunched about the middle, as a supersaw's
-// uneven seven, or anywhere along the range, each note anew. Stored by number: only append.
+// uneven seven, or anywhere along the range, new for every note. Stored by number: only append.
 enum class UniCurve { Linear, Center, Supersaw, Random, Count };
 // Where its copies sit across the stereo field: from left to right as their pitch rises, copies next to each other in
-// pitch on opposite sides, or anywhere, each note anew. Stored by number: only append.
+// pitch on opposite sides, or anywhere, new for every note. Stored by number: only append.
 enum class UniPan { Ramp, Alternate, Random, Count };
 // Stored in projects by number: only append.
 enum class FilterType { LowPass, HighPass, BandPass, Notch, Comb, Count };

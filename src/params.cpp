@@ -337,11 +337,12 @@ void buildTable(ParamTable &t) {
             static_cast<double>(OpWarp::Count) - 1.0, 0.0);
         add(paramIndex(op, OpParam::WarpAmount), name + " " + tr(Str::ParamWarpAmount), module,
             ParamKind::BipolarPercent, -1.0, 1.0, 0.0);
-        // The unison copies spread evenly, from left to right, all as loud: as they did before these.
+        // The unison copies spread evenly in pitch, all as loud, as they always did, and sit apart: copies next to each
+        // other in pitch on opposite sides (a state from before these loads Ramp, as it played; see readParams()).
         add(paramIndex(op, OpParam::UnisonCurve), name + " " + tr(Str::ParamUnisonCurve), module, ParamKind::UniCurve,
             0.0, static_cast<double>(UniCurve::Count) - 1.0, 0.0);
         add(paramIndex(op, OpParam::UnisonPan), name + " " + tr(Str::ParamUnisonPan), module, ParamKind::UniPan, 0.0,
-            static_cast<double>(UniPan::Count) - 1.0, 0.0);
+            static_cast<double>(UniPan::Count) - 1.0, static_cast<double>(UniPan::Alternate));
         add(paramIndex(op, OpParam::UnisonBlend), name + " " + tr(Str::ParamUnisonBlend), module, ParamKind::Percent,
             0.0, 1.0, 0.0);
         // The Custom wave starts as a sine: the first partial alone, of 32.

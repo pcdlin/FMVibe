@@ -8332,8 +8332,8 @@ void run(const std::filesystem::path &dir, float scale) {
     check(renderer.save(view, dir / "3b-unison.png"), "render an operator with unison");
 
     // How the copies spread in pitch and where they sit, by the buttons along the display's bottom, and Blend by its
-    // knob, each an undo step; the display's lowest copy (of four) moving from the left to the right as Alternate
-    // takes it there (read off the rendered pixels).
+    // knob, each an undo step; the display's lowest copy (of four) on the right under Alternate, the pan a new
+    // operator starts with, and moving to the left as Ramp takes it there (read off the rendered pixels).
     {
         const int curve = paramIndex(0, OpParam::UnisonCurve), pan = paramIndex(0, OpParam::UnisonPan);
         const int blend = paramIndex(0, OpParam::UnisonBlend);
@@ -8348,27 +8348,29 @@ void run(const std::filesystem::path &dir, float scale) {
         const Point lowRight{r.center().x + half, r.center().y + down - 1.0f};
         const Point away{600.0f, 328.0f};
         view.mouseMove(away, {});
-        renderer.save(view, dir / "3b-unison-ramp.png");
-        const int rampLeft = ringLevel(renderer, lowLeft, 2.0f), rampRight = ringLevel(renderer, lowRight, 2.0f);
+        const bool started = std::lround(model.value(pan)) == static_cast<long>(UniPan::Alternate);
+        renderer.save(view, dir / "3b-unison-alternate.png");
+        const int altLeft = ringLevel(renderer, lowLeft, 2.0f), altRight = ringLevel(renderer, lowRight, 2.0f);
         click(view, detail::uniCurveButton(static_cast<int>(UniCurve::Supersaw)).center());
-        click(view, detail::uniPanButton(static_cast<int>(UniPan::Alternate)).center());
+        click(view, detail::uniPanButton(static_cast<int>(UniPan::Ramp)).center());
         drag(view, kBlendKnob, {kBlendKnob.x, kBlendKnob.y - 100.0f});
         const bool set = std::lround(model.value(curve)) == static_cast<long>(UniCurve::Supersaw) &&
-                         std::lround(model.value(pan)) == static_cast<long>(UniPan::Alternate) &&
+                         std::lround(model.value(pan)) == static_cast<long>(UniPan::Ramp) &&
                          std::abs(model.value(blend) - 0.5) < 1e-6;
         view.mouseMove(away, {});
         const bool shot = renderer.save(view, dir / "3b-unison-modes.png");
-        const int altLeft = ringLevel(renderer, lowLeft, 2.0f), altRight = ringLevel(renderer, lowRight, 2.0f);
-        std::printf("      the lowest copy's place, left and right: %d and %d under Ramp, %d and %d under Alternate\n",
-                    rampLeft, rampRight, altLeft, altRight);
-        check(set && shot && rampLeft > rampRight + 60 && altRight > altLeft + 60,
-              "the UNISON tab's buttons pick the copies' curve and pan, its knob Blend, and its display follows");
-        view.mouseMove(detail::uniPanButton(static_cast<int>(UniPan::Alternate)).center(), {});
+        const int rampLeft = ringLevel(renderer, lowLeft, 2.0f), rampRight = ringLevel(renderer, lowRight, 2.0f);
+        std::printf("      the lowest copy's place, left and right: %d and %d under Alternate, %d and %d under Ramp\n",
+                    altLeft, altRight, rampLeft, rampRight);
+        check(started && set && shot && altRight > altLeft + 60 && rampLeft > rampRight + 60,
+              "the UNISON tab starts on Alternate, its buttons pick the copies' curve and pan, its knob Blend, and its "
+              "display follows");
+        view.mouseMove(detail::uniPanButton(static_cast<int>(UniPan::Random)).center(), {});
         check(renderer.save(view, dir / "3b-unison-tip.png"), "render a unison pan button's tooltip");
         view.undo();
-        const bool blendUndone = model.value(blend) == 0.0 && std::lround(model.value(pan)) == 1;
+        const bool blendUndone = model.value(blend) == 0.0 && std::lround(model.value(pan)) == 0;
         view.undo();
-        const bool panUndone = std::lround(model.value(pan)) == 0 && std::lround(model.value(curve)) == 2;
+        const bool panUndone = std::lround(model.value(pan)) == 1 && std::lround(model.value(curve)) == 2;
         view.undo();
         check(blendUndone && panUndone && std::lround(model.value(curve)) == 0,
               "the unison curve, pan and Blend are each an undo step");

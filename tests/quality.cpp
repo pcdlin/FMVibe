@@ -21,11 +21,19 @@
 #include <memory>
 #include <numbers>
 #include <string>
+#include <tuple>
 #include <vector>
 
 using namespace fmvibe;
 
 namespace {
+
+// Every operator's unison copies from left to right, as they sat before version 13 brought Unison Pan (Alternate to
+// begin with): a patch saved so, relabeled as an older version, loads as saved.
+void asBeforeUnisonPan(ParamValues &p) {
+    for (int op = 0; op < kOps; ++op)
+        p[paramIndex(op, OpParam::UnisonPan)] = static_cast<double>(UniPan::Ramp);
+}
 
 // The effects in `slots` one after another from the input to the output: a chain, as the effects graph wires it.
 void chain(ParamValues &p, const std::vector<int> &slots) {
@@ -1725,6 +1733,7 @@ void effectsChainChecks() {
         p[paramIndex(3, FxParam::McLink)] = 1.0;
         p[slotTargetIndex(0, 0)] = static_cast<double>(idOfIndex(mcThresholdIndex(3, 1))) + 1.0;
         p[slotAmountIndex(0, 0)] = 0.25;
+        asBeforeUnisonPan(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -1837,6 +1846,7 @@ void effectsChainChecks() {
         }
         set(3, SourceParam::Type, static_cast<double>(SourceType::Lfo));
         set(3, SourceParam::Shape, static_cast<double>(LfoShape::Saw));
+        asBeforeUnisonPan(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -1889,6 +1899,7 @@ void effectsChainChecks() {
         }
         set(2, SourceParam::Type, static_cast<double>(SourceType::Lfo));
         set(2, SourceParam::Shape, static_cast<double>(LfoShape::Triangle));
+        asBeforeUnisonPan(p);
         std::vector<unsigned char> bytes;
         const clap_ostream_t out = memoryOut(bytes);
         writePatch(&out, p, gui::UiLayout{}, true);
@@ -3272,14 +3283,16 @@ void unisonModeChecks() {
         check(linear, "Linear and Ramp spread the copies evenly, as unison always did");
         check(center, "Center bunches the copies about the pitch, the outer ones as far out");
         check(supersaw, "Supersaw spaces seven copies as a supersaw does");
-        check(random, "Random puts a copy in each stretch of the detune, the same through a note and anew for another");
+        check(random, "Random puts a copy in each stretch of the detune, the same through a note and new for another");
         check(alternate, "Alternate puts copies next in pitch on opposite sides, none in one place");
         check(shuffled, "Random pan deals the copies the even places");
         check(blended, "Blend turns the outer copies down, as loud together as before");
     }
     {
         // Unison Detune reaches 200 cents since version 13, 100 before: a version 12 state's depth on it (on operator
-        // C's) loads half as deep, swinging it as far as it did, and a version 13 state's as saved.
+        // C's) loads half as deep, swinging it as far as it did, and a version 13 state's as saved. Unison Pan, new with
+        // version 13 and Alternate to begin with: a version 12 state (which has none) loads Ramp, as its copies played,
+        // and a version 13 state that leaves it out, as a sparse one does at its default, Alternate.
         ParamValues p{};
         for (int i = 0; i < kParamCount; ++i)
             p[i] = paramTable()[i].def;
@@ -3297,13 +3310,17 @@ void unisonModeChecks() {
             const clap_istream_t in = memoryIn(reader);
             ParamValues loaded;
             const bool read = readParams(&in, loaded);
-            return std::pair(read ? loaded[slotAmountIndex(0, 0)] : -1.0, loaded[slotAmountIndex(0, 1)]);
+            return std::tuple(read ? loaded[slotAmountIndex(0, 0)] : -1.0, loaded[slotAmountIndex(0, 1)],
+                              loaded[paramIndex(4, OpParam::UnisonPan)]);
         };
-        const auto [older, olderDetune] = depths(12);
-        const auto [now, nowDetune] = depths(13);
+        const auto [older, olderDetune, olderPan] = depths(12);
+        const auto [now, nowDetune, nowPan] = depths(13);
         std::printf("      a depth of 0.4 on Unison Detune: %.2f from a version 12 state, %.2f from 13\n", older, now);
         check(older == 0.2 && olderDetune == 0.4 && now == 0.4 && nowDetune == 0.4,
               "a version 12 state's depth on Unison Detune loads half as deep, a version 13 state's as saved");
+        check(paramTable()[paramIndex(4, OpParam::UnisonPan)].def == static_cast<double>(UniPan::Alternate) &&
+                  olderPan == static_cast<double>(UniPan::Ramp) && nowPan == static_cast<double>(UniPan::Alternate),
+              "Unison Pan starts on Alternate, and a version 12 state loads Ramp, as its copies played");
     }
 
     // An A4's copies at 100 cents: what each one plays where, from a sine's lines.
