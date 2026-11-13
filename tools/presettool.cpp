@@ -3,7 +3,8 @@
 //   fmvibe-presettool [--arrange] <file.fmv>...
 //
 // Rewrites each preset file holding only the params that differ from their defaults (which is what loading it gives
-// the others) and its editor layout, as the factory presets are stored. A preset edited in the plugin and saved over
+// the others) and its editor layout, then its DATA chunk (its own tables and samples) as it was, as the factory presets
+// are stored. A preset edited in the plugin and saved over
 // its file holds every param (about 128 KB); this makes it sparse again before it is committed. With --arrange, it
 // first lays the preset's routing graph out again (see src/gui/arrange.h) where its nodes, wires, lines to OUT or
 // labels run over each other, and says how many such clashes are left. A file it can't read is left as it is.
