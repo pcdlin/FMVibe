@@ -9613,6 +9613,9 @@ void View::applyDrag(Point p) {
     case DragKind::SampleHandle:
         dataDrag(p, drag_.snap);
         break;
+    case DragKind::TablePosition:
+        tablePosDrag(p);
+        break;
     case DragKind::TbScrollBar:
         tbScrollDrag(p);
         break;
@@ -10804,6 +10807,7 @@ void View::mouseUp(Point p, Modifiers) {
     case DragKind::AmpMic:
     case DragKind::UtilityHandle:
     case DragKind::SampleHandle:
+    case DragKind::TablePosition:
     case DragKind::DynGrip:
     case DragKind::ShapePoint:
     case DragKind::ShapeCurve:
@@ -10916,6 +10920,7 @@ void View::finishDrag() {
     case DragKind::SplitPoint:
     case DragKind::UtilityHandle:
     case DragKind::SampleHandle:
+    case DragKind::TablePosition:
         controller_.endEdit(w.param);
         break;
     case DragKind::PeqPoint:

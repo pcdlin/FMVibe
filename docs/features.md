@@ -1336,7 +1336,9 @@ one may have changed since it last did.
       meter: Position's value ringed, each modulation's reach as a band in its source's color, as a knob's rings draw
       it (faint while the source is off or the modulation bypassed, wider while its depth handle is under the mouse),
       and the frame the newest voice plays as a diamond (with no note, Position with its modulation). The display is
-      Position's control, which has no knob: dragged up and down it sets Position, a double-click puts it back to
+      Position's control, which has no knob: a click anywhere on it sets Position to the height of the mouse on the
+      meter's scale (its foot 0 %, its top 100 %), and a drag goes on setting it where the mouse is, each one undo
+      step; with Shift, a drag moves it finely from where it is, as a knob's does. A double-click puts it back to
       0 %, the wheel steps it, its menu and Ctrl+Click type it (over the % in its corner), and a source's handle
       dropped anywhere on it modulates Position, its depth handles along the display's foot, short of the meter.
       Along the row under it, where the WARP tab has them, the warps' buttons, the warp's **Amount** and **NOTE**

@@ -7790,14 +7790,34 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     check(picked && closed && next && model.value(table) == 1.0,
           "the picker opens the browser, a row picks a table, Done closes it, and the steps go through the tables");
 
-    // Position is the display, with no knob of its own: dragged up it turns, one undo step, and the stack's front frame
-    // moves (read off the rendered pixels).
+    // Position is the display, with no knob of its own. A click sets it where the mouse is, on the meter's scale (its
+    // foot 0 %, its top 100 %, 10 px in), and a drag goes on setting it where the mouse is, one undo step; with Shift,
+    // a knob's fine drag from where it is. The stack's front frame moves with it (read off the rendered pixels).
     const int position = paramIndex(0, OpParam::TablePos);
     const Point middle = detail::kOpDisplay.center();
-    drag(view, middle, {middle.x, middle.y - 60.0f});
-    const double turned = model.value(position);
+    const float foot = detail::kOpDisplay.bottom() - 10.0f, top = detail::kOpDisplay.y + 10.0f;
+    auto at = [&](float v) { return Point{detail::kOpDisplay.x + 90.0f, foot + (top - foot) * v}; };
+    click(view, at(0.25f));
+    const double clicked = model.value(position);
+    view.mouseDown(at(0.25f), {});
+    view.mouseMove(at(0.6f), {});
+    const double following = model.value(position);
+    view.mouseMove(at(0.9f), {});
+    view.mouseUp(at(0.9f), {});
+    const double dragged = model.value(position);
+    view.undo();
+    const bool oneStep = std::abs(model.value(position) - clicked) < 1e-6;
     view.undo();
     const bool positionUndone = model.value(position) == 0.0;
+    view.mouseDown(middle, {.shift = true});
+    view.mouseMove({middle.x, middle.y - 30.0f}, {.shift = true});
+    view.mouseUp({middle.x, middle.y - 30.0f}, {.shift = true});
+    const double fine = model.value(position);
+    view.undo();
+    std::printf("      the display clicked at 25 %%: %.3f; dragged to 60 %% %.3f and 90 %% %.3f; undone %d, %d; Shift "
+                "dragged up from 0: %.3f\n",
+                clicked, following, dragged, oneStep, positionUndone, fine);
+    const double turned = dragged;
     // The wheel steps it, a double-click puts it back to 0 %, and Ctrl+Click types it.
     view.wheel(middle, 2.0f, {});
     const bool stepped = model.value(position) > 0.0;
@@ -7822,8 +7842,10 @@ void testWavetables(const std::filesystem::path &dir, Renderer &renderer) {
     const std::vector<uint32_t> atStart = strip();
     model.set(position, 1.0);
     renderer.save(view, dir / "wt-4-position-1.png");
-    check(turned > 0.2 && positionUndone && strip() != atStart,
-          "Position is dragged up and down on the TABLE tab's display, an undo step, and the lit frame moves with it");
+    check(std::abs(clicked - 0.25) < 0.01 && std::abs(following - 0.6) < 0.01 && std::abs(turned - 0.9) < 0.01 &&
+              oneStep && positionUndone && fine > 0.0 && fine < 0.1 && strip() != atStart,
+          "a click on the TABLE tab's display sets Position where the mouse is and a drag follows it, one undo step each, "
+          "Shift a fine drag from where it was; the lit frame moves with it");
 
     // Position modulated by LFO 3, whose color is far from the effects': its handle dropped anywhere on the display
     // modulates Position, a depth handle along the display's foot; the meter's band in the color of the source's handle

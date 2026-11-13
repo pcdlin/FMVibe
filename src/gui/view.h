@@ -418,6 +418,7 @@ private:
         AmpMic,     // an amp's mic, across and away from its cabinet's cone
         UtilityHandle, // a handle on the utility's display: Gain and Mono Bass up and down, Pan and Width across
         SampleHandle,  // a handle on a Sample operator's display, across (with Alt, a loop's onto zero crossings)
+        TablePosition, // a Wavetable operator's Position, set where the mouse is on its TABLE tab's display
         TbScrollBar,   // the table browser's list's scrollbar: its thumb, or the track a click jumps along
     };
 
@@ -1335,6 +1336,7 @@ private:
     bool dataPress(const Widget &w, Point p, Modifiers mods);
     void dataDrag(Point p, bool alt);
     void tbScrollDrag(Point p); // the table browser's list follows its scrollbar's thumb
+    void tablePosDrag(Point p); // Position where the mouse is on the TABLE tab's display, on its meter's scale
     bool dataDoubleClick(const Widget &w);
     bool dataWheel(Point p, float steps);
     void tablesKey(Key key);

@@ -21,6 +21,17 @@ namespace {
 // Where a Sample operator's waveform goes in its display: under the ROOT readout's line.
 Rect sampleArea(Rect display) { return {display.x + 8.0f, display.y + 22.0f, display.w - 16.0f, display.h - 30.0f}; }
 
+// The TABLE tab's meter along its display's right edge, 10 px in from its foot (Position 0) to its top (1): where a
+// value is on it, and the value a height on the display stands for, which a press there sets.
+Point meterAt(Rect display, double v) {
+    const float foot = display.bottom() - 10.0f, top = display.y + 10.0f;
+    return {display.right() - 14.0f, foot + (top - foot) * static_cast<float>(std::clamp(v, 0.0, 1.0))};
+}
+double meterValue(Rect display, float y) {
+    const float foot = display.bottom() - 10.0f, top = display.y + 10.0f;
+    return std::clamp(static_cast<double>((foot - y) / (foot - top)), 0.0, 1.0);
+}
+
 // The table browser's list's scrollbar, along its right edge, and its thumb's least height (as the editor's other
 // scrollbars have one), so a list of thousands of files still has a thumb to grab.
 constexpr Rect kTbScrollTrack{kTbList.x + kTbList.w - 5.0f, kTbList.y, 4.0f, kTbList.h};
@@ -484,14 +495,11 @@ void View::paintTableTab(Canvas &c, Rect r, int op) {
                              : std::clamp(knob + telemetry_.modOffset[pos], 0.0f, 1.0f);
     const Rect stack{r.x + 4.0f, r.y + 6.0f, r.w - 30.0f, r.h - 10.0f};
     paintTableStack(c, stack, *d, 32, played, kAccent, opWarp(op), value(paramIndex(op, OpParam::WarpAmount)));
-    // The depth axis along the right: the knob's value ringed, each modulation's reach a band in its source's color as
-    // the knob's rings draw it (faint while its source is off or it is bypassed, wider while its depth handle is under
-    // the mouse), the frame played a diamond.
-    const Point front{r.right() - 14.0f, r.bottom() - 10.0f}, back{r.right() - 14.0f, r.y + 10.0f};
-    auto along = [&](double v) {
-        return Point{front.x, front.y + (back.y - front.y) * static_cast<float>(std::clamp(v, 0.0, 1.0))};
-    };
-    c.line(front, back, kBorder, 2.0f);
+    // The meter along the right (see meterAt()): Position's value ringed, each modulation's reach a band in its
+    // source's color as a knob's rings draw it (faint while its source is off or it is bypassed, wider while its depth
+    // handle is under the mouse), the frame played a diamond.
+    auto along = [&](double v) { return meterAt(r, v); };
+    c.line(along(0.0), along(1.0), kBorder, 2.0f);
     const double n = norm(pos);
     auto band = [&](const Assignment &m, float width, float alpha) {
         const auto [down, up] = modReach(m);
@@ -1015,6 +1023,14 @@ bool View::dataPress(const Widget &w, Point p, Modifiers mods) {
     case Kind::DataImport:
         controller_.chooseOperatorFile(w.a, static_cast<DataKind>(w.b));
         return true;
+    case Kind::Knob: // Position's display: a press sets Position where the mouse is, on the meter's scale, and a drag
+                     // goes on setting it, one undo step; with Shift, a knob's fine drag from where it is
+        if (!isTableDisplay(w) || mods.shift)
+            return false;
+        controller_.beginEdit(w.param);
+        drag_.kind = DragKind::TablePosition;
+        tablePosDrag(p);
+        return true;
     case Kind::SampleRoot:
         drag_.kind = DragKind::Value;
         drag_.startValue = value(w.param);
@@ -1103,6 +1119,12 @@ void View::dataDrag(Point p, bool alt) {
     }
     if (v != value(w.param))
         controller_.setValue(w.param, v);
+}
+
+void View::tablePosDrag(Point p) {
+    const int param = drag_.widget.param;
+    if (const double v = meterValue(kOpDisplay, p.y); v != value(param))
+        controller_.setValue(param, v);
 }
 
 bool View::dataDoubleClick(const Widget &w) {
