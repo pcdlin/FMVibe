@@ -1220,6 +1220,9 @@ int View::addSource(SourceType type, int copyOf) {
         fresh(slotCurveIndex(source, slot));
         fresh(slotAuxIndex(source, slot));
     }
+    // A new Random source swings both ways, as an LFO does; Bipolar, which MIDI shares, starts off.
+    if (type == SourceType::Random && copyOf < 0)
+        changes.push_back({paramIndex(source, SourceParam::Bipolar), 1.0});
     changes.push_back({paramIndex(source, SourceParam::Type), static_cast<double>(type)});
     const auto at = copyOf >= 0 ? std::find(shown.begin(), shown.end(), copyOf) + 1 : shown.end();
     shown.insert(at, source);

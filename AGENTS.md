@@ -411,8 +411,8 @@ the plain CMake commands and installing into a host are in the [README](README.m
   - the modulation panel's + SOURCE opening the list of source types under it, adding Random and MIDI sources, each
     with its card, a MIDI card's knob picking
     its controller and its input's list pressure or slide instead, its CC knob going, and the list button's tooltip
-    following its input; a Random card's Unipolar | Bipolar, where an LFO's shape list is, setting its polarity
-    (read off the rendered pixels), undoably;
+    following its input; a Random card's Unipolar | Bipolar, where an LFO's shape list is, bipolar to begin
+    with, setting its polarity (read off the rendered pixels), undoably;
   - adding an empty modulation in the MODS tab: it opens its source's menu, takes a source and modulates nothing,
     then a target from Global (which offers no Mod Wheel or Pitch Bend) makes it its source's modulation, each pick undoable, and
     its × removes it; one given a source that has rows going among them, its source menu, open over the rows,
@@ -566,7 +566,7 @@ the plain CMake commands and installing into a host are in the [README](README.m
     tab, the card staying widened, also while the modulation panel collapses, and the
     card back to its size by its collapse button or another shape;
   - an LFO's shape list (going with the LFO undone, offering no Random shape, the wheel stepping past it), a Random
-    source starting synced, its knobs, its dot waiting at the end of a cycle and, at 0 Hz, a line at the value it holds
+    source starting synced and bipolar, its knobs, its dot waiting at the end of a cycle and, at 0 Hz, a line at the value it holds
     (read off the rendered pixels), the list of more waves (Organ among them), the shape editor's grid, snapping and reset button, a point dragged
     onto its neighbor's time, and
     scrolling the source cards by holding a dragged handle at the panel's edge;

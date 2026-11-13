@@ -154,7 +154,7 @@ What the plugin does and how its editor works, in full. Building and installing 
     member channel), resting in the middle until some comes: bipolar, it moves nothing at rest. It follows its
     input through **Slew**, a time constant from 1 ms (all but at once, to begin with) to 10 s, starting each note
     where its input is.
-  Both start unipolar. The browser demo takes no MIDI, so there a MIDI source stays at 0. A new
+  A new Random source starts bipolar, as an LFO does, and a MIDI source unipolar. The browser demo takes no MIDI, so there a MIDI source stays at 0. A new
   instance has none; each one added starts
   switched on, and a source that is switched off stands still and modulates nothing, but keeps its targets. Each
   has 16 slots, and a slot can
@@ -162,7 +162,7 @@ What the plugin does and how its editor works, in full. Building and installing 
   depth. Depth is ±100 % of the target's range: how far a **unipolar** source takes the target one way, and the
   whole swing of a **bipolar** one, half of it below the set value and half above (at 100 %, −50 % to +50 %).
   Every source can be either, for all of its modulations, picked from its right-click menu or the switch after its
-  name in the MODS view (see the editor): LFOs and the pitch bend start bipolar, and envelopes, macros, the note
+  name in the MODS view (see the editor): LFOs, Random sources and the pitch bend start bipolar, and envelopes, macros, the note
   source, the mod wheel and velocity unipolar. A bipolar envelope swings about its middle level (nothing at half of
   it, half the depth down at rest and up at its peak), and a bipolar macro, mod wheel, note source, velocity or pitch
   bend about the middle of what it puts out (a macro moves nothing with its knob at 50 %, the pitch bend nothing at

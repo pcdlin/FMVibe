@@ -861,6 +861,7 @@ void buildTable(ParamTable &t) {
         // Random's and Midi's: following what comes in at once, from the mod wheel's controller, one way.
         field(SourceParam::Slew, tr(Str::ParamSlew), ParamKind::Time, 0.0, kMaxEnvNorm, 0.0);
         field(SourceParam::CcNumber, tr(Str::ParamCc), ParamKind::Count, 0.0, 127.0, 1.0);
+        // Off to begin with, as a MIDI source starts; the editor adds a Random source with it on (see addSource()).
         field(SourceParam::Bipolar, tr(Str::ParamBipolar), ParamKind::Toggle, 0.0, 1.0, 0.0);
         field(SourceParam::MidiInput, tr(Str::ParamInput), ParamKind::MidiInput, 0.0,
               static_cast<double>(MidiInput::Count) - 1.0, 0.0);

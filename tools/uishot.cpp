@@ -1051,18 +1051,18 @@ void runMore(const std::filesystem::path &dir, Renderer &renderer) {
           "the wheel over an LFO's shape list steps past the retired Random shape");
     // The Random source, in the next card: synced on quarter notes as it starts, as an LFO is.
     addSource(view, SourceType::Random);
-    const bool randomSynced = model.value(paramIndex(1, SourceParam::Sync)) == 1.0;
+    const bool randomSynced = model.value(paramIndex(1, SourceParam::Sync)) == 1.0 &&
+                              model.value(paramIndex(1, SourceParam::Bipolar)) == 1.0;
     drag(view, randomKnob(1, 0), {randomKnob(1, 0).x, randomKnob(1, 0).y - 120.0f});
     drag(view, randomKnob(1, 1), {randomKnob(1, 1).x, randomKnob(1, 1).y + 140.0f});
     check(randomSynced && std::abs(model.value(paramIndex(1, SourceParam::RandomSmooth)) - 0.6) < 1e-6 &&
               std::abs(model.value(paramIndex(1, SourceParam::RandomChaos)) - 0.3) < 1e-6,
-          "a Random source starts synced, and its Smooth and Chaos knobs set them");
+          "a Random source starts synced and bipolar, and its Smooth and Chaos knobs set them");
     view.mouseMove({400.0f, 328.0f}, {});
     check(renderer.save(view, dir / "17-random-lfo.png"), "render a smoothed Random source");
     // Running, it shows its own last cycles instead, as one line scrolling left, the live dot at its right end.
     model.live.voices = 1;
     const float glides[] = {0.3f, -0.4f, 0.5f, 0.1f, -0.6f, 0.2f, 0.7f};
-    model.set(paramIndex(1, SourceParam::Bipolar), 1.0); // its outputs as they come, -1..1
     for (int cycle = 0; cycle < 6; ++cycle) {
         model.live.lfoFrom[1] = glides[cycle];
         model.live.lfoTo[1] = glides[cycle + 1];
@@ -7137,27 +7137,27 @@ void testNewSources(const std::filesystem::path &dir, Renderer &renderer) {
           "+ SOURCE's list adds Random and MIDI sources, a MIDI card's list picking pressure or slide over a controller");
 
     // A Random card's Unipolar | Bipolar, where an LFO's shape list is (from x 16 of the card, 122 px wide, at y 564 +
-    // 42, 22 px high), each half of it: unipolar to begin with, Bipolar lit by a click (read off the rendered pixels,
-    // clear of its icon), Unipolar again by the other; each an undo step.
+    // 42, 22 px high), each half of it: bipolar to begin with, Unipolar lit by a click (read off the rendered pixels,
+    // clear of its icon), Bipolar again by the other; each an undo step.
     {
         auto polarity = [](int bipolar) {
             return Point{cardX(0) + 16.0f + 61.0f * (static_cast<float>(bipolar) + 0.5f), 564.0f + 42.0f + 11.0f};
         };
         const int bipolarParam = paramIndex(0, SourceParam::Bipolar);
-        const Point clearOfIcon{polarity(1).x - 20.0f, polarity(1).y + 6.0f};
-        const bool startsUnipolar = model.value(bipolarParam) == 0.0;
+        const Point clearOfIcon{polarity(0).x - 20.0f, polarity(0).y + 6.0f};
+        const bool startsBipolar = model.value(bipolarParam) == 1.0;
         view.mouseMove({600.0f, 328.0f}, {});
-        renderer.save(view, dir / "11j-random-unipolar.png");
+        renderer.save(view, dir / "11j-random-bipolar.png");
         const uint32_t unlit = renderer.pixel(clearOfIcon);
-        click(view, polarity(1));
-        const bool bipolar = model.value(bipolarParam) == 1.0;
-        view.mouseMove({600.0f, 328.0f}, {});
-        const bool polarShot = renderer.save(view, dir / "11j-random-bipolar.png");
-        const bool lit = renderer.pixel(clearOfIcon) != unlit;
         click(view, polarity(0));
         const bool unipolar = model.value(bipolarParam) == 0.0;
+        view.mouseMove({600.0f, 328.0f}, {});
+        const bool polarShot = renderer.save(view, dir / "11j-random-unipolar.png");
+        const bool lit = renderer.pixel(clearOfIcon) != unlit;
+        click(view, polarity(1));
+        const bool bipolar = model.value(bipolarParam) == 1.0;
         view.undo();
-        check(startsUnipolar && bipolar && polarShot && lit && unipolar && model.value(bipolarParam) == 1.0,
+        check(startsBipolar && unipolar && polarShot && lit && bipolar && model.value(bipolarParam) == 0.0,
               "a Random card's Unipolar | Bipolar switch sets its polarity, undoably");
     }
 }
